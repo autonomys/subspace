@@ -45,7 +45,7 @@ use domain_runtime_primitives::{BlockNumber as DomainNumber, Hash as DomainHash}
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, ConstU8, Everything, Get};
 use frame_support::weights::constants::{RocksDbWeight, WEIGHT_REF_TIME_PER_SECOND};
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
-use frame_support::{construct_runtime, parameter_types};
+use frame_support::{construct_runtime, parameter_types, PalletId};
 use frame_system::limits::{BlockLength, BlockWeights};
 use frame_system::EnsureNever;
 use pallet_feeds::feed_processor::FeedProcessor;
@@ -64,7 +64,7 @@ use sp_domains::{
     DomainId, DomainInstanceData, DomainsFreezeIdentifier, OperatorId, OperatorPublicKey,
     StakingFreezeIdentifier,
 };
-use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, NumberFor};
+use sp_runtime::traits::{AccountIdConversion, AccountIdLookup, BlakeTwo256, NumberFor};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{
     create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, Perbill, SaturatedConversion,
@@ -485,6 +485,7 @@ parameter_types! {
     // TODO: revisit these
     pub const StakeWithdrawalLockingPeriod: BlockNumber = 100;
     pub const StakeEpochDuration: DomainNumber = 5;
+    pub TreasuryAccount: AccountId = PalletId(*b"treasury").into_account_truncating();
 }
 
 // `BlockTreePruningDepth` should <= `BlockHashCount` because we need the consensus block hash to verify
@@ -512,6 +513,7 @@ impl pallet_domains::Config for Runtime {
     type BlockTreePruningDepth = BlockTreePruningDepth;
     type StakeWithdrawalLockingPeriod = StakeWithdrawalLockingPeriod;
     type StakeEpochDuration = StakeEpochDuration;
+    type TreasuryAccount = TreasuryAccount;
 }
 
 parameter_types! {

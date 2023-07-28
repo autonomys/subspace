@@ -3,7 +3,7 @@ use crate::{self as pallet_domains, BundleError, DomainRegistry, FungibleFreezeI
 use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, Hooks};
 use frame_support::weights::Weight;
-use frame_support::{assert_err, assert_ok, parameter_types};
+use frame_support::{assert_err, assert_ok, parameter_types, PalletId};
 use scale_info::TypeInfo;
 use sp_core::crypto::Pair;
 use sp_core::{Get, H256, U256};
@@ -14,7 +14,7 @@ use sp_domains::{
     SealedBundleHeader, StakingFreezeIdentifier,
 };
 use sp_runtime::testing::Header;
-use sp_runtime::traits::{BlakeTwo256, Hash as HashT, IdentityLookup};
+use sp_runtime::traits::{AccountIdConversion, BlakeTwo256, Hash as HashT, IdentityLookup};
 use sp_runtime::OpaqueExtrinsic;
 use std::sync::atomic::{AtomicU64, Ordering};
 use subspace_core_primitives::U256 as P256;
@@ -162,6 +162,7 @@ parameter_types! {
     pub const MinOperatorStake: Balance = 100 * SSC;
     pub const StakeWithdrawalLockingPeriod: BlockNumber = 5;
     pub const StakeEpochDuration: BlockNumber = 5;
+    pub TreasuryAccount: u64 = PalletId(*b"treasury").into_account_truncating();
 }
 
 impl pallet_domains::Config for Test {
@@ -185,6 +186,7 @@ impl pallet_domains::Config for Test {
     type BlockTreePruningDepth = BlockTreePruningDepth;
     type StakeWithdrawalLockingPeriod = StakeWithdrawalLockingPeriod;
     type StakeEpochDuration = StakeEpochDuration;
+    type TreasuryAccount = TreasuryAccount;
 }
 
 pub(crate) fn new_test_ext() -> sp_io::TestExternalities {

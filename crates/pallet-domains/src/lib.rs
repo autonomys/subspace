@@ -258,6 +258,9 @@ mod pallet {
 
         /// Domain epoch transition interval
         type StakeEpochDuration: Get<Self::DomainNumber>;
+
+        /// Treasury account.
+        type TreasuryAccount: Get<Self::AccountId>;
     }
 
     #[pallet::pallet]

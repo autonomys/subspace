@@ -510,7 +510,7 @@ mod tests {
     };
     use crate::tests::{new_test_ext, ExistentialDeposit, RuntimeOrigin, Test};
     use crate::{BalanceOf, Config, Error, FreezeIdentifier, NominatorId};
-    use frame_support::traits::fungible::{InspectFreeze, Mutate, MutateFreeze};
+    use frame_support::traits::fungible::{Mutate, MutateFreeze};
     use frame_support::traits::Currency;
     use frame_support::{assert_err, assert_ok};
     use sp_core::{Pair, U256};

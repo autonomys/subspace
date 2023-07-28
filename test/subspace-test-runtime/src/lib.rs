@@ -32,7 +32,7 @@ use frame_support::traits::{
 };
 use frame_support::weights::constants::{RocksDbWeight, WEIGHT_REF_TIME_PER_SECOND};
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
-use frame_support::{construct_runtime, parameter_types};
+use frame_support::{construct_runtime, parameter_types, PalletId};
 use frame_system::limits::{BlockLength, BlockWeights};
 use frame_system::EnsureNever;
 use pallet_balances::NegativeImbalance;
@@ -57,7 +57,8 @@ use sp_domains::{
     OpaqueBundles, OperatorId, OperatorPublicKey, StakingFreezeIdentifier,
 };
 use sp_runtime::traits::{
-    AccountIdLookup, BlakeTwo256, DispatchInfoOf, NumberFor, PostDispatchInfoOf, Zero,
+    AccountIdConversion, AccountIdLookup, BlakeTwo256, DispatchInfoOf, NumberFor,
+    PostDispatchInfoOf, Zero,
 };
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
@@ -540,6 +541,7 @@ parameter_types! {
     pub const BlockTreePruningDepth: u32 = 256;
     pub const StakeWithdrawalLockingPeriod: BlockNumber = 20;
     pub const StakeEpochDuration: DomainNumber = 5;
+    pub TreasuryAccount: AccountId = PalletId(*b"treasury").into_account_truncating();
 }
 
 impl pallet_domains::Config for Runtime {
@@ -563,6 +565,7 @@ impl pallet_domains::Config for Runtime {
     type BlockTreePruningDepth = BlockTreePruningDepth;
     type StakeWithdrawalLockingPeriod = StakeWithdrawalLockingPeriod;
     type StakeEpochDuration = StakeEpochDuration;
+    type TreasuryAccount = TreasuryAccount;
 }
 
 parameter_types! {
