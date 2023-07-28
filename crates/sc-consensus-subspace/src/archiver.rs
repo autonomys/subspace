@@ -296,6 +296,35 @@ where
     best_archived_block: (Block::Hash, NumberFor<Block>),
 }
 
+fn encode_genesis_block<Block>(block: &SignedBlock<Block>) -> Vec<u8>
+where
+    Block: BlockT,
+{
+    let mut encoded_block = block.encode();
+    let encoded_block_length = encoded_block.len();
+
+    // We extend encoding of genesis block with extra data such that the very first
+    // archived segment can be produced right away, bootstrapping the farming
+    // process.
+    //
+    // Note: we add it to the end of the encoded block, so during decoding it'll
+    // actually be ignored (unless `DecodeAll::decode_all()` is used) even though it
+    // is technically present in encoded form.
+    encoded_block.resize(RecordedHistorySegment::SIZE, 0);
+    let mut rng = ChaCha8Rng::from_seed(
+        block
+            .block
+            .header()
+            .state_root()
+            .as_ref()
+            .try_into()
+            .expect("State root in Subspace must be 32 bytes, panic otherwise; qed"),
+    );
+    rng.fill(&mut encoded_block[encoded_block_length..]);
+
+    encoded_block
+}
+
 fn initialize_archiver<Block, Client, AS>(
     best_block_hash: Block::Hash,
     best_block_number: NumberFor<Block>,
@@ -412,31 +441,7 @@ where
                     .unwrap_or_default();
 
                 let encoded_block = if block_number_to_archive.is_zero() {
-                    let mut encoded_block = block.encode();
-                    let encoded_block_length = encoded_block.len();
-
-                    // We extend encoding of genesis block with extra data such that the very first
-                    // archived segment can be produced right away, bootstrapping the farming
-                    // process.
-                    //
-                    // Note: we add it to the end of the encoded block, so during decoding it'll
-                    // actually be ignored (unless `DecodeAll::decode_all()` is used) even though it
-                    // is technically present in encoded form.
-                    encoded_block.resize(RecordedHistorySegment::SIZE, 0);
-                    let mut rng = ChaCha8Rng::from_seed(
-                        block
-                            .block
-                            .header()
-                            .state_root()
-                            .as_ref()
-                            .try_into()
-                            .expect(
-                                "State root in Subspace must be 32 bytes, panic otherwise; qed",
-                            ),
-                    );
-                    rng.fill(&mut encoded_block[encoded_block_length..]);
-
-                    encoded_block
+                    encode_genesis_block(&block)
                 } else {
                     block.encode()
                 };
