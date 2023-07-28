@@ -528,8 +528,12 @@ async fn test_executor_full_node_catching_up() {
         Ferdie,
         BasePath::new(directory.path().join("ferdie")),
     );
-    // Produce 1 consensus block to initialize genesis domain
-    ferdie.produce_block_with_slot(1.into()).await.unwrap();
+    // Produce 5 consensus block to initialize genesis domain
+    //
+    // This also make the first consensus block being processed by the alice's domain
+    // block processor be block #5, to ensure it can correctly handle the consensus
+    // block even it is out of order.
+    ferdie.produce_blocks(5).await.unwrap();
 
     // Run Alice (a evm domain authority node)
     let alice = domain_test_service::DomainNodeBuilder::new(
