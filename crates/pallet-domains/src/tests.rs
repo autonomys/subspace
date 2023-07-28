@@ -11,7 +11,7 @@ use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{
     BundleHeader, DomainId, DomainInstanceData, DomainsFreezeIdentifier, ExecutionReceipt,
     GenerateGenesisStateRoot, OpaqueBundle, OperatorId, OperatorPair, ProofOfElection,
-    SealedBundleHeader,
+    SealedBundleHeader, StakingFreezeIdentifier,
 };
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, IdentityLookup};
@@ -114,8 +114,22 @@ pub enum FreezeIdentifier {
 }
 
 impl pallet_domains::FreezeIdentifier<Test> for FreezeIdentifier {
-    fn staking_freeze_id(operator_id: OperatorId) -> Self {
-        Self::Domains(DomainsFreezeIdentifier::Staking(operator_id))
+    fn staking_pending_deposit(operator_id: OperatorId) -> FungibleFreezeId<Test> {
+        Self::Domains(DomainsFreezeIdentifier::Staking(
+            StakingFreezeIdentifier::PendingDeposit(operator_id),
+        ))
+    }
+
+    fn staking_staked(operator_id: OperatorId) -> FungibleFreezeId<Test> {
+        Self::Domains(DomainsFreezeIdentifier::Staking(
+            StakingFreezeIdentifier::Staked(operator_id),
+        ))
+    }
+
+    fn staking_pending_unlock(operator_id: OperatorId) -> FungibleFreezeId<Test> {
+        Self::Domains(DomainsFreezeIdentifier::Staking(
+            StakingFreezeIdentifier::PendingUnlock(operator_id),
+        ))
     }
 
     fn domain_instantiation_id(domain_id: DomainId) -> FungibleFreezeId<Test> {

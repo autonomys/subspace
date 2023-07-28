@@ -77,7 +77,6 @@ pub enum Error {
     PendingOperatorSwitch,
     InsufficientBalance,
     BalanceFreeze,
-    BalanceBurn,
     MinimumOperatorStake,
     UnknownOperator,
     MinimumNominatorStake,
@@ -116,7 +115,7 @@ pub(crate) fn do_register_operator<T: Config>(
             Error::MinimumOperatorStake
         );
 
-        freeze_account_balance_to_operator::<T>(&operator_owner, operator_id, amount)?;
+        freeze_pending_deposit::<T>(&operator_owner, operator_id, amount)?;
 
         let domain_stake_summary = maybe_domain_stake_summary
             .as_mut()
@@ -173,13 +172,13 @@ pub(crate) fn do_nominate_operator<T: Config>(
         );
     }
 
-    freeze_account_balance_to_operator::<T>(&nominator_id, operator_id, amount)?;
+    freeze_pending_deposit::<T>(&nominator_id, operator_id, amount)?;
     PendingDeposits::<T>::insert(operator_id, nominator_id, updated_total_deposit);
 
     Ok(())
 }
 
-pub(crate) fn freeze_account_balance_to_operator<T: Config>(
+pub(crate) fn freeze_pending_deposit<T: Config>(
     who: &T::AccountId,
     operator_id: OperatorId,
     amount: BalanceOf<T>,
@@ -190,14 +189,14 @@ pub(crate) fn freeze_account_balance_to_operator<T: Config>(
         Error::InsufficientBalance
     );
 
-    let freeze_id = T::FreezeIdentifier::staking_freeze_id(operator_id);
     // lock any previous locked balance + new deposit
-    let current_locked_balance = T::Currency::balance_frozen(&freeze_id, who);
+    let pending_deposit_freeze_id = T::FreezeIdentifier::staking_pending_deposit(operator_id);
+    let current_locked_balance = T::Currency::balance_frozen(&pending_deposit_freeze_id, who);
     let balance_to_be_locked = current_locked_balance
         .checked_add(&amount)
         .ok_or(Error::BalanceOverflow)?;
 
-    T::Currency::set_freeze(&freeze_id, who, balance_to_be_locked)
+    T::Currency::set_freeze(&pending_deposit_freeze_id, who, balance_to_be_locked)
         .map_err(|_| Error::BalanceFreeze)?;
 
     Ok(())
@@ -338,9 +337,18 @@ pub(crate) fn do_withdraw_stake<T: Config>(
                     return Ok(());
                 }
 
+                let domain_stake_summary =
+                    DomainStakingSummary::<T>::get(operator.current_domain_id)
+                        .ok_or(Error::DomainNotInitialized)?;
+
                 let total_stake = operator
                     .current_total_stake
-                    .checked_add(&operator.current_epoch_rewards)
+                    .checked_add(
+                        domain_stake_summary
+                            .current_epoch_rewards
+                            .get(&operator_id)
+                            .unwrap_or(&Zero::zero()),
+                    )
                     .ok_or(Error::BalanceOverflow)?;
 
                 let nominator_share =
@@ -493,20 +501,20 @@ mod tests {
         PendingOperatorSwitches, PendingSlashes, PendingUnlocks, PendingWithdrawals,
     };
     use crate::staking::{
-        do_nominate_operator, do_slash_operators, Error as StakingError, Nominator, Operator,
-        OperatorConfig, StakingSummary, Withdraw,
+        do_nominate_operator, do_reward_operators, do_slash_operators, Error as StakingError,
+        Nominator, Operator, OperatorConfig, StakingSummary, Withdraw,
     };
     use crate::staking_epoch::{
         do_finalize_domain_current_epoch, do_finalize_slashed_operators,
         do_unlock_pending_withdrawals,
     };
-    use crate::tests::{new_test_ext, RuntimeOrigin, Test};
+    use crate::tests::{new_test_ext, ExistentialDeposit, RuntimeOrigin, Test};
     use crate::{BalanceOf, Config, Error, FreezeIdentifier, NominatorId};
-    use frame_support::traits::fungible::{Mutate, MutateFreeze};
+    use frame_support::traits::fungible::{InspectFreeze, Mutate, MutateFreeze};
     use frame_support::traits::Currency;
     use frame_support::{assert_err, assert_ok};
     use sp_core::{Pair, U256};
-    use sp_domains::{DomainId, OperatorPair};
+    use sp_domains::{DomainId, OperatorId, OperatorPair, OperatorPublicKey};
     use sp_runtime::traits::Zero;
     use std::collections::{BTreeMap, BTreeSet};
     use std::vec;
@@ -515,8 +523,62 @@ mod tests {
     type Balances = pallet_balances::Pallet<Test>;
     type Domains = crate::Pallet<Test>;
 
+    pub(crate) fn register_operator(
+        domain_id: DomainId,
+        operator_account: <Test as frame_system::Config>::AccountId,
+        operator_free_balance: BalanceOf<Test>,
+        operator_stake: BalanceOf<Test>,
+        minimum_nominator_stake: BalanceOf<Test>,
+        signing_key: OperatorPublicKey,
+        mut nominators: BTreeMap<NominatorId<Test>, (BalanceOf<Test>, BalanceOf<Test>)>,
+    ) -> (OperatorId, OperatorConfig<BalanceOf<Test>>) {
+        nominators.insert(operator_account, (operator_free_balance, operator_stake));
+        for nominator in &nominators {
+            Balances::set_balance(nominator.0, nominator.1 .0);
+            assert_eq!(Balances::usable_balance(nominator.0), nominator.1 .0);
+        }
+        nominators.remove(&operator_account);
+
+        DomainStakingSummary::<Test>::insert(
+            domain_id,
+            StakingSummary {
+                current_epoch_index: 0,
+                current_total_stake: 0,
+                current_operators: BTreeMap::new(),
+                next_operators: BTreeSet::new(),
+                current_epoch_rewards: BTreeMap::new(),
+            },
+        );
+
+        let operator_config = OperatorConfig {
+            signing_key,
+            minimum_nominator_stake,
+            nomination_tax: Default::default(),
+        };
+
+        let res = Domains::register_operator(
+            RuntimeOrigin::signed(operator_account),
+            domain_id,
+            operator_stake,
+            operator_config.clone(),
+        );
+        assert_ok!(res);
+
+        let operator_id = 0;
+        for nominator in nominators {
+            let res = Domains::nominate_operator(
+                RuntimeOrigin::signed(nominator.0),
+                operator_id,
+                nominator.1 .1,
+            );
+            assert_ok!(res);
+        }
+
+        (operator_id, operator_config)
+    }
+
     #[test]
-    fn register_operator() {
+    fn test_register_operator() {
         let domain_id = DomainId::new(0);
         let operator_account = 1;
         let operator_free_balance = 1500 * SSC;
@@ -525,39 +587,24 @@ mod tests {
 
         let mut ext = new_test_ext();
         ext.execute_with(|| {
-            Balances::set_balance(&operator_account, operator_free_balance);
-            assert!(Balances::usable_balance(operator_account) == operator_free_balance);
-
-            DomainStakingSummary::<Test>::insert(
+            let (operator_id, operator_config) = register_operator(
                 domain_id,
-                StakingSummary {
-                    current_epoch_index: 0,
-                    current_total_stake: 0,
-                    current_operators: BTreeMap::new(),
-                    next_operators: BTreeSet::new(),
-                    current_epoch_rewards: BTreeMap::new(),
-                },
-            );
-
-            let operator_config = OperatorConfig {
-                signing_key: pair.public(),
-                minimum_nominator_stake: 0,
-                nomination_tax: Default::default(),
-            };
-
-            let res = Domains::register_operator(
-                RuntimeOrigin::signed(operator_account),
-                domain_id,
+                operator_account,
+                operator_free_balance,
                 operator_stake,
-                operator_config.clone(),
+                0,
+                pair.public(),
+                BTreeMap::new(),
             );
-            assert_ok!(res);
 
             assert_eq!(NextOperatorId::<Test>::get(), 1);
             // operator_id should be 0 and be registered
-            assert_eq!(OperatorIdOwner::<Test>::get(0).unwrap(), operator_account);
             assert_eq!(
-                Operators::<Test>::get(0).unwrap(),
+                OperatorIdOwner::<Test>::get(operator_id).unwrap(),
+                operator_account
+            );
+            assert_eq!(
+                Operators::<Test>::get(operator_id).unwrap(),
                 Operator {
                     signing_key: pair.public(),
                     current_domain_id: domain_id,
@@ -570,11 +617,12 @@ mod tests {
                     is_frozen: false,
                 }
             );
-            let pending_deposit = PendingDeposits::<Test>::get(0, operator_account).unwrap();
+            let pending_deposit =
+                PendingDeposits::<Test>::get(operator_id, operator_account).unwrap();
             assert_eq!(pending_deposit, operator_stake);
 
             let stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
-            assert!(stake_summary.next_operators.contains(&0));
+            assert!(stake_summary.next_operators.contains(&operator_id));
 
             assert_eq!(
                 Balances::usable_balance(operator_account),
@@ -609,42 +657,18 @@ mod tests {
 
         let mut ext = new_test_ext();
         ext.execute_with(|| {
-            Balances::set_balance(&operator_account, operator_free_balance);
-            Balances::set_balance(&nominator_account, nominator_free_balance);
-            assert!(Balances::usable_balance(nominator_account) == nominator_free_balance);
-
-            DomainStakingSummary::<Test>::insert(
+            let (operator_id, _) = register_operator(
                 domain_id,
-                StakingSummary {
-                    current_epoch_index: 0,
-                    current_total_stake: 0,
-                    current_operators: BTreeMap::new(),
-                    next_operators: BTreeSet::new(),
-                    current_epoch_rewards: BTreeMap::new(),
-                },
-            );
-
-            let operator_config = OperatorConfig {
-                signing_key: pair.public(),
-                minimum_nominator_stake: 100 * SSC,
-                nomination_tax: Default::default(),
-            };
-
-            let res = Domains::register_operator(
-                RuntimeOrigin::signed(operator_account),
-                domain_id,
+                operator_account,
+                operator_free_balance,
                 operator_stake,
-                operator_config,
+                10 * SSC,
+                pair.public(),
+                BTreeMap::from_iter(vec![(
+                    nominator_account,
+                    (nominator_free_balance, nominator_stake),
+                )]),
             );
-            assert_ok!(res);
-
-            let operator_id = 0;
-            let res = Domains::nominate_operator(
-                RuntimeOrigin::signed(nominator_account),
-                operator_id,
-                nominator_stake,
-            );
-            assert_ok!(res);
 
             let pending_deposit = PendingDeposits::<Test>::get(0, operator_account).unwrap();
             assert_eq!(pending_deposit, operator_stake);
@@ -673,21 +697,20 @@ mod tests {
         let old_domain_id = DomainId::new(0);
         let new_domain_id = DomainId::new(1);
         let operator_account = 1;
-        let operator_id = 1;
+        let operator_free_balance = 250 * SSC;
         let operator_stake = 200 * SSC;
         let pair = OperatorPair::from_seed(&U256::from(0u32).into());
 
         let mut ext = new_test_ext();
         ext.execute_with(|| {
-            DomainStakingSummary::<Test>::insert(
+            let (operator_id, _) = register_operator(
                 old_domain_id,
-                StakingSummary {
-                    current_epoch_index: 0,
-                    current_total_stake: 0,
-                    current_operators: BTreeMap::from_iter(vec![(operator_id, operator_stake)]),
-                    next_operators: BTreeSet::from_iter(vec![operator_id]),
-                    current_epoch_rewards: BTreeMap::new(),
-                },
+                operator_account,
+                operator_free_balance,
+                operator_stake,
+                0,
+                pair.public(),
+                BTreeMap::new(),
             );
 
             DomainStakingSummary::<Test>::insert(
@@ -698,22 +721,6 @@ mod tests {
                     current_operators: BTreeMap::new(),
                     next_operators: BTreeSet::new(),
                     current_epoch_rewards: BTreeMap::new(),
-                },
-            );
-
-            OperatorIdOwner::<Test>::insert(operator_id, operator_account);
-            Operators::<Test>::insert(
-                operator_id,
-                Operator {
-                    signing_key: pair.public(),
-                    current_domain_id: old_domain_id,
-                    next_domain_id: old_domain_id,
-                    minimum_nominator_stake: 100 * SSC,
-                    nomination_tax: Default::default(),
-                    current_total_stake: Zero::zero(),
-                    current_epoch_rewards: Zero::zero(),
-                    total_shares: Zero::zero(),
-                    is_frozen: false,
                 },
             );
 
@@ -760,37 +767,20 @@ mod tests {
     fn operator_deregistration() {
         let domain_id = DomainId::new(0);
         let operator_account = 1;
-        let operator_id = 1;
         let operator_stake = 200 * SSC;
+        let operator_free_balance = 250 * SSC;
         let pair = OperatorPair::from_seed(&U256::from(0u32).into());
 
         let mut ext = new_test_ext();
         ext.execute_with(|| {
-            DomainStakingSummary::<Test>::insert(
+            let (operator_id, _) = register_operator(
                 domain_id,
-                StakingSummary {
-                    current_epoch_index: 0,
-                    current_total_stake: 0,
-                    current_operators: BTreeMap::from_iter(vec![(operator_id, operator_stake)]),
-                    next_operators: BTreeSet::from_iter(vec![operator_id]),
-                    current_epoch_rewards: BTreeMap::new(),
-                },
-            );
-
-            OperatorIdOwner::<Test>::insert(operator_id, operator_account);
-            Operators::<Test>::insert(
-                operator_id,
-                Operator {
-                    signing_key: pair.public(),
-                    current_domain_id: domain_id,
-                    next_domain_id: domain_id,
-                    minimum_nominator_stake: 100 * SSC,
-                    nomination_tax: Default::default(),
-                    current_total_stake: Zero::zero(),
-                    current_epoch_rewards: Zero::zero(),
-                    total_shares: Zero::zero(),
-                    is_frozen: false,
-                },
+                operator_account,
+                operator_free_balance,
+                operator_stake,
+                0,
+                pair.public(),
+                BTreeMap::new(),
             );
 
             let res =
@@ -868,46 +858,39 @@ mod tests {
         } = params;
         let domain_id = DomainId::new(0);
         let operator_account = 0;
-        let operator_id = 0;
         let pair = OperatorPair::from_seed(&U256::from(0u32).into());
-        let nominators = BTreeMap::from_iter(nominators);
+
+        let mut nominators = BTreeMap::from_iter(
+            nominators
+                .into_iter()
+                .map(|(id, bal)| (id, (bal + ExistentialDeposit::get(), bal)))
+                .collect::<Vec<(NominatorId<Test>, (BalanceOf<Test>, BalanceOf<Test>))>>(),
+        );
 
         let mut ext = new_test_ext();
         ext.execute_with(|| {
-            let operator_stake = nominators.get(&operator_id).cloned().unwrap();
-            DomainStakingSummary::<Test>::insert(
+            let (operator_free_balance, operator_stake) =
+                nominators.remove(&operator_account).unwrap();
+            let (operator_id, _) = register_operator(
                 domain_id,
-                StakingSummary {
-                    current_epoch_index: 0,
-                    current_total_stake: total_stake,
-                    current_operators: BTreeMap::from_iter(vec![(operator_id, operator_stake)]),
-                    next_operators: BTreeSet::from_iter(vec![operator_id]),
-                    current_epoch_rewards: BTreeMap::new(),
-                },
+                operator_account,
+                operator_free_balance,
+                operator_stake,
+                minimum_nominator_stake,
+                pair.public(),
+                nominators,
             );
 
-            OperatorIdOwner::<Test>::insert(operator_id, operator_account);
+            assert!(do_finalize_domain_current_epoch::<Test>(domain_id, Zero::zero()).unwrap());
 
-            let mut total_shares = Zero::zero();
-            for (nominator_id, shares) in nominators {
-                Nominators::<Test>::insert(operator_id, nominator_id, Nominator { shares });
-                total_shares += shares
+            if !operator_reward.is_zero() {
+                do_reward_operators::<Test>(
+                    domain_id,
+                    vec![operator_id].into_iter(),
+                    operator_reward,
+                )
+                .unwrap();
             }
-
-            Operators::<Test>::insert(
-                operator_id,
-                Operator {
-                    signing_key: pair.public(),
-                    current_domain_id: domain_id,
-                    next_domain_id: domain_id,
-                    minimum_nominator_stake,
-                    nomination_tax: Default::default(),
-                    current_total_stake: total_stake,
-                    current_epoch_rewards: operator_reward,
-                    total_shares,
-                    is_frozen: false,
-                },
-            );
 
             for (withdraw, expected_result) in withdraws {
                 let res = Domains::withdraw_stake(
@@ -926,6 +909,13 @@ mod tests {
                 expected_withdraw
             );
 
+            // let previous_usable_balance = Balances::usable_balance(nominator_id);
+            // println!("Balance before epoch {previous_usable_balance:?}");
+            // let id = crate::tests::FreezeIdentifier::staking_pending_unlock(operator_id);
+            // println!(
+            //     "Frozen balance in test: {:?}",
+            //     Balances::balance_frozen(&id, &nominator_id)
+            // );
             if let Some(withdraw) = expected_withdraw {
                 // finalize pending withdrawals
                 let domain_block = 100;
@@ -937,6 +927,15 @@ mod tests {
                     None
                 );
 
+                let previous_usable_balance = Balances::usable_balance(nominator_id);
+                // println!("After epoch: {previous_usable_balance:?}");
+                // println!(
+                //     "Frozen balance in test: {:?}",
+                //     Balances::balance_frozen(&id, &nominator_id)
+                // );
+                // let res = Balances::transfer(RuntimeOrigin::signed(nominator_id), 100, 64 * SSC);
+                // println!("{:?}", res);
+
                 let pending_unlocks_at =
                     PendingNominatorUnlocks::<Test>::get(operator_id, expected_unlock_at).unwrap();
                 assert_eq!(pending_unlocks_at.len(), 1);
@@ -947,8 +946,13 @@ mod tests {
                     Some(BTreeSet::from_iter(vec![operator_id]))
                 );
 
-                let previous_usable_balance = Balances::usable_balance(nominator_id);
                 do_unlock_pending_withdrawals::<Test>(domain_id, expected_unlock_at).unwrap();
+                // let previous_usable_balance = Balances::usable_balance(nominator_id);
+                // println!("After unlock: {previous_usable_balance:?}");
+                // println!(
+                //     "Frozen balance in test: {:?}",
+                //     Balances::balance_frozen(&id, &nominator_id)
+                // );
 
                 let withdrew_amount = match withdraw {
                     Withdraw::All => {
@@ -1223,7 +1227,7 @@ mod tests {
 
             let mut total_shares = <<Test as Config>::Share>::zero();
             let mut total_stake = BalanceOf::<Test>::zero();
-            let freeze_id = crate::tests::FreezeIdentifier::staking_freeze_id(operator_id);
+            let freeze_id = crate::tests::FreezeIdentifier::staking_staked(operator_id);
             for nominator in nominators {
                 total_stake += nominator.1;
                 total_shares += nominator.1;

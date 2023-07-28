@@ -62,6 +62,7 @@ use sp_core::{OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
     DomainId, DomainInstanceData, DomainsFreezeIdentifier, OperatorId, OperatorPublicKey,
+    StakingFreezeIdentifier,
 };
 use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, NumberFor};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
@@ -329,8 +330,22 @@ pub enum FreezeIdentifier {
 }
 
 impl pallet_domains::FreezeIdentifier<Runtime> for FreezeIdentifier {
-    fn staking_freeze_id(operator_id: OperatorId) -> Self {
-        Self::Domains(DomainsFreezeIdentifier::Staking(operator_id))
+    fn staking_pending_deposit(operator_id: OperatorId) -> Self {
+        Self::Domains(DomainsFreezeIdentifier::Staking(
+            StakingFreezeIdentifier::PendingDeposit(operator_id),
+        ))
+    }
+
+    fn staking_staked(operator_id: OperatorId) -> Self {
+        Self::Domains(DomainsFreezeIdentifier::Staking(
+            StakingFreezeIdentifier::Staked(operator_id),
+        ))
+    }
+
+    fn staking_pending_unlock(operator_id: OperatorId) -> Self {
+        Self::Domains(DomainsFreezeIdentifier::Staking(
+            StakingFreezeIdentifier::PendingUnlock(operator_id),
+        ))
     }
 
     fn domain_instantiation_id(domain_id: DomainId) -> Self {

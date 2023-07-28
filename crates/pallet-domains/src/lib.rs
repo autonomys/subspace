@@ -63,7 +63,9 @@ pub(crate) type FungibleFreezeId<T> =
 pub(crate) type NominatorId<T> = <T as frame_system::Config>::AccountId;
 
 pub trait FreezeIdentifier<T: Config> {
-    fn staking_freeze_id(operator_id: OperatorId) -> FungibleFreezeId<T>;
+    fn staking_pending_deposit(operator_id: OperatorId) -> FungibleFreezeId<T>;
+    fn staking_staked(operator_id: OperatorId) -> FungibleFreezeId<T>;
+    fn staking_pending_unlock(operator_id: OperatorId) -> FungibleFreezeId<T>;
     fn domain_instantiation_id(domain_id: DomainId) -> FungibleFreezeId<T>;
 }
 

@@ -54,7 +54,7 @@ use sp_domains::fraud_proof::FraudProof;
 use sp_domains::transaction::PreValidationObject;
 use sp_domains::{
     DomainId, DomainInstanceData, DomainsFreezeIdentifier, ExecutionReceipt, OpaqueBundle,
-    OpaqueBundles, OperatorId, OperatorPublicKey,
+    OpaqueBundles, OperatorId, OperatorPublicKey, StakingFreezeIdentifier,
 };
 use sp_runtime::traits::{
     AccountIdLookup, BlakeTwo256, DispatchInfoOf, NumberFor, PostDispatchInfoOf, Zero,
@@ -294,8 +294,22 @@ pub enum FreezeIdentifier {
 }
 
 impl pallet_domains::FreezeIdentifier<Runtime> for FreezeIdentifier {
-    fn staking_freeze_id(operator_id: OperatorId) -> Self {
-        Self::Domains(DomainsFreezeIdentifier::Staking(operator_id))
+    fn staking_pending_deposit(operator_id: OperatorId) -> Self {
+        Self::Domains(DomainsFreezeIdentifier::Staking(
+            StakingFreezeIdentifier::PendingDeposit(operator_id),
+        ))
+    }
+
+    fn staking_staked(operator_id: OperatorId) -> Self {
+        Self::Domains(DomainsFreezeIdentifier::Staking(
+            StakingFreezeIdentifier::Staked(operator_id),
+        ))
+    }
+
+    fn staking_pending_unlock(operator_id: OperatorId) -> Self {
+        Self::Domains(DomainsFreezeIdentifier::Staking(
+            StakingFreezeIdentifier::PendingUnlock(operator_id),
+        ))
     }
 
     fn domain_instantiation_id(domain_id: DomainId) -> Self {
