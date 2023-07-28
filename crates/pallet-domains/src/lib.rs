@@ -1056,16 +1056,20 @@ impl<T: Config> Pallet<T> {
             .map(|domain_object| domain_object.domain_config.runtime_id)
     }
 
-    pub fn domain_instance_data(domain_id: DomainId) -> Option<DomainInstanceData> {
-        let runtime_id = DomainRegistry::<T>::get(domain_id)?
-            .domain_config
-            .runtime_id;
-        let (runtime_type, runtime_code) = RuntimeRegistry::<T>::get(runtime_id)
-            .map(|runtime_object| (runtime_object.runtime_type, runtime_object.code))?;
-        Some(DomainInstanceData {
-            runtime_type,
-            runtime_code,
-        })
+    pub fn domain_instance_data(
+        domain_id: DomainId,
+    ) -> Option<(DomainInstanceData, T::BlockNumber)> {
+        let domain_obj = DomainRegistry::<T>::get(domain_id)?;
+        let (runtime_type, runtime_code) =
+            RuntimeRegistry::<T>::get(domain_obj.domain_config.runtime_id)
+                .map(|runtime_object| (runtime_object.runtime_type, runtime_object.code))?;
+        Some((
+            DomainInstanceData {
+                runtime_type,
+                runtime_code,
+            },
+            domain_obj.created_at,
+        ))
     }
 
     pub fn genesis_state_root(domain_id: DomainId) -> Option<H256> {

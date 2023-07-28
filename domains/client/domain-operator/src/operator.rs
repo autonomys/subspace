@@ -153,6 +153,7 @@ where
 
         let domain_block_processor = DomainBlockProcessor {
             domain_id: params.domain_id,
+            domain_created_at: params.domain_created_at,
             client: params.client.clone(),
             consensus_client: params.consensus_client.clone(),
             backend: params.backend.clone(),

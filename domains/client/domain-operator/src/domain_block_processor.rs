@@ -37,6 +37,7 @@ where
     CBlock: BlockT,
 {
     pub(crate) domain_id: DomainId,
+    pub(crate) domain_created_at: NumberFor<CBlock>,
     pub(crate) client: Arc<Client>,
     pub(crate) consensus_client: Arc<CClient>,
     pub(crate) backend: Arc<Backend>,
@@ -54,6 +55,7 @@ where
     fn clone(&self) -> Self {
         Self {
             domain_id: self.domain_id,
+            domain_created_at: self.domain_created_at,
             client: self.client.clone(),
             consensus_client: self.consensus_client.clone(),
             backend: self.backend.clone(),

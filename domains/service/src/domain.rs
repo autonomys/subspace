@@ -244,6 +244,7 @@ where
 {
     pub domain_id: DomainId,
     pub domain_config: DomainConfiguration<AccountId>,
+    pub domain_created_at: NumberFor<CBlock>,
     pub consensus_client: Arc<CClient>,
     pub consensus_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
     pub select_chain: SC,
@@ -341,6 +342,7 @@ where
     let DomainParams {
         domain_id,
         domain_config,
+        domain_created_at,
         consensus_client,
         consensus_network_sync_oracle,
         select_chain,
@@ -440,6 +442,7 @@ where
         &select_chain,
         OperatorParams {
             domain_id,
+            domain_created_at,
             consensus_client: consensus_client.clone(),
             consensus_network_sync_oracle,
             client: client.clone(),
