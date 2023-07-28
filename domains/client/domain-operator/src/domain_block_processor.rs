@@ -18,6 +18,7 @@ use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{DomainId, DomainsApi, ExecutionReceipt, ExtrinsicsRoot};
 use sp_runtime::traits::{Block as BlockT, CheckedSub, HashFor, Header as HeaderT, One, Zero};
 use sp_runtime::Digest;
+use std::cmp::Ordering;
 use std::sync::Arc;
 
 pub(crate) struct DomainBlockResult<Block, CBlock>
@@ -118,26 +119,46 @@ where
         consensus_block_hash: CBlock::Hash,
         consensus_block_number: NumberFor<CBlock>,
     ) -> sp_blockchain::Result<Option<PendingConsensusBlocks<Block, CBlock>>> {
-        if consensus_block_number == One::one() {
-            return Ok(Some(PendingConsensusBlocks {
-                initial_parent: (self.client.info().genesis_hash, Zero::zero()),
-                consensus_imports: vec![HashAndNumber {
-                    hash: consensus_block_hash,
-                    number: consensus_block_number,
-                }],
-            }));
+        match consensus_block_number.cmp(&(self.domain_created_at + One::one())) {
+            // Consensus block at `domain_created_at + 1` is the first block that possibly contains
+            // bundle, thus we can safely skip any consensus block that is smaller than this block.
+            Ordering::Less => return Ok(None),
+            // For consensus block at `domain_created_at + 1` use the genesis domain block as the
+            // initial parent block directly to avoid further processing.
+            Ordering::Equal => {
+                return Ok(Some(PendingConsensusBlocks {
+                    initial_parent: (self.client.info().genesis_hash, Zero::zero()),
+                    consensus_imports: vec![HashAndNumber {
+                        hash: consensus_block_hash,
+                        number: consensus_block_number,
+                    }],
+                }));
+            }
+            // For consensus block > `domain_created_at + 1`, there is potential existing fork
+            // thus we need to handle it carefully as following.
+            Ordering::Greater => {}
         }
 
         let best_hash = self.client.info().best_hash;
         let best_number = self.client.info().best_number;
 
-        let consensus_block_hash_for_best_domain_hash =
+        let consensus_block_hash_for_best_domain_hash = if best_number.is_zero() {
+            self.consensus_client
+                .hash(self.domain_created_at)?
+                .ok_or_else(|| {
+                    sp_blockchain::Error::Backend(format!(
+                        "Consensus hash for block #{} not found",
+                        self.domain_created_at
+                    ))
+                })?
+        } else {
             crate::aux_schema::latest_consensus_block_hash_for(&*self.backend, &best_hash)?
                 .ok_or_else(|| {
                     sp_blockchain::Error::Backend(format!(
                         "Consensus hash for domain hash #{best_number},{best_hash} not found"
                     ))
-                })?;
+                })?
+        };
 
         let consensus_from = consensus_block_hash_for_best_domain_hash;
         let consensus_to = consensus_block_hash;
@@ -182,6 +203,22 @@ where
             (false, false) => {
                 let (common_block_number, common_block_hash) =
                     (route.common_block().number, route.common_block().hash);
+
+                // The `common_block` is smaller than the consensus block that the domain was created at, thus
+                // we can safely skip any consensus block that is smaller than `domain_created_at` and start at
+                // the consensus block `domain_created_at + 1`, which the first block that possibly contains bundle,
+                // and use the genesis domain block as the initial parent block.
+                if common_block_number <= self.domain_created_at {
+                    let consensus_imports = enacted
+                        .iter()
+                        .skip_while(|block| block.number <= self.domain_created_at)
+                        .cloned()
+                        .collect();
+                    return Ok(Some(PendingConsensusBlocks {
+                        initial_parent: (self.client.info().genesis_hash, Zero::zero()),
+                        consensus_imports,
+                    }));
+                }
 
                 // Get the domain block that is derived from the common consensus block and use it as
                 // the initial domain parent block
@@ -451,7 +488,7 @@ where
                             "Header for consensus block {consensus_block_hash:?} not found"
                         ))
                     })?;
-                if !consensus_header.number().is_one() {
+                if *consensus_header.number() > self.domain_created_at + One::one() {
                     let consensus_parent_hash = consensus_header.parent_hash();
                     crate::aux_schema::best_domain_hash_for(&*self.client, consensus_parent_hash)?
                         .ok_or_else(|| {
