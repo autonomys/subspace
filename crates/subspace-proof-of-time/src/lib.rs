@@ -3,15 +3,22 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 mod pot_aes;
 
-use subspace_core_primitives::{
-    BlockHash, NonEmptyVec, NonEmptyVecErr, PotKey, PotProof, PotSeed, SlotNumber,
-};
+use core::num::{NonZeroU32, NonZeroU8};
+use subspace_core_primitives::{BlockHash, NonEmptyVec, PotKey, PotProof, PotSeed, SlotNumber};
 
 #[derive(Debug)]
 #[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
-pub enum PotCreationError {
-    #[cfg_attr(feature = "thiserror", error("Failed to initialize checkpoints"))]
-    CheckpointInitFailed(NonEmptyVecErr),
+pub enum PotInitError {
+    #[cfg_attr(
+        feature = "thiserror",
+        error(
+            "pot_iterations not multiple of num_checkpoints: {pot_iterations}, {num_checkpoints}"
+        )
+    )]
+    NotMultiple {
+        pot_iterations: u32,
+        num_checkpoints: u8,
+    },
 }
 
 #[derive(Debug)]
@@ -38,11 +45,23 @@ pub struct ProofOfTime {
 
 impl ProofOfTime {
     /// Creates the AES wrapper.
-    pub fn new(num_checkpoints: u8, checkpoint_iterations: u32) -> Self {
-        Self {
-            num_checkpoints,
-            checkpoint_iterations,
+    pub fn new(
+        pot_iterations: NonZeroU32,
+        num_checkpoints: NonZeroU8,
+    ) -> Result<Self, PotInitError> {
+        let pot_iterations = pot_iterations.get();
+        let num_checkpoints = num_checkpoints.get();
+        if pot_iterations % (num_checkpoints as u32) != 0 {
+            return Err(PotInitError::NotMultiple {
+                pot_iterations,
+                num_checkpoints,
+            });
         }
+
+        Ok(Self {
+            num_checkpoints,
+            checkpoint_iterations: pot_iterations / (num_checkpoints as u32),
+        })
     }
 
     /// Builds the proof.
@@ -52,21 +71,15 @@ impl ProofOfTime {
         key: PotKey,
         slot_number: SlotNumber,
         injected_block_hash: BlockHash,
-    ) -> Result<PotProof, PotCreationError> {
+    ) -> PotProof {
         let checkpoints = NonEmptyVec::new(pot_aes::create(
             &seed,
             &key,
             self.num_checkpoints,
             self.checkpoint_iterations,
         ))
-        .map_err(PotCreationError::CheckpointInitFailed)?;
-        Ok(PotProof::new(
-            slot_number,
-            seed,
-            key,
-            checkpoints,
-            injected_block_hash,
-        ))
+        .expect("Failed to create proof of time");
+        PotProof::new(slot_number, seed, key, checkpoints, injected_block_hash)
     }
 
     /// Verifies the proof.
