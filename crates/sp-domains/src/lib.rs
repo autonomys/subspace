@@ -162,7 +162,7 @@ pub struct BundleHeader<Number, Hash, DomainNumber, DomainHash, Balance> {
     /// bundle and prevent attacker from reusing them to occupy the block space without cost.
     pub consensus_block_number: Number,
     /// Proof of bundle producer election.
-    pub proof_of_election: ProofOfElection<DomainHash>,
+    pub proof_of_election: ProofOfElection,
     /// Execution receipt that should extend the receipt chain or add confirmations
     /// to the head receipt.
     pub receipt: ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance>,
@@ -359,7 +359,7 @@ impl<
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct ProofOfElection<DomainHash> {
+pub struct ProofOfElection {
     /// Domain id.
     pub domain_id: DomainId,
     /// The slot number.
@@ -370,11 +370,9 @@ pub struct ProofOfElection<DomainHash> {
     pub vrf_signature: VrfSignature,
     /// Operator index in the OperatorRegistry.
     pub operator_id: OperatorId,
-    // TODO: added temporarily in order to not change a lot of code to make it compile, remove later.
-    pub _phantom: DomainHash,
 }
 
-impl<DomainHash> ProofOfElection<DomainHash> {
+impl ProofOfElection {
     pub fn verify_vrf_signature(
         &self,
         operator_signing_key: &OperatorPublicKey,
@@ -398,7 +396,7 @@ impl<DomainHash> ProofOfElection<DomainHash> {
     }
 }
 
-impl<DomainHash: Default> ProofOfElection<DomainHash> {
+impl ProofOfElection {
     #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
     pub fn dummy(domain_id: DomainId, operator_id: OperatorId) -> Self {
         let output_bytes = vec![0u8; VrfOutput::max_encoded_len()];
@@ -413,7 +411,6 @@ impl<DomainHash: Default> ProofOfElection<DomainHash> {
             global_randomness: Randomness::default(),
             vrf_signature,
             operator_id,
-            _phantom: Default::default(),
         }
     }
 }
