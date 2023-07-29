@@ -102,6 +102,8 @@ pub enum Error {
     EpochOverflow,
     ShareUnderflow,
     ShareOverflow,
+    TryDepositWithPendingWithdraw,
+    TryWithdrawWithPendingDeposit,
 }
 
 pub(crate) fn do_register_operator<T: Config>(
@@ -166,6 +168,11 @@ pub(crate) fn do_nominate_operator<T: Config>(
     ensure!(
         operator.status == OperatorStatus::Registered,
         Error::OperatorNotRegistered
+    );
+
+    ensure!(
+        !PendingWithdrawals::<T>::contains_key(operator_id, nominator_id.clone()),
+        Error::TryDepositWithPendingWithdraw,
     );
 
     let updated_total_deposit = match PendingDeposits::<T>::get(operator_id, nominator_id.clone()) {
@@ -300,6 +307,10 @@ pub(crate) fn do_withdraw_stake<T: Config>(
     nominator_id: NominatorId<T>,
     withdraw: Withdraw<BalanceOf<T>>,
 ) -> Result<(), Error> {
+    ensure!(
+        !PendingDeposits::<T>::contains_key(operator_id, nominator_id.clone()),
+        Error::TryWithdrawWithPendingDeposit,
+    );
     Operators::<T>::try_mutate(operator_id, |maybe_operator| {
         let operator = maybe_operator.as_mut().ok_or(Error::UnknownOperator)?;
         ensure!(
@@ -1250,6 +1261,132 @@ pub(crate) mod tests {
                 Balances::total_balance(&nominator_account),
                 nominator_free_balance - nominator_stake
             );
+        });
+    }
+
+    #[test]
+    fn nominator_withdraw_while_pending_deposit_exist() {
+        let domain_id = DomainId::new(0);
+        let operator_account = 1;
+        let operator_free_balance = 1500 * SSC;
+        let operator_stake = 1000 * SSC;
+        let pair = OperatorPair::from_seed(&U256::from(0u32).into());
+
+        let nominator_account = 2;
+        let nominator_free_balance = 150 * SSC;
+        let nominator_stake = 100 * SSC;
+        let nominators = BTreeMap::from_iter(vec![(
+            nominator_account,
+            (nominator_free_balance, nominator_stake),
+        )]);
+        let mut ext = new_test_ext();
+        ext.execute_with(|| {
+            let (operator_id, _) = register_operator(
+                domain_id,
+                operator_account,
+                operator_free_balance,
+                operator_stake,
+                100 * SSC,
+                pair.public(),
+                nominators,
+            );
+
+            let pending_deposit =
+                PendingDeposits::<Test>::get(operator_id, nominator_account).unwrap();
+            assert_eq!(pending_deposit, nominator_stake);
+
+            // It is okay to deposit more while there is pending deposit
+            let additional_deposit = 10 * SSC;
+            let res = Domains::nominate_operator(
+                RuntimeOrigin::signed(nominator_account),
+                operator_id,
+                additional_deposit,
+            );
+            assert_ok!(res);
+            let pending_deposit =
+                PendingDeposits::<Test>::get(operator_id, nominator_account).unwrap();
+            assert_eq!(pending_deposit, nominator_stake + additional_deposit);
+
+            // Withdraw will be rejected while there is pending deposit
+            let res = Domains::withdraw_stake(
+                RuntimeOrigin::signed(nominator_account),
+                operator_id,
+                Withdraw::All,
+            );
+            assert_err!(
+                res,
+                Error::<Test>::Staking(crate::staking::Error::TryWithdrawWithPendingDeposit)
+            )
+        });
+    }
+
+    #[test]
+    fn nominator_deposit_while_pending_withdraw_exist() {
+        let domain_id = DomainId::new(0);
+        let operator_account = 1;
+        let operator_free_balance = 1500 * SSC;
+        let operator_stake = 1000 * SSC;
+        let pair = OperatorPair::from_seed(&U256::from(0u32).into());
+
+        let nominator_account = 2;
+        let nominator_free_balance = 150 * SSC;
+        let nominator_stake = 100 * SSC;
+        let nominators = BTreeMap::from_iter(vec![(
+            nominator_account,
+            (nominator_free_balance, nominator_stake),
+        )]);
+
+        let mut ext = new_test_ext();
+        ext.execute_with(|| {
+            let (operator_id, _) = register_operator(
+                domain_id,
+                operator_account,
+                operator_free_balance,
+                operator_stake,
+                10 * SSC,
+                pair.public(),
+                nominators,
+            );
+
+            // Finalize pending deposit
+            do_finalize_domain_current_epoch::<Test>(domain_id, 0).unwrap();
+            assert!(!PendingDeposits::<Test>::contains_key(
+                operator_id,
+                nominator_account,
+            ));
+
+            // Issue a withdraw
+            let res = Domains::withdraw_stake(
+                RuntimeOrigin::signed(nominator_account),
+                operator_id,
+                Withdraw::Some(nominator_stake / 3),
+            );
+            assert_ok!(res);
+            let pending_withdrawal =
+                PendingWithdrawals::<Test>::get(operator_id, nominator_account).unwrap();
+            assert_eq!(pending_withdrawal, Withdraw::Some(nominator_stake / 3));
+
+            // It is okay to withdraw more while there is pending withdraw
+            let res = Domains::withdraw_stake(
+                RuntimeOrigin::signed(nominator_account),
+                operator_id,
+                Withdraw::Some(nominator_stake / 3),
+            );
+            assert_ok!(res);
+            let pending_withdrawal =
+                PendingWithdrawals::<Test>::get(operator_id, nominator_account).unwrap();
+            assert_eq!(pending_withdrawal, Withdraw::Some(nominator_stake * 2 / 3));
+
+            // Deposit will be rejected while there is pending withdraw
+            let res = Domains::nominate_operator(
+                RuntimeOrigin::signed(nominator_account),
+                operator_id,
+                10 * SSC,
+            );
+            assert_err!(
+                res,
+                Error::<Test>::Staking(crate::staking::Error::TryDepositWithPendingWithdraw)
+            )
         });
     }
 }

@@ -19,7 +19,7 @@
     "tokenDecimals": 18,
     "tokenSymbol": "tSSC",
     "dsnBootstrapNodes": [
-      "/dns/bootstrap-0.devnet.subspace.network/tcp/50000/p2p/12D3KooWJgLU8DmkXwBpQtHgSURFfJ4f2SyuNVBgVY96aDJsDWFK"
+      "/dns/bootstrap-0.devnet.subspace.network/tcp/30533/p2p/12D3KooWJgLU8DmkXwBpQtHgSURFfJ4f2SyuNVBgVY96aDJsDWFK"
     ]
   },
   "codeSubstitutes": {},

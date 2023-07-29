@@ -11,7 +11,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     let slot_number = 1;
     let mut injected_block_hash = BlockHash::default();
     thread_rng().fill(injected_block_hash.as_mut());
-    let checkpoints = 16;
+    let checkpoints = 8;
     // About 1s on 5.5 GHz Raptor Lake CPU
     let iterations = 166_000_000;
     let proof_of_time_sequential = ProofOfTime::new(1, iterations);
