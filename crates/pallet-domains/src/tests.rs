@@ -1,5 +1,5 @@
 use crate::domain_registry::{DomainConfig, DomainObject};
-use crate::{self as pallet_domains, BundleError, DomainRegistry, FungibleFreezeId};
+use crate::{self as pallet_domains, BundleError, DomainRegistry, FungibleHoldId};
 use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, Hooks};
 use frame_support::weights::Weight;
@@ -9,9 +9,9 @@ use sp_core::crypto::Pair;
 use sp_core::{Get, H256, U256};
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{
-    BundleHeader, DomainId, DomainInstanceData, DomainsFreezeIdentifier, ExecutionReceipt,
+    BundleHeader, DomainId, DomainInstanceData, DomainsHoldIdentifier, ExecutionReceipt,
     GenerateGenesisStateRoot, OpaqueBundle, OperatorId, OperatorPair, ProofOfElection,
-    SealedBundleHeader, StakingFreezeIdentifier,
+    SealedBundleHeader, StakingHoldIdentifier,
 };
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{AccountIdConversion, BlakeTwo256, Hash as HashT, IdentityLookup};
@@ -109,36 +109,36 @@ impl Get<BlockNumber> for ConfirmationDepthK {
 #[derive(
     PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
 )]
-pub enum FreezeIdentifier {
-    Domains(DomainsFreezeIdentifier),
+pub enum HoldIdentifier {
+    Domains(DomainsHoldIdentifier),
 }
 
-impl pallet_domains::FreezeIdentifier<Test> for FreezeIdentifier {
-    fn staking_pending_deposit(operator_id: OperatorId) -> FungibleFreezeId<Test> {
-        Self::Domains(DomainsFreezeIdentifier::Staking(
-            StakingFreezeIdentifier::PendingDeposit(operator_id),
+impl pallet_domains::HoldIdentifier<Test> for HoldIdentifier {
+    fn staking_pending_deposit(operator_id: OperatorId) -> FungibleHoldId<Test> {
+        Self::Domains(DomainsHoldIdentifier::Staking(
+            StakingHoldIdentifier::PendingDeposit(operator_id),
         ))
     }
 
-    fn staking_staked(operator_id: OperatorId) -> FungibleFreezeId<Test> {
-        Self::Domains(DomainsFreezeIdentifier::Staking(
-            StakingFreezeIdentifier::Staked(operator_id),
+    fn staking_staked(operator_id: OperatorId) -> FungibleHoldId<Test> {
+        Self::Domains(DomainsHoldIdentifier::Staking(
+            StakingHoldIdentifier::Staked(operator_id),
         ))
     }
 
-    fn staking_pending_unlock(operator_id: OperatorId) -> FungibleFreezeId<Test> {
-        Self::Domains(DomainsFreezeIdentifier::Staking(
-            StakingFreezeIdentifier::PendingUnlock(operator_id),
+    fn staking_pending_unlock(operator_id: OperatorId) -> FungibleHoldId<Test> {
+        Self::Domains(DomainsHoldIdentifier::Staking(
+            StakingHoldIdentifier::PendingUnlock(operator_id),
         ))
     }
 
-    fn domain_instantiation_id(domain_id: DomainId) -> FungibleFreezeId<Test> {
-        Self::Domains(DomainsFreezeIdentifier::DomainInstantiation(domain_id))
+    fn domain_instantiation_id(domain_id: DomainId) -> FungibleHoldId<Test> {
+        Self::Domains(DomainsHoldIdentifier::DomainInstantiation(domain_id))
     }
 }
 
 parameter_types! {
-    pub const MaxFreezes: u32 = 10;
+    pub const MaxHolds: u32 = 10;
     pub const ExistentialDeposit: Balance = 1;
 }
 
@@ -152,10 +152,10 @@ impl pallet_balances::Config for Test {
     type ExistentialDeposit = ExistentialDeposit;
     type AccountStore = System;
     type WeightInfo = ();
-    type FreezeIdentifier = FreezeIdentifier;
-    type MaxFreezes = MaxFreezes;
-    type RuntimeHoldReason = ();
-    type MaxHolds = ();
+    type FreezeIdentifier = ();
+    type MaxFreezes = ();
+    type RuntimeHoldReason = HoldIdentifier;
+    type MaxHolds = MaxHolds;
 }
 
 parameter_types! {
@@ -172,7 +172,7 @@ impl pallet_domains::Config for Test {
     type ConfirmationDepthK = ConfirmationDepthK;
     type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
     type Currency = Balances;
-    type FreezeIdentifier = FreezeIdentifier;
+    type HoldIdentifier = HoldIdentifier;
     type WeightInfo = pallet_domains::weights::SubstrateWeight<Test>;
     type InitialDomainTxRange = InitialDomainTxRange;
     type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;

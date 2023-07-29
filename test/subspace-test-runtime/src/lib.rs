@@ -53,8 +53,8 @@ use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::transaction::PreValidationObject;
 use sp_domains::{
-    DomainId, DomainInstanceData, DomainsFreezeIdentifier, ExecutionReceipt, OpaqueBundle,
-    OpaqueBundles, OperatorId, OperatorPublicKey, StakingFreezeIdentifier,
+    DomainId, DomainInstanceData, DomainsHoldIdentifier, ExecutionReceipt, OpaqueBundle,
+    OpaqueBundles, OperatorId, OperatorPublicKey, StakingHoldIdentifier,
 };
 use sp_runtime::traits::{
     AccountIdConversion, AccountIdLookup, BlakeTwo256, DispatchInfoOf, NumberFor,
@@ -290,36 +290,36 @@ impl pallet_timestamp::Config for Runtime {
 #[derive(
     PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
 )]
-pub enum FreezeIdentifier {
-    Domains(DomainsFreezeIdentifier),
+pub enum HoldIdentifier {
+    Domains(DomainsHoldIdentifier),
 }
 
-impl pallet_domains::FreezeIdentifier<Runtime> for FreezeIdentifier {
+impl pallet_domains::HoldIdentifier<Runtime> for HoldIdentifier {
     fn staking_pending_deposit(operator_id: OperatorId) -> Self {
-        Self::Domains(DomainsFreezeIdentifier::Staking(
-            StakingFreezeIdentifier::PendingDeposit(operator_id),
+        Self::Domains(DomainsHoldIdentifier::Staking(
+            StakingHoldIdentifier::PendingDeposit(operator_id),
         ))
     }
 
     fn staking_staked(operator_id: OperatorId) -> Self {
-        Self::Domains(DomainsFreezeIdentifier::Staking(
-            StakingFreezeIdentifier::Staked(operator_id),
+        Self::Domains(DomainsHoldIdentifier::Staking(
+            StakingHoldIdentifier::Staked(operator_id),
         ))
     }
 
     fn staking_pending_unlock(operator_id: OperatorId) -> Self {
-        Self::Domains(DomainsFreezeIdentifier::Staking(
-            StakingFreezeIdentifier::PendingUnlock(operator_id),
+        Self::Domains(DomainsHoldIdentifier::Staking(
+            StakingHoldIdentifier::PendingUnlock(operator_id),
         ))
     }
 
     fn domain_instantiation_id(domain_id: DomainId) -> Self {
-        Self::Domains(DomainsFreezeIdentifier::DomainInstantiation(domain_id))
+        Self::Domains(DomainsHoldIdentifier::DomainInstantiation(domain_id))
     }
 }
 
 parameter_types! {
-    pub const MaxFreezes: u32 = 10;
+    pub const MaxHolds: u32 = 10;
 }
 
 impl pallet_balances::Config for Runtime {
@@ -335,10 +335,10 @@ impl pallet_balances::Config for Runtime {
     type ExistentialDeposit = ConstU128<{ 500 * SHANNON }>;
     type AccountStore = System;
     type WeightInfo = pallet_balances::weights::SubstrateWeight<Runtime>;
-    type FreezeIdentifier = FreezeIdentifier;
-    type MaxFreezes = MaxFreezes;
-    type RuntimeHoldReason = ();
-    type MaxHolds = ();
+    type FreezeIdentifier = ();
+    type MaxFreezes = ();
+    type RuntimeHoldReason = HoldIdentifier;
+    type MaxHolds = MaxHolds;
 }
 
 parameter_types! {
@@ -551,7 +551,7 @@ impl pallet_domains::Config for Runtime {
     type ConfirmationDepthK = ConfirmationDepthK;
     type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
     type Currency = Balances;
-    type FreezeIdentifier = FreezeIdentifier;
+    type HoldIdentifier = HoldIdentifier;
     type WeightInfo = pallet_domains::weights::SubstrateWeight<Runtime>;
     type InitialDomainTxRange = InitialDomainTxRange;
     type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;

@@ -462,11 +462,11 @@ pub type EpochIndex = u32;
 /// Type representing operator ID
 pub type OperatorId = u64;
 
-/// Staking specific freeze identifier
+/// Staking specific hold identifier
 #[derive(
     PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
 )]
-pub enum StakingFreezeIdentifier {
+pub enum StakingHoldIdentifier {
     /// Holds all the pending deposits to an Operator.
     PendingDeposit(OperatorId),
     /// Holds all the currently staked funds to an Operator.
@@ -475,12 +475,12 @@ pub enum StakingFreezeIdentifier {
     PendingUnlock(OperatorId),
 }
 
-/// Domains specific Identifier for Balances freeze.
+/// Domains specific Identifier for Balances holds.
 #[derive(
     PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
 )]
-pub enum DomainsFreezeIdentifier {
-    Staking(StakingFreezeIdentifier),
+pub enum DomainsHoldIdentifier {
+    Staking(StakingHoldIdentifier),
     DomainInstantiation(DomainId),
 }
 

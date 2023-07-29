@@ -35,7 +35,7 @@ use crate::block_tree::verify_execution_receipt;
 use crate::staking::Operator;
 use codec::{Decode, Encode};
 use frame_support::ensure;
-use frame_support::traits::fungible::{Inspect, InspectFreeze};
+use frame_support::traits::fungible::{Inspect, InspectHold};
 use frame_support::traits::Get;
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
@@ -57,16 +57,16 @@ use subspace_core_primitives::U256;
 pub(crate) type BalanceOf<T> =
     <<T as Config>::Currency as Inspect<<T as frame_system::Config>::AccountId>>::Balance;
 
-pub(crate) type FungibleFreezeId<T> =
-    <<T as Config>::Currency as InspectFreeze<<T as frame_system::Config>::AccountId>>::Id;
+pub(crate) type FungibleHoldId<T> =
+    <<T as Config>::Currency as InspectHold<<T as frame_system::Config>::AccountId>>::Reason;
 
 pub(crate) type NominatorId<T> = <T as frame_system::Config>::AccountId;
 
-pub trait FreezeIdentifier<T: Config> {
-    fn staking_pending_deposit(operator_id: OperatorId) -> FungibleFreezeId<T>;
-    fn staking_staked(operator_id: OperatorId) -> FungibleFreezeId<T>;
-    fn staking_pending_unlock(operator_id: OperatorId) -> FungibleFreezeId<T>;
-    fn domain_instantiation_id(domain_id: DomainId) -> FungibleFreezeId<T>;
+pub trait HoldIdentifier<T: Config> {
+    fn staking_pending_deposit(operator_id: OperatorId) -> FungibleHoldId<T>;
+    fn staking_staked(operator_id: OperatorId) -> FungibleHoldId<T>;
+    fn staking_pending_unlock(operator_id: OperatorId) -> FungibleHoldId<T>;
+    fn domain_instantiation_id(domain_id: DomainId) -> FungibleHoldId<T>;
 }
 
 pub type ExecutionReceiptOf<T> = ExecutionReceipt<
@@ -119,11 +119,11 @@ mod pallet {
     };
     use crate::weights::WeightInfo;
     use crate::{
-        BalanceOf, ElectionVerificationParams, FreezeIdentifier, NominatorId, OpaqueBundleOf,
+        BalanceOf, ElectionVerificationParams, HoldIdentifier, NominatorId, OpaqueBundleOf,
     };
     use codec::FullCodec;
     use frame_support::pallet_prelude::{StorageMap, *};
-    use frame_support::traits::fungible::{InspectFreeze, Mutate, MutateFreeze};
+    use frame_support::traits::fungible::{InspectHold, Mutate, MutateHold};
     use frame_support::weights::Weight;
     use frame_support::{Identity, PalletError};
     use frame_system::pallet_prelude::*;
@@ -191,8 +191,8 @@ mod pallet {
 
         /// Currency type used by the domains for staking and other currency related stuff.
         type Currency: Mutate<Self::AccountId>
-            + MutateFreeze<Self::AccountId>
-            + InspectFreeze<Self::AccountId>;
+            + InspectHold<Self::AccountId>
+            + MutateHold<Self::AccountId>;
 
         /// Type representing the shares in the staking protocol.
         type Share: Parameter
@@ -207,8 +207,8 @@ mod pallet {
             + MaxEncodedLen
             + IsType<BalanceOf<Self>>;
 
-        /// Identifier used for Freezing the funds used for staking.
-        type FreezeIdentifier: FreezeIdentifier<Self>;
+        /// A variation of the Identifier used for holding the funds used for staking and domains.
+        type HoldIdentifier: HoldIdentifier<Self>;
 
         /// The block tree pruning depth, its value should <= `BlockHashCount` because we
         /// need the consensus block hash to verify execution receipt, which is used to
