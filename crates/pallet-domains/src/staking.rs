@@ -20,6 +20,14 @@ use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
 use sp_std::vec::{IntoIter, Vec};
 
+/// Type that represents an operator status.
+#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
+pub enum OperatorStatus {
+    Registered,
+    Deregistered,
+    Slashed,
+}
+
 /// Type that represents an operator details.
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
 pub struct Operator<Balance, Share> {
@@ -34,7 +42,7 @@ pub struct Operator<Balance, Share> {
     pub current_epoch_rewards: Balance,
     /// Total shares of all the nominators under this operator.
     pub total_shares: Share,
-    pub is_frozen: bool,
+    pub status: OperatorStatus,
 }
 
 /// Type that represents a nominator's details under a specific operator.
@@ -83,7 +91,7 @@ pub enum Error {
     BalanceOverflow,
     BalanceUnderflow,
     NotOperatorOwner,
-    OperatorFrozen,
+    OperatorNotRegistered,
     UnknownNominator,
     ExistingFullWithdraw,
     MissingOperatorOwner,
@@ -136,7 +144,7 @@ pub(crate) fn do_register_operator<T: Config>(
             current_total_stake: Zero::zero(),
             current_epoch_rewards: Zero::zero(),
             total_shares: Zero::zero(),
-            is_frozen: false,
+            status: OperatorStatus::Registered,
         };
         Operators::<T>::insert(operator_id, operator);
         // update stake summary to include new operator for next epoch
@@ -155,7 +163,10 @@ pub(crate) fn do_nominate_operator<T: Config>(
 ) -> Result<(), Error> {
     let operator = Operators::<T>::get(operator_id).ok_or(Error::UnknownOperator)?;
 
-    ensure!(!operator.is_frozen, Error::OperatorFrozen);
+    ensure!(
+        operator.status == OperatorStatus::Registered,
+        Error::OperatorNotRegistered
+    );
 
     let updated_total_deposit = match PendingDeposits::<T>::get(operator_id, nominator_id.clone()) {
         None => amount,
@@ -213,7 +224,10 @@ pub(crate) fn do_switch_operator_domain<T: Config>(
     Operators::<T>::try_mutate(operator_id, |maybe_operator| {
         let operator = maybe_operator.as_mut().ok_or(Error::UnknownOperator)?;
 
-        ensure!(!operator.is_frozen, Error::OperatorFrozen);
+        ensure!(
+            operator.status == OperatorStatus::Registered,
+            Error::OperatorNotRegistered
+        );
 
         // noop when switch is for same domain
         if operator.current_domain_id == new_domain_id {
@@ -260,8 +274,11 @@ pub(crate) fn do_deregister_operator<T: Config>(
     Operators::<T>::try_mutate(operator_id, |maybe_operator| {
         let operator = maybe_operator.as_mut().ok_or(Error::UnknownOperator)?;
 
-        ensure!(!operator.is_frozen, Error::OperatorFrozen);
-        operator.is_frozen = true;
+        ensure!(
+            operator.status == OperatorStatus::Registered,
+            Error::OperatorNotRegistered
+        );
+        operator.status = OperatorStatus::Deregistered;
 
         PendingOperatorDeregistrations::<T>::append(operator.current_domain_id, operator_id);
         DomainStakingSummary::<T>::try_mutate(
@@ -285,7 +302,10 @@ pub(crate) fn do_withdraw_stake<T: Config>(
 ) -> Result<(), Error> {
     Operators::<T>::try_mutate(operator_id, |maybe_operator| {
         let operator = maybe_operator.as_mut().ok_or(Error::UnknownOperator)?;
-        ensure!(!operator.is_frozen, Error::OperatorFrozen);
+        ensure!(
+            operator.status == OperatorStatus::Registered,
+            Error::OperatorNotRegistered
+        );
 
         let nominator = Nominators::<T>::get(operator_id, nominator_id.clone())
             .ok_or(Error::UnknownNominator)?;
@@ -433,8 +453,8 @@ pub(crate) fn do_slash_operators<T: Config>(
                         .as_mut()
                         .ok_or(Error::DomainNotInitialized)?;
 
-                    // freeze and remove operator from next epoch set
-                    operator.is_frozen = true;
+                    // slash and remove operator from next epoch set
+                    operator.status = OperatorStatus::Slashed;
                     stake_summary.next_operators.remove(&operator_id);
 
                     // remove any current operator switches
@@ -497,7 +517,7 @@ pub(crate) mod tests {
     };
     use crate::staking::{
         do_nominate_operator, do_reward_operators, do_slash_operators, do_withdraw_stake,
-        Error as StakingError, Operator, OperatorConfig, StakingSummary, Withdraw,
+        Error as StakingError, Operator, OperatorConfig, OperatorStatus, StakingSummary, Withdraw,
     };
     use crate::staking_epoch::{
         do_finalize_domain_current_epoch, do_finalize_slashed_operators,
@@ -613,7 +633,7 @@ pub(crate) mod tests {
                     current_total_stake: 0,
                     current_epoch_rewards: 0,
                     total_shares: 0,
-                    is_frozen: false,
+                    status: OperatorStatus::Registered,
                 }
             );
             let pending_deposit =
@@ -790,7 +810,7 @@ pub(crate) mod tests {
             assert!(!domain_stake_summary.next_operators.contains(&operator_id));
 
             let operator = Operators::<Test>::get(operator_id).unwrap();
-            assert!(operator.is_frozen);
+            assert_eq!(operator.status, OperatorStatus::Deregistered);
 
             assert!(PendingOperatorDeregistrations::<Test>::get(domain_id)
                 .unwrap()
@@ -815,7 +835,7 @@ pub(crate) mod tests {
             );
             assert_err!(
                 res,
-                Error::<Test>::Staking(crate::staking::Error::OperatorFrozen)
+                Error::<Test>::Staking(crate::staking::Error::OperatorNotRegistered)
             );
 
             // nominations will not work since the is frozen
@@ -828,7 +848,7 @@ pub(crate) mod tests {
             );
             assert_err!(
                 res,
-                Error::<Test>::Staking(crate::staking::Error::OperatorFrozen)
+                Error::<Test>::Staking(crate::staking::Error::OperatorNotRegistered)
             );
         });
     }
@@ -1203,7 +1223,7 @@ pub(crate) mod tests {
             assert!(!domain_stake_summary.next_operators.contains(&operator_id));
 
             let operator = Operators::<Test>::get(operator_id).unwrap();
-            assert!(operator.is_frozen);
+            assert_eq!(operator.status, OperatorStatus::Slashed);
 
             let pending_slashes = PendingSlashes::<Test>::get(domain_id).unwrap();
             assert!(pending_slashes.contains_key(&operator_id));

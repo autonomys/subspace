@@ -32,7 +32,7 @@ mod staking_epoch;
 pub mod weights;
 
 use crate::block_tree::verify_execution_receipt;
-use crate::staking::Operator;
+use crate::staking::{Operator, OperatorStatus};
 use codec::{Decode, Encode};
 use frame_support::ensure;
 use frame_support::traits::fungible::{Inspect, InspectHold};
@@ -657,13 +657,13 @@ mod pallet {
                         )
                         .map_err(Error::<T>::from)?;
 
-                        do_unlock_pending_withdrawals::<T>(
+                        do_finalize_domain_current_epoch::<T>(
                             domain_id,
                             pruned_block_info.domain_block_number,
                         )
                         .map_err(Error::<T>::from)?;
 
-                        do_finalize_domain_current_epoch::<T>(
+                        do_unlock_pending_withdrawals::<T>(
                             domain_id,
                             pruned_block_info.domain_block_number,
                         )
@@ -1207,6 +1207,11 @@ impl<T: Config> Pallet<T> {
         let sealed_header = &opaque_bundle.sealed_header;
 
         let operator = Operators::<T>::get(operator_id).ok_or(BundleError::InvalidOperatorId)?;
+
+        ensure!(
+            operator.status != OperatorStatus::Slashed,
+            BundleError::BadOperator
+        );
 
         if !operator
             .signing_key

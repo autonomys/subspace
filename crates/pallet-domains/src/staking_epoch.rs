@@ -6,7 +6,7 @@ use crate::pallet::{
     PendingOperatorSwitches, PendingOperatorUnlocks, PendingSlashes, PendingUnlocks,
     PendingWithdrawals,
 };
-use crate::staking::{Error as TransitionError, Nominator, Withdraw};
+use crate::staking::{Error as TransitionError, Nominator, OperatorStatus, Withdraw};
 use crate::{
     BalanceOf, Config, ElectionVerificationParams, FungibleHoldId, HoldIdentifier, NominatorId,
 };
@@ -163,8 +163,8 @@ fn switch_operator<T: Config>(operator_id: OperatorId) -> Result<(), TransitionE
             .as_mut()
             .ok_or(TransitionError::UnknownOperator)?;
 
-        // operator is frozen, just no-op
-        if operator.is_frozen {
+        // operator is not registered, just no-op
+        if operator.status != OperatorStatus::Registered {
             return Ok(());
         }
 
@@ -381,8 +381,8 @@ fn finalize_operator_pending_transfers<T: Config>(
             .as_mut()
             .ok_or(TransitionError::UnknownOperator)?;
 
-        if operator.is_frozen {
-            return Err(TransitionError::OperatorFrozen);
+        if operator.status != OperatorStatus::Registered {
+            return Err(TransitionError::OperatorNotRegistered);
         }
 
         let mut total_stake = operator
