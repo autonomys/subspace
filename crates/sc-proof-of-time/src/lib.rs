@@ -80,8 +80,7 @@ impl<Block: BlockT> PotComponents<Block> {
         let config = PotConfig::default();
         let proof_of_time = ProofOfTime::new(config.pot_iterations, config.num_checkpoints)
             .expect("Failed to initialize proof of time");
-        let (protocol_state, consensus_state) =
-            init_pot_state(config, proof_of_time.clone(), vec![]);
+        let (protocol_state, consensus_state) = init_pot_state(config, proof_of_time.clone());
 
         Self {
             proof_of_time,

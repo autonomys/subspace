@@ -125,6 +125,9 @@ pub struct PotStateSummary {
 
 /// The shared PoT state.
 struct InternalState {
+    /// Config.
+    config: PotConfig,
+
     /// Last N entries of the PotChain, sorted by height.
     /// TODO: purging to be implemented.
     chain: Vec<PotProof>,
@@ -137,53 +140,42 @@ struct InternalState {
 }
 
 impl InternalState {
-    fn summary(&self) -> PotStateSummary {
-        PotStateSummary {
-            tip: self.chain.iter().last().map(|proof| proof.slot_number),
-            chain_length: self.chain.len(),
-        }
-    }
-}
-
-/// Wrapper to manage the state.
-struct StateManager {
-    /// Pot config
-    config: PotConfig,
-
-    /// PoT wrapper for verification.
-    proof_of_time: ProofOfTime,
-
-    /// The PoT state
-    state: Mutex<InternalState>,
-}
-
-impl StateManager {
     /// Creates the state.
-    pub fn new(config: PotConfig, proof_of_time: ProofOfTime, chain: Vec<PotProof>) -> Self {
+    fn new(config: PotConfig) -> Self {
         Self {
             config,
-            proof_of_time,
-            state: Mutex::new(InternalState {
-                chain,
-                future_proofs: BTreeMap::new(),
-            }),
+            chain: Vec::new(),
+            future_proofs: BTreeMap::new(),
         }
     }
 
-    /// Extends the chain with the given proof, without verifying it
-    /// (e.g) called when clock maker locally produces a proof.
-    pub fn extend_chain(&self, proof: &PotProof) -> Result<(), PotProtocolStateError> {
-        let mut state = self.state.lock();
-        let tip = match state.chain.last() {
+    /// Re-initializes the state with the given chain.
+    fn reset(&mut self, proofs: NonEmptyVec<PotProof>) {
+        let mut proofs = proofs.to_vec();
+        self.chain.clear();
+        self.chain.append(&mut proofs);
+        self.future_proofs.clear();
+    }
+
+    /// Adds the proof to the current tip.
+    fn add_to_tip(&mut self, proof: &PotProof) {
+        self.chain.push(proof.clone());
+        self.future_proofs.remove(&proof.slot_number);
+        self.merge_future_proofs();
+    }
+
+    /// Tries to extend the chain with the locally produced proof.
+    fn handle_local_proof(&mut self, proof: &PotProof) -> Result<(), PotProtocolStateError> {
+        let tip = match self.chain.last() {
             Some(tip) => tip,
             None => {
-                self.add_to_tip(&mut state, proof);
+                self.add_to_tip(proof);
                 return Ok(());
             }
         };
 
         if (tip.slot_number + 1) == proof.slot_number {
-            self.add_to_tip(&mut state, proof);
+            self.add_to_tip(proof);
             Ok(())
         } else {
             // The tip moved by the time the proof was computed.
@@ -194,24 +186,17 @@ impl StateManager {
         }
     }
 
-    /// Extends the chain with the given proof, after verifying it
-    /// (e.g) called when the proof is received from a peer via gossip.
-    pub fn verify_and_extend_chain(
-        &self,
+    /// Tries to extend the chain with the proof received from a peer.
+    /// The proof is assumed to have passed the AES verification.
+    fn handle_peer_proof(
+        &mut self,
         sender: PeerId,
         proof: &PotProof,
     ) -> Result<(), PotProtocolStateError> {
-        // Verify the proof outside the lock.
-        // TODO: penalize peers that send too many bad proofs.
-        self.proof_of_time
-            .verify(proof)
-            .map_err(PotProtocolStateError::InvalidProof)?;
-
-        let mut state = self.state.lock();
-        let tip = match state.chain.last() {
+        let tip = match self.chain.last() {
             Some(tip) => tip.clone(),
             None => {
-                self.add_to_tip(&mut state, proof);
+                self.add_to_tip(proof);
                 return Ok(());
             }
         };
@@ -243,18 +228,17 @@ impl StateManager {
             }
 
             // All checks passed, advance the tip with the new proof
-            self.add_to_tip(&mut state, proof);
+            self.add_to_tip(proof);
             return Ok(());
         }
 
         // Case 3: proof for a future slot
-        self.handle_future_proof(&mut state, &tip, sender, proof)
+        self.handle_future_proof(&tip, sender, proof)
     }
 
     /// Handles the received proof for a future slot.
     fn handle_future_proof(
-        &self,
-        state: &mut InternalState,
+        &mut self,
         tip: &PotProof,
         sender: PeerId,
         proof: &PotProof,
@@ -267,7 +251,7 @@ impl StateManager {
             });
         }
 
-        match state.future_proofs.entry(proof.slot_number) {
+        match self.future_proofs.entry(proof.slot_number) {
             Entry::Vacant(entry) => {
                 let mut proofs = BTreeMap::new();
                 proofs.insert(sender, proof.clone());
@@ -291,15 +275,15 @@ impl StateManager {
     /// Called when the chain is extended with a new proof.
     /// Tries to advance the tip as much as possible, by merging with
     /// the pending future proofs.
-    fn merge_future_proofs(&self, state: &mut InternalState) {
-        let mut cur_tip = state.chain.last().cloned();
+    fn merge_future_proofs(&mut self) {
+        let mut cur_tip = self.chain.last().cloned();
         while let Some(tip) = cur_tip.as_ref() {
             // At this point, we know the expected seed/key for the next proof
             // in the sequence. If there is at least an entry with the expected
             // key/seed(there could be several from different peers), extend the
             // chain.
             let next_slot = tip.slot_number + 1;
-            let proofs_for_slot = match state.future_proofs.remove(&next_slot) {
+            let proofs_for_slot = match self.future_proofs.remove(&next_slot) {
                 Some(proofs) => proofs,
                 None => return,
             };
@@ -313,7 +297,7 @@ impl StateManager {
             {
                 Some(next_proof) => {
                     // Extend the tip with the next proof, continue merging.
-                    state.chain.push(next_proof.clone());
+                    self.chain.push(next_proof.clone());
                     cur_tip = Some(next_proof);
                 }
                 None => {
@@ -324,100 +308,20 @@ impl StateManager {
         }
     }
 
-    /// Adds the proof to the current tip
-    fn add_to_tip(&self, state: &mut InternalState, proof: &PotProof) {
-        state.chain.push(proof.clone());
-        state.future_proofs.remove(&proof.slot_number);
-        self.merge_future_proofs(state);
-    }
-}
-
-/// Interface to the internal protocol components (clock master, PoT client).
-pub(crate) trait PotProtocolState: Send + Sync {
-    /// Re(initializes) the chain with the given set of proofs.
-    /// TODO: the proofs are assumed to have been validated, validate
-    /// if needed.
-    fn reset(&self, proofs: NonEmptyVec<PotProof>);
-
-    /// Returns the current tip.
-    fn tip(&self) -> Option<PotProof>;
-
-    /// Called when a proof is produced locally. It tries to extend the
-    /// chain without verifying the proof.
-    fn on_proof(&self, proof: &PotProof) -> Result<(), PotProtocolStateError>;
-
-    /// Called when a proof is received via gossip from a peer. The proof
-    /// is first verified before trying to extend the chain.
-    fn on_proof_from_peer(
-        &self,
-        sender: PeerId,
-        proof: &PotProof,
-    ) -> Result<(), PotProtocolStateError>;
-}
-
-impl PotProtocolState for StateManager {
-    fn reset(&self, proofs: NonEmptyVec<PotProof>) {
-        let mut proofs = proofs.to_vec();
-        let mut state = self.state.lock();
-        state.chain.clear();
-        state.chain.append(&mut proofs);
-        state.future_proofs.clear();
-    }
-    fn tip(&self) -> Option<PotProof> {
-        self.state.lock().chain.last().cloned()
-    }
-
-    fn on_proof(&self, proof: &PotProof) -> Result<(), PotProtocolStateError> {
-        self.extend_chain(proof)
-    }
-
-    fn on_proof_from_peer(
-        &self,
-        sender: PeerId,
-        proof: &PotProof,
-    ) -> Result<(), PotProtocolStateError> {
-        self.verify_and_extend_chain(sender, proof)
-    }
-}
-
-/// Interface to consensus.
-pub trait PotConsensusState<Block: BlockT>: Send + Sync {
-    /// Called by consensus when trying to claim the slot.
-    /// Returns the proofs in the slot range
-    /// [parent.last_proof.slot + 1, slot_number - global_randomness_reveal_lag_slots].
-    fn get_block_proofs(
-        &self,
-        slot_number: SlotNumber,
-        block_number: NumberFor<Block>,
-        parent_block_proofs: &[PotProof],
-    ) -> Result<Vec<PotProof>, PotConsensusStateError>;
-
-    /// Called during block import validation.
-    /// Verifies the sequence of proofs in the block being validated.
-    fn verify_block_proofs(
-        &self,
-        slot_number: SlotNumber,
-        block_number: NumberFor<Block>,
-        block_proofs: &[PotProof],
-        parent_block_proofs: &[PotProof],
-    ) -> Result<(), PotConsensusStateError>;
-}
-
-impl<Block: BlockT> PotConsensusState<Block> for StateManager {
-    fn get_block_proofs(
+    /// Returns the proofs for the block.
+    fn get_block_proofs<Block: BlockT>(
         &self,
         slot_number: SlotNumber,
         block_number: NumberFor<Block>,
         parent_block_proofs: &[PotProof],
     ) -> Result<Vec<PotProof>, PotConsensusStateError> {
-        let state = self.state.lock();
-        let summary = state.summary();
+        let summary = self.summary();
         let proof_slot = slot_number - self.config.global_randomness_reveal_lag_slots;
 
         // For block 1, just return one proof at the target slot,
         // as the parent(genesis) does not have any proofs.
         if block_number.is_one() {
-            let proof = state
+            let proof = self
                 .chain
                 .iter()
                 .find(|proof| proof.slot_number == proof_slot)
@@ -453,7 +357,7 @@ impl<Block: BlockT> PotConsensusState<Block> for StateManager {
         let mut proofs = Vec::with_capacity((proof_slot - start_slot + 1) as usize);
         for slot in start_slot..=proof_slot {
             // TODO: avoid repeated search by copying the range.
-            let proof = state
+            let proof = self
                 .chain
                 .iter()
                 .find(|proof| proof.slot_number == slot)
@@ -468,15 +372,15 @@ impl<Block: BlockT> PotConsensusState<Block> for StateManager {
         Ok(proofs)
     }
 
-    fn verify_block_proofs(
+    /// Verifies the block proofs.
+    fn verify_block_proofs<Block: BlockT>(
         &self,
         slot_number: SlotNumber,
         block_number: NumberFor<Block>,
         block_proofs: &[PotProof],
         parent_block_proofs: &[PotProof],
     ) -> Result<(), PotConsensusStateError> {
-        let state = self.state.lock();
-        let summary = state.summary();
+        let summary = self.summary();
 
         if block_number.is_one() {
             // If block 1, check it has one proof.
@@ -493,7 +397,7 @@ impl<Block: BlockT> PotConsensusState<Block> for StateManager {
             }
 
             let received = &block_proofs[0]; // Safe to index.
-            let proof = state
+            let proof = self
                 .chain
                 .iter()
                 .find(|proof| proof.slot_number == received.slot_number)
@@ -560,7 +464,7 @@ impl<Block: BlockT> PotConsensusState<Block> for StateManager {
             expected_slot += 1;
 
             // TODO: avoid repeated lookups, locate start of range
-            let local_proof = state
+            let local_proof = self
                 .chain
                 .iter()
                 .find(|local_proof| local_proof.slot_number == received.slot_number)
@@ -581,13 +485,146 @@ impl<Block: BlockT> PotConsensusState<Block> for StateManager {
 
         Ok(())
     }
+
+    /// Returns the current tip of the chain.
+    fn tip(&self) -> Option<PotProof> {
+        self.chain.last().cloned()
+    }
+
+    /// Returns the summary of the current state.
+    fn summary(&self) -> PotStateSummary {
+        PotStateSummary {
+            tip: self.chain.iter().last().map(|proof| proof.slot_number),
+            chain_length: self.chain.len(),
+        }
+    }
+}
+
+/// Wrapper to manage the state.
+struct StateManager {
+    /// The PoT state
+    state: Mutex<InternalState>,
+
+    /// PoT wrapper for verification.
+    proof_of_time: ProofOfTime,
+}
+
+impl StateManager {
+    /// Creates the state.
+    pub fn new(config: PotConfig, proof_of_time: ProofOfTime) -> Self {
+        Self {
+            state: Mutex::new(InternalState::new(config)),
+            proof_of_time,
+        }
+    }
+}
+
+/// Interface to the internal protocol components (clock master, PoT client).
+pub(crate) trait PotProtocolState: Send + Sync {
+    /// Re(initializes) the chain with the given set of proofs.
+    /// TODO: the proofs are assumed to have been validated, validate
+    /// if needed.
+    fn reset(&self, proofs: NonEmptyVec<PotProof>);
+
+    /// Returns the current tip.
+    fn tip(&self) -> Option<PotProof>;
+
+    /// Called when a proof is produced locally. It tries to extend the
+    /// chain without verifying the proof.
+    fn on_proof(&self, proof: &PotProof) -> Result<(), PotProtocolStateError>;
+
+    /// Called when a proof is received via gossip from a peer. The proof
+    /// is first verified before trying to extend the chain.
+    fn on_proof_from_peer(
+        &self,
+        sender: PeerId,
+        proof: &PotProof,
+    ) -> Result<(), PotProtocolStateError>;
+}
+
+impl PotProtocolState for StateManager {
+    fn reset(&self, proofs: NonEmptyVec<PotProof>) {
+        self.state.lock().reset(proofs);
+    }
+
+    fn tip(&self) -> Option<PotProof> {
+        self.state.lock().tip()
+    }
+
+    fn on_proof(&self, proof: &PotProof) -> Result<(), PotProtocolStateError> {
+        self.state.lock().handle_local_proof(proof)
+    }
+
+    fn on_proof_from_peer(
+        &self,
+        sender: PeerId,
+        proof: &PotProof,
+    ) -> Result<(), PotProtocolStateError> {
+        // Verify the proof outside the lock.
+        // TODO: penalize peers that send too many bad proofs.
+        self.proof_of_time
+            .verify(proof)
+            .map_err(PotProtocolStateError::InvalidProof)?;
+
+        self.state.lock().handle_peer_proof(sender, proof)
+    }
+}
+
+/// Interface to consensus.
+pub trait PotConsensusState<Block: BlockT>: Send + Sync {
+    /// Called by consensus when trying to claim the slot.
+    /// Returns the proofs in the slot range
+    /// [parent.last_proof.slot + 1, slot_number - global_randomness_reveal_lag_slots].
+    fn get_block_proofs(
+        &self,
+        slot_number: SlotNumber,
+        block_number: NumberFor<Block>,
+        parent_block_proofs: &[PotProof],
+    ) -> Result<Vec<PotProof>, PotConsensusStateError>;
+
+    /// Called during block import validation.
+    /// Verifies the sequence of proofs in the block being validated.
+    fn verify_block_proofs(
+        &self,
+        slot_number: SlotNumber,
+        block_number: NumberFor<Block>,
+        block_proofs: &[PotProof],
+        parent_block_proofs: &[PotProof],
+    ) -> Result<(), PotConsensusStateError>;
+}
+
+impl<Block: BlockT> PotConsensusState<Block> for StateManager {
+    fn get_block_proofs(
+        &self,
+        slot_number: SlotNumber,
+        block_number: NumberFor<Block>,
+        parent_block_proofs: &[PotProof],
+    ) -> Result<Vec<PotProof>, PotConsensusStateError> {
+        self.state
+            .lock()
+            .get_block_proofs::<Block>(slot_number, block_number, parent_block_proofs)
+    }
+
+    fn verify_block_proofs(
+        &self,
+        slot_number: SlotNumber,
+        block_number: NumberFor<Block>,
+        block_proofs: &[PotProof],
+        parent_block_proofs: &[PotProof],
+    ) -> Result<(), PotConsensusStateError> {
+        self.state.lock().verify_block_proofs::<Block>(
+            slot_number,
+            block_number,
+            block_proofs,
+            parent_block_proofs,
+        )
+    }
 }
 
 pub(crate) fn init_pot_state<Block: BlockT>(
     config: PotConfig,
     proof_of_time: ProofOfTime,
-    chain: Vec<PotProof>,
 ) -> (Arc<dyn PotProtocolState>, Arc<dyn PotConsensusState<Block>>) {
-    let state = Arc::new(StateManager::new(config, proof_of_time, chain));
+    let state = Arc::new(StateManager::new(config, proof_of_time));
     (state.clone(), state)
 }
