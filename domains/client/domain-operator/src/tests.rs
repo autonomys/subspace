@@ -177,8 +177,24 @@ async fn test_domain_block_production() {
     assert_eq!(alice.client.info().best_hash, domain_block_hash);
 
     // Simply producing more block on fork C
-    ferdie.clear_tx_pool().await.unwrap();
-    produce_blocks!(ferdie, alice, 10).await.unwrap();
+    for _ in 0..10 {
+        let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+        let tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+            pallet_domains::Call::submit_bundle {
+                opaque_bundle: bundle.unwrap(),
+            }
+            .into(),
+        )
+        .into();
+        // Produce consensus block that only contains the `submit_bundle` extrinsic instead of
+        // any extrinsic in the tx pool, because the background worker `txpool-notifications` may
+        // submit extrinsic from the retracted blocks of other fork to the tx pool and these tx
+        // is invalid in the fork C
+        ferdie
+            .produce_block_with_slot_at(slot, ferdie.client.info().best_hash, Some(vec![tx]))
+            .await
+            .unwrap();
+    }
     assert_eq!(alice.client.info().best_number, domain_block_number + 10);
 }
 
