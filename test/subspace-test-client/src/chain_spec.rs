@@ -80,7 +80,7 @@ fn create_genesis_config(
     let raw_domain_genesis_config = {
         let mut domain_genesis_config = testnet_evm_genesis();
         // Clear the WASM code of the genesis config since it is duplicated with `GenesisDomain::code`
-        domain_genesis_config.system = Default::default();
+        domain_genesis_config.system.code = Default::default();
         serde_json::to_vec(&domain_genesis_config)
             .expect("Genesis config serialization never fails; qed")
     };

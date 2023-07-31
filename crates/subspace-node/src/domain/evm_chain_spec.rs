@@ -165,9 +165,9 @@ pub enum SpecId {
 }
 
 pub fn get_testnet_genesis_by_spec_id(spec_id: SpecId) -> GenesisConfig {
-    let accounts = get_dev_accounts();
     match spec_id {
         SpecId::Dev => {
+            let accounts = get_dev_accounts();
             testnet_genesis(
                 accounts.clone(),
                 // Alith is Sudo
@@ -218,6 +218,7 @@ pub fn get_testnet_genesis_by_spec_id(spec_id: SpecId) -> GenesisConfig {
             )
         }
         SpecId::Local => {
+            let accounts = get_dev_accounts();
             testnet_genesis(
                 accounts.clone(),
                 // Alith is sudo
