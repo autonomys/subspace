@@ -11107,7 +11107,6 @@ dependencies = [
  "jsonrpsee",
  "lru 0.10.0",
  "memmap2 0.7.0",
- "num-traits",
  "parity-db",
  "parity-scale-codec",
  "parking_lot 0.12.1",
