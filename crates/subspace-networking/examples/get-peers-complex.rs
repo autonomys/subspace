@@ -99,7 +99,7 @@ async fn main() {
         .unwrap();
 
     // Prepare multihash to look for in Kademlia
-    let key: Multihash = node.id().into();
+    let key = Multihash::from(node.id());
 
     let peers = node
         .get_closest_peers(key)
