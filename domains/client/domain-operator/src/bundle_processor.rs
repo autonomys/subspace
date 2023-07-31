@@ -209,26 +209,24 @@ where
             .head_receipt_number(consensus_block_hash, self.domain_id)?
             .into();
 
-        let PreprocessResult {
+        let Some(PreprocessResult {
             extrinsics,
             extrinsics_roots,
-        } = match self
+        }) = self
             .domain_block_preprocessor
             .preprocess_consensus_block(consensus_block_hash, parent_hash)?
-        {
-            Some(exts) => exts,
-            None => {
-                tracing::debug!(
-                    "Skip building new domain block, no bundles and runtime upgrade for this domain \
+        else {
+            tracing::debug!(
+                "Skip building new domain block, no bundles and runtime upgrade for this domain \
                     in consensus block #{consensus_block_number:?},{consensus_block_hash}"
-                );
-                self.domain_block_processor.on_consensus_block_processed(
-                    consensus_block_hash,
-                    None,
-                    head_receipt_number,
-                )?;
-                return Ok(None);
-            }
+            );
+            self.domain_block_processor.on_consensus_block_processed(
+                consensus_block_hash,
+                None,
+                head_receipt_number,
+            )?;
+
+            return Ok(None);
         };
 
         let domain_block_result = self

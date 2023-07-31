@@ -172,7 +172,7 @@ where
                 .parent_chain
                 .head_receipt_number(self.parent_chain.best_hash())?;
 
-            // Executor is lagging behind the receipt chain on its parent chain as another executor
+            // Operator is lagging behind the receipt chain on its parent chain as another operator
             // already processed a block higher than the local best and submitted the receipt to
             // the parent chain, we ought to catch up with the consensus block processing before
             // producing new bundle.
