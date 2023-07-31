@@ -613,6 +613,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "async-mutex"
+version = "1.4.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "479db852db25d9dbf6204e6cb6253698f175c15726470f78af0d918e99d6156e"
+dependencies = [
+ "event-listener",
+]
+
+[[package]]
 name = "async-oneshot"
 version = "0.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2341,6 +2350,7 @@ dependencies = [
  "sp-runtime",
  "sp-std",
  "sp-weights",
+ "subspace-core-primitives",
  "subspace-runtime-primitives",
 ]
 
@@ -2836,6 +2846,7 @@ dependencies = [
  "sp-std",
  "sp-transaction-pool",
  "sp-version",
+ "subspace-core-primitives",
  "subspace-runtime-primitives",
  "substrate-wasm-builder",
 ]
@@ -2888,6 +2899,7 @@ dependencies = [
  "sp-std",
  "sp-transaction-pool",
  "sp-version",
+ "subspace-core-primitives",
  "subspace-runtime-primitives",
  "substrate-wasm-builder",
 ]
@@ -9857,6 +9869,7 @@ name = "sp-domains"
 version = "0.1.0"
 dependencies = [
  "blake2",
+ "num-traits",
  "parity-scale-codec",
  "rs_merkle",
  "scale-info",
@@ -10670,6 +10683,7 @@ version = "0.1.0"
 dependencies = [
  "actix-web",
  "anyhow",
+ "async-mutex",
  "async-trait",
  "backoff",
  "bytes",
@@ -10782,7 +10796,8 @@ name = "subspace-proof-of-time"
 version = "0.1.0"
 dependencies = [
  "aes 0.8.3",
- "rayon",
+ "criterion",
+ "rand 0.8.5",
  "subspace-core-primitives",
  "thiserror",
 ]

@@ -15,6 +15,9 @@ pub trait PieceCache: Sync + Send + 'static {
     /// Get piece from the cache.
     fn get_piece(&self, key: &Key) -> Option<Piece>;
 
-    /// Iterator over pieces in cache
+    /// Iterator over pieces in cache.
     fn keys(&self) -> Self::KeysIterator;
+
+    /// Checks whether the key exists in the cache.
+    fn contains_key(&self, key: &Key) -> bool;
 }

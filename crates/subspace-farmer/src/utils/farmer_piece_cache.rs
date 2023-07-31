@@ -82,4 +82,8 @@ impl PieceCache for FarmerPieceCache {
         // lifetimes originating from the fact that mutex is used here proven to be challenging
         self.heap.lock().keys().cloned().collect::<Vec<_>>()
     }
+
+    fn contains_key(&self, key: &Key) -> bool {
+        self.heap.lock().contains_key(key)
+    }
 }

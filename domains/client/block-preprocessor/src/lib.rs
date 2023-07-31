@@ -21,6 +21,7 @@ use crate::runtime_api::{SetCodeConstructor, SignerExtractor, StateRootExtractor
 use crate::xdm_verifier::verify_xdm_with_consensus_client;
 use codec::{Decode, Encode};
 use domain_runtime_primitives::opaque::AccountId;
+use domain_runtime_primitives::DomainCoreApi;
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
@@ -28,14 +29,16 @@ use runtime_api::InherentExtrinsicConstructor;
 use sc_client_api::BlockBackend;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
-use sp_domains::{DomainId, DomainsApi, DomainsDigestItem, ExtrinsicsRoot, OpaqueBundles};
+use sp_domains::{
+    DomainId, DomainsApi, DomainsDigestItem, ExtrinsicsRoot, OpaqueBundle, OpaqueBundles,
+};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, VecDeque};
 use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subspace_core_primitives::Randomness;
+use subspace_core_primitives::{Randomness, U256};
 use subspace_runtime_primitives::Balance;
 
 type MaybeNewRuntime = Option<Cow<'static, [u8]>>;
@@ -101,34 +104,6 @@ where
         .extrinsics_shuffling_seed(block_hash, header)?;
 
     Ok((extrinsics, shuffling_seed, maybe_new_runtime))
-}
-
-fn compile_own_domain_bundles<Block, CBlock>(
-    bundles: OpaqueBundles<CBlock, NumberFor<Block>, Block::Hash, Balance>,
-) -> Vec<Block::Extrinsic>
-where
-    Block: BlockT,
-    CBlock: BlockT,
-{
-    bundles
-        .into_iter()
-        .flat_map(|bundle| {
-            bundle.extrinsics.into_iter().filter_map(|opaque_extrinsic| {
-                match <<Block as BlockT>::Extrinsic>::decode(
-                    &mut opaque_extrinsic.encode().as_slice(),
-                ) {
-                    Ok(uxt) => Some(uxt),
-                    Err(e) => {
-                        tracing::error!(
-                                error = ?e,
-                                "Failed to decode the opaque extrisic in bundle, this should not happen"
-                            );
-                        None
-                    }
-                }
-            })
-        })
-        .collect::<Vec<_>>()
 }
 
 fn deduplicate_and_shuffle_extrinsics<Block, SE>(
@@ -222,19 +197,21 @@ pub struct PreprocessResult<Block: BlockT> {
     pub extrinsics_roots: Vec<ExtrinsicsRoot>,
 }
 
-pub struct DomainBlockPreprocessor<Block, CBlock, CClient, RuntimeApi> {
+pub struct DomainBlockPreprocessor<Block, CBlock, Client, CClient, RuntimeApi> {
     domain_id: DomainId,
+    client: Arc<Client>,
     consensus_client: Arc<CClient>,
     runtime_api: RuntimeApi,
     _phantom_data: PhantomData<(Block, CBlock)>,
 }
 
-impl<Block, CBlock, CClient, RuntimeApi: Clone> Clone
-    for DomainBlockPreprocessor<Block, CBlock, CClient, RuntimeApi>
+impl<Block, CBlock, Client, CClient, RuntimeApi: Clone> Clone
+    for DomainBlockPreprocessor<Block, CBlock, Client, CClient, RuntimeApi>
 {
     fn clone(&self) -> Self {
         Self {
             domain_id: self.domain_id,
+            client: self.client.clone(),
             consensus_client: self.consensus_client.clone(),
             runtime_api: self.runtime_api.clone(),
             _phantom_data: self._phantom_data,
@@ -242,7 +219,8 @@ impl<Block, CBlock, CClient, RuntimeApi: Clone> Clone
     }
 }
 
-impl<Block, CBlock, CClient, RuntimeApi> DomainBlockPreprocessor<Block, CBlock, CClient, RuntimeApi>
+impl<Block, CBlock, Client, CClient, RuntimeApi>
+    DomainBlockPreprocessor<Block, CBlock, Client, CClient, RuntimeApi>
 where
     Block: BlockT,
     CBlock: BlockT,
@@ -252,6 +230,8 @@ where
         + StateRootExtractor<Block>
         + SetCodeConstructor<Block>
         + InherentExtrinsicConstructor<Block>,
+    Client: ProvideRuntimeApi<Block> + 'static,
+    Client::Api: DomainCoreApi<Block>,
     CClient: HeaderBackend<CBlock>
         + BlockBackend<CBlock>
         + ProvideRuntimeApi<CBlock>
@@ -262,28 +242,16 @@ where
 {
     pub fn new(
         domain_id: DomainId,
+        client: Arc<Client>,
         consensus_client: Arc<CClient>,
         runtime_api: RuntimeApi,
     ) -> Self {
         Self {
             domain_id,
+            client,
             consensus_client,
             runtime_api,
             _phantom_data: Default::default(),
-        }
-    }
-
-    pub fn preprocess_consensus_block_for_verifier(
-        &self,
-        consensus_block_hash: CBlock::Hash,
-    ) -> sp_blockchain::Result<Vec<Vec<u8>>> {
-        // `domain_hash` is unused in `preprocess_primary_block` when using stateless runtime api.
-        let domain_hash = Default::default();
-        match self.preprocess_consensus_block(consensus_block_hash, domain_hash)? {
-            Some(PreprocessResult { extrinsics, .. }) => {
-                Ok(extrinsics.into_iter().map(|ext| ext.encode()).collect())
-            }
-            None => Ok(Vec::new()),
         }
     }
 
@@ -313,7 +281,12 @@ where
             .map(|bundle| bundle.extrinsics_root())
             .collect();
 
-        let extrinsics = compile_own_domain_bundles::<Block, CBlock>(bundles);
+        let tx_range = self
+            .consensus_client
+            .runtime_api()
+            .domain_tx_range(consensus_block_hash, self.domain_id)?;
+
+        let extrinsics = self.compile_bundles_to_extrinsics(bundles, tx_range, domain_hash);
 
         let extrinsics_in_bundle = deduplicate_and_shuffle_extrinsics(
             domain_hash,
@@ -349,6 +322,88 @@ where
             extrinsics,
             extrinsics_roots,
         }))
+    }
+
+    /// Filter out the invalid bundles first and then convert the remaining valid ones to
+    /// a list of extrinsics.
+    fn compile_bundles_to_extrinsics(
+        &self,
+        bundles: OpaqueBundles<CBlock, NumberFor<Block>, Block::Hash, Balance>,
+        tx_range: U256,
+        at: Block::Hash,
+    ) -> Vec<Block::Extrinsic> {
+        bundles
+            .into_iter()
+            .filter(|bundle| {
+                self.is_valid_bundle(bundle, &tx_range, at)
+                    .map_err(|err| {
+                        tracing::error!(?err, "Error occurred in checking bundle validity");
+                    })
+                    .unwrap_or(false)
+            })
+            .flat_map(|valid_bundle| {
+                valid_bundle.extrinsics.into_iter().map(|opaque_extrinsic| {
+                    <<Block as BlockT>::Extrinsic>::decode(
+                        &mut opaque_extrinsic.encode().as_slice(),
+                    )
+                    .expect("Must succeed as it was decoded successfully before; qed")
+                })
+            })
+            .collect::<Vec<_>>()
+    }
+
+    fn is_valid_bundle(
+        &self,
+        bundle: &OpaqueBundle<
+            NumberFor<CBlock>,
+            CBlock::Hash,
+            NumberFor<Block>,
+            Block::Hash,
+            Balance,
+        >,
+        tx_range: &U256,
+        at: Block::Hash,
+    ) -> Result<bool, sp_api::ApiError> {
+        let bundle_vrf_hash =
+            U256::from_be_bytes(bundle.sealed_header.header.proof_of_election.vrf_hash());
+
+        for opaque_extrinsic in &bundle.extrinsics {
+            let Ok(extrinsic) =
+                <<Block as BlockT>::Extrinsic>::decode(&mut opaque_extrinsic.encode().as_slice())
+            else {
+                tracing::error!(
+                    ?opaque_extrinsic,
+                    "Undecodable extrinsic in bundle({})",
+                    bundle.hash()
+                );
+                return Ok(false);
+            };
+
+            let is_within_tx_range = self.client.runtime_api().is_within_tx_range(
+                at,
+                &extrinsic,
+                &bundle_vrf_hash,
+                tx_range,
+            )?;
+
+            if !is_within_tx_range {
+                // TODO: Generate a fraud proof for this invalid bundle
+                return Ok(false);
+            }
+
+            let is_legal_tx = self
+                .client
+                .runtime_api()
+                .check_transaction_validity(at, extrinsic, at)?
+                .is_ok();
+
+            if !is_legal_tx {
+                // TODO: Generate a fraud proof for this invalid bundle
+                return Ok(false);
+            }
+        }
+
+        Ok(true)
     }
 
     fn filter_invalid_xdm_extrinsics(

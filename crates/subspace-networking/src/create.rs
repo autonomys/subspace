@@ -2,7 +2,7 @@ pub(crate) mod temporary_bans;
 mod transport;
 
 use crate::behavior::persistent_parameters::{
-    BootstrappedNetworkingParameters, NetworkingParametersRegistry,
+    NetworkingParametersRegistry, StubNetworkingParametersManager,
 };
 use crate::behavior::provider_storage::MemoryProviderStorage;
 use crate::behavior::{provider_storage, Behavior, BehaviorConfig};
@@ -188,8 +188,8 @@ pub struct Config<ProviderStorage> {
     pub allow_non_global_addresses_in_dht: bool,
     /// How frequently should random queries be done using Kademlia DHT to populate routing table.
     pub initial_random_query_interval: Duration,
-    /// A reference to the `NetworkingParametersRegistry` implementation.
-    pub networking_parameters_registry: Box<dyn NetworkingParametersRegistry>,
+    /// A reference to the `NetworkingParametersRegistry` implementation (optional).
+    pub networking_parameters_registry: Option<Box<dyn NetworkingParametersRegistry>>,
     /// The configuration for the `RequestResponsesBehaviour` protocol.
     pub request_response_protocols: Vec<Box<dyn RequestHandler>>,
     /// Defines set of peers with a permanent connection (and reconnection if necessary).
@@ -213,13 +213,17 @@ pub struct Config<ProviderStorage> {
     /// Specifies a source for peer information. None disables the protocol.
     pub peer_info_provider: Option<PeerInfoProvider>,
     /// Defines whether we maintain a persistent connection for common peers.
-    pub general_connected_peers_handler: ConnectedPeersHandler,
+    /// None disables the protocol.
+    pub general_connected_peers_handler: Option<ConnectedPeersHandler>,
     /// Defines whether we maintain a persistent connection for special peers.
-    pub special_connected_peers_handler: ConnectedPeersHandler,
+    /// None disables the protocol.
+    pub special_connected_peers_handler: Option<ConnectedPeersHandler>,
     /// Defines target total (in and out) connection number that should be maintained for general peers.
     pub general_target_connections: u32,
     /// Defines target total (in and out) connection number that should be maintained for special peers.
     pub special_target_connections: u32,
+    /// Addresses to bootstrap Kademlia network
+    pub bootstrap_addresses: Vec<Multiaddr>,
 }
 
 impl<ProviderStorage> fmt::Debug for Config<ProviderStorage> {
@@ -311,7 +315,7 @@ where
             provider_storage,
             allow_non_global_addresses_in_dht: false,
             initial_random_query_interval: Duration::from_secs(1),
-            networking_parameters_registry: BootstrappedNetworkingParameters::default().boxed(),
+            networking_parameters_registry: None,
             request_response_protocols: Vec::new(),
             yamux_config,
             reserved_peers: Vec::new(),
@@ -324,12 +328,12 @@ where
             metrics: None,
             protocol_version,
             peer_info_provider,
-            // maintain permanent connections with any peer
-            general_connected_peers_handler: Arc::new(|_| true),
             // we don't need to keep additional connections by default
-            special_connected_peers_handler: Arc::new(|_| false),
+            general_connected_peers_handler: None,
+            special_connected_peers_handler: None,
             general_target_connections: SWARM_TARGET_CONNECTION_NUMBER,
             special_target_connections: SWARM_TARGET_CONNECTION_NUMBER,
+            bootstrap_addresses: Vec::new(),
         }
     }
 }
@@ -392,6 +396,7 @@ where
         special_connected_peers_handler: special_connection_decision_handler,
         general_target_connections,
         special_target_connections,
+        bootstrap_addresses,
     } = config;
     let local_peer_id = peer_id(&keypair);
 
@@ -437,16 +442,20 @@ where
         },
         peer_info_config: PeerInfoConfig::new(PEER_INFO_PROTOCOL_NAME),
         peer_info_provider,
-        general_connected_peers_config: ConnectedPeersConfig {
-            log_target: GENERAL_CONNECTED_PEERS_PROTOCOL_LOG_TARGET,
-            target_connected_peers: general_target_connections,
-            ..ConnectedPeersConfig::default()
-        },
-        special_connected_peers_config: ConnectedPeersConfig {
-            log_target: SPECIAL_CONNECTED_PEERS_PROTOCOL_LOG_TARGET,
-            target_connected_peers: special_target_connections,
-            ..ConnectedPeersConfig::default()
-        },
+        general_connected_peers_config: general_connection_decision_handler.as_ref().map(|_| {
+            ConnectedPeersConfig {
+                log_target: GENERAL_CONNECTED_PEERS_PROTOCOL_LOG_TARGET,
+                target_connected_peers: general_target_connections,
+                ..ConnectedPeersConfig::default()
+            }
+        }),
+        special_connected_peers_config: special_connection_decision_handler.as_ref().map(|_| {
+            ConnectedPeersConfig {
+                log_target: SPECIAL_CONNECTED_PEERS_PROTOCOL_LOG_TARGET,
+                target_connected_peers: special_target_connections,
+                ..ConnectedPeersConfig::default()
+            }
+        }),
     });
 
     let mut swarm = SwarmBuilder::with_tokio_executor(transport, behaviour, local_peer_id)
@@ -491,13 +500,15 @@ where
         swarm,
         shared_weak,
         next_random_query_interval: initial_random_query_interval,
-        networking_parameters_registry,
+        networking_parameters_registry: networking_parameters_registry
+            .unwrap_or(StubNetworkingParametersManager.boxed()),
         reserved_peers: convert_multiaddresses(reserved_peers).into_iter().collect(),
         temporary_bans,
         metrics,
         protocol_version,
         general_connection_decision_handler,
         special_connection_decision_handler,
+        bootstrap_addresses,
     });
 
     Ok((node, node_runner))

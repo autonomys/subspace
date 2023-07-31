@@ -8,7 +8,7 @@ use sc_consensus_subspace_rpc::PieceProvider;
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::error::Error;
-use std::marker::PhantomData;
+use std::iter;
 use std::sync::Arc;
 use subspace_core_primitives::{FlatPieces, Piece, PieceIndex, PieceIndexHash};
 use subspace_networking::libp2p::kad::record::Key;
@@ -16,7 +16,7 @@ use subspace_networking::libp2p::kad::ProviderRecord;
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::ProviderStorage;
-use tracing::{info, trace, warn};
+use tracing::{info, trace};
 
 const LOCAL_PROVIDED_KEYS: &[u8] = b"LOCAL_PROVIDED_KEYS";
 
@@ -28,7 +28,7 @@ pub struct PieceCache<AS> {
     /// Peer ID of the current node.
     local_peer_id: PeerId,
     /// Local provided keys
-    local_provided_keys: Arc<Mutex<BTreeSet<PieceIndex>>>,
+    local_provided_keys: Arc<Mutex<PieceIndexKeyCollection>>,
 }
 
 impl<AS> Clone for PieceCache<AS> {
@@ -74,30 +74,23 @@ where
 
     fn get_local_provided_keys(
         aux_store: Arc<AS>,
-    ) -> Result<Option<BTreeSet<PieceIndex>>, Box<dyn Error>> {
+    ) -> Result<Option<PieceIndexKeyCollection>, Box<dyn Error>> {
         Ok(aux_store.get_aux(LOCAL_PROVIDED_KEYS)?.map(|data| {
-            let collection: ParityDbKeyCollection =
+            let collection: PieceIndexKeyCollection =
                 data.try_into().expect("DB loading should succeed.");
 
-            collection.set
+            collection
         }))
     }
 
     fn write_local_provided_keys(
         &self,
-        local_provided_keys: BTreeSet<PieceIndex>,
+        local_provided_keys: PieceIndexKeyCollection,
     ) -> Result<(), Box<dyn Error>> {
         // TODO: Could be a slow process. We need to optimize it ASAP!
         self.aux_store
             .insert_aux(
-                &vec![(
-                    LOCAL_PROVIDED_KEYS,
-                    ParityDbKeyCollection {
-                        set: local_provided_keys,
-                    }
-                    .encode()
-                    .as_slice(),
-                )],
+                &vec![(LOCAL_PROVIDED_KEYS, local_provided_keys.encode().as_slice())],
                 &Vec::new(),
             )
             .map_err(Into::into)
@@ -158,13 +151,8 @@ where
         let local_provided_keys = {
             let mut local_provided_keys = self.local_provided_keys.lock();
 
-            for piece_index in delete_indexes {
-                local_provided_keys.remove(&piece_index);
-            }
-
-            for piece_index in insert_indexes {
-                local_provided_keys.insert(piece_index);
-            }
+            local_provided_keys.remove_piece_indexes(&delete_indexes);
+            local_provided_keys.insert_piece_indexes(&insert_indexes);
 
             local_provided_keys.clone()
         };
@@ -196,23 +184,47 @@ where
 }
 
 #[derive(Clone, Debug, Decode, Encode, Default)]
-struct ParityDbKeyCollection {
-    pub set: BTreeSet<PieceIndex>,
+struct PieceIndexKeyCollection {
+    piece_index_keys: BTreeSet<Vec<u8>>,
 }
 
-impl From<ParityDbKeyCollection> for Vec<u8> {
+impl PieceIndexKeyCollection {
+    fn insert_piece_indexes(&mut self, indexes: &[PieceIndex]) {
+        for piece_index in indexes {
+            let key: Key = piece_index.hash().to_multihash().into();
+            self.piece_index_keys.insert(key.to_vec());
+        }
+    }
+
+    fn remove_piece_indexes(&mut self, indexes: &[PieceIndex]) {
+        for piece_index in indexes {
+            let key: Key = piece_index.hash().to_multihash().into();
+            self.piece_index_keys.remove::<Vec<_>>(&key.to_vec());
+        }
+    }
+
+    fn is_empty(&self) -> bool {
+        self.piece_index_keys.is_empty()
+    }
+
+    fn len(&self) -> usize {
+        self.piece_index_keys.len()
+    }
+}
+
+impl From<PieceIndexKeyCollection> for Vec<u8> {
     #[inline]
-    fn from(value: ParityDbKeyCollection) -> Self {
+    fn from(value: PieceIndexKeyCollection) -> Self {
         value.encode()
     }
 }
 
-impl TryFrom<Vec<u8>> for ParityDbKeyCollection {
+impl TryFrom<Vec<u8>> for PieceIndexKeyCollection {
     type Error = parity_scale_codec::Error;
 
     #[inline]
     fn try_from(data: Vec<u8>) -> Result<Self, Self::Error> {
-        ParityDbKeyCollection::decode(&mut data.as_slice()).map(Into::into)
+        PieceIndexKeyCollection::decode(&mut data.as_slice()).map(Into::into)
     }
 }
 
@@ -220,7 +232,9 @@ impl<AS> ProviderStorage for PieceCache<AS>
 where
     AS: AuxStore,
 {
-    type ProvidedIter<'a> = AuxStoreProviderRecordIterator<'a, AS> where Self:'a;
+    type ProvidedIter<'a> = impl Iterator<Item = Cow<'a, ProviderRecord>>
+        where
+            Self:'a;
 
     fn add_provider(
         &self,
@@ -232,41 +246,25 @@ where
     }
 
     fn providers(&self, key: &Key) -> Vec<ProviderRecord> {
-        let get_result = self.get_piece_by_index_multihash(key.as_ref());
+        if self
+            .local_provided_keys
+            .lock()
+            .piece_index_keys
+            .contains(&key.to_vec())
+        {
+            return vec![ProviderRecord {
+                key: key.clone(),
+                provider: self.local_peer_id,
+                expires: None,
+                addresses: vec![], // Kademlia adds addresses for local providers
+            }];
+        }
 
-        let providers = match get_result {
-            Ok(result) => result.map(|_| {
-                vec![ProviderRecord {
-                    key: key.clone(),
-                    provider: self.local_peer_id,
-                    expires: None,
-                    addresses: vec![], // Kademlia adds addresses for local providers
-                }]
-            }),
-            Err(err) => {
-                warn!(
-                    ?err,
-                    ?key,
-                    "Couldn't get a piece by key from aux piece store."
-                );
-
-                None
-            }
-        };
-
-        providers.unwrap_or_default()
+        Vec::new()
     }
 
     fn provided(&self) -> Self::ProvidedIter<'_> {
-        let pieces_indexes = {
-            self.local_provided_keys
-                .lock()
-                .iter()
-                .cloned()
-                .collect::<Vec<_>>()
-        };
-
-        AuxStoreProviderRecordIterator::new(pieces_indexes, self.clone())
+        iter::empty()
     }
 
     fn remove_provider(&self, key: &Key, peer_id: &PeerId) {
@@ -275,57 +273,6 @@ where
             %peer_id,
             "Attempted to remove a provider record from the aux piece record store."
         );
-    }
-}
-
-pub struct AuxStoreProviderRecordIterator<'a, AS> {
-    piece_indexes: Vec<PieceIndex>,
-    piece_indexes_cursor: usize,
-    piece_cache: PieceCache<AS>,
-    marker: PhantomData<&'a ()>,
-}
-
-impl<'a, AS: AuxStore> AuxStoreProviderRecordIterator<'a, AS> {
-    pub fn new(piece_indexes: Vec<PieceIndex>, piece_cache: PieceCache<AS>) -> Self {
-        Self {
-            piece_indexes,
-            piece_indexes_cursor: 0,
-            piece_cache,
-            marker: PhantomData,
-        }
-    }
-}
-
-impl<'a, AS: AuxStore> Iterator for AuxStoreProviderRecordIterator<'a, AS> {
-    type Item = Cow<'a, ProviderRecord>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if self.piece_indexes.len() == self.piece_indexes_cursor {
-            return None; // iterator finished
-        }
-
-        let peer_id = self.piece_cache.local_peer_id;
-        let piece_index = self.piece_indexes[self.piece_indexes_cursor];
-        let piece_index_hash = piece_index.hash();
-        let key = Key::from(piece_index_hash.to_multihash());
-
-        let result = self
-            .piece_cache
-            .get_piece(piece_index_hash)
-            .ok()
-            .flatten()
-            .map(move |_| ProviderRecord {
-                key: key.clone(),
-                provider: peer_id,
-                expires: None,
-                addresses: vec![], // Kademlia adds addresses for local providers
-            })
-            .map(Cow::Owned);
-
-        // Move iterator cursor forward
-        self.piece_indexes_cursor += 1;
-
-        result
     }
 }
 

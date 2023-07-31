@@ -73,7 +73,6 @@ mod domain_worker_starter;
 mod fraud_proof;
 mod operator;
 mod parent_chain;
-mod sortition;
 #[cfg(test)]
 mod tests;
 mod utils;

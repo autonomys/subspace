@@ -3,11 +3,9 @@
 extern crate alloc;
 
 use aes::cipher::generic_array::GenericArray;
-use aes::cipher::{BlockEncrypt, KeyInit};
+use aes::cipher::{BlockDecrypt, BlockEncrypt, KeyInit};
 use aes::Aes128;
 use alloc::vec::Vec;
-#[cfg(any(feature = "parallel", test))]
-use rayon::prelude::*;
 use subspace_core_primitives::{PotBytes, PotCheckpoint, PotKey, PotSeed};
 
 /// Creates the AES based proof.
@@ -27,74 +25,41 @@ pub(crate) fn create(
             // Encrypt in place to produce the next block.
             cipher.encrypt_block(&mut cur_block);
         }
-        let bytes: PotBytes = cur_block.into();
-        checkpoints.push(PotCheckpoint::from(bytes));
+        checkpoints.push(PotCheckpoint::from(PotBytes::from(cur_block)));
     }
     checkpoints
 }
 
 /// Verifies the AES based proof sequentially.
-#[cfg(any(not(feature = "parallel"), test))]
+///
+/// Panics if `checkpoint_iterations` is not a multiple of `2`.
 pub(crate) fn verify_sequential(
     seed: &PotSeed,
     key: &PotKey,
     checkpoints: &[PotCheckpoint],
     checkpoint_iterations: u32,
 ) -> bool {
-    let key = GenericArray::from(PotBytes::from(*key));
-    let cipher = Aes128::new(&key);
-    let mut cur_block = GenericArray::from(PotBytes::from(*seed));
+    assert_eq!(checkpoint_iterations % 2, 0);
 
-    for checkpoint in checkpoints {
-        // Encrypt in place checkpoint_iterations times
-        // and compare with the checkpoint.
-        for _ in 0..checkpoint_iterations {
-            cipher.encrypt_block(&mut cur_block);
-        }
-
-        let checkpoint_block = GenericArray::from(PotBytes::from(*checkpoint));
-        if cur_block != checkpoint_block {
-            return false;
-        }
-    }
-    true
-}
-
-/// Verifies the AES based proof in parallel.
-#[cfg(any(feature = "parallel", test))]
-pub(crate) fn verify_parallel(
-    seed: &PotSeed,
-    key: &PotKey,
-    checkpoints: &[PotCheckpoint],
-    checkpoint_iterations: u32,
-) -> bool {
     let key = GenericArray::from(PotBytes::from(*key));
     let cipher = Aes128::new(&key);
 
-    // Create the cipher pairs to be evaluated
-    let mut pairs = Vec::new();
-    let mut cur_block = GenericArray::from(PotBytes::from(*seed));
-    for checkpoint in checkpoints {
-        let checkpoint_block = GenericArray::from(PotBytes::from(*checkpoint));
-        pairs.push((cur_block, checkpoint_block));
-        cur_block = checkpoint_block;
+    let mut inputs = Vec::with_capacity(checkpoints.len());
+    inputs.push(GenericArray::from(PotBytes::from(*seed)));
+    for checkpoint in checkpoints.iter().rev().skip(1).rev() {
+        inputs.push(GenericArray::from(PotBytes::from(*checkpoint)));
+    }
+    let mut outputs = checkpoints
+        .iter()
+        .map(|checkpoint| GenericArray::from(PotBytes::from(*checkpoint)))
+        .collect::<Vec<_>>();
+
+    for _ in 0..checkpoint_iterations / 2 {
+        cipher.encrypt_blocks(&mut inputs);
+        cipher.decrypt_blocks(&mut outputs);
     }
 
-    // Evaluate the pairs in parallel.
-    let results: Vec<bool> = pairs
-        .par_iter_mut()
-        .map(|(input, expected)| {
-            let mut input = *input;
-            // Encrypt in place checkpoint_iterations times
-            // and compare with the expected output.
-            for _ in 0..checkpoint_iterations {
-                cipher.encrypt_block(&mut input);
-            }
-            input == *expected
-        })
-        .collect();
-
-    results.iter().all(|result| *result)
+    inputs == outputs
 }
 
 #[cfg(test)]
@@ -152,13 +117,13 @@ mod tests {
             &seed,
             &key,
             &checkpoints,
-            checkpoint_iterations + 1
+            checkpoint_iterations + 2
         ));
         assert!(!verify_sequential(
             &seed,
             &key,
             &checkpoints,
-            checkpoint_iterations - 1
+            checkpoint_iterations - 2
         ));
 
         // Decryption with wrong seed fails.
@@ -171,64 +136,6 @@ mod tests {
 
         // Decryption with wrong key fails.
         assert!(!verify_sequential(
-            &seed,
-            &PotKey::from(KEY_1),
-            &checkpoints,
-            checkpoint_iterations
-        ));
-    }
-
-    #[test]
-    fn test_encrypt_decrypt_parallel() {
-        let seed = PotSeed::from(SEED);
-        let key = PotKey::from(KEY);
-        let num_checkpoints = 10;
-        let checkpoint_iterations = 100;
-
-        // Can encrypt/decrypt.
-        let checkpoints = create(&seed, &key, num_checkpoints, checkpoint_iterations);
-        assert_eq!(checkpoints.len(), num_checkpoints as usize);
-        assert!(verify_parallel(
-            &seed,
-            &key,
-            &checkpoints,
-            checkpoint_iterations
-        ));
-
-        // Decryption of invalid cipher text fails.
-        let mut checkpoints_1 = checkpoints.clone();
-        checkpoints_1[0] = PotCheckpoint::from(BAD_CIPHER);
-        assert!(!verify_parallel(
-            &seed,
-            &key,
-            &checkpoints_1,
-            checkpoint_iterations
-        ));
-
-        // Decryption with wrong number of iterations fails.
-        assert!(!verify_parallel(
-            &seed,
-            &key,
-            &checkpoints,
-            checkpoint_iterations + 1
-        ));
-        assert!(!verify_parallel(
-            &seed,
-            &key,
-            &checkpoints,
-            checkpoint_iterations - 1
-        ));
-
-        // Decryption with wrong seed fails.
-        assert!(!verify_parallel(
-            &PotSeed::from(SEED_1),
-            &key,
-            &checkpoints,
-            checkpoint_iterations
-        ));
-
-        // Decryption with wrong key fails.
-        assert!(!verify_parallel(
             &seed,
             &PotKey::from(KEY_1),
             &checkpoints,

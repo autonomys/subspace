@@ -249,6 +249,12 @@ async fn main() -> Result<()> {
 
     match command.subcommand {
         Subcommand::Wipe => {
+            // TODO: Delete this section once we don't have shared data anymore
+            info!("Wiping shared data");
+            fs::remove_file(base_path.join("known_addresses_db"))?;
+            fs::remove_file(base_path.join("piece_cache_db"))?;
+            fs::remove_file(base_path.join("providers_db"))?;
+
             let disk_farms = if command.farm.is_empty() {
                 if !base_path.exists() {
                     info!("Done");

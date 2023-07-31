@@ -34,6 +34,9 @@ subspace-core-primitives = { version = "0.1.0", default-features = false, path =
 subspace-runtime-primitives = { version = "0.1.0", default-features = false, path = "../subspace-runtime-primitives" }
 thiserror = { version = "1.0.38", optional = true }
 
+[dev-dependencies]
+num-traits = "0.2.15"
+
 [features]
 default = ["std"]
 std = [

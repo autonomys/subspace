@@ -102,11 +102,18 @@ impl UniqueRecordBinaryHeap {
         self.set.remove(&key);
     }
 
-    /// Checks whether we include the key
+    /// Checks whether we include the key.
     pub fn should_include_key(&self, key: &Key) -> bool {
         let new_key = RecordHeapKey::new(&self.peer_key, KademliaBucketKey::new(key.clone()));
 
         self.should_include_key_internal(&new_key)
+    }
+
+    /// Checks whether the heap contains the given key.
+    pub fn contains_key(&self, key: &Key) -> bool {
+        let key = RecordHeapKey::new(&self.peer_key, KademliaBucketKey::new(key.clone()));
+
+        self.set.contains(&key)
     }
 
     fn should_include_key_internal(&self, new_key: &RecordHeapKey) -> bool {

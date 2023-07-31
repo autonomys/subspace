@@ -5,7 +5,6 @@
 //! block execution, block execution hooks (`initialize_block` and `finalize_block`) and any
 //! specific extrinsic execution are supported.
 
-use crate::domain_extrinsics_builder::BuildDomainExtrinsics;
 use crate::verifier_api::VerifierApi;
 use codec::{Codec, Decode, Encode};
 use domain_runtime_primitives::opaque::Block;
@@ -181,55 +180,31 @@ where
 }
 
 /// Invalid state transition proof verifier.
-pub struct InvalidStateTransitionProofVerifier<
-    CBlock,
-    CClient,
-    Exec,
-    Hash,
-    VerifierClient,
-    DomainExtrinsicsBuilder,
-> {
+pub struct InvalidStateTransitionProofVerifier<CBlock, CClient, Exec, Hash, VerifierClient> {
     consensus_client: Arc<CClient>,
     executor: Exec,
     verifier_client: VerifierClient,
-    domain_extrinsics_builder: DomainExtrinsicsBuilder,
     _phantom: PhantomData<(CBlock, Hash)>,
 }
 
-impl<CBlock, CClient, Exec, Hash, VerifierClient, DomainExtrinsicsBuilder> Clone
-    for InvalidStateTransitionProofVerifier<
-        CBlock,
-        CClient,
-        Exec,
-        Hash,
-        VerifierClient,
-        DomainExtrinsicsBuilder,
-    >
+impl<CBlock, CClient, Exec, Hash, VerifierClient> Clone
+    for InvalidStateTransitionProofVerifier<CBlock, CClient, Exec, Hash, VerifierClient>
 where
     Exec: Clone,
     VerifierClient: Clone,
-    DomainExtrinsicsBuilder: Clone,
 {
     fn clone(&self) -> Self {
         Self {
             consensus_client: self.consensus_client.clone(),
             executor: self.executor.clone(),
             verifier_client: self.verifier_client.clone(),
-            domain_extrinsics_builder: self.domain_extrinsics_builder.clone(),
             _phantom: self._phantom,
         }
     }
 }
 
-impl<CBlock, CClient, Exec, Hash, VerifierClient, DomainExtrinsicsBuilder>
-    InvalidStateTransitionProofVerifier<
-        CBlock,
-        CClient,
-        Exec,
-        Hash,
-        VerifierClient,
-        DomainExtrinsicsBuilder,
-    >
+impl<CBlock, CClient, Exec, Hash, VerifierClient>
+    InvalidStateTransitionProofVerifier<CBlock, CClient, Exec, Hash, VerifierClient>
 where
     CBlock: BlockT,
     H256: Into<CBlock::Hash>,
@@ -238,20 +213,17 @@ where
     Exec: CodeExecutor + Clone + 'static,
     Hash: Encode + Decode,
     VerifierClient: VerifierApi,
-    DomainExtrinsicsBuilder: BuildDomainExtrinsics<CBlock>,
 {
     /// Constructs a new instance of [`InvalidStateTransitionProofVerifier`].
     pub fn new(
         consensus_client: Arc<CClient>,
         executor: Exec,
         verifier_client: VerifierClient,
-        domain_extrinsics_builder: DomainExtrinsicsBuilder,
     ) -> Self {
         Self {
             consensus_client,
             executor,
             verifier_client,
-            domain_extrinsics_builder,
             _phantom: PhantomData::<(CBlock, Hash)>,
         }
     }
@@ -308,22 +280,9 @@ where
                 );
                 new_header.encode()
             }
-            ExecutionPhase::ApplyExtrinsic(extrinsic_index) => {
-                let consensus_block_hash = self
-                    .verifier_client
-                    .primary_hash(*domain_id, parent_number + 1)?;
-                let domain_extrinsics = self
-                    .domain_extrinsics_builder
-                    .build_domain_extrinsics(
-                        *domain_id,
-                        consensus_block_hash.into(),
-                        domain_runtime_code.wasm_bundle.to_vec(),
-                    )
-                    .map_err(|_| VerificationError::FailedToBuildDomainExtrinsics)?;
-                domain_extrinsics
-                    .into_iter()
-                    .nth(*extrinsic_index as usize)
-                    .ok_or(VerificationError::DomainExtrinsicNotFound(*extrinsic_index))?
+            ExecutionPhase::ApplyExtrinsic(_extrinsic_index) => {
+                // TODO: Provide the tx Merkle proof and get data from there
+                Vec::new()
             }
             ExecutionPhase::FinalizeBlock { .. } => Vec::new(),
         };
@@ -363,16 +322,8 @@ pub trait VerifyInvalidStateTransitionProof {
     ) -> Result<(), VerificationError>;
 }
 
-impl<CBlock, C, Exec, Hash, VerifierClient, DomainExtrinsicsBuilder>
-    VerifyInvalidStateTransitionProof
-    for InvalidStateTransitionProofVerifier<
-        CBlock,
-        C,
-        Exec,
-        Hash,
-        VerifierClient,
-        DomainExtrinsicsBuilder,
-    >
+impl<CBlock, C, Exec, Hash, VerifierClient> VerifyInvalidStateTransitionProof
+    for InvalidStateTransitionProofVerifier<CBlock, C, Exec, Hash, VerifierClient>
 where
     CBlock: BlockT,
     H256: Into<CBlock::Hash>,
@@ -381,7 +332,6 @@ where
     Exec: CodeExecutor + Clone + 'static,
     Hash: Encode + Decode,
     VerifierClient: VerifierApi,
-    DomainExtrinsicsBuilder: BuildDomainExtrinsics<CBlock>,
 {
     fn verify_invalid_state_transition_proof(
         &self,

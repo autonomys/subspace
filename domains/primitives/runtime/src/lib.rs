@@ -25,6 +25,7 @@ use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_runtime::{MultiAddress, MultiSignature};
 use sp_std::vec::Vec;
 use sp_weights::Weight;
+use subspace_core_primitives::U256;
 use subspace_runtime_primitives::Moment;
 
 /// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
@@ -162,6 +163,12 @@ sp_api::decl_runtime_apis! {
         fn extract_signer(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
         ) -> Vec<(Option<opaque::AccountId>, <Block as BlockT>::Extrinsic)>;
+
+        fn is_within_tx_range(
+            extrinsic: &<Block as BlockT>::Extrinsic,
+            bundle_vrf_hash: &U256,
+            tx_range: &U256,
+        ) -> bool;
 
         /// Returns the intermediate storage roots in an encoded form.
         fn intermediate_roots() -> Vec<[u8; 32]>;

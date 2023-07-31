@@ -1,6 +1,5 @@
 //! Invalid transaction proof.
 
-use crate::domain_extrinsics_builder::BuildDomainExtrinsics;
 use crate::domain_runtime_code::retrieve_domain_runtime_code;
 use crate::verifier_api::VerifierApi;
 use codec::{Decode, Encode};
@@ -23,40 +22,23 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 
 /// Invalid transaction proof verifier.
-pub struct InvalidTransactionProofVerifier<
-    CBlock,
-    CClient,
-    Hash,
-    Exec,
-    VerifierClient,
-    DomainExtrinsicsBuilder,
-> {
+pub struct InvalidTransactionProofVerifier<CBlock, CClient, Hash, Exec, VerifierClient> {
     consensus_client: Arc<CClient>,
     executor: Arc<Exec>,
     verifier_client: VerifierClient,
-    domain_extrinsics_builder: DomainExtrinsicsBuilder,
     _phantom: PhantomData<(CBlock, Hash)>,
 }
 
-impl<CBlock, CClient, Hash, Exec, VerifierClient, DomainExtrinsicsBuilder> Clone
-    for InvalidTransactionProofVerifier<
-        CBlock,
-        CClient,
-        Hash,
-        Exec,
-        VerifierClient,
-        DomainExtrinsicsBuilder,
-    >
+impl<CBlock, CClient, Hash, Exec, VerifierClient> Clone
+    for InvalidTransactionProofVerifier<CBlock, CClient, Hash, Exec, VerifierClient>
 where
     VerifierClient: Clone,
-    DomainExtrinsicsBuilder: Clone,
 {
     fn clone(&self) -> Self {
         Self {
             consensus_client: self.consensus_client.clone(),
             executor: self.executor.clone(),
             verifier_client: self.verifier_client.clone(),
-            domain_extrinsics_builder: self.domain_extrinsics_builder.clone(),
             _phantom: self._phantom,
         }
     }
@@ -116,15 +98,8 @@ where
     Ok(runtime_api_light)
 }
 
-impl<CBlock, CClient, Hash, Exec, VerifierClient, DomainExtrinsicsBuilder>
-    InvalidTransactionProofVerifier<
-        CBlock,
-        CClient,
-        Hash,
-        Exec,
-        VerifierClient,
-        DomainExtrinsicsBuilder,
-    >
+impl<CBlock, CClient, Hash, Exec, VerifierClient>
+    InvalidTransactionProofVerifier<CBlock, CClient, Hash, Exec, VerifierClient>
 where
     CBlock: BlockT,
     Hash: Encode + Decode,
@@ -132,7 +107,6 @@ where
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock> + Send + Sync,
     CClient::Api: DomainsApi<CBlock, domain_runtime_primitives::BlockNumber, Hash>,
     VerifierClient: VerifierApi,
-    DomainExtrinsicsBuilder: BuildDomainExtrinsics<CBlock>,
     Exec: CodeExecutor + 'static,
 {
     /// Constructs a new instance of [`InvalidTransactionProofVerifier`].
@@ -140,13 +114,11 @@ where
         consensus_client: Arc<CClient>,
         executor: Arc<Exec>,
         verifier_client: VerifierClient,
-        domain_extrinsics_builder: DomainExtrinsicsBuilder,
     ) -> Self {
         Self {
             consensus_client,
             executor,
             verifier_client,
-            domain_extrinsics_builder,
             _phantom: Default::default(),
         }
     }
@@ -242,16 +214,8 @@ pub trait VerifyInvalidTransactionProof {
     ) -> Result<(), VerificationError>;
 }
 
-impl<CBlock, Client, Hash, Exec, VerifierClient, DomainExtrinsicsBuilder>
-    VerifyInvalidTransactionProof
-    for InvalidTransactionProofVerifier<
-        CBlock,
-        Client,
-        Hash,
-        Exec,
-        VerifierClient,
-        DomainExtrinsicsBuilder,
-    >
+impl<CBlock, Client, Hash, Exec, VerifierClient> VerifyInvalidTransactionProof
+    for InvalidTransactionProofVerifier<CBlock, Client, Hash, Exec, VerifierClient>
 where
     CBlock: BlockT,
     Hash: Encode + Decode,
@@ -259,7 +223,6 @@ where
     Client: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock> + Send + Sync,
     Client::Api: DomainsApi<CBlock, domain_runtime_primitives::BlockNumber, Hash>,
     VerifierClient: VerifierApi,
-    DomainExtrinsicsBuilder: BuildDomainExtrinsics<CBlock>,
     Exec: CodeExecutor + 'static,
 {
     fn verify_invalid_transaction_proof(

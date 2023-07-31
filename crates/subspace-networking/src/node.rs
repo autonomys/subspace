@@ -6,7 +6,7 @@ use bytes::Bytes;
 use event_listener_primitives::HandlerId;
 use futures::channel::mpsc::SendError;
 use futures::channel::{mpsc, oneshot};
-use futures::{SinkExt, Stream};
+use futures::{SinkExt, Stream, StreamExt};
 use libp2p::core::multihash::Multihash;
 use libp2p::gossipsub::{Sha256Topic, SubscriptionError};
 use libp2p::kad::record::Key;
@@ -19,7 +19,7 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 use thiserror::Error;
 use tokio::time::sleep;
-use tracing::{error, trace};
+use tracing::{debug, error, trace};
 
 /// Topic subscription, will unsubscribe when last instance is dropped for a particular topic.
 #[derive(Debug)]
@@ -269,6 +269,26 @@ pub enum ConnectedPeersError {
 }
 
 impl From<oneshot::Canceled> for ConnectedPeersError {
+    #[inline]
+    fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
+        Self::NodeRunnerDropped
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum BootstrapError {
+    /// Failed to send command to the node runner
+    #[error("Failed to send command to the node runner: {0}")]
+    SendCommand(#[from] SendError),
+    /// Node runner was dropped
+    #[error("Node runner was dropped")]
+    NodeRunnerDropped,
+    /// Failed to bootstrap a peer.
+    #[error("Failed to bootstrap a peer.")]
+    Bootstrap,
+}
+
+impl From<oneshot::Canceled> for BootstrapError {
     #[inline]
     fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
         Self::NodeRunnerDropped
@@ -596,6 +616,31 @@ impl Node {
         result_receiver
             .await
             .map_err(|_| ConnectedPeersError::ConnectedPeers)
+    }
+
+    /// Bootstraps Kademlia network
+    pub async fn bootstrap(&self) -> Result<(), BootstrapError> {
+        let (result_sender, mut result_receiver) = mpsc::unbounded();
+
+        debug!("Starting 'bootstrap' request.");
+
+        self.shared
+            .command_sender
+            .clone()
+            .send(Command::Bootstrap { result_sender })
+            .await?;
+
+        for step in 0.. {
+            let result = result_receiver.next().await;
+
+            if result.is_some() {
+                debug!(%step, "Kademlia bootstrapping...");
+            } else {
+                break;
+            }
+        }
+
+        Ok(())
     }
 
     /// Callback is called when we receive new [`crate::peer_info::PeerInfo`]
