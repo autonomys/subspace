@@ -3,11 +3,11 @@
 
 use crate::peer_info::PeerInfo;
 use crate::request_responses::RequestFailure;
+use crate::utils::multihash::Multihash;
 use crate::utils::{ResizableSemaphore, ResizableSemaphorePermit};
 use bytes::Bytes;
 use event_listener_primitives::Bag;
 use futures::channel::{mpsc, oneshot};
-use libp2p::core::multihash::Multihash;
 use libp2p::gossipsub::{PublishError, Sha256Topic, SubscriptionError};
 use libp2p::kad::record::Key;
 use libp2p::kad::PeerRecord;

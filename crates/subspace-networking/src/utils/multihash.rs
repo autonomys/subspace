@@ -1,8 +1,10 @@
 //! Defines multihash codes for Subspace DSN.
 
-use libp2p::multihash::Multihash;
 use std::error::Error;
 use subspace_core_primitives::PieceIndexHash;
+
+/// Type alias for libp2p Multihash. Constant 64 was copied from libp2p protocols.
+pub type Multihash = libp2p::multihash::Multihash<64>;
 
 /// Start of Subspace Network multicodec namespace (+1000 to distinguish from future stable values):
 /// https://github.com/multiformats/multicodec/blob/master/table.csv

@@ -1,16 +1,16 @@
 use crate::peer_info::{protocol, PeerInfo};
 use futures::future::BoxFuture;
 use futures::prelude::*;
-use libp2p::core::upgrade::{NegotiationError, ReadyUpgrade};
-use libp2p::core::UpgradeError;
+use libp2p::core::upgrade::ReadyUpgrade;
 use libp2p::swarm::handler::{
     ConnectionEvent, DialUpgradeError, FullyNegotiatedInbound, FullyNegotiatedOutbound,
-    ListenUpgradeError,
+    ListenUpgradeError, StreamUpgradeError as ConnectionHandlerUpgrErr,
 };
 use libp2p::swarm::{
-    ConnectionHandler, ConnectionHandlerEvent, ConnectionHandlerUpgrErr, KeepAlive,
-    NegotiatedSubstream, SubstreamProtocol,
+    ConnectionHandler, ConnectionHandlerEvent, KeepAlive, Stream as NegotiatedSubstream,
+    SubstreamProtocol,
 };
+use libp2p::StreamProtocol;
 use std::error::Error;
 use std::io;
 use std::sync::Arc;
@@ -25,14 +25,14 @@ pub struct Config {
     timeout: Duration,
 
     /// Protocol name.
-    protocol_name: &'static [u8],
+    protocol_name: &'static str,
 }
 
 impl Config {
     /// Creates a new [`Config`] with the following default settings:
     ///
     ///   * [`Config::with_timeout`] 20s
-    pub fn new(protocol_name: &'static [u8]) -> Self {
+    pub fn new(protocol_name: &'static str) -> Self {
         Self {
             timeout: Duration::from_secs(20),
             protocol_name,
@@ -112,19 +112,22 @@ impl Handler {
 }
 
 impl ConnectionHandler for Handler {
-    type InEvent = HandlerInEvent;
-    type OutEvent = Result<PeerInfoSuccess, PeerInfoError>;
+    type FromBehaviour = HandlerInEvent;
+    type ToBehaviour = Result<PeerInfoSuccess, PeerInfoError>;
     type Error = PeerInfoError;
-    type InboundProtocol = ReadyUpgrade<&'static [u8]>;
-    type OutboundProtocol = ReadyUpgrade<&'static [u8]>;
+    type InboundProtocol = ReadyUpgrade<StreamProtocol>;
+    type OutboundProtocol = ReadyUpgrade<StreamProtocol>;
     type OutboundOpenInfo = Arc<PeerInfo>;
     type InboundOpenInfo = ();
 
-    fn listen_protocol(&self) -> SubstreamProtocol<ReadyUpgrade<&'static [u8]>, ()> {
-        SubstreamProtocol::new(ReadyUpgrade::new(self.config.protocol_name), ())
+    fn listen_protocol(&self) -> SubstreamProtocol<ReadyUpgrade<StreamProtocol>, ()> {
+        SubstreamProtocol::new(
+            ReadyUpgrade::new(StreamProtocol::new(self.config.protocol_name)),
+            (),
+        )
     }
 
-    fn on_behaviour_event(&mut self, event: Self::InEvent) {
+    fn on_behaviour_event(&mut self, event: Self::FromBehaviour) {
         if let Some(OutboundState::Idle(stream)) = self.outbound.take() {
             self.outbound = Some(OutboundState::SendingData(
                 protocol::send(stream, event.peer_info).boxed(),
@@ -144,7 +147,7 @@ impl ConnectionHandler for Handler {
         cx: &mut Context<'_>,
     ) -> Poll<
         ConnectionHandlerEvent<
-            ReadyUpgrade<&'static [u8]>,
+            ReadyUpgrade<StreamProtocol>,
             Self::OutboundOpenInfo,
             Result<PeerInfoSuccess, PeerInfoError>,
             Self::Error,
@@ -169,7 +172,7 @@ impl ConnectionHandler for Handler {
                     debug!(?peer_info, "Inbound peer info");
 
                     self.inbound = Some(protocol::recv(stream).boxed());
-                    return Poll::Ready(ConnectionHandlerEvent::Custom(Ok(
+                    return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(Ok(
                         PeerInfoSuccess::Received(peer_info),
                     )));
                 }
@@ -186,7 +189,7 @@ impl ConnectionHandler for Handler {
                     Poll::Ready(Ok(stream)) => {
                         self.outbound = Some(OutboundState::Idle(stream));
 
-                        return Poll::Ready(ConnectionHandlerEvent::Custom(Ok(
+                        return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(Ok(
                             PeerInfoSuccess::Sent,
                         )));
                     }
@@ -208,9 +211,11 @@ impl ConnectionHandler for Handler {
             }
             Some(OutboundState::RequestNewStream(peer_info)) => {
                 self.outbound = Some(OutboundState::NegotiatingStream);
-                let protocol =
-                    SubstreamProtocol::new(ReadyUpgrade::new(self.config.protocol_name), peer_info)
-                        .with_timeout(self.config.timeout);
+                let protocol = SubstreamProtocol::new(
+                    ReadyUpgrade::new(StreamProtocol::new(self.config.protocol_name)),
+                    peer_info,
+                )
+                .with_timeout(self.config.timeout);
                 return Poll::Ready(ConnectionHandlerEvent::OutboundSubstreamRequest { protocol });
             }
             None => {
@@ -248,9 +253,8 @@ impl ConnectionHandler for Handler {
             }
             ConnectionEvent::DialUpgradeError(DialUpgradeError { error, .. }) => {
                 match error {
-                    ConnectionHandlerUpgrErr::Upgrade(UpgradeError::Select(
-                        NegotiationError::Failed,
-                    )) => {
+                    ConnectionHandlerUpgrErr::NegotiationFailed
+                    | ConnectionHandlerUpgrErr::Apply(..) => {
                         debug!("Peer-info protocol dial upgrade failed.");
                     }
                     e => {
@@ -264,6 +268,8 @@ impl ConnectionHandler for Handler {
                 });
             }
             ConnectionEvent::AddressChange(_) => {}
+            ConnectionEvent::LocalProtocolsChange(_) => {}
+            ConnectionEvent::RemoteProtocolsChange(_) => {}
         }
         self.wake();
     }

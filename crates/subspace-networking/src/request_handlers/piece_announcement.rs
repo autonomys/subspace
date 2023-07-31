@@ -4,7 +4,7 @@
 //! `RequestResponsesBehaviour` with generic [`GenericRequestHandler`].
 
 use crate::request_handlers::generic_request_handler::{GenericRequest, GenericRequestHandler};
-use libp2p::multihash::Multihash;
+use crate::utils::multihash::Multihash;
 use libp2p::Multiaddr;
 use parity_scale_codec::{Decode, Encode, Error, Input, Output};
 

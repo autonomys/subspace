@@ -44,9 +44,11 @@ use crate::crypto::kzg::{Commitment, Witness};
 use crate::crypto::{blake2b_256_hash, blake2b_256_hash_list, blake2b_256_hash_with_key, Scalar};
 #[cfg(feature = "serde")]
 use ::serde::{Deserialize, Serialize};
+use alloc::boxed::Box;
 use alloc::vec::Vec;
 use core::convert::AsRef;
 use core::fmt;
+use core::iter::Iterator;
 use core::num::NonZeroU64;
 use core::simd::Simd;
 use derive_more::{Add, AsMut, AsRef, Deref, DerefMut, Display, Div, From, Into, Mul, Rem, Sub};
@@ -230,25 +232,73 @@ impl PosProof {
 
 /// Proof of time key(input to the encryption).
 #[derive(
-    Debug, Default, Copy, Clone, From, Into, AsRef, AsMut, Encode, Decode, TypeInfo, MaxEncodedLen,
+    Debug,
+    Default,
+    Copy,
+    Clone,
+    Eq,
+    PartialEq,
+    From,
+    Into,
+    AsRef,
+    AsMut,
+    Encode,
+    Decode,
+    TypeInfo,
+    MaxEncodedLen,
 )]
 pub struct PotKey(PotBytes);
 
 /// Proof of time seed (input to the encryption).
 #[derive(
-    Debug, Default, Copy, Clone, From, Into, AsRef, AsMut, Encode, Decode, TypeInfo, MaxEncodedLen,
+    Debug,
+    Default,
+    Copy,
+    Clone,
+    Eq,
+    PartialEq,
+    From,
+    Into,
+    AsRef,
+    AsMut,
+    Encode,
+    Decode,
+    TypeInfo,
+    MaxEncodedLen,
 )]
 pub struct PotSeed(PotBytes);
 
+impl PotSeed {
+    /// Builds the seed from block hash (e.g) used to create initial seed from
+    /// genesis block hash.
+    #[inline]
+    pub fn from_block_hash(block_hash: BlockHash) -> Self {
+        Self(truncate_32_bytes(block_hash))
+    }
+}
+
 /// Proof of time ciphertext (output from the encryption).
 #[derive(
-    Debug, Default, Copy, Clone, From, Into, AsRef, AsMut, Encode, Decode, TypeInfo, MaxEncodedLen,
+    Debug,
+    Default,
+    Copy,
+    Clone,
+    Eq,
+    PartialEq,
+    From,
+    Into,
+    AsRef,
+    AsMut,
+    Encode,
+    Decode,
+    TypeInfo,
+    MaxEncodedLen,
 )]
 pub struct PotCheckpoint(PotBytes);
 
 /// Proof of time.
 /// TODO: versioning.
-#[derive(Debug, Clone, Encode, Decode)]
+#[derive(Debug, Clone, Encode, Decode, Eq, PartialEq)]
 pub struct PotProof {
     /// Slot the proof was evaluated for.
     pub slot_number: SlotNumber,
@@ -260,7 +310,7 @@ pub struct PotProof {
     pub key: PotKey,
 
     /// The encrypted outputs from each stage.
-    pub checkpoints: Vec<PotCheckpoint>,
+    pub checkpoints: NonEmptyVec<PotCheckpoint>,
 
     /// Hash of last block at injection point.
     pub injected_block_hash: BlockHash,
@@ -272,7 +322,7 @@ impl PotProof {
         slot_number: SlotNumber,
         seed: PotSeed,
         key: PotKey,
-        checkpoints: Vec<PotCheckpoint>,
+        checkpoints: NonEmptyVec<PotCheckpoint>,
         injected_block_hash: BlockHash,
     ) -> Self {
         Self {
@@ -285,15 +335,55 @@ impl PotProof {
     }
 
     /// Returns the last check point.
-    pub fn output(&self) -> Option<PotCheckpoint> {
-        self.checkpoints.last().cloned()
+    pub fn output(&self) -> PotCheckpoint {
+        self.checkpoints.last()
     }
 
     /// Derives the global randomness from the output.
-    pub fn derive_global_randomness(&self) -> Option<Blake2b256Hash> {
-        self.output()
-            .map(|checkpoint| blake2b_256_hash(&PotBytes::from(checkpoint)))
+    pub fn derive_global_randomness(&self) -> Blake2b256Hash {
+        blake2b_256_hash(&PotBytes::from(self.output()))
     }
+
+    /// Derives the next seed based on the injected randomness.
+    pub fn next_seed(&self, injected_hash: Option<BlockHash>) -> PotSeed {
+        match injected_hash {
+            Some(injected_hash) => {
+                // Next seed = Hash(last checkpoint + injected hash).
+                let hash = blake2b_256_hash_list(&[&self.output().0, &injected_hash]);
+                PotSeed::from(truncate_32_bytes(hash))
+            }
+            None => {
+                // No injected randomness, next seed = last checkpoint.
+                PotSeed::from(self.output().0)
+            }
+        }
+    }
+
+    /// Derives the next key from the hash of the current seed.
+    pub fn next_key(&self) -> PotKey {
+        PotKey::from(truncate_32_bytes(blake2b_256_hash(&self.seed.0)))
+    }
+}
+
+impl fmt::Display for PotProof {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(
+            f,
+            "PotProof: [slot={}, seed={}, key={}, injected={}, checkpoints={}]",
+            self.slot_number,
+            hex::encode(self.seed.0),
+            hex::encode(self.key.0),
+            hex::encode(self.injected_block_hash),
+            self.checkpoints.len()
+        )
+    }
+}
+
+/// Helper to truncate the 32 bytes to 16 bytes.
+fn truncate_32_bytes(bytes: [u8; 32]) -> PotBytes {
+    bytes[..core::mem::size_of::<PotBytes>()]
+        .try_into()
+        .expect("Hash is longer than seed; qed")
 }
 
 /// A Ristretto Schnorr public key as bytes produced by `schnorrkel` crate.
@@ -980,5 +1070,74 @@ impl SectorId {
             "History size is not zero, so result is not zero even if expires immediately; qed",
         );
         Some(HistorySize::from(expiration_history_size))
+    }
+}
+
+/// A Vec<> that enforces the invariant that it cannot be empty.
+#[derive(Debug, Clone, Encode, Decode, Eq, PartialEq)]
+pub struct NonEmptyVec<T>(Vec<T>);
+
+/// Error codes for `NonEmptyVec`.
+#[derive(Debug)]
+pub enum NonEmptyVecErr {
+    /// Tried to create with an empty Vec
+    EmptyVec,
+}
+
+#[allow(clippy::len_without_is_empty)]
+impl<T: Clone> NonEmptyVec<T> {
+    /// Creates the Vec.
+    pub fn new(vec: Vec<T>) -> Result<Self, NonEmptyVecErr> {
+        if vec.is_empty() {
+            return Err(NonEmptyVecErr::EmptyVec);
+        }
+
+        Ok(Self(vec))
+    }
+
+    /// Returns the number of entries.
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    /// Returns the slice of the entries.
+    pub fn as_slice(&self) -> &[T] {
+        self.0.as_slice()
+    }
+
+    /// Returns an iterator for the entries.
+    pub fn iter(&self) -> Box<dyn Iterator<Item = &T> + '_> {
+        Box::new(self.0.iter())
+    }
+
+    /// Returns a mutable iterator for the entries.
+    pub fn iter_mut(&mut self) -> Box<dyn Iterator<Item = &mut T> + '_> {
+        Box::new(self.0.iter_mut())
+    }
+
+    /// Returns the first entry.
+    pub fn first(&self) -> T {
+        self.0
+            .first()
+            .expect("NonEmptyVec::first(): collection cannot be empty")
+            .clone()
+    }
+
+    /// Returns the last entry.
+    pub fn last(&self) -> T {
+        self.0
+            .last()
+            .expect("NonEmptyVec::last(): collection cannot be empty")
+            .clone()
+    }
+
+    /// Adds an entry to the end.
+    pub fn push(&mut self, entry: T) {
+        self.0.push(entry);
+    }
+
+    /// Returns the entries in the collection.
+    pub fn to_vec(self) -> Vec<T> {
+        self.0
     }
 }

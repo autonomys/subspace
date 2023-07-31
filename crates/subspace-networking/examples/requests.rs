@@ -1,16 +1,11 @@
 use futures::channel::oneshot;
-use libp2p::metrics::Metrics;
 use libp2p::multiaddr::Protocol;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
-use prometheus_client::registry::Registry;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_networking::{
-    start_prometheus_metrics_server, Config, GenericRequest, GenericRequestHandler,
-};
+use subspace_networking::{Config, GenericRequest, GenericRequestHandler};
 use tokio::time::sleep;
-use tracing::error;
 
 #[derive(Encode, Decode)]
 struct ExampleRequest;
@@ -28,9 +23,6 @@ struct ExampleResponse;
 async fn main() {
     tracing_subscriber::fmt::init();
 
-    let mut metric_registry = Registry::default();
-    let metrics = Metrics::new(&mut metric_registry);
-
     let config_1 = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_global_addresses_in_dht: true,
@@ -42,25 +34,9 @@ async fn main() {
                 Some(ExampleResponse)
             },
         )],
-        metrics: Some(metrics),
         ..Config::default()
     };
     let (node_1, mut node_runner_1) = subspace_networking::create(config_1).unwrap();
-
-    // Init prometheus
-    let prometheus_metrics_server_address = "127.0.0.1:63000".parse().unwrap();
-    tokio::task::spawn(async move {
-        if let Err(err) =
-            start_prometheus_metrics_server(prometheus_metrics_server_address, metric_registry)
-                .await
-        {
-            error!(
-                ?prometheus_metrics_server_address,
-                ?err,
-                "Prometheus metrics server failed to start."
-            )
-        }
-    });
 
     println!("Node 1 ID is {}", node_1.id());
 
@@ -85,7 +61,7 @@ async fn main() {
     let node_1_addr = node_1_address_receiver.await.unwrap();
     drop(on_new_listener_handler);
 
-    let bootstrap_addresses = vec![node_1_addr.with(Protocol::P2p(node_1.id().into()))];
+    let bootstrap_addresses = vec![node_1_addr.with(Protocol::P2p(node_1.id()))];
     let config_2 = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_global_addresses_in_dht: true,
