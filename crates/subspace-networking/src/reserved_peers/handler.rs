@@ -1,6 +1,7 @@
 use libp2p::core::upgrade::ReadyUpgrade;
 use libp2p::swarm::handler::ConnectionEvent;
 use libp2p::swarm::{ConnectionHandler, ConnectionHandlerEvent, KeepAlive, SubstreamProtocol};
+use libp2p::StreamProtocol;
 use std::error::Error;
 use std::fmt;
 use std::task::{Context, Poll};
@@ -21,14 +22,14 @@ use void::Void;
 /// while connections to non-reserved peers are allowed to close.
 pub struct Handler {
     /// Protocol name.
-    protocol_name: &'static [u8],
+    protocol_name: &'static str,
     /// A boolean flag indicating whether the handler is currently connected to a reserved peer.
     connected_to_reserved_peer: bool,
 }
 
 impl Handler {
     /// Builds a new [`Handler`].
-    pub fn new(protocol_name: &'static [u8], connected_to_reserved_peer: bool) -> Self {
+    pub fn new(protocol_name: &'static str, connected_to_reserved_peer: bool) -> Self {
         Handler {
             protocol_name,
             connected_to_reserved_peer,
@@ -48,16 +49,19 @@ impl fmt::Display for ReservedPeersError {
 impl Error for ReservedPeersError {}
 
 impl ConnectionHandler for Handler {
-    type InEvent = Void;
-    type OutEvent = ();
+    type FromBehaviour = Void;
+    type ToBehaviour = ();
     type Error = ReservedPeersError;
-    type InboundProtocol = ReadyUpgrade<&'static [u8]>;
-    type OutboundProtocol = ReadyUpgrade<&'static [u8]>;
+    type InboundProtocol = ReadyUpgrade<StreamProtocol>;
+    type OutboundProtocol = ReadyUpgrade<StreamProtocol>;
     type OutboundOpenInfo = ();
     type InboundOpenInfo = ();
 
-    fn listen_protocol(&self) -> SubstreamProtocol<ReadyUpgrade<&'static [u8]>, ()> {
-        SubstreamProtocol::new(ReadyUpgrade::new(self.protocol_name), ())
+    fn listen_protocol(&self) -> SubstreamProtocol<ReadyUpgrade<StreamProtocol>, ()> {
+        SubstreamProtocol::new(
+            ReadyUpgrade::new(StreamProtocol::new(self.protocol_name)),
+            (),
+        )
     }
 
     fn on_behaviour_event(&mut self, _: Void) {}
@@ -73,7 +77,7 @@ impl ConnectionHandler for Handler {
     fn poll(
         &mut self,
         _: &mut Context<'_>,
-    ) -> Poll<ConnectionHandlerEvent<ReadyUpgrade<&'static [u8]>, (), (), Self::Error>> {
+    ) -> Poll<ConnectionHandlerEvent<ReadyUpgrade<StreamProtocol>, (), (), Self::Error>> {
         Poll::Pending
     }
 

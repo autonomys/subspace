@@ -160,7 +160,7 @@ async fn test_async_handler_works_with_pending_internal_future() {
     let node_1_addr = node_1_address_receiver.await.unwrap();
     drop(on_new_listener_handler);
 
-    let bootstrap_addresses = vec![node_1_addr.with(Protocol::P2p(node_1.id().into()))];
+    let bootstrap_addresses = vec![node_1_addr.with(Protocol::P2p(node_1.id()))];
     let config_2 = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_global_addresses_in_dht: true,

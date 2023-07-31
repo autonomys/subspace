@@ -195,7 +195,7 @@ async fn main() -> anyhow::Result<()> {
                 move |multiaddr| {
                     info!(
                         "Listening on {}",
-                        multiaddr.clone().with(Protocol::P2p(node_id.into()))
+                        multiaddr.clone().with(Protocol::P2p(node_id))
                     );
                 }
             }))

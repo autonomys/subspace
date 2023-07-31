@@ -255,7 +255,7 @@ impl<Instance> Behaviour<Instance> {
 
 impl<Instance: 'static + Send> NetworkBehaviour for Behaviour<Instance> {
     type ConnectionHandler = Handler;
-    type OutEvent = Event<Instance>;
+    type ToSwarm = Event<Instance>;
 
     fn handle_established_inbound_connection(
         &mut self,
@@ -342,8 +342,9 @@ impl<Instance: 'static + Send> NetworkBehaviour for Behaviour<Instance> {
             | FromSwarm::ExpiredListenAddr(_)
             | FromSwarm::ListenerError(_)
             | FromSwarm::ListenerClosed(_)
-            | FromSwarm::NewExternalAddr(_)
-            | FromSwarm::ExpiredExternalAddr(_) => {}
+            | FromSwarm::NewExternalAddrCandidate(_)
+            | FromSwarm::ExternalAddrConfirmed(_)
+            | FromSwarm::ExternalAddrExpired(_) => {}
         }
     }
 
@@ -359,7 +360,7 @@ impl<Instance: 'static + Send> NetworkBehaviour for Behaviour<Instance> {
         &mut self,
         cx: &mut Context<'_>,
         _: &mut impl PollParameters,
-    ) -> Poll<ToSwarm<Self::OutEvent, THandlerInEvent<Self>>> {
+    ) -> Poll<ToSwarm<Self::ToSwarm, THandlerInEvent<Self>>> {
         // Notify handlers about received connection decision.
         if let Some(change) = self.peer_decision_changes.pop() {
             return Poll::Ready(ToSwarm::NotifyHandler {

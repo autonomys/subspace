@@ -1,23 +1,23 @@
 #[cfg(test)]
 mod tests;
 
-use libp2p::kad::kbucket::Distance;
 pub use libp2p::kad::record::Key;
+use libp2p::kad::KBucketDistance;
 pub use libp2p::PeerId;
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
 
-type KademliaBucketKey<T> = libp2p::kad::kbucket::Key<T>;
+type KademliaBucketKey<T> = libp2p::kad::KBucketKey<T>;
 
 // Helper structure. It wraps Kademlia distance to a given peer for heap-metrics.
 #[derive(Debug, Clone)]
 struct RecordHeapKey {
-    peer_distance: Distance,
+    peer_distance: KBucketDistance,
     key: KademliaBucketKey<Key>,
 }
 
 impl RecordHeapKey {
-    fn peer_distance(&self) -> Distance {
+    fn peer_distance(&self) -> KBucketDistance {
         self.peer_distance
     }
 

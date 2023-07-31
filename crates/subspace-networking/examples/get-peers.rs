@@ -1,11 +1,9 @@
 use futures::channel::oneshot;
 use futures::StreamExt;
 use libp2p::multiaddr::Protocol;
-use libp2p::multihash::Code;
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_core_primitives::{crypto, PieceIndexHash, U256};
 use subspace_networking::Config;
 
 #[tokio::main]
@@ -42,7 +40,7 @@ async fn main() {
     let node_1_addr = node_1_address_receiver.await.unwrap();
     drop(on_new_listener_handler);
 
-    let bootstrap_addresses = vec![node_1_addr.with(Protocol::P2p(node_1.id().into()))];
+    let bootstrap_addresses = vec![node_1_addr.with(Protocol::P2p(node_1.id()))];
     let config_2 = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_global_addresses_in_dht: true,
@@ -60,13 +58,8 @@ async fn main() {
 
     tokio::time::sleep(Duration::from_secs(1)).await;
 
-    let hashed_peer_id = PieceIndexHash::from(crypto::blake2b_256_hash(&node_1.id().to_bytes()));
-    let key = libp2p::multihash::MultihashDigest::digest(
-        &Code::Identity,
-        &U256::from(hashed_peer_id).to_be_bytes(),
-    );
     let peer_id = node_2
-        .get_closest_peers(key)
+        .get_closest_peers(node_1.id().into())
         .await
         .unwrap()
         .next()

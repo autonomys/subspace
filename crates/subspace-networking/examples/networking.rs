@@ -47,7 +47,7 @@ async fn main() {
 
     let mut subscription = node_1.subscribe(Sha256Topic::new(TOPIC)).await.unwrap();
 
-    let bootstrap_addresses = vec![node_1_addr.with(Protocol::P2p(node_1.id().into()))];
+    let bootstrap_addresses = vec![node_1_addr.with(Protocol::P2p(node_1.id()))];
     let config_2 = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_global_addresses_in_dht: true,
