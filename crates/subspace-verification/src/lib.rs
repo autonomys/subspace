@@ -283,7 +283,7 @@ where
                 }
             };
 
-            if expiration_history_size >= *current_history_size {
+            if expiration_history_size <= *current_history_size {
                 return Err(Error::SectorExpired {
                     expiration_history_size,
                     current_history_size: *current_history_size,

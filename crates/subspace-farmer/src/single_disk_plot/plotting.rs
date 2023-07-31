@@ -449,6 +449,10 @@ where
 
     while let Some(()) = archived_segments_receiver.next().await {
         let archived_segment_header = last_archived_segment.load(Ordering::SeqCst);
+        trace!(
+            segment_index = %archived_segment_header.segment_index(),
+            "New archived segment received",
+        );
 
         // It is fine to take a synchronous read lock here because the only time
         // write lock is taken is during plotting, which we know doesn't happen
@@ -460,7 +464,23 @@ where
             .collect_into(&mut sectors_to_check);
         for (sector_index, history_size) in sectors_to_check.drain(..) {
             if let Some(sector_expire_at) = sectors_expire_at.get(&sector_index) {
-                if *sector_expire_at >= archived_segment_header.segment_index() {
+                trace!(
+                    %sector_index,
+                    %history_size,
+                    %sector_expire_at,
+                    "Checking sector for expiration"
+                );
+                // +1 means we will start replotting a bit before it actually expires to avoid
+                // storing expired sectors
+                if *sector_expire_at
+                    <= (archived_segment_header.segment_index() + SegmentIndex::ONE)
+                {
+                    debug!(
+                        %sector_index,
+                        %history_size,
+                        %sector_expire_at,
+                        "Sector expires soon #1, scheduling replotting"
+                    );
                     // Time to replot
                     sector_indices_to_replot.push(sector_index);
                 }
@@ -471,6 +491,12 @@ where
                 .sector_expiration_check(min_sector_lifetime)
                 .map(|expiration_check_history_size| expiration_check_history_size.segment_index())
             {
+                trace!(
+                    %sector_index,
+                    %history_size,
+                    %expiration_check_segment_index,
+                    "Determined sector expiration check segment index"
+                );
                 let maybe_sector_expiration_check_segment_commitment =
                     if let Some(segment_commitment) =
                         archived_segment_commitments_cache.get(&expiration_check_segment_index)
@@ -508,12 +534,32 @@ where
                                 metadata; qed",
                         );
 
+                    trace!(
+                        %sector_index,
+                        %history_size,
+                        sector_expire_at = %expiration_history_size.segment_index(),
+                        "Determined sector expiration segment index"
+                    );
+                    // +1 means we will start replotting a bit before it actually expires to avoid
+                    // storing expired sectors
                     if expiration_history_size.segment_index()
-                        >= archived_segment_header.segment_index()
+                        <= (archived_segment_header.segment_index() + SegmentIndex::ONE)
                     {
+                        debug!(
+                            %sector_index,
+                            %history_size,
+                            sector_expire_at = %expiration_history_size.segment_index(),
+                            "Sector expires soon #2, scheduling replotting"
+                        );
                         // Time to replot
                         sector_indices_to_replot.push(sector_index);
                     } else {
+                        trace!(
+                            %sector_index,
+                            %history_size,
+                            sector_expire_at = %expiration_history_size.segment_index(),
+                            "Sector expires later, remembering sector expiration"
+                        );
                         // Store expiration so we don't have to recalculate it later
                         sectors_expire_at
                             .insert(sector_index, expiration_history_size.segment_index());
