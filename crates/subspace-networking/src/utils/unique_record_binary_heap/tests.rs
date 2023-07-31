@@ -1,3 +1,4 @@
+use crate::utils::multihash::Multihash;
 use crate::utils::unique_record_binary_heap::UniqueRecordBinaryHeap;
 use libp2p::kad::record::Key;
 use libp2p::PeerId;
@@ -43,7 +44,7 @@ fn binary_heap_remove_works() {
 
 #[test]
 fn binary_heap_limit_works() {
-    let peer_id = PeerId::random();
+    let peer_id = PeerId::from_multihash(Multihash::wrap(0, [0u8].as_slice()).unwrap()).unwrap();
     let mut heap = UniqueRecordBinaryHeap::new(peer_id, 1);
 
     let key1 = Key::from(vec![1]);
@@ -62,7 +63,7 @@ fn binary_heap_limit_works() {
 fn binary_heap_eviction_works() {
     type KademliaBucketKey<T> = libp2p::kad::KBucketKey<T>;
 
-    let peer_id = PeerId::random();
+    let peer_id = PeerId::from_multihash(Multihash::wrap(0, [0u8].as_slice()).unwrap()).unwrap();
     let mut heap = UniqueRecordBinaryHeap::new(peer_id, 1);
 
     let key1 = Key::from(vec![1]);
@@ -90,7 +91,7 @@ fn binary_heap_eviction_works() {
 
 #[test]
 fn binary_heap_should_include_key_works() {
-    let peer_id = PeerId::random();
+    let peer_id = PeerId::from_multihash(Multihash::wrap(0, [2u8].as_slice()).unwrap()).unwrap();
     let mut heap = UniqueRecordBinaryHeap::new(peer_id, 1);
 
     // Limit not reached
