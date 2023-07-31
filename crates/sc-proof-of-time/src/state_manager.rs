@@ -158,9 +158,9 @@ impl InternalState {
     }
 
     /// Adds the proof to the current tip.
-    fn add_to_tip(&mut self, proof: &PotProof) {
-        self.chain.push(proof.clone());
+    fn add_to_tip(&mut self, proof: PotProof) {
         self.future_proofs.remove(&proof.slot_number);
+        self.chain.push(proof);
         self.merge_future_proofs();
     }
 
@@ -169,13 +169,13 @@ impl InternalState {
         let tip = match self.chain.last() {
             Some(tip) => tip,
             None => {
-                self.add_to_tip(proof);
+                self.add_to_tip(proof.clone());
                 return Ok(());
             }
         };
 
         if (tip.slot_number + 1) == proof.slot_number {
-            self.add_to_tip(proof);
+            self.add_to_tip(proof.clone());
             Ok(())
         } else {
             // The tip moved by the time the proof was computed.
@@ -196,7 +196,7 @@ impl InternalState {
         let tip = match self.chain.last() {
             Some(tip) => tip.clone(),
             None => {
-                self.add_to_tip(proof);
+                self.add_to_tip(proof.clone());
                 return Ok(());
             }
         };
@@ -228,7 +228,7 @@ impl InternalState {
             }
 
             // All checks passed, advance the tip with the new proof
-            self.add_to_tip(proof);
+            self.add_to_tip(proof.clone());
             return Ok(());
         }
 
