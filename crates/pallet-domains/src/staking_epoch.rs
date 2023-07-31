@@ -20,7 +20,6 @@ use sp_domains::{DomainId, OperatorId};
 use sp_runtime::traits::{CheckedAdd, CheckedSub, One, Zero};
 use sp_runtime::Perbill;
 use sp_std::collections::btree_map::BTreeMap;
-use sp_std::collections::btree_set::BTreeSet;
 use sp_std::vec::Vec;
 
 #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
@@ -684,8 +683,7 @@ pub(crate) fn do_finalize_slashed_operators<T: Config>(
             let unlocking_nominators = slash_info
                 .unlocking_nominators
                 .into_iter()
-                .map(|pending_unlock| pending_unlock.nominator_id)
-                .collect::<BTreeSet<NominatorId<T>>>();
+                .map(|pending_unlock| pending_unlock.nominator_id);
 
             let pending_withdrawal_freeze_id =
                 T::HoldIdentifier::staking_pending_unlock(operator_id);

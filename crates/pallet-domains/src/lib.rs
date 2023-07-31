@@ -184,9 +184,11 @@ mod pallet {
             + From<H256>;
 
         /// Same with `pallet_subspace::Config::ConfirmationDepthK`.
+        #[pallet::constant]
         type ConfirmationDepthK: Get<Self::BlockNumber>;
 
         /// Delay before a domain runtime is upgraded.
+        #[pallet::constant]
         type DomainRuntimeUpgradeDelay: Get<Self::BlockNumber>;
 
         /// Currency type used by the domains for staking and other currency related stuff.
@@ -245,21 +247,27 @@ mod pallet {
         type WeightInfo: WeightInfo;
 
         /// Initial domain tx range value.
+        #[pallet::constant]
         type InitialDomainTxRange: Get<u64>;
 
         /// Domain tx range is adjusted after every DomainTxRangeAdjustmentInterval blocks.
+        #[pallet::constant]
         type DomainTxRangeAdjustmentInterval: Get<u64>;
 
         /// Minimum operator stake required to become operator of a domain.
+        #[pallet::constant]
         type MinOperatorStake: Get<BalanceOf<Self>>;
 
         /// Minimum number of blocks after which any finalized withdrawals are released to nominators.
+        #[pallet::constant]
         type StakeWithdrawalLockingPeriod: Get<Self::DomainNumber>;
 
         /// Domain epoch transition interval
+        #[pallet::constant]
         type StakeEpochDuration: Get<Self::DomainNumber>;
 
         /// Treasury account.
+        #[pallet::constant]
         type TreasuryAccount: Get<Self::AccountId>;
     }
 
