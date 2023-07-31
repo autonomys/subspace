@@ -795,7 +795,8 @@ impl_runtime_apis! {
             _uxt: <Block as BlockT>::Extrinsic,
             _block_hash: <Block as BlockT>::Hash,
         ) -> Result<(), domain_runtime_primitives::CheckTxValidityError> {
-            unimplemented!("TODO: check transaction fee to core-evm")
+            // TODO: check transaction fee to core-evm
+            Ok(())
         }
 
         fn storage_keys_for_verifying_transaction_validity(
