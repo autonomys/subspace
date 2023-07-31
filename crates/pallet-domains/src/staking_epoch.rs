@@ -306,7 +306,7 @@ pub struct PendingNominatorUnlock<NominatorId, Balance> {
     pub balance: Balance,
 }
 
-fn do_finalize_domain_pending_transfers<T: Config>(
+pub(crate) fn do_finalize_domain_pending_transfers<T: Config>(
     domain_id: DomainId,
     domain_block_number: T::DomainNumber,
 ) -> Result<(), Error> {
