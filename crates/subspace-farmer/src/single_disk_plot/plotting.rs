@@ -460,7 +460,11 @@ where
             .collect_into(&mut sectors_to_check);
         for (sector_index, history_size) in sectors_to_check.drain(..) {
             if let Some(sector_expire_at) = sectors_expire_at.get(&sector_index) {
-                if *sector_expire_at >= archived_segment_header.segment_index() {
+                // +1 means we will start replotting a bit before it actually expires to avoid
+                // storing expired sectors
+                if *sector_expire_at
+                    <= (archived_segment_header.segment_index() + SegmentIndex::ONE)
+                {
                     // Time to replot
                     sector_indices_to_replot.push(sector_index);
                 }
@@ -508,8 +512,10 @@ where
                                 metadata; qed",
                         );
 
+                    // +1 means we will start replotting a bit before it actually expires to avoid
+                    // storing expired sectors
                     if expiration_history_size.segment_index()
-                        >= archived_segment_header.segment_index()
+                        <= (archived_segment_header.segment_index() + SegmentIndex::ONE)
                     {
                         // Time to replot
                         sector_indices_to_replot.push(sector_index);
