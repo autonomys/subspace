@@ -139,6 +139,8 @@ where
     bootstrap_addresses: Vec<Multiaddr>,
     /// Ensures a single bootstrap on run() invocation.
     bootstrap_command_state: Arc<AsyncMutex<BootstrapCommandState>>,
+    /// Optionally overrides the default Kademlia server mode.
+    kademlia_mode_override: Option<Option<Mode>>,
 }
 
 // Helper struct for NodeRunner configuration (clippy requirement).
@@ -159,6 +161,7 @@ where
     pub(crate) general_connection_decision_handler: Option<ConnectedPeersHandler>,
     pub(crate) special_connection_decision_handler: Option<ConnectedPeersHandler>,
     pub(crate) bootstrap_addresses: Vec<Multiaddr>,
+    pub(crate) kademlia_mode_override: Option<Option<Mode>>,
 }
 
 impl<ProviderStorage> NodeRunner<ProviderStorage>
@@ -180,6 +183,7 @@ where
             general_connection_decision_handler,
             special_connection_decision_handler,
             bootstrap_addresses,
+            kademlia_mode_override,
         }: NodeRunnerConfig<ProviderStorage>,
     ) -> Self {
         Self {
@@ -206,6 +210,7 @@ where
             rng: StdRng::seed_from_u64(KADEMLIA_PEERS_ADDRESSES_BATCH_SIZE as u64), // any seed
             bootstrap_addresses,
             bootstrap_command_state: Arc::new(AsyncMutex::new(BootstrapCommandState::default())),
+            kademlia_mode_override,
         }
     }
 
@@ -286,10 +291,11 @@ where
 
         debug!("Bootstrap started.");
 
-        self.swarm
-            .behaviour_mut()
-            .kademlia
-            .set_mode(Some(Mode::Server));
+        // Set the Kademlia mode. The default is Server unless overridden.
+        let mode = self.kademlia_mode_override.unwrap_or(Some(Mode::Server));
+        self.swarm.behaviour_mut().kademlia.set_mode(mode);
+
+        debug!("Kademlia mode set: {:?}.", mode);
 
         let mut bootstrap_step = 0;
         loop {
