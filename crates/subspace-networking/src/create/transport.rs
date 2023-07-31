@@ -6,13 +6,13 @@ use libp2p::core::muxing::StreamMuxerBox;
 use libp2p::core::transport::{Boxed, ListenerId, TransportError, TransportEvent};
 use libp2p::core::Transport;
 use libp2p::dns::TokioDnsConfig;
-use libp2p::quic::tokio::Transport as QuicTransport;
-use libp2p::quic::Config as QuicConfig;
 use libp2p::tcp::tokio::Transport as TokioTcpTransport;
 use libp2p::tcp::Config as GenTcpConfig;
 use libp2p::websocket::WsConfig;
 use libp2p::yamux::Config as YamuxConfig;
 use libp2p::{core, identity, noise, PeerId};
+use libp2p_quic::tokio::Transport as QuicTransport;
+use libp2p_quic::Config as QuicConfig;
 use parking_lot::Mutex;
 use std::io;
 use std::pin::Pin;
@@ -106,8 +106,12 @@ where
     type ListenerUpgrade = T::ListenerUpgrade;
     type Dial = T::Dial;
 
-    fn listen_on(&mut self, addr: Multiaddr) -> Result<ListenerId, TransportError<Self::Error>> {
-        self.base_transport.listen_on(addr)
+    fn listen_on(
+        &mut self,
+        id: ListenerId,
+        addr: Multiaddr,
+    ) -> Result<(), TransportError<Self::Error>> {
+        self.base_transport.listen_on(id, addr)
     }
 
     fn remove_listener(&mut self, id: ListenerId) -> bool {
@@ -138,13 +142,11 @@ where
         {
             let temporary_bans = self.temporary_bans.lock();
             for protocol in addr_iter {
-                if let Protocol::P2p(multihash) = protocol {
-                    if let Ok(peer_id) = PeerId::try_from(multihash) {
-                        if temporary_bans.is_banned(&peer_id) {
-                            let error =
-                                io::Error::new(io::ErrorKind::Other, "Peer is temporarily banned");
-                            return Err(TransportError::Other(error.into()));
-                        }
+                if let Protocol::P2p(peer_id) = protocol {
+                    if temporary_bans.is_banned(&peer_id) {
+                        let error =
+                            io::Error::new(io::ErrorKind::Other, "Peer is temporarily banned");
+                        return Err(TransportError::Other(error.into()));
                     }
                 }
             }

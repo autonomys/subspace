@@ -51,9 +51,10 @@ pub use libp2p::request_response::{InboundFailure, OutboundFailure, RequestId};
 use libp2p::swarm::behaviour::{ConnectionClosed, DialFailure, FromSwarm, ListenFailure};
 use libp2p::swarm::handler::multi::MultiHandler;
 use libp2p::swarm::{
-    ConnectionDenied, ConnectionHandler, ConnectionId, NetworkBehaviour, PollParameters,
-    THandlerInEvent, ToSwarm,
+    ConnectionDenied, ConnectionId, NetworkBehaviour, PollParameters, THandlerInEvent,
+    THandlerOutEvent, ToSwarm,
 };
+use libp2p::StreamProtocol;
 use std::borrow::Cow;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
@@ -334,12 +335,12 @@ impl RequestResponsesBehaviour {
                 ProtocolSupport::Outbound
             };
 
-            let rq_rp = RequestResponse::new(
+            let rq_rp = RequestResponse::with_codec(
                 GenericCodec {
                     max_request_size: config.max_request_size,
                     max_response_size: config.max_response_size,
                 },
-                iter::once((config.name.as_bytes().to_vec(), protocol_support)),
+                iter::once(StreamProtocol::new(config.name)).zip(iter::repeat(protocol_support)),
                 cfg,
             );
 
@@ -417,7 +418,7 @@ impl NetworkBehaviour for RequestResponsesBehaviour {
         String,
         <RequestResponse<GenericCodec> as NetworkBehaviour>::ConnectionHandler,
     >;
-    type OutEvent = Event;
+    type ToSwarm = Event;
 
     fn handle_established_inbound_connection(
         &mut self,
@@ -555,31 +556,33 @@ impl NetworkBehaviour for RequestResponsesBehaviour {
                     protocol.on_swarm_event(FromSwarm::ListenerClosed(inner));
                 }
             }
-            FromSwarm::NewExternalAddr(inner) => {
+            FromSwarm::NewExternalAddrCandidate(inner) => {
                 for (protocol, _) in self.protocols.values_mut() {
-                    protocol.on_swarm_event(FromSwarm::NewExternalAddr(inner));
+                    protocol.on_swarm_event(FromSwarm::NewExternalAddrCandidate(inner));
                 }
             }
-            FromSwarm::ExpiredExternalAddr(inner) => {
+            FromSwarm::ExternalAddrConfirmed(inner) => {
                 for (protocol, _) in self.protocols.values_mut() {
-                    protocol.on_swarm_event(FromSwarm::ExpiredExternalAddr(inner));
+                    protocol.on_swarm_event(FromSwarm::ExternalAddrConfirmed(inner));
+                }
+            }
+            FromSwarm::ExternalAddrExpired(inner) => {
+                for (protocol, _) in self.protocols.values_mut() {
+                    protocol.on_swarm_event(FromSwarm::ExternalAddrExpired(inner));
                 }
             }
         };
-    }
-
-    fn addresses_of_peer(&mut self, _: &PeerId) -> Vec<Multiaddr> {
-        Vec::new()
     }
 
     fn on_connection_handler_event(
         &mut self,
         peer_id: PeerId,
         connection: ConnectionId,
-        (p_name, event): <Self::ConnectionHandler as ConnectionHandler>::OutEvent,
+        event: THandlerOutEvent<Self>,
     ) {
+        let p_name = event.0;
         if let Some((proto, _)) = self.protocols.get_mut(&*p_name) {
-            return proto.on_connection_handler_event(peer_id, connection, event);
+            return proto.on_connection_handler_event(peer_id, connection, event.1);
         }
 
         warn!(
@@ -592,7 +595,7 @@ impl NetworkBehaviour for RequestResponsesBehaviour {
         &mut self,
         cx: &mut Context,
         params: &mut impl PollParameters,
-    ) -> Poll<ToSwarm<Self::OutEvent, THandlerInEvent<Self>>> {
+    ) -> Poll<ToSwarm<Self::ToSwarm, THandlerInEvent<Self>>> {
         'poll_all: loop {
             if let Some(message_request) = self.message_request.take() {
                 let MessageRequest {
@@ -707,9 +710,6 @@ impl NetworkBehaviour for RequestResponsesBehaviour {
                                 event: ((*protocol).to_string(), event),
                             })
                         }
-                        ToSwarm::ReportObservedAddr { address, score } => {
-                            return Poll::Ready(ToSwarm::ReportObservedAddr { address, score })
-                        }
                         ToSwarm::CloseConnection {
                             peer_id,
                             connection,
@@ -718,6 +718,21 @@ impl NetworkBehaviour for RequestResponsesBehaviour {
                                 peer_id,
                                 connection,
                             })
+                        }
+                        ToSwarm::NewExternalAddrCandidate(observed) => {
+                            return Poll::Ready(ToSwarm::NewExternalAddrCandidate(observed))
+                        }
+                        ToSwarm::ExternalAddrConfirmed(addr) => {
+                            return Poll::Ready(ToSwarm::ExternalAddrConfirmed(addr))
+                        }
+                        ToSwarm::ExternalAddrExpired(addr) => {
+                            return Poll::Ready(ToSwarm::ExternalAddrExpired(addr))
+                        }
+                        ToSwarm::ListenOn { opts } => {
+                            return Poll::Ready(ToSwarm::ListenOn { opts })
+                        }
+                        ToSwarm::RemoveListener { id } => {
+                            return Poll::Ready(ToSwarm::RemoveListener { id })
                         }
                     };
 
@@ -909,7 +924,7 @@ pub struct GenericCodec {
 
 #[async_trait::async_trait]
 impl RequestResponseCodec for GenericCodec {
-    type Protocol = Vec<u8>;
+    type Protocol = StreamProtocol;
     type Request = Vec<u8>;
     type Response = Result<Vec<u8>, ()>;
 

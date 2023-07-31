@@ -636,7 +636,7 @@ where
                 move |address| {
                     info!(
                         "DSN listening on {}",
-                        address.clone().with(Protocol::P2p(node.id().into()))
+                        address.clone().with(Protocol::P2p(node.id()))
                     );
                 }
             }))
@@ -697,7 +697,7 @@ where
             }
 
             node_listeners.iter_mut().for_each(|multiaddr| {
-                multiaddr.push(Protocol::P2p(node.id().into()));
+                multiaddr.push(Protocol::P2p(node.id()));
             });
 
             node_listeners

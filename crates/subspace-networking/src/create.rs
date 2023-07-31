@@ -34,7 +34,7 @@ use libp2p::metrics::Metrics;
 use libp2p::multiaddr::Protocol;
 use libp2p::swarm::SwarmBuilder;
 use libp2p::yamux::Config as YamuxConfig;
-use libp2p::{identity, Multiaddr, PeerId, TransportError};
+use libp2p::{identity, Multiaddr, PeerId, StreamProtocol, TransportError};
 use parking_lot::Mutex;
 use std::borrow::Cow;
 use std::iter::Empty;
@@ -51,10 +51,10 @@ use tracing::{debug, error, info};
 pub type ConnectedPeersHandler = Arc<dyn Fn(&PeerInfo) -> bool + Send + Sync + 'static>;
 
 const DEFAULT_NETWORK_PROTOCOL_VERSION: &str = "dev";
-const KADEMLIA_PROTOCOL: &[u8] = b"/subspace/kad/0.1.0";
+const KADEMLIA_PROTOCOL: &str = "/subspace/kad/0.1.0";
 const GOSSIPSUB_PROTOCOL_PREFIX: &str = "subspace/gossipsub";
-const RESERVED_PEERS_PROTOCOL_NAME: &[u8] = b"/subspace/reserved-peers/1.0.0";
-const PEER_INFO_PROTOCOL_NAME: &[u8] = b"/subspace/peer-info/1.0.0";
+const RESERVED_PEERS_PROTOCOL_NAME: &str = "/subspace/reserved-peers/1.0.0";
+const PEER_INFO_PROTOCOL_NAME: &str = "/subspace/peer-info/1.0.0";
 const GENERAL_CONNECTED_PEERS_PROTOCOL_LOG_TARGET: &str = "general-connected-peers";
 const SPECIAL_CONNECTED_PEERS_PROTOCOL_LOG_TARGET: &str = "special-connected-peers";
 
@@ -262,7 +262,10 @@ where
         let mut kademlia = KademliaConfig::default();
         kademlia
             .set_query_timeout(KADEMLIA_QUERY_TIMEOUT)
-            .set_protocol_names(vec![Cow::Owned(KADEMLIA_PROTOCOL.into())])
+            .set_protocol_names(vec![StreamProtocol::try_from_owned(
+                KADEMLIA_PROTOCOL.to_owned(),
+            )
+            .expect("Manual protocol name creation.")])
             .disjoint_query_paths(true)
             .set_max_packet_size(2 * Piece::SIZE)
             .set_kbucket_inserts(KademliaBucketInserts::Manual)

@@ -4,10 +4,10 @@ use crate::block_tree::import_genesis_receipt;
 use crate::pallet::DomainStakingSummary;
 use crate::staking::StakingSummary;
 use crate::{
-    Config, DomainRegistry, ExecutionReceiptOf, FreezeIdentifier, NextDomainId, RuntimeRegistry,
+    Config, DomainRegistry, ExecutionReceiptOf, HoldIdentifier, NextDomainId, RuntimeRegistry,
 };
 use codec::{Decode, Encode};
-use frame_support::traits::fungible::{Inspect, MutateFreeze};
+use frame_support::traits::fungible::{Inspect, MutateHold};
 use frame_support::traits::tokens::{Fortitude, Preservation};
 use frame_support::weights::Weight;
 use frame_support::{ensure, PalletError};
@@ -154,8 +154,8 @@ pub(crate) fn do_instantiate_domain<T: Config>(
     NextDomainId::<T>::set(next_domain_id);
 
     // Lock up fund of the domain instance creator
-    T::Currency::set_freeze(
-        &T::FreezeIdentifier::domain_instantiation_id(domain_id),
+    T::Currency::hold(
+        &T::HoldIdentifier::domain_instantiation_id(domain_id),
         &owner_account_id,
         T::DomainInstantiationDeposit::get(),
     )
@@ -207,7 +207,6 @@ mod tests {
     use crate::tests::{new_test_ext, GenesisStateRootGenerater, Test};
     use frame_support::traits::Currency;
     use sp_domains::GenesisReceiptExtension;
-    use sp_runtime::traits::One;
     use sp_std::vec;
     use sp_version::RuntimeVersion;
     use std::sync::Arc;
@@ -342,8 +341,8 @@ mod tests {
             assert_eq!(domain_obj.created_at, created_at);
             assert_eq!(domain_obj.domain_config, domain_config);
             assert_eq!(NextDomainId::<Test>::get(), 1.into());
-            // Fund locked up thus can't withdraw
-            assert!(Balances::usable_balance(creator) == One::one(),);
+            // Fund locked up thus can't withdraw, and usable balance is zero since ED is 1
+            assert_eq!(Balances::usable_balance(creator), Zero::zero());
 
             // cannot use the locked funds to create a new domain instance
             assert!(
