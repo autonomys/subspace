@@ -591,6 +591,7 @@ fn finalize_nominator_deposit<T: Config>(
 ) -> Result<(), TransitionError> {
     // calculate the shares to be added to nominator
     let share_per_ssc = if total_shares.is_zero() {
+        // share price is 1 for first nominator
         Perbill::one()
     } else {
         Perbill::from_rational(*total_shares, T::Share::from(*total_stake))

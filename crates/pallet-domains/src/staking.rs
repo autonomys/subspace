@@ -365,15 +365,20 @@ pub(crate) fn do_withdraw_stake<T: Config>(
                     DomainStakingSummary::<T>::get(operator.current_domain_id)
                         .ok_or(Error::DomainNotInitialized)?;
 
-                let total_stake = operator
-                    .current_total_stake
-                    .checked_add(
-                        domain_stake_summary
-                            .current_epoch_rewards
-                            .get(&operator_id)
-                            .unwrap_or(&Zero::zero()),
-                    )
-                    .ok_or(Error::BalanceOverflow)?;
+                let total_stake = match domain_stake_summary.current_epoch_rewards.get(&operator_id)
+                {
+                    None => operator.current_total_stake,
+                    Some(rewards) => {
+                        let operator_tax = operator.nomination_tax.mul_floor(*rewards);
+                        operator
+                            .current_total_stake
+                            .checked_add(rewards)
+                            .ok_or(Error::BalanceOverflow)?
+                            // deduct operator tax
+                            .checked_sub(&operator_tax)
+                            .ok_or(Error::BalanceUnderflow)?
+                    }
+                };
 
                 let nominator_share =
                     Perbill::from_rational(nominator.shares, operator.total_shares);
