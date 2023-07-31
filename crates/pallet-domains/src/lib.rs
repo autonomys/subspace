@@ -32,10 +32,10 @@ mod staking_epoch;
 pub mod weights;
 
 use crate::block_tree::verify_execution_receipt;
-use crate::staking::Operator;
+use crate::staking::{Operator, OperatorStatus};
 use codec::{Decode, Encode};
 use frame_support::ensure;
-use frame_support::traits::fungible::{Inspect, InspectFreeze};
+use frame_support::traits::fungible::{Inspect, InspectHold};
 use frame_support::traits::Get;
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
@@ -57,14 +57,16 @@ use subspace_core_primitives::U256;
 pub(crate) type BalanceOf<T> =
     <<T as Config>::Currency as Inspect<<T as frame_system::Config>::AccountId>>::Balance;
 
-pub(crate) type FungibleFreezeId<T> =
-    <<T as Config>::Currency as InspectFreeze<<T as frame_system::Config>::AccountId>>::Id;
+pub(crate) type FungibleHoldId<T> =
+    <<T as Config>::Currency as InspectHold<<T as frame_system::Config>::AccountId>>::Reason;
 
 pub(crate) type NominatorId<T> = <T as frame_system::Config>::AccountId;
 
-pub trait FreezeIdentifier<T: Config> {
-    fn staking_freeze_id(operator_id: OperatorId) -> FungibleFreezeId<T>;
-    fn domain_instantiation_id(domain_id: DomainId) -> FungibleFreezeId<T>;
+pub trait HoldIdentifier<T: Config> {
+    fn staking_pending_deposit(operator_id: OperatorId) -> FungibleHoldId<T>;
+    fn staking_staked(operator_id: OperatorId) -> FungibleHoldId<T>;
+    fn staking_pending_unlock(operator_id: OperatorId) -> FungibleHoldId<T>;
+    fn domain_instantiation_id(domain_id: DomainId) -> FungibleHoldId<T>;
 }
 
 pub type ExecutionReceiptOf<T> = ExecutionReceipt<
@@ -117,11 +119,11 @@ mod pallet {
     };
     use crate::weights::WeightInfo;
     use crate::{
-        BalanceOf, ElectionVerificationParams, FreezeIdentifier, NominatorId, OpaqueBundleOf,
+        BalanceOf, ElectionVerificationParams, HoldIdentifier, NominatorId, OpaqueBundleOf,
     };
     use codec::FullCodec;
     use frame_support::pallet_prelude::{StorageMap, *};
-    use frame_support::traits::fungible::{InspectFreeze, Mutate, MutateFreeze};
+    use frame_support::traits::fungible::{InspectHold, Mutate, MutateHold};
     use frame_support::weights::Weight;
     use frame_support::{Identity, PalletError};
     use frame_system::pallet_prelude::*;
@@ -182,15 +184,17 @@ mod pallet {
             + From<H256>;
 
         /// Same with `pallet_subspace::Config::ConfirmationDepthK`.
+        #[pallet::constant]
         type ConfirmationDepthK: Get<Self::BlockNumber>;
 
         /// Delay before a domain runtime is upgraded.
+        #[pallet::constant]
         type DomainRuntimeUpgradeDelay: Get<Self::BlockNumber>;
 
         /// Currency type used by the domains for staking and other currency related stuff.
         type Currency: Mutate<Self::AccountId>
-            + MutateFreeze<Self::AccountId>
-            + InspectFreeze<Self::AccountId>;
+            + InspectHold<Self::AccountId>
+            + MutateHold<Self::AccountId>;
 
         /// Type representing the shares in the staking protocol.
         type Share: Parameter
@@ -205,8 +209,8 @@ mod pallet {
             + MaxEncodedLen
             + IsType<BalanceOf<Self>>;
 
-        /// Identifier used for Freezing the funds used for staking.
-        type FreezeIdentifier: FreezeIdentifier<Self>;
+        /// A variation of the Identifier used for holding the funds used for staking and domains.
+        type HoldIdentifier: HoldIdentifier<Self>;
 
         /// The block tree pruning depth, its value should <= `BlockHashCount` because we
         /// need the consensus block hash to verify execution receipt, which is used to
@@ -243,19 +247,28 @@ mod pallet {
         type WeightInfo: WeightInfo;
 
         /// Initial domain tx range value.
+        #[pallet::constant]
         type InitialDomainTxRange: Get<u64>;
 
         /// Domain tx range is adjusted after every DomainTxRangeAdjustmentInterval blocks.
+        #[pallet::constant]
         type DomainTxRangeAdjustmentInterval: Get<u64>;
 
         /// Minimum operator stake required to become operator of a domain.
+        #[pallet::constant]
         type MinOperatorStake: Get<BalanceOf<Self>>;
 
         /// Minimum number of blocks after which any finalized withdrawals are released to nominators.
+        #[pallet::constant]
         type StakeWithdrawalLockingPeriod: Get<Self::DomainNumber>;
 
         /// Domain epoch transition interval
+        #[pallet::constant]
         type StakeEpochDuration: Get<Self::DomainNumber>;
+
+        /// Treasury account.
+        #[pallet::constant]
+        type TreasuryAccount: Get<Self::AccountId>;
     }
 
     #[pallet::pallet]
@@ -652,13 +665,13 @@ mod pallet {
                         )
                         .map_err(Error::<T>::from)?;
 
-                        do_unlock_pending_withdrawals::<T>(
+                        do_finalize_domain_current_epoch::<T>(
                             domain_id,
                             pruned_block_info.domain_block_number,
                         )
                         .map_err(Error::<T>::from)?;
 
-                        do_finalize_domain_current_epoch::<T>(
+                        do_unlock_pending_withdrawals::<T>(
                             domain_id,
                             pruned_block_info.domain_block_number,
                         )
@@ -1202,6 +1215,11 @@ impl<T: Config> Pallet<T> {
         let sealed_header = &opaque_bundle.sealed_header;
 
         let operator = Operators::<T>::get(operator_id).ok_or(BundleError::InvalidOperatorId)?;
+
+        ensure!(
+            operator.status != OperatorStatus::Slashed,
+            BundleError::BadOperator
+        );
 
         if !operator
             .signing_key
