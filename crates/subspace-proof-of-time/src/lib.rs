@@ -79,7 +79,7 @@ impl ProofOfTime {
             self.num_checkpoints,
             self.checkpoint_iterations,
         ))
-        .expect("Failed to create proof of time");
+        .expect("List of checkpoints is never empty; qed");
         PotProof::new(slot_number, seed, key, checkpoints, injected_block_hash)
     }
 

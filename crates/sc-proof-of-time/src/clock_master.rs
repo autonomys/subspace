@@ -137,6 +137,7 @@ where
             .spawn(move || {
                 Self::produce_proofs(proof_of_time, pot_state, local_proof_sender);
             })
+            // TODO: Proper error handling or proof
             .expect("Failed to spawn PoT proof producer thread");
 
         loop {
@@ -172,6 +173,7 @@ where
     ) {
         loop {
             // Build the next proof on top of the latest tip.
+            // TODO: Proper error handling or proof
             let last_proof = state.tip().expect("Clock master chain cannot be empty");
 
             // TODO: injected block hash from consensus
@@ -226,7 +228,7 @@ where
             params.slot,
             params.genesis_hash,
         );
-        let proofs = NonEmptyVec::new(vec![proof]).expect("Vec is non empty");
+        let proofs = NonEmptyVec::new(vec![proof]).expect("Vec is non empty; qed");
         self.pot_state.reset(proofs);
     }
 }

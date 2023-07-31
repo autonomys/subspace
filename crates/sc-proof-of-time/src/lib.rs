@@ -56,8 +56,8 @@ impl Default for PotConfig {
             global_randomness_reveal_lag_slots: 6,
             pot_injection_lag_slots: 6,
             max_future_slots: 10,
-            pot_iterations: NonZeroU32::new(16 * 200_000).expect("pot_iterations cannot be zero"),
-            num_checkpoints: NonZeroU8::new(16).expect("num_checkpoints cannot be zero"),
+            pot_iterations: NonZeroU32::new(16 * 200_000).expect("Not zero; qed"),
+            num_checkpoints: NonZeroU8::new(16).expect("Not zero; qed"),
         }
     }
 }
@@ -79,6 +79,7 @@ impl<Block: BlockT> PotComponents<Block> {
     pub fn new() -> Self {
         let config = PotConfig::default();
         let proof_of_time = ProofOfTime::new(config.pot_iterations, config.num_checkpoints)
+            // TODO: Proper error handling or proof
             .expect("Failed to initialize proof of time");
         let (protocol_state, consensus_state) = init_pot_state(config, proof_of_time.clone());
 
