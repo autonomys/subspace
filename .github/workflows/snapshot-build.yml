@@ -94,7 +94,9 @@ jobs:
           - os: ubuntu-20.04
             target: aarch64-unknown-linux-gnu
             suffix: ubuntu-aarch64-${{ github.ref_name }}
-            rustflags: '-C linker=aarch64-linux-gnu-gcc'
+            # TODO: AES flag is such that we have decent performance on ARMv8, remove once `aes` crate bumps MSRV to
+            #  at least 1.61: https://github.com/RustCrypto/block-ciphers/issues/373
+            rustflags: '-C linker=aarch64-linux-gnu-gcc --cfg aes_armv8'
           - os: macos-12
             target: x86_64-apple-darwin
             suffix: macos-x86_64-${{ github.ref_name }}
@@ -102,7 +104,9 @@ jobs:
           - os: macos-12
             target: aarch64-apple-darwin
             suffix: macos-aarch64-${{ github.ref_name }}
-            rustflags: ''
+            # TODO: AES flag is such that we have decent performance on ARMv8, remove once `aes` crate bumps MSRV to
+            #  at least 1.61: https://github.com/RustCrypto/block-ciphers/issues/373
+            rustflags: '--cfg aes_armv8'
           - os: windows-2022
             target: x86_64-pc-windows-msvc
             suffix: windows-x86_64-v2-${{ github.ref_name }}
