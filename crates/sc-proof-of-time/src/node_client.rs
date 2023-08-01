@@ -4,8 +4,6 @@ use crate::gossip::PotGossip;
 use crate::state_manager::PotProtocolState;
 use crate::utils::get_consensus_tip_proofs;
 use crate::PotComponents;
-use futures::{FutureExt, StreamExt};
-use parity_scale_codec::Decode;
 use sc_network::PeerId;
 use sp_blockchain::{HeaderBackend, Info};
 use sp_consensus::SyncOracle;
@@ -47,7 +45,7 @@ where
         }
     }
 
-    /// Starts the workers.
+    /// Runs the node client processing loop.
     pub async fn run(self) {
         // Wait for sync to complete, get the proof from the tip.
         let proofs = match get_consensus_tip_proofs(
@@ -65,39 +63,19 @@ where
         };
         self.pot_state.reset(proofs);
 
-        // Filter out incoming messages without sender_id or that fail to decode.
-        let mut incoming_messages = Box::pin(self.gossip.incoming_messages().filter_map(
-            |notification| async move {
-                let mut ret = None;
-                if let Some(sender) = notification.sender {
-                    if let Ok(msg) = PotProof::decode(&mut &notification.message[..]) {
-                        ret = Some((sender, msg))
-                    }
-                }
-                ret
-            },
-        ));
-
-        loop {
-            futures::select! {
-                gossiped = incoming_messages.next().fuse() => {
-                    if let Some((sender, proof)) = gossiped {
-                        trace!("pot_client: got gossiped proof: {sender} => {proof}");
-                        self.handle_gossip_message(self.pot_state.as_ref(), sender, proof);
-                    }
-                },
-                _ = self.gossip.is_terminated().fuse() => {
-                    error!("pot_client: gossip engine has terminated.");
-                    return;
-                }
-            }
-        }
+        let handle_gossip_message: Arc<dyn Fn(PeerId, PotProof)> = Arc::new(|sender, proof| {
+            self.handle_gossip_message(sender, proof);
+        });
+        self.gossip
+            .process_incoming_messages(handle_gossip_message)
+            .await;
+        error!("pot_client: gossip engine has terminated.");
     }
 
     /// Handles the incoming gossip message.
-    fn handle_gossip_message(&self, state: &dyn PotProtocolState, sender: PeerId, proof: PotProof) {
+    fn handle_gossip_message(&self, sender: PeerId, proof: PotProof) {
         let start_ts = Instant::now();
-        let ret = state.on_proof_from_peer(sender, &proof);
+        let ret = self.pot_state.on_proof_from_peer(sender, &proof);
         let elapsed = start_ts.elapsed();
 
         if let Err(err) = ret {
