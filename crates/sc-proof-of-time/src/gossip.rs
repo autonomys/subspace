@@ -101,7 +101,7 @@ impl<Block: BlockT> PotGossip<Block> {
 
 /// Validator for gossiped messages
 struct PotGossipValidator {
-    _pot_state: Arc<dyn PotProtocolState>,
+    pot_state: Arc<dyn PotProtocolState>,
     pending: RwLock<HashSet<MessageHash>>,
 }
 
@@ -109,7 +109,7 @@ impl PotGossipValidator {
     /// Creates the validator.
     fn new(pot_state: Arc<dyn PotProtocolState>) -> Self {
         Self {
-            _pot_state: pot_state,
+            pot_state,
             pending: RwLock::new(HashSet::new()),
         }
     }
@@ -126,11 +126,17 @@ impl<Block: BlockT> Validator<Block> for PotGossipValidator {
     fn validate(
         &self,
         _context: &mut dyn ValidatorContext<Block>,
-        _sender: &PeerId,
+        sender: &PeerId,
         mut data: &[u8],
     ) -> ValidationResult<Block::Hash> {
         match PotProof::decode(&mut data) {
-            Ok(_) => ValidationResult::ProcessAndKeep(topic::<Block>()),
+            Ok(proof) => {
+                if self.pot_state.is_candidate(*sender, &proof).is_ok() {
+                    ValidationResult::ProcessAndKeep(topic::<Block>())
+                } else {
+                    ValidationResult::Discard
+                }
+            }
             Err(_) => ValidationResult::Discard,
         }
     }

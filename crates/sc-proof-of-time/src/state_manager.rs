@@ -236,6 +236,50 @@ impl InternalState {
         self.handle_future_proof(&tip, sender, proof)
     }
 
+    /// Checks if the proof is a possible candidate.
+    fn is_candidate(&self, _sender: PeerId, proof: &PotProof) -> Result<(), PotProtocolStateError> {
+        let tip = match self.chain.last() {
+            Some(tip) => tip.clone(),
+            None => {
+                // Chain is empty, possible first proof.
+                return Ok(());
+            }
+        };
+
+        // Case 1: the proof is for an older slot.
+        // When same proof is gossiped by multiple peers, this check
+        // could help early discard of the duplicates.
+        if proof.slot_number <= tip.slot_number {
+            return Err(PotProtocolStateError::StaleProof {
+                tip_slot: tip.slot_number,
+                proof_slot: proof.slot_number,
+            });
+        }
+
+        // Case 2: the proof extends the tip
+        if (tip.slot_number + 1) == proof.slot_number {
+            let expected_seed = tip.next_seed(None);
+            if proof.seed != expected_seed {
+                return Err(PotProtocolStateError::InvalidSeed {
+                    expected: expected_seed,
+                    actual: proof.seed,
+                });
+            }
+
+            let expected_key = tip.next_key();
+            if proof.key != expected_key {
+                return Err(PotProtocolStateError::InvalidKey {
+                    expected: expected_key,
+                    actual: proof.key,
+                });
+            }
+        }
+
+        // Case 3: future proof
+        // TODO: add more filtering for future proofs
+        Ok(())
+    }
+
     /// Handles the received proof for a future slot.
     fn handle_future_proof(
         &mut self,
@@ -540,6 +584,13 @@ pub(crate) trait PotProtocolState: Send + Sync {
         sender: PeerId,
         proof: &PotProof,
     ) -> Result<(), PotProtocolStateError>;
+
+    /// Called by gossip validator to filter out the received proofs
+    /// early on. This performs only simple/inexpensive checks, the
+    /// actual AES verification happens later when the proof is delivered
+    /// by gossip. This acts like a Bloom filter: false positives with an
+    /// error probability, no false negatives.
+    fn is_candidate(&self, sender: PeerId, proof: &PotProof) -> Result<(), PotProtocolStateError>;
 }
 
 impl PotProtocolState for StateManager {
@@ -567,6 +618,10 @@ impl PotProtocolState for StateManager {
             .map_err(PotProtocolStateError::InvalidProof)?;
 
         self.state.lock().handle_peer_proof(sender, proof)
+    }
+
+    fn is_candidate(&self, sender: PeerId, proof: &PotProof) -> Result<(), PotProtocolStateError> {
+        self.state.lock().is_candidate(sender, proof)
     }
 }
 
