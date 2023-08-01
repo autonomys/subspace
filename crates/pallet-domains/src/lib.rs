@@ -665,11 +665,15 @@ mod pallet {
                         )
                         .map_err(Error::<T>::from)?;
 
-                        do_finalize_domain_current_epoch::<T>(
-                            domain_id,
-                            pruned_block_info.domain_block_number,
-                        )
-                        .map_err(Error::<T>::from)?;
+                        if pruned_block_info.domain_block_number % T::StakeEpochDuration::get()
+                            == Zero::zero()
+                        {
+                            do_finalize_domain_current_epoch::<T>(
+                                domain_id,
+                                pruned_block_info.domain_block_number,
+                            )
+                            .map_err(Error::<T>::from)?;
+                        }
 
                         do_unlock_pending_withdrawals::<T>(
                             domain_id,
@@ -936,19 +940,16 @@ mod pallet {
                         genesis_domain.runtime_type.clone(),
                         genesis_domain.runtime_version.clone(),
                         genesis_domain.code.clone(),
-                        Zero::zero(),
+                        One::one(),
                     )
                     .expect("Genesis runtime registration must always succeed");
 
                     // Instantiate the genesis domain
                     let domain_config = DomainConfig::from_genesis::<T>(genesis_domain, runtime_id);
                     let domain_owner = genesis_domain.owner_account_id.clone();
-                    let domain_id = do_instantiate_domain::<T>(
-                        domain_config,
-                        domain_owner.clone(),
-                        Zero::zero(),
-                    )
-                    .expect("Genesis domain instantiation must always succeed");
+                    let domain_id =
+                        do_instantiate_domain::<T>(domain_config, domain_owner.clone(), One::one())
+                            .expect("Genesis domain instantiation must always succeed");
 
                     // Register domain_owner as the genesis operator.
                     let operator_config = OperatorConfig {
@@ -967,7 +968,7 @@ mod pallet {
                     )
                     .expect("Genesis operator registration must succeed");
 
-                    do_finalize_domain_current_epoch::<T>(domain_id, Zero::zero())
+                    do_finalize_domain_current_epoch::<T>(domain_id, One::one())
                         .expect("Genesis epoch must succeed");
                 }
             }
@@ -1068,16 +1069,20 @@ impl<T: Config> Pallet<T> {
             .map(|domain_object| domain_object.domain_config.runtime_id)
     }
 
-    pub fn domain_instance_data(domain_id: DomainId) -> Option<DomainInstanceData> {
-        let runtime_id = DomainRegistry::<T>::get(domain_id)?
-            .domain_config
-            .runtime_id;
-        let (runtime_type, runtime_code) = RuntimeRegistry::<T>::get(runtime_id)
-            .map(|runtime_object| (runtime_object.runtime_type, runtime_object.code))?;
-        Some(DomainInstanceData {
-            runtime_type,
-            runtime_code,
-        })
+    pub fn domain_instance_data(
+        domain_id: DomainId,
+    ) -> Option<(DomainInstanceData, T::BlockNumber)> {
+        let domain_obj = DomainRegistry::<T>::get(domain_id)?;
+        let (runtime_type, runtime_code) =
+            RuntimeRegistry::<T>::get(domain_obj.domain_config.runtime_id)
+                .map(|runtime_object| (runtime_object.runtime_type, runtime_object.code))?;
+        Some((
+            DomainInstanceData {
+                runtime_type,
+                runtime_code,
+            },
+            domain_obj.created_at,
+        ))
     }
 
     pub fn genesis_state_root(domain_id: DomainId) -> Option<H256> {

@@ -914,7 +914,7 @@ pub(crate) mod tests {
                 nominators,
             );
 
-            assert!(do_finalize_domain_current_epoch::<Test>(domain_id, Zero::zero()).unwrap());
+            do_finalize_domain_current_epoch::<Test>(domain_id, Zero::zero()).unwrap();
 
             if !operator_reward.is_zero() {
                 do_reward_operators::<Test>(
@@ -1222,12 +1222,12 @@ pub(crate) mod tests {
                 BTreeMap::from_iter(nominators),
             );
 
-            assert!(do_finalize_domain_current_epoch::<Test>(domain_id, Zero::zero()).unwrap());
+            do_finalize_domain_current_epoch::<Test>(domain_id, Zero::zero()).unwrap();
 
             for unlock in &unlocking {
                 do_withdraw_stake::<Test>(operator_id, unlock.0, Withdraw::Some(unlock.1)).unwrap();
             }
-            assert!(do_finalize_domain_current_epoch::<Test>(domain_id, Zero::zero()).unwrap());
+            do_finalize_domain_current_epoch::<Test>(domain_id, Zero::zero()).unwrap();
 
             for deposit in deposits {
                 do_nominate_operator::<Test>(operator_id, deposit.0, deposit.1).unwrap();

@@ -38,11 +38,7 @@ pub enum Error {
 pub(crate) fn do_finalize_domain_current_epoch<T: Config>(
     domain_id: DomainId,
     domain_block_number: T::DomainNumber,
-) -> Result<bool, Error> {
-    if domain_block_number % T::StakeEpochDuration::get() != Zero::zero() {
-        return Ok(false);
-    }
-
+) -> Result<(), Error> {
     // slash the operators
     do_finalize_slashed_operators::<T>(domain_id).map_err(Error::SlashOperator)?;
 
@@ -57,7 +53,7 @@ pub(crate) fn do_finalize_domain_current_epoch<T: Config>(
 
     // finalize any withdrawals and then deposits
     do_finalize_domain_pending_transfers::<T>(domain_id, domain_block_number)?;
-    Ok(true)
+    Ok(())
 }
 
 /// Unlocks any operators who are de-registering or nominators who are withdrawing staked funds.
