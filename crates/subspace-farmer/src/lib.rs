@@ -1,6 +1,7 @@
 #![feature(
     array_chunks,
     const_option,
+    hash_extract_if,
     impl_trait_in_assoc_type,
     io_error_other,
     iter_collect_into,
@@ -34,6 +35,7 @@
 
 pub(crate) mod identity;
 pub mod node_client;
+pub mod piece_cache;
 pub mod reward_signing;
 pub mod single_disk_plot;
 pub mod utils;

@@ -107,9 +107,20 @@ where
         }
     }
 
+    /// Set limit to new value, decreasing to value lower than current size is not supported and
+    /// will be set to current size instead
+    pub fn set_limit(&mut self, limit: usize) {
+        self.limit = self.size().max(limit);
+    }
+
     /// Returns heap-size
     pub fn size(&self) -> usize {
         self.set.len()
+    }
+
+    /// Remove all contents, while keeping allocated capacity
+    pub fn clear(&mut self) {
+        self.set.clear();
     }
 
     /// Insert a key in the heap evicting (popping) if the size limit is exceeded.

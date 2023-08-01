@@ -12,12 +12,45 @@ mod tests;
 
 use futures::channel::oneshot;
 use futures::channel::oneshot::Canceled;
-use futures::future::Either;
+use futures::future::{Either, Fuse, FusedFuture};
+use futures::FutureExt;
 use std::future::Future;
 use std::ops::Deref;
+use std::pin::Pin;
+use std::task::{Context, Poll};
 use std::{io, thread};
 use tokio::runtime::Handle;
+use tokio::task;
 use tracing::debug;
+
+/// Joins async join handle on drop
+pub(crate) struct AsyncJoinOnDrop<T>(Option<Fuse<task::JoinHandle<T>>>);
+
+impl<T> Drop for AsyncJoinOnDrop<T> {
+    fn drop(&mut self) {
+        let handle = self.0.take().expect("Always called exactly once; qed");
+        if !handle.is_terminated() {
+            task::block_in_place(move || {
+                let _ = Handle::current().block_on(handle);
+            });
+        }
+    }
+}
+
+impl<T> AsyncJoinOnDrop<T> {
+    // Create new instance
+    pub(crate) fn new(handle: task::JoinHandle<T>) -> Self {
+        Self(Some(handle.fuse()))
+    }
+}
+
+impl<T> Future for AsyncJoinOnDrop<T> {
+    type Output = Result<T, task::JoinError>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        Pin::new(self.0.as_mut().expect("Only dropped in Drop impl; qed")).poll(cx)
+    }
+}
 
 /// Joins synchronous join handle on drop
 pub(crate) struct JoinOnDrop(Option<thread::JoinHandle<()>>);
