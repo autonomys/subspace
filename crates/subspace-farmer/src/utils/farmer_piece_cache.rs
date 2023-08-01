@@ -55,8 +55,6 @@ impl FarmerPieceCache {
 }
 
 impl PieceCache for FarmerPieceCache {
-    type KeysIterator = impl IntoIterator<Item = Key>;
-
     fn should_cache(&self, key: &Key) -> bool {
         self.heap.lock().should_include_key(key)
     }
@@ -75,12 +73,6 @@ impl PieceCache for FarmerPieceCache {
 
     fn get_piece(&self, key: &Key) -> Option<Piece> {
         self.store.get(key)
-    }
-
-    fn keys(&self) -> Self::KeysIterator {
-        // It is not great that we're cloning it, but at the same time dealing with self-referential
-        // lifetimes originating from the fact that mutex is used here proven to be challenging
-        self.heap.lock().keys().cloned().collect::<Vec<_>>()
     }
 
     fn contains_key(&self, key: &Key) -> bool {
