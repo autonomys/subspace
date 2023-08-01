@@ -56,7 +56,7 @@ impl FarmerPieceCache {
 
 impl PieceCache for FarmerPieceCache {
     fn should_cache(&self, key: &Key) -> bool {
-        self.heap.lock().should_include_key(key)
+        self.heap.lock().should_include_key(key.clone())
     }
 
     fn add_piece(&mut self, key: Key, piece: Piece) {
@@ -76,6 +76,6 @@ impl PieceCache for FarmerPieceCache {
     }
 
     fn contains_key(&self, key: &Key) -> bool {
-        self.heap.lock().contains_key(key)
+        self.heap.lock().contains_key(key.clone())
     }
 }
