@@ -52,7 +52,7 @@ enum Command {
         pending_out_peers: u32,
         /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses in Kademlia DHT.
         #[arg(long, default_value_t = false)]
-        disable_private_ips: bool,
+        enable_private_ips: bool,
         /// Defines path for the provider record storage DB (optional).
         #[arg(long, value_hint = ValueHint::FilePath)]
         db_path: Option<PathBuf>,
@@ -122,7 +122,7 @@ async fn main() -> anyhow::Result<()> {
             out_peers,
             pending_in_peers,
             pending_out_peers,
-            disable_private_ips,
+            enable_private_ips,
             db_path,
             piece_providers_cache_size,
             protocol_version,
@@ -168,7 +168,7 @@ async fn main() -> anyhow::Result<()> {
             let config = Config {
                 networking_parameters_registry,
                 listen_on,
-                allow_non_global_addresses_in_dht: !disable_private_ips,
+                allow_non_global_addresses_in_dht: enable_private_ips,
                 reserved_peers,
                 max_established_incoming_connections: in_peers,
                 max_established_outgoing_connections: out_peers,

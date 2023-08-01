@@ -216,7 +216,7 @@ pub struct Cli {
     /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses
     /// in Kademlia DHT for the DSN.
     #[arg(long, default_value_t = false)]
-    pub dsn_disable_private_ips: bool,
+    pub dsn_enable_private_ips: bool,
 
     /// Enables DSN-sync on startup.
     #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
