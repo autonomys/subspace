@@ -4,7 +4,7 @@ use crate::commands::farm::dsn::configure_dsn;
 use crate::commands::shared::print_disk_farm_info;
 use crate::utils::{get_required_plot_space_with_overhead, shutdown_signal};
 use crate::{DiskFarm, FarmingArgs};
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, Result};
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use lru::LruCache;
@@ -423,8 +423,8 @@ async fn populate_pieces_cache<PV, PC>(
             Ok(None) => {
                 debug!(%piece_index, "Couldn't find piece.");
             }
-            Err(err) => {
-                debug!(error=%err, %piece_index, "Failed to get piece for piece cache.");
+            Err(error) => {
+                debug!(%error, %piece_index, "Failed to get piece for piece cache.");
             }
         }
 
@@ -439,11 +439,7 @@ async fn fill_piece_cache_from_archived_segments(
     node_client: NodeRpcClient,
     piece_cache: Arc<tokio::sync::Mutex<FarmerPieceCache>>,
 ) {
-    let segment_headers_notifications = node_client
-        .subscribe_archived_segment_headers()
-        .await
-        .map_err(|err| anyhow::anyhow!(err.to_string()))
-        .context("Failed to subscribe to archived segments");
+    let segment_headers_notifications = node_client.subscribe_archived_segment_headers().await;
 
     match segment_headers_notifications {
         Ok(mut segment_headers_notifications) => {
@@ -508,16 +504,16 @@ async fn fill_piece_cache_from_archived_segments(
                     Ok(()) => {
                         debug!(%segment_index, "Acknowledged archived segment.");
                     }
-                    Err(err) => {
-                        error!(%segment_index, ?err, "Failed to acknowledge archived segment.");
+                    Err(error) => {
+                        error!(%segment_index, ?error, "Failed to acknowledge archived segment.");
                     }
                 };
 
                 debug!(%segment_index, "Finished processing archived segment.");
             }
         }
-        Err(err) => {
-            error!(?err, "Failed to get archived segments notifications.")
+        Err(error) => {
+            error!(?error, "Failed to get archived segments notifications.")
         }
     }
 }
