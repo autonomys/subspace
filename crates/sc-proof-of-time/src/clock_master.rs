@@ -7,6 +7,7 @@ use crate::PotComponents;
 use futures::FutureExt;
 use parity_scale_codec::Encode;
 use sc_network::PeerId;
+use sc_network_gossip::{Network as GossipNetwork, Syncing as GossipSyncing};
 use sp_blockchain::{HeaderBackend, Info};
 use sp_consensus::SyncOracle;
 use sp_runtime::traits::Block as BlockT;
@@ -49,10 +50,10 @@ impl BootstrapParams {
 /// The clock master manages the protocol: periodic proof generation/verification, gossip.
 pub struct ClockMaster<Block: BlockT, Client, SO> {
     proof_of_time: ProofOfTime,
+    pot_state: Arc<dyn PotProtocolState>,
     gossip: PotGossip<Block>,
     client: Arc<Client>,
     sync_oracle: Arc<SO>,
-    pot_state: Arc<dyn PotProtocolState>,
     chain_info_fn: Arc<dyn Fn() -> Info<Block> + Send + Sync>,
 }
 
@@ -68,13 +69,18 @@ where
     /// of unnecessary generics/dependencies. chain_info_fn() tries
     /// to avoid that by using a Fn instead. Follow up with upstream
     /// to include this in the trait.
-    pub fn new(
+    pub fn new<Network, GossipSync>(
         components: PotComponents<Block>,
-        gossip: PotGossip<Block>,
         client: Arc<Client>,
         sync_oracle: Arc<SO>,
+        network: Network,
+        sync: Arc<GossipSync>,
         chain_info_fn: Arc<dyn Fn() -> Info<Block> + Send + Sync>,
-    ) -> Self {
+    ) -> Self
+    where
+        Network: GossipNetwork<Block> + Send + Sync + Clone + 'static,
+        GossipSync: GossipSyncing<Block> + 'static,
+    {
         let PotComponents {
             proof_of_time,
             protocol_state: pot_state,
@@ -83,8 +89,8 @@ where
 
         Self {
             proof_of_time,
-            pot_state,
-            gossip,
+            pot_state: pot_state.clone(),
+            gossip: PotGossip::new(network, sync, pot_state),
             client,
             sync_oracle,
             chain_info_fn,

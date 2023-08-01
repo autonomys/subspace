@@ -5,6 +5,7 @@ use crate::state_manager::PotProtocolState;
 use crate::utils::get_consensus_tip_proofs;
 use crate::PotComponents;
 use sc_network::PeerId;
+use sc_network_gossip::{Network as GossipNetwork, Syncing as GossipSyncing};
 use sp_blockchain::{HeaderBackend, Info};
 use sp_consensus::SyncOracle;
 use sp_runtime::traits::Block as BlockT;
@@ -15,8 +16,8 @@ use tracing::{error, trace};
 
 /// The PoT client implementation
 pub struct PotClient<Block: BlockT, Client, SO> {
-    gossip: PotGossip<Block>,
     pot_state: Arc<dyn PotProtocolState>,
+    gossip: PotGossip<Block>,
     client: Arc<Client>,
     sync_oracle: Arc<SO>,
     chain_info_fn: Arc<dyn Fn() -> Info<Block> + Send + Sync>,
@@ -29,16 +30,21 @@ where
     SO: SyncOracle + Send + Sync + Clone + 'static,
 {
     /// Creates the PoT client instance.
-    pub fn new(
+    pub fn new<Network, GossipSync>(
         components: PotComponents<Block>,
-        gossip: PotGossip<Block>,
         client: Arc<Client>,
         sync_oracle: Arc<SO>,
+        network: Network,
+        sync: Arc<GossipSync>,
         chain_info_fn: Arc<dyn Fn() -> Info<Block> + Send + Sync>,
-    ) -> Self {
+    ) -> Self
+    where
+        Network: GossipNetwork<Block> + Send + Sync + Clone + 'static,
+        GossipSync: GossipSyncing<Block> + 'static,
+    {
         Self {
-            gossip,
-            pot_state: components.protocol_state,
+            pot_state: components.protocol_state.clone(),
+            gossip: PotGossip::new(network, sync, components.protocol_state),
             client,
             sync_oracle,
             chain_info_fn,
