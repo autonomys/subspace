@@ -176,6 +176,8 @@ impl From<PieceIndex> for u64 {
 }
 
 impl PieceIndex {
+    /// Size in bytes.
+    pub const SIZE: usize = mem::size_of::<u64>();
     /// Piece index 0.
     pub const ZERO: PieceIndex = PieceIndex(0);
     /// Piece index 1.
@@ -186,9 +188,15 @@ impl PieceIndex {
         PieceIndexHash::from(blake2b_256_hash(&self.to_bytes()))
     }
 
+    /// Create piece index from bytes.
+    #[inline]
+    pub const fn from_bytes(bytes: [u8; Self::SIZE]) -> Self {
+        Self(u64::from_le_bytes(bytes))
+    }
+
     /// Convert piece index to bytes.
     #[inline]
-    pub const fn to_bytes(self) -> [u8; mem::size_of::<u64>()] {
+    pub const fn to_bytes(self) -> [u8; Self::SIZE] {
         self.0.to_le_bytes()
     }
 

@@ -1,4 +1,5 @@
 mod farming;
+pub mod piece_cache;
 pub mod piece_reader;
 mod plotting;
 
@@ -7,6 +8,7 @@ use crate::node_client::NodeClient;
 use crate::reward_signing::reward_signing;
 use crate::single_disk_plot::farming::farming;
 pub use crate::single_disk_plot::farming::FarmingError;
+use crate::single_disk_plot::piece_cache::{DiskPieceCache, DiskPieceCacheError};
 use crate::single_disk_plot::piece_reader::PieceReader;
 pub use crate::single_disk_plot::plotting::PlottingError;
 use crate::single_disk_plot::plotting::{plotting, plotting_scheduler};
@@ -53,6 +55,9 @@ const_assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<u64>());
 
 /// Reserve 1M of space for plot metadata (for potential future expansion)
 const RESERVED_PLOT_METADATA: u64 = 1024 * 1024;
+/// Piece cache occupies 1% of allocated space
+// TODO: Allow increasing this with CLI parameter
+const PIECE_CACHE_FRACTION: (usize, usize) = (1, 100);
 
 /// Semaphore that limits disk access concurrency in strategic places to the number specified during
 /// initialization
@@ -273,6 +278,9 @@ pub enum SingleDiskPlotError {
     /// I/O error occurred
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),
+    /// Piece cache error
+    #[error("Piece cache error: {0}")]
+    PieceCacheError(#[from] DiskPieceCacheError),
     /// Can't preallocate plot file, probably not enough space on disk
     #[error("Can't preallocate plot file, probably not enough space on disk: {0}")]
     CantPreallocatePlotFile(io::Error),
@@ -400,6 +408,7 @@ pub struct SingleDiskPlot {
     span: Span,
     tasks: FuturesUnordered<BackgroundTask>,
     handlers: Arc<Handlers>,
+    piece_cache: DiskPieceCache,
     piece_reader: PieceReader,
     _plotting_join_handle: JoinOnDrop,
     _farming_join_handle: JoinOnDrop,
@@ -637,6 +646,12 @@ impl SingleDiskPlot {
             .preallocate(sector_size as u64 * u64::from(target_sector_count))
             .map_err(SingleDiskPlotError::CantPreallocatePlotFile)?;
 
+        let piece_cache = DiskPieceCache::open(
+            &directory,
+            allocated_space as usize / PIECE_CACHE_FRACTION.1 * PIECE_CACHE_FRACTION.0
+                / DiskPieceCache::element_size(),
+        )?;
+
         let (error_sender, error_receiver) = oneshot::channel();
         let error_sender = Arc::new(Mutex::new(Some(error_sender)));
 
@@ -861,6 +876,7 @@ impl SingleDiskPlot {
             span,
             tasks,
             handlers,
+            piece_cache,
             piece_reader,
             _plotting_join_handle: JoinOnDrop::new(plotting_join_handle),
             _farming_join_handle: JoinOnDrop::new(farming_join_handle),
@@ -932,6 +948,11 @@ impl SingleDiskPlot {
                 })
             },
         )
+    }
+
+    /// Get piece cache instance
+    pub fn piece_cache(&self) -> DiskPieceCache {
+        self.piece_cache.clone()
     }
 
     /// Get piece reader to read plot pieces later
@@ -1007,6 +1028,8 @@ impl SingleDiskPlot {
             info!("Deleting identity file at {}", identity.display());
             fs::remove_file(identity)?;
         }
+
+        DiskPieceCache::wipe(directory)?;
 
         info!(
             "Deleting info file at {}",

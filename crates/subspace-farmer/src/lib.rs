@@ -1,4 +1,5 @@
 #![feature(
+    array_chunks,
     const_option,
     impl_trait_in_assoc_type,
     io_error_other,
