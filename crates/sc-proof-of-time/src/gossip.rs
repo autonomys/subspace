@@ -1,5 +1,6 @@
 //! PoT gossip functionality.
 
+use crate::state_manager::PotProtocolState;
 use futures::{FutureExt, StreamExt};
 use parity_scale_codec::Decode;
 use parking_lot::{Mutex, RwLock};
@@ -21,19 +22,23 @@ type MessageHash = [u8; 32];
 
 /// PoT gossip components.
 #[derive(Clone)]
-pub struct PotGossip<Block: BlockT> {
+pub(crate) struct PotGossip<Block: BlockT> {
     engine: Arc<Mutex<GossipEngine<Block>>>,
     validator: Arc<PotGossipValidator>,
 }
 
 impl<Block: BlockT> PotGossip<Block> {
     /// Creates the gossip components.
-    pub fn new<Network, GossipSync>(network: Network, sync: Arc<GossipSync>) -> Self
+    pub(crate) fn new<Network, GossipSync>(
+        network: Network,
+        sync: Arc<GossipSync>,
+        pot_state: Arc<dyn PotProtocolState>,
+    ) -> Self
     where
         Network: sc_network_gossip::Network<Block> + Send + Sync + Clone + 'static,
         GossipSync: GossipSyncing<Block> + 'static,
     {
-        let validator = Arc::new(PotGossipValidator::new());
+        let validator = Arc::new(PotGossipValidator::new(pot_state));
         let engine = Arc::new(Mutex::new(GossipEngine::new(
             network,
             sync,
@@ -45,7 +50,7 @@ impl<Block: BlockT> PotGossip<Block> {
     }
 
     /// Gossips the message to the network.
-    pub fn gossip_message(&self, message: Vec<u8>) {
+    pub(crate) fn gossip_message(&self, message: Vec<u8>) {
         self.validator.on_broadcast(&message);
         self.engine
             .lock()
@@ -54,7 +59,7 @@ impl<Block: BlockT> PotGossip<Block> {
 
     /// Runs the loop to process incoming messages.
     /// Returns when the gossip engine terminates.
-    pub async fn process_incoming_messages<'a>(
+    pub(crate) async fn process_incoming_messages<'a>(
         &self,
         process_fn: Arc<dyn Fn(PeerId, PotProof) + 'a>,
     ) {
@@ -95,15 +100,16 @@ impl<Block: BlockT> PotGossip<Block> {
 }
 
 /// Validator for gossiped messages
-#[derive(Debug)]
 struct PotGossipValidator {
+    _pot_state: Arc<dyn PotProtocolState>,
     pending: RwLock<HashSet<MessageHash>>,
 }
 
 impl PotGossipValidator {
     /// Creates the validator.
-    fn new() -> Self {
+    fn new(pot_state: Arc<dyn PotProtocolState>) -> Self {
         Self {
+            _pot_state: pot_state,
             pending: RwLock::new(HashSet::new()),
         }
     }

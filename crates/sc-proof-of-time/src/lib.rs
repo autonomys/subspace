@@ -14,7 +14,7 @@ use subspace_core_primitives::{BlockNumber, SlotNumber};
 use subspace_proof_of_time::ProofOfTime;
 
 pub use clock_master::{BootstrapParams, ClockMaster};
-pub use gossip::{pot_gossip_peers_set_config, PotGossip};
+pub use gossip::pot_gossip_peers_set_config;
 pub use node_client::PotClient;
 pub use state_manager::{PotConsensusState, PotStateSummary};
 
