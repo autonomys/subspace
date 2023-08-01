@@ -191,11 +191,6 @@ async fn test_async_handler_works_with_pending_internal_future() {
         node_runner_2.run().await;
     });
 
-    node_2
-        .wait_for_connected_peers(Duration::from_secs(25))
-        .await
-        .unwrap();
-
     let resp = node_2
         .send_generic_request(node_1.id(), ExampleRequest)
         .await
