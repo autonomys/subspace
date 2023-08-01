@@ -298,7 +298,7 @@ pub(crate) fn import_genesis_receipt<T: Config>(
         execution_receipt: genesis_receipt,
         operator_ids: sp_std::vec![],
     };
-    // NOTE: no need to upate the head receipt number as we are using `ValueQuery`
+    // NOTE: no need to update the head receipt number as we are using `ValueQuery`
     BlockTree::<T>::mutate(domain_id, domain_block_number, |er_hashes| {
         er_hashes.insert(er_hash);
     });
@@ -310,7 +310,7 @@ mod tests {
     use super::*;
     use crate::domain_registry::DomainConfig;
     use crate::pallet::Operators;
-    use crate::staking::Operator;
+    use crate::staking::{Operator, OperatorStatus};
     use crate::tests::{
         create_dummy_bundle_with_receipts, create_dummy_receipt, GenesisStateRootGenerater,
         ReadRuntimeVersion, Test,
@@ -375,7 +375,7 @@ mod tests {
                     current_total_stake: Zero::zero(),
                     current_epoch_rewards: Zero::zero(),
                     total_shares: Zero::zero(),
-                    is_frozen: false,
+                    status: OperatorStatus::Registered,
                 },
             );
         }

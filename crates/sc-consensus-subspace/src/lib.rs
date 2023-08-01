@@ -228,7 +228,7 @@ pub enum Error<Header: HeaderT> {
     /// Stored segment header extrinsic was not found
     #[error("Stored segment header extrinsic was not found: {0:?}")]
     SegmentHeadersExtrinsicNotFound(Vec<SegmentHeader>),
-    /// Duplicated segment commitment
+    /// Different segment commitment found
     #[error(
         "Different segment commitment for segment index {0} was found in storage, likely fork \
         below archiving point"
@@ -1161,6 +1161,14 @@ where
                 .segment_commitment();
 
             if &found_segment_commitment != segment_commitment {
+                warn!(
+                    target: "subspace",
+                    "Different segment commitment for segment index {} was found in storage, \
+                    likely fork below archiving point. expected {:?}, found {:?}",
+                    segment_index,
+                    segment_commitment,
+                    found_segment_commitment
+                );
                 return Err(ConsensusError::ClientImport(
                     Error::<Block::Header>::DifferentSegmentCommitment(segment_index).to_string(),
                 ));

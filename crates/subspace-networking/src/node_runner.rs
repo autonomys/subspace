@@ -27,8 +27,8 @@ use libp2p::identify::Event as IdentifyEvent;
 use libp2p::kad::store::RecordStore;
 use libp2p::kad::{
     BootstrapOk, GetClosestPeersError, GetClosestPeersOk, GetProvidersError, GetProvidersOk,
-    GetRecordError, GetRecordOk, InboundRequest, Kademlia, KademliaEvent, PeerRecord, ProgressStep,
-    ProviderRecord, PutRecordOk, QueryId, QueryResult, Quorum, Record,
+    GetRecordError, GetRecordOk, InboundRequest, Kademlia, KademliaEvent, Mode, PeerRecord,
+    ProgressStep, ProviderRecord, PutRecordOk, QueryId, QueryResult, Quorum, Record,
 };
 use libp2p::metrics::{Metrics, Recorder};
 use libp2p::swarm::{DialError, SwarmEvent};
@@ -286,6 +286,11 @@ where
 
         debug!("Bootstrap started.");
 
+        self.swarm
+            .behaviour_mut()
+            .kademlia
+            .set_mode(Some(Mode::Server));
+
         let mut bootstrap_step = 0;
         loop {
             futures::select! {
@@ -321,12 +326,7 @@ where
         debug!(?connections, "Current connections and limits.");
 
         // Renew known external addresses.
-        let mut external_addresses = self
-            .swarm
-            .external_addresses()
-            .cloned()
-            .map(|item| item.addr)
-            .collect::<Vec<_>>();
+        let mut external_addresses = self.swarm.external_addresses().cloned().collect::<Vec<_>>();
 
         if let Some(shared) = self.shared_weak.upgrade() {
             debug!(?external_addresses, "Renew external addresses.",);
@@ -517,7 +517,7 @@ where
                     shared.handlers.disconnected_peer.call_simple(&peer_id);
                 }
             }
-            SwarmEvent::OutgoingConnectionError { peer_id, error } => {
+            SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
                 if let Some(peer_id) = &peer_id {
                     // Create or extend temporary ban, but only if we are not offline
                     if let Some(shared) = self.shared_weak.upgrade() {
@@ -608,7 +608,7 @@ where
             let full_kademlia_support = kademlia.protocol_names().iter().all(|local_protocol| {
                 info.protocols
                     .iter()
-                    .any(|remote_protocol| remote_protocol.as_bytes() == local_protocol.as_ref())
+                    .any(|remote_protocol| *remote_protocol == *local_protocol)
             });
 
             if full_kademlia_support {
@@ -633,7 +633,6 @@ where
                         kademlia
                             .protocol_names()
                             .iter()
-                            .map(|p| String::from_utf8_lossy(p.as_ref()))
                             .collect::<Vec<_>>(),
                     );
                     kademlia.add_address(&peer_id, address);
@@ -647,7 +646,6 @@ where
                     kademlia
                         .protocol_names()
                         .iter()
-                        .map(|p| String::from_utf8_lossy(p.as_ref()))
                         .collect::<Vec<_>>(),
                 );
 
@@ -1203,11 +1201,7 @@ where
             }
             Command::StartLocalAnnouncing { key, result_sender } => {
                 let local_peer_id = *self.swarm.local_peer_id();
-                let addresses = self
-                    .swarm
-                    .external_addresses()
-                    .map(|rec| rec.addr.clone())
-                    .collect::<Vec<_>>();
+                let addresses = self.swarm.external_addresses().cloned().collect::<Vec<_>>();
 
                 let provider_record = ProviderRecord {
                     provider: local_peer_id,

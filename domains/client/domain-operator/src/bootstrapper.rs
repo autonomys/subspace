@@ -11,6 +11,8 @@ pub struct BootstrapResult<CBlock: BlockT> {
     // The `DomainInstanceData` used by the domain instance starter to
     // construct `RuntimeGenesisConfig` of the domain instance
     pub domain_instance_data: DomainInstanceData,
+    /// The consensus chain block number when the domain first instantiated.
+    pub domain_created_at: NumberFor<CBlock>,
     // The `imported_block_notification_stream` used by the bootstrapper
     //
     // NOTE: the domain instance starter must reuse this stream instead of
@@ -53,19 +55,20 @@ where
 
         // Check if the domain instance data already exist in the consensus chain's genesis state
         let best_hash = self.consensus_client.info().best_hash;
-        if let Some(domain_instance_data) = self
+        if let Some((domain_instance_data, domain_created_at)) = self
             .consensus_client
             .runtime_api()
             .domain_instance_data(best_hash, self_domain_id)?
         {
             return Ok(BootstrapResult {
                 domain_instance_data,
+                domain_created_at,
                 imported_block_notification_stream,
             });
         }
 
         // Check each imported consensus block to get the domain instance data
-        let domain_instance_data = 'outer: loop {
+        let (domain_instance_data, domain_created_at) = 'outer: loop {
             if let Some(block_imported) = imported_block_notification_stream.next().await {
                 let header = block_imported.header;
                 for item in header.digest().logs.iter() {
@@ -97,6 +100,7 @@ where
 
         Ok(BootstrapResult {
             domain_instance_data,
+            domain_created_at,
             imported_block_notification_stream,
         })
     }

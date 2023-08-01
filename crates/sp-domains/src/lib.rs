@@ -463,12 +463,25 @@ pub type EpochIndex = u32;
 /// Type representing operator ID
 pub type OperatorId = u64;
 
-/// Domains specific Identifier for Balances freeze.
+/// Staking specific hold identifier
 #[derive(
     PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
 )]
-pub enum DomainsFreezeIdentifier {
-    Staking(OperatorId),
+pub enum StakingHoldIdentifier {
+    /// Holds all the pending deposits to an Operator.
+    PendingDeposit(OperatorId),
+    /// Holds all the currently staked funds to an Operator.
+    Staked(OperatorId),
+    /// Holds all the currently unlocking funds.
+    PendingUnlock(OperatorId),
+}
+
+/// Domains specific Identifier for Balances holds.
+#[derive(
+    PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
+)]
+pub enum DomainsHoldIdentifier {
+    Staking(StakingHoldIdentifier),
     DomainInstantiation(DomainId),
 }
 
@@ -608,7 +621,7 @@ sp_api::decl_runtime_apis! {
         fn runtime_id(domain_id: DomainId) -> Option<RuntimeId>;
 
         /// Returns the domain instance data for given `domain_id`.
-        fn domain_instance_data(domain_id: DomainId) -> Option<DomainInstanceData>;
+        fn domain_instance_data(domain_id: DomainId) -> Option<(DomainInstanceData, NumberFor<Block>)>;
 
         /// Returns the current timestamp at given height.
         fn timestamp() -> Moment;

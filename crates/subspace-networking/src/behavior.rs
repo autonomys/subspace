@@ -66,7 +66,7 @@ pub(crate) struct GeneralConnectedPeersInstance;
 pub(crate) struct SpecialConnectedPeersInstance;
 
 #[derive(NetworkBehaviour)]
-#[behaviour(out_event = "Event")]
+#[behaviour(to_swarm = "Event")]
 #[behaviour(event_process = false)]
 pub(crate) struct Behavior<RecordStore> {
     pub(crate) identify: Identify,
