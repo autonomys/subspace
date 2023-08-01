@@ -1,14 +1,13 @@
 //! PoT gossip functionality.
 
-use futures::channel::mpsc::Receiver;
-use futures::FutureExt;
+use futures::{FutureExt, StreamExt};
 use parity_scale_codec::Decode;
 use parking_lot::{Mutex, RwLock};
 use sc_network::config::NonDefaultSetConfig;
 use sc_network::PeerId;
 use sc_network_gossip::{
-    GossipEngine, MessageIntent, Syncing as GossipSyncing, TopicNotification, ValidationResult,
-    Validator, ValidatorContext,
+    GossipEngine, MessageIntent, Syncing as GossipSyncing, ValidationResult, Validator,
+    ValidatorContext,
 };
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
 use std::collections::HashSet;
@@ -53,13 +52,43 @@ impl<Block: BlockT> PotGossip<Block> {
             .gossip_message(topic::<Block>(), message, false);
     }
 
-    /// Returns the receiver for the messages.
-    pub fn incoming_messages(&self) -> Receiver<TopicNotification> {
-        self.engine.lock().messages_for(topic::<Block>())
+    /// Runs the loop to process incoming messages.
+    /// Returns when the gossip engine terminates.
+    pub async fn process_incoming_messages<'a>(
+        &self,
+        process_fn: Arc<dyn Fn(PeerId, PotProof) + 'a>,
+    ) {
+        let message_receiver = self.engine.lock().messages_for(topic::<Block>());
+        let mut incoming_messages = Box::pin(message_receiver.filter_map(
+            // Filter out messages without sender or fail to decode.
+            // TODO: penalize nodes that send garbled messages.
+            |notification| async move {
+                let mut ret = None;
+                if let Some(sender) = notification.sender {
+                    if let Ok(msg) = PotProof::decode(&mut &notification.message[..]) {
+                        ret = Some((sender, msg))
+                    }
+                }
+                ret
+            },
+        ));
+
+        loop {
+            futures::select! {
+                gossiped = incoming_messages.next().fuse() => {
+                    if let Some((sender, proof)) = gossiped {
+                        (process_fn)(sender, proof);
+                    }
+                },
+                 _ = self.wait_for_termination().fuse() => {
+                    return;
+                }
+            }
+        }
     }
 
     /// Waits for gossip engine to terminate.
-    pub async fn is_terminated(&self) {
+    async fn wait_for_termination(&self) {
         let poll_fn = futures::future::poll_fn(|cx| self.engine.lock().poll_unpin(cx));
         poll_fn.await;
     }

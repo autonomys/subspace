@@ -4,8 +4,8 @@ use crate::gossip::PotGossip;
 use crate::state_manager::PotProtocolState;
 use crate::utils::get_consensus_tip_proofs;
 use crate::PotComponents;
-use futures::{FutureExt, StreamExt};
-use parity_scale_codec::{Decode, Encode};
+use futures::FutureExt;
+use parity_scale_codec::Encode;
 use sc_network::PeerId;
 use sp_blockchain::{HeaderBackend, Info};
 use sp_consensus::SyncOracle;
@@ -15,7 +15,7 @@ use std::thread;
 use std::time::Instant;
 use subspace_core_primitives::{BlockHash, NonEmptyVec, PotKey, PotProof, PotSeed, SlotNumber};
 use subspace_proof_of_time::ProofOfTime;
-use tokio::sync::mpsc::{channel, Sender};
+use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tracing::{error, trace, warn};
 
 /// Channel size to send the produced proofs.
@@ -91,7 +91,7 @@ where
         }
     }
 
-    /// Starts the workers.
+    /// Runs the clock master processing loop.
     pub async fn run(self, bootstrap_params: Option<BootstrapParams>) {
         if let Some(params) = bootstrap_params.as_ref() {
             // The clock master is responsible for bootstrapping, build/add the
@@ -115,35 +115,11 @@ where
             self.pot_state.reset(proofs);
         }
 
-        let (local_proof_sender, mut local_proof_receiver) = channel(PROOFS_CHANNEL_SIZE);
-
-        // Filter out incoming messages without sender_id or that fail to decode.
-        let mut incoming_messages = Box::pin(self.gossip.incoming_messages().filter_map(
-            |notification| async move {
-                let mut ret = None;
-                if let Some(sender) = notification.sender {
-                    if let Ok(msg) = PotProof::decode(&mut &notification.message[..]) {
-                        ret = Some((sender, msg))
-                    }
-                }
-                ret
-            },
-        ));
-
-        let proof_of_time = self.proof_of_time.clone();
-        let pot_state = self.pot_state.clone();
-        thread::Builder::new()
-            .name("pot-proof-producer".to_string())
-            .spawn(move || {
-                Self::produce_proofs(proof_of_time, pot_state, local_proof_sender);
-            })
-            // TODO: Proper error handling or proof
-            .expect("Failed to spawn PoT proof producer thread");
-
+        let mut local_proof_receiver = self.spawn_producer_thread();
+        let handle_gossip_message: Arc<dyn Fn(PeerId, PotProof)> = Arc::new(|sender, proof| {
+            self.handle_gossip_message(sender, proof);
+        });
         loop {
-            //let engine = self.gossip.engine.clone();
-            //let gossip_engine = futures::future::poll_fn(|cx| engine.lock().poll_unpin(cx));
-
             futures::select! {
                 local_proof = local_proof_receiver.recv().fuse() => {
                     if let Some(proof) = local_proof {
@@ -151,18 +127,29 @@ where
                         self.handle_local_proof(proof);
                     }
                 },
-                gossiped = incoming_messages.next().fuse() => {
-                    if let Some((sender, proof)) = gossiped {
-                        trace!("clock_master: got gossiped proof: {sender} => {proof}");
-                        self.handle_gossip_message(self.pot_state.as_ref(), sender, proof);
-                    }
-                },
-                _ = self.gossip.is_terminated().fuse() => {
+                _ = self.gossip.process_incoming_messages(
+                    handle_gossip_message.clone()
+                ).fuse() => {
                     error!("clock_master: gossip engine has terminated.");
                     return;
                 }
             }
         }
+    }
+
+    /// Starts the thread to produce the proofs.
+    fn spawn_producer_thread(&self) -> Receiver<PotProof> {
+        let (sender, receiver) = channel(PROOFS_CHANNEL_SIZE);
+        let proof_of_time = self.proof_of_time.clone();
+        let pot_state = self.pot_state.clone();
+        thread::Builder::new()
+            .name("pot-proof-producer".to_string())
+            .spawn(move || {
+                Self::produce_proofs(proof_of_time, pot_state, sender);
+            })
+            // TODO: Proper error handling or proof
+            .expect("Failed to spawn PoT proof producer thread");
+        receiver
     }
 
     /// Long running loop to produce the proofs.
@@ -207,9 +194,9 @@ where
     }
 
     /// Handles the incoming gossip message.
-    fn handle_gossip_message(&self, state: &dyn PotProtocolState, sender: PeerId, proof: PotProof) {
+    fn handle_gossip_message(&self, sender: PeerId, proof: PotProof) {
         let start_ts = Instant::now();
-        let ret = state.on_proof_from_peer(sender, &proof);
+        let ret = self.pot_state.on_proof_from_peer(sender, &proof);
         let elapsed = start_ts.elapsed();
 
         if let Err(err) = ret {
