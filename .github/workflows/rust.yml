@@ -29,7 +29,9 @@ env:
   CARGO_TERM_COLOR: always
   # Build smaller artifacts to avoid running out of space in CI
   # TODO: Try to remove once https://github.com/paritytech/substrate/issues/11538 is resolved
-  RUSTFLAGS: -C strip=symbols -C opt-level=s
+  # TODO: AES flag is such that we have decent performance on ARMv8, remove once `aes` crate bumps MSRV to at least
+  #  1.61: https://github.com/RustCrypto/block-ciphers/issues/373
+  RUSTFLAGS: -C strip=symbols -C opt-level=s --cfg aes_armv8
   # Remove unnecessary WASM build artefacts
   WASM_BUILD_CLEAN_TARGET: 1
 
