@@ -90,10 +90,19 @@ where
         let DomainInstanceData {
             runtime_type,
             runtime_code,
+            raw_genesis_config,
         } = domain_instance_data;
         let domain_genesis_block_builder = match runtime_type {
             RuntimeType::Evm => {
-                let mut runtime_cfg = evm_domain_runtime::RuntimeGenesisConfig::default();
+                let mut runtime_cfg = match raw_genesis_config {
+                    Some(raw_genesis_config) => serde_json::from_slice(&raw_genesis_config)
+                        .map_err(|_| {
+                            sp_blockchain::Error::Application(Box::from(
+                                "Failed to deserialize genesis config of the evm domain",
+                            ))
+                        })?,
+                    None => evm_domain_runtime::RuntimeGenesisConfig::default(),
+                };
                 runtime_cfg.system.code = runtime_code;
                 runtime_cfg.self_domain_id.domain_id = Some(domain_id);
                 GenesisBlockBuilder::new(

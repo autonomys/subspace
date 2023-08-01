@@ -1,7 +1,7 @@
 //! Utilities used for testing with the domain.
 #![warn(missing_docs)]
 
-use crate::chain_spec::{domain_instance_genesis_config, load_chain_spec_with};
+use crate::chain_spec::create_domain_spec;
 use crate::{construct_extrinsic_generic, node_config, EcdsaKeyring, UncheckedExtrinsicFor};
 use domain_client_operator::{BootstrapResult, Bootstrapper, OperatorStreams};
 use domain_runtime_primitives::opaque::Block;
@@ -183,11 +183,7 @@ where
                 .await
                 .expect("Failed to get domain instance data")
         };
-        let chain_spec = {
-            let genesis_config =
-                domain_instance_genesis_config(domain_id, domain_instance_data.runtime_code);
-            load_chain_spec_with(genesis_config)
-        };
+        let chain_spec = create_domain_spec(domain_id, domain_instance_data);
         let service_config = node_config(
             domain_id,
             tokio_handle.clone(),
