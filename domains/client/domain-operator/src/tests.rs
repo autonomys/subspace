@@ -182,12 +182,7 @@ async fn test_domain_block_production() {
     assert_eq!(alice.client.info().best_number, domain_block_number + 10);
 }
 
-// TODO: Disabled because the pallet-balance genesis config of the evm domain is empty and
-// there is no initial balance in the testing account thus the `transfer` extrinsic will fail
-// due to unable to pay transaction fee, unlock once we can set customized genesis config in
-// test environment.
 #[substrate_test_utils::test(flavor = "multi_thread")]
-#[ignore]
 async fn test_domain_block_deriving_from_multiple_bundles() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -447,12 +442,7 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
     );
 }
 
-// TODO: Disabled because the pallet-balance genesis config of the evm domain is empty and
-// there is no initial balance in the testing account thus the `transfer` extrinsic will fail
-// due to unable to pay transaction fee, unlock once we can set customized genesis config in
-// test environment.
 #[substrate_test_utils::test(flavor = "multi_thread")]
-#[ignore]
 async fn test_domain_tx_propagate() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 

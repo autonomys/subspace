@@ -391,6 +391,7 @@ where
                 return Ok(false);
             }
 
+            // TODO: the `check_transaction_validity` is unimplemented
             let is_legal_tx = self
                 .client
                 .runtime_api()

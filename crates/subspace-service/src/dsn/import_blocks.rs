@@ -43,8 +43,6 @@ use subspace_networking::Node;
 // Refuse to compile on non-64-bit platforms, otherwise segment indices will not fit in memory
 const_assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<u64>());
 
-/// How long to wait for peers before giving up
-const WAIT_FOR_PEERS_TIMEOUT: Duration = Duration::from_secs(10);
 /// How many blocks to queue before pausing and waiting for blocks to be imported
 const QUEUED_BLOCKS_LIMIT: BlockNumber = 2048;
 /// Time to wait for blocks to import if import is too slow
@@ -190,17 +188,6 @@ where
     Client: HeaderBackend<Block> + BlockBackend<Block> + Send + Sync + 'static,
     IQS: ImportQueueService<Block> + ?Sized,
 {
-    debug!("Waiting for connected peers...");
-    if node
-        .wait_for_connected_peers(WAIT_FOR_PEERS_TIMEOUT)
-        .await
-        .is_err()
-    {
-        info!("Was not able to find any DSN peers, cancelling sync from DSN");
-        return Ok(0);
-    }
-    debug!("Connected to peers.");
-
     let segment_headers = SegmentHeaderHandler::new(node.clone())
         .get_segment_headers()
         .await

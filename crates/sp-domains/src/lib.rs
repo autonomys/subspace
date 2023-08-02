@@ -433,6 +433,7 @@ pub struct GenesisDomain<AccountId> {
     pub max_block_weight: Weight,
     pub bundle_slot_probability: (u64, u64),
     pub target_bundles_per_block: u32,
+    pub raw_genesis_config: Vec<u8>,
 
     // Genesis operator
     pub signing_key: OperatorPublicKey,
@@ -530,6 +531,11 @@ impl DomainsDigestItem for DigestItem {
 pub struct DomainInstanceData {
     pub runtime_type: RuntimeType,
     pub runtime_code: Vec<u8>,
+    // The genesis config of the domain, encoded in json format.
+    //
+    // NOTE: the WASM code in the `system-pallet` genesis config should be empty to avoid
+    // redundancy with the `runtime_code` field.
+    pub raw_genesis_config: Option<Vec<u8>>,
 }
 
 impl PassBy for DomainInstanceData {

@@ -1194,17 +1194,6 @@ where
                     IfDisconnected::TryConnect,
                 );
             }
-            Command::CheckConnectedPeers { result_sender } => {
-                let connected_peers_present = self.swarm.connected_peers().next().is_some();
-
-                let kademlia_connection_initiated = if connected_peers_present {
-                    self.swarm.behaviour_mut().kademlia.bootstrap().is_ok()
-                } else {
-                    false
-                };
-
-                let _ = result_sender.send(kademlia_connection_initiated);
-            }
             Command::StartLocalAnnouncing { key, result_sender } => {
                 let local_peer_id = *self.swarm.local_peer_id();
                 let addresses = self.swarm.external_addresses().cloned().collect::<Vec<_>>();

@@ -19,6 +19,7 @@
 #![warn(missing_docs, unused_crate_dependencies)]
 
 pub mod chain_spec;
+pub mod domain_chain_spec;
 
 use futures::executor::block_on;
 use futures::StreamExt;
