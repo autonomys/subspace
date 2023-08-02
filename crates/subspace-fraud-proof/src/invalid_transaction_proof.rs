@@ -193,7 +193,7 @@ where
             <RuntimeApiLight<Exec> as DomainCoreApi<Block>>::check_transaction_validity(
                 &runtime_api_light,
                 Default::default(), // Unused for stateless runtime api.
-                extrinsic,
+                &extrinsic,
                 *domain_block_hash,
             )?;
 

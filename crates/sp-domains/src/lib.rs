@@ -601,6 +601,30 @@ pub fn signer_in_tx_range(bundle_vrf_hash: &U256, signer_id_hash: &U256, tx_rang
     distance_from_vrf_hash <= (*tx_range / 2)
 }
 
+#[derive(Debug, Decode, Encode, TypeInfo, Clone)]
+pub enum InvalidBundleType {
+    /// Runtime API error.
+    ApiError,
+    /// Failed to decode the opaque extrinsic.
+    UndecodableTx,
+    /// Transaction is out of the tx range.
+    OutOfRangeTx,
+    /// Transaction is illegal (unable to pay the fee, etc).
+    IllegalTx,
+}
+
+#[derive(Debug, Decode, Encode, TypeInfo, Clone)]
+pub struct InvalidBundle {
+    pub bundle_index: u32,
+    pub invalid_bundle_type: InvalidBundleType,
+}
+
+#[derive(Debug, Decode, Encode, TypeInfo, Clone)]
+pub enum BundleValidity<Extrinsic> {
+    Valid(Vec<Extrinsic>),
+    Invalid(InvalidBundleType),
+}
+
 sp_api::decl_runtime_apis! {
     /// API necessary for domains pallet.
     pub trait DomainsApi<DomainNumber: Encode + Decode, DomainHash: Encode + Decode> {

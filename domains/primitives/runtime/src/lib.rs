@@ -184,7 +184,7 @@ sp_api::decl_runtime_apis! {
 
         /// Checks the validity of extrinsic in a bundle.
         fn check_transaction_validity(
-            uxt: <Block as BlockT>::Extrinsic,
+            uxt: &<Block as BlockT>::Extrinsic,
             block_hash: <Block as BlockT>::Hash,
         ) -> Result<(), CheckTxValidityError>;
 

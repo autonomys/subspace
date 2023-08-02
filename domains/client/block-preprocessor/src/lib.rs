@@ -30,7 +30,8 @@ use sc_client_api::BlockBackend;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_domains::{
-    DomainId, DomainsApi, DomainsDigestItem, ExtrinsicsRoot, OpaqueBundle, OpaqueBundles,
+    BundleValidity, DomainId, DomainsApi, DomainsDigestItem, ExtrinsicsRoot, InvalidBundle,
+    InvalidBundleType, OpaqueBundle, OpaqueBundles,
 };
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use std::borrow::Cow;
@@ -286,7 +287,8 @@ where
             .runtime_api()
             .domain_tx_range(consensus_block_hash, self.domain_id)?;
 
-        let extrinsics = self.compile_bundles_to_extrinsics(bundles, tx_range, domain_hash);
+        let (invalid_bundles, extrinsics) =
+            self.compile_bundles_to_extrinsics(bundles, tx_range, domain_hash);
 
         let extrinsics_in_bundle = deduplicate_and_shuffle_extrinsics(
             domain_hash,
@@ -331,28 +333,37 @@ where
         bundles: OpaqueBundles<CBlock, NumberFor<Block>, Block::Hash, Balance>,
         tx_range: U256,
         at: Block::Hash,
-    ) -> Vec<Block::Extrinsic> {
-        bundles
+    ) -> (Vec<InvalidBundle>, Vec<Block::Extrinsic>) {
+        let mut invalid_bundles = Vec::with_capacity(bundles.len());
+
+        let valid_extrinscis = bundles
             .into_iter()
-            .filter(|bundle| {
-                self.is_valid_bundle(bundle, &tx_range, at)
+            .enumerate()
+            .flat_map(|(index, bundle)| {
+                let bundle_validity = self
+                    .check_bundle_validity(&bundle, &tx_range, at)
                     .map_err(|err| {
                         tracing::error!(?err, "Error occurred in checking bundle validity");
                     })
-                    .unwrap_or(false)
+                    .unwrap_or(BundleValidity::Invalid(InvalidBundleType::ApiError));
+
+                match bundle_validity {
+                    BundleValidity::Valid(extrinsics) => extrinsics,
+                    BundleValidity::Invalid(invalid_bundle_type) => {
+                        invalid_bundles.push(InvalidBundle {
+                            bundle_index: index as u32,
+                            invalid_bundle_type,
+                        });
+                        Vec::new()
+                    }
+                }
             })
-            .flat_map(|valid_bundle| {
-                valid_bundle.extrinsics.into_iter().map(|opaque_extrinsic| {
-                    <<Block as BlockT>::Extrinsic>::decode(
-                        &mut opaque_extrinsic.encode().as_slice(),
-                    )
-                    .expect("Must succeed as it was decoded successfully before; qed")
-                })
-            })
-            .collect::<Vec<_>>()
+            .collect::<Vec<_>>();
+
+        (invalid_bundles, valid_extrinscis)
     }
 
-    fn is_valid_bundle(
+    fn check_bundle_validity(
         &self,
         bundle: &OpaqueBundle<
             NumberFor<CBlock>,
@@ -363,9 +374,11 @@ where
         >,
         tx_range: &U256,
         at: Block::Hash,
-    ) -> Result<bool, sp_api::ApiError> {
+    ) -> Result<BundleValidity<Block::Extrinsic>, sp_api::ApiError> {
         let bundle_vrf_hash =
             U256::from_be_bytes(bundle.sealed_header.header.proof_of_election.vrf_hash());
+
+        let mut extrinsics = Vec::with_capacity(bundle.extrinsics.len());
 
         for opaque_extrinsic in &bundle.extrinsics {
             let Ok(extrinsic) =
@@ -376,7 +389,7 @@ where
                     "Undecodable extrinsic in bundle({})",
                     bundle.hash()
                 );
-                return Ok(false);
+                return Ok(BundleValidity::Invalid(InvalidBundleType::UndecodableTx));
             };
 
             let is_within_tx_range = self.client.runtime_api().is_within_tx_range(
@@ -388,23 +401,25 @@ where
 
             if !is_within_tx_range {
                 // TODO: Generate a fraud proof for this invalid bundle
-                return Ok(false);
+                return Ok(BundleValidity::Invalid(InvalidBundleType::OutOfRangeTx));
             }
 
             // TODO: the `check_transaction_validity` is unimplemented
             let is_legal_tx = self
                 .client
                 .runtime_api()
-                .check_transaction_validity(at, extrinsic, at)?
+                .check_transaction_validity(at, &extrinsic, at)?
                 .is_ok();
 
             if !is_legal_tx {
                 // TODO: Generate a fraud proof for this invalid bundle
-                return Ok(false);
+                return Ok(BundleValidity::Invalid(InvalidBundleType::IllegalTx));
             }
+
+            extrinsics.push(extrinsic);
         }
 
-        Ok(true)
+        Ok(BundleValidity::Valid(extrinsics))
     }
 
     fn filter_invalid_xdm_extrinsics(
