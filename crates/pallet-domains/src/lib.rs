@@ -32,7 +32,7 @@ mod staking_epoch;
 pub mod weights;
 
 use crate::block_tree::verify_execution_receipt;
-use crate::staking::{Operator, OperatorStatus};
+use crate::staking::{do_nominate_operator, Operator, OperatorStatus};
 use codec::{Decode, Encode};
 use frame_support::ensure;
 use frame_support::traits::fungible::{Inspect, InspectHold};
@@ -1427,6 +1427,22 @@ impl<T: Config> Pallet<T> {
             max_block_size: domain_obj.domain_config.max_block_size,
             max_block_weight: domain_obj.domain_config.max_block_weight,
         })
+    }
+
+    /// Increase the nomination stake by `reward` to the preferred operator of `who`.
+    /// Preference is removed if the nomination fails.
+    pub fn on_block_reward(who: NominatorId<T>, reward: BalanceOf<T>) {
+        PreferredOperator::<T>::mutate_exists(who.clone(), |maybe_preferred_operator_id| {
+            if let Some(operator_id) = maybe_preferred_operator_id {
+                if let Err(err) = do_nominate_operator::<T>(*operator_id, who, reward) {
+                    log::trace!(
+                        target: "runtime::domains",
+                        "Failed to stake the reward amount to preferred operator: {err:?}. Removing preference."
+                    );
+                    maybe_preferred_operator_id.take();
+                }
+            }
+        });
     }
 }
 

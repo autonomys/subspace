@@ -1459,6 +1459,24 @@ pub(crate) mod tests {
                 operator_id,
                 PreferredOperator::<Test>::get(nominator_account).unwrap()
             );
+
+            // should auto deposit
+            Domains::on_block_reward(nominator_account, 10 * SSC);
+            let deposit = PendingDeposits::<Test>::get(operator_id, nominator_account).unwrap();
+            assert_eq!(deposit, 10 * SSC);
+
+            // an issues with nominator will lead to removal of preference
+            Operators::<Test>::mutate(operator_id, |maybe_operator| {
+                let operator = maybe_operator.as_mut().unwrap();
+                operator.status = OperatorStatus::Deregistered;
+            });
+            Domains::on_block_reward(nominator_account, 10 * SSC);
+
+            // deposit is still 10 SSC
+            let deposit = PendingDeposits::<Test>::get(operator_id, nominator_account).unwrap();
+            assert_eq!(deposit, 10 * SSC);
+            // no preference
+            assert!(!PreferredOperator::<Test>::contains_key(nominator_account));
         });
     }
 }

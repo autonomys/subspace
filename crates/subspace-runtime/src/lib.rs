@@ -516,6 +516,14 @@ impl pallet_domains::Config for Runtime {
     type TreasuryAccount = TreasuryAccount;
 }
 
+pub struct StakingOnReward;
+
+impl pallet_rewards::OnReward<AccountId, Balance> for StakingOnReward {
+    fn on_reward(account: AccountId, reward: Balance) {
+        Domains::on_block_reward(account, reward);
+    }
+}
+
 parameter_types! {
     pub const BlockReward: Balance = SSC / (ExpectedVotesPerBlock::get() as Balance + 1);
     pub const VoteReward: Balance = SSC / (ExpectedVotesPerBlock::get() as Balance + 1);
@@ -529,7 +537,7 @@ impl pallet_rewards::Config for Runtime {
     type FindBlockRewardAddress = Subspace;
     type FindVotingRewardAddresses = Subspace;
     type WeightInfo = ();
-    type OnReward = ();
+    type OnReward = StakingOnReward;
 }
 
 pub type FeedId = u64;
