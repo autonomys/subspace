@@ -27,7 +27,7 @@ use sp_runtime::DigestItem;
 use sp_std::collections::btree_map::{BTreeMap, Entry};
 use sp_std::fmt;
 use subspace_core_primitives::{
-    Randomness, SegmentCommitment, SegmentIndex, Solution, SolutionRange,
+    NonEmptyVec, PotProof, Randomness, SegmentCommitment, SegmentIndex, Solution, SolutionRange,
 };
 use subspace_verification::derive_randomness;
 
@@ -39,6 +39,48 @@ pub struct PreDigest<PublicKey, RewardAddress> {
     pub slot: Slot,
     /// Solution (includes PoR)
     pub solution: Solution<PublicKey, RewardAddress>,
+    /// Proof of time included in the block
+    pub proof_of_time: PotPreDigest,
+}
+
+/// The proof of time included in the pre digest.
+/// TODO: versioning needs to match PotProof version,
+/// versioning added on the proof side
+#[derive(Debug, Clone, Encode, Decode)]
+pub enum PotPreDigest {
+    /// The block was produced in the bootstrapping phase, where
+    /// the genesis slot has not yet been determined and the proof
+    /// production has not started.
+    Bootstrapping,
+
+    /// V0 proof.
+    V0(NonEmptyVec<PotProof>),
+}
+
+impl PotPreDigest {
+    /// Constructs the PoT for the pre digest.
+    pub fn new(proofs: NonEmptyVec<PotProof>) -> Self {
+        Self::V0(proofs)
+    }
+
+    /// Helper to check if bootstrapping.
+    pub fn is_bootstrapping(&self) -> bool {
+        matches!(self, Self::Bootstrapping)
+    }
+
+    /// Returns a reference to the proofs.
+    pub fn proofs(&self) -> Option<&NonEmptyVec<PotProof>> {
+        match self {
+            Self::Bootstrapping => None,
+            Self::V0(proofs) => Some(proofs),
+        }
+    }
+}
+
+impl Default for PotPreDigest {
+    fn default() -> Self {
+        Self::Bootstrapping
+    }
 }
 
 /// A digest item which is usable with Subspace consensus.
@@ -570,6 +612,7 @@ where
                 FarmerPublicKey::unchecked_from([0u8; 32]),
                 FarmerPublicKey::unchecked_from([0u8; 32]),
             ),
+            proof_of_time: Default::default(),
         });
     }
 

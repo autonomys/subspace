@@ -235,6 +235,7 @@ fn valid_header(
         let pre_digest = PreDigest {
             slot: slot.into(),
             solution,
+            proof_of_time: Default::default(),
         };
         let digests = vec![
             DigestItem::global_randomness(global_randomness),

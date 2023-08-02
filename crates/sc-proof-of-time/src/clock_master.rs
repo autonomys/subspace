@@ -221,7 +221,7 @@ where
             params.slot,
             params.genesis_hash,
         );
-        let proofs = NonEmptyVec::new(vec![proof]).expect("Vec is non empty; qed");
+        let proofs = NonEmptyVec::new_with_entry(proof);
         self.pot_state.reset(proofs);
     }
 }

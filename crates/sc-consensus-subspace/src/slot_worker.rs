@@ -325,7 +325,11 @@ where
                     if maybe_pre_digest.is_none() && solution_distance <= solution_range / 2 {
                         info!(target: "subspace", "🚜 Claimed block at slot {slot}");
 
-                        maybe_pre_digest.replace(PreDigest { solution, slot });
+                        maybe_pre_digest.replace(PreDigest {
+                            solution,
+                            slot,
+                            proof_of_time: Default::default(),
+                        });
                     } else if !parent_header.number().is_zero() {
                         // Not sending vote on top of genesis block since segment headers since piece
                         // verification wouldn't be possible due to missing (for now) segment commitment
