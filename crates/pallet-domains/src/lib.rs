@@ -131,7 +131,7 @@ mod pallet {
     use sp_domains::fraud_proof::FraudProof;
     use sp_domains::transaction::InvalidTransactionCode;
     use sp_domains::{
-        DomainId, ExtrinsicsRoot, GenesisDomain, OperatorId, ReceiptHash, RuntimeId, RuntimeType,
+        BundleDigest, DomainId, GenesisDomain, OperatorId, ReceiptHash, RuntimeId, RuntimeType,
     };
     use sp_runtime::traits::{
         AtLeast32BitUnsigned, BlockNumberProvider, Bounded, CheckEqual, CheckedAdd, MaybeDisplay,
@@ -441,9 +441,11 @@ mod pallet {
     pub(super) type HeadReceiptNumber<T: Config> =
         StorageMap<_, Identity, DomainId, T::DomainNumber, ValueQuery>;
 
-    /// A set of `bundle_extrinsics_root` from all bundles that successfully submitted to the consensus
-    /// block, these extrinsics will be used to construct the domain block and `ExecutionInbox` is used
-    /// to ensure subsequent ERs of that domain block include all pre-validated extrinsic bundles.
+    /// A set of `BundleDigest` from all bundles that successfully submitted to the consensus block,
+    /// these bundles will be used to construct the domain block and `ExecutionInbox` is used to:
+    ///
+    /// 1. Ensure subsequent ERs of that domain block include all pre-validated extrinsic bundles
+    /// 2. Index the `InboxedBundle` and pruned its value when the corresponding `ExecutionInbox` is pruned
     #[pallet::storage]
     pub type ExecutionInbox<T: Config> = StorageNMap<
         _,
@@ -452,9 +454,16 @@ mod pallet {
             NMapKey<Identity, T::DomainNumber>,
             NMapKey<Identity, T::BlockNumber>,
         ),
-        Vec<ExtrinsicsRoot>,
+        Vec<BundleDigest>,
         ValueQuery,
     >;
+
+    /// A mapping of `bundle_header_hash` -> `bundle_author` for all the successfully submitted bundles of
+    /// the last `BlockTreePruningDepth` domain blocks. Used to verify the invalid bundle fraud proof and
+    /// slash malicious operator who have submitted invalid bundle.
+    #[pallet::storage]
+    pub(super) type InboxedBundle<T: Config> =
+        StorageMap<_, Identity, H256, OperatorId, OptionQuery>;
 
     /// The block number of the best domain block, increase by one when the first bundle of the domain is
     /// successfully submitted to current consensus block, which mean a new domain block with this block
@@ -631,6 +640,7 @@ mod pallet {
 
             let domain_id = opaque_bundle.domain_id();
             let bundle_hash = opaque_bundle.hash();
+            let bundle_header_hash = opaque_bundle.sealed_header.pre_hash();
             let extrinsics_root = opaque_bundle.extrinsics_root();
             let operator_id = opaque_bundle.operator_id();
             let receipt = opaque_bundle.into_receipt();
@@ -699,8 +709,13 @@ mod pallet {
             let consensus_block_number = frame_system::Pallet::<T>::current_block_number();
             ExecutionInbox::<T>::append(
                 (domain_id, head_domain_number, consensus_block_number),
-                extrinsics_root,
+                BundleDigest {
+                    header_hash: bundle_header_hash,
+                    extrinsics_root,
+                },
             );
+
+            InboxedBundle::<T>::insert(bundle_header_hash, operator_id);
 
             SuccessfulBundles::<T>::append(domain_id, bundle_hash);
 

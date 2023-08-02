@@ -301,6 +301,15 @@ impl<Extrinsic: Encode, Number, Hash, DomainNumber, DomainHash, Balance>
     }
 }
 
+/// A digest of the bundle
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub struct BundleDigest {
+    /// The hash of the bundle header
+    pub header_hash: H256,
+    /// The Merkle root of all new extrinsics included in this bundle.
+    pub extrinsics_root: ExtrinsicsRoot,
+}
+
 /// Receipt of a domain block execution.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance> {
