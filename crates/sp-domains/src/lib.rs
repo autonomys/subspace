@@ -617,9 +617,6 @@ sp_api::decl_runtime_apis! {
             extrinsics: Vec<Block::Extrinsic>,
         ) -> OpaqueBundles<Block, DomainNumber, DomainHash, Balance>;
 
-        /// Returns the hash of successfully submitted bundles.
-        fn successful_bundle_hashes() -> Vec<H256>;
-
         /// Generates a randomness seed for extrinsics shuffling.
         fn extrinsics_shuffling_seed(header: Block::Header) -> Randomness;
 

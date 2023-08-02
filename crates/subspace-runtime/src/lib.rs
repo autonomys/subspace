@@ -855,10 +855,6 @@ impl_runtime_apis! {
             crate::domains::extract_successful_bundles(domain_id, extrinsics)
         }
 
-        fn successful_bundle_hashes() -> Vec<H256> {
-            Domains::successful_bundles_of_all_domains()
-        }
-
         fn extrinsics_shuffling_seed(header: <Block as BlockT>::Header) -> Randomness {
             crate::domains::extrinsics_shuffling_seed::<Block>(header)
         }

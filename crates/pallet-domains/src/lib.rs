@@ -1079,14 +1079,6 @@ impl<T: Config> Pallet<T> {
         SuccessfulBundles::<T>::get(domain_id)
     }
 
-    pub fn successful_bundles_of_all_domains() -> Vec<H256> {
-        let mut res = Vec::new();
-        for mut bundles in SuccessfulBundles::<T>::iter_values() {
-            res.append(&mut bundles);
-        }
-        res
-    }
-
     pub fn domain_runtime_code(domain_id: DomainId) -> Option<Vec<u8>> {
         RuntimeRegistry::<T>::get(Self::runtime_id(domain_id)?)
             .map(|runtime_object| runtime_object.code)

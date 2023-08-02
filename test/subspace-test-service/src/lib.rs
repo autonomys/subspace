@@ -22,12 +22,12 @@ use codec::{Decode, Encode};
 use cross_domain_message_gossip::GossipWorkerBuilder;
 use domain_runtime_primitives::BlockNumber as DomainNumber;
 use futures::channel::mpsc;
-use futures::{select, FutureExt, SinkExt, StreamExt};
+use futures::{select, FutureExt, StreamExt};
 use jsonrpsee::RpcModule;
 use parking_lot::Mutex;
 use sc_block_builder::BlockBuilderProvider;
 use sc_client_api::execution_extensions::{ExecutionStrategies, ExtensionsFactory};
-use sc_client_api::{backend, BlockchainEvents, ExecutorProvider};
+use sc_client_api::{backend, ExecutorProvider};
 use sc_consensus::block_import::{
     BlockCheckParams, BlockImportParams, ForkChoiceStrategy, ImportResult,
 };
@@ -79,7 +79,6 @@ use subspace_service::tx_pre_validator::ConsensusChainTxPreValidator;
 use subspace_service::FullSelectChain;
 use subspace_test_client::{chain_spec, Backend, Client, FraudProofVerifier, TestExecutorDispatch};
 use subspace_test_runtime::{RuntimeApi, RuntimeCall, UncheckedExtrinsic, SLOT_DURATION};
-use subspace_transaction_pool::bundle_validator::BundleValidator;
 use subspace_transaction_pool::FullPool;
 
 /// Create a Subspace `Configuration`.
@@ -180,8 +179,7 @@ pub fn node_config(
 
 type StorageChanges = sp_api::StorageChanges<backend::StateBackendFor<Backend, Block>, Block>;
 
-type TxPreValidator =
-    ConsensusChainTxPreValidator<Block, Client, FraudProofVerifier, BundleValidator<Block, Client>>;
+type TxPreValidator = ConsensusChainTxPreValidator<Block, Client, FraudProofVerifier>;
 
 struct MockExtensionsFactory(Arc<dyn GenerateGenesisStateRoot>);
 
@@ -280,8 +278,6 @@ impl MockConsensusNode {
 
         let select_chain = sc_consensus::LongestChain::new(backend.clone());
 
-        let mut bundle_validator = BundleValidator::new(client.clone());
-
         let invalid_transaction_proof_verifier = InvalidTransactionProofVerifier::new(
             client.clone(),
             Arc::new(executor.clone()),
@@ -303,7 +299,6 @@ impl MockConsensusNode {
             client.clone(),
             Box::new(task_manager.spawn_handle()),
             proof_verifier.clone(),
-            bundle_validator.clone(),
         );
 
         let transaction_pool = subspace_transaction_pool::new_full(
@@ -316,7 +311,7 @@ impl MockConsensusNode {
         let fraud_proof_block_import =
             sc_consensus_fraud_proof::block_import(client.clone(), client.clone(), proof_verifier);
 
-        let mut block_import = MockBlockImport::<_, _, _>::new(fraud_proof_block_import);
+        let block_import = MockBlockImport::<_, _, _>::new(fraud_proof_block_import);
 
         let net_config = sc_network::config::FullNetworkConfiguration::new(&config.network);
 
@@ -352,40 +347,6 @@ impl MockConsensusNode {
             sync_service: sync_service.clone(),
         })
         .expect("Should be able to spawn tasks");
-
-        // The `maintain-bundles-stored-in-last-k` worker here is different from the one in the production code
-        // that it subscribes the `block_importing_notification_stream`, which is intended to ensure the bundle
-        // validator's `recent_stored_bundles` info must be updated when a new primary block is produced, this
-        // will help the test to be more deterministic.
-        let mut imported_blocks_stream = client.import_notification_stream();
-        let mut block_importing_stream = block_import.block_importing_notification_stream();
-        task_manager.spawn_handle().spawn(
-            "maintain-bundles-stored-in-last-k",
-            None,
-            Box::pin(async move {
-                loop {
-                    tokio::select! {
-                        biased;
-                        maybe_block_imported = imported_blocks_stream.next() => {
-                            match maybe_block_imported {
-                                Some(block) => if block.is_new_best {
-                                    bundle_validator.update_recent_stored_bundles(block.hash, *block.header.number());
-                                }
-                                None => break,
-                            }
-                        },
-                        maybe_block_importing = block_importing_stream.next() => {
-                            match maybe_block_importing {
-                                Some((_, mut acknowledgement_sender)) => {
-                                    let _ = acknowledgement_sender.send(()).await;
-                                }
-                                None => break,
-                            }
-                        }
-                    }
-                }
-            }),
-        );
 
         let mock_solution = Solution::genesis_solution(
             FarmerPublicKey::unchecked_from(key.public().0),

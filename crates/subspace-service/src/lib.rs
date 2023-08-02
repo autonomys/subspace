@@ -62,10 +62,10 @@ use sc_service::error::Error as ServiceError;
 use sc_service::{Configuration, NetworkStarter, PartialComponents, SpawnTasksParams, TaskManager};
 use sc_subspace_block_relay::{build_consensus_relay, NetworkWrapper};
 use sc_telemetry::{Telemetry, TelemetryWorker};
-use sp_api::{ApiExt, ConstructRuntimeApi, HeaderT, Metadata, ProvideRuntimeApi, TransactionFor};
+use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi, TransactionFor};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderMetadata;
-use sp_consensus::{Error as ConsensusError, SyncOracle};
+use sp_consensus::Error as ConsensusError;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::{FarmerPublicKey, KzgExtension, PosExtension, SubspaceApi};
 use sp_core::offchain;
@@ -88,7 +88,6 @@ use subspace_networking::{peer_id, Node};
 use subspace_proof_of_space::Table;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash, Index as Nonce};
-use subspace_transaction_pool::bundle_validator::BundleValidator;
 use subspace_transaction_pool::{FullPool, PreValidateTransaction};
 use tracing::{debug, error, info, Instrument};
 
@@ -249,7 +248,6 @@ pub fn new_partial<PosTable, RuntimeApi, ExecutorDispatch>(
                 Block,
                 FullClient<RuntimeApi, ExecutorDispatch>,
                 FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
-                BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
             >,
         >,
         (
@@ -261,7 +259,6 @@ pub fn new_partial<PosTable, RuntimeApi, ExecutorDispatch>(
             SubspaceLink<Block>,
             SegmentHeadersStore<FullClient<RuntimeApi, ExecutorDispatch>>,
             Option<Telemetry>,
-            BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
         ),
     >,
     ServiceError,
@@ -328,8 +325,6 @@ where
 
     let select_chain = sc_consensus::LongestChain::new(backend.clone());
 
-    let bundle_validator = BundleValidator::new(client.clone());
-
     let invalid_transaction_proof_verifier = InvalidTransactionProofVerifier::new(
         client.clone(),
         Arc::new(executor.clone()),
@@ -351,7 +346,6 @@ where
         client.clone(),
         Box::new(task_manager.spawn_handle()),
         proof_verifier.clone(),
-        bundle_validator.clone(),
     );
     let transaction_pool = subspace_transaction_pool::new_full(
         config,
@@ -438,7 +432,6 @@ where
             subspace_link,
             segment_headers_store,
             telemetry,
-            bundle_validator,
         ),
     })
 }
@@ -493,7 +486,6 @@ type FullNode<RuntimeApi, ExecutorDispatch> = NewFull<
         Block,
         FullClient<RuntimeApi, ExecutorDispatch>,
         FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
-        BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
     >,
 >;
 
@@ -513,7 +505,6 @@ pub async fn new_full<PosTable, RuntimeApi, ExecutorDispatch, I>(
                 Block,
                 FullClient<RuntimeApi, ExecutorDispatch>,
                 FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
-                BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
             >,
         >,
         (
@@ -521,7 +512,6 @@ pub async fn new_full<PosTable, RuntimeApi, ExecutorDispatch, I>(
             SubspaceLink<Block>,
             SegmentHeadersStore<FullClient<RuntimeApi, ExecutorDispatch>>,
             Option<Telemetry>,
-            BundleValidator<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
         ),
     >,
     enable_rpc_extensions: bool,
@@ -562,8 +552,7 @@ where
         keystore_container,
         select_chain,
         transaction_pool,
-        other:
-            (block_import, subspace_link, segment_headers_store, mut telemetry, mut bundle_validator),
+        other: (block_import, subspace_link, segment_headers_store, mut telemetry),
     } = partial_components;
 
     let (node, bootstrap_nodes) = match config.subspace_networking.clone() {
@@ -811,28 +800,6 @@ where
                 }),
             );
     }
-
-    let sync_oracle = sync_service.clone();
-    let best_hash = client.info().best_hash;
-    let best_number = client.info().best_number;
-    let mut imported_blocks_stream = client.import_notification_stream();
-    task_manager.spawn_handle().spawn(
-        "maintain-bundles-stored-in-last-k",
-        None,
-        Box::pin(async move {
-            if !sync_oracle.is_major_syncing() {
-                bundle_validator.update_recent_stored_bundles(best_hash, best_number);
-            }
-            while let Some(incoming_block) = imported_blocks_stream.next().await {
-                if !sync_oracle.is_major_syncing() && incoming_block.is_new_best {
-                    bundle_validator.update_recent_stored_bundles(
-                        incoming_block.hash,
-                        *incoming_block.header.number(),
-                    );
-                }
-            }
-        }),
-    );
 
     if let Some(registry) = config.prometheus_registry().as_ref() {
         match NodeMetrics::new(
