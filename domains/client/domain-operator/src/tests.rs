@@ -722,10 +722,6 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
     let bad_submit_bundle_tx = {
         let mut opaque_bundle = bundle.unwrap();
         let receipt = &mut opaque_bundle.sealed_header.header.receipt;
-        assert_eq!(
-            receipt.consensus_block_number,
-            target_bundle.sealed_header.header.consensus_block_number + 1
-        );
         assert_eq!(receipt.execution_trace.len(), 3);
 
         receipt.execution_trace[mismatch_trace_index] = Default::default();

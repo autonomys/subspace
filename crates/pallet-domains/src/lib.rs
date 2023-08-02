@@ -47,7 +47,7 @@ use sp_domains::{
     DomainBlockLimit, DomainId, DomainInstanceData, ExecutionReceipt, OpaqueBundle, OperatorId,
     OperatorPublicKey, ProofOfElection, RuntimeId,
 };
-use sp_runtime::traits::{BlakeTwo256, BlockNumberProvider, CheckedSub, Hash, One, Zero};
+use sp_runtime::traits::{BlakeTwo256, Hash, Zero};
 use sp_runtime::{RuntimeAppPublic, SaturatedConversion, Saturating};
 use sp_std::boxed::Box;
 use sp_std::collections::btree_map::BTreeMap;
@@ -1158,40 +1158,6 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    // Check if a bundle is stale
-    fn check_stale_bundle(
-        current_block_number: T::BlockNumber,
-        bundle_create_at: T::BlockNumber,
-    ) -> Result<(), BundleError> {
-        let confirmation_depth_k = T::ConfirmationDepthK::get();
-        if let Some(finalized) = current_block_number.checked_sub(&confirmation_depth_k) {
-            {
-                // Ideally, `bundle_create_at` is `current_block_number - 1`, we need
-                // to handle the edge case that `T::ConfirmationDepthK` happens to be 1.
-                let is_stale_bundle = if confirmation_depth_k.is_zero() {
-                    unreachable!(
-                        "ConfirmationDepthK is guaranteed to be non-zero at genesis config"
-                    )
-                } else if confirmation_depth_k == One::one() {
-                    bundle_create_at < finalized
-                } else {
-                    bundle_create_at <= finalized
-                };
-
-                if is_stale_bundle {
-                    log::debug!(
-                        target: "runtime::domains",
-                        "Bundle created on an ancient consensus block, current_block_number: {current_block_number:?}, \
-                        ConfirmationDepthK: {confirmation_depth_k:?}, `bundle_create_at`: {:?}, `finalized`: {finalized:?}",
-                        bundle_create_at,
-                    );
-                    return Err(BundleError::StaleBundle);
-                }
-            }
-        }
-        Ok(())
-    }
-
     fn check_bundle_size(
         opaque_bundle: &OpaqueBundleOf<T>,
         max_size: u32,
@@ -1267,11 +1233,6 @@ impl<T: Config> Pallet<T> {
         }
 
         Self::check_bundle_duplication(opaque_bundle)?;
-
-        // Reject the stale bundles so that they can't be used by attacker to occupy the block space without cost.
-        let current_block_number = frame_system::Pallet::<T>::current_block_number();
-        let bundle_create_at = sealed_header.header.consensus_block_number;
-        Self::check_stale_bundle(current_block_number, bundle_create_at)?;
 
         let domain_config = DomainRegistry::<T>::get(domain_id)
             .ok_or(BundleError::InvalidDomainId)?

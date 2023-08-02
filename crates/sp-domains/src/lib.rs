@@ -158,9 +158,6 @@ impl DomainId {
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct BundleHeader<Number, Hash, DomainNumber, DomainHash, Balance> {
-    /// The consensus chain's best block number when the bundle is created. Used for detect stale
-    /// bundle and prevent attacker from reusing them to occupy the block space without cost.
-    pub consensus_block_number: Number,
     /// Proof of bundle producer election.
     pub proof_of_election: ProofOfElection<DomainHash>,
     /// Execution receipt that should extend the receipt chain or add confirmations

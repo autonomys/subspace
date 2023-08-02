@@ -411,7 +411,6 @@ mod tests {
             let bundle_extrinsics_root = H256::random();
             let bundle = create_dummy_bundle_with_receipts(
                 domain_id,
-                block_number,
                 operator_id,
                 bundle_extrinsics_root,
                 receipt,
@@ -527,7 +526,6 @@ mod tests {
                 let bundle_extrinsics_root = H256::random();
                 let bundle = create_dummy_bundle_with_receipts(
                     domain_id,
-                    block_number,
                     operator_id,
                     bundle_extrinsics_root,
                     receipt,
@@ -632,7 +630,6 @@ mod tests {
             // Re-submit the receipt will add confirm to the head receipt
             let bundle = create_dummy_bundle_with_receipts(
                 domain_id,
-                frame_system::Pallet::<Test>::current_block_number(),
                 operator_id2,
                 H256::random(),
                 current_head_receipt,
@@ -673,7 +670,6 @@ mod tests {
             // Stale receipt can be submitted but won't be added to the block tree
             let bundle = create_dummy_bundle_with_receipts(
                 domain_id,
-                frame_system::Pallet::<Test>::current_block_number(),
                 operator_id2,
                 H256::random(),
                 stale_receipt,
@@ -733,7 +729,6 @@ mod tests {
             // Submit the new branch receipt will create fork in the block tree
             let bundle = create_dummy_bundle_with_receipts(
                 domain_id,
-                frame_system::Pallet::<Test>::current_block_number(),
                 operator_id2,
                 H256::random(),
                 new_branch_receipt,
