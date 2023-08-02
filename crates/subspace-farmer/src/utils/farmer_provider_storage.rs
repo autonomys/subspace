@@ -1,4 +1,4 @@
-use crate::utils::piece_cache::PieceCache;
+use crate::piece_cache::PieceCache;
 use std::borrow::Cow;
 use std::iter;
 use subspace_networking::libp2p::kad::record::Key;
@@ -8,16 +8,13 @@ use subspace_networking::ProviderStorage;
 use tracing::trace;
 
 #[derive(Clone)]
-pub struct FarmerProviderStorage<LocalPieceCache: Clone> {
+pub struct FarmerProviderStorage {
     local_peer_id: PeerId,
-    piece_cache: LocalPieceCache,
+    piece_cache: PieceCache,
 }
 
-impl<LocalPieceCache> FarmerProviderStorage<LocalPieceCache>
-where
-    LocalPieceCache: PieceCache + Clone,
-{
-    pub fn new(local_peer_id: PeerId, piece_cache: LocalPieceCache) -> Self {
+impl FarmerProviderStorage {
+    pub fn new(local_peer_id: PeerId, piece_cache: PieceCache) -> Self {
         Self {
             local_peer_id,
             piece_cache,
@@ -25,10 +22,7 @@ where
     }
 }
 
-impl<LocalPieceCache> ProviderStorage for FarmerProviderStorage<LocalPieceCache>
-where
-    LocalPieceCache: PieceCache + Clone,
-{
+impl ProviderStorage for FarmerProviderStorage {
     type ProvidedIter<'a> = impl Iterator<Item = Cow<'a, ProviderRecord>>
     where
         Self:'a;
@@ -43,7 +37,7 @@ where
     }
 
     fn providers(&self, key: &Key) -> Vec<ProviderRecord> {
-        if self.piece_cache.contains_key(key) {
+        if self.piece_cache.contains_piece(key.clone()) {
             // Note: We store our own provider records locally without local addresses
             // to avoid redundant storage and outdated addresses. Instead these are
             // acquired on demand when returning a `ProviderRecord` for the local node.

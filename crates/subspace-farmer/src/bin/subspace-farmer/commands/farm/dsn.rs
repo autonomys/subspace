@@ -5,14 +5,14 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use subspace_core_primitives::SegmentIndex;
+use subspace_farmer::piece_cache::PieceCache;
 use subspace_farmer::utils::archival_storage_info::ArchivalStorageInfo;
 use subspace_farmer::utils::archival_storage_pieces::ArchivalStoragePieces;
-use subspace_farmer::utils::farmer_piece_cache::FarmerPieceCache;
 use subspace_farmer::utils::farmer_provider_storage::FarmerProviderStorage;
-use subspace_farmer::utils::parity_db_store::ParityDbStore;
 use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
 use subspace_farmer::{NodeClient, NodeRpcClient};
 use subspace_networking::libp2p::identity::Keypair;
+use subspace_networking::libp2p::kad::RecordKey;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::{
@@ -33,7 +33,6 @@ pub(super) fn configure_dsn(
     DsnArgs {
         listen_on,
         bootstrap_nodes,
-        piece_cache_size,
         provided_keys_limit,
         enable_private_ips,
         reserved_peers,
@@ -47,14 +46,8 @@ pub(super) fn configure_dsn(
     node_client: NodeRpcClient,
     archival_storage_pieces: ArchivalStoragePieces,
     archival_storage_info: ArchivalStorageInfo,
-) -> Result<
-    (
-        Node,
-        NodeRunner<FarmerProviderStorage<FarmerPieceCache>>,
-        FarmerPieceCache,
-    ),
-    anyhow::Error,
-> {
+    piece_cache: PieceCache,
+) -> Result<(Node, NodeRunner<FarmerProviderStorage>), anyhow::Error> {
     let peer_id = peer_id(&keypair);
 
     let networking_parameters_registry = {
@@ -65,7 +58,6 @@ pub(super) fn configure_dsn(
 
     let weak_readers_and_pieces = Arc::downgrade(readers_and_pieces);
 
-    let piece_cache_db_path = base_path.join("piece_cache_db");
     let provider_db_path = base_path.join("providers_db");
 
     info!(
@@ -79,19 +71,6 @@ pub(super) fn configure_dsn(
     info!(
         current_size = ?persistent_provider_storage.size(),
         "Provider storage initialized successfully"
-    );
-
-    info!(
-        db_path = ?piece_cache_db_path,
-        size = ?piece_cache_size,
-        "Initializing piece cache..."
-    );
-    let piece_store =
-        ParityDbStore::new(&piece_cache_db_path).map_err(|err| anyhow::anyhow!(err.to_string()))?;
-    let piece_cache = FarmerPieceCache::new(piece_store.clone(), piece_cache_size, peer_id);
-    info!(
-        current_size = ?piece_cache.size(),
-        "Piece cache initialized successfully"
     );
 
     let farmer_provider_storage = FarmerProviderStorage::new(peer_id, piece_cache.clone());
@@ -147,13 +126,13 @@ pub(super) fn configure_dsn(
             PieceByHashRequestHandler::create(
                 move |_, &PieceByHashRequest { piece_index_hash }| {
                     debug!(?piece_index_hash, "Piece request received. Trying cache...");
-                    let multihash = piece_index_hash.to_multihash();
 
                     let weak_readers_and_pieces = weak_readers_and_pieces.clone();
-                    let piece_store = piece_store.clone();
+                    let piece_cache = piece_cache.clone();
 
                     async move {
-                        let piece_from_store = piece_store.get(&multihash.into());
+                        let key = RecordKey::from(piece_index_hash.to_multihash());
+                        let piece_from_store = piece_cache.get_piece(key).await;
 
                         if let Some(piece) = piece_from_store {
                             Some(PieceByHashResponse { piece: Some(piece) })
@@ -316,7 +295,7 @@ pub(super) fn configure_dsn(
             .detach();
 
             // Consider returning HandlerId instead of each `detach()` calls for other usages.
-            (node, node_runner, piece_cache)
+            (node, node_runner)
         })
         .map_err(Into::into)
 }
