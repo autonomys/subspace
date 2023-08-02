@@ -44,12 +44,12 @@ use sp_core::H256;
 use sp_runtime::traits::Block as BlockT;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
-use std::error::Error;
 use std::marker::PhantomData;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use std::time::Duration;
-use subspace_core_primitives::{Piece, PieceIndex, SegmentHeader, SegmentIndex, Solution};
+use subspace_archiving::archiver::NewArchivedSegment;
+use subspace_core_primitives::{PieceIndex, SegmentHeader, SegmentIndex, Solution};
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_rpc_primitives::{
@@ -141,18 +141,10 @@ struct BlockSignatureSenders {
     senders: Vec<async_oneshot::Sender<RewardSignatureResponse>>,
 }
 
-pub trait PieceProvider {
-    fn get_piece_by_index(
-        &self,
-        piece_index: PieceIndex,
-    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>>;
-}
-
 /// Implements the [`SubspaceRpcApiServer`] trait for interacting with Subspace.
-pub struct SubspaceRpc<Block, Client, PP, SO, AS>
+pub struct SubspaceRpc<Block, Client, SO, AS>
 where
     Block: BlockT,
-    PP: PieceProvider,
     SO: SyncOracle + Send + Sync + Clone + 'static,
 {
     client: Arc<Client>,
@@ -164,7 +156,12 @@ where
     reward_signature_senders: Arc<Mutex<BlockSignatureSenders>>,
     dsn_bootstrap_nodes: Vec<Multiaddr>,
     segment_headers_store: SegmentHeadersStore<AS>,
-    piece_provider: Option<PP>,
+    /// In-memory piece cache of last archived segment, such that when request comes back right
+    /// after archived segment notification, RPC server is able to answer quickly.
+    ///
+    /// We store weak reference, such that archived segment is not persisted for longer than
+    /// necessary occupying RAM.
+    piece_cache: Arc<Mutex<Option<Weak<NewArchivedSegment>>>>,
     archived_segment_acknowledgement_senders:
         Arc<Mutex<ArchivedSegmentHeaderAcknowledgementSenders>>,
     next_subscription_id: AtomicU64,
@@ -179,10 +176,9 @@ where
 /// every subscriber, after which RPC server waits for the same number of
 /// `subspace_submitSolutionResponse` requests with `SolutionResponse` in them or until
 /// timeout is exceeded. The first valid solution for a particular slot wins, others are ignored.
-impl<Block, Client, PP, SO, AS> SubspaceRpc<Block, Client, PP, SO, AS>
+impl<Block, Client, SO, AS> SubspaceRpc<Block, Client, SO, AS>
 where
     Block: BlockT,
-    PP: PieceProvider,
     SO: SyncOracle + Send + Sync + Clone + 'static,
     AS: AuxStore + Send + Sync + 'static,
 {
@@ -198,7 +194,6 @@ where
         >,
         dsn_bootstrap_nodes: Vec<Multiaddr>,
         segment_headers_store: SegmentHeadersStore<AS>,
-        piece_provider: Option<PP>,
         sync_oracle: SubspaceSyncOracle<SO>,
     ) -> Self {
         Self {
@@ -211,7 +206,7 @@ where
             reward_signature_senders: Arc::default(),
             dsn_bootstrap_nodes,
             segment_headers_store,
-            piece_provider,
+            piece_cache: Arc::default(),
             archived_segment_acknowledgement_senders: Arc::default(),
             next_subscription_id: AtomicU64::default(),
             sync_oracle,
@@ -221,7 +216,7 @@ where
 }
 
 #[async_trait]
-impl<Block, Client, PP, SO, AS> SubspaceRpcApiServer for SubspaceRpc<Block, Client, PP, SO, AS>
+impl<Block, Client, SO, AS> SubspaceRpcApiServer for SubspaceRpc<Block, Client, SO, AS>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
@@ -231,7 +226,6 @@ where
         + Sync
         + 'static,
     Client::Api: SubspaceRuntimeApi<Block, FarmerPublicKey>,
-    PP: PieceProvider + Send + Sync + 'static,
     SO: SyncOracle + Send + Sync + Clone + 'static,
     AS: AuxStore + Send + Sync + 'static,
 {
@@ -490,6 +484,7 @@ where
         let archived_segment_acknowledgement_senders =
             self.archived_segment_acknowledgement_senders.clone();
 
+        let piece_cache = Arc::clone(&self.piece_cache);
         let subscription_id = self.next_subscription_id.fetch_add(1, Ordering::Relaxed);
 
         let stream = self
@@ -530,6 +525,10 @@ where
                                 Some(archived_segment.segment_header)
                             }
                         };
+
+                    piece_cache
+                        .lock()
+                        .replace(Arc::downgrade(&archived_segment));
 
                     Box::pin(async move { maybe_archived_segment_header })
                 }
@@ -658,21 +657,23 @@ where
             .collect())
     }
 
-    fn piece(&self, piece_index: PieceIndex) -> RpcResult<Option<Vec<u8>>> {
-        if let Some(piece_provider) = self.piece_provider.as_ref() {
-            let result = piece_provider.get_piece_by_index(piece_index).map_err(|_| {
-                JsonRpseeError::Custom("Internal error during `piece` call".to_string())
-            });
+    fn piece(&self, requested_piece_index: PieceIndex) -> RpcResult<Option<Vec<u8>>> {
+        let Some(archived_segment) = self.piece_cache.lock().as_ref().and_then(Weak::upgrade)
+        else {
+            return Ok(None);
+        };
 
-            if let Err(err) = &result {
-                error!(?err, %piece_index, "Failed to get a piece.");
+        let indices = archived_segment
+            .segment_header
+            .segment_index()
+            .segment_piece_indexes();
+        let pieces = &archived_segment.pieces;
+        for (piece_index, piece) in indices.into_iter().zip(pieces.iter()) {
+            if requested_piece_index == piece_index {
+                return Ok(Some(piece.to_vec()));
             }
-
-            result.map(|piece| piece.map(|piece| piece.to_vec()))
-        } else {
-            Err(JsonRpseeError::Custom(
-                "Piece provider is not set.".to_string(),
-            ))
         }
+
+        Ok(None)
     }
 }

@@ -744,8 +744,11 @@ async fn send_archived_segment_notification(
     let segment_index = archived_segment.segment_header.segment_index();
     let (acknowledgement_sender, mut acknowledgement_receiver) =
         tracing_unbounded::<()>("subspace_acknowledgement", 100);
+    // Keep `archived_segment` around until all acknowledgements are received since some receivers
+    // might use weak references
+    let archived_segment = Arc::new(archived_segment);
     let archived_segment_notification = ArchivedSegmentNotification {
-        archived_segment: Arc::new(archived_segment),
+        archived_segment: Arc::clone(&archived_segment),
         acknowledgement_sender,
     };
 

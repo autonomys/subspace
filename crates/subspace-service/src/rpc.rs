@@ -29,7 +29,7 @@ use sc_consensus_subspace::{
     ArchivedSegmentNotification, NewSlotNotification, RewardSigningNotification,
     SegmentHeadersStore, SubspaceSyncOracle,
 };
-use sc_consensus_subspace_rpc::{PieceProvider, SubspaceRpc, SubspaceRpcApiServer};
+use sc_consensus_subspace_rpc::{SubspaceRpc, SubspaceRpcApiServer};
 use sc_rpc::SubscriptionTaskExecutor;
 use sc_rpc_api::DenyUnsafe;
 use sc_rpc_spec_v2::chain_spec::{ChainSpec, ChainSpecApiServer};
@@ -46,7 +46,7 @@ use subspace_runtime_primitives::{AccountId, Balance, Index};
 use substrate_frame_rpc_system::{System, SystemApiServer};
 
 /// Full client dependencies.
-pub struct FullDeps<C, P, PP, SO, AS>
+pub struct FullDeps<C, P, SO, AS>
 where
     SO: SyncOracle + Send + Sync + Clone,
 {
@@ -72,15 +72,13 @@ where
     pub dsn_bootstrap_nodes: Vec<Multiaddr>,
     /// Segment header provider.
     pub segment_headers_store: SegmentHeadersStore<AS>,
-    /// Provides pieces from piece cache.
-    pub piece_provider: Option<PP>,
     /// Subspace sync oracle
     pub sync_oracle: SubspaceSyncOracle<SO>,
 }
 
 /// Instantiate all full RPC extensions.
-pub fn create_full<C, P, PP, SO, AS>(
-    deps: FullDeps<C, P, PP, SO, AS>,
+pub fn create_full<C, P, SO, AS>(
+    deps: FullDeps<C, P, SO, AS>,
 ) -> Result<RpcModule<()>, Box<dyn std::error::Error + Send + Sync>>
 where
     C: ProvideRuntimeApi<Block>
@@ -95,7 +93,6 @@ where
         + BlockBuilder<Block>
         + sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey>,
     P: TransactionPool + 'static,
-    PP: PieceProvider + Send + Sync + 'static,
     SO: SyncOracle + Send + Sync + Clone + 'static,
     AS: AuxStore + Send + Sync + 'static,
 {
@@ -111,7 +108,6 @@ where
         archived_segment_notification_stream,
         dsn_bootstrap_nodes,
         segment_headers_store,
-        piece_provider,
         sync_oracle,
     } = deps;
 
@@ -132,7 +128,6 @@ where
             archived_segment_notification_stream,
             dsn_bootstrap_nodes,
             segment_headers_store,
-            piece_provider,
             sync_oracle,
         )
         .into_rpc(),

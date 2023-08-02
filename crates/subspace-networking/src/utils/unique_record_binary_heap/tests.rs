@@ -35,10 +35,10 @@ fn binary_heap_remove_works() {
     heap.insert(key1.clone());
     assert_eq!(heap.size(), 1);
 
-    heap.remove(&key2);
+    heap.remove(key2);
     assert_eq!(heap.size(), 1);
 
-    heap.remove(&key1);
+    heap.remove(key1);
     assert_eq!(heap.size(), 0);
 }
 
@@ -70,7 +70,7 @@ fn binary_heap_eviction_works() {
     let key2 = Key::from(vec![2]);
 
     heap.insert(key1.clone());
-    let should_be_evicted = heap.should_include_key(&key2);
+    let should_be_evicted = heap.should_include_key(key2.clone());
     let evicted = heap.insert(key2.clone());
     assert!(evicted.is_some());
 
@@ -96,13 +96,13 @@ fn binary_heap_should_include_key_works() {
 
     // Limit not reached
     let key1 = Key::from(vec![1]);
-    assert!(heap.should_include_key(&key1));
+    assert!(heap.should_include_key(key1.clone()));
 
     // Limit reached and key is not "less" than top key
     heap.insert(key1.clone());
-    assert!(!heap.should_include_key(&key1));
+    assert!(!heap.should_include_key(key1));
 
     // Limit reached and key is "less" than top key
     let key2 = Key::from(vec![2]);
-    assert!(heap.should_include_key(&key2));
+    assert!(heap.should_include_key(key2));
 }
