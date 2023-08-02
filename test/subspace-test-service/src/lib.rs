@@ -519,26 +519,22 @@ impl MockConsensusNode {
             .ready()
             .map(|t| self.transaction_pool.hash_of(&t.data))
             .collect();
-        let best_block_id = BlockId::Hash(self.client.info().best_hash);
-        self.transaction_pool
-            .pool()
-            .prune_known(&best_block_id, txs.as_slice())?;
-        // `ban_time` have set to 0, explicitly wait 1ms here to ensure `clear_stale` will remove
-        // all the bans as the ban time must be passed.
-        tokio::time::sleep(time::Duration::from_millis(1)).await;
-        self.transaction_pool
-            .pool()
-            .validated_pool()
-            .clear_stale(&best_block_id)?;
-        Ok(())
+        self.prune_txs_from_pool(txs.as_slice()).await
     }
 
     /// Remove a ready transaction from transaction pool.
     pub async fn prune_tx_from_pool(&self, tx: &OpaqueExtrinsic) -> Result<(), Box<dyn Error>> {
-        self.transaction_pool.pool().prune_known(
-            &BlockId::Hash(self.client.info().best_hash),
-            &[self.transaction_pool.hash_of(tx)],
-        )?;
+        self.prune_txs_from_pool(&[self.transaction_pool.hash_of(tx)])
+            .await
+    }
+
+    async fn prune_txs_from_pool(
+        &self,
+        tx_hashes: &[<Block as BlockT>::Hash],
+    ) -> Result<(), Box<dyn Error>> {
+        self.transaction_pool
+            .pool()
+            .prune_known(&BlockId::Hash(self.client.info().best_hash), tx_hashes)?;
         // `ban_time` have set to 0, explicitly wait 1ms here to ensure `clear_stale` will remove
         // all the bans as the ban time must be passed.
         tokio::time::sleep(time::Duration::from_millis(1)).await;
@@ -678,12 +674,24 @@ impl MockConsensusNode {
             Some(extrinsics) => extrinsics,
             None => self.collect_txn_from_pool(parent_number).await,
         };
+        let tx_hashes: Vec<_> = extrinsics
+            .iter()
+            .map(|t| self.transaction_pool.hash_of(t))
+            .collect();
 
         let (block, storage_changes) = self.build_block(slot, parent_hash, extrinsics).await?;
 
         log_new_block(&block, block_timer.elapsed().as_millis());
 
-        self.import_block(block, Some(storage_changes)).await
+        match self.import_block(block, Some(storage_changes)).await {
+            Ok(hash) => {
+                // Remove the tx of the imported block from the tx pool incase re-include them
+                // in the future block by accident.
+                self.prune_txs_from_pool(tx_hashes.as_slice()).await?;
+                Ok(hash)
+            }
+            err => err,
+        }
     }
 
     /// Produce a new block on top of the current best block, with the extrinsics collected from
