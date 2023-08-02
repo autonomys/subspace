@@ -225,8 +225,8 @@ pub struct Config<ProviderStorage> {
     pub special_target_connections: u32,
     /// Addresses to bootstrap Kademlia network
     pub bootstrap_addresses: Vec<Multiaddr>,
-    /// Optionally overrides the default Kademlia server mode.
-    pub kademlia_mode_override: Option<Option<Mode>>,
+    /// Kademlia mode. None means "automatic mode".
+    pub kademlia_mode: Option<Mode>,
 }
 
 impl<ProviderStorage> fmt::Debug for Config<ProviderStorage> {
@@ -340,7 +340,7 @@ where
             general_target_connections: SWARM_TARGET_CONNECTION_NUMBER,
             special_target_connections: SWARM_TARGET_CONNECTION_NUMBER,
             bootstrap_addresses: Vec::new(),
-            kademlia_mode_override: None,
+            kademlia_mode: Some(Mode::Server),
         }
     }
 }
@@ -404,7 +404,7 @@ where
         general_target_connections,
         special_target_connections,
         bootstrap_addresses,
-        kademlia_mode_override,
+        kademlia_mode,
     } = config;
     let local_peer_id = peer_id(&keypair);
 
@@ -517,7 +517,7 @@ where
         general_connection_decision_handler,
         special_connection_decision_handler,
         bootstrap_addresses,
-        kademlia_mode_override,
+        kademlia_mode,
     });
 
     Ok((node, node_runner))

@@ -139,8 +139,8 @@ where
     bootstrap_addresses: Vec<Multiaddr>,
     /// Ensures a single bootstrap on run() invocation.
     bootstrap_command_state: Arc<AsyncMutex<BootstrapCommandState>>,
-    /// Optionally overrides the default Kademlia server mode.
-    kademlia_mode_override: Option<Option<Mode>>,
+    /// Kademlia mode. None means "automatic mode".
+    kademlia_mode: Option<Mode>,
 }
 
 // Helper struct for NodeRunner configuration (clippy requirement).
@@ -161,7 +161,7 @@ where
     pub(crate) general_connection_decision_handler: Option<ConnectedPeersHandler>,
     pub(crate) special_connection_decision_handler: Option<ConnectedPeersHandler>,
     pub(crate) bootstrap_addresses: Vec<Multiaddr>,
-    pub(crate) kademlia_mode_override: Option<Option<Mode>>,
+    pub(crate) kademlia_mode: Option<Mode>,
 }
 
 impl<ProviderStorage> NodeRunner<ProviderStorage>
@@ -183,7 +183,7 @@ where
             general_connection_decision_handler,
             special_connection_decision_handler,
             bootstrap_addresses,
-            kademlia_mode_override,
+            kademlia_mode,
         }: NodeRunnerConfig<ProviderStorage>,
     ) -> Self {
         Self {
@@ -210,7 +210,7 @@ where
             rng: StdRng::seed_from_u64(KADEMLIA_PEERS_ADDRESSES_BATCH_SIZE as u64), // any seed
             bootstrap_addresses,
             bootstrap_command_state: Arc::new(AsyncMutex::new(BootstrapCommandState::default())),
-            kademlia_mode_override,
+            kademlia_mode,
         }
     }
 
@@ -291,11 +291,11 @@ where
 
         debug!("Bootstrap started.");
 
-        // Set the Kademlia mode. The default is Server unless overridden.
-        let mode = self.kademlia_mode_override.unwrap_or(Some(Mode::Server));
-        self.swarm.behaviour_mut().kademlia.set_mode(mode);
-
-        debug!("Kademlia mode set: {:?}.", mode);
+        self.swarm
+            .behaviour_mut()
+            .kademlia
+            .set_mode(self.kademlia_mode);
+        debug!("Kademlia mode set: {:?}.", self.kademlia_mode);
 
         let mut bootstrap_step = 0;
         loop {
