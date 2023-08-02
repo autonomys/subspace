@@ -604,21 +604,40 @@ pub fn signer_in_tx_range(bundle_vrf_hash: &U256, signer_id_hash: &U256, tx_rang
     distance_from_vrf_hash <= (*tx_range / 2)
 }
 
+/// Receipt invalidity type.
+#[derive(Debug, Decode, Encode, TypeInfo, Clone, PartialEq, Eq)]
+pub enum InvalidReceipt {
+    /// The field `invalid_bundles` in [`ExecutionReceipt`] is invalid.
+    InvalidBundles,
+}
+
+#[derive(Debug, Decode, Encode, TypeInfo, Clone, PartialEq, Eq)]
+pub enum ReceiptValidity {
+    Valid,
+    Invalid(InvalidReceipt),
+}
+
+/// Bundle invalidity type.
 #[derive(Debug, Decode, Encode, TypeInfo, Clone, PartialEq, Eq)]
 pub enum InvalidBundleType {
-    /// Runtime API error.
-    ApiError,
     /// Failed to decode the opaque extrinsic.
     UndecodableTx,
     /// Transaction is out of the tx range.
     OutOfRangeTx,
     /// Transaction is illegal (unable to pay the fee, etc).
     IllegalTx,
+    /// Receipt is invalid.
+    InvalidReceipt(InvalidReceipt),
 }
 
+/// [`InvalidBundle`] represents a bundle that was originally included in the consensus
+/// block but subsequently excluded from the corresponding domain block by operator due
+/// to being flagged as invalid.
 #[derive(Debug, Decode, Encode, TypeInfo, Clone, PartialEq, Eq)]
 pub struct InvalidBundle {
+    /// Index of this bundle in the original list of bundles in the consensus block.
     pub bundle_index: u32,
+    /// Specific type of invalidity.
     pub invalid_bundle_type: InvalidBundleType,
 }
 

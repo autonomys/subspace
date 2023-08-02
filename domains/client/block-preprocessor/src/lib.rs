@@ -30,8 +30,8 @@ use sc_client_api::BlockBackend;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_domains::{
-    BundleValidity, DomainId, DomainsApi, DomainsDigestItem, ExtrinsicsRoot, InvalidBundle,
-    InvalidBundleType, OpaqueBundle, OpaqueBundles,
+    BundleValidity, DomainId, DomainsApi, DomainsDigestItem, ExecutionReceipt, ExtrinsicsRoot,
+    InvalidBundle, InvalidBundleType, OpaqueBundle, OpaqueBundles, ReceiptValidity,
 };
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use std::borrow::Cow;
@@ -199,16 +199,17 @@ pub struct PreprocessResult<Block: BlockT> {
     pub invalid_bundles: Vec<InvalidBundle>,
 }
 
-pub struct DomainBlockPreprocessor<Block, CBlock, Client, CClient, RuntimeApi> {
+pub struct DomainBlockPreprocessor<Block, CBlock, Client, CClient, RuntimeApi, ReceiptValidator> {
     domain_id: DomainId,
     client: Arc<Client>,
     consensus_client: Arc<CClient>,
     runtime_api: RuntimeApi,
+    receipt_validator: ReceiptValidator,
     _phantom_data: PhantomData<(Block, CBlock)>,
 }
 
-impl<Block, CBlock, Client, CClient, RuntimeApi: Clone> Clone
-    for DomainBlockPreprocessor<Block, CBlock, Client, CClient, RuntimeApi>
+impl<Block, CBlock, Client, CClient, RuntimeApi: Clone, ReceiptValidator: Clone> Clone
+    for DomainBlockPreprocessor<Block, CBlock, Client, CClient, RuntimeApi, ReceiptValidator>
 {
     fn clone(&self) -> Self {
         Self {
@@ -216,13 +217,31 @@ impl<Block, CBlock, Client, CClient, RuntimeApi: Clone> Clone
             client: self.client.clone(),
             consensus_client: self.consensus_client.clone(),
             runtime_api: self.runtime_api.clone(),
+            receipt_validator: self.receipt_validator.clone(),
             _phantom_data: self._phantom_data,
         }
     }
 }
 
-impl<Block, CBlock, Client, CClient, RuntimeApi>
-    DomainBlockPreprocessor<Block, CBlock, Client, CClient, RuntimeApi>
+pub trait ValidateReceipt<Block, CBlock>
+where
+    Block: BlockT,
+    CBlock: BlockT,
+{
+    fn validate_receipt(
+        &self,
+        receipt: &ExecutionReceipt<
+            NumberFor<CBlock>,
+            CBlock::Hash,
+            NumberFor<Block>,
+            Block::Hash,
+            Balance,
+        >,
+    ) -> sp_blockchain::Result<ReceiptValidity>;
+}
+
+impl<Block, CBlock, Client, CClient, RuntimeApi, ReceiptValidator>
+    DomainBlockPreprocessor<Block, CBlock, Client, CClient, RuntimeApi, ReceiptValidator>
 where
     Block: BlockT,
     CBlock: BlockT,
@@ -241,18 +260,21 @@ where
         + Sync
         + 'static,
     CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
+    ReceiptValidator: ValidateReceipt<Block, CBlock>,
 {
     pub fn new(
         domain_id: DomainId,
         client: Arc<Client>,
         consensus_client: Arc<CClient>,
         runtime_api: RuntimeApi,
+        receipt_validator: ReceiptValidator,
     ) -> Self {
         Self {
             domain_id,
             client,
             consensus_client,
             runtime_api,
+            receipt_validator,
             _phantom_data: Default::default(),
         }
     }
@@ -289,7 +311,7 @@ where
             .domain_tx_range(consensus_block_hash, self.domain_id)?;
 
         let (invalid_bundles, extrinsics) =
-            self.compile_bundles_to_extrinsics(bundles, tx_range, domain_hash);
+            self.compile_bundles_to_extrinsics(bundles, tx_range, domain_hash)?;
 
         let extrinsics_in_bundle = deduplicate_and_shuffle_extrinsics(
             domain_hash,
@@ -335,34 +357,23 @@ where
         bundles: OpaqueBundles<CBlock, NumberFor<Block>, Block::Hash, Balance>,
         tx_range: U256,
         at: Block::Hash,
-    ) -> (Vec<InvalidBundle>, Vec<Block::Extrinsic>) {
+    ) -> sp_blockchain::Result<(Vec<InvalidBundle>, Vec<Block::Extrinsic>)> {
         let mut invalid_bundles = Vec::with_capacity(bundles.len());
+        let mut valid_extrinsics = Vec::new();
 
-        let valid_extrinscis = bundles
-            .into_iter()
-            .enumerate()
-            .flat_map(|(index, bundle)| {
-                let bundle_validity = self
-                    .check_bundle_validity(&bundle, &tx_range, at)
-                    .map_err(|err| {
-                        tracing::error!(?err, "Error occurred in checking bundle validity");
-                    })
-                    .unwrap_or(BundleValidity::Invalid(InvalidBundleType::ApiError));
-
-                match bundle_validity {
-                    BundleValidity::Valid(extrinsics) => extrinsics,
-                    BundleValidity::Invalid(invalid_bundle_type) => {
-                        invalid_bundles.push(InvalidBundle {
-                            bundle_index: index as u32,
-                            invalid_bundle_type,
-                        });
-                        Vec::new()
-                    }
+        for (index, bundle) in bundles.into_iter().enumerate() {
+            match self.check_bundle_validity(&bundle, &tx_range, at)? {
+                BundleValidity::Valid(extrinsics) => valid_extrinsics.extend(extrinsics),
+                BundleValidity::Invalid(invalid_bundle_type) => {
+                    invalid_bundles.push(InvalidBundle {
+                        bundle_index: index as u32,
+                        invalid_bundle_type,
+                    });
                 }
-            })
-            .collect::<Vec<_>>();
+            }
+        }
 
-        (invalid_bundles, valid_extrinscis)
+        Ok((invalid_bundles, valid_extrinsics))
     }
 
     fn check_bundle_validity(
@@ -376,7 +387,16 @@ where
         >,
         tx_range: &U256,
         at: Block::Hash,
-    ) -> Result<BundleValidity<Block::Extrinsic>, sp_api::ApiError> {
+    ) -> sp_blockchain::Result<BundleValidity<Block::Extrinsic>> {
+        // Bundles with incorrect ER are considered invalid.
+        if let ReceiptValidity::Invalid(invalid_receipt) =
+            self.receipt_validator.validate_receipt(bundle.receipt())?
+        {
+            return Ok(BundleValidity::Invalid(InvalidBundleType::InvalidReceipt(
+                invalid_receipt,
+            )));
+        }
+
         let bundle_vrf_hash =
             U256::from_be_bytes(bundle.sealed_header.header.proof_of_election.vrf_hash());
 

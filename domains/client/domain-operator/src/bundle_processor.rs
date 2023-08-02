@@ -1,7 +1,7 @@
 use crate::domain_block_processor::{
     DomainBlockProcessor, PendingConsensusBlocks, ReceiptsChecker,
 };
-use crate::{DomainParentChain, TransactionFor};
+use crate::{DomainParentChain, ExecutionReceiptFor, TransactionFor};
 use domain_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_block_preprocessor::{DomainBlockPreprocessor, PreprocessResult};
 use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
@@ -11,7 +11,7 @@ use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::BlockOrigin;
 use sp_core::traits::CodeExecutor;
-use sp_domains::{DomainId, DomainsApi};
+use sp_domains::{DomainId, DomainsApi, InvalidReceipt, ReceiptValidity};
 use sp_keystore::KeystorePtr;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, HashFor};
@@ -40,8 +40,14 @@ where
     backend: Arc<Backend>,
     keystore: KeystorePtr,
     domain_receipts_checker: DomainReceiptsChecker<Block, CBlock, Client, CClient, Backend, E>,
-    domain_block_preprocessor:
-        DomainBlockPreprocessor<Block, CBlock, Client, CClient, RuntimeApiFull<Client>>,
+    domain_block_preprocessor: DomainBlockPreprocessor<
+        Block,
+        CBlock,
+        Client,
+        CClient,
+        RuntimeApiFull<Client>,
+        ReceiptValidator<Client>,
+    >,
     domain_block_processor: DomainBlockProcessor<Block, CBlock, Client, CClient, Backend, BI>,
 }
 
@@ -62,6 +68,55 @@ where
             domain_block_preprocessor: self.domain_block_preprocessor.clone(),
             domain_block_processor: self.domain_block_processor.clone(),
         }
+    }
+}
+
+struct ReceiptValidator<Client> {
+    client: Arc<Client>,
+}
+
+impl<Client> Clone for ReceiptValidator<Client> {
+    fn clone(&self) -> Self {
+        Self {
+            client: self.client.clone(),
+        }
+    }
+}
+
+impl<Client> ReceiptValidator<Client> {
+    pub fn new(client: Arc<Client>) -> Self {
+        Self { client }
+    }
+}
+
+impl<Block, CBlock, Client> domain_block_preprocessor::ValidateReceipt<Block, CBlock>
+    for ReceiptValidator<Client>
+where
+    Block: BlockT,
+    CBlock: BlockT,
+    Client: AuxStore,
+{
+    fn validate_receipt(
+        &self,
+        receipt: &ExecutionReceiptFor<Block, CBlock>,
+    ) -> sp_blockchain::Result<ReceiptValidity> {
+        let consensus_block_hash = receipt.consensus_block_hash;
+        let local_receipt = crate::aux_schema::load_execution_receipt::<_, Block, CBlock>(
+            &*self.client,
+            consensus_block_hash,
+        )?
+        .ok_or_else(|| {
+            sp_blockchain::Error::Backend(format!(
+                "Receipt for consensus block {consensus_block_hash} not found"
+            ))
+        })?;
+
+        if local_receipt.invalid_bundles != receipt.invalid_bundles {
+            // TODO: Generate fraud proof
+            return Ok(ReceiptValidity::Invalid(InvalidReceipt::InvalidBundles));
+        }
+
+        Ok(ReceiptValidity::Valid)
     }
 }
 
@@ -112,6 +167,7 @@ where
             client.clone(),
             consensus_client.clone(),
             RuntimeApiFull::new(client.clone()),
+            ReceiptValidator::new(client.clone()),
         );
         Self {
             domain_id,
@@ -259,6 +315,7 @@ where
             head_receipt_number,
         )?;
 
+        // TODO: Remove as ReceiptsChecker has been superseded by ReceiptValidator in block-preprocessor.
         self.domain_receipts_checker
             .check_state_transition(consensus_block_hash)?;
 
