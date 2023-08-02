@@ -21,9 +21,13 @@ use subspace_networking::{
     PieceByHashRequestHandler, PieceByHashResponse, SegmentHeaderBySegmentIndexesRequestHandler,
     SegmentHeaderRequest, SegmentHeaderResponse,
 };
+use subspace_rpc_primitives::MAX_SEGMENT_HEADERS_PER_REQUEST;
 use tracing::{debug, error, info, Instrument};
 
-const SEGMENT_HEADER_NUMBER_LIMIT: u64 = 1000;
+/// How many segment headers can be requested at a time.
+///
+/// Must be the same as RPC limit since all requests go to the node anyway.
+const SEGMENT_HEADER_NUMBER_LIMIT: u64 = MAX_SEGMENT_HEADERS_PER_REQUEST as u64;
 
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub(super) fn configure_dsn(
