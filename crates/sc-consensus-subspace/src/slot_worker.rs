@@ -28,6 +28,7 @@ use sc_consensus::{JustificationSyncLink, StorageChanges};
 use sc_consensus_slots::{
     BackoffAuthoringBlocksStrategy, SimpleSlotWorker, SlotInfo, SlotLenienceType, SlotProportion,
 };
+use sc_proof_of_time::PotConsensusState;
 use sc_telemetry::TelemetryHandle;
 use sc_utils::mpsc::tracing_unbounded;
 use schnorrkel::context::SigningContext;
@@ -109,6 +110,8 @@ where
     pub(super) max_block_proposal_slot_portion: Option<SlotProportion>,
     pub(super) telemetry: Option<TelemetryHandle>,
     pub(super) segment_headers_store: SegmentHeadersStore<AS>,
+    pub(super) proof_of_time: Arc<dyn PotConsensusState<Block>>,
+    pub(super) pot_bootstrap: bool,
     pub(super) _pos_table: PhantomData<PosTable>,
 }
 

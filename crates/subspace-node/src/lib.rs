@@ -21,9 +21,11 @@ mod chain_spec_utils;
 pub mod domain;
 
 use bytesize::ByteSize;
+use clap::builder::EnumValueParser;
 use clap::Parser;
 use sc_cli::{RunCmd, SubstrateCli};
 use sc_executor::{NativeExecutionDispatch, RuntimeVersion};
+use sc_proof_of_time::PotRole;
 use sc_service::ChainSpec;
 use sc_storage_monitor::StorageMonitorParams;
 use sc_subspace_chain_specs::ConsensusChainSpec;
@@ -164,6 +166,22 @@ pub enum Subcommand {
     Benchmark(frame_benchmarking_cli::BenchmarkCmd),
 }
 
+/// Assigned proof of time role.
+#[derive(Debug, Clone, clap::ValueEnum)]
+pub enum CliPotRole {
+    /// Clock master role of producing proofs.
+    ClockMaster,
+
+    /// Listens to proofs from clock masters.
+    NodeClient,
+}
+
+impl From<CliPotRole> for PotRole {
+    fn from(cli_role: CliPotRole) -> Self {
+        PotRole::new(matches!(cli_role, CliPotRole::ClockMaster))
+    }
+}
+
 /// Subspace Cli.
 #[derive(Debug, Parser)]
 #[clap(
@@ -247,6 +265,14 @@ pub struct Cli {
     /// instead of the default substrate handler.
     #[arg(long)]
     pub enable_subspace_block_relay: bool,
+
+    /// Assigned PoT role for this node.
+    #[arg(long, default_value="node_client", value_parser(EnumValueParser::<CliPotRole>::new()))]
+    pub pot_role: CliPotRole,
+
+    /// If enabled, the node is responsible for bootstrapping the PoT chain.
+    #[arg(long, default_value_t = false)]
+    pub pot_bootstrap: bool,
 }
 
 impl SubstrateCli for Cli {

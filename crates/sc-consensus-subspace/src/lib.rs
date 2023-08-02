@@ -50,6 +50,7 @@ use sc_consensus::JustificationSyncLink;
 use sc_consensus_slots::{
     check_equivocation, BackoffAuthoringBlocksStrategy, InherentDataProviderExt, SlotProportion,
 };
+use sc_proof_of_time::PotConsensusState;
 use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_DEBUG, CONSENSUS_TRACE};
 use sc_utils::mpsc::TracingUnboundedSender;
 use schnorrkel::context::SigningContext;
@@ -400,6 +401,12 @@ where
 
     /// Handle use to report telemetries.
     pub telemetry: Option<TelemetryHandle>,
+
+    /// Proof of time interface.
+    pub proof_of_time: Arc<dyn PotConsensusState<B>>,
+
+    /// If enabled, the node is responsible for bootstrapping the PoT chain.
+    pub pot_bootstrap: bool,
 }
 
 /// Start the Subspace worker.
@@ -419,6 +426,8 @@ pub fn start_subspace<PosTable, Block, Client, SC, E, I, SO, CIDP, BS, L, AS, Er
         block_proposal_slot_portion,
         max_block_proposal_slot_portion,
         telemetry,
+        proof_of_time,
+        pot_bootstrap,
     }: SubspaceParams<Block, Client, SC, E, I, SO, L, CIDP, BS, AS>,
 ) -> Result<SubspaceWorker, sp_consensus::Error>
 where
@@ -463,6 +472,8 @@ where
         max_block_proposal_slot_portion,
         telemetry,
         segment_headers_store,
+        proof_of_time,
+        pot_bootstrap,
         _pos_table: PhantomData::<PosTable>,
     };
 
@@ -796,6 +807,7 @@ where
     subspace_link: SubspaceLink<Block>,
     create_inherent_data_providers: CIDP,
     segment_headers_store: SegmentHeadersStore<AS>,
+    proof_of_time: Arc<dyn PotConsensusState<Block>>,
     _pos_table: PhantomData<PosTable>,
 }
 
@@ -814,6 +826,7 @@ where
             subspace_link: self.subspace_link.clone(),
             create_inherent_data_providers: self.create_inherent_data_providers.clone(),
             segment_headers_store: self.segment_headers_store.clone(),
+            proof_of_time: self.proof_of_time.clone(),
             _pos_table: PhantomData,
         }
     }
@@ -837,6 +850,7 @@ where
         subspace_link: SubspaceLink<Block>,
         create_inherent_data_providers: CIDP,
         segment_headers_store: SegmentHeadersStore<AS>,
+        proof_of_time: Arc<dyn PotConsensusState<Block>>,
     ) -> Self {
         SubspaceBlockImport {
             client,
@@ -845,6 +859,7 @@ where
             subspace_link,
             create_inherent_data_providers,
             segment_headers_store,
+            proof_of_time,
             _pos_table: PhantomData,
         }
     }
@@ -1266,6 +1281,7 @@ pub fn block_import<PosTable, Client, Block, I, CIDP, AS>(
     kzg: Kzg,
     create_inherent_data_providers: CIDP,
     segment_headers_store: SegmentHeadersStore<AS>,
+    proof_of_time: Arc<dyn PotConsensusState<Block>>,
 ) -> ClientResult<(
     SubspaceBlockImport<PosTable, Block, Client, I, CIDP, AS>,
     SubspaceLink<Block>,
@@ -1318,6 +1334,7 @@ where
         link.clone(),
         create_inherent_data_providers,
         segment_headers_store,
+        proof_of_time,
     );
 
     Ok((import, link))

@@ -69,9 +69,10 @@ where
         };
         self.pot_state.reset(proofs);
 
-        let handle_gossip_message: Arc<dyn Fn(PeerId, PotProof)> = Arc::new(|sender, proof| {
-            self.handle_gossip_message(sender, proof);
-        });
+        let handle_gossip_message: Arc<dyn Fn(PeerId, PotProof) + Send + Sync> =
+            Arc::new(|sender, proof| {
+                self.handle_gossip_message(sender, proof);
+            });
         self.gossip
             .process_incoming_messages(handle_gossip_message)
             .await;

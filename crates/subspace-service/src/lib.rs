@@ -58,14 +58,17 @@ use sc_consensus_subspace::{
 };
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
+use sc_proof_of_time::{
+    pot_gossip_peers_set_config, BootstrapParams, ClockMaster, PotClient, PotComponents, PotRole,
+};
 use sc_service::error::Error as ServiceError;
 use sc_service::{Configuration, NetworkStarter, PartialComponents, SpawnTasksParams, TaskManager};
 use sc_subspace_block_relay::{build_consensus_relay, NetworkWrapper};
 use sc_telemetry::{Telemetry, TelemetryWorker};
 use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi, TransactionFor};
 use sp_block_builder::BlockBuilder;
-use sp_blockchain::HeaderMetadata;
-use sp_consensus::Error as ConsensusError;
+use sp_blockchain::{HeaderMetadata, Info};
+use sp_consensus::{Error as ConsensusError, SyncOracle};
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::{FarmerPublicKey, KzgExtension, PosExtension, SubspaceApi};
 use sp_core::offchain;
@@ -196,6 +199,10 @@ pub struct SubspaceConfiguration {
     /// Use the block request handler implementation from subspace
     /// instead of the default substrate handler.
     pub enable_subspace_block_relay: bool,
+    /// Proof of time role for the node.
+    pub pot_role: PotRole,
+    /// If enabled, the node is responsible for bootstrapping the PoT chain.
+    pub pot_bootstrap: bool,
 }
 
 struct SubspaceExtensionsFactory<PosTable> {
@@ -259,6 +266,7 @@ pub fn new_partial<PosTable, RuntimeApi, ExecutorDispatch>(
             SubspaceLink<Block>,
             SegmentHeadersStore<FullClient<RuntimeApi, ExecutorDispatch>>,
             Option<Telemetry>,
+            PotComponents<Block>,
         ),
     >,
     ServiceError,
@@ -358,6 +366,7 @@ where
         .map_err(|error| ServiceError::Application(error.into()))?;
     let fraud_proof_block_import =
         sc_consensus_fraud_proof::block_import(client.clone(), client.clone(), proof_verifier);
+    let pot_components = PotComponents::new();
 
     let (block_import, subspace_link) = sc_consensus_subspace::block_import::<
         PosTable,
@@ -399,6 +408,7 @@ where
             }
         },
         segment_headers_store.clone(),
+        pot_components.consensus_state(),
     )?;
 
     let slot_duration = subspace_link.slot_duration();
@@ -432,6 +442,7 @@ where
             subspace_link,
             segment_headers_store,
             telemetry,
+            pot_components,
         ),
     })
 }
@@ -512,6 +523,7 @@ pub async fn new_full<PosTable, RuntimeApi, ExecutorDispatch, I>(
             SubspaceLink<Block>,
             SegmentHeadersStore<FullClient<RuntimeApi, ExecutorDispatch>>,
             Option<Telemetry>,
+            PotComponents<Block>,
         ),
     >,
     enable_rpc_extensions: bool,
@@ -552,7 +564,7 @@ where
         keystore_container,
         select_chain,
         transaction_pool,
-        other: (block_import, subspace_link, segment_headers_store, mut telemetry),
+        other: (block_import, subspace_link, segment_headers_store, mut telemetry, pot_components),
     } = partial_components;
 
     let (node, bootstrap_nodes) = match config.subspace_networking.clone() {
@@ -751,6 +763,7 @@ where
     };
     let mut net_config = sc_network::config::FullNetworkConfiguration::new(&config.network);
     net_config.add_notification_protocol(cdm_gossip_peers_set_config());
+    net_config.add_notification_protocol(pot_gossip_peers_set_config());
     let sync_mode = Arc::clone(&net_config.network_config.sync_mode);
     let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
         sc_service::build_network(sc_service::BuildNetworkParams {
@@ -846,6 +859,55 @@ where
     let archived_segment_notification_stream = subspace_link.archived_segment_notification_stream();
 
     if config.role.is_authority() || config.force_new_slot_notifications {
+        info!("subspace-service: PoT role = {:?}", config.pot_role);
+        let client_cl = client.clone();
+        let chain_info_fn: Arc<dyn Fn() -> Info<Block> + Send + Sync> =
+            Arc::new(move || client_cl.chain_info());
+        let pot_consensus = pot_components.consensus_state();
+        if config.pot_role.is_clock_master() {
+            let clock_master = ClockMaster::<Block, _, _>::new(
+                pot_components,
+                client.clone(),
+                sync_service.clone(),
+                network_service.clone(),
+                sync_service.clone(),
+                chain_info_fn,
+            );
+
+            let bootstrap_params = BootstrapParams::new(
+                client.chain_info().genesis_hash.to_fixed_bytes(),
+                Default::default(), // TODO:in initial key from cmd line or BTC
+                Slot::from_timestamp(
+                    *sp_timestamp::InherentDataProvider::from_system_time(),
+                    subspace_link.slot_duration(),
+                )
+                .into(),
+            );
+            task_manager.spawn_essential_handle().spawn_blocking(
+                "subspace-proof-of-time-clock-master",
+                Some("subspace-proof-of-time-clock-master"),
+                async move {
+                    clock_master.run(Some(bootstrap_params)).await;
+                },
+            );
+        } else {
+            let pot_client = PotClient::<Block, _, _>::new(
+                pot_components,
+                client.clone(),
+                sync_service.clone(),
+                network_service.clone(),
+                sync_service.clone(),
+                chain_info_fn,
+            );
+            task_manager.spawn_essential_handle().spawn_blocking(
+                "subspace-proof-of-time-client",
+                Some("subspace-proof-of-time-client"),
+                async move {
+                    pot_client.run().await;
+                },
+            );
+        }
+
         let proposer_factory = ProposerFactory::new(
             task_manager.spawn_handle(),
             client.clone(),
@@ -896,6 +958,8 @@ where
             block_proposal_slot_portion,
             max_block_proposal_slot_portion: None,
             telemetry: None,
+            proof_of_time: pot_consensus,
+            pot_bootstrap: config.pot_bootstrap,
         };
 
         let subspace =

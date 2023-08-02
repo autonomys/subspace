@@ -426,6 +426,8 @@ fn main() -> Result<(), Error> {
                         sync_from_dsn: cli.sync_from_dsn,
                         enable_subspace_block_relay: cli.enable_subspace_block_relay
                             || cli.run.is_dev().unwrap_or(false),
+                        pot_role: cli.pot_role.into(),
+                        pot_bootstrap: cli.pot_bootstrap,
                     };
 
                     let construct_domain_genesis_block_builder =

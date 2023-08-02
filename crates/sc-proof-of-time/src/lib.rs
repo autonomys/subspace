@@ -103,26 +103,21 @@ impl<Block: BlockT> Default for PotComponents<Block> {
 }
 
 /// The role assigned to subspace-node.
-#[derive(Debug, Clone, Eq, PartialEq)]
-pub enum PotRole {
-    /// Clock master role of producing proofs + initial bootstrapping.
-    ClockMasterBootStrap,
-
-    /// Clock master role of producing proofs.
-    ClockMaster,
-
-    /// Consensus PoT client, listens for proofs from clock masters.
-    Client,
+#[derive(Debug, Clone)]
+pub struct PotRole {
+    /// True is the node is a clock master,
+    /// false if consensus node client.
+    is_clock_master: bool,
 }
 
 impl PotRole {
-    /// Checks if the role is clock master.
-    pub fn is_clock_master(&self) -> bool {
-        *self == Self::ClockMasterBootStrap || *self == Self::ClockMaster
+    /// Creates the PoT role.
+    pub fn new(is_clock_master: bool) -> Self {
+        Self { is_clock_master }
     }
 
-    /// Checks if the role is clock master bootstrap.
-    pub fn is_clock_master_bootstrap(&self) -> bool {
-        *self == Self::ClockMasterBootStrap
+    /// Checks if the role is clock master.
+    pub fn is_clock_master(&self) -> bool {
+        self.is_clock_master
     }
 }

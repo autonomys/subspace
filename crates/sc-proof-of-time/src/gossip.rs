@@ -61,7 +61,7 @@ impl<Block: BlockT> PotGossip<Block> {
     /// Returns when the gossip engine terminates.
     pub(crate) async fn process_incoming_messages<'a>(
         &self,
-        process_fn: Arc<dyn Fn(PeerId, PotProof) + 'a>,
+        process_fn: Arc<dyn Fn(PeerId, PotProof) + Send + Sync + 'a>,
     ) {
         let message_receiver = self.engine.lock().messages_for(topic::<Block>());
         let mut incoming_messages = Box::pin(message_receiver.filter_map(

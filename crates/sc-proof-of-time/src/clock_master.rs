@@ -122,9 +122,10 @@ where
         }
 
         let mut local_proof_receiver = self.spawn_producer_thread();
-        let handle_gossip_message: Arc<dyn Fn(PeerId, PotProof)> = Arc::new(|sender, proof| {
-            self.handle_gossip_message(sender, proof);
-        });
+        let handle_gossip_message: Arc<dyn Fn(PeerId, PotProof) + Send + Sync> =
+            Arc::new(|sender, proof| {
+                self.handle_gossip_message(sender, proof);
+            });
         loop {
             futures::select! {
                 local_proof = local_proof_receiver.recv().fuse() => {
