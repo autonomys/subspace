@@ -1,5 +1,5 @@
 use crate::behavior::persistent_parameters::{
-    NetworkingParametersRegistry, PEERS_ADDRESSES_BATCH_SIZE,
+    NetworkingParametersRegistry, PeerAddressRemovedEvent, PEERS_ADDRESSES_BATCH_SIZE,
 };
 use crate::behavior::{
     provider_storage, Behavior, Event, GeneralConnectedPeersInstance, SpecialConnectedPeersInstance,
@@ -145,6 +145,12 @@ where
     /// Known external addresses to the local peer. The addresses are added on the swarm start
     /// and enable peer to notify others about its reachable address.
     external_addresses: Vec<Multiaddr>,
+    /// Receives an event on peer address removal from the persistent storage.
+    removed_addresses_rx: mpsc::UnboundedReceiver<PeerAddressRemovedEvent>,
+    /// Sends an event on peer address removal from the persistent storage.
+    #[allow(dead_code)]
+    // we keep at least one instance of the sender in case the persistent storage drops it.
+    removed_addresses_tx: mpsc::UnboundedSender<PeerAddressRemovedEvent>,
 }
 
 // Helper struct for NodeRunner configuration (clippy requirement).
@@ -180,7 +186,7 @@ where
             swarm,
             shared_weak,
             next_random_query_interval,
-            networking_parameters_registry,
+            mut networking_parameters_registry,
             reserved_peers,
             temporary_bans,
             metrics,
@@ -192,6 +198,19 @@ where
             external_addresses,
         }: NodeRunnerConfig<ProviderStorage>,
     ) -> Self {
+        // Setup the address removal events exchange between persistent params storage and Kademlia.
+        let (removed_addresses_tx, removed_addresses_rx) = mpsc::unbounded();
+        if let Some(handler_id) = networking_parameters_registry.on_address_removed({
+            let removed_addresses_tx = removed_addresses_tx.clone();
+            Arc::new(move |event| {
+                if let Err(error) = removed_addresses_tx.unbounded_send(event.clone()) {
+                    debug!(?error, ?event, "Cannot send PeerAddressRemovedEvent")
+                };
+            })
+        }) {
+            handler_id.detach()
+        }
+
         Self {
             allow_non_global_addresses_in_dht,
             command_receiver,
@@ -218,6 +237,8 @@ where
             bootstrap_command_state: Arc::new(AsyncMutex::new(BootstrapCommandState::default())),
             kademlia_mode,
             external_addresses,
+            removed_addresses_rx,
+            removed_addresses_tx,
         }
     }
 
@@ -258,6 +279,13 @@ where
 
                     self.periodical_tasks_interval =
                         Box::pin(tokio::time::sleep(Duration::from_secs(5)).fuse());
+                },
+                event = self.removed_addresses_rx.next() => {
+                    if let Some(event) = event {
+                        self.handle_removed_address_event(event);
+                    } else {
+                        break;
+                    }
                 },
             }
         }
@@ -358,6 +386,22 @@ where
             .behaviour_mut()
             .kademlia
             .get_closest_peers(random_peer_id);
+    }
+
+    fn handle_removed_address_event(&mut self, event: PeerAddressRemovedEvent) {
+        trace!(?event, "Peer addressed removed event.",);
+
+        if event.last_address {
+            self.swarm
+                .behaviour_mut()
+                .kademlia
+                .remove_peer(&event.peer_id);
+        } else {
+            self.swarm
+                .behaviour_mut()
+                .kademlia
+                .remove_address(&event.peer_id, &event.address);
+        }
     }
 
     async fn handle_swarm_event<E: Debug>(&mut self, swarm_event: SwarmEvent<Event, E>) {

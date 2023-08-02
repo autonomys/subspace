@@ -1,7 +1,7 @@
 use crate::request_handlers::generic_request_handler::GenericRequest;
-use crate::shared::{Command, CreatedSubscription, HandlerFn, Shared};
+use crate::shared::{Command, CreatedSubscription, Shared};
 use crate::utils::multihash::Multihash;
-use crate::utils::ResizableSemaphorePermit;
+use crate::utils::{HandlerFn, ResizableSemaphorePermit};
 use crate::{request_responses, NewPeerInfo};
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;

@@ -7,6 +7,7 @@ pub(crate) mod prometheus;
 mod tests;
 pub(crate) mod unique_record_binary_heap;
 
+use event_listener_primitives::Bag;
 use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId};
 use parking_lot::Mutex;
@@ -286,3 +287,6 @@ impl Drop for ResizableSemaphorePermit {
         }
     }
 }
+
+pub(crate) type HandlerFn<A> = Arc<dyn Fn(&A) + Send + Sync + 'static>;
+pub(crate) type Handler<A> = Bag<HandlerFn<A>, A>;

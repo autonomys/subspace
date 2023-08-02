@@ -14,6 +14,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant, SystemTime};
+use tokio::time::sleep;
 
 #[tokio::test()]
 async fn test_address_timed_removal_from_known_peers_cache() {
@@ -23,6 +24,7 @@ async fn test_address_timed_removal_from_known_peers_cache() {
     let addr2 = Multiaddr::empty().with(Protocol::Memory(1));
     let addresses = vec![addr1.clone(), addr2.clone()];
     let expiration = chrono::Duration::nanoseconds(1);
+    let expiration_kademlia = chrono::Duration::nanoseconds(1);
 
     let mut peers_cache = LruCache::new(NonZeroUsize::new(100).unwrap());
     let mut addresses_cache = LruCache::new(NonZeroUsize::new(100).unwrap());
@@ -46,10 +48,17 @@ async fn test_address_timed_removal_from_known_peers_cache() {
         .expect("Address present")
         .is_none());
 
-    remove_known_peer_addresses_internal(&mut peers_cache, peer_id, addresses.clone(), expiration);
+    let removed_addresses = remove_known_peer_addresses_internal(
+        &mut peers_cache,
+        peer_id,
+        addresses.clone(),
+        expiration,
+        expiration_kademlia,
+    );
 
     // Check after the first run (set the first failure time)
     assert_eq!(peers_cache.len(), 1);
+    assert_eq!(removed_addresses.len(), 0);
     let addresses_from_cache = peers_cache.get(&peer_id).expect("PeerId present");
     assert_eq!(addresses_from_cache.len(), 2);
     assert!(addresses_from_cache
@@ -61,10 +70,79 @@ async fn test_address_timed_removal_from_known_peers_cache() {
         .expect("Address present")
         .is_some());
 
-    remove_known_peer_addresses_internal(&mut peers_cache, peer_id, addresses, expiration);
+    let removed_addresses = remove_known_peer_addresses_internal(
+        &mut peers_cache,
+        peer_id,
+        addresses,
+        expiration,
+        expiration_kademlia,
+    );
 
     // Check after the second run (clean cache)
     assert_eq!(peers_cache.len(), 0);
+    assert_eq!(removed_addresses.len(), 2);
+}
+
+#[tokio::test()]
+async fn test_different_removal_timing_from_known_peers_cache() {
+    // Cache initialization
+    let peer_id = PeerId::random();
+    let addr = Multiaddr::empty().with(Protocol::Memory(0));
+
+    let expiration_in_secs = 3u64;
+    let expiration_in_secs_kademlia = 1u64;
+    let expiration = chrono::Duration::seconds(expiration_in_secs as i64);
+    let expiration_kademlia = chrono::Duration::seconds(expiration_in_secs_kademlia as i64);
+
+    let mut peers_cache = LruCache::new(NonZeroUsize::new(100).unwrap());
+    let mut addresses_cache = LruCache::new(NonZeroUsize::new(100).unwrap());
+
+    let addresses = vec![addr.clone()];
+    addresses_cache.push(addr, None);
+    peers_cache.push(peer_id, addresses_cache);
+
+    //Precondition-check
+    assert_eq!(peers_cache.len(), 1);
+
+    let removed_addresses = remove_known_peer_addresses_internal(
+        &mut peers_cache,
+        peer_id,
+        addresses.clone(),
+        expiration,
+        expiration_kademlia,
+    );
+
+    // Check after the first run (set the first failure time)
+    assert_eq!(peers_cache.len(), 1);
+    assert_eq!(removed_addresses.len(), 0);
+
+    sleep(Duration::from_secs(expiration_in_secs_kademlia)).await;
+
+    let removed_addresses = remove_known_peer_addresses_internal(
+        &mut peers_cache,
+        peer_id,
+        addresses.clone(),
+        expiration,
+        expiration_kademlia,
+    );
+
+    // Check after the second run (Kademlia event only)
+    assert_eq!(peers_cache.len(), 1);
+    assert_eq!(removed_addresses.len(), 1);
+
+    sleep(Duration::from_secs(expiration_in_secs)).await;
+
+    let removed_addresses = remove_known_peer_addresses_internal(
+        &mut peers_cache,
+        peer_id,
+        addresses,
+        expiration,
+        expiration_kademlia,
+    );
+
+    // Check after the third run (Kademlia event and clean cache)
+    assert_eq!(peers_cache.len(), 0);
+    assert_eq!(removed_addresses.len(), 1);
 }
 
 #[test]
