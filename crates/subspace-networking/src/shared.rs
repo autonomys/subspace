@@ -61,9 +61,6 @@ pub(crate) enum Command {
         request: Vec<u8>,
         result_sender: oneshot::Sender<Result<Vec<u8>, RequestFailure>>,
     },
-    CheckConnectedPeers {
-        result_sender: oneshot::Sender<bool>,
-    },
     StartLocalAnnouncing {
         key: Key,
         result_sender: oneshot::Sender<bool>,

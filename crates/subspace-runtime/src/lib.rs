@@ -45,7 +45,7 @@ use domain_runtime_primitives::{BlockNumber as DomainNumber, Hash as DomainHash}
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, ConstU8, Everything, Get};
 use frame_support::weights::constants::{RocksDbWeight, WEIGHT_REF_TIME_PER_SECOND};
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
-use frame_support::{construct_runtime, parameter_types};
+use frame_support::{construct_runtime, parameter_types, PalletId};
 use frame_system::limits::{BlockLength, BlockWeights};
 use frame_system::EnsureNever;
 use pallet_feeds::feed_processor::FeedProcessor;
@@ -61,9 +61,10 @@ use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::{OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
-    DomainId, DomainInstanceData, DomainsFreezeIdentifier, OperatorId, OperatorPublicKey,
+    DomainId, DomainInstanceData, DomainsHoldIdentifier, OperatorId, OperatorPublicKey,
+    StakingHoldIdentifier,
 };
-use sp_runtime::traits::{AccountIdLookup, BlakeTwo256, NumberFor};
+use sp_runtime::traits::{AccountIdConversion, AccountIdLookup, BlakeTwo256, NumberFor};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{
     create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, Perbill, SaturatedConversion,
@@ -324,23 +325,37 @@ parameter_types! {
 #[derive(
     PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
 )]
-pub enum FreezeIdentifier {
-    Domains(DomainsFreezeIdentifier),
+pub enum HoldIdentifier {
+    Domains(DomainsHoldIdentifier),
 }
 
-impl pallet_domains::FreezeIdentifier<Runtime> for FreezeIdentifier {
-    fn staking_freeze_id(operator_id: OperatorId) -> Self {
-        Self::Domains(DomainsFreezeIdentifier::Staking(operator_id))
+impl pallet_domains::HoldIdentifier<Runtime> for HoldIdentifier {
+    fn staking_pending_deposit(operator_id: OperatorId) -> Self {
+        Self::Domains(DomainsHoldIdentifier::Staking(
+            StakingHoldIdentifier::PendingDeposit(operator_id),
+        ))
+    }
+
+    fn staking_staked(operator_id: OperatorId) -> Self {
+        Self::Domains(DomainsHoldIdentifier::Staking(
+            StakingHoldIdentifier::Staked(operator_id),
+        ))
+    }
+
+    fn staking_pending_unlock(operator_id: OperatorId) -> Self {
+        Self::Domains(DomainsHoldIdentifier::Staking(
+            StakingHoldIdentifier::PendingUnlock(operator_id),
+        ))
     }
 
     fn domain_instantiation_id(domain_id: DomainId) -> Self {
-        Self::Domains(DomainsFreezeIdentifier::DomainInstantiation(domain_id))
+        Self::Domains(DomainsHoldIdentifier::DomainInstantiation(domain_id))
     }
 }
 
 parameter_types! {
     // TODO: revisit this
-    pub const MaxFreezes: u32 = 100;
+    pub const MaxHolds: u32 = 100;
 }
 
 impl pallet_balances::Config for Runtime {
@@ -355,10 +370,10 @@ impl pallet_balances::Config for Runtime {
     type ExistentialDeposit = ExistentialDeposit;
     type AccountStore = System;
     type WeightInfo = pallet_balances::weights::SubstrateWeight<Runtime>;
-    type FreezeIdentifier = FreezeIdentifier;
-    type MaxFreezes = MaxFreezes;
-    type RuntimeHoldReason = ();
-    type MaxHolds = ();
+    type FreezeIdentifier = ();
+    type MaxFreezes = ();
+    type RuntimeHoldReason = HoldIdentifier;
+    type MaxHolds = MaxHolds;
 }
 
 parameter_types! {
@@ -470,6 +485,7 @@ parameter_types! {
     // TODO: revisit these
     pub const StakeWithdrawalLockingPeriod: BlockNumber = 100;
     pub const StakeEpochDuration: DomainNumber = 5;
+    pub TreasuryAccount: AccountId = PalletId(*b"treasury").into_account_truncating();
 }
 
 // `BlockTreePruningDepth` should <= `BlockHashCount` because we need the consensus block hash to verify
@@ -483,7 +499,7 @@ impl pallet_domains::Config for Runtime {
     type ConfirmationDepthK = ConfirmationDepthK;
     type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
     type Currency = Balances;
-    type FreezeIdentifier = FreezeIdentifier;
+    type HoldIdentifier = HoldIdentifier;
     type WeightInfo = pallet_domains::weights::SubstrateWeight<Runtime>;
     type InitialDomainTxRange = InitialDomainTxRange;
     type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;
@@ -497,6 +513,7 @@ impl pallet_domains::Config for Runtime {
     type BlockTreePruningDepth = BlockTreePruningDepth;
     type StakeWithdrawalLockingPeriod = StakeWithdrawalLockingPeriod;
     type StakeEpochDuration = StakeEpochDuration;
+    type TreasuryAccount = TreasuryAccount;
 }
 
 parameter_types! {
@@ -854,7 +871,7 @@ impl_runtime_apis! {
             Domains::runtime_id(domain_id)
         }
 
-        fn domain_instance_data(domain_id: DomainId) -> Option<DomainInstanceData> {
+        fn domain_instance_data(domain_id: DomainId) -> Option<(DomainInstanceData, NumberFor<Block>)> {
             Domains::domain_instance_data(domain_id)
         }
 

@@ -433,6 +433,7 @@ pub struct GenesisDomain<AccountId> {
     pub max_block_weight: Weight,
     pub bundle_slot_probability: (u64, u64),
     pub target_bundles_per_block: u32,
+    pub raw_genesis_config: Vec<u8>,
 
     // Genesis operator
     pub signing_key: OperatorPublicKey,
@@ -462,12 +463,25 @@ pub type EpochIndex = u32;
 /// Type representing operator ID
 pub type OperatorId = u64;
 
-/// Domains specific Identifier for Balances freeze.
+/// Staking specific hold identifier
 #[derive(
     PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
 )]
-pub enum DomainsFreezeIdentifier {
-    Staking(OperatorId),
+pub enum StakingHoldIdentifier {
+    /// Holds all the pending deposits to an Operator.
+    PendingDeposit(OperatorId),
+    /// Holds all the currently staked funds to an Operator.
+    Staked(OperatorId),
+    /// Holds all the currently unlocking funds.
+    PendingUnlock(OperatorId),
+}
+
+/// Domains specific Identifier for Balances holds.
+#[derive(
+    PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
+)]
+pub enum DomainsHoldIdentifier {
+    Staking(StakingHoldIdentifier),
     DomainInstantiation(DomainId),
 }
 
@@ -517,6 +531,11 @@ impl DomainsDigestItem for DigestItem {
 pub struct DomainInstanceData {
     pub runtime_type: RuntimeType,
     pub runtime_code: Vec<u8>,
+    // The genesis config of the domain, encoded in json format.
+    //
+    // NOTE: the WASM code in the `system-pallet` genesis config should be empty to avoid
+    // redundancy with the `runtime_code` field.
+    pub raw_genesis_config: Option<Vec<u8>>,
 }
 
 impl PassBy for DomainInstanceData {
@@ -602,7 +621,7 @@ sp_api::decl_runtime_apis! {
         fn runtime_id(domain_id: DomainId) -> Option<RuntimeId>;
 
         /// Returns the domain instance data for given `domain_id`.
-        fn domain_instance_data(domain_id: DomainId) -> Option<DomainInstanceData>;
+        fn domain_instance_data(domain_id: DomainId) -> Option<(DomainInstanceData, NumberFor<Block>)>;
 
         /// Returns the current timestamp at given height.
         fn timestamp() -> Moment;

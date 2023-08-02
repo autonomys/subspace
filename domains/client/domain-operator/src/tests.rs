@@ -198,12 +198,7 @@ async fn test_domain_block_production() {
     assert_eq!(alice.client.info().best_number, domain_block_number + 10);
 }
 
-// TODO: Disabled because the pallet-balance genesis config of the evm domain is empty and
-// there is no initial balance in the testing account thus the `transfer` extrinsic will fail
-// due to unable to pay transaction fee, unlock once we can set customized genesis config in
-// test environment.
 #[substrate_test_utils::test(flavor = "multi_thread")]
-#[ignore]
 async fn test_domain_block_deriving_from_multiple_bundles() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -463,12 +458,7 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
     );
 }
 
-// TODO: Disabled because the pallet-balance genesis config of the evm domain is empty and
-// there is no initial balance in the testing account thus the `transfer` extrinsic will fail
-// due to unable to pay transaction fee, unlock once we can set customized genesis config in
-// test environment.
 #[substrate_test_utils::test(flavor = "multi_thread")]
-#[ignore]
 async fn test_domain_tx_propagate() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -544,8 +534,12 @@ async fn test_executor_full_node_catching_up() {
         Ferdie,
         BasePath::new(directory.path().join("ferdie")),
     );
-    // Produce 1 consensus block to initialize genesis domain
-    ferdie.produce_block_with_slot(1.into()).await.unwrap();
+    // Produce 5 consensus block to initialize genesis domain
+    //
+    // This also make the first consensus block being processed by the alice's domain
+    // block processor be block #5, to ensure it can correctly handle the consensus
+    // block even it is out of order.
+    ferdie.produce_blocks(5).await.unwrap();
 
     // Run Alice (a evm domain authority node)
     let alice = domain_test_service::DomainNodeBuilder::new(

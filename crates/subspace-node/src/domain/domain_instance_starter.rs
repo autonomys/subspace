@@ -43,6 +43,7 @@ impl DomainInstanceStarter {
     ) -> std::result::Result<(), Box<dyn std::error::Error>> {
         let BootstrapResult {
             domain_instance_data,
+            domain_created_at,
             imported_block_notification_stream,
         } = bootstrap_result;
 
@@ -142,6 +143,7 @@ impl DomainInstanceStarter {
                 let domain_params = domain_service::DomainParams {
                     domain_id,
                     domain_config,
+                    domain_created_at,
                     consensus_client,
                     consensus_network_sync_oracle: consensus_sync_service.clone(),
                     select_chain,

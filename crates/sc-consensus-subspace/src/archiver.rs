@@ -34,6 +34,7 @@ use sp_objects::ObjectsApi;
 use sp_runtime::generic::SignedBlock;
 use sp_runtime::traits::{Block as BlockT, CheckedSub, Header, NumberFor, One, Zero};
 use std::future::Future;
+use std::slice;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
@@ -687,6 +688,16 @@ where
             for archived_segment in archiver.add_block(encoded_block, block_object_mappings) {
                 let segment_header = archived_segment.segment_header;
 
+                if let Err(error) =
+                    segment_headers_store.add_segment_headers(slice::from_ref(&segment_header))
+                {
+                    error!(
+                        target: "subspace",
+                        "Failed to store segment headers: {error}"
+                    );
+                    return;
+                }
+
                 send_archived_segment_notification(
                     &archived_segment_notification_sender,
                     archived_segment,
@@ -697,14 +708,6 @@ where
             }
 
             if !new_segment_headers.is_empty() {
-                if let Err(error) = segment_headers_store.add_segment_headers(&new_segment_headers)
-                {
-                    error!(
-                        target: "subspace",
-                        "Failed to store segment headers: {error}"
-                    );
-                    return;
-                }
                 let maybe_block_number_to_finalize = {
                     let mut segment_headers = segment_headers.lock();
                     segment_headers.put(block_number + One::one(), new_segment_headers);

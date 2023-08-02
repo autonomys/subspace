@@ -139,6 +139,8 @@ where
     bootstrap_addresses: Vec<Multiaddr>,
     /// Ensures a single bootstrap on run() invocation.
     bootstrap_command_state: Arc<AsyncMutex<BootstrapCommandState>>,
+    /// Kademlia mode. None means "automatic mode".
+    kademlia_mode: Option<Mode>,
 }
 
 // Helper struct for NodeRunner configuration (clippy requirement).
@@ -159,6 +161,7 @@ where
     pub(crate) general_connection_decision_handler: Option<ConnectedPeersHandler>,
     pub(crate) special_connection_decision_handler: Option<ConnectedPeersHandler>,
     pub(crate) bootstrap_addresses: Vec<Multiaddr>,
+    pub(crate) kademlia_mode: Option<Mode>,
 }
 
 impl<ProviderStorage> NodeRunner<ProviderStorage>
@@ -180,6 +183,7 @@ where
             general_connection_decision_handler,
             special_connection_decision_handler,
             bootstrap_addresses,
+            kademlia_mode,
         }: NodeRunnerConfig<ProviderStorage>,
     ) -> Self {
         Self {
@@ -206,6 +210,7 @@ where
             rng: StdRng::seed_from_u64(KADEMLIA_PEERS_ADDRESSES_BATCH_SIZE as u64), // any seed
             bootstrap_addresses,
             bootstrap_command_state: Arc::new(AsyncMutex::new(BootstrapCommandState::default())),
+            kademlia_mode,
         }
     }
 
@@ -289,7 +294,8 @@ where
         self.swarm
             .behaviour_mut()
             .kademlia
-            .set_mode(Some(Mode::Server));
+            .set_mode(self.kademlia_mode);
+        debug!("Kademlia mode set: {:?}.", self.kademlia_mode);
 
         let mut bootstrap_step = 0;
         loop {
@@ -1187,17 +1193,6 @@ where
                     result_sender,
                     IfDisconnected::TryConnect,
                 );
-            }
-            Command::CheckConnectedPeers { result_sender } => {
-                let connected_peers_present = self.swarm.connected_peers().next().is_some();
-
-                let kademlia_connection_initiated = if connected_peers_present {
-                    self.swarm.behaviour_mut().kademlia.bootstrap().is_ok()
-                } else {
-                    false
-                };
-
-                let _ = result_sender.send(kademlia_connection_initiated);
             }
             Command::StartLocalAnnouncing { key, result_sender } => {
                 let local_peer_id = *self.swarm.local_peer_id();

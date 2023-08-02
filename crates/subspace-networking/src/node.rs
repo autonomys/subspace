@@ -16,9 +16,7 @@ use parity_scale_codec::Decode;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use std::time::Duration;
 use thiserror::Error;
-use tokio::time::sleep;
 use tracing::{debug, error, trace};
 
 /// Topic subscription, will unsubscribe when last instance is dropped for a particular topic.
@@ -118,16 +116,6 @@ impl From<oneshot::Canceled> for GetClosestPeersError {
     fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
         Self::NodeRunnerDropped
     }
-}
-
-#[derive(Debug, Error)]
-pub enum CheckConnectedPeersError {
-    /// Did not connect within provided timeout window.
-    #[error("Did not connect within provided timeout window")]
-    Timeout,
-    /// Node runner was dropped, impossible to check connected peers.
-    #[error("Node runner was dropped, impossible to check connected peers")]
-    NodeRunnerDropped,
 }
 
 /// Defines errors for `subscribe` operation.
@@ -451,42 +439,6 @@ impl Node {
 
         // TODO: A wrapper that'll immediately cancel query on drop
         Ok(result_receiver)
-    }
-
-    /// Waits for peers connection to the swarm and for Kademlia address registration.
-    pub async fn wait_for_connected_peers(
-        &self,
-        timeout: Duration,
-    ) -> Result<(), CheckConnectedPeersError> {
-        let mut command_sender = self.shared.command_sender.clone();
-        let fut = async move {
-            loop {
-                trace!("Starting 'CheckConnectedPeers' request.");
-
-                let (result_sender, result_receiver) = oneshot::channel();
-
-                command_sender
-                    .send(Command::CheckConnectedPeers { result_sender })
-                    .await
-                    .map_err(|_| CheckConnectedPeersError::NodeRunnerDropped)?;
-
-                let connected_peers_present = result_receiver
-                    .await
-                    .map_err(|_| CheckConnectedPeersError::NodeRunnerDropped)?;
-
-                trace!("'CheckConnectedPeers' request returned {connected_peers_present}");
-
-                if connected_peers_present {
-                    return Ok(());
-                }
-
-                sleep(Duration::from_millis(50)).await;
-            }
-        };
-
-        tokio::time::timeout(timeout, fut)
-            .await
-            .map_err(|_timeout| CheckConnectedPeersError::Timeout)?
     }
 
     /// Start local announcing item by its key. Saves key to the local storage.

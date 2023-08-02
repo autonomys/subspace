@@ -35,6 +35,7 @@ use libp2p::multiaddr::Protocol;
 use libp2p::swarm::SwarmBuilder;
 use libp2p::yamux::Config as YamuxConfig;
 use libp2p::{identity, Multiaddr, PeerId, StreamProtocol, TransportError};
+use libp2p_kad::Mode;
 use parking_lot::Mutex;
 use std::borrow::Cow;
 use std::iter::Empty;
@@ -224,6 +225,8 @@ pub struct Config<ProviderStorage> {
     pub special_target_connections: u32,
     /// Addresses to bootstrap Kademlia network
     pub bootstrap_addresses: Vec<Multiaddr>,
+    /// Kademlia mode. None means "automatic mode".
+    pub kademlia_mode: Option<Mode>,
 }
 
 impl<ProviderStorage> fmt::Debug for Config<ProviderStorage> {
@@ -337,6 +340,7 @@ where
             general_target_connections: SWARM_TARGET_CONNECTION_NUMBER,
             special_target_connections: SWARM_TARGET_CONNECTION_NUMBER,
             bootstrap_addresses: Vec::new(),
+            kademlia_mode: Some(Mode::Server),
         }
     }
 }
@@ -400,6 +404,7 @@ where
         general_target_connections,
         special_target_connections,
         bootstrap_addresses,
+        kademlia_mode,
     } = config;
     let local_peer_id = peer_id(&keypair);
 
@@ -512,6 +517,7 @@ where
         general_connection_decision_handler,
         special_connection_decision_handler,
         bootstrap_addresses,
+        kademlia_mode,
     });
 
     Ok((node, node_runner))

@@ -164,6 +164,7 @@ pub struct OperatorParams<
     NSNS: Stream<Item = NewSlotNotification> + Send + 'static,
 {
     pub domain_id: DomainId,
+    pub domain_created_at: NumberFor<CBlock>,
     pub consensus_client: Arc<CClient>,
     pub consensus_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
     pub client: Arc<Client>,
