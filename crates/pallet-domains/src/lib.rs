@@ -109,9 +109,9 @@ mod pallet {
         ScheduledRuntimeUpgrade,
     };
     use crate::staking::{
-        do_deregister_operator, do_nominate_operator, do_register_operator, do_reward_operators,
-        do_switch_operator_domain, do_withdraw_stake, Error as StakingError, Nominator, Operator,
-        OperatorConfig, StakingSummary, Withdraw,
+        do_auto_stake_block_rewards, do_deregister_operator, do_nominate_operator,
+        do_register_operator, do_reward_operators, do_switch_operator_domain, do_withdraw_stake,
+        Error as StakingError, Nominator, Operator, OperatorConfig, StakingSummary, Withdraw,
     };
     use crate::staking_epoch::{
         do_finalize_domain_current_epoch, do_unlock_pending_withdrawals,
@@ -478,6 +478,12 @@ mod pallet {
     pub(super) type LastEpochStakingDistribution<T: Config> =
         StorageMap<_, Identity, DomainId, ElectionVerificationParams<BalanceOf<T>>, OptionQuery>;
 
+    /// A preferred Operator for a given Nominator. Nominator's rewards are auto staked to their
+    /// preferred Operator.
+    #[pallet::storage]
+    pub(super) type PreferredOperator<T: Config> =
+        StorageMap<_, Identity, NominatorId<T>, OperatorId, OptionQuery>;
+
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum BundleError {
         /// Can not find the operator for given operator id.
@@ -587,6 +593,10 @@ mod pallet {
             operator_id: OperatorId,
         },
         WithdrewStake {
+            operator_id: OperatorId,
+            nominator_id: NominatorId<T>,
+        },
+        PreferredOperator {
             operator_id: OperatorId,
             nominator_id: NominatorId<T>,
         },
@@ -895,6 +905,25 @@ mod pallet {
             do_withdraw_stake::<T>(operator_id, who.clone(), withdraw).map_err(Error::<T>::from)?;
 
             Self::deposit_event(Event::WithdrewStake {
+                operator_id,
+                nominator_id: who,
+            });
+
+            Ok(())
+        }
+
+        #[pallet::call_index(10)]
+        #[pallet::weight((Weight::from_all(10_000), Pays::Yes))]
+        // TODO: proper benchmark
+        pub fn auto_stake_block_rewards(
+            origin: OriginFor<T>,
+            operator_id: OperatorId,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+
+            do_auto_stake_block_rewards::<T>(who.clone(), operator_id).map_err(Error::<T>::from)?;
+
+            Self::deposit_event(Event::PreferredOperator {
                 operator_id,
                 nominator_id: who,
             });

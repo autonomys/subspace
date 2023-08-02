@@ -4,7 +4,7 @@ use crate::pallet::{
     DomainStakingSummary, LastEpochStakingDistribution, Nominators, OperatorIdOwner, Operators,
     PendingDeposits, PendingNominatorUnlocks, PendingOperatorDeregistrations,
     PendingOperatorSwitches, PendingOperatorUnlocks, PendingSlashes, PendingUnlocks,
-    PendingWithdrawals,
+    PendingWithdrawals, PreferredOperator,
 };
 use crate::staking::{Error as TransitionError, Nominator, OperatorStatus, Withdraw};
 use crate::{
@@ -240,6 +240,8 @@ fn unlock_operator<T: Config>(operator_id: OperatorId) -> Result<(), Error> {
             )
             .map_err(|_| TransitionError::RemoveLock)?;
 
+            remove_preferred_operator::<T>(nominator_id, &operator_id);
+
             // update pool's remaining shares and stake
             total_shares = total_shares
                 .checked_sub(&nominator.shares)
@@ -444,6 +446,17 @@ pub(crate) fn mint_funds<T: Config>(
     Ok(())
 }
 
+/// Remove the preference if the operator id matches
+fn remove_preferred_operator<T: Config>(nominator_id: NominatorId<T>, operator_id: &OperatorId) {
+    PreferredOperator::<T>::mutate_exists(nominator_id, |maybe_preferred_operator| {
+        if let Some(preferred_operator_id) = maybe_preferred_operator {
+            if preferred_operator_id == operator_id {
+                maybe_preferred_operator.take();
+            }
+        }
+    });
+}
+
 #[allow(clippy::too_many_arguments)]
 fn finalize_nominator_withdrawal<T: Config>(
     domain_id: DomainId,
@@ -479,6 +492,8 @@ fn finalize_nominator_withdrawal<T: Config>(
                 Precision::Exact,
             )
             .map_err(|_| TransitionError::RemoveLock)?;
+
+            remove_preferred_operator::<T>(nominator_id.clone(), &operator_id);
             (nominator_staked_amount, nominator.shares)
         }
         Withdraw::Some(withdraw_amount) => {
@@ -667,6 +682,8 @@ pub(crate) fn do_finalize_slashed_operators<T: Config>(
                     .checked_sub(&locked_amount)
                     .ok_or(TransitionError::BalanceUnderflow)?;
 
+                remove_preferred_operator::<T>(nominator_id, &operator_id);
+
                 Ok(())
             })?;
 
@@ -720,11 +737,12 @@ mod tests {
     use crate::pallet::{
         DomainStakingSummary, LastEpochStakingDistribution, Nominators, OperatorIdOwner, Operators,
         PendingDeposits, PendingOperatorSwitches, PendingOperatorUnlocks, PendingUnlocks,
-        PendingWithdrawals,
+        PendingWithdrawals, PreferredOperator,
     };
     use crate::staking::tests::register_operator;
     use crate::staking::{
-        do_deregister_operator, do_nominate_operator, do_reward_operators, StakingSummary,
+        do_auto_stake_block_rewards, do_deregister_operator, do_nominate_operator,
+        do_reward_operators, StakingSummary,
     };
     use crate::staking_epoch::{
         do_finalize_domain_current_epoch, do_finalize_operator_deregistrations,
@@ -847,6 +865,16 @@ mod tests {
                     .unwrap()
             }
 
+            for nominator in &nominators {
+                if !nominator.1 .1.is_zero() {
+                    do_auto_stake_block_rewards::<Test>(*nominator.0, operator_id).unwrap();
+                    assert_eq!(
+                        operator_id,
+                        PreferredOperator::<Test>::get(nominator.0).unwrap()
+                    )
+                }
+            }
+
             // de-register operator
             do_deregister_operator::<Test>(operator_account, operator_id).unwrap();
 
@@ -875,6 +903,10 @@ mod tests {
                     PendingWithdrawals::<Test>::get(operator_id, *nominator.0),
                     None
                 );
+
+                if !nominator.1 .0.is_zero() {
+                    assert!(!PreferredOperator::<Test>::contains_key(nominator.0))
+                }
             }
 
             assert_eq!(Operators::<Test>::get(operator_id), None);

@@ -3,7 +3,7 @@
 use crate::pallet::{
     DomainStakingSummary, NextOperatorId, Nominators, OperatorIdOwner, Operators, PendingDeposits,
     PendingNominatorUnlocks, PendingOperatorDeregistrations, PendingOperatorSwitches,
-    PendingOperatorUnlocks, PendingSlashes, PendingWithdrawals,
+    PendingOperatorUnlocks, PendingSlashes, PendingWithdrawals, PreferredOperator,
 };
 use crate::staking_epoch::{mint_funds, PendingNominatorUnlock, PendingOperatorSlashInfo};
 use crate::{BalanceOf, Config, HoldIdentifier, NominatorId};
@@ -445,6 +445,28 @@ pub(crate) fn do_reward_operators<T: Config>(
     })
 }
 
+/// Sets Operator as the preferred one to auto stake the block rewards.
+/// Caller must be nominator of the Operator.
+pub(crate) fn do_auto_stake_block_rewards<T: Config>(
+    nominator_id: NominatorId<T>,
+    operator_id: OperatorId,
+) -> Result<(), Error> {
+    // must be a nominator of this operator
+    ensure!(
+        Nominators::<T>::contains_key(operator_id, nominator_id.clone()),
+        Error::UnknownNominator
+    );
+
+    let operator = Operators::<T>::get(operator_id).ok_or(Error::UnknownOperator)?;
+    ensure!(
+        operator.status == OperatorStatus::Registered,
+        Error::OperatorNotRegistered
+    );
+
+    PreferredOperator::<T>::insert(nominator_id, operator_id);
+    Ok(())
+}
+
 #[allow(dead_code)]
 // TODO: remove once fraud proof is done
 /// Freezes the slashed operators and moves the operator to be removed once the domain they are
@@ -529,7 +551,7 @@ pub(crate) mod tests {
     use crate::pallet::{
         DomainStakingSummary, NextOperatorId, OperatorIdOwner, Operators, PendingDeposits,
         PendingNominatorUnlocks, PendingOperatorDeregistrations, PendingOperatorSwitches,
-        PendingSlashes, PendingUnlocks, PendingWithdrawals,
+        PendingSlashes, PendingUnlocks, PendingWithdrawals, PreferredOperator,
     };
     use crate::staking::{
         do_nominate_operator, do_reward_operators, do_slash_operators, do_withdraw_stake,
@@ -1392,6 +1414,51 @@ pub(crate) mod tests {
                 res,
                 Error::<Test>::Staking(crate::staking::Error::TryDepositWithPendingWithdraw)
             )
+        });
+    }
+
+    #[test]
+    fn auto_stake_block_rewards() {
+        let domain_id = DomainId::new(0);
+        let operator_account = 1;
+        let operator_free_balance = 1500 * SSC;
+        let operator_stake = 1000 * SSC;
+        let pair = OperatorPair::from_seed(&U256::from(0u32).into());
+
+        let nominator_account = 2;
+        let nominator_free_balance = 150 * SSC;
+        let nominator_stake = 100 * SSC;
+        let nominators = BTreeMap::from_iter(vec![(
+            nominator_account,
+            (nominator_free_balance, nominator_stake),
+        )]);
+
+        let mut ext = new_test_ext();
+        ext.execute_with(|| {
+            let (operator_id, _) = register_operator(
+                domain_id,
+                operator_account,
+                operator_free_balance,
+                operator_stake,
+                10 * SSC,
+                pair.public(),
+                nominators,
+            );
+
+            // Finalize pending deposit
+            do_finalize_domain_current_epoch::<Test>(domain_id, 0).unwrap();
+            assert!(!PreferredOperator::<Test>::contains_key(nominator_account));
+
+            let res = Domains::auto_stake_block_rewards(
+                RuntimeOrigin::signed(nominator_account),
+                operator_id,
+            );
+            assert_ok!(res);
+
+            assert_eq!(
+                operator_id,
+                PreferredOperator::<Test>::get(nominator_account).unwrap()
+            );
         });
     }
 }
