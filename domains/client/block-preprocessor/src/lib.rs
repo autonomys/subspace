@@ -196,6 +196,7 @@ fn shuffle_extrinsics<Extrinsic: Debug, AccountId: Ord + Clone>(
 pub struct PreprocessResult<Block: BlockT> {
     pub extrinsics: Vec<Block::Extrinsic>,
     pub extrinsics_roots: Vec<ExtrinsicsRoot>,
+    pub invalid_bundles: Vec<InvalidBundle>,
 }
 
 pub struct DomainBlockPreprocessor<Block, CBlock, Client, CClient, RuntimeApi> {
@@ -323,6 +324,7 @@ where
         Ok(Some(PreprocessResult {
             extrinsics,
             extrinsics_roots,
+            invalid_bundles,
         }))
     }
 

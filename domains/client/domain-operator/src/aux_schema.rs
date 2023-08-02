@@ -503,6 +503,7 @@ mod tests {
             parent_domain_block_receipt_hash: H256::random(),
             consensus_block_number,
             consensus_block_hash: H256::random(),
+            invalid_bundles: Vec::new(),
             block_extrinsics_roots: Default::default(),
             final_state_root: Default::default(),
             execution_trace: Default::default(),

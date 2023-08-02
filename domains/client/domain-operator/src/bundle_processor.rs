@@ -212,6 +212,7 @@ where
         let Some(PreprocessResult {
             extrinsics,
             extrinsics_roots,
+            invalid_bundles,
         }) = self
             .domain_block_preprocessor
             .preprocess_consensus_block(consensus_block_hash, parent_hash)?
@@ -235,6 +236,7 @@ where
                 (consensus_block_hash, consensus_block_number),
                 (parent_hash, parent_number),
                 extrinsics,
+                invalid_bundles,
                 extrinsics_roots,
                 Digest::default(),
             )

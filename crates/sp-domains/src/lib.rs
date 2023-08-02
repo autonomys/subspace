@@ -319,6 +319,8 @@ pub struct ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance> {
     pub consensus_block_number: Number,
     /// The block hash corresponding to `consensus_block_number`.
     pub consensus_block_hash: Hash,
+    /// Potential bundles that are excluded from the domain block building.
+    pub invalid_bundles: Vec<InvalidBundle>,
     /// All `extrinsics_roots` for all bundles being executed by this block.
     ///
     /// Used to ensure these are contained within the state of the `execution_inbox`.
@@ -357,6 +359,7 @@ impl<
             parent_domain_block_receipt_hash: Default::default(),
             consensus_block_hash: consensus_genesis_hash,
             consensus_block_number: Zero::zero(),
+            invalid_bundles: Vec::new(),
             block_extrinsics_roots: sp_std::vec![],
             final_state_root: genesis_state_root.clone(),
             execution_trace: sp_std::vec![genesis_state_root],
@@ -601,7 +604,7 @@ pub fn signer_in_tx_range(bundle_vrf_hash: &U256, signer_id_hash: &U256, tx_rang
     distance_from_vrf_hash <= (*tx_range / 2)
 }
 
-#[derive(Debug, Decode, Encode, TypeInfo, Clone)]
+#[derive(Debug, Decode, Encode, TypeInfo, Clone, PartialEq, Eq)]
 pub enum InvalidBundleType {
     /// Runtime API error.
     ApiError,
@@ -613,13 +616,13 @@ pub enum InvalidBundleType {
     IllegalTx,
 }
 
-#[derive(Debug, Decode, Encode, TypeInfo, Clone)]
+#[derive(Debug, Decode, Encode, TypeInfo, Clone, PartialEq, Eq)]
 pub struct InvalidBundle {
     pub bundle_index: u32,
     pub invalid_bundle_type: InvalidBundleType,
 }
 
-#[derive(Debug, Decode, Encode, TypeInfo, Clone)]
+#[derive(Debug, Decode, Encode, TypeInfo, Clone, PartialEq, Eq)]
 pub enum BundleValidity<Extrinsic> {
     Valid(Vec<Extrinsic>),
     Invalid(InvalidBundleType),
