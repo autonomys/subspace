@@ -209,14 +209,15 @@ pub(super) fn configure_dsn(
                             segment_indexes.clone()
                         }
                         SegmentHeaderRequest::LastSegmentHeaders {
-                            segment_header_number,
+                            mut segment_header_number,
                         } => {
                             if segment_header_number > SEGMENT_HEADER_NUMBER_LIMIT {
                                 debug!(
                                     %segment_header_number,
                                     "Segment header number exceeded the limit."
                                 );
-                                return None;
+
+                                segment_header_number = SEGMENT_HEADER_NUMBER_LIMIT;
                             }
 
                             let last_segment_index = SegmentIndex::from(
