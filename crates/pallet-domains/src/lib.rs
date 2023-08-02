@@ -509,6 +509,8 @@ mod pallet {
         BundleTooLarge,
         // Bundle with an invalid extrinsic root
         InvalidExtrinsicRoot,
+        /// This bundle duplicated with an already submitted bundle
+        DuplicatedBundle,
     }
 
     impl<T> From<RuntimeRegistryError> for Error<T> {
@@ -1152,6 +1154,18 @@ impl<T: Config> Pallet<T> {
             .map(|operator| (operator.signing_key, operator.current_total_stake))
     }
 
+    fn check_bundle_duplication(opaque_bundle: &OpaqueBundleOf<T>) -> Result<(), BundleError> {
+        // NOTE: it is important to use the hash that not incliude the signature, otherwise
+        // the malicious operator may update its `signing_key` (this may support in the future)
+        // and sign an existing bundle thus creating a duplicated bundle and pass the check.
+        let bundle_header_hash = opaque_bundle.sealed_header.pre_hash();
+        ensure!(
+            !InboxedBundle::<T>::contains_key(bundle_header_hash),
+            BundleError::DuplicatedBundle
+        );
+        Ok(())
+    }
+
     // Check if a bundle is stale
     fn check_stale_bundle(
         current_block_number: T::BlockNumber,
@@ -1259,6 +1273,8 @@ impl<T: Config> Pallet<T> {
         {
             return Err(BundleError::BadBundleSignature);
         }
+
+        Self::check_bundle_duplication(opaque_bundle)?;
 
         // Reject the stale bundles so that they can't be used by attacker to occupy the block space without cost.
         let current_block_number = frame_system::Pallet::<T>::current_block_number();
