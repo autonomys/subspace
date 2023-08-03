@@ -16,7 +16,7 @@ use subspace_networking::{
 use thiserror::Error;
 use tracing::{debug, error, trace};
 
-const SEGMENT_HEADERS_NUMBER_LIMIT: u64 = 100;
+const SEGMENT_HEADERS_NUMBER_LIMIT: u64 = 1000;
 
 /// Errors that might happen during DSN configuration.
 #[derive(Debug, Error)]
