@@ -31,6 +31,7 @@ use libp2p::kad::{
     ProgressStep, ProviderRecord, PutRecordOk, QueryId, QueryResult, Quorum, Record,
 };
 use libp2p::metrics::{Metrics, Recorder};
+use libp2p::multiaddr::Protocol;
 use libp2p::swarm::{DialError, SwarmEvent};
 use libp2p::{futures, Multiaddr, PeerId, Swarm, TransportError};
 use nohash_hasher::IntMap;
@@ -657,7 +658,39 @@ where
 
                 kademlia.remove_peer(&peer_id);
             }
+
+            self.add_observed_external_address(info.observed_addr);
         }
+    }
+
+    fn add_observed_external_address(&mut self, observed_addr: Multiaddr) {
+        // TODO: replace with Autonat
+        // TODO: won't work with QUIC
+        let mut listen_ports = HashSet::new();
+        for mut listen_address in self.swarm.listeners().cloned() {
+            while let Some(protocol) = listen_address.pop() {
+                if let Protocol::Tcp(port) = protocol {
+                    listen_ports.insert(port);
+                }
+            }
+        }
+
+        let mut observed_addr_candidate = observed_addr.clone();
+        while let Some(protocol) = observed_addr_candidate.pop() {
+            if let Protocol::Tcp(port) = protocol {
+                if listen_ports.contains(&port) {
+                    debug!("Added observed address as external: {}", observed_addr);
+                    self.swarm.add_external_address(observed_addr);
+
+                    return;
+                }
+            }
+        }
+
+        debug!(
+            "Observed address wasn't added as external (different port): {}",
+            observed_addr
+        );
     }
 
     async fn handle_kademlia_event(&mut self, event: KademliaEvent) {
