@@ -9200,6 +9200,7 @@ dependencies = [
  "sp-blockchain",
  "sp-consensus",
  "sp-consensus-subspace",
+ "sp-core",
  "sp-runtime",
  "subspace-core-primitives",
  "subspace-proof-of-time",

@@ -2,7 +2,7 @@
 
 use crate::gossip::PotGossip;
 use crate::state_manager::PotProtocolState;
-use crate::utils::get_consensus_tip_proofs;
+use crate::utils::get_consensus_tip;
 use crate::PotComponents;
 use futures::FutureExt;
 use parity_scale_codec::Encode;
@@ -10,45 +10,26 @@ use sc_network::PeerId;
 use sc_network_gossip::{Network as GossipNetwork, Syncing as GossipSyncing};
 use sp_blockchain::{HeaderBackend, Info};
 use sp_consensus::SyncOracle;
-use sp_runtime::traits::Block as BlockT;
+use sp_core::H256;
+use sp_runtime::traits::{Block as BlockT, Zero};
 use std::sync::Arc;
 use std::thread;
-use std::time::Instant;
-use subspace_core_primitives::{BlockHash, NonEmptyVec, PotKey, PotProof, PotSeed, SlotNumber};
+use std::time::{Duration, Instant};
+use subspace_core_primitives::{NonEmptyVec, PotProof, PotSeed};
 use subspace_proof_of_time::ProofOfTime;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
-use tracing::{error, trace, warn};
+use tracing::{error, info, trace, warn};
 
 /// Channel size to send the produced proofs.
 /// The proof producer thread will block if the receiver is behind and
 /// the channel fills up.
 const PROOFS_CHANNEL_SIZE: usize = 12; // 2 * reveal lag.
 
-/// Inputs for bootstrapping.
-#[derive(Debug, Clone)]
-pub struct BootstrapParams {
-    /// Genesis block hash.
-    pub genesis_hash: BlockHash,
-
-    /// The initial key to be used.
-    pub key: PotKey,
-
-    /// Initial slot number.
-    pub slot: SlotNumber,
-}
-
-impl BootstrapParams {
-    pub fn new(genesis_hash: BlockHash, key: PotKey, slot: SlotNumber) -> Self {
-        Self {
-            genesis_hash,
-            key,
-            slot,
-        }
-    }
-}
+/// Expected time to produce a proof.
+const TARGET_PROOF_TIME_MSEC: u128 = 1000;
 
 /// The clock master manages the protocol: periodic proof generation/verification, gossip.
-pub struct ClockMaster<Block: BlockT, Client, SO> {
+pub struct ClockMaster<Block: BlockT<Hash = H256>, Client, SO> {
     proof_of_time: ProofOfTime,
     pot_state: Arc<dyn PotProtocolState>,
     gossip: PotGossip<Block>,
@@ -59,7 +40,7 @@ pub struct ClockMaster<Block: BlockT, Client, SO> {
 
 impl<Block, Client, SO> ClockMaster<Block, Client, SO>
 where
-    Block: BlockT,
+    Block: BlockT<Hash = H256>,
     Client: HeaderBackend<Block>,
     SO: SyncOracle + Send + Sync + Clone + 'static,
 {
@@ -70,7 +51,7 @@ where
     /// to avoid that by using a Fn instead. Follow up with upstream
     /// to include this in the trait.
     pub fn new<Network, GossipSync>(
-        components: PotComponents<Block>,
+        components: PotComponents,
         client: Arc<Client>,
         sync_oracle: Arc<SO>,
         network: Network,
@@ -98,28 +79,8 @@ where
     }
 
     /// Runs the clock master processing loop.
-    pub async fn run(self, bootstrap_params: Option<BootstrapParams>) {
-        if let Some(params) = bootstrap_params.as_ref() {
-            // The clock master is responsible for bootstrapping, build/add the
-            // initial proof to the state and start the proof producer.
-            self.add_bootstrap_proof(params);
-        } else {
-            // Wait for sync to complete, get the proof from the tip.
-            let proofs = match get_consensus_tip_proofs(
-                self.client.clone(),
-                self.sync_oracle.clone(),
-                self.chain_info_fn.clone(),
-            )
-            .await
-            {
-                Ok(proofs) => proofs,
-                Err(err) => {
-                    error!("clock master: Failed to get initial proofs: {err:?}");
-                    return;
-                }
-            };
-            self.pot_state.reset(proofs);
-        }
+    pub async fn run(self) {
+        self.initialize().await;
 
         let mut local_proof_receiver = self.spawn_producer_thread();
         let handle_gossip_message: Arc<dyn Fn(PeerId, PotProof) + Send + Sync> =
@@ -142,6 +103,48 @@ where
                 }
             }
         }
+    }
+
+    /// Initializes the chain state from the consensus tip info.
+    async fn initialize(&self) {
+        info!("clock_master::initialize: waiting for initialization ...");
+        let delay = tokio::time::Duration::from_secs(1);
+        let proofs = loop {
+            let tip = get_consensus_tip(
+                self.client.clone(),
+                self.sync_oracle.clone(),
+                self.chain_info_fn.clone(),
+            )
+            .await
+            .expect("Consensus tip info should be available");
+
+            if tip.block_number.is_zero() {
+                trace!("clock_master::initialize: {tip:?}, to wait ...",);
+                tokio::time::sleep(delay).await;
+                continue;
+            }
+
+            info!(
+                "clock_master::initialize: block_hash={:?}, block_number={}, slot_number={}, {}",
+                tip.block_hash, tip.block_number, tip.slot_number, tip.pot_pre_digest
+            );
+
+            let proofs = tip.pot_pre_digest.proofs().cloned().unwrap_or_else(|| {
+                // Producing proofs starting from (genesis_slot + 1).
+                let proof = self.proof_of_time.create(
+                    PotSeed::from_block_hash(tip.block_hash),
+                    Default::default(), // TODO: key from cmd line or BTC
+                    tip.pot_pre_digest
+                        .next_block_initial_slot()
+                        .expect("Initial slot number should be available for block_number >= 1"),
+                    tip.block_hash,
+                );
+                info!("clock_master::initialize: creating first proof: {proof}");
+                NonEmptyVec::new_with_entry(proof)
+            });
+            break proofs;
+        };
+        self.pot_state.reset(proofs);
     }
 
     /// Starts the thread to produce the proofs.
@@ -186,11 +189,20 @@ where
 
             // Store the new proof back into the chain and gossip to other clock masters.
             if let Err(e) = state.on_proof(&next_proof) {
-                trace!("clock_master::produce proofs: failed to extend chain: {e:?}");
+                info!("clock_master::produce proofs: failed to extend chain: {e:?}");
                 continue;
             } else if let Err(e) = proof_sender.blocking_send(next_proof.clone()) {
                 warn!("clock_master::produce proofs: send failed: {e:?}");
                 return;
+            }
+
+            // TODO: temporary hack for initial testing.
+            // The pot_iterations is set to take less than 1 sec. Pad the
+            // remaining time so that we produce approximately 1 proof/sec.
+            if elapsed.as_millis() < TARGET_PROOF_TIME_MSEC {
+                let pad = TARGET_PROOF_TIME_MSEC - elapsed.as_millis();
+                // Cast should be fine if TARGET_PROOF_TIME_MSEC is small
+                thread::sleep(Duration::from_millis(pad as u64))
             }
         }
     }
@@ -207,22 +219,10 @@ where
         let elapsed = start_ts.elapsed();
 
         if let Err(err) = ret {
-            trace!("clock_master::on gossip: {err:?}, {sender}");
+            info!("clock_master::on gossip: {err:?}, {sender}");
         } else {
             trace!("clock_master::on gossip: {proof}, time=[{elapsed:?}], {sender}");
             self.gossip.gossip_message(proof.encode());
         }
-    }
-
-    /// Builds/adds the bootstrap proof to the state.
-    fn add_bootstrap_proof(&self, params: &BootstrapParams) {
-        let proof = self.proof_of_time.create(
-            PotSeed::from_block_hash(params.genesis_hash),
-            params.key,
-            params.slot,
-            params.genesis_hash,
-        );
-        let proofs = NonEmptyVec::new_with_entry(proof);
-        self.pot_state.reset(proofs);
     }
 }

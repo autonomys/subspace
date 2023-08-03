@@ -21,14 +21,14 @@ use crate::{
 };
 use futures::channel::mpsc;
 use futures::{StreamExt, TryFutureExt};
-use log::{debug, error, info, warn};
+use log::{debug, error, info, trace, warn};
 use sc_client_api::AuxStore;
 use sc_consensus::block_import::{BlockImport, BlockImportParams, StateAction};
 use sc_consensus::{JustificationSyncLink, StorageChanges};
 use sc_consensus_slots::{
     BackoffAuthoringBlocksStrategy, SimpleSlotWorker, SlotInfo, SlotLenienceType, SlotProportion,
 };
-use sc_proof_of_time::PotConsensusState;
+use sc_proof_of_time::{PotConsensusState, PotGetBlockProofsError};
 use sc_telemetry::TelemetryHandle;
 use sc_utils::mpsc::tracing_unbounded;
 use schnorrkel::context::SigningContext;
@@ -36,21 +36,43 @@ use sp_api::{ApiError, NumberFor, ProvideRuntimeApi, TransactionFor};
 use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata};
 use sp_consensus::{BlockOrigin, Environment, Error as ConsensusError, Proposer, SyncOracle};
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::digests::{extract_pre_digest, CompatibleDigestItem, PreDigest};
+use sp_consensus_subspace::digests::{
+    extract_pre_digest, CompatibleDigestItem, PotPreDigest, PreDigest,
+};
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SignedVote, SubspaceApi, Vote};
 use sp_core::crypto::ByteArray;
 use sp_core::H256;
-use sp_runtime::traits::{Block as BlockT, Header, One, Saturating, Zero};
+use sp_runtime::traits::{
+    Block as BlockT, Header, NumberFor as BlockNumberFor, One, Saturating, Zero,
+};
 use sp_runtime::DigestItem;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
-use subspace_core_primitives::{PublicKey, Randomness, RewardSignature, SectorId, Solution};
+use subspace_core_primitives::{
+    PublicKey, Randomness, RewardSignature, SectorId, SlotNumber, Solution,
+};
 use subspace_proof_of_space::Table;
 use subspace_verification::{
     check_reward_signature, verify_solution, PieceCheckParams, VerifySolutionParams,
 };
+
+/// Errors while building the block proof of time.
+#[derive(Debug, thiserror::Error)]
+pub enum PotCreateError<Block: BlockT> {
+    /// Parent block has no proof of time digest.
+    #[error("Parent block missing proof of time : {parent_block_number}/{parent_slot_number}/{slot_number}")]
+    ParentMissingPotDigest {
+        parent_block_number: BlockNumberFor<Block>,
+        parent_slot_number: SlotNumber,
+        slot_number: SlotNumber,
+    },
+
+    /// Proof creation failed.
+    #[error("Proof of time error: {0}")]
+    PotGetBlockProofsError(#[from] PotGetBlockProofsError),
+}
 
 /// Subspace sync oracle that takes into account force authoring flag, allowing to bootstrap
 /// Subspace network from scratch due to our fork of Substrate where sync state of nodes depends on
@@ -110,7 +132,7 @@ where
     pub(super) max_block_proposal_slot_portion: Option<SlotProportion>,
     pub(super) telemetry: Option<TelemetryHandle>,
     pub(super) segment_headers_store: SegmentHeadersStore<AS>,
-    pub(super) proof_of_time: Arc<dyn PotConsensusState<Block>>,
+    pub(super) proof_of_time: Option<Arc<dyn PotConsensusState>>,
     pub(super) pot_bootstrap: bool,
     pub(super) _pos_table: PhantomData<PosTable>,
 }
@@ -135,6 +157,7 @@ where
     BS: BackoffAuthoringBlocksStrategy<NumberFor<Block>> + Send + Sync,
     Error: std::error::Error + Send + From<ConsensusError> + From<I::Error> + 'static,
     AS: AuxStore + Send + Sync + 'static,
+    u32: From<<<Block as BlockT>::Header as Header>::Number>,
 {
     type BlockImport = I;
     type SyncOracle = SO;
@@ -174,8 +197,22 @@ where
         slot: Slot,
         _epoch_data: &Self::AuxData,
     ) -> Option<Self::Claim> {
-        let parent_slot = match extract_pre_digest(parent_header) {
-            Ok(pre_digest) => pre_digest.slot,
+        if parent_header.number().is_zero() && self.proof_of_time.is_some() {
+            // If PoT is enabled: only the designated node is allowed to
+            // propose block 1. Other nodes just wait for the designated
+            // node to build/broadcast block 1.
+            if !self.pot_bootstrap {
+                trace!(
+                    target: "subspace",
+                    "Skipping claiming {slot}/block 1, parent_hash {}: not bootstrap node",
+                    parent_header.hash()
+                );
+                return None;
+            }
+        }
+
+        let parent_pre_digest = match extract_pre_digest(parent_header) {
+            Ok(pre_digest) => pre_digest,
             Err(error) => {
                 error!(
                     target: "subspace",
@@ -185,6 +222,7 @@ where
                 return None;
             }
         };
+        let parent_slot = parent_pre_digest.slot;
 
         if slot <= parent_slot {
             debug!(
@@ -327,11 +365,14 @@ where
                     // block reward is claimed
                     if maybe_pre_digest.is_none() && solution_distance <= solution_range / 2 {
                         info!(target: "subspace", "🚜 Claimed block at slot {slot}");
-
+                        let proof_of_time = self
+                            .build_block_pot(parent_header, &parent_pre_digest, slot.into())
+                            .await
+                            .ok()?;
                         maybe_pre_digest.replace(PreDigest {
                             solution,
                             slot,
-                            proof_of_time: Default::default(),
+                            proof_of_time,
                         });
                     } else if !parent_header.number().is_zero() {
                         // Not sending vote on top of genesis block since segment headers since piece
@@ -475,6 +516,7 @@ where
     BS: BackoffAuthoringBlocksStrategy<NumberFor<Block>> + Send + Sync,
     Error: std::error::Error + Send + From<ConsensusError> + From<I::Error> + 'static,
     AS: AuxStore + Send + Sync + 'static,
+    u32: From<<<Block as BlockT>::Header as Header>::Number>,
 {
     async fn create_vote(
         &self,
@@ -557,6 +599,59 @@ where
             "Farmer didn't sign reward. Key: {:?}",
             public_key.to_raw_vec()
         )))
+    }
+
+    /// Builds the proof of time for the block being proposed.
+    async fn build_block_pot(
+        &self,
+        parent_header: &Block::Header,
+        parent_pre_digest: &PreDigest<FarmerPublicKey, FarmerPublicKey>,
+        slot_number: SlotNumber,
+    ) -> Result<Option<PotPreDigest>, PotCreateError<Block>> {
+        let proof_of_time = match &self.proof_of_time {
+            Some(proof_of_time) => proof_of_time.clone(),
+            _ => {
+                // PoT feature disabled.
+                return Ok(None);
+            }
+        };
+        let block_number = *parent_header.number() + One::one();
+
+        // Block 1 does not have proofs
+        if block_number.is_one() {
+            return Ok(Some(PotPreDigest::FirstBlock(slot_number)));
+        }
+
+        // Block 2 onwards.
+        // Get the start slot number for the proofs in the new block.
+        let parent_pot_digest = parent_pre_digest.proof_of_time.as_ref().ok_or_else(|| {
+            // PoT needs to be present in the block if feature is enabled.
+            PotCreateError::ParentMissingPotDigest {
+                parent_block_number: *parent_header.number(),
+                parent_slot_number: parent_pre_digest.slot.into(),
+                slot_number,
+            }
+        })?;
+
+        proof_of_time
+            .get_block_proofs(block_number.into(), slot_number, parent_pot_digest)
+            .map(|proofs| {
+                let proof_of_time = PotPreDigest::new(proofs);
+                debug!(
+                    target: "subspace",
+                    "build_block_pot: {block_number}/{}/{slot_number}, PoT=[{proof_of_time}]",
+                    parent_pre_digest.slot
+                );
+                Some(proof_of_time)
+            })
+            .map_err(|err| {
+                debug!(
+                    target: "subspace",
+                    "build_block_pot: {block_number}/{}/{slot_number}, err={err:?}",
+                    parent_pre_digest.slot
+                );
+                PotCreateError::PotGetBlockProofsError(err)
+            })
     }
 }
 

@@ -27,7 +27,8 @@ use sp_runtime::DigestItem;
 use sp_std::collections::btree_map::{BTreeMap, Entry};
 use sp_std::fmt;
 use subspace_core_primitives::{
-    NonEmptyVec, PotProof, Randomness, SegmentCommitment, SegmentIndex, Solution, SolutionRange,
+    NonEmptyVec, PotProof, Randomness, SegmentCommitment, SegmentIndex, SlotNumber, Solution,
+    SolutionRange,
 };
 use subspace_verification::derive_randomness;
 
@@ -40,7 +41,9 @@ pub struct PreDigest<PublicKey, RewardAddress> {
     /// Solution (includes PoR)
     pub solution: Solution<PublicKey, RewardAddress>,
     /// Proof of time included in the block
-    pub proof_of_time: PotPreDigest,
+    /// TODO: It is Option<> for now for testing, to be removed
+    /// when PoT feature is permanently enabled.
+    pub proof_of_time: Option<PotPreDigest>,
 }
 
 /// The proof of time included in the pre digest.
@@ -53,6 +56,9 @@ pub enum PotPreDigest {
     /// production has not started.
     Bootstrapping,
 
+    /// Genesis slot determined by the bootstrap node.
+    FirstBlock(SlotNumber),
+
     /// V0 proof.
     V0(NonEmptyVec<PotProof>),
 }
@@ -63,16 +69,21 @@ impl PotPreDigest {
         Self::V0(proofs)
     }
 
-    /// Helper to check if bootstrapping.
-    pub fn is_bootstrapping(&self) -> bool {
-        matches!(self, Self::Bootstrapping)
-    }
-
     /// Returns a reference to the proofs.
     pub fn proofs(&self) -> Option<&NonEmptyVec<PotProof>> {
         match self {
-            Self::Bootstrapping => None,
+            Self::Bootstrapping | Self::FirstBlock(_) => None,
             Self::V0(proofs) => Some(proofs),
+        }
+    }
+
+    /// Returns the starting slot number for the proofs in the next
+    /// block.
+    pub fn next_block_initial_slot(&self) -> Option<SlotNumber> {
+        match self {
+            Self::Bootstrapping => None,
+            Self::FirstBlock(slot_number) => Some(slot_number + 1),
+            Self::V0(proofs) => Some(proofs.last().slot_number + 1),
         }
     }
 }
@@ -80,6 +91,31 @@ impl PotPreDigest {
 impl Default for PotPreDigest {
     fn default() -> Self {
         Self::Bootstrapping
+    }
+}
+
+impl fmt::Display for PotPreDigest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Bootstrapping => {
+                write!(f, "PotPreDigest::Bootstrapping")
+            }
+            Self::FirstBlock(slot_number) => {
+                write!(
+                    f,
+                    "PotPreDigest::FirstBlock => genesis_slot = {slot_number}"
+                )
+            }
+            Self::V0(proofs) => {
+                write!(
+                    f,
+                    "PotPreDigest::V0 => num_proofs: {}, proofs: [{} - {}]",
+                    proofs.len(),
+                    proofs.first(),
+                    proofs.last(),
+                )
+            }
+        }
     }
 }
 

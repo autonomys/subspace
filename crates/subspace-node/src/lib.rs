@@ -25,7 +25,6 @@ use clap::builder::EnumValueParser;
 use clap::Parser;
 use sc_cli::{RunCmd, SubstrateCli};
 use sc_executor::{NativeExecutionDispatch, RuntimeVersion};
-use sc_proof_of_time::PotRole;
 use sc_service::ChainSpec;
 use sc_storage_monitor::StorageMonitorParams;
 use sc_subspace_chain_specs::ConsensusChainSpec;
@@ -167,18 +166,27 @@ pub enum Subcommand {
 }
 
 /// Assigned proof of time role.
-#[derive(Debug, Clone, clap::ValueEnum)]
+#[derive(Debug, Clone, Eq, PartialEq, clap::ValueEnum)]
 pub enum CliPotRole {
     /// Clock master role of producing proofs.
     ClockMaster,
 
     /// Listens to proofs from clock masters.
     NodeClient,
+
+    /// Proof of time is disabled.
+    None,
 }
 
-impl From<CliPotRole> for PotRole {
-    fn from(cli_role: CliPotRole) -> Self {
-        PotRole::new(matches!(cli_role, CliPotRole::ClockMaster))
+impl CliPotRole {
+    /// Checks if PoT is enabled.
+    pub fn is_pot_enabled(&self) -> bool {
+        *self == Self::ClockMaster || *self == Self::NodeClient
+    }
+
+    /// Checks if PoT role is clock master.
+    pub fn is_clock_master(&self) -> bool {
+        *self == Self::ClockMaster
     }
 }
 
@@ -267,10 +275,13 @@ pub struct Cli {
     pub enable_subspace_block_relay: bool,
 
     /// Assigned PoT role for this node.
-    #[arg(long, default_value="node_client", value_parser(EnumValueParser::<CliPotRole>::new()))]
+    #[arg(long, default_value="none", value_parser(EnumValueParser::<CliPotRole>::new()))]
     pub pot_role: CliPotRole,
 
-    /// If enabled, the node is responsible for bootstrapping the PoT chain.
+    /// If enabled, the node is responsible for bootstrapping the PoT chain
+    /// (producing the first block after genesis). This is a temporary flag for
+    /// initial testing, and only takes effect when PoT feature is enabled via
+    /// --pot-role
     #[arg(long, default_value_t = false)]
     pub pot_bootstrap: bool,
 }

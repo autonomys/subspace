@@ -15,6 +15,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use subspace_core_primitives::crypto::blake2b_256_hash;
 use subspace_core_primitives::PotProof;
+use tracing::{error, trace};
 
 pub(crate) const GOSSIP_PROTOCOL: &str = "/subspace/subspace-proof-of-time";
 
@@ -79,23 +80,20 @@ impl<Block: BlockT> PotGossip<Block> {
         ));
 
         loop {
+            let gossip_engine_poll =
+                futures::future::poll_fn(|cx| self.engine.lock().poll_unpin(cx));
             futures::select! {
                 gossiped = incoming_messages.next().fuse() => {
                     if let Some((sender, proof)) = gossiped {
                         (process_fn)(sender, proof);
                     }
                 },
-                 _ = self.wait_for_termination().fuse() => {
+                 _ = gossip_engine_poll.fuse() => {
+                    error!("Gossip engine has terminated.");
                     return;
                 }
             }
         }
-    }
-
-    /// Waits for gossip engine to terminate.
-    async fn wait_for_termination(&self) {
-        let poll_fn = futures::future::poll_fn(|cx| self.engine.lock().poll_unpin(cx));
-        poll_fn.await;
     }
 }
 
@@ -131,10 +129,11 @@ impl<Block: BlockT> Validator<Block> for PotGossipValidator {
     ) -> ValidationResult<Block::Hash> {
         match PotProof::decode(&mut data) {
             Ok(proof) => {
-                if self.pot_state.is_candidate(*sender, &proof).is_ok() {
-                    ValidationResult::ProcessAndKeep(topic::<Block>())
-                } else {
+                if let Err(err) = self.pot_state.is_candidate(*sender, &proof) {
+                    trace!("gossip::validate: discarding, err = {err:?}");
                     ValidationResult::Discard
+                } else {
+                    ValidationResult::ProcessAndKeep(topic::<Block>())
                 }
             }
             Err(_) => ValidationResult::Discard,
