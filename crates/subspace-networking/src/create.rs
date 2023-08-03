@@ -493,7 +493,7 @@ where
     }
 
     // Setup external addresses
-    for addr in external_addresses {
+    for addr in external_addresses.iter().cloned() {
         info!("DSN external address added: {addr}");
         swarm.add_external_address(addr);
     }
@@ -529,6 +529,7 @@ where
         special_connection_decision_handler,
         bootstrap_addresses,
         kademlia_mode,
+        external_addresses,
     });
 
     Ok((node, node_runner))

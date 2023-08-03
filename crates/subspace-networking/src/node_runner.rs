@@ -142,6 +142,9 @@ where
     bootstrap_command_state: Arc<AsyncMutex<BootstrapCommandState>>,
     /// Kademlia mode. None means "automatic mode".
     kademlia_mode: Option<Mode>,
+    /// Known external addresses to the local peer. The addresses are added on the swarm start
+    /// and enable peer to notify others about its reachable address.
+    external_addresses: Vec<Multiaddr>,
 }
 
 // Helper struct for NodeRunner configuration (clippy requirement).
@@ -163,6 +166,7 @@ where
     pub(crate) special_connection_decision_handler: Option<ConnectedPeersHandler>,
     pub(crate) bootstrap_addresses: Vec<Multiaddr>,
     pub(crate) kademlia_mode: Option<Mode>,
+    pub(crate) external_addresses: Vec<Multiaddr>,
 }
 
 impl<ProviderStorage> NodeRunner<ProviderStorage>
@@ -185,6 +189,7 @@ where
             special_connection_decision_handler,
             bootstrap_addresses,
             kademlia_mode,
+            external_addresses,
         }: NodeRunnerConfig<ProviderStorage>,
     ) -> Self {
         Self {
@@ -212,6 +217,7 @@ where
             bootstrap_addresses,
             bootstrap_command_state: Arc::new(AsyncMutex::new(BootstrapCommandState::default())),
             kademlia_mode,
+            external_addresses,
         }
     }
 
@@ -664,6 +670,14 @@ where
     }
 
     fn add_observed_external_address(&mut self, observed_addr: Multiaddr) {
+        if !self.external_addresses.is_empty() {
+            debug!(
+                "Observed address wasn't added as external (manual external addresses set): {}",
+                observed_addr
+            );
+            return;
+        }
+
         // TODO: replace with Autonat
         // TODO: won't work with QUIC
         let mut listen_ports = HashSet::new();
