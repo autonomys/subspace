@@ -23,7 +23,7 @@ use subspace_networking::{
 };
 use tracing::{debug, error, info, Instrument};
 
-const ROOT_BLOCK_NUMBER_LIMIT: u64 = 1000;
+const SEGMENT_HEADER_NUMBER_LIMIT: u64 = 1000;
 
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub(super) fn configure_dsn(
@@ -211,7 +211,7 @@ pub(super) fn configure_dsn(
                         SegmentHeaderRequest::LastSegmentHeaders {
                             segment_header_number,
                         } => {
-                            if segment_header_number > ROOT_BLOCK_NUMBER_LIMIT {
+                            if segment_header_number > SEGMENT_HEADER_NUMBER_LIMIT {
                                 debug!(
                                     %segment_header_number,
                                     "Segment header number exceeded the limit."
