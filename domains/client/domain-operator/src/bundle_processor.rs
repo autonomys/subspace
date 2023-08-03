@@ -14,7 +14,7 @@ use sp_core::traits::CodeExecutor;
 use sp_domains::{DomainId, DomainsApi, InvalidReceipt, ReceiptValidity};
 use sp_keystore::KeystorePtr;
 use sp_messenger::MessengerApi;
-use sp_runtime::traits::{Block as BlockT, HashFor};
+use sp_runtime::traits::{Block as BlockT, HashFor, Zero};
 use sp_runtime::Digest;
 use std::sync::Arc;
 
@@ -100,6 +100,11 @@ where
         &self,
         receipt: &ExecutionReceiptFor<Block, CBlock>,
     ) -> sp_blockchain::Result<ReceiptValidity> {
+        // Skip genesis receipt as it has been already verified by the consensus chain.
+        if receipt.domain_block_number.is_zero() {
+            return Ok(ReceiptValidity::Valid);
+        }
+
         let consensus_block_hash = receipt.consensus_block_hash;
         let local_receipt = crate::aux_schema::load_execution_receipt::<_, Block, CBlock>(
             &*self.client,
