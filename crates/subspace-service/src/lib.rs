@@ -708,6 +708,8 @@ where
 
     // TODO: This prevents SIGINT from working properly
     if config.sync_from_dsn {
+        info!("⚙️ Starting initial sync from DSN, this might take some time");
+
         let mut imported_blocks = 0;
 
         // Repeat until no new blocks are imported
