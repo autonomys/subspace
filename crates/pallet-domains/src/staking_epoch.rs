@@ -16,7 +16,7 @@ use frame_support::traits::fungible::{InspectHold, Mutate, MutateHold};
 use frame_support::traits::tokens::{Fortitude, Precision, Restriction};
 use frame_support::PalletError;
 use sp_core::Get;
-use sp_domains::{DomainId, OperatorId};
+use sp_domains::{DomainId, EpochIndex, OperatorId};
 use sp_runtime::traits::{CheckedAdd, CheckedSub, One, Zero};
 use sp_runtime::Perbill;
 use sp_std::collections::btree_map::BTreeMap;
@@ -38,7 +38,7 @@ pub enum Error {
 pub(crate) fn do_finalize_domain_current_epoch<T: Config>(
     domain_id: DomainId,
     domain_block_number: T::DomainNumber,
-) -> Result<(), Error> {
+) -> Result<EpochIndex, Error> {
     // slash the operators
     do_finalize_slashed_operators::<T>(domain_id).map_err(Error::SlashOperator)?;
 
@@ -52,8 +52,7 @@ pub(crate) fn do_finalize_domain_current_epoch<T: Config>(
     do_finalize_operator_deregistrations::<T>(domain_id, domain_block_number)?;
 
     // finalize any withdrawals and then deposits
-    do_finalize_domain_pending_transfers::<T>(domain_id, domain_block_number)?;
-    Ok(())
+    do_finalize_domain_staking::<T>(domain_id, domain_block_number)
 }
 
 /// Unlocks any operators who are de-registering or nominators who are withdrawing staked funds.
@@ -327,10 +326,10 @@ pub struct PendingNominatorUnlock<NominatorId, Balance> {
     pub balance: Balance,
 }
 
-pub(crate) fn do_finalize_domain_pending_transfers<T: Config>(
+pub(crate) fn do_finalize_domain_staking<T: Config>(
     domain_id: DomainId,
     domain_block_number: T::DomainNumber,
-) -> Result<(), Error> {
+) -> Result<EpochIndex, Error> {
     DomainStakingSummary::<T>::try_mutate(domain_id, |maybe_stake_summary| {
         let stake_summary = maybe_stake_summary
             .as_mut()
@@ -360,11 +359,12 @@ pub(crate) fn do_finalize_domain_pending_transfers<T: Config>(
 
         LastEpochStakingDistribution::<T>::insert(domain_id, election_verification_params);
 
+        let previous_epoch = stake_summary.current_epoch_index;
         stake_summary.current_epoch_index = next_epoch;
         stake_summary.current_total_stake = total_domain_stake;
         stake_summary.current_operators = current_operators;
 
-        Ok(())
+        Ok(previous_epoch)
     })
     .map_err(Error::FinalizeDomainPendingTransfers)
 }

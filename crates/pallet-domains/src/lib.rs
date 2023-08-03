@@ -131,7 +131,8 @@ mod pallet {
     use sp_domains::fraud_proof::FraudProof;
     use sp_domains::transaction::InvalidTransactionCode;
     use sp_domains::{
-        DomainId, ExtrinsicsRoot, GenesisDomain, OperatorId, ReceiptHash, RuntimeId, RuntimeType,
+        DomainId, EpochIndex, ExtrinsicsRoot, GenesisDomain, OperatorId, ReceiptHash, RuntimeId,
+        RuntimeType,
     };
     use sp_runtime::traits::{
         AtLeast32BitUnsigned, BlockNumberProvider, Bounded, CheckEqual, CheckedAdd, MaybeDisplay,
@@ -478,8 +479,8 @@ mod pallet {
     pub(super) type LastEpochStakingDistribution<T: Config> =
         StorageMap<_, Identity, DomainId, ElectionVerificationParams<BalanceOf<T>>, OptionQuery>;
 
-    /// A preferred Operator for a given Nominator. Nominator's rewards are auto staked to their
-    /// preferred Operator.
+    /// A preferred Operator for a given Farmer, enabling automatic staking of block rewards.
+    /// For the auto-staking to succeed, the Farmer must also be a Nominator of the preferred Operator.
     #[pallet::storage]
     pub(super) type PreferredOperator<T: Config> =
         StorageMap<_, Identity, NominatorId<T>, OperatorId, OptionQuery>;
@@ -600,6 +601,14 @@ mod pallet {
             operator_id: OperatorId,
             nominator_id: NominatorId<T>,
         },
+        OperatorRewarded {
+            operator_id: OperatorId,
+            reward: BalanceOf<T>,
+        },
+        DomainEpochCompleted {
+            domain_id: DomainId,
+            completed_epoch_index: EpochIndex,
+        },
     }
 
     /// Per-domain state for tx range calculation.
@@ -678,11 +687,16 @@ mod pallet {
                         if pruned_block_info.domain_block_number % T::StakeEpochDuration::get()
                             == Zero::zero()
                         {
-                            do_finalize_domain_current_epoch::<T>(
+                            let completed_epoch_index = do_finalize_domain_current_epoch::<T>(
                                 domain_id,
                                 pruned_block_info.domain_block_number,
                             )
                             .map_err(Error::<T>::from)?;
+
+                            Self::deposit_event(Event::DomainEpochCompleted {
+                                domain_id,
+                                completed_epoch_index,
+                            });
                         }
 
                         do_unlock_pending_withdrawals::<T>(

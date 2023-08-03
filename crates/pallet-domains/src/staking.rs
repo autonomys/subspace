@@ -6,7 +6,7 @@ use crate::pallet::{
     PendingOperatorUnlocks, PendingSlashes, PendingWithdrawals, PreferredOperator,
 };
 use crate::staking_epoch::{mint_funds, PendingNominatorUnlock, PendingOperatorSlashInfo};
-use crate::{BalanceOf, Config, HoldIdentifier, NominatorId};
+use crate::{BalanceOf, Config, Event, HoldIdentifier, NominatorId, Pallet};
 use codec::{Decode, Encode};
 use frame_support::traits::fungible::{Inspect, MutateHold};
 use frame_support::traits::tokens::{Fortitude, Preservation};
@@ -435,6 +435,11 @@ pub(crate) fn do_reward_operators<T: Config>(
             stake_summary
                 .current_epoch_rewards
                 .insert(operator_id, total_reward);
+
+            Pallet::<T>::deposit_event(Event::OperatorRewarded {
+                operator_id,
+                reward: reward_per_operator,
+            });
 
             rewards = rewards
                 .checked_sub(&reward_per_operator)
