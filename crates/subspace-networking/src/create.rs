@@ -227,6 +227,9 @@ pub struct Config<ProviderStorage> {
     pub bootstrap_addresses: Vec<Multiaddr>,
     /// Kademlia mode. None means "automatic mode".
     pub kademlia_mode: Option<Mode>,
+    /// Known external addresses to the local peer. The addresses will be added on the swarm start
+    /// and enable peer to notify others about its reachable address.
+    pub external_addresses: Vec<Multiaddr>,
 }
 
 impl<ProviderStorage> fmt::Debug for Config<ProviderStorage> {
@@ -341,6 +344,7 @@ where
             special_target_connections: SWARM_TARGET_CONNECTION_NUMBER,
             bootstrap_addresses: Vec::new(),
             kademlia_mode: Some(Mode::Server),
+            external_addresses: Vec::new(),
         }
     }
 }
@@ -405,6 +409,7 @@ where
         special_target_connections,
         bootstrap_addresses,
         kademlia_mode,
+        external_addresses,
     } = config;
     let local_peer_id = peer_id(&keypair);
 
@@ -485,6 +490,12 @@ where
                 swarm.listen_on(addr)?;
             }
         }
+    }
+
+    // Setup external addresses
+    for addr in external_addresses {
+        info!("DSN external address added: {addr}");
+        swarm.add_external_address(addr);
     }
 
     // Create final structs

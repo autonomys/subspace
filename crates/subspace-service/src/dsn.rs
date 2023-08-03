@@ -67,6 +67,9 @@ pub struct DsnConfig {
 
     /// Defines target total (in and out) connection number for DSN that should be maintained.
     pub target_connections: u32,
+
+    /// Known external addresses
+    pub external_addresses: Vec<Multiaddr>,
 }
 
 pub(crate) fn create_dsn_instance<AS>(
@@ -175,6 +178,7 @@ where
         // maintain permanent connections with any peer
         general_connected_peers_handler: Some(Arc::new(|_| true)),
         bootstrap_addresses: dsn_config.bootstrap_nodes,
+        external_addresses: dsn_config.external_addresses,
 
         ..default_networking_config
     };

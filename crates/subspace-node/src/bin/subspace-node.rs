@@ -411,6 +411,7 @@ fn main() -> Result<(), Error> {
                             max_pending_in_connections: cli.dsn_pending_in_connections,
                             max_pending_out_connections: cli.dsn_pending_out_connections,
                             target_connections: cli.dsn_target_connections,
+                            external_addresses: cli.dsn_external_addresses,
                         }
                     };
 
