@@ -4,7 +4,6 @@ mod tests;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use sc_client_api::backend::AuxStore;
-use sc_consensus_subspace_rpc::PieceProvider;
 use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::error::Error;
@@ -273,14 +272,5 @@ where
             %peer_id,
             "Attempted to remove a provider record from the aux piece record store."
         );
-    }
-}
-
-impl<AS: AuxStore> PieceProvider for PieceCache<AS> {
-    fn get_piece_by_index(
-        &self,
-        piece_index: PieceIndex,
-    ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
-        self.get_piece(piece_index.hash())
     }
 }

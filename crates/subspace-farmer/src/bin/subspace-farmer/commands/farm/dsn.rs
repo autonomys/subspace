@@ -1,5 +1,4 @@
 use crate::DsnArgs;
-use anyhow::Context;
 use futures::StreamExt;
 use parking_lot::Mutex;
 use std::path::PathBuf;
@@ -24,7 +23,7 @@ use subspace_networking::{
 };
 use tracing::{debug, error, info, Instrument};
 
-const ROOT_BLOCK_NUMBER_LIMIT: u64 = 1000;
+const SEGMENT_HEADER_NUMBER_LIMIT: u64 = 1000;
 
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub(super) fn configure_dsn(
@@ -105,11 +104,8 @@ pub(super) fn configure_dsn(
         let node_client = node_client.clone();
 
         async move {
-            let segment_headers_notifications = node_client
-                .subscribe_archived_segment_headers()
-                .await
-                .map_err(|err| anyhow::anyhow!(err.to_string()))
-                .context("Failed to subscribe to archived segments");
+            let segment_headers_notifications =
+                node_client.subscribe_archived_segment_headers().await;
 
             match segment_headers_notifications {
                 Ok(mut segment_headers_notifications) => {
@@ -119,16 +115,16 @@ pub(super) fn configure_dsn(
                         last_archived_segment_index
                             .store(u64::from(segment_index), Ordering::Relaxed);
 
-                        if let Err(err) = node_client
+                        if let Err(error) = node_client
                             .acknowledge_archived_segment_header(segment_index)
                             .await
                         {
-                            error!(?err, %segment_index, "Failed to acknowledge archived segments notifications")
+                            error!(?error, %segment_index, "Failed to acknowledge archived segments notifications")
                         }
                     }
                 }
-                Err(err) => {
-                    error!(?err, "Failed to get archived segments notifications.")
+                Err(error) => {
+                    error!(?error, "Failed to get archived segments notifications.")
                 }
             }
         }
@@ -215,7 +211,7 @@ pub(super) fn configure_dsn(
                         SegmentHeaderRequest::LastSegmentHeaders {
                             segment_header_number,
                         } => {
-                            if segment_header_number > ROOT_BLOCK_NUMBER_LIMIT {
+                            if segment_header_number > SEGMENT_HEADER_NUMBER_LIMIT {
                                 debug!(
                                     %segment_header_number,
                                     "Segment header number exceeded the limit."

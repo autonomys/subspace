@@ -81,6 +81,7 @@ pub(crate) async fn recover_missing_piece<PG: PieceGetter>(
                 }
             }
         })
+        .into_iter()
         .collect::<FuturesOrdered<_>>();
 
     let mut segment_pieces = vec![None::<Piece>; ArchivedHistorySegment::NUM_PIECES];

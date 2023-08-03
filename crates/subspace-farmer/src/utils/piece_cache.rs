@@ -4,8 +4,6 @@ use subspace_networking::libp2p::kad::record::Key;
 /// Defines persistent piece cache interface.
 // TODO: This should be elsewhere, like in `subspace-dsn`
 pub trait PieceCache: Sync + Send + 'static {
-    type KeysIterator: IntoIterator<Item = Key>;
-
     /// Check whether key should be cached based on current cache size and key-to-peer-id distance.
     fn should_cache(&self, key: &Key) -> bool;
 
@@ -14,9 +12,6 @@ pub trait PieceCache: Sync + Send + 'static {
 
     /// Get piece from the cache.
     fn get_piece(&self, key: &Key) -> Option<Piece>;
-
-    /// Iterator over pieces in cache.
-    fn keys(&self) -> Self::KeysIterator;
 
     /// Checks whether the key exists in the cache.
     fn contains_key(&self, key: &Key) -> bool;

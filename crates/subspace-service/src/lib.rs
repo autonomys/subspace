@@ -566,12 +566,12 @@ where
             (block_import, subspace_link, segment_headers_store, mut telemetry, mut bundle_validator),
     } = partial_components;
 
-    let (node, bootstrap_nodes, piece_cache) = match config.subspace_networking.clone() {
+    let (node, bootstrap_nodes) = match config.subspace_networking.clone() {
         SubspaceNetworking::Reuse {
             node,
             bootstrap_nodes,
             // TODO: Revisit piece cache creation when we get SDK requirements.
-        } => (node, bootstrap_nodes, None),
+        } => (node, bootstrap_nodes),
         SubspaceNetworking::Create {
             config: dsn_config,
             piece_cache_size,
@@ -624,7 +624,7 @@ where
             let (node, mut node_runner) = create_dsn_instance(
                 dsn_protocol_version,
                 dsn_config.clone(),
-                piece_cache.clone(),
+                piece_cache,
                 segment_headers_store.clone(),
             )?;
 
@@ -655,7 +655,7 @@ where
                     ),
                 );
 
-            (node, dsn_config.bootstrap_nodes, Some(piece_cache))
+            (node, dsn_config.bootstrap_nodes)
         }
     };
 
@@ -719,6 +719,8 @@ where
 
     // TODO: This prevents SIGINT from working properly
     if config.sync_from_dsn {
+        info!("⚙️ Starting initial sync from DSN, this might take some time");
+
         let mut imported_blocks = 0;
 
         // Repeat until no new blocks are imported
@@ -969,7 +971,6 @@ where
                         .clone(),
                     dsn_bootstrap_nodes: dsn_bootstrap_nodes.clone(),
                     segment_headers_store: segment_headers_store.clone(),
-                    piece_provider: piece_cache.clone(),
                     sync_oracle: subspace_sync_oracle.clone(),
                 };
 

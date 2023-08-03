@@ -106,8 +106,9 @@ where
     }
 
     /// Returns last observed segment index
-    pub fn max_segment_index(&self) -> SegmentIndex {
-        SegmentIndex::from(self.inner.cache.lock().len().saturating_sub(0) as u64)
+    pub fn max_segment_index(&self) -> Option<SegmentIndex> {
+        let segment_index = self.inner.cache.lock().len().checked_sub(1)? as u64;
+        Some(SegmentIndex::from(segment_index))
     }
 
     /// Add segment headers
@@ -115,16 +116,55 @@ where
         &self,
         segment_headers: &[SegmentHeader],
     ) -> Result<(), sp_blockchain::Error> {
-        // TODO: Check that segment headers are inserted sequentially
+        let mut maybe_last_segment_index = self.max_segment_index();
+        let mut segment_headers_to_store = Vec::with_capacity(segment_headers.len());
+        for segment_header in segment_headers {
+            let segment_index = segment_header.segment_index();
+            match maybe_last_segment_index {
+                Some(last_segment_index) => {
+                    if segment_index <= last_segment_index {
+                        // Skip already stored segment headers
+                        continue;
+                    }
+
+                    if segment_index != last_segment_index + SegmentIndex::ONE {
+                        let error = format!(
+                            "Segment index {} must strictly follow {}, can't store segment header",
+                            segment_index, last_segment_index
+                        );
+                        return Err(sp_blockchain::Error::Application(error.into()));
+                    }
+
+                    segment_headers_to_store.push(segment_header);
+                    maybe_last_segment_index.replace(segment_index);
+                }
+                None => {
+                    if segment_index != SegmentIndex::ZERO {
+                        let error = format!(
+                            "First segment header index must be zero, found index {segment_index}"
+                        );
+                        return Err(sp_blockchain::Error::Application(error.into()));
+                    }
+
+                    segment_headers_to_store.push(segment_header);
+                    maybe_last_segment_index.replace(segment_index);
+                }
+            }
+        }
+
+        if segment_headers_to_store.is_empty() {
+            return Ok(());
+        }
+
         // TODO: Do compaction when we have too many keys: combine multiple segment headers into a
         //  single entry for faster retrievals and more compact storage
         let key_index = self.inner.next_key_index.fetch_add(1, Ordering::SeqCst);
         let key = Self::key(key_index);
-        let value = segment_headers.encode();
+        let value = segment_headers_to_store.encode();
         let insert_data = vec![(key.as_slice(), value.as_slice())];
 
         self.inner.aux_store.insert_aux(&insert_data, &[])?;
-        self.inner.cache.lock().extend_from_slice(segment_headers);
+        self.inner.cache.lock().extend(segment_headers_to_store);
 
         Ok(())
     }
@@ -744,8 +784,11 @@ async fn send_archived_segment_notification(
     let segment_index = archived_segment.segment_header.segment_index();
     let (acknowledgement_sender, mut acknowledgement_receiver) =
         tracing_unbounded::<()>("subspace_acknowledgement", 100);
+    // Keep `archived_segment` around until all acknowledgements are received since some receivers
+    // might use weak references
+    let archived_segment = Arc::new(archived_segment);
     let archived_segment_notification = ArchivedSegmentNotification {
-        archived_segment: Arc::new(archived_segment),
+        archived_segment: Arc::clone(&archived_segment),
         acknowledgement_sender,
     };
 

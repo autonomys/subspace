@@ -71,16 +71,40 @@ impl SegmentIndex {
         PieceIndex::from(self.0 * ArchivedHistorySegment::NUM_PIECES as u64)
     }
 
-    /// Iterator over piece indexes that belong to this segment.
-    pub fn segment_piece_indexes(&self) -> impl Iterator<Item = PieceIndex> {
-        (self.first_piece_index()..).take(ArchivedHistorySegment::NUM_PIECES)
+    /// Get the last piece index in this segment.
+    pub fn last_piece_index(&self) -> PieceIndex {
+        PieceIndex::from((self.0 + 1) * ArchivedHistorySegment::NUM_PIECES as u64 - 1)
     }
 
-    /// Iterator over piece indexes that belong to this segment with source pieces first.
-    pub fn segment_piece_indexes_source_first(&self) -> impl Iterator<Item = PieceIndex> {
-        self.segment_piece_indexes()
+    /// List of piece indexes that belong to this segment.
+    pub fn segment_piece_indexes(&self) -> [PieceIndex; ArchivedHistorySegment::NUM_PIECES] {
+        let mut piece_indices = [PieceIndex::ZERO; ArchivedHistorySegment::NUM_PIECES];
+        (self.first_piece_index()..=self.last_piece_index())
+            .zip(&mut piece_indices)
+            .for_each(|(input, output)| {
+                *output = input;
+            });
+
+        piece_indices
+    }
+
+    /// List of piece indexes that belong to this segment with source pieces first.
+    pub fn segment_piece_indexes_source_first(
+        &self,
+    ) -> [PieceIndex; ArchivedHistorySegment::NUM_PIECES] {
+        let mut source_first_piece_indices = [PieceIndex::ZERO; ArchivedHistorySegment::NUM_PIECES];
+
+        let piece_indices = self.segment_piece_indexes();
+        piece_indices
+            .into_iter()
             .step_by(2)
-            .chain(self.segment_piece_indexes().skip(1).step_by(2))
+            .chain(piece_indices.into_iter().skip(1).step_by(2))
+            .zip(&mut source_first_piece_indices)
+            .for_each(|(input, output)| {
+                *output = input;
+            });
+
+        source_first_piece_indices
     }
 }
 

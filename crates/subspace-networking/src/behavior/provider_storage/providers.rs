@@ -442,7 +442,7 @@ impl ProviderStorage for ParityDbProviderStorage {
 
         self.remove_provider_from_db(key, provider.to_bytes());
 
-        self.heap.lock().remove(key);
+        self.heap.lock().remove(key.clone());
     }
 
     fn provided(&self) -> Self::ProvidedIter<'_> {
