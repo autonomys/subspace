@@ -27,7 +27,7 @@ use sp_runtime::Justifications;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use tracing::{info, trace, warn};
+use tracing::{debug, info, trace, warn};
 
 type BlockHash<Block> = <Block as BlockT>::Hash;
 type BlockHeader<Block> = <Block as BlockT>::Header;
@@ -226,7 +226,7 @@ where
         who: PeerId,
         request: BlockRequest<Block>,
     ) -> Result<Result<Vec<u8>, RequestFailure>, oneshot::Canceled> {
-        let ret = self.download(who, request).await;
+        let ret = self.download(who, request.clone()).await;
         match ret {
             Ok(result) => {
                 let downloaded = result.downloaded.encode();
@@ -241,9 +241,9 @@ where
                 Ok(Ok(downloaded))
             }
             Err(error) => {
-                trace!(
+                debug!(
                     target: LOG_TARGET,
-                    "relay::download_block: peer = {who:?}, err = {error:?}"
+                    "relay::download_block: error: {who:?}/{request:?}/{error:?}"
                 );
                 match error {
                     RelayError::RequestResponse(error) => match error {
@@ -332,10 +332,10 @@ where
                     "relay::consensus server: request processed from: {peer}"
                 );
             }
-            Err(err) => {
-                trace!(
+            Err(error) => {
+                debug!(
                     target: LOG_TARGET,
-                    "relay::consensus server: request processing error: {peer}:  {err:?}"
+                    "relay::consensus server: error: {peer}/{error:?}"
                 );
             }
         }
