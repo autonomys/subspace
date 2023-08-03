@@ -103,6 +103,9 @@ struct DsnArgs {
     /// Defines target total (in and out) connection number that should be maintained.
     #[arg(long, default_value_t = 50)]
     target_connections: u32,
+    /// Known external addresses
+    #[arg(long, alias = "external-address")]
+    external_addresses: Vec<Multiaddr>,
 }
 
 #[derive(Debug, Clone, Copy, ValueEnum)]
@@ -118,6 +121,7 @@ impl Default for WriteToDisk {
     }
 }
 
+#[allow(clippy::large_enum_variant)] // we allow large function parameter list and enums
 #[derive(Debug, clap::Subcommand)]
 enum Subcommand {
     /// Wipes plot and identity
