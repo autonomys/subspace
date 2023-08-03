@@ -42,6 +42,7 @@ pub(super) fn configure_dsn(
         pending_in_connections,
         pending_out_connections,
         target_connections,
+        external_addresses,
     }: DsnArgs,
     readers_and_pieces: &Arc<Mutex<Option<ReadersAndPieces>>>,
     node_client: NodeRpcClient,
@@ -271,6 +272,7 @@ pub(super) fn configure_dsn(
             !PeerInfo::is_farmer(peer_info)
         })),
         bootstrap_addresses: bootstrap_nodes,
+        external_addresses,
         ..default_config
     };
 
