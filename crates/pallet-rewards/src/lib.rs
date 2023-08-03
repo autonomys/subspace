@@ -30,9 +30,18 @@ pub trait WeightInfo {
     fn on_initialize() -> Weight;
 }
 
+/// Hooks to notify when there are any rewards for specific account.
+pub trait OnReward<AccountId, Balance> {
+    fn on_reward(account: AccountId, reward: Balance);
+}
+
+impl<AccountId, Balance> OnReward<AccountId, Balance> for () {
+    fn on_reward(_account: AccountId, _reward: Balance) {}
+}
+
 #[frame_support::pallet]
 mod pallet {
-    use super::WeightInfo;
+    use super::{OnReward, WeightInfo};
     use frame_support::pallet_prelude::*;
     use frame_support::traits::Currency;
     use frame_system::pallet_prelude::*;
@@ -65,6 +74,8 @@ mod pallet {
         type FindVotingRewardAddresses: FindVotingRewardAddresses<Self::AccountId>;
 
         type WeightInfo: WeightInfo;
+
+        type OnReward: OnReward<Self::AccountId, BalanceOf<Self>>;
     }
 
     /// `pallet-rewards` events
@@ -102,6 +113,7 @@ impl<T: Config> Pallet<T> {
         if let Some(block_author) = T::FindBlockRewardAddress::find_block_reward_address() {
             let reward = T::BlockReward::get();
             T::Currency::deposit_creating(&block_author, reward);
+            T::OnReward::on_reward(block_author.clone(), reward);
 
             Self::deposit_event(Event::BlockReward {
                 block_author,
@@ -115,6 +127,7 @@ impl<T: Config> Pallet<T> {
 
         for voter in T::FindVotingRewardAddresses::find_voting_reward_addresses() {
             T::Currency::deposit_creating(&voter, reward);
+            T::OnReward::on_reward(voter.clone(), reward);
 
             Self::deposit_event(Event::VoteReward { voter, reward });
         }

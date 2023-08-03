@@ -581,6 +581,7 @@ impl pallet_rewards::Config for Runtime {
     type FindBlockRewardAddress = Subspace;
     type FindVotingRewardAddresses = Subspace;
     type WeightInfo = ();
+    type OnReward = ();
 }
 
 /// Polkadot-like chain.
