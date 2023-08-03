@@ -44,7 +44,6 @@ use subspace_runtime_primitives::opaque::Block;
 use subspace_service::tx_pre_validator::ConsensusChainTxPreValidator;
 use subspace_service::{FullClient, NewFull};
 use subspace_solving::REWARD_SIGNING_CONTEXT;
-use subspace_transaction_pool::bundle_validator::BundleValidator;
 use zeroize::Zeroizing;
 
 // Smaller value for testing purposes
@@ -78,8 +77,7 @@ pub type Backend = sc_service::TFullBackend<Block>;
 pub type FraudProofVerifier =
     subspace_service::FraudProofVerifier<subspace_test_runtime::RuntimeApi, TestExecutorDispatch>;
 
-type TxPreValidator =
-    ConsensusChainTxPreValidator<Block, Client, FraudProofVerifier, BundleValidator<Block, Client>>;
+type TxPreValidator = ConsensusChainTxPreValidator<Block, Client, FraudProofVerifier>;
 
 /// Run a farmer.
 pub fn start_farmer<PosTable>(new_full: &NewFull<Client, TxPreValidator>)

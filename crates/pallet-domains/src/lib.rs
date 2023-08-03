@@ -47,7 +47,7 @@ use sp_domains::{
     DomainBlockLimit, DomainId, DomainInstanceData, ExecutionReceipt, OpaqueBundle, OperatorId,
     OperatorPublicKey, ProofOfElection, RuntimeId,
 };
-use sp_runtime::traits::{BlakeTwo256, BlockNumberProvider, CheckedSub, Hash, One, Zero};
+use sp_runtime::traits::{BlakeTwo256, Hash, Zero};
 use sp_runtime::{RuntimeAppPublic, SaturatedConversion, Saturating};
 use sp_std::boxed::Box;
 use sp_std::collections::btree_map::BTreeMap;
@@ -131,7 +131,7 @@ mod pallet {
     use sp_domains::fraud_proof::FraudProof;
     use sp_domains::transaction::InvalidTransactionCode;
     use sp_domains::{
-        DomainId, EpochIndex, ExtrinsicsRoot, GenesisDomain, OperatorId, ReceiptHash, RuntimeId,
+        BundleDigest, DomainId, EpochIndex, GenesisDomain, OperatorId, ReceiptHash, RuntimeId,
         RuntimeType,
     };
     use sp_runtime::traits::{
@@ -442,9 +442,11 @@ mod pallet {
     pub(super) type HeadReceiptNumber<T: Config> =
         StorageMap<_, Identity, DomainId, T::DomainNumber, ValueQuery>;
 
-    /// A set of `bundle_extrinsics_root` from all bundles that successfully submitted to the consensus
-    /// block, these extrinsics will be used to construct the domain block and `ExecutionInbox` is used
-    /// to ensure subsequent ERs of that domain block include all pre-validated extrinsic bundles.
+    /// A set of `BundleDigest` from all bundles that successfully submitted to the consensus block,
+    /// these bundles will be used to construct the domain block and `ExecutionInbox` is used to:
+    ///
+    /// 1. Ensure subsequent ERs of that domain block include all pre-validated extrinsic bundles
+    /// 2. Index the `InboxedBundle` and pruned its value when the corresponding `ExecutionInbox` is pruned
     #[pallet::storage]
     pub type ExecutionInbox<T: Config> = StorageNMap<
         _,
@@ -453,9 +455,16 @@ mod pallet {
             NMapKey<Identity, T::DomainNumber>,
             NMapKey<Identity, T::BlockNumber>,
         ),
-        Vec<ExtrinsicsRoot>,
+        Vec<BundleDigest>,
         ValueQuery,
     >;
+
+    /// A mapping of `bundle_header_hash` -> `bundle_author` for all the successfully submitted bundles of
+    /// the last `BlockTreePruningDepth` domain blocks. Used to verify the invalid bundle fraud proof and
+    /// slash malicious operator who have submitted invalid bundle.
+    #[pallet::storage]
+    pub(super) type InboxedBundle<T: Config> =
+        StorageMap<_, Identity, H256, OperatorId, OptionQuery>;
 
     /// The block number of the best domain block, increase by one when the first bundle of the domain is
     /// successfully submitted to current consensus block, which mean a new domain block with this block
@@ -507,6 +516,8 @@ mod pallet {
         BundleTooLarge,
         // Bundle with an invalid extrinsic root
         InvalidExtrinsicRoot,
+        /// This bundle duplicated with an already submitted bundle
+        DuplicatedBundle,
     }
 
     impl<T> From<RuntimeRegistryError> for Error<T> {
@@ -650,6 +661,7 @@ mod pallet {
 
             let domain_id = opaque_bundle.domain_id();
             let bundle_hash = opaque_bundle.hash();
+            let bundle_header_hash = opaque_bundle.sealed_header.pre_hash();
             let extrinsics_root = opaque_bundle.extrinsics_root();
             let operator_id = opaque_bundle.operator_id();
             let receipt = opaque_bundle.into_receipt();
@@ -723,8 +735,13 @@ mod pallet {
             let consensus_block_number = frame_system::Pallet::<T>::current_block_number();
             ExecutionInbox::<T>::append(
                 (domain_id, head_domain_number, consensus_block_number),
-                extrinsics_root,
+                BundleDigest {
+                    header_hash: bundle_header_hash,
+                    extrinsics_root,
+                },
             );
+
+            InboxedBundle::<T>::insert(bundle_header_hash, operator_id);
 
             SuccessfulBundles::<T>::append(domain_id, bundle_hash);
 
@@ -1105,14 +1122,6 @@ impl<T: Config> Pallet<T> {
         SuccessfulBundles::<T>::get(domain_id)
     }
 
-    pub fn successful_bundles_of_all_domains() -> Vec<H256> {
-        let mut res = Vec::new();
-        for mut bundles in SuccessfulBundles::<T>::iter_values() {
-            res.append(&mut bundles);
-        }
-        res
-    }
-
     pub fn domain_runtime_code(domain_id: DomainId) -> Option<Vec<u8>> {
         RuntimeRegistry::<T>::get(Self::runtime_id(domain_id)?)
             .map(|runtime_object| runtime_object.code)
@@ -1180,37 +1189,15 @@ impl<T: Config> Pallet<T> {
             .map(|operator| (operator.signing_key, operator.current_total_stake))
     }
 
-    // Check if a bundle is stale
-    fn check_stale_bundle(
-        current_block_number: T::BlockNumber,
-        bundle_create_at: T::BlockNumber,
-    ) -> Result<(), BundleError> {
-        let confirmation_depth_k = T::ConfirmationDepthK::get();
-        if let Some(finalized) = current_block_number.checked_sub(&confirmation_depth_k) {
-            {
-                // Ideally, `bundle_create_at` is `current_block_number - 1`, we need
-                // to handle the edge case that `T::ConfirmationDepthK` happens to be 1.
-                let is_stale_bundle = if confirmation_depth_k.is_zero() {
-                    unreachable!(
-                        "ConfirmationDepthK is guaranteed to be non-zero at genesis config"
-                    )
-                } else if confirmation_depth_k == One::one() {
-                    bundle_create_at < finalized
-                } else {
-                    bundle_create_at <= finalized
-                };
-
-                if is_stale_bundle {
-                    log::debug!(
-                        target: "runtime::domains",
-                        "Bundle created on an ancient consensus block, current_block_number: {current_block_number:?}, \
-                        ConfirmationDepthK: {confirmation_depth_k:?}, `bundle_create_at`: {:?}, `finalized`: {finalized:?}",
-                        bundle_create_at,
-                    );
-                    return Err(BundleError::StaleBundle);
-                }
-            }
-        }
+    fn check_bundle_duplication(opaque_bundle: &OpaqueBundleOf<T>) -> Result<(), BundleError> {
+        // NOTE: it is important to use the hash that not incliude the signature, otherwise
+        // the malicious operator may update its `signing_key` (this may support in the future)
+        // and sign an existing bundle thus creating a duplicated bundle and pass the check.
+        let bundle_header_hash = opaque_bundle.sealed_header.pre_hash();
+        ensure!(
+            !InboxedBundle::<T>::contains_key(bundle_header_hash),
+            BundleError::DuplicatedBundle
+        );
         Ok(())
     }
 
@@ -1288,10 +1275,7 @@ impl<T: Config> Pallet<T> {
             return Err(BundleError::BadBundleSignature);
         }
 
-        // Reject the stale bundles so that they can't be used by attacker to occupy the block space without cost.
-        let current_block_number = frame_system::Pallet::<T>::current_block_number();
-        let bundle_create_at = sealed_header.header.consensus_block_number;
-        Self::check_stale_bundle(current_block_number, bundle_create_at)?;
+        Self::check_bundle_duplication(opaque_bundle)?;
 
         let domain_config = DomainRegistry::<T>::get(domain_id)
             .ok_or(BundleError::InvalidDomainId)?

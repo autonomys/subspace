@@ -538,7 +538,7 @@ parameter_types! {
     pub const MaxBundlesPerBlock: u32 = 10;
     pub const DomainInstantiationDeposit: Balance = 100 * SSC;
     pub const MaxDomainNameLength: u32 = 32;
-    pub const BlockTreePruningDepth: u32 = 256;
+    pub const BlockTreePruningDepth: u32 = 16;
     pub const StakeWithdrawalLockingPeriod: BlockNumber = 20;
     pub const StakeEpochDuration: DomainNumber = 5;
     pub TreasuryAccount: AccountId = PalletId(*b"treasury").into_account_truncating();
@@ -1210,10 +1210,6 @@ impl_runtime_apis! {
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
         ) -> OpaqueBundles<Block, DomainNumber, DomainHash, Balance> {
             extract_successful_bundles(domain_id, extrinsics)
-        }
-
-        fn successful_bundle_hashes() -> Vec<H256> {
-            Domains::successful_bundles_of_all_domains()
         }
 
         fn extrinsics_shuffling_seed(header: <Block as BlockT>::Header) -> Randomness {
