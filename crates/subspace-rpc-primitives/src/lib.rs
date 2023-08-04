@@ -23,7 +23,7 @@ use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_networking::libp2p::Multiaddr;
 
 /// Defines a limit for number of segments that can be requested over RPC
-pub const MAX_SEGMENT_HEADERS_PER_REQUEST: usize = 300;
+pub const MAX_SEGMENT_HEADERS_PER_REQUEST: usize = 1000;
 
 /// Information necessary for farmer application
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -158,10 +158,6 @@ impl DomainId {
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct BundleHeader<Number, Hash, DomainNumber, DomainHash, Balance> {
-    /// The consensus chain's best block number when the bundle is created.
-    ///
-    /// Used to detect stale bundle and prevent attacker from reusing them to occupy the blockspace without cost.
-    pub consensus_block_number: Number,
     /// Proof of bundle producer election.
     pub proof_of_election: ProofOfElection,
     /// Execution receipt that should extend the receipt chain or add confirmations
@@ -303,6 +299,15 @@ impl<Extrinsic: Encode, Number, Hash, DomainNumber, DomainHash, Balance>
             extrinsics: opaque_extrinsics,
         }
     }
+}
+
+/// A digest of the bundle
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub struct BundleDigest {
+    /// The hash of the bundle header
+    pub header_hash: H256,
+    /// The Merkle root of all new extrinsics included in this bundle.
+    pub extrinsics_root: ExtrinsicsRoot,
 }
 
 /// Receipt of a domain block execution.
@@ -658,9 +663,6 @@ sp_api::decl_runtime_apis! {
             domain_id: DomainId,
             extrinsics: Vec<Block::Extrinsic>,
         ) -> OpaqueBundles<Block, DomainNumber, DomainHash, Balance>;
-
-        /// Returns the hash of successfully submitted bundles.
-        fn successful_bundle_hashes() -> Vec<H256>;
 
         /// Generates a randomness seed for extrinsics shuffling.
         fn extrinsics_shuffling_seed(header: Block::Header) -> Randomness;

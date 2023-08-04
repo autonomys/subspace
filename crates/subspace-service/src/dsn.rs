@@ -16,7 +16,7 @@ use subspace_networking::{
 use thiserror::Error;
 use tracing::{debug, error, trace};
 
-const ROOT_BLOCK_NUMBER_LIMIT: u64 = 100;
+const SEGMENT_HEADERS_NUMBER_LIMIT: u64 = 1000;
 
 /// Errors that might happen during DSN configuration.
 #[derive(Debug, Error)]
@@ -67,6 +67,9 @@ pub struct DsnConfig {
 
     /// Defines target total (in and out) connection number for DSN that should be maintained.
     pub target_connections: u32,
+
+    /// Known external addresses
+    pub external_addresses: Vec<Multiaddr>,
 }
 
 pub(crate) fn create_dsn_instance<AS>(
@@ -128,23 +131,29 @@ where
                     SegmentHeaderRequest::LastSegmentHeaders {
                         segment_header_number,
                     } => {
-                        let mut block_limit = *segment_header_number;
-                        if *segment_header_number > ROOT_BLOCK_NUMBER_LIMIT {
+                        let mut segment_headers_limit = *segment_header_number;
+                        if *segment_header_number > SEGMENT_HEADERS_NUMBER_LIMIT {
                             debug!(
                                 %segment_header_number,
                                 "Segment header number exceeded the limit."
                             );
 
-                            block_limit = ROOT_BLOCK_NUMBER_LIMIT;
+                            segment_headers_limit = SEGMENT_HEADERS_NUMBER_LIMIT;
                         }
 
-                        let max_segment_index = segment_headers_store.max_segment_index();
-
-                        // several last segment indexes
-                        (SegmentIndex::ZERO..=max_segment_index)
-                            .rev()
-                            .take(block_limit as usize)
-                            .collect::<Vec<_>>()
+                        match segment_headers_store.max_segment_index() {
+                            Some(max_segment_index) => {
+                                // Several last segment indexes
+                                (SegmentIndex::ZERO..=max_segment_index)
+                                    .rev()
+                                    .take(segment_headers_limit as usize)
+                                    .collect::<Vec<_>>()
+                            }
+                            None => {
+                                // Nothing yet
+                                Vec::new()
+                            }
+                        }
                     }
                 };
 
@@ -175,6 +184,7 @@ where
         // maintain permanent connections with any peer
         general_connected_peers_handler: Some(Arc::new(|_| true)),
         bootstrap_addresses: dsn_config.bootstrap_nodes,
+        external_addresses: dsn_config.external_addresses,
 
         ..default_networking_config
     };

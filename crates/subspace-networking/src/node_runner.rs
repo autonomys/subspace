@@ -31,6 +31,7 @@ use libp2p::kad::{
     ProgressStep, ProviderRecord, PutRecordOk, QueryId, QueryResult, Quorum, Record,
 };
 use libp2p::metrics::{Metrics, Recorder};
+use libp2p::multiaddr::Protocol;
 use libp2p::swarm::{DialError, SwarmEvent};
 use libp2p::{futures, Multiaddr, PeerId, Swarm, TransportError};
 use nohash_hasher::IntMap;
@@ -141,6 +142,9 @@ where
     bootstrap_command_state: Arc<AsyncMutex<BootstrapCommandState>>,
     /// Kademlia mode. None means "automatic mode".
     kademlia_mode: Option<Mode>,
+    /// Known external addresses to the local peer. The addresses are added on the swarm start
+    /// and enable peer to notify others about its reachable address.
+    external_addresses: Vec<Multiaddr>,
 }
 
 // Helper struct for NodeRunner configuration (clippy requirement).
@@ -162,6 +166,7 @@ where
     pub(crate) special_connection_decision_handler: Option<ConnectedPeersHandler>,
     pub(crate) bootstrap_addresses: Vec<Multiaddr>,
     pub(crate) kademlia_mode: Option<Mode>,
+    pub(crate) external_addresses: Vec<Multiaddr>,
 }
 
 impl<ProviderStorage> NodeRunner<ProviderStorage>
@@ -184,6 +189,7 @@ where
             special_connection_decision_handler,
             bootstrap_addresses,
             kademlia_mode,
+            external_addresses,
         }: NodeRunnerConfig<ProviderStorage>,
     ) -> Self {
         Self {
@@ -211,6 +217,7 @@ where
             bootstrap_addresses,
             bootstrap_command_state: Arc::new(AsyncMutex::new(BootstrapCommandState::default())),
             kademlia_mode,
+            external_addresses,
         }
     }
 
@@ -657,7 +664,47 @@ where
 
                 kademlia.remove_peer(&peer_id);
             }
+
+            self.add_observed_external_address(info.observed_addr);
         }
+    }
+
+    fn add_observed_external_address(&mut self, observed_addr: Multiaddr) {
+        if !self.external_addresses.is_empty() {
+            debug!(
+                "Observed address wasn't added as external (manual external addresses set): {}",
+                observed_addr
+            );
+            return;
+        }
+
+        // TODO: replace with Autonat
+        // TODO: won't work with QUIC
+        let mut listen_ports = HashSet::new();
+        for mut listen_address in self.swarm.listeners().cloned() {
+            while let Some(protocol) = listen_address.pop() {
+                if let Protocol::Tcp(port) = protocol {
+                    listen_ports.insert(port);
+                }
+            }
+        }
+
+        let mut observed_addr_candidate = observed_addr.clone();
+        while let Some(protocol) = observed_addr_candidate.pop() {
+            if let Protocol::Tcp(port) = protocol {
+                if listen_ports.contains(&port) {
+                    debug!("Added observed address as external: {}", observed_addr);
+                    self.swarm.add_external_address(observed_addr);
+
+                    return;
+                }
+            }
+        }
+
+        debug!(
+            "Observed address wasn't added as external (different port): {}",
+            observed_addr
+        );
     }
 
     async fn handle_kademlia_event(&mut self, event: KademliaEvent) {

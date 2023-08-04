@@ -2,7 +2,7 @@
 
 use crate::{
     BalanceOf, BlockTree, Config, DomainBlocks, ExecutionInbox, ExecutionReceiptOf,
-    HeadReceiptNumber,
+    HeadReceiptNumber, InboxedBundle,
 };
 use codec::{Decode, Encode};
 use frame_support::{ensure, PalletError};
@@ -138,8 +138,13 @@ pub(crate) fn verify_execution_receipt<T: Config>(
     } else {
         let execution_inbox =
             ExecutionInbox::<T>::get((domain_id, domain_block_number, consensus_block_number));
+        let expected_extrinsics_roots: Vec<_> = execution_inbox
+            .into_iter()
+            .map(|b| b.extrinsics_root)
+            .collect();
         ensure!(
-            !block_extrinsics_roots.is_empty() && *block_extrinsics_roots == execution_inbox,
+            !block_extrinsics_roots.is_empty()
+                && *block_extrinsics_roots == expected_extrinsics_roots,
             Error::InvalidExtrinsicsRoots
         );
 
@@ -244,8 +249,14 @@ pub(crate) fn process_execution_receipt<T: Config>(
                 let domain_block =
                     DomainBlocks::<T>::take(receipt).ok_or(Error::MissingDomainBlock)?;
 
-                // Remove the block's `ExecutionInbox` as the block is pruned and does not need
-                // to verify its receipt's `extrinsics_root` anymore
+                // Remove the block's `ExecutionInbox` and `InboxedBundle` as the block is pruned and
+                // does not need to verify its receipt's `extrinsics_root` anymore.
+                for bundle_digests in ExecutionInbox::<T>::iter_prefix_values((domain_id, to_prune))
+                {
+                    for bd in bundle_digests {
+                        InboxedBundle::<T>::remove(bd.header_hash);
+                    }
+                }
                 let _ = ExecutionInbox::<T>::clear_prefix((domain_id, to_prune), u32::MAX, None);
 
                 pruned_domain_block_info = Some(PrunedDomainBlockInfo {
@@ -322,8 +333,7 @@ mod tests {
     use frame_support::{assert_err, assert_ok};
     use frame_system::Pallet as System;
     use sp_core::{Pair, H256, U256};
-    use sp_domains::{GenesisReceiptExtension, OperatorPair, RuntimeType};
-    use sp_runtime::traits::BlockNumberProvider;
+    use sp_domains::{BundleDigest, GenesisReceiptExtension, OperatorPair, RuntimeType};
     use sp_version::RuntimeVersion;
     use std::sync::Arc;
     use subspace_runtime_primitives::SSC;
@@ -401,7 +411,6 @@ mod tests {
             let bundle_extrinsics_root = H256::random();
             let bundle = create_dummy_bundle_with_receipts(
                 domain_id,
-                block_number,
                 operator_id,
                 bundle_extrinsics_root,
                 receipt,
@@ -505,6 +514,7 @@ mod tests {
             let genesis_node = get_block_tree_node_at::<Test>(domain_id, 0).unwrap();
             let mut receipt = genesis_node.execution_receipt;
             let mut receipt_of_block_1 = None;
+            let mut bundle_header_hash_of_block_1 = None;
             for block_number in 1..=(block_tree_pruning_depth + 3) {
                 // Run to `block_number`
                 run_to_block::<Test>(
@@ -516,11 +526,11 @@ mod tests {
                 let bundle_extrinsics_root = H256::random();
                 let bundle = create_dummy_bundle_with_receipts(
                     domain_id,
-                    block_number,
                     operator_id,
                     bundle_extrinsics_root,
                     receipt,
                 );
+                let bundle_header_hash = bundle.sealed_header.pre_hash();
                 assert_ok!(crate::Pallet::<Test>::submit_bundle(
                     RawOrigin::None.into(),
                     bundle,
@@ -528,8 +538,12 @@ mod tests {
                 // `bundle_extrinsics_root` should be tracked in `ExecutionInbox`
                 assert_eq!(
                     ExecutionInbox::<Test>::get((domain_id, block_number, block_number)),
-                    vec![bundle_extrinsics_root]
+                    vec![BundleDigest {
+                        header_hash: bundle_header_hash,
+                        extrinsics_root: bundle_extrinsics_root,
+                    }]
                 );
+                assert!(InboxedBundle::<Test>::contains_key(bundle_header_hash));
 
                 // Head receipt number should be updated
                 let head_receipt_number = HeadReceiptNumber::<Test>::get(domain_id);
@@ -563,14 +577,17 @@ mod tests {
                 // Record receipt of block #1 for later use
                 if block_number == 1 {
                     receipt_of_block_1.replace(receipt.clone());
+                    bundle_header_hash_of_block_1.replace(bundle_header_hash);
                 }
             }
 
             // The receipt of the block 1 is pruned at the last iteration, verify it will result in
             // `InvalidExtrinsicsRoots` error as `ExecutionInbox` of block 1 is pruned
             let pruned_receipt = receipt_of_block_1.unwrap();
+            let pruned_bundle = bundle_header_hash_of_block_1.unwrap();
             assert!(BlockTree::<Test>::get(domain_id, 1).is_empty());
             assert!(ExecutionInbox::<Test>::get((domain_id, 1, 1)).is_empty());
+            assert!(!InboxedBundle::<Test>::contains_key(pruned_bundle));
             assert_eq!(
                 execution_receipt_type::<Test>(domain_id, &pruned_receipt),
                 ReceiptType::Rejected(RejectedReceiptType::Pruned)
@@ -613,7 +630,6 @@ mod tests {
             // Re-submit the receipt will add confirm to the head receipt
             let bundle = create_dummy_bundle_with_receipts(
                 domain_id,
-                frame_system::Pallet::<Test>::current_block_number(),
                 operator_id2,
                 H256::random(),
                 current_head_receipt,
@@ -654,7 +670,6 @@ mod tests {
             // Stale receipt can be submitted but won't be added to the block tree
             let bundle = create_dummy_bundle_with_receipts(
                 domain_id,
-                frame_system::Pallet::<Test>::current_block_number(),
                 operator_id2,
                 H256::random(),
                 stale_receipt,
@@ -714,7 +729,6 @@ mod tests {
             // Submit the new branch receipt will create fork in the block tree
             let bundle = create_dummy_bundle_with_receipts(
                 domain_id,
-                frame_system::Pallet::<Test>::current_block_number(),
                 operator_id2,
                 H256::random(),
                 new_branch_receipt,
@@ -763,7 +777,15 @@ mod tests {
                     future_receipt.domain_block_number,
                     future_receipt.consensus_block_number,
                 ),
-                future_receipt.block_extrinsics_roots.clone(),
+                future_receipt
+                    .block_extrinsics_roots
+                    .clone()
+                    .into_iter()
+                    .map(|er| BundleDigest {
+                        header_hash: H256::random(),
+                        extrinsics_root: er,
+                    })
+                    .collect::<Vec<_>>(),
             );
             assert_eq!(
                 execution_receipt_type::<Test>(domain_id, &future_receipt),

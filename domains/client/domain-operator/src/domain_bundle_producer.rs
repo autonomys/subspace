@@ -208,12 +208,7 @@ where
                 })?;
             let (bundle_header, extrinsics) = self
                 .domain_bundle_proposer
-                .propose_bundle_at(
-                    proof_of_election,
-                    consensus_block_info,
-                    self.parent_chain.clone(),
-                    tx_range,
-                )
+                .propose_bundle_at(proof_of_election, self.parent_chain.clone(), tx_range)
                 .await?;
 
             let to_sign = bundle_header.hash();

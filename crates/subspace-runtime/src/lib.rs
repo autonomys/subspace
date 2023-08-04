@@ -516,6 +516,14 @@ impl pallet_domains::Config for Runtime {
     type TreasuryAccount = TreasuryAccount;
 }
 
+pub struct StakingOnReward;
+
+impl pallet_rewards::OnReward<AccountId, Balance> for StakingOnReward {
+    fn on_reward(account: AccountId, reward: Balance) {
+        Domains::on_block_reward(account, reward);
+    }
+}
+
 parameter_types! {
     pub const BlockReward: Balance = SSC / (ExpectedVotesPerBlock::get() as Balance + 1);
     pub const VoteReward: Balance = SSC / (ExpectedVotesPerBlock::get() as Balance + 1);
@@ -529,6 +537,7 @@ impl pallet_rewards::Config for Runtime {
     type FindBlockRewardAddress = Subspace;
     type FindVotingRewardAddresses = Subspace;
     type WeightInfo = ();
+    type OnReward = StakingOnReward;
 }
 
 pub type FeedId = u64;
@@ -853,10 +862,6 @@ impl_runtime_apis! {
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
         ) -> sp_domains::OpaqueBundles<Block, DomainNumber, DomainHash, Balance> {
             crate::domains::extract_successful_bundles(domain_id, extrinsics)
-        }
-
-        fn successful_bundle_hashes() -> Vec<H256> {
-            Domains::successful_bundles_of_all_domains()
         }
 
         fn extrinsics_shuffling_seed(header: <Block as BlockT>::Header) -> Randomness {

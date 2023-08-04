@@ -4,7 +4,7 @@ use crate::pallet::{
     DomainStakingSummary, LastEpochStakingDistribution, Nominators, OperatorIdOwner, Operators,
     PendingDeposits, PendingNominatorUnlocks, PendingOperatorDeregistrations,
     PendingOperatorSwitches, PendingOperatorUnlocks, PendingSlashes, PendingUnlocks,
-    PendingWithdrawals,
+    PendingWithdrawals, PreferredOperator,
 };
 use crate::staking::{Error as TransitionError, Nominator, OperatorStatus, Withdraw};
 use crate::{
@@ -16,7 +16,7 @@ use frame_support::traits::fungible::{InspectHold, Mutate, MutateHold};
 use frame_support::traits::tokens::{Fortitude, Precision, Restriction};
 use frame_support::PalletError;
 use sp_core::Get;
-use sp_domains::{DomainId, OperatorId};
+use sp_domains::{DomainId, EpochIndex, OperatorId};
 use sp_runtime::traits::{CheckedAdd, CheckedSub, One, Zero};
 use sp_runtime::Perbill;
 use sp_std::collections::btree_map::BTreeMap;
@@ -38,7 +38,7 @@ pub enum Error {
 pub(crate) fn do_finalize_domain_current_epoch<T: Config>(
     domain_id: DomainId,
     domain_block_number: T::DomainNumber,
-) -> Result<(), Error> {
+) -> Result<EpochIndex, Error> {
     // slash the operators
     do_finalize_slashed_operators::<T>(domain_id).map_err(Error::SlashOperator)?;
 
@@ -52,8 +52,7 @@ pub(crate) fn do_finalize_domain_current_epoch<T: Config>(
     do_finalize_operator_deregistrations::<T>(domain_id, domain_block_number)?;
 
     // finalize any withdrawals and then deposits
-    do_finalize_domain_pending_transfers::<T>(domain_id, domain_block_number)?;
-    Ok(())
+    do_finalize_domain_staking::<T>(domain_id, domain_block_number)
 }
 
 /// Unlocks any operators who are de-registering or nominators who are withdrawing staked funds.
@@ -240,6 +239,8 @@ fn unlock_operator<T: Config>(operator_id: OperatorId) -> Result<(), Error> {
             )
             .map_err(|_| TransitionError::RemoveLock)?;
 
+            remove_preferred_operator::<T>(nominator_id, &operator_id);
+
             // update pool's remaining shares and stake
             total_shares = total_shares
                 .checked_sub(&nominator.shares)
@@ -325,10 +326,10 @@ pub struct PendingNominatorUnlock<NominatorId, Balance> {
     pub balance: Balance,
 }
 
-pub(crate) fn do_finalize_domain_pending_transfers<T: Config>(
+pub(crate) fn do_finalize_domain_staking<T: Config>(
     domain_id: DomainId,
     domain_block_number: T::DomainNumber,
-) -> Result<(), Error> {
+) -> Result<EpochIndex, Error> {
     DomainStakingSummary::<T>::try_mutate(domain_id, |maybe_stake_summary| {
         let stake_summary = maybe_stake_summary
             .as_mut()
@@ -358,11 +359,12 @@ pub(crate) fn do_finalize_domain_pending_transfers<T: Config>(
 
         LastEpochStakingDistribution::<T>::insert(domain_id, election_verification_params);
 
+        let previous_epoch = stake_summary.current_epoch_index;
         stake_summary.current_epoch_index = next_epoch;
         stake_summary.current_total_stake = total_domain_stake;
         stake_summary.current_operators = current_operators;
 
-        Ok(())
+        Ok(previous_epoch)
     })
     .map_err(Error::FinalizeDomainPendingTransfers)
 }
@@ -444,6 +446,17 @@ pub(crate) fn mint_funds<T: Config>(
     Ok(())
 }
 
+/// Remove the preference if the operator id matches
+fn remove_preferred_operator<T: Config>(nominator_id: NominatorId<T>, operator_id: &OperatorId) {
+    PreferredOperator::<T>::mutate_exists(nominator_id, |maybe_preferred_operator| {
+        if let Some(preferred_operator_id) = maybe_preferred_operator {
+            if preferred_operator_id == operator_id {
+                maybe_preferred_operator.take();
+            }
+        }
+    });
+}
+
 #[allow(clippy::too_many_arguments)]
 fn finalize_nominator_withdrawal<T: Config>(
     domain_id: DomainId,
@@ -479,6 +492,8 @@ fn finalize_nominator_withdrawal<T: Config>(
                 Precision::Exact,
             )
             .map_err(|_| TransitionError::RemoveLock)?;
+
+            remove_preferred_operator::<T>(nominator_id.clone(), &operator_id);
             (nominator_staked_amount, nominator.shares)
         }
         Withdraw::Some(withdraw_amount) => {
@@ -667,6 +682,8 @@ pub(crate) fn do_finalize_slashed_operators<T: Config>(
                     .checked_sub(&locked_amount)
                     .ok_or(TransitionError::BalanceUnderflow)?;
 
+                remove_preferred_operator::<T>(nominator_id, &operator_id);
+
                 Ok(())
             })?;
 
@@ -720,11 +737,12 @@ mod tests {
     use crate::pallet::{
         DomainStakingSummary, LastEpochStakingDistribution, Nominators, OperatorIdOwner, Operators,
         PendingDeposits, PendingOperatorSwitches, PendingOperatorUnlocks, PendingUnlocks,
-        PendingWithdrawals,
+        PendingWithdrawals, PreferredOperator,
     };
     use crate::staking::tests::register_operator;
     use crate::staking::{
-        do_deregister_operator, do_nominate_operator, do_reward_operators, StakingSummary,
+        do_auto_stake_block_rewards, do_deregister_operator, do_nominate_operator,
+        do_reward_operators, StakingSummary,
     };
     use crate::staking_epoch::{
         do_finalize_domain_current_epoch, do_finalize_operator_deregistrations,
@@ -847,6 +865,16 @@ mod tests {
                     .unwrap()
             }
 
+            for nominator in &nominators {
+                if !nominator.1 .1.is_zero() {
+                    do_auto_stake_block_rewards::<Test>(*nominator.0, operator_id).unwrap();
+                    assert_eq!(
+                        operator_id,
+                        PreferredOperator::<Test>::get(nominator.0).unwrap()
+                    )
+                }
+            }
+
             // de-register operator
             do_deregister_operator::<Test>(operator_account, operator_id).unwrap();
 
@@ -875,6 +903,10 @@ mod tests {
                     PendingWithdrawals::<Test>::get(operator_id, *nominator.0),
                     None
                 );
+
+                if !nominator.1 .0.is_zero() {
+                    assert!(!PreferredOperator::<Test>::contains_key(nominator.0))
+                }
             }
 
             assert_eq!(Operators::<Test>::get(operator_id), None);

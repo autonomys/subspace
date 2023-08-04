@@ -245,7 +245,6 @@ fn create_dummy_bundle(
     );
     create_dummy_bundle_with_receipts(
         domain_id,
-        block_number,
         OPERATOR_ID,
         Default::default(),
         execution_receipt,
@@ -254,7 +253,6 @@ fn create_dummy_bundle(
 
 pub(crate) fn create_dummy_bundle_with_receipts(
     domain_id: DomainId,
-    block_number: BlockNumber,
     operator_id: OperatorId,
     bundle_extrinsics_root: H256,
     receipt: ExecutionReceipt<BlockNumber, Hash, BlockNumber, H256, u128>,
@@ -262,7 +260,6 @@ pub(crate) fn create_dummy_bundle_with_receipts(
     let pair = OperatorPair::from_seed(&U256::from(0u32).into());
 
     let header = BundleHeader {
-        consensus_block_number: block_number,
         proof_of_election: ProofOfElection::dummy(domain_id, operator_id),
         receipt,
         bundle_size: 0u32,

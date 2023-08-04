@@ -63,6 +63,9 @@ enum Command {
         /// production use.
         #[arg(long)]
         protocol_version: String,
+        /// Known external addresses
+        #[arg(long, alias = "external-address")]
+        external_addresses: Vec<Multiaddr>,
     },
     /// Generate a new keypair
     GenerateKeypair {
@@ -126,6 +129,7 @@ async fn main() -> anyhow::Result<()> {
             db_path,
             piece_providers_cache_size,
             protocol_version,
+            external_addresses,
         } => {
             debug!(
                 "Libp2p protocol stack instantiated with version: {} ",
@@ -178,6 +182,7 @@ async fn main() -> anyhow::Result<()> {
                 general_connected_peers_handler: None,
                 special_connected_peers_handler: None,
                 bootstrap_addresses: bootstrap_nodes,
+                external_addresses,
 
                 ..Config::new(
                     protocol_version.to_string(),

@@ -21,9 +21,13 @@ use subspace_networking::{
     PieceByHashRequestHandler, PieceByHashResponse, SegmentHeaderBySegmentIndexesRequestHandler,
     SegmentHeaderRequest, SegmentHeaderResponse,
 };
+use subspace_rpc_primitives::MAX_SEGMENT_HEADERS_PER_REQUEST;
 use tracing::{debug, error, info, Instrument};
 
-const ROOT_BLOCK_NUMBER_LIMIT: u64 = 1000;
+/// How many segment headers can be requested at a time.
+///
+/// Must be the same as RPC limit since all requests go to the node anyway.
+const SEGMENT_HEADER_NUMBER_LIMIT: u64 = MAX_SEGMENT_HEADERS_PER_REQUEST as u64;
 
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub(super) fn configure_dsn(
@@ -42,6 +46,7 @@ pub(super) fn configure_dsn(
         pending_in_connections,
         pending_out_connections,
         target_connections,
+        external_addresses,
     }: DsnArgs,
     readers_and_pieces: &Arc<Mutex<Option<ReadersAndPieces>>>,
     node_client: NodeRpcClient,
@@ -209,14 +214,15 @@ pub(super) fn configure_dsn(
                             segment_indexes.clone()
                         }
                         SegmentHeaderRequest::LastSegmentHeaders {
-                            segment_header_number,
+                            mut segment_header_number,
                         } => {
-                            if segment_header_number > ROOT_BLOCK_NUMBER_LIMIT {
+                            if segment_header_number > SEGMENT_HEADER_NUMBER_LIMIT {
                                 debug!(
                                     %segment_header_number,
                                     "Segment header number exceeded the limit."
                                 );
-                                return None;
+
+                                segment_header_number = SEGMENT_HEADER_NUMBER_LIMIT;
                             }
 
                             let last_segment_index = SegmentIndex::from(
@@ -271,6 +277,7 @@ pub(super) fn configure_dsn(
             !PeerInfo::is_farmer(peer_info)
         })),
         bootstrap_addresses: bootstrap_nodes,
+        external_addresses,
         ..default_config
     };
 
