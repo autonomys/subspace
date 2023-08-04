@@ -76,9 +76,6 @@ struct DsnArgs {
     /// multiple are supported.
     #[arg(long, default_value = "/ip4/0.0.0.0/tcp/30533")]
     listen_on: Vec<Multiaddr>,
-    /// Piece cache size in pieces.
-    #[arg(long, default_value = "1000")]
-    piece_cache_size: NonZeroUsize,
     /// Number of provided keys (by other peers) that will be stored.
     #[arg(long, default_value = "655360")]
     provided_keys_limit: NonZeroUsize,
@@ -289,6 +286,10 @@ async fn main() -> Result<()> {
             info!("Done");
         }
         Subcommand::Farm(farming_args) => {
+            // TODO: Remove this in the future once `base_path` can be removed
+            // Wipe legacy caching directory that is no longer used
+            let _ = fs::remove_file(base_path.join("piece_cache_db"));
+
             let disk_farms = if command.farm.is_empty() {
                 if !base_path.exists() {
                     fs::create_dir_all(&base_path).unwrap_or_else(|error| {

@@ -1,28 +1,28 @@
+use crate::piece_cache::PieceCache;
 use crate::utils::archival_storage_info::ArchivalStorageInfo;
-use crate::utils::piece_cache::PieceCache;
 use async_trait::async_trait;
 use std::collections::HashSet;
 use std::error::Error;
-use std::sync::Arc;
 use subspace_core_primitives::{Piece, PieceIndex};
 use subspace_farmer_components::plotting::{PieceGetter, PieceGetterRetryPolicy};
+use subspace_networking::libp2p::kad::RecordKey;
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator, RetryPolicy};
 use subspace_networking::Node;
 
-pub struct FarmerPieceGetter<PV, PC> {
+pub struct FarmerPieceGetter<PV> {
     node: Node,
     piece_provider: PieceProvider<PV>,
-    piece_cache: Arc<tokio::sync::Mutex<PC>>,
+    piece_cache: PieceCache,
     archival_storage_info: ArchivalStorageInfo,
 }
 
-impl<PV, PC> FarmerPieceGetter<PV, PC> {
+impl<PV> FarmerPieceGetter<PV> {
     pub fn new(
         node: Node,
         piece_provider: PieceProvider<PV>,
-        piece_cache: Arc<tokio::sync::Mutex<PC>>,
+        piece_cache: PieceCache,
         archival_storage_info: ArchivalStorageInfo,
     ) -> Self {
         Self {
@@ -42,10 +42,9 @@ impl<PV, PC> FarmerPieceGetter<PV, PC> {
 }
 
 #[async_trait]
-impl<PV, PC> PieceGetter for FarmerPieceGetter<PV, PC>
+impl<PV> PieceGetter for FarmerPieceGetter<PV>
 where
     PV: PieceValidator + Send + 'static,
-    PC: PieceCache + Send + 'static,
 {
     async fn get_piece(
         &self,
@@ -53,9 +52,9 @@ where
         retry_policy: PieceGetterRetryPolicy,
     ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
         let piece_index_hash = piece_index.hash();
-        let key = piece_index_hash.to_multihash().into();
+        let key = RecordKey::from(piece_index_hash.to_multihash());
 
-        if let Some(piece) = self.piece_cache.lock().await.get_piece(&key) {
+        if let Some(piece) = self.piece_cache.get_piece(key).await {
             return Ok(Some(piece));
         }
 
