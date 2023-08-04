@@ -9,7 +9,7 @@ use libp2p::{Multiaddr, PeerId};
 use lru::LruCache;
 use parity_db::{Db, Options};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::num::NonZeroUsize;
 use std::ops::Add;
@@ -160,12 +160,17 @@ pub struct NetworkingParametersManager {
     collection_batcher: CollectionBatcher<PeerAddress>,
     // Event handler triggered when we decide to remove address from the storage.
     address_removed: Handler<PeerAddressRemovedEvent>,
+    // Peer ID list to filter on address adding.
+    ignore_peer_list: HashSet<PeerId>,
 }
 
 impl NetworkingParametersManager {
     /// Object constructor. It accepts `NetworkingParametersProvider` implementation as a parameter.
     /// On object creation it starts a job for networking parameters cache handling.
-    pub fn new(path: &Path) -> Result<Self, NetworkParametersPersistenceError> {
+    pub fn new(
+        path: &Path,
+        ignore_peer_list: HashSet<PeerId>,
+    ) -> Result<Self, NetworkParametersPersistenceError> {
         let mut options = Options::with_columns(path, 1);
         // We don't use stats
         options.stats = false;
@@ -201,6 +206,7 @@ impl NetworkingParametersManager {
                     .expect("Manual non-zero initialization failed."),
             ),
             address_removed: Default::default(),
+            ignore_peer_list,
         })
     }
 
@@ -253,6 +259,17 @@ fn clone_lru_cache<K: Clone + Hash + Eq, V: Clone>(
 #[async_trait]
 impl NetworkingParametersRegistry for NetworkingParametersManager {
     async fn add_known_peer(&mut self, peer_id: PeerId, addresses: Vec<Multiaddr>) {
+        if self.ignore_peer_list.contains(&peer_id) {
+            debug!(
+                %peer_id,
+                addr_num=addresses.len(),
+                "Adding new peer addresses canceled (ignore list): {:?}",
+                addresses
+            );
+
+            return;
+        }
+
         debug!(
             %peer_id,
             addr_num=addresses.len(),
@@ -367,6 +384,7 @@ impl NetworkingParametersRegistry for NetworkingParametersManager {
             object_id: self.object_id,
             collection_batcher: self.collection_batcher.clone(),
             address_removed: self.address_removed.clone(),
+            ignore_peer_list: self.ignore_peer_list.clone(),
         }
         .boxed()
     }

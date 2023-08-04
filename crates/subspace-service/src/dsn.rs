@@ -3,10 +3,12 @@ pub mod import_blocks;
 use crate::piece_cache::PieceCache;
 use sc_client_api::AuxStore;
 use sc_consensus_subspace::SegmentHeadersStore;
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::{SegmentHeader, SegmentIndex};
 use subspace_networking::libp2p::{identity, Multiaddr};
+use subspace_networking::utils::convert_multiaddresses;
 use subspace_networking::{
     CreationError, NetworkParametersPersistenceError, NetworkingParametersManager, Node,
     NodeRunner, ParityDbError, PeerInfoProvider, PieceByHashRequestHandler, PieceByHashResponse,
@@ -89,7 +91,14 @@ where
             .map(|path| {
                 let db_path = path.join("known_addresses_db");
 
-                NetworkingParametersManager::new(&db_path).map(|manager| manager.boxed())
+                NetworkingParametersManager::new(
+                    &db_path,
+                    convert_multiaddresses(dsn_config.bootstrap_nodes.clone())
+                        .into_iter()
+                        .map(|(peer_id, _)| peer_id)
+                        .collect::<HashSet<_>>(),
+                )
+                .map(|manager| manager.boxed())
             })
             .transpose()?
     };
