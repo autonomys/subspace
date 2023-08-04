@@ -143,6 +143,12 @@ where
 
             if let Some(old_sector_metadata) = &maybe_old_sector_metadata {
                 if farmer_app_info.protocol_info.history_size <= old_sector_metadata.history_size {
+                    debug!(
+                        current_history_size = %farmer_app_info.protocol_info.history_size,
+                        old_sector_history_size = %old_sector_metadata.history_size,
+                        "Latest protocol history size is not yet newer than old sector history \
+                        size, wait for a bit and try again"
+                    );
                     tokio::time::sleep(FARMER_APP_INFO_RETRY_INTERVAL).await;
                     continue;
                 }
