@@ -4,15 +4,15 @@
 # Global owners
 *                                 @nazar-pc @rg3l3dr
 
-/crates                           @liuchengxu @nazar-pc @rg3l3dr
-/crates/pallet-*                  @liuchengxu @nazar-pc @rg3l3dr @vedhavyas @NingLin-P
-/crates/sp-*                      @liuchengxu @nazar-pc @rg3l3dr @vedhavyas @NingLin-P
-/crates/subspace-archiving        @liuchengxu @shamil-gadelshin @nazar-pc @rg3l3dr
+/crates                           @nazar-pc @rg3l3dr
+/crates/pallet-*                  @nazar-pc @rg3l3dr @vedhavyas @NingLin-P
+/crates/sp-*                      @nazar-pc @rg3l3dr @vedhavyas @NingLin-P
+/crates/subspace-archiving        @shamil-gadelshin @nazar-pc @rg3l3dr
 /crates/subspace-farmer           @nazar-pc @shamil-gadelshin @rg3l3dr
 /crates/subspace-networking       @shamil-gadelshin @nazar-pc @rg3l3dr
-/crates/subspace-runtime*         @liuchengxu @vedhavyas @nazar-pc @rg3l3dr
+/crates/subspace-runtime*         @vedhavyas @nazar-pc @rg3l3dr
 /crates/subspace-node             @NingLin-P @nazar-pc @rg3l3dr
 /crates/subspace-fraud-proof      @NingLin-P @nazar-pc @rg3l3dr
 /crates/subspace-transaction-pool @NingLin-P @nazar-pc @rg3l3dr
 /crates/substrate                 @nazar-pc @rg3l3dr
-/domains                          @liuchengxu @vedhavyas @NingLin-P @nazar-pc @rg3l3dr
+/domains                          @vedhavyas @NingLin-P @nazar-pc @rg3l3dr
