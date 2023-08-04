@@ -49,7 +49,7 @@ where
         consensus_block_hash: CBlock::Hash,
         domain_id: DomainId,
         global_randomness: Randomness,
-    ) -> sp_blockchain::Result<Option<(ProofOfElection<Block::Hash>, OperatorPublicKey)>> {
+    ) -> sp_blockchain::Result<Option<(ProofOfElection, OperatorPublicKey)>> {
         let BundleProducerElectionParams {
             current_operators,
             total_domain_stake,
@@ -94,7 +94,6 @@ where
                             global_randomness,
                             vrf_signature,
                             operator_id,
-                            _phantom: Default::default(),
                         };
                         return Ok(Some((proof_of_election, operator_signing_key)));
                     }

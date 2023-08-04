@@ -74,7 +74,7 @@ where
 
     pub(crate) async fn propose_bundle_at<ParentChain, ParentChainBlock>(
         &self,
-        proof_of_election: ProofOfElection<Block::Hash>,
+        proof_of_election: ProofOfElection,
         parent_chain: ParentChain,
         tx_range: U256,
     ) -> sp_blockchain::Result<ProposeBundleOutput<Block, CBlock>>

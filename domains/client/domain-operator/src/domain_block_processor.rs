@@ -15,7 +15,7 @@ use sp_consensus::{BlockOrigin, SyncOracle};
 use sp_core::traits::CodeExecutor;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::merkle_tree::MerkleTree;
-use sp_domains::{DomainId, DomainsApi, ExecutionReceipt, ExtrinsicsRoot};
+use sp_domains::{DomainId, DomainsApi, ExecutionReceipt, ExtrinsicsRoot, InvalidBundle};
 use sp_runtime::traits::{Block as BlockT, CheckedSub, HashFor, Header as HeaderT, One, Zero};
 use sp_runtime::Digest;
 use std::cmp::Ordering;
@@ -252,6 +252,7 @@ where
         (consensus_block_hash, consensus_block_number): (CBlock::Hash, NumberFor<CBlock>),
         (parent_hash, parent_number): (Block::Hash, NumberFor<Block>),
         extrinsics: Vec<Block::Extrinsic>,
+        invalid_bundles: Vec<InvalidBundle>,
         bundle_extrinsics_roots: Vec<ExtrinsicsRoot>,
         digests: Digest,
     ) -> Result<DomainBlockResult<Block, CBlock>, sp_blockchain::Error> {
@@ -347,6 +348,7 @@ where
             parent_domain_block_receipt_hash: parent_receipt.hash(),
             consensus_block_number,
             consensus_block_hash,
+            invalid_bundles,
             block_extrinsics_roots: bundle_extrinsics_roots,
             final_state_root: state_root,
             execution_trace: trace,

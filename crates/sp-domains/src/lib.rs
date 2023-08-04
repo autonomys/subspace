@@ -159,14 +159,17 @@ impl DomainId {
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct BundleHeader<Number, Hash, DomainNumber, DomainHash, Balance> {
     /// Proof of bundle producer election.
-    pub proof_of_election: ProofOfElection<DomainHash>,
+    pub proof_of_election: ProofOfElection,
     /// Execution receipt that should extend the receipt chain or add confirmations
     /// to the head receipt.
     pub receipt: ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance>,
-    /// The size of the bundle body in bytes. Used to calculate the storage cost.
+    /// The size of the bundle body in bytes.
+    ///
+    /// Used to calculate the storage cost.
     pub bundle_size: u32,
-    /// The total (estimated) weight of all extrinsics in the bundle. Used to prevent overloading
-    /// the bundle with compute.
+    /// The total (estimated) weight of all extrinsics in the bundle.
+    ///
+    /// Used to prevent overloading the bundle with compute.
     pub estimated_bundle_weight: Weight,
     /// The Merkle root of all new extrinsics included in this bundle.
     pub bundle_extrinsics_root: ExtrinsicsRoot,
@@ -244,12 +247,12 @@ impl<
         self.sealed_header.header.proof_of_election.domain_id
     }
 
-    // Return the `bundle_extrinsics_root`
+    /// Return the `bundle_extrinsics_root`
     pub fn extrinsics_root(&self) -> ExtrinsicsRoot {
         self.sealed_header.header.bundle_extrinsics_root
     }
 
-    // Return the `operator_id`
+    /// Return the `operator_id`
     pub fn operator_id(&self) -> OperatorId {
         self.sealed_header.header.proof_of_election.operator_id
     }
@@ -310,28 +313,34 @@ pub struct BundleDigest {
 /// Receipt of a domain block execution.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance> {
-    // The index of the current domain block that forms the basis of this ER.
+    /// The index of the current domain block that forms the basis of this ER.
     pub domain_block_number: DomainNumber,
-    // The block hash correspond to `domain_block_number`.
+    /// The block hash corresponding to `domain_block_number`.
     pub domain_block_hash: DomainHash,
-    // A pointer to the hash of the ER for the last domain block.
+    /// The hash of the ER for the last domain block.
     pub parent_domain_block_receipt_hash: ReceiptHash,
-    // A pointer to the consensus block index which contains all of the bundles that were used to derive and
-    // order all extrinsics executed by the current domain block for this ER.
+    /// A pointer to the consensus block index which contains all of the bundles that were used to derive and
+    /// order all extrinsics executed by the current domain block for this ER.
     pub consensus_block_number: Number,
-    // The block hash correspond to `consensus_block_number`.
+    /// The block hash corresponding to `consensus_block_number`.
     pub consensus_block_hash: Hash,
-    // All `extrinsics_roots` for all bundles being executed by this block. Used to ensure these are contained
-    // within the state of the `execution_inbox`.
+    /// Potential bundles that are excluded from the domain block building.
+    pub invalid_bundles: Vec<InvalidBundle>,
+    /// All `extrinsics_roots` for all bundles being executed by this block.
+    ///
+    /// Used to ensure these are contained within the state of the `execution_inbox`.
     pub block_extrinsics_roots: Vec<ExtrinsicsRoot>,
-    // The final state root for the current domain block reflected by this ER. Used for verifying storage proofs
-    // for domains.
+    /// The final state root for the current domain block reflected by this ER.
+    ///
+    /// Used for verifying storage proofs for domains.
     pub final_state_root: DomainHash,
     /// List of storage roots collected during the domain block execution.
     pub execution_trace: Vec<DomainHash>,
-    // The Merkle root of the execution trace for the current domain block. Used for verifying fraud proofs.
+    /// The Merkle root of the execution trace for the current domain block.
+    ///
+    /// Used for verifying fraud proofs.
     pub execution_trace_root: H256,
-    // All SSC rewards for this ER to be shared across operators.
+    /// All SSC rewards for this ER to be shared across operators.
     pub total_rewards: Balance,
 }
 
@@ -355,6 +364,7 @@ impl<
             parent_domain_block_receipt_hash: Default::default(),
             consensus_block_hash: consensus_genesis_hash,
             consensus_block_number: Zero::zero(),
+            invalid_bundles: Vec::new(),
             block_extrinsics_roots: sp_std::vec![],
             final_state_root: genesis_state_root.clone(),
             execution_trace: sp_std::vec![genesis_state_root],
@@ -365,7 +375,7 @@ impl<
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct ProofOfElection<DomainHash> {
+pub struct ProofOfElection {
     /// Domain id.
     pub domain_id: DomainId,
     /// The slot number.
@@ -376,11 +386,9 @@ pub struct ProofOfElection<DomainHash> {
     pub vrf_signature: VrfSignature,
     /// Operator index in the OperatorRegistry.
     pub operator_id: OperatorId,
-    // TODO: added temporarily in order to not change a lot of code to make it compile, remove later.
-    pub _phantom: DomainHash,
 }
 
-impl<DomainHash> ProofOfElection<DomainHash> {
+impl ProofOfElection {
     pub fn verify_vrf_signature(
         &self,
         operator_signing_key: &OperatorPublicKey,
@@ -404,7 +412,7 @@ impl<DomainHash> ProofOfElection<DomainHash> {
     }
 }
 
-impl<DomainHash: Default> ProofOfElection<DomainHash> {
+impl ProofOfElection {
     #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
     pub fn dummy(domain_id: DomainId, operator_id: OperatorId) -> Self {
         let output_bytes = vec![0u8; VrfOutput::max_encoded_len()];
@@ -419,7 +427,6 @@ impl<DomainHash: Default> ProofOfElection<DomainHash> {
             global_randomness: Randomness::default(),
             vrf_signature,
             operator_id,
-            _phantom: Default::default(),
         }
     }
 }
@@ -600,6 +607,49 @@ pub struct DomainBlockLimit {
 pub fn signer_in_tx_range(bundle_vrf_hash: &U256, signer_id_hash: &U256, tx_range: &U256) -> bool {
     let distance_from_vrf_hash = bidirectional_distance(bundle_vrf_hash, signer_id_hash);
     distance_from_vrf_hash <= (*tx_range / 2)
+}
+
+/// Receipt invalidity type.
+#[derive(Debug, Decode, Encode, TypeInfo, Clone, PartialEq, Eq)]
+pub enum InvalidReceipt {
+    /// The field `invalid_bundles` in [`ExecutionReceipt`] is invalid.
+    InvalidBundles,
+}
+
+#[derive(Debug, Decode, Encode, TypeInfo, Clone, PartialEq, Eq)]
+pub enum ReceiptValidity {
+    Valid,
+    Invalid(InvalidReceipt),
+}
+
+/// Bundle invalidity type.
+#[derive(Debug, Decode, Encode, TypeInfo, Clone, PartialEq, Eq)]
+pub enum InvalidBundleType {
+    /// Failed to decode the opaque extrinsic.
+    UndecodableTx,
+    /// Transaction is out of the tx range.
+    OutOfRangeTx,
+    /// Transaction is illegal (unable to pay the fee, etc).
+    IllegalTx,
+    /// Receipt is invalid.
+    InvalidReceipt(InvalidReceipt),
+}
+
+/// [`InvalidBundle`] represents a bundle that was originally included in the consensus
+/// block but subsequently excluded from the corresponding domain block by operator due
+/// to being flagged as invalid.
+#[derive(Debug, Decode, Encode, TypeInfo, Clone, PartialEq, Eq)]
+pub struct InvalidBundle {
+    /// Index of this bundle in the original list of bundles in the consensus block.
+    pub bundle_index: u32,
+    /// Specific type of invalidity.
+    pub invalid_bundle_type: InvalidBundleType,
+}
+
+#[derive(Debug, Decode, Encode, TypeInfo, Clone, PartialEq, Eq)]
+pub enum BundleValidity<Extrinsic> {
+    Valid(Vec<Extrinsic>),
+    Invalid(InvalidBundleType),
 }
 
 sp_api::decl_runtime_apis! {

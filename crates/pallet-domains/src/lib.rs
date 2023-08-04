@@ -1234,7 +1234,7 @@ impl<T: Config> Pallet<T> {
         operator_id: OperatorId,
         operator: Operator<BalanceOf<T>, T::Share>,
         bundle_slot_probability: (u64, u64),
-        proof_of_election: &ProofOfElection<T::DomainHash>,
+        proof_of_election: &ProofOfElection,
     ) -> Result<(), BundleError> {
         proof_of_election
             .verify_vrf_signature(&operator.signing_key)

@@ -134,15 +134,11 @@ where
 
         let digest = Digest::default();
 
-        // TODO: abstract the execution proof impl to be reusable in the test.
         let invalid_state_transition_proof = if local_trace_index == 0 {
             // `initialize_block` execution proof.
             let pre_state_root = as_h256(parent_header.state_root())?;
             let post_state_root = as_h256(local_root)?;
 
-            // TODO: add a test to cover the entire flow of creation and verification in the production
-            // environment, i.e., the generate_proof function on the executor side and the verify function
-            // on the verifier side.
             let new_header = Block::Header::new(
                 block_number.into(),
                 Default::default(),
