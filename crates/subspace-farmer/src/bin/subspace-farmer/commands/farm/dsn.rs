@@ -3,7 +3,7 @@ use futures::StreamExt;
 use parking_lot::Mutex;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use subspace_core_primitives::SegmentIndex;
 use subspace_farmer::piece_cache::PieceCache;
 use subspace_farmer::utils::archival_storage_info::ArchivalStorageInfo;
@@ -47,7 +47,7 @@ pub(super) fn configure_dsn(
         target_connections,
         external_addresses,
     }: DsnArgs,
-    readers_and_pieces: &Arc<Mutex<Option<ReadersAndPieces>>>,
+    weak_readers_and_pieces: Weak<Mutex<Option<ReadersAndPieces>>>,
     node_client: NodeRpcClient,
     archival_storage_pieces: ArchivalStoragePieces,
     archival_storage_info: ArchivalStorageInfo,
@@ -60,8 +60,6 @@ pub(super) fn configure_dsn(
 
         NetworkingParametersManager::new(&known_addresses_db_path).map(|manager| manager.boxed())?
     };
-
-    let weak_readers_and_pieces = Arc::downgrade(readers_and_pieces);
 
     let provider_db_path = base_path.join("providers_db");
 

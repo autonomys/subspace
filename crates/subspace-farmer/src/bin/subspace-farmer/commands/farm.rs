@@ -106,7 +106,7 @@ where
             base_path,
             keypair,
             dsn,
-            &readers_and_pieces,
+            Arc::downgrade(&readers_and_pieces),
             node_client.clone(),
             archival_storage_pieces.clone(),
             archival_storage_info.clone(),
