@@ -4,13 +4,13 @@ Reference implementation of Domain Operator for Subspace Network Blockchain.
 
 ## Overview
 
-Domain is the decouple execution layer of the [Subspace Network Blockchain](https://subspace.network) (referred as consensus chain below).
+Domains are the decoupled execution layer of the [Subspace Network Blockchain](https://subspace.network) (referred to as the consensus chain below).
 
 The extrinsic of the domain chain is first collected into a bundle by the domain operator, the bundle is then broadcast to the consensus chain network as an extrinsic of the consensus chain.
 
-The domain operator listening to the block import event of the consensus chain, extract bundles from the imported consensus block and execute the extrinsic of the bundle to build and import a domain block in a deterministically way.
+The domain operator listening to the block import events of the consensus chain, extracts bundles from the imported consensus block and executes the extrinsics of the bundle to build and import a domain block in a deterministically way.
 
-NOTE: currently, the domain chain is not support to sync from other operator node and need to deterministically deriving from the consensus chain block by block.
+NOTE: currently, the domain chain does not support to syncing from other operator nodes and need to be deterministically derived from the consensus chain block by block.
 
 ### Build from source
 
@@ -18,7 +18,7 @@ The domain operator node is embeded within the `subspace-node` binary, please re
 
 ### Start the domain operator node
 
-The domain operator node is running with an embeded consensus node, thus you need to specified the args for both the consensus node and the domain operator node:
+The domain operator node is running with an embededded consensus node, thus you need to specify the args for both the consensus node and the domain operator node:
 
 ```bash
 subspace-node [consensus-chain-args] -- [domain-args]
@@ -50,7 +50,7 @@ target/production/subspace-node \
     --rpc-external
 ```
 
-By default, node data are written to `subspace-node/domain-{domain-id}` subdirectory of the OS-specific users local data directory.
+By default, node data is written to `subspace-node/domain-{domain-id}` subdirectory of the OS-specific user's local data directory.
 
 ```
 Linux
