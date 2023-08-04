@@ -1,4 +1,5 @@
 use super::persistent_parameters::remove_known_peer_addresses_internal;
+use crate::behavior::persistent_parameters::{append_p2p_suffix, remove_p2p_suffix};
 use crate::behavior::provider_storage::{instant_to_micros, micros_to_instant};
 use crate::{Config, GenericRequest, GenericRequestHandler};
 use futures::channel::oneshot;
@@ -11,6 +12,7 @@ use parking_lot::Mutex;
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::pin::Pin;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use std::time::{Duration, Instant, SystemTime};
@@ -275,4 +277,29 @@ async fn test_async_handler_works_with_pending_internal_future() {
         .unwrap();
 
     assert_eq!(resp.counter, 1);
+}
+
+#[tokio::test]
+async fn test_address_p2p_prefix_removal() {
+    let short_addr: Multiaddr = "/ip4/127.0.0.1/tcp/50000".parse().unwrap();
+    let long_addr: Multiaddr =
+        "/ip4/127.0.0.1/tcp/50000/p2p/12D3KooWGAjyJAZNNsHu8sV6MP6mXHzNXFQbadjVBFUr5deTiom2"
+            .parse()
+            .unwrap();
+
+    assert_eq!(remove_p2p_suffix(long_addr.clone()), short_addr);
+    assert_eq!(remove_p2p_suffix(short_addr.clone()), short_addr);
+}
+
+#[tokio::test]
+async fn test_address_p2p_prefix_addition() {
+    let peer_id = PeerId::from_str("12D3KooWGAjyJAZNNsHu8sV6MP6mXHzNXFQbadjVBFUr5deTiom2").unwrap();
+    let short_addr: Multiaddr = "/ip4/127.0.0.1/tcp/50000".parse().unwrap();
+    let long_addr: Multiaddr =
+        "/ip4/127.0.0.1/tcp/50000/p2p/12D3KooWGAjyJAZNNsHu8sV6MP6mXHzNXFQbadjVBFUr5deTiom2"
+            .parse()
+            .unwrap();
+
+    assert_eq!(append_p2p_suffix(peer_id, long_addr.clone()), long_addr);
+    assert_eq!(append_p2p_suffix(peer_id, short_addr.clone()), long_addr);
 }

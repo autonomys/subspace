@@ -434,13 +434,26 @@ impl NetworkingParameters {
     }
 }
 
-// Removes a P2p protocol suffix from the multiaddress if any.
-fn remove_p2p_suffix(address: Multiaddr) -> Multiaddr {
+/// Removes a P2p protocol suffix from the multiaddress if any.
+pub(crate) fn remove_p2p_suffix(address: Multiaddr) -> Multiaddr {
     let mut modified_address = address.clone();
 
     if let Some(Protocol::P2p(_)) = modified_address.pop() {
         modified_address
     } else {
+        address
+    }
+}
+
+/// Appends a P2p protocol suffix to the multiaddress if require3d.
+pub(crate) fn append_p2p_suffix(peer_id: PeerId, mut address: Multiaddr) -> Multiaddr {
+    let mut modified_address = address.clone();
+
+    if let Some(Protocol::P2p(_)) = modified_address.pop() {
+        address
+    } else {
+        address.push(Protocol::P2p(peer_id));
+
         address
     }
 }

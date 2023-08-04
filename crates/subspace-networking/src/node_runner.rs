@@ -1,5 +1,6 @@
 use crate::behavior::persistent_parameters::{
-    NetworkingParametersRegistry, PeerAddressRemovedEvent, PEERS_ADDRESSES_BATCH_SIZE,
+    append_p2p_suffix, remove_p2p_suffix, NetworkingParametersRegistry, PeerAddressRemovedEvent,
+    PEERS_ADDRESSES_BATCH_SIZE,
 };
 use crate::behavior::{
     provider_storage, Behavior, Event, GeneralConnectedPeersInstance, SpecialConnectedPeersInstance,
@@ -397,10 +398,16 @@ where
                 .kademlia
                 .remove_peer(&event.peer_id);
         } else {
+            // Remove both versions of the address
+            self.swarm.behaviour_mut().kademlia.remove_address(
+                &event.peer_id,
+                &append_p2p_suffix(event.peer_id, event.address.clone()),
+            );
+
             self.swarm
                 .behaviour_mut()
                 .kademlia
-                .remove_address(&event.peer_id, &event.address);
+                .remove_address(&event.peer_id, &remove_p2p_suffix(event.address));
         }
     }
 
