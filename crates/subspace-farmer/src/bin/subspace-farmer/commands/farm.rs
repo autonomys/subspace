@@ -137,6 +137,7 @@ where
         piece_provider,
         piece_cache.clone(),
         archival_storage_info,
+        Arc::clone(&readers_and_pieces),
     ));
 
     let _piece_cache_worker = run_future_in_dedicated_thread(
