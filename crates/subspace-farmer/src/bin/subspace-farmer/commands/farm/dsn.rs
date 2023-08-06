@@ -16,10 +16,9 @@ use subspace_networking::libp2p::kad::RecordKey;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::{
-    create, peer_id, Config, NetworkingParametersManager, Node, NodeRunner,
-    ParityDbProviderStorage, PeerInfo, PeerInfoProvider, PieceByHashRequest,
-    PieceByHashRequestHandler, PieceByHashResponse, SegmentHeaderBySegmentIndexesRequestHandler,
-    SegmentHeaderRequest, SegmentHeaderResponse,
+    create, peer_id, Config, NetworkingParametersManager, Node, NodeRunner, PeerInfo,
+    PeerInfoProvider, PieceByHashRequest, PieceByHashRequestHandler, PieceByHashResponse,
+    SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
 };
 use subspace_rpc_primitives::MAX_SEGMENT_HEADERS_PER_REQUEST;
 use tracing::{debug, error, info, Instrument};
@@ -37,7 +36,6 @@ pub(super) fn configure_dsn(
     DsnArgs {
         listen_on,
         bootstrap_nodes,
-        provided_keys_limit,
         enable_private_ips,
         reserved_peers,
         in_connections,
@@ -62,21 +60,6 @@ pub(super) fn configure_dsn(
     };
 
     let weak_readers_and_pieces = Arc::downgrade(readers_and_pieces);
-
-    let provider_db_path = base_path.join("providers_db");
-
-    info!(
-        db_path = ?provider_db_path,
-        keys_limit = ?provided_keys_limit,
-        "Initializing provider storage..."
-    );
-    let persistent_provider_storage =
-        ParityDbProviderStorage::new(&provider_db_path, provided_keys_limit, peer_id)
-            .map_err(|err| anyhow::anyhow!(err.to_string()))?;
-    info!(
-        current_size = ?persistent_provider_storage.size(),
-        "Provider storage initialized successfully"
-    );
 
     let farmer_provider_storage = FarmerProviderStorage::new(peer_id, piece_cache.clone());
 
