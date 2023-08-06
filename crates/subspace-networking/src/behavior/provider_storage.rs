@@ -3,7 +3,7 @@ mod providers;
 use libp2p::kad::record::Key;
 use libp2p::kad::{store, ProviderRecord};
 use libp2p::PeerId;
-pub use providers::{MemoryProviderStorage, VoidProviderStorage};
+pub use providers::VoidProviderStorage;
 use std::borrow::Cow;
 
 /// A trait for providers storages - wrapper around `provider` functions of the libp2p RecordStore.

@@ -4,7 +4,6 @@ mod transport;
 use crate::behavior::persistent_parameters::{
     NetworkingParametersRegistry, StubNetworkingParametersManager,
 };
-use crate::behavior::provider_storage::MemoryProviderStorage;
 use crate::behavior::{provider_storage, Behavior, BehaviorConfig};
 use crate::connected_peers::Config as ConnectedPeersConfig;
 use crate::create::temporary_bans::TemporaryBans;
@@ -16,7 +15,7 @@ use crate::request_responses::RequestHandler;
 use crate::reserved_peers::Config as ReservedPeersConfig;
 use crate::shared::Shared;
 use crate::utils::{convert_multiaddresses, ResizableSemaphore};
-use crate::{PeerInfo, PeerInfoConfig};
+use crate::{PeerInfo, PeerInfoConfig, VoidProviderStorage};
 use backoff::{ExponentialBackoff, SystemClock};
 use futures::channel::mpsc;
 use libp2p::connection_limits::ConnectionLimits;
@@ -238,17 +237,16 @@ impl<ProviderStorage> fmt::Debug for Config<ProviderStorage> {
     }
 }
 
-impl Default for Config<MemoryProviderStorage> {
+impl Default for Config<VoidProviderStorage> {
     #[inline]
     fn default() -> Self {
         let ed25519_keypair = identity::ed25519::Keypair::generate();
         let keypair = identity::Keypair::from(ed25519_keypair);
-        let peer_id = keypair.public().to_peer_id();
 
         Self::new(
             DEFAULT_NETWORK_PROTOCOL_VERSION.to_string(),
             keypair,
-            MemoryProviderStorage::new(peer_id),
+            VoidProviderStorage,
             Some(PeerInfoProvider::new_client()),
         )
     }
