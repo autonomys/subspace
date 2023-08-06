@@ -341,11 +341,15 @@ impl Archiver {
         }
     }
 
-    /// Adds new block to internal buffer, potentially producing pieces and segment header headers
+    /// Adds new block to internal buffer, potentially producing pieces and segment header headers.
+    ///
+    /// Incremental archiving can be enabled if amortized block addition cost is preferred over
+    /// throughput.
     pub fn add_block(
         &mut self,
         bytes: Vec<u8>,
         object_mapping: BlockObjectMapping,
+        incremental: bool,
     ) -> Vec<NewArchivedSegment> {
         // Append new block to the buffer
         self.buffer.push_back(SegmentItem::Block {
@@ -355,7 +359,7 @@ impl Archiver {
 
         let mut archived_segments = Vec::new();
 
-        while let Some(segment) = self.produce_segment() {
+        while let Some(segment) = self.produce_segment(incremental) {
             archived_segments.push(self.produce_archived_segment(segment));
         }
 
@@ -364,7 +368,7 @@ impl Archiver {
 
     /// Try to slice buffer contents into segments if there is enough data, producing one segment at
     /// a time
-    fn produce_segment(&mut self) -> Option<Segment> {
+    fn produce_segment(&mut self, incremental: bool) -> Option<Segment> {
         let mut segment = Segment::V0 {
             items: Vec::with_capacity(self.buffer.len()),
         };
@@ -383,7 +387,7 @@ impl Archiver {
                     let bytes_committed_to = existing_commitments * RawRecord::SIZE;
                     // Run incremental archiver only when there is at least two records to archive,
                     // otherwise we're wasting CPU cycles encoding segment over and over again
-                    if segment_size - bytes_committed_to >= RawRecord::SIZE * 2 {
+                    if incremental && segment_size - bytes_committed_to >= RawRecord::SIZE * 2 {
                         update_record_commitments(
                             &mut self.incremental_record_commitments,
                             &segment,

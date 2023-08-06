@@ -695,17 +695,6 @@ where
         }
     };
 
-    let subspace_archiver = sc_consensus_subspace::create_subspace_archiver(
-        segment_headers_store.clone(),
-        &subspace_link,
-        client.clone(),
-        telemetry.as_ref().map(|telemetry| telemetry.handle()),
-    );
-
-    task_manager
-        .spawn_essential_handle()
-        .spawn_essential_blocking("subspace-archiver", None, Box::pin(subspace_archiver));
-
     // TODO: This prevents SIGINT from working properly
     if config.sync_from_dsn {
         info!("⚙️ Starting initial sync from DSN, this might take some time");
@@ -776,6 +765,21 @@ where
             block_relay,
         })?;
 
+    let subspace_sync_oracle =
+        SubspaceSyncOracle::new(config.force_authoring, sync_service.clone());
+
+    let subspace_archiver = sc_consensus_subspace::create_subspace_archiver(
+        segment_headers_store.clone(),
+        &subspace_link,
+        client.clone(),
+        subspace_sync_oracle.clone(),
+        telemetry.as_ref().map(|telemetry| telemetry.handle()),
+    );
+
+    task_manager
+        .spawn_essential_handle()
+        .spawn_essential_blocking("subspace-archiver", None, Box::pin(subspace_archiver));
+
     if config.enable_subspace_block_relay {
         network_wrapper.set(network_service.clone());
     }
@@ -840,9 +844,6 @@ where
     let reward_signing_notification_stream = subspace_link.reward_signing_notification_stream();
     let block_importing_notification_stream = subspace_link.block_importing_notification_stream();
     let archived_segment_notification_stream = subspace_link.archived_segment_notification_stream();
-
-    let subspace_sync_oracle =
-        SubspaceSyncOracle::new(config.force_authoring, sync_service.clone());
 
     if config.role.is_authority() || config.force_new_slot_notifications {
         let proposer_factory = ProposerFactory::new(
