@@ -125,7 +125,7 @@ where
     ProviderStorage: provider_storage::ProviderStorage,
 {
     type RecordsIter<'a> = Empty<Cow<'a, Record>> where Self: 'a;
-    type ProvidedIter<'a> = ProviderStorage::ProvidedIter<'a> where Self: 'a;
+    type ProvidedIter<'a> =  Empty<Cow<'a, ProviderRecord>> where Self: 'a;
 
     fn get(&self, _key: &Key) -> Option<Cow<'_, Record>> {
         // Not supported
@@ -146,8 +146,9 @@ where
         iter::empty()
     }
 
-    fn add_provider(&mut self, record: ProviderRecord) -> store::Result<()> {
-        self.provider_storage.add_provider(record)
+    fn add_provider(&mut self, _record: ProviderRecord) -> store::Result<()> {
+        // Not supported
+        Ok(())
     }
 
     fn providers(&self, key: &Key) -> Vec<ProviderRecord> {
@@ -155,11 +156,12 @@ where
     }
 
     fn provided(&self) -> Self::ProvidedIter<'_> {
-        self.provider_storage.provided()
+        // We don't use Kademlia's periodic replication
+        iter::empty()
     }
 
-    fn remove_provider(&mut self, key: &Key, provider: &PeerId) {
-        self.provider_storage.remove_provider(key, provider)
+    fn remove_provider(&mut self, _key: &Key, _provider: &PeerId) {
+        // Not supported
     }
 }
 

@@ -1,11 +1,8 @@
 use crate::piece_cache::PieceCache;
-use std::borrow::Cow;
-use std::iter;
 use subspace_networking::libp2p::kad::record::Key;
 use subspace_networking::libp2p::kad::ProviderRecord;
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::ProviderStorage;
-use tracing::trace;
 
 #[derive(Clone)]
 pub struct FarmerProviderStorage {
@@ -23,19 +20,6 @@ impl FarmerProviderStorage {
 }
 
 impl ProviderStorage for FarmerProviderStorage {
-    type ProvidedIter<'a> = impl Iterator<Item = Cow<'a, ProviderRecord>>
-    where
-        Self:'a;
-
-    fn add_provider(
-        &self,
-        record: ProviderRecord,
-    ) -> subspace_networking::libp2p::kad::store::Result<()> {
-        trace!(key=?record.key, peer_id=%record.provider, "Attempt to add provider record.");
-
-        Ok(())
-    }
-
     fn providers(&self, key: &Key) -> Vec<ProviderRecord> {
         if self.piece_cache.contains_piece(key.clone()) {
             // Note: We store our own provider records locally without local addresses
@@ -50,13 +34,5 @@ impl ProviderStorage for FarmerProviderStorage {
         } else {
             Vec::new()
         }
-    }
-
-    fn provided(&self) -> Self::ProvidedIter<'_> {
-        iter::empty()
-    }
-
-    fn remove_provider(&self, key: &Key, peer_id: &PeerId) {
-        trace!(?key, %peer_id, "Attempt to remove provider record.");
     }
 }
