@@ -12,7 +12,7 @@ use subspace_networking::libp2p::kad::record::Key;
 use subspace_networking::libp2p::kad::ProviderRecord;
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::ToMultihash;
-use subspace_networking::ProviderStorage;
+use subspace_networking::LocalRecordProvider;
 use tracing::info;
 
 const LOCAL_PROVIDED_KEYS: &[u8] = b"LOCAL_PROVIDED_KEYS";
@@ -225,25 +225,25 @@ impl TryFrom<Vec<u8>> for PieceIndexKeyCollection {
     }
 }
 
-impl<AS> ProviderStorage for PieceCache<AS>
+impl<AS> LocalRecordProvider for PieceCache<AS>
 where
     AS: AuxStore,
 {
-    fn providers(&self, key: &Key) -> Vec<ProviderRecord> {
+    fn record(&self, key: &Key) -> Option<ProviderRecord> {
         if self
             .local_provided_keys
             .lock()
             .piece_index_keys
             .contains(&key.to_vec())
         {
-            return vec![ProviderRecord {
+            Some(ProviderRecord {
                 key: key.clone(),
                 provider: self.local_peer_id,
                 expires: None,
                 addresses: vec![], // Kademlia adds addresses for local providers
-            }];
+            })
+        } else {
+            None
         }
-
-        Vec::new()
     }
 }

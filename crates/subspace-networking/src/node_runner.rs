@@ -2,12 +2,13 @@ use crate::behavior::persistent_parameters::{
     NetworkingParametersRegistry, PEERS_ADDRESSES_BATCH_SIZE,
 };
 use crate::behavior::{
-    provider_storage, Behavior, Event, GeneralConnectedPeersInstance, SpecialConnectedPeersInstance,
+    Behavior, Event, GeneralConnectedPeersInstance, SpecialConnectedPeersInstance,
 };
 use crate::connected_peers::Event as ConnectedPeersEvent;
+use crate::create;
 use crate::create::temporary_bans::TemporaryBans;
 use crate::create::{
-    ConnectedPeersHandler, ProviderOnlyRecordStore, KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER,
+    ConnectedPeersHandler, LocalOnlyRecordStore, KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER,
     REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER,
 };
 use crate::peer_info::{Event as PeerInfoEvent, PeerInfoSuccess};
@@ -97,14 +98,14 @@ enum BootstrapCommandState {
 
 /// Runner for the Node.
 #[must_use = "Node does not function properly unless its runner is driven forward"]
-pub struct NodeRunner<ProviderStorage>
+pub struct NodeRunner<LocalRecordProvider>
 where
-    ProviderStorage: provider_storage::ProviderStorage + Send + Sync + 'static,
+    LocalRecordProvider: create::LocalRecordProvider + Send + Sync + 'static,
 {
     /// Should non-global addresses be added to the DHT?
     allow_non_global_addresses_in_dht: bool,
     command_receiver: mpsc::Receiver<Command>,
-    swarm: Swarm<Behavior<ProviderOnlyRecordStore<ProviderStorage>>>,
+    swarm: Swarm<Behavior<LocalOnlyRecordStore<LocalRecordProvider>>>,
     shared_weak: Weak<Shared>,
     /// How frequently should random queries be done using Kademlia DHT to populate routing table.
     next_random_query_interval: Duration,
@@ -148,13 +149,13 @@ where
 }
 
 // Helper struct for NodeRunner configuration (clippy requirement).
-pub(crate) struct NodeRunnerConfig<ProviderStorage>
+pub(crate) struct NodeRunnerConfig<LocalRecordProvider>
 where
-    ProviderStorage: provider_storage::ProviderStorage + Send + Sync + 'static,
+    LocalRecordProvider: create::LocalRecordProvider + Send + Sync + 'static,
 {
     pub(crate) allow_non_global_addresses_in_dht: bool,
     pub(crate) command_receiver: mpsc::Receiver<Command>,
-    pub(crate) swarm: Swarm<Behavior<ProviderOnlyRecordStore<ProviderStorage>>>,
+    pub(crate) swarm: Swarm<Behavior<LocalOnlyRecordStore<LocalRecordProvider>>>,
     pub(crate) shared_weak: Weak<Shared>,
     pub(crate) next_random_query_interval: Duration,
     pub(crate) networking_parameters_registry: Box<dyn NetworkingParametersRegistry>,
@@ -169,9 +170,9 @@ where
     pub(crate) external_addresses: Vec<Multiaddr>,
 }
 
-impl<ProviderStorage> NodeRunner<ProviderStorage>
+impl<LocalRecordProvider> NodeRunner<LocalRecordProvider>
 where
-    ProviderStorage: provider_storage::ProviderStorage + Send + Sync + 'static,
+    LocalRecordProvider: create::LocalRecordProvider + Send + Sync + 'static,
 {
     pub(crate) fn new(
         NodeRunnerConfig {
@@ -190,7 +191,7 @@ where
             bootstrap_addresses,
             kademlia_mode,
             external_addresses,
-        }: NodeRunnerConfig<ProviderStorage>,
+        }: NodeRunnerConfig<LocalRecordProvider>,
     ) -> Self {
         Self {
             allow_non_global_addresses_in_dht,
@@ -952,7 +953,7 @@ where
 
     // Returns `true` if query was cancelled
     fn unbounded_send_and_cancel_on_error<T>(
-        kademlia: &mut Kademlia<ProviderOnlyRecordStore<ProviderStorage>>,
+        kademlia: &mut Kademlia<LocalOnlyRecordStore<LocalRecordProvider>>,
         sender: &mpsc::UnboundedSender<T>,
         value: T,
         channel: &'static str,

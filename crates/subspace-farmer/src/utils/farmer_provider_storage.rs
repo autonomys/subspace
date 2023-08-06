@@ -2,7 +2,7 @@ use crate::piece_cache::PieceCache;
 use subspace_networking::libp2p::kad::record::Key;
 use subspace_networking::libp2p::kad::ProviderRecord;
 use subspace_networking::libp2p::PeerId;
-use subspace_networking::ProviderStorage;
+use subspace_networking::LocalRecordProvider;
 
 #[derive(Clone)]
 pub struct FarmerProviderStorage {
@@ -19,20 +19,20 @@ impl FarmerProviderStorage {
     }
 }
 
-impl ProviderStorage for FarmerProviderStorage {
-    fn providers(&self, key: &Key) -> Vec<ProviderRecord> {
+impl LocalRecordProvider for FarmerProviderStorage {
+    fn record(&self, key: &Key) -> Option<ProviderRecord> {
         if self.piece_cache.contains_piece(key.clone()) {
             // Note: We store our own provider records locally without local addresses
             // to avoid redundant storage and outdated addresses. Instead these are
             // acquired on demand when returning a `ProviderRecord` for the local node.
-            vec![ProviderRecord {
+            Some(ProviderRecord {
                 key: key.clone(),
                 provider: self.local_peer_id,
                 expires: None,
                 addresses: Vec::new(),
-            }]
+            })
         } else {
-            Vec::new()
+            None
         }
     }
 }

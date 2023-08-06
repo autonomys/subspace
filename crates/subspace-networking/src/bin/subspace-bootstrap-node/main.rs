@@ -11,7 +11,7 @@ use std::fmt::{Display, Formatter};
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_networking::libp2p::multiaddr::Protocol;
-use subspace_networking::{peer_id, Config, NetworkingParametersManager, VoidProviderStorage};
+use subspace_networking::{peer_id, Config, NetworkingParametersManager};
 use tracing::{debug, info, Level};
 use tracing_subscriber::fmt::Subscriber;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -157,12 +157,7 @@ async fn main() -> anyhow::Result<()> {
                 bootstrap_addresses: bootstrap_nodes,
                 external_addresses,
 
-                ..Config::new(
-                    protocol_version.to_string(),
-                    keypair,
-                    VoidProviderStorage,
-                    None,
-                )
+                ..Config::new(protocol_version.to_string(), keypair, (), None)
             };
             let (node, mut node_runner) =
                 subspace_networking::create(config).expect("Networking stack creation failed.");
