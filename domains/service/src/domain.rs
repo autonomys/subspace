@@ -341,7 +341,7 @@ where
 {
     let DomainParams {
         domain_id,
-        domain_config,
+        mut domain_config,
         domain_created_at,
         consensus_client,
         consensus_network_sync_oracle,
@@ -390,6 +390,7 @@ where
         })?;
 
     let is_authority = domain_config.service_config.role.is_authority();
+    domain_config.service_config.rpc_id_provider = provider.rpc_id();
     let rpc_builder = {
         let deps = crate::rpc::FullDeps {
             client: client.clone(),
@@ -406,7 +407,18 @@ where
             backend: backend.clone(),
         };
 
-        Box::new(move |_, _| crate::rpc::create_full(deps.clone()).map_err(Into::into))
+        let spawn_essential = task_manager.spawn_essential_handle();
+        let rpc_deps = provider.deps(deps)?;
+        Box::new(move |_, subscription_task_executor| {
+            let spawn_essential = spawn_essential.clone();
+            provider
+                .rpc_builder(
+                    rpc_deps.clone(),
+                    subscription_task_executor,
+                    spawn_essential,
+                )
+                .map_err(Into::into)
+        })
     };
 
     let rpc_handlers = sc_service::spawn_tasks(SpawnTasksParams {
