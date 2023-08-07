@@ -125,7 +125,7 @@ where
             }
 
             info!(
-                "clock_master::initialize: block_hash={:?}, block_number={}, slot_number={}, {}",
+                "clock_master::initialization done: block_hash={:?}, block_number={}, slot_number={}, {:?}",
                 tip.block_hash, tip.block_number, tip.slot_number, tip.pot_pre_digest
             );
 
@@ -219,7 +219,7 @@ where
         let elapsed = start_ts.elapsed();
 
         if let Err(err) = ret {
-            info!("clock_master::on gossip: {err:?}, {sender}");
+            trace!("clock_master::on gossip: {err:?}, {sender}");
         } else {
             trace!("clock_master::on gossip: {proof}, time=[{elapsed:?}], {sender}");
             self.gossip.gossip_message(proof.encode());

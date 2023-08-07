@@ -197,8 +197,6 @@ pub struct SubspaceConfiguration {
     /// Use the block request handler implementation from subspace
     /// instead of the default substrate handler.
     pub enable_subspace_block_relay: bool,
-    /// If enabled, the node is responsible for bootstrapping the PoT chain.
-    pub pot_bootstrap: bool,
 }
 
 struct SubspaceExtensionsFactory<PosTable> {
@@ -951,7 +949,6 @@ where
             max_block_proposal_slot_portion: None,
             telemetry: None,
             proof_of_time: pot_consensus,
-            pot_bootstrap: config.pot_bootstrap,
         };
 
         let subspace =

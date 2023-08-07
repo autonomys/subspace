@@ -81,7 +81,7 @@ where
 
             if let Some(proofs) = tip.pot_pre_digest.proofs().cloned() {
                 info!(
-                    "pot_client::initialize: block_hash={:?}, block_number={}, slot_number={}, {}",
+                    "pot_client::initialization done: block_hash={:?}, block_number={}, slot_number={}, {:?}",
                     tip.block_hash, tip.block_number, tip.slot_number, tip.pot_pre_digest
                 );
                 break proofs;
@@ -101,7 +101,7 @@ where
         let elapsed = start_ts.elapsed();
 
         if let Err(err) = ret {
-            info!("pot_client::on gossip: {err:?}, {sender}");
+            trace!("pot_client::on gossip: {err:?}, {sender}");
         } else {
             trace!("pot_client::on gossip: {proof}, time=[{elapsed:?}], {sender}");
         }

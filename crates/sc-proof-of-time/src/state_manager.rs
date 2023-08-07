@@ -71,11 +71,12 @@ pub enum PotGetBlockProofsError {
         current_slot: SlotNumber,
     },
 
-    #[error("Proof unavailable to send: {summary:?}/{block_number}/{slot_number}")]
+    #[error("Proof unavailable to send: {summary:?}/{block_number}/{missing_slot}/{current_slot}")]
     ProofUnavailable {
         summary: PotStateSummary,
         block_number: BlockNumber,
-        slot_number: SlotNumber,
+        missing_slot: SlotNumber,
+        current_slot: SlotNumber,
     },
 }
 
@@ -458,7 +459,8 @@ impl InternalState {
                 return Err(PotGetBlockProofsError::ProofUnavailable {
                     summary: summary.clone(),
                     block_number,
-                    slot_number: slot,
+                    missing_slot: slot,
+                    current_slot,
                 });
             }
         }

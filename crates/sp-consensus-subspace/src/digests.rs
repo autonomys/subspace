@@ -49,7 +49,7 @@ pub struct PreDigest<PublicKey, RewardAddress> {
 /// The proof of time included in the pre digest.
 /// TODO: versioning needs to match PotProof version,
 /// versioning added on the proof side
-#[derive(Debug, Clone, Encode, Decode)]
+#[derive(Clone, Encode, Decode)]
 pub enum PotPreDigest {
     /// The block was produced in the bootstrapping phase, where
     /// the genesis slot has not yet been determined and the proof
@@ -94,7 +94,7 @@ impl Default for PotPreDigest {
     }
 }
 
-impl fmt::Display for PotPreDigest {
+impl fmt::Debug for PotPreDigest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Bootstrapping => {

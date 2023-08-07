@@ -277,13 +277,6 @@ pub struct Cli {
     /// Assigned PoT role for this node.
     #[arg(long, default_value="none", value_parser(EnumValueParser::<CliPotRole>::new()))]
     pub pot_role: CliPotRole,
-
-    /// If enabled, the node is responsible for bootstrapping the PoT chain
-    /// (producing the first block after genesis). This is a temporary flag for
-    /// initial testing, and only takes effect when PoT feature is enabled via
-    /// --pot-role
-    #[arg(long, default_value_t = false)]
-    pub pot_bootstrap: bool,
 }
 
 impl SubstrateCli for Cli {

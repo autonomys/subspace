@@ -80,8 +80,8 @@ use std::sync::Arc;
 use subspace_archiving::archiver::NewArchivedSegment;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    HistorySize, PublicKey, Randomness, SectorId, SegmentHeader, SegmentIndex, SlotNumber,
-    Solution, SolutionRange,
+    BlockNumber, HistorySize, PublicKey, Randomness, SectorId, SegmentHeader, SegmentIndex,
+    SlotNumber, Solution, SolutionRange,
 };
 use subspace_proof_of_space::Table;
 use subspace_solving::REWARD_SIGNING_CONTEXT;
@@ -432,9 +432,6 @@ where
 
     /// Proof of time interface.
     pub proof_of_time: Option<Arc<dyn PotConsensusState>>,
-
-    /// If enabled, the node is responsible for bootstrapping the PoT chain.
-    pub pot_bootstrap: bool,
 }
 
 /// Start the Subspace worker.
@@ -455,7 +452,6 @@ pub fn start_subspace<PosTable, Block, Client, SC, E, I, SO, CIDP, BS, L, AS, Er
         max_block_proposal_slot_portion,
         telemetry,
         proof_of_time,
-        pot_bootstrap,
     }: SubspaceParams<Block, Client, SC, E, I, SO, L, CIDP, BS, AS>,
 ) -> Result<SubspaceWorker, sp_consensus::Error>
 where
@@ -485,7 +481,7 @@ where
     BS: BackoffAuthoringBlocksStrategy<NumberFor<Block>> + Send + Sync + 'static,
     AS: AuxStore + Send + Sync + 'static,
     Error: std::error::Error + Send + From<ConsensusError> + From<I::Error> + 'static,
-    u32: From<<<Block as BlockT>::Header as HeaderT>::Number>,
+    BlockNumber: From<<<Block as BlockT>::Header as HeaderT>::Number>,
 {
     let worker = SubspaceSlotWorker {
         client,
@@ -502,7 +498,6 @@ where
         telemetry,
         segment_headers_store,
         proof_of_time,
-        pot_bootstrap,
         _pos_table: PhantomData::<PosTable>,
     };
 
@@ -869,7 +864,7 @@ where
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey> + ApiExt<Block>,
     CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
     AS: AuxStore + Send + Sync + 'static,
-    u32: From<<<Block as BlockT>::Header as HeaderT>::Number>,
+    BlockNumber: From<<<Block as BlockT>::Header as HeaderT>::Number>,
 {
     fn new(
         client: Arc<Client>,
@@ -1176,7 +1171,7 @@ where
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey> + ApiExt<Block>,
     CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
     AS: AuxStore + Send + Sync + 'static,
-    u32: From<<<Block as BlockT>::Header as HeaderT>::Number>,
+    BlockNumber: From<<<Block as BlockT>::Header as HeaderT>::Number>,
 {
     type Error = ConsensusError;
     type Transaction = TransactionFor<Client, Block>;
@@ -1374,7 +1369,7 @@ where
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey>,
     CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
     AS: AuxStore + Send + Sync + 'static,
-    u32: From<<<Block as BlockT>::Header as HeaderT>::Number>,
+    BlockNumber: From<<<Block as BlockT>::Header as HeaderT>::Number>,
 {
     let (new_slot_notification_sender, new_slot_notification_stream) =
         notification::channel("subspace_new_slot_notification_stream");

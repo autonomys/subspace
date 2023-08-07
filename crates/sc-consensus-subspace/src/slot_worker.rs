@@ -21,7 +21,7 @@ use crate::{
 };
 use futures::channel::mpsc;
 use futures::{StreamExt, TryFutureExt};
-use log::{debug, error, info, trace, warn};
+use log::{debug, error, info, warn};
 use sc_client_api::AuxStore;
 use sc_consensus::block_import::{BlockImport, BlockImportParams, StateAction};
 use sc_consensus::{JustificationSyncLink, StorageChanges};
@@ -51,7 +51,7 @@ use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
 use subspace_core_primitives::{
-    PublicKey, Randomness, RewardSignature, SectorId, SlotNumber, Solution,
+    BlockNumber, PublicKey, Randomness, RewardSignature, SectorId, SlotNumber, Solution,
 };
 use subspace_proof_of_space::Table;
 use subspace_verification::{
@@ -133,7 +133,6 @@ where
     pub(super) telemetry: Option<TelemetryHandle>,
     pub(super) segment_headers_store: SegmentHeadersStore<AS>,
     pub(super) proof_of_time: Option<Arc<dyn PotConsensusState>>,
-    pub(super) pot_bootstrap: bool,
     pub(super) _pos_table: PhantomData<PosTable>,
 }
 
@@ -157,7 +156,7 @@ where
     BS: BackoffAuthoringBlocksStrategy<NumberFor<Block>> + Send + Sync,
     Error: std::error::Error + Send + From<ConsensusError> + From<I::Error> + 'static,
     AS: AuxStore + Send + Sync + 'static,
-    u32: From<<<Block as BlockT>::Header as Header>::Number>,
+    BlockNumber: From<<<Block as BlockT>::Header as Header>::Number>,
 {
     type BlockImport = I;
     type SyncOracle = SO;
@@ -197,20 +196,6 @@ where
         slot: Slot,
         _epoch_data: &Self::AuxData,
     ) -> Option<Self::Claim> {
-        if parent_header.number().is_zero() && self.proof_of_time.is_some() {
-            // If PoT is enabled: only the designated node is allowed to
-            // propose block 1. Other nodes just wait for the designated
-            // node to build/broadcast block 1.
-            if !self.pot_bootstrap {
-                trace!(
-                    target: "subspace",
-                    "Skipping claiming {slot}/block 1, parent_hash {}: not bootstrap node",
-                    parent_header.hash()
-                );
-                return None;
-            }
-        }
-
         let parent_pre_digest = match extract_pre_digest(parent_header) {
             Ok(pre_digest) => pre_digest,
             Err(error) => {
@@ -367,7 +352,6 @@ where
                         info!(target: "subspace", "🚜 Claimed block at slot {slot}");
                         let proof_of_time = self
                             .build_block_pot(parent_header, &parent_pre_digest, slot.into())
-                            .await
                             .ok()?;
                         maybe_pre_digest.replace(PreDigest {
                             solution,
@@ -516,7 +500,7 @@ where
     BS: BackoffAuthoringBlocksStrategy<NumberFor<Block>> + Send + Sync,
     Error: std::error::Error + Send + From<ConsensusError> + From<I::Error> + 'static,
     AS: AuxStore + Send + Sync + 'static,
-    u32: From<<<Block as BlockT>::Header as Header>::Number>,
+    BlockNumber: From<<<Block as BlockT>::Header as Header>::Number>,
 {
     async fn create_vote(
         &self,
@@ -602,7 +586,7 @@ where
     }
 
     /// Builds the proof of time for the block being proposed.
-    async fn build_block_pot(
+    fn build_block_pot(
         &self,
         parent_header: &Block::Header,
         parent_pre_digest: &PreDigest<FarmerPublicKey, FarmerPublicKey>,
@@ -639,7 +623,7 @@ where
                 let proof_of_time = PotPreDigest::new(proofs);
                 debug!(
                     target: "subspace",
-                    "build_block_pot: {block_number}/{}/{slot_number}, PoT=[{proof_of_time}]",
+                    "build_block_pot: {block_number}/{}/{slot_number}, PoT=[{proof_of_time:?}]",
                     parent_pre_digest.slot
                 );
                 Some(proof_of_time)
