@@ -378,7 +378,7 @@ pub fn create_archived_segment(kzg: Kzg) -> NewArchivedSegment {
     let mut block = vec![0u8; RecordedHistorySegment::SIZE];
     rand::thread_rng().fill(block.as_mut_slice());
     archiver
-        .add_block(block, Default::default())
+        .add_block(block, Default::default(), true)
         .into_iter()
         .next()
         .unwrap()

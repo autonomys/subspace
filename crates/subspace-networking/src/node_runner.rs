@@ -559,10 +559,12 @@ where
                     };
                 }
 
+                debug!(?peer_id, "SwarmEvent::OutgoingConnectionError for peer.");
+
                 match error {
                     DialError::Transport(ref addresses) => {
                         for (addr, _) in addresses {
-                            debug!(?error, ?peer_id, %addr, "SwarmEvent::OutgoingConnectionError (DialError::Transport) for peer.");
+                            trace!(?error, ?peer_id, %addr, "SwarmEvent::OutgoingConnectionError (DialError::Transport) for peer.");
                             if let Some(peer_id) = peer_id {
                                 self.networking_parameters_registry
                                     .remove_known_peer_addresses(peer_id, vec![addr.clone()])
@@ -571,7 +573,7 @@ where
                         }
                     }
                     DialError::WrongPeerId { obtained, .. } => {
-                        debug!(?error, ?peer_id, obtained_peer_id=?obtained, "SwarmEvent::WrongPeerId (DialError::WrongPeerId) for peer.");
+                        trace!(?error, ?peer_id, obtained_peer_id=?obtained, "SwarmEvent::WrongPeerId (DialError::WrongPeerId) for peer.");
 
                         if let Some(ref peer_id) = peer_id {
                             let kademlia = &mut self.swarm.behaviour_mut().kademlia;
@@ -579,7 +581,7 @@ where
                         }
                     }
                     _ => {
-                        debug!(?error, ?peer_id, "SwarmEvent::OutgoingConnectionError");
+                        trace!(?error, ?peer_id, "SwarmEvent::OutgoingConnectionError");
                     }
                 }
             }

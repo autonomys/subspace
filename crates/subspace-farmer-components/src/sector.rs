@@ -91,7 +91,7 @@ impl SectorMetadata {
 }
 
 /// Commitment and witness corresponding to the same record
-#[derive(Debug, Clone, Encode, Decode)]
+#[derive(Debug, Default, Clone, Encode, Decode)]
 pub struct RecordMetadata {
     /// Record commitment
     pub commitment: RecordCommitment,
@@ -109,12 +109,11 @@ pub struct RawSector {
 }
 
 impl RawSector {
-    /// Create new raw sector with internal vectors being allocated (but not filled) to be able to
-    /// store data for specified number of pieces in sector
+    /// Create new raw sector with internal vectors being allocated and filled with default values
     pub fn new(pieces_in_sector: u16) -> Self {
         Self {
-            records: Vec::with_capacity(usize::from(pieces_in_sector)),
-            metadata: Vec::with_capacity(usize::from(pieces_in_sector)),
+            records: Record::new_zero_vec(usize::from(pieces_in_sector)),
+            metadata: vec![RecordMetadata::default(); usize::from(pieces_in_sector)],
         }
     }
 }
