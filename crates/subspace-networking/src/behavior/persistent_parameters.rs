@@ -78,7 +78,8 @@ pub trait NetworkingParametersRegistry: Send + Sync {
     fn clone_box(&self) -> Box<dyn NetworkingParametersRegistry>;
 
     /// Triggers when we removed the peer address from the permanent storage. Returns optional
-    /// event HandlerId. Option enables stub implementation.
+    /// event HandlerId. Option enables stub implementation. On of the usages is to notify
+    /// Kademlia about the expired(unreachable) address.
     fn on_address_removed(
         &mut self,
         handler: HandlerFn<PeerAddressRemovedEvent>,
@@ -313,6 +314,7 @@ impl NetworkingParametersRegistry for NetworkingParametersManager {
             addresses,
             chrono::Duration::seconds(REMOVE_KNOWN_PEERS_GRACE_PERIOD_SECS),
             chrono::Duration::seconds(REMOVE_KNOWN_PEERS_GRACE_PERIOD_FOR_KADEMLIA_SECS),
+            //          &self.address_removed,
         );
 
         for event in removed_addresses {
@@ -435,27 +437,32 @@ impl NetworkingParameters {
 }
 
 /// Removes a P2p protocol suffix from the multiaddress if any.
-pub(crate) fn remove_p2p_suffix(address: Multiaddr) -> Multiaddr {
-    let mut modified_address = address.clone();
+pub(crate) fn remove_p2p_suffix(mut address: Multiaddr) -> Multiaddr {
+    let last_protocol = address.pop();
 
-    if let Some(Protocol::P2p(_)) = modified_address.pop() {
-        modified_address
-    } else {
-        address
+    if let Some(Protocol::P2p(_)) = &last_protocol {
+        return address;
     }
+
+    if let Some(protocol) = last_protocol {
+        address.push(protocol)
+    }
+
+    address
 }
 
 /// Appends a P2p protocol suffix to the multiaddress if require3d.
 pub(crate) fn append_p2p_suffix(peer_id: PeerId, mut address: Multiaddr) -> Multiaddr {
-    let mut modified_address = address.clone();
+    let last_protocol = address.pop();
 
-    if let Some(Protocol::P2p(_)) = modified_address.pop() {
-        address
-    } else {
-        address.push(Protocol::P2p(peer_id));
-
-        address
+    if let Some(protocol) = last_protocol {
+        if !matches!(protocol, Protocol::P2p(..)) {
+            address.push(protocol)
+        }
     }
+    address.push(Protocol::P2p(peer_id));
+
+    address
 }
 
 // Testable implementation of the `remove_known_peer_addresses`
@@ -465,6 +472,7 @@ pub(super) fn remove_known_peer_addresses_internal(
     addresses: Vec<Multiaddr>,
     expired_address_duration_persistent_storage: chrono::Duration,
     expired_address_duration_kademlia: chrono::Duration,
+    //    address_removed: &Handler<PeerAddressRemovedEvent>
 ) -> Vec<PeerAddressRemovedEvent> {
     let mut address_removed_events = Vec::new();
 

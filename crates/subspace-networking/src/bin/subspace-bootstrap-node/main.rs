@@ -15,7 +15,7 @@ use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_networking::libp2p::multiaddr::Protocol;
-use subspace_networking::utils::convert_multiaddresses;
+use subspace_networking::utils::strip_peer_id;
 use subspace_networking::{
     peer_id, Config, NetworkingParametersManager, ParityDbProviderStorage, VoidProviderStorage,
 };
@@ -166,7 +166,7 @@ async fn main() -> anyhow::Result<()> {
 
                         NetworkingParametersManager::new(
                             &known_addresses_db,
-                            convert_multiaddresses(bootstrap_nodes.clone())
+                            strip_peer_id(bootstrap_nodes.clone())
                                 .into_iter()
                                 .map(|(peer_id, _)| peer_id)
                                 .collect::<HashSet<_>>(),

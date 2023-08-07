@@ -86,7 +86,7 @@ pub(crate) type PeerAddress = (PeerId, Multiaddr);
 
 /// Helper function. Converts multiaddresses to a tuple with peer ID removing the peer Id suffix.
 /// It logs incorrect multiaddresses.
-pub fn convert_multiaddresses(addresses: Vec<Multiaddr>) -> Vec<PeerAddress> {
+pub fn strip_peer_id(addresses: Vec<Multiaddr>) -> Vec<PeerAddress> {
     addresses
         .into_iter()
         .filter_map(|multiaddr| {

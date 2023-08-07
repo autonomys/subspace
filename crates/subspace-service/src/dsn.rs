@@ -8,7 +8,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::{SegmentHeader, SegmentIndex};
 use subspace_networking::libp2p::{identity, Multiaddr};
-use subspace_networking::utils::convert_multiaddresses;
+use subspace_networking::utils::strip_peer_id;
 use subspace_networking::{
     CreationError, NetworkParametersPersistenceError, NetworkingParametersManager, Node,
     NodeRunner, ParityDbError, PeerInfoProvider, PieceByHashRequestHandler, PieceByHashResponse,
@@ -93,7 +93,7 @@ where
 
                 NetworkingParametersManager::new(
                     &db_path,
-                    convert_multiaddresses(dsn_config.bootstrap_nodes.clone())
+                    strip_peer_id(dsn_config.bootstrap_nodes.clone())
                         .into_iter()
                         .map(|(peer_id, _)| peer_id)
                         .collect::<HashSet<_>>(),

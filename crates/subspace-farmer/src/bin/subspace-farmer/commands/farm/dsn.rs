@@ -15,8 +15,8 @@ use subspace_farmer::{NodeClient, NodeRpcClient};
 use subspace_networking::libp2p::identity::Keypair;
 use subspace_networking::libp2p::kad::RecordKey;
 use subspace_networking::libp2p::multiaddr::Protocol;
-use subspace_networking::utils::convert_multiaddresses;
 use subspace_networking::utils::multihash::ToMultihash;
+use subspace_networking::utils::strip_peer_id;
 use subspace_networking::{
     create, peer_id, Config, NetworkingParametersManager, Node, NodeRunner,
     ParityDbProviderStorage, PeerInfo, PeerInfoProvider, PieceByHashRequest,
@@ -62,7 +62,7 @@ pub(super) fn configure_dsn(
 
         NetworkingParametersManager::new(
             &known_addresses_db_path,
-            convert_multiaddresses(bootstrap_nodes.clone())
+            strip_peer_id(bootstrap_nodes.clone())
                 .into_iter()
                 .map(|(peer_id, _)| peer_id)
                 .collect::<HashSet<_>>(),

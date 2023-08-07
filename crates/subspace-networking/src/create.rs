@@ -15,7 +15,7 @@ use crate::peer_info::PeerInfoProvider;
 use crate::request_responses::RequestHandler;
 use crate::reserved_peers::Config as ReservedPeersConfig;
 use crate::shared::Shared;
-use crate::utils::{convert_multiaddresses, ResizableSemaphore};
+use crate::utils::{strip_peer_id, ResizableSemaphore};
 use crate::{PeerInfo, PeerInfoConfig};
 use backoff::{ExponentialBackoff, SystemClock};
 use futures::channel::mpsc;
@@ -521,7 +521,7 @@ where
         next_random_query_interval: initial_random_query_interval,
         networking_parameters_registry: networking_parameters_registry
             .unwrap_or(StubNetworkingParametersManager.boxed()),
-        reserved_peers: convert_multiaddresses(reserved_peers).into_iter().collect(),
+        reserved_peers: strip_peer_id(reserved_peers).into_iter().collect(),
         temporary_bans,
         metrics,
         protocol_version,
