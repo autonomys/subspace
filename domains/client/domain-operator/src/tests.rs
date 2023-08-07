@@ -1,3 +1,4 @@
+use crate::domain_block_processor::{DomainBlockProcessor, PendingConsensusBlocks};
 use codec::{Decode, Encode};
 use domain_runtime_primitives::{DomainCoreApi, Hash};
 use domain_test_primitives::TimestampApi;
@@ -196,6 +197,101 @@ async fn test_domain_block_production() {
             .unwrap();
     }
     assert_eq!(alice.client.info().best_number, domain_block_number + 10);
+}
+
+#[substrate_test_utils::test(flavor = "multi_thread")]
+async fn test_processing_empty_consensus_block() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+    // Produce 1 consensus block to initialize genesis domain
+    ferdie.produce_block_with_slot(1.into()).await.unwrap();
+
+    // Run Alice (a evm domain authority node)
+    let alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .await;
+
+    let domain_block_processor = DomainBlockProcessor {
+        domain_id: alice.domain_id,
+        domain_created_at: 1,
+        client: alice.client.clone(),
+        consensus_client: ferdie.client.clone(),
+        backend: alice.backend.clone(),
+        domain_confirmation_depth: 256u32,
+        block_import: alice.client.clone(),
+        import_notification_sinks: Default::default(),
+    };
+
+    let domain_genesis_hash = alice.client.info().best_hash;
+    for _ in 0..10 {
+        // Produce consensus block with no tx thus no bundle
+        ferdie.produce_block_with_extrinsics(vec![]).await.unwrap();
+
+        let consensus_best_hash = ferdie.client.info().best_hash;
+        let consensus_best_number = ferdie.client.info().best_number;
+        let res = domain_block_processor
+            .pending_imported_consensus_blocks(consensus_best_hash, consensus_best_number);
+        match res {
+            // The consensus block is processed in the above `produce_block_with_extrinsics` call,
+            // thus calling `pending_imported_consensus_blocks` again will result in an error
+            Err(err) => {
+                // `sp_blockchain::Error` is not impl `PartialEq` thus comparing the string
+                assert_eq!(
+                    err.to_string(),
+                    sp_blockchain::Error::Application(
+                        format!(
+                            "Consensus block {consensus_best_hash:?} has already been processed.",
+                        )
+                        .into()
+                    )
+                    .to_string()
+                );
+                // The `latest_consensus_block` that mapped to the genesis domain block must be updated
+                let latest_consensus_block: Hash =
+                    crate::aux_schema::latest_consensus_block_hash_for(
+                        &*alice.backend,
+                        &domain_genesis_hash,
+                    )
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(latest_consensus_block, consensus_best_hash);
+            }
+            // For consensus block at `domain_created_at + 1` (namely block #2), `pending_imported_consensus_blocks`
+            // will return `PendingConsensusBlocks` directly
+            Ok(Some(PendingConsensusBlocks {
+                initial_parent,
+                consensus_imports,
+            })) if consensus_best_number == 2 => {
+                assert_eq!(initial_parent.0, domain_genesis_hash);
+                assert_eq!(consensus_imports.len(), 1);
+                assert_eq!(consensus_imports[0].hash, consensus_best_hash,);
+            }
+            _ => panic!("unexpected result: {res:?}"),
+        }
+    }
+    // The domain chain is not progressed as all the consensus blocks are empty
+    assert_eq!(ferdie.client.info().best_number, 11);
+    assert_eq!(alice.client.info().best_number, 0);
+
+    // To process non-empty consensus blocks and produce domain blocks
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+    assert_eq!(alice.client.info().best_number, 3);
 }
 
 #[substrate_test_utils::test(flavor = "multi_thread")]
