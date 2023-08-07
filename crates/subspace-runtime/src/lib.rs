@@ -483,8 +483,9 @@ parameter_types! {
     pub const MaxDomainNameLength: u32 = 32;
     pub const BlockTreePruningDepth: u32 = 256;
     // TODO: revisit these
-    pub const StakeWithdrawalLockingPeriod: BlockNumber = 100;
-    pub const StakeEpochDuration: DomainNumber = 5;
+    pub const StakeWithdrawalLockingPeriod: DomainNumber = 256;
+    // TODO: revisit these. For now epoch every 10 mins for a 6 second block
+    pub const StakeEpochDuration: DomainNumber = 100;
     pub TreasuryAccount: AccountId = PalletId(*b"treasury").into_account_truncating();
 }
 
