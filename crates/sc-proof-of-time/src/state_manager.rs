@@ -9,7 +9,6 @@ use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::Arc;
 use subspace_core_primitives::{BlockNumber, NonEmptyVec, PotKey, PotProof, PotSeed, SlotNumber};
-use subspace_proof_of_time::{PotVerificationError, ProofOfTime};
 
 /// The maximum size of the PoT chain to keep (about 5 min worth of proofs for now).
 /// TODO: remove this when purging is implemented.
@@ -35,9 +34,6 @@ pub(crate) enum PotProtocolStateError {
 
     #[error("Proof had an unexpected key: {expected:?}/{actual:?}")]
     InvalidKey { expected: PotKey, actual: PotKey },
-
-    #[error("Proof verification failed: {0:?}")]
-    InvalidProof(PotVerificationError),
 
     #[error("Proof is too much into future: {tip_slot}/{proof_slot}")]
     TooFuturistic {
@@ -548,17 +544,13 @@ impl InternalState {
 struct StateManager {
     /// The PoT state
     state: Mutex<InternalState>,
-
-    /// PoT wrapper for verification.
-    proof_of_time: ProofOfTime,
 }
 
 impl StateManager {
     /// Creates the state.
-    pub fn new(config: PotConfig, proof_of_time: ProofOfTime) -> Self {
+    pub fn new(config: PotConfig) -> Self {
         Self {
             state: Mutex::new(InternalState::new(config)),
-            proof_of_time,
         }
     }
 }
@@ -577,8 +569,8 @@ pub(crate) trait PotProtocolState: Send + Sync {
     /// chain without verifying the proof.
     fn on_proof(&self, proof: &PotProof) -> Result<(), PotProtocolStateError>;
 
-    /// Called when a proof is received via gossip from a peer. The proof
-    /// is first verified before trying to extend the chain.
+    /// Called when a proof is received via gossip from a peer. The AES
+    /// verification is already done by the gossip validator.
     fn on_proof_from_peer(
         &self,
         sender: PeerId,
@@ -611,12 +603,6 @@ impl PotProtocolState for StateManager {
         sender: PeerId,
         proof: &PotProof,
     ) -> Result<(), PotProtocolStateError> {
-        // Verify the proof outside the lock.
-        // TODO: penalize peers that send too many bad proofs.
-        self.proof_of_time
-            .verify(proof)
-            .map_err(PotProtocolStateError::InvalidProof)?;
-
         self.state.lock().handle_peer_proof(sender, proof)
     }
 
@@ -681,8 +667,7 @@ impl PotConsensusState for StateManager {
 
 pub(crate) fn init_pot_state(
     config: PotConfig,
-    proof_of_time: ProofOfTime,
 ) -> (Arc<dyn PotProtocolState>, Arc<dyn PotConsensusState>) {
-    let state = Arc::new(StateManager::new(config, proof_of_time));
+    let state = Arc::new(StateManager::new(config));
     (state.clone(), state)
 }

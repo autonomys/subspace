@@ -15,6 +15,7 @@ use std::collections::HashSet;
 use std::sync::Arc;
 use subspace_core_primitives::crypto::blake2b_256_hash;
 use subspace_core_primitives::PotProof;
+use subspace_proof_of_time::ProofOfTime;
 use tracing::{error, trace};
 
 pub(crate) const GOSSIP_PROTOCOL: &str = "/subspace/subspace-proof-of-time";
@@ -34,12 +35,13 @@ impl<Block: BlockT> PotGossip<Block> {
         network: Network,
         sync: Arc<GossipSync>,
         pot_state: Arc<dyn PotProtocolState>,
+        proof_of_time: ProofOfTime,
     ) -> Self
     where
         Network: sc_network_gossip::Network<Block> + Send + Sync + Clone + 'static,
         GossipSync: GossipSyncing<Block> + 'static,
     {
-        let validator = Arc::new(PotGossipValidator::new(pot_state));
+        let validator = Arc::new(PotGossipValidator::new(pot_state, proof_of_time));
         let engine = Arc::new(Mutex::new(GossipEngine::new(
             network,
             sync,
@@ -100,14 +102,16 @@ impl<Block: BlockT> PotGossip<Block> {
 /// Validator for gossiped messages
 struct PotGossipValidator {
     pot_state: Arc<dyn PotProtocolState>,
+    proof_of_time: ProofOfTime,
     pending: RwLock<HashSet<MessageHash>>,
 }
 
 impl PotGossipValidator {
     /// Creates the validator.
-    fn new(pot_state: Arc<dyn PotProtocolState>) -> Self {
+    fn new(pot_state: Arc<dyn PotProtocolState>, proof_of_time: ProofOfTime) -> Self {
         Self {
             pot_state,
+            proof_of_time,
             pending: RwLock::new(HashSet::new()),
         }
     }
@@ -129,8 +133,12 @@ impl<Block: BlockT> Validator<Block> for PotGossipValidator {
     ) -> ValidationResult<Block::Hash> {
         match PotProof::decode(&mut data) {
             Ok(proof) => {
+                // Perform AES verification only if the proof is a candidate.
                 if let Err(err) = self.pot_state.is_candidate(*sender, &proof) {
-                    trace!("gossip::validate: discarding, err = {err:?}");
+                    trace!("gossip::validate: not a candidate: {err:?}");
+                    ValidationResult::Discard
+                } else if let Err(err) = self.proof_of_time.verify(&proof) {
+                    trace!("gossip::validate: verification failed: {err:?}");
                     ValidationResult::Discard
                 } else {
                     ValidationResult::ProcessAndKeep(topic::<Block>())

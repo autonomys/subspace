@@ -69,9 +69,9 @@ where
         } = components;
 
         Self {
-            proof_of_time,
+            proof_of_time: proof_of_time.clone(),
             pot_state: pot_state.clone(),
-            gossip: PotGossip::new(network, sync, pot_state),
+            gossip: PotGossip::new(network, sync, pot_state, proof_of_time),
             client,
             sync_oracle,
             chain_info_fn,

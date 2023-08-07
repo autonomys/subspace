@@ -45,7 +45,12 @@ where
     {
         Self {
             pot_state: components.protocol_state.clone(),
-            gossip: PotGossip::new(network, sync, components.protocol_state),
+            gossip: PotGossip::new(
+                network,
+                sync,
+                components.protocol_state,
+                components.proof_of_time,
+            ),
             client,
             sync_oracle,
             chain_info_fn,
