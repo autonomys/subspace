@@ -1,8 +1,11 @@
 use crate::piece_cache::PieceCache;
 use crate::utils::archival_storage_info::ArchivalStorageInfo;
+use crate::utils::readers_and_pieces::ReadersAndPieces;
 use async_trait::async_trait;
+use parking_lot::Mutex;
 use std::collections::HashSet;
 use std::error::Error;
+use std::sync::Arc;
 use subspace_core_primitives::{Piece, PieceIndex};
 use subspace_farmer_components::plotting::{PieceGetter, PieceGetterRetryPolicy};
 use subspace_networking::libp2p::kad::RecordKey;
@@ -16,6 +19,7 @@ pub struct FarmerPieceGetter<PV> {
     piece_provider: PieceProvider<PV>,
     piece_cache: PieceCache,
     archival_storage_info: ArchivalStorageInfo,
+    readers_and_pieces: Arc<Mutex<Option<ReadersAndPieces>>>,
 }
 
 impl<PV> FarmerPieceGetter<PV> {
@@ -24,12 +28,14 @@ impl<PV> FarmerPieceGetter<PV> {
         piece_provider: PieceProvider<PV>,
         piece_cache: PieceCache,
         archival_storage_info: ArchivalStorageInfo,
+        readers_and_pieces: Arc<Mutex<Option<ReadersAndPieces>>>,
     ) -> Self {
         Self {
             node,
             piece_provider,
             piece_cache,
             archival_storage_info,
+            readers_and_pieces,
         }
     }
 
@@ -66,6 +72,18 @@ where
 
         if maybe_piece.is_some() {
             return Ok(maybe_piece);
+        }
+
+        let maybe_read_piece_fut = self
+            .readers_and_pieces
+            .lock()
+            .as_ref()
+            .and_then(|readers_and_pieces| readers_and_pieces.read_piece(&piece_index_hash));
+
+        if let Some(read_piece_fut) = maybe_read_piece_fut {
+            if let Some(piece) = read_piece_fut.await {
+                return Ok(Some(piece));
+            }
         }
 
         // L1 piece acquisition

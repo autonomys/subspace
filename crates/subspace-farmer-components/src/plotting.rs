@@ -7,7 +7,7 @@ use crate::FarmerProtocolInfo;
 use async_trait::async_trait;
 use backoff::future::retry;
 use backoff::{Error as BackoffError, ExponentialBackoff};
-use futures::stream::FuturesOrdered;
+use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use parity_scale_codec::Encode;
 use parking_lot::Mutex;
@@ -25,7 +25,7 @@ use subspace_erasure_coding::ErasureCoding;
 use subspace_proof_of_space::{Quality, Table, TableGenerator};
 use thiserror::Error;
 use tokio::sync::Semaphore;
-use tracing::{debug, warn};
+use tracing::{debug, trace, warn};
 
 const RECONSTRUCTION_CONCURRENCY_LIMIT: usize = 1;
 
@@ -212,34 +212,45 @@ where
 
     let raw_sector = Mutex::new(RawSector::new(pieces_in_sector));
 
-    retry(default_backoff(), || async {
-        let mut raw_sector = raw_sector.lock();
-        raw_sector.records.clear();
-        raw_sector.metadata.clear();
+    {
+        // This list will be mutated, replacing pieces we have already processed with `None`
+        let incremental_piece_indices =
+            Mutex::new(piece_indexes.iter().copied().map(Some).collect::<Vec<_>>());
 
-        if let Err(error) = download_sector(
-            &mut raw_sector,
-            piece_getter,
-            piece_getter_retry_policy,
-            kzg,
-            &piece_indexes,
-        )
-        .await
-        {
-            warn!(
-                %sector_index,
-                %error,
-                "Sector plotting attempt failed, will retry later"
-            );
+        retry(default_backoff(), || async {
+            let mut raw_sector = raw_sector.lock();
+            let mut incremental_piece_indices = incremental_piece_indices.lock();
 
-            return Err(BackoffError::transient(error));
-        }
+            if let Err(error) = download_sector(
+                &mut raw_sector,
+                piece_getter,
+                piece_getter_retry_policy,
+                kzg,
+                &mut incremental_piece_indices,
+            )
+            .await
+            {
+                let retrieved_pieces = incremental_piece_indices
+                    .iter()
+                    .filter(|maybe_piece_index| maybe_piece_index.is_some())
+                    .count();
+                warn!(
+                    %sector_index,
+                    %error,
+                    %pieces_in_sector,
+                    %retrieved_pieces,
+                    "Sector plotting attempt failed, will retry later"
+                );
 
-        debug!(%sector_index, "Sector downloaded successfully");
+                return Err(BackoffError::transient(error));
+            }
 
-        Ok(())
-    })
-    .await?;
+            debug!(%sector_index, "Sector downloaded successfully");
+
+            Ok(())
+        })
+        .await?;
+    }
 
     let mut raw_sector = raw_sector.into_inner();
 
@@ -263,7 +274,7 @@ where
                 .map(|scalar_bytes| {
                     Scalar::try_from(scalar_bytes).expect(
                         "Piece getter must returns valid pieces of history that contain \
-                                proper scalar bytes; qed",
+                        proper scalar bytes; qed",
                     )
                 })
                 .collect::<Vec<_>>();
@@ -401,18 +412,22 @@ async fn download_sector<PG: PieceGetter>(
     piece_getter: &PG,
     piece_getter_retry_policy: PieceGetterRetryPolicy,
     kzg: &Kzg,
-    piece_indexes: &[PieceIndex],
+    piece_indexes: &mut [Option<PieceIndex>],
 ) -> Result<(), PlottingError> {
     // TODO: Make configurable, likely allowing user to specify RAM usage expectations and inferring
     //  concurrency from there
     let recovery_semaphore = Semaphore::new(RECONSTRUCTION_CONCURRENCY_LIMIT);
 
     let mut pieces_receiving_futures = piece_indexes
-        .iter()
-        .map(|piece_index| async {
-            let piece_index = *piece_index;
+        .iter_mut()
+        .zip(raw_sector.records.iter_mut().zip(&mut raw_sector.metadata))
+        .map(|(maybe_piece_index, (record, metadata))| async {
+            // We skip pieces that we have already processed previously
+            let Some(piece_index) = *maybe_piece_index else {
+                return Ok(());
+            };
 
-            let piece_result = piece_getter
+            let mut piece_result = piece_getter
                 .get_piece(piece_index, piece_getter_retry_policy)
                 .await;
 
@@ -421,43 +436,53 @@ async fn download_sector<PG: PieceGetter>(
                 .map(|piece| piece.is_some())
                 .unwrap_or_default();
 
-            // all retries failed
+            // All retries failed
             if !succeeded {
                 let _permit = match recovery_semaphore.acquire().await {
                     Ok(permit) => permit,
                     Err(error) => {
-                        return (
-                            piece_index,
-                            Err(format!("Recovery semaphore was closed: {error}").into()),
-                        );
+                        let error = format!("Recovery semaphore was closed: {error}").into();
+                        return Err(PlottingError::FailedToRetrievePiece { piece_index, error });
                     }
                 };
                 let recovered_piece =
                     recover_missing_piece(piece_getter, kzg.clone(), piece_index).await;
 
-                return (piece_index, recovered_piece.map(Some).map_err(Into::into));
+                piece_result = recovered_piece.map(Some).map_err(Into::into);
             }
 
-            (piece_index, piece_result)
+            let piece = piece_result
+                .map_err(|error| PlottingError::FailedToRetrievePiece { piece_index, error })?
+                .ok_or(PlottingError::PieceNotFound { piece_index })?;
+
+            // Fancy way to insert value in order to avoid going through stack (if naive de-referencing
+            // is used) and potentially causing stack overflow as the result
+            record
+                .flatten_mut()
+                .copy_from_slice(piece.record().flatten());
+            *metadata = RecordMetadata {
+                commitment: *piece.commitment(),
+                witness: *piece.witness(),
+            };
+
+            // We have processed this piece index, clear it
+            maybe_piece_index.take();
+
+            Ok(())
         })
-        .collect::<FuturesOrdered<_>>();
+        .collect::<FuturesUnordered<_>>();
 
-    while let Some((piece_index, piece_result)) = pieces_receiving_futures.next().await {
-        let piece = piece_result
-            .map_err(|error| PlottingError::FailedToRetrievePiece { piece_index, error })?
-            .ok_or(PlottingError::PieceNotFound { piece_index })?;
+    let mut final_result = Ok(());
 
-        let (record, commitment, witness) = piece.split();
-        // Fancy way to insert value in order to avoid going through stack (if naive de-referencing
-        // is used) and potentially causing stack overflow as the result
-        raw_sector
-            .records
-            .extend_from_slice(std::slice::from_ref(record));
-        raw_sector.metadata.push(RecordMetadata {
-            commitment: *commitment,
-            witness: *witness,
-        });
+    while let Some(result) = pieces_receiving_futures.next().await {
+        if let Err(error) = result {
+            trace!(%error, "Failed to download piece");
+
+            if final_result.is_ok() {
+                final_result = Err(error);
+            }
+        }
     }
 
-    Ok(())
+    final_result
 }
