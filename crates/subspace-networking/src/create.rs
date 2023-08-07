@@ -4,8 +4,7 @@ mod transport;
 use crate::behavior::persistent_parameters::{
     NetworkingParametersRegistry, StubNetworkingParametersManager,
 };
-use crate::behavior::provider_storage::MemoryProviderStorage;
-use crate::behavior::{provider_storage, Behavior, BehaviorConfig};
+use crate::behavior::{Behavior, BehaviorConfig};
 use crate::connected_peers::Config as ConnectedPeersConfig;
 use crate::create::temporary_bans::TemporaryBans;
 use crate::create::transport::build_transport;
@@ -25,7 +24,6 @@ use libp2p::gossipsub::{
     Message as GossipsubMessage, MessageId, ValidationMode,
 };
 use libp2p::identify::Config as IdentifyConfig;
-use libp2p::kad::record::Key;
 use libp2p::kad::store::RecordStore;
 use libp2p::kad::{
     store, KademliaBucketInserts, KademliaConfig, KademliaStoreInserts, ProviderRecord, Record,
@@ -35,7 +33,7 @@ use libp2p::multiaddr::Protocol;
 use libp2p::swarm::SwarmBuilder;
 use libp2p::yamux::Config as YamuxConfig;
 use libp2p::{identity, Multiaddr, PeerId, StreamProtocol, TransportError};
-use libp2p_kad::Mode;
+use libp2p_kad::{Mode, RecordKey};
 use parking_lot::Mutex;
 use std::borrow::Cow;
 use std::iter::Empty;
@@ -110,25 +108,39 @@ const TEMPORARY_BANS_DEFAULT_BACKOFF_RANDOMIZATION_FACTOR: f64 = 0.1;
 const TEMPORARY_BANS_DEFAULT_BACKOFF_MULTIPLIER: f64 = 1.5;
 const TEMPORARY_BANS_DEFAULT_MAX_INTERVAL: Duration = Duration::from_secs(30 * 60);
 
-/// Record store that can't be created, only
-pub(crate) struct ProviderOnlyRecordStore<ProviderStorage> {
-    provider_storage: ProviderStorage,
+/// Trait to be implemented on providers of local records
+pub trait LocalRecordProvider {
+    /// Gets a provider record for key that is stored locally
+    fn record(&self, key: &RecordKey) -> Option<ProviderRecord>;
 }
 
-impl<ProviderStorage> ProviderOnlyRecordStore<ProviderStorage> {
-    fn new(provider_storage: ProviderStorage) -> Self {
-        Self { provider_storage }
+impl LocalRecordProvider for () {
+    fn record(&self, _key: &RecordKey) -> Option<ProviderRecord> {
+        None
     }
 }
 
-impl<ProviderStorage> RecordStore for ProviderOnlyRecordStore<ProviderStorage>
+/// Record store that can't be created, only
+pub(crate) struct LocalOnlyRecordStore<LocalRecordProvider> {
+    local_records_provider: LocalRecordProvider,
+}
+
+impl<LocalRecordProvider> LocalOnlyRecordStore<LocalRecordProvider> {
+    fn new(local_records_provider: LocalRecordProvider) -> Self {
+        Self {
+            local_records_provider,
+        }
+    }
+}
+
+impl<LocalRecordProvider> RecordStore for LocalOnlyRecordStore<LocalRecordProvider>
 where
-    ProviderStorage: provider_storage::ProviderStorage,
+    LocalRecordProvider: self::LocalRecordProvider,
 {
     type RecordsIter<'a> = Empty<Cow<'a, Record>> where Self: 'a;
-    type ProvidedIter<'a> = ProviderStorage::ProvidedIter<'a> where Self: 'a;
+    type ProvidedIter<'a> =  Empty<Cow<'a, ProviderRecord>> where Self: 'a;
 
-    fn get(&self, _key: &Key) -> Option<Cow<'_, Record>> {
+    fn get(&self, _key: &RecordKey) -> Option<Cow<'_, Record>> {
         // Not supported
         None
     }
@@ -138,7 +150,7 @@ where
         Ok(())
     }
 
-    fn remove(&mut self, _key: &Key) {
+    fn remove(&mut self, _key: &RecordKey) {
         // Not supported
     }
 
@@ -147,25 +159,30 @@ where
         iter::empty()
     }
 
-    fn add_provider(&mut self, record: ProviderRecord) -> store::Result<()> {
-        self.provider_storage.add_provider(record)
+    fn add_provider(&mut self, _record: ProviderRecord) -> store::Result<()> {
+        // Not supported
+        Ok(())
     }
 
-    fn providers(&self, key: &Key) -> Vec<ProviderRecord> {
-        self.provider_storage.providers(key)
+    fn providers(&self, key: &RecordKey) -> Vec<ProviderRecord> {
+        self.local_records_provider
+            .record(key)
+            .into_iter()
+            .collect()
     }
 
     fn provided(&self) -> Self::ProvidedIter<'_> {
-        self.provider_storage.provided()
+        // We don't use Kademlia's periodic replication
+        iter::empty()
     }
 
-    fn remove_provider(&mut self, key: &Key, provider: &PeerId) {
-        self.provider_storage.remove_provider(key, provider)
+    fn remove_provider(&mut self, _key: &RecordKey, _provider: &PeerId) {
+        // Not supported
     }
 }
 
 /// [`Node`] configuration.
-pub struct Config<ProviderStorage> {
+pub struct Config<LocalRecordProvider> {
     /// Identity keypair of a node used for authenticated connections.
     pub keypair: identity::Keypair,
     /// List of [`Multiaddr`] on which to listen for incoming connections.
@@ -181,8 +198,8 @@ pub struct Config<ProviderStorage> {
     pub kademlia: KademliaConfig,
     /// The configuration for the Gossip behaviour.
     pub gossipsub: Option<GossipsubConfig>,
-    /// Externally provided implementation of the custom provider storage for Kademlia DHT,
-    pub provider_storage: ProviderStorage,
+    /// Externally provided implementation of the local records provider
+    pub local_records_provider: LocalRecordProvider,
     /// Yamux multiplexing configuration.
     pub yamux_config: YamuxConfig,
     /// Should non-global addresses be added to the DHT?
@@ -232,37 +249,36 @@ pub struct Config<ProviderStorage> {
     pub external_addresses: Vec<Multiaddr>,
 }
 
-impl<ProviderStorage> fmt::Debug for Config<ProviderStorage> {
+impl<LocalRecordProvider> fmt::Debug for Config<LocalRecordProvider> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Config").finish()
     }
 }
 
-impl Default for Config<MemoryProviderStorage> {
+impl Default for Config<()> {
     #[inline]
     fn default() -> Self {
         let ed25519_keypair = identity::ed25519::Keypair::generate();
         let keypair = identity::Keypair::from(ed25519_keypair);
-        let peer_id = keypair.public().to_peer_id();
 
         Self::new(
             DEFAULT_NETWORK_PROTOCOL_VERSION.to_string(),
             keypair,
-            MemoryProviderStorage::new(peer_id),
+            (),
             Some(PeerInfoProvider::new_client()),
         )
     }
 }
 
-impl<ProviderStorage> Config<ProviderStorage>
+impl<LocalRecordProvider> Config<LocalRecordProvider>
 where
-    ProviderStorage: provider_storage::ProviderStorage,
+    LocalRecordProvider: self::LocalRecordProvider,
 {
     /// Creates a new [`Config`].
     pub fn new(
         protocol_version: String,
         keypair: identity::Keypair,
-        provider_storage: ProviderStorage,
+        local_records_provider: LocalRecordProvider,
         peer_info_provider: Option<PeerInfoProvider>,
     ) -> Self {
         let mut kademlia = KademliaConfig::default();
@@ -321,7 +337,7 @@ where
             identify,
             kademlia,
             gossipsub,
-            provider_storage,
+            local_records_provider,
             allow_non_global_addresses_in_dht: false,
             initial_random_query_interval: Duration::from_secs(1),
             networking_parameters_registry: None,
@@ -373,11 +389,11 @@ pub fn peer_id(keypair: &identity::Keypair) -> PeerId {
 }
 
 /// Create a new network node and node runner instances.
-pub fn create<ProviderStorage>(
-    config: Config<ProviderStorage>,
-) -> Result<(Node, NodeRunner<ProviderStorage>), CreationError>
+pub fn create<LocalRecordProvider>(
+    config: Config<LocalRecordProvider>,
+) -> Result<(Node, NodeRunner<LocalRecordProvider>), CreationError>
 where
-    ProviderStorage: Send + Sync + provider_storage::ProviderStorage + 'static,
+    LocalRecordProvider: self::LocalRecordProvider + Send + Sync + 'static,
 {
     let Config {
         keypair,
@@ -387,7 +403,7 @@ where
         identify,
         kademlia,
         gossipsub,
-        provider_storage,
+        local_records_provider,
         yamux_config,
         allow_non_global_addresses_in_dht,
         initial_random_query_interval,
@@ -446,7 +462,7 @@ where
         identify,
         kademlia,
         gossipsub,
-        record_store: ProviderOnlyRecordStore::new(provider_storage),
+        record_store: LocalOnlyRecordStore::new(local_records_provider),
         request_response_protocols,
         connection_limits,
         reserved_peers: ReservedPeersConfig {
@@ -513,24 +529,25 @@ where
     let shared_weak = Arc::downgrade(&shared);
 
     let node = Node::new(shared);
-    let node_runner = NodeRunner::<ProviderStorage>::new(NodeRunnerConfig::<ProviderStorage> {
-        allow_non_global_addresses_in_dht,
-        command_receiver,
-        swarm,
-        shared_weak,
-        next_random_query_interval: initial_random_query_interval,
-        networking_parameters_registry: networking_parameters_registry
-            .unwrap_or(StubNetworkingParametersManager.boxed()),
-        reserved_peers: convert_multiaddresses(reserved_peers).into_iter().collect(),
-        temporary_bans,
-        metrics,
-        protocol_version,
-        general_connection_decision_handler,
-        special_connection_decision_handler,
-        bootstrap_addresses,
-        kademlia_mode,
-        external_addresses,
-    });
+    let node_runner =
+        NodeRunner::<LocalRecordProvider>::new(NodeRunnerConfig::<LocalRecordProvider> {
+            allow_non_global_addresses_in_dht,
+            command_receiver,
+            swarm,
+            shared_weak,
+            next_random_query_interval: initial_random_query_interval,
+            networking_parameters_registry: networking_parameters_registry
+                .unwrap_or(StubNetworkingParametersManager.boxed()),
+            reserved_peers: convert_multiaddresses(reserved_peers).into_iter().collect(),
+            temporary_bans,
+            metrics,
+            protocol_version,
+            general_connection_decision_handler,
+            special_connection_decision_handler,
+            bootstrap_addresses,
+            kademlia_mode,
+            external_addresses,
+        });
 
     Ok((node, node_runner))
 }

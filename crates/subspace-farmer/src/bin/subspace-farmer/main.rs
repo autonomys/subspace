@@ -88,9 +88,6 @@ struct DsnArgs {
     /// multiple are supported.
     #[arg(long, default_value = "/ip4/0.0.0.0/tcp/30533")]
     listen_on: Vec<Multiaddr>,
-    /// Number of provided keys (by other peers) that will be stored.
-    #[arg(long, default_value = "655360")]
-    provided_keys_limit: NonZeroUsize,
     /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses in Kademlia DHT.
     #[arg(long, default_value_t = false)]
     enable_private_ips: bool,
@@ -301,6 +298,8 @@ async fn main() -> anyhow::Result<()> {
             // TODO: Remove this in the future once `base_path` can be removed
             // Wipe legacy caching directory that is no longer used
             let _ = fs::remove_file(base_path.join("piece_cache_db"));
+            // TODO: Remove this in the future after enough upgrade time that this no longer exist
+            let _ = fs::remove_file(base_path.join("providers_db"));
 
             let disk_farms = if command.farm.is_empty() {
                 if !base_path.exists() {

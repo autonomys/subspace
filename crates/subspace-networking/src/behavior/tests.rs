@@ -1,5 +1,4 @@
 use super::persistent_parameters::remove_known_peer_addresses_internal;
-use crate::behavior::provider_storage::{instant_to_micros, micros_to_instant};
 use crate::{Config, GenericRequest, GenericRequestHandler};
 use futures::channel::oneshot;
 use futures::future::pending;
@@ -13,7 +12,6 @@ use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
-use std::time::{Duration, Instant, SystemTime};
 
 #[tokio::test()]
 async fn test_address_timed_removal_from_known_peers_cache() {
@@ -65,29 +63,6 @@ async fn test_address_timed_removal_from_known_peers_cache() {
 
     // Check after the second run (clean cache)
     assert_eq!(peers_cache.len(), 0);
-}
-
-#[test]
-fn instant_conversion() {
-    let inst1 = Instant::now();
-    let ms = instant_to_micros(inst1);
-    let inst2 = micros_to_instant(ms).unwrap();
-
-    assert!(inst1.saturating_duration_since(inst2) < Duration::from_millis(1));
-    assert!(inst2.saturating_duration_since(inst1) < Duration::from_millis(1));
-}
-
-#[test]
-fn instant_conversion_edge_cases() {
-    assert!(micros_to_instant(u64::MAX).is_none());
-    assert!(micros_to_instant(
-        SystemTime::now()
-            .duration_since(SystemTime::UNIX_EPOCH)
-            .unwrap()
-            .as_micros() as u64
-            * 2
-    )
-    .is_none());
 }
 
 #[derive(Default)]
