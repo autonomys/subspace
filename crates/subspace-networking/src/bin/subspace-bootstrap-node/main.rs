@@ -3,20 +3,15 @@
 #![feature(type_changing_struct_update)]
 
 use anyhow::anyhow;
-use bytesize::ByteSize;
 use clap::{Parser, ValueHint};
-use either::Either;
 use libp2p::identity::ed25519::Keypair;
 use libp2p::{identity, Multiaddr, PeerId};
 use serde::{Deserialize, Serialize};
 use std::fmt::{Display, Formatter};
-use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_networking::libp2p::multiaddr::Protocol;
-use subspace_networking::{
-    peer_id, Config, NetworkingParametersManager, ParityDbProviderStorage, VoidProviderStorage,
-};
+use subspace_networking::{peer_id, Config, NetworkingParametersManager};
 use tracing::{debug, info, Level};
 use tracing_subscriber::fmt::Subscriber;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -56,9 +51,6 @@ enum Command {
         /// Defines path for the provider record storage DB (optional).
         #[arg(long, value_hint = ValueHint::FilePath)]
         db_path: Option<PathBuf>,
-        /// Piece providers cache size in human readable format (e.g. 10GB, 2TiB) or just bytes (e.g. 4096).
-        #[arg(long, default_value = "100MiB")]
-        piece_providers_cache_size: ByteSize,
         /// Protocol version for libp2p stack, should be set as genesis hash of the blockchain for
         /// production use.
         #[arg(long)]
@@ -127,7 +119,6 @@ async fn main() -> anyhow::Result<()> {
             pending_out_peers,
             enable_private_ips,
             db_path,
-            piece_providers_cache_size,
             protocol_version,
             external_addresses,
         } => {
@@ -136,26 +127,8 @@ async fn main() -> anyhow::Result<()> {
                 protocol_version
             );
 
-            const APPROX_PROVIDER_RECORD_SIZE: u64 = 1000; // ~ 1KB
-            let recs = piece_providers_cache_size.as_u64() / APPROX_PROVIDER_RECORD_SIZE;
-            let converted_cache_size =
-                NonZeroUsize::new(recs as usize).ok_or_else(|| anyhow!("Incorrect cache size."))?;
-
             let decoded_keypair = Keypair::try_from_bytes(hex::decode(keypair)?.as_mut_slice())?;
-            let local_peer_id = peer_id_from_keypair(decoded_keypair.clone());
             let keypair = identity::Keypair::from(decoded_keypair);
-
-            let provider_storage = if let Some(path) = &db_path {
-                let db_path = path.join("subspace_storage_providers_db");
-
-                Either::Left(ParityDbProviderStorage::new(
-                    &db_path,
-                    converted_cache_size,
-                    local_peer_id,
-                )?)
-            } else {
-                Either::Right(VoidProviderStorage)
-            };
 
             let networking_parameters_registry = {
                 db_path
@@ -184,12 +157,7 @@ async fn main() -> anyhow::Result<()> {
                 bootstrap_addresses: bootstrap_nodes,
                 external_addresses,
 
-                ..Config::new(
-                    protocol_version.to_string(),
-                    keypair,
-                    provider_storage,
-                    None,
-                )
+                ..Config::new(protocol_version.to_string(), keypair, (), None)
             };
             let (node, mut node_runner) =
                 subspace_networking::create(config).expect("Networking stack creation failed.");

@@ -3,12 +3,11 @@ use futures::StreamExt;
 use parking_lot::Mutex;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
+use std::sync::{Arc, Weak};
 use subspace_core_primitives::SegmentIndex;
 use subspace_farmer::piece_cache::PieceCache;
 use subspace_farmer::utils::archival_storage_info::ArchivalStorageInfo;
 use subspace_farmer::utils::archival_storage_pieces::ArchivalStoragePieces;
-use subspace_farmer::utils::farmer_provider_storage::FarmerProviderStorage;
 use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
 use subspace_farmer::{NodeClient, NodeRpcClient};
 use subspace_networking::libp2p::identity::Keypair;
@@ -16,10 +15,9 @@ use subspace_networking::libp2p::kad::RecordKey;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::{
-    create, peer_id, Config, NetworkingParametersManager, Node, NodeRunner,
-    ParityDbProviderStorage, PeerInfo, PeerInfoProvider, PieceByHashRequest,
-    PieceByHashRequestHandler, PieceByHashResponse, SegmentHeaderBySegmentIndexesRequestHandler,
-    SegmentHeaderRequest, SegmentHeaderResponse,
+    create, Config, NetworkingParametersManager, Node, NodeRunner, PeerInfo, PeerInfoProvider,
+    PieceByHashRequest, PieceByHashRequestHandler, PieceByHashResponse,
+    SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
 };
 use subspace_rpc_primitives::MAX_SEGMENT_HEADERS_PER_REQUEST;
 use tracing::{debug, error, info, Instrument};
@@ -37,7 +35,6 @@ pub(super) fn configure_dsn(
     DsnArgs {
         listen_on,
         bootstrap_nodes,
-        provided_keys_limit,
         enable_private_ips,
         reserved_peers,
         in_connections,
@@ -47,38 +44,17 @@ pub(super) fn configure_dsn(
         target_connections,
         external_addresses,
     }: DsnArgs,
-    readers_and_pieces: &Arc<Mutex<Option<ReadersAndPieces>>>,
+    weak_readers_and_pieces: Weak<Mutex<Option<ReadersAndPieces>>>,
     node_client: NodeRpcClient,
     archival_storage_pieces: ArchivalStoragePieces,
     archival_storage_info: ArchivalStorageInfo,
     piece_cache: PieceCache,
-) -> Result<(Node, NodeRunner<FarmerProviderStorage>), anyhow::Error> {
-    let peer_id = peer_id(&keypair);
-
+) -> Result<(Node, NodeRunner<PieceCache>), anyhow::Error> {
     let networking_parameters_registry = {
         let known_addresses_db_path = base_path.join("known_addresses_db");
 
         NetworkingParametersManager::new(&known_addresses_db_path).map(|manager| manager.boxed())?
     };
-
-    let weak_readers_and_pieces = Arc::downgrade(readers_and_pieces);
-
-    let provider_db_path = base_path.join("providers_db");
-
-    info!(
-        db_path = ?provider_db_path,
-        keys_limit = ?provided_keys_limit,
-        "Initializing provider storage..."
-    );
-    let persistent_provider_storage =
-        ParityDbProviderStorage::new(&provider_db_path, provided_keys_limit, peer_id)
-            .map_err(|err| anyhow::anyhow!(err.to_string()))?;
-    info!(
-        current_size = ?persistent_provider_storage.size(),
-        "Provider storage initialized successfully"
-    );
-
-    let farmer_provider_storage = FarmerProviderStorage::new(peer_id, piece_cache.clone());
 
     // TODO: Consider introducing and using global in-memory segment header cache (this comment is
     //  in multiple files)
@@ -117,7 +93,7 @@ pub(super) fn configure_dsn(
     let default_config = Config::new(
         protocol_prefix,
         keypair,
-        farmer_provider_storage.clone(),
+        piece_cache.clone(),
         Some(PeerInfoProvider::new_farmer(Box::new(
             archival_storage_pieces,
         ))),

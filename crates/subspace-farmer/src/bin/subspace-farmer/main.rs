@@ -5,12 +5,11 @@ mod ss58;
 mod utils;
 
 use crate::utils::get_usable_plot_space;
-use anyhow::Result;
 use bytesize::ByteSize;
 use clap::{Parser, ValueEnum, ValueHint};
 use ss58::parse_ss58_reward_address;
 use std::fs;
-use std::num::{NonZeroU16, NonZeroUsize};
+use std::num::{NonZeroU16, NonZeroU8, NonZeroUsize};
 use std::path::PathBuf;
 use std::str::FromStr;
 use subspace_core_primitives::PublicKey;
@@ -61,9 +60,22 @@ struct FarmingArgs {
     /// Number of plots that can be plotted concurrently, impacts RAM usage.
     #[arg(long, default_value = "10")]
     max_concurrent_plots: NonZeroUsize,
+    /// Percentage of plot dedicated for caching purposes, 99% max.
+    #[arg(long, default_value = "1", value_parser = cache_percentage_parser)]
+    cache_percentage: NonZeroU8,
     /// Do not print info about configured farms on startup.
     #[arg(long)]
     no_info: bool,
+}
+
+fn cache_percentage_parser(s: &str) -> anyhow::Result<NonZeroU8> {
+    let cache_percentage = NonZeroU8::from_str(s)?;
+
+    if cache_percentage.get() > 99 {
+        return Err(anyhow::anyhow!("Cache percentage can't exceed 100"));
+    }
+
+    Ok(cache_percentage)
 }
 
 /// Arguments for DSN
@@ -76,9 +88,6 @@ struct DsnArgs {
     /// multiple are supported.
     #[arg(long, default_value = "/ip4/0.0.0.0/tcp/30533")]
     listen_on: Vec<Multiaddr>,
-    /// Number of provided keys (by other peers) that will be stored.
-    #[arg(long, default_value = "655360")]
-    provided_keys_limit: NonZeroUsize,
     /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses in Kademlia DHT.
     #[arg(long, default_value_t = false)]
     enable_private_ips: bool,
@@ -140,7 +149,7 @@ struct DiskFarm {
 impl FromStr for DiskFarm {
     type Err = String;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    fn from_str(s: &str) -> anyhow::Result<Self, Self::Err> {
         let parts = s.split(',').collect::<Vec<_>>();
         if parts.len() != 2 {
             return Err("Must contain 2 coma-separated components".to_string());
@@ -227,7 +236,7 @@ struct Command {
 }
 
 #[tokio::main]
-async fn main() -> Result<()> {
+async fn main() -> anyhow::Result<()> {
     tracing_subscriber::registry()
         .with(
             fmt::layer().with_filter(
@@ -289,6 +298,8 @@ async fn main() -> Result<()> {
             // TODO: Remove this in the future once `base_path` can be removed
             // Wipe legacy caching directory that is no longer used
             let _ = fs::remove_file(base_path.join("piece_cache_db"));
+            // TODO: Remove this in the future after enough upgrade time that this no longer exist
+            let _ = fs::remove_file(base_path.join("providers_db"));
 
             let disk_farms = if command.farm.is_empty() {
                 if !base_path.exists() {

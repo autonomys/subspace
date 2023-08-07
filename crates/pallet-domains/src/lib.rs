@@ -270,6 +270,11 @@ mod pallet {
         /// Treasury account.
         #[pallet::constant]
         type TreasuryAccount: Get<Self::AccountId>;
+
+        /// A fixed domain block reward.
+        // TODO: remove once we have operator rewards on client side is available
+        #[pallet::constant]
+        type DomainBlockReward: Get<BalanceOf<Self>>;
     }
 
     #[pallet::pallet]
@@ -692,7 +697,7 @@ mod pallet {
                         do_reward_operators::<T>(
                             domain_id,
                             pruned_block_info.operator_ids.into_iter(),
-                            pruned_block_info.rewards,
+                            T::DomainBlockReward::get(),
                         )
                         .map_err(Error::<T>::from)?;
 

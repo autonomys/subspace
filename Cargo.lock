@@ -11213,7 +11213,6 @@ dependencies = [
  "async-trait",
  "backoff",
  "bytes",
- "bytesize",
  "chrono",
  "clap",
  "derive_more",

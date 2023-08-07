@@ -74,7 +74,7 @@ fn archived_segment(kzg: Kzg) -> NewArchivedSegment {
     let mut archiver = Archiver::new(kzg).unwrap();
 
     archiver
-        .add_block(block, Default::default())
+        .add_block(block, Default::default(), true)
         .into_iter()
         .next()
         .unwrap()

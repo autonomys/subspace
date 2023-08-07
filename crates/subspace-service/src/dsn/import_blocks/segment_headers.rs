@@ -113,7 +113,9 @@ impl SegmentHeaderHandler {
                         .send_generic_request(
                             peer_id,
                             SegmentHeaderRequest::LastSegmentHeaders {
-                                segment_header_number: SEGMENT_HEADER_NUMBER_PER_REQUEST,
+                                // Request 2 top segment headers, accounting for situations when new
+                                // segment header was just produced and not all nodes have it
+                                segment_header_number: 2,
                             },
                         )
                         .await;
