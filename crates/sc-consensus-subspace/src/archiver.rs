@@ -16,7 +16,7 @@
 
 use crate::{
     get_chain_constants, ArchivedSegmentNotification, BlockImportingNotification, SubspaceLink,
-    SubspaceNotificationSender,
+    SubspaceNotificationSender, SubspaceSyncOracle,
 };
 use codec::{Decode, Encode};
 use futures::StreamExt;
@@ -29,6 +29,7 @@ use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_INFO};
 use sc_utils::mpsc::tracing_unbounded;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
+use sp_consensus::SyncOracle;
 use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
 use sp_objects::ObjectsApi;
 use sp_runtime::generic::SignedBlock;
@@ -500,7 +501,8 @@ where
                     encoded_block.len() as f32 / 1024.0
                 );
 
-                let archived_segments = archiver.add_block(encoded_block, block_object_mappings);
+                let archived_segments =
+                    archiver.add_block(encoded_block, block_object_mappings, false);
                 let new_segment_headers: Vec<SegmentHeader> = archived_segments
                     .iter()
                     .map(|archived_segment| archived_segment.segment_header)
@@ -584,10 +586,11 @@ fn finalize_block<Block, Backend, Client>(
 /// `store_segment_header` extrinsic).
 ///
 /// NOTE: Archiver is doing blocking operations and must run in a dedicated task.
-pub fn create_subspace_archiver<Block, Backend, Client, AS>(
+pub fn create_subspace_archiver<Block, Backend, Client, AS, SO>(
     segment_headers_store: SegmentHeadersStore<AS>,
     subspace_link: &SubspaceLink<Block>,
     client: Arc<Client>,
+    sync_oracle: SubspaceSyncOracle<SO>,
     telemetry: Option<TelemetryHandle>,
 ) -> impl Future<Output = ()> + Send + 'static
 where
@@ -604,6 +607,7 @@ where
         + 'static,
     Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
     AS: AuxStore + Send + Sync + 'static,
+    SO: SyncOracle + Send + Sync + 'static,
 {
     let client_info = client.info();
     let best_block_hash = client_info.best_hash;
@@ -725,7 +729,11 @@ where
             );
 
             let mut new_segment_headers = Vec::new();
-            for archived_segment in archiver.add_block(encoded_block, block_object_mappings) {
+            for archived_segment in archiver.add_block(
+                encoded_block,
+                block_object_mappings,
+                !sync_oracle.is_major_syncing(),
+            ) {
                 let segment_header = archived_segment.segment_header;
 
                 if let Err(error) =
