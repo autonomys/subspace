@@ -62,6 +62,7 @@ where
         disable_farming,
         mut dsn,
         max_concurrent_plots,
+        cache_percentage,
         no_info: _,
     } = farming_args;
 
@@ -181,6 +182,7 @@ where
                 kzg: kzg.clone(),
                 erasure_coding: erasure_coding.clone(),
                 piece_getter: piece_getter.clone(),
+                cache_percentage,
             },
             disk_farm_index,
         );

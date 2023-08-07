@@ -28,7 +28,7 @@ use static_assertions::const_assert;
 use std::fs::OpenOptions;
 use std::future::Future;
 use std::io::{Seek, SeekFrom};
-use std::num::NonZeroU16;
+use std::num::{NonZeroU16, NonZeroU8};
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::Arc;
@@ -55,9 +55,6 @@ const_assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<u64>());
 
 /// Reserve 1M of space for plot metadata (for potential future expansion)
 const RESERVED_PLOT_METADATA: u64 = 1024 * 1024;
-/// Piece cache occupies 1% of allocated space
-// TODO: Allow increasing this with CLI parameter
-const PIECE_CACHE_FRACTION: (usize, usize) = (1, 100);
 
 /// Semaphore that limits disk access concurrency in strategic places to the number specified during
 /// initialization
@@ -269,6 +266,8 @@ pub struct SingleDiskPlotOptions<NC, PG> {
     pub kzg: Kzg,
     /// Erasure coding instance to use.
     pub erasure_coding: ErasureCoding,
+    /// Percentage of disk plot dedicated for caching purposes
+    pub cache_percentage: NonZeroU8,
 }
 
 /// Errors happening when trying to create/open single disk plot
@@ -458,6 +457,7 @@ impl SingleDiskPlot {
             piece_getter,
             kzg,
             erasure_coding,
+            cache_percentage,
         } = options;
         fs::create_dir_all(&directory)?;
 
@@ -546,7 +546,21 @@ impl SingleDiskPlot {
         let pieces_in_sector = single_disk_plot_info.pieces_in_sector();
         let sector_size = sector_size(max_pieces_in_sector);
         let sector_metadata_size = SectorMetadata::encoded_size();
-        let target_sector_count = single_disk_plot_info.allocated_space() / sector_size as u64;
+        // TODO: Split allocated space into more components once all components are deterministic
+        //  to correctly size everything:
+        //  * plot info
+        //  * identity
+        //  * metadata
+        //  * plot
+        //  * known_addresses
+        let cache_size = allocated_space / 100 * u64::from(cache_percentage.get());
+        // We have a hardcoded value decreasing allocated space to account for things like cache,
+        // don't change plot size (yet) if cache is under 5% that is assumed to be accounted for,
+        // this will be removed once we have proper static allocation as described in TODO above
+        let cache_size_exceeding_5_percents =
+            allocated_space / 100 * u64::from(cache_percentage.get()).saturating_sub(5);
+        let plot_space = (allocated_space - cache_size_exceeding_5_percents) / sector_size as u64;
+        let target_sector_count = plot_space;
         let target_sector_count = match SectorIndex::try_from(target_sector_count) {
             Ok(target_sector_count) if target_sector_count < SectorIndex::MAX => {
                 target_sector_count
@@ -648,8 +662,7 @@ impl SingleDiskPlot {
 
         let piece_cache = DiskPieceCache::open(
             &directory,
-            allocated_space as usize / PIECE_CACHE_FRACTION.1 * PIECE_CACHE_FRACTION.0
-                / DiskPieceCache::element_size(),
+            cache_size as usize / DiskPieceCache::element_size(),
         )?;
 
         let (error_sender, error_receiver) = oneshot::channel();
