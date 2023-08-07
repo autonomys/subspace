@@ -515,6 +515,7 @@ impl pallet_domains::Config for Runtime {
     type StakeWithdrawalLockingPeriod = StakeWithdrawalLockingPeriod;
     type StakeEpochDuration = StakeEpochDuration;
     type TreasuryAccount = TreasuryAccount;
+    type DomainBlockReward = BlockReward;
 }
 
 pub struct StakingOnReward;
