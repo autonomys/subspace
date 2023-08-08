@@ -48,10 +48,9 @@ If you're connected directly without any router, then again nothing needs to be 
 --execution wasm `
 --blocks-pruning archive `
 --state-pruning archive `
---dsn-disable-private-ips `
 --no-private-ipv4 `
 --validator `
---name INSERT_YOUR_ID
+--name "INSERT_YOUR_ID"
 ```
 5. You should see something similar in the terminal:
 ```
@@ -78,10 +77,11 @@ If you're connected directly without any router, then again nothing needs to be 
 6. After running this command, Windows may ask you for permissions related to firewall, select `allow` in this case.
 7. We will then open another terminal, change to the downloads directory, then start the farmer node with the following command:
 ```PowerShell
+# Replace `PATH_TO_PLOT` with location where you want you store plot files
 # Replace `FARMER_FILE_NAME.exe` with the name of the farmer file you downloaded from releases
 # Replace `WALLET_ADDRESS` below with your account address from Polkadot.js wallet
 # Replace `PLOT_SIZE` with plot size in gigabytes or terabytes, for example 100G or 2T (but leave at least 60G of disk space for node and some for OS)
-.\FARMER_FILE_NAME.exe farm --disable-private-ips --reward-address WALLET_ADDRESS --plot-size PLOT_SIZE
+.\FARMER_FILE_NAME.exe --farm path=PATH_TO_PLOT,size=PLOT_SIZE farm --reward-address WALLET_ADDRESS
 ```
 
 ## 🐧 Ubuntu Instructions
@@ -100,10 +100,9 @@ If you're connected directly without any router, then again nothing needs to be 
   --execution wasm \
   --blocks-pruning archive \
   --state-pruning archive \
-  --dsn-disable-private-ips \
   --no-private-ipv4 \
   --validator \
-  --name INSERT_YOUR_ID
+  --name "INSERT_YOUR_ID"
 ```
 5. You should see something similar in the terminal:
 ```
@@ -129,10 +128,11 @@ If you're connected directly without any router, then again nothing needs to be 
 ```
 7. We will then open another terminal, change to the downloads directory, then start the farmer node with the following command:
 ```bash
+# Replace `PATH_TO_PLOT` with location where you want you store plot files
 # Replace `FARMER_FILE_NAME` with the name of the farmer file you downloaded from releases
 # Replace `WALLET_ADDRESS` below with your account address from Polkadot.js wallet
 # Replace `PLOT_SIZE` with plot size in gigabytes or terabytes, for example 100G or 2T (but leave at least 60G of disk space for node and some for OS)
-./FARMER_FILE_NAME farm --disable-private-ips --reward-address WALLET_ADDRESS --plot-size PLOT_SIZE
+./FARMER_FILE_NAME --farm path=PATH_TO_PLOT,size=PLOT_SIZE farm --reward-address WALLET_ADDRESS
 ```
 
 ## 🍎 macOS Instructions
@@ -155,10 +155,9 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
   --execution wasm \
   --blocks-pruning archive \
   --state-pruning archive \
-  --dsn-disable-private-ips \
   --no-private-ipv4 \
   --validator \
-  --name INSERT_YOUR_ID
+  --name "INSERT_YOUR_ID"
 ```
 5. You should see something similar in the terminal:
 ```
@@ -184,10 +183,11 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 ```
 7. We will then open another terminal, change to the downloads directory, then start the farmer node with the following command:
 ```bash
+# Replace `PATH_TO_PLOT` with location where you want you store plot files
 # Replace `FARMER_FILE_NAME` with the name of the farmer file you downloaded from releases
 # Replace `WALLET_ADDRESS` below with your account address from Polkadot.js wallet
 # Replace `PLOT_SIZE` with plot size in gigabytes or terabytes, for example 100G or 2T (but leave at least 60G of disk space for node and some for OS)
-./FARMER_FILE_NAME farm --disable-private-ips --reward-address WALLET_ADDRESS --plot-size PLOT_SIZE
+./FARMER_FILE_NAME --farm path=PATH_TO_PLOT,size=PLOT_SIZE farm --reward-address WALLET_ADDRESS
 ```
 7. It may prompt again in here. Refer to the note on step 4.
 
@@ -224,7 +224,6 @@ services:
       "--rpc-cors", "all",
       "--rpc-methods", "safe",
       "--unsafe-rpc-external",
-      "--dsn-disable-private-ips",
       "--no-private-ipv4",
       "--validator",
 # Replace `INSERT_YOUR_ID` with your node ID (will be shown in telemetry)
@@ -255,15 +254,13 @@ services:
       - "0.0.0.0:30533:30533"
     restart: unless-stopped
     command: [
-      "--base-path", "/var/subspace",
+      # Replace `PLOT_SIZE` with plot size in gigabytes or terabytes, for example 100G or 2T (but leave at least 60G of disk space for node and some for OS)
+      "--farm", "path=/var/subspace,size=PLOT_SIZE",
       "farm",
-      "--disable-private-ips",
       "--node-rpc-url", "ws://node:9944",
       "--listen-on", "/ip4/0.0.0.0/tcp/30533",
 # Replace `WALLET_ADDRESS` with your Polkadot.js wallet address
       "--reward-address", "WALLET_ADDRESS",
-# Replace `PLOT_SIZE` with plot size in gigabytes or terabytes, for example 100G or 2T (but leave at least 60G of disk space for node and some for OS)
-      "--plot-size", "PLOT_SIZE"
     ]
 volumes:
   node-data:
@@ -295,7 +292,7 @@ Visit [Polkadot.js explorer](https://polkadot.js.org/apps/?rpc=wss%3A%2F%2Feu-0.
 If you were running a node previously, and want to switch to a new snapshot, please perform these steps and then follow the guideline again:
 ```
 # Replace `FARMER_FILE_NAME` with the name of the node file you downloaded from releases
-./FARMER_FILE_NAME wipe
+./FARMER_FILE_NAME --farm path=PATH_TO_PLOT,size=PLOT_SIZE wipe
 # Replace `NODE_FILE_NAME` with the name of the node file you downloaded from releases
 ./NODE_FILE_NAME purge-chain --chain gemini-3e
 ```
@@ -317,10 +314,10 @@ There are extra commands and parameters you can use on farmer or node, use the `
 
 Below are some helpful samples:
 
-- `./FARMER_FILE_NAME --base-path /path/to/data farm ...` : will store data in `/path/to/data` instead of default location
-- `./FARMER_FILE_NAME --base-path /path/to/data wipe` : erases everything related to farmer if data were stored in `/path/to/data`
-- `./NODE_FILE_NAME --base-path /path/to/data --chain gemini-3e ...` : start node and store data in `/path/to/data` instead of default location
-- `./NODE_FILE_NAME purge-chain --base-path /path/to/data --chain gemini-3e` : erases data related to the node if data were stored in `/path/to/data`
+- `./FARMER_FILE_NAME --farm path=PATH_TO_PLOT,size=PLOT_SIZE farm ...` : will store data in `PATH_TO_PLOT` instead of default location
+- `./FARMER_FILE_NAME --farm path=PATH_TO_PLOT,size=PLOT_SIZE wipe` : erases everything related to farmer if data were stored in `PATH_TO_PLOT`
+- `./NODE_FILE_NAME --base-path PATH_TO_PLOT --chain gemini-3e ...` : start node and store data in `PATH_TO_PLOT` instead of default location
+- `./NODE_FILE_NAME purge-chain --base-path PATH_TO_PLOT --chain gemini-3e` : erases data related to the node if data were stored in `PATH_TO_PLOT`
 
 Examples:
 ```bash
@@ -331,23 +328,10 @@ Examples:
 
 ## [Advanced] Support for multiple disks
 
-Farmer has an advanced set of parameters that allow using multiple disks.
+`--farm` argument you have seen above can be specified more than once to engage multiple disks.
+It is recommended to specify multiple disks explicitly rather than using RAID for better hardware utilization and efficiency.
 
-To use these advanced parameters you need to replace this command:
-```
-./FARMER_FILE_NAME farm --reward-address WALLET_ADDRESS --plot-size PLOT_SIZE
-```
-
-With this:
-```
-./FARMER_FILE_NAME --farm path=/path/to/directory,size=PLOT_SIZE farm --reward-address WALLET_ADDRESS
-```
-
-`/path/to/directory` is path that will store the data, up to `PLOT_SIZE`.
-
-NOTE: `PLOT_SIZE` has a different notion here, it doesn't include metadata size!
-
-Multiple farms are supported too, for example:
+Example:
 ```
 ./FARMER_FILE_NAME \
     --farm path=/media/ssd1,size=100GiB \

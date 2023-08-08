@@ -31,7 +31,7 @@ mod shared;
 pub mod utils;
 
 pub use crate::behavior::persistent_parameters::{
-    NetworkParametersPersistenceError, NetworkingParametersManager, ParityDbError,
+    NetworkParametersPersistenceError, NetworkingParametersManager,
 };
 pub use crate::node::{
     GetClosestPeersError, Node, SendRequestError, SubscribeError, TopicSubscription,

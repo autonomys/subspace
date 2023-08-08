@@ -19,7 +19,7 @@ extern crate alloc;
 
 pub mod kzg;
 
-use crate::Blake2b256Hash;
+use crate::{Blake2b256Hash, Blake3Hash};
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
@@ -82,6 +82,20 @@ pub fn blake2b_256_hash_list(data: &[&[u8]]) -> Blake2b256Hash {
         .finalize()
         .try_into()
         .expect("Initialized with correct length; qed")
+}
+
+/// BLAKE3 hashing of a single value.
+pub fn blake3_hash(data: &[u8]) -> Blake3Hash {
+    *blake3::hash(data).as_bytes()
+}
+
+/// BLAKE3 hashing of a list of values.
+pub fn blake3_hash_list(data: &[&[u8]]) -> Blake3Hash {
+    let mut state = blake3::Hasher::new();
+    for d in data {
+        state.update(d);
+    }
+    *state.finalize().as_bytes()
 }
 
 /// Representation of a single BLS12-381 scalar value.

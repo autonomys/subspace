@@ -53,32 +53,18 @@ target/production/subspace-farmer --help
 
 ### Start the farmer
 ```
-target/production/subspace-farmer farm --reward-address st... --plot-size 100G
+target/production/subspace-farmer --farm path=/path/to/disk,size=100G farm --reward-address st...
 ```
 
-`st...` should be replaced with the reward address taken from Polkadot.js wallet (or similar) and `100G` replaced with desired plot size.
+`st...` should be replaced with the reward address taken from Polkadot.js wallet (or similar), `/path/to/disk` with location where you want to store plot and `100G` replaced with desired plot size.
 
 This will connect to local node and will try to solve on every slot notification, while also plotting all existing and new history of the blockchain in parallel.
 
 *NOTE: You need to have a `subspace-node` running before starting farmer, otherwise it will not be able to start*
 
-By default, farmer data are written to `subspace-farmer` subdirectory of the OS-specific users local data directory.
-
+### Wipe the plot (same that was created previously)
 ```
-Linux
-$XDG_DATA_HOME or                   /home/alice/.local/share
-$HOME/.local/share 
-
-macOS
-$HOME/Library/Application Support   /Users/Alice/Library/Application Support
-
-Windows
-{FOLDERID_LocalAppData}             C:\Users\Alice\AppData\Local
-```
-
-### Wipe the plot
-```
-target/production/subspace-farmer wipe
+target/production/subspace-farmer --farm path=/path/to/disk,size=100G wipe
 ```
 
 This would wipe plots in the OS-specific users local data directory.

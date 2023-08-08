@@ -20,6 +20,7 @@ use seq_macro::seq;
 use std::simd::SimdUint;
 #[cfg(any(feature = "parallel", test))]
 use std::sync::mpsc;
+use subspace_core_primitives::crypto::{blake3_hash, blake3_hash_list};
 
 pub(super) const COMPUTE_F1_SIMD_FACTOR: usize = 8;
 
@@ -379,25 +380,23 @@ where
             let input_a = y_bits | left_metadata_bits | right_bits_a;
             // Collect bits of `right_metadata` that will spill over into `input_b`
             let input_b = right_metadata << (u128::BITS as usize - right_bits_pushed_into_input_b);
-            let mut hasher = blake3::Hasher::new();
 
-            hasher.update(&input_a.to_be_bytes());
-            hasher.update(
+            blake3_hash_list(&[
+                &input_a.to_be_bytes(),
                 &input_b.to_be_bytes()
                     [..right_bits_pushed_into_input_b.div_ceil(u8::BITS as usize)],
-            );
-            hasher.finalize()
+            ])
         } else {
             let right_bits_a = right_metadata << (right_bits_start_offset - y_and_left_bits);
             let input_a = y_bits | left_metadata_bits | right_bits_a;
 
-            blake3::hash(&input_a.to_be_bytes()[..num_bytes_with_data])
+            blake3_hash(&input_a.to_be_bytes()[..num_bytes_with_data])
         }
     };
 
     let y_output = Y::from(
         u32::from_be_bytes(
-            hash.as_bytes()[..mem::size_of::<u32>()]
+            hash[..mem::size_of::<u32>()]
                 .try_into()
                 .expect("Hash if statically guaranteed to have enough bytes; qed"),
         ) >> (u32::BITS as usize - y_size_bits(K)),
@@ -412,7 +411,7 @@ where
         // We collect bytes necessary, potentially with extra bits at the start and end of the bytes
         // that will be taken care of later.
         let metadata = u128::from_be_bytes(
-            hash.as_bytes()[y_size_bits(K) / u8::BITS as usize..][..mem::size_of::<u128>()]
+            hash[y_size_bits(K) / u8::BITS as usize..][..mem::size_of::<u128>()]
                 .try_into()
                 .expect("Always enough bits for any K; qed"),
         );

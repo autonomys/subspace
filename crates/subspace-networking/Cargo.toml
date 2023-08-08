@@ -18,21 +18,20 @@ include = [
 [dependencies]
 async-mutex = "1.4.0"
 actix-web = "4.3.1"
-anyhow = "1.0.71"
 async-trait = "0.1.68"
 backoff = { version = "0.4.0", features = ["futures", "tokio"] }
 bytes = "1.4.0"
-chrono = {version = "0.4.26", features = ["clock", "serde", "std",]}
 clap = { version = "4.2.1", features = ["color", "derive"] }
 derive_more = "0.99.17"
 either = "1.8.1"
 event-listener-primitives = "2.0.1"
+fs2 = "0.4.3"
 futures = "0.3.28"
 futures-timer = "3.0.2"
 hex = "0.4.3"
 lru = "0.10.0"
+memmap2 = "0.7.1"
 nohash-hasher = "0.2.0"
-parity-db = "0.4.6"
 parity-scale-codec = "3.6.3"
 parking_lot = "0.12.1"
 pin-project = "1.1.0"

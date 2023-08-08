@@ -4,7 +4,6 @@ mod commands;
 mod ss58;
 mod utils;
 
-use crate::utils::get_usable_plot_space;
 use bytesize::ByteSize;
 use clap::{Parser, ValueEnum, ValueHint};
 use ss58::parse_ss58_reward_address;
@@ -42,9 +41,6 @@ struct FarmingArgs {
     /// Address for farming rewards
     #[arg(long, value_parser = parse_ss58_reward_address)]
     reward_address: PublicKey,
-    /// Maximum plot size in human readable format (e.g. 10GB, 2TiB) or just bytes (e.g. 4096).
-    #[arg(long, default_value_t)]
-    plot_size: ByteSize,
     /// Maximum number of pieces in sector (can override protocol value to something lower).
     #[arg(long)]
     max_pieces_in_sector: Option<u16>,
@@ -209,13 +205,6 @@ impl FromStr for DiskFarm {
 struct Command {
     #[clap(subcommand)]
     subcommand: Subcommand,
-    /// Base path for data storage.
-    #[arg(
-        long,
-        default_value_os_t = utils::default_base_path(),
-        value_hint = ValueHint::FilePath,
-    )]
-    base_path: PathBuf,
     /// Specify single plot located at specified path, can be specified multiple times to use
     /// multiple disks.
     ///
@@ -229,10 +218,14 @@ struct Command {
     /// which right now occupies up to 8% of the disk space.
     #[arg(long)]
     farm: Vec<DiskFarm>,
-    /// Run temporary farmer, this will create a temporary directory for storing farmer data that
-    /// will be delete at the end of the process
-    #[arg(long, conflicts_with = "base_path", conflicts_with = "farm")]
-    tmp: bool,
+    /// Run temporary farmer with specified plot size in human readable format (e.g. 10GB, 2TiB) or
+    /// just bytes (e.g. 4096), this will create a temporary directory for storing farmer data that
+    /// will be deleted at the end of the process.
+    #[arg(long, conflicts_with = "farm")]
+    tmp: Option<ByteSize>,
+    /// Enables the "development mode". Toggles flags like `--enable-private-ips`
+    #[arg(long)]
+    dev: bool,
 }
 
 #[tokio::main]
@@ -250,92 +243,54 @@ async fn main() -> anyhow::Result<()> {
 
     let command = Command::parse();
 
-    let (base_path, _tmp_directory) = if command.tmp {
+    let (disk_farms, _tmp_directory) = if let Some(plot_size) = command.tmp {
         let tmp_directory = TempDir::new()?;
-        (tmp_directory.as_ref().to_path_buf(), Some(tmp_directory))
+        (
+            vec![DiskFarm {
+                directory: tmp_directory.as_ref().to_path_buf(),
+                allocated_plotting_space: plot_size.as_u64(),
+            }],
+            Some(tmp_directory),
+        )
     } else {
-        (command.base_path, None)
+        (command.farm, None)
     };
 
     match command.subcommand {
         Subcommand::Wipe => {
-            // TODO: Delete this section once we don't have shared data anymore
-            info!("Wiping shared data");
-            fs::remove_file(base_path.join("known_addresses_db"))?;
-            fs::remove_file(base_path.join("piece_cache_db"))?;
-            fs::remove_file(base_path.join("providers_db"))?;
-
-            let disk_farms = if command.farm.is_empty() {
-                if !base_path.exists() {
-                    info!("Done");
-
-                    return Ok(());
+            for farm in &disk_farms {
+                if !farm.directory.exists() {
+                    panic!("Directory {} doesn't exist", farm.directory.display());
                 }
-
-                // TODO: Support wiping of old disk plots for backwards compatibility
-
-                vec![DiskFarm {
-                    directory: base_path,
-                    allocated_plotting_space: get_usable_plot_space(0),
-                }]
-            } else {
-                for farm in &command.farm {
-                    if !farm.directory.exists() {
-                        panic!("Directory {} doesn't exist", farm.directory.display());
-                    }
-                }
-
-                command.farm
-            };
+            }
 
             for farm in &disk_farms {
+                // TODO: Delete this section once we don't have shared data anymore
+                info!("Wiping shared data");
+                let _ = fs::remove_file(farm.directory.join("known_addresses_db"));
+                let _ = fs::remove_file(farm.directory.join("known_addresses.bin"));
+                let _ = fs::remove_file(farm.directory.join("piece_cache_db"));
+                let _ = fs::remove_file(farm.directory.join("providers_db"));
+
                 SingleDiskPlot::wipe(&farm.directory)?;
             }
 
             info!("Done");
         }
-        Subcommand::Farm(farming_args) => {
-            // TODO: Remove this in the future once `base_path` can be removed
-            // Wipe legacy caching directory that is no longer used
-            let _ = fs::remove_file(base_path.join("piece_cache_db"));
-            // TODO: Remove this in the future after enough upgrade time that this no longer exist
-            let _ = fs::remove_file(base_path.join("providers_db"));
-
-            let disk_farms = if command.farm.is_empty() {
-                if !base_path.exists() {
-                    fs::create_dir_all(&base_path).unwrap_or_else(|error| {
-                        panic!("Failed to create data directory {base_path:?}: {error:?}")
-                    });
+        Subcommand::Farm(mut farming_args) => {
+            for farm in &disk_farms {
+                if !farm.directory.exists() {
+                    panic!("Directory {} doesn't exist", farm.directory.display());
                 }
+            }
 
-                vec![DiskFarm {
-                    directory: base_path.clone(),
-                    allocated_plotting_space: get_usable_plot_space(
-                        farming_args.plot_size.as_u64(),
-                    ),
-                }]
-            } else {
-                for farm in &command.farm {
-                    if !farm.directory.exists() {
-                        panic!("Directory {} doesn't exist", farm.directory.display());
-                    }
-                }
+            // Override the `--enable_private_ips` flag with `--dev`
+            farming_args.dsn.enable_private_ips =
+                farming_args.dsn.enable_private_ips || command.dev;
 
-                command.farm
-            };
-
-            commands::farm_multi_disk::<PosTable>(base_path, disk_farms, farming_args).await?;
+            commands::farm_multi_disk::<PosTable>(disk_farms, farming_args).await?;
         }
         Subcommand::Info => {
-            let disk_farms = if command.farm.is_empty() {
-                vec![DiskFarm {
-                    directory: base_path,
-                    allocated_plotting_space: get_usable_plot_space(0),
-                }]
-            } else {
-                command.farm
-            };
-
             commands::info(disk_farms);
         }
     }

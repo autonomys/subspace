@@ -16,7 +16,6 @@ include = [
 bench = false
 
 [dependencies]
-blake3 = { version = "1.4.0", default-features = false, optional = true }
 chacha20 = { version = "0.9.1", default-features = false, optional = true }
 derive_more = { version = "0.99.17", optional = true }
 rayon = { version = "1.7.0", optional = true }
@@ -37,7 +36,6 @@ harness = false
 [features]
 default = ["std"]
 std = [
-    "blake3?/std",
     "chacha20?/std",
     "subspace-core-primitives/std",
 ]
@@ -48,7 +46,6 @@ parallel = [
 ]
 # Enable Chia proof of space support
 chia = [
-    "blake3",
     "chacha20",
     "derive_more",
     "seq-macro",

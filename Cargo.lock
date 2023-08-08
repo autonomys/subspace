@@ -837,7 +837,7 @@ checksum = "3c2f0dc9a68c6317d884f97cc36cf5a3d20ba14ce404227df55e1af708ab04bc"
 dependencies = [
  "arrayref",
  "arrayvec 0.7.4",
- "constant_time_eq",
+ "constant_time_eq 0.2.6",
 ]
 
 [[package]]
@@ -848,20 +848,20 @@ checksum = "6637f448b9e61dfadbdcbae9a885fadee1f3eaffb1f8d3c1965d3ade8bdfd44f"
 dependencies = [
  "arrayref",
  "arrayvec 0.7.4",
- "constant_time_eq",
+ "constant_time_eq 0.2.6",
 ]
 
 [[package]]
 name = "blake3"
-version = "1.4.0"
+version = "1.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "729b71f35bd3fa1a4c86b85d32c8b9069ea7fe14f7a53cfabb65f62d4265b888"
+checksum = "199c42ab6972d92c9f8995f086273d25c42fc0f7b2a1fcefba465c1352d25ba5"
 dependencies = [
  "arrayref",
  "arrayvec 0.7.4",
  "cc",
  "cfg-if",
- "constant_time_eq",
+ "constant_time_eq 0.3.0",
  "digest 0.10.7",
 ]
 
@@ -1201,7 +1201,6 @@ dependencies = [
  "iana-time-zone",
  "js-sys",
  "num-traits",
- "serde",
  "time 0.1.45",
  "wasm-bindgen",
  "winapi",
@@ -1373,6 +1372,12 @@ name = "constant_time_eq"
 version = "0.2.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "21a53c0a4d288377e7415b53dcfc3c04da5cdc2cc95c8d5ac178b58f0b861ad6"
+
+[[package]]
+name = "constant_time_eq"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f7144d30dcf0fafbce74250a3963025d8d52177934239851c917d29f1df280c2"
 
 [[package]]
 name = "convert_case"
@@ -6017,9 +6022,9 @@ dependencies = [
 
 [[package]]
 name = "memmap2"
-version = "0.7.0"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "180d4b35be83d33392d1d1bfbd2ae1eca7ff5de1a94d3fc87faaa99a069e7cbd"
+checksum = "f49388d20533534cd19360ad3d6a7dadc885944aa802ba3995040c5ec11288c6"
 dependencies = [
  "libc",
 ]
@@ -8833,6 +8838,7 @@ dependencies = [
  "sc-client-api",
  "sc-consensus",
  "sc-consensus-slots",
+ "sc-proof-of-time",
  "sc-telemetry",
  "sc-utils",
  "schnorrkel",
@@ -9199,6 +9205,7 @@ dependencies = [
  "sp-blockchain",
  "sp-consensus",
  "sp-consensus-subspace",
+ "sp-core",
  "sp-runtime",
  "subspace-core-primitives",
  "subspace-proof-of-time",
@@ -11051,6 +11058,7 @@ name = "subspace-core-primitives"
 version = "0.1.0"
 dependencies = [
  "blake2",
+ "blake3",
  "blst_rust",
  "criterion",
  "derive_more",
@@ -11098,7 +11106,6 @@ dependencies = [
  "clap",
  "cuckoofilter",
  "derive_more",
- "dirs",
  "event-listener-primitives",
  "fdlimit",
  "futures",
@@ -11106,7 +11113,7 @@ dependencies = [
  "jemallocator",
  "jsonrpsee",
  "lru 0.10.0",
- "memmap2 0.7.0",
+ "memmap2 0.7.1",
  "parity-db",
  "parity-scale-codec",
  "parking_lot 0.12.1",
@@ -11148,7 +11155,7 @@ dependencies = [
  "futures",
  "libc",
  "lru 0.10.0",
- "memmap2 0.7.0",
+ "memmap2 0.7.1",
  "parity-scale-codec",
  "parking_lot 0.12.1",
  "rand 0.8.5",
@@ -11208,16 +11215,15 @@ name = "subspace-networking"
 version = "0.1.0"
 dependencies = [
  "actix-web",
- "anyhow",
  "async-mutex",
  "async-trait",
  "backoff",
  "bytes",
- "chrono",
  "clap",
  "derive_more",
  "either",
  "event-listener-primitives",
+ "fs2",
  "futures",
  "futures-timer",
  "hex",
@@ -11226,8 +11232,8 @@ dependencies = [
  "libp2p-kad 0.44.3",
  "libp2p-quic 0.8.0-alpha",
  "lru 0.10.0",
+ "memmap2 0.7.1",
  "nohash-hasher",
- "parity-db",
  "parity-scale-codec",
  "parking_lot 0.12.1",
  "pin-project",
@@ -11276,6 +11282,7 @@ dependencies = [
  "sc-executor",
  "sc-network",
  "sc-network-sync",
+ "sc-proof-of-time",
  "sc-service",
  "sc-storage-monitor",
  "sc-subspace-chain-specs",
@@ -11307,7 +11314,6 @@ name = "subspace-proof-of-space"
 version = "0.1.0"
 dependencies = [
  "bitvec",
- "blake3",
  "chacha20 0.9.1",
  "criterion",
  "derive_more",
@@ -11435,6 +11441,7 @@ dependencies = [
  "sc-executor",
  "sc-network",
  "sc-network-sync",
+ "sc-proof-of-time",
  "sc-rpc",
  "sc-rpc-api",
  "sc-rpc-spec-v2",

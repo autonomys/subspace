@@ -3,13 +3,16 @@ pub mod import_blocks;
 use crate::piece_cache::PieceCache;
 use sc_client_api::AuxStore;
 use sc_consensus_subspace::SegmentHeadersStore;
+use std::collections::HashSet;
+use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::{SegmentHeader, SegmentIndex};
 use subspace_networking::libp2p::{identity, Multiaddr};
+use subspace_networking::utils::strip_peer_id;
 use subspace_networking::{
     CreationError, NetworkParametersPersistenceError, NetworkingParametersManager, Node,
-    NodeRunner, ParityDbError, PeerInfoProvider, PieceByHashRequestHandler, PieceByHashResponse,
+    NodeRunner, PeerInfoProvider, PieceByHashRequestHandler, PieceByHashResponse,
     SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
     KADEMLIA_PROVIDER_TTL_IN_SECS,
 };
@@ -24,9 +27,6 @@ pub enum DsnConfigurationError {
     /// Can't instantiate the DSN.
     #[error("Can't instantiate the DSN: {0}")]
     CreationError(#[from] CreationError),
-    /// ParityDb storage error
-    #[error("ParityDb storage error: {0}")]
-    ParityDbStorageError(#[from] ParityDbError),
     /// Network parameter manager error.
     #[error("Network parameter manager error: {0}")]
     NetworkParameterManagerError(#[from] NetworkParametersPersistenceError),
@@ -83,16 +83,25 @@ where
 {
     trace!("Subspace networking starting.");
 
-    let networking_parameters_registry = {
-        dsn_config
-            .base_path
-            .map(|path| {
-                let db_path = path.join("known_addresses_db");
+    let networking_parameters_registry = dsn_config
+        .base_path
+        .map(|path| {
+            // TODO: Remove this in the future after enough upgrade time that this no longer exist
+            if path.join("known_addresses_db").is_dir() {
+                let _ = fs::remove_file(path.join("known_addresses_db"));
+            }
+            let file_path = path.join("known_addresses.bin");
 
-                NetworkingParametersManager::new(&db_path).map(|manager| manager.boxed())
-            })
-            .transpose()?
-    };
+            NetworkingParametersManager::new(
+                &file_path,
+                strip_peer_id(dsn_config.bootstrap_nodes.clone())
+                    .into_iter()
+                    .map(|(peer_id, _)| peer_id)
+                    .collect::<HashSet<_>>(),
+            )
+            .map(NetworkingParametersManager::boxed)
+        })
+        .transpose()?;
 
     let keypair = dsn_config.keypair.clone();
     let mut default_networking_config = subspace_networking::Config::new(

@@ -64,20 +64,20 @@ async fn main() {
         nodes.push(node);
     }
 
-    let db_path = std::env::temp_dir()
-        .join("subspace_example_networking_params_db")
+    let file_path = std::env::temp_dir()
+        .join("subspace_example_networking_params.bin")
         .into_boxed_path();
 
     println!(
-        "Networking parameters database path used (the app creates DB on the first run): \
-        {db_path:?}"
+        "Networking parameters database path used (the app creates file on the first run): \
+        {file_path:?}"
     );
 
     let config = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_global_addresses_in_dht: true,
         networking_parameters_registry: Some(
-            NetworkingParametersManager::new(db_path.as_ref())
+            NetworkingParametersManager::new(file_path.as_ref(), Default::default())
                 .unwrap()
                 .boxed(),
         ),

@@ -7,15 +7,51 @@ pub(crate) mod prometheus;
 mod tests;
 pub(crate) mod unique_record_binary_heap;
 
+use event_listener_primitives::Bag;
+use futures::future::{Fuse, FusedFuture, FutureExt};
 use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId};
 use parking_lot::Mutex;
+use std::future::Future;
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
+use std::pin::Pin;
 use std::sync::Arc;
+use std::task::{Context, Poll};
 use thiserror::Error;
+use tokio::runtime::Handle;
 use tokio::sync::Notify;
+use tokio::task;
 use tracing::warn;
+
+/// Joins async join handle on drop
+pub(crate) struct AsyncJoinOnDrop<T>(Option<Fuse<task::JoinHandle<T>>>);
+
+impl<T> Drop for AsyncJoinOnDrop<T> {
+    fn drop(&mut self) {
+        let handle = self.0.take().expect("Always called exactly once; qed");
+        if !handle.is_terminated() {
+            task::block_in_place(move || {
+                let _ = Handle::current().block_on(handle);
+            });
+        }
+    }
+}
+
+impl<T> AsyncJoinOnDrop<T> {
+    // Create new instance
+    pub(crate) fn new(handle: task::JoinHandle<T>) -> Self {
+        Self(Some(handle.fuse()))
+    }
+}
+
+impl<T> Future for AsyncJoinOnDrop<T> {
+    type Output = Result<T, task::JoinError>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        Pin::new(self.0.as_mut().expect("Only dropped in Drop impl; qed")).poll(cx)
+    }
+}
 
 /// This test is successful only for global IP addresses and DNS names.
 pub(crate) fn is_global_address_or_dns(addr: &Multiaddr) -> bool {
@@ -83,9 +119,9 @@ impl<T: Clone> CollectionBatcher<T> {
 // Convenience alias for peer ID and its multiaddresses.
 pub(crate) type PeerAddress = (PeerId, Multiaddr);
 
-// Helper function. Converts multiaddresses to a tuple with peer ID removing the peer Id suffix.
-// It logs incorrect multiaddresses.
-pub(crate) fn convert_multiaddresses(addresses: Vec<Multiaddr>) -> Vec<PeerAddress> {
+/// Helper function. Converts multiaddresses to a tuple with peer ID removing the peer Id suffix.
+/// It logs incorrect multiaddresses.
+pub fn strip_peer_id(addresses: Vec<Multiaddr>) -> Vec<PeerAddress> {
     addresses
         .into_iter()
         .filter_map(|multiaddr| {
@@ -286,3 +322,6 @@ impl Drop for ResizableSemaphorePermit {
         }
     }
 }
+
+pub(crate) type HandlerFn<A> = Arc<dyn Fn(&A) + Send + Sync + 'static>;
+pub(crate) type Handler<A> = Bag<HandlerFn<A>, A>;

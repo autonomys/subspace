@@ -1,4 +1,5 @@
 use super::persistent_parameters::remove_known_peer_addresses_internal;
+use crate::behavior::persistent_parameters::{append_p2p_suffix, remove_p2p_suffix};
 use crate::{Config, GenericRequest, GenericRequestHandler};
 use futures::channel::oneshot;
 use futures::future::pending;
@@ -10,8 +11,11 @@ use parking_lot::Mutex;
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::pin::Pin;
+use std::str::FromStr;
 use std::sync::Arc;
 use std::task::{Context, Poll};
+use std::time::Duration;
+use tokio::time::sleep;
 
 #[tokio::test()]
 async fn test_address_timed_removal_from_known_peers_cache() {
@@ -20,7 +24,8 @@ async fn test_address_timed_removal_from_known_peers_cache() {
     let addr1 = Multiaddr::empty().with(Protocol::Memory(0));
     let addr2 = Multiaddr::empty().with(Protocol::Memory(1));
     let addresses = vec![addr1.clone(), addr2.clone()];
-    let expiration = chrono::Duration::nanoseconds(1);
+    let expiration = Duration::from_nanos(1);
+    let expiration_kademlia = Duration::from_nanos(1);
 
     let mut peers_cache = LruCache::new(NonZeroUsize::new(100).unwrap());
     let mut addresses_cache = LruCache::new(NonZeroUsize::new(100).unwrap());
@@ -44,10 +49,17 @@ async fn test_address_timed_removal_from_known_peers_cache() {
         .expect("Address present")
         .is_none());
 
-    remove_known_peer_addresses_internal(&mut peers_cache, peer_id, addresses.clone(), expiration);
+    let removed_addresses = remove_known_peer_addresses_internal(
+        &mut peers_cache,
+        peer_id,
+        addresses.clone(),
+        expiration,
+        expiration_kademlia,
+    );
 
     // Check after the first run (set the first failure time)
     assert_eq!(peers_cache.len(), 1);
+    assert_eq!(removed_addresses.len(), 0);
     let addresses_from_cache = peers_cache.get(&peer_id).expect("PeerId present");
     assert_eq!(addresses_from_cache.len(), 2);
     assert!(addresses_from_cache
@@ -59,10 +71,77 @@ async fn test_address_timed_removal_from_known_peers_cache() {
         .expect("Address present")
         .is_some());
 
-    remove_known_peer_addresses_internal(&mut peers_cache, peer_id, addresses, expiration);
+    let removed_addresses = remove_known_peer_addresses_internal(
+        &mut peers_cache,
+        peer_id,
+        addresses,
+        expiration,
+        expiration_kademlia,
+    );
 
     // Check after the second run (clean cache)
     assert_eq!(peers_cache.len(), 0);
+    assert_eq!(removed_addresses.len(), 2);
+}
+
+#[tokio::test()]
+async fn test_different_removal_timing_from_known_peers_cache() {
+    // Cache initialization
+    let peer_id = PeerId::random();
+    let addr = Multiaddr::empty().with(Protocol::Memory(0));
+
+    let expiration = Duration::from_secs(3);
+    let expiration_kademlia = Duration::from_secs(1);
+
+    let mut peers_cache = LruCache::new(NonZeroUsize::new(100).unwrap());
+    let mut addresses_cache = LruCache::new(NonZeroUsize::new(100).unwrap());
+
+    let addresses = vec![addr.clone()];
+    addresses_cache.push(addr, None);
+    peers_cache.push(peer_id, addresses_cache);
+
+    //Precondition-check
+    assert_eq!(peers_cache.len(), 1);
+
+    let removed_addresses = remove_known_peer_addresses_internal(
+        &mut peers_cache,
+        peer_id,
+        addresses.clone(),
+        expiration,
+        expiration_kademlia,
+    );
+
+    // Check after the first run (set the first failure time)
+    assert_eq!(peers_cache.len(), 1);
+    assert_eq!(removed_addresses.len(), 0);
+
+    sleep(expiration_kademlia).await;
+
+    let removed_addresses = remove_known_peer_addresses_internal(
+        &mut peers_cache,
+        peer_id,
+        addresses.clone(),
+        expiration,
+        expiration_kademlia,
+    );
+
+    // Check after the second run (Kademlia event only)
+    assert_eq!(peers_cache.len(), 1);
+    assert_eq!(removed_addresses.len(), 1);
+
+    sleep(expiration).await;
+
+    let removed_addresses = remove_known_peer_addresses_internal(
+        &mut peers_cache,
+        peer_id,
+        addresses,
+        expiration,
+        expiration_kademlia,
+    );
+
+    // Check after the third run (Kademlia event and clean cache)
+    assert_eq!(peers_cache.len(), 0);
+    assert_eq!(removed_addresses.len(), 1);
 }
 
 #[derive(Default)]
@@ -172,4 +251,29 @@ async fn test_async_handler_works_with_pending_internal_future() {
         .unwrap();
 
     assert_eq!(resp.counter, 1);
+}
+
+#[tokio::test]
+async fn test_address_p2p_prefix_removal() {
+    let short_addr: Multiaddr = "/ip4/127.0.0.1/tcp/50000".parse().unwrap();
+    let long_addr: Multiaddr =
+        "/ip4/127.0.0.1/tcp/50000/p2p/12D3KooWGAjyJAZNNsHu8sV6MP6mXHzNXFQbadjVBFUr5deTiom2"
+            .parse()
+            .unwrap();
+
+    assert_eq!(remove_p2p_suffix(long_addr.clone()), short_addr);
+    assert_eq!(remove_p2p_suffix(short_addr.clone()), short_addr);
+}
+
+#[tokio::test]
+async fn test_address_p2p_prefix_addition() {
+    let peer_id = PeerId::from_str("12D3KooWGAjyJAZNNsHu8sV6MP6mXHzNXFQbadjVBFUr5deTiom2").unwrap();
+    let short_addr: Multiaddr = "/ip4/127.0.0.1/tcp/50000".parse().unwrap();
+    let long_addr: Multiaddr =
+        "/ip4/127.0.0.1/tcp/50000/p2p/12D3KooWGAjyJAZNNsHu8sV6MP6mXHzNXFQbadjVBFUr5deTiom2"
+            .parse()
+            .unwrap();
+
+    assert_eq!(append_p2p_suffix(peer_id, long_addr.clone()), long_addr);
+    assert_eq!(append_p2p_suffix(peer_id, short_addr.clone()), long_addr);
 }
