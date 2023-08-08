@@ -110,6 +110,7 @@ where
         info!("clock_master::initialize: waiting for initialization ...");
         let delay = tokio::time::Duration::from_secs(1);
         let proofs = loop {
+            // TODO: Proper error handling or proof
             let tip = get_consensus_tip(
                 self.client.clone(),
                 self.sync_oracle.clone(),
@@ -131,6 +132,7 @@ where
 
             let proofs = tip.pot_pre_digest.proofs().cloned().unwrap_or_else(|| {
                 // Producing proofs starting from (genesis_slot + 1).
+                // TODO: Proper error handling or proof
                 let proof = self.proof_of_time.create(
                     PotSeed::from_block_hash(tip.block_hash),
                     Default::default(), // TODO: key from cmd line or BTC

@@ -76,6 +76,7 @@ where
         info!("pot_client::initialize: waiting for initialization ...");
         let delay = tokio::time::Duration::from_secs(1);
         let proofs = loop {
+            // TODO: Proper error handling or proof
             let tip = get_consensus_tip(
                 self.client.clone(),
                 self.sync_oracle.clone(),

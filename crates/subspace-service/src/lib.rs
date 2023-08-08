@@ -874,7 +874,7 @@ where
 
                 task_manager.spawn_essential_handle().spawn_blocking(
                     "subspace-proof-of-time-clock-master",
-                    Some("subspace-proof-of-time-clock-master"),
+                    Some("pot"),
                     async move {
                         clock_master.run().await;
                     },
@@ -890,7 +890,7 @@ where
                 );
                 task_manager.spawn_essential_handle().spawn_blocking(
                     "subspace-proof-of-time-client",
-                    Some("subspace-proof-of-time-client"),
+                    Some("pot"),
                     async move {
                         pot_client.run().await;
                     },
