@@ -24,8 +24,8 @@ async fn test_address_timed_removal_from_known_peers_cache() {
     let addr1 = Multiaddr::empty().with(Protocol::Memory(0));
     let addr2 = Multiaddr::empty().with(Protocol::Memory(1));
     let addresses = vec![addr1.clone(), addr2.clone()];
-    let expiration = chrono::Duration::nanoseconds(1);
-    let expiration_kademlia = chrono::Duration::nanoseconds(1);
+    let expiration = Duration::from_nanos(1);
+    let expiration_kademlia = Duration::from_nanos(1);
 
     let mut peers_cache = LruCache::new(NonZeroUsize::new(100).unwrap());
     let mut addresses_cache = LruCache::new(NonZeroUsize::new(100).unwrap());
@@ -90,10 +90,8 @@ async fn test_different_removal_timing_from_known_peers_cache() {
     let peer_id = PeerId::random();
     let addr = Multiaddr::empty().with(Protocol::Memory(0));
 
-    let expiration_in_secs = 3u64;
-    let expiration_in_secs_kademlia = 1u64;
-    let expiration = chrono::Duration::seconds(expiration_in_secs as i64);
-    let expiration_kademlia = chrono::Duration::seconds(expiration_in_secs_kademlia as i64);
+    let expiration = Duration::from_secs(3);
+    let expiration_kademlia = Duration::from_secs(1);
 
     let mut peers_cache = LruCache::new(NonZeroUsize::new(100).unwrap());
     let mut addresses_cache = LruCache::new(NonZeroUsize::new(100).unwrap());
@@ -117,7 +115,7 @@ async fn test_different_removal_timing_from_known_peers_cache() {
     assert_eq!(peers_cache.len(), 1);
     assert_eq!(removed_addresses.len(), 0);
 
-    sleep(Duration::from_secs(expiration_in_secs_kademlia)).await;
+    sleep(expiration_kademlia).await;
 
     let removed_addresses = remove_known_peer_addresses_internal(
         &mut peers_cache,
@@ -131,7 +129,7 @@ async fn test_different_removal_timing_from_known_peers_cache() {
     assert_eq!(peers_cache.len(), 1);
     assert_eq!(removed_addresses.len(), 1);
 
-    sleep(Duration::from_secs(expiration_in_secs)).await;
+    sleep(expiration).await;
 
     let removed_addresses = remove_known_peer_addresses_internal(
         &mut peers_cache,

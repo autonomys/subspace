@@ -52,18 +52,14 @@ pub(super) fn configure_dsn(
     archival_storage_info: ArchivalStorageInfo,
     piece_cache: PieceCache,
 ) -> Result<(Node, NodeRunner<PieceCache>), anyhow::Error> {
-    let networking_parameters_registry = {
-        let known_addresses_db_path = base_path.join("known_addresses_db");
-
-        NetworkingParametersManager::new(
-            &known_addresses_db_path,
-            strip_peer_id(bootstrap_nodes.clone())
-                .into_iter()
-                .map(|(peer_id, _)| peer_id)
-                .collect::<HashSet<_>>(),
-        )
-        .map(|manager| manager.boxed())?
-    };
+    let networking_parameters_registry = NetworkingParametersManager::new(
+        &base_path.join("known_addresses.bin"),
+        strip_peer_id(bootstrap_nodes.clone())
+            .into_iter()
+            .map(|(peer_id, _)| peer_id)
+            .collect::<HashSet<_>>(),
+    )
+    .map(Box::new)?;
 
     // TODO: Consider introducing and using global in-memory segment header cache (this comment is
     //  in multiple files)

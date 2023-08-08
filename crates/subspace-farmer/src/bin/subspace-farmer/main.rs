@@ -265,6 +265,7 @@ async fn main() -> anyhow::Result<()> {
             // TODO: Delete this section once we don't have shared data anymore
             info!("Wiping shared data");
             fs::remove_file(base_path.join("known_addresses_db"))?;
+            fs::remove_file(base_path.join("known_addresses.bin"))?;
             fs::remove_file(base_path.join("piece_cache_db"))?;
             fs::remove_file(base_path.join("providers_db"))?;
 
@@ -303,6 +304,8 @@ async fn main() -> anyhow::Result<()> {
             let _ = fs::remove_file(base_path.join("piece_cache_db"));
             // TODO: Remove this in the future after enough upgrade time that this no longer exist
             let _ = fs::remove_file(base_path.join("providers_db"));
+            // TODO: Remove this in the future after enough upgrade time that this no longer exist
+            let _ = fs::remove_file(base_path.join("known_addresses_db"));
 
             let disk_farms = if command.farm.is_empty() {
                 if !base_path.exists() {

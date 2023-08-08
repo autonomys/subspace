@@ -2,18 +2,15 @@
 
 #![feature(type_changing_struct_update)]
 
-use anyhow::anyhow;
-use clap::{Parser, ValueHint};
+use clap::Parser;
 use libp2p::identity::ed25519::Keypair;
 use libp2p::{identity, Multiaddr, PeerId};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::error::Error;
 use std::fmt::{Display, Formatter};
-use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_networking::libp2p::multiaddr::Protocol;
-use subspace_networking::utils::strip_peer_id;
-use subspace_networking::{peer_id, Config, NetworkingParametersManager};
+use subspace_networking::{peer_id, Config};
 use tracing::{debug, info, Level};
 use tracing_subscriber::fmt::Subscriber;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -50,9 +47,6 @@ enum Command {
         /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses in Kademlia DHT.
         #[arg(long, default_value_t = false)]
         enable_private_ips: bool,
-        /// Defines path for the provider record storage DB (optional).
-        #[arg(long, value_hint = ValueHint::FilePath)]
-        db_path: Option<PathBuf>,
         /// Protocol version for libp2p stack, should be set as genesis hash of the blockchain for
         /// production use.
         #[arg(long)]
@@ -104,7 +98,7 @@ fn init_logging() {
 }
 
 #[tokio::main]
-async fn main() -> anyhow::Result<()> {
+async fn main() -> Result<(), Box<dyn Error>> {
     init_logging();
 
     let command: Command = Command::parse();
@@ -120,7 +114,6 @@ async fn main() -> anyhow::Result<()> {
             pending_in_peers,
             pending_out_peers,
             enable_private_ips,
-            db_path,
             protocol_version,
             external_addresses,
         } => {
@@ -132,26 +125,7 @@ async fn main() -> anyhow::Result<()> {
             let decoded_keypair = Keypair::try_from_bytes(hex::decode(keypair)?.as_mut_slice())?;
             let keypair = identity::Keypair::from(decoded_keypair);
 
-            let networking_parameters_registry = {
-                db_path
-                    .map(|path| {
-                        let known_addresses_db = path.join("known_addresses_db");
-
-                        NetworkingParametersManager::new(
-                            &known_addresses_db,
-                            strip_peer_id(bootstrap_nodes.clone())
-                                .into_iter()
-                                .map(|(peer_id, _)| peer_id)
-                                .collect::<HashSet<_>>(),
-                        )
-                        .map(|manager| manager.boxed())
-                    })
-                    .transpose()
-                    .map_err(|err| anyhow!(err))?
-            };
-
             let config = Config {
-                networking_parameters_registry,
                 listen_on,
                 allow_non_global_addresses_in_dht: enable_private_ips,
                 reserved_peers,
