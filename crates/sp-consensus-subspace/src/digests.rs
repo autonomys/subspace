@@ -27,7 +27,8 @@ use sp_runtime::DigestItem;
 use sp_std::collections::btree_map::{BTreeMap, Entry};
 use sp_std::fmt;
 use subspace_core_primitives::{
-    Randomness, SegmentCommitment, SegmentIndex, Solution, SolutionRange,
+    NonEmptyVec, PotProof, Randomness, SegmentCommitment, SegmentIndex, SlotNumber, Solution,
+    SolutionRange,
 };
 use subspace_verification::derive_randomness;
 
@@ -39,6 +40,83 @@ pub struct PreDigest<PublicKey, RewardAddress> {
     pub slot: Slot,
     /// Solution (includes PoR)
     pub solution: Solution<PublicKey, RewardAddress>,
+    /// Proof of time included in the block
+    /// TODO: It is Option<> for now for testing, to be removed
+    /// when PoT feature is permanently enabled.
+    pub proof_of_time: Option<PotPreDigest>,
+}
+
+/// The proof of time included in the pre digest.
+/// TODO: versioning needs to match PotProof version,
+/// versioning added on the proof side
+#[derive(Clone, Encode, Decode)]
+pub enum PotPreDigest {
+    /// The block was produced in the bootstrapping phase, where
+    /// the genesis slot has not yet been determined and the proof
+    /// production has not started.
+    Bootstrapping,
+
+    /// Genesis slot determined by the bootstrap node.
+    FirstBlock(SlotNumber),
+
+    /// V0 proof.
+    V0(NonEmptyVec<PotProof>),
+}
+
+impl PotPreDigest {
+    /// Constructs the PoT for the pre digest.
+    pub fn new(proofs: NonEmptyVec<PotProof>) -> Self {
+        Self::V0(proofs)
+    }
+
+    /// Returns a reference to the proofs.
+    pub fn proofs(&self) -> Option<&NonEmptyVec<PotProof>> {
+        match self {
+            Self::Bootstrapping | Self::FirstBlock(_) => None,
+            Self::V0(proofs) => Some(proofs),
+        }
+    }
+
+    /// Returns the starting slot number for the proofs in the next
+    /// block.
+    pub fn next_block_initial_slot(&self) -> Option<SlotNumber> {
+        match self {
+            Self::Bootstrapping => None,
+            Self::FirstBlock(slot_number) => Some(slot_number + 1),
+            Self::V0(proofs) => Some(proofs.last().slot_number + 1),
+        }
+    }
+}
+
+impl Default for PotPreDigest {
+    fn default() -> Self {
+        Self::Bootstrapping
+    }
+}
+
+impl fmt::Debug for PotPreDigest {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Bootstrapping => {
+                write!(f, "PotPreDigest::Bootstrapping")
+            }
+            Self::FirstBlock(slot_number) => {
+                write!(
+                    f,
+                    "PotPreDigest::FirstBlock => genesis_slot = {slot_number}"
+                )
+            }
+            Self::V0(proofs) => {
+                write!(
+                    f,
+                    "PotPreDigest::V0 => num_proofs: {}, proofs: [{} - {}]",
+                    proofs.len(),
+                    proofs.first(),
+                    proofs.last(),
+                )
+            }
+        }
+    }
 }
 
 /// A digest item which is usable with Subspace consensus.
@@ -570,6 +648,7 @@ where
                 FarmerPublicKey::unchecked_from([0u8; 32]),
                 FarmerPublicKey::unchecked_from([0u8; 32]),
             ),
+            proof_of_time: Default::default(),
         });
     }
 

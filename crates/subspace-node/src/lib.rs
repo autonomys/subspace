@@ -21,6 +21,7 @@ mod chain_spec_utils;
 pub mod domain;
 
 use bytesize::ByteSize;
+use clap::builder::EnumValueParser;
 use clap::Parser;
 use sc_cli::{RunCmd, SubstrateCli};
 use sc_executor::{NativeExecutionDispatch, RuntimeVersion};
@@ -164,6 +165,31 @@ pub enum Subcommand {
     Benchmark(frame_benchmarking_cli::BenchmarkCmd),
 }
 
+/// Assigned proof of time role.
+#[derive(Debug, Clone, Eq, PartialEq, clap::ValueEnum)]
+pub enum CliPotRole {
+    /// Clock master role of producing proofs.
+    ClockMaster,
+
+    /// Listens to proofs from clock masters.
+    NodeClient,
+
+    /// Proof of time is disabled.
+    None,
+}
+
+impl CliPotRole {
+    /// Checks if PoT is enabled.
+    pub fn is_pot_enabled(&self) -> bool {
+        *self == Self::ClockMaster || *self == Self::NodeClient
+    }
+
+    /// Checks if PoT role is clock master.
+    pub fn is_clock_master(&self) -> bool {
+        *self == Self::ClockMaster
+    }
+}
+
 /// Subspace Cli.
 #[derive(Debug, Parser)]
 #[clap(
@@ -247,6 +273,10 @@ pub struct Cli {
     /// instead of the default substrate handler.
     #[arg(long)]
     pub enable_subspace_block_relay: bool,
+
+    /// Assigned PoT role for this node.
+    #[arg(long, default_value="none", value_parser(EnumValueParser::<CliPotRole>::new()))]
+    pub pot_role: CliPotRole,
 }
 
 impl SubstrateCli for Cli {
