@@ -11214,7 +11214,6 @@ name = "subspace-networking"
 version = "0.1.0"
 dependencies = [
  "actix-web",
- "anyhow",
  "async-mutex",
  "async-trait",
  "backoff",
