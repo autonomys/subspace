@@ -113,6 +113,12 @@ impl EncodableKnownPeers {
                                 if multiaddr_bytes.encoded_size() > single_peer_encoded_address_size
                                 {
                                     // Skip unexpectedly large multiaddresses
+                                    debug!(
+                                        encoded_multiaddress_size = %multiaddr_bytes.encoded_size(),
+                                        limit = %single_peer_encoded_address_size,
+                                        ?multiaddr,
+                                        "Unexpectedly large multiaddress"
+                                    );
                                     return None;
                                 }
 
