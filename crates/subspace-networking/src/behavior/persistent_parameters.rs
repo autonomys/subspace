@@ -329,13 +329,13 @@ impl NetworkingParametersManager {
                     }
 
                     // Verify checksum
-                    let actual_hash = blake3_hash(encoded_bytes);
-                    let expected_hash = &remaining_bytes[..mem::size_of::<Blake3Hash>()];
-                    if actual_hash != expected_hash {
+                    let actual_checksum = blake3_hash(encoded_bytes);
+                    let expected_checksum = &remaining_bytes[..mem::size_of::<Blake3Hash>()];
+                    if actual_checksum != expected_checksum {
                         debug!(
                             encoded_bytes_len = %encoded_bytes.len(),
-                            ?actual_hash,
-                            ?expected_hash,
+                            actual_checksum = %hex::encode(actual_checksum),
+                            expected_checksum = %hex::encode(expected_checksum),
                             "Hash doesn't match, possible disk corruption or file was just \
                             created, ignoring"
                         );
