@@ -1,11 +1,12 @@
 use bitvec::prelude::*;
 use parity_scale_codec::{Decode, Encode};
 use rayon::prelude::*;
-use std::num::NonZeroU64;
 use std::ops::{Deref, DerefMut};
 use std::{mem, slice};
+use subspace_core_primitives::checksum::Blake3Checksummed;
 use subspace_core_primitives::{
     HistorySize, PieceOffset, Record, RecordCommitment, RecordWitness, SBucket, SectorIndex,
+    SegmentIndex,
 };
 use thiserror::Error;
 
@@ -26,7 +27,7 @@ pub const fn sector_record_metadata_size(pieces_in_sector: u16) -> usize {
 /// Exact sector plot size (sector contents map, record chunks, record metadata).
 ///
 /// NOTE: Each sector also has corresponding fixed size metadata whose size can be obtained with
-/// [`SectorMetadata::encoded_size()`], size of the record chunks (s-buckets) with
+/// [`SectorMetadataChecksummed::encoded_size()`], size of the record chunks (s-buckets) with
 /// [`sector_record_chunks_size()`] and size of record commitments and witnesses with
 /// [`sector_record_metadata_size()`]. This function just combines those three together for
 /// convenience.
@@ -71,20 +72,49 @@ impl SectorMetadata {
 
         s_bucket_offsets
     }
+}
 
-    /// Size of encoded sector metadata.
+/// Same as [`SectorMetadata`], but with checksums verified during SCALE encoding/decoding
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct SectorMetadataChecksummed(Blake3Checksummed<SectorMetadata>);
+
+impl From<SectorMetadata> for SectorMetadataChecksummed {
+    #[inline]
+    fn from(value: SectorMetadata) -> Self {
+        Self(Blake3Checksummed(value))
+    }
+}
+
+impl Deref for SectorMetadataChecksummed {
+    type Target = SectorMetadata;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.0 .0
+    }
+}
+
+impl DerefMut for SectorMetadataChecksummed {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0 .0
+    }
+}
+
+impl SectorMetadataChecksummed {
+    /// Size of encoded checksummed sector metadata.
     ///
     /// For sector plot size use [`sector_size()`].
     #[inline]
     pub fn encoded_size() -> usize {
-        let default = SectorMetadata {
+        let default = SectorMetadataChecksummed::from(SectorMetadata {
             sector_index: 0,
             pieces_in_sector: 0,
             // TODO: Should have been just `::new()`, but https://github.com/rust-lang/rust/issues/53827
             // SAFETY: Data structure filled with zeroes is a valid invariant
             s_bucket_sizes: unsafe { Box::new_zeroed().assume_init() },
-            history_size: HistorySize::from(NonZeroU64::new(1).expect("1 is not 0; qed")),
-        };
+            history_size: HistorySize::from(SegmentIndex::ZERO),
+        });
 
         default.encoded_size()
     }

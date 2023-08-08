@@ -1,6 +1,8 @@
 use crate::auditing::ChunkCandidate;
 use crate::reading::{read_record_metadata, read_sector_record_chunks, ReadingError};
-use crate::sector::{SectorContentsMap, SectorContentsMapFromBytesError, SectorMetadata};
+use crate::sector::{
+    SectorContentsMap, SectorContentsMapFromBytesError, SectorMetadataChecksummed,
+};
 use std::collections::VecDeque;
 use subspace_core_primitives::crypto::kzg::{Commitment, Kzg, Witness};
 use subspace_core_primitives::crypto::Scalar;
@@ -72,7 +74,7 @@ pub struct SolutionCandidates<'a> {
     sector_id: SectorId,
     s_bucket: SBucket,
     sector: &'a [u8],
-    sector_metadata: &'a SectorMetadata,
+    sector_metadata: &'a SectorMetadataChecksummed,
     chunk_candidates: VecDeque<ChunkCandidate>,
 }
 
@@ -83,7 +85,7 @@ impl<'a> SolutionCandidates<'a> {
         sector_id: SectorId,
         s_bucket: SBucket,
         sector: &'a [u8],
-        sector_metadata: &'a SectorMetadata,
+        sector_metadata: &'a SectorMetadataChecksummed,
         chunk_candidates: VecDeque<ChunkCandidate>,
     ) -> Self {
         Self {
@@ -158,7 +160,7 @@ where
     sector_index: SectorIndex,
     sector_id: SectorId,
     s_bucket: SBucket,
-    sector_metadata: &'a SectorMetadata,
+    sector_metadata: &'a SectorMetadataChecksummed,
     s_bucket_offsets: Box<[u32; Record::NUM_S_BUCKETS]>,
     kzg: &'a Kzg,
     erasure_coding: &'a ErasureCoding,
@@ -349,7 +351,7 @@ where
         sector_id: SectorId,
         s_bucket: SBucket,
         sector: &'a [u8],
-        sector_metadata: &'a SectorMetadata,
+        sector_metadata: &'a SectorMetadataChecksummed,
         kzg: &'a Kzg,
         erasure_coding: &'a ErasureCoding,
         chunk_candidates: VecDeque<ChunkCandidate>,

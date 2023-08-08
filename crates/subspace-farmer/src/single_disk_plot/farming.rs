@@ -12,7 +12,7 @@ use subspace_core_primitives::{PublicKey, SectorIndex, Solution};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector;
 use subspace_farmer_components::proving;
-use subspace_farmer_components::sector::SectorMetadata;
+use subspace_farmer_components::sector::SectorMetadataChecksummed;
 use subspace_proof_of_space::Table;
 use subspace_rpc_primitives::{SlotInfo, SolutionResponse};
 use thiserror::Error;
@@ -72,7 +72,7 @@ pub(super) async fn farming<NC, PosTable>(
     node_client: NC,
     sector_size: usize,
     plot_mmap: Mmap,
-    sectors_metadata: Arc<RwLock<Vec<SectorMetadata>>>,
+    sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
     kzg: Kzg,
     erasure_coding: ErasureCoding,
     handlers: Arc<Handlers>,

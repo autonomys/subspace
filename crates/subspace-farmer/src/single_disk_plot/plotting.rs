@@ -27,7 +27,7 @@ use subspace_farmer_components::plotting;
 use subspace_farmer_components::plotting::{
     plot_sector, PieceGetter, PieceGetterRetryPolicy, PlottedSector,
 };
-use subspace_farmer_components::sector::SectorMetadata;
+use subspace_farmer_components::sector::SectorMetadataChecksummed;
 use subspace_proof_of_space::Table;
 use thiserror::Error;
 use tracing::{debug, info, trace, warn};
@@ -88,7 +88,7 @@ pub(super) async fn plotting<NC, PG, PosTable>(
     mut metadata_header_mmap: MmapMut,
     plot_file: Arc<File>,
     metadata_file: File,
-    sectors_metadata: Arc<RwLock<Vec<SectorMetadata>>>,
+    sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
     piece_getter: PG,
     kzg: Kzg,
     erasure_coding: ErasureCoding,
@@ -244,7 +244,7 @@ pub(super) async fn plotting_scheduler<NC>(
     last_archived_segment_index: SegmentIndex,
     min_sector_lifetime: HistorySize,
     node_client: NC,
-    sectors_metadata: Arc<RwLock<Vec<SectorMetadata>>>,
+    sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
     sectors_to_plot_sender: mpsc::Sender<(SectorIndex, oneshot::Sender<()>)>,
 ) -> Result<(), BackgroundTaskError>
 where
@@ -424,7 +424,7 @@ async fn send_plotting_notifications<NC>(
     target_sector_count: SectorIndex,
     min_sector_lifetime: HistorySize,
     node_client: &NC,
-    sectors_metadata: Arc<RwLock<Vec<SectorMetadata>>>,
+    sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
     last_archived_segment: &Atomic<SegmentHeader>,
     mut archived_segments_receiver: mpsc::Receiver<()>,
     mut sectors_to_plot_sender: mpsc::Sender<(SectorIndex, oneshot::Sender<()>)>,

@@ -39,7 +39,7 @@ use subspace_core_primitives::{PieceOffset, PublicKey, SectorId, SectorIndex};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::file_ext::FileExt;
 use subspace_farmer_components::plotting::{PieceGetter, PlottedSector};
-use subspace_farmer_components::sector::{sector_size, SectorMetadata};
+use subspace_farmer_components::sector::{sector_size, SectorMetadataChecksummed};
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::Table;
 use subspace_rpc_primitives::{FarmerAppInfo, SolutionResponse};
@@ -402,7 +402,7 @@ pub struct SingleDiskPlot {
     farmer_protocol_info: FarmerProtocolInfo,
     single_disk_plot_info: SingleDiskPlotInfo,
     /// Metadata of all sectors plotted so far
-    sectors_metadata: Arc<RwLock<Vec<SectorMetadata>>>,
+    sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
     pieces_in_sector: u16,
     span: Span,
     tasks: FuturesUnordered<BackgroundTask>,
@@ -545,7 +545,7 @@ impl SingleDiskPlot {
 
         let pieces_in_sector = single_disk_plot_info.pieces_in_sector();
         let sector_size = sector_size(max_pieces_in_sector);
-        let sector_metadata_size = SectorMetadata::encoded_size();
+        let sector_metadata_size = SectorMetadataChecksummed::encoded_size();
         // TODO: Split allocated space into more components once all components are deterministic
         //  to correctly size everything:
         //  * plot info
@@ -633,14 +633,14 @@ impl SingleDiskPlot {
             };
 
             let mut sectors_metadata =
-                Vec::<SectorMetadata>::with_capacity(usize::from(target_sector_count));
+                Vec::<SectorMetadataChecksummed>::with_capacity(usize::from(target_sector_count));
 
             for mut sector_metadata_bytes in metadata_mmap
                 .chunks_exact(sector_metadata_size)
                 .take(metadata_header.sector_count as usize)
             {
                 sectors_metadata.push(
-                    SectorMetadata::decode(&mut sector_metadata_bytes)
+                    SectorMetadataChecksummed::decode(&mut sector_metadata_bytes)
                         .map_err(SingleDiskPlotError::FailedToDecodeSectorMetadata)?,
                 );
             }

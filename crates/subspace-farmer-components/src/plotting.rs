@@ -1,6 +1,6 @@
 use crate::sector::{
     sector_record_chunks_size, sector_size, RawSector, RecordMetadata, SectorContentsMap,
-    SectorMetadata,
+    SectorMetadata, SectorMetadataChecksummed,
 };
 use crate::segment_reconstruction::recover_missing_piece;
 use crate::FarmerProtocolInfo;
@@ -101,7 +101,7 @@ pub struct PlottedSector {
     /// Sector index
     pub sector_index: SectorIndex,
     /// Sector metadata
-    pub sector_metadata: SectorMetadata,
+    pub sector_metadata: SectorMetadataChecksummed,
     /// Indexes of pieces that were plotted
     pub piece_indexes: Vec<PieceIndex>,
 }
@@ -185,10 +185,10 @@ where
         });
     }
 
-    if sector_metadata_output.len() < SectorMetadata::encoded_size() {
+    if sector_metadata_output.len() < SectorMetadataChecksummed::encoded_size() {
         return Err(PlottingError::BadSectorMetadataOutputSize {
             provided: sector_metadata_output.len(),
-            expected: SectorMetadata::encoded_size(),
+            expected: SectorMetadataChecksummed::encoded_size(),
         });
     }
 
@@ -392,13 +392,12 @@ where
         }
     }
 
-    // TODO: Write commitments and witnesses
-    let sector_metadata = SectorMetadata {
+    let sector_metadata = SectorMetadataChecksummed::from(SectorMetadata {
         sector_index,
         pieces_in_sector,
         s_bucket_sizes: sector_contents_map.s_bucket_sizes(),
         history_size: farmer_protocol_info.history_size,
-    };
+    });
 
     sector_metadata_output.copy_from_slice(&sector_metadata.encode());
 

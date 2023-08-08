@@ -1,6 +1,6 @@
 use crate::sector::{
     sector_record_chunks_size, sector_size, RecordMetadata, SectorContentsMap,
-    SectorContentsMapFromBytesError, SectorMetadata,
+    SectorContentsMapFromBytesError, SectorMetadataChecksummed,
 };
 use parity_scale_codec::Decode;
 use rayon::prelude::*;
@@ -249,7 +249,7 @@ pub(crate) fn read_record_metadata(
 pub fn read_piece<PosTable>(
     piece_offset: PieceOffset,
     sector_id: &SectorId,
-    sector_metadata: &SectorMetadata,
+    sector_metadata: &SectorMetadataChecksummed,
     sector: &[u8],
     erasure_coding: &ErasureCoding,
     table_generator: &mut PosTable::Generator,
