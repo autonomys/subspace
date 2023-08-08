@@ -15,7 +15,7 @@ use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
 use tracing::{debug, trace};
 
-use crate::utils::convert_multiaddresses;
+use crate::utils::strip_peer_id;
 
 /// `Behaviour` controls and maintains the state of connections to a predefined set of peers.
 ///
@@ -108,7 +108,7 @@ impl Behaviour {
             "Reserved peers protocol initialization...."
         );
 
-        let peer_addresses = convert_multiaddresses(config.reserved_peers);
+        let peer_addresses = strip_peer_id(config.reserved_peers);
 
         let reserved_peers_state = peer_addresses
             .into_iter()

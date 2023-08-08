@@ -22,6 +22,7 @@ use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
 use sc_cli::{ChainSpec, CliConfiguration, SubstrateCli};
 use sc_consensus_slots::SlotProportion;
+use sc_proof_of_time::PotComponents;
 use sc_service::PartialComponents;
 use sc_storage_monitor::StorageMonitorService;
 use sp_core::crypto::Ss58AddressFormat;
@@ -105,7 +106,7 @@ fn main() -> Result<(), Error> {
                     task_manager,
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
-                    &config, None,
+                    &config, None, None,
                 )?;
                 Ok((
                     cmd.run(client, import_queue).map_err(Error::SubstrateCli),
@@ -122,7 +123,7 @@ fn main() -> Result<(), Error> {
                     task_manager,
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
-                    &config, None,
+                    &config, None, None,
                 )?;
                 Ok((
                     cmd.run(client, config.database)
@@ -140,7 +141,7 @@ fn main() -> Result<(), Error> {
                     task_manager,
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
-                    &config, None,
+                    &config, None, None,
                 )?;
                 Ok((
                     cmd.run(client, config.chain_spec)
@@ -159,7 +160,7 @@ fn main() -> Result<(), Error> {
                     task_manager,
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
-                    &config, None,
+                    &config, None, None,
                 )?;
                 Ok((
                     cmd.run(client, import_queue).map_err(Error::SubstrateCli),
@@ -217,7 +218,7 @@ fn main() -> Result<(), Error> {
                     task_manager,
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
-                    &config, None,
+                    &config, None, None,
                 )?;
                 Ok((
                     cmd.run(client, backend, None).map_err(Error::SubstrateCli),
@@ -253,7 +254,7 @@ fn main() -> Result<(), Error> {
                             RuntimeApi,
                             ExecutorDispatch,
                         >(
-                            &config, None
+                            &config, None, None
                         )?;
 
                         cmd.run(client)
@@ -262,7 +263,7 @@ fn main() -> Result<(), Error> {
                         let PartialComponents {
                             client, backend, ..
                         } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
-                            &config, None,
+                            &config, None, None,
                         )?;
                         let db = backend.expose_db();
                         let storage = backend.expose_storage();
@@ -347,6 +348,11 @@ fn main() -> Result<(), Error> {
             runner.run_node_until_exit(|consensus_chain_config| async move {
                 let tokio_handle = consensus_chain_config.tokio_handle.clone();
                 let database_source = consensus_chain_config.database.clone();
+                let pot_components = if cli.pot_role.is_pot_enabled() {
+                    Some(PotComponents::new(cli.pot_role.is_time_keeper()))
+                } else {
+                    None
+                };
 
                 let consensus_chain_node = {
                     let span = sc_tracing::tracing::info_span!(
@@ -403,7 +409,9 @@ fn main() -> Result<(), Error> {
                             listen_on: cli.dsn_listen_on,
                             bootstrap_nodes: dsn_bootstrap_nodes,
                             reserved_peers: cli.dsn_reserved_peers,
-                            allow_non_global_addresses_in_dht: cli.dsn_enable_private_ips,
+                            // Override enabling private IPs with --dev
+                            allow_non_global_addresses_in_dht: cli.dsn_enable_private_ips
+                                || cli.run.shared_params.dev,
                             max_in_connections: cli.dsn_in_connections,
                             max_out_connections: cli.dsn_out_connections,
                             max_pending_in_connections: cli.dsn_pending_in_connections,
@@ -434,6 +442,7 @@ fn main() -> Result<(), Error> {
                         subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
                             &consensus_chain_config,
                             Some(&construct_domain_genesis_block_builder),
+                            pot_components,
                         )
                         .map_err(|error| {
                             sc_service::Error::Other(format!(

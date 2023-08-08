@@ -223,6 +223,9 @@ struct Command {
     /// will be deleted at the end of the process.
     #[arg(long, conflicts_with = "farm")]
     tmp: Option<ByteSize>,
+    /// Enables the "development mode". Toggles flags like `--enable-private-ips`
+    #[arg(long)]
+    dev: bool,
 }
 
 #[tokio::main]
@@ -274,12 +277,16 @@ async fn main() -> anyhow::Result<()> {
 
             info!("Done");
         }
-        Subcommand::Farm(farming_args) => {
+        Subcommand::Farm(mut farming_args) => {
             for farm in &disk_farms {
                 if !farm.directory.exists() {
                     panic!("Directory {} doesn't exist", farm.directory.display());
                 }
             }
+
+            // Override the `--enable_private_ips` flag with `--dev`
+            farming_args.dsn.enable_private_ips =
+                farming_args.dsn.enable_private_ips || command.dev;
 
             commands::farm_multi_disk::<PosTable>(disk_farms, farming_args).await?;
         }

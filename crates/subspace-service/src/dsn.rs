@@ -3,11 +3,13 @@ pub mod import_blocks;
 use crate::piece_cache::PieceCache;
 use sc_client_api::AuxStore;
 use sc_consensus_subspace::SegmentHeadersStore;
+use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::{SegmentHeader, SegmentIndex};
 use subspace_networking::libp2p::{identity, Multiaddr};
+use subspace_networking::utils::strip_peer_id;
 use subspace_networking::{
     CreationError, NetworkParametersPersistenceError, NetworkingParametersManager, Node,
     NodeRunner, PeerInfoProvider, PieceByHashRequestHandler, PieceByHashResponse,
@@ -90,7 +92,14 @@ where
             }
             let file_path = path.join("known_addresses.bin");
 
-            NetworkingParametersManager::new(&file_path).map(NetworkingParametersManager::boxed)
+            NetworkingParametersManager::new(
+                &file_path,
+                strip_peer_id(dsn_config.bootstrap_nodes.clone())
+                    .into_iter()
+                    .map(|(peer_id, _)| peer_id)
+                    .collect::<HashSet<_>>(),
+            )
+            .map(NetworkingParametersManager::boxed)
         })
         .transpose()?;
 
