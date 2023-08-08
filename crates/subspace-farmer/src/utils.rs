@@ -1,7 +1,6 @@
 pub mod archival_storage_info;
 pub mod archival_storage_pieces;
 pub mod farmer_piece_getter;
-pub mod farmer_provider_storage;
 pub mod piece_validator;
 pub mod readers_and_pieces;
 #[cfg(test)]

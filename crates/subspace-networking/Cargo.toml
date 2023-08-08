@@ -22,7 +22,6 @@ anyhow = "1.0.71"
 async-trait = "0.1.68"
 backoff = { version = "0.4.0", features = ["futures", "tokio"] }
 bytes = "1.4.0"
-bytesize = "1.2.0"
 chrono = {version = "0.4.26", features = ["clock", "serde", "std",]}
 clap = { version = "4.2.1", features = ["color", "derive"] }
 derive_more = "0.99.17"

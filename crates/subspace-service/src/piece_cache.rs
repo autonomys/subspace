@@ -4,18 +4,16 @@ mod tests;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use sc_client_api::backend::AuxStore;
-use std::borrow::Cow;
 use std::collections::BTreeSet;
 use std::error::Error;
-use std::iter;
 use std::sync::Arc;
 use subspace_core_primitives::{FlatPieces, Piece, PieceIndex, PieceIndexHash};
 use subspace_networking::libp2p::kad::record::Key;
 use subspace_networking::libp2p::kad::ProviderRecord;
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::ToMultihash;
-use subspace_networking::ProviderStorage;
-use tracing::{info, trace};
+use subspace_networking::LocalRecordProvider;
+use tracing::info;
 
 const LOCAL_PROVIDED_KEYS: &[u8] = b"LOCAL_PROVIDED_KEYS";
 
@@ -227,50 +225,25 @@ impl TryFrom<Vec<u8>> for PieceIndexKeyCollection {
     }
 }
 
-impl<AS> ProviderStorage for PieceCache<AS>
+impl<AS> LocalRecordProvider for PieceCache<AS>
 where
     AS: AuxStore,
 {
-    type ProvidedIter<'a> = impl Iterator<Item = Cow<'a, ProviderRecord>>
-        where
-            Self:'a;
-
-    fn add_provider(
-        &self,
-        rec: ProviderRecord,
-    ) -> subspace_networking::libp2p::kad::store::Result<()> {
-        trace!(key=?rec.key, "Attempted to put a provider record to the aux piece record store.");
-
-        Ok(())
-    }
-
-    fn providers(&self, key: &Key) -> Vec<ProviderRecord> {
+    fn record(&self, key: &Key) -> Option<ProviderRecord> {
         if self
             .local_provided_keys
             .lock()
             .piece_index_keys
             .contains(&key.to_vec())
         {
-            return vec![ProviderRecord {
+            Some(ProviderRecord {
                 key: key.clone(),
                 provider: self.local_peer_id,
                 expires: None,
                 addresses: vec![], // Kademlia adds addresses for local providers
-            }];
+            })
+        } else {
+            None
         }
-
-        Vec::new()
-    }
-
-    fn provided(&self) -> Self::ProvidedIter<'_> {
-        iter::empty()
-    }
-
-    fn remove_provider(&self, key: &Key, peer_id: &PeerId) {
-        trace!(
-            ?key,
-            %peer_id,
-            "Attempted to remove a provider record from the aux piece record store."
-        );
     }
 }

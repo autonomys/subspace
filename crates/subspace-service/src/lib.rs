@@ -58,13 +58,14 @@ use sc_consensus_subspace::{
 };
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
+use sc_proof_of_time::{pot_gossip_peers_set_config, PotClient, PotComponents, TimeKeeper};
 use sc_service::error::Error as ServiceError;
 use sc_service::{Configuration, NetworkStarter, PartialComponents, SpawnTasksParams, TaskManager};
 use sc_subspace_block_relay::{build_consensus_relay, NetworkWrapper};
 use sc_telemetry::{Telemetry, TelemetryWorker};
 use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi, TransactionFor};
 use sp_block_builder::BlockBuilder;
-use sp_blockchain::HeaderMetadata;
+use sp_blockchain::{HeaderMetadata, Info};
 use sp_consensus::Error as ConsensusError;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::{FarmerPublicKey, KzgExtension, PosExtension, SubspaceApi};
@@ -235,6 +236,7 @@ pub fn new_partial<PosTable, RuntimeApi, ExecutorDispatch>(
             NativeElseWasmExecutor<ExecutorDispatch>,
         ) -> Arc<dyn GenerateGenesisStateRoot>,
     >,
+    pot_components: Option<PotComponents>,
 ) -> Result<
     PartialComponents<
         FullClient<RuntimeApi, ExecutorDispatch>,
@@ -259,6 +261,7 @@ pub fn new_partial<PosTable, RuntimeApi, ExecutorDispatch>(
             SubspaceLink<Block>,
             SegmentHeadersStore<FullClient<RuntimeApi, ExecutorDispatch>>,
             Option<Telemetry>,
+            Option<PotComponents>,
         ),
     >,
     ServiceError,
@@ -399,6 +402,9 @@ where
             }
         },
         segment_headers_store.clone(),
+        pot_components
+            .as_ref()
+            .map(|component| component.consensus_state()),
     )?;
 
     let slot_duration = subspace_link.slot_duration();
@@ -432,6 +438,7 @@ where
             subspace_link,
             segment_headers_store,
             telemetry,
+            pot_components,
         ),
     })
 }
@@ -512,6 +519,7 @@ pub async fn new_full<PosTable, RuntimeApi, ExecutorDispatch, I>(
             SubspaceLink<Block>,
             SegmentHeadersStore<FullClient<RuntimeApi, ExecutorDispatch>>,
             Option<Telemetry>,
+            Option<PotComponents>,
         ),
     >,
     enable_rpc_extensions: bool,
@@ -552,7 +560,7 @@ where
         keystore_container,
         select_chain,
         transaction_pool,
-        other: (block_import, subspace_link, segment_headers_store, mut telemetry),
+        other: (block_import, subspace_link, segment_headers_store, mut telemetry, pot_components),
     } = partial_components;
 
     let (node, bootstrap_nodes) = match config.subspace_networking.clone() {
@@ -695,17 +703,6 @@ where
         }
     };
 
-    let subspace_archiver = sc_consensus_subspace::create_subspace_archiver(
-        segment_headers_store.clone(),
-        &subspace_link,
-        client.clone(),
-        telemetry.as_ref().map(|telemetry| telemetry.handle()),
-    );
-
-    task_manager
-        .spawn_essential_handle()
-        .spawn_essential_blocking("subspace-archiver", None, Box::pin(subspace_archiver));
-
     // TODO: This prevents SIGINT from working properly
     if config.sync_from_dsn {
         info!("⚙️ Starting initial sync from DSN, this might take some time");
@@ -762,6 +759,7 @@ where
     };
     let mut net_config = sc_network::config::FullNetworkConfiguration::new(&config.network);
     net_config.add_notification_protocol(cdm_gossip_peers_set_config());
+    net_config.add_notification_protocol(pot_gossip_peers_set_config());
     let sync_mode = Arc::clone(&net_config.network_config.sync_mode);
     let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
         sc_service::build_network(sc_service::BuildNetworkParams {
@@ -775,6 +773,21 @@ where
             warp_sync_params: None,
             block_relay,
         })?;
+
+    let subspace_sync_oracle =
+        SubspaceSyncOracle::new(config.force_authoring, sync_service.clone());
+
+    let subspace_archiver = sc_consensus_subspace::create_subspace_archiver(
+        segment_headers_store.clone(),
+        &subspace_link,
+        client.clone(),
+        subspace_sync_oracle.clone(),
+        telemetry.as_ref().map(|telemetry| telemetry.handle()),
+    );
+
+    task_manager
+        .spawn_essential_handle()
+        .spawn_essential_blocking("subspace-archiver", None, Box::pin(subspace_archiver));
 
     if config.enable_subspace_block_relay {
         network_wrapper.set(network_service.clone());
@@ -841,10 +854,50 @@ where
     let block_importing_notification_stream = subspace_link.block_importing_notification_stream();
     let archived_segment_notification_stream = subspace_link.archived_segment_notification_stream();
 
-    let subspace_sync_oracle =
-        SubspaceSyncOracle::new(config.force_authoring, sync_service.clone());
-
     if config.role.is_authority() || config.force_new_slot_notifications {
+        let client_cl = client.clone();
+        let chain_info_fn: Arc<dyn Fn() -> Info<Block> + Send + Sync> =
+            Arc::new(move || client_cl.chain_info());
+        let pot_consensus = pot_components
+            .as_ref()
+            .map(|component| component.consensus_state());
+        if let Some(components) = pot_components {
+            if components.is_time_keeper() {
+                let time_keeper = TimeKeeper::<Block, _, _>::new(
+                    components,
+                    client.clone(),
+                    sync_service.clone(),
+                    network_service.clone(),
+                    sync_service.clone(),
+                    chain_info_fn,
+                );
+
+                task_manager.spawn_essential_handle().spawn_blocking(
+                    "subspace-proof-of-time-time-keeper",
+                    Some("pot"),
+                    async move {
+                        time_keeper.run().await;
+                    },
+                );
+            } else {
+                let pot_client = PotClient::<Block, _, _>::new(
+                    components,
+                    client.clone(),
+                    sync_service.clone(),
+                    network_service.clone(),
+                    sync_service.clone(),
+                    chain_info_fn,
+                );
+                task_manager.spawn_essential_handle().spawn_blocking(
+                    "subspace-proof-of-time-client",
+                    Some("pot"),
+                    async move {
+                        pot_client.run().await;
+                    },
+                );
+            }
+        }
+
         let proposer_factory = ProposerFactory::new(
             task_manager.spawn_handle(),
             client.clone(),
@@ -895,6 +948,7 @@ where
             block_proposal_slot_portion,
             max_block_proposal_slot_portion: None,
             telemetry: None,
+            proof_of_time: pot_consensus,
         };
 
         let subspace =

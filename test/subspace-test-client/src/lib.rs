@@ -228,7 +228,7 @@ where
 
     let genesis_block = client.block(client.info().genesis_hash).unwrap().unwrap();
     let archived_segment = archiver
-        .add_block(genesis_block.encode(), BlockObjectMapping::default())
+        .add_block(genesis_block.encode(), BlockObjectMapping::default(), true)
         .into_iter()
         .next()
         .expect("First block is always producing one segment; qed");

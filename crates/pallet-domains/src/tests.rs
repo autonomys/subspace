@@ -163,6 +163,7 @@ parameter_types! {
     pub const StakeWithdrawalLockingPeriod: BlockNumber = 5;
     pub const StakeEpochDuration: BlockNumber = 5;
     pub TreasuryAccount: u64 = PalletId(*b"treasury").into_account_truncating();
+    pub const BlockReward: Balance = 10 * SSC;
 }
 
 impl pallet_domains::Config for Test {
@@ -187,6 +188,7 @@ impl pallet_domains::Config for Test {
     type StakeWithdrawalLockingPeriod = StakeWithdrawalLockingPeriod;
     type StakeEpochDuration = StakeEpochDuration;
     type TreasuryAccount = TreasuryAccount;
+    type DomainBlockReward = BlockReward;
 }
 
 pub(crate) fn new_test_ext() -> sp_io::TestExternalities {

@@ -142,31 +142,44 @@ where
         let best_hash = self.client.info().best_hash;
         let best_number = self.client.info().best_number;
 
-        let consensus_block_hash_for_best_domain_hash = if best_number.is_zero() {
-            self.consensus_client
-                .hash(self.domain_created_at)?
-                .ok_or_else(|| {
-                    sp_blockchain::Error::Backend(format!(
-                        "Consensus hash for block #{} not found",
-                        self.domain_created_at
-                    ))
-                })?
-        } else {
-            crate::aux_schema::latest_consensus_block_hash_for(&*self.backend, &best_hash)?
-                .ok_or_else(|| {
-                    sp_blockchain::Error::Backend(format!(
+        // When there are empty consensus blocks multiple consensus block could map to the same
+        // domain block, thus use `latest_consensus_block_hash_for` to find the latest consensus
+        // block that map to the best domain block.
+        let consensus_block_hash_for_best_domain_hash =
+            match crate::aux_schema::latest_consensus_block_hash_for(&*self.backend, &best_hash)? {
+                // If the auxiliary storage is empty and the best domain block is the genesis block
+                // this consensus block could be the first block being processed thus just use the
+                // consensus block at `domain_created_at` directly, otherwise the auxiliary storage
+                // is expected to be non-empty thus return an error.
+                //
+                // NOTE: it is important to check the auxiliary storage first before checking if it
+                // is the genesis block otherwise we may repeatedly processing the empty consensus
+                // block, see https://github.com/subspace/subspace/issues/1763 for more detail.
+                None if best_number.is_zero() => self
+                    .consensus_client
+                    .hash(self.domain_created_at)?
+                    .ok_or_else(|| {
+                        sp_blockchain::Error::Backend(format!(
+                            "Consensus hash for block #{} not found",
+                            self.domain_created_at
+                        ))
+                    })?,
+                None => {
+                    return Err(sp_blockchain::Error::Backend(format!(
                         "Consensus hash for domain hash #{best_number},{best_hash} not found"
-                    ))
-                })?
-        };
+                    )))
+                }
+                Some(b) => b,
+            };
 
         let consensus_from = consensus_block_hash_for_best_domain_hash;
         let consensus_to = consensus_block_hash;
 
         if consensus_from == consensus_to {
-            return Err(sp_blockchain::Error::Application(Box::from(
-                "Consensus block {consensus_block_hash:?} has already been processed.",
-            )));
+            return Err(sp_blockchain::Error::Application(
+                format!("Consensus block {consensus_block_hash:?} has already been processed.",)
+                    .into(),
+            ));
         }
 
         let route =

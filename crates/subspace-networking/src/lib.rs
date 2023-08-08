@@ -41,10 +41,7 @@ pub use crate::peer_info::{
     Config as PeerInfoConfig, CuckooFilterDTO, CuckooFilterProvider, Notification,
     NotificationHandler, PeerInfo, PeerInfoProvider,
 };
-pub use behavior::provider_storage::{
-    MemoryProviderStorage, ParityDbProviderStorage, ProviderStorage, VoidProviderStorage,
-};
-pub use create::{create, peer_id, Config, CreationError};
+pub use create::{create, peer_id, Config, CreationError, LocalRecordProvider};
 pub use libp2p;
 pub use request_handlers::generic_request_handler::{GenericRequest, GenericRequestHandler};
 pub use request_handlers::object_mappings::{
