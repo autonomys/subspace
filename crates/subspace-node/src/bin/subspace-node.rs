@@ -398,9 +398,7 @@ fn main() -> Result<(), Error> {
                         DsnConfig {
                             keypair,
                             base_path: cli.run.base_path()?.map(|base_path| {
-                                base_path
-                                    .config_dir(consensus_chain_config.chain_spec.id())
-                                    .join("dsn")
+                                base_path.config_dir(consensus_chain_config.chain_spec.id())
                             }),
                             listen_on: cli.dsn_listen_on,
                             bootstrap_nodes: dsn_bootstrap_nodes,

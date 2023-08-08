@@ -1,41 +1,161 @@
-use crate::utils::{CollectionBatcher, PeerAddress};
+use crate::utils::{AsyncJoinOnDrop, CollectionBatcher, PeerAddress};
 use async_trait::async_trait;
-use chrono::{DateTime, Utc};
+use fs2::FileExt;
 use futures::future::Fuse;
 use futures::FutureExt;
 use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId};
 use lru::LruCache;
-use parity_db::{Db, Options};
-use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use std::hash::Hash;
+use memmap2::{MmapMut, MmapOptions};
+use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
+use parking_lot::Mutex;
+use std::fs::OpenOptions;
+use std::io::{Read, Seek, SeekFrom};
 use std::num::NonZeroUsize;
-use std::ops::Add;
 use std::path::Path;
 use std::pin::Pin;
+use std::str::FromStr;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
+use std::{io, mem};
+use subspace_core_primitives::crypto::blake3_hash;
+use subspace_core_primitives::Blake3Hash;
 use thiserror::Error;
 use tokio::time::{sleep, Sleep};
-use tracing::{debug, trace};
-
-/// Parity DB error type alias.
-pub type ParityDbError = parity_db::Error;
+use tracing::{debug, error, trace, warn};
 
 // Defines optional time for address dial failure
-type FailureTime = Option<DateTime<Utc>>;
+type FailureTime = Option<SystemTime>;
 
 // Size of the LRU cache for peers.
 const PEER_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(100).expect("Not zero; qed");
-// Size of the LRU cache for addresses.
+// Size of the LRU cache for addresses of a single peer ID.
 const ADDRESSES_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(30).expect("Not zero; qed");
 // Pause duration between network parameters save.
 const DATA_FLUSH_DURATION_SECS: u64 = 5;
 // Defines a batch size for a combined collection for known peers addresses and boostrap addresses.
 pub(crate) const PEERS_ADDRESSES_BATCH_SIZE: usize = 30;
 // Defines an expiration period for the peer marked for the removal.
-const REMOVE_KNOWN_PEERS_GRACE_PERIOD_SECS: i64 = 86400; // 1 DAY
+const REMOVE_KNOWN_PEERS_GRACE_PERIOD_SECS: Duration = Duration::from_secs(3600 * 24);
+
+#[derive(Debug, Encode, Decode)]
+struct EncodableKnownPeerAddress {
+    multiaddr: Vec<u8>,
+    /// Failure time as Unix timestamp in seconds
+    failure_time: Option<u64>,
+}
+
+#[derive(Debug, Encode, Decode)]
+struct EncodableKnownPeers {
+    timestamp: u64,
+    // Each entry is a tuple of peer ID + list of multiaddresses with corresponding failure time
+    known_peers: Vec<(Vec<u8>, Vec<EncodableKnownPeerAddress>)>,
+}
+
+impl EncodableKnownPeers {
+    fn into_cache(self) -> LruCache<PeerId, LruCache<Multiaddr, FailureTime>> {
+        let mut peers_cache = LruCache::new(PEER_CACHE_SIZE);
+
+        'peers: for (peer_id, addresses) in self.known_peers {
+            let mut peer_cache = LruCache::<Multiaddr, FailureTime>::new(ADDRESSES_CACHE_SIZE);
+
+            let peer_id = match PeerId::from_bytes(&peer_id) {
+                Ok(peer_id) => peer_id,
+                Err(error) => {
+                    debug!(%error, "Failed to decode known peer ID, skipping peer entry");
+                    continue;
+                }
+            };
+            for address in addresses {
+                let multiaddr = match Multiaddr::try_from(address.multiaddr) {
+                    Ok(multiaddr) => multiaddr,
+                    Err(error) => {
+                        debug!(
+                            %error,
+                            "Failed to decode known peer multiaddress, skipping peer entry"
+                        );
+                        continue 'peers;
+                    }
+                };
+
+                peer_cache.push(
+                    multiaddr,
+                    address.failure_time.map(|failure_time| {
+                        SystemTime::UNIX_EPOCH + Duration::from_secs(failure_time)
+                    }),
+                );
+            }
+
+            peers_cache.push(peer_id, peer_cache);
+        }
+
+        peers_cache
+    }
+
+    fn from_cache(cache: &LruCache<PeerId, LruCache<Multiaddr, FailureTime>>) -> Self {
+        let single_peer_encoded_address_size =
+            NetworkingParametersManager::single_peer_encoded_address_size();
+        Self {
+            timestamp: SystemTime::now()
+                .duration_since(SystemTime::UNIX_EPOCH)
+                .expect("Never before Unix epoch; qed")
+                .as_secs(),
+            known_peers: cache
+                .iter()
+                .map(|(peer_id, addresses)| {
+                    (
+                        peer_id.to_bytes(),
+                        addresses
+                            .iter()
+                            .filter_map(|(multiaddr, failure_time)| {
+                                let multiaddr_bytes = multiaddr.to_vec();
+
+                                if multiaddr_bytes.encoded_size() > single_peer_encoded_address_size
+                                {
+                                    // Skip unexpectedly large multiaddresses
+                                    return None;
+                                }
+
+                                Some(EncodableKnownPeerAddress {
+                                    multiaddr: multiaddr_bytes,
+                                    failure_time: failure_time.map(|failure_time| {
+                                        failure_time
+                                            .duration_since(SystemTime::UNIX_EPOCH)
+                                            .expect("Never before Unix epoch; qed")
+                                            .as_secs()
+                                    }),
+                                })
+                            })
+                            .collect(),
+                    )
+                })
+                .collect(),
+        }
+    }
+}
+
+/// A/b slots with known peers where we write serialized known peers in one after another
+struct KnownPeersSlots {
+    a: MmapMut,
+    b: MmapMut,
+}
+
+impl KnownPeersSlots {
+    fn write_to_inactive_slot(&mut self, encodable_known_peers: &EncodableKnownPeers) {
+        let known_peers_bytes = encodable_known_peers.encode();
+        let (encoded_bytes, remaining_bytes) = self.a.split_at_mut(known_peers_bytes.len());
+        encoded_bytes.copy_from_slice(&known_peers_bytes);
+        // Write checksum
+        remaining_bytes[..mem::size_of::<Blake3Hash>()]
+            .copy_from_slice(&blake3_hash(&known_peers_bytes));
+        if let Err(error) = self.a.flush() {
+            warn!(%error, "Failed to flush known peers to disk");
+        }
+
+        // Swap slots such that we write into the opposite each time
+        mem::swap(&mut self.a, &mut self.b);
+    }
+}
 
 /// Defines operations with the networking parameters.
 #[async_trait]
@@ -85,20 +205,20 @@ impl NetworkingParametersRegistry for StubNetworkingParametersManager {
     }
 
     async fn run(&mut self) {
-        futures::future::pending().await // never resolves
+        // Never resolves
+        futures::future::pending().await
     }
 }
 
 /// Networking parameters persistence errors.
 #[derive(Debug, Error)]
 pub enum NetworkParametersPersistenceError {
-    /// Parity DB error.
-    #[error("DB error: {0}")]
-    Db(#[from] parity_db::Error),
-
-    /// Serialization error.
-    #[error("JSON serialization error: {0}")]
-    JsonSerialization(#[from] serde_json::Error),
+    /// I/O error.
+    #[error("I/O error: {0}")]
+    Io(#[from] io::Error),
+    /// Can't preallocate known peers file, probably not enough space on disk
+    #[error("Can't preallocate known peers file, probably not enough space on disk: {0}")]
+    CantPreallocateKnownPeersFile(io::Error),
 }
 
 /// Handles networking parameters. It manages network parameters set and its persistence.
@@ -109,50 +229,137 @@ pub struct NetworkingParametersManager {
     known_peers: LruCache<PeerId, LruCache<Multiaddr, FailureTime>>,
     // Period between networking parameters saves.
     networking_parameters_save_delay: Pin<Box<Fuse<Sleep>>>,
-    // Parity DB instance
-    db: Arc<Db>,
-    // Column ID to persist parameters
-    column_id: u8,
-    // Key to persistent parameters
-    object_id: &'static [u8],
+    /// Slots backed by file that store known peers
+    known_peers_slots: Arc<Mutex<KnownPeersSlots>>,
     // Provides batching capabilities for the address collection (it stores the last batch index)
     collection_batcher: CollectionBatcher<PeerAddress>,
+}
+
+impl Drop for NetworkingParametersManager {
+    fn drop(&mut self) {
+        if self.cache_need_saving {
+            self.known_peers_slots
+                .lock()
+                .write_to_inactive_slot(&EncodableKnownPeers::from_cache(&self.known_peers));
+        }
+    }
 }
 
 impl NetworkingParametersManager {
     /// Object constructor. It accepts `NetworkingParametersProvider` implementation as a parameter.
     /// On object creation it starts a job for networking parameters cache handling.
     pub fn new(path: &Path) -> Result<Self, NetworkParametersPersistenceError> {
-        let mut options = Options::with_columns(path, 1);
-        // We don't use stats
-        options.stats = false;
+        let mut file = OpenOptions::new()
+            .read(true)
+            .write(true)
+            .create(true)
+            .open(path)?;
 
-        let db = Db::open_or_create(&options)?;
-        let column_id = 0u8;
-        let object_id = b"global_networking_parameters_key";
+        let known_addresses_size = Self::known_addresses_size();
+        let file_size = Self::file_size();
+        // Try reading existing encoded known peers from file
+        let mut maybe_newest_known_addresses = None::<EncodableKnownPeers>;
 
-        // load known peers cache.
-        let cache = db
-            .get(column_id, object_id)?
-            .map(|data| {
-                let result = serde_json::from_slice::<NetworkingParameters>(&data)
-                    .map(|data| data.to_cache());
+        {
+            let mut file_contents = Vec::with_capacity(file_size);
+            file.read_to_end(&mut file_contents)?;
+            if !file_contents.is_empty() {
+                for known_addresses_bytes in file_contents.chunks_exact(file_contents.len() / 2) {
+                    let known_addresses =
+                        match EncodableKnownPeers::decode(&mut &*known_addresses_bytes) {
+                            Ok(known_addresses) => known_addresses,
+                            Err(error) => {
+                                debug!(%error, "Failed to decode encodable known peers");
+                                continue;
+                            }
+                        };
 
-                if result.is_ok() {
-                    debug!("Networking parameters loaded from DB");
+                    let (encoded_bytes, remaining_bytes) =
+                        known_addresses_bytes.split_at(known_addresses.encoded_size());
+                    if remaining_bytes.len() < mem::size_of::<Blake3Hash>() {
+                        debug!(
+                            remaining_bytes = %remaining_bytes.len(),
+                            "Not enough bytes to decode checksum, file was likely corrupted"
+                        );
+                        continue;
+                    }
+
+                    // Verify checksum
+                    let actual_hash = blake3_hash(encoded_bytes);
+                    let expected_hash = &remaining_bytes[..mem::size_of::<Blake3Hash>()];
+                    if actual_hash != expected_hash {
+                        debug!(
+                            encoded_bytes_len = %encoded_bytes.len(),
+                            ?actual_hash,
+                            ?expected_hash,
+                            "Hash doesn't match, possible disk corruption or file was just \
+                            created, ignoring"
+                        );
+                        continue;
+                    }
+
+                    match &mut maybe_newest_known_addresses {
+                        Some(newest_known_addresses) => {
+                            if newest_known_addresses.timestamp < known_addresses.timestamp {
+                                *newest_known_addresses = known_addresses;
+                            }
+                        }
+                        None => {
+                            maybe_newest_known_addresses.replace(known_addresses);
+                        }
+                    }
                 }
+            }
+        }
 
-                result
-            })
-            .unwrap_or_else(|| Ok(LruCache::new(PEER_CACHE_SIZE)))?;
+        // *2 because we have a/b parts of the file
+        let file_resized = if file.seek(SeekFrom::End(0))? != file_size as u64 {
+            // Allocating the whole file (`set_len` below can create a sparse file, which will cause
+            // writes to fail later)
+            file.allocate(file_size as u64)
+                .map_err(NetworkParametersPersistenceError::CantPreallocateKnownPeersFile)?;
+            // Truncating file (if necessary)
+            file.set_len(file_size as u64)?;
+            true
+        } else {
+            false
+        };
+
+        let mut a_mmap = unsafe {
+            MmapOptions::new()
+                .len(known_addresses_size)
+                .map_mut(&file)?
+        };
+        let mut b_mmap = unsafe {
+            MmapOptions::new()
+                .offset(known_addresses_size as u64)
+                .len(known_addresses_size)
+                .map_mut(&file)?
+        };
+
+        if file_resized {
+            // File might have been resized, write current known addresses into it
+            if let Some(newest_known_addresses) = &maybe_newest_known_addresses {
+                let bytes = newest_known_addresses.encode();
+                a_mmap[..bytes.len()].copy_from_slice(&bytes);
+                a_mmap.flush()?;
+                b_mmap[..bytes.len()].copy_from_slice(&bytes);
+                b_mmap.flush()?;
+            }
+        }
+
+        let known_peers = maybe_newest_known_addresses
+            .map(EncodableKnownPeers::into_cache)
+            .unwrap_or_else(|| LruCache::new(PEER_CACHE_SIZE));
 
         Ok(Self {
             cache_need_saving: false,
-            db: Arc::new(db),
-            column_id,
-            object_id,
-            known_peers: cache,
+            known_peers,
             networking_parameters_save_delay: Self::default_delay(),
+            known_peers_slots: Arc::new(Mutex::new(KnownPeersSlots {
+                a: a_mmap,
+                b: b_mmap,
+            })),
             collection_batcher: CollectionBatcher::new(
                 NonZeroUsize::new(PEERS_ADDRESSES_BATCH_SIZE)
                     .expect("Manual non-zero initialization failed."),
@@ -170,15 +377,10 @@ impl NetworkingParametersManager {
             .collect()
     }
 
-    // Helps create a copy of the internal LruCache
-    fn clone_known_peers(&self) -> LruCache<PeerId, LruCache<Multiaddr, FailureTime>> {
-        let mut known_peers = LruCache::new(self.known_peers.cap());
-
-        for (peer_id, addresses) in self.known_peers.iter() {
-            known_peers.push(*peer_id, clone_lru_cache(addresses, ADDRESSES_CACHE_SIZE));
-        }
-
-        known_peers
+    /// Size of the backing file on disk
+    pub fn file_size() -> usize {
+        // *2 because we have a/b parts of the file
+        Self::known_addresses_size() * 2
     }
 
     /// Creates a reference to the `NetworkingParametersRegistry` trait implementation.
@@ -190,20 +392,40 @@ impl NetworkingParametersManager {
     fn default_delay() -> Pin<Box<Fuse<Sleep>>> {
         Box::pin(sleep(Duration::from_secs(DATA_FLUSH_DURATION_SECS)).fuse())
     }
-}
 
-// Generic LRU-cache cloning function.
-fn clone_lru_cache<K: Clone + Hash + Eq, V: Clone>(
-    cache: &LruCache<K, V>,
-    cap: NonZeroUsize,
-) -> LruCache<K, V> {
-    let mut cloned_cache = LruCache::new(cap);
-
-    for (key, value) in cache.iter() {
-        cloned_cache.push(key.clone(), value.clone());
+    fn single_peer_encoded_address_size() -> usize {
+        let multiaddr = Multiaddr::from_str(
+            "/ip4/127.0.0.1/udp/1234/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp",
+        )
+        .expect("Valid multiaddr; qed");
+        // Use multiaddr size that is 3x larger than typical, should be enough for most practical
+        // cases
+        multiaddr.to_vec().encoded_size() * 3
     }
 
-    cloned_cache
+    /// Size of single peer known addresses, this is an estimate and in some pathological cases peer
+    /// will have to be rejected if encoding exceeds this length.
+    fn single_peer_encoded_size() -> usize {
+        // Peer ID encoding + compact encoding of the length of list of addresses + (length of a
+        // single peer address entry + optional failure time) * number of entries
+        PeerId::random().to_bytes().encoded_size()
+            + Compact::compact_len(&(ADDRESSES_CACHE_SIZE.get() as u32))
+            + (Self::single_peer_encoded_address_size() + Some(0u64).encoded_size())
+                * ADDRESSES_CACHE_SIZE.get()
+    }
+
+    /// Size of known addresses and accompanying metadata.
+    ///
+    /// NOTE: This is max size that needs to be allocated on disk for successful write of a single
+    /// `known_addresses` copy, the actual written data can occupy only a part of this size
+    fn known_addresses_size() -> usize {
+        // Timestamp (when was written) + compact encoding of the length of peer records + peer
+        // records + checksum
+        mem::size_of::<u64>()
+            + Compact::compact_len(&(PEER_CACHE_SIZE.get() as u32))
+            + Self::single_peer_encoded_size() * PEER_CACHE_SIZE.get()
+            + mem::size_of::<Blake3Hash>()
+    }
 }
 
 #[async_trait]
@@ -250,7 +472,7 @@ impl NetworkingParametersRegistry for NetworkingParametersManager {
             &mut self.known_peers,
             peer_id,
             addresses,
-            chrono::Duration::seconds(REMOVE_KNOWN_PEERS_GRACE_PERIOD_SECS),
+            REMOVE_KNOWN_PEERS_GRACE_PERIOD_SECS,
         );
 
         self.cache_need_saving = true;
@@ -285,20 +507,17 @@ impl NetworkingParametersRegistry for NetworkingParametersManager {
             (&mut self.networking_parameters_save_delay).await;
 
             if self.cache_need_saving {
-                // save accumulated cache to DB
-                let dto = NetworkingParameters::from_cache(self.clone_known_peers());
-                let save_result = serde_json::to_vec(&dto)
-                    .map_err(NetworkParametersPersistenceError::from)
-                    .and_then(|data| {
-                        let tx = vec![(self.column_id, self.object_id, Some(data))];
+                let known_peers = EncodableKnownPeers::from_cache(&self.known_peers);
+                let known_peers_slots = Arc::clone(&self.known_peers_slots);
+                let write_known_peers_fut =
+                    AsyncJoinOnDrop::new(tokio::task::spawn_blocking(move || {
+                        known_peers_slots
+                            .lock()
+                            .write_to_inactive_slot(&known_peers);
+                    }));
 
-                        self.db.commit(tx).map_err(|err| err.into())
-                    });
-
-                if let Err(err) = save_result {
-                    debug!(error=%err, "Error on saving network parameters");
-                } else {
-                    trace!("Networking parameters saved to DB");
+                if let Err(error) = write_known_peers_fut.await {
+                    error!(%error, "Failed to write known peers");
                 }
 
                 self.cache_need_saving = false;
@@ -306,41 +525,6 @@ impl NetworkingParametersRegistry for NetworkingParametersManager {
 
             self.networking_parameters_save_delay = NetworkingParametersManager::default_delay();
         }
-    }
-}
-
-// Helper struct for NetworkingPersistence implementations (data transfer object).
-#[derive(Default, Debug, Serialize, Deserialize)]
-struct NetworkingParameters {
-    pub known_peers: HashMap<PeerId, HashMap<Multiaddr, FailureTime>>,
-}
-
-impl NetworkingParameters {
-    fn from_cache(cache: LruCache<PeerId, LruCache<Multiaddr, FailureTime>>) -> Self {
-        Self {
-            known_peers: cache
-                .into_iter()
-                .map(|(peer_id, addresses)| {
-                    (peer_id, addresses.into_iter().collect::<HashMap<_, _>>())
-                })
-                .collect::<HashMap<_, _>>(),
-        }
-    }
-
-    fn to_cache(&self) -> LruCache<PeerId, LruCache<Multiaddr, FailureTime>> {
-        let mut peers_cache =
-            LruCache::<PeerId, LruCache<Multiaddr, FailureTime>>::new(PEER_CACHE_SIZE);
-
-        for (peer_id, address_map) in self.known_peers.iter() {
-            let mut address_cache = LruCache::<Multiaddr, FailureTime>::new(ADDRESSES_CACHE_SIZE);
-
-            for (address, last_failed) in address_map.iter() {
-                address_cache.push(address.clone(), *last_failed);
-            }
-            peers_cache.push(*peer_id, address_cache);
-        }
-
-        peers_cache
     }
 }
 
@@ -360,8 +544,9 @@ pub(super) fn remove_known_peer_addresses_internal(
     known_peers: &mut LruCache<PeerId, LruCache<Multiaddr, FailureTime>>,
     peer_id: PeerId,
     addresses: Vec<Multiaddr>,
-    expired_address_duration: chrono::Duration,
+    expired_address_duration: Duration,
 ) {
+    let now = SystemTime::now();
     addresses
         .into_iter()
         .map(remove_p2p_suffix)
@@ -374,7 +559,7 @@ pub(super) fn remove_known_peer_addresses_internal(
                     // if we failed previously with this address
                     if let Some(time) = first_failed_time {
                         // if we failed first time more than a day ago
-                        if time.add(expired_address_duration) < Utc::now() {
+                        if *time + expired_address_duration < now {
                             // Remove a failed address
                             addresses.pop(&addr);
 
@@ -387,11 +572,14 @@ pub(super) fn remove_known_peer_addresses_internal(
 
                             trace!(%peer_id, "Address removed from the cache: {:?}", addr);
                         } else {
-                            trace!(%peer_id, "Saving failed connection attempt to a peer: {:?}", addr);
+                            trace!(
+                                %peer_id, "Saving failed connection attempt to a peer: {:?}",
+                                addr
+                            );
                         }
                     } else {
                         // Set failure time
-                        first_failed_time.replace(Utc::now());
+                        first_failed_time.replace(now);
 
                         trace!(%peer_id, "Address marked for removal from the cache: {:?}", addr);
                     }

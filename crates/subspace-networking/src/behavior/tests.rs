@@ -12,6 +12,7 @@ use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
+use std::time::Duration;
 
 #[tokio::test()]
 async fn test_address_timed_removal_from_known_peers_cache() {
@@ -20,7 +21,7 @@ async fn test_address_timed_removal_from_known_peers_cache() {
     let addr1 = Multiaddr::empty().with(Protocol::Memory(0));
     let addr2 = Multiaddr::empty().with(Protocol::Memory(1));
     let addresses = vec![addr1.clone(), addr2.clone()];
-    let expiration = chrono::Duration::nanoseconds(1);
+    let expiration = Duration::from_nanos(1);
 
     let mut peers_cache = LruCache::new(NonZeroUsize::new(100).unwrap());
     let mut addresses_cache = LruCache::new(NonZeroUsize::new(100).unwrap());

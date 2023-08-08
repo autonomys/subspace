@@ -1201,7 +1201,6 @@ dependencies = [
  "iana-time-zone",
  "js-sys",
  "num-traits",
- "serde",
  "time 0.1.45",
  "wasm-bindgen",
  "winapi",
@@ -6023,9 +6022,9 @@ dependencies = [
 
 [[package]]
 name = "memmap2"
-version = "0.7.0"
+version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "180d4b35be83d33392d1d1bfbd2ae1eca7ff5de1a94d3fc87faaa99a069e7cbd"
+checksum = "f49388d20533534cd19360ad3d6a7dadc885944aa802ba3995040c5ec11288c6"
 dependencies = [
  "libc",
 ]
@@ -11113,7 +11112,7 @@ dependencies = [
  "jemallocator",
  "jsonrpsee",
  "lru 0.10.0",
- "memmap2 0.7.0",
+ "memmap2 0.7.1",
  "parity-db",
  "parity-scale-codec",
  "parking_lot 0.12.1",
@@ -11155,7 +11154,7 @@ dependencies = [
  "futures",
  "libc",
  "lru 0.10.0",
- "memmap2 0.7.0",
+ "memmap2 0.7.1",
  "parity-scale-codec",
  "parking_lot 0.12.1",
  "rand 0.8.5",
@@ -11220,11 +11219,11 @@ dependencies = [
  "async-trait",
  "backoff",
  "bytes",
- "chrono",
  "clap",
  "derive_more",
  "either",
  "event-listener-primitives",
+ "fs2",
  "futures",
  "futures-timer",
  "hex",
@@ -11233,8 +11232,8 @@ dependencies = [
  "libp2p-kad 0.44.3",
  "libp2p-quic 0.8.0-alpha",
  "lru 0.10.0",
+ "memmap2 0.7.1",
  "nohash-hasher",
- "parity-db",
  "parity-scale-codec",
  "parking_lot 0.12.1",
  "pin-project",
