@@ -1,5 +1,6 @@
-use crate::utils::{AsyncJoinOnDrop, CollectionBatcher, PeerAddress};
+use crate::utils::{AsyncJoinOnDrop, CollectionBatcher, Handler, HandlerFn, PeerAddress};
 use async_trait::async_trait;
+use event_listener_primitives::HandlerId;
 use fs2::FileExt;
 use futures::future::Fuse;
 use futures::FutureExt;
@@ -9,6 +10,7 @@ use lru::LruCache;
 use memmap2::{MmapMut, MmapOptions};
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode};
 use parking_lot::Mutex;
+use std::collections::HashSet;
 use std::fs::OpenOptions;
 use std::io::{Read, Seek, SeekFrom};
 use std::num::NonZeroUsize;
@@ -24,19 +26,32 @@ use thiserror::Error;
 use tokio::time::{sleep, Sleep};
 use tracing::{debug, error, trace, warn};
 
-// Defines optional time for address dial failure
+/// Defines optional time for address dial failure
 type FailureTime = Option<SystemTime>;
 
-// Size of the LRU cache for peers.
+/// Size of the LRU cache for peers.
 const PEER_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(100).expect("Not zero; qed");
-// Size of the LRU cache for addresses of a single peer ID.
+/// Size of the LRU cache for addresses of a single peer ID.
 const ADDRESSES_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(30).expect("Not zero; qed");
-// Pause duration between network parameters save.
+/// Pause duration between network parameters save.
 const DATA_FLUSH_DURATION_SECS: u64 = 5;
-// Defines a batch size for a combined collection for known peers addresses and boostrap addresses.
+/// Defines a batch size for a combined collection for known peers addresses and boostrap addresses.
 pub(crate) const PEERS_ADDRESSES_BATCH_SIZE: usize = 30;
-// Defines an expiration period for the peer marked for the removal.
+/// Defines an expiration period for the peer marked for the removal.
 const REMOVE_KNOWN_PEERS_GRACE_PERIOD_SECS: Duration = Duration::from_secs(3600 * 24);
+/// Defines an expiration period for the peer marked for the removal for Kademlia DHT.
+const REMOVE_KNOWN_PEERS_GRACE_PERIOD_FOR_KADEMLIA_SECS: Duration = Duration::from_secs(3600);
+
+/// Defines the event triggered when the peer address is removed from the permanent storage.
+#[derive(Debug, Clone)]
+pub struct PeerAddressRemovedEvent {
+    /// Peer ID
+    pub peer_id: PeerId,
+    /// Peer address
+    pub address: Multiaddr,
+    /// No address left in the permanent storage.
+    pub last_address: bool,
+}
 
 #[derive(Debug, Encode, Decode)]
 struct EncodableKnownPeerAddress {
@@ -185,6 +200,15 @@ pub trait NetworkingParametersRegistry: Send + Sync {
 
     /// Drive async work in the persistence provider
     async fn run(&mut self);
+
+    /// Triggers when we removed the peer address from the permanent storage. Returns optional
+    /// event HandlerId. Option enables stub implementation. One of the usages is to notify
+    /// Kademlia about the expired(unreachable) address when it check for how long address was
+    /// unreachable.
+    fn on_unreachable_address(
+        &mut self,
+        handler: HandlerFn<PeerAddressRemovedEvent>,
+    ) -> Option<HandlerId>;
 }
 
 /// Networking manager implementation with NOOP implementation.
@@ -214,6 +238,13 @@ impl NetworkingParametersRegistry for StubNetworkingParametersManager {
         // Never resolves
         futures::future::pending().await
     }
+
+    fn on_unreachable_address(
+        &mut self,
+        _handler: HandlerFn<PeerAddressRemovedEvent>,
+    ) -> Option<HandlerId> {
+        None
+    }
 }
 
 /// Networking parameters persistence errors.
@@ -239,6 +270,10 @@ pub struct NetworkingParametersManager {
     known_peers_slots: Arc<Mutex<KnownPeersSlots>>,
     // Provides batching capabilities for the address collection (it stores the last batch index)
     collection_batcher: CollectionBatcher<PeerAddress>,
+    // Event handler triggered when we decide to remove address from the storage.
+    address_removed: Handler<PeerAddressRemovedEvent>,
+    // Peer ID list to filter on address adding.
+    ignore_peer_list: HashSet<PeerId>,
 }
 
 impl Drop for NetworkingParametersManager {
@@ -254,7 +289,10 @@ impl Drop for NetworkingParametersManager {
 impl NetworkingParametersManager {
     /// Object constructor. It accepts `NetworkingParametersProvider` implementation as a parameter.
     /// On object creation it starts a job for networking parameters cache handling.
-    pub fn new(path: &Path) -> Result<Self, NetworkParametersPersistenceError> {
+    pub fn new(
+        path: &Path,
+        ignore_peer_list: HashSet<PeerId>,
+    ) -> Result<Self, NetworkParametersPersistenceError> {
         let mut file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -370,6 +408,8 @@ impl NetworkingParametersManager {
                 NonZeroUsize::new(PEERS_ADDRESSES_BATCH_SIZE)
                     .expect("Manual non-zero initialization failed."),
             ),
+            address_removed: Default::default(),
+            ignore_peer_list,
         })
     }
 
@@ -437,6 +477,17 @@ impl NetworkingParametersManager {
 #[async_trait]
 impl NetworkingParametersRegistry for NetworkingParametersManager {
     async fn add_known_peer(&mut self, peer_id: PeerId, addresses: Vec<Multiaddr>) {
+        if self.ignore_peer_list.contains(&peer_id) {
+            debug!(
+                %peer_id,
+                addr_num=addresses.len(),
+                "Adding new peer addresses canceled (ignore list): {:?}",
+                addresses
+            );
+
+            return;
+        }
+
         debug!(
             %peer_id,
             addr_num=addresses.len(),
@@ -474,12 +525,17 @@ impl NetworkingParametersRegistry for NetworkingParametersManager {
     async fn remove_known_peer_addresses(&mut self, peer_id: PeerId, addresses: Vec<Multiaddr>) {
         trace!(%peer_id, "Remove peer addresses from the networking parameters registry: {:?}", addresses);
 
-        remove_known_peer_addresses_internal(
+        let removed_addresses = remove_known_peer_addresses_internal(
             &mut self.known_peers,
             peer_id,
             addresses,
             REMOVE_KNOWN_PEERS_GRACE_PERIOD_SECS,
+            REMOVE_KNOWN_PEERS_GRACE_PERIOD_FOR_KADEMLIA_SECS,
         );
+
+        for event in removed_addresses {
+            self.address_removed.call_simple(&event);
+        }
 
         self.cache_need_saving = true;
     }
@@ -532,17 +588,44 @@ impl NetworkingParametersRegistry for NetworkingParametersManager {
             self.networking_parameters_save_delay = NetworkingParametersManager::default_delay();
         }
     }
+
+    fn on_unreachable_address(
+        &mut self,
+        handler: HandlerFn<PeerAddressRemovedEvent>,
+    ) -> Option<HandlerId> {
+        let handler_id = self.address_removed.add(handler);
+
+        Some(handler_id)
+    }
 }
 
-// Removes a P2p protocol suffix from the multiaddress if any.
-fn remove_p2p_suffix(address: Multiaddr) -> Multiaddr {
-    let mut modified_address = address.clone();
+/// Removes a P2p protocol suffix from the multiaddress if any.
+pub(crate) fn remove_p2p_suffix(mut address: Multiaddr) -> Multiaddr {
+    let last_protocol = address.pop();
 
-    if let Some(Protocol::P2p(_)) = modified_address.pop() {
-        modified_address
-    } else {
-        address
+    if let Some(Protocol::P2p(_)) = &last_protocol {
+        return address;
     }
+
+    if let Some(protocol) = last_protocol {
+        address.push(protocol)
+    }
+
+    address
+}
+
+/// Appends a P2p protocol suffix to the multiaddress if require3d.
+pub(crate) fn append_p2p_suffix(peer_id: PeerId, mut address: Multiaddr) -> Multiaddr {
+    let last_protocol = address.pop();
+
+    if let Some(protocol) = last_protocol {
+        if !matches!(protocol, Protocol::P2p(..)) {
+            address.push(protocol)
+        }
+    }
+    address.push(Protocol::P2p(peer_id));
+
+    address
 }
 
 // Testable implementation of the `remove_known_peer_addresses`
@@ -550,33 +633,50 @@ pub(super) fn remove_known_peer_addresses_internal(
     known_peers: &mut LruCache<PeerId, LruCache<Multiaddr, FailureTime>>,
     peer_id: PeerId,
     addresses: Vec<Multiaddr>,
-    expired_address_duration: Duration,
-) {
+    expired_address_duration_persistent_storage: Duration,
+    expired_address_duration_kademlia: Duration,
+) -> Vec<PeerAddressRemovedEvent> {
+    let mut address_removed_events = Vec::new();
     let now = SystemTime::now();
+
     addresses
         .into_iter()
         .map(remove_p2p_suffix)
         .for_each(|addr| {
             // if peer_id is present in the cache
             if let Some(addresses) = known_peers.peek_mut(&peer_id) {
+                let last_address = addresses.contains(&addr) && addresses.len() == 1;
                 // Get mutable reference to first_failed_time for the address without updating
                 // the item's position in the cache
                 if let Some(first_failed_time) = addresses.peek_mut(&addr) {
                     // if we failed previously with this address
                     if let Some(time) = first_failed_time {
-                        // if we failed first time more than a day ago
-                        if *time + expired_address_duration < now {
+                        // if we failed first time more than an hour ago (for Kademlia)
+                        if *time + expired_address_duration_kademlia < now {
+                            let address_removed = PeerAddressRemovedEvent{
+                                peer_id,
+                                address: addr.clone(),
+                                last_address
+                            };
+
+                            address_removed_events.push(address_removed);
+
+                            trace!(%peer_id, "Address was marked for removal from Kademlia: {:?}", addr);
+                        }
+
+                        // if we failed first time more than a day ago (for persistent cache)
+                        if *time + expired_address_duration_persistent_storage < now {
                             // Remove a failed address
                             addresses.pop(&addr);
 
                             // If the last address for peer
-                            if addresses.is_empty() {
+                            if last_address {
                                 known_peers.pop(&peer_id);
 
                                 trace!(%peer_id, "Peer removed from the cache");
                             }
 
-                            trace!(%peer_id, "Address removed from the cache: {:?}", addr);
+                            trace!(%peer_id, "Address removed from the persistent cache: {:?}", addr);
                         } else {
                             trace!(
                                 %peer_id, "Saving failed connection attempt to a peer: {:?}",
@@ -592,4 +692,6 @@ pub(super) fn remove_known_peer_addresses_internal(
                 }
             }
         });
+
+    address_removed_events
 }

@@ -1101,6 +1101,11 @@ impl<T: Clone> NonEmptyVec<T> {
         Ok(Self(vec))
     }
 
+    /// Creates the Vec with the entry.
+    pub fn new_with_entry(entry: T) -> Self {
+        Self(alloc::vec![entry])
+    }
+
     /// Returns the number of entries.
     pub fn len(&self) -> usize {
         self.0.len()

@@ -50,6 +50,7 @@ use sc_consensus::JustificationSyncLink;
 use sc_consensus_slots::{
     check_equivocation, BackoffAuthoringBlocksStrategy, InherentDataProviderExt, SlotProportion,
 };
+use sc_proof_of_time::{PotConsensusState, PotVerifyBlockProofsError};
 use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_DEBUG, CONSENSUS_TRACE};
 use sc_utils::mpsc::TracingUnboundedSender;
 use schnorrkel::context::SigningContext;
@@ -61,7 +62,8 @@ use sp_consensus::{
 };
 use sp_consensus_slots::{Slot, SlotDuration};
 use sp_consensus_subspace::digests::{
-    extract_pre_digest, extract_subspace_digest_items, Error as DigestError, SubspaceDigestItems,
+    extract_pre_digest, extract_subspace_digest_items, Error as DigestError, PreDigest,
+    SubspaceDigestItems,
 };
 use sp_consensus_subspace::{
     check_header, ChainConstants, CheckedHeader, FarmerPublicKey, FarmerSignature, SubspaceApi,
@@ -69,7 +71,7 @@ use sp_consensus_subspace::{
 };
 use sp_core::H256;
 use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
-use sp_runtime::traits::One;
+use sp_runtime::traits::{NumberFor as BlockNumberFor, One};
 use std::future::Future;
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
@@ -78,8 +80,8 @@ use std::sync::Arc;
 use subspace_archiving::archiver::NewArchivedSegment;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    HistorySize, PublicKey, Randomness, SectorId, SegmentHeader, SegmentIndex, Solution,
-    SolutionRange,
+    BlockNumber, HistorySize, PublicKey, Randomness, SectorId, SegmentHeader, SegmentIndex,
+    SlotNumber, Solution, SolutionRange,
 };
 use subspace_proof_of_space::Table;
 use subspace_solving::REWARD_SIGNING_CONTEXT;
@@ -87,6 +89,33 @@ use subspace_verification::{
     calculate_block_weight, Error as VerificationPrimitiveError, PieceCheckParams,
     VerifySolutionParams,
 };
+
+/// Errors while verifying the block proof of time.
+#[derive(Debug, thiserror::Error)]
+#[allow(missing_docs)]
+pub enum PotVerifyError<Block: BlockT> {
+    /// Parent block has no proof of time digest.
+    #[error(
+        "Parent block missing proof of time : {block_number}/{parent_slot_number}/{slot_number}"
+    )]
+    ParentMissingPotDigest {
+        block_number: BlockNumberFor<Block>,
+        parent_slot_number: SlotNumber,
+        slot_number: SlotNumber,
+    },
+
+    /// Block has no proof of time digest.
+    #[error("Block missing proof of time : {block_number}/{parent_slot_number}/{slot_number}")]
+    MissingPotDigest {
+        block_number: BlockNumberFor<Block>,
+        parent_slot_number: SlotNumber,
+        slot_number: SlotNumber,
+    },
+
+    /// Verification failed.
+    #[error("Proof of time error: {0}")]
+    PotVerifyBlockProofsError(#[from] PotVerifyBlockProofsError),
+}
 
 /// Information about new slot that just arrived
 #[derive(Debug, Copy, Clone)]
@@ -400,6 +429,9 @@ where
 
     /// Handle use to report telemetries.
     pub telemetry: Option<TelemetryHandle>,
+
+    /// Proof of time interface.
+    pub proof_of_time: Option<Arc<dyn PotConsensusState>>,
 }
 
 /// Start the Subspace worker.
@@ -419,6 +451,7 @@ pub fn start_subspace<PosTable, Block, Client, SC, E, I, SO, CIDP, BS, L, AS, Er
         block_proposal_slot_portion,
         max_block_proposal_slot_portion,
         telemetry,
+        proof_of_time,
     }: SubspaceParams<Block, Client, SC, E, I, SO, L, CIDP, BS, AS>,
 ) -> Result<SubspaceWorker, sp_consensus::Error>
 where
@@ -448,6 +481,7 @@ where
     BS: BackoffAuthoringBlocksStrategy<NumberFor<Block>> + Send + Sync + 'static,
     AS: AuxStore + Send + Sync + 'static,
     Error: std::error::Error + Send + From<ConsensusError> + From<I::Error> + 'static,
+    BlockNumber: From<<<Block as BlockT>::Header as HeaderT>::Number>,
 {
     let worker = SubspaceSlotWorker {
         client,
@@ -463,6 +497,7 @@ where
         max_block_proposal_slot_portion,
         telemetry,
         segment_headers_store,
+        proof_of_time,
         _pos_table: PhantomData::<PosTable>,
     };
 
@@ -796,6 +831,7 @@ where
     subspace_link: SubspaceLink<Block>,
     create_inherent_data_providers: CIDP,
     segment_headers_store: SegmentHeadersStore<AS>,
+    proof_of_time: Option<Arc<dyn PotConsensusState>>,
     _pos_table: PhantomData<PosTable>,
 }
 
@@ -814,6 +850,7 @@ where
             subspace_link: self.subspace_link.clone(),
             create_inherent_data_providers: self.create_inherent_data_providers.clone(),
             segment_headers_store: self.segment_headers_store.clone(),
+            proof_of_time: self.proof_of_time.clone(),
             _pos_table: PhantomData,
         }
     }
@@ -827,6 +864,7 @@ where
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey> + ApiExt<Block>,
     CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
     AS: AuxStore + Send + Sync + 'static,
+    BlockNumber: From<<<Block as BlockT>::Header as HeaderT>::Number>,
 {
     fn new(
         client: Arc<Client>,
@@ -837,6 +875,7 @@ where
         subspace_link: SubspaceLink<Block>,
         create_inherent_data_providers: CIDP,
         segment_headers_store: SegmentHeadersStore<AS>,
+        proof_of_time: Option<Arc<dyn PotConsensusState>>,
     ) -> Self {
         SubspaceBlockImport {
             client,
@@ -845,6 +884,7 @@ where
             subspace_link,
             create_inherent_data_providers,
             segment_headers_store,
+            proof_of_time,
             _pos_table: PhantomData,
         }
     }
@@ -868,7 +908,6 @@ where
         let parent_hash = *header.parent_hash();
 
         let pre_digest = &subspace_digest_items.pre_digest;
-
         if let Some(root_plot_public_key) = root_plot_public_key {
             if &pre_digest.solution.public_key != root_plot_public_key {
                 // Only root plot public key is allowed.
@@ -935,6 +974,20 @@ where
                 Some(solution_range) => solution_range,
                 None => parent_subspace_digest_items.solution_range,
             };
+
+            if let Some(proof_of_time) = self.proof_of_time.as_ref() {
+                let ret = self.proof_of_time_verification(
+                    proof_of_time.as_ref(),
+                    block_number,
+                    pre_digest,
+                    &parent_subspace_digest_items.pre_digest,
+                );
+                debug!(
+                    target: "subspace",
+                    "block_import_verification: {block_number}/{}/{}/{origin:?}, ret={ret:?}",
+                    pre_digest.slot, parent_subspace_digest_items.pre_digest.slot
+                );
+            }
 
             (correct_global_randomness, correct_solution_range)
         };
@@ -1060,6 +1113,43 @@ where
 
         Ok(())
     }
+
+    /// Verifies the proof of time in the received block.
+    #[allow(clippy::too_many_arguments)]
+    fn proof_of_time_verification(
+        &self,
+        proof_of_time: &dyn PotConsensusState,
+        block_number: NumberFor<Block>,
+        pre_digest: &PreDigest<FarmerPublicKey, FarmerPublicKey>,
+        parent_pre_digest: &PreDigest<FarmerPublicKey, FarmerPublicKey>,
+    ) -> Result<(), PotVerifyError<Block>> {
+        let parent_pot_digest = parent_pre_digest.proof_of_time.as_ref().ok_or_else(|| {
+            PotVerifyError::ParentMissingPotDigest {
+                block_number,
+                parent_slot_number: parent_pre_digest.slot.into(),
+                slot_number: pre_digest.slot.into(),
+            }
+        })?;
+        let pot_digest =
+            pre_digest
+                .proof_of_time
+                .as_ref()
+                .ok_or_else(|| PotVerifyError::MissingPotDigest {
+                    block_number,
+                    parent_slot_number: parent_pre_digest.slot.into(),
+                    slot_number: pre_digest.slot.into(),
+                })?;
+
+        proof_of_time
+            .verify_block_proofs(
+                block_number.into(),
+                pre_digest.slot.into(),
+                pot_digest,
+                parent_pre_digest.slot.into(),
+                parent_pot_digest,
+            )
+            .map_err(PotVerifyError::PotVerifyBlockProofsError)
+    }
 }
 
 #[async_trait::async_trait]
@@ -1081,6 +1171,7 @@ where
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey> + ApiExt<Block>,
     CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
     AS: AuxStore + Send + Sync + 'static,
+    BlockNumber: From<<<Block as BlockT>::Header as HeaderT>::Number>,
 {
     type Error = ConsensusError;
     type Transaction = TransactionFor<Client, Block>;
@@ -1266,6 +1357,7 @@ pub fn block_import<PosTable, Client, Block, I, CIDP, AS>(
     kzg: Kzg,
     create_inherent_data_providers: CIDP,
     segment_headers_store: SegmentHeadersStore<AS>,
+    proof_of_time: Option<Arc<dyn PotConsensusState>>,
 ) -> ClientResult<(
     SubspaceBlockImport<PosTable, Block, Client, I, CIDP, AS>,
     SubspaceLink<Block>,
@@ -1277,6 +1369,7 @@ where
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey>,
     CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
     AS: AuxStore + Send + Sync + 'static,
+    BlockNumber: From<<<Block as BlockT>::Header as HeaderT>::Number>,
 {
     let (new_slot_notification_sender, new_slot_notification_stream) =
         notification::channel("subspace_new_slot_notification_stream");
@@ -1318,6 +1411,7 @@ where
         link.clone(),
         create_inherent_data_providers,
         segment_headers_store,
+        proof_of_time,
     );
 
     Ok((import, link))

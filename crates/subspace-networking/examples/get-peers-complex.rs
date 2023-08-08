@@ -77,7 +77,7 @@ async fn main() {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_global_addresses_in_dht: true,
         networking_parameters_registry: Some(
-            NetworkingParametersManager::new(file_path.as_ref())
+            NetworkingParametersManager::new(file_path.as_ref(), Default::default())
                 .unwrap()
                 .boxed(),
         ),
