@@ -10,7 +10,6 @@ use futures::{FutureExt, StreamExt};
 use lru::LruCache;
 use parking_lot::Mutex;
 use std::num::NonZeroUsize;
-use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{Piece, Record, SectorIndex};
@@ -38,7 +37,6 @@ const RECORDS_ROOTS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(1_000_000).expe
 /// Start farming by using multiple replica plot in specified path and connecting to WebSocket
 /// server at specified address.
 pub(crate) async fn farm_multi_disk<PosTable>(
-    base_path: PathBuf,
     disk_farms: Vec<DiskFarm>,
     farming_args: FarmingArgs,
 ) -> Result<(), anyhow::Error>
@@ -56,7 +54,6 @@ where
     let FarmingArgs {
         node_rpc_url,
         reward_address,
-        plot_size: _,
         max_pieces_in_sector,
         disk_concurrency,
         disable_farming,
@@ -85,13 +82,13 @@ where
     let archival_storage_pieces = ArchivalStoragePieces::new(cuckoo_filter_capacity);
     let archival_storage_info = ArchivalStorageInfo::default();
 
-    let directory = disk_farms
+    let first_farm_directory = disk_farms
         .first()
         .expect("Disk farm collection is not be empty as checked above; qed")
         .directory
         .clone();
     // TODO: Update `Identity` to use more specific error type and remove this `.unwrap()`
-    let identity = Identity::open_or_create(&directory).unwrap();
+    let identity = Identity::open_or_create(&first_farm_directory).unwrap();
     let keypair = derive_libp2p_keypair(identity.secret_key());
     let peer_id = keypair.public().to_peer_id();
 
@@ -104,7 +101,7 @@ where
 
         configure_dsn(
             hex::encode(farmer_app_info.genesis_hash),
-            base_path,
+            first_farm_directory,
             keypair,
             dsn,
             Arc::downgrade(&readers_and_pieces),

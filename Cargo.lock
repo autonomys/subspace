@@ -11106,7 +11106,6 @@ dependencies = [
  "clap",
  "cuckoofilter",
  "derive_more",
- "dirs",
  "event-listener-primitives",
  "fdlimit",
  "futures",
