@@ -59,15 +59,6 @@ pub trait NetworkingParametersRegistry: Send + Sync {
 
     /// Drive async work in the persistence provider
     async fn run(&mut self);
-
-    /// Enables Clone implementation for `Box<dyn NetworkingParametersRegistry>`
-    fn clone_box(&self) -> Box<dyn NetworkingParametersRegistry>;
-}
-
-impl Clone for Box<dyn NetworkingParametersRegistry> {
-    fn clone(&self) -> Self {
-        self.clone_box()
-    }
 }
 
 /// Networking manager implementation with NOOP implementation.
@@ -95,10 +86,6 @@ impl NetworkingParametersRegistry for StubNetworkingParametersManager {
 
     async fn run(&mut self) {
         futures::future::pending().await // never resolves
-    }
-
-    fn clone_box(&self) -> Box<dyn NetworkingParametersRegistry> {
-        Box::new(self.clone())
     }
 }
 
@@ -319,19 +306,6 @@ impl NetworkingParametersRegistry for NetworkingParametersManager {
 
             self.networking_parameters_save_delay = NetworkingParametersManager::default_delay();
         }
-    }
-
-    fn clone_box(&self) -> Box<dyn NetworkingParametersRegistry> {
-        Self {
-            cache_need_saving: self.cache_need_saving,
-            known_peers: self.clone_known_peers(),
-            networking_parameters_save_delay: Self::default_delay(),
-            db: self.db.clone(),
-            column_id: self.column_id,
-            object_id: self.object_id,
-            collection_batcher: self.collection_batcher.clone(),
-        }
-        .boxed()
     }
 }
 
