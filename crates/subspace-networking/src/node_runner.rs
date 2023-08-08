@@ -203,7 +203,7 @@ where
         // Setup the address removal events exchange between persistent params storage and Kademlia.
         let (removed_addresses_tx, removed_addresses_rx) = mpsc::unbounded();
         let mut address_removal_task_handler_id = None;
-        if let Some(handler_id) = networking_parameters_registry.on_address_removed({
+        if let Some(handler_id) = networking_parameters_registry.on_unreachable_address({
             Arc::new(move |event| {
                 if let Err(error) = removed_addresses_tx.unbounded_send(event.clone()) {
                     debug!(?error, ?event, "Cannot send PeerAddressRemovedEvent")

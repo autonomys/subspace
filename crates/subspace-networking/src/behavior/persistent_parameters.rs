@@ -81,7 +81,7 @@ pub trait NetworkingParametersRegistry: Send + Sync {
     /// event HandlerId. Option enables stub implementation. One of the usages is to notify
     /// Kademlia about the expired(unreachable) address when it check for how long address was
     /// unreachable.
-    fn on_address_removed(
+    fn on_unreachable_address(
         &mut self,
         handler: HandlerFn<PeerAddressRemovedEvent>,
     ) -> Option<HandlerId>;
@@ -124,7 +124,7 @@ impl NetworkingParametersRegistry for StubNetworkingParametersManager {
         Box::new(self.clone())
     }
 
-    fn on_address_removed(
+    fn on_unreachable_address(
         &mut self,
         _handler: HandlerFn<PeerAddressRemovedEvent>,
     ) -> Option<HandlerId> {
@@ -391,7 +391,7 @@ impl NetworkingParametersRegistry for NetworkingParametersManager {
         .boxed()
     }
 
-    fn on_address_removed(
+    fn on_unreachable_address(
         &mut self,
         handler: HandlerFn<PeerAddressRemovedEvent>,
     ) -> Option<HandlerId> {
