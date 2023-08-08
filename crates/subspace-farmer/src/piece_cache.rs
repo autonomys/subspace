@@ -10,10 +10,10 @@ use std::mem;
 use std::sync::Arc;
 use subspace_core_primitives::{Piece, PieceIndex, SegmentIndex};
 use subspace_farmer_components::plotting::{PieceGetter, PieceGetterRetryPolicy};
-use subspace_networking::libp2p::kad::RecordKey;
+use subspace_networking::libp2p::kad::{ProviderRecord, RecordKey};
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::ToMultihash;
-use subspace_networking::{KeyWrapper, UniqueRecordBinaryHeap};
+use subspace_networking::{KeyWrapper, LocalRecordProvider, UniqueRecordBinaryHeap};
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, trace, warn};
 
@@ -559,6 +559,7 @@ where
 /// Piece cache that aggregates caches of multiple disks
 #[derive(Debug, Clone)]
 pub struct PieceCache {
+    peer_id: PeerId,
     /// Individual disk caches where pieces are stored
     caches: Arc<RwLock<Vec<DiskPieceCacheState>>>,
     // We do not want to increase capacity unnecessarily on clone
@@ -578,6 +579,7 @@ impl PieceCache {
         let (worker_sender, worker_receiver) = mpsc::channel(WORKER_CHANNEL_CAPACITY);
 
         let instance = Self {
+            peer_id,
             caches: Arc::clone(&caches),
             worker_sender,
         };
@@ -589,18 +591,6 @@ impl PieceCache {
         };
 
         (instance, worker)
-    }
-
-    /// Check whether piece exists in cache
-    pub fn contains_piece(&self, key: RecordKey) -> bool {
-        // It is okay to take read lock here, writes locks are very infrequent and very short
-        for cache in self.caches.read().iter() {
-            if cache.stored_pieces.contains_key(&key) {
-                return true;
-            };
-        }
-
-        false
     }
 
     /// Get piece from cache
@@ -661,5 +651,26 @@ impl PieceCache {
         {
             warn!(%error, "Failed to replace backing caches, worker exited");
         }
+    }
+}
+
+impl LocalRecordProvider for PieceCache {
+    fn record(&self, key: &RecordKey) -> Option<ProviderRecord> {
+        // It is okay to take read lock here, writes locks are very infrequent and very short
+        for cache in self.caches.read().iter() {
+            if cache.stored_pieces.contains_key(key) {
+                // Note: We store our own provider records locally without local addresses
+                // to avoid redundant storage and outdated addresses. Instead these are
+                // acquired on demand when returning a `ProviderRecord` for the local node.
+                return Some(ProviderRecord {
+                    key: key.clone(),
+                    provider: self.peer_id,
+                    expires: None,
+                    addresses: Vec::new(),
+                });
+            };
+        }
+
+        None
     }
 }

@@ -254,7 +254,11 @@ pub fn make_pre_digest(
     slot: Slot,
     solution: Solution<FarmerPublicKey, <Test as frame_system::Config>::AccountId>,
 ) -> Digest {
-    let log = DigestItem::subspace_pre_digest(&PreDigest { slot, solution });
+    let log = DigestItem::subspace_pre_digest(&PreDigest {
+        slot,
+        solution,
+        proof_of_time: Default::default(),
+    });
     Digest { logs: vec![log] }
 }
 
@@ -378,7 +382,7 @@ pub fn create_archived_segment(kzg: Kzg) -> NewArchivedSegment {
     let mut block = vec![0u8; RecordedHistorySegment::SIZE];
     rand::thread_rng().fill(block.as_mut_slice());
     archiver
-        .add_block(block, Default::default())
+        .add_block(block, Default::default(), true)
         .into_iter()
         .next()
         .unwrap()

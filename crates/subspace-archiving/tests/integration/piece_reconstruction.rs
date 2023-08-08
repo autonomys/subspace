@@ -25,7 +25,7 @@ fn segment_reconstruction_works() {
 
     let block = get_random_block();
 
-    let archived_segments = archiver.add_block(block, BlockObjectMapping::default());
+    let archived_segments = archiver.add_block(block, BlockObjectMapping::default(), true);
 
     assert_eq!(archived_segments.len(), 1);
 
@@ -66,7 +66,7 @@ fn piece_reconstruction_works() {
     // Block that fits into the segment fully
     let block = get_random_block();
 
-    let archived_segments = archiver.add_block(block, BlockObjectMapping::default());
+    let archived_segments = archiver.add_block(block, BlockObjectMapping::default(), true);
 
     assert_eq!(archived_segments.len(), 1);
 
@@ -126,7 +126,7 @@ fn segment_reconstruction_fails() {
     // Block that fits into the segment fully
     let block = get_random_block();
 
-    let archived_segments = archiver.add_block(block, BlockObjectMapping::default());
+    let archived_segments = archiver.add_block(block, BlockObjectMapping::default(), true);
 
     assert_eq!(archived_segments.len(), 1);
 
@@ -163,7 +163,7 @@ fn piece_reconstruction_fails() {
     // Block that fits into the segment fully
     let block = get_random_block();
 
-    let archived_segments = archiver.add_block(block, BlockObjectMapping::default());
+    let archived_segments = archiver.add_block(block, BlockObjectMapping::default(), true);
 
     assert_eq!(archived_segments.len(), 1);
 

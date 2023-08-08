@@ -1,5 +1,4 @@
 pub(crate) mod persistent_parameters;
-pub(crate) mod provider_storage;
 #[cfg(test)]
 mod tests;
 

@@ -49,12 +49,12 @@ fn basic() {
         block
     };
     let archived_segments = archiver
-        .add_block(block_0.clone(), BlockObjectMapping::default())
+        .add_block(block_0.clone(), BlockObjectMapping::default(), true)
         .into_iter()
-        .chain(archiver.add_block(block_1.clone(), BlockObjectMapping::default()))
-        .chain(archiver.add_block(block_2.clone(), BlockObjectMapping::default()))
-        .chain(archiver.add_block(block_3.clone(), BlockObjectMapping::default()))
-        .chain(archiver.add_block(block_4, BlockObjectMapping::default()))
+        .chain(archiver.add_block(block_1.clone(), BlockObjectMapping::default(), true))
+        .chain(archiver.add_block(block_2.clone(), BlockObjectMapping::default(), true))
+        .chain(archiver.add_block(block_3.clone(), BlockObjectMapping::default(), true))
+        .chain(archiver.add_block(block_4, BlockObjectMapping::default(), true))
         .collect::<Vec<_>>();
 
     assert_eq!(archived_segments.len(), 5);
@@ -257,9 +257,9 @@ fn partial_data() {
         block
     };
     let archived_segments = archiver
-        .add_block(block_0.clone(), BlockObjectMapping::default())
+        .add_block(block_0.clone(), BlockObjectMapping::default(), true)
         .into_iter()
-        .chain(archiver.add_block(block_1, BlockObjectMapping::default()))
+        .chain(archiver.add_block(block_1, BlockObjectMapping::default(), true))
         .collect::<Vec<_>>();
 
     assert_eq!(archived_segments.len(), 1);
@@ -332,7 +332,7 @@ fn invalid_usage() {
         block
     };
 
-    let archived_segments = archiver.add_block(block_0, BlockObjectMapping::default());
+    let archived_segments = archiver.add_block(block_0, BlockObjectMapping::default(), true);
 
     assert_eq!(archived_segments.len(), 4);
 

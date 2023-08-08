@@ -74,7 +74,7 @@ fn archived_segment(kzg: Kzg) -> NewArchivedSegment {
     let mut archiver = Archiver::new(kzg).unwrap();
 
     archiver
-        .add_block(block, Default::default())
+        .add_block(block, Default::default(), true)
         .into_iter()
         .next()
         .unwrap()
@@ -235,6 +235,7 @@ fn valid_header(
         let pre_digest = PreDigest {
             slot: slot.into(),
             solution,
+            proof_of_time: Default::default(),
         };
         let digests = vec![
             DigestItem::global_randomness(global_randomness),

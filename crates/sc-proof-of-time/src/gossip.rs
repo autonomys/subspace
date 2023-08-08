@@ -1,20 +1,22 @@
 //! PoT gossip functionality.
 
-use futures::channel::mpsc::Receiver;
-use futures::FutureExt;
+use crate::state_manager::PotProtocolState;
+use futures::{FutureExt, StreamExt};
 use parity_scale_codec::Decode;
 use parking_lot::{Mutex, RwLock};
 use sc_network::config::NonDefaultSetConfig;
 use sc_network::PeerId;
 use sc_network_gossip::{
-    GossipEngine, MessageIntent, Syncing as GossipSyncing, TopicNotification, ValidationResult,
-    Validator, ValidatorContext,
+    GossipEngine, MessageIntent, Syncing as GossipSyncing, ValidationResult, Validator,
+    ValidatorContext,
 };
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
 use std::collections::HashSet;
 use std::sync::Arc;
 use subspace_core_primitives::crypto::blake2b_256_hash;
 use subspace_core_primitives::PotProof;
+use subspace_proof_of_time::ProofOfTime;
+use tracing::{error, trace};
 
 pub(crate) const GOSSIP_PROTOCOL: &str = "/subspace/subspace-proof-of-time";
 
@@ -22,19 +24,24 @@ type MessageHash = [u8; 32];
 
 /// PoT gossip components.
 #[derive(Clone)]
-pub struct PotGossip<Block: BlockT> {
+pub(crate) struct PotGossip<Block: BlockT> {
     engine: Arc<Mutex<GossipEngine<Block>>>,
     validator: Arc<PotGossipValidator>,
 }
 
 impl<Block: BlockT> PotGossip<Block> {
     /// Creates the gossip components.
-    pub fn new<Network, GossipSync>(network: Network, sync: Arc<GossipSync>) -> Self
+    pub(crate) fn new<Network, GossipSync>(
+        network: Network,
+        sync: Arc<GossipSync>,
+        pot_state: Arc<dyn PotProtocolState>,
+        proof_of_time: ProofOfTime,
+    ) -> Self
     where
         Network: sc_network_gossip::Network<Block> + Send + Sync + Clone + 'static,
         GossipSync: GossipSyncing<Block> + 'static,
     {
-        let validator = Arc::new(PotGossipValidator::new());
+        let validator = Arc::new(PotGossipValidator::new(pot_state, proof_of_time));
         let engine = Arc::new(Mutex::new(GossipEngine::new(
             network,
             sync,
@@ -46,35 +53,65 @@ impl<Block: BlockT> PotGossip<Block> {
     }
 
     /// Gossips the message to the network.
-    pub fn gossip_message(&self, message: Vec<u8>) {
+    pub(crate) fn gossip_message(&self, message: Vec<u8>) {
         self.validator.on_broadcast(&message);
         self.engine
             .lock()
             .gossip_message(topic::<Block>(), message, false);
     }
 
-    /// Returns the receiver for the messages.
-    pub fn incoming_messages(&self) -> Receiver<TopicNotification> {
-        self.engine.lock().messages_for(topic::<Block>())
-    }
+    /// Runs the loop to process incoming messages.
+    /// Returns when the gossip engine terminates.
+    pub(crate) async fn process_incoming_messages<'a>(
+        &self,
+        process_fn: Arc<dyn Fn(PeerId, PotProof) + Send + Sync + 'a>,
+    ) {
+        let message_receiver = self.engine.lock().messages_for(topic::<Block>());
+        let mut incoming_messages = Box::pin(message_receiver.filter_map(
+            // Filter out messages without sender or fail to decode.
+            // TODO: penalize nodes that send garbled messages.
+            |notification| async move {
+                let mut ret = None;
+                if let Some(sender) = notification.sender {
+                    if let Ok(msg) = PotProof::decode(&mut &notification.message[..]) {
+                        ret = Some((sender, msg))
+                    }
+                }
+                ret
+            },
+        ));
 
-    /// Waits for gossip engine to terminate.
-    pub async fn is_terminated(&self) {
-        let poll_fn = futures::future::poll_fn(|cx| self.engine.lock().poll_unpin(cx));
-        poll_fn.await;
+        loop {
+            let gossip_engine_poll =
+                futures::future::poll_fn(|cx| self.engine.lock().poll_unpin(cx));
+            futures::select! {
+                gossiped = incoming_messages.next().fuse() => {
+                    if let Some((sender, proof)) = gossiped {
+                        (process_fn)(sender, proof);
+                    }
+                },
+                 _ = gossip_engine_poll.fuse() => {
+                    error!("Gossip engine has terminated.");
+                    return;
+                }
+            }
+        }
     }
 }
 
 /// Validator for gossiped messages
-#[derive(Debug)]
 struct PotGossipValidator {
+    pot_state: Arc<dyn PotProtocolState>,
+    proof_of_time: ProofOfTime,
     pending: RwLock<HashSet<MessageHash>>,
 }
 
 impl PotGossipValidator {
     /// Creates the validator.
-    fn new() -> Self {
+    fn new(pot_state: Arc<dyn PotProtocolState>, proof_of_time: ProofOfTime) -> Self {
         Self {
+            pot_state,
+            proof_of_time,
             pending: RwLock::new(HashSet::new()),
         }
     }
@@ -91,11 +128,22 @@ impl<Block: BlockT> Validator<Block> for PotGossipValidator {
     fn validate(
         &self,
         _context: &mut dyn ValidatorContext<Block>,
-        _sender: &PeerId,
+        sender: &PeerId,
         mut data: &[u8],
     ) -> ValidationResult<Block::Hash> {
         match PotProof::decode(&mut data) {
-            Ok(_) => ValidationResult::ProcessAndKeep(topic::<Block>()),
+            Ok(proof) => {
+                // Perform AES verification only if the proof is a candidate.
+                if let Err(err) = self.pot_state.is_candidate(*sender, &proof) {
+                    trace!("gossip::validate: not a candidate: {err:?}");
+                    ValidationResult::Discard
+                } else if let Err(err) = self.proof_of_time.verify(&proof) {
+                    trace!("gossip::validate: verification failed: {err:?}");
+                    ValidationResult::Discard
+                } else {
+                    ValidationResult::ProcessAndKeep(topic::<Block>())
+                }
+            }
             Err(_) => ValidationResult::Discard,
         }
     }
