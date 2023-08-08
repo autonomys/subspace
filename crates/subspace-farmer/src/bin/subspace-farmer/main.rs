@@ -224,6 +224,9 @@ struct Command {
     /// will be delete at the end of the process
     #[arg(long, conflicts_with = "base_path", conflicts_with = "farm")]
     tmp: bool,
+    /// Enables the "development mode". Toggles flags like `--enable-private-ips`
+    #[arg(long)]
+    dev: bool,
 }
 
 #[tokio::main]
@@ -285,7 +288,7 @@ async fn main() -> Result<()> {
 
             info!("Done");
         }
-        Subcommand::Farm(farming_args) => {
+        Subcommand::Farm(mut farming_args) => {
             // TODO: Remove this in the future once `base_path` can be removed
             // Wipe legacy caching directory that is no longer used
             let _ = fs::remove_file(base_path.join("piece_cache_db"));
@@ -312,6 +315,10 @@ async fn main() -> Result<()> {
 
                 command.farm
             };
+
+            // Override the `--enable_private_ips` flag with `--dev`
+            farming_args.dsn.enable_private_ips =
+                farming_args.dsn.enable_private_ips || command.dev;
 
             commands::farm_multi_disk::<PosTable>(base_path, disk_farms, farming_args).await?;
         }
