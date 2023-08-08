@@ -7,6 +7,7 @@ pub(crate) mod prometheus;
 mod tests;
 pub(crate) mod unique_record_binary_heap;
 
+use event_listener_primitives::Bag;
 use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId};
 use parking_lot::Mutex;
@@ -83,9 +84,9 @@ impl<T: Clone> CollectionBatcher<T> {
 // Convenience alias for peer ID and its multiaddresses.
 pub(crate) type PeerAddress = (PeerId, Multiaddr);
 
-// Helper function. Converts multiaddresses to a tuple with peer ID removing the peer Id suffix.
-// It logs incorrect multiaddresses.
-pub(crate) fn convert_multiaddresses(addresses: Vec<Multiaddr>) -> Vec<PeerAddress> {
+/// Helper function. Converts multiaddresses to a tuple with peer ID removing the peer Id suffix.
+/// It logs incorrect multiaddresses.
+pub fn strip_peer_id(addresses: Vec<Multiaddr>) -> Vec<PeerAddress> {
     addresses
         .into_iter()
         .filter_map(|multiaddr| {
@@ -286,3 +287,6 @@ impl Drop for ResizableSemaphorePermit {
         }
     }
 }
+
+pub(crate) type HandlerFn<A> = Arc<dyn Fn(&A) + Send + Sync + 'static>;
+pub(crate) type Handler<A> = Bag<HandlerFn<A>, A>;

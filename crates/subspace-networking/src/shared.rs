@@ -4,9 +4,8 @@
 use crate::peer_info::PeerInfo;
 use crate::request_responses::RequestFailure;
 use crate::utils::multihash::Multihash;
-use crate::utils::{ResizableSemaphore, ResizableSemaphorePermit};
+use crate::utils::{Handler, ResizableSemaphore, ResizableSemaphorePermit};
 use bytes::Bytes;
-use event_listener_primitives::Bag;
 use futures::channel::{mpsc, oneshot};
 use libp2p::gossipsub::{PublishError, Sha256Topic, SubscriptionError};
 use libp2p::kad::record::Key;
@@ -87,9 +86,6 @@ pub(crate) enum Command {
         result_sender: mpsc::UnboundedSender<()>,
     },
 }
-
-pub(crate) type HandlerFn<A> = Arc<dyn Fn(&A) + Send + Sync + 'static>;
-type Handler<A> = Bag<HandlerFn<A>, A>;
 
 /// [`PeerInfo`] update and related data container.
 #[derive(Debug)]

@@ -1,5 +1,6 @@
 use crate::behavior::persistent_parameters::{
-    NetworkingParametersRegistry, PEERS_ADDRESSES_BATCH_SIZE,
+    append_p2p_suffix, remove_p2p_suffix, NetworkingParametersRegistry, PeerAddressRemovedEvent,
+    PEERS_ADDRESSES_BATCH_SIZE,
 };
 use crate::behavior::{
     Behavior, Event, GeneralConnectedPeersInstance, SpecialConnectedPeersInstance,
@@ -15,10 +16,11 @@ use crate::peer_info::{Event as PeerInfoEvent, PeerInfoSuccess};
 use crate::request_responses::{Event as RequestResponseEvent, IfDisconnected};
 use crate::shared::{Command, CreatedSubscription, NewPeerInfo, Shared};
 use crate::utils::{
-    convert_multiaddresses, is_global_address_or_dns, PeerAddress, ResizableSemaphorePermit,
+    is_global_address_or_dns, strip_peer_id, PeerAddress, ResizableSemaphorePermit,
 };
 use async_mutex::Mutex as AsyncMutex;
 use bytes::Bytes;
+use event_listener_primitives::HandlerId;
 use futures::channel::mpsc;
 use futures::future::Fuse;
 use futures::{FutureExt, StreamExt};
@@ -146,6 +148,11 @@ where
     /// Known external addresses to the local peer. The addresses are added on the swarm start
     /// and enable peer to notify others about its reachable address.
     external_addresses: Vec<Multiaddr>,
+    /// Receives an event on peer address removal from the persistent storage.
+    removed_addresses_rx: mpsc::UnboundedReceiver<PeerAddressRemovedEvent>,
+    /// Optional storage for the [`HandlerId`] of the address removal task.
+    /// We keep to stop the task along with the rest of the networking.
+    _address_removal_task_handler_id: Option<HandlerId>,
 }
 
 // Helper struct for NodeRunner configuration (clippy requirement).
@@ -181,7 +188,7 @@ where
             swarm,
             shared_weak,
             next_random_query_interval,
-            networking_parameters_registry,
+            mut networking_parameters_registry,
             reserved_peers,
             temporary_bans,
             metrics,
@@ -193,6 +200,19 @@ where
             external_addresses,
         }: NodeRunnerConfig<LocalRecordProvider>,
     ) -> Self {
+        // Setup the address removal events exchange between persistent params storage and Kademlia.
+        let (removed_addresses_tx, removed_addresses_rx) = mpsc::unbounded();
+        let mut address_removal_task_handler_id = None;
+        if let Some(handler_id) = networking_parameters_registry.on_unreachable_address({
+            Arc::new(move |event| {
+                if let Err(error) = removed_addresses_tx.unbounded_send(event.clone()) {
+                    debug!(?error, ?event, "Cannot send PeerAddressRemovedEvent")
+                };
+            })
+        }) {
+            address_removal_task_handler_id.replace(handler_id);
+        }
+
         Self {
             allow_non_global_addresses_in_dht,
             command_receiver,
@@ -219,6 +239,8 @@ where
             bootstrap_command_state: Arc::new(AsyncMutex::new(BootstrapCommandState::default())),
             kademlia_mode,
             external_addresses,
+            removed_addresses_rx,
+            _address_removal_task_handler_id: address_removal_task_handler_id,
         }
     }
 
@@ -259,6 +281,9 @@ where
 
                     self.periodical_tasks_interval =
                         Box::pin(tokio::time::sleep(Duration::from_secs(5)).fuse());
+                },
+                event = self.removed_addresses_rx.select_next_some() => {
+                    self.handle_removed_address_event(event);
                 },
             }
         }
@@ -359,6 +384,21 @@ where
             .behaviour_mut()
             .kademlia
             .get_closest_peers(random_peer_id);
+    }
+
+    fn handle_removed_address_event(&mut self, event: PeerAddressRemovedEvent) {
+        trace!(?event, "Peer addressed removed event.",);
+
+        // Remove both versions of the address
+        self.swarm.behaviour_mut().kademlia.remove_address(
+            &event.peer_id,
+            &append_p2p_suffix(event.peer_id, event.address.clone()),
+        );
+
+        self.swarm
+            .behaviour_mut()
+            .kademlia
+            .remove_address(&event.peer_id, &remove_p2p_suffix(event.address));
     }
 
     async fn handle_swarm_event<E: Debug>(&mut self, swarm_event: SwarmEvent<Event, E>) {
@@ -718,6 +758,11 @@ where
                 request: InboundRequest::AddProvider { record, .. },
             } => {
                 debug!("Unexpected AddProvider request received: {:?}", record);
+            }
+            KademliaEvent::UnroutablePeer { peer } => {
+                debug!("Unroutable peer detected: {:?}", peer);
+
+                self.swarm.behaviour_mut().kademlia.remove_peer(&peer);
             }
             KademliaEvent::OutboundQueryProgressed {
                 step: ProgressStep { last, .. },
@@ -1312,7 +1357,7 @@ where
             Command::Bootstrap { result_sender } => {
                 let kademlia = &mut self.swarm.behaviour_mut().kademlia;
 
-                for (peer_id, address) in convert_multiaddresses(self.bootstrap_addresses.clone()) {
+                for (peer_id, address) in strip_peer_id(self.bootstrap_addresses.clone()) {
                     kademlia.add_address(&peer_id, address);
                 }
 
@@ -1435,7 +1480,7 @@ where
             result_peers.push((peer_id, addr))
         }
 
-        let bootstrap_nodes = convert_multiaddresses(self.bootstrap_addresses.clone())
+        let bootstrap_nodes = strip_peer_id(self.bootstrap_addresses.clone())
             .into_iter()
             .map(|(peer_id, _)| peer_id)
             .collect::<HashSet<_>>();

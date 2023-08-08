@@ -1,6 +1,7 @@
 use crate::DsnArgs;
 use futures::StreamExt;
 use parking_lot::Mutex;
+use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
@@ -14,6 +15,7 @@ use subspace_networking::libp2p::identity::Keypair;
 use subspace_networking::libp2p::kad::RecordKey;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::utils::multihash::ToMultihash;
+use subspace_networking::utils::strip_peer_id;
 use subspace_networking::{
     create, Config, NetworkingParametersManager, Node, NodeRunner, PeerInfo, PeerInfoProvider,
     PieceByHashRequest, PieceByHashRequestHandler, PieceByHashResponse,
@@ -53,7 +55,14 @@ pub(super) fn configure_dsn(
     let networking_parameters_registry = {
         let known_addresses_db_path = base_path.join("known_addresses_db");
 
-        NetworkingParametersManager::new(&known_addresses_db_path).map(|manager| manager.boxed())?
+        NetworkingParametersManager::new(
+            &known_addresses_db_path,
+            strip_peer_id(bootstrap_nodes.clone())
+                .into_iter()
+                .map(|(peer_id, _)| peer_id)
+                .collect::<HashSet<_>>(),
+        )
+        .map(|manager| manager.boxed())?
     };
 
     // TODO: Consider introducing and using global in-memory segment header cache (this comment is

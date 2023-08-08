@@ -7,10 +7,12 @@ use clap::{Parser, ValueHint};
 use libp2p::identity::ed25519::Keypair;
 use libp2p::{identity, Multiaddr, PeerId};
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::fmt::{Display, Formatter};
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_networking::libp2p::multiaddr::Protocol;
+use subspace_networking::utils::strip_peer_id;
 use subspace_networking::{peer_id, Config, NetworkingParametersManager};
 use tracing::{debug, info, Level};
 use tracing_subscriber::fmt::Subscriber;
@@ -135,8 +137,14 @@ async fn main() -> anyhow::Result<()> {
                     .map(|path| {
                         let known_addresses_db = path.join("known_addresses_db");
 
-                        NetworkingParametersManager::new(&known_addresses_db)
-                            .map(|manager| manager.boxed())
+                        NetworkingParametersManager::new(
+                            &known_addresses_db,
+                            strip_peer_id(bootstrap_nodes.clone())
+                                .into_iter()
+                                .map(|(peer_id, _)| peer_id)
+                                .collect::<HashSet<_>>(),
+                        )
+                        .map(|manager| manager.boxed())
                     })
                     .transpose()
                     .map_err(|err| anyhow!(err))?
