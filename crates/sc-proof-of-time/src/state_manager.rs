@@ -555,7 +555,7 @@ impl StateManager {
     }
 }
 
-/// Interface to the internal protocol components (clock master, PoT client).
+/// Interface to the internal protocol components (time keeper, PoT client).
 pub(crate) trait PotProtocolState: Send + Sync {
     /// Re(initializes) the chain with the given set of proofs.
     /// TODO: the proofs are assumed to have been validated, validate

@@ -349,7 +349,7 @@ fn main() -> Result<(), Error> {
                 let tokio_handle = consensus_chain_config.tokio_handle.clone();
                 let database_source = consensus_chain_config.database.clone();
                 let pot_components = if cli.pot_role.is_pot_enabled() {
-                    Some(PotComponents::new(cli.pot_role.is_clock_master()))
+                    Some(PotComponents::new(cli.pot_role.is_time_keeper()))
                 } else {
                     None
                 };
