@@ -95,19 +95,19 @@ use subspace_verification::{
 #[derive(Debug, thiserror::Error)]
 #[allow(missing_docs)]
 pub enum PotVerifyError<Block: BlockT> {
+    /// Block has no proof of time digest.
+    #[error("Block missing proof of time : {block_number}/{parent_slot_number:?}/{slot_number}")]
+    MissingPotDigest {
+        block_number: BlockNumberFor<Block>,
+        parent_slot_number: Option<SlotNumber>,
+        slot_number: SlotNumber,
+    },
+
     /// Parent block has no proof of time digest.
     #[error(
         "Parent block missing proof of time : {block_number}/{parent_slot_number}/{slot_number}"
     )]
     ParentMissingPotDigest {
-        block_number: BlockNumberFor<Block>,
-        parent_slot_number: SlotNumber,
-        slot_number: SlotNumber,
-    },
-
-    /// Block has no proof of time digest.
-    #[error("Block missing proof of time : {block_number}/{parent_slot_number}/{slot_number}")]
-    MissingPotDigest {
         block_number: BlockNumberFor<Block>,
         parent_slot_number: SlotNumber,
         slot_number: SlotNumber,
@@ -180,7 +180,7 @@ where
 
 /// Errors encountered by the Subspace authorship task.
 #[derive(Debug, thiserror::Error)]
-pub enum Error<Header: HeaderT> {
+pub enum Error<Block: BlockT, Header: HeaderT> {
     /// Error during digest item extraction
     #[error("Digest item error: {0}")]
     DigestItemError(#[from] DigestError),
@@ -299,10 +299,14 @@ pub enum Error<Header: HeaderT> {
     /// Runtime Api error.
     #[error(transparent)]
     RuntimeApi(#[from] ApiError),
+    /// Proof of time verification failed.
+    #[error("PoT verification failed: {0}")]
+    PotVerifyError(#[from] PotVerifyError<Block>),
 }
 
-impl<Header> From<VerificationError<Header>> for Error<Header>
+impl<Block, Header> From<VerificationError<Header>> for Error<Block, Header>
 where
+    Block: BlockT,
     Header: HeaderT,
 {
     #[inline]
@@ -350,12 +354,13 @@ where
     }
 }
 
-impl<Header> From<Error<Header>> for String
+impl<Block, Header> From<Error<Block, Header>> for String
 where
+    Block: BlockT,
     Header: HeaderT,
 {
     #[inline]
-    fn from(error: Error<Header>) -> String {
+    fn from(error: Error<Block, Header>) -> String {
         error.to_string()
     }
 }
@@ -624,7 +629,7 @@ where
         header: &Block::Header,
         author: &FarmerPublicKey,
         origin: &BlockOrigin,
-    ) -> Result<(), Error<Block::Header>> {
+    ) -> Result<(), Error<Block, Block::Header>> {
         // don't report any equivocations during initial sync
         // as they are most likely stale.
         if *origin == BlockOrigin::NetworkInitialSync {
@@ -709,7 +714,7 @@ where
             FarmerPublicKey,
             FarmerSignature,
         >(&block.header)
-        .map_err(Error::<Block::Header>::from)?;
+        .map_err(Error::<Block, Block::Header>::from)?;
         let pre_digest = subspace_digest_items.pre_digest;
 
         // Check if farmer's plot is burned.
@@ -722,7 +727,7 @@ where
                 if block.state_action.skip_execution_checks() {
                     Ok(false)
                 } else {
-                    Err(Error::<Block::Header>::RuntimeApi(error))
+                    Err(Error::<Block, Block::Header>::RuntimeApi(error))
                 }
             })?
         {
@@ -732,7 +737,7 @@ where
                 pre_digest.solution.public_key
             );
 
-            return Err(Error::<Block::Header>::FarmerInBlockList(
+            return Err(Error::<Block, Block::Header>::FarmerInBlockList(
                 pre_digest.solution.public_key.clone(),
             )
             .into());
@@ -765,7 +770,7 @@ where
                 Some(pre_digest),
                 &self.kzg,
             )
-            .map_err(Error::<Block::Header>::from)?
+            .map_err(Error::<Block, Block::Header>::from)?
         };
 
         match checked_header {
@@ -814,7 +819,7 @@ where
                     "subspace.header_too_far_in_future";
                     "hash" => ?hash, "a" => ?a, "b" => ?b
                 );
-                Err(Error::<Block::Header>::TooFarInFuture(hash).into())
+                Err(Error::<Block, Block::Header>::TooFarInFuture(hash).into())
             }
         }
     }
@@ -904,7 +909,7 @@ where
             FarmerSignature,
         >,
         skip_runtime_access: bool,
-    ) -> Result<(), Error<Block::Header>> {
+    ) -> Result<(), Error<Block, Block::Header>> {
         let block_number = *header.number();
         let parent_hash = *header.parent_hash();
 
@@ -926,7 +931,7 @@ where
                 if skip_runtime_access {
                     Ok(false)
                 } else {
-                    Err(Error::<Block::Header>::RuntimeApi(error))
+                    Err(Error::<Block, Block::Header>::RuntimeApi(error))
                 }
             })?
         {
@@ -946,6 +951,8 @@ where
             .header(parent_hash)?
             .ok_or(Error::ParentUnavailable(parent_hash, block_hash))?;
 
+        #[cfg(feature = "pot")]
+        let mut parent_pre_digest = None;
         let (correct_global_randomness, correct_solution_range) = if block_number.is_one() {
             // Genesis block doesn't contain usual digest items, we need to query runtime API
             // instead
@@ -977,21 +984,28 @@ where
             };
 
             #[cfg(feature = "pot")]
-            if let Some(proof_of_time) = self.proof_of_time.as_ref() {
-                let ret = self.proof_of_time_verification(
-                    proof_of_time.as_ref(),
-                    block_number,
-                    pre_digest,
-                    &parent_subspace_digest_items.pre_digest,
-                );
-                debug!(
-                    target: "subspace",
-                    "block_import_verification: {block_number}/{}/{}/{origin:?}, ret={ret:?}",
-                    pre_digest.slot, parent_subspace_digest_items.pre_digest.slot
-                );
+            {
+                parent_pre_digest = Some(parent_subspace_digest_items.pre_digest);
             }
-
             (correct_global_randomness, correct_solution_range)
+        };
+
+        #[cfg(feature = "pot")]
+        let correct_global_randomness = if let Some(proof_of_time) = self.proof_of_time.as_ref() {
+            let ret = self.proof_of_time_verification(
+                proof_of_time.as_ref(),
+                block_number,
+                pre_digest,
+                parent_pre_digest.as_ref(),
+            );
+            debug!(
+                target: "subspace",
+                "block_import_verification: {block_number}/{}/{:?}/{origin:?}, ret={ret:?}",
+                pre_digest.slot, parent_pre_digest.as_ref().map(|p| p.slot)
+            );
+            ret.map_err(Error::PotVerifyError)?
+        } else {
+            correct_global_randomness
         };
 
         if subspace_digest_items.global_randomness != correct_global_randomness {
@@ -1116,7 +1130,8 @@ where
         Ok(())
     }
 
-    /// Verifies the proof of time in the received block.
+    /// Verifies the proof of time in the received block,
+    /// returns the randomness from the PoT pre digest if successful.
     #[allow(clippy::too_many_arguments)]
     #[cfg(feature = "pot")]
     fn proof_of_time_verification(
@@ -1124,8 +1139,23 @@ where
         proof_of_time: &dyn PotConsensusState,
         block_number: NumberFor<Block>,
         pre_digest: &PreDigest<FarmerPublicKey, FarmerPublicKey>,
-        parent_pre_digest: &PreDigest<FarmerPublicKey, FarmerPublicKey>,
-    ) -> Result<(), PotVerifyError<Block>> {
+        parent_pre_digest: Option<&PreDigest<FarmerPublicKey, FarmerPublicKey>>,
+    ) -> Result<Randomness, PotVerifyError<Block>> {
+        let pot_digest =
+            pre_digest
+                .proof_of_time
+                .as_ref()
+                .ok_or_else(|| PotVerifyError::MissingPotDigest {
+                    block_number,
+                    parent_slot_number: parent_pre_digest.map(|p| p.slot.into()),
+                    slot_number: pre_digest.slot.into(),
+                })?;
+        let randomness = pot_digest.derive_global_randomness();
+        let parent_pre_digest = match parent_pre_digest {
+            Some(parent_pre_digest) => parent_pre_digest,
+            None => return Ok(randomness),
+        };
+
         let parent_pot_digest = parent_pre_digest.proof_of_time.as_ref().ok_or_else(|| {
             PotVerifyError::ParentMissingPotDigest {
                 block_number,
@@ -1133,15 +1163,6 @@ where
                 slot_number: pre_digest.slot.into(),
             }
         })?;
-        let pot_digest =
-            pre_digest
-                .proof_of_time
-                .as_ref()
-                .ok_or_else(|| PotVerifyError::MissingPotDigest {
-                    block_number,
-                    parent_slot_number: parent_pre_digest.slot.into(),
-                    slot_number: pre_digest.slot.into(),
-                })?;
 
         proof_of_time
             .verify_block_proofs(
@@ -1151,7 +1172,9 @@ where
                 parent_pre_digest.slot.into(),
                 parent_pot_digest,
             )
-            .map_err(PotVerifyError::PotVerifyBlockProofsError)
+            .map_err(PotVerifyError::PotVerifyBlockProofsError)?;
+
+        Ok(randomness)
     }
 }
 
@@ -1204,7 +1227,7 @@ where
             .client
             .runtime_api()
             .root_plot_public_key(*block.header.parent_hash())
-            .map_err(Error::<Block::Header>::RuntimeApi)
+            .map_err(Error::<Block, Block::Header>::RuntimeApi)
             .map_err(|e| ConsensusError::ClientImport(e.to_string()))?;
 
         self.block_import_verification(
@@ -1226,7 +1249,7 @@ where
                 .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
                 .ok_or_else(|| {
                     ConsensusError::ClientImport(
-                        Error::<Block::Header>::ParentBlockNoAssociatedWeight(block_hash)
+                        Error::<Block, Block::Header>::ParentBlockNoAssociatedWeight(block_hash)
                             .to_string(),
                     )
                 })?
@@ -1264,7 +1287,8 @@ where
                     found_segment_commitment
                 );
                 return Err(ConsensusError::ClientImport(
-                    Error::<Block::Header>::DifferentSegmentCommitment(segment_index).to_string(),
+                    Error::<Block, Block::Header>::DifferentSegmentCommitment(segment_index)
+                        .to_string(),
                 ));
             }
         }
@@ -1317,7 +1341,7 @@ where
 /// Get chain constant configurations
 pub fn get_chain_constants<Block, Client>(
     client: &Client,
-) -> Result<ChainConstants, Error<Block::Header>>
+) -> Result<ChainConstants, Error<Block, Block::Header>>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + AuxStore,
@@ -1331,7 +1355,7 @@ where
             let chain_constants = client
                 .runtime_api()
                 .chain_constants(client.info().best_hash)
-                .map_err(Error::<Block::Header>::RuntimeApi)?;
+                .map_err(Error::<Block, Block::Header>::RuntimeApi)?;
 
             aux_schema::write_chain_constants(&chain_constants, |values| {
                 client.insert_aux(

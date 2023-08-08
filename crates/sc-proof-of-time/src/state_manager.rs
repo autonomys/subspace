@@ -1,6 +1,7 @@
 //! PoT state management.
 
 use crate::PotConfig;
+use async_trait::async_trait;
 use core::num::NonZeroUsize;
 use parking_lot::Mutex;
 use sc_network::PeerId;
@@ -8,7 +9,9 @@ use sp_consensus_subspace::digests::PotPreDigest;
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use subspace_core_primitives::{BlockNumber, NonEmptyVec, PotKey, PotProof, PotSeed, SlotNumber};
+use tracing::trace;
 
 /// The maximum size of the PoT chain to keep (about 5 min worth of proofs for now).
 /// TODO: remove this when purging is implemented.
@@ -612,15 +615,18 @@ impl PotProtocolState for StateManager {
 }
 
 /// Interface to consensus.
+#[async_trait]
 pub trait PotConsensusState: Send + Sync {
     /// Called by consensus when trying to claim the slot.
     /// Returns the proofs in the slot range
     /// [start_slot, current_slot - global_randomness_reveal_lag_slots].
-    fn get_block_proofs(
+    /// If the proofs are unavailable, retries upto wait_time(if specified).
+    async fn get_block_proofs(
         &self,
         block_number: BlockNumber,
         current_slot: SlotNumber,
         parent_pre_digest: &PotPreDigest,
+        wait_time: Option<Duration>,
     ) -> Result<NonEmptyVec<PotProof>, PotGetBlockProofsError>;
 
     /// Called during block import validation.
@@ -635,16 +641,43 @@ pub trait PotConsensusState: Send + Sync {
     ) -> Result<(), PotVerifyBlockProofsError>;
 }
 
+#[async_trait]
 impl PotConsensusState for StateManager {
-    fn get_block_proofs(
+    async fn get_block_proofs(
         &self,
         block_number: BlockNumber,
         current_slot: SlotNumber,
         parent_pre_digest: &PotPreDigest,
+        wait_time: Option<Duration>,
     ) -> Result<NonEmptyVec<PotProof>, PotGetBlockProofsError> {
-        self.state
-            .lock()
-            .get_block_proofs(block_number, current_slot, parent_pre_digest)
+        let start_ts = Instant::now();
+        let should_wait = move || {
+            wait_time
+                .as_ref()
+                .map_or(false, |wait_time| start_ts.elapsed() < *wait_time)
+        };
+        let retry_delay = tokio::time::Duration::from_millis(200);
+        let mut retries = 0;
+        loop {
+            let ret =
+                self.state
+                    .lock()
+                    .get_block_proofs(block_number, current_slot, parent_pre_digest);
+            match ret {
+                Ok(_) => return ret,
+                Err(PotGetBlockProofsError::ProofUnavailable { .. }) => {
+                    if (should_wait)() {
+                        // TODO: notification instead of sleep/retry.
+                        retries += 1;
+                        trace!("get_block_proofs: {ret:?}, retry {retries}...",);
+                        tokio::time::sleep(retry_delay).await;
+                    } else {
+                        return ret;
+                    }
+                }
+                _ => return ret,
+            }
+        }
     }
 
     fn verify_block_proofs(

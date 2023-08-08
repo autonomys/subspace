@@ -62,6 +62,12 @@ use subspace_verification::{
     check_reward_signature, verify_solution, PieceCheckParams, VerifySolutionParams,
 };
 
+/// Time to wait for proofs, if proofs are currently unavailable.
+/// Substrate would cancel the async await if we don't complete
+/// in the remaining slot duration.
+#[cfg(feature = "pot")]
+const POT_WAIT_TIME: std::time::Duration = Duration::from_millis(1000);
+
 /// Errors while building the block proof of time.
 #[cfg(feature = "pot")]
 #[derive(Debug, thiserror::Error)]
@@ -230,8 +236,33 @@ where
         let parent_hash = parent_header.hash();
         let runtime_api = self.client.runtime_api();
 
+        #[cfg(not(feature = "pot"))]
         let global_randomness =
             extract_global_randomness_for_block(self.client.as_ref(), parent_hash).ok()?;
+
+        // If proof of time is enabled, collect the proofs that go into this
+        // block and derive randomness from the last proof.
+        #[cfg(feature = "pot")]
+        let (pot_pre_digest, global_randomness) =
+            if let Some(proof_of_time) = self.proof_of_time.as_ref() {
+                let pot_pre_digest = self
+                    .build_block_pot(
+                        proof_of_time.as_ref(),
+                        parent_header,
+                        &parent_pre_digest,
+                        slot.into(),
+                    )
+                    .await
+                    .ok()?;
+                let randomness = pot_pre_digest.derive_global_randomness();
+                (Some(pot_pre_digest), randomness)
+            } else {
+                (
+                    None,
+                    extract_global_randomness_for_block(self.client.as_ref(), parent_hash).ok()?,
+                )
+            };
+
         let (solution_range, voting_solution_range) =
             extract_solution_ranges_for_block(self.client.as_ref(), parent_hash).ok()?;
 
@@ -357,15 +388,11 @@ where
                     // block reward is claimed
                     if maybe_pre_digest.is_none() && solution_distance <= solution_range / 2 {
                         info!(target: "subspace", "🚜 Claimed block at slot {slot}");
-                        #[cfg(feature = "pot")]
-                        let proof_of_time = self
-                            .build_block_pot(parent_header, &parent_pre_digest, slot.into())
-                            .ok()?;
                         maybe_pre_digest.replace(PreDigest {
                             solution,
                             slot,
                             #[cfg(feature = "pot")]
-                            proof_of_time,
+                            proof_of_time: pot_pre_digest.clone(),
                         });
                     } else if !parent_header.number().is_zero() {
                         // Not sending vote on top of genesis block since segment headers since piece
@@ -596,24 +623,18 @@ where
 
     /// Builds the proof of time for the block being proposed.
     #[cfg(feature = "pot")]
-    fn build_block_pot(
+    async fn build_block_pot(
         &self,
+        proof_of_time: &dyn PotConsensusState,
         parent_header: &Block::Header,
         parent_pre_digest: &PreDigest<FarmerPublicKey, FarmerPublicKey>,
         slot_number: SlotNumber,
-    ) -> Result<Option<PotPreDigest>, PotCreateError<Block>> {
-        let proof_of_time = match &self.proof_of_time {
-            Some(proof_of_time) => proof_of_time.clone(),
-            _ => {
-                // PoT feature disabled.
-                return Ok(None);
-            }
-        };
+    ) -> Result<PotPreDigest, PotCreateError<Block>> {
         let block_number = *parent_header.number() + One::one();
 
         // Block 1 does not have proofs
         if block_number.is_one() {
-            return Ok(Some(PotPreDigest::FirstBlock(slot_number)));
+            return Ok(PotPreDigest::FirstBlock(slot_number));
         }
 
         // Block 2 onwards.
@@ -628,15 +649,22 @@ where
         })?;
 
         proof_of_time
-            .get_block_proofs(block_number.into(), slot_number, parent_pot_digest)
+            .get_block_proofs(
+                block_number.into(),
+                slot_number,
+                parent_pot_digest,
+                Some(POT_WAIT_TIME),
+            )
+            .await
             .map(|proofs| {
-                let proof_of_time = PotPreDigest::new(proofs);
+                let pot_pre_digest = PotPreDigest::new(proofs);
                 debug!(
                     target: "subspace",
-                    "build_block_pot: {block_number}/{}/{slot_number}, PoT=[{proof_of_time:?}]",
-                    parent_pre_digest.slot
+                    "build_block_pot: {block_number}/{}/{slot_number}, PoT=[{pot_pre_digest:?}], \
+                     randomness = {:?}",
+                    parent_pre_digest.slot, pot_pre_digest.derive_global_randomness()
                 );
-                Some(proof_of_time)
+                pot_pre_digest
             })
             .map_err(|err| {
                 debug!(

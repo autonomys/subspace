@@ -9198,6 +9198,7 @@ dependencies = [
 name = "sc-proof-of-time"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "futures",
  "parity-scale-codec",
  "parking_lot 0.12.1",
