@@ -168,10 +168,10 @@ pub enum Subcommand {
 /// Assigned proof of time role.
 #[derive(Debug, Clone, Eq, PartialEq, clap::ValueEnum)]
 pub enum CliPotRole {
-    /// Clock master role of producing proofs.
-    ClockMaster,
+    /// Time keeper role of producing proofs.
+    TimeKeeper,
 
-    /// Listens to proofs from clock masters.
+    /// Listens to proofs from time keepers.
     NodeClient,
 
     /// Proof of time is disabled.
@@ -181,12 +181,12 @@ pub enum CliPotRole {
 impl CliPotRole {
     /// Checks if PoT is enabled.
     pub fn is_pot_enabled(&self) -> bool {
-        *self == Self::ClockMaster || *self == Self::NodeClient
+        *self == Self::TimeKeeper || *self == Self::NodeClient
     }
 
-    /// Checks if PoT role is clock master.
-    pub fn is_clock_master(&self) -> bool {
-        *self == Self::ClockMaster
+    /// Checks if PoT role is time keeper.
+    pub fn is_time_keeper(&self) -> bool {
+        *self == Self::TimeKeeper
     }
 }
 

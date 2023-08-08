@@ -1,4 +1,4 @@
-//! Consensus node interface to the clock master network.
+//! Consensus node interface to the time keeper network.
 
 use crate::gossip::PotGossip;
 use crate::state_manager::PotProtocolState;

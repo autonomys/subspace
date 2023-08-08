@@ -2,10 +2,10 @@
 
 #![feature(const_option)]
 
-mod clock_master;
 mod gossip;
 mod node_client;
 mod state_manager;
+mod time_keeper;
 mod utils;
 
 use crate::state_manager::{init_pot_state, PotProtocolState};
@@ -14,12 +14,12 @@ use std::sync::Arc;
 use subspace_core_primitives::{BlockNumber, SlotNumber};
 use subspace_proof_of_time::ProofOfTime;
 
-pub use clock_master::ClockMaster;
 pub use gossip::pot_gossip_peers_set_config;
 pub use node_client::PotClient;
 pub use state_manager::{
     PotConsensusState, PotGetBlockProofsError, PotStateSummary, PotVerifyBlockProofsError,
 };
+pub use time_keeper::TimeKeeper;
 
 // TODO: change the fields that can't be zero to NonZero types.
 #[derive(Debug, Clone)]
@@ -68,8 +68,8 @@ impl Default for PotConfig {
 
 /// Components initialized during the new_partial() phase of set up.
 pub struct PotComponents {
-    /// If the role is clock master or node client.
-    is_clock_master: bool,
+    /// If the role is time keeper or node client.
+    is_time_keeper: bool,
 
     /// Proof of time implementation.
     proof_of_time: ProofOfTime,
@@ -83,7 +83,7 @@ pub struct PotComponents {
 
 impl PotComponents {
     /// Sets up the partial components.
-    pub fn new(is_clock_master: bool) -> Self {
+    pub fn new(is_time_keeper: bool) -> Self {
         let config = PotConfig::default();
         let proof_of_time = ProofOfTime::new(config.pot_iterations, config.num_checkpoints)
             // TODO: Proper error handling or proof
@@ -91,16 +91,16 @@ impl PotComponents {
         let (protocol_state, consensus_state) = init_pot_state(config);
 
         Self {
-            is_clock_master,
+            is_time_keeper,
             proof_of_time,
             protocol_state,
             consensus_state,
         }
     }
 
-    /// Checks if the role is clock master or node client.
-    pub fn is_clock_master(&self) -> bool {
-        self.is_clock_master
+    /// Checks if the role is time keeper or node client.
+    pub fn is_time_keeper(&self) -> bool {
+        self.is_time_keeper
     }
 
     /// Returns the consensus interface.

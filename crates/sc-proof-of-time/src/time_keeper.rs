@@ -1,4 +1,4 @@
-//! Clock master implementation.
+//! Time keeper implementation.
 
 use crate::gossip::PotGossip;
 use crate::state_manager::PotProtocolState;
@@ -28,8 +28,8 @@ const PROOFS_CHANNEL_SIZE: usize = 12; // 2 * reveal lag.
 /// Expected time to produce a proof.
 const TARGET_PROOF_TIME_MSEC: u128 = 1000;
 
-/// The clock master manages the protocol: periodic proof generation/verification, gossip.
-pub struct ClockMaster<Block: BlockT<Hash = H256>, Client, SO> {
+/// The time keeper manages the protocol: periodic proof generation/verification, gossip.
+pub struct TimeKeeper<Block: BlockT<Hash = H256>, Client, SO> {
     proof_of_time: ProofOfTime,
     pot_state: Arc<dyn PotProtocolState>,
     gossip: PotGossip<Block>,
@@ -38,13 +38,13 @@ pub struct ClockMaster<Block: BlockT<Hash = H256>, Client, SO> {
     chain_info_fn: Arc<dyn Fn() -> Info<Block> + Send + Sync>,
 }
 
-impl<Block, Client, SO> ClockMaster<Block, Client, SO>
+impl<Block, Client, SO> TimeKeeper<Block, Client, SO>
 where
     Block: BlockT<Hash = H256>,
     Client: HeaderBackend<Block>,
     SO: SyncOracle + Send + Sync + Clone + 'static,
 {
-    /// Creates the clock master instance.
+    /// Creates the time keeper instance.
     /// TODO: chain_info() is not a trait method, but part of the
     /// client::Client struct itself. Passing it in brings in lot
     /// of unnecessary generics/dependencies. chain_info_fn() tries
@@ -78,7 +78,7 @@ where
         }
     }
 
-    /// Runs the clock master processing loop.
+    /// Runs the time keeper processing loop.
     pub async fn run(self) {
         self.initialize().await;
 
@@ -91,14 +91,14 @@ where
             futures::select! {
                 local_proof = local_proof_receiver.recv().fuse() => {
                     if let Some(proof) = local_proof {
-                        trace!("clock_master: got local proof: {proof}");
+                        trace!("time_keeper: got local proof: {proof}");
                         self.handle_local_proof(proof);
                     }
                 },
                 _ = self.gossip.process_incoming_messages(
                     handle_gossip_message.clone()
                 ).fuse() => {
-                    error!("clock_master: gossip engine has terminated.");
+                    error!("time_keeper: gossip engine has terminated.");
                     return;
                 }
             }
@@ -107,7 +107,7 @@ where
 
     /// Initializes the chain state from the consensus tip info.
     async fn initialize(&self) {
-        info!("clock_master::initialize: waiting for initialization ...");
+        info!("time_keeper::initialize: waiting for initialization ...");
         let delay = tokio::time::Duration::from_secs(1);
         let proofs = loop {
             // TODO: Proper error handling or proof
@@ -120,13 +120,13 @@ where
             .expect("Consensus tip info should be available");
 
             if tip.block_number.is_zero() {
-                trace!("clock_master::initialize: {tip:?}, to wait ...",);
+                trace!("time_keeper::initialize: {tip:?}, to wait ...",);
                 tokio::time::sleep(delay).await;
                 continue;
             }
 
             info!(
-                "clock_master::initialization done: block_hash={:?}, block_number={}, slot_number={}, {:?}",
+                "time_keeper::initialization done: block_hash={:?}, block_number={}, slot_number={}, {:?}",
                 tip.block_hash, tip.block_number, tip.slot_number, tip.pot_pre_digest
             );
 
@@ -141,7 +141,7 @@ where
                         .expect("Initial slot number should be available for block_number >= 1"),
                     tip.block_hash,
                 );
-                info!("clock_master::initialize: creating first proof: {proof}");
+                info!("time_keeper::initialize: creating first proof: {proof}");
                 NonEmptyVec::new_with_entry(proof)
             });
             break proofs;
@@ -173,7 +173,7 @@ where
         loop {
             // Build the next proof on top of the latest tip.
             // TODO: Proper error handling or proof
-            let last_proof = state.tip().expect("Clock master chain cannot be empty");
+            let last_proof = state.tip().expect("Time keeper chain cannot be empty");
 
             // TODO: injected block hash from consensus
             let start_ts = Instant::now();
@@ -187,14 +187,14 @@ where
                 last_proof.injected_block_hash,
             );
             let elapsed = start_ts.elapsed();
-            trace!("clock_master::produce proofs: {next_proof}, time=[{elapsed:?}]");
+            trace!("time_keeper::produce proofs: {next_proof}, time=[{elapsed:?}]");
 
-            // Store the new proof back into the chain and gossip to other clock masters.
+            // Store the new proof back into the chain and gossip to other time keepers.
             if let Err(e) = state.on_proof(&next_proof) {
-                info!("clock_master::produce proofs: failed to extend chain: {e:?}");
+                info!("time_keeper::produce proofs: failed to extend chain: {e:?}");
                 continue;
             } else if let Err(e) = proof_sender.blocking_send(next_proof.clone()) {
-                warn!("clock_master::produce proofs: send failed: {e:?}");
+                warn!("time_keeper::produce proofs: send failed: {e:?}");
                 return;
             }
 
@@ -221,9 +221,9 @@ where
         let elapsed = start_ts.elapsed();
 
         if let Err(err) = ret {
-            trace!("clock_master::on gossip: {err:?}, {sender}");
+            trace!("time_keeper::on gossip: {err:?}, {sender}");
         } else {
-            trace!("clock_master::on gossip: {proof}, time=[{elapsed:?}], {sender}");
+            trace!("time_keeper::on gossip: {proof}, time=[{elapsed:?}], {sender}");
             self.gossip.gossip_message(proof.encode());
         }
     }

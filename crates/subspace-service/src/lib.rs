@@ -58,7 +58,7 @@ use sc_consensus_subspace::{
 };
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
-use sc_proof_of_time::{pot_gossip_peers_set_config, ClockMaster, PotClient, PotComponents};
+use sc_proof_of_time::{pot_gossip_peers_set_config, PotClient, PotComponents, TimeKeeper};
 use sc_service::error::Error as ServiceError;
 use sc_service::{Configuration, NetworkStarter, PartialComponents, SpawnTasksParams, TaskManager};
 use sc_subspace_block_relay::{build_consensus_relay, NetworkWrapper};
@@ -862,8 +862,8 @@ where
             .as_ref()
             .map(|component| component.consensus_state());
         if let Some(components) = pot_components {
-            if components.is_clock_master() {
-                let clock_master = ClockMaster::<Block, _, _>::new(
+            if components.is_time_keeper() {
+                let time_keeper = TimeKeeper::<Block, _, _>::new(
                     components,
                     client.clone(),
                     sync_service.clone(),
@@ -873,10 +873,10 @@ where
                 );
 
                 task_manager.spawn_essential_handle().spawn_blocking(
-                    "subspace-proof-of-time-clock-master",
+                    "subspace-proof-of-time-time-keeper",
                     Some("pot"),
                     async move {
-                        clock_master.run().await;
+                        time_keeper.run().await;
                     },
                 );
             } else {
