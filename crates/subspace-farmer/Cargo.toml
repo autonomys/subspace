@@ -22,7 +22,6 @@ bytesize = "1.2.0"
 clap = { version = "4.2.1", features = ["color", "derive"] }
 cuckoofilter = { version = "0.5.0", features = ["serde_support"] }
 derive_more = "0.99.17"
-dirs = "5.0.1"
 event-listener-primitives = "2.0.1"
 fdlimit = "0.2"
 futures = "0.3.28"
