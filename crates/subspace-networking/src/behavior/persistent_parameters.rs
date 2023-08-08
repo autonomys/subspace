@@ -78,8 +78,9 @@ pub trait NetworkingParametersRegistry: Send + Sync {
     fn clone_box(&self) -> Box<dyn NetworkingParametersRegistry>;
 
     /// Triggers when we removed the peer address from the permanent storage. Returns optional
-    /// event HandlerId. Option enables stub implementation. On of the usages is to notify
-    /// Kademlia about the expired(unreachable) address.
+    /// event HandlerId. Option enables stub implementation. One of the usages is to notify
+    /// Kademlia about the expired(unreachable) address when it check for how long address was
+    /// unreachable.
     fn on_address_removed(
         &mut self,
         handler: HandlerFn<PeerAddressRemovedEvent>,
@@ -314,7 +315,6 @@ impl NetworkingParametersRegistry for NetworkingParametersManager {
             addresses,
             chrono::Duration::seconds(REMOVE_KNOWN_PEERS_GRACE_PERIOD_SECS),
             chrono::Duration::seconds(REMOVE_KNOWN_PEERS_GRACE_PERIOD_FOR_KADEMLIA_SECS),
-            //          &self.address_removed,
         );
 
         for event in removed_addresses {
@@ -472,7 +472,6 @@ pub(super) fn remove_known_peer_addresses_internal(
     addresses: Vec<Multiaddr>,
     expired_address_duration_persistent_storage: chrono::Duration,
     expired_address_duration_kademlia: chrono::Duration,
-    //    address_removed: &Handler<PeerAddressRemovedEvent>
 ) -> Vec<PeerAddressRemovedEvent> {
     let mut address_removed_events = Vec::new();
 

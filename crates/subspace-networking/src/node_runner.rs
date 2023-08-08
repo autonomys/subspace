@@ -151,8 +151,7 @@ where
     removed_addresses_rx: mpsc::UnboundedReceiver<PeerAddressRemovedEvent>,
     /// Optional storage for the [`HandlerId`] of the address removal task.
     /// We keep to stop the task along with the rest of the networking.
-    #[allow(dead_code)]
-    address_removal_task_handler_id: Option<HandlerId>,
+    _address_removal_task_handler_id: Option<HandlerId>,
 }
 
 // Helper struct for NodeRunner configuration (clippy requirement).
@@ -240,7 +239,7 @@ where
             kademlia_mode,
             external_addresses,
             removed_addresses_rx,
-            address_removal_task_handler_id,
+            _address_removal_task_handler_id: address_removal_task_handler_id,
         }
     }
 
