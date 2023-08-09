@@ -4,6 +4,7 @@
     hash_extract_if,
     impl_trait_in_assoc_type,
     io_error_other,
+    int_roundings,
     iter_collect_into,
     let_chains,
     trait_alias,
