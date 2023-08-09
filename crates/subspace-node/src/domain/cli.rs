@@ -19,7 +19,8 @@ use clap::Parser;
 use domain_service::DomainConfiguration;
 use sc_cli::{
     ChainSpec, CliConfiguration, DefaultConfigurationValues, ImportParams, KeystoreParams,
-    NetworkParams, Result, RunCmd as SubstrateRunCmd, RuntimeVersion, SharedParams, SubstrateCli,
+    NetworkParams, Result, Role, RunCmd as SubstrateRunCmd, RuntimeVersion, SharedParams,
+    SubstrateCli,
 };
 use sc_service::config::PrometheusConfig;
 use sc_service::BasePath;
@@ -62,6 +63,10 @@ pub struct DomainCli {
     /// Optional relayer address to relay messages on behalf.
     #[clap(long)]
     pub relayer_id: Option<String>,
+
+    /// Run the node as an Operator
+    #[arg(long, conflicts_with = "validator")]
+    pub operator: bool,
 
     /// Additional args for domain.
     #[clap(raw = true)]
@@ -250,7 +255,14 @@ impl CliConfiguration<Self> for DomainCli {
     }
 
     fn role(&self, is_dev: bool) -> Result<sc_service::Role> {
-        self.run.role(is_dev)
+        // is authority when operator is enabled or in dev mode
+        let is_authority = self.operator || self.run.validator || is_dev;
+
+        Ok(if is_authority {
+            Role::Authority
+        } else {
+            Role::Full
+        })
     }
 
     fn transaction_pool(&self, is_dev: bool) -> Result<sc_service::config::TransactionPoolOptions> {
