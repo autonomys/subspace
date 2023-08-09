@@ -45,6 +45,14 @@ impl Deref for Identity {
 }
 
 impl Identity {
+    /// Size of the identity file on disk
+    pub fn file_size() -> usize {
+        IdentityFileContents {
+            entropy: vec![0; ENTROPY_LENGTH],
+        }
+        .encoded_size()
+    }
+
     /// Opens the existing identity, or creates a new one.
     pub fn open_or_create<B: AsRef<Path>>(base_directory: B) -> Result<Self, Error> {
         if let Some(identity) = Self::open(base_directory.as_ref())? {

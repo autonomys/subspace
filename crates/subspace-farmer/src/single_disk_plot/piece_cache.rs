@@ -1,7 +1,6 @@
 use derive_more::Display;
 use memmap2::{Mmap, MmapOptions};
 use std::fs::{File, OpenOptions};
-use std::io::{Seek, SeekFrom};
 use std::path::Path;
 use std::sync::Arc;
 use std::{fs, io, mem};
@@ -62,26 +61,19 @@ impl DiskPieceCache {
             return Err(DiskPieceCacheError::ZeroCapacity);
         }
 
-        let mut file = OpenOptions::new()
+        let file = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
             .open(directory.join(Self::PIECE_CACHE_FILE))?;
 
-        let current_file_size = file.seek(SeekFrom::End(0))?;
         let expected_size = Self::element_size() * capacity;
-        if current_file_size == 0 {
-            // Empty file
-            file.preallocate(expected_size as u64)
-                .map_err(DiskPieceCacheError::CantPreallocateCacheFile)?;
-        } else if current_file_size == expected_size as u64 {
-            // Already correct size
-        } else {
-            panic!(
-                "Resizing not supported, single disk plot must have checked this before getting \
-                here"
-            );
-        }
+        // Allocating the whole file (`set_len` below can create a sparse file, which will cause
+        // writes to fail later)
+        file.preallocate(expected_size as u64)
+            .map_err(DiskPieceCacheError::CantPreallocateCacheFile)?;
+        // Truncating file (if necessary)
+        file.set_len(expected_size as u64)?;
 
         let read_mmap = unsafe { MmapOptions::new().len(expected_size).map(&file)? };
         #[cfg(unix)]

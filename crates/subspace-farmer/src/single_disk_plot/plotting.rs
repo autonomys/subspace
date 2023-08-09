@@ -180,7 +180,7 @@ where
 
         if sector_index + 1 > metadata_header.sector_count {
             metadata_header.sector_count = sector_index + 1;
-            metadata_header_mmap.copy_from_slice(metadata_header.encode().as_slice());
+            metadata_header.encode_to(&mut metadata_header_mmap.as_mut());
         }
         {
             let mut sectors_metadata = sectors_metadata.write();

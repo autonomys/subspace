@@ -2,7 +2,7 @@ mod dsn;
 
 use crate::commands::farm::dsn::configure_dsn;
 use crate::commands::shared::print_disk_farm_info;
-use crate::utils::{get_required_plot_space_with_overhead, shutdown_signal};
+use crate::utils::shutdown_signal;
 use crate::{DiskFarm, FarmingArgs};
 use anyhow::{anyhow, Result};
 use futures::stream::FuturesUnordered;
@@ -187,17 +187,17 @@ where
         let single_disk_plot = match single_disk_plot_fut.await {
             Ok(single_disk_plot) => single_disk_plot,
             Err(SingleDiskPlotError::InsufficientAllocatedSpace {
-                min_size,
+                min_space,
                 allocated_space,
             }) => {
-                let minimum_plot_size = get_required_plot_space_with_overhead(min_size as u64);
-                let allocated_plotting_space_with_overhead =
-                    get_required_plot_space_with_overhead(allocated_space);
-
                 return Err(anyhow::anyhow!(
-                    "Plot size is too low ({} bytes). Minimum is {}",
-                    allocated_plotting_space_with_overhead,
-                    minimum_plot_size
+                    "Allocated space {} ({}) is not enough, minimum is ~{} (~{}, {} bytes to be \
+                    exact)",
+                    bytesize::to_string(allocated_space, true),
+                    bytesize::to_string(allocated_space, false),
+                    bytesize::to_string(min_space, true),
+                    bytesize::to_string(min_space, false),
+                    min_space
                 ));
             }
             Err(error) => {
