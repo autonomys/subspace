@@ -13,7 +13,6 @@ use crate::single_disk_plot::piece_reader::PieceReader;
 pub use crate::single_disk_plot::plotting::PlottingError;
 use crate::single_disk_plot::plotting::{plotting, plotting_scheduler};
 use crate::utils::JoinOnDrop;
-use bytesize::ByteSize;
 use derive_more::{Display, From};
 use event_listener_primitives::{Bag, HandlerId};
 use futures::channel::{mpsc, oneshot};
@@ -283,22 +282,12 @@ pub enum SingleDiskPlotError {
     /// Piece cache error
     #[error("Piece cache error: {0}")]
     PieceCacheError(#[from] DiskPieceCacheError),
+    /// Can't preallocate metadata file, probably not enough space on disk
+    #[error("Can't preallocate metadata file, probably not enough space on disk: {0}")]
+    CantPreallocateMetadataFile(io::Error),
     /// Can't preallocate plot file, probably not enough space on disk
     #[error("Can't preallocate plot file, probably not enough space on disk: {0}")]
     CantPreallocatePlotFile(io::Error),
-    /// Can't resize plot after creation
-    #[error(
-        "Usable plotting space of plot {id} {new_space} is different from {old_space} when plot \
-        was created, resizing isn't supported yet"
-    )]
-    CantResize {
-        /// Plot ID
-        id: SingleDiskPlotId,
-        /// Space allocated during plot creation
-        old_space: ByteSize,
-        /// New desired plot size
-        new_space: ByteSize,
-    },
     /// Wrong chain (genesis hash)
     #[error(
         "Genesis hash of plot {id} {wrong_chain} is different from {correct_chain} when plot was \
@@ -474,15 +463,7 @@ impl SingleDiskPlot {
         let public_key = identity.public_key().to_bytes().into();
 
         let single_disk_plot_info = match SingleDiskPlotInfo::load_from(&directory)? {
-            Some(single_disk_plot_info) => {
-                if allocated_space != single_disk_plot_info.allocated_space() {
-                    return Err(SingleDiskPlotError::CantResize {
-                        id: *single_disk_plot_info.id(),
-                        old_space: ByteSize::b(single_disk_plot_info.allocated_space()),
-                        new_space: ByteSize::b(allocated_space),
-                    });
-                }
-
+            Some(mut single_disk_plot_info) => {
                 if &farmer_app_info.genesis_hash != single_disk_plot_info.genesis_hash() {
                     return Err(SingleDiskPlotError::WrongChain {
                         id: *single_disk_plot_info.id(),
@@ -516,6 +497,24 @@ impl SingleDiskPlot {
                         "Plot initialized with smaller number of pieces in sector, plot needs to \
                         be re-created for increase"
                     );
+                }
+
+                if allocated_space != single_disk_plot_info.allocated_space() {
+                    info!(
+                        old_space = %bytesize::to_string(single_disk_plot_info.allocated_space(), true),
+                        new_space = %bytesize::to_string(allocated_space, true),
+                        "Farm size has changed"
+                    );
+
+                    {
+                        let new_allocated_space = allocated_space;
+                        let SingleDiskPlotInfo::V0 {
+                            allocated_space, ..
+                        } = &mut single_disk_plot_info;
+                        *allocated_space = new_allocated_space;
+                    }
+
+                    single_disk_plot_info.store_to(&directory)?;
                 }
 
                 single_disk_plot_info
@@ -596,24 +595,25 @@ impl SingleDiskPlot {
             }
         };
 
-        // TODO: Consider file locking to prevent other apps from modifying itS
+        // TODO: Consider file locking to prevent other apps from modifying it
         let mut metadata_file = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
             .open(directory.join(Self::METADATA_FILE))?;
 
-        let (metadata_header, metadata_header_mmap) = if metadata_file.seek(SeekFrom::End(0))? == 0
-        {
+        let metadata_size = metadata_file.seek(SeekFrom::End(0))?;
+        let expected_metadata_size =
+            RESERVED_PLOT_METADATA + sector_metadata_size as u64 * u64::from(target_sector_count);
+        let (metadata_header, metadata_header_mmap) = if metadata_size == 0 {
             let metadata_header = PlotMetadataHeader {
                 version: 0,
                 sector_count: 0,
             };
 
-            metadata_file.preallocate(
-                RESERVED_PLOT_METADATA
-                    + sector_metadata_size as u64 * u64::from(target_sector_count),
-            )?;
+            metadata_file
+                .preallocate(expected_metadata_size)
+                .map_err(SingleDiskPlotError::CantPreallocateMetadataFile)?;
             metadata_file.write_all_at(metadata_header.encode().as_slice(), 0)?;
 
             let metadata_header_mmap = unsafe {
@@ -624,19 +624,34 @@ impl SingleDiskPlot {
 
             (metadata_header, metadata_header_mmap)
         } else {
-            let metadata_header_mmap = unsafe {
+            if metadata_size != expected_metadata_size {
+                // Allocating the whole file (`set_len` below can create a sparse file, which will
+                // cause writes to fail later)
+                metadata_file
+                    .preallocate(expected_metadata_size)
+                    .map_err(SingleDiskPlotError::CantPreallocateMetadataFile)?;
+                // Truncating file (if necessary)
+                metadata_file.set_len(expected_metadata_size)?;
+            }
+            let mut metadata_header_mmap = unsafe {
                 MmapOptions::new()
                     .len(PlotMetadataHeader::encoded_size())
                     .map_mut(&metadata_file)?
             };
 
-            let metadata_header = PlotMetadataHeader::decode(&mut metadata_header_mmap.as_ref())
-                .map_err(SingleDiskPlotError::FailedToDecodeMetadataHeader)?;
+            let mut metadata_header =
+                PlotMetadataHeader::decode(&mut metadata_header_mmap.as_ref())
+                    .map_err(SingleDiskPlotError::FailedToDecodeMetadataHeader)?;
 
             if metadata_header.version != Self::SUPPORTED_PLOT_VERSION {
                 return Err(SingleDiskPlotError::UnexpectedMetadataVersion(
                     metadata_header.version,
                 ));
+            }
+
+            if metadata_header.sector_count > target_sector_count {
+                metadata_header.sector_count = target_sector_count;
+                metadata_header.encode_to(&mut metadata_header_mmap.as_mut());
             }
 
             (metadata_header, metadata_header_mmap)
@@ -674,9 +689,13 @@ impl SingleDiskPlot {
                 .open(directory.join(Self::PLOT_FILE))?,
         );
 
+        // Allocating the whole file (`set_len` below can create a sparse file, which will cause
+        // writes to fail later)
         plot_file
             .preallocate(sector_size as u64 * u64::from(target_sector_count))
             .map_err(SingleDiskPlotError::CantPreallocatePlotFile)?;
+        // Truncating file (if necessary)
+        plot_file.set_len(sector_size as u64 * u64::from(target_sector_count))?;
 
         let piece_cache = DiskPieceCache::open(&directory, cache_capacity)?;
 
