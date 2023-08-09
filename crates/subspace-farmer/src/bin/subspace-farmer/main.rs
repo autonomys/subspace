@@ -280,7 +280,13 @@ async fn main() -> anyhow::Result<()> {
         Subcommand::Farm(mut farming_args) => {
             for farm in &disk_farms {
                 if !farm.directory.exists() {
-                    panic!("Directory {} doesn't exist", farm.directory.display());
+                    if let Err(error) = fs::create_dir(&farm.directory) {
+                        panic!(
+                            "Directory {} doesn't exist and can't be created: {}",
+                            farm.directory.display(),
+                            error
+                        );
+                    }
                 }
             }
 
