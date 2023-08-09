@@ -18,8 +18,8 @@ use std::time::Duration;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::{
-    ArchivedHistorySegment, Piece, PieceIndex, PieceOffset, PublicKey, Record, RecordCommitment,
-    RecordWitness, SBucket, SectorId, SectorIndex,
+    ArchivedHistorySegment, Piece, PieceIndex, PieceOffset, PublicKey, Record, SBucket, SectorId,
+    SectorIndex,
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_proof_of_space::{Quality, Table, TableGenerator};
@@ -338,14 +338,19 @@ where
                 });
         });
 
+    // Write sector to disk in form of following regions:
+    // * sector contents map
+    // * record chunks as s-buckets
+    // * record metadata
     {
-        let (sector_contents_map_region, remainder) =
+        let (sector_contents_map_region, remaining_bytes) =
             sector_output.split_at_mut(SectorContentsMap::encoded_size(pieces_in_sector));
-        // Write sector contents map so we can decode it later
-        sector_contents_map_region.copy_from_slice(sector_contents_map.as_ref());
         // Slice remaining memory into belonging to s-buckets and metadata
         let (s_buckets_region, metadata_region) =
-            remainder.split_at_mut(sector_record_chunks_size(pieces_in_sector));
+            remaining_bytes.split_at_mut(sector_record_chunks_size(pieces_in_sector));
+
+        // Write sector contents map so we can decode it later
+        sector_contents_map_region.copy_from_slice(sector_contents_map.as_ref());
 
         let num_encoded_record_chunks = sector_contents_map.num_encoded_record_chunks();
         let mut next_encoded_record_chunks_offset = vec![0_usize; pieces_in_sector.into()];
@@ -380,12 +385,10 @@ where
             output.copy_from_slice(&raw_sector.records[usize::from(piece_offset)][chunk_position]);
         }
 
-        for (record_metadata, output) in raw_sector.metadata.into_iter().zip(
-            metadata_region.array_chunks_mut::<{ RecordCommitment::SIZE + RecordWitness::SIZE }>(),
-        ) {
-            let (commitment, witness) = output.split_at_mut(RecordCommitment::SIZE);
-            commitment.copy_from_slice(record_metadata.commitment.as_ref());
-            witness.copy_from_slice(record_metadata.witness.as_ref());
+        let metadata_chunks =
+            metadata_region.array_chunks_mut::<{ RecordMetadata::encoded_size() }>();
+        for (record_metadata, output) in raw_sector.metadata.into_iter().zip(metadata_chunks) {
+            record_metadata.encode_to(&mut output.as_mut_slice());
         }
     }
 

@@ -1,7 +1,8 @@
 use crate::sector::{
-    sector_record_chunks_size, sector_size, SectorContentsMap, SectorContentsMapFromBytesError,
-    SectorMetadata,
+    sector_record_chunks_size, sector_size, RecordMetadata, SectorContentsMap,
+    SectorContentsMapFromBytesError, SectorMetadata,
 };
+use parity_scale_codec::Decode;
 use rayon::prelude::*;
 use std::mem::ManuallyDrop;
 use std::simd::Simd;
@@ -219,11 +220,11 @@ pub fn recover_source_record_chunks(
 }
 
 /// Read metadata (commitment and witness) for record
-pub fn read_record_metadata(
+pub(crate) fn read_record_metadata(
     piece_offset: PieceOffset,
     pieces_in_sector: u16,
     sector: &[u8],
-) -> Result<(RecordCommitment, RecordWitness), ReadingError> {
+) -> Result<RecordMetadata, ReadingError> {
     if sector.len() != sector_size(pieces_in_sector) {
         return Err(ReadingError::WrongSectorSize {
             expected: sector_size(pieces_in_sector),
@@ -233,21 +234,15 @@ pub fn read_record_metadata(
 
     let sector_metadata_start = SectorContentsMap::encoded_size(pieces_in_sector)
         + sector_record_chunks_size(pieces_in_sector);
-    let commitment_witness_size = RecordCommitment::SIZE + RecordWitness::SIZE;
-    let (record_commitment, record_witness) = sector[sector_metadata_start..]
-        // Move to the beginning of the commitment and witness we care about
-        [commitment_witness_size * usize::from(piece_offset)..]
-        // Take commitment and witness we care about
-        [..commitment_witness_size]
-        // Separate commitment from witness
-        .split_at(RecordCommitment::SIZE);
+    // Move to the beginning of the commitment and witness we care about
+    let record_metadata_bytes = &sector[sector_metadata_start..]
+        [RecordMetadata::encoded_size() * usize::from(piece_offset)..];
+    let record_metadata = RecordMetadata::decode(&mut &*record_metadata_bytes).expect(
+        "Length is correct and checked above, contents doesn't have specific structure to \
+        it; qed",
+    );
 
-    let record_commitment = RecordCommitment::try_from(record_commitment)
-        .expect("Correctly sliced above from correctly sized plot; qed");
-    let record_witness = RecordWitness::try_from(record_witness)
-        .expect("Correctly sliced above from correctly sized plot; qed");
-
-    Ok((record_commitment, record_witness))
+    Ok(record_metadata)
 }
 
 /// Read piece from sector
@@ -294,7 +289,7 @@ where
         erasure_coding,
     )?;
 
-    let (commitment, witness) = read_record_metadata(piece_offset, pieces_in_sector, sector)?;
+    let record_metadata = read_record_metadata(piece_offset, pieces_in_sector, sector)?;
 
     let mut piece = Piece::default();
 
@@ -306,8 +301,8 @@ where
             *output = input.to_bytes();
         });
 
-    *piece.commitment_mut() = commitment;
-    *piece.witness_mut() = witness;
+    *piece.commitment_mut() = record_metadata.commitment;
+    *piece.witness_mut() = record_metadata.witness;
 
     Ok(piece)
 }

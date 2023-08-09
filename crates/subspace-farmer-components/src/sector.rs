@@ -16,23 +16,23 @@ pub const fn sector_record_chunks_size(pieces_in_sector: u16) -> usize {
     pieces_in_sector as usize * Record::SIZE
 }
 
-/// Size of the part of the plot containing commitments and witnesses for records.
+/// Size of the part of the plot containing record metadata.
 ///
 /// Total size of the plot can be computed with [`sector_size()`].
-pub const fn sector_commitments_witnesses_size(pieces_in_sector: u16) -> usize {
-    pieces_in_sector as usize * (RecordWitness::SIZE + RecordCommitment::SIZE)
+pub const fn sector_record_metadata_size(pieces_in_sector: u16) -> usize {
+    pieces_in_sector as usize * RecordMetadata::encoded_size()
 }
 
-/// Exact sector plot size (sector contents map, record chunks, record commitments and witnesses).
+/// Exact sector plot size (sector contents map, record chunks, record metadata).
 ///
 /// NOTE: Each sector also has corresponding fixed size metadata whose size can be obtained with
 /// [`SectorMetadata::encoded_size()`], size of the record chunks (s-buckets) with
 /// [`sector_record_chunks_size()`] and size of record commitments and witnesses with
-/// [`sector_commitments_witnesses_size()`]. This function just combines those three together for
+/// [`sector_record_metadata_size()`]. This function just combines those three together for
 /// convenience.
 pub const fn sector_size(pieces_in_sector: u16) -> usize {
     sector_record_chunks_size(pieces_in_sector)
-        + sector_commitments_witnesses_size(pieces_in_sector)
+        + sector_record_metadata_size(pieces_in_sector)
         + SectorContentsMap::encoded_size(pieces_in_sector)
 }
 
@@ -92,25 +92,31 @@ impl SectorMetadata {
 
 /// Commitment and witness corresponding to the same record
 #[derive(Debug, Default, Clone, Encode, Decode)]
-pub struct RecordMetadata {
+pub(crate) struct RecordMetadata {
     /// Record commitment
-    pub commitment: RecordCommitment,
+    pub(crate) commitment: RecordCommitment,
     /// Record witness
-    pub witness: RecordWitness,
+    pub(crate) witness: RecordWitness,
+}
+
+impl RecordMetadata {
+    pub(crate) const fn encoded_size() -> usize {
+        RecordWitness::SIZE + RecordCommitment::SIZE
+    }
 }
 
 /// Raw sector before it is transformed and written to plot, used during plotting
 #[derive(Debug, Clone)]
-pub struct RawSector {
+pub(crate) struct RawSector {
     /// List of records, likely downloaded from the network
-    pub records: Vec<Record>,
+    pub(crate) records: Vec<Record>,
     /// Metadata (commitment and witness) corresponding to the same record
-    pub metadata: Vec<RecordMetadata>,
+    pub(crate) metadata: Vec<RecordMetadata>,
 }
 
 impl RawSector {
     /// Create new raw sector with internal vectors being allocated and filled with default values
-    pub fn new(pieces_in_sector: u16) -> Self {
+    pub(crate) fn new(pieces_in_sector: u16) -> Self {
         Self {
             records: Record::new_zero_vec(usize::from(pieces_in_sector)),
             metadata: vec![RecordMetadata::default(); usize::from(pieces_in_sector)],
