@@ -22,7 +22,7 @@
 use futures::{future, FutureExt, StreamExt};
 use jsonrpsee::core::{async_trait, Error as JsonRpseeError, RpcResult};
 use jsonrpsee::proc_macros::rpc;
-use jsonrpsee::types::SubscriptionResult;
+use jsonrpsee::types::{SubscriptionEmptyError, SubscriptionResult};
 use jsonrpsee::SubscriptionSink;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
@@ -32,7 +32,7 @@ use sc_consensus_subspace::{
     ArchivedSegmentNotification, NewSlotNotification, RewardSigningNotification,
     SegmentHeadersStore, SubspaceSyncOracle,
 };
-use sc_rpc::SubscriptionTaskExecutor;
+use sc_rpc::{DenyUnsafe, SubscriptionTaskExecutor};
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
@@ -166,6 +166,7 @@ where
         Arc<Mutex<ArchivedSegmentHeaderAcknowledgementSenders>>,
     next_subscription_id: AtomicU64,
     sync_oracle: SubspaceSyncOracle<SO>,
+    deny_unsafe: DenyUnsafe,
     _block: PhantomData<Block>,
 }
 
@@ -195,6 +196,7 @@ where
         dsn_bootstrap_nodes: Vec<Multiaddr>,
         segment_headers_store: SegmentHeadersStore<AS>,
         sync_oracle: SubspaceSyncOracle<SO>,
+        deny_unsafe: DenyUnsafe,
     ) -> Self {
         Self {
             client,
@@ -210,6 +212,7 @@ where
             archived_segment_acknowledgement_senders: Arc::default(),
             next_subscription_id: AtomicU64::default(),
             sync_oracle,
+            deny_unsafe,
             _block: PhantomData,
         }
     }
@@ -268,6 +271,8 @@ where
     }
 
     fn submit_solution_response(&self, solution_response: SolutionResponse) -> RpcResult<()> {
+        self.deny_unsafe.check_if_safe()?;
+
         let solution_response_senders = self.solution_response_senders.clone();
 
         // TODO: This doesn't track what client sent a solution, allowing some clients to send
@@ -287,6 +292,7 @@ where
     fn subscribe_slot_info(&self, mut sink: SubscriptionSink) -> SubscriptionResult {
         let executor = self.executor.clone();
         let solution_response_senders = self.solution_response_senders.clone();
+        let allow_solutions = self.deny_unsafe.check_if_safe().is_ok();
 
         let stream =
             self.new_slot_notification_stream
@@ -297,63 +303,67 @@ where
                         solution_sender,
                     } = new_slot_notification;
 
-                    let (response_sender, response_receiver) = async_oneshot::oneshot();
+                    // Only handle solution responses in case unsafe APIs are allowed
+                    if allow_solutions {
+                        let (response_sender, response_receiver) = async_oneshot::oneshot();
 
-                    // Store solution sender so that we can retrieve it when solution comes from
-                    // the farmer
-                    {
-                        let mut solution_response_senders = solution_response_senders.lock();
+                        // Store solution sender so that we can retrieve it when solution comes from
+                        // the farmer
+                        {
+                            let mut solution_response_senders = solution_response_senders.lock();
 
-                        if solution_response_senders.current_slot != new_slot_info.slot {
-                            solution_response_senders.current_slot = new_slot_info.slot;
-                            solution_response_senders.senders.clear();
-                        }
-
-                        solution_response_senders.senders.push(response_sender);
-                    }
-
-                    // Wait for solutions and transform proposed proof of space solutions into
-                    // data structure `sc-consensus-subspace` expects
-                    let forward_solution_fut = async move {
-                        if let Ok(solution_response) = response_receiver.await {
-                            for solution in solution_response.solutions {
-                                let public_key =
-                                    FarmerPublicKey::from_slice(solution.public_key.as_ref())
-                                        .expect("Always correct length; qed");
-                                let reward_address =
-                                    FarmerPublicKey::from_slice(solution.reward_address.as_ref())
-                                        .expect("Always correct length; qed");
-
-                                let solution = Solution {
-                                    public_key,
-                                    reward_address,
-                                    sector_index: solution.sector_index,
-                                    history_size: solution.history_size,
-                                    piece_offset: solution.piece_offset,
-                                    record_commitment: solution.record_commitment,
-                                    record_witness: solution.record_witness,
-                                    chunk: solution.chunk,
-                                    chunk_witness: solution.chunk_witness,
-                                    audit_chunk_offset: solution.audit_chunk_offset,
-                                    proof_of_space: solution.proof_of_space,
-                                };
-
-                                let _ = solution_sender.unbounded_send(solution);
+                            if solution_response_senders.current_slot != new_slot_info.slot {
+                                solution_response_senders.current_slot = new_slot_info.slot;
+                                solution_response_senders.senders.clear();
                             }
-                        }
-                    };
 
-                    // Run above future with timeout
-                    executor.spawn(
-                        "subspace-slot-info-forward",
-                        Some("rpc"),
-                        future::select(
-                            futures_timer::Delay::new(SOLUTION_TIMEOUT),
-                            Box::pin(forward_solution_fut),
-                        )
-                        .map(|_| ())
-                        .boxed(),
-                    );
+                            solution_response_senders.senders.push(response_sender);
+                        }
+
+                        // Wait for solutions and transform proposed proof of space solutions into
+                        // data structure `sc-consensus-subspace` expects
+                        let forward_solution_fut = async move {
+                            if let Ok(solution_response) = response_receiver.await {
+                                for solution in solution_response.solutions {
+                                    let public_key =
+                                        FarmerPublicKey::from_slice(solution.public_key.as_ref())
+                                            .expect("Always correct length; qed");
+                                    let reward_address = FarmerPublicKey::from_slice(
+                                        solution.reward_address.as_ref(),
+                                    )
+                                    .expect("Always correct length; qed");
+
+                                    let solution = Solution {
+                                        public_key,
+                                        reward_address,
+                                        sector_index: solution.sector_index,
+                                        history_size: solution.history_size,
+                                        piece_offset: solution.piece_offset,
+                                        record_commitment: solution.record_commitment,
+                                        record_witness: solution.record_witness,
+                                        chunk: solution.chunk,
+                                        chunk_witness: solution.chunk_witness,
+                                        audit_chunk_offset: solution.audit_chunk_offset,
+                                        proof_of_space: solution.proof_of_space,
+                                    };
+
+                                    let _ = solution_sender.unbounded_send(solution);
+                                }
+                            }
+                        };
+
+                        // Run above future with timeout
+                        executor.spawn(
+                            "subspace-slot-info-forward",
+                            Some("rpc"),
+                            future::select(
+                                futures_timer::Delay::new(SOLUTION_TIMEOUT),
+                                Box::pin(forward_solution_fut),
+                            )
+                            .map(|_| ())
+                            .boxed(),
+                        );
+                    }
 
                     let slot_number = new_slot_info.slot.into();
 
@@ -381,6 +391,10 @@ where
     }
 
     fn subscribe_reward_signing(&self, mut sink: SubscriptionSink) -> SubscriptionResult {
+        self.deny_unsafe
+            .check_if_safe()
+            .map_err(|_error| SubscriptionEmptyError)?;
+
         let executor = self.executor.clone();
         let reward_signature_senders = self.reward_signature_senders.clone();
 
@@ -465,6 +479,8 @@ where
     }
 
     fn submit_reward_signature(&self, reward_signature: RewardSignatureResponse) -> RpcResult<()> {
+        self.deny_unsafe.check_if_safe()?;
+
         let reward_signature_senders = self.reward_signature_senders.clone();
 
         // TODO: This doesn't track what client sent a solution, allowing some clients to send
@@ -486,6 +502,7 @@ where
 
         let piece_cache = Arc::clone(&self.piece_cache);
         let subscription_id = self.next_subscription_id.fetch_add(1, Ordering::Relaxed);
+        let allow_acknowledgements = self.deny_unsafe.check_if_safe().is_ok();
 
         let stream = self
             .archived_segment_notification_stream
@@ -499,8 +516,8 @@ where
                 let segment_index = archived_segment.segment_header.segment_index();
 
                 // Store acknowledgment sender so that we can retrieve it when acknowledgement
-                // comes from the farmer
-                {
+                // comes from the farmer, but only if unsafe APIs are allowed
+                let maybe_archived_segment_header = if allow_acknowledgements {
                     let mut archived_segment_acknowledgement_senders =
                         archived_segment_acknowledgement_senders.lock();
 
@@ -530,8 +547,14 @@ where
                         .lock()
                         .replace(Arc::downgrade(&archived_segment));
 
-                    Box::pin(async move { maybe_archived_segment_header })
-                }
+                    maybe_archived_segment_header
+                } else {
+                    // In case unsafe APIs are not allowed, just return segment header without
+                    // requiring it to be acknowledged
+                    Some(archived_segment.segment_header)
+                };
+
+                Box::pin(async move { maybe_archived_segment_header })
             });
 
         let archived_segment_acknowledgement_senders =
@@ -602,6 +625,8 @@ where
         &self,
         segment_index: SegmentIndex,
     ) -> RpcResult<()> {
+        self.deny_unsafe.check_if_safe()?;
+
         let archived_segment_acknowledgement_senders =
             self.archived_segment_acknowledgement_senders.clone();
 
