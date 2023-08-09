@@ -46,7 +46,7 @@ If you're connected directly without any router, then again nothing needs to be 
 .\NODE_FILE_NAME.exe `
 --chain gemini-3e `
 --execution wasm `
---blocks-pruning archive `
+--blocks-pruning 256 `
 --state-pruning archive `
 --no-private-ipv4 `
 --validator `
@@ -98,7 +98,7 @@ If you're connected directly without any router, then again nothing needs to be 
 ./NODE_FILE_NAME \
   --chain gemini-3e \
   --execution wasm \
-  --blocks-pruning archive \
+  --blocks-pruning 256 \
   --state-pruning archive \
   --no-private-ipv4 \
   --validator \
@@ -153,7 +153,7 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 ./NODE_FILE_NAME \
   --chain gemini-3e \
   --execution wasm \
-  --blocks-pruning archive \
+  --blocks-pruning 256 \
   --state-pruning archive \
   --no-private-ipv4 \
   --validator \
@@ -217,7 +217,7 @@ services:
       "--chain", "gemini-3e",
       "--base-path", "/var/subspace",
       "--execution", "wasm",
-      "--blocks-pruning", "archive",
+      "--blocks-pruning", "256",
       "--state-pruning", "archive",
       "--port", "30333",
       "--dsn-listen-on", "/ip4/0.0.0.0/tcp/30433",

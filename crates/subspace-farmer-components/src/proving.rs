@@ -210,80 +210,78 @@ where
                     .derive_evaluation_seed(piece_offset, self.sector_metadata.history_size),
             );
 
-            let maybe_chunk_cache: Result<_, ProvingError> = try {
-                let sector_record_chunks = read_sector_record_chunks(
-                    piece_offset,
-                    self.sector_metadata.pieces_in_sector,
-                    &self.s_bucket_offsets,
-                    &self.sector_contents_map,
-                    &pos_table,
-                    self.sector,
-                )?;
-
-                let chunk = sector_record_chunks
-                    .get(usize::from(self.s_bucket))
-                    .expect("Within s-bucket range; qed")
-                    .expect("Winning chunk was plotted; qed");
-
-                let source_chunks_polynomial = self
-                    .erasure_coding
-                    .recover_poly(sector_record_chunks.as_slice())
-                    .map_err(|error| ReadingError::FailedToErasureDecodeRecord {
+            let maybe_chunk_cache: Result<_, ProvingError> =
+                try {
+                    let sector_record_chunks = read_sector_record_chunks(
                         piece_offset,
-                        error,
-                    })?;
-                drop(sector_record_chunks);
+                        self.sector_metadata.pieces_in_sector,
+                        &self.s_bucket_offsets,
+                        &self.sector_contents_map,
+                        &pos_table,
+                        self.sector,
+                    )?;
 
-                let (record_commitment, record_witness) = read_record_metadata(
-                    piece_offset,
-                    self.sector_metadata.pieces_in_sector,
-                    self.sector,
-                )?;
+                    let chunk = sector_record_chunks
+                        .get(usize::from(self.s_bucket))
+                        .expect("Within s-bucket range; qed")
+                        .expect("Winning chunk was plotted; qed");
 
-                let record_commitment =
-                    Commitment::try_from_bytes(&record_commitment).map_err(|error| {
-                        ProvingError::FailedToDecodeMetadataForRecord {
+                    let source_chunks_polynomial = self
+                        .erasure_coding
+                        .recover_poly(sector_record_chunks.as_slice())
+                        .map_err(|error| ReadingError::FailedToErasureDecodeRecord {
                             piece_offset,
                             error,
-                        }
-                    })?;
-                let record_witness = Witness::try_from_bytes(&record_witness).map_err(|error| {
-                    ProvingError::FailedToDecodeMetadataForRecord {
-                        piece_offset,
-                        error,
-                    }
-                })?;
+                        })?;
+                    drop(sector_record_chunks);
 
-                let proof_of_space = pos_table
-                    .find_quality(self.s_bucket.into())
-                    .expect(
-                        "Quality exists for this s-bucket, otherwise it wouldn't be a winning \
-                        chunk; qed",
-                    )
-                    .create_proof();
-
-                let chunk_witness = self
-                    .kzg
-                    .create_witness(
-                        &source_chunks_polynomial,
-                        Record::NUM_S_BUCKETS,
-                        self.s_bucket.into(),
-                    )
-                    .map_err(|error| ProvingError::FailedToCreateChunkWitness {
+                    let record_metadata = read_record_metadata(
                         piece_offset,
+                        self.sector_metadata.pieces_in_sector,
+                        self.sector,
+                    )?;
+
+                    let record_commitment = Commitment::try_from_bytes(&record_metadata.commitment)
+                        .map_err(|error| ProvingError::FailedToDecodeMetadataForRecord {
+                            piece_offset,
+                            error,
+                        })?;
+                    let record_witness = Witness::try_from_bytes(&record_metadata.witness)
+                        .map_err(|error| ProvingError::FailedToDecodeMetadataForRecord {
+                            piece_offset,
+                            error,
+                        })?;
+
+                    let proof_of_space = pos_table
+                        .find_quality(self.s_bucket.into())
+                        .expect(
+                            "Quality exists for this s-bucket, otherwise it wouldn't be a \
+                            winning chunk; qed",
+                        )
+                        .create_proof();
+
+                    let chunk_witness = self
+                        .kzg
+                        .create_witness(
+                            &source_chunks_polynomial,
+                            Record::NUM_S_BUCKETS,
+                            self.s_bucket.into(),
+                        )
+                        .map_err(|error| ProvingError::FailedToCreateChunkWitness {
+                            piece_offset,
+                            chunk_offset,
+                            error,
+                        })?;
+
+                    ChunkCache {
+                        chunk,
                         chunk_offset,
-                        error,
-                    })?;
-
-                ChunkCache {
-                    chunk,
-                    chunk_offset,
-                    record_commitment,
-                    record_witness,
-                    chunk_witness,
-                    proof_of_space,
-                }
-            };
+                        record_commitment,
+                        record_witness,
+                        chunk_witness,
+                        proof_of_space,
+                    }
+                };
 
             let chunk_cache = match maybe_chunk_cache {
                 Ok(chunk_cache) => chunk_cache,
