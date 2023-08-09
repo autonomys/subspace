@@ -350,7 +350,9 @@ where
             remaining_bytes.split_at_mut(sector_record_chunks_size(pieces_in_sector));
 
         // Write sector contents map so we can decode it later
-        sector_contents_map_region.copy_from_slice(sector_contents_map.as_ref());
+        sector_contents_map
+            .encode_into(sector_contents_map_region)
+            .expect("Chunked into correct size above; qed");
 
         let num_encoded_record_chunks = sector_contents_map.num_encoded_record_chunks();
         let mut next_encoded_record_chunks_offset = vec![0_usize; pieces_in_sector.into()];

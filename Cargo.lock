@@ -11153,6 +11153,7 @@ dependencies = [
  "criterion",
  "fs2",
  "futures",
+ "hex",
  "libc",
  "lru 0.10.0",
  "memmap2 0.7.1",
