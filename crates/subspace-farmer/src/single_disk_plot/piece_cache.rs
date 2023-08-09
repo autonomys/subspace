@@ -5,10 +5,11 @@ use std::io::{Seek, SeekFrom};
 use std::path::Path;
 use std::sync::Arc;
 use std::{fs, io, mem};
-use subspace_core_primitives::{Piece, PieceIndex};
+use subspace_core_primitives::crypto::blake3_hash_list;
+use subspace_core_primitives::{Blake3Hash, Piece, PieceIndex};
 use subspace_farmer_components::file_ext::FileExt;
 use thiserror::Error;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 /// Disk piece cache open error
 #[derive(Debug, Error)]
@@ -30,6 +31,9 @@ pub enum DiskPieceCacheError {
     /// Cache size has zero capacity, this is not supported
     #[error("Cache size has zero capacity, this is not supported")]
     ZeroCapacity,
+    /// Checksum mismatch
+    #[error("Checksum mismatch")]
+    ChecksumMismatch,
 }
 
 /// Offset wrapper for pieces in [`DiskPieceCache`]
@@ -95,7 +99,7 @@ impl DiskPieceCache {
     }
 
     pub(super) const fn element_size() -> usize {
-        mem::size_of::<PieceIndex>() + Piece::SIZE
+        PieceIndex::SIZE + Piece::SIZE + mem::size_of::<Blake3Hash>()
     }
 
     /// Contents of this disk cache
@@ -154,9 +158,11 @@ impl DiskPieceCache {
                 .map_mut(&self.inner.file)?
         };
 
-        let piece_index_bytes = piece_index.to_bytes();
-        write_mmap[..piece_index_bytes.len()].copy_from_slice(&piece_index_bytes);
-        write_mmap[piece_index_bytes.len()..].copy_from_slice(piece.as_ref());
+        let (piece_index_bytes, remaining_bytes) = write_mmap.split_at_mut(PieceIndex::SIZE);
+        piece_index_bytes.copy_from_slice(&piece_index.to_bytes());
+        let (piece_bytes, checksum) = remaining_bytes.split_at_mut(Piece::SIZE);
+        piece_bytes.copy_from_slice(piece.as_ref());
+        checksum.copy_from_slice(&blake3_hash_list(&[piece_index_bytes, piece.as_ref()]));
 
         write_mmap.flush()?;
 
@@ -196,13 +202,25 @@ impl DiskPieceCache {
             return Ok(None);
         }
 
+        let piece_element_memory =
+            &self.inner.read_mmap[offset * Self::element_size()..][..Self::element_size()];
+        let (piece_index_bytes, remaining_bytes) = piece_element_memory.split_at(PieceIndex::SIZE);
+        let (piece_bytes, expected_checksum) = remaining_bytes.split_at(Piece::SIZE);
         let mut piece = Piece::default();
-        piece.copy_from_slice(
-            &self.inner.read_mmap[offset * Self::element_size() + PieceIndex::SIZE..]
-                [..Piece::SIZE],
-        );
+        piece.copy_from_slice(piece_bytes);
 
-        // TODO: Verify checksum (when we have them) and return `None` in case it doesn't match
+        // Verify checksum
+        let actual_checksum = blake3_hash_list(&[piece_index_bytes, piece.as_ref()]);
+        if actual_checksum != expected_checksum {
+            debug!(
+                actual_checksum = %hex::encode(actual_checksum),
+                expected_checksum = %hex::encode(expected_checksum),
+                "Hash doesn't match, corrupted piece in cache"
+            );
+
+            return Err(DiskPieceCacheError::ChecksumMismatch);
+        }
+
         Ok(Some(piece))
     }
 

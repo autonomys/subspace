@@ -1,6 +1,6 @@
 use crate::sector::{
     sector_record_chunks_size, sector_size, RawSector, RecordMetadata, SectorContentsMap,
-    SectorMetadata,
+    SectorMetadata, SectorMetadataChecksummed,
 };
 use crate::segment_reconstruction::recover_missing_piece;
 use crate::FarmerProtocolInfo;
@@ -12,14 +12,15 @@ use futures::StreamExt;
 use parity_scale_codec::Encode;
 use parking_lot::Mutex;
 use std::error::Error;
+use std::mem;
 use std::simd::Simd;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::crypto::Scalar;
+use subspace_core_primitives::crypto::{blake3_hash, blake3_hash_parallel, Scalar};
 use subspace_core_primitives::{
-    ArchivedHistorySegment, Piece, PieceIndex, PieceOffset, PublicKey, Record, SBucket, SectorId,
-    SectorIndex,
+    ArchivedHistorySegment, Blake3Hash, Piece, PieceIndex, PieceOffset, PublicKey, Record, SBucket,
+    SectorId, SectorIndex,
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_proof_of_space::{Quality, Table, TableGenerator};
@@ -101,7 +102,7 @@ pub struct PlottedSector {
     /// Sector index
     pub sector_index: SectorIndex,
     /// Sector metadata
-    pub sector_metadata: SectorMetadata,
+    pub sector_metadata: SectorMetadataChecksummed,
     /// Indexes of pieces that were plotted
     pub piece_indexes: Vec<PieceIndex>,
 }
@@ -178,17 +179,19 @@ where
         return Err(PlottingError::InvalidErasureCodingInstance);
     }
 
-    if sector_output.len() < sector_size(pieces_in_sector) {
+    let sector_size = sector_size(pieces_in_sector);
+
+    if sector_output.len() != sector_size {
         return Err(PlottingError::BadSectorOutputSize {
             provided: sector_output.len(),
-            expected: sector_size(pieces_in_sector),
+            expected: sector_size,
         });
     }
 
-    if sector_metadata_output.len() < SectorMetadata::encoded_size() {
+    if sector_metadata_output.len() < SectorMetadataChecksummed::encoded_size() {
         return Err(PlottingError::BadSectorMetadataOutputSize {
             provided: sector_metadata_output.len(),
-            expected: SectorMetadata::encoded_size(),
+            expected: SectorMetadataChecksummed::encoded_size(),
         });
     }
 
@@ -350,7 +353,9 @@ where
             remaining_bytes.split_at_mut(sector_record_chunks_size(pieces_in_sector));
 
         // Write sector contents map so we can decode it later
-        sector_contents_map_region.copy_from_slice(sector_contents_map.as_ref());
+        sector_contents_map
+            .encode_into(sector_contents_map_region)
+            .expect("Chunked into correct size above; qed");
 
         let num_encoded_record_chunks = sector_contents_map.num_encoded_record_chunks();
         let mut next_encoded_record_chunks_offset = vec![0_usize; pieces_in_sector.into()];
@@ -390,15 +395,20 @@ where
         for (record_metadata, output) in raw_sector.metadata.into_iter().zip(metadata_chunks) {
             record_metadata.encode_to(&mut output.as_mut_slice());
         }
+
+        // It would be more efficient to not re-read the whole sector again, but it makes above code
+        // significantly more convoluted and most likely not worth it
+        let (sector_contents, sector_checksum) =
+            sector_output.split_at_mut(sector_size - mem::size_of::<Blake3Hash>());
+        sector_checksum.copy_from_slice(&blake3_hash_parallel(sector_contents));
     }
 
-    // TODO: Write commitments and witnesses
-    let sector_metadata = SectorMetadata {
+    let sector_metadata = SectorMetadataChecksummed::from(SectorMetadata {
         sector_index,
         pieces_in_sector,
         s_bucket_sizes: sector_contents_map.s_bucket_sizes(),
         history_size: farmer_protocol_info.history_size,
-    };
+    });
 
     sector_metadata_output.copy_from_slice(&sector_metadata.encode());
 
@@ -466,6 +476,7 @@ async fn download_sector<PG: PieceGetter>(
             *metadata = RecordMetadata {
                 commitment: *piece.commitment(),
                 witness: *piece.witness(),
+                piece_checksum: blake3_hash(piece.as_ref()),
             };
 
             // We have processed this piece index, clear it

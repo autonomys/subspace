@@ -18,7 +18,9 @@ use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector;
 use subspace_farmer_components::file_ext::FileExt;
 use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy, PlottedSector};
-use subspace_farmer_components::sector::{sector_size, SectorContentsMap, SectorMetadata};
+use subspace_farmer_components::sector::{
+    sector_size, SectorContentsMap, SectorMetadata, SectorMetadataChecksummed,
+};
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::chia::ChiaTable;
 use subspace_proof_of_space::Table;
@@ -93,12 +95,12 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             pieces_in_sector,
         )
         .unwrap();
-        let sector_metadata = SectorMetadata {
+        let sector_metadata = SectorMetadataChecksummed::from(SectorMetadata {
             sector_index,
             pieces_in_sector,
             s_bucket_sizes: sector_contents_map.s_bucket_sizes(),
             history_size: farmer_protocol_info.history_size,
-        };
+        });
 
         (
             PlottedSector {
@@ -113,7 +115,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         println!("Plotting one sector...");
 
         let mut plotted_sector_bytes = vec![0; sector_size];
-        let mut plotted_sector_metadata_bytes = vec![0; SectorMetadata::encoded_size()];
+        let mut plotted_sector_metadata_bytes = vec![0; SectorMetadataChecksummed::encoded_size()];
 
         let plotted_sector = block_on(plot_sector::<_, PosTable>(
             &public_key,

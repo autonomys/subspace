@@ -7,7 +7,7 @@ use std::sync::Arc;
 use subspace_core_primitives::{Piece, PieceOffset, PublicKey, SectorId, SectorIndex};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::reading;
-use subspace_farmer_components::sector::{sector_size, SectorMetadata};
+use subspace_farmer_components::sector::{sector_size, SectorMetadataChecksummed};
 use subspace_proof_of_space::Table;
 use tracing::{error, warn};
 
@@ -33,7 +33,7 @@ impl PieceReader {
         public_key: PublicKey,
         pieces_in_sector: u16,
         global_plot_mmap: Mmap,
-        sectors_metadata: Arc<RwLock<Vec<SectorMetadata>>>,
+        sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
         erasure_coding: ErasureCoding,
         modifying_sector_index: Arc<RwLock<Option<SectorIndex>>>,
     ) -> (Self, impl Future<Output = ()>)
@@ -84,7 +84,7 @@ async fn read_pieces<PosTable>(
     public_key: PublicKey,
     pieces_in_sector: u16,
     global_plot_mmap: Mmap,
-    sectors_metadata: Arc<RwLock<Vec<SectorMetadata>>>,
+    sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
     erasure_coding: ErasureCoding,
     modifying_sector_index: Arc<RwLock<Option<SectorIndex>>>,
     mut read_piece_receiver: mpsc::Receiver<ReadPieceRequest>,
@@ -161,7 +161,7 @@ fn read_piece<PosTable>(
     piece_offset: PieceOffset,
     pieces_in_sector: u16,
     sector_count: SectorIndex,
-    sector_metadata: &SectorMetadata,
+    sector_metadata: &SectorMetadataChecksummed,
     global_plot: &[u8],
     erasure_coding: &ErasureCoding,
     table_generator: &mut PosTable::Generator,

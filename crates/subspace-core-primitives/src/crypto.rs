@@ -89,6 +89,14 @@ pub fn blake3_hash(data: &[u8]) -> Blake3Hash {
     *blake3::hash(data).as_bytes()
 }
 
+/// BLAKE3 hashing of a single value in parallel (only useful for large values well above 128kiB).
+#[cfg(feature = "parallel")]
+pub fn blake3_hash_parallel(data: &[u8]) -> Blake3Hash {
+    let mut state = blake3::Hasher::new();
+    state.update_rayon(data);
+    *state.finalize().as_bytes()
+}
+
 /// BLAKE3 hashing of a list of values.
 pub fn blake3_hash_list(data: &[&[u8]]) -> Blake3Hash {
     let mut state = blake3::Hasher::new();

@@ -1,13 +1,16 @@
 use bitvec::prelude::*;
 use parity_scale_codec::{Decode, Encode};
 use rayon::prelude::*;
-use std::num::NonZeroU64;
 use std::ops::{Deref, DerefMut};
 use std::{mem, slice};
+use subspace_core_primitives::checksum::Blake3Checksummed;
+use subspace_core_primitives::crypto::blake3_hash;
 use subspace_core_primitives::{
-    HistorySize, PieceOffset, Record, RecordCommitment, RecordWitness, SBucket, SectorIndex,
+    Blake3Hash, HistorySize, PieceOffset, Record, RecordCommitment, RecordWitness, SBucket,
+    SectorIndex, SegmentIndex,
 };
 use thiserror::Error;
+use tracing::debug;
 
 /// Size of the part of the plot containing record chunks (s-buckets).
 ///
@@ -26,7 +29,7 @@ pub const fn sector_record_metadata_size(pieces_in_sector: u16) -> usize {
 /// Exact sector plot size (sector contents map, record chunks, record metadata).
 ///
 /// NOTE: Each sector also has corresponding fixed size metadata whose size can be obtained with
-/// [`SectorMetadata::encoded_size()`], size of the record chunks (s-buckets) with
+/// [`SectorMetadataChecksummed::encoded_size()`], size of the record chunks (s-buckets) with
 /// [`sector_record_chunks_size()`] and size of record commitments and witnesses with
 /// [`sector_record_metadata_size()`]. This function just combines those three together for
 /// convenience.
@@ -34,6 +37,7 @@ pub const fn sector_size(pieces_in_sector: u16) -> usize {
     sector_record_chunks_size(pieces_in_sector)
         + sector_record_metadata_size(pieces_in_sector)
         + SectorContentsMap::encoded_size(pieces_in_sector)
+        + mem::size_of::<Blake3Hash>()
 }
 
 /// Metadata of the plotted sector
@@ -71,20 +75,49 @@ impl SectorMetadata {
 
         s_bucket_offsets
     }
+}
 
-    /// Size of encoded sector metadata.
+/// Same as [`SectorMetadata`], but with checksums verified during SCALE encoding/decoding
+#[derive(Debug, Clone, Encode, Decode)]
+pub struct SectorMetadataChecksummed(Blake3Checksummed<SectorMetadata>);
+
+impl From<SectorMetadata> for SectorMetadataChecksummed {
+    #[inline]
+    fn from(value: SectorMetadata) -> Self {
+        Self(Blake3Checksummed(value))
+    }
+}
+
+impl Deref for SectorMetadataChecksummed {
+    type Target = SectorMetadata;
+
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.0 .0
+    }
+}
+
+impl DerefMut for SectorMetadataChecksummed {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0 .0
+    }
+}
+
+impl SectorMetadataChecksummed {
+    /// Size of encoded checksummed sector metadata.
     ///
     /// For sector plot size use [`sector_size()`].
     #[inline]
     pub fn encoded_size() -> usize {
-        let default = SectorMetadata {
+        let default = SectorMetadataChecksummed::from(SectorMetadata {
             sector_index: 0,
             pieces_in_sector: 0,
             // TODO: Should have been just `::new()`, but https://github.com/rust-lang/rust/issues/53827
             // SAFETY: Data structure filled with zeroes is a valid invariant
             s_bucket_sizes: unsafe { Box::new_zeroed().assume_init() },
-            history_size: HistorySize::from(NonZeroU64::new(1).expect("1 is not 0; qed")),
-        };
+            history_size: HistorySize::from(SegmentIndex::ZERO),
+        });
 
         default.encoded_size()
     }
@@ -97,11 +130,13 @@ pub(crate) struct RecordMetadata {
     pub(crate) commitment: RecordCommitment,
     /// Record witness
     pub(crate) witness: RecordWitness,
+    /// Checksum (hash) of the whole piece
+    pub(crate) piece_checksum: Blake3Hash,
 }
 
 impl RecordMetadata {
     pub(crate) const fn encoded_size() -> usize {
-        RecordWitness::SIZE + RecordCommitment::SIZE
+        RecordWitness::SIZE + RecordCommitment::SIZE + mem::size_of::<Blake3Hash>()
     }
 }
 
@@ -185,6 +220,22 @@ pub enum SectorContentsMapFromBytesError {
         /// Max supported
         max: usize,
     },
+    /// Checksum mismatch
+    #[error("Checksum mismatch")]
+    ChecksumMismatch,
+}
+
+/// Error happening when trying to encode [`SectorContentsMap`] into bytes
+#[derive(Debug, Error, Copy, Clone, Eq, PartialEq)]
+pub enum SectorContentsMapEncodeIntoError {
+    /// Invalid bytes length
+    #[error("Invalid bytes length, expected {expected}, actual {actual}")]
+    InvalidBytesLength {
+        /// Expected length
+        expected: usize,
+        /// Actual length
+        actual: usize,
+    },
 }
 
 /// Error happening when trying to create [`SectorContentsMap`] from bytes
@@ -213,22 +264,7 @@ pub struct SectorContentsMap {
     num_encoded_record_chunks: Vec<SBucket>,
     /// Bitfields for each record, each bit is `true` if encoded chunk at corresponding position was
     /// used
-    // TODO: Vector of bit arrays since number of s-buckets is known and fixed
     encoded_record_chunks_used: Vec<SingleRecordBitArray>,
-}
-
-impl AsRef<[u8]> for SectorContentsMap {
-    #[inline]
-    fn as_ref(&self) -> &[u8] {
-        let slice = self.encoded_record_chunks_used.as_slice();
-        // SAFETY: `BitArray` is a transparent data structure containing array of bytes
-        unsafe {
-            slice::from_raw_parts(
-                slice.as_ptr() as *const u8,
-                slice.len() * SINGLE_RECORD_BIT_ARRAY_SIZE,
-            )
-        }
-    }
 }
 
 impl SectorContentsMap {
@@ -259,12 +295,26 @@ impl SectorContentsMap {
             });
         }
 
+        let (single_records_bit_arrays, expected_checksum) =
+            bytes.split_at(bytes.len() - mem::size_of::<Blake3Hash>());
+        // Verify checksum
+        let actual_checksum = blake3_hash(single_records_bit_arrays);
+        if actual_checksum != expected_checksum {
+            debug!(
+                actual_checksum = %hex::encode(actual_checksum),
+                expected_checksum = %hex::encode(expected_checksum),
+                "Hash doesn't match, corrupted bytes"
+            );
+
+            return Err(SectorContentsMapFromBytesError::ChecksumMismatch);
+        }
+
         let mut encoded_record_chunks_used =
             vec![SingleRecordBitArray::default(); pieces_in_sector.into()];
 
         let num_encoded_record_chunks = encoded_record_chunks_used
             .iter_mut()
-            .zip(bytes.array_chunks::<{ SINGLE_RECORD_BIT_ARRAY_SIZE }>())
+            .zip(single_records_bit_arrays.array_chunks::<{ SINGLE_RECORD_BIT_ARRAY_SIZE }>())
             .map(|(encoded_record_chunks_used, bytes)| {
                 encoded_record_chunks_used
                     .as_raw_mut_slice()
@@ -278,7 +328,7 @@ impl SectorContentsMap {
                         },
                     );
                 }
-                Ok(SBucket::try_from(num_encoded_record_chunks).expect("Verified above ; qed"))
+                Ok(SBucket::try_from(num_encoded_record_chunks).expect("Verified above; qed"))
             })
             .collect::<Result<Vec<_>, _>>()?;
 
@@ -291,7 +341,32 @@ impl SectorContentsMap {
     /// Size of sector contents map when encoded and stored in the plot for specified number of
     /// pieces in sector
     pub const fn encoded_size(pieces_in_sector: u16) -> usize {
-        SINGLE_RECORD_BIT_ARRAY_SIZE * pieces_in_sector as usize
+        SINGLE_RECORD_BIT_ARRAY_SIZE * pieces_in_sector as usize + mem::size_of::<Blake3Hash>()
+    }
+
+    /// Encode internal contents into `output`
+    pub fn encode_into(&self, output: &mut [u8]) -> Result<(), SectorContentsMapEncodeIntoError> {
+        if output.len() != Self::encoded_size(self.encoded_record_chunks_used.len() as u16) {
+            return Err(SectorContentsMapEncodeIntoError::InvalidBytesLength {
+                expected: Self::encoded_size(self.encoded_record_chunks_used.len() as u16),
+                actual: output.len(),
+            });
+        }
+
+        let slice = self.encoded_record_chunks_used.as_slice();
+        // SAFETY: `BitArray` is a transparent data structure containing array of bytes
+        let slice = unsafe {
+            slice::from_raw_parts(
+                slice.as_ptr() as *const u8,
+                slice.len() * SINGLE_RECORD_BIT_ARRAY_SIZE,
+            )
+        };
+
+        // Write data and checksum
+        output[..slice.len()].copy_from_slice(slice);
+        output[slice.len()..].copy_from_slice(&blake3_hash(slice));
+
+        Ok(())
     }
 
     /// Number of encoded chunks in each record
