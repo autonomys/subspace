@@ -129,6 +129,7 @@ where
             dsn_bootstrap_nodes,
             segment_headers_store,
             sync_oracle,
+            deny_unsafe,
         )
         .into_rpc(),
     )?;
