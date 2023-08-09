@@ -54,6 +54,7 @@ default = [
 embedded-kzg-settings = []
 # Enables some APIs and internal parallelism for KZG
 parallel = [
+    "blake3/rayon",
     "blst_rust/parallel",
     "dep:rayon",
 ]

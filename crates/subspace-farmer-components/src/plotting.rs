@@ -12,14 +12,15 @@ use futures::StreamExt;
 use parity_scale_codec::Encode;
 use parking_lot::Mutex;
 use std::error::Error;
+use std::mem;
 use std::simd::Simd;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::crypto::{blake3_hash, Scalar};
+use subspace_core_primitives::crypto::{blake3_hash, blake3_hash_parallel, Scalar};
 use subspace_core_primitives::{
-    ArchivedHistorySegment, Piece, PieceIndex, PieceOffset, PublicKey, Record, SBucket, SectorId,
-    SectorIndex,
+    ArchivedHistorySegment, Blake3Hash, Piece, PieceIndex, PieceOffset, PublicKey, Record, SBucket,
+    SectorId, SectorIndex,
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_proof_of_space::{Quality, Table, TableGenerator};
@@ -178,10 +179,12 @@ where
         return Err(PlottingError::InvalidErasureCodingInstance);
     }
 
-    if sector_output.len() < sector_size(pieces_in_sector) {
+    let sector_size = sector_size(pieces_in_sector);
+
+    if sector_output.len() != sector_size {
         return Err(PlottingError::BadSectorOutputSize {
             provided: sector_output.len(),
-            expected: sector_size(pieces_in_sector),
+            expected: sector_size,
         });
     }
 
@@ -392,6 +395,12 @@ where
         for (record_metadata, output) in raw_sector.metadata.into_iter().zip(metadata_chunks) {
             record_metadata.encode_to(&mut output.as_mut_slice());
         }
+
+        // It would be more efficient to not re-read the whole sector again, but it makes above code
+        // significantly more convoluted and most likely not worth it
+        let (sector_contents, sector_checksum) =
+            sector_output.split_at_mut(sector_size - mem::size_of::<Blake3Hash>());
+        sector_checksum.copy_from_slice(&blake3_hash_parallel(sector_contents));
     }
 
     let sector_metadata = SectorMetadataChecksummed::from(SectorMetadata {

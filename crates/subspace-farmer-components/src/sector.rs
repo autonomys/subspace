@@ -37,6 +37,7 @@ pub const fn sector_size(pieces_in_sector: u16) -> usize {
     sector_record_chunks_size(pieces_in_sector)
         + sector_record_metadata_size(pieces_in_sector)
         + SectorContentsMap::encoded_size(pieces_in_sector)
+        + mem::size_of::<Blake3Hash>()
 }
 
 /// Metadata of the plotted sector

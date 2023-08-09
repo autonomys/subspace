@@ -863,6 +863,7 @@ dependencies = [
  "cfg-if",
  "constant_time_eq 0.3.0",
  "digest 0.10.7",
+ "rayon",
 ]
 
 [[package]]
