@@ -256,7 +256,7 @@ impl CliConfiguration<Self> for DomainCli {
 
     fn role(&self, is_dev: bool) -> Result<sc_service::Role> {
         // is authority when operator is enabled or in dev mode
-        let is_authority = self.operator || is_dev;
+        let is_authority = self.operator || self.run.validator || is_dev;
 
         Ok(if is_authority {
             Role::Authority

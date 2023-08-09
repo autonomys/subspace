@@ -30,9 +30,9 @@ The above generated key is added to the Keystore so that Operator node can use t
 The key is inserted using the following command:
 ```bash
 target/production/subspace-node key insert \
-      --suri "<Secret phrase>" --key-type <key1> --scheme sr25519 --keystore-path /tmp/keystore
+      --suri "<Secret phrase>" --key-type oper --scheme sr25519 --keystore-path /tmp/keystore
 ```
-The above command assumes `/tmp/keystore` as the keystore location. `key-type` should a 4-letter word.
+The above command assumes `/tmp/keystore` as the keystore location.
 `suri` is the secret phrase of the Operator key.
 
 #### Register Operator:
