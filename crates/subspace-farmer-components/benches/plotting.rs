@@ -9,7 +9,7 @@ use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{HistorySize, PublicKey, Record, RecordedHistorySegment};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy};
-use subspace_farmer_components::sector::{sector_size, SectorMetadata};
+use subspace_farmer_components::sector::{sector_size, SectorMetadataChecksummed};
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::chia::ChiaTable;
 use subspace_proof_of_space::Table;
@@ -59,7 +59,7 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     let sector_size = sector_size(pieces_in_sector);
     let mut sector_bytes = vec![0; sector_size];
-    let mut sector_metadata_bytes = vec![0; SectorMetadata::encoded_size()];
+    let mut sector_metadata_bytes = vec![0; SectorMetadataChecksummed::encoded_size()];
 
     let mut group = c.benchmark_group("plotting");
     group.throughput(Throughput::Bytes(sector_size as u64));

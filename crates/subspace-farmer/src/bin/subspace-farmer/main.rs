@@ -212,10 +212,9 @@ struct Command {
     ///
     ///   path=/path/to/directory,size=5T
     ///
-    /// `size` is max plot size in human readable format (e.g. 10GB, 2TiB) or just bytes.
-    /// TODO: Update overhead number here or account for it automatically
-    /// Note that `size` is how much data will be plotted, you also need to account for metadata,
-    /// which right now occupies up to 8% of the disk space.
+    /// `size` is max allocated size in human readable format (e.g. 10GB, 2TiB) or just bytes that
+    /// farmer will make sure not not exceed (and will pre-allocated all the space on startup to
+    /// ensure it will not run out of space in runtime).
     #[arg(long)]
     farm: Vec<DiskFarm>,
     /// Run temporary farmer with specified plot size in human readable format (e.g. 10GB, 2TiB) or

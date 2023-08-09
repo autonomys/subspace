@@ -27,7 +27,7 @@ impl Encode for PieceAnnouncementRequest {
                 .fold(0usize, |sum, item| sum + item.len())
     }
 
-    fn encode_to<T: Output + ?Sized>(&self, dest: &mut T) {
+    fn encode_to<O: Output + ?Sized>(&self, dest: &mut O) {
         self.piece_index_hash.to_bytes().encode_to(dest);
         for addr in &self.addresses {
             addr.to_vec().encode_to(dest);

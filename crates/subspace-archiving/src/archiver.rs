@@ -66,7 +66,7 @@ impl Encode for Segment {
         RecordedHistorySegment::SIZE
     }
 
-    fn encode_to<T: Output + ?Sized>(&self, dest: &mut T) {
+    fn encode_to<O: Output + ?Sized>(&self, dest: &mut O) {
         match self {
             Segment::V0 { items } => {
                 dest.push_byte(0);

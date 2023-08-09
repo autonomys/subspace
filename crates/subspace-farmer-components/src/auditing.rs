@@ -1,5 +1,5 @@
 use crate::proving::SolutionCandidates;
-use crate::sector::{SectorContentsMap, SectorMetadata};
+use crate::sector::{SectorContentsMap, SectorMetadataChecksummed};
 use std::collections::VecDeque;
 use std::mem;
 use subspace_core_primitives::crypto::Scalar;
@@ -23,7 +23,7 @@ pub fn audit_sector<'a>(
     global_challenge: &Blake2b256Hash,
     solution_range: SolutionRange,
     sector: &'a [u8],
-    sector_metadata: &'a SectorMetadata,
+    sector_metadata: &'a SectorMetadataChecksummed,
 ) -> Option<SolutionCandidates<'a>> {
     let sector_id = SectorId::new(public_key.hash(), sector_index);
 

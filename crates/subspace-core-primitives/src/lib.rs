@@ -29,6 +29,7 @@
     step_trait
 )]
 
+pub mod checksum;
 pub mod crypto;
 pub mod objects;
 mod pieces;
@@ -122,7 +123,7 @@ impl Randomness {
     /// Derive global slot challenge from global randomness.
     // TODO: Separate type for global challenge
     pub fn derive_global_challenge(&self, slot: SlotNumber) -> Blake2b256Hash {
-        crypto::blake2b_256_hash_list(&[&self.0, &slot.to_le_bytes()])
+        blake2b_256_hash_list(&[&self.0, &slot.to_le_bytes()])
     }
 }
 
