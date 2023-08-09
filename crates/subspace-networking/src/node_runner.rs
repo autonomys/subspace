@@ -24,7 +24,7 @@ use event_listener_primitives::HandlerId;
 use futures::channel::mpsc;
 use futures::future::Fuse;
 use futures::{FutureExt, StreamExt};
-use libp2p::core::ConnectedPoint;
+use libp2p::core::{address_translation, ConnectedPoint};
 use libp2p::gossipsub::{Event as GossipsubEvent, TopicHash};
 use libp2p::identify::Event as IdentifyEvent;
 use libp2p::kad::store::RecordStore;
@@ -34,7 +34,6 @@ use libp2p::kad::{
     ProgressStep, ProviderRecord, PutRecordOk, QueryId, QueryResult, Quorum, Record,
 };
 use libp2p::metrics::{Metrics, Recorder};
-use libp2p::multiaddr::Protocol;
 use libp2p::swarm::{DialError, SwarmEvent};
 use libp2p::{futures, Multiaddr, PeerId, Swarm, TransportError};
 use nohash_hasher::IntMap;
@@ -50,7 +49,7 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Weak};
 use std::time::{Duration, Instant};
 use tokio::time::Sleep;
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 
 // Defines a batch size for peer addresses from Kademlia buckets.
 const KADEMLIA_PEERS_ADDRESSES_BATCH_SIZE: usize = 20;
@@ -721,33 +720,32 @@ where
             return;
         }
 
-        // TODO: replace with Autonat
-        // TODO: won't work with QUIC
-        let mut listen_ports = HashSet::new();
-        for mut listen_address in self.swarm.listeners().cloned() {
-            while let Some(protocol) = listen_address.pop() {
-                if let Protocol::Tcp(port) = protocol {
-                    listen_ports.insert(port);
-                }
-            }
+        let Some(listen_addr) = self.swarm.listeners().next() else {
+            warn!("Listener addresses are not specified!");
+            return;
+        };
+
+        let Some(observed_addr) = address_translation(listen_addr, &observed_addr) else {
+            warn!(
+                ?listen_addr,
+                ?observed_addr,
+                "Can't translate observed address!"
+            );
+            return;
+        };
+
+        if !self
+            .swarm
+            .external_addresses()
+            .cloned()
+            .collect::<Vec<_>>()
+            .contains(&observed_addr)
+        {
+            info!("Added observed address as external: {}", observed_addr);
+            self.swarm.add_external_address(observed_addr);
+        } else {
+            trace!("Skipping known external address: {}", observed_addr);
         }
-
-        let mut observed_addr_candidate = observed_addr.clone();
-        while let Some(protocol) = observed_addr_candidate.pop() {
-            if let Protocol::Tcp(port) = protocol {
-                if listen_ports.contains(&port) {
-                    debug!("Added observed address as external: {}", observed_addr);
-                    self.swarm.add_external_address(observed_addr);
-
-                    return;
-                }
-            }
-        }
-
-        debug!(
-            "Observed address wasn't added as external (different port): {}",
-            observed_addr
-        );
     }
 
     async fn handle_kademlia_event(&mut self, event: KademliaEvent) {
