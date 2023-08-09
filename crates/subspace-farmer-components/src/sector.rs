@@ -129,11 +129,13 @@ pub(crate) struct RecordMetadata {
     pub(crate) commitment: RecordCommitment,
     /// Record witness
     pub(crate) witness: RecordWitness,
+    /// Checksum (hash) of the whole piece
+    pub(crate) piece_checksum: Blake3Hash,
 }
 
 impl RecordMetadata {
     pub(crate) const fn encoded_size() -> usize {
-        RecordWitness::SIZE + RecordCommitment::SIZE
+        RecordWitness::SIZE + RecordCommitment::SIZE + mem::size_of::<Blake3Hash>()
     }
 }
 

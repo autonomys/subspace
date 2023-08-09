@@ -16,7 +16,7 @@ use std::simd::Simd;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::crypto::Scalar;
+use subspace_core_primitives::crypto::{blake3_hash, Scalar};
 use subspace_core_primitives::{
     ArchivedHistorySegment, Piece, PieceIndex, PieceOffset, PublicKey, Record, SBucket, SectorId,
     SectorIndex,
@@ -467,6 +467,7 @@ async fn download_sector<PG: PieceGetter>(
             *metadata = RecordMetadata {
                 commitment: *piece.commitment(),
                 witness: *piece.witness(),
+                piece_checksum: blake3_hash(piece.as_ref()),
             };
 
             // We have processed this piece index, clear it

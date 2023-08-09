@@ -6,13 +6,14 @@ use parity_scale_codec::Decode;
 use rayon::prelude::*;
 use std::mem::ManuallyDrop;
 use std::simd::Simd;
-use subspace_core_primitives::crypto::Scalar;
+use subspace_core_primitives::crypto::{blake3_hash, Scalar};
 use subspace_core_primitives::{
     Piece, PieceOffset, Record, RecordCommitment, RecordWitness, SBucket, SectorId,
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_proof_of_space::{Quality, Table, TableGenerator};
 use thiserror::Error;
+use tracing::debug;
 
 /// Errors that happen during reading
 #[derive(Debug, Error)]
@@ -68,6 +69,9 @@ pub enum ReadingError {
     /// Failed to decode sector contents map
     #[error("Failed to decode sector contents map: {0}")]
     FailedToDecodeSectorContentsMap(#[from] SectorContentsMapFromBytesError),
+    /// Checksum mismatch
+    #[error("Checksum mismatch")]
+    ChecksumMismatch,
 }
 
 /// Record contained in the plot
@@ -303,6 +307,20 @@ where
 
     *piece.commitment_mut() = record_metadata.commitment;
     *piece.witness_mut() = record_metadata.witness;
+
+    // Verify checksum
+    let actual_checksum = blake3_hash(piece.as_ref());
+    if actual_checksum != record_metadata.piece_checksum {
+        debug!(
+            ?sector_id,
+            %piece_offset,
+            actual_checksum = %hex::encode(actual_checksum),
+            expected_checksum = %hex::encode(record_metadata.piece_checksum),
+            "Hash doesn't match, plotted piece is corrupted"
+        );
+
+        return Err(ReadingError::ChecksumMismatch);
+    }
 
     Ok(piece)
 }

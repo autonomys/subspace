@@ -237,6 +237,8 @@ where
                         })?;
                     drop(sector_record_chunks);
 
+                    // NOTE: We do not check plot consistency using checksum because it is more
+                    // expensive and consensus will verify validity of the proof anyway
                     let record_metadata = read_record_metadata(
                         piece_offset,
                         self.sector_metadata.pieces_in_sector,
