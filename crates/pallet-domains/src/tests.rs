@@ -166,6 +166,7 @@ parameter_types! {
     pub const StakeEpochDuration: BlockNumber = 5;
     pub TreasuryAccount: u64 = PalletId(*b"treasury").into_account_truncating();
     pub const BlockReward: Balance = 10 * SSC;
+    pub const MaxPendingStakingOperation: u32 = 100;
 }
 
 impl pallet_domains::Config for Test {
@@ -191,6 +192,7 @@ impl pallet_domains::Config for Test {
     type StakeEpochDuration = StakeEpochDuration;
     type TreasuryAccount = TreasuryAccount;
     type DomainBlockReward = BlockReward;
+    type MaxPendingStakingOperation = MaxPendingStakingOperation;
 }
 
 pub(crate) fn new_test_ext() -> sp_io::TestExternalities {

@@ -275,6 +275,10 @@ mod pallet {
         // TODO: remove once we have operator rewards on client side is available
         #[pallet::constant]
         type DomainBlockReward: Get<BalanceOf<Self>>;
+
+        /// The maximum number of pending staking operation that can perform upon epoch transition.
+        #[pallet::constant]
+        type MaxPendingStakingOperation: Get<u32>;
     }
 
     #[pallet::pallet]
@@ -409,6 +413,12 @@ mod pallet {
         BTreeMap<OperatorId, PendingOperatorSlashInfo<NominatorId<T>, BalanceOf<T>>>,
         OptionQuery,
     >;
+
+    /// The pending staking operation count of the current epoch, it should not larger than
+    /// `MaxPendingStakingOperation` and will be resetted to 0 upon epoch transition.
+    #[pallet::storage]
+    pub(super) type PendingStakingOperationCount<T: Config> =
+        StorageMap<_, Identity, DomainId, u32, ValueQuery>;
 
     /// Stores the next domain id.
     #[pallet::storage]
