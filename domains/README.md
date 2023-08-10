@@ -55,7 +55,7 @@ target/production/subspace-node \
     --rpc-external \
     --node-key 0000000000000000000000000000000000000000000000000000000000000001 \
     -- \
-    --domain-id 0 \
+    -- --domain-id 0 \
     --chain local \
     --operator \
     --keystore-path /tmp/keystore \
@@ -69,7 +69,7 @@ target/production/subspace-node \
     --rpc-external \
     --node-key 0000000000000000000000000000000000000000000000000000000000000001 \
     -- \
-    --domain-id 0 \
+    -- --domain-id 0 \
     --dev \
     --rpc-external
 ```
