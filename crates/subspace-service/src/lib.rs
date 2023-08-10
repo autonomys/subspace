@@ -822,6 +822,7 @@ where
                     client.clone(),
                     network_service.clone(),
                     sync_service.clone(),
+                    subspace_link.slot_duration().as_duration(),
                 );
 
                 task_manager.spawn_essential_handle().spawn_blocking(

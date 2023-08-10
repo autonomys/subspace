@@ -82,7 +82,7 @@ where
                 }
             };
 
-            let pot_pre_digest = match pre_digest.proof_of_time {
+            let pot_pre_digest = match pre_digest.pot_pre_digest() {
                 Some(pot_pre_digest) => pot_pre_digest,
                 None => {
                     warn!(

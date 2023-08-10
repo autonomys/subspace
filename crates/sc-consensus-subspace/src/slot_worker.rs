@@ -62,12 +62,6 @@ use subspace_verification::{
     check_reward_signature, verify_solution, PieceCheckParams, VerifySolutionParams,
 };
 
-/// Time to wait for proofs, if proofs are currently unavailable.
-/// Substrate would cancel the async await if we don't complete
-/// in the remaining slot duration.
-#[cfg(feature = "pot")]
-const POT_WAIT_TIME: std::time::Duration = Duration::from_millis(1000);
-
 /// Errors while building the block proof of time.
 #[cfg(feature = "pot")]
 #[derive(Debug, thiserror::Error)]
@@ -653,7 +647,7 @@ where
                 block_number.into(),
                 slot_number,
                 parent_pot_digest,
-                Some(POT_WAIT_TIME),
+                Some(self.subspace_link.slot_duration().as_duration()),
             )
             .await
             .map(|proofs| {

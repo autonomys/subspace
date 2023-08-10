@@ -25,15 +25,16 @@ use tracing::{error, info, trace, warn};
 /// the channel fills up.
 const PROOFS_CHANNEL_SIZE: usize = 12; // 2 * reveal lag.
 
-/// Expected time to produce a proof.
-const TARGET_PROOF_TIME_MSEC: u128 = 1000;
-
 /// The time keeper manages the protocol: periodic proof generation/verification, gossip.
 pub struct TimeKeeper<Block: BlockT<Hash = H256>, Client> {
     proof_of_time: ProofOfTime,
     pot_state: Arc<dyn PotProtocolState>,
     gossip: PotGossip<Block>,
     client: Arc<Client>,
+    // Expected time to produce a proof.
+    // TODO: this will be removed after the pot_iterations is set
+    // to produce a proof/sec.
+    target_proof_time: Duration,
 }
 
 impl<Block, Client> TimeKeeper<Block, Client>
@@ -47,6 +48,7 @@ where
         client: Arc<Client>,
         network: Network,
         sync: Arc<GossipSync>,
+        target_proof_time: Duration,
     ) -> Self
     where
         Network: GossipNetwork<Block> + Send + Sync + Clone + 'static,
@@ -63,6 +65,7 @@ where
             pot_state: pot_state.clone(),
             gossip: PotGossip::new(network, sync, pot_state, proof_of_time),
             client,
+            target_proof_time,
         }
     }
 
@@ -111,7 +114,7 @@ where
                 }
             };
 
-            let pot_pre_digest = match pre_digest.proof_of_time {
+            let pot_pre_digest = match pre_digest.pot_pre_digest() {
                 Some(pot_pre_digest) => pot_pre_digest,
                 None => {
                     warn!(
@@ -152,10 +155,11 @@ where
         let (sender, receiver) = channel(PROOFS_CHANNEL_SIZE);
         let proof_of_time = self.proof_of_time.clone();
         let pot_state = self.pot_state.clone();
+        let target_proof_time = self.target_proof_time;
         thread::Builder::new()
             .name("pot-proof-producer".to_string())
             .spawn(move || {
-                Self::produce_proofs(proof_of_time, pot_state, sender);
+                Self::produce_proofs(proof_of_time, pot_state, sender, target_proof_time);
             })
             // TODO: Proper error handling or proof
             .expect("Failed to spawn PoT proof producer thread");
@@ -167,7 +171,9 @@ where
         proof_of_time: ProofOfTime,
         state: Arc<dyn PotProtocolState>,
         proof_sender: Sender<PotProof>,
+        target_proof_time: Duration,
     ) {
+        let target_proof_time_msec = target_proof_time.as_millis();
         loop {
             // Build the next proof on top of the latest tip.
             // TODO: Proper error handling or proof
@@ -199,10 +205,11 @@ where
             // TODO: temporary hack for initial testing.
             // The pot_iterations is set to take less than 1 sec. Pad the
             // remaining time so that we produce approximately 1 proof/sec.
-            if elapsed.as_millis() < TARGET_PROOF_TIME_MSEC {
-                let pad = TARGET_PROOF_TIME_MSEC - elapsed.as_millis();
-                // Cast should be fine if TARGET_PROOF_TIME_MSEC is small
-                thread::sleep(Duration::from_millis(pad as u64))
+            let elapsed_msec = elapsed.as_millis();
+            if elapsed_msec < target_proof_time_msec {
+                if let Ok(pad) = u64::try_from(target_proof_time_msec - elapsed_msec) {
+                    thread::sleep(Duration::from_millis(pad))
+                }
             }
         }
     }
