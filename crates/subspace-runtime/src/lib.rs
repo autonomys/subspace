@@ -484,11 +484,11 @@ parameter_types! {
     pub const BlockTreePruningDepth: u32 = 256;
     // TODO: revisit these
     pub const StakeWithdrawalLockingPeriod: DomainNumber = 256;
-    // TODO: revisit these. For now epoch every 1 mins for a 6 second block and only 1024 number of staking
+    // TODO: revisit these. For now epoch every 10 mins for a 6 second block and only 100 number of staking
     // operations allowed within each epoch.
-    pub const StakeEpochDuration: DomainNumber = 10;
+    pub const StakeEpochDuration: DomainNumber = 100;
     pub TreasuryAccount: AccountId = PalletId(*b"treasury").into_account_truncating();
-    pub const MaxPendingStakingOperation: u32 = 1024;
+    pub const MaxPendingStakingOperation: u32 = 100;
 }
 
 // `BlockTreePruningDepth` should <= `BlockHashCount` because we need the consensus block hash to verify
