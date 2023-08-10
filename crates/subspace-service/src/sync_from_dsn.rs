@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_networking::Node;
-use tracing::{info, trace, warn};
+use tracing::{info, warn};
 
 /// How much time to wait for new block to be imported before timing out and starting sync from DSN.
 const NO_IMPORTED_BLOCKS_TIMEOUT: Duration = Duration::from_secs(10 * 60);
@@ -184,13 +184,9 @@ where
     Client: HeaderBackend<Block> + BlockBackend<Block> + Send + Sync + 'static,
     IQS: ImportQueueService<Block> + ?Sized,
 {
+    // Node starts as offline, we'll wait for it to go online shrtly after
+    let initial_sync_mode = sync_mode.swap(SyncMode::Paused, Ordering::SeqCst);
     while let Some(reason) = notifications.next().await {
-        // TODO: Remove this condition once we switch to Subspace networking for everything
-        if matches!(reason, NotificationReason::WentOnlineSubspace) {
-            trace!("Ignoring Subspace networking for DSN sync for now");
-            continue;
-        }
-
         let prev_sync_mode = sync_mode.swap(SyncMode::Paused, Ordering::SeqCst);
 
         while notifications.try_next().is_ok() {
@@ -203,7 +199,7 @@ where
             node,
             client,
             import_queue_service,
-            BlockOrigin::NetworkBroadcast,
+            BlockOrigin::NetworkInitialSync,
             false,
         )
         .await

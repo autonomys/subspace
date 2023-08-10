@@ -23,12 +23,10 @@ use parity_scale_codec::Encode;
 use sc_client_api::{BlockBackend, HeaderBackend};
 use sc_consensus::import_queue::ImportQueueService;
 use sc_consensus::IncomingBlock;
-use sc_tracing::tracing::{debug, info, trace};
+use sc_tracing::tracing::{debug, trace};
 use sp_consensus::BlockOrigin;
 use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
 use static_assertions::const_assert;
-use std::sync::Arc;
-use std::task::Poll;
 use std::time::Duration;
 use subspace_archiving::reconstructor::Reconstructor;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
@@ -96,9 +94,17 @@ where
 
     // Skip the first segment, everyone has it locally
     for segment_index in (SegmentIndex::ZERO..).take(segments_found).skip(1) {
+        debug!(%segment_index, "Downloading segment");
         let pieces_indices = segment_index.segment_piece_indexes_source_first();
 
         if let Some(segment_header) = segment_headers.get(u64::from(segment_index) as usize) {
+            trace!(
+                %segment_index,
+                last_archived_block_number = %segment_header.last_archived_block().number,
+                last_archived_block_progress = ?segment_header.last_archived_block().archived_progress,
+                "Downloaded segment header"
+            );
+
             let last_archived_block =
                 NumberFor::<Block>::from(segment_header.last_archived_block().number);
             if last_archived_block <= client.info().best_number {
@@ -142,9 +148,11 @@ where
             .map_err(|error| error.to_string())?;
         drop(segment_pieces);
 
-        let mut blocks_to_import = Vec::with_capacity(reconstructed_contents.blocks.len());
+        trace!(%segment_index, "Segment reconstructed successfully");
 
-        let best_block_number = client.info().best_number;
+        let mut blocks_to_import = Vec::with_capacity(QUEUED_BLOCKS_LIMIT as usize);
+
+        let mut best_block_number = client.info().best_number;
         for (block_number, block_bytes) in reconstructed_contents.blocks {
             {
                 let block_number = block_number.into();
@@ -168,7 +176,18 @@ where
 
                 // Limit number of queued blocks for import
                 while block_number - best_block_number >= QUEUED_BLOCKS_LIMIT.into() {
+                    if !blocks_to_import.is_empty() {
+                        // Import queue handles verification and importing it into the client
+                        import_queue_service.import_blocks(block_origin, blocks_to_import.clone());
+                        blocks_to_import.clear();
+                    }
+                    trace!(
+                        %block_number,
+                        %best_block_number,
+                        "Number of importing blocks reached queue limit, waiting before retrying"
+                    );
                     tokio::time::sleep(WAIT_FOR_BLOCKS_TO_IMPORT).await;
+                    best_block_number = client.info().best_number;
                 }
             }
 
@@ -194,7 +213,7 @@ where
             downloaded_blocks += 1;
 
             if downloaded_blocks % 1000 == 0 {
-                info!("Imported block {} from DSN", block_number);
+                debug!("Adding block {} from DSN to the import queue", block_number);
             }
         }
 
@@ -202,7 +221,7 @@ where
             break;
         }
 
-        // import queue handles verification and importing it into the client.
+        // Import queue handles verification and importing it into the client
         import_queue_service.import_blocks(block_origin, blocks_to_import);
     }
 
