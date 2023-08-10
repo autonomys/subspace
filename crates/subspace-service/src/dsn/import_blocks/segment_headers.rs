@@ -81,7 +81,7 @@ impl SegmentHeaderHandler {
     async fn get_last_segment_header(
         &self,
     ) -> Result<Option<(SegmentHeader, Vec<PeerId>)>, Box<dyn Error>> {
-        for (required_nodes, retry_attempt) in (1..=SEGMENT_HEADER_CONSENSUS_INITIAL_NODES)
+        for (required_peers, retry_attempt) in (1..=SEGMENT_HEADER_CONSENSUS_INITIAL_NODES)
             .rev()
             .zip(1_usize..)
         {
@@ -147,10 +147,10 @@ impl SegmentHeaderHandler {
 
             let peer_count = peer_blocks.len();
 
-            if peer_count < required_nodes {
+            if peer_count < required_peers {
                 debug!(
                     %peer_count,
-                    %required_nodes,
+                    %required_peers,
                     %retry_attempt,
                     "Segment header consensus requires more peers, will retry"
                 );
