@@ -88,7 +88,7 @@ impl PotComponents {
         let proof_of_time = ProofOfTime::new(config.pot_iterations, config.num_checkpoints)
             // TODO: Proper error handling or proof
             .expect("Failed to initialize proof of time");
-        let (protocol_state, consensus_state) = init_pot_state(config);
+        let (protocol_state, consensus_state) = init_pot_state(config, proof_of_time.clone());
 
         Self {
             is_time_keeper,

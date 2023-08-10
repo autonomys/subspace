@@ -11,6 +11,7 @@ use std::collections::{BTreeMap, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use subspace_core_primitives::{BlockNumber, NonEmptyVec, PotKey, PotProof, PotSeed, SlotNumber};
+use subspace_proof_of_time::{PotVerificationError, ProofOfTime};
 use tracing::trace;
 
 /// The maximum size of the PoT chain to keep (about 5 min worth of proofs for now).
@@ -106,6 +107,48 @@ pub enum PotVerifyBlockProofsError {
         parent_slot: SlotNumber,
         expected_slot: SlotNumber,
         actual_slot: SlotNumber,
+    },
+
+    #[error("Unexpected seed: {summary:?}/{block_number}/{slot}/{parent_slot}/{error_slot}")]
+    UnexpectedSeed {
+        summary: PotStateSummary,
+        block_number: BlockNumber,
+        slot: SlotNumber,
+        parent_slot: SlotNumber,
+        error_slot: SlotNumber,
+    },
+
+    #[error("Unexpected key: {summary:?}/{block_number}/{slot}/{parent_slot}/{error_slot}")]
+    UnexpectedKey {
+        summary: PotStateSummary,
+        block_number: BlockNumber,
+        slot: SlotNumber,
+        parent_slot: SlotNumber,
+        error_slot: SlotNumber,
+    },
+
+    #[error(
+    "Verification failed: {summary:?}/{block_number}/{slot}/{parent_slot}/{error_slot:?}/{err:?}"
+    )]
+    VerificationFailed {
+        summary: PotStateSummary,
+        block_number: BlockNumber,
+        slot: SlotNumber,
+        parent_slot: SlotNumber,
+        error_slot: SlotNumber,
+        err: PotVerificationError,
+    },
+
+    #[error(
+        "Tip mismatch: {summary:?}/{block_number}/{slot}/{parent_slot}/{expected:?}/{actual:?}"
+    )]
+    TipMismatch {
+        summary: PotStateSummary,
+        block_number: BlockNumber,
+        slot: SlotNumber,
+        parent_slot: SlotNumber,
+        expected: Option<SlotNumber>,
+        actual: Option<SlotNumber>,
     },
 
     #[error(
@@ -228,6 +271,15 @@ impl InternalState {
     fn extend_and_merge(&mut self, proof: PotProof) {
         self.future_proofs.remove(&proof.slot_number);
         self.chain.extend(proof);
+        self.merge_future_proofs();
+    }
+
+    /// Adds the batch of proofs to the current tip and merged possible future proofs.
+    fn extend_and_merge_batch(&mut self, proofs: Vec<PotProof>) {
+        for proof in proofs.into_iter() {
+            self.future_proofs.remove(&proof.slot_number);
+            self.chain.extend(proof);
+        }
         self.merge_future_proofs();
     }
 
@@ -547,14 +599,101 @@ impl InternalState {
 struct StateManager {
     /// The PoT state
     state: Mutex<InternalState>,
+
+    /// For AES verification
+    proof_of_time: ProofOfTime,
 }
 
 impl StateManager {
     /// Creates the state.
-    pub fn new(config: PotConfig) -> Self {
+    pub fn new(config: PotConfig, proof_of_time: ProofOfTime) -> Self {
         Self {
             state: Mutex::new(InternalState::new(config)),
+            proof_of_time,
         }
+    }
+
+    /// Verify the proofs and append to the chain.
+    #[allow(clippy::too_many_arguments)]
+    fn verify_and_append(
+        &self,
+        block_number: BlockNumber,
+        slot_number: SlotNumber,
+        proofs: &NonEmptyVec<PotProof>,
+        parent_slot_number: SlotNumber,
+        tip: Option<PotProof>,
+        summary: PotStateSummary,
+    ) -> Result<(), PotVerifyBlockProofsError> {
+        // Perform the validation, AES verification outside the lock.
+        let mut prev_proof = tip.clone();
+        let mut to_add = Vec::with_capacity(proofs.len());
+        for proof in proofs.iter() {
+            if let Some(prev_proof) = prev_proof.as_ref() {
+                if proof.slot_number != (prev_proof.slot_number + 1) {
+                    return Err(PotVerifyBlockProofsError::UnexpectedSlot {
+                        summary: summary.clone(),
+                        block_number,
+                        slot: slot_number,
+                        parent_slot: parent_slot_number,
+                        expected_slot: prev_proof.slot_number + 1,
+                        actual_slot: proof.slot_number,
+                    });
+                }
+
+                if proof.seed != prev_proof.next_seed(None) {
+                    return Err(PotVerifyBlockProofsError::UnexpectedSeed {
+                        summary: summary.clone(),
+                        block_number,
+                        slot: slot_number,
+                        parent_slot: parent_slot_number,
+                        error_slot: proof.slot_number,
+                    });
+                }
+
+                if proof.key != prev_proof.next_key() {
+                    return Err(PotVerifyBlockProofsError::UnexpectedKey {
+                        summary: summary.clone(),
+                        block_number,
+                        slot: slot_number,
+                        parent_slot: parent_slot_number,
+                        error_slot: proof.slot_number,
+                    });
+                }
+
+                // Perform the AES check
+                self.proof_of_time.verify(proof).map_err(|err| {
+                    PotVerifyBlockProofsError::VerificationFailed {
+                        summary: summary.clone(),
+                        block_number,
+                        slot: slot_number,
+                        parent_slot: parent_slot_number,
+                        error_slot: proof.slot_number,
+                        err,
+                    }
+                })?;
+            }
+            to_add.push(proof.clone());
+            prev_proof = Some(proof.clone());
+        }
+
+        // Checks passed, take the lock and try to append.
+        let mut state = self.state.lock();
+        let cur_tip = state.tip();
+        if cur_tip != tip {
+            // Fail if the tip moved meanwhile.
+            // TODO: fall back to regular path if needed.
+            return Err(PotVerifyBlockProofsError::TipMismatch {
+                summary: summary.clone(),
+                block_number,
+                slot: slot_number,
+                parent_slot: parent_slot_number,
+                expected: tip.map(|p| p.slot_number),
+                actual: cur_tip.map(|p| p.slot_number),
+            });
+        }
+        state.extend_and_merge_batch(to_add);
+
+        Ok(())
     }
 }
 
@@ -688,6 +827,29 @@ impl PotConsensusState for StateManager {
         parent_slot_number: SlotNumber,
         parent_pre_digest: &PotPreDigest,
     ) -> Result<(), PotVerifyBlockProofsError> {
+        if let Some(block_proofs) = pre_digest.proofs() {
+            // Opportunistically try to extend the chain with
+            // the proofs from the block.
+            let (tip, summary) = {
+                let state = self.state.lock();
+                (state.tip(), state.summary())
+            };
+            let should_append = tip
+                .as_ref()
+                .map(|tip| (tip.slot_number + 1) == block_proofs.first().slot_number)
+                .unwrap_or(true);
+            if should_append {
+                return self.verify_and_append(
+                    block_number,
+                    slot_number,
+                    block_proofs,
+                    parent_slot_number,
+                    tip,
+                    summary,
+                );
+            }
+        }
+
         self.state.lock().verify_block_proofs(
             block_number,
             slot_number,
@@ -700,7 +862,8 @@ impl PotConsensusState for StateManager {
 
 pub(crate) fn init_pot_state(
     config: PotConfig,
+    proof_of_time: ProofOfTime,
 ) -> (Arc<dyn PotProtocolState>, Arc<dyn PotConsensusState>) {
-    let state = Arc::new(StateManager::new(config));
+    let state = Arc::new(StateManager::new(config, proof_of_time));
     (state.clone(), state)
 }
