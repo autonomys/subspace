@@ -1,9 +1,10 @@
 use crate::endpoint::{Endpoint, EndpointRequest, EndpointResponse};
-use codec::{Decode, Encode, FullCodec};
+use codec::{Decode, Encode, FullCodec, MaxEncodedLen};
 use frame_support::pallet_prelude::NMapKey;
 use frame_support::storage::generator::StorageNMap;
 use frame_support::Twox64Concat;
 use scale_info::TypeInfo;
+use serde::{Deserialize, Serialize};
 use sp_core::storage::StorageKey;
 use sp_domains::DomainId;
 use sp_runtime::app_crypto::sp_core::U256;
@@ -20,7 +21,7 @@ pub type ChannelId = U256;
 /// Nonce is always increasing.
 pub type Nonce = U256;
 
-/// Unique Id of a message between two domains.
+/// Unique Id of a message between two chains.
 pub type MessageId = (ChannelId, Nonce);
 
 /// Execution Fee to execute a send or receive request.
@@ -32,13 +33,13 @@ pub struct ExecutionFee<Balance> {
     pub compute_fee: Balance,
 }
 
-/// Fee model to send a request and receive a response from another domain.
+/// Fee model to send a request and receive a response from another chain.
 /// A user of the endpoint will pay
-///     - outbox_fee on src_domain
-///     - inbox_fee on dst_domain
+///     - outbox_fee on src_chain
+///     - inbox_fee on dst_chain
 /// The reward is distributed to
-///     - src_domain relayer pool when the response is received
-///     - dst_domain relayer pool when the response acknowledgement from src_domain.
+///     - src_chain relayer pool when the response is received
+///     - dst_chain relayer pool when the response acknowledgement from src_chain.
 #[derive(Default, Debug, Encode, Decode, Clone, Copy, Eq, PartialEq, TypeInfo)]
 pub struct FeeModel<Balance> {
     /// Fee paid by the endpoint user for any outgoing message.
@@ -64,23 +65,23 @@ impl<Balance: CheckedAdd> FeeModel<Balance> {
     }
 }
 
-/// Parameters for a new channel between two domains.
+/// Parameters for a new channel between two chains.
 #[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Copy)]
 pub struct InitiateChannelParams<Balance> {
     pub max_outgoing_messages: u32,
     pub fee_model: FeeModel<Balance>,
 }
 
-/// Defines protocol requests performed on domains.
+/// Defines protocol requests performed on chains.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 pub enum ProtocolMessageRequest<Balance> {
-    /// Request to open a channel with foreign domain.
+    /// Request to open a channel with foreign chain.
     ChannelOpen(InitiateChannelParams<Balance>),
-    /// Request to close an open channel with foreign domain.
+    /// Request to close an open channel with foreign chain.
     ChannelClose,
 }
 
-/// Defines protocol requests performed on domains.
+/// Defines protocol requests performed on chains.
 pub type ProtocolMessageResponse = Result<(), DispatchError>;
 
 /// Protocol message that encompasses  request or its response.
@@ -153,45 +154,88 @@ impl MessageWeightTag {
     }
 }
 
-/// Message contains information to be sent to or received from another domain
+/// Identifier of a chain.
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Hash,
+    Eq,
+    PartialEq,
+    Ord,
+    PartialOrd,
+    Encode,
+    Decode,
+    TypeInfo,
+    Serialize,
+    Deserialize,
+    MaxEncodedLen,
+)]
+pub enum ChainId {
+    Consensus,
+    Domain(DomainId),
+}
+
+impl ChainId {
+    #[inline]
+    pub fn consensus_chain_id() -> Self {
+        Self::Consensus
+    }
+}
+
+impl From<u32> for ChainId {
+    #[inline]
+    fn from(x: u32) -> Self {
+        Self::Domain(DomainId::new(x))
+    }
+}
+
+impl From<DomainId> for ChainId {
+    #[inline]
+    fn from(x: DomainId) -> Self {
+        Self::Domain(x)
+    }
+}
+
+/// Message contains information to be sent to or received from another chain.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 pub struct Message<Balance> {
-    /// Domain which initiated this message.
-    pub src_domain_id: DomainId,
-    /// Domain this message is intended for.
-    pub dst_domain_id: DomainId,
+    /// Chain which initiated this message.
+    pub src_chain_id: ChainId,
+    /// Chain this message is intended for.
+    pub dst_chain_id: ChainId,
     /// ChannelId the message was sent through.
     pub channel_id: ChannelId,
     /// Message nonce within the channel.
     pub nonce: Nonce,
     /// Payload of the message
     pub payload: VersionedPayload<Balance>,
-    /// Last delivered message response nonce on src_domain.
+    /// Last delivered message response nonce on src_chain.
     pub last_delivered_message_response_nonce: Option<Nonce>,
 }
 
-/// Domain block info used as part of the Cross domain message proof.
+/// Block info used as part of the Cross chain message proof.
 #[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub struct DomainBlockInfo<Number, Hash> {
-    /// Block number of the domain.
+pub struct BlockInfo<Number, Hash> {
+    /// Block number of the chain.
     pub block_number: Number,
-    /// Block hash of the domain.
+    /// Block hash of the chain.
     pub block_hash: Hash,
 }
 
 /// Proof combines the storage proofs to validate messages.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 pub struct Proof<BlockNumber, BlockHash, StateRoot> {
-    /// System domain block info when proof was constructed
-    pub system_domain_block_info: DomainBlockInfo<BlockNumber, BlockHash>,
-    /// State root of System domain at above number and block hash.
+    /// Consensus chain block info when proof was constructed
+    pub consensus_chain_block_info: BlockInfo<BlockNumber, BlockHash>,
+    /// State root of Consensus chain at above number and block hash.
     /// This is the used to extract the message from proof.
-    pub system_domain_state_root: StateRoot,
-    /// Storage proof that src core domain state_root is registered on System domain.
-    /// This is optional when the src_domain is the system domain.
+    pub consensus_chain_state_root: StateRoot,
+    /// Storage proof that src chain state_root is registered on Consensus chain.
+    /// This is optional when the src_chain is Consensus.
     /// BlockNumber and BlockHash is used with storage proof to validate and fetch its state root.
-    pub core_domain_proof: Option<(DomainBlockInfo<BlockNumber, BlockHash>, StorageProof)>,
-    /// Storage proof that message is processed on src_domain.
+    pub domain_proof: Option<(BlockInfo<BlockNumber, BlockHash>, StorageProof)>,
+    /// Storage proof that message is processed on src_chain.
     pub message_proof: StorageProof,
 }
 
@@ -201,12 +245,12 @@ impl<BlockNumber: Default, BlockHash: Default, StateRoot: Default>
     #[cfg(feature = "runtime-benchmarks")]
     pub fn dummy() -> Self {
         Proof {
-            system_domain_block_info: DomainBlockInfo {
+            consensus_chain_block_info: BlockInfo {
                 block_number: Default::default(),
                 block_hash: Default::default(),
             },
-            system_domain_state_root: Default::default(),
-            core_domain_proof: None,
+            consensus_chain_state_root: Default::default(),
+            domain_proof: None,
             message_proof: StorageProof::empty(),
         }
     }
@@ -215,28 +259,28 @@ impl<BlockNumber: Default, BlockHash: Default, StateRoot: Default>
 /// Holds the Block info and state roots from which a proof was constructed.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 pub struct ExtractedStateRootsFromProof<BlockNumber, BlockHash, StateRoot> {
-    /// System domain block info when proof was constructed
-    pub system_domain_block_info: DomainBlockInfo<BlockNumber, BlockHash>,
-    /// State root of System domain at above number and block hash.
-    pub system_domain_state_root: StateRoot,
-    /// Storage proof that src core domain state_root is registered on System domain.
-    /// This is optional when the src_domain is the system domain.
+    /// Consensus chain block info when proof was constructed
+    pub consensus_chain_block_info: BlockInfo<BlockNumber, BlockHash>,
+    /// State root of Consensus chain at above number and block hash.
+    pub consensus_chain_state_root: StateRoot,
+    /// Storage proof that src chain state_root is registered on Consensus chain.
+    /// This is optional when the src_chain is the consensus chain.
     /// BlockNumber and BlockHash is used with storage proof to validate and fetch its state root.
-    pub core_domain_info: Option<(DomainId, DomainBlockInfo<BlockNumber, BlockHash>, StateRoot)>,
+    pub domain_info: Option<(ChainId, BlockInfo<BlockNumber, BlockHash>, StateRoot)>,
 }
 
-/// Cross Domain message contains Message and its proof on src_domain.
+/// Cross Domain message contains Message and its proof on src_chain.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 pub struct CrossDomainMessage<BlockNumber, BlockHash, StateRoot> {
-    /// Domain which initiated this message.
-    pub src_domain_id: DomainId,
-    /// Domain this message is intended for.
-    pub dst_domain_id: DomainId,
+    /// Chain which initiated this message.
+    pub src_chain_id: ChainId,
+    /// Chain this message is intended for.
+    pub dst_chain_id: ChainId,
     /// ChannelId the message was sent through.
     pub channel_id: ChannelId,
     /// Message nonce within the channel.
     pub nonce: Nonce,
-    /// Proof of message processed on src_domain.
+    /// Proof of message processed on src_chain.
     pub proof: Proof<BlockNumber, BlockHash, StateRoot>,
     /// The message weight tag
     pub weight_tag: MessageWeightTag,
@@ -244,7 +288,7 @@ pub struct CrossDomainMessage<BlockNumber, BlockHash, StateRoot> {
 
 impl<BlockNumber, BlockHash, StateRoot> CrossDomainMessage<BlockNumber, BlockHash, StateRoot> {
     /// Extracts state roots.
-    /// If the core domain proof is present, then then we construct the trie and extract core domain state root.
+    /// If the chain proof is present, then then we construct the trie and extract chain state root.
     pub fn extract_state_roots_from_proof<Hashing>(
         &self,
     ) -> Option<ExtractedStateRootsFromProof<BlockNumber, BlockHash, StateRoot>>
@@ -255,11 +299,11 @@ impl<BlockNumber, BlockHash, StateRoot> CrossDomainMessage<BlockNumber, BlockHas
         BlockHash: Clone + FullCodec + TypeInfo + 'static,
     {
         let xdm_proof = self.proof.clone();
-        let _system_domain_state_root = xdm_proof.system_domain_state_root.clone();
+        let _consensus_chain_state_root = xdm_proof.consensus_chain_state_root.clone();
         let _extracted_state_roots = ExtractedStateRootsFromProof {
-            system_domain_block_info: xdm_proof.system_domain_block_info,
-            system_domain_state_root: xdm_proof.system_domain_state_root,
-            core_domain_info: None,
+            consensus_chain_block_info: xdm_proof.consensus_chain_block_info,
+            consensus_chain_state_root: xdm_proof.consensus_chain_state_root,
+            domain_info: None,
         };
 
         None
@@ -311,10 +355,10 @@ impl<BlockNumber, BlockHash, StateRoot> CrossDomainMessage<BlockNumber, BlockHas
 /// Relayer message with storage key to generate storage proof using the backend.
 #[derive(Debug, Encode, Decode, TypeInfo, Clone, Eq, PartialEq)]
 pub struct RelayerMessageWithStorageKey {
-    /// Domain which initiated this message.
-    pub src_domain_id: DomainId,
-    /// Domain this message is intended for.
-    pub dst_domain_id: DomainId,
+    /// Chain which initiated this message.
+    pub src_chain_id: ChainId,
+    /// Chain this message is intended for.
+    pub dst_chain_id: ChainId,
     /// ChannelId the message was sent through.
     pub channel_id: ChannelId,
     /// Message nonce within the channel.
@@ -338,8 +382,8 @@ impl<BlockNumber, BlockHash, StateRoot> CrossDomainMessage<BlockNumber, BlockHas
         proof: Proof<BlockNumber, BlockHash, StateRoot>,
     ) -> Self {
         CrossDomainMessage {
-            src_domain_id: r_msg.src_domain_id,
-            dst_domain_id: r_msg.dst_domain_id,
+            src_chain_id: r_msg.src_chain_id,
+            dst_chain_id: r_msg.dst_chain_id,
             channel_id: r_msg.channel_id,
             nonce: r_msg.nonce,
             proof,
@@ -349,19 +393,18 @@ impl<BlockNumber, BlockHash, StateRoot> CrossDomainMessage<BlockNumber, BlockHas
 }
 
 type KeyGenerator<Number, Hash> = (
-    NMapKey<Twox64Concat, DomainId>,
+    NMapKey<Twox64Concat, ChainId>,
     NMapKey<Twox64Concat, Number>,
     NMapKey<Twox64Concat, Hash>,
 );
 
 /// This is a representation of actual StateRoots storage in pallet-receipts.
 /// Any change in key or value there should be changed here accordingly.
-pub struct CoreDomainStateRootStorage<Number, Hash, StateRoot>(
-    PhantomData<(Number, Hash, StateRoot)>,
-);
+// TODO: update this to represent the current state root in Block tree
+pub struct DomainStateRootStorage<Number, Hash, StateRoot>(PhantomData<(Number, Hash, StateRoot)>);
 
 impl<Number, Hash, StateRoot> StorageNMap<KeyGenerator<Number, Hash>, StateRoot>
-    for CoreDomainStateRootStorage<Number, Hash, StateRoot>
+    for DomainStateRootStorage<Number, Hash, StateRoot>
 where
     Number: FullCodec + TypeInfo + 'static,
     Hash: FullCodec + TypeInfo + 'static,
@@ -386,16 +429,16 @@ where
     }
 }
 
-impl<Number, Hash, StateRoot> CoreDomainStateRootStorage<Number, Hash, StateRoot>
+impl<Number, Hash, StateRoot> DomainStateRootStorage<Number, Hash, StateRoot>
 where
     Number: FullCodec + TypeInfo + 'static,
     Hash: FullCodec + TypeInfo + 'static,
     StateRoot: FullCodec + TypeInfo + 'static,
 {
-    pub fn storage_key(domain_id: DomainId, number: Number, hash: Hash) -> StorageKey {
+    pub fn storage_key(chain_id: ChainId, number: Number, hash: Hash) -> StorageKey {
         StorageKey(
             Self::storage_n_map_final_key::<KeyGenerator<Number, Hash>, _>((
-                domain_id, number, hash,
+                chain_id, number, hash,
             )),
         )
     }

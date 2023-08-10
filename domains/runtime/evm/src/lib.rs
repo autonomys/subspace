@@ -33,10 +33,10 @@ use pallet_transporter::EndpointHandler;
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
 use sp_core::{Get, OpaqueMetadata, H160, H256, U256};
-use sp_domains::DomainId;
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
-    CrossDomainMessage, ExtractedStateRootsFromProof, MessageId, RelayerMessagesWithStorageKey,
+    ChainId, CrossDomainMessage, ExtractedStateRootsFromProof, MessageId,
+    RelayerMessagesWithStorageKey,
 };
 use sp_runtime::traits::{
     BlakeTwo256, Block as BlockT, Convert, DispatchInfoOf, Dispatchable, IdentifyAccount,
@@ -357,12 +357,12 @@ parameter_types! {
     pub const MaximumRelayers: u32 = 100;
     pub const RelayerDeposit: Balance = 100 * SSC;
     // TODO: Proper value
-    pub const CoreDomainId: DomainId = DomainId::new(3u32);
+    pub SelfChainId: ChainId = 3u32.into();
 }
 
 impl pallet_messenger::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type SelfDomainId = CoreDomainId;
+    type SelfChainId = SelfChainId;
 
     fn get_endpoint_response_handler(
         endpoint: &Endpoint,
@@ -377,7 +377,7 @@ impl pallet_messenger::Config for Runtime {
     type Currency = Balances;
     type MaximumRelayers = MaximumRelayers;
     type RelayerDeposit = RelayerDeposit;
-    type DomainInfo = ();
+    type ChainInfo = ();
     type ConfirmationDepth = RelayConfirmationDepth;
     type WeightInfo = pallet_messenger::weights::SubstrateWeight<Runtime>;
 }
@@ -413,7 +413,7 @@ impl TryConvertBack<AccountId, MultiAccountId> for AccountId20Converter {
 
 impl pallet_transporter::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type SelfDomainId = CoreDomainId;
+    type SelfChainId = SelfChainId;
     type SelfEndpointId = TransporterEndpointId;
     type Currency = Balances;
     type Sender = Messenger;
@@ -539,7 +539,7 @@ construct_runtime!(
         TransactionPayment: pallet_transaction_payment = 21,
 
         // messenger stuff
-        // Note: Indexes should match the indexes of the System domain runtime
+        // Note: Indexes should match with indexes on other chains and domains
         Messenger: pallet_messenger = 60,
         Transporter: pallet_transporter = 61,
 
@@ -838,19 +838,21 @@ impl_runtime_apis! {
     }
 
     impl sp_messenger::RelayerApi<Block, AccountId, BlockNumber> for Runtime {
-        fn domain_id() -> DomainId {
-            CoreDomainId::get()
+        // TODO: This should come from domain_id pallet
+        fn chain_id() -> ChainId {
+            SelfChainId::get()
         }
 
         fn relay_confirmation_depth() -> BlockNumber {
             RelayConfirmationDepth::get()
         }
 
-        fn domain_best_number(_domain_id: DomainId) -> Option<BlockNumber> {
+        // TODO: API needs to be hooked with block tree
+        fn chain_best_number(_chain_id: ChainId) -> Option<BlockNumber> {
             None
         }
 
-        fn domain_state_root(_domain_id: DomainId, _number: BlockNumber, _hash: Hash) -> Option<Hash>{
+        fn chain_state_root(_chain_id: ChainId, _number: BlockNumber, _hash: Hash) -> Option<Hash>{
             None
         }
 
@@ -866,12 +868,12 @@ impl_runtime_apis! {
             Messenger::inbox_response_message_unsigned(msg)
         }
 
-        fn should_relay_outbox_message(dst_domain_id: DomainId, msg_id: MessageId) -> bool {
-            Messenger::should_relay_outbox_message(dst_domain_id, msg_id)
+        fn should_relay_outbox_message(dst_chain_id: ChainId, msg_id: MessageId) -> bool {
+            Messenger::should_relay_outbox_message(dst_chain_id, msg_id)
         }
 
-        fn should_relay_inbox_message_response(dst_domain_id: DomainId, msg_id: MessageId) -> bool {
-            Messenger::should_relay_inbox_message_response(dst_domain_id, msg_id)
+        fn should_relay_inbox_message_response(dst_chain_id: ChainId, msg_id: MessageId) -> bool {
+            Messenger::should_relay_inbox_message_response(dst_chain_id, msg_id)
         }
     }
 

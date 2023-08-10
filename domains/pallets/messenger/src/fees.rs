@@ -33,7 +33,7 @@ impl<T: Config> Pallet<T> {
         )?;
         T::Currency::deposit_creating(&msgr_acc_id, outbox_fee);
 
-        // burn the fees that need to be paid on the dst_domain
+        // burn the fees that need to be paid on the dst_chain
         let inbox_fee = fee_model.inbox_fee().ok_or(ArithmeticError::Overflow)?;
         T::Currency::withdraw(
             sender,
@@ -44,7 +44,7 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    /// Ensures the fee paid by the sender on the src_domain are minted here and paid to
+    /// Ensures the fee paid by the sender on the src_chain are minted here and paid to
     /// relayer set when the acknowledgments are received.
     #[inline]
     pub(crate) fn ensure_fees_for_inbox_message(

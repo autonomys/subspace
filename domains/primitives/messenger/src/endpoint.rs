@@ -1,8 +1,8 @@
+use crate::messages::ChainId;
 use codec::{Decode, Encode};
 use frame_support::weights::Weight;
 use frame_support::Parameter;
 use scale_info::TypeInfo;
-use sp_domains::DomainId;
 use sp_runtime::traits::Member;
 use sp_runtime::{sp_std, DispatchError, DispatchResult};
 use sp_std::vec::Vec;
@@ -11,10 +11,10 @@ use sp_std::vec::Vec;
 pub type EndpointId = u64;
 
 /// Endpoint as defined in the formal spec.
-/// Endpoint is an application that can send and receive messages from other domains.
+/// Endpoint is an application that can send and receive messages from other chains.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 pub enum Endpoint {
-    /// Id of the endpoint on a specific domain.
+    /// Id of the endpoint on a specific chain.
     Id(EndpointId),
 }
 
@@ -32,31 +32,31 @@ pub struct EndpointRequest {
 /// Response for the message request.
 pub type EndpointResponse = Result<EndpointPayload, DispatchError>;
 
-/// Sender provides abstraction on sending messages to other domains.
+/// Sender provides abstraction on sending messages to other chains.
 pub trait Sender<AccountId> {
-    /// Unique Id of the message between dst_domain and src_domain.
+    /// Unique Id of the message between dst_chain and src_chain.
     type MessageId: Parameter + Member + Copy + Default;
-    /// Sends a message to dst_domain_id.
+    /// Sends a message to dst_chain_id.
     fn send_message(
         sender: &AccountId,
-        dst_domain_id: DomainId,
+        dst_chain_id: ChainId,
         req: EndpointRequest,
     ) -> Result<Self::MessageId, DispatchError>;
 
     /// Only used in benchmark to prepare for a upcoming `send_message` call to
     /// ensure it will succeed.
     #[cfg(feature = "runtime-benchmarks")]
-    fn unchecked_open_channel(dst_domain_id: DomainId) -> Result<(), DispatchError>;
+    fn unchecked_open_channel(dst_chain_id: ChainId) -> Result<(), DispatchError>;
 }
 
 /// Handler to
-///  - handle message request from other domains.
-///  - handle requested message responses from other domains.
+///  - handle message request from other chains.
+///  - handle requested message responses from other chains.
 pub trait EndpointHandler<MessageId> {
     /// Triggered by pallet-messenger when a new inbox message is received and bound for this handler.
     fn message(
         &self,
-        src_domain_id: DomainId,
+        src_chain_id: ChainId,
         message_id: MessageId,
         req: EndpointRequest,
     ) -> EndpointResponse;
@@ -64,10 +64,10 @@ pub trait EndpointHandler<MessageId> {
     /// Return the maximal possible consume weight of `message`
     fn message_weight(&self) -> Weight;
 
-    /// Triggered by pallet-messenger when a response for a request is received from dst_domain_id.
+    /// Triggered by pallet-messenger when a response for a request is received from dst_chain_id.
     fn message_response(
         &self,
-        dst_domain_id: DomainId,
+        dst_chain_id: ChainId,
         message_id: MessageId,
         req: EndpointRequest,
         resp: EndpointResponse,
@@ -84,7 +84,7 @@ pub struct BenchmarkEndpointHandler;
 impl<MessageId> EndpointHandler<MessageId> for BenchmarkEndpointHandler {
     fn message(
         &self,
-        _src_domain_id: DomainId,
+        _src_chain_id: ChainId,
         _message_id: MessageId,
         _req: EndpointRequest,
     ) -> EndpointResponse {
@@ -97,7 +97,7 @@ impl<MessageId> EndpointHandler<MessageId> for BenchmarkEndpointHandler {
 
     fn message_response(
         &self,
-        _dst_domain_id: DomainId,
+        _dst_chain_id: ChainId,
         _message_id: MessageId,
         _req: EndpointRequest,
         _resp: EndpointResponse,
@@ -110,23 +110,20 @@ impl<MessageId> EndpointHandler<MessageId> for BenchmarkEndpointHandler {
     }
 }
 
-/// Trait that can provide info for a given domain.
-/// This trait is implemented by pallet-receipts since it tracks the necessary info
-/// on Core domains in System domain runtime.
-/// For other runtimes, this is simply a no-op.
-pub trait DomainInfo<Number, Hash, StateRoot> {
-    /// Returns the best known number of a given domain.
-    fn domain_best_number(domain_id: DomainId) -> Option<Number>;
+/// Trait that can provide info for a given Chain.
+pub trait ChainInfo<Number, Hash, StateRoot> {
+    /// Returns the best known number of a given chain.
+    fn chain_best_number(chain_id: ChainId) -> Option<Number>;
     /// Returns the known state root of a specific block.
-    fn domain_state_root(domain_id: DomainId, number: Number, hash: Hash) -> Option<StateRoot>;
+    fn chain_state_root(chain_id: ChainId, number: Number, hash: Hash) -> Option<StateRoot>;
 }
 
-impl<Number, Hash, StateRoot> DomainInfo<Number, Hash, StateRoot> for () {
-    fn domain_best_number(_domain_id: DomainId) -> Option<Number> {
+impl<Number, Hash, StateRoot> ChainInfo<Number, Hash, StateRoot> for () {
+    fn chain_best_number(_chain_id: ChainId) -> Option<Number> {
         None
     }
 
-    fn domain_state_root(_domain_id: DomainId, _number: Number, _hash: Hash) -> Option<StateRoot> {
+    fn chain_state_root(_chain_id: ChainId, _number: Number, _hash: Hash) -> Option<StateRoot> {
         None
     }
 }

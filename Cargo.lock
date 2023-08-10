@@ -1618,6 +1618,7 @@ dependencies = [
  "sp-blockchain",
  "sp-core",
  "sp-domains",
+ "sp-messenger",
  "sp-runtime",
  "tracing",
 ]
@@ -10545,6 +10546,7 @@ dependencies = [
  "hash-db 0.16.0",
  "parity-scale-codec",
  "scale-info",
+ "serde",
  "sp-api",
  "sp-core",
  "sp-domains",
@@ -11298,6 +11300,7 @@ dependencies = [
  "sp-consensus-subspace",
  "sp-core",
  "sp-domains",
+ "sp-messenger",
  "sp-runtime",
  "subspace-archiving",
  "subspace-core-primitives",

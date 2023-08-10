@@ -8,9 +8,8 @@ use parity_scale_codec::{Decode, Encode};
 use sc_client_api::{AuxStore, HeaderBackend, ProofProvider};
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::ProvideRuntimeApi;
-use sp_domains::DomainId;
 use sp_messenger::messages::{
-    CrossDomainMessage, DomainBlockInfo, Proof, RelayerMessageWithStorageKey,
+    BlockInfo, ChainId, CrossDomainMessage, Proof, RelayerMessageWithStorageKey,
     RelayerMessagesWithStorageKey,
 };
 use sp_messenger::RelayerApi;
@@ -88,10 +87,10 @@ where
     Client::Api: RelayerApi<Block, RelayerId, NumberFor<Block>>,
     RelayerId: Encode + Decode,
 {
-    pub(crate) fn domain_id(client: &Arc<Client>) -> Result<DomainId, Error> {
+    pub(crate) fn chain_id(client: &Arc<Client>) -> Result<ChainId, Error> {
         client
             .runtime_api()
-            .domain_id(client.info().best_hash)
+            .chain_id(client.info().best_hash)
             .map_err(|_| Error::UnableToFetchDomainId)
     }
 
@@ -109,12 +108,12 @@ where
                     .read_proof(block_hash, &mut [key].into_iter())
                     .ok()?;
                 Some(Proof {
-                    system_domain_block_info: DomainBlockInfo {
+                    consensus_chain_block_info: BlockInfo {
                         block_number,
                         block_hash,
                     },
-                    system_domain_state_root: state_root,
-                    core_domain_proof: None,
+                    consensus_chain_state_root: state_root,
+                    domain_proof: None,
                     message_proof: proof,
                 })
             })
@@ -138,14 +137,14 @@ where
                         target: LOG_TARGET,
                         "Failed to construct storage proof for message: {:?} bound to domain: {:?} with error: {:?}",
                         (msg.channel_id, msg.nonce),
-                        msg.dst_domain_id,
+                        msg.dst_chain_id,
                         err
                     );
                     continue;
                 }
             };
             let msg = CrossDomainMessage::from_relayer_msg_with_proof(msg, proof);
-            let (dst_domain, msg_id) = (msg.dst_domain_id, (msg.channel_id, msg.nonce));
+            let (dst_domain, msg_id) = (msg.dst_chain_id, (msg.channel_id, msg.nonce));
             if let Err(err) = submitter(msg) {
                 tracing::error!(
                     target: LOG_TARGET,
@@ -166,14 +165,14 @@ where
         let best_hash = client.info().best_hash;
         msgs.outbox.retain(|msg| {
             let id = (msg.channel_id, msg.nonce);
-            match api.should_relay_outbox_message(best_hash, msg.dst_domain_id, id) {
+            match api.should_relay_outbox_message(best_hash, msg.dst_chain_id, id) {
                 Ok(valid) => valid,
                 Err(err) => {
                     tracing::error!(
                         target: LOG_TARGET,
                         ?err,
                         "Failed to fetch validity of outbox message {id:?} for domain {0:?}",
-                        msg.dst_domain_id
+                        msg.dst_chain_id
                     );
                     false
                 }
@@ -182,14 +181,14 @@ where
 
         msgs.inbox_responses.retain(|msg| {
             let id = (msg.channel_id, msg.nonce);
-            match api.should_relay_inbox_message_response(best_hash, msg.dst_domain_id, id) {
+            match api.should_relay_inbox_message_response(best_hash, msg.dst_chain_id, id) {
                 Ok(valid) => valid,
                 Err(err) => {
                     tracing::error!(
                         target: LOG_TARGET,
                         ?err,
                         "Failed to fetch validity of inbox message response {id:?} for domain {0:?}",
-                        msg.dst_domain_id
+                        msg.dst_chain_id
                     );
                     false
                 }
@@ -255,14 +254,14 @@ where
         sink: &GossipMessageSink,
     ) -> Result<(), Error> {
         let best_hash = client.info().best_hash;
-        let dst_domain_id = msg.dst_domain_id;
+        let dst_chain_id = msg.dst_chain_id;
         let ext = client
             .runtime_api()
             .outbox_message_unsigned(best_hash, msg)?
             .ok_or(Error::FailedToConstructExtrinsic)?;
 
         sink.unbounded_send(GossipMessage {
-            domain_id: dst_domain_id,
+            chain_id: dst_chain_id,
             encoded_data: ext.encode(),
         })
         .map_err(Error::UnableToSubmitCrossDomainMessage)
@@ -277,23 +276,23 @@ where
         sink: &GossipMessageSink,
     ) -> Result<(), Error> {
         let best_hash = client.info().best_hash;
-        let dst_domain_id = msg.dst_domain_id;
+        let dst_chain_id = msg.dst_chain_id;
         let ext = client
             .runtime_api()
             .inbox_response_message_unsigned(best_hash, msg)?
             .ok_or(Error::FailedToConstructExtrinsic)?;
 
         sink.unbounded_send(GossipMessage {
-            domain_id: dst_domain_id,
+            chain_id: dst_chain_id,
             encoded_data: ext.encode(),
         })
         .map_err(Error::UnableToSubmitCrossDomainMessage)
     }
 
-    fn relayed_blocks_at_number_key(domain_id: DomainId, number: NumberFor<Block>) -> Vec<u8> {
+    fn relayed_blocks_at_number_key(chain_id: ChainId, number: NumberFor<Block>) -> Vec<u8> {
         (
             b"message_relayer_processed_block_of_domain",
-            domain_id,
+            chain_id,
             number,
         )
             .encode()
@@ -302,13 +301,13 @@ where
     /// Takes number as tip and finds all the unprocessed blocks including the tip.
     fn fetch_unprocessed_blocks_until(
         client: &Arc<Client>,
-        domain_id: DomainId,
+        chain_id: ChainId,
         best_number: NumberFor<Block>,
         best_hash: Block::Hash,
     ) -> Result<UnProcessedBlocks<Block>, Error> {
         let mut blocks_to_process = vec![];
         let (mut number_to_check, mut hash_to_check) = (best_number, best_hash);
-        while !Self::fetch_blocks_relayed_at(client, domain_id, number_to_check)
+        while !Self::fetch_blocks_relayed_at(client, chain_id, number_to_check)
             .contains(&hash_to_check)
         {
             blocks_to_process.push((number_to_check, hash_to_check));
@@ -336,11 +335,11 @@ where
 
     fn fetch_blocks_relayed_at(
         client: &Arc<Client>,
-        domain_id: DomainId,
+        chain_id: ChainId,
         number: NumberFor<Block>,
     ) -> Vec<Block::Hash> {
         client
-            .get_aux(&Self::relayed_blocks_at_number_key(domain_id, number))
+            .get_aux(&Self::relayed_blocks_at_number_key(chain_id, number))
             .ok()
             .flatten()
             .and_then(|enc_val| Vec::<Block::Hash>::decode(&mut enc_val.as_ref()).ok())
@@ -354,11 +353,11 @@ where
     // Other option would be to use fraud proof period.
     pub(crate) fn store_relayed_block(
         client: &Arc<Client>,
-        domain_id: DomainId,
+        chain_id: ChainId,
         block_number: NumberFor<Block>,
         block_hash: Block::Hash,
     ) -> Result<(), Error> {
-        let mut processed_blocks = Self::fetch_blocks_relayed_at(client, domain_id, block_number);
+        let mut processed_blocks = Self::fetch_blocks_relayed_at(client, chain_id, block_number);
         if processed_blocks.contains(&block_hash) {
             return Ok(());
         }
@@ -367,7 +366,7 @@ where
         client
             .insert_aux(
                 &[(
-                    Self::relayed_blocks_at_number_key(domain_id, block_number).as_ref(),
+                    Self::relayed_blocks_at_number_key(chain_id, block_number).as_ref(),
                     processed_blocks.encode().as_ref(),
                 )],
                 &[],

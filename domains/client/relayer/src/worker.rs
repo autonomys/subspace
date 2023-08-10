@@ -4,7 +4,7 @@ use parity_scale_codec::{Decode, Encode};
 use sc_client_api::{AuxStore, BlockchainEvents, ProofProvider};
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_consensus::SyncOracle;
-use sp_domains::DomainId;
+use sp_messenger::messages::ChainId;
 use sp_messenger::RelayerApi;
 use sp_runtime::traits::{CheckedSub, NumberFor, Zero};
 use std::sync::Arc;
@@ -78,14 +78,14 @@ where
     Client::Api: RelayerApi<Block, RelayerId, NumberFor<Block>>,
     MP: Fn(RelayerId, &Arc<Client>, Block::Hash) -> Result<(), Error>,
     SO: SyncOracle,
-    SRM: Fn(DomainId, NumberFor<Block>) -> Result<bool, ApiError>,
+    SRM: Fn(ChainId, NumberFor<Block>) -> Result<bool, ApiError>,
     RelayerId: Encode + Decode + Clone,
 {
-    let domain_id = Relayer::domain_id(&domain_client)?;
+    let chain_id = Relayer::chain_id(&domain_client)?;
     tracing::info!(
         target: LOG_TARGET,
         "Starting relayer for domain: {:?}",
-        domain_id,
+        chain_id,
     );
     let mut domain_block_import = domain_client.import_notification_stream();
 
@@ -107,7 +107,7 @@ where
                 tracing::info!(
                     target: LOG_TARGET,
                     "Not enough confirmed blocks for domain: {:?}. Skipping...",
-                    domain_id
+                    chain_id
                 );
                 continue;
             }
@@ -116,7 +116,7 @@ where
 
         let (number, hash) = (*block.header.number(), block.header.hash());
         let blocks_to_process: Vec<(NumberFor<Block>, Block::Hash)> =
-            Relayer::fetch_unprocessed_blocks_until(&domain_client, domain_id, number, hash)?
+            Relayer::fetch_unprocessed_blocks_until(&domain_client, chain_id, number, hash)?
                 .into_iter()
                 .filter(|(number, _)| *number <= relay_block_until)
                 .collect();
@@ -124,25 +124,25 @@ where
         for (number, hash) in blocks_to_process {
             tracing::info!(
                 target: LOG_TARGET,
-                "Checking messages to be submitted from domain: {domain_id:?} at block: ({number:?}, {hash:?})",
+                "Checking messages to be submitted from chain: {chain_id:?} at block: ({number:?}, {hash:?})",
             );
 
             // check if the message is ready to be relayed.
             // if not, the node is lagging behind and/or there is no way to generate a proof.
             // mark this block processed and continue to next one.
-            if !can_relay_message_from_block(domain_id, number)? {
-                Relayer::store_relayed_block(&domain_client, domain_id, number, hash)?;
+            if !can_relay_message_from_block(chain_id, number)? {
+                Relayer::store_relayed_block(&domain_client, chain_id, number, hash)?;
                 tracing::info!(
                     target: LOG_TARGET,
-                    "Domain({domain_id:?}) messages in the Block ({number:?}, {hash:?}) cannot be relayed. Skipping...",
+                    "Chain({chain_id:?}) messages in the Block ({number:?}, {hash:?}) cannot be relayed. Skipping...",
                 );
             } else {
                 match message_processor(relayer_id.clone(), &domain_client, hash) {
                     Ok(_) => {
-                        Relayer::store_relayed_block(&domain_client, domain_id, number, hash)?;
+                        Relayer::store_relayed_block(&domain_client, chain_id, number, hash)?;
                         tracing::info!(
                             target: LOG_TARGET,
-                            "Messages from {domain_id:?} at block({number:?}, {hash:?}) are processed."
+                            "Messages from {chain_id:?} at block({number:?}, {hash:?}) are processed."
                         )
                     }
                     Err(err) => {
@@ -150,14 +150,14 @@ where
                             Error::CoreDomainNonConfirmedOnSystemDomain => {
                                 tracing::info!(
                                     target: LOG_TARGET,
-                                    "Waiting for Core Domain[{domain_id:?}] block({number:?}, {hash:?}) to be confirmed on System domain."
+                                    "Waiting for Domain[{chain_id:?}] block({number:?}, {hash:?}) to be confirmed on Consensus chain."
                                 )
                             }
                             _ => {
                                 tracing::error!(
                                     target: LOG_TARGET,
                                     ?err,
-                                    "Failed to submit messages from the domain {domain_id:?} at the block ({number:?}, {hash:?})"
+                                    "Failed to submit messages from the chain {chain_id:?} at the block ({number:?}, {hash:?})"
                                 );
                             }
                         }
