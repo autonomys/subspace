@@ -9202,6 +9202,7 @@ dependencies = [
  "futures",
  "parity-scale-codec",
  "parking_lot 0.12.1",
+ "sc-client-api",
  "sc-network",
  "sc-network-gossip",
  "sp-blockchain",

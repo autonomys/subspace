@@ -2,42 +2,38 @@
 
 use crate::gossip::PotGossip;
 use crate::state_manager::PotProtocolState;
-use crate::utils::get_consensus_tip;
 use crate::PotComponents;
+use futures::StreamExt;
+use sc_client_api::BlockchainEvents;
 use sc_network::PeerId;
 use sc_network_gossip::{Network as GossipNetwork, Syncing as GossipSyncing};
-use sp_blockchain::{HeaderBackend, Info};
-use sp_consensus::SyncOracle;
+use sp_blockchain::HeaderBackend;
+use sp_consensus_subspace::digests::extract_pre_digest;
 use sp_core::H256;
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 use std::time::Instant;
 use subspace_core_primitives::PotProof;
-use tracing::{error, info, trace};
+use tracing::{error, info, trace, warn};
 
 /// The PoT client implementation
-pub struct PotClient<Block: BlockT<Hash = H256>, Client, SO> {
+pub struct PotClient<Block: BlockT<Hash = H256>, Client> {
     pot_state: Arc<dyn PotProtocolState>,
     gossip: PotGossip<Block>,
     client: Arc<Client>,
-    sync_oracle: Arc<SO>,
-    chain_info_fn: Arc<dyn Fn() -> Info<Block> + Send + Sync>,
 }
 
-impl<Block, Client, SO> PotClient<Block, Client, SO>
+impl<Block, Client> PotClient<Block, Client>
 where
     Block: BlockT<Hash = H256>,
-    Client: HeaderBackend<Block>,
-    SO: SyncOracle + Send + Sync + Clone + 'static,
+    Client: HeaderBackend<Block> + BlockchainEvents<Block>,
 {
     /// Creates the PoT client instance.
     pub fn new<Network, GossipSync>(
         components: PotComponents,
         client: Arc<Client>,
-        sync_oracle: Arc<SO>,
         network: Network,
         sync: Arc<GossipSync>,
-        chain_info_fn: Arc<dyn Fn() -> Info<Block> + Send + Sync>,
     ) -> Self
     where
         Network: GossipNetwork<Block> + Send + Sync + Clone + 'static,
@@ -52,8 +48,6 @@ where
                 components.proof_of_time,
             ),
             client,
-            sync_oracle,
-            chain_info_fn,
         }
     }
 
@@ -72,32 +66,41 @@ where
 
     /// Initializes the chain state from the consensus tip info.
     async fn initialize(&self) {
-        // Wait for a block with proofs.
         info!("pot_client::initialize: waiting for initialization ...");
-        let delay = tokio::time::Duration::from_secs(1);
-        let proofs = loop {
-            // TODO: Proper error handling or proof
-            let tip = get_consensus_tip(
-                self.client.clone(),
-                self.sync_oracle.clone(),
-                self.chain_info_fn.clone(),
-            )
-            .await
-            .expect("Consensus tip info should be available");
 
-            if let Some(proofs) = tip.pot_pre_digest.proofs().cloned() {
+        // Wait for a block with proofs.
+        let mut block_import = self.client.import_notification_stream();
+        while let Some(incoming_block) = block_import.next().await {
+            let pre_digest = match extract_pre_digest(&incoming_block.header) {
+                Ok(pre_digest) => pre_digest,
+                Err(err) => {
+                    warn!(
+                        "pot_client::initialize: failed to get pre_digest: {}/{:?}/{err:?}",
+                        incoming_block.hash, incoming_block.origin
+                    );
+                    continue;
+                }
+            };
+
+            let pot_pre_digest = match pre_digest.proof_of_time {
+                Some(pot_pre_digest) => pot_pre_digest,
+                None => {
+                    warn!(
+                        "pot_client::initialize: failed to get pot_pre_digest: {}/{:?}",
+                        incoming_block.hash, incoming_block.origin
+                    );
+                    continue;
+                }
+            };
+
+            if pot_pre_digest.proofs().is_some() {
                 info!(
-                    "pot_client::initialization done: block_hash={:?}, block_number={}, slot_number={}, {:?}",
-                    tip.block_hash, tip.block_number, tip.slot_number, tip.pot_pre_digest
+                    "pot_client::initialize: initialization complete: {}/{:?}, pot_pre_digest = {:?}",
+                    incoming_block.hash, incoming_block.origin, pot_pre_digest
                 );
-                break proofs;
+                return;
             }
-
-            trace!("pot_client::initialize: {tip:?}, no proofs yet, to wait ...",);
-            tokio::time::sleep(delay).await;
-        };
-
-        self.pot_state.reset(proofs);
+        }
     }
 
     /// Handles the incoming gossip message.

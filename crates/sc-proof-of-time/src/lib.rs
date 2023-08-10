@@ -6,7 +6,6 @@ mod gossip;
 mod node_client;
 mod state_manager;
 mod time_keeper;
-mod utils;
 
 use crate::state_manager::{init_pot_state, PotProtocolState};
 use core::num::{NonZeroU32, NonZeroU8};

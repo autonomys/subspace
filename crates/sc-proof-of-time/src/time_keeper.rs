@@ -2,16 +2,16 @@
 
 use crate::gossip::PotGossip;
 use crate::state_manager::PotProtocolState;
-use crate::utils::get_consensus_tip;
 use crate::PotComponents;
-use futures::FutureExt;
+use futures::{FutureExt, StreamExt};
 use parity_scale_codec::Encode;
+use sc_client_api::BlockchainEvents;
 use sc_network::PeerId;
 use sc_network_gossip::{Network as GossipNetwork, Syncing as GossipSyncing};
-use sp_blockchain::{HeaderBackend, Info};
-use sp_consensus::SyncOracle;
+use sp_blockchain::HeaderBackend;
+use sp_consensus_subspace::digests::extract_pre_digest;
 use sp_core::H256;
-use sp_runtime::traits::{Block as BlockT, Zero};
+use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -29,34 +29,24 @@ const PROOFS_CHANNEL_SIZE: usize = 12; // 2 * reveal lag.
 const TARGET_PROOF_TIME_MSEC: u128 = 1000;
 
 /// The time keeper manages the protocol: periodic proof generation/verification, gossip.
-pub struct TimeKeeper<Block: BlockT<Hash = H256>, Client, SO> {
+pub struct TimeKeeper<Block: BlockT<Hash = H256>, Client> {
     proof_of_time: ProofOfTime,
     pot_state: Arc<dyn PotProtocolState>,
     gossip: PotGossip<Block>,
     client: Arc<Client>,
-    sync_oracle: Arc<SO>,
-    chain_info_fn: Arc<dyn Fn() -> Info<Block> + Send + Sync>,
 }
 
-impl<Block, Client, SO> TimeKeeper<Block, Client, SO>
+impl<Block, Client> TimeKeeper<Block, Client>
 where
     Block: BlockT<Hash = H256>,
-    Client: HeaderBackend<Block>,
-    SO: SyncOracle + Send + Sync + Clone + 'static,
+    Client: HeaderBackend<Block> + BlockchainEvents<Block>,
 {
     /// Creates the time keeper instance.
-    /// TODO: chain_info() is not a trait method, but part of the
-    /// client::Client struct itself. Passing it in brings in lot
-    /// of unnecessary generics/dependencies. chain_info_fn() tries
-    /// to avoid that by using a Fn instead. Follow up with upstream
-    /// to include this in the trait.
     pub fn new<Network, GossipSync>(
         components: PotComponents,
         client: Arc<Client>,
-        sync_oracle: Arc<SO>,
         network: Network,
         sync: Arc<GossipSync>,
-        chain_info_fn: Arc<dyn Fn() -> Info<Block> + Send + Sync>,
     ) -> Self
     where
         Network: GossipNetwork<Block> + Send + Sync + Clone + 'static,
@@ -73,8 +63,6 @@ where
             pot_state: pot_state.clone(),
             gossip: PotGossip::new(network, sync, pot_state, proof_of_time),
             client,
-            sync_oracle,
-            chain_info_fn,
         }
     }
 
@@ -108,45 +96,55 @@ where
     /// Initializes the chain state from the consensus tip info.
     async fn initialize(&self) {
         info!("time_keeper::initialize: waiting for initialization ...");
-        let delay = tokio::time::Duration::from_secs(1);
-        let proofs = loop {
-            // TODO: Proper error handling or proof
-            let tip = get_consensus_tip(
-                self.client.clone(),
-                self.sync_oracle.clone(),
-                self.chain_info_fn.clone(),
-            )
-            .await
-            .expect("Consensus tip info should be available");
 
-            if tip.block_number.is_zero() {
-                trace!("time_keeper::initialize: {tip:?}, to wait ...",);
-                tokio::time::sleep(delay).await;
-                continue;
-            }
+        // Wait for the first block import.
+        let mut block_import = self.client.import_notification_stream();
+        while let Some(incoming_block) = block_import.next().await {
+            let pre_digest = match extract_pre_digest(&incoming_block.header) {
+                Ok(pre_digest) => pre_digest,
+                Err(err) => {
+                    warn!(
+                        "time_keeper::initialize: failed to get pre_digest: {}/{:?}/{err:?}",
+                        incoming_block.hash, incoming_block.origin
+                    );
+                    continue;
+                }
+            };
+
+            let pot_pre_digest = match pre_digest.proof_of_time {
+                Some(pot_pre_digest) => pot_pre_digest,
+                None => {
+                    warn!(
+                        "time_keeper::initialize: failed to get pot_pre_digest: {}/{:?}",
+                        incoming_block.hash, incoming_block.origin
+                    );
+                    continue;
+                }
+            };
 
             info!(
-                "time_keeper::initialization done: block_hash={:?}, block_number={}, slot_number={}, {:?}",
-                tip.block_hash, tip.block_number, tip.slot_number, tip.pot_pre_digest
+                "time_keeper::initialize: initialization complete: {}/{:?}, pot_pre_digest = {:?}",
+                incoming_block.hash, incoming_block.origin, pot_pre_digest
             );
-
-            let proofs = tip.pot_pre_digest.proofs().cloned().unwrap_or_else(|| {
+            let proofs = pot_pre_digest.proofs().cloned().unwrap_or_else(|| {
                 // Producing proofs starting from (genesis_slot + 1).
                 // TODO: Proper error handling or proof
+                let block_hash = incoming_block.hash.into();
                 let proof = self.proof_of_time.create(
-                    PotSeed::from_block_hash(tip.block_hash),
+                    PotSeed::from_block_hash(block_hash),
                     Default::default(), // TODO: key from cmd line or BTC
-                    tip.pot_pre_digest
+                    pot_pre_digest
                         .next_block_initial_slot()
                         .expect("Initial slot number should be available for block_number >= 1"),
-                    tip.block_hash,
+                    block_hash,
                 );
                 info!("time_keeper::initialize: creating first proof: {proof}");
                 NonEmptyVec::new_with_entry(proof)
             });
-            break proofs;
-        };
-        self.pot_state.reset(proofs);
+
+            self.pot_state.reset(proofs);
+            return;
+        }
     }
 
     /// Starts the thread to produce the proofs.

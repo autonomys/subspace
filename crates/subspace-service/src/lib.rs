@@ -64,7 +64,7 @@ use sc_subspace_block_relay::{build_consensus_relay, NetworkWrapper};
 use sc_telemetry::{Telemetry, TelemetryWorker};
 use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi, TransactionFor};
 use sp_block_builder::BlockBuilder;
-use sp_blockchain::{HeaderMetadata, Info};
+use sp_blockchain::HeaderMetadata;
 use sp_consensus::Error as ConsensusError;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::{FarmerPublicKey, KzgExtension, PosExtension, SubspaceApi};
@@ -812,21 +812,16 @@ where
     let archived_segment_notification_stream = subspace_link.archived_segment_notification_stream();
 
     if config.role.is_authority() || config.force_new_slot_notifications {
-        let client_cl = client.clone();
-        let chain_info_fn: Arc<dyn Fn() -> Info<Block> + Send + Sync> =
-            Arc::new(move || client_cl.chain_info());
         let pot_consensus = pot_components
             .as_ref()
             .map(|component| component.consensus_state());
         if let Some(components) = pot_components {
             if components.is_time_keeper() {
-                let time_keeper = TimeKeeper::<Block, _, _>::new(
+                let time_keeper = TimeKeeper::<Block, _>::new(
                     components,
                     client.clone(),
-                    sync_service.clone(),
                     network_service.clone(),
                     sync_service.clone(),
-                    chain_info_fn,
                 );
 
                 task_manager.spawn_essential_handle().spawn_blocking(
@@ -837,13 +832,11 @@ where
                     },
                 );
             } else {
-                let pot_client = PotClient::<Block, _, _>::new(
+                let pot_client = PotClient::<Block, _>::new(
                     components,
                     client.clone(),
-                    sync_service.clone(),
                     network_service.clone(),
                     sync_service.clone(),
-                    chain_info_fn,
                 );
                 task_manager.spawn_essential_handle().spawn_blocking(
                     "subspace-proof-of-time-client",
