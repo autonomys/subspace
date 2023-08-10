@@ -10,16 +10,18 @@ use sp_api::BlockT;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::BlockOrigin;
 use std::future::Future;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use subspace_networking::Node;
 use tracing::{info, warn};
 
 /// How much time to wait for new block to be imported before timing out and starting sync from DSN.
 const NO_IMPORTED_BLOCKS_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 /// Frequency with which to check whether node is online or not
-const CHECK_ONLINE_STATUS_INTERVAL: Duration = Duration::from_secs(10);
+const CHECK_ONLINE_STATUS_INTERVAL: Duration = Duration::from_secs(1);
+/// Period of time during which node should be offline for DSN sync to kick-in
+const MIN_OFFLINE_PERIOD: Duration = Duration::from_secs(60);
 
 #[derive(Debug)]
 enum NotificationReason {
@@ -80,19 +82,26 @@ async fn create_observer<Block, Client>(
 {
     // Separate reactive observer for Subspace networking that is not a future
     let _handler_id = node.on_num_established_peer_connections_change({
-        // Assuming node is online by default
-        let was_online = AtomicBool::new(false);
+        // Assuming node is offline by default
+        let last_online = Atomic::new(None::<Instant>);
         let notifications_sender = notifications_sender.clone();
 
         Arc::new(move |&new_connections| {
             let is_online = new_connections > 0;
-            let was_online = was_online.swap(is_online, Ordering::AcqRel);
+            let was_online = last_online
+                .load(Ordering::AcqRel)
+                .map(|last_online| last_online.elapsed() < MIN_OFFLINE_PERIOD)
+                .unwrap_or_default();
 
             if is_online && !was_online {
                 // Doesn't matter if sending failed here
                 let _ = notifications_sender
                     .clone()
                     .try_send(NotificationReason::WentOnlineSubspace);
+            }
+
+            if is_online {
+                last_online.store(Some(Instant::now()), Ordering::Release);
             }
         })
     });
@@ -149,14 +158,17 @@ async fn create_substrate_network_observer<Block>(
 ) where
     Block: BlockT,
 {
-    // Assuming node is online by default
-    let mut was_online = false;
+    // Assuming node is offline by default
+    let mut last_online = None::<Instant>;
 
     loop {
         tokio::time::sleep(CHECK_ONLINE_STATUS_INTERVAL).await;
 
         let is_online = network_service.sync_num_connected() > 0;
 
+        let was_online = last_online
+            .map(|last_online| last_online.elapsed() < MIN_OFFLINE_PERIOD)
+            .unwrap_or_default();
         if is_online && !was_online {
             if let Err(error) =
                 notifications_sender.try_send(NotificationReason::WentOnlineSubstrate)
@@ -168,7 +180,9 @@ async fn create_substrate_network_observer<Block>(
             }
         }
 
-        was_online = is_online;
+        if is_online {
+            last_online.replace(Instant::now());
+        }
     }
 }
 
@@ -185,9 +199,9 @@ where
     IQS: ImportQueueService<Block> + ?Sized,
 {
     // Node starts as offline, we'll wait for it to go online shrtly after
-    let initial_sync_mode = sync_mode.swap(SyncMode::Paused, Ordering::SeqCst);
+    let mut initial_sync_mode = Some(sync_mode.swap(SyncMode::Paused, Ordering::AcqRel));
     while let Some(reason) = notifications.next().await {
-        let prev_sync_mode = sync_mode.swap(SyncMode::Paused, Ordering::SeqCst);
+        let prev_sync_mode = sync_mode.swap(SyncMode::Paused, Ordering::AcqRel);
 
         while notifications.try_next().is_ok() {
             // Just drain extra messages if there are any
@@ -207,7 +221,10 @@ where
             warn!(%error, "Error when syncing blocks from DSN");
         }
 
-        sync_mode.store(prev_sync_mode, Ordering::Release);
+        sync_mode.store(
+            initial_sync_mode.take().unwrap_or(prev_sync_mode),
+            Ordering::Release,
+        );
     }
 
     Ok(())
