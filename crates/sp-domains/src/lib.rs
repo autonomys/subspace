@@ -477,8 +477,8 @@ impl ProofOfElection {
 impl ProofOfElection {
     #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
     pub fn dummy(domain_id: DomainId, operator_id: OperatorId) -> Self {
-        let output_bytes = vec![0u8; VrfOutput::max_encoded_len()];
-        let proof_bytes = vec![0u8; VrfProof::max_encoded_len()];
+        let output_bytes = sp_std::vec![0u8; VrfOutput::max_encoded_len()];
+        let proof_bytes = sp_std::vec![0u8; VrfProof::max_encoded_len()];
         let vrf_signature = VrfSignature {
             output: VrfOutput::decode(&mut output_bytes.as_slice()).unwrap(),
             proof: VrfProof::decode(&mut proof_bytes.as_slice()).unwrap(),
