@@ -57,7 +57,6 @@ pub async fn import_blocks_from_dsn<Block, IQS, Client>(
     node: &Node,
     client: &Client,
     import_queue_service: &mut IQS,
-    block_origin: BlockOrigin,
     force: bool,
 ) -> Result<u64, sc_service::Error>
 where
@@ -95,13 +94,13 @@ where
 
     let mut downloaded_blocks = 0;
     let mut reconstructor = Reconstructor::new().map_err(|error| error.to_string())?;
-    let mut segment_indices = (SegmentIndex::ZERO..)
+    let mut segment_indices_iter = (SegmentIndex::ZERO..)
         .take(segments_found)
         .skip(1)
         .peekable();
 
     // Skip the first segment, everyone has it locally
-    while let Some(segment_index) = segment_indices.next() {
+    while let Some(segment_index) = segment_indices_iter.next() {
         debug!(%segment_index, "Processing segment");
 
         if let Some(segment_header) = segment_headers.get(u64::from(segment_index) as usize) {
@@ -124,7 +123,7 @@ where
             if last_archived_block <= client.info().best_number
                 || (last_archived_block == client.info().best_number + One::one()
                     && last_archived_block_partial
-                    && segment_indices.peek().is_none())
+                    && segment_indices_iter.peek().is_none())
             {
                 // Reset reconstructor instance
                 reconstructor = Reconstructor::new().map_err(|error| error.to_string())?;
@@ -247,7 +246,10 @@ where
                 while block_number - best_block_number >= QUEUED_BLOCKS_LIMIT.into() {
                     if !blocks_to_import.is_empty() {
                         // Import queue handles verification and importing it into the client
-                        import_queue_service.import_blocks(block_origin, blocks_to_import.clone());
+                        import_queue_service.import_blocks(
+                            BlockOrigin::NetworkInitialSync,
+                            blocks_to_import.clone(),
+                        );
                         blocks_to_import.clear();
                     }
                     trace!(
@@ -291,7 +293,17 @@ where
         }
 
         // Import queue handles verification and importing it into the client
-        import_queue_service.import_blocks(block_origin, blocks_to_import);
+        let last_segment = segment_indices_iter.peek().is_none();
+        if last_segment {
+            let last_block = blocks_to_import
+                .pop()
+                .expect("Not empty, checked above; qed");
+            import_queue_service.import_blocks(BlockOrigin::NetworkInitialSync, blocks_to_import);
+            // This will notify Substrate's sync mechanism and allow regular Substrate sync to continue gracefully
+            import_queue_service.import_blocks(BlockOrigin::NetworkBroadcast, vec![last_block]);
+        } else {
+            import_queue_service.import_blocks(BlockOrigin::NetworkInitialSync, blocks_to_import);
+        }
     }
 
     Ok(downloaded_blocks)

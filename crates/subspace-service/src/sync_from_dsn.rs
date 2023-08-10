@@ -8,7 +8,6 @@ use sc_network::config::SyncMode;
 use sc_network::{NetworkPeers, NetworkService};
 use sp_api::BlockT;
 use sp_blockchain::HeaderBackend;
-use sp_consensus::BlockOrigin;
 use std::future::Future;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -209,14 +208,7 @@ where
 
         info!(?reason, "Received notification to sync from DSN");
         // TODO: Maybe handle failed block imports, additional helpful logging
-        if let Err(error) = import_blocks_from_dsn(
-            node,
-            client,
-            import_queue_service,
-            BlockOrigin::NetworkInitialSync,
-            false,
-        )
-        .await
+        if let Err(error) = import_blocks_from_dsn(node, client, import_queue_service, false).await
         {
             warn!(%error, "Error when syncing blocks from DSN");
         }
