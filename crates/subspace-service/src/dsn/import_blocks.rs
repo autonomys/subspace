@@ -27,7 +27,7 @@ use sc_consensus::import_queue::ImportQueueService;
 use sc_consensus::IncomingBlock;
 use sc_tracing::tracing::{debug, trace};
 use sp_consensus::BlockOrigin;
-use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
+use sp_runtime::traits::{Block as BlockT, Header, NumberFor, One};
 use static_assertions::const_assert;
 use std::time::Duration;
 use subspace_archiving::reconstructor::Reconstructor;
@@ -95,9 +95,13 @@ where
 
     let mut downloaded_blocks = 0;
     let mut reconstructor = Reconstructor::new().map_err(|error| error.to_string())?;
+    let mut segment_indices = (SegmentIndex::ZERO..)
+        .take(segments_found)
+        .skip(1)
+        .peekable();
 
     // Skip the first segment, everyone has it locally
-    for segment_index in (SegmentIndex::ZERO..).take(segments_found).skip(1) {
+    while let Some(segment_index) = segment_indices.next() {
         debug!(%segment_index, "Processing segment");
 
         if let Some(segment_header) = segment_headers.get(u64::from(segment_index) as usize) {
@@ -110,7 +114,18 @@ where
 
             let last_archived_block =
                 NumberFor::<Block>::from(segment_header.last_archived_block().number);
-            if last_archived_block <= client.info().best_number {
+            let last_archived_block_partial = segment_header
+                .last_archived_block()
+                .archived_progress
+                .partial()
+                .is_some();
+            // We already have this block imported or we have only a part of the very next block and
+            // this was the last segment available, so nothing to import
+            if last_archived_block <= client.info().best_number
+                || (last_archived_block == client.info().best_number + One::one()
+                    && last_archived_block_partial
+                    && segment_indices.peek().is_none())
+            {
                 // Reset reconstructor instance
                 reconstructor = Reconstructor::new().map_err(|error| error.to_string())?;
                 continue;
