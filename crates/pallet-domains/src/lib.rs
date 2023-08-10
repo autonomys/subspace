@@ -701,8 +701,12 @@ mod pallet {
                     )
                     .map_err(Error::<T>::from)?;
 
-                    // if any domain block is pruned, then we have a new head added
+                    // If any domain block is pruned, then we have a new head added
                     // so distribute the operator rewards and, if required, do epoch transition as well.
+                    //
+                    // NOTE: Skip the following staking related operations when benchmarking the
+                    // `submit_bundle` call, these operations will be benchmarked separately.
+                    #[cfg(not(feature = "runtime-benchmarks"))]
                     if let Some(pruned_block_info) = maybe_pruned_domain_block_info {
                         do_reward_operators::<T>(
                             domain_id,

@@ -182,15 +182,21 @@ fn initialize_genesis_receipt<T: Config>(
     raw_genesis_config: Option<Vec<u8>>,
 ) -> Result<ExecutionReceiptOf<T>, Error> {
     let consensus_genesis_hash = frame_system::Pallet::<T>::block_hash(T::BlockNumber::zero());
-    let genesis_state_root = generate_genesis_state_root(
-        domain_id,
-        DomainInstanceData {
-            runtime_type,
-            runtime_code,
-            raw_genesis_config,
-        },
-    )
-    .ok_or(Error::FailedToGenerateGenesisStateRoot)?;
+    // The `GenesisReceiptExtension` is unavailable during runtime benchmarking, remove once
+    // https://github.com/paritytech/substrate/issues/14733 is resolved.
+    let genesis_state_root = if cfg!(feature = "runtime-benchmarks") {
+        Default::default()
+    } else {
+        generate_genesis_state_root(
+            domain_id,
+            DomainInstanceData {
+                runtime_type,
+                runtime_code,
+                raw_genesis_config,
+            },
+        )
+        .ok_or(Error::FailedToGenerateGenesisStateRoot)?
+    };
     Ok(ExecutionReceiptOf::<T>::genesis(
         consensus_genesis_hash,
         genesis_state_root.into(),
