@@ -19,6 +19,8 @@ mod segment_headers;
 
 use crate::dsn::import_blocks::piece_validator::SegmentCommitmentPieceValidator;
 use crate::dsn::import_blocks::segment_headers::SegmentHeaderHandler;
+use futures::stream::FuturesUnordered;
+use futures::StreamExt;
 use parity_scale_codec::Encode;
 use sc_client_api::{BlockBackend, HeaderBackend};
 use sc_consensus::import_queue::ImportQueueService;
@@ -35,6 +37,8 @@ use subspace_core_primitives::{
 };
 use subspace_networking::utils::piece_provider::{PieceProvider, RetryPolicy};
 use subspace_networking::Node;
+use tokio::sync::Semaphore;
+use tracing::warn;
 
 // Refuse to compile on non-64-bit platforms, otherwise segment indices will not fit in memory
 const_assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<u64>());
@@ -80,7 +84,7 @@ where
         .collect::<Vec<_>>();
 
     let segments_found = segment_commitments.len();
-    let piece_provider = PieceProvider::<SegmentCommitmentPieceValidator>::new(
+    let piece_provider = &PieceProvider::<SegmentCommitmentPieceValidator>::new(
         node.clone(),
         Some(SegmentCommitmentPieceValidator::new(
             node.clone(),
@@ -94,8 +98,7 @@ where
 
     // Skip the first segment, everyone has it locally
     for segment_index in (SegmentIndex::ZERO..).take(segments_found).skip(1) {
-        debug!(%segment_index, "Downloading segment");
-        let pieces_indices = segment_index.segment_piece_indexes_source_first();
+        debug!(%segment_index, "Processing segment");
 
         if let Some(segment_header) = segment_headers.get(u64::from(segment_index) as usize) {
             trace!(
@@ -114,28 +117,79 @@ where
             }
         }
 
+        debug!(%segment_index, "Retrieving pieces of the segment");
+
+        let semaphore = &Semaphore::new(RecordedHistorySegment::NUM_RAW_RECORDS);
+
+        let mut received_segment_pieces = segment_index
+            .segment_piece_indexes_source_first()
+            .into_iter()
+            .map(|piece_index| {
+                // Source pieces will acquire permit here right away
+                let maybe_permit = semaphore.try_acquire().ok();
+
+                async move {
+                    let permit = match maybe_permit {
+                        Some(permit) => permit,
+                        None => {
+                            // Other pieces will acquire permit here instead
+                            match semaphore.acquire().await {
+                                Ok(permit) => permit,
+                                Err(error) => {
+                                    warn!(
+                                        %piece_index,
+                                        %error,
+                                        "Semaphore was closed, interrupting piece retrieval"
+                                    );
+                                    return None;
+                                }
+                            }
+                        }
+                    };
+                    let maybe_piece = match piece_provider
+                        .get_piece(piece_index, RetryPolicy::Limited(0))
+                        .await
+                    {
+                        Ok(maybe_piece) => maybe_piece,
+                        Err(error) => {
+                            trace!(
+                                %error,
+                                ?piece_index,
+                                "Piece request failed",
+                            );
+                            return None;
+                        }
+                    };
+
+                    trace!(
+                        ?piece_index,
+                        piece_found = maybe_piece.is_some(),
+                        "Piece request succeeded",
+                    );
+
+                    maybe_piece.map(|received_piece| {
+                        // Piece was received successfully, "remove" this slot from semaphore
+                        permit.forget();
+                        (piece_index, received_piece)
+                    })
+                }
+            })
+            .collect::<FuturesUnordered<_>>();
+
         let mut segment_pieces = vec![None::<Piece>; ArchivedHistorySegment::NUM_PIECES];
         let mut pieces_received = 0;
 
-        for piece_index in pieces_indices {
-            let maybe_piece = piece_provider
-                .get_piece(piece_index, RetryPolicy::Limited(0))
-                .await?;
+        while let Some(maybe_result) = received_segment_pieces.next().await {
+            let Some((piece_index, piece)) = maybe_result else {
+                continue;
+            };
 
-            trace!(
-                ?piece_index,
-                success = maybe_piece.is_some(),
-                "Piece request completed.",
-            );
+            segment_pieces
+                .get_mut(piece_index.position() as usize)
+                .expect("Piece position is by definition within segment; qed")
+                .replace(piece);
 
-            if let Some(received_piece) = maybe_piece {
-                segment_pieces
-                    .get_mut(piece_index.position() as usize)
-                    .expect("Piece position is by definition within segment; qed")
-                    .replace(received_piece);
-
-                pieces_received += 1;
-            }
+            pieces_received += 1;
 
             if pieces_received >= RecordedHistorySegment::NUM_RAW_RECORDS {
                 trace!(%segment_index, "Received half of the segment.");
