@@ -40,6 +40,7 @@ pub struct PreDigest<PublicKey, RewardAddress> {
     pub slot: Slot,
     /// Solution (includes PoR)
     pub solution: Solution<PublicKey, RewardAddress>,
+    #[cfg(feature = "pot")]
     /// Proof of time included in the block
     /// TODO: It is Option<> for now for testing, to be removed
     /// when PoT feature is permanently enabled.
@@ -648,6 +649,7 @@ where
                 FarmerPublicKey::unchecked_from([0u8; 32]),
                 FarmerPublicKey::unchecked_from([0u8; 32]),
             ),
+            #[cfg(feature = "pot")]
             proof_of_time: Default::default(),
         });
     }
