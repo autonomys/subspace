@@ -10,13 +10,15 @@ use sp_core::{Get, H256, U256};
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{
     BundleHeader, DomainId, DomainInstanceData, DomainsHoldIdentifier, ExecutionReceipt,
-    GenerateGenesisStateRoot, OpaqueBundle, OperatorId, OperatorPair, ProofOfElection,
-    SealedBundleHeader, StakingHoldIdentifier,
+    GenerateGenesisStateRoot, GenesisReceiptExtension, OpaqueBundle, OperatorId, OperatorPair,
+    ProofOfElection, SealedBundleHeader, StakingHoldIdentifier,
 };
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{AccountIdConversion, BlakeTwo256, Hash as HashT, IdentityLookup};
 use sp_runtime::OpaqueExtrinsic;
+use sp_version::RuntimeVersion;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::Arc;
 use subspace_core_primitives::U256 as P256;
 use subspace_runtime_primitives::SSC;
 
@@ -197,6 +199,29 @@ pub(crate) fn new_test_ext() -> sp_io::TestExternalities {
         .unwrap();
 
     t.into()
+}
+
+pub(crate) fn new_test_ext_with_extensions() -> sp_io::TestExternalities {
+    let version = RuntimeVersion {
+        spec_name: "test".into(),
+        impl_name: Default::default(),
+        authoring_version: 0,
+        spec_version: 1,
+        impl_version: 1,
+        apis: Default::default(),
+        transaction_version: 1,
+        state_version: 0,
+    };
+
+    let mut ext = new_test_ext();
+    ext.register_extension(sp_core::traits::ReadRuntimeVersionExt::new(
+        ReadRuntimeVersion(version.encode()),
+    ));
+    ext.register_extension(GenesisReceiptExtension::new(Arc::new(
+        GenesisStateRootGenerater,
+    )));
+
+    ext
 }
 
 pub(crate) fn create_dummy_receipt(
