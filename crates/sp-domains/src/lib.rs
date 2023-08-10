@@ -301,6 +301,35 @@ impl<Extrinsic: Encode, Number, Hash, DomainNumber, DomainHash, Balance>
     }
 }
 
+#[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
+pub fn dummy_opaque_bundle<
+    Number: Encode,
+    Hash: Encode,
+    DomainNumber: Encode,
+    DomainHash: Encode,
+    Balance: Encode,
+>(
+    domain_id: DomainId,
+    operator_id: OperatorId,
+    receipt: ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance>,
+) -> OpaqueBundle<Number, Hash, DomainNumber, DomainHash, Balance> {
+    use sp_core::crypto::UncheckedFrom;
+
+    let header = BundleHeader {
+        proof_of_election: ProofOfElection::dummy(domain_id, operator_id),
+        receipt,
+        bundle_size: 0u32,
+        estimated_bundle_weight: Default::default(),
+        bundle_extrinsics_root: Default::default(),
+    };
+    let signature = OperatorSignature::unchecked_from([0u8; 64]);
+
+    OpaqueBundle {
+        sealed_header: SealedBundleHeader::new(header, signature),
+        extrinsics: Vec::new(),
+    }
+}
+
 /// A digest of the bundle
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct BundleDigest {
@@ -369,6 +398,39 @@ impl<
             final_state_root: genesis_state_root.clone(),
             execution_trace: sp_std::vec![genesis_state_root],
             execution_trace_root: Default::default(),
+            total_rewards: Zero::zero(),
+        }
+    }
+
+    #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
+    pub fn dummy(
+        consensus_block_number: Number,
+        consensus_block_hash: Hash,
+        domain_block_number: DomainNumber,
+        parent_domain_block_receipt_hash: ReceiptHash,
+    ) -> ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance> {
+        let execution_trace = sp_std::vec![Default::default(), Default::default()];
+        let execution_trace_root = {
+            let trace: Vec<[u8; 32]> = execution_trace
+                .iter()
+                .map(|r: &DomainHash| r.encode().try_into().expect("H256 must fit into [u8; 32]"))
+                .collect();
+            crate::merkle_tree::MerkleTree::from_leaves(trace.as_slice())
+                .root()
+                .expect("Compute merkle root of trace should success")
+                .into()
+        };
+        ExecutionReceipt {
+            domain_block_number,
+            domain_block_hash: Default::default(),
+            parent_domain_block_receipt_hash,
+            consensus_block_number,
+            consensus_block_hash,
+            invalid_bundles: Vec::new(),
+            block_extrinsics_roots: sp_std::vec![Default::default()],
+            final_state_root: Default::default(),
+            execution_trace,
+            execution_trace_root,
             total_rewards: Zero::zero(),
         }
     }
