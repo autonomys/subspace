@@ -222,8 +222,8 @@ services:
       "--port", "30333",
       "--dsn-listen-on", "/ip4/0.0.0.0/tcp/30433",
       "--rpc-cors", "all",
-      "--rpc-methods", "safe",
-      "--unsafe-rpc-external",
+      "--rpc-methods", "unsafe",
+      "--rpc-external",
       "--no-private-ipv4",
       "--validator",
 # Replace `INSERT_YOUR_ID` with your node ID (will be shown in telemetry)
