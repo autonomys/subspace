@@ -10,12 +10,12 @@ const SEGMENT_HEADER_NUMBER_PER_REQUEST: u64 = 1000;
 /// Initial number of peers to query for segment header
 const SEGMENT_HEADER_CONSENSUS_INITIAL_NODES: usize = 20;
 
-/// Helps gathering segment headers from DSN
-pub struct SegmentHeaderHandler {
+/// Helps downloader segment headers from DSN
+pub struct SegmentHeaderDownloader {
     dsn_node: Node,
 }
 
-impl SegmentHeaderHandler {
+impl SegmentHeaderDownloader {
     pub fn new(dsn_node: Node) -> Self {
         Self { dsn_node }
     }

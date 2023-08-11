@@ -15,10 +15,10 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 mod piece_validator;
-mod segment_headers;
+mod segment_header_downloader;
 
 use crate::dsn::import_blocks::piece_validator::SegmentCommitmentPieceValidator;
-use crate::dsn::import_blocks::segment_headers::SegmentHeaderHandler;
+use crate::dsn::import_blocks::segment_header_downloader::SegmentHeaderDownloader;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use parity_scale_codec::Encode;
@@ -60,7 +60,7 @@ where
     Client: HeaderBackend<Block> + BlockBackend<Block> + Send + Sync + 'static,
     IQS: ImportQueueService<Block> + ?Sized,
 {
-    let segment_headers = SegmentHeaderHandler::new(node.clone())
+    let segment_headers = SegmentHeaderDownloader::new(node.clone())
         .get_segment_headers()
         .await
         .map_err(|error| error.to_string())?;
@@ -104,7 +104,7 @@ where
                 %segment_index,
                 last_archived_block_number = %segment_header.last_archived_block().number,
                 last_archived_block_progress = ?segment_header.last_archived_block().archived_progress,
-                "Downloaded segment header"
+                "Checking segment header"
             );
 
             let last_archived_block =
