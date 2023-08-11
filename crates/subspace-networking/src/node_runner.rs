@@ -591,8 +591,10 @@ where
                                 }
                                 _ => true,
                             };
+
                             if should_temporary_ban {
                                 self.temporary_bans.lock().create_or_extend(peer_id);
+                                debug!(%peer_id, ?error, "Peer was temporarily banned.");
                             }
                         }
                     };

@@ -79,6 +79,18 @@ enum ConnectionState {
     NotInterested,
 }
 
+impl ConnectionState {
+    /// Converts [`ConnectionState`] to a string with information loss.
+    fn stringify(&self) -> String {
+        match self {
+            ConnectionState::Connecting { .. } => "Connecting".to_string(),
+            ConnectionState::Deciding => "Deciding".to_string(),
+            ConnectionState::Permanent => "Permanent".to_string(),
+            ConnectionState::NotInterested => "NotInterested".to_string(),
+        }
+    }
+}
+
 /// Connected peers protocol configuration.
 #[derive(Debug, Clone)]
 pub struct Config {
@@ -86,6 +98,8 @@ pub struct Config {
     pub log_target: &'static str,
     /// Interval between new dialing attempts.
     pub dialing_interval: Duration,
+    /// Interval between logging of the internal state.
+    pub logging_interval: Duration,
     /// Number of connected peers that protocol will maintain.
     pub target_connected_peers: u32,
     /// We dial peers using this batch size.
@@ -101,6 +115,7 @@ impl Default for Config {
         Self {
             log_target: DEFAULT_CONNECTED_PEERS_LOG_TARGET,
             dialing_interval: Duration::from_secs(3),
+            logging_interval: Duration::from_secs(5),
             target_connected_peers: 30,
             dialing_peer_batch_size: 5,
             decision_timeout: Duration::from_secs(10),
@@ -120,6 +135,13 @@ pub enum Event<Instance> {
 struct PeerConnectionDecisionUpdate {
     peer_id: PeerId,
     keep_alive: KeepAlive,
+}
+
+#[derive(Debug, Default)]
+#[allow(dead_code)] // actually, we use the fields implicitly using the `Debug` on logging.
+struct ConnectedPeerStats {
+    status_count: HashMap<String, usize>,
+    peer_status: HashMap<String, Vec<PeerId>>,
 }
 
 /// `Behaviour` for `connected peers` protocol.
@@ -145,12 +167,16 @@ pub struct Behaviour<Instance> {
 
     /// Instance type marker.
     phantom_data: PhantomData<Instance>,
+
+    /// Delay between logging of the internal state.
+    logging_delay: Delay,
 }
 
 impl<Instance> Behaviour<Instance> {
     /// Creates a new `Behaviour`.
     pub fn new(config: Config) -> Self {
         let dialing_delay = Delay::new(config.dialing_interval);
+        let logging_delay = Delay::new(config.logging_interval);
         Self {
             config,
             known_peers: HashMap::new(),
@@ -159,6 +185,7 @@ impl<Instance> Behaviour<Instance> {
             peer_cache: Vec::new(),
             waker: None,
             phantom_data: PhantomData,
+            logging_delay,
         }
     }
 
@@ -249,6 +276,35 @@ impl<Instance> Behaviour<Instance> {
     fn wake(&self) {
         if let Some(waker) = &self.waker {
             waker.wake_by_ref()
+        }
+    }
+
+    fn gather_stats(&self) -> ConnectedPeerStats {
+        let status_count =
+            self.known_peers
+                .iter()
+                .fold(HashMap::new(), |mut result, (_, state)| {
+                    result
+                        .entry(state.connection_state.stringify())
+                        .and_modify(|count| *count += 1)
+                        .or_insert(1);
+                    result
+                });
+
+        let peer_status = self.known_peers.iter().fold(
+            HashMap::<String, Vec<PeerId>>::new(),
+            |mut result, (peer_id, state)| {
+                result
+                    .entry(state.connection_state.stringify())
+                    .and_modify(|peers| peers.push(*peer_id))
+                    .or_insert(vec![*peer_id]);
+                result
+            },
+        );
+
+        ConnectedPeerStats {
+            status_count,
+            peer_status,
         }
     }
 }
@@ -372,12 +428,6 @@ impl<Instance: 'static + Send> NetworkBehaviour for Behaviour<Instance> {
 
         // Check decision statuses.
         for (peer_id, state) in self.known_peers.iter_mut() {
-            trace!(
-                %peer_id,
-                ?state,
-                target=%self.config.log_target,
-                "Peer decisions for connected peers protocol."
-            );
             match state.connection_state.clone() {
                 ConnectionState::Connecting {
                     peer_address: address,
@@ -432,6 +482,18 @@ impl<Instance: 'static + Send> NetworkBehaviour for Behaviour<Instance> {
                         });
                     }
                 }
+            }
+        }
+
+        // Log the internal state.
+        match self.logging_delay.poll_unpin(cx) {
+            Poll::Pending => {}
+            Poll::Ready(()) => {
+                self.logging_delay.reset(self.config.logging_interval);
+
+                let stats = self.gather_stats();
+
+                debug!(instance=%self.config.log_target, ?stats, "Connected peers protocol statistics.");
             }
         }
 
