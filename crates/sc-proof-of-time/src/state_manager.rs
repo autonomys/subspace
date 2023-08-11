@@ -12,7 +12,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use subspace_core_primitives::{BlockNumber, NonEmptyVec, PotKey, PotProof, PotSeed, SlotNumber};
 use subspace_proof_of_time::{PotVerificationError, ProofOfTime};
-use tracing::{info, trace};
+use tracing::trace;
 
 /// The maximum size of the PoT chain to keep (about 5 min worth of proofs for now).
 /// TODO: remove this when purging is implemented.
@@ -830,6 +830,9 @@ impl PotConsensusState for StateManager {
         if let Some(block_proofs) = pre_digest.proofs() {
             // Opportunistically try to extend the chain with
             // the proofs from the block.
+            // TODO: this also is done when the chain is empty and
+            // we don't have a previous proof to verify against.
+            // This needs to be revisited as part of the node sync.
             let (tip, summary) = {
                 let state = self.state.lock();
                 (state.tip(), state.summary())
@@ -839,7 +842,7 @@ impl PotConsensusState for StateManager {
                 .map(|tip| (tip.slot_number + 1) == block_proofs.first().slot_number)
                 .unwrap_or(true);
             if should_append {
-                let ret = self.verify_and_append(
+                return self.verify_and_append(
                     block_number,
                     slot_number,
                     block_proofs,
@@ -847,7 +850,6 @@ impl PotConsensusState for StateManager {
                     tip,
                     summary,
                 );
-                info!("state_manager: verify_and_append: {pre_digest:?}, {ret:?}");
             }
         }
 

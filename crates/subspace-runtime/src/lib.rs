@@ -307,6 +307,7 @@ impl pallet_subspace::Config for Runtime {
     >;
 
     type WeightInfo = pallet_subspace::weights::SubstrateWeight<Runtime>;
+    // TODO: this needs to come from the cmd line enable PoT flag
     type IsPotEnabled = ConstBool<false>;
 }
 
