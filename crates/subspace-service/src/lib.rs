@@ -29,7 +29,6 @@ pub mod rpc;
 mod sync_from_dsn;
 pub mod tx_pre_validator;
 
-use crate::dsn::import_blocks::initial_block_import_from_dsn;
 use crate::dsn::{create_dsn_instance, DsnConfigurationError};
 use crate::metrics::NodeMetrics;
 use crate::piece_cache::PieceCache;
@@ -556,7 +555,7 @@ where
         client,
         backend,
         mut task_manager,
-        mut import_queue,
+        import_queue,
         keystore_container,
         select_chain,
         transaction_pool,
@@ -702,48 +701,6 @@ where
             bootstrap_nodes.clone()
         }
     };
-
-    // TODO: This prevents SIGINT from working properly
-    if config.sync_from_dsn {
-        info!("⚙️ Starting initial sync from DSN, this might take some time");
-
-        let mut imported_blocks = 0;
-
-        // Repeat until no new blocks are imported
-        loop {
-            let new_imported_blocks =
-                initial_block_import_from_dsn(&node, client.clone(), &mut import_queue, false)
-                    .await
-                    .map_err(|error| {
-                        sc_service::Error::Other(format!(
-                            "Failed to import blocks from DSN: {error:?}"
-                        ))
-                    })?;
-
-            if new_imported_blocks == 0 {
-                break;
-            }
-
-            imported_blocks += new_imported_blocks;
-
-            info!(
-                "🎉 Imported {} blocks from DSN, current best #{}/#{}",
-                imported_blocks,
-                client.info().best_number,
-                client.info().best_hash
-            );
-        }
-
-        if imported_blocks > 0 {
-            info!(
-                "🎉 Imported {} blocks from DSN, best #{}/#{}, check against reliable sources to \
-                make sure it is a block on canonical chain",
-                imported_blocks,
-                client.info().best_number,
-                client.info().best_hash
-            );
-        }
-    }
 
     let import_queue_service = import_queue.service();
     let network_wrapper = Arc::new(NetworkWrapper::default());
