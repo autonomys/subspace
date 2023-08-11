@@ -19,18 +19,16 @@ mod segment_headers;
 
 use crate::dsn::import_blocks::piece_validator::SegmentCommitmentPieceValidator;
 use crate::dsn::import_blocks::segment_headers::SegmentHeaderHandler;
-use futures::FutureExt;
+use futures::stream::FuturesUnordered;
+use futures::StreamExt;
 use parity_scale_codec::Encode;
 use sc_client_api::{BlockBackend, HeaderBackend};
 use sc_consensus::import_queue::ImportQueueService;
-use sc_consensus::{BlockImportError, BlockImportStatus, IncomingBlock, Link};
-use sc_service::ImportQueue;
-use sc_tracing::tracing::{debug, info, trace};
+use sc_consensus::IncomingBlock;
+use sc_tracing::tracing::{debug, trace};
 use sp_consensus::BlockOrigin;
-use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
+use sp_runtime::traits::{Block as BlockT, Header, NumberFor, One};
 use static_assertions::const_assert;
-use std::sync::Arc;
-use std::task::Poll;
 use std::time::Duration;
 use subspace_archiving::reconstructor::Reconstructor;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
@@ -39,6 +37,8 @@ use subspace_core_primitives::{
 };
 use subspace_networking::utils::piece_provider::{PieceProvider, RetryPolicy};
 use subspace_networking::Node;
+use tokio::sync::Semaphore;
+use tracing::warn;
 
 // Refuse to compile on non-64-bit platforms, otherwise segment indices will not fit in memory
 const_assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<u64>());
@@ -47,129 +47,6 @@ const_assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<u64>());
 const QUEUED_BLOCKS_LIMIT: BlockNumber = 2048;
 /// Time to wait for blocks to import if import is too slow
 const WAIT_FOR_BLOCKS_TO_IMPORT: Duration = Duration::from_secs(1);
-
-struct WaitLinkError<B: BlockT> {
-    error: BlockImportError,
-    hash: B::Hash,
-}
-
-struct WaitLink<B: BlockT> {
-    imported_blocks: u64,
-    error: Option<WaitLinkError<B>>,
-}
-
-impl<B: BlockT> WaitLink<B> {
-    fn new() -> Self {
-        Self {
-            imported_blocks: 0,
-            error: None,
-        }
-    }
-}
-
-impl<B: BlockT> Link<B> for WaitLink<B> {
-    fn blocks_processed(
-        &mut self,
-        imported: usize,
-        _num_expected_blocks: usize,
-        results: Vec<(
-            Result<BlockImportStatus<NumberFor<B>>, BlockImportError>,
-            B::Hash,
-        )>,
-    ) {
-        debug!("Imported {imported} blocks");
-        self.imported_blocks += imported as u64;
-
-        for result in results {
-            if let (Err(error), hash) = result {
-                self.error.replace(WaitLinkError { error, hash });
-                break;
-            }
-        }
-    }
-}
-
-/// Starts the process of importing blocks, used for for initial sync on node startup because it
-/// requires [`ImportQueue`] as a dependency.
-///
-/// Returns number of imported blocks.
-pub async fn initial_block_import_from_dsn<Block, IQ, Client>(
-    node: &Node,
-    client: Arc<Client>,
-    import_queue: &mut IQ,
-    force: bool,
-) -> Result<u64, sc_service::Error>
-where
-    Block: BlockT,
-    Client: HeaderBackend<Block> + BlockBackend<Block> + Send + Sync + 'static,
-    IQ: ImportQueue<Block> + 'static,
-{
-    let mut link = WaitLink::new();
-    let mut import_queue_service = import_queue.service();
-
-    let import_blocks_fut = import_blocks_from_dsn(
-        node,
-        client.as_ref(),
-        import_queue_service.as_mut(),
-        BlockOrigin::NetworkInitialSync,
-        force,
-    );
-    let drive_import_queue_fut = async {
-        let mut last_imported_blocks = link.imported_blocks;
-        loop {
-            futures::future::poll_fn(|ctx| {
-                import_queue.poll_actions(ctx, &mut link);
-
-                if last_imported_blocks == link.imported_blocks && link.error.is_none() {
-                    // Nothing changed yet, wait for waker to be called
-                    Poll::Pending
-                } else {
-                    last_imported_blocks = link.imported_blocks;
-                    Poll::Ready(())
-                }
-            })
-            .await;
-
-            if let Some(WaitLinkError { error, hash }) = &link.error {
-                return Err::<(), sc_service::Error>(sc_service::Error::Other(format!(
-                    "Stopping block import after #{} blocks on {} because of an error: {}",
-                    link.imported_blocks, hash, error
-                )));
-            }
-        }
-    };
-
-    let downloaded_blocks = futures::select! {
-        maybe_downloaded_blocks = import_blocks_fut.fuse() => {
-            maybe_downloaded_blocks?
-        }
-        result = drive_import_queue_fut.fuse() => {
-            if let Err(error) = result {
-                return Err(error);
-            } else {
-                unreachable!();
-            }
-        }
-    };
-
-    while link.imported_blocks < downloaded_blocks {
-        futures::future::poll_fn(|ctx| {
-            import_queue.poll_actions(ctx, &mut link);
-
-            Poll::Ready(())
-        })
-        .await;
-
-        if let Some(WaitLinkError { error, hash }) = &link.error {
-            return Err(sc_service::Error::Other(format!(
-                "Stopping block import after #{} blocks on {} because of an error: {}",
-                link.imported_blocks, hash, error
-            )));
-        }
-    }
-
-    Ok(downloaded_blocks)
-}
 
 // TODO: Only download segment headers starting with the first segment that node doesn't have rather
 //  than from genesis
@@ -180,7 +57,6 @@ pub async fn import_blocks_from_dsn<Block, IQS, Client>(
     node: &Node,
     client: &Client,
     import_queue_service: &mut IQS,
-    block_origin: BlockOrigin,
     force: bool,
 ) -> Result<u64, sc_service::Error>
 where
@@ -207,7 +83,7 @@ where
         .collect::<Vec<_>>();
 
     let segments_found = segment_commitments.len();
-    let piece_provider = PieceProvider::<SegmentCommitmentPieceValidator>::new(
+    let piece_provider = &PieceProvider::<SegmentCommitmentPieceValidator>::new(
         node.clone(),
         Some(SegmentCommitmentPieceValidator::new(
             node.clone(),
@@ -218,43 +94,116 @@ where
 
     let mut downloaded_blocks = 0;
     let mut reconstructor = Reconstructor::new().map_err(|error| error.to_string())?;
+    let mut segment_indices_iter = (SegmentIndex::ZERO..)
+        .take(segments_found)
+        .skip(1)
+        .peekable();
 
     // Skip the first segment, everyone has it locally
-    for segment_index in (SegmentIndex::ZERO..).take(segments_found).skip(1) {
-        let pieces_indices = segment_index.segment_piece_indexes_source_first();
+    while let Some(segment_index) = segment_indices_iter.next() {
+        debug!(%segment_index, "Processing segment");
 
         if let Some(segment_header) = segment_headers.get(u64::from(segment_index) as usize) {
+            trace!(
+                %segment_index,
+                last_archived_block_number = %segment_header.last_archived_block().number,
+                last_archived_block_progress = ?segment_header.last_archived_block().archived_progress,
+                "Downloaded segment header"
+            );
+
             let last_archived_block =
                 NumberFor::<Block>::from(segment_header.last_archived_block().number);
-            if last_archived_block <= client.info().best_number {
+            let last_archived_block_partial = segment_header
+                .last_archived_block()
+                .archived_progress
+                .partial()
+                .is_some();
+            // We already have this block imported or we have only a part of the very next block and
+            // this was the last segment available, so nothing to import
+            if last_archived_block <= client.info().best_number
+                || (last_archived_block == client.info().best_number + One::one()
+                    && last_archived_block_partial
+                    && segment_indices_iter.peek().is_none())
+            {
                 // Reset reconstructor instance
                 reconstructor = Reconstructor::new().map_err(|error| error.to_string())?;
                 continue;
             }
         }
 
+        debug!(%segment_index, "Retrieving pieces of the segment");
+
+        let semaphore = &Semaphore::new(RecordedHistorySegment::NUM_RAW_RECORDS);
+
+        let mut received_segment_pieces = segment_index
+            .segment_piece_indexes_source_first()
+            .into_iter()
+            .map(|piece_index| {
+                // Source pieces will acquire permit here right away
+                let maybe_permit = semaphore.try_acquire().ok();
+
+                async move {
+                    let permit = match maybe_permit {
+                        Some(permit) => permit,
+                        None => {
+                            // Other pieces will acquire permit here instead
+                            match semaphore.acquire().await {
+                                Ok(permit) => permit,
+                                Err(error) => {
+                                    warn!(
+                                        %piece_index,
+                                        %error,
+                                        "Semaphore was closed, interrupting piece retrieval"
+                                    );
+                                    return None;
+                                }
+                            }
+                        }
+                    };
+                    let maybe_piece = match piece_provider
+                        .get_piece(piece_index, RetryPolicy::Limited(0))
+                        .await
+                    {
+                        Ok(maybe_piece) => maybe_piece,
+                        Err(error) => {
+                            trace!(
+                                %error,
+                                ?piece_index,
+                                "Piece request failed",
+                            );
+                            return None;
+                        }
+                    };
+
+                    trace!(
+                        ?piece_index,
+                        piece_found = maybe_piece.is_some(),
+                        "Piece request succeeded",
+                    );
+
+                    maybe_piece.map(|received_piece| {
+                        // Piece was received successfully, "remove" this slot from semaphore
+                        permit.forget();
+                        (piece_index, received_piece)
+                    })
+                }
+            })
+            .collect::<FuturesUnordered<_>>();
+
         let mut segment_pieces = vec![None::<Piece>; ArchivedHistorySegment::NUM_PIECES];
         let mut pieces_received = 0;
 
-        for piece_index in pieces_indices {
-            let maybe_piece = piece_provider
-                .get_piece(piece_index, RetryPolicy::Limited(0))
-                .await?;
+        while let Some(maybe_result) = received_segment_pieces.next().await {
+            let Some((piece_index, piece)) = maybe_result else {
+                continue;
+            };
 
-            trace!(
-                ?piece_index,
-                success = maybe_piece.is_some(),
-                "Piece request completed.",
-            );
+            segment_pieces
+                .get_mut(piece_index.position() as usize)
+                .expect("Piece position is by definition within segment; qed")
+                .replace(piece);
 
-            if let Some(received_piece) = maybe_piece {
-                segment_pieces
-                    .get_mut(piece_index.position() as usize)
-                    .expect("Piece position is by definition within segment; qed")
-                    .replace(received_piece);
-
-                pieces_received += 1;
-            }
+            pieces_received += 1;
 
             if pieces_received >= RecordedHistorySegment::NUM_RAW_RECORDS {
                 trace!(%segment_index, "Received half of the segment.");
@@ -267,9 +216,11 @@ where
             .map_err(|error| error.to_string())?;
         drop(segment_pieces);
 
-        let mut blocks_to_import = Vec::with_capacity(reconstructed_contents.blocks.len());
+        trace!(%segment_index, "Segment reconstructed successfully");
 
-        let best_block_number = client.info().best_number;
+        let mut blocks_to_import = Vec::with_capacity(QUEUED_BLOCKS_LIMIT as usize);
+
+        let mut best_block_number = client.info().best_number;
         for (block_number, block_bytes) in reconstructed_contents.blocks {
             {
                 let block_number = block_number.into();
@@ -293,7 +244,21 @@ where
 
                 // Limit number of queued blocks for import
                 while block_number - best_block_number >= QUEUED_BLOCKS_LIMIT.into() {
+                    if !blocks_to_import.is_empty() {
+                        // Import queue handles verification and importing it into the client
+                        import_queue_service.import_blocks(
+                            BlockOrigin::NetworkInitialSync,
+                            blocks_to_import.clone(),
+                        );
+                        blocks_to_import.clear();
+                    }
+                    trace!(
+                        %block_number,
+                        %best_block_number,
+                        "Number of importing blocks reached queue limit, waiting before retrying"
+                    );
                     tokio::time::sleep(WAIT_FOR_BLOCKS_TO_IMPORT).await;
+                    best_block_number = client.info().best_number;
                 }
             }
 
@@ -319,7 +284,7 @@ where
             downloaded_blocks += 1;
 
             if downloaded_blocks % 1000 == 0 {
-                info!("Imported block {} from DSN", block_number);
+                debug!("Adding block {} from DSN to the import queue", block_number);
             }
         }
 
@@ -327,8 +292,18 @@ where
             break;
         }
 
-        // import queue handles verification and importing it into the client.
-        import_queue_service.import_blocks(block_origin, blocks_to_import);
+        // Import queue handles verification and importing it into the client
+        let last_segment = segment_indices_iter.peek().is_none();
+        if last_segment {
+            let last_block = blocks_to_import
+                .pop()
+                .expect("Not empty, checked above; qed");
+            import_queue_service.import_blocks(BlockOrigin::NetworkInitialSync, blocks_to_import);
+            // This will notify Substrate's sync mechanism and allow regular Substrate sync to continue gracefully
+            import_queue_service.import_blocks(BlockOrigin::NetworkBroadcast, vec![last_block]);
+        } else {
+            import_queue_service.import_blocks(BlockOrigin::NetworkInitialSync, blocks_to_import);
+        }
     }
 
     Ok(downloaded_blocks)

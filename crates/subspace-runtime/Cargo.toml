@@ -68,6 +68,10 @@ hex-literal = "0.4.0"
 
 [features]
 default = ["std"]
+pot = [
+	"pallet-subspace/pot",
+	"sp-consensus-subspace/pot",
+]
 std = [
 	"codec/std",
 	"domain-runtime-primitives/std",

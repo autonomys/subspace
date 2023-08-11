@@ -28,7 +28,9 @@ use sc_consensus::{JustificationSyncLink, StorageChanges};
 use sc_consensus_slots::{
     BackoffAuthoringBlocksStrategy, SimpleSlotWorker, SlotInfo, SlotLenienceType, SlotProportion,
 };
-use sc_proof_of_time::{PotConsensusState, PotGetBlockProofsError};
+use sc_proof_of_time::PotConsensusState;
+#[cfg(feature = "pot")]
+use sc_proof_of_time::PotGetBlockProofsError;
 use sc_telemetry::TelemetryHandle;
 use sc_utils::mpsc::tracing_unbounded;
 use schnorrkel::context::SigningContext;
@@ -36,22 +38,24 @@ use sp_api::{ApiError, NumberFor, ProvideRuntimeApi, TransactionFor};
 use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata};
 use sp_consensus::{BlockOrigin, Environment, Error as ConsensusError, Proposer, SyncOracle};
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::digests::{
-    extract_pre_digest, CompatibleDigestItem, PotPreDigest, PreDigest,
-};
+#[cfg(feature = "pot")]
+use sp_consensus_subspace::digests::PotPreDigest;
+use sp_consensus_subspace::digests::{extract_pre_digest, CompatibleDigestItem, PreDigest};
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SignedVote, SubspaceApi, Vote};
 use sp_core::crypto::ByteArray;
 use sp_core::H256;
-use sp_runtime::traits::{
-    Block as BlockT, Header, NumberFor as BlockNumberFor, One, Saturating, Zero,
-};
+#[cfg(feature = "pot")]
+use sp_runtime::traits::NumberFor as BlockNumberFor;
+use sp_runtime::traits::{Block as BlockT, Header, One, Saturating, Zero};
 use sp_runtime::DigestItem;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
+#[cfg(feature = "pot")]
+use subspace_core_primitives::SlotNumber;
 use subspace_core_primitives::{
-    BlockNumber, PublicKey, Randomness, RewardSignature, SectorId, SlotNumber, Solution,
+    BlockNumber, PublicKey, Randomness, RewardSignature, SectorId, Solution,
 };
 use subspace_proof_of_space::Table;
 use subspace_verification::{
@@ -59,6 +63,7 @@ use subspace_verification::{
 };
 
 /// Errors while building the block proof of time.
+#[cfg(feature = "pot")]
 #[derive(Debug, thiserror::Error)]
 pub enum PotCreateError<Block: BlockT> {
     /// Parent block has no proof of time digest.
@@ -132,6 +137,8 @@ where
     pub(super) max_block_proposal_slot_portion: Option<SlotProportion>,
     pub(super) telemetry: Option<TelemetryHandle>,
     pub(super) segment_headers_store: SegmentHeadersStore<AS>,
+    // TODO: Un-suppress once we enable PoT unconditionally
+    #[allow(dead_code)]
     pub(super) proof_of_time: Option<Arc<dyn PotConsensusState>>,
     pub(super) _pos_table: PhantomData<PosTable>,
 }
@@ -350,12 +357,14 @@ where
                     // block reward is claimed
                     if maybe_pre_digest.is_none() && solution_distance <= solution_range / 2 {
                         info!(target: "subspace", "🚜 Claimed block at slot {slot}");
+                        #[cfg(feature = "pot")]
                         let proof_of_time = self
                             .build_block_pot(parent_header, &parent_pre_digest, slot.into())
                             .ok()?;
                         maybe_pre_digest.replace(PreDigest {
                             solution,
                             slot,
+                            #[cfg(feature = "pot")]
                             proof_of_time,
                         });
                     } else if !parent_header.number().is_zero() {
@@ -586,6 +595,7 @@ where
     }
 
     /// Builds the proof of time for the block being proposed.
+    #[cfg(feature = "pot")]
     fn build_block_pot(
         &self,
         parent_header: &Block::Header,
