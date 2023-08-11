@@ -48,6 +48,9 @@ subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-spac
 
 [features]
 default = ["std"]
+pot = [
+	"sp-consensus-subspace/pot",
+]
 std = [
 	"codec/std",
 	"frame-benchmarking?/std",

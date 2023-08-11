@@ -26,3 +26,6 @@ parking_lot = "0.12.1"
 thiserror = "1.0.38"
 tokio = { version = "1.28.2", features = ["time"] }
 tracing = "0.1.37"
+
+[features]
+pot = []
