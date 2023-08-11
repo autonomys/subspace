@@ -57,6 +57,9 @@ where
         block_hash: info.best_hash.to_fixed_bytes(),
         block_number: info.best_number,
         slot_number: pre_digest.slot.into(),
+        #[cfg(feature = "pot")]
         pot_pre_digest: pre_digest.proof_of_time.unwrap_or_default(),
+        #[cfg(not(feature = "pot"))]
+        pot_pre_digest: Default::default(),
     })
 }

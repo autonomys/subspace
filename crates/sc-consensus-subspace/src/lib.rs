@@ -61,9 +61,10 @@ use sp_consensus::{
     BlockOrigin, Environment, Error as ConsensusError, Proposer, SelectChain, SyncOracle,
 };
 use sp_consensus_slots::{Slot, SlotDuration};
+#[cfg(feature = "pot")]
+use sp_consensus_subspace::digests::PreDigest;
 use sp_consensus_subspace::digests::{
-    extract_pre_digest, extract_subspace_digest_items, Error as DigestError, PreDigest,
-    SubspaceDigestItems,
+    extract_pre_digest, extract_subspace_digest_items, Error as DigestError, SubspaceDigestItems,
 };
 use sp_consensus_subspace::{
     check_header, ChainConstants, CheckedHeader, FarmerPublicKey, FarmerSignature, SubspaceApi,
@@ -975,6 +976,7 @@ where
                 None => parent_subspace_digest_items.solution_range,
             };
 
+            #[cfg(feature = "pot")]
             if let Some(proof_of_time) = self.proof_of_time.as_ref() {
                 let ret = self.proof_of_time_verification(
                     proof_of_time.as_ref(),
@@ -1116,6 +1118,7 @@ where
 
     /// Verifies the proof of time in the received block.
     #[allow(clippy::too_many_arguments)]
+    #[cfg(feature = "pot")]
     fn proof_of_time_verification(
         &self,
         proof_of_time: &dyn PotConsensusState,

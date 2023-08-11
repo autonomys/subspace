@@ -32,13 +32,9 @@ pub(crate) async fn recover_missing_piece<PG: PieceGetter>(
     let segment_index = missing_piece_index.segment_index();
     let position = missing_piece_index.position();
 
-    let semaphore = Semaphore::new(PARALLELISM_LEVEL);
-    let acquired_pieces_counter = AtomicUsize::default();
+    let semaphore = &Semaphore::new(PARALLELISM_LEVEL);
+    let acquired_pieces_counter = &AtomicUsize::default();
     let required_pieces_number = RecordedHistorySegment::NUM_RAW_RECORDS;
-
-    // This is so we can move references into the future below
-    let semaphore = &semaphore;
-    let acquired_pieces_counter = &acquired_pieces_counter;
 
     let mut received_segment_pieces = segment_index
         .segment_piece_indexes_source_first()
