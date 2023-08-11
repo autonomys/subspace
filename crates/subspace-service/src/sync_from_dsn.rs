@@ -2,8 +2,9 @@ use crate::dsn::import_blocks::import_blocks_from_dsn;
 use atomic::Atomic;
 use futures::channel::mpsc;
 use futures::{FutureExt, StreamExt};
-use sc_client_api::{BlockBackend, BlockchainEvents};
+use sc_client_api::{AuxStore, BlockBackend, BlockchainEvents};
 use sc_consensus::import_queue::ImportQueueService;
+use sc_consensus_subspace::SegmentHeadersStore;
 use sc_network::config::SyncMode;
 use sc_network::{NetworkPeers, NetworkService};
 use sp_api::BlockT;
@@ -31,7 +32,8 @@ enum NotificationReason {
 
 /// Create node observer that will track node state and send notifications to worker to start sync
 /// from DSN.
-pub(super) fn create_observer_and_worker<Block, Client>(
+pub(super) fn create_observer_and_worker<Block, AS, Client>(
+    segment_headers_store: SegmentHeadersStore<AS>,
     network_service: Arc<NetworkService<Block, <Block as BlockT>::Hash>>,
     node: Node,
     client: Arc<Client>,
@@ -43,6 +45,7 @@ pub(super) fn create_observer_and_worker<Block, Client>(
 )
 where
     Block: BlockT,
+    AS: AuxStore + Send + Sync + 'static,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + BlockchainEvents<Block>
@@ -59,6 +62,7 @@ where
     };
     let worker_fut = async move {
         create_worker(
+            segment_headers_store,
             &node,
             client.as_ref(),
             import_queue_service.as_mut(),
@@ -185,7 +189,8 @@ async fn create_substrate_network_observer<Block>(
     }
 }
 
-async fn create_worker<Block, IQS, Client>(
+async fn create_worker<Block, AS, IQS, Client>(
+    segment_headers_store: SegmentHeadersStore<AS>,
     node: &Node,
     client: &Client,
     import_queue_service: &mut IQS,
@@ -194,6 +199,7 @@ async fn create_worker<Block, IQS, Client>(
 ) -> Result<(), sc_service::Error>
 where
     Block: BlockT,
+    AS: AuxStore + Send + Sync + 'static,
     Client: HeaderBackend<Block> + BlockBackend<Block> + Send + Sync + 'static,
     IQS: ImportQueueService<Block> + ?Sized,
 {
@@ -208,7 +214,14 @@ where
 
         info!(?reason, "Received notification to sync from DSN");
         // TODO: Maybe handle failed block imports, additional helpful logging
-        if let Err(error) = import_blocks_from_dsn(node, client, import_queue_service, false).await
+        if let Err(error) = import_blocks_from_dsn(
+            &segment_headers_store,
+            node,
+            client,
+            import_queue_service,
+            false,
+        )
+        .await
         {
             warn!(%error, "Error when syncing blocks from DSN");
         }

@@ -22,9 +22,10 @@ use crate::dsn::import_blocks::segment_header_downloader::SegmentHeaderDownloade
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use parity_scale_codec::Encode;
-use sc_client_api::{BlockBackend, HeaderBackend};
+use sc_client_api::{AuxStore, BlockBackend, HeaderBackend};
 use sc_consensus::import_queue::ImportQueueService;
 use sc_consensus::IncomingBlock;
+use sc_consensus_subspace::SegmentHeadersStore;
 use sc_tracing::tracing::{debug, trace};
 use sp_consensus::BlockOrigin;
 use sp_runtime::traits::{Block as BlockT, Header, NumberFor, One};
@@ -32,7 +33,7 @@ use std::time::Duration;
 use subspace_archiving::reconstructor::Reconstructor;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{
-    ArchivedHistorySegment, BlockNumber, Piece, RecordedHistorySegment, SegmentHeader, SegmentIndex,
+    ArchivedHistorySegment, BlockNumber, Piece, RecordedHistorySegment, SegmentIndex,
 };
 use subspace_networking::utils::piece_provider::{PieceProvider, RetryPolicy};
 use subspace_networking::Node;
@@ -49,7 +50,8 @@ const WAIT_FOR_BLOCKS_TO_IMPORT: Duration = Duration::from_secs(1);
 /// Starts the process of importing blocks.
 ///
 /// Returns number of downloaded blocks.
-pub async fn import_blocks_from_dsn<Block, IQS, Client>(
+pub async fn import_blocks_from_dsn<Block, AS, IQS, Client>(
+    segment_headers_store: &SegmentHeadersStore<AS>,
     node: &Node,
     client: &Client,
     import_queue_service: &mut IQS,
@@ -57,6 +59,7 @@ pub async fn import_blocks_from_dsn<Block, IQS, Client>(
 ) -> Result<u64, sc_service::Error>
 where
     Block: BlockT,
+    AS: AuxStore + Send + Sync + 'static,
     Client: HeaderBackend<Block> + BlockBackend<Block> + Send + Sync + 'static,
     IQS: ImportQueueService<Block> + ?Sized,
 {
@@ -71,20 +74,15 @@ where
         return Ok(0);
     }
 
-    // TODO: Consider introducing and using global in-memory segment header cache (this comment is
-    //  in multiple files)
-    let segment_commitments = segment_headers
-        .iter()
-        .map(SegmentHeader::segment_commitment)
-        .collect::<Vec<_>>();
+    segment_headers_store.add_segment_headers(&segment_headers)?;
 
-    let segments_found = segment_commitments.len();
-    let piece_provider = &PieceProvider::<SegmentCommitmentPieceValidator>::new(
+    let segments_found = segment_headers.len();
+    let piece_provider = &PieceProvider::<SegmentCommitmentPieceValidator<AS>>::new(
         node.clone(),
         Some(SegmentCommitmentPieceValidator::new(
             node.clone(),
             Kzg::new(embedded_kzg_settings()),
-            segment_commitments,
+            segment_headers_store,
         )),
     );
 

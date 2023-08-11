@@ -756,6 +756,7 @@ where
     }
     if config.sync_from_dsn {
         let (observer, worker) = sync_from_dsn::create_observer_and_worker(
+            segment_headers_store.clone(),
             Arc::clone(&network_service),
             node.clone(),
             Arc::clone(&client),
