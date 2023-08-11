@@ -32,8 +32,6 @@ impl SegmentHeaderHandler {
             last_segment_header.segment_index()
         );
 
-        // TODO: Needs to statically require 64-bit environment or else u64->usize may cause
-        //  problems in the future
         let mut all_segment_headers =
             Vec::with_capacity(u64::from(last_segment_header.segment_index()) as usize + 1);
         all_segment_headers.push(last_segment_header);

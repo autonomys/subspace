@@ -28,7 +28,6 @@ use sc_consensus::IncomingBlock;
 use sc_tracing::tracing::{debug, trace};
 use sp_consensus::BlockOrigin;
 use sp_runtime::traits::{Block as BlockT, Header, NumberFor, One};
-use static_assertions::const_assert;
 use std::time::Duration;
 use subspace_archiving::reconstructor::Reconstructor;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
@@ -39,9 +38,6 @@ use subspace_networking::utils::piece_provider::{PieceProvider, RetryPolicy};
 use subspace_networking::Node;
 use tokio::sync::Semaphore;
 use tracing::warn;
-
-// Refuse to compile on non-64-bit platforms, otherwise segment indices will not fit in memory
-const_assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<u64>());
 
 /// How many blocks to queue before pausing and waiting for blocks to be imported
 const QUEUED_BLOCKS_LIMIT: BlockNumber = 2048;

@@ -35,8 +35,6 @@ impl PieceValidator for SegmentCommitmentPieceValidator {
         if source_peer_id != self.dsn_node.id() {
             let segment_index = piece_index.segment_index();
 
-            // TODO: Needs to statically require 64-bit environment or else u64->usize may cause
-            //  problems in the future
             let maybe_segment_commitment = self
                 .segment_commitment_cache
                 .get(u64::from(segment_index) as usize);

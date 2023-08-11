@@ -78,6 +78,7 @@ use sp_offchain::OffchainWorkerApi;
 use sp_runtime::traits::{Block as BlockT, BlockIdTo, NumberFor};
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
+use static_assertions::const_assert;
 use std::marker::PhantomData;
 use std::sync::{Arc, Mutex};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
@@ -90,6 +91,10 @@ use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash, Index as Nonce};
 use subspace_transaction_pool::{FullPool, PreValidateTransaction};
 use tracing::{debug, error, info, Instrument};
+
+// There are multiple places where it is assumed that node is running on 64-bit system, refuse to
+// compile otherwise
+const_assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<u64>());
 
 /// Error type for Subspace service.
 #[derive(thiserror::Error, Debug)]
