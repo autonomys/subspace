@@ -18,7 +18,7 @@ pub type TestExternalities = sp_state_machine::TestExternalities<BlakeTwo256>;
 macro_rules! impl_runtime {
     ($runtime:ty, $chain_id:literal) => {
         use crate::mock::{
-            mock_pallet_settlement, AccountId, Balance, MessageId, MockEndpoint, TestExternalities,
+            AccountId, Balance, MessageId, MockEndpoint, TestExternalities,
         };
         use crate::relayer::RelayerId;
         use codec::{Encode, Decode};
@@ -43,7 +43,6 @@ macro_rules! impl_runtime {
                 UncheckedExtrinsic = UncheckedExtrinsic,
             {
                 System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
-                Settlement: mock_pallet_settlement::{Pallet, Storage},
                 Messenger: crate::{Pallet, Call, Event<T>},
                 Balances: pallet_balances::{Pallet, Call, Config<T>, Storage, Event<T>},
                 Transporter: pallet_transporter::{Pallet, Call, Storage, Event<T>},
@@ -87,8 +86,6 @@ macro_rules! impl_runtime {
             pub const RelayerConfirmationDepth: u64 = 2;
         }
 
-        impl mock_pallet_settlement::Config for $runtime {}
-
         parameter_types! {
             pub SelfChainId: ChainId = $chain_id.into();
             pub const MaximumRelayers: u32 = 10;
@@ -102,7 +99,7 @@ macro_rules! impl_runtime {
             type Currency = Balances;
             type RelayerDeposit = RelayerDeposit;
             type ConfirmationDepth = RelayerConfirmationDepth;
-            type ChainInfo = ();
+            type DomainInfo = ();
             type WeightInfo = ();
             /// function to fetch endpoint response handler by Endpoint.
             fn get_endpoint_response_handler(
@@ -239,44 +236,6 @@ impl EndpointHandler<MessageId> for MockEndpoint {
 
     fn message_response_weight(&self) -> Weight {
         Weight::zero()
-    }
-}
-
-// TODO: Remove as pallet_settlement has been removed.
-#[frame_support::pallet]
-#[allow(dead_code)]
-pub(crate) mod mock_pallet_settlement {
-    use frame_support::pallet_prelude::*;
-    use sp_messenger::messages::ChainId;
-
-    #[pallet::config]
-    pub trait Config: frame_system::Config {}
-
-    #[pallet::pallet]
-    #[pallet::without_storage_info]
-    pub struct Pallet<T>(_);
-
-    #[pallet::storage]
-    pub(crate) type StateRoots<T: Config> = StorageNMap<
-        _,
-        (
-            NMapKey<Twox64Concat, ChainId>,
-            NMapKey<Twox64Concat, T::BlockNumber>,
-            NMapKey<Twox64Concat, T::Hash>,
-        ),
-        T::Hash,
-        OptionQuery,
-    >;
-
-    impl<T: Config> Pallet<T> {
-        pub(crate) fn set_state_root(
-            chain_id: ChainId,
-            number: T::BlockNumber,
-            hash: T::Hash,
-            state_root: T::Hash,
-        ) {
-            StateRoots::<T>::insert((chain_id, number, hash), state_root)
-        }
     }
 }
 

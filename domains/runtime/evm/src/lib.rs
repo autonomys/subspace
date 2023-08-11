@@ -377,7 +377,7 @@ impl pallet_messenger::Config for Runtime {
     type Currency = Balances;
     type MaximumRelayers = MaximumRelayers;
     type RelayerDeposit = RelayerDeposit;
-    type ChainInfo = ();
+    type DomainInfo = ();
     type ConfirmationDepth = RelayConfirmationDepth;
     type WeightInfo = pallet_messenger::weights::SubstrateWeight<Runtime>;
 }
@@ -847,7 +847,6 @@ impl_runtime_apis! {
             RelayConfirmationDepth::get()
         }
 
-        // TODO: API needs to be hooked with block tree
         fn chain_best_number(_chain_id: ChainId) -> Option<BlockNumber> {
             None
         }

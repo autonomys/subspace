@@ -377,7 +377,7 @@ impl pallet_messenger::Config for Runtime {
     type Currency = Balances;
     type MaximumRelayers = MaximumRelayers;
     type RelayerDeposit = RelayerDeposit;
-    type ChainInfo = ();
+    type DomainInfo = ();
     type ConfirmationDepth = RelayConfirmationDepth;
     type WeightInfo = pallet_messenger::weights::SubstrateWeight<Runtime>;
 }

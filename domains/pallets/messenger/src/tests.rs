@@ -508,14 +508,6 @@ fn channel_relay_request_and_response(
         weight_tag: Default::default(),
     };
     chain_b_test_ext.execute_with(|| {
-        // set state root
-        chain_b::Settlement::set_state_root(
-            xdm.src_chain_id,
-            xdm.proof.consensus_chain_block_info.block_number,
-            xdm.proof.consensus_chain_block_info.block_hash,
-            xdm.proof.consensus_chain_state_root,
-        );
-
         // validate the message
         let pre_check =
             crate::Pallet::<chain_b::Runtime>::pre_dispatch(&crate::Call::relay_message {
@@ -576,13 +568,6 @@ fn channel_relay_request_and_response(
         weight_tag: Default::default(),
     };
     chain_a_test_ext.execute_with(|| {
-        chain_a::Settlement::set_state_root(
-            xdm.src_chain_id,
-            xdm.proof.consensus_chain_block_info.block_number,
-            xdm.proof.consensus_chain_block_info.block_hash,
-            xdm.proof.consensus_chain_state_root,
-        );
-
         // validate message response
         let pre_check =
             crate::Pallet::<chain_a::Runtime>::pre_dispatch(&crate::Call::relay_message_response {

@@ -3,6 +3,7 @@ use codec::{Decode, Encode};
 use frame_support::weights::Weight;
 use frame_support::Parameter;
 use scale_info::TypeInfo;
+use sp_domains::DomainId;
 use sp_runtime::traits::Member;
 use sp_runtime::{sp_std, DispatchError, DispatchResult};
 use sp_std::vec::Vec;
@@ -110,20 +111,20 @@ impl<MessageId> EndpointHandler<MessageId> for BenchmarkEndpointHandler {
     }
 }
 
-/// Trait that can provide info for a given Chain.
-pub trait ChainInfo<Number, Hash, StateRoot> {
-    /// Returns the best known number of a given chain.
-    fn chain_best_number(chain_id: ChainId) -> Option<Number>;
+/// Trait that can provide info for a given Domain.
+pub trait DomainInfo<Number, Hash, StateRoot> {
+    /// Returns the best known number of a given Domain.
+    fn domain_best_number(domain_id: DomainId) -> Option<Number>;
     /// Returns the known state root of a specific block.
-    fn chain_state_root(chain_id: ChainId, number: Number, hash: Hash) -> Option<StateRoot>;
+    fn domain_state_root(domain_id: DomainId, number: Number, hash: Hash) -> Option<StateRoot>;
 }
 
-impl<Number, Hash, StateRoot> ChainInfo<Number, Hash, StateRoot> for () {
-    fn chain_best_number(_chain_id: ChainId) -> Option<Number> {
+impl<Number, Hash, StateRoot> DomainInfo<Number, Hash, StateRoot> for () {
+    fn domain_best_number(_domain_id: DomainId) -> Option<Number> {
         None
     }
 
-    fn chain_state_root(_chain_id: ChainId, _number: Number, _hash: Hash) -> Option<StateRoot> {
+    fn domain_state_root(_domain_id: DomainId, _number: Number, _hash: Hash) -> Option<StateRoot> {
         None
     }
 }

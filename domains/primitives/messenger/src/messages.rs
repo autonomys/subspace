@@ -1,8 +1,8 @@
 use crate::endpoint::{Endpoint, EndpointRequest, EndpointResponse};
+use crate::verification::StorageProofVerifier;
 use codec::{Decode, Encode, FullCodec, MaxEncodedLen};
-use frame_support::pallet_prelude::NMapKey;
-use frame_support::storage::generator::StorageNMap;
-use frame_support::Twox64Concat;
+use frame_support::storage::generator::StorageMap;
+use frame_support::{log, Identity};
 use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
 use sp_core::storage::StorageKey;
@@ -181,6 +181,14 @@ impl ChainId {
     pub fn consensus_chain_id() -> Self {
         Self::Consensus
     }
+
+    #[inline]
+    pub fn is_consensus_chain(&self) -> bool {
+        match self {
+            ChainId::Consensus => true,
+            ChainId::Domain(_) => false,
+        }
+    }
 }
 
 impl From<u32> for ChainId {
@@ -266,7 +274,7 @@ pub struct ExtractedStateRootsFromProof<BlockNumber, BlockHash, StateRoot> {
     /// Storage proof that src chain state_root is registered on Consensus chain.
     /// This is optional when the src_chain is the consensus chain.
     /// BlockNumber and BlockHash is used with storage proof to validate and fetch its state root.
-    pub domain_info: Option<(ChainId, BlockInfo<BlockNumber, BlockHash>, StateRoot)>,
+    pub domain_info: Option<(DomainId, BlockInfo<BlockNumber, BlockHash>, StateRoot)>,
 }
 
 /// Cross Domain message contains Message and its proof on src_chain.
@@ -299,56 +307,52 @@ impl<BlockNumber, BlockHash, StateRoot> CrossDomainMessage<BlockNumber, BlockHas
         BlockHash: Clone + FullCodec + TypeInfo + 'static,
     {
         let xdm_proof = self.proof.clone();
-        let _consensus_chain_state_root = xdm_proof.consensus_chain_state_root.clone();
-        let _extracted_state_roots = ExtractedStateRootsFromProof {
+        let consensus_chain_state_root = xdm_proof.consensus_chain_state_root.clone();
+        let mut extracted_state_roots = ExtractedStateRootsFromProof {
             consensus_chain_block_info: xdm_proof.consensus_chain_block_info,
             consensus_chain_state_root: xdm_proof.consensus_chain_state_root,
             domain_info: None,
         };
 
-        None
+        // verify intermediate domain proof and retrieve state root of the message.
+        let domain_proof = xdm_proof.domain_proof;
+        match self.src_chain_id {
+            // if the src_chain is a consensus chain, return the state root as is since message is on consensus runtime
+            ChainId::Consensus if domain_proof.is_none() => Some(extracted_state_roots),
+            // if the src_chain is a domain, then return the state root of the domain by verifying the domain proof.
+            ChainId::Domain(domain_id) if domain_proof.is_some() => {
+                let (domain_info, domain_state_root_proof) =
+                    domain_proof.expect("checked for existence value above");
+                let domain_state_root_key = DomainStateRootStorage::<_, _, StateRoot>::storage_key(
+                    domain_id,
+                    domain_info.block_number.clone(),
+                    domain_info.block_hash.clone(),
+                );
 
-        // verify intermediate core domain proof and retrieve state root of the message.
-        // let core_domain_state_root_proof = xdm_proof.core_domain_proof;
-        // TODO: system domain and core domain have been removed.
-        // if the src_domain is a system domain, return the state root as is since message is on system domain runtime
-        // if self.src_domain_id.is_system() && core_domain_state_root_proof.is_none() {
-        // Some(extracted_state_roots)
-        // }
-        // if the src_domain is a core domain, then return the state root of the core domain by verifying the core domain proof.
-        // else if self.src_domain_id.is_core() && core_domain_state_root_proof.is_some() {
-        // let (domain_info, core_domain_state_root_proof) =
-        // core_domain_state_root_proof.expect("checked for existence value above");
-        // let core_domain_state_root_key =
-        // CoreDomainStateRootStorage::<_, _, StateRoot>::storage_key(
-        // self.src_domain_id,
-        // domain_info.block_number.clone(),
-        // domain_info.block_hash.clone(),
-        // );
-        // let core_domain_state_root =
-        // match StorageProofVerifier::<Hashing>::verify_and_get_value::<StateRoot>(
-        // &system_domain_state_root.into(),
-        // core_domain_state_root_proof,
-        // core_domain_state_root_key,
-        // ) {
-        // Ok(result) => result,
-        // Err(err) => {
-        // log::error!(
-        // target: "runtime::messenger",
-        // "Failed to verify Core domain proof: {:?}",
-        // err
-        // );
-        // return None;
-        // }
-        // };
+                let domain_state_root =
+                    match StorageProofVerifier::<Hashing>::verify_and_get_value::<StateRoot>(
+                        &consensus_chain_state_root.into(),
+                        domain_state_root_proof,
+                        domain_state_root_key,
+                    ) {
+                        Ok(result) => result,
+                        Err(err) => {
+                            log::error!(
+                            target: "runtime::messenger",
+                            "Failed to verify Domain proof: {:?}",
+                            err
+                            );
+                            return None;
+                        }
+                    };
 
-        // extracted_state_roots.core_domain_info =
-        // Some((self.src_domain_id, domain_info, core_domain_state_root));
+                extracted_state_roots.domain_info =
+                    Some((domain_id, domain_info, domain_state_root));
 
-        // Some(extracted_state_roots)
-        // } else {
-        // None
-        // }
+                Some(extracted_state_roots)
+            }
+            _ => None,
+        }
     }
 }
 
@@ -392,18 +396,11 @@ impl<BlockNumber, BlockHash, StateRoot> CrossDomainMessage<BlockNumber, BlockHas
     }
 }
 
-type KeyGenerator<Number, Hash> = (
-    NMapKey<Twox64Concat, ChainId>,
-    NMapKey<Twox64Concat, Number>,
-    NMapKey<Twox64Concat, Hash>,
-);
-
-/// This is a representation of actual StateRoots storage in pallet-receipts.
+/// This is a representation of actual StateRoots storage in pallet-domains.
 /// Any change in key or value there should be changed here accordingly.
-// TODO: update this to represent the current state root in Block tree
 pub struct DomainStateRootStorage<Number, Hash, StateRoot>(PhantomData<(Number, Hash, StateRoot)>);
 
-impl<Number, Hash, StateRoot> StorageNMap<KeyGenerator<Number, Hash>, StateRoot>
+impl<Number, Hash, StateRoot> StorageMap<(DomainId, Number, Hash), StateRoot>
     for DomainStateRootStorage<Number, Hash, StateRoot>
 where
     Number: FullCodec + TypeInfo + 'static,
@@ -411,9 +408,10 @@ where
     StateRoot: FullCodec + TypeInfo + 'static,
 {
     type Query = Option<StateRoot>;
+    type Hasher = Identity;
 
     fn module_prefix() -> &'static [u8] {
-        "Settlement".as_ref()
+        "Domains".as_ref()
     }
 
     fn storage_prefix() -> &'static [u8] {
@@ -435,11 +433,9 @@ where
     Hash: FullCodec + TypeInfo + 'static,
     StateRoot: FullCodec + TypeInfo + 'static,
 {
-    pub fn storage_key(chain_id: ChainId, number: Number, hash: Hash) -> StorageKey {
-        StorageKey(
-            Self::storage_n_map_final_key::<KeyGenerator<Number, Hash>, _>((
-                chain_id, number, hash,
-            )),
-        )
+    pub fn storage_key(domain_id: DomainId, number: Number, hash: Hash) -> StorageKey {
+        StorageKey(Self::storage_map_final_key::<(DomainId, Number, Hash)>((
+            domain_id, number, hash,
+        )))
     }
 }

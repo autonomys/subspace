@@ -105,12 +105,13 @@ mod pallet {
     use frame_support::traits::ReservableCurrency;
     use frame_system::pallet_prelude::*;
     use sp_core::storage::StorageKey;
-    use sp_messenger::endpoint::{ChainInfo, Endpoint, EndpointHandler, EndpointRequest, Sender};
+    use sp_messenger::endpoint::{DomainInfo, Endpoint, EndpointHandler, EndpointRequest, Sender};
     use sp_messenger::messages::{
         ChainId, CrossDomainMessage, InitiateChannelParams, Message, MessageId, MessageWeightTag,
         Payload, ProtocolMessageRequest, RequestResponse, VersionedPayload,
     };
     use sp_messenger::verification::{StorageProofVerifier, VerificationError};
+    use sp_runtime::traits::CheckedSub;
     use sp_runtime::ArithmeticError;
     use sp_std::boxed::Box;
     use sp_std::vec::Vec;
@@ -131,7 +132,7 @@ mod pallet {
         /// Relayer deposit to become a relayer for this chain.
         type RelayerDeposit: Get<BalanceOf<Self>>;
         /// Chain info to verify chain state roots at a confirmation depth.
-        type ChainInfo: ChainInfo<Self::BlockNumber, Self::Hash, StateRootOf<Self>>;
+        type DomainInfo: DomainInfo<Self::BlockNumber, Self::Hash, StateRootOf<Self>>;
         /// Confirmation depth for XDM coming from chains.
         type ConfirmationDepth: Get<Self::BlockNumber>;
         /// Weight information for extrinsics in this pallet.
@@ -725,9 +726,10 @@ mod pallet {
             dst_chain_id: ChainId,
             init_params: InitiateChannelParams<BalanceOf<T>>,
         ) -> Result<ChannelId, DispatchError> {
-            // TODO: system domain and core domain have been removed.
-            // ensure domain is either system domain or core domain
-            // ensure!(dst_domain_id.is_core(), Error::<T>::InvalidDomain,);
+            ensure!(
+                T::SelfChainId::get() != dst_chain_id,
+                Error::<T>::InvalidChain,
+            );
 
             let channel_id = NextChannelId::<T>::get(dst_chain_id);
             let next_channel_id = channel_id
@@ -919,33 +921,32 @@ mod pallet {
                 TransactionValidityError::Invalid(InvalidTransaction::BadProof),
             )?;
 
-            // TODO: system domain has been removed
-            // on system domain, ensure the core domain info is at K-depth and state root matches
-            // if T::SelfDomainId::get().is_system() {
-            // if let Some((domain_id, block_info, state_root)) =
-            // extracted_state_roots.core_domain_info.clone()
-            // {
-            // // ensure the block is at-least k-deep
-            // let confirmed = T::DomainInfo::domain_best_number(domain_id)
-            // .and_then(|best_number| {
-            // best_number
-            // .checked_sub(&T::ConfirmationDepth::get())
-            // .map(|confirmed_number| confirmed_number >= block_info.block_number)
-            // })
-            // .unwrap_or(false);
-            // ensure!(confirmed, InvalidTransaction::BadMandatory);
+            // on consensus, ensure the domain info is at K-depth and state root matches
+            if T::SelfChainId::get().is_consensus_chain() {
+                if let Some((domain_id, block_info, state_root)) =
+                    extracted_state_roots.domain_info.clone()
+                {
+                    // ensure the block is at-least k-deep
+                    let confirmed = T::DomainInfo::domain_best_number(domain_id)
+                        .and_then(|best_number| {
+                            best_number
+                                .checked_sub(&T::ConfirmationDepth::get())
+                                .map(|confirmed_number| confirmed_number >= block_info.block_number)
+                        })
+                        .unwrap_or(false);
+                    ensure!(confirmed, InvalidTransaction::BadMandatory);
 
-            // // verify state root of the block
-            // let valid_state_root = T::DomainInfo::domain_state_root(
-            // domain_id,
-            // block_info.block_number,
-            // block_info.block_hash,
-            // )
-            // .map(|got_state_root| got_state_root == state_root)
-            // .unwrap_or(false);
-            // ensure!(valid_state_root, InvalidTransaction::BadMandatory)
-            // }
-            // }
+                    // verify state root of the block
+                    let valid_state_root = T::DomainInfo::domain_state_root(
+                        domain_id,
+                        block_info.block_number,
+                        block_info.block_hash,
+                    )
+                    .map(|got_state_root| got_state_root == state_root)
+                    .unwrap_or(false);
+                    ensure!(valid_state_root, InvalidTransaction::BadMandatory)
+                }
+            }
 
             let state_root = extracted_state_roots
                 .domain_info
