@@ -79,8 +79,9 @@ enum ConnectionState {
     NotInterested,
 }
 
-impl ToString for ConnectionState {
-    fn to_string(&self) -> String {
+impl ConnectionState {
+    /// Converts [`ConnectionState`] to a string with information loss.
+    fn stringify(&self) -> String {
         match self {
             ConnectionState::Connecting { .. } => "Connecting".to_string(),
             ConnectionState::Deciding => "Deciding".to_string(),
@@ -284,7 +285,7 @@ impl<Instance> Behaviour<Instance> {
                 .iter()
                 .fold(HashMap::new(), |mut result, (_, state)| {
                     result
-                        .entry(state.connection_state.to_string())
+                        .entry(state.connection_state.stringify())
                         .and_modify(|count| *count += 1)
                         .or_insert(1);
                     result
@@ -294,7 +295,7 @@ impl<Instance> Behaviour<Instance> {
             HashMap::<String, Vec<PeerId>>::new(),
             |mut result, (peer_id, state)| {
                 result
-                    .entry(state.connection_state.to_string())
+                    .entry(state.connection_state.stringify())
                     .and_modify(|peers| peers.push(*peer_id))
                     .or_insert(vec![*peer_id]);
                 result
