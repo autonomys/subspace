@@ -78,9 +78,6 @@ const SWARM_MAX_ESTABLISHED_CONNECTIONS_PER_PEER: Option<u32> = Some(2);
 // TODO: Consider moving this constant to configuration or removing `Toggle` wrapper when we find a
 // use-case for gossipsub protocol.
 const ENABLE_GOSSIP_PROTOCOL: bool = false;
-//TODO: Investigate port reuse for QUIC
-/// Specifies whether we use the same outgoing port for TCP connections.
-const TCP_PORT_REUSE: bool = true;
 
 /// Base limit for number of concurrent tasks initiated towards Kademlia.
 ///
@@ -439,7 +436,6 @@ where
         Arc::clone(&temporary_bans),
         timeout,
         yamux_config,
-        TCP_PORT_REUSE,
     )?;
 
     info!(

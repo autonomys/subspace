@@ -28,10 +28,9 @@ pub(super) fn build_transport(
     temporary_bans: Arc<Mutex<TemporaryBans>>,
     timeout: Duration,
     yamux_config: YamuxConfig,
-    port_reuse: bool,
 ) -> Result<Boxed<(PeerId, StreamMuxerBox)>, CreationError> {
     let wrapped_tcp_ws = {
-        let tcp_config = GenTcpConfig::default().nodelay(true).port_reuse(port_reuse);
+        let tcp_config = GenTcpConfig::default().nodelay(true);
         let wrapped_tcp = CustomTransportWrapper::new(
             TokioTcpTransport::new(tcp_config.clone()),
             allow_non_global_addresses_in_dht,
@@ -59,7 +58,6 @@ pub(super) fn build_transport(
             .boxed()
     };
 
-    // TODO: investigate port reuse for QUIC
     let quic = QuicTransport::new(QuicConfig::new(keypair))
         .map(|(peer_id, muxer), _| (peer_id, StreamMuxerBox::new(muxer)));
 
