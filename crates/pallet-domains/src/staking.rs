@@ -492,8 +492,6 @@ pub(crate) fn do_auto_stake_block_rewards<T: Config>(
 
     let operator = Operators::<T>::get(operator_id).ok_or(Error::UnknownOperator)?;
 
-    note_pending_staking_operation::<T>(operator.current_domain_id)?;
-
     ensure!(
         operator.status == OperatorStatus::Registered,
         Error::OperatorNotRegistered
