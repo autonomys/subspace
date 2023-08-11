@@ -13,6 +13,7 @@ use std::future::Future;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use subspace_core_primitives::SegmentIndex;
 use subspace_networking::Node;
 use tracing::{info, warn};
 
@@ -203,6 +204,9 @@ where
     Client: HeaderBackend<Block> + BlockBackend<Block> + Send + Sync + 'static,
     IQS: ImportQueueService<Block> + ?Sized,
 {
+    // Corresponds to contents of block one, everyone has it, so we consider it being processed
+    // right away
+    let mut last_processed_segment_index = SegmentIndex::ZERO;
     // Node starts as offline, we'll wait for it to go online shrtly after
     let mut initial_sync_mode = Some(sync_mode.swap(SyncMode::Paused, Ordering::AcqRel));
     while let Some(reason) = notifications.next().await {
@@ -219,6 +223,7 @@ where
             node,
             client,
             import_queue_service,
+            &mut last_processed_segment_index,
             false,
         )
         .await

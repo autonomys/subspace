@@ -21,23 +21,40 @@ impl SegmentHeaderDownloader {
     }
 
     /// Returns segment headers known to DSN, ordered from 0 to the last known.
-    pub async fn get_segment_headers(&self) -> Result<Vec<SegmentHeader>, Box<dyn Error>> {
-        trace!("Getting segment headers...");
+    pub async fn get_segment_headers(
+        &self,
+        last_known_segment_index: SegmentIndex,
+    ) -> Result<Vec<SegmentHeader>, Box<dyn Error>> {
+        trace!(
+            %last_known_segment_index,
+            "Searching for latest segment header"
+        );
 
         let Some((mut last_segment_header, peers)) = self.get_last_segment_header().await? else {
             return Ok(Vec::new());
         };
+
+        if last_segment_header.segment_index() == last_known_segment_index {
+            debug!(
+                %last_known_segment_index,
+                "Last segment header matches last known segment header, nothing to download"
+            );
+
+            return Ok(Vec::new());
+        }
+
         debug!(
-            "Getting segment headers starting from segment_index={}",
-            last_segment_header.segment_index()
+            %last_known_segment_index,
+            last_segment_index = %last_segment_header.segment_index(),
+            "Downloading segment headers"
         );
 
         let mut all_segment_headers =
             Vec::with_capacity(u64::from(last_segment_header.segment_index()) as usize + 1);
         all_segment_headers.push(last_segment_header);
 
-        while last_segment_header.segment_index() > SegmentIndex::ZERO {
-            let segment_indexes = (SegmentIndex::ZERO..last_segment_header.segment_index())
+        while last_segment_header.segment_index() > last_known_segment_index {
+            let segment_indexes = (last_known_segment_index..last_segment_header.segment_index())
                 .rev()
                 .take(SEGMENT_HEADER_NUMBER_PER_REQUEST as usize)
                 .collect();
@@ -83,7 +100,7 @@ impl SegmentHeaderDownloader {
             .rev()
             .zip(1_usize..)
         {
-            trace!(%retry_attempt, "Getting last segment header...");
+            trace!(%retry_attempt, "Downloading last segment headers");
 
             // Get random peers. Some of them could be bootstrap nodes with no support for
             // request-response protocol for segment commitment.
@@ -122,11 +139,16 @@ impl SegmentHeaderDownloader {
                             trace!(
                                 %peer_id,
                                 segment_headers_number=%segment_headers.len(),
-                                "Last segment header request succeeded."
+                                "Last segment headers request succeeded"
                             );
 
-                            if !self.is_last_segment_headers_response_valid(peer_id, &segment_headers) {
-                                warn!(%peer_id, "Received last segment headers response was invalid.");
+                            if !self
+                                .is_last_segment_headers_response_valid(peer_id, &segment_headers)
+                            {
+                                warn!(
+                                    %peer_id,
+                                    "Received last segment headers response was invalid"
+                                );
 
                                 let _ = self.dsn_node.ban_peer(peer_id).await;
                                 return None;
@@ -135,7 +157,7 @@ impl SegmentHeaderDownloader {
                             Some((peer_id, segment_headers))
                         }
                         Err(error) => {
-                            debug!(%peer_id, ?error, "Last segment header request failed.");
+                            debug!(%peer_id, ?error, "Last segment headers request failed");
                             None
                         }
                     }
@@ -150,7 +172,7 @@ impl SegmentHeaderDownloader {
                     %peer_count,
                     %required_peers,
                     %retry_attempt,
-                    "Segment header consensus requires more peers, will retry"
+                    "Segment headers consensus requires more peers, will retry"
                 );
 
                 continue;
@@ -202,7 +224,7 @@ impl SegmentHeaderDownloader {
         segment_headers: &[SegmentHeader],
     ) -> bool {
         if segment_headers.len() != segment_indexes.len() {
-            warn!(%peer_id, "Segment header and segment indexes collection differ.");
+            warn!(%peer_id, "Segment header and segment indexes collection differ");
 
             return false;
         }
@@ -210,7 +232,7 @@ impl SegmentHeaderDownloader {
         let returned_segment_indexes =
             BTreeSet::from_iter(segment_headers.iter().map(|rb| rb.segment_index()));
         if returned_segment_indexes.len() != segment_headers.len() {
-            warn!(%peer_id, "Peer banned: it returned collection with duplicated segment headers.");
+            warn!(%peer_id, "Peer banned: it returned collection with duplicated segment headers");
 
             return false;
         }
@@ -220,7 +242,7 @@ impl SegmentHeaderDownloader {
         );
 
         if !indexes_match {
-            warn!(%peer_id, "Segment header collection doesn't match segment indexes.");
+            warn!(%peer_id, "Segment header collection doesn't match segment indexes");
 
             return false;
         }
@@ -257,7 +279,7 @@ impl SegmentHeaderDownloader {
         peers: &[PeerId],
         segment_indexes: Vec<SegmentIndex>,
     ) -> Result<(PeerId, Vec<SegmentHeader>), Box<dyn Error>> {
-        trace!(?segment_indexes, "Getting segment header batch...");
+        trace!(?segment_indexes, "Getting segment header batch..");
 
         for &peer_id in peers {
             trace!(%peer_id, "get_closest_peers returned an item");
@@ -274,14 +296,14 @@ impl SegmentHeaderDownloader {
 
             match request_result {
                 Ok(SegmentHeaderResponse { segment_headers }) => {
-                    trace!(%peer_id, ?segment_indexes, "Segment header request succeeded.");
+                    trace!(%peer_id, ?segment_indexes, "Segment header request succeeded");
 
                     if !self.is_segment_headers_response_valid(
                         peer_id,
                         &segment_indexes,
                         &segment_headers,
                     ) {
-                        warn!(%peer_id, "Received segment headers were invalid.");
+                        warn!(%peer_id, "Received segment headers were invalid");
 
                         let _ = self.dsn_node.ban_peer(peer_id).await;
                     }
@@ -289,7 +311,7 @@ impl SegmentHeaderDownloader {
                     return Ok((peer_id, segment_headers));
                 }
                 Err(error) => {
-                    debug!(%peer_id, ?segment_indexes, ?error, "Segment header request failed.");
+                    debug!(%peer_id, ?segment_indexes, ?error, "Segment header request failed");
                 }
             };
         }

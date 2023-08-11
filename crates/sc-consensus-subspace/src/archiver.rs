@@ -159,12 +159,14 @@ where
 
         // TODO: Do compaction when we have too many keys: combine multiple segment headers into a
         //  single entry for faster retrievals and more compact storage
-        let key_index = self.inner.next_key_index.fetch_add(1, Ordering::SeqCst);
-        let key = Self::key(key_index);
-        let value = segment_headers_to_store.encode();
-        let insert_data = vec![(key.as_slice(), value.as_slice())];
+        {
+            let key_index = self.inner.next_key_index.fetch_add(1, Ordering::SeqCst);
+            let key = Self::key(key_index);
+            let value = segment_headers_to_store.encode();
+            let insert_data = vec![(key.as_slice(), value.as_slice())];
 
-        self.inner.aux_store.insert_aux(&insert_data, &[])?;
+            self.inner.aux_store.insert_aux(&insert_data, &[])?;
+        }
         self.inner.cache.lock().extend(segment_headers_to_store);
 
         Ok(())
