@@ -484,9 +484,11 @@ parameter_types! {
     pub const BlockTreePruningDepth: u32 = 256;
     // TODO: revisit these
     pub const StakeWithdrawalLockingPeriod: DomainNumber = 256;
-    // TODO: revisit these. For now epoch every 10 mins for a 6 second block
+    // TODO: revisit these. For now epoch every 10 mins for a 6 second block and only 100 number of staking
+    // operations allowed within each epoch.
     pub const StakeEpochDuration: DomainNumber = 100;
     pub TreasuryAccount: AccountId = PalletId(*b"treasury").into_account_truncating();
+    pub const MaxPendingStakingOperation: u32 = 100;
 }
 
 // `BlockTreePruningDepth` should <= `BlockHashCount` because we need the consensus block hash to verify
@@ -516,6 +518,7 @@ impl pallet_domains::Config for Runtime {
     type StakeEpochDuration = StakeEpochDuration;
     type TreasuryAccount = TreasuryAccount;
     type DomainBlockReward = BlockReward;
+    type MaxPendingStakingOperation = MaxPendingStakingOperation;
 }
 
 pub struct StakingOnReward;

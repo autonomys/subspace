@@ -3,8 +3,8 @@
 use crate::pallet::{
     DomainStakingSummary, LastEpochStakingDistribution, Nominators, OperatorIdOwner, Operators,
     PendingDeposits, PendingNominatorUnlocks, PendingOperatorDeregistrations,
-    PendingOperatorSwitches, PendingOperatorUnlocks, PendingSlashes, PendingUnlocks,
-    PendingWithdrawals, PreferredOperator,
+    PendingOperatorSwitches, PendingOperatorUnlocks, PendingSlashes, PendingStakingOperationCount,
+    PendingUnlocks, PendingWithdrawals, PreferredOperator,
 };
 use crate::staking::{Error as TransitionError, Nominator, OperatorStatus, Withdraw};
 use crate::{
@@ -39,6 +39,9 @@ pub(crate) fn do_finalize_domain_current_epoch<T: Config>(
     domain_id: DomainId,
     domain_block_number: T::DomainNumber,
 ) -> Result<EpochIndex, Error> {
+    // Reset pending staking operation count to 0
+    PendingStakingOperationCount::<T>::set(domain_id, 0);
+
     // slash the operators
     do_finalize_slashed_operators::<T>(domain_id).map_err(Error::SlashOperator)?;
 

@@ -275,6 +275,10 @@ mod pallet {
         // TODO: remove once we have operator rewards on client side is available
         #[pallet::constant]
         type DomainBlockReward: Get<BalanceOf<Self>>;
+
+        /// The maximum number of pending staking operation that can perform upon epoch transition.
+        #[pallet::constant]
+        type MaxPendingStakingOperation: Get<u32>;
     }
 
     #[pallet::pallet]
@@ -409,6 +413,12 @@ mod pallet {
         BTreeMap<OperatorId, PendingOperatorSlashInfo<NominatorId<T>, BalanceOf<T>>>,
         OptionQuery,
     >;
+
+    /// The pending staking operation count of the current epoch, it should not larger than
+    /// `MaxPendingStakingOperation` and will be resetted to 0 upon epoch transition.
+    #[pallet::storage]
+    pub(super) type PendingStakingOperationCount<T: Config> =
+        StorageMap<_, Identity, DomainId, u32, ValueQuery>;
 
     /// Stores the next domain id.
     #[pallet::storage]
@@ -654,8 +664,7 @@ mod pallet {
     #[pallet::call]
     impl<T: Config> Pallet<T> {
         #[pallet::call_index(0)]
-        #[pallet::weight(Weight::from_all(10_000))]
-        // TODO: proper benchmark
+        #[pallet::weight(T::WeightInfo::submit_bundle().saturating_add(T::WeightInfo::pending_staking_operation()))]
         pub fn submit_bundle(
             origin: OriginFor<T>,
             opaque_bundle: OpaqueBundleOf<T>,
@@ -691,8 +700,12 @@ mod pallet {
                     )
                     .map_err(Error::<T>::from)?;
 
-                    // if any domain block is pruned, then we have a new head added
+                    // If any domain block is pruned, then we have a new head added
                     // so distribute the operator rewards and, if required, do epoch transition as well.
+                    //
+                    // NOTE: Skip the following staking related operations when benchmarking the
+                    // `submit_bundle` call, these operations will be benchmarked separately.
+                    #[cfg(not(feature = "runtime-benchmarks"))]
                     if let Some(pruned_block_info) = maybe_pruned_domain_block_info {
                         do_reward_operators::<T>(
                             domain_id,
@@ -762,16 +775,8 @@ mod pallet {
         }
 
         #[pallet::call_index(1)]
-        #[pallet::weight(
-            match fraud_proof.as_ref() {
-                FraudProof::InvalidStateTransition(..) => (
-                    T::WeightInfo::submit_system_domain_invalid_state_transition_proof(),
-                    Pays::No
-                ),
-                // TODO: proper weight
-                _ => (Weight::from_all(10_000), Pays::No),
-            }
-        )]
+        // TODO: proper weight
+        #[pallet::weight((Weight::from_all(10_000), Pays::No))]
         pub fn submit_fraud_proof(
             origin: OriginFor<T>,
             fraud_proof: Box<FraudProof<T::BlockNumber, T::Hash>>,
@@ -786,8 +791,7 @@ mod pallet {
         }
 
         #[pallet::call_index(2)]
-        #[pallet::weight((Weight::from_all(10_000), Pays::Yes))]
-        // TODO: proper benchmark
+        #[pallet::weight(T::WeightInfo::register_domain_runtime())]
         pub fn register_domain_runtime(
             origin: OriginFor<T>,
             runtime_name: Vec<u8>,
@@ -810,8 +814,7 @@ mod pallet {
         }
 
         #[pallet::call_index(3)]
-        #[pallet::weight((Weight::from_all(10_000), Pays::Yes))]
-        // TODO: proper benchmark
+        #[pallet::weight(T::WeightInfo::upgrade_domain_runtime())]
         pub fn upgrade_domain_runtime(
             origin: OriginFor<T>,
             runtime_id: RuntimeId,
@@ -832,8 +835,7 @@ mod pallet {
         }
 
         #[pallet::call_index(4)]
-        #[pallet::weight((Weight::from_all(10_000), Pays::Yes))]
-        // TODO: proper benchmark
+        #[pallet::weight(T::WeightInfo::register_operator())]
         pub fn register_operator(
             origin: OriginFor<T>,
             domain_id: DomainId,
@@ -853,8 +855,7 @@ mod pallet {
         }
 
         #[pallet::call_index(5)]
-        #[pallet::weight((Weight::from_all(10_000), Pays::Yes))]
-        // TODO: proper benchmark
+        #[pallet::weight(T::WeightInfo::nominate_operator())]
         pub fn nominate_operator(
             origin: OriginFor<T>,
             operator_id: OperatorId,
@@ -874,8 +875,7 @@ mod pallet {
         }
 
         #[pallet::call_index(6)]
-        #[pallet::weight((Weight::from_all(10_000), Pays::Yes))]
-        // TODO: proper benchmark
+        #[pallet::weight(T::WeightInfo::instantiate_domain())]
         pub fn instantiate_domain(
             origin: OriginFor<T>,
             domain_config: DomainConfig,
@@ -892,8 +892,7 @@ mod pallet {
         }
 
         #[pallet::call_index(7)]
-        #[pallet::weight((Weight::from_all(10_000), Pays::Yes))]
-        // TODO: proper benchmark
+        #[pallet::weight(T::WeightInfo::switch_domain())]
         pub fn switch_domain(
             origin: OriginFor<T>,
             operator_id: OperatorId,
@@ -913,8 +912,7 @@ mod pallet {
         }
 
         #[pallet::call_index(8)]
-        #[pallet::weight((Weight::from_all(10_000), Pays::Yes))]
-        // TODO: proper benchmark
+        #[pallet::weight(T::WeightInfo::deregister_operator())]
         pub fn deregister_operator(
             origin: OriginFor<T>,
             operator_id: OperatorId,
@@ -929,8 +927,7 @@ mod pallet {
         }
 
         #[pallet::call_index(9)]
-        #[pallet::weight((Weight::from_all(10_000), Pays::Yes))]
-        // TODO: proper benchmark
+        #[pallet::weight(T::WeightInfo::withdraw_stake())]
         pub fn withdraw_stake(
             origin: OriginFor<T>,
             operator_id: OperatorId,
@@ -949,8 +946,7 @@ mod pallet {
         }
 
         #[pallet::call_index(10)]
-        #[pallet::weight((Weight::from_all(10_000), Pays::Yes))]
-        // TODO: proper benchmark
+        #[pallet::weight(T::WeightInfo::auto_stake_block_rewards())]
         pub fn auto_stake_block_rewards(
             origin: OriginFor<T>,
             operator_id: OperatorId,

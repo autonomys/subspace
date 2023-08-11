@@ -27,7 +27,7 @@ mod benchmarks {
         let receiver: T::AccountId = account("receiver", 2, SEED);
 
         let amount: BalanceOf<T> = 100u32.into();
-        let dst_domain_id = T::SelfDomainId::get() + 1;
+        let dst_domain_id = T::SelfDomainId::get() + 1.into();
         let location = Location {
             domain_id: dst_domain_id,
             account_id: T::AccountIdConverter::convert(receiver),
@@ -52,7 +52,7 @@ mod benchmarks {
         let transfer_obj: Transfer<BalanceOf<T>> = Transfer {
             amount: 10u32.into(),
             sender: Location {
-                domain_id: T::SelfDomainId::get() + 1,
+                domain_id: T::SelfDomainId::get() + 1.into(),
                 account_id: T::AccountIdConverter::convert(sender),
             },
             receiver: Location {
@@ -70,7 +70,7 @@ mod benchmarks {
         #[block]
         {
             assert_ok!(EndpointHandler(PhantomData::<T>).message(
-                T::SelfDomainId::get() + 1,
+                T::SelfDomainId::get() + 1.into(),
                 message_id,
                 endpoint_req
             ));
@@ -83,7 +83,7 @@ mod benchmarks {
     fn message_response() {
         let sender: T::AccountId = account("sender", 1, SEED);
         let receiver: T::AccountId = account("receiver", 2, SEED);
-        let dst_domain_id = T::SelfDomainId::get() + 1;
+        let dst_domain_id = T::SelfDomainId::get() + 1.into();
         let amount = 10u32.into();
         let transfer_obj = Transfer {
             amount,

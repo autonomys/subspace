@@ -325,8 +325,7 @@ mod tests {
     use crate::pallet::Operators;
     use crate::staking::{Operator, OperatorStatus};
     use crate::tests::{
-        create_dummy_bundle_with_receipts, create_dummy_receipt, GenesisStateRootGenerater,
-        ReadRuntimeVersion, Test,
+        create_dummy_bundle_with_receipts, create_dummy_receipt, new_test_ext_with_extensions, Test,
     };
     use crate::{BalanceOf, NextDomainId};
     use frame_support::dispatch::RawOrigin;
@@ -335,9 +334,7 @@ mod tests {
     use frame_support::{assert_err, assert_ok};
     use frame_system::Pallet as System;
     use sp_core::{Pair, H256, U256};
-    use sp_domains::{BundleDigest, GenesisReceiptExtension, OperatorPair, RuntimeType};
-    use sp_version::RuntimeVersion;
-    use std::sync::Arc;
+    use sp_domains::{BundleDigest, OperatorPair, RuntimeType};
     use subspace_runtime_primitives::SSC;
 
     fn run_to_block<T: Config>(block_number: T::BlockNumber, parent_hash: T::Hash) {
@@ -446,32 +443,9 @@ mod tests {
             .and_then(DomainBlocks::<T>::get)
     }
 
-    fn new_test_ext() -> sp_io::TestExternalities {
-        let version = RuntimeVersion {
-            spec_name: "test".into(),
-            impl_name: Default::default(),
-            authoring_version: 0,
-            spec_version: 1,
-            impl_version: 1,
-            apis: Default::default(),
-            transaction_version: 1,
-            state_version: 0,
-        };
-
-        let mut ext = crate::tests::new_test_ext();
-        ext.register_extension(sp_core::traits::ReadRuntimeVersionExt::new(
-            ReadRuntimeVersion(version.encode()),
-        ));
-        ext.register_extension(GenesisReceiptExtension::new(Arc::new(
-            GenesisStateRootGenerater,
-        )));
-
-        ext
-    }
-
     #[test]
     fn test_genesis_receipt() {
-        let mut ext = new_test_ext();
+        let mut ext = new_test_ext_with_extensions();
         ext.execute_with(|| {
             let domain_id = register_genesis_domain(0u64, vec![0u64]);
 
@@ -508,7 +482,7 @@ mod tests {
         let operator_id = 1u64;
         let block_tree_pruning_depth = <Test as Config>::BlockTreePruningDepth::get() as u64;
 
-        let mut ext = new_test_ext();
+        let mut ext = new_test_ext_with_extensions();
         ext.execute_with(|| {
             let domain_id = register_genesis_domain(creator, vec![operator_id]);
 
@@ -606,7 +580,7 @@ mod tests {
         let creator = 0u64;
         let operator_id1 = 1u64;
         let operator_id2 = 2u64;
-        let mut ext = new_test_ext();
+        let mut ext = new_test_ext_with_extensions();
         ext.execute_with(|| {
             let domain_id = register_genesis_domain(creator, vec![operator_id1, operator_id2]);
             extend_block_tree(domain_id, operator_id1, 3);
@@ -650,7 +624,7 @@ mod tests {
         let creator = 0u64;
         let operator_id1 = 1u64;
         let operator_id2 = 2u64;
-        let mut ext = new_test_ext();
+        let mut ext = new_test_ext_with_extensions();
         ext.execute_with(|| {
             let domain_id = register_genesis_domain(creator, vec![operator_id1, operator_id2]);
             extend_block_tree(domain_id, operator_id1, 3);
@@ -695,7 +669,7 @@ mod tests {
         let creator = 0u64;
         let operator_id1 = 1u64;
         let operator_id2 = 2u64;
-        let mut ext = new_test_ext();
+        let mut ext = new_test_ext_with_extensions();
         ext.execute_with(|| {
             let domain_id = register_genesis_domain(creator, vec![operator_id1, operator_id2]);
             extend_block_tree(domain_id, operator_id1, 3);
@@ -757,7 +731,7 @@ mod tests {
     fn test_invalid_receipt() {
         let creator = 0u64;
         let operator_id = 1u64;
-        let mut ext = new_test_ext();
+        let mut ext = new_test_ext_with_extensions();
         ext.execute_with(|| {
             let domain_id = register_genesis_domain(creator, vec![operator_id]);
             extend_block_tree(domain_id, operator_id, 3);
@@ -829,7 +803,7 @@ mod tests {
         let creator = 0u64;
         let operator_id1 = 1u64;
         let operator_id2 = 2u64;
-        let mut ext = new_test_ext();
+        let mut ext = new_test_ext_with_extensions();
         ext.execute_with(|| {
             let domain_id = register_genesis_domain(creator, vec![operator_id1, operator_id2]);
             extend_block_tree(domain_id, operator_id1, 3);

@@ -27,7 +27,7 @@ mod benchmarks {
         );
         unchecked_join_relayer_set::<T>(relayer);
 
-        let dst_domain_id = T::SelfDomainId::get() + 1;
+        let dst_domain_id = T::SelfDomainId::get() + 1.into();
         let channel_params = dummy_channel_params::<T>();
         let channel_id = NextChannelId::<T>::get(dst_domain_id);
 
@@ -50,7 +50,7 @@ mod benchmarks {
         );
         unchecked_join_relayer_set::<T>(relayer);
 
-        let dst_domain_id = T::SelfDomainId::get() + 1;
+        let dst_domain_id = T::SelfDomainId::get() + 1.into();
         let channel_id = open_channel::<T>(dst_domain_id, dummy_channel_params::<T>());
 
         #[extrinsic_call]
@@ -72,7 +72,7 @@ mod benchmarks {
         );
         unchecked_join_relayer_set::<T>(relayer);
 
-        let dst_domain_id = T::SelfDomainId::get() + 1;
+        let dst_domain_id = T::SelfDomainId::get() + 1.into();
         let channel_id = NextChannelId::<T>::get(dst_domain_id);
         assert_ok!(Messenger::<T>::do_init_channel(
             dst_domain_id,
@@ -99,7 +99,7 @@ mod benchmarks {
         );
         unchecked_join_relayer_set::<T>(relayer);
 
-        let dst_domain_id = T::SelfDomainId::get() + 1;
+        let dst_domain_id = T::SelfDomainId::get() + 1.into();
         let channel_id = open_channel::<T>(dst_domain_id, dummy_channel_params::<T>());
 
         #[block]
@@ -124,13 +124,13 @@ mod benchmarks {
         unchecked_join_relayer_set::<T>(relayer);
 
         let endpoint = Endpoint::Id(100);
-        let dst_domain_id = T::SelfDomainId::get() + 1;
+        let dst_domain_id = T::SelfDomainId::get() + 1.into();
         let channel_id = open_channel::<T>(dst_domain_id, dummy_channel_params::<T>());
         let channel = Channels::<T>::get(dst_domain_id, channel_id).expect("channel should exist");
 
         // Insert a dummy inbox message which will be handled during the `relay_message` call
         let msg: Message<BalanceOf<T>> = Message {
-            src_domain_id: T::SelfDomainId::get() + 1,
+            src_domain_id: T::SelfDomainId::get() + 1.into(),
             dst_domain_id: T::SelfDomainId::get(),
             channel_id,
             nonce: channel.next_inbox_nonce,
@@ -146,7 +146,7 @@ mod benchmarks {
         Inbox::<T>::put(msg);
 
         let xdm: CrossDomainMessage<T::BlockNumber, T::Hash, StateRootOf<T>> = CrossDomainMessage {
-            src_domain_id: T::SelfDomainId::get() + 1,
+            src_domain_id: T::SelfDomainId::get() + 1.into(),
             dst_domain_id: T::SelfDomainId::get(),
             channel_id,
             nonce: channel.next_inbox_nonce,
@@ -178,7 +178,7 @@ mod benchmarks {
         unchecked_join_relayer_set::<T>(relayer);
 
         let endpoint = Endpoint::Id(100);
-        let dst_domain_id = T::SelfDomainId::get() + 1;
+        let dst_domain_id = T::SelfDomainId::get() + 1.into();
         let channel_id = open_channel::<T>(dst_domain_id, dummy_channel_params::<T>());
         let channel = Channels::<T>::get(dst_domain_id, channel_id).expect("channel should exist");
         let resp_nonce = match channel.latest_response_received_message_nonce {
@@ -192,7 +192,7 @@ mod benchmarks {
         // Insert a dummy outbox request message which will be handled during the `relay_message_response` call
         let req_msg: Message<BalanceOf<T>> = Message {
             src_domain_id: T::SelfDomainId::get(),
-            dst_domain_id: T::SelfDomainId::get() + 1,
+            dst_domain_id: T::SelfDomainId::get() + 1.into(),
             channel_id,
             nonce: next_outbox_nonce,
             payload: VersionedPayload::V0(Payload::Endpoint(RequestResponse::Request(
@@ -207,7 +207,7 @@ mod benchmarks {
         Outbox::<T>::insert((dst_domain_id, channel_id, next_outbox_nonce), req_msg);
         // Insert a dummy response message which will be handled during the `relay_message_response` call
         let resp_msg: Message<BalanceOf<T>> = Message {
-            src_domain_id: T::SelfDomainId::get() + 1,
+            src_domain_id: T::SelfDomainId::get() + 1.into(),
             dst_domain_id: T::SelfDomainId::get(),
             channel_id,
             nonce: resp_nonce,
@@ -219,7 +219,7 @@ mod benchmarks {
         OutboxResponses::<T>::put(resp_msg);
 
         let xdm: CrossDomainMessage<T::BlockNumber, T::Hash, StateRootOf<T>> = CrossDomainMessage {
-            src_domain_id: T::SelfDomainId::get() + 1,
+            src_domain_id: T::SelfDomainId::get() + 1.into(),
             dst_domain_id: T::SelfDomainId::get(),
             channel_id,
             nonce: resp_nonce,
