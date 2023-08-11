@@ -15,7 +15,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     let checkpoints_1 = NonZeroU8::new(1).expect("Not zero; qed");
     let checkpoints_8 = NonZeroU8::new(8).expect("Not zero; qed");
     // About 1s on 5.5 GHz Raptor Lake CPU
-    let pot_iterations = NonZeroU32::new(166_000_000).expect("Not zero; qed");
+    let pot_iterations = NonZeroU32::new(183_270_000).expect("Not zero; qed");
     let proof_of_time_sequential = ProofOfTime::new(pot_iterations, checkpoints_1).unwrap();
     let proof_of_time = ProofOfTime::new(pot_iterations, checkpoints_8).unwrap();
 
