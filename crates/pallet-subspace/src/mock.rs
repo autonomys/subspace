@@ -257,6 +257,7 @@ pub fn make_pre_digest(
     let log = DigestItem::subspace_pre_digest(&PreDigest {
         slot,
         solution,
+        #[cfg(feature = "pot")]
         proof_of_time: Default::default(),
     });
     Digest { logs: vec![log] }

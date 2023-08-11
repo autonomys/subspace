@@ -594,6 +594,7 @@ impl MockConsensusNode {
         let pre_digest: PreDigest<FarmerPublicKey, AccountId> = PreDigest {
             slot,
             solution: self.mock_solution.clone(),
+            #[cfg(feature = "pot")]
             proof_of_time: Default::default(),
         };
         let mut digest = Digest::default();

@@ -42,6 +42,7 @@ fn test_is_equivocation_proof_valid() {
             logs: vec![DigestItem::subspace_pre_digest(&PreDigest {
                 slot,
                 solution: solution.clone(),
+                #[cfg(feature = "pot")]
                 proof_of_time: Default::default(),
             })],
         },
@@ -67,6 +68,7 @@ fn test_is_equivocation_proof_valid() {
             logs: vec![DigestItem::subspace_pre_digest(&PreDigest {
                 slot,
                 solution,
+                #[cfg(feature = "pot")]
                 proof_of_time: Default::default(),
             })],
         },
