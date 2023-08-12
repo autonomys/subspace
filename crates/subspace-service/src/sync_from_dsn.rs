@@ -1,6 +1,7 @@
+mod import_blocks;
 mod piece_validator;
 
-use crate::dsn::import_blocks::import_blocks_from_dsn;
+use crate::sync_from_dsn::import_blocks::import_blocks_from_dsn;
 use crate::sync_from_dsn::piece_validator::SegmentCommitmentPieceValidator;
 use atomic::Atomic;
 use futures::channel::mpsc;

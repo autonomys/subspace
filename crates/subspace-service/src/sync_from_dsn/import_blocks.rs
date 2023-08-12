@@ -16,7 +16,7 @@
 
 mod segment_header_downloader;
 
-use crate::dsn::import_blocks::segment_header_downloader::SegmentHeaderDownloader;
+use crate::sync_from_dsn::import_blocks::segment_header_downloader::SegmentHeaderDownloader;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use parity_scale_codec::Encode;
