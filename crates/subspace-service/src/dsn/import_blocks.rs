@@ -14,10 +14,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-mod piece_validator;
 mod segment_header_downloader;
 
-use crate::dsn::import_blocks::piece_validator::SegmentCommitmentPieceValidator;
 use crate::dsn::import_blocks::segment_header_downloader::SegmentHeaderDownloader;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
@@ -31,11 +29,10 @@ use sp_consensus::BlockOrigin;
 use sp_runtime::traits::{Block as BlockT, Header, NumberFor, One};
 use std::time::Duration;
 use subspace_archiving::reconstructor::Reconstructor;
-use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{
     ArchivedHistorySegment, BlockNumber, Piece, RecordedHistorySegment, SegmentIndex,
 };
-use subspace_networking::utils::piece_provider::{PieceProvider, RetryPolicy};
+use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator, RetryPolicy};
 use subspace_networking::Node;
 use tokio::sync::Semaphore;
 use tracing::warn;
@@ -48,10 +45,11 @@ const WAIT_FOR_BLOCKS_TO_IMPORT: Duration = Duration::from_secs(1);
 /// Starts the process of importing blocks.
 ///
 /// Returns number of downloaded blocks.
-pub async fn import_blocks_from_dsn<Block, AS, IQS, Client>(
+pub async fn import_blocks_from_dsn<Block, AS, Client, PV, IQS>(
     segment_headers_store: &SegmentHeadersStore<AS>,
     node: &Node,
     client: &Client,
+    piece_provider: &PieceProvider<PV>,
     import_queue_service: &mut IQS,
     last_processed_segment_index: &mut SegmentIndex,
     force: bool,
@@ -60,6 +58,7 @@ where
     Block: BlockT,
     AS: AuxStore + Send + Sync + 'static,
     Client: HeaderBackend<Block> + BlockBackend<Block> + Send + Sync + 'static,
+    PV: PieceValidator,
     IQS: ImportQueueService<Block> + ?Sized,
 {
     {
@@ -81,15 +80,6 @@ where
             segment_headers_store.add_segment_headers(&new_segment_headers)?;
         }
     }
-
-    let piece_provider = &PieceProvider::<SegmentCommitmentPieceValidator<AS>>::new(
-        node.clone(),
-        Some(SegmentCommitmentPieceValidator::new(
-            node.clone(),
-            Kzg::new(embedded_kzg_settings()),
-            segment_headers_store,
-        )),
-    );
 
     let mut downloaded_blocks = 0;
     let mut reconstructor = Reconstructor::new().map_err(|error| error.to_string())?;
@@ -140,97 +130,14 @@ where
             continue;
         }
 
-        debug!(%segment_index, "Retrieving pieces of the segment");
-
-        let semaphore = &Semaphore::new(RecordedHistorySegment::NUM_RAW_RECORDS);
-
-        let mut received_segment_pieces = segment_index
-            .segment_piece_indexes_source_first()
-            .into_iter()
-            .map(|piece_index| {
-                // Source pieces will acquire permit here right away
-                let maybe_permit = semaphore.try_acquire().ok();
-
-                async move {
-                    let permit = match maybe_permit {
-                        Some(permit) => permit,
-                        None => {
-                            // Other pieces will acquire permit here instead
-                            match semaphore.acquire().await {
-                                Ok(permit) => permit,
-                                Err(error) => {
-                                    warn!(
-                                        %piece_index,
-                                        %error,
-                                        "Semaphore was closed, interrupting piece retrieval"
-                                    );
-                                    return None;
-                                }
-                            }
-                        }
-                    };
-                    let maybe_piece = match piece_provider
-                        .get_piece(piece_index, RetryPolicy::Limited(0))
-                        .await
-                    {
-                        Ok(maybe_piece) => maybe_piece,
-                        Err(error) => {
-                            trace!(
-                                %error,
-                                ?piece_index,
-                                "Piece request failed",
-                            );
-                            return None;
-                        }
-                    };
-
-                    trace!(
-                        ?piece_index,
-                        piece_found = maybe_piece.is_some(),
-                        "Piece request succeeded",
-                    );
-
-                    maybe_piece.map(|received_piece| {
-                        // Piece was received successfully, "remove" this slot from semaphore
-                        permit.forget();
-                        (piece_index, received_piece)
-                    })
-                }
-            })
-            .collect::<FuturesUnordered<_>>();
-
-        let mut segment_pieces = vec![None::<Piece>; ArchivedHistorySegment::NUM_PIECES];
-        let mut pieces_received = 0;
-
-        while let Some(maybe_result) = received_segment_pieces.next().await {
-            let Some((piece_index, piece)) = maybe_result else {
-                continue;
-            };
-
-            segment_pieces
-                .get_mut(piece_index.position() as usize)
-                .expect("Piece position is by definition within segment; qed")
-                .replace(piece);
-
-            pieces_received += 1;
-
-            if pieces_received >= RecordedHistorySegment::NUM_RAW_RECORDS {
-                trace!(%segment_index, "Received half of the segment.");
-                break;
-            }
-        }
-
-        let reconstructed_contents = reconstructor
-            .add_segment(segment_pieces.as_ref())
-            .map_err(|error| error.to_string())?;
-        drop(segment_pieces);
-
-        trace!(%segment_index, "Segment reconstructed successfully");
+        let blocks =
+            download_and_reconstruct_blocks(segment_index, piece_provider, &mut reconstructor)
+                .await?;
 
         let mut blocks_to_import = Vec::with_capacity(QUEUED_BLOCKS_LIMIT as usize);
 
         let mut best_block_number = client.info().best_number;
-        for (block_number, block_bytes) in reconstructed_contents.blocks {
+        for (block_number, block_bytes) in blocks {
             {
                 let block_number = block_number.into();
                 if block_number <= best_block_number {
@@ -318,4 +225,102 @@ where
     }
 
     Ok(downloaded_blocks)
+}
+
+async fn download_and_reconstruct_blocks<PV>(
+    segment_index: SegmentIndex,
+    piece_provider: &PieceProvider<PV>,
+    reconstructor: &mut Reconstructor,
+) -> Result<Vec<(BlockNumber, Vec<u8>)>, sc_service::Error>
+where
+    PV: PieceValidator,
+{
+    debug!(%segment_index, "Retrieving pieces of the segment");
+
+    let semaphore = &Semaphore::new(RecordedHistorySegment::NUM_RAW_RECORDS);
+
+    let mut received_segment_pieces = segment_index
+        .segment_piece_indexes_source_first()
+        .into_iter()
+        .map(|piece_index| {
+            // Source pieces will acquire permit here right away
+            let maybe_permit = semaphore.try_acquire().ok();
+
+            async move {
+                let permit = match maybe_permit {
+                    Some(permit) => permit,
+                    None => {
+                        // Other pieces will acquire permit here instead
+                        match semaphore.acquire().await {
+                            Ok(permit) => permit,
+                            Err(error) => {
+                                warn!(
+                                    %piece_index,
+                                    %error,
+                                    "Semaphore was closed, interrupting piece retrieval"
+                                );
+                                return None;
+                            }
+                        }
+                    }
+                };
+                let maybe_piece = match piece_provider
+                    .get_piece(piece_index, RetryPolicy::Limited(0))
+                    .await
+                {
+                    Ok(maybe_piece) => maybe_piece,
+                    Err(error) => {
+                        trace!(
+                            %error,
+                            ?piece_index,
+                            "Piece request failed",
+                        );
+                        return None;
+                    }
+                };
+
+                trace!(
+                    ?piece_index,
+                    piece_found = maybe_piece.is_some(),
+                    "Piece request succeeded",
+                );
+
+                maybe_piece.map(|received_piece| {
+                    // Piece was received successfully, "remove" this slot from semaphore
+                    permit.forget();
+                    (piece_index, received_piece)
+                })
+            }
+        })
+        .collect::<FuturesUnordered<_>>();
+
+    let mut segment_pieces = vec![None::<Piece>; ArchivedHistorySegment::NUM_PIECES];
+    let mut pieces_received = 0;
+
+    while let Some(maybe_result) = received_segment_pieces.next().await {
+        let Some((piece_index, piece)) = maybe_result else {
+            continue;
+        };
+
+        segment_pieces
+            .get_mut(piece_index.position() as usize)
+            .expect("Piece position is by definition within segment; qed")
+            .replace(piece);
+
+        pieces_received += 1;
+
+        if pieces_received >= RecordedHistorySegment::NUM_RAW_RECORDS {
+            trace!(%segment_index, "Received half of the segment.");
+            break;
+        }
+    }
+
+    let reconstructed_contents = reconstructor
+        .add_segment(segment_pieces.as_ref())
+        .map_err(|error| error.to_string())?;
+    drop(segment_pieces);
+
+    trace!(%segment_index, "Segment reconstructed successfully");
+
+    Ok(reconstructed_contents.blocks)
 }

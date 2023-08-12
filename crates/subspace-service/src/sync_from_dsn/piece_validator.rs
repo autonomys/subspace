@@ -10,8 +10,8 @@ use subspace_networking::Node;
 use tracing::{error, warn};
 
 pub struct SegmentCommitmentPieceValidator<'a, AS> {
-    dsn_node: Node,
-    kzg: Kzg,
+    dsn_node: &'a Node,
+    kzg: &'a Kzg,
     segment_headers_store: &'a SegmentHeadersStore<AS>,
 }
 
@@ -21,8 +21,8 @@ where
 {
     /// Segment headers must be in order from 0 to the last one that exists
     pub fn new(
-        dsn_node: Node,
-        kzg: Kzg,
+        dsn_node: &'a Node,
+        kzg: &'a Kzg,
         segment_headers_store: &'a SegmentHeadersStore<AS>,
     ) -> Self {
         Self {
@@ -58,7 +58,7 @@ where
             };
 
             if !is_piece_valid(
-                &self.kzg,
+                self.kzg,
                 &piece,
                 &segment_commitment,
                 piece_index.position(),

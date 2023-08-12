@@ -1,4 +1,7 @@
+mod piece_validator;
+
 use crate::dsn::import_blocks::import_blocks_from_dsn;
+use crate::sync_from_dsn::piece_validator::SegmentCommitmentPieceValidator;
 use atomic::Atomic;
 use futures::channel::mpsc;
 use futures::{FutureExt, StreamExt};
@@ -13,7 +16,9 @@ use std::future::Future;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::SegmentIndex;
+use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_networking::Node;
 use tracing::{info, warn};
 
@@ -40,6 +45,7 @@ pub(super) fn create_observer_and_worker<Block, AS, Client>(
     client: Arc<Client>,
     mut import_queue_service: Box<dyn ImportQueueService<Block>>,
     sync_mode: Arc<Atomic<SyncMode>>,
+    kzg: Kzg,
 ) -> (
     impl Future<Output = ()> + Send + 'static,
     impl Future<Output = Result<(), sc_service::Error>> + Send + 'static,
@@ -69,6 +75,7 @@ where
             import_queue_service.as_mut(),
             sync_mode,
             rx,
+            &kzg,
         )
         .await
     };
@@ -197,6 +204,7 @@ async fn create_worker<Block, AS, IQS, Client>(
     import_queue_service: &mut IQS,
     sync_mode: Arc<Atomic<SyncMode>>,
     mut notifications: mpsc::Receiver<NotificationReason>,
+    kzg: &Kzg,
 ) -> Result<(), sc_service::Error>
 where
     Block: BlockT,
@@ -207,6 +215,15 @@ where
     // Corresponds to contents of block one, everyone has it, so we consider it being processed
     // right away
     let mut last_processed_segment_index = SegmentIndex::ZERO;
+    let piece_provider = PieceProvider::new(
+        node.clone(),
+        Some(SegmentCommitmentPieceValidator::<AS>::new(
+            node,
+            kzg,
+            &segment_headers_store,
+        )),
+    );
+
     // Node starts as offline, we'll wait for it to go online shrtly after
     let mut initial_sync_mode = Some(sync_mode.swap(SyncMode::Paused, Ordering::AcqRel));
     while let Some(reason) = notifications.next().await {
@@ -222,6 +239,7 @@ where
             &segment_headers_store,
             node,
             client,
+            &piece_provider,
             import_queue_service,
             &mut last_processed_segment_index,
             false,
