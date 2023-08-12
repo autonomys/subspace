@@ -1,5 +1,5 @@
 use futures::StreamExt;
-use std::collections::{BTreeSet, HashMap};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::error::Error;
 use subspace_core_primitives::{SegmentHeader, SegmentIndex};
 use subspace_networking::libp2p::PeerId;
@@ -96,6 +96,7 @@ impl<'a> SegmentHeaderDownloader<'a> {
     async fn get_last_segment_header(
         &self,
     ) -> Result<Option<(SegmentHeader, Vec<PeerId>)>, Box<dyn Error>> {
+        let mut last_peer_blocks = BTreeMap::default();
         for (required_peers, retry_attempt) in (1..=SEGMENT_HEADER_CONSENSUS_INITIAL_NODES)
             .rev()
             .zip(1_usize..)
@@ -120,7 +121,7 @@ impl<'a> SegmentHeaderDownloader<'a> {
             };
 
             // Hashmap here just to potentially peers
-            let peer_blocks: HashMap<PeerId, Vec<SegmentHeader>> = get_peers_stream
+            let peer_blocks: BTreeMap<PeerId, Vec<SegmentHeader>> = get_peers_stream
                 .filter_map(|peer_id| async move {
                     let request_result = self
                         .dsn_node
@@ -168,14 +169,26 @@ impl<'a> SegmentHeaderDownloader<'a> {
             let peer_count = peer_blocks.len();
 
             if peer_count < required_peers {
-                debug!(
-                    %peer_count,
-                    %required_peers,
-                    %retry_attempt,
-                    "Segment headers consensus requires more peers, will retry"
-                );
+                if last_peer_blocks.is_empty() || last_peer_blocks != peer_blocks {
+                    debug!(
+                        %peer_count,
+                        %required_peers,
+                        %retry_attempt,
+                        "Segment headers consensus requires more peers, will retry"
+                    );
 
-                continue;
+                    last_peer_blocks = peer_blocks;
+
+                    continue;
+                } else {
+                    debug!(
+                        %peer_count,
+                        %required_peers,
+                        %retry_attempt,
+                        "Segment headers consensus requires more peers, but result is the same as \
+                        last time, so continue with wht we've got"
+                    );
+                }
             }
 
             // Calculate votes
