@@ -25,6 +25,7 @@ use sc_consensus_subspace::SegmentHeadersStore;
 use sc_tracing::tracing::{debug, trace};
 use sp_consensus::BlockOrigin;
 use sp_runtime::traits::{Block as BlockT, Header, NumberFor, One};
+use sp_runtime::Saturating;
 use std::time::Duration;
 use subspace_archiving::reconstructor::Reconstructor;
 use subspace_core_primitives::{
@@ -34,8 +35,9 @@ use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator, 
 use tokio::sync::Semaphore;
 use tracing::warn;
 
-/// How many blocks to queue before pausing and waiting for blocks to be imported
-const QUEUED_BLOCKS_LIMIT: BlockNumber = 2048;
+/// How many blocks to queue before pausing and waiting for blocks to be imported, this is
+/// essentially used to ensure we use a bounded amount of RAM during sync process.
+const QUEUED_BLOCKS_LIMIT: BlockNumber = 500;
 /// Time to wait for blocks to import if import is too slow
 const WAIT_FOR_BLOCKS_TO_IMPORT: Duration = Duration::from_secs(1);
 
@@ -49,7 +51,7 @@ pub async fn import_blocks_from_dsn<Block, AS, Client, PV, IQS>(
     piece_provider: &PieceProvider<PV>,
     import_queue_service: &mut IQS,
     last_processed_segment_index: &mut SegmentIndex,
-    force: bool,
+    last_processed_block_number: &mut <Block::Header as Header>::Number,
 ) -> Result<u64, sc_service::Error>
 where
     Block: BlockT,
@@ -108,17 +110,19 @@ where
             .archived_progress
             .partial()
             .is_some();
-        // TODO: Needs to handle forks, block number comparison is not sufficient
-        // We already have this block imported
-        if last_archived_block <= client.info().best_number {
+
+        let info = client.info();
+        // We already have this block imported and it is finalized, so can't change
+        if last_archived_block <= info.finalized_number {
             *last_processed_segment_index = segment_index;
+            *last_processed_block_number = last_archived_block;
             // Reset reconstructor instance
             reconstructor = Reconstructor::new().map_err(|error| error.to_string())?;
             continue;
         }
-        // We have only a part of the very next block and this was the last segment available,
-        // so nothing to import
-        if last_archived_block == client.info().best_number + One::one()
+        // Just one partial unprocessed block and this was the last segment available, so nothing to
+        // import
+        if last_archived_block == *last_processed_block_number + One::one()
             && last_archived_block_partial
             && segment_indices_iter.peek().is_none()
         {
@@ -133,50 +137,57 @@ where
 
         let mut blocks_to_import = Vec::with_capacity(QUEUED_BLOCKS_LIMIT as usize);
 
-        let mut best_block_number = client.info().best_number;
+        let mut best_block_number = info.best_number;
         for (block_number, block_bytes) in blocks {
-            {
-                let block_number = block_number.into();
-                if block_number <= best_block_number {
-                    if block_number == 0u32.into() {
-                        let block = client
-                            .block(client.hash(block_number)?.expect(
-                                "Block before best block number must always be found; qed",
-                            ))?
-                            .expect("Block before best block number must always be found; qed");
+            let block_number = block_number.into();
+            if block_number == 0u32.into() {
+                let block = client
+                    .block(
+                        client
+                            .hash(block_number)?
+                            .expect("Block before best block number must always be found; qed"),
+                    )?
+                    .expect("Block before best block number must always be found; qed");
 
-                        if block.encode() != block_bytes {
-                            return Err(sc_service::Error::Other(
-                                "Wrong genesis block, block import failed".to_string(),
-                            ));
-                        }
-                    }
-
-                    continue;
+                if block.encode() != block_bytes {
+                    return Err(sc_service::Error::Other(
+                        "Wrong genesis block, block import failed".to_string(),
+                    ));
                 }
+            }
 
-                // Limit number of queued blocks for import
-                while block_number - best_block_number >= QUEUED_BLOCKS_LIMIT.into() {
-                    if !blocks_to_import.is_empty() {
-                        // Import queue handles verification and importing it into the client
-                        import_queue_service.import_blocks(
-                            BlockOrigin::NetworkInitialSync,
-                            blocks_to_import.clone(),
-                        );
-                        blocks_to_import.clear();
-                    }
-                    trace!(
-                        %block_number,
-                        %best_block_number,
-                        "Number of importing blocks reached queue limit, waiting before retrying"
-                    );
-                    tokio::time::sleep(WAIT_FOR_BLOCKS_TO_IMPORT).await;
-                    best_block_number = client.info().best_number;
+            // Limit number of queued blocks for import
+            // NOTE: Since best block number might be non-canonical, we might actually have more
+            // than `QUEUED_BLOCKS_LIMIT` elements in the queue, but it should be rare and
+            // insignificant. Feel free to address this in case you have a good strategy, but it
+            // seems like complexity is not worth it.
+            while block_number.saturating_sub(best_block_number) >= QUEUED_BLOCKS_LIMIT.into() {
+                if !blocks_to_import.is_empty() {
+                    // Import queue handles verification and importing it into the client
+                    import_queue_service
+                        .import_blocks(BlockOrigin::NetworkInitialSync, blocks_to_import.clone());
+                    blocks_to_import.clear();
                 }
+                trace!(
+                    %block_number,
+                    %best_block_number,
+                    "Number of importing blocks reached queue limit, waiting before retrying"
+                );
+                tokio::time::sleep(WAIT_FOR_BLOCKS_TO_IMPORT).await;
+                best_block_number = client.info().best_number;
             }
 
             let block =
                 Block::decode(&mut block_bytes.as_slice()).map_err(|error| error.to_string())?;
+
+            *last_processed_block_number = last_archived_block;
+
+            // No need to import blocks that are already present, if block is not present it might
+            // correspond to a short fork, so we need to import it even if we already have another
+            // block at this height
+            if client.expect_header(block.hash()).is_ok() {
+                continue;
+            }
 
             let (header, extrinsics) = block.deconstruct();
             let hash = header.hash();
@@ -189,7 +200,7 @@ where
                 justifications: None,
                 origin: None,
                 allow_missing_state: false,
-                import_existing: force,
+                import_existing: false,
                 state: None,
                 skip_execution: false,
             });
@@ -199,10 +210,6 @@ where
             if downloaded_blocks % 1000 == 0 {
                 debug!("Adding block {} from DSN to the import queue", block_number);
             }
-        }
-
-        if blocks_to_import.is_empty() {
-            break;
         }
 
         // Import queue handles verification and importing it into the client

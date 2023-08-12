@@ -218,6 +218,7 @@ where
     // Corresponds to contents of block one, everyone has it, so we consider it being processed
     // right away
     let mut last_processed_segment_index = SegmentIndex::ZERO;
+    let mut last_processed_block_number = client.info().finalized_number;
     let segment_header_downloader = SegmentHeaderDownloader::new(node);
     let piece_provider = PieceProvider::new(
         node.clone(),
@@ -246,7 +247,7 @@ where
             &piece_provider,
             import_queue_service,
             &mut last_processed_segment_index,
-            false,
+            &mut last_processed_block_number,
         )
         .await
         {
