@@ -14,9 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-mod segment_header_downloader;
-
-use crate::sync_from_dsn::import_blocks::segment_header_downloader::SegmentHeaderDownloader;
+use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use parity_scale_codec::Encode;
@@ -33,7 +31,6 @@ use subspace_core_primitives::{
     ArchivedHistorySegment, BlockNumber, Piece, RecordedHistorySegment, SegmentIndex,
 };
 use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator, RetryPolicy};
-use subspace_networking::Node;
 use tokio::sync::Semaphore;
 use tracing::warn;
 
@@ -47,7 +44,7 @@ const WAIT_FOR_BLOCKS_TO_IMPORT: Duration = Duration::from_secs(1);
 /// Returns number of downloaded blocks.
 pub async fn import_blocks_from_dsn<Block, AS, Client, PV, IQS>(
     segment_headers_store: &SegmentHeadersStore<AS>,
-    node: &Node,
+    segment_header_downloader: &SegmentHeaderDownloader<'_>,
     client: &Client,
     piece_provider: &PieceProvider<PV>,
     import_queue_service: &mut IQS,
@@ -69,7 +66,7 @@ where
                     .to_string(),
             )
         })?;
-        let new_segment_headers = SegmentHeaderDownloader::new(node.clone())
+        let new_segment_headers = segment_header_downloader
             .get_segment_headers(max_segment_index)
             .await
             .map_err(|error| error.to_string())?;

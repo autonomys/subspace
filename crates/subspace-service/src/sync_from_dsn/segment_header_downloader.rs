@@ -11,12 +11,12 @@ const SEGMENT_HEADER_NUMBER_PER_REQUEST: u64 = 1000;
 const SEGMENT_HEADER_CONSENSUS_INITIAL_NODES: usize = 20;
 
 /// Helps downloader segment headers from DSN
-pub struct SegmentHeaderDownloader {
-    dsn_node: Node,
+pub struct SegmentHeaderDownloader<'a> {
+    dsn_node: &'a Node,
 }
 
-impl SegmentHeaderDownloader {
-    pub fn new(dsn_node: Node) -> Self {
+impl<'a> SegmentHeaderDownloader<'a> {
+    pub fn new(dsn_node: &'a Node) -> Self {
         Self { dsn_node }
     }
 

@@ -1,8 +1,10 @@
 mod import_blocks;
 mod piece_validator;
+mod segment_header_downloader;
 
 use crate::sync_from_dsn::import_blocks::import_blocks_from_dsn;
 use crate::sync_from_dsn::piece_validator::SegmentCommitmentPieceValidator;
+use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
 use atomic::Atomic;
 use futures::channel::mpsc;
 use futures::{FutureExt, StreamExt};
@@ -216,6 +218,7 @@ where
     // Corresponds to contents of block one, everyone has it, so we consider it being processed
     // right away
     let mut last_processed_segment_index = SegmentIndex::ZERO;
+    let segment_header_downloader = SegmentHeaderDownloader::new(node);
     let piece_provider = PieceProvider::new(
         node.clone(),
         Some(SegmentCommitmentPieceValidator::<AS>::new(
@@ -238,7 +241,7 @@ where
         // TODO: Maybe handle failed block imports, additional helpful logging
         if let Err(error) = import_blocks_from_dsn(
             &segment_headers_store,
-            node,
+            &segment_header_downloader,
             client,
             &piece_provider,
             import_queue_service,
