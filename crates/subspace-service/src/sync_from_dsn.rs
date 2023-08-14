@@ -1,9 +1,16 @@
-use crate::dsn::import_blocks::import_blocks_from_dsn;
+mod import_blocks;
+mod piece_validator;
+mod segment_header_downloader;
+
+use crate::sync_from_dsn::import_blocks::import_blocks_from_dsn;
+use crate::sync_from_dsn::piece_validator::SegmentCommitmentPieceValidator;
+use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
 use atomic::Atomic;
 use futures::channel::mpsc;
 use futures::{FutureExt, StreamExt};
-use sc_client_api::{BlockBackend, BlockchainEvents};
+use sc_client_api::{AuxStore, BlockBackend, BlockchainEvents};
 use sc_consensus::import_queue::ImportQueueService;
+use sc_consensus_subspace::SegmentHeadersStore;
 use sc_network::config::SyncMode;
 use sc_network::{NetworkPeers, NetworkService};
 use sp_api::BlockT;
@@ -12,6 +19,9 @@ use std::future::Future;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use subspace_core_primitives::crypto::kzg::Kzg;
+use subspace_core_primitives::SegmentIndex;
+use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_networking::Node;
 use tracing::{info, warn};
 
@@ -31,18 +41,21 @@ enum NotificationReason {
 
 /// Create node observer that will track node state and send notifications to worker to start sync
 /// from DSN.
-pub(super) fn create_observer_and_worker<Block, Client>(
+pub(super) fn create_observer_and_worker<Block, AS, Client>(
+    segment_headers_store: SegmentHeadersStore<AS>,
     network_service: Arc<NetworkService<Block, <Block as BlockT>::Hash>>,
     node: Node,
     client: Arc<Client>,
     mut import_queue_service: Box<dyn ImportQueueService<Block>>,
     sync_mode: Arc<Atomic<SyncMode>>,
+    kzg: Kzg,
 ) -> (
     impl Future<Output = ()> + Send + 'static,
     impl Future<Output = Result<(), sc_service::Error>> + Send + 'static,
 )
 where
     Block: BlockT,
+    AS: AuxStore + Send + Sync + 'static,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + BlockchainEvents<Block>
@@ -59,11 +72,13 @@ where
     };
     let worker_fut = async move {
         create_worker(
+            segment_headers_store,
             &node,
             client.as_ref(),
             import_queue_service.as_mut(),
             sync_mode,
             rx,
+            &kzg,
         )
         .await
     };
@@ -185,18 +200,34 @@ async fn create_substrate_network_observer<Block>(
     }
 }
 
-async fn create_worker<Block, IQS, Client>(
+async fn create_worker<Block, AS, IQS, Client>(
+    segment_headers_store: SegmentHeadersStore<AS>,
     node: &Node,
     client: &Client,
     import_queue_service: &mut IQS,
     sync_mode: Arc<Atomic<SyncMode>>,
     mut notifications: mpsc::Receiver<NotificationReason>,
+    kzg: &Kzg,
 ) -> Result<(), sc_service::Error>
 where
     Block: BlockT,
+    AS: AuxStore + Send + Sync + 'static,
     Client: HeaderBackend<Block> + BlockBackend<Block> + Send + Sync + 'static,
     IQS: ImportQueueService<Block> + ?Sized,
 {
+    // Corresponds to contents of block one, everyone has it, so we consider it being processed
+    // right away
+    let mut last_processed_segment_index = SegmentIndex::ZERO;
+    let segment_header_downloader = SegmentHeaderDownloader::new(node);
+    let piece_provider = PieceProvider::new(
+        node.clone(),
+        Some(SegmentCommitmentPieceValidator::<AS>::new(
+            node,
+            kzg,
+            &segment_headers_store,
+        )),
+    );
+
     // Node starts as offline, we'll wait for it to go online shrtly after
     let mut initial_sync_mode = Some(sync_mode.swap(SyncMode::Paused, Ordering::AcqRel));
     while let Some(reason) = notifications.next().await {
@@ -208,7 +239,16 @@ where
 
         info!(?reason, "Received notification to sync from DSN");
         // TODO: Maybe handle failed block imports, additional helpful logging
-        if let Err(error) = import_blocks_from_dsn(node, client, import_queue_service, false).await
+        if let Err(error) = import_blocks_from_dsn(
+            &segment_headers_store,
+            &segment_header_downloader,
+            client,
+            &piece_provider,
+            import_queue_service,
+            &mut last_processed_segment_index,
+            false,
+        )
+        .await
         {
             warn!(%error, "Error when syncing blocks from DSN");
         }

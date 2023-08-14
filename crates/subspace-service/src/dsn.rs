@@ -1,5 +1,3 @@
-pub mod import_blocks;
-
 use crate::piece_cache::PieceCache;
 use sc_client_api::AuxStore;
 use sc_consensus_subspace::SegmentHeadersStore;

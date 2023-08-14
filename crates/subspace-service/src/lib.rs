@@ -78,6 +78,7 @@ use sp_offchain::OffchainWorkerApi;
 use sp_runtime::traits::{Block as BlockT, BlockIdTo, NumberFor};
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
+use static_assertions::const_assert;
 use std::marker::PhantomData;
 use std::sync::{Arc, Mutex};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
@@ -90,6 +91,10 @@ use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash, Index as Nonce};
 use subspace_transaction_pool::{FullPool, PreValidateTransaction};
 use tracing::{debug, error, info, Instrument};
+
+// There are multiple places where it is assumed that node is running on 64-bit system, refuse to
+// compile otherwise
+const_assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<u64>());
 
 /// Error type for Subspace service.
 #[derive(thiserror::Error, Debug)]
@@ -259,6 +264,7 @@ pub fn new_partial<PosTable, RuntimeApi, ExecutorDispatch>(
             >,
             SubspaceLink<Block>,
             SegmentHeadersStore<FullClient<RuntimeApi, ExecutorDispatch>>,
+            Kzg,
             Option<Telemetry>,
             Option<PotComponents>,
         ),
@@ -411,7 +417,7 @@ where
         block_import.clone(),
         None,
         client.clone(),
-        kzg,
+        kzg.clone(),
         select_chain.clone(),
         move || {
             let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
@@ -436,6 +442,7 @@ where
             block_import,
             subspace_link,
             segment_headers_store,
+            kzg,
             telemetry,
             pot_components,
         ),
@@ -517,6 +524,7 @@ pub async fn new_full<PosTable, RuntimeApi, ExecutorDispatch, I>(
             I,
             SubspaceLink<Block>,
             SegmentHeadersStore<FullClient<RuntimeApi, ExecutorDispatch>>,
+            Kzg,
             Option<Telemetry>,
             Option<PotComponents>,
         ),
@@ -559,7 +567,8 @@ where
         keystore_container,
         select_chain,
         transaction_pool,
-        other: (block_import, subspace_link, segment_headers_store, mut telemetry, pot_components),
+        other:
+            (block_import, subspace_link, segment_headers_store, kzg, mut telemetry, pot_components),
     } = partial_components;
 
     let (node, bootstrap_nodes) = match config.subspace_networking.clone() {
@@ -751,11 +760,13 @@ where
     }
     if config.sync_from_dsn {
         let (observer, worker) = sync_from_dsn::create_observer_and_worker(
+            segment_headers_store.clone(),
             Arc::clone(&network_service),
             node.clone(),
             Arc::clone(&client),
             import_queue_service,
             sync_mode,
+            kzg.clone(),
         );
         task_manager
             .spawn_handle()
