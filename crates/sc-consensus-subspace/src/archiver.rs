@@ -39,7 +39,6 @@ use std::slice;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
-use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{BlockNumber, RecordedHistorySegment, SegmentHeader, SegmentIndex};
 
@@ -375,7 +374,6 @@ fn initialize_archiver<Block, Client, AS>(
     segment_headers_store: &SegmentHeadersStore<AS>,
     subspace_link: &SubspaceLink<Block>,
     client: &Client,
-    kzg: Kzg,
 ) -> InitializedArchiver<Block>
 where
     Block: BlockT,
@@ -418,7 +416,7 @@ where
                 };
 
             Archiver::with_initial_state(
-                kzg,
+                subspace_link.kzg().clone(),
                 last_segment_header,
                 &last_archived_block_encoded,
                 block_object_mappings,
@@ -427,7 +425,7 @@ where
         } else {
             info!(target: "subspace", "Starting archiving from genesis");
 
-            Archiver::new(kzg).expect("Incorrect parameters for archiver")
+            Archiver::new(subspace_link.kzg().clone()).expect("Incorrect parameters for archiver")
         };
 
     let mut older_archived_segments = Vec::new();
@@ -626,7 +624,6 @@ where
         &segment_headers_store,
         subspace_link,
         client.as_ref(),
-        subspace_link.kzg.clone(),
     );
 
     let mut block_importing_notification_stream = subspace_link

@@ -594,6 +594,11 @@ impl<Block: BlockT> SubspaceLink<Block> {
             .cloned()
             .unwrap_or_default()
     }
+
+    /// Access KZG instance
+    pub fn kzg(&self) -> &Kzg {
+        &self.kzg
+    }
 }
 
 /// A verifier for Subspace blocks.

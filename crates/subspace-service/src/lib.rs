@@ -264,7 +264,6 @@ pub fn new_partial<PosTable, RuntimeApi, ExecutorDispatch>(
             >,
             SubspaceLink<Block>,
             SegmentHeadersStore<FullClient<RuntimeApi, ExecutorDispatch>>,
-            Kzg,
             Option<Telemetry>,
             Option<PotComponents>,
         ),
@@ -417,7 +416,7 @@ where
         block_import.clone(),
         None,
         client.clone(),
-        kzg.clone(),
+        kzg,
         select_chain.clone(),
         move || {
             let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
@@ -442,7 +441,6 @@ where
             block_import,
             subspace_link,
             segment_headers_store,
-            kzg,
             telemetry,
             pot_components,
         ),
@@ -524,7 +522,6 @@ pub async fn new_full<PosTable, RuntimeApi, ExecutorDispatch, I>(
             I,
             SubspaceLink<Block>,
             SegmentHeadersStore<FullClient<RuntimeApi, ExecutorDispatch>>,
-            Kzg,
             Option<Telemetry>,
             Option<PotComponents>,
         ),
@@ -567,8 +564,7 @@ where
         keystore_container,
         select_chain,
         transaction_pool,
-        other:
-            (block_import, subspace_link, segment_headers_store, kzg, mut telemetry, pot_components),
+        other: (block_import, subspace_link, segment_headers_store, mut telemetry, pot_components),
     } = partial_components;
 
     let (node, bootstrap_nodes) = match config.subspace_networking.clone() {
@@ -766,7 +762,7 @@ where
             Arc::clone(&client),
             import_queue_service,
             sync_mode,
-            kzg.clone(),
+            subspace_link.kzg().clone(),
         );
         task_manager
             .spawn_handle()
