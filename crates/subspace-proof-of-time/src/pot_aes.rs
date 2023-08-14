@@ -1,5 +1,9 @@
 //! AES related functionality.
 
+// TODO: Similarly optimized version for aarch64
+#[cfg(target_arch = "x86_64")]
+mod x86_64;
+
 extern crate alloc;
 
 use aes::cipher::generic_array::GenericArray;
@@ -15,11 +19,34 @@ pub(crate) fn create(
     num_checkpoints: u8,
     checkpoint_iterations: u32,
 ) -> Vec<PotCheckpoint> {
+    #[cfg(target_arch = "x86_64")]
+    {
+        let checkpoints = unsafe {
+            x86_64::create(
+                seed.as_ref(),
+                key.as_ref(),
+                num_checkpoints,
+                checkpoint_iterations,
+            )
+        };
+        checkpoints.into_iter().map(PotCheckpoint::from).collect()
+    }
+    #[cfg(not(target_arch = "x86_64"))]
+    create_generic(seed, key, num_checkpoints, checkpoint_iterations)
+}
+
+#[cfg(any(not(target_arch = "x86_64"), test))]
+fn create_generic(
+    seed: &PotSeed,
+    key: &PotKey,
+    num_checkpoints: u8,
+    checkpoint_iterations: u32,
+) -> Vec<PotCheckpoint> {
     let key = GenericArray::from(PotBytes::from(*key));
     let cipher = Aes128::new(&key);
     let mut cur_block = GenericArray::from(PotBytes::from(*seed));
 
-    let mut checkpoints = Vec::with_capacity(num_checkpoints as usize);
+    let mut checkpoints = Vec::with_capacity(usize::from(num_checkpoints));
     for _ in 0..num_checkpoints {
         for _ in 0..checkpoint_iterations {
             // Encrypt in place to produce the next block.
@@ -86,7 +113,7 @@ mod tests {
     const BAD_CIPHER: [u8; 16] = [22; 16];
 
     #[test]
-    fn test_encrypt_decrypt_sequential() {
+    fn test_create_verify() {
         let seed = PotSeed::from(SEED);
         let key = PotKey::from(KEY);
         let num_checkpoints = 10;
@@ -94,6 +121,13 @@ mod tests {
 
         // Can encrypt/decrypt.
         let checkpoints = create(&seed, &key, num_checkpoints, checkpoint_iterations);
+        #[cfg(target_arch = "x86_64")]
+        {
+            let generic_checkpoints =
+                create_generic(&seed, &key, num_checkpoints, checkpoint_iterations);
+            assert_eq!(checkpoints, generic_checkpoints);
+        }
+
         assert_eq!(checkpoints.len(), num_checkpoints as usize);
         assert!(verify_sequential(
             &seed,
