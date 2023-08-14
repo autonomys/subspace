@@ -8885,6 +8885,7 @@ dependencies = [
  "sp-consensus-slots",
  "sp-consensus-subspace",
  "sp-core",
+ "sp-objects",
  "sp-runtime",
  "subspace-archiving",
  "subspace-core-primitives",

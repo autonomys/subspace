@@ -27,7 +27,7 @@ use jsonrpsee::SubscriptionSink;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use sc_client_api::{AuxStore, BlockBackend};
-use sc_consensus_subspace::archiver::SegmentHeadersStore;
+use sc_consensus_subspace::archiver::{recreate_genesis_segment, SegmentHeadersStore};
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{
     ArchivedSegmentNotification, NewSlotNotification, RewardSigningNotification, SubspaceSyncOracle,
@@ -41,6 +41,7 @@ use sp_consensus_slots::Slot;
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi as SubspaceRuntimeApi};
 use sp_core::crypto::ByteArray;
 use sp_core::H256;
+use sp_objects::ObjectsApi;
 use sp_runtime::traits::Block as BlockT;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
@@ -49,6 +50,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
 use std::time::Duration;
 use subspace_archiving::archiver::NewArchivedSegment;
+use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{PieceIndex, SegmentHeader, SegmentIndex, Solution};
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_networking::libp2p::Multiaddr;
@@ -141,6 +143,26 @@ struct BlockSignatureSenders {
     senders: Vec<async_oneshot::Sender<RewardSignatureResponse>>,
 }
 
+/// In-memory cache of last archived segment, such that when request comes back right after
+/// archived segment notification, RPC server is able to answer quickly.
+///
+/// We store weak reference, such that archived segment is not persisted for longer than
+/// necessary occupying RAM.
+enum CachedArchivedSegment {
+    /// Special case for genesis segment when requested over RPC
+    Genesis(Arc<NewArchivedSegment>),
+    Weak(Weak<NewArchivedSegment>),
+}
+
+impl CachedArchivedSegment {
+    fn get(&self) -> Option<Arc<NewArchivedSegment>> {
+        match self {
+            CachedArchivedSegment::Genesis(archived_segment) => Some(Arc::clone(archived_segment)),
+            CachedArchivedSegment::Weak(weak_archived_segment) => weak_archived_segment.upgrade(),
+        }
+    }
+}
+
 /// Subspace RPC configuration
 pub struct SubspaceRpcConfig<Client, SO, AS>
 where
@@ -166,6 +188,8 @@ where
     pub sync_oracle: SubspaceSyncOracle<SO>,
     /// Signifies whether a potentially unsafe RPC should be denied
     pub deny_unsafe: DenyUnsafe,
+    /// Kzg instance
+    pub kzg: Kzg,
 }
 
 /// Implements the [`SubspaceRpcApiServer`] trait for interacting with Subspace.
@@ -183,16 +207,12 @@ where
     reward_signature_senders: Arc<Mutex<BlockSignatureSenders>>,
     dsn_bootstrap_nodes: Vec<Multiaddr>,
     segment_headers_store: SegmentHeadersStore<AS>,
-    /// In-memory piece cache of last archived segment, such that when request comes back right
-    /// after archived segment notification, RPC server is able to answer quickly.
-    ///
-    /// We store weak reference, such that archived segment is not persisted for longer than
-    /// necessary occupying RAM.
-    piece_cache: Arc<Mutex<Option<Weak<NewArchivedSegment>>>>,
+    cached_archived_segment: Arc<Mutex<Option<CachedArchivedSegment>>>,
     archived_segment_acknowledgement_senders:
         Arc<Mutex<ArchivedSegmentHeaderAcknowledgementSenders>>,
     next_subscription_id: AtomicU64,
     sync_oracle: SubspaceSyncOracle<SO>,
+    kzg: Kzg,
     deny_unsafe: DenyUnsafe,
     _block: PhantomData<Block>,
 }
@@ -222,10 +242,11 @@ where
             reward_signature_senders: Arc::default(),
             dsn_bootstrap_nodes: config.dsn_bootstrap_nodes,
             segment_headers_store: config.segment_headers_store,
-            piece_cache: Arc::default(),
+            cached_archived_segment: Arc::default(),
             archived_segment_acknowledgement_senders: Arc::default(),
             next_subscription_id: AtomicU64::default(),
             sync_oracle: config.sync_oracle,
+            kzg: config.kzg,
             deny_unsafe: config.deny_unsafe,
             _block: PhantomData,
         }
@@ -242,7 +263,7 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: SubspaceRuntimeApi<Block, FarmerPublicKey>,
+    Client::Api: SubspaceRuntimeApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
     SO: SyncOracle + Send + Sync + Clone + 'static,
     AS: AuxStore + Send + Sync + 'static,
 {
@@ -517,7 +538,7 @@ where
         let archived_segment_acknowledgement_senders =
             self.archived_segment_acknowledgement_senders.clone();
 
-        let piece_cache = Arc::clone(&self.piece_cache);
+        let cached_archived_segment = Arc::clone(&self.cached_archived_segment);
         let subscription_id = self.next_subscription_id.fetch_add(1, Ordering::Relaxed);
         let allow_acknowledgements = self.deny_unsafe.check_if_safe().is_ok();
 
@@ -560,9 +581,11 @@ where
                             }
                         };
 
-                    piece_cache
+                    cached_archived_segment
                         .lock()
-                        .replace(Arc::downgrade(&archived_segment));
+                        .replace(CachedArchivedSegment::Weak(Arc::downgrade(
+                            &archived_segment,
+                        )));
 
                     maybe_archived_segment_header
                 } else {
@@ -700,9 +723,45 @@ where
     }
 
     fn piece(&self, requested_piece_index: PieceIndex) -> RpcResult<Option<Vec<u8>>> {
-        let Some(archived_segment) = self.piece_cache.lock().as_ref().and_then(Weak::upgrade)
-        else {
-            return Ok(None);
+        self.deny_unsafe.check_if_safe()?;
+
+        let archived_segment = {
+            let mut cached_archived_segment = self.cached_archived_segment.lock();
+
+            match cached_archived_segment
+                .as_ref()
+                .and_then(CachedArchivedSegment::get)
+            {
+                Some(archived_segment) => archived_segment,
+                None => {
+                    if requested_piece_index > SegmentIndex::ZERO.last_piece_index() {
+                        return Ok(None);
+                    }
+
+                    debug!(%requested_piece_index, "Re-creating genesis segment on demand");
+
+                    // Try to re-create genesis segment on demand
+                    match recreate_genesis_segment(&*self.client, self.kzg.clone()) {
+                        Ok(Some(archived_segment)) => {
+                            let archived_segment = Arc::new(archived_segment);
+                            cached_archived_segment.replace(CachedArchivedSegment::Genesis(
+                                Arc::clone(&archived_segment),
+                            ));
+                            archived_segment
+                        }
+                        Ok(None) => {
+                            return Ok(None);
+                        }
+                        Err(error) => {
+                            error!(%error, "Failed to re-create genesis segment");
+
+                            return Err(JsonRpseeError::Custom(
+                                "Failed to re-create genesis segment".to_string(),
+                            ));
+                        }
+                    }
+                }
+            }
         };
 
         let indices = archived_segment

@@ -134,6 +134,7 @@ where
         node.clone(),
         piece_provider,
         piece_cache.clone(),
+        node_client.clone(),
         archival_storage_info,
         Arc::clone(&readers_and_pieces),
     ));

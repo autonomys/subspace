@@ -957,6 +957,7 @@ where
                     dsn_bootstrap_nodes: dsn_bootstrap_nodes.clone(),
                     segment_headers_store: segment_headers_store.clone(),
                     sync_oracle: subspace_sync_oracle.clone(),
+                    kzg: subspace_link.kzg().clone(),
                 };
 
                 rpc::create_full(deps).map_err(Into::into)

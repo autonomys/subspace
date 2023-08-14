@@ -197,6 +197,8 @@ where
 
         info!("Synchronizing cache");
 
+        // TODO: Query from the DSN too such that we don't build outdated cache at start if node is
+        //  not synced fully
         let last_segment_index = match self.node_client.farmer_app_info().await {
             Ok(farmer_app_info) => farmer_app_info.protocol_info.history_size.segment_index(),
             Err(error) => {
@@ -230,7 +232,7 @@ where
         // This hashset is faster than `heap`
         // Clippy complains about `RecordKey`, but it is not changing here, so it is fine
         #[allow(clippy::mutable_key_type)]
-        let mut inserted_piece_indices = worker_state
+        let mut piece_indices_to_store = worker_state
             .heap
             .keys()
             .map(|KeyWrapper(piece_index)| {
@@ -247,14 +249,14 @@ where
             // still missing in cache
             state
                 .stored_pieces
-                .extract_if(|key, _offset| inserted_piece_indices.remove(key).is_none())
+                .extract_if(|key, _offset| piece_indices_to_store.remove(key).is_none())
                 .for_each(|(_piece_index, offset)| {
                     state.free_offsets.push(offset);
                 });
         });
 
         // TODO: Can probably do concurrency here
-        for (index, piece_index) in inserted_piece_indices.into_values().enumerate() {
+        for (index, piece_index) in piece_indices_to_store.into_values().enumerate() {
             let result = piece_getter
                 .get_piece(piece_index, PieceGetterRetryPolicy::Limited(1))
                 .await;

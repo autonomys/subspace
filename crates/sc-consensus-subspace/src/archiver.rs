@@ -39,11 +39,13 @@ use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
 use sp_objects::ObjectsApi;
 use sp_runtime::generic::SignedBlock;
 use sp_runtime::traits::{Block as BlockT, CheckedSub, Header, NumberFor, One, Zero};
+use std::error::Error;
 use std::future::Future;
 use std::slice;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
+use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{BlockNumber, RecordedHistorySegment, SegmentHeader, SegmentIndex};
 
@@ -332,6 +334,44 @@ where
         block_hashes,
         best_archived,
     }
+}
+
+/// Derive genesis segment on demand, returns `Ok(None)` in case genesis block was already pruned
+pub fn recreate_genesis_segment<Block, Client>(
+    client: &Client,
+    kzg: Kzg,
+) -> Result<Option<NewArchivedSegment>, Box<dyn Error>>
+where
+    Block: BlockT,
+    Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + HeaderBackend<Block>,
+    Client::Api: ObjectsApi<Block>,
+{
+    let genesis_hash = client.info().genesis_hash;
+    let Some(block) = client.block(genesis_hash)? else {
+        return Ok(None);
+    };
+
+    let block_object_mappings = client
+        .runtime_api()
+        .validated_object_call_hashes(genesis_hash)
+        .and_then(|calls| {
+            client.runtime_api().extract_block_object_mapping(
+                *block.block.header().parent_hash(),
+                block.block.clone(),
+                calls,
+            )
+        })
+        .unwrap_or_default();
+
+    let encoded_block = encode_genesis_block(&block);
+
+    let new_archived_segment = Archiver::new(kzg)?
+        .add_block(encoded_block, block_object_mappings, false)
+        .into_iter()
+        .next()
+        .expect("Genesis block always results in exactly one archived segment; qed");
+
+    Ok(Some(new_archived_segment))
 }
 
 struct InitializedArchiver<Block>

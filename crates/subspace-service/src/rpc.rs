@@ -38,8 +38,10 @@ use sp_api::ProvideRuntimeApi;
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{Error as BlockChainError, HeaderBackend, HeaderMetadata};
 use sp_consensus::SyncOracle;
-use sp_consensus_subspace::FarmerPublicKey;
+use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
+use sp_objects::ObjectsApi;
 use std::sync::Arc;
+use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Index};
@@ -72,8 +74,10 @@ where
     pub dsn_bootstrap_nodes: Vec<Multiaddr>,
     /// Segment header provider.
     pub segment_headers_store: SegmentHeadersStore<AS>,
-    /// Subspace sync oracle
+    /// Subspace sync oracle.
     pub sync_oracle: SubspaceSyncOracle<SO>,
+    /// Kzg instance.
+    pub kzg: Kzg,
 }
 
 /// Instantiate all full RPC extensions.
@@ -91,7 +95,8 @@ where
     C::Api: substrate_frame_rpc_system::AccountNonceApi<Block, AccountId, Index>
         + pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi<Block, Balance>
         + BlockBuilder<Block>
-        + sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey>,
+        + SubspaceApi<Block, FarmerPublicKey>
+        + ObjectsApi<Block>,
     P: TransactionPool + 'static,
     SO: SyncOracle + Send + Sync + Clone + 'static,
     AS: AuxStore + Send + Sync + 'static,
@@ -109,6 +114,7 @@ where
         dsn_bootstrap_nodes,
         segment_headers_store,
         sync_oracle,
+        kzg,
     } = deps;
 
     let chain_name = chain_spec.name().to_string();
@@ -129,6 +135,7 @@ where
             dsn_bootstrap_nodes,
             segment_headers_store,
             sync_oracle,
+            kzg,
             deny_unsafe,
         })
         .into_rpc(),
