@@ -14,6 +14,11 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+//! Consensus archiver module.
+//!
+//! Contains implementation of archiving process in Subspace blockchain that convers blockchain
+//! history (blocks) into archived history (pieces).
+
 use crate::{
     get_chain_constants, ArchivedSegmentNotification, BlockImportingNotification, SubspaceLink,
     SubspaceNotificationSender, SubspaceSyncOracle,

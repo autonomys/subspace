@@ -10,7 +10,7 @@ use futures::channel::mpsc;
 use futures::{FutureExt, StreamExt};
 use sc_client_api::{AuxStore, BlockBackend, BlockchainEvents};
 use sc_consensus::import_queue::ImportQueueService;
-use sc_consensus_subspace::SegmentHeadersStore;
+use sc_consensus_subspace::archiver::SegmentHeadersStore;
 use sc_network::config::SyncMode;
 use sc_network::{NetworkPeers, NetworkService};
 use sp_api::BlockT;

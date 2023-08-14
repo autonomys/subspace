@@ -49,11 +49,11 @@ use sc_client_api::{
 };
 use sc_consensus::{BlockImport, DefaultImportQueue, ImportQueue};
 use sc_consensus_slots::SlotProportion;
+use sc_consensus_subspace::archiver::{create_subspace_archiver, SegmentHeadersStore};
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{
     ArchivedSegmentNotification, BlockImportingNotification, NewSlotNotification,
-    RewardSigningNotification, SegmentHeadersStore, SubspaceLink, SubspaceParams,
-    SubspaceSyncOracle,
+    RewardSigningNotification, SubspaceLink, SubspaceParams, SubspaceSyncOracle,
 };
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
@@ -739,7 +739,7 @@ where
     let subspace_sync_oracle =
         SubspaceSyncOracle::new(config.force_authoring, sync_service.clone());
 
-    let subspace_archiver = sc_consensus_subspace::create_subspace_archiver(
+    let subspace_archiver = create_subspace_archiver(
         segment_headers_store.clone(),
         &subspace_link,
         client.clone(),

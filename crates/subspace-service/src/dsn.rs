@@ -1,6 +1,6 @@
 use crate::piece_cache::PieceCache;
 use sc_client_api::AuxStore;
-use sc_consensus_subspace::SegmentHeadersStore;
+use sc_consensus_subspace::archiver::SegmentHeadersStore;
 use std::collections::HashSet;
 use std::fs;
 use std::path::PathBuf;

@@ -15,9 +15,10 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+use crate::archiver::SegmentHeadersStore;
 use crate::{
     get_chain_constants, BlockImportingNotification, NewSlotInfo, NewSlotNotification,
-    RewardSigningNotification, SegmentHeadersStore, SubspaceLink,
+    RewardSigningNotification, SubspaceLink,
 };
 use futures::channel::mpsc;
 use futures::{StreamExt, TryFutureExt};

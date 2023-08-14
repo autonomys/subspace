@@ -27,10 +27,10 @@ use jsonrpsee::SubscriptionSink;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use sc_client_api::{AuxStore, BlockBackend};
+use sc_consensus_subspace::archiver::SegmentHeadersStore;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{
-    ArchivedSegmentNotification, NewSlotNotification, RewardSigningNotification,
-    SegmentHeadersStore, SubspaceSyncOracle,
+    ArchivedSegmentNotification, NewSlotNotification, RewardSigningNotification, SubspaceSyncOracle,
 };
 use sc_rpc::{DenyUnsafe, SubscriptionTaskExecutor};
 use sc_utils::mpsc::TracingUnboundedSender;
