@@ -141,6 +141,33 @@ struct BlockSignatureSenders {
     senders: Vec<async_oneshot::Sender<RewardSignatureResponse>>,
 }
 
+/// Subspace RPC configuration
+pub struct SubspaceRpcConfig<Client, SO, AS>
+where
+    SO: SyncOracle + Send + Sync + Clone + 'static,
+    AS: AuxStore + Send + Sync + 'static,
+{
+    /// Substrate client
+    pub client: Arc<Client>,
+    /// Task executor that is being used by RPC subscriptions
+    pub subscription_executor: SubscriptionTaskExecutor,
+    /// New slot notification stream
+    pub new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
+    /// Reward signing notification stream
+    pub reward_signing_notification_stream: SubspaceNotificationStream<RewardSigningNotification>,
+    /// Archived segment notification stream
+    pub archived_segment_notification_stream:
+        SubspaceNotificationStream<ArchivedSegmentNotification>,
+    /// DSN bootstrap nodes
+    pub dsn_bootstrap_nodes: Vec<Multiaddr>,
+    /// Segment headers store
+    pub segment_headers_store: SegmentHeadersStore<AS>,
+    /// Subspace sync oracle
+    pub sync_oracle: SubspaceSyncOracle<SO>,
+    /// Signifies whether a potentially unsafe RPC should be denied
+    pub deny_unsafe: DenyUnsafe,
+}
+
 /// Implements the [`SubspaceRpcApiServer`] trait for interacting with Subspace.
 pub struct SubspaceRpc<Block, Client, SO, AS>
 where
@@ -148,7 +175,7 @@ where
     SO: SyncOracle + Send + Sync + Clone + 'static,
 {
     client: Arc<Client>,
-    executor: SubscriptionTaskExecutor,
+    subscription_executor: SubscriptionTaskExecutor,
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
     reward_signing_notification_stream: SubspaceNotificationStream<RewardSigningNotification>,
     archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegmentNotification>,
@@ -183,36 +210,23 @@ where
     SO: SyncOracle + Send + Sync + Clone + 'static,
     AS: AuxStore + Send + Sync + 'static,
 {
-    #[allow(clippy::too_many_arguments)]
     /// Creates a new instance of the `SubspaceRpc` handler.
-    pub fn new(
-        client: Arc<Client>,
-        executor: SubscriptionTaskExecutor,
-        new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
-        reward_signing_notification_stream: SubspaceNotificationStream<RewardSigningNotification>,
-        archived_segment_notification_stream: SubspaceNotificationStream<
-            ArchivedSegmentNotification,
-        >,
-        dsn_bootstrap_nodes: Vec<Multiaddr>,
-        segment_headers_store: SegmentHeadersStore<AS>,
-        sync_oracle: SubspaceSyncOracle<SO>,
-        deny_unsafe: DenyUnsafe,
-    ) -> Self {
+    pub fn new(config: SubspaceRpcConfig<Client, SO, AS>) -> Self {
         Self {
-            client,
-            executor,
-            new_slot_notification_stream,
-            reward_signing_notification_stream,
-            archived_segment_notification_stream,
+            client: config.client,
+            subscription_executor: config.subscription_executor,
+            new_slot_notification_stream: config.new_slot_notification_stream,
+            reward_signing_notification_stream: config.reward_signing_notification_stream,
+            archived_segment_notification_stream: config.archived_segment_notification_stream,
             solution_response_senders: Arc::default(),
             reward_signature_senders: Arc::default(),
-            dsn_bootstrap_nodes,
-            segment_headers_store,
+            dsn_bootstrap_nodes: config.dsn_bootstrap_nodes,
+            segment_headers_store: config.segment_headers_store,
             piece_cache: Arc::default(),
             archived_segment_acknowledgement_senders: Arc::default(),
             next_subscription_id: AtomicU64::default(),
-            sync_oracle,
-            deny_unsafe,
+            sync_oracle: config.sync_oracle,
+            deny_unsafe: config.deny_unsafe,
             _block: PhantomData,
         }
     }
@@ -290,7 +304,7 @@ where
     }
 
     fn subscribe_slot_info(&self, mut sink: SubscriptionSink) -> SubscriptionResult {
-        let executor = self.executor.clone();
+        let executor = self.subscription_executor.clone();
         let solution_response_senders = self.solution_response_senders.clone();
         let allow_solutions = self.deny_unsafe.check_if_safe().is_ok();
 
@@ -384,8 +398,11 @@ where
             sink.pipe_from_stream(stream).await;
         };
 
-        self.executor
-            .spawn("subspace-slot-info-subscription", Some("rpc"), fut.boxed());
+        self.subscription_executor.spawn(
+            "subspace-slot-info-subscription",
+            Some("rpc"),
+            fut.boxed(),
+        );
 
         Ok(())
     }
@@ -395,7 +412,7 @@ where
             .check_if_safe()
             .map_err(|_error| SubscriptionEmptyError)?;
 
-        let executor = self.executor.clone();
+        let executor = self.subscription_executor.clone();
         let reward_signature_senders = self.reward_signature_senders.clone();
 
         let stream = self.reward_signing_notification_stream.subscribe().map(
@@ -469,7 +486,7 @@ where
             sink.pipe_from_stream(stream).await;
         };
 
-        self.executor.spawn(
+        self.subscription_executor.spawn(
             "subspace-block-signing-subscription",
             Some("rpc"),
             fut.boxed(),
@@ -570,7 +587,7 @@ where
                 .remove(&subscription_id);
         };
 
-        self.executor.spawn(
+        self.subscription_executor.spawn(
             "subspace-archived-segment-header-subscription",
             Some("rpc"),
             fut.boxed(),
@@ -612,7 +629,7 @@ where
             }
         };
 
-        self.executor.spawn(
+        self.subscription_executor.spawn(
             "subspace-node-sync-status-change-subscription",
             Some("rpc"),
             fut.boxed(),

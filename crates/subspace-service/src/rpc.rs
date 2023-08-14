@@ -29,7 +29,7 @@ use sc_consensus_subspace::{
     ArchivedSegmentNotification, NewSlotNotification, RewardSigningNotification,
     SegmentHeadersStore, SubspaceSyncOracle,
 };
-use sc_consensus_subspace_rpc::{SubspaceRpc, SubspaceRpcApiServer};
+use sc_consensus_subspace_rpc::{SubspaceRpc, SubspaceRpcApiServer, SubspaceRpcConfig};
 use sc_rpc::SubscriptionTaskExecutor;
 use sc_rpc_api::DenyUnsafe;
 use sc_rpc_spec_v2::chain_spec::{ChainSpec, ChainSpecApiServer};
@@ -120,7 +120,7 @@ where
     module.merge(TransactionPayment::new(client.clone()).into_rpc())?;
 
     module.merge(
-        SubspaceRpc::new(
+        SubspaceRpc::new(SubspaceRpcConfig {
             client,
             subscription_executor,
             new_slot_notification_stream,
@@ -130,7 +130,7 @@ where
             segment_headers_store,
             sync_oracle,
             deny_unsafe,
-        )
+        })
         .into_rpc(),
     )?;
 
