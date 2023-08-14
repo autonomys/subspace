@@ -24,14 +24,12 @@
 
 pub mod dsn;
 mod metrics;
-pub mod piece_cache;
 pub mod rpc;
 mod sync_from_dsn;
 pub mod tx_pre_validator;
 
 use crate::dsn::{create_dsn_instance, DsnConfigurationError};
 use crate::metrics::NodeMetrics;
-use crate::piece_cache::PieceCache;
 use crate::tx_pre_validator::ConsensusChainTxPreValidator;
 use cross_domain_message_gossip::cdm_gossip_peers_set_config;
 use derive_more::{Deref, DerefMut, Into};
@@ -39,9 +37,9 @@ use domain_runtime_primitives::{BlockNumber as DomainNumber, Hash as DomainHash}
 pub use dsn::DsnConfig;
 use frame_system_rpc_runtime_api::AccountNonceApi;
 use futures::channel::oneshot;
-use futures::StreamExt;
 use jsonrpsee::RpcModule;
 use pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi;
+use parking_lot::Mutex;
 use sc_basic_authorship::ProposerFactory;
 use sc_client_api::execution_extensions::ExtensionsFactory;
 use sc_client_api::{
@@ -80,12 +78,12 @@ use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use static_assertions::const_assert;
 use std::marker::PhantomData;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_fraud_proof::verifier_api::VerifierClient;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
-use subspace_networking::{peer_id, Node};
+use subspace_networking::Node;
 use subspace_proof_of_space::Table;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash, Index as Nonce};
@@ -178,8 +176,6 @@ pub enum SubspaceNetworking {
     Create {
         /// Configuration to use for DSN instantiation
         config: DsnConfig,
-        /// Piece cache size in bytes
-        piece_cache_size: u64,
     },
 }
 
@@ -571,12 +567,8 @@ where
         SubspaceNetworking::Reuse {
             node,
             bootstrap_nodes,
-            // TODO: Revisit piece cache creation when we get SDK requirements.
         } => (node, bootstrap_nodes),
-        SubspaceNetworking::Create {
-            config: dsn_config,
-            piece_cache_size,
-        } => {
+        SubspaceNetworking::Create { config: dsn_config } => {
             let dsn_protocol_version = hex::encode(client.chain_info().genesis_hash);
 
             debug!(
@@ -585,47 +577,9 @@ where
                 "Setting DSN protocol version..."
             );
 
-            let piece_cache = PieceCache::new(
-                client.clone(),
-                piece_cache_size,
-                peer_id(&dsn_config.keypair),
-            );
-
-            // Start before archiver below, so we don't have potential race condition and miss pieces
-            task_manager
-                .spawn_handle()
-                .spawn_blocking("subspace-piece-cache", None, {
-                    let mut piece_cache = piece_cache.clone();
-                    let mut archived_segment_notification_stream = subspace_link
-                        .archived_segment_notification_stream()
-                        .subscribe();
-
-                    async move {
-                        while let Some(archived_segment_notification) =
-                            archived_segment_notification_stream.next().await
-                        {
-                            let segment_index = archived_segment_notification
-                                .archived_segment
-                                .segment_header
-                                .segment_index();
-                            if let Err(error) = piece_cache.add_pieces(
-                                segment_index.first_piece_index(),
-                                &archived_segment_notification.archived_segment.pieces,
-                            ) {
-                                error!(
-                                    %segment_index,
-                                    %error,
-                                    "Failed to store pieces for segment in cache"
-                                );
-                            }
-                        }
-                    }
-                });
-
             let (node, mut node_runner) = create_dsn_instance(
                 dsn_protocol_version,
                 dsn_config.clone(),
-                piece_cache,
                 segment_headers_store.clone(),
             )?;
 
@@ -670,11 +624,7 @@ where
 
                 move |address| {
                     if matches!(address.iter().next(), Some(Protocol::Ip4(_))) {
-                        if let Some(node_address_sender) = node_address_sender
-                            .lock()
-                            .expect("Must not be poisoned here")
-                            .take()
-                        {
+                        if let Some(node_address_sender) = node_address_sender.lock().take() {
                             if let Err(err) = node_address_sender.send(address.clone()) {
                                 debug!(?err, "Couldn't send a node address to the channel.");
                             }

@@ -1,4 +1,3 @@
-use crate::piece_cache::PieceCache;
 use sc_client_api::AuxStore;
 use sc_consensus_subspace::archiver::SegmentHeadersStore;
 use std::collections::HashSet;
@@ -10,9 +9,8 @@ use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::utils::strip_peer_id;
 use subspace_networking::{
     CreationError, NetworkParametersPersistenceError, NetworkingParametersManager, Node,
-    NodeRunner, PeerInfoProvider, PieceByHashRequestHandler, PieceByHashResponse,
-    SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
-    KADEMLIA_PROVIDER_TTL_IN_SECS,
+    NodeRunner, PeerInfoProvider, SegmentHeaderBySegmentIndexesRequestHandler,
+    SegmentHeaderRequest, SegmentHeaderResponse, KADEMLIA_PROVIDER_TTL_IN_SECS,
 };
 use thiserror::Error;
 use tracing::{debug, error, trace};
@@ -73,9 +71,8 @@ pub struct DsnConfig {
 pub(crate) fn create_dsn_instance<AS>(
     dsn_protocol_version: String,
     dsn_config: DsnConfig,
-    piece_cache: PieceCache<AS>,
     segment_headers_store: SegmentHeadersStore<AS>,
-) -> Result<(Node, NodeRunner<PieceCache<AS>>), DsnConfigurationError>
+) -> Result<(Node, NodeRunner<()>), DsnConfigurationError>
 where
     AS: AuxStore + Sync + Send + 'static,
 {
@@ -105,7 +102,7 @@ where
     let mut default_networking_config = subspace_networking::Config::new(
         dsn_protocol_version,
         keypair,
-        piece_cache.clone(),
+        (),
         Some(PeerInfoProvider::new_node()),
     );
 
@@ -118,19 +115,8 @@ where
         listen_on: dsn_config.listen_on,
         allow_non_global_addresses_in_dht: dsn_config.allow_non_global_addresses_in_dht,
         networking_parameters_registry,
-        request_response_protocols: vec![
-            PieceByHashRequestHandler::create(move |_, req| {
-                let result = match piece_cache.get_piece(req.piece_index_hash) {
-                    Ok(maybe_piece) => maybe_piece,
-                    Err(error) => {
-                        error!(piece_index_hash = ?req.piece_index_hash, %error, "Failed to get piece from cache");
-                        None
-                    }
-                };
-
-                async { Some(PieceByHashResponse { piece: result }) }
-            }),
-            SegmentHeaderBySegmentIndexesRequestHandler::create(move |_, req| {
+        request_response_protocols: vec![SegmentHeaderBySegmentIndexesRequestHandler::create(
+            move |_, req| {
                 let segment_indexes = match req {
                     SegmentHeaderRequest::SegmentIndexes { segment_indexes } => {
                         segment_indexes.clone()
@@ -179,8 +165,8 @@ where
                 };
 
                 async move { result }
-            }),
-        ],
+            },
+        )],
         max_established_incoming_connections: dsn_config.max_in_connections,
         max_established_outgoing_connections: dsn_config.max_out_connections,
         max_pending_incoming_connections: dsn_config.max_pending_in_connections,
