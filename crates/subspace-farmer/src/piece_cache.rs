@@ -1,7 +1,6 @@
+use crate::node_client::NodeClient;
 use crate::single_disk_plot::piece_cache::{DiskPieceCache, Offset};
 use crate::utils::AsyncJoinOnDrop;
-use crate::NodeClient;
-use futures::lock::Mutex;
 use futures::{select, FutureExt, StreamExt};
 use parking_lot::RwLock;
 use rayon::prelude::*;
@@ -46,7 +45,6 @@ struct CacheWorkerState {
 pub struct CacheWorker<NC> {
     peer_id: PeerId,
     node_client: NC,
-    /// It is important to always lock caches AFTER worker state in order to avoid deadlock!
     caches: Arc<RwLock<Vec<DiskPieceCacheState>>>,
     worker_receiver: Option<mpsc::Receiver<WorkerCommand>>,
 }
@@ -61,11 +59,10 @@ where
         PG: PieceGetter,
     {
         // Limit is dynamically set later
-        // It is important to always lock worker state BEFORE caches in order to avoid deadlock!
-        let worker_state = Mutex::new(CacheWorkerState {
+        let mut worker_state = CacheWorkerState {
             heap: UniqueRecordBinaryHeap::new(self.peer_id, 0),
             last_segment_index: SegmentIndex::ZERO,
-        });
+        };
 
         let mut worker_receiver = self
             .worker_receiver
@@ -75,7 +72,7 @@ where
         if let Some(WorkerCommand::ReplaceBackingCaches { new_caches }) =
             worker_receiver.recv().await
         {
-            self.initialize(&piece_getter, &worker_state, new_caches)
+            self.initialize(&piece_getter, &mut worker_state, new_caches)
                 .await;
         } else {
             // Piece cache is dropped before backing caches were sent
@@ -90,9 +87,9 @@ where
                         return;
                     };
 
-                    self.handle_command(command, &piece_getter, &worker_state).await;
+                    self.handle_command(command, &piece_getter, &mut worker_state).await;
                 }
-                _ = self.keep_up_sync(&piece_getter, &worker_state).fuse() => {
+                _ = self.keep_up_sync(&piece_getter, &mut worker_state).fuse() => {
                     // Keep-up sync only ends with subscription, which lasts for duration of an
                     // instance
                     return;
@@ -105,7 +102,7 @@ where
         &self,
         command: WorkerCommand,
         piece_getter: &PG,
-        worker_state: &Mutex<CacheWorkerState>,
+        worker_state: &mut CacheWorkerState,
     ) where
         PG: PieceGetter,
     {
@@ -116,7 +113,6 @@ where
             }
             // TODO: Consider implementing optional re-sync of the piece instead of just forgetting
             WorkerCommand::ForgetKey { key } => {
-                let mut worker_state = worker_state.lock().await;
                 let mut caches = self.caches.write();
 
                 for (disk_farm_index, cache) in caches.iter_mut().enumerate() {
@@ -149,13 +145,12 @@ where
     async fn initialize<PG>(
         &self,
         piece_getter: &PG,
-        worker_state: &Mutex<CacheWorkerState>,
+        worker_state: &mut CacheWorkerState,
         new_caches: Vec<DiskPieceCache>,
     ) where
         PG: PieceGetter,
     {
         info!("Initializing piece cache");
-        let mut worker_state = worker_state.lock().await;
         // Pull old cache state since it will be replaced with a new one and reuse its allocations
         let cache_state = mem::take(&mut *self.caches.write());
         let mut stored_pieces = Vec::with_capacity(new_caches.len());
@@ -308,7 +303,7 @@ where
         info!("Finished cache initialization");
     }
 
-    async fn keep_up_sync<PG>(&self, piece_getter: &PG, worker_state: &Mutex<CacheWorkerState>)
+    async fn keep_up_sync<PG>(&self, piece_getter: &PG, worker_state: &mut CacheWorkerState)
     where
         PG: PieceGetter,
     {
@@ -330,8 +325,6 @@ where
         while let Some(segment_header) = segment_headers_notifications.next().await {
             let segment_index = segment_header.segment_index();
             debug!(%segment_index, "Starting to process newly archived segment");
-
-            let mut worker_state = worker_state.lock().await;
 
             if worker_state.last_segment_index >= segment_index {
                 continue;
@@ -374,7 +367,7 @@ where
                     continue;
                 };
 
-                self.persist_piece_in_cache(piece_index, piece, &mut worker_state);
+                self.persist_piece_in_cache(piece_index, piece, worker_state);
             }
 
             worker_state.last_segment_index = segment_index;
@@ -399,11 +392,10 @@ where
     async fn keep_up_after_initial_sync<PG>(
         &self,
         piece_getter: &PG,
-        worker_state: &Mutex<CacheWorkerState>,
+        worker_state: &mut CacheWorkerState,
     ) where
         PG: PieceGetter,
     {
-        let mut worker_state = worker_state.lock().await;
         let last_segment_index = match self.node_client.farmer_app_info().await {
             Ok(farmer_app_info) => farmer_app_info.protocol_info.history_size.segment_index(),
             Err(error) => {
@@ -460,7 +452,7 @@ where
                 }
             };
 
-            self.persist_piece_in_cache(piece_index, piece, &mut worker_state);
+            self.persist_piece_in_cache(piece_index, piece, worker_state);
         }
 
         info!("Finished syncing piece cache to the latest history size");
