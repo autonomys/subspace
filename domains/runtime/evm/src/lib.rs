@@ -356,8 +356,7 @@ parameter_types! {
 parameter_types! {
     pub const MaximumRelayers: u32 = 100;
     pub const RelayerDeposit: Balance = 100 * SSC;
-    // TODO: Proper value
-    pub SelfChainId: ChainId = 3u32.into();
+    pub SelfChainId: ChainId = SelfDomainId::self_domain_id().into();
 }
 
 impl pallet_messenger::Config for Runtime {
@@ -838,7 +837,6 @@ impl_runtime_apis! {
     }
 
     impl sp_messenger::RelayerApi<Block, AccountId, BlockNumber> for Runtime {
-        // TODO: This should come from domain_id pallet
         fn chain_id() -> ChainId {
             SelfChainId::get()
         }
