@@ -18,6 +18,7 @@ use crate::utils::{strip_peer_id, ResizableSemaphore};
 use crate::{PeerInfo, PeerInfoConfig};
 use backoff::{ExponentialBackoff, SystemClock};
 use futures::channel::mpsc;
+use libp2p::autonat::Config as AutonatConfig;
 use libp2p::connection_limits::ConnectionLimits;
 use libp2p::gossipsub::{
     Config as GossipsubConfig, ConfigBuilder as GossipsubConfigBuilder,
@@ -247,6 +248,8 @@ pub struct Config<LocalRecordProvider> {
     /// Known external addresses to the local peer. The addresses will be added on the swarm start
     /// and enable peer to notify others about its reachable address.
     pub external_addresses: Vec<Multiaddr>,
+    /// Enable autonat protocol. Helps detecting whether we're behind the firewall.
+    pub enable_autonat: bool,
 }
 
 impl<LocalRecordProvider> fmt::Debug for Config<LocalRecordProvider> {
@@ -361,6 +364,7 @@ where
             bootstrap_addresses: Vec::new(),
             kademlia_mode: Some(Mode::Server),
             external_addresses: Vec::new(),
+            enable_autonat: true,
         }
     }
 }
@@ -423,6 +427,7 @@ where
         bootstrap_addresses,
         kademlia_mode,
         external_addresses,
+        enable_autonat,
     } = config;
     let local_peer_id = peer_id(&keypair);
 
@@ -481,6 +486,11 @@ where
                 target_connected_peers: special_target_connections,
                 ..ConnectedPeersConfig::default()
             }
+        }),
+        autonat: enable_autonat.then(|| AutonatConfig {
+            use_connected: true,
+            only_global_ips: !config.allow_non_global_addresses_in_dht,
+            ..Default::default()
         }),
     });
 

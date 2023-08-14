@@ -159,6 +159,7 @@ pub async fn configure_dsn(
         kademlia_mode: Some(Mode::Client),
         request_response_protocols: vec![PieceByIndexRequestHandler::create(|_, _| async { None })],
         bootstrap_addresses,
+        enable_autonat: false,
         ..default_config
     };
     let (node, mut node_runner_1) = subspace_networking::create(config).unwrap();

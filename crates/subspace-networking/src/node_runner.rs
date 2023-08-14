@@ -24,6 +24,7 @@ use event_listener_primitives::HandlerId;
 use futures::channel::mpsc;
 use futures::future::Fuse;
 use futures::{FutureExt, StreamExt};
+use libp2p::autonat::Event as AutonatEvent;
 use libp2p::core::{address_translation, ConnectedPoint};
 use libp2p::gossipsub::{Event as GossipsubEvent, TopicHash};
 use libp2p::identify::Event as IdentifyEvent;
@@ -418,6 +419,9 @@ where
             }
             SwarmEvent::Behaviour(Event::SpecialConnectedPeers(event)) => {
                 self.handle_special_connected_peers_event(event).await;
+            }
+            SwarmEvent::Behaviour(Event::Autonat(event)) => {
+                self.handle_autonat_event(event).await;
             }
             SwarmEvent::NewListenAddr { address, .. } => {
                 let shared = match self.shared_weak.upgrade() {
@@ -1103,6 +1107,21 @@ where
             self.swarm.behaviour_mut().special_connected_peers.as_mut()
         {
             special_connected_peers.add_peers_to_dial(&peers);
+        }
+    }
+
+    async fn handle_autonat_event(&mut self, event: AutonatEvent) {
+        trace!(?event, "Autonat event received.");
+        if let Some(autonat) = self.swarm.behaviour().autonat.as_ref() {
+            debug!(
+                public_address=?autonat.public_address(),
+                confidence=%autonat.confidence(),
+                "Current public address confidence."
+            );
+        }
+
+        if let AutonatEvent::StatusChanged { old, new } = event {
+            info!(?old, ?new, "Public address status changed.")
         }
     }
 
