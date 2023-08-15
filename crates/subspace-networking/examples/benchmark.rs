@@ -69,7 +69,41 @@ async fn main() {
     info!("Exiting..");
 }
 
+#[derive(Debug, Default)]
+struct PieceRequestStats {
+    found: u32,
+    not_found: u32,
+    error: u32,
+}
+impl PieceRequestStats {
+    fn add_found(&mut self) {
+        self.found += 1;
+    }
+
+    fn add_not_found(&mut self) {
+        self.not_found += 1;
+    }
+
+    fn add_error(&mut self) {
+        self.error += 1;
+    }
+
+    fn display(&self) {
+        info!("Piece requests:");
+        if self.found > 0 {
+            info!("Found: {}", self.found);
+        }
+        if self.not_found > 0 {
+            warn!("Not found: {}", self.not_found);
+        }
+        if self.error > 0 {
+            error!("Error: {}", self.error);
+        }
+    }
+}
+
 async fn simple_benchmark(node: Node, max_pieces: usize, start_with: usize) {
+    let mut stats = PieceRequestStats::default();
     if max_pieces == 0 {
         error!("Incorrect max_pieces variable set:{max_pieces}");
         return;
@@ -88,13 +122,16 @@ async fn simple_benchmark(node: Node, max_pieces: usize, start_with: usize) {
         total_duration += duration;
         match piece {
             Ok(Some(_)) => {
-                info!(%piece_index, ?duration, "Piece found.")
+                info!(%piece_index, ?duration, "Piece found.");
+                stats.add_found();
             }
             Ok(None) => {
-                warn!(%piece_index, ?duration, "Piece not found.")
+                warn!(%piece_index, ?duration, "Piece not found.");
+                stats.add_not_found();
             }
             Err(error) => {
-                error!(%piece_index, ?duration, ?error, "Piece request failed.")
+                error!(%piece_index, ?duration, ?error, "Piece request failed.");
+                stats.add_error();
             }
         }
     }
@@ -104,6 +141,7 @@ async fn simple_benchmark(node: Node, max_pieces: usize, start_with: usize) {
         "Average time for {max_pieces} pieces: {:?}",
         average_duration
     );
+    stats.display();
 }
 
 pub async fn configure_dsn(
