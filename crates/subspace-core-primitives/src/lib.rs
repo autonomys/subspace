@@ -969,14 +969,11 @@ impl AsRef<[u8]> for SectorId {
 
 impl SectorId {
     /// Create new sector ID by deriving it from public key and sector index
-    pub fn new(mut public_key_hash: Blake2b256Hash, sector_index: SectorIndex) -> Self {
-        public_key_hash
-            .iter_mut()
-            .zip(&sector_index.to_le_bytes())
-            .for_each(|(a, b)| {
-                *a ^= *b;
-            });
-        Self(public_key_hash)
+    pub fn new(public_key_hash: Blake2b256Hash, sector_index: SectorIndex) -> Self {
+        Self(blake2b_256_hash_with_key(
+            &public_key_hash,
+            &sector_index.to_le_bytes(),
+        ))
     }
 
     /// Derive piece index that should be stored in sector at `piece_offset` for specified size of
