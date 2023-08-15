@@ -3,17 +3,17 @@
 use crate::gossip::PotGossip;
 use crate::state_manager::PotProtocolState;
 use crate::PotComponents;
-use futures::StreamExt;
-use sc_client_api::BlockchainEvents;
+use futures::{FutureExt, StreamExt};
+use sc_client_api::{BlockImportNotification, BlockchainEvents};
 use sc_network::PeerId;
 use sc_network_gossip::{Network as GossipNetwork, Syncing as GossipSyncing};
 use sp_blockchain::HeaderBackend;
 use sp_consensus_subspace::digests::extract_pre_digest;
 use sp_core::H256;
-use sp_runtime::traits::Block as BlockT;
+use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use std::sync::Arc;
 use std::time::Instant;
-use subspace_core_primitives::PotProof;
+use subspace_core_primitives::{BlockNumber, PotProof};
 use tracing::{debug, error, trace, warn};
 
 /// The PoT client implementation
@@ -26,6 +26,7 @@ pub struct PotClient<Block: BlockT<Hash = H256>, Client> {
 impl<Block, Client> PotClient<Block, Client>
 where
     Block: BlockT<Hash = H256>,
+    BlockNumber: From<<<Block as BlockT>::Header as HeaderT>::Number>,
     Client: HeaderBackend<Block> + BlockchainEvents<Block>,
 {
     /// Creates the PoT client instance.
@@ -58,10 +59,22 @@ where
             Arc::new(|sender, proof| {
                 self.handle_gossip_message(sender, proof);
             });
-        self.gossip
-            .process_incoming_messages(handle_gossip_message)
-            .await;
-        error!("Gossip engine has terminated");
+        let mut block_import = self.client.import_notification_stream();
+        loop {
+            futures::select! {
+                incoming_block = block_import.next().fuse() => {
+                    if let Some(incoming_block) = incoming_block {
+                        self.handle_block_import(incoming_block);
+                    }
+                }
+                _ = self.gossip.process_incoming_messages(
+                    handle_gossip_message.clone()
+                ).fuse() => {
+                    error!("Gossip engine has terminated");
+                    return;
+                }
+            }
+        }
     }
 
     /// Initializes the chain state from the consensus tip info.
@@ -118,6 +131,25 @@ where
             trace!(%error, %sender, "On gossip");
         } else {
             trace!(%proof, ?elapsed, %sender, "On gossip");
+        }
+    }
+
+    /// Handles the block import notification.
+    fn handle_block_import(&self, incoming_block: BlockImportNotification<Block>) {
+        match extract_pre_digest(&incoming_block.header) {
+            Ok(pre_digest) => {
+                self.pot_state.on_block_import(
+                    (*incoming_block.header.number()).into(),
+                    incoming_block.hash.into(),
+                    *pre_digest.slot,
+                );
+            }
+            Err(err) => {
+                warn!(
+                    "pot_client::block_import: failed to get pre_digest: {}/{:?}/{err:?}",
+                    incoming_block.hash, incoming_block.origin
+                );
+            }
         }
     }
 }

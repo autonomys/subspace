@@ -10,13 +10,67 @@ use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
-use subspace_core_primitives::{BlockNumber, NonEmptyVec, PotKey, PotProof, PotSeed, SlotNumber};
+use subspace_core_primitives::{
+    BlockHash, BlockNumber, NonEmptyVec, PotKey, PotProof, PotSeed, SlotNumber,
+    POT_ENTROPY_INJECTION_DELAY, POT_ENTROPY_INJECTION_INTERVAL,
+    POT_ENTROPY_INJECTION_LOOK_BACK_DEPTH,
+};
 use subspace_proof_of_time::{PotVerificationError, ProofOfTime};
-use tracing::trace;
+use tracing::{debug, trace};
 
 /// The maximum size of the PoT chain to keep (about 5 min worth of proofs for now).
 /// TODO: remove this when purging is implemented.
 const POT_CHAIN_MAX_SIZE: NonZeroUsize = NonZeroUsize::new(300).expect("Not zero; qed");
+
+/// The maximum number of entropy entries to keep (about 10 minutes worth now,
+/// with POT_ENTROPY_INJECTION_INTERVAL = 20 blocks).
+/// TODO: remove this when purging is implemented.
+const ENTROPY_INJECTION_MAX_SIZE: NonZeroUsize = NonZeroUsize::new(30).expect("Not zero; qed");
+
+/// The info to create the next proof after the current tip.
+/// It has everything in PotProof except the checkpoints.
+#[derive(Debug)]
+pub(crate) struct PartialProof {
+    /// Slot the proof was evaluated for.
+    pub(crate) slot_number: SlotNumber,
+
+    /// The seed used for evaluation.
+    pub(crate) seed: PotSeed,
+
+    /// The key used for evaluation.
+    pub(crate) key: PotKey,
+
+    /// Hash of last block at injection point.
+    pub(crate) injected_block_hash: BlockHash,
+}
+
+impl PartialProof {
+    /// Create the partial proof.
+    pub fn new(
+        slot_number: SlotNumber,
+        seed: PotSeed,
+        key: PotKey,
+        injected_block_hash: BlockHash,
+    ) -> Self {
+        Self {
+            slot_number,
+            seed,
+            key,
+            injected_block_hash,
+        }
+    }
+
+    /// Builds the complete proof with the checkpoints.
+    pub(crate) fn proof(self, checkpoints: NonEmptyVec<PotCheckpoint>) -> PotProof {
+        PotProof::new(
+            self.slot_number,
+            self.seed,
+            self.key,
+            checkpoints,
+            self.injected_block_hash,
+        )
+    }
+}
 
 /// Error codes for PotProtocolState APIs.
 #[derive(Debug, thiserror::Error)]
@@ -235,6 +289,107 @@ impl PotChain {
     }
 }
 
+/// Entropy injection state.
+struct EntropyInjection {
+    /// Entropy injection waiting for the target block
+    /// to be imported, so that the entropy can be applied.
+    /// Contains the block hash and the slot number of the block.
+    pending: BTreeMap<BlockNumber, (BlockHash, SlotNumber)>,
+
+    /// Entropy to apply, indexed by slot number.
+    ready: BTreeMap<SlotNumber, BlockHash>,
+
+    /// Expected number of slots per block.
+    slots_per_block: SlotNumber,
+
+    /// Max entropy entries to keep.
+    max_entries: usize,
+}
+
+impl EntropyInjection {
+    /// Creates the entropy state.
+    fn new(slots_per_block: SlotNumber, max_entries: usize) -> Self {
+        Self {
+            pending: BTreeMap::new(),
+            ready: BTreeMap::new(),
+            slots_per_block,
+            max_entries,
+        }
+    }
+
+    /// Handles a block import.
+    fn handle_block_import(
+        &mut self,
+        block_number: BlockNumber,
+        block_hash: BlockHash,
+        slot_number: SlotNumber,
+    ) {
+        self.add_entropy(block_number);
+        self.update_pending(block_number, block_hash, slot_number);
+    }
+
+    /// Updates the entropy ready to be injected.
+    fn add_entropy(&mut self, block_number: BlockNumber) {
+        if (block_number % POT_ENTROPY_INJECTION_INTERVAL) != 0
+            || block_number <= POT_ENTROPY_INJECTION_LOOK_BACK_DEPTH
+        {
+            return;
+        }
+
+        let source_block = block_number - POT_ENTROPY_INJECTION_LOOK_BACK_DEPTH;
+        let (source_block_hash, source_block_slot) = match self.pending.get(&source_block) {
+            Some((block_hash, slot_number)) => (*block_hash, *slot_number),
+            None => {
+                // This could be because of reorg: we already received an import
+                // notification for the same block number, and the pending
+                // entry was moved to ready state.
+                debug!(%source_block, "Adding entropy: missing source block: ");
+                return;
+            }
+        };
+
+        // Schedule the source entropy at the injection slot.
+        let injection_slot = source_block_slot
+            + (POT_ENTROPY_INJECTION_LOOK_BACK_DEPTH as SlotNumber * self.slots_per_block)
+            + POT_ENTROPY_INJECTION_DELAY;
+        self.pending.remove(&source_block);
+        let purged = if self.ready.len() >= self.max_entries {
+            self.ready.pop_first()
+        } else {
+            None
+        };
+        self.ready.insert(injection_slot, source_block_hash);
+        debug!(
+            %block_number, %source_block, %source_block_slot, %injection_slot,
+            ?source_block_hash, ?purged,
+            "Adding entropy: "
+        );
+    }
+
+    /// Updates the pending state.
+    fn update_pending(
+        &mut self,
+        block_number: BlockNumber,
+        block_hash: BlockHash,
+        slot_number: SlotNumber,
+    ) {
+        let dst_block = block_number + POT_ENTROPY_INJECTION_LOOK_BACK_DEPTH;
+        if (dst_block % POT_ENTROPY_INJECTION_INTERVAL) != 0 {
+            // This block is not a candidate for injection source.
+            return;
+        }
+
+        if let Some(existing) = self.pending.insert(block_number, (block_hash, slot_number)) {
+            // This could be because of reorg.
+            debug!(%block_number, ?existing, "Adding pending entry: duplicate: ");
+        }
+        debug!(
+            %block_number, %dst_block, %slot_number, ?block_hash,
+            "Adding pending entry: "
+        );
+    }
+}
+
 /// The shared PoT state.
 struct InternalState {
     /// Config.
@@ -249,12 +404,19 @@ struct InternalState {
     /// are already verified before being added to the future list.
     /// TODO: limit the number of proofs per future slot.
     future_proofs: BTreeMap<SlotNumber, BTreeMap<PeerId, PotProof>>,
+
+    /// Entropy injection state.
+    entropy_injection: EntropyInjection,
 }
 
 impl InternalState {
     /// Creates the state.
     fn new(config: PotConfig) -> Self {
         Self {
+            entropy_injection: EntropyInjection::new(
+                config.slots_per_block,
+                ENTROPY_INJECTION_MAX_SIZE.get(),
+            ),
             config,
             chain: PotChain::new(POT_CHAIN_MAX_SIZE),
             future_proofs: BTreeMap::new(),
@@ -580,6 +742,17 @@ impl InternalState {
         Ok(())
     }
 
+    /// Handles the block import notification.
+    fn handle_block_import(
+        &mut self,
+        block_number: BlockNumber,
+        block_hash: BlockHash,
+        slot_number: SlotNumber,
+    ) {
+        self.entropy_injection
+            .handle_block_import(block_number, block_hash, slot_number)
+    }
+
     /// Returns the current tip of the chain.
     fn tip(&self) -> Option<PotProof> {
         self.chain.tip()
@@ -718,6 +891,15 @@ pub(crate) trait PotProtocolState: Send + Sync {
         proof: &PotProof,
     ) -> Result<(), PotProtocolStateError>;
 
+    /// Called on block import notification to update the entropy injection
+    /// state.
+    fn on_block_import(
+        &self,
+        block_number: BlockNumber,
+        block_hash: BlockHash,
+        slot_number: SlotNumber,
+    );
+
     /// Called by gossip validator to filter out the received proofs
     /// early on. This performs only simple/inexpensive checks, the
     /// actual AES verification happens later when the proof is delivered
@@ -745,6 +927,17 @@ impl PotProtocolState for StateManager {
         proof: &PotProof,
     ) -> Result<(), PotProtocolStateError> {
         self.state.lock().handle_peer_proof(sender, proof)
+    }
+
+    fn on_block_import(
+        &self,
+        block_number: BlockNumber,
+        block_hash: BlockHash,
+        slot_number: SlotNumber,
+    ) {
+        self.state
+            .lock()
+            .handle_block_import(block_number, block_hash, slot_number)
     }
 
     fn is_candidate(&self, sender: PeerId, proof: &PotProof) -> Result<(), PotProtocolStateError> {

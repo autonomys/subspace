@@ -5,17 +5,17 @@ use crate::state_manager::PotProtocolState;
 use crate::PotComponents;
 use futures::{FutureExt, StreamExt};
 use parity_scale_codec::Encode;
-use sc_client_api::BlockchainEvents;
+use sc_client_api::{BlockImportNotification, BlockchainEvents};
 use sc_network::PeerId;
 use sc_network_gossip::{Network as GossipNetwork, Syncing as GossipSyncing};
 use sp_blockchain::HeaderBackend;
 use sp_consensus_subspace::digests::extract_pre_digest;
 use sp_core::H256;
-use sp_runtime::traits::Block as BlockT;
+use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
-use subspace_core_primitives::{NonEmptyVec, PotProof, PotSeed};
+use subspace_core_primitives::{BlockNumber, NonEmptyVec, PotProof, PotSeed};
 use subspace_proof_of_time::ProofOfTime;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tracing::{debug, error, trace, warn};
@@ -40,6 +40,7 @@ pub struct TimeKeeper<Block: BlockT<Hash = H256>, Client> {
 impl<Block, Client> TimeKeeper<Block, Client>
 where
     Block: BlockT<Hash = H256>,
+    BlockNumber: From<<<Block as BlockT>::Header as HeaderT>::Number>,
     Client: HeaderBackend<Block> + BlockchainEvents<Block>,
 {
     /// Creates the time keeper instance.
@@ -78,14 +79,19 @@ where
             Arc::new(|sender, proof| {
                 self.handle_gossip_message(sender, proof);
             });
+        let mut block_import = self.client.import_notification_stream();
         loop {
             futures::select! {
                 local_proof = local_proof_receiver.recv().fuse() => {
                     if let Some(proof) = local_proof {
-                        trace!(%proof, "Got local proof");
                         self.handle_local_proof(proof);
                     }
                 },
+                incoming_block = block_import.next().fuse() => {
+                    if let Some(incoming_block) = incoming_block {
+                        self.handle_block_import(incoming_block);
+                    }
+                }
                 _ = self.gossip.process_incoming_messages(
                     handle_gossip_message.clone()
                 ).fuse() => {
@@ -238,6 +244,25 @@ where
             trace!(%error, %sender, "On gossip");
         } else {
             trace!(%proof, ?elapsed, %sender, "On gossip");
+        }
+    }
+
+    /// Handles the block import notification.
+    fn handle_block_import(&self, incoming_block: BlockImportNotification<Block>) {
+        match extract_pre_digest(&incoming_block.header) {
+            Ok(pre_digest) => {
+                self.pot_state.on_block_import(
+                    (*incoming_block.header.number()).into(),
+                    incoming_block.hash.into(),
+                    *pre_digest.slot,
+                );
+            }
+            Err(err) => {
+                warn!(
+                    "time_keeper::block_import: failed to get pre_digest: {}/{:?}/{err:?}",
+                    incoming_block.hash, incoming_block.origin
+                );
+            }
         }
     }
 }

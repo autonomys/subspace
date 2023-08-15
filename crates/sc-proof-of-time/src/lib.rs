@@ -26,16 +26,9 @@ pub struct PotConfig {
     /// Frequency of entropy injection from consensus.
     pub randomness_update_interval_blocks: BlockNumber,
 
-    /// Starting point for entropy injection from consensus.
-    pub injection_depth_blocks: BlockNumber,
-
     /// Number of slots it takes for updated global randomness to
     /// take effect.
     pub global_randomness_reveal_lag_slots: SlotNumber,
-
-    /// Number of slots it takes for injected randomness to
-    /// take effect.
-    pub pot_injection_lag_slots: SlotNumber,
 
     /// If the received proof is more than max_future_slots into the
     /// future from the current tip's slot, reject it.
@@ -46,6 +39,10 @@ pub struct PotConfig {
 
     /// Number of checkpoints per proof.
     pub num_checkpoints: NonZeroU8,
+
+    /// Expected number of slots per block.
+    /// TODO: remove this, pass in chain constants during init time.
+    pub slots_per_block: SlotNumber,
 }
 
 impl Default for PotConfig {
@@ -55,12 +52,11 @@ impl Default for PotConfig {
         // during the initial testing.
         Self {
             randomness_update_interval_blocks: 18,
-            injection_depth_blocks: 90,
             global_randomness_reveal_lag_slots: 6,
-            pot_injection_lag_slots: 6,
             max_future_slots: 10,
             pot_iterations: NonZeroU32::new(4 * 1_000).expect("Not zero; qed"),
             num_checkpoints: NonZeroU8::new(4).expect("Not zero; qed"),
+            slots_per_block: 6,
         }
     }
 }

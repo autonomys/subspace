@@ -154,6 +154,19 @@ pub const PUBLIC_KEY_LENGTH: usize = 32;
 /// Length of signature in bytes
 pub const REWARD_SIGNATURE_LENGTH: usize = 64;
 
+/// Entropy is injected from the consensus chain every
+/// POT_ENTROPY_INJECTION_INTERVAL blocks.
+pub const POT_ENTROPY_INJECTION_INTERVAL: BlockNumber = 20;
+
+/// When a `block number` meets the block injection criteria, the block hash
+/// of an older block is used as the entropy, where the older block number is
+/// `block number - POT_ENTROPY_INJECTION_LOOK_BACK_DEPTH`.
+pub const POT_ENTROPY_INJECTION_LOOK_BACK_DEPTH: BlockNumber = 30;
+
+/// Extra slots to wait before injection takes effect, when entropy
+/// is injected at a block.
+pub const POT_ENTROPY_INJECTION_DELAY: SlotNumber = 20;
+
 /// Proof of space seed.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Deref)]
 pub struct PosSeed([u8; Self::SIZE]);
