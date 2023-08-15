@@ -51,7 +51,7 @@ pub use request_handlers::piece_announcement::{
     PieceAnnouncementRequest, PieceAnnouncementRequestHandler, PieceAnnouncementResponse,
 };
 pub use request_handlers::piece_by_key::{
-    PieceByHashRequest, PieceByHashRequestHandler, PieceByHashResponse,
+    PieceByIndexRequest, PieceByIndexRequestHandler, PieceByIndexResponse,
 };
 pub use request_handlers::pieces_by_range::{
     PiecesByRangeRequest, PiecesByRangeRequestHandler, PiecesByRangeResponse, PiecesToPlot,

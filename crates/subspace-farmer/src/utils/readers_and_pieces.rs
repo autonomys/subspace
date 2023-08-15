@@ -3,7 +3,7 @@ use crate::utils::archival_storage_pieces::ArchivalStoragePieces;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::future::Future;
-use subspace_core_primitives::{Piece, PieceIndexHash, PieceOffset, SectorIndex};
+use subspace_core_primitives::{Piece, PieceIndex, PieceOffset, SectorIndex};
 use subspace_farmer_components::plotting::PlottedSector;
 use tracing::{trace, warn};
 
@@ -19,7 +19,7 @@ struct PieceDetails {
 #[derive(Debug)]
 pub struct ReadersAndPieces {
     readers: Vec<PieceReader>,
-    pieces: HashMap<PieceIndexHash, Vec<PieceDetails>>,
+    pieces: HashMap<PieceIndex, Vec<PieceDetails>>,
     archival_storage_pieces: ArchivalStoragePieces,
 }
 
@@ -33,8 +33,8 @@ impl ReadersAndPieces {
     }
 
     /// Check if piece is known and can be retrieved
-    pub fn contains_piece(&self, piece_index_hash: &PieceIndexHash) -> bool {
-        self.pieces.contains_key(piece_index_hash)
+    pub fn contains_piece(&self, piece_index: &PieceIndex) -> bool {
+        self.pieces.contains_key(piece_index)
     }
 
     /// Read piece from one of the associated readers.
@@ -43,16 +43,16 @@ impl ReadersAndPieces {
     /// longer in the plot, future will resolve with `None`.
     pub fn read_piece(
         &self,
-        piece_index_hash: &PieceIndexHash,
+        piece_index: &PieceIndex,
     ) -> Option<impl Future<Output = Option<Piece>> + 'static> {
-        let piece_details = match self.pieces.get(piece_index_hash) {
+        let piece_details = match self.pieces.get(piece_index) {
             Some(piece_details) => piece_details
                 .first()
                 .copied()
                 .expect("Empty lists are not stored in the map; qed"),
             None => {
                 trace!(
-                    ?piece_index_hash,
+                    ?piece_index,
                     "Piece is not stored in any of the local plots"
                 );
                 return None;
@@ -61,7 +61,7 @@ impl ReadersAndPieces {
         let mut reader = match self.readers.get(usize::from(piece_details.disk_farm_index)) {
             Some(reader) => reader.clone(),
             None => {
-                warn!(?piece_index_hash, ?piece_details, "Plot offset is invalid");
+                warn!(?piece_index, ?piece_details, "Plot offset is invalid");
                 return None;
             }
         };
@@ -85,7 +85,7 @@ impl ReadersAndPieces {
                 piece_offset,
             };
 
-            match self.pieces.entry(piece_index.hash()) {
+            match self.pieces.entry(piece_index) {
                 Entry::Occupied(mut entry) => {
                     entry.get_mut().push(piece_details);
                 }
@@ -113,7 +113,7 @@ impl ReadersAndPieces {
                 piece_offset,
             };
 
-            if let Entry::Occupied(mut entry) = self.pieces.entry(piece_index.hash()) {
+            if let Entry::Occupied(mut entry) = self.pieces.entry(piece_index) {
                 let piece_details = entry.get_mut();
                 if let Some(index) =
                     piece_details
@@ -140,7 +140,7 @@ impl ReadersAndPieces {
         }
     }
 
-    pub fn piece_index_hashes(&self) -> impl Iterator<Item = &PieceIndexHash> {
+    pub fn piece_index_hashes(&self) -> impl Iterator<Item = &PieceIndex> {
         self.pieces.keys()
     }
 }

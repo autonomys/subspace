@@ -18,7 +18,7 @@ use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::utils::strip_peer_id;
 use subspace_networking::{
     create, Config, NetworkingParametersManager, Node, NodeRunner, PeerInfo, PeerInfoProvider,
-    PieceByHashRequest, PieceByHashRequestHandler, PieceByHashResponse,
+    PieceByIndexRequest, PieceByIndexRequestHandler, PieceByIndexResponse,
     SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
 };
 use subspace_rpc_primitives::MAX_SEGMENT_HEADERS_PER_REQUEST;
@@ -109,8 +109,11 @@ pub(super) fn configure_dsn(
         allow_non_global_addresses_in_dht: enable_private_ips,
         networking_parameters_registry: Some(networking_parameters_registry),
         request_response_protocols: vec![
-            PieceByHashRequestHandler::create(
-                move |_, &PieceByHashRequest { piece_index_hash }| {
+            PieceByIndexRequestHandler::create(
+                move |_,
+                      &PieceByIndexRequest {
+                          piece_index: piece_index_hash,
+                      }| {
                     debug!(?piece_index_hash, "Piece request received. Trying cache...");
 
                     let weak_readers_and_pieces = weak_readers_and_pieces.clone();
@@ -121,7 +124,7 @@ pub(super) fn configure_dsn(
                         let piece_from_store = piece_cache.get_piece(key).await;
 
                         if let Some(piece) = piece_from_store {
-                            Some(PieceByHashResponse { piece: Some(piece) })
+                            Some(PieceByIndexResponse { piece: Some(piece) })
                         } else {
                             debug!(
                                 ?piece_index_hash,
@@ -155,7 +158,7 @@ pub(super) fn configure_dsn(
 
                             let piece = read_piece_fut.await;
 
-                            Some(PieceByHashResponse { piece })
+                            Some(PieceByIndexResponse { piece })
                         }
                     }
                     .in_current_span()

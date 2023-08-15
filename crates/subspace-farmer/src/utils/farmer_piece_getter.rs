@@ -63,8 +63,7 @@ where
         piece_index: PieceIndex,
         retry_policy: PieceGetterRetryPolicy,
     ) -> Result<Option<Piece>, Box<dyn Error + Send + Sync + 'static>> {
-        let piece_index_hash = piece_index.hash();
-        let key = RecordKey::from(piece_index_hash.to_multihash());
+        let key = RecordKey::from(piece_index.to_multihash());
 
         if let Some(piece) = self.piece_cache.get_piece(key).await {
             return Ok(Some(piece));
@@ -101,7 +100,7 @@ where
             .readers_and_pieces
             .lock()
             .as_ref()
-            .and_then(|readers_and_pieces| readers_and_pieces.read_piece(&piece_index_hash));
+            .and_then(|readers_and_pieces| readers_and_pieces.read_piece(&piece_index));
 
         if let Some(read_piece_fut) = maybe_read_piece_fut {
             if let Some(piece) = read_piece_fut.await {

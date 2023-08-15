@@ -77,7 +77,7 @@ pub struct KeyWrapper<T>(pub T);
 
 impl From<KeyWrapper<PieceIndex>> for Key {
     fn from(value: KeyWrapper<PieceIndex>) -> Self {
-        value.0.hash().to_multihash().into()
+        value.0.to_multihash().into()
     }
 }
 

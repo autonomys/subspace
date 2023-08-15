@@ -10,7 +10,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use subspace_core_primitives::PieceIndex;
 use subspace_networking::utils::piece_provider::{NoPieceValidator, PieceProvider, RetryPolicy};
-use subspace_networking::{Config, Node, PeerInfoProvider, PieceByHashRequestHandler};
+use subspace_networking::{Config, Node, PeerInfoProvider, PieceByIndexRequestHandler};
 use tracing::{error, info, warn, Level};
 use tracing_subscriber::fmt::Subscriber;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -119,7 +119,7 @@ pub async fn configure_dsn(
         listen_on: vec!["/ip4/0.0.0.0/tcp/40044".parse().unwrap()],
         allow_non_global_addresses_in_dht: enable_private_ips,
         kademlia_mode: Some(Mode::Client),
-        request_response_protocols: vec![PieceByHashRequestHandler::create(|_, _| async { None })],
+        request_response_protocols: vec![PieceByIndexRequestHandler::create(|_, _| async { None })],
         bootstrap_addresses,
         ..default_config
     };
