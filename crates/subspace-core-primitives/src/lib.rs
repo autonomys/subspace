@@ -56,8 +56,8 @@ use derive_more::{Add, AsMut, AsRef, Deref, DerefMut, Display, Div, From, Into, 
 use num_traits::{WrappingAdd, WrappingSub};
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 pub use pieces::{
-    FlatPieces, Piece, PieceArray, PieceIndex, PieceIndexHash, PieceOffset, RawRecord, Record,
-    RecordCommitment, RecordWitness, SBucket,
+    FlatPieces, Piece, PieceArray, PieceIndex, PieceOffset, RawRecord, Record, RecordCommitment,
+    RecordWitness, SBucket,
 };
 use scale_info::TypeInfo;
 pub use segments::{ArchivedHistorySegment, HistorySize, RecordedHistorySegment, SegmentIndex};
@@ -878,20 +878,6 @@ impl From<u128> for U256 {
     #[inline]
     fn from(number: u128) -> Self {
         Self(number.into())
-    }
-}
-
-impl From<PieceIndexHash> for U256 {
-    #[inline]
-    fn from(hash: PieceIndexHash) -> Self {
-        Self(private_u256::U256::from_big_endian(hash.as_ref()))
-    }
-}
-
-impl From<U256> for PieceIndexHash {
-    #[inline]
-    fn from(number: U256) -> Self {
-        Self::from(number.to_be_bytes())
     }
 }
 

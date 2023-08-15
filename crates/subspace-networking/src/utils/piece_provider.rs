@@ -1,7 +1,7 @@
 //! Provides methods to retrieve pieces from DSN.
 
 use crate::utils::multihash::ToMultihash;
-use crate::{Node, PieceByHashRequest, PieceByHashResponse};
+use crate::{Node, PieceByIndexRequest, PieceByIndexResponse};
 use async_trait::async_trait;
 use backoff::future::retry;
 use backoff::ExponentialBackoff;
@@ -76,8 +76,7 @@ where
 
     // Get from piece cache (L2)
     async fn get_piece_from_cache(&self, piece_index: PieceIndex) -> Option<Piece> {
-        let piece_index_hash = piece_index.hash();
-        let key = piece_index_hash.to_multihash();
+        let key = piece_index.to_multihash();
 
         let get_providers_result = self.node.get_providers(key).await;
 
@@ -88,11 +87,11 @@ where
 
                     let request_result = self
                         .node
-                        .send_generic_request(provider_id, PieceByHashRequest { piece_index_hash })
+                        .send_generic_request(provider_id, PieceByIndexRequest { piece_index })
                         .await;
 
                     match request_result {
-                        Ok(PieceByHashResponse { piece: Some(piece) }) => {
+                        Ok(PieceByIndexResponse { piece: Some(piece) }) => {
                             trace!(%provider_id, %piece_index, ?key, "Piece request succeeded.");
 
                             if let Some(validator) = &self.piece_validator {
@@ -103,7 +102,7 @@ where
                                 return Some(piece);
                             }
                         }
-                        Ok(PieceByHashResponse { piece: None }) => {
+                        Ok(PieceByIndexResponse { piece: None }) => {
                             debug!(%provider_id, %piece_index, ?key, "Piece request returned empty piece.");
                         }
                         Err(error) => {
@@ -180,15 +179,13 @@ where
         peer_id: PeerId,
         piece_index: PieceIndex,
     ) -> Option<Piece> {
-        let piece_index_hash = piece_index.hash();
-
         let request_result = self
             .node
-            .send_generic_request(peer_id, PieceByHashRequest { piece_index_hash })
+            .send_generic_request(peer_id, PieceByIndexRequest { piece_index })
             .await;
 
         match request_result {
-            Ok(PieceByHashResponse { piece: Some(piece) }) => {
+            Ok(PieceByIndexResponse { piece: Some(piece) }) => {
                 trace!(%peer_id, %piece_index, "Piece request succeeded.");
 
                 if let Some(validator) = &self.piece_validator {
@@ -197,7 +194,7 @@ where
                     return Some(piece);
                 }
             }
-            Ok(PieceByHashResponse { piece: None }) => {
+            Ok(PieceByIndexResponse { piece: None }) => {
                 debug!(%peer_id, %piece_index, "Piece request returned empty piece.");
             }
             Err(error) => {

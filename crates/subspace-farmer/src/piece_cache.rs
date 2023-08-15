@@ -179,7 +179,7 @@ where
                     match maybe_piece_index {
                         Some(piece_index) => {
                             stored_pieces
-                                .insert(RecordKey::from(piece_index.hash().to_multihash()), offset);
+                                .insert(RecordKey::from(piece_index.to_multihash()), offset);
                         }
                         None => {
                             free_offsets.push(offset);
@@ -236,10 +236,7 @@ where
             .heap
             .keys()
             .map(|KeyWrapper(piece_index)| {
-                (
-                    RecordKey::from(piece_index.hash().to_multihash()),
-                    *piece_index,
-                )
+                (RecordKey::from(piece_index.to_multihash()), *piece_index)
             })
             .collect::<HashMap<_, _>>();
 
@@ -291,7 +288,7 @@ where
                 }
                 cache
                     .stored_pieces
-                    .insert(RecordKey::from(piece_index.hash().to_multihash()), offset);
+                    .insert(RecordKey::from(piece_index.to_multihash()), offset);
             }
 
             if (index + 1) % INTERMEDIATE_CACHE_UPDATE_INTERVAL == 0 {
@@ -470,7 +467,7 @@ where
         piece: Piece,
         worker_state: &mut CacheWorkerState,
     ) {
-        let record_key = RecordKey::from(piece_index.hash().to_multihash());
+        let record_key = RecordKey::from(piece_index.to_multihash());
         let heap_key = KeyWrapper(piece_index);
 
         let mut caches = self.caches.write();
@@ -478,7 +475,7 @@ where
             // Entry is already occupied, we need to find and replace old piece with new one
             Some(KeyWrapper(old_piece_index)) => {
                 for (disk_farm_index, cache) in caches.iter_mut().enumerate() {
-                    let old_record_key = RecordKey::from(old_piece_index.hash().to_multihash());
+                    let old_record_key = RecordKey::from(old_piece_index.to_multihash());
                     let Some(offset) = cache.stored_pieces.remove(&old_record_key) else {
                         // Not this disk farm
                         continue;

@@ -44,17 +44,8 @@ pub use crate::peer_info::{
 pub use create::{create, peer_id, Config, CreationError, LocalRecordProvider};
 pub use libp2p;
 pub use request_handlers::generic_request_handler::{GenericRequest, GenericRequestHandler};
-pub use request_handlers::object_mappings::{
-    ObjectMappingsRequest, ObjectMappingsRequestHandler, ObjectMappingsResponse,
-};
-pub use request_handlers::piece_announcement::{
-    PieceAnnouncementRequest, PieceAnnouncementRequestHandler, PieceAnnouncementResponse,
-};
-pub use request_handlers::piece_by_key::{
-    PieceByHashRequest, PieceByHashRequestHandler, PieceByHashResponse,
-};
-pub use request_handlers::pieces_by_range::{
-    PiecesByRangeRequest, PiecesByRangeRequestHandler, PiecesByRangeResponse, PiecesToPlot,
+pub use request_handlers::piece_by_index::{
+    PieceByIndexRequest, PieceByIndexRequestHandler, PieceByIndexResponse,
 };
 pub use request_handlers::segment_header::{
     SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
