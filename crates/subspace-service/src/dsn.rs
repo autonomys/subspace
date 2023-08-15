@@ -5,6 +5,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::{SegmentHeader, SegmentIndex};
+use subspace_networking::libp2p::kad::Mode as KademliaMode;
 use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::utils::strip_peer_id;
 use subspace_networking::{
@@ -178,6 +179,7 @@ where
         general_connected_peers_handler: Some(Arc::new(|_| true)),
         bootstrap_addresses: dsn_config.bootstrap_nodes,
         external_addresses: dsn_config.external_addresses,
+        kademlia_mode: Some(KademliaMode::Client),
 
         ..default_networking_config
     };
