@@ -11,7 +11,7 @@ use std::error::Error;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 use subspace_core_primitives::{Piece, PieceIndex};
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, trace, warn};
 
 /// Defines initial duration between get_piece calls.
 const GET_PIECE_INITIAL_INTERVAL: Duration = Duration::from_secs(3);
@@ -74,8 +74,8 @@ where
         }
     }
 
-    // Get from piece cache (L2) or archival storage (L1)
-    async fn get_piece_from_storage(&self, piece_index: PieceIndex) -> Option<Piece> {
+    // Get from piece cache (L2)
+    async fn get_piece_from_cache(&self, piece_index: PieceIndex) -> Option<Piece> {
         let piece_index_hash = piece_index.hash();
         let key = piece_index_hash.to_multihash();
 
@@ -141,7 +141,7 @@ where
         retry(backoff, || async {
             let current_attempt = retries.fetch_add(1, Ordering::Relaxed);
 
-            if let Some(piece) = self.get_piece_from_storage(piece_index).await {
+            if let Some(piece) = self.get_piece_from_cache(piece_index).await {
                 trace!(%piece_index, current_attempt, "Got piece");
                 return Ok(Some(piece));
             }
@@ -150,11 +150,11 @@ where
                 RetryPolicy::Limited(max_retries) => {
                     if current_attempt >= max_retries.into() {
                         if max_retries > 0 {
-                            error!(
+                            debug!(
                                 %piece_index,
                                 current_attempt,
                                 max_retries,
-                                "Couldn't get a piece from DSN. No retries left."
+                                "Couldn't get a piece from DSN L2. No retries left."
                             );
                         }
                         return Ok(None);
@@ -165,7 +165,7 @@ where
                 RetryPolicy::Unlimited => u64::MAX,
             };
 
-            debug!(%piece_index, current_attempt, "Couldn't get a piece from DSN. Retrying...");
+            trace!(%piece_index, current_attempt, "Couldn't get a piece from DSN L2. Retrying...");
 
             Err(backoff::Error::transient(
                 "Couldn't get piece from DSN".into(),

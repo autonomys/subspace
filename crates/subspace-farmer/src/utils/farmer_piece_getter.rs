@@ -80,18 +80,6 @@ where
             return Ok(maybe_piece);
         }
 
-        let maybe_read_piece_fut = self
-            .readers_and_pieces
-            .lock()
-            .as_ref()
-            .and_then(|readers_and_pieces| readers_and_pieces.read_piece(&piece_index_hash));
-
-        if let Some(read_piece_fut) = maybe_read_piece_fut {
-            if let Some(piece) = read_piece_fut.await {
-                return Ok(Some(piece));
-            }
-        }
-
         // Try node's RPC before reaching to L1 (archival storage on DSN)
         match self.node_client.piece(piece_index).await {
             Ok(Some(piece)) => {
@@ -106,6 +94,18 @@ where
                     %piece_index,
                     "Failed to retrieve first segment piece from node"
                 );
+            }
+        }
+
+        let maybe_read_piece_fut = self
+            .readers_and_pieces
+            .lock()
+            .as_ref()
+            .and_then(|readers_and_pieces| readers_and_pieces.read_piece(&piece_index_hash));
+
+        if let Some(read_piece_fut) = maybe_read_piece_fut {
+            if let Some(piece) = read_piece_fut.await {
+                return Ok(Some(piece));
             }
         }
 
