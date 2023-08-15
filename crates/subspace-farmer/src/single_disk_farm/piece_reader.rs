@@ -18,7 +18,7 @@ struct ReadPieceRequest {
     response_sender: oneshot::Sender<Option<Piece>>,
 }
 
-/// Wrapper data structure that can be used to read pieces from single disk plot
+/// Wrapper data structure that can be used to read pieces from single disk farm
 #[derive(Debug, Clone)]
 pub struct PieceReader {
     read_piece_sender: mpsc::Sender<ReadPieceRequest>,

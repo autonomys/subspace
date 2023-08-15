@@ -1,10 +1,10 @@
 use std::path::PathBuf;
-use subspace_farmer::single_disk_plot::{SingleDiskPlot, SingleDiskPlotSummary};
+use subspace_farmer::single_disk_farm::{SingleDiskFarm, SingleDiskFarmSummary};
 
 pub(crate) fn print_disk_farm_info(directory: PathBuf, disk_farm_index: usize) {
     println!("Single disk farm {disk_farm_index}:");
-    match SingleDiskPlot::collect_summary(directory) {
-        SingleDiskPlotSummary::Found { info, directory } => {
+    match SingleDiskFarm::collect_summary(directory) {
+        SingleDiskFarmSummary::Found { info, directory } => {
             println!("  ID: {}", info.id());
             println!("  Genesis hash: 0x{}", hex::encode(info.genesis_hash()));
             println!("  Public key: 0x{}", hex::encode(info.public_key()));
@@ -15,11 +15,11 @@ pub(crate) fn print_disk_farm_info(directory: PathBuf, disk_farm_index: usize) {
             );
             println!("  Directory: {}", directory.display());
         }
-        SingleDiskPlotSummary::NotFound { directory } => {
+        SingleDiskFarmSummary::NotFound { directory } => {
             println!("  Plot directory: {}", directory.display());
             println!("  No farm found here yet");
         }
-        SingleDiskPlotSummary::Error { directory, error } => {
+        SingleDiskFarmSummary::Error { directory, error } => {
             println!("  Directory: {}", directory.display());
             println!("  Failed to open farm info: {error}");
         }
