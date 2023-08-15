@@ -252,7 +252,6 @@ parameter_types! {
         HistorySize::new(NonZeroU64::new(10).unwrap()),
     );
     pub const MinSectorLifetime: HistorySize = HistorySize::new(NonZeroU64::new(4).unwrap());
-    pub const IsPotEnabled: bool = false;
 }
 
 impl pallet_subspace::Config for Runtime {
@@ -278,7 +277,6 @@ impl pallet_subspace::Config for Runtime {
     >;
 
     type WeightInfo = ();
-    type IsPotEnabled = IsPotEnabled;
 }
 
 impl pallet_timestamp::Config for Runtime {

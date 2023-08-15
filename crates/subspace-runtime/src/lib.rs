@@ -42,7 +42,7 @@ use codec::{Decode, Encode, MaxEncodedLen};
 use core::mem;
 use core::num::NonZeroU64;
 use domain_runtime_primitives::{BlockNumber as DomainNumber, Hash as DomainHash};
-use frame_support::traits::{ConstBool, ConstU16, ConstU32, ConstU64, ConstU8, Everything, Get};
+use frame_support::traits::{ConstU16, ConstU32, ConstU64, ConstU8, Everything, Get};
 use frame_support::weights::constants::{RocksDbWeight, WEIGHT_REF_TIME_PER_SECOND};
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
 use frame_support::{construct_runtime, parameter_types, PalletId};
@@ -307,8 +307,6 @@ impl pallet_subspace::Config for Runtime {
     >;
 
     type WeightInfo = pallet_subspace::weights::SubstrateWeight<Runtime>;
-    // TODO: this needs to come from the cmd line enable PoT flag
-    type IsPotEnabled = ConstBool<false>;
 }
 
 impl pallet_timestamp::Config for Runtime {
