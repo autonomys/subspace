@@ -11110,6 +11110,7 @@ dependencies = [
  "backoff",
  "base58",
  "blake2",
+ "blake3",
  "bytesize",
  "clap",
  "cuckoofilter",

@@ -178,8 +178,8 @@ where
         sector.flush()?;
         sector_metadata.flush()?;
 
-        if sector_index + 1 > metadata_header.sector_count {
-            metadata_header.sector_count = sector_index + 1;
+        if sector_index + 1 > metadata_header.plotted_sector_count {
+            metadata_header.plotted_sector_count = sector_index + 1;
             metadata_header.encode_to(&mut metadata_header_mmap.as_mut());
         }
         {

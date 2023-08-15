@@ -54,7 +54,7 @@ pub struct DiskPieceCache {
 }
 
 impl DiskPieceCache {
-    const PIECE_CACHE_FILE: &'static str = "piece_cache.bin";
+    pub(super) const FILE_NAME: &'static str = "piece_cache.bin";
 
     pub(super) fn open(directory: &Path, capacity: usize) -> Result<Self, DiskPieceCacheError> {
         if capacity == 0 {
@@ -65,7 +65,7 @@ impl DiskPieceCache {
             .read(true)
             .write(true)
             .create(true)
-            .open(directory.join(Self::PIECE_CACHE_FILE))?;
+            .open(directory.join(Self::FILE_NAME))?;
 
         let expected_size = Self::element_size() * capacity;
         // Allocating the whole file (`set_len` below can create a sparse file, which will cause
@@ -217,7 +217,7 @@ impl DiskPieceCache {
     }
 
     pub(crate) fn wipe(directory: &Path) -> io::Result<()> {
-        let piece_cache = directory.join(Self::PIECE_CACHE_FILE);
+        let piece_cache = directory.join(Self::FILE_NAME);
         info!("Deleting piece cache file at {}", piece_cache.display());
         fs::remove_file(piece_cache)
     }
