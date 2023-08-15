@@ -8891,6 +8891,7 @@ dependencies = [
  "sp-consensus-slots",
  "sp-consensus-subspace",
  "sp-core",
+ "sp-objects",
  "sp-runtime",
  "subspace-archiving",
  "subspace-core-primitives",
@@ -11264,7 +11265,6 @@ dependencies = [
 name = "subspace-node"
 version = "0.1.0"
 dependencies = [
- "bytesize",
  "clap",
  "cross-domain-message-gossip",
  "dirs",

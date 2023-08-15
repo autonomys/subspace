@@ -1,6 +1,6 @@
 use async_trait::async_trait;
 use sc_client_api::AuxStore;
-use sc_consensus_subspace::SegmentHeadersStore;
+use sc_consensus_subspace::archiver::SegmentHeadersStore;
 use subspace_archiving::archiver::is_piece_valid;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{Piece, PieceIndex};

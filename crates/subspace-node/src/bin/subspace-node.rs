@@ -425,10 +425,7 @@ fn main() -> Result<(), Error> {
                         base: consensus_chain_config,
                         // Domain node needs slots notifications for bundle production.
                         force_new_slot_notifications: !cli.domain_args.is_empty(),
-                        subspace_networking: SubspaceNetworking::Create {
-                            config: dsn_config,
-                            piece_cache_size: cli.piece_cache_size.as_u64(),
-                        },
+                        subspace_networking: SubspaceNetworking::Create { config: dsn_config },
                         sync_from_dsn: cli.sync_from_dsn,
                         enable_subspace_block_relay: cli.enable_subspace_block_relay
                             || cli.run.is_dev().unwrap_or(false),

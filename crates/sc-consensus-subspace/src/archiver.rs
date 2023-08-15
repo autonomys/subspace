@@ -14,6 +14,11 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+//! Consensus archiver module.
+//!
+//! Contains implementation of archiving process in Subspace blockchain that convers blockchain
+//! history (blocks) into archived history (pieces).
+
 use crate::{
     get_chain_constants, ArchivedSegmentNotification, BlockImportingNotification, SubspaceLink,
     SubspaceNotificationSender, SubspaceSyncOracle,
@@ -34,6 +39,7 @@ use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
 use sp_objects::ObjectsApi;
 use sp_runtime::generic::SignedBlock;
 use sp_runtime::traits::{Block as BlockT, CheckedSub, Header, NumberFor, One, Zero};
+use std::error::Error;
 use std::future::Future;
 use std::slice;
 use std::sync::atomic::{AtomicU16, Ordering};
@@ -330,6 +336,44 @@ where
     }
 }
 
+/// Derive genesis segment on demand, returns `Ok(None)` in case genesis block was already pruned
+pub fn recreate_genesis_segment<Block, Client>(
+    client: &Client,
+    kzg: Kzg,
+) -> Result<Option<NewArchivedSegment>, Box<dyn Error>>
+where
+    Block: BlockT,
+    Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + HeaderBackend<Block>,
+    Client::Api: ObjectsApi<Block>,
+{
+    let genesis_hash = client.info().genesis_hash;
+    let Some(block) = client.block(genesis_hash)? else {
+        return Ok(None);
+    };
+
+    let block_object_mappings = client
+        .runtime_api()
+        .validated_object_call_hashes(genesis_hash)
+        .and_then(|calls| {
+            client.runtime_api().extract_block_object_mapping(
+                *block.block.header().parent_hash(),
+                block.block.clone(),
+                calls,
+            )
+        })
+        .unwrap_or_default();
+
+    let encoded_block = encode_genesis_block(&block);
+
+    let new_archived_segment = Archiver::new(kzg)?
+        .add_block(encoded_block, block_object_mappings, false)
+        .into_iter()
+        .next()
+        .expect("Genesis block always results in exactly one archived segment; qed");
+
+    Ok(Some(new_archived_segment))
+}
+
 struct InitializedArchiver<Block>
 where
     Block: BlockT,
@@ -375,7 +419,6 @@ fn initialize_archiver<Block, Client, AS>(
     segment_headers_store: &SegmentHeadersStore<AS>,
     subspace_link: &SubspaceLink<Block>,
     client: &Client,
-    kzg: Kzg,
 ) -> InitializedArchiver<Block>
 where
     Block: BlockT,
@@ -418,7 +461,7 @@ where
                 };
 
             Archiver::with_initial_state(
-                kzg,
+                subspace_link.kzg().clone(),
                 last_segment_header,
                 &last_archived_block_encoded,
                 block_object_mappings,
@@ -427,7 +470,7 @@ where
         } else {
             info!(target: "subspace", "Starting archiving from genesis");
 
-            Archiver::new(kzg).expect("Incorrect parameters for archiver")
+            Archiver::new(subspace_link.kzg().clone()).expect("Incorrect parameters for archiver")
         };
 
     let mut older_archived_segments = Vec::new();
@@ -626,7 +669,6 @@ where
         &segment_headers_store,
         subspace_link,
         client.as_ref(),
-        subspace_link.kzg.clone(),
     );
 
     let mut block_importing_notification_stream = subspace_link

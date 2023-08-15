@@ -20,18 +20,17 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
-mod archiver;
+pub mod archiver;
 pub mod aux_schema;
 pub mod notification;
 mod slot_worker;
 #[cfg(test)]
 mod tests;
 
-use crate::archiver::FINALIZATION_DEPTH_IN_SEGMENTS;
+use crate::archiver::{SegmentHeadersStore, FINALIZATION_DEPTH_IN_SEGMENTS};
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use crate::slot_worker::SubspaceSlotWorker;
 pub use crate::slot_worker::SubspaceSyncOracle;
-pub use archiver::{create_subspace_archiver, SegmentHeadersStore};
 use futures::channel::mpsc;
 use futures::StreamExt;
 use log::{debug, info, trace, warn};
@@ -593,6 +592,11 @@ impl<Block: BlockT> SubspaceLink<Block> {
             .peek(&block_number)
             .cloned()
             .unwrap_or_default()
+    }
+
+    /// Access KZG instance
+    pub fn kzg(&self) -> &Kzg {
+        &self.kzg
     }
 }
 
