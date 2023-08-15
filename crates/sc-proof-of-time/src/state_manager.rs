@@ -567,7 +567,6 @@ impl InternalState {
                     });
                 }
             } else {
-                // TODO: extend local chain with proofs in the block.
                 return Err(PotVerifyBlockProofsError::LocalChainMissingProof {
                     summary: summary.clone(),
                     block_number,
