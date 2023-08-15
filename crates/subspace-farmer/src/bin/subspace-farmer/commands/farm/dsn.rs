@@ -109,61 +109,56 @@ pub(super) fn configure_dsn(
         allow_non_global_addresses_in_dht: enable_private_ips,
         networking_parameters_registry: Some(networking_parameters_registry),
         request_response_protocols: vec![
-            PieceByIndexRequestHandler::create(
-                move |_,
-                      &PieceByIndexRequest {
-                          piece_index: piece_index_hash,
-                      }| {
-                    debug!(?piece_index_hash, "Piece request received. Trying cache...");
+            PieceByIndexRequestHandler::create(move |_, &PieceByIndexRequest { piece_index }| {
+                debug!(?piece_index, "Piece request received. Trying cache...");
 
-                    let weak_readers_and_pieces = weak_readers_and_pieces.clone();
-                    let piece_cache = piece_cache.clone();
+                let weak_readers_and_pieces = weak_readers_and_pieces.clone();
+                let piece_cache = piece_cache.clone();
 
-                    async move {
-                        let key = RecordKey::from(piece_index_hash.to_multihash());
-                        let piece_from_store = piece_cache.get_piece(key).await;
+                async move {
+                    let key = RecordKey::from(piece_index.to_multihash());
+                    let piece_from_store = piece_cache.get_piece(key).await;
 
-                        if let Some(piece) = piece_from_store {
-                            Some(PieceByIndexResponse { piece: Some(piece) })
-                        } else {
-                            debug!(
-                                ?piece_index_hash,
-                                "No piece in the cache. Trying archival storage..."
-                            );
+                    if let Some(piece) = piece_from_store {
+                        Some(PieceByIndexResponse { piece: Some(piece) })
+                    } else {
+                        debug!(
+                            ?piece_index,
+                            "No piece in the cache. Trying archival storage..."
+                        );
 
-                            let read_piece_fut = {
-                                let readers_and_pieces = match weak_readers_and_pieces.upgrade() {
-                                    Some(readers_and_pieces) => readers_and_pieces,
-                                    None => {
-                                        debug!("A readers and pieces are already dropped");
-                                        return None;
-                                    }
-                                };
-                                let readers_and_pieces = readers_and_pieces.lock();
-                                let readers_and_pieces = match readers_and_pieces.as_ref() {
-                                    Some(readers_and_pieces) => readers_and_pieces,
-                                    None => {
-                                        debug!(
-                                            ?piece_index_hash,
-                                            "Readers and pieces are not initialized yet"
-                                        );
-                                        return None;
-                                    }
-                                };
-
-                                readers_and_pieces
-                                    .read_piece(&piece_index_hash)?
-                                    .in_current_span()
+                        let read_piece_fut = {
+                            let readers_and_pieces = match weak_readers_and_pieces.upgrade() {
+                                Some(readers_and_pieces) => readers_and_pieces,
+                                None => {
+                                    debug!("A readers and pieces are already dropped");
+                                    return None;
+                                }
+                            };
+                            let readers_and_pieces = readers_and_pieces.lock();
+                            let readers_and_pieces = match readers_and_pieces.as_ref() {
+                                Some(readers_and_pieces) => readers_and_pieces,
+                                None => {
+                                    debug!(
+                                        ?piece_index,
+                                        "Readers and pieces are not initialized yet"
+                                    );
+                                    return None;
+                                }
                             };
 
-                            let piece = read_piece_fut.await;
+                            readers_and_pieces
+                                .read_piece(&piece_index)?
+                                .in_current_span()
+                        };
 
-                            Some(PieceByIndexResponse { piece })
-                        }
+                        let piece = read_piece_fut.await;
+
+                        Some(PieceByIndexResponse { piece })
                     }
-                    .in_current_span()
-                },
-            ),
+                }
+                .in_current_span()
+            }),
             SegmentHeaderBySegmentIndexesRequestHandler::create(move |_, req| {
                 debug!(?req, "Segment headers request received.");
 

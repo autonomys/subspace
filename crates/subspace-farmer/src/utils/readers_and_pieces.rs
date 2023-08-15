@@ -140,7 +140,7 @@ impl ReadersAndPieces {
         }
     }
 
-    pub fn piece_index_hashes(&self) -> impl Iterator<Item = &PieceIndex> {
+    pub fn piece_indices(&self) -> impl Iterator<Item = &PieceIndex> {
         self.pieces.keys()
     }
 }
