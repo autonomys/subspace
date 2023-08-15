@@ -226,7 +226,11 @@ where
     let mut archiver = subspace_archiving::archiver::Archiver::new(kzg.clone())
         .expect("Incorrect parameters for archiver");
 
-    let genesis_block = client.block(client.info().genesis_hash).unwrap().unwrap();
+    let genesis_block = client
+        .block(client.info().genesis_hash)
+        .unwrap()
+        .unwrap()
+        .block;
     let archived_segment = archiver
         .add_block(genesis_block.encode(), BlockObjectMapping::default(), true)
         .into_iter()
