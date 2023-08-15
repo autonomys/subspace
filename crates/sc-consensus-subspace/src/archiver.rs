@@ -37,7 +37,6 @@ use sp_blockchain::HeaderBackend;
 use sp_consensus::SyncOracle;
 use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
 use sp_objects::ObjectsApi;
-use sp_runtime::generic::SignedBlock;
 use sp_runtime::traits::{Block as BlockT, CheckedSub, Header, NumberFor, One, Zero};
 use std::error::Error;
 use std::future::Future;
@@ -205,7 +204,7 @@ pub(crate) const FINALIZATION_DEPTH_IN_SEGMENTS: usize = 5;
 fn find_last_archived_block<Block, Client>(
     client: &Client,
     best_block_hash: Block::Hash,
-) -> Option<(SegmentHeader, SignedBlock<Block>, BlockObjectMapping)>
+) -> Option<(SegmentHeader, Block, BlockObjectMapping)>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + HeaderBackend<Block>,
@@ -255,13 +254,14 @@ where
         let block = client
             .block(block_to_check)
             .expect("Older blocks must always exist")
-            .expect("Older blocks must always exist");
+            .expect("Older blocks must always exist")
+            .block;
 
-        if *block.block.header().number() == last_archived_block_number.into() {
+        if *block.header().number() == last_archived_block_number.into() {
             break block;
         }
 
-        block_to_check = *block.block.header().parent_hash();
+        block_to_check = *block.header().parent_hash();
     };
 
     let last_archived_block_hash = block_to_check;
@@ -271,8 +271,8 @@ where
         .validated_object_call_hashes(last_archived_block_hash)
         .and_then(|calls| {
             client.runtime_api().extract_block_object_mapping(
-                *last_archived_block.block.header().parent_hash(),
-                last_archived_block.block.clone(),
+                *last_archived_block.header().parent_hash(),
+                last_archived_block.clone(),
                 calls,
             )
         })
@@ -350,14 +350,15 @@ where
     let Some(block) = client.block(genesis_hash)? else {
         return Ok(None);
     };
+    let block = block.block;
 
     let block_object_mappings = client
         .runtime_api()
         .validated_object_call_hashes(genesis_hash)
         .and_then(|calls| {
             client.runtime_api().extract_block_object_mapping(
-                *block.block.header().parent_hash(),
-                block.block.clone(),
+                *block.header().parent_hash(),
+                block.clone(),
                 calls,
             )
         })
@@ -384,7 +385,7 @@ where
     best_archived_block: (Block::Hash, NumberFor<Block>),
 }
 
-fn encode_genesis_block<Block>(block: &SignedBlock<Block>) -> Vec<u8>
+fn encode_genesis_block<Block>(block: &Block) -> Vec<u8>
 where
     Block: BlockT,
 {
@@ -401,7 +402,6 @@ where
     encoded_block.resize(RecordedHistorySegment::SIZE, 0);
     let mut rng = ChaCha8Rng::from_seed(
         block
-            .block
             .header()
             .state_root()
             .as_ref()
@@ -449,16 +449,15 @@ where
             // Set initial value, this is needed in case only genesis block was archived and there
             // is nothing else available
             best_archived_block.replace((
-                last_archived_block.block.hash(),
-                *last_archived_block.block.header().number(),
+                last_archived_block.hash(),
+                *last_archived_block.header().number(),
             ));
 
-            let last_archived_block_encoded =
-                if last_archived_block.block.header().number().is_zero() {
-                    encode_genesis_block(&last_archived_block)
-                } else {
-                    last_archived_block.encode()
-                };
+            let last_archived_block_encoded = if last_archived_block.header().number().is_zero() {
+                encode_genesis_block(&last_archived_block)
+            } else {
+                last_archived_block.encode()
+            };
 
             Archiver::with_initial_state(
                 subspace_link.kzg().clone(),
@@ -519,16 +518,17 @@ where
                 let block = client
                     .block(block_hash_to_archive)
                     .expect("Older block by number must always exist")
-                    .expect("Older block by number must always exist");
-                let block_number_to_archive = *block.block.header().number();
+                    .expect("Older block by number must always exist")
+                    .block;
+                let block_number_to_archive = *block.header().number();
 
                 let block_object_mappings = client
                     .runtime_api()
                     .validated_object_call_hashes(block_hash_to_archive)
                     .and_then(|calls| {
                         client.runtime_api().extract_block_object_mapping(
-                            *block.block.header().parent_hash(),
-                            block.block.clone(),
+                            *block.header().parent_hash(),
+                            block.clone(),
                             calls,
                         )
                     })
@@ -719,10 +719,11 @@ where
                         .expect("Older block by number must always exist"),
                 )
                 .expect("Older block by number must always exist")
-                .expect("Older block by number must always exist");
+                .expect("Older block by number must always exist")
+                .block;
 
-            let parent_block_hash = *block.block.header().parent_hash();
-            let block_hash_to_archive = block.block.hash();
+            let parent_block_hash = *block.header().parent_hash();
+            let block_hash_to_archive = block.hash();
 
             debug!(
                 target: "subspace",
@@ -750,7 +751,7 @@ where
                 .and_then(|calls| {
                     client.runtime_api().extract_block_object_mapping(
                         parent_block_hash,
-                        block.block.clone(),
+                        block.clone(),
                         calls,
                     )
                 }) {

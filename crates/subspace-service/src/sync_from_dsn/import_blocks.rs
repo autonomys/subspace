@@ -17,7 +17,6 @@
 use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
-use parity_scale_codec::Encode;
 use sc_client_api::{AuxStore, BlockBackend, HeaderBackend};
 use sc_consensus::import_queue::ImportQueueService;
 use sc_consensus::IncomingBlock;
@@ -147,7 +146,8 @@ where
                             .hash(block_number)?
                             .expect("Block before best block number must always be found; qed"),
                     )?
-                    .expect("Block before best block number must always be found; qed");
+                    .expect("Block before best block number must always be found; qed")
+                    .block;
 
                 if block.encode() != block_bytes {
                     return Err(sc_service::Error::Other(
