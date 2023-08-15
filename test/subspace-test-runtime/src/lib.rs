@@ -1258,6 +1258,10 @@ impl_runtime_apis! {
         fn domain_block_limit(domain_id: DomainId) -> Option<sp_domains::DomainBlockLimit> {
             Domains::domain_block_limit(domain_id)
         }
+
+        fn non_empty_extrinsic_receipts_exists(domain_id: DomainId) -> bool {
+            Domains::non_empty_extrinsic_receipts_exists(domain_id)
+        }
     }
 
     impl sp_domains::BundleProducerElectionApi<Block, Balance> for Runtime {

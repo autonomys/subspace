@@ -316,6 +316,13 @@ where
             .expect("Fail to get account nonce")
     }
 
+    /// Sends an system.remark extrinsic to the pool.
+    pub async fn send_remark_extrinsic(&mut self) -> Result<(), RpcTransactionError> {
+        self.construct_and_send_extrinsic(frame_system::Call::remark { remark: vec![] })
+            .await
+            .map(|_| ())
+    }
+
     /// Construct an extrinsic with the current nonce of the node account and send it to this node.
     pub async fn construct_and_send_extrinsic(
         &mut self,
