@@ -9,6 +9,7 @@ use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use lru::LruCache;
 use parking_lot::Mutex;
+use std::fs;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
@@ -29,6 +30,7 @@ use subspace_farmer_components::plotting::PlottedSector;
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
+use tempfile::TempDir;
 use tracing::{debug, error, info, info_span, warn};
 use zeroize::Zeroizing;
 
@@ -36,17 +38,10 @@ const RECORDS_ROOTS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(1_000_000).expe
 
 /// Start farming by using multiple replica plot in specified path and connecting to WebSocket
 /// server at specified address.
-pub(crate) async fn farm_multi_disk<PosTable>(
-    disk_farms: Vec<DiskFarm>,
-    farming_args: FarmingArgs,
-) -> Result<(), anyhow::Error>
+pub(crate) async fn farm<PosTable>(farming_args: FarmingArgs) -> Result<(), anyhow::Error>
 where
     PosTable: Table,
 {
-    if disk_farms.is_empty() {
-        return Err(anyhow!("There must be at least one disk farm provided"));
-    }
-
     let signal = shutdown_signal();
 
     let FarmingArgs {
@@ -55,8 +50,42 @@ where
         max_pieces_in_sector,
         mut dsn,
         cache_percentage,
-        no_info: _,
+        no_info,
+        dev,
+        tmp,
+        mut disk_farms,
     } = farming_args;
+
+    // Override the `--enable_private_ips` flag with `--dev`
+    dsn.enable_private_ips = dsn.enable_private_ips || dev;
+
+    let _tmp_directory = if let Some(plot_size) = tmp {
+        let tmp_directory = TempDir::new()?;
+
+        disk_farms = vec![DiskFarm {
+            directory: tmp_directory.as_ref().to_path_buf(),
+            allocated_plotting_space: plot_size.as_u64(),
+        }];
+
+        Some(tmp_directory)
+    } else {
+        if disk_farms.is_empty() {
+            return Err(anyhow!("There must be at least one disk farm provided"));
+        }
+
+        for farm in &disk_farms {
+            if !farm.directory.exists() {
+                if let Err(error) = fs::create_dir(&farm.directory) {
+                    return Err(anyhow!(
+                        "Directory {} doesn't exist and can't be created: {}",
+                        farm.directory.display(),
+                        error
+                    ));
+                }
+            }
+        }
+        None
+    };
 
     let readers_and_pieces = Arc::new(Mutex::new(None));
 
@@ -201,7 +230,7 @@ where
             }
         };
 
-        if !farming_args.no_info {
+        if !no_info {
             print_disk_farm_info(disk_farm.directory, disk_farm_index);
         }
 
