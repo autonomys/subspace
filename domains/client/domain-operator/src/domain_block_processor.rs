@@ -176,10 +176,8 @@ where
         let consensus_to = consensus_block_hash;
 
         if consensus_from == consensus_to {
-            return Err(sp_blockchain::Error::Application(
-                format!("Consensus block {consensus_block_hash:?} has already been processed.",)
-                    .into(),
-            ));
+            tracing::debug!("Consensus block {consensus_block_hash:?} has already been processed");
+            return Ok(None);
         }
 
         let route =

@@ -410,6 +410,11 @@ impl MockConsensusNode {
         self.next_slot
     }
 
+    /// Set the next slot number
+    pub fn set_next_slot(&mut self, next_slot: u64) {
+        self.next_slot = next_slot;
+    }
+
     /// Produce a slot only, without waiting for the potential slot handlers.
     pub fn produce_slot(&mut self) -> Slot {
         let slot = Slot::from(self.next_slot);

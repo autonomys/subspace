@@ -250,19 +250,8 @@ async fn test_processing_empty_consensus_block() {
             .pending_imported_consensus_blocks(consensus_best_hash, consensus_best_number);
         match res {
             // The consensus block is processed in the above `produce_block_with_extrinsics` call,
-            // thus calling `pending_imported_consensus_blocks` again will result in an error
-            Err(err) => {
-                // `sp_blockchain::Error` is not impl `PartialEq` thus comparing the string
-                assert_eq!(
-                    err.to_string(),
-                    sp_blockchain::Error::Application(
-                        format!(
-                            "Consensus block {consensus_best_hash:?} has already been processed.",
-                        )
-                        .into()
-                    )
-                    .to_string()
-                );
+            // thus calling `pending_imported_consensus_blocks` again will result in an `Ok(None)`
+            Ok(None) => {
                 // The `latest_consensus_block` that mapped to the genesis domain block must be updated
                 let latest_consensus_block: Hash =
                     crate::aux_schema::latest_consensus_block_hash_for(
@@ -1754,3 +1743,72 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
 // .await
 // .unwrap();
 // }
+
+#[substrate_test_utils::test(flavor = "multi_thread")]
+async fn test_restart_domain_operator() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Produce 1 consensus block to initialize genesis domain
+    ferdie.produce_block_with_slot(1.into()).await.unwrap();
+
+    // Run Alice (a evm domain authority node)
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .await;
+
+    produce_blocks!(ferdie, alice, 5).await.unwrap();
+    let next_slot = ferdie.next_slot();
+
+    // Stop Ferdie and Alice and delete their database lock files
+    drop(ferdie);
+    drop(alice);
+    std::fs::remove_file(directory.path().join("ferdie/paritydb/lock")).unwrap();
+    std::fs::remove_file(
+        directory
+            .path()
+            .join(format!("alice/domain-{GENESIS_DOMAIN_ID:?}"))
+            .as_path()
+            .join("paritydb/lock"),
+    )
+    .unwrap();
+
+    // Restart Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+    ferdie.set_next_slot(next_slot);
+
+    // Restart Alice
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .await;
+
+    produce_blocks!(ferdie, alice, 5).await.unwrap();
+
+    // Chain should progress base on previous run
+    assert_eq!(ferdie.client.info().best_number, 11);
+    assert_eq!(alice.client.info().best_number, 10);
+}
