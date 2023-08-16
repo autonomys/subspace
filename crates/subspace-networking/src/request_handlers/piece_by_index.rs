@@ -5,27 +5,27 @@
 
 use crate::request_handlers::generic_request_handler::{GenericRequest, GenericRequestHandler};
 use parity_scale_codec::{Decode, Encode};
-use subspace_core_primitives::{Piece, PieceIndexHash};
+use subspace_core_primitives::{Piece, PieceIndex};
 
 /// Piece-by-hash protocol request.
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Encode, Decode)]
-pub struct PieceByHashRequest {
-    /// Request key - piece index hash
-    pub piece_index_hash: PieceIndexHash,
+pub struct PieceByIndexRequest {
+    /// Request key - piece index
+    pub piece_index: PieceIndex,
 }
 
-impl GenericRequest for PieceByHashRequest {
-    const PROTOCOL_NAME: &'static str = "/subspace/piece-by-hash/0.1.0";
-    const LOG_TARGET: &'static str = "piece-by-hash-request-response-handler";
-    type Response = PieceByHashResponse;
+impl GenericRequest for PieceByIndexRequest {
+    const PROTOCOL_NAME: &'static str = "/subspace/piece-by-index/0.1.0";
+    const LOG_TARGET: &'static str = "piece-by-index-request-response-handler";
+    type Response = PieceByIndexResponse;
 }
 
 /// Piece-by-hash protocol response.
 #[derive(Debug, PartialEq, Eq, Clone, Encode, Decode)]
-pub struct PieceByHashResponse {
+pub struct PieceByIndexResponse {
     /// Returned data.
     pub piece: Option<Piece>,
 }
 
 /// Create a new piece-by-hash request handler.
-pub type PieceByHashRequestHandler = GenericRequestHandler<PieceByHashRequest>;
+pub type PieceByIndexRequestHandler = GenericRequestHandler<PieceByIndexRequest>;

@@ -4571,6 +4571,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "is_ci"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "616cde7c720bb2bb5824a224687d8f77bfd38922027f01d825cd7453be5099fb"
+
+[[package]]
 name = "itertools"
 version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8891,6 +8897,7 @@ dependencies = [
  "sp-consensus-slots",
  "sp-consensus-subspace",
  "sp-core",
+ "sp-objects",
  "sp-runtime",
  "subspace-archiving",
  "subspace-core-primitives",
@@ -9204,9 +9211,11 @@ dependencies = [
 name = "sc-proof-of-time"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "futures",
  "parity-scale-codec",
  "parking_lot 0.12.1",
+ "sc-client-api",
  "sc-network",
  "sc-network-gossip",
  "sp-blockchain",
@@ -11142,6 +11151,7 @@ dependencies = [
  "subspace-rpc-primitives",
  "subspace-solving",
  "substrate-bip39",
+ "supports-color",
  "tempfile",
  "thiserror",
  "tokio",
@@ -11264,7 +11274,6 @@ dependencies = [
 name = "subspace-node"
 version = "0.1.0"
 dependencies = [
- "bytesize",
  "clap",
  "cross-domain-message-gossip",
  "dirs",
@@ -11866,6 +11875,16 @@ name = "subtle"
 version = "2.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6bdef32e8150c2a081110b42772ffe7d7c9032b606bc226c8260fd97e0976601"
+
+[[package]]
+name = "supports-color"
+version = "2.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4950e7174bffabe99455511c39707310e7e9b440364a2fcb1cc21521be57b354"
+dependencies = [
+ "is-terminal",
+ "is_ci",
+]
 
 [[package]]
 name = "syn"

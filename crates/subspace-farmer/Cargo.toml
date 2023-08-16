@@ -49,6 +49,7 @@ subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
 subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space", features = ["chia"] }
 subspace-rpc-primitives = { version = "0.1.0", path = "../subspace-rpc-primitives" }
 substrate-bip39 = "0.4.4"
+supports-color = "2.0.0"
 tempfile = "3.4.0"
 thiserror = "1.0.38"
 tokio = { version = "1.28.2", features = ["macros", "parking_lot", "rt-multi-thread", "signal"] }
