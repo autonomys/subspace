@@ -45,9 +45,9 @@ use sp_domains::bundle_producer_election::{is_below_threshold, BundleProducerEle
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::{
     DomainBlockLimit, DomainId, DomainInstanceData, ExecutionReceipt, OpaqueBundle, OperatorId,
-    OperatorPublicKey, ProofOfElection, RuntimeId,
+    OperatorPublicKey, ProofOfElection, RuntimeId, EMPTY_EXTRINSIC_ROOT,
 };
-use sp_runtime::traits::{BlakeTwo256, Hash, Zero};
+use sp_runtime::traits::{BlakeTwo256, CheckedSub, Hash, One, Zero};
 use sp_runtime::{RuntimeAppPublic, SaturatedConversion, Saturating};
 use sp_std::boxed::Box;
 use sp_std::collections::btree_map::BTreeMap;
@@ -456,6 +456,17 @@ mod pallet {
     #[pallet::storage]
     pub(super) type HeadReceiptNumber<T: Config> =
         StorageMap<_, Identity, DomainId, T::DomainNumber, ValueQuery>;
+
+    /// State root mapped again each domain (block, hash)
+    /// This acts as an index for other protocols like XDM to fetch state roots faster.
+    #[pallet::storage]
+    pub(super) type StateRoots<T: Config> = StorageMap<
+        _,
+        Identity,
+        (DomainId, T::DomainNumber, T::DomainHash),
+        T::DomainHash,
+        OptionQuery,
+    >;
 
     /// A set of `BundleDigest` from all bundles that successfully submitted to the consensus block,
     /// these bundles will be used to construct the domain block and `ExecutionInbox` is used to:
@@ -1128,6 +1139,18 @@ impl<T: Config> Pallet<T> {
             .map(|runtime_object| runtime_object.code)
     }
 
+    pub fn domain_best_number(domain_id: DomainId) -> Option<T::DomainNumber> {
+        Some(HeadDomainNumber::<T>::get(domain_id))
+    }
+
+    pub fn domain_state_root(
+        domain_id: DomainId,
+        domain_block_number: T::DomainNumber,
+        domain_block_hash: T::DomainHash,
+    ) -> Option<T::DomainHash> {
+        StateRoots::<T>::get((domain_id, domain_block_number, domain_block_hash))
+    }
+
     pub fn runtime_id(domain_id: DomainId) -> Option<RuntimeId> {
         DomainRegistry::<T>::get(domain_id)
             .map(|domain_object| domain_object.domain_config.runtime_id)
@@ -1442,6 +1465,28 @@ impl<T: Config> Pallet<T> {
                 }
             }
         });
+    }
+
+    /// Returns if there are any ERs in the challenge period that have non empty extrinsics.
+    pub fn non_empty_bundle_exists(domain_id: DomainId) -> bool {
+        let head_number = HeadDomainNumber::<T>::get(domain_id);
+        let mut to_check = head_number
+            .checked_sub(&T::BlockTreePruningDepth::get())
+            .unwrap_or(Zero::zero());
+
+        while to_check <= head_number {
+            if !ExecutionInbox::<T>::iter_prefix_values((domain_id, to_check)).all(|digests| {
+                digests
+                    .iter()
+                    .all(|digest| digest.extrinsics_root == EMPTY_EXTRINSIC_ROOT)
+            }) {
+                return true;
+            }
+
+            to_check = to_check.saturating_add(One::one())
+        }
+
+        false
     }
 }
 

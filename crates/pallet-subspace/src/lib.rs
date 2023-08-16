@@ -259,11 +259,6 @@ mod pallet {
 
         /// Weight information for extrinsics in this pallet.
         type WeightInfo: WeightInfo;
-
-        /// If true, use the proof of time in the pre digest as source of global
-        /// randomness.
-        #[pallet::constant]
-        type IsPotEnabled: Get<bool>;
     }
 
     #[derive(Debug, Default, Encode, Decode, TypeInfo)]
@@ -840,13 +835,12 @@ impl<T: Config> Pallet<T> {
         >::default());
 
         // If global randomness was updated in previous block, set it as current.
-        if !T::IsPotEnabled::get() {
-            if let Some(next_randomness) = GlobalRandomnesses::<T>::get().next {
-                GlobalRandomnesses::<T>::put(sp_consensus_subspace::GlobalRandomnesses {
-                    current: next_randomness,
-                    next: None,
-                });
-            }
+        #[cfg(not(feature = "pot"))]
+        if let Some(next_randomness) = GlobalRandomnesses::<T>::get().next {
+            GlobalRandomnesses::<T>::put(sp_consensus_subspace::GlobalRandomnesses {
+                current: next_randomness,
+                next: None,
+            });
         }
 
         // If solution range was updated in previous block, set it as current.
@@ -870,30 +864,27 @@ impl<T: Config> Pallet<T> {
         PorRandomness::<T>::put(por_randomness);
 
         // Deposit global randomness data such that light client can validate blocks later.
-        if !T::IsPotEnabled::get() {
-            frame_system::Pallet::<T>::deposit_log(DigestItem::global_randomness(
-                GlobalRandomnesses::<T>::get().current,
-            ));
-        }
+        #[cfg(not(feature = "pot"))]
+        frame_system::Pallet::<T>::deposit_log(DigestItem::global_randomness(
+            GlobalRandomnesses::<T>::get().current,
+        ));
         // Deposit solution range data such that light client can validate blocks later.
         frame_system::Pallet::<T>::deposit_log(DigestItem::solution_range(
             SolutionRanges::<T>::get().current,
         ));
 
-        if !T::IsPotEnabled::get() {
-            // Enact global randomness update, if necessary.
-            T::GlobalRandomnessIntervalTrigger::trigger::<T>(block_number, por_randomness);
-        }
+        // Enact global randomness update, if necessary.
+        #[cfg(not(feature = "pot"))]
+        T::GlobalRandomnessIntervalTrigger::trigger::<T>(block_number, por_randomness);
         // Enact era change, if necessary.
         T::EraChangeTrigger::trigger::<T>(block_number);
 
-        if !T::IsPotEnabled::get() {
-            if let Some(next_global_randomness) = GlobalRandomnesses::<T>::get().next {
-                // Deposit next global randomness data such that light client can validate blocks later.
-                frame_system::Pallet::<T>::deposit_log(DigestItem::next_global_randomness(
-                    next_global_randomness,
-                ));
-            }
+        #[cfg(not(feature = "pot"))]
+        if let Some(next_global_randomness) = GlobalRandomnesses::<T>::get().next {
+            // Deposit next global randomness data such that light client can validate blocks later.
+            frame_system::Pallet::<T>::deposit_log(DigestItem::next_global_randomness(
+                next_global_randomness,
+            ));
         }
     }
 
@@ -1077,7 +1068,6 @@ impl<T: Config> Pallet<T> {
                 T::RecentHistoryFraction::get().1,
             ),
             min_sector_lifetime: T::MinSectorLifetime::get(),
-            is_pot_enabled: T::IsPotEnabled::get(),
         }
     }
 }

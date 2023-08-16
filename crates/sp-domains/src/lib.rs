@@ -25,6 +25,7 @@ mod tests;
 pub mod transaction;
 
 use bundle_producer_election::{BundleProducerElectionParams, VrfProofError};
+use hexlit::hex;
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
@@ -714,6 +715,11 @@ pub enum BundleValidity<Extrinsic> {
     Invalid(InvalidBundleType),
 }
 
+/// Empty extrinsics root
+pub const EMPTY_EXTRINSIC_ROOT: ExtrinsicsRoot = ExtrinsicsRoot {
+    0: hex!("03170a2e7597b7b7e3d84c05391d139a62b157e78786d8c082f29dcf4c111314"),
+};
+
 sp_api::decl_runtime_apis! {
     /// API necessary for domains pallet.
     pub trait DomainsApi<DomainNumber: Encode + Decode, DomainHash: Encode + Decode> {
@@ -758,6 +764,9 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the domain block limit of the given domain.
         fn domain_block_limit(domain_id: DomainId) -> Option<DomainBlockLimit>;
+
+        /// Returns true if there are any ERs in the challenge period with non empty extrinsics.
+        fn non_empty_bundle_exists(domain_id: DomainId) -> bool;
     }
 
     pub trait BundleProducerElectionApi<Balance: Encode + Decode> {

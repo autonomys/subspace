@@ -15,6 +15,7 @@ use sc_consensus_subspace::{BlockImportingNotification, NewSlotNotification};
 use sc_service::{BasePath, Configuration};
 use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::RuntimeType;
+use sp_messenger::messages::ChainId;
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 use subspace_runtime::RuntimeApi as CRuntimeApi;
@@ -166,8 +167,10 @@ impl DomainInstanceStarter {
                 >(domain_params)
                 .await?;
 
-                xdm_gossip_worker_builder
-                    .push_domain_tx_pool_sink(domain_cli.domain_id, domain_node.tx_pool_sink);
+                xdm_gossip_worker_builder.push_chain_tx_pool_sink(
+                    ChainId::Domain(domain_cli.domain_id),
+                    domain_node.tx_pool_sink,
+                );
 
                 let cross_domain_message_gossip_worker = xdm_gossip_worker_builder
                     .build::<CBlock, _, _>(consensus_network_service, consensus_sync_service);

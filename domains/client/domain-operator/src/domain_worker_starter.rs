@@ -37,7 +37,7 @@ use sp_messenger::MessengerApi;
 use sp_runtime::traits::{HashFor, NumberFor};
 use std::sync::Arc;
 use subspace_runtime_primitives::Balance;
-use tracing::Instrument;
+use tracing::{info, Instrument};
 
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub(super) async fn start_worker<
@@ -176,12 +176,14 @@ pub(super) async fn start_worker<
     );
 
     if is_authority {
+        info!("🧑‍🌾 Running as Operator...");
         let _ = future::select(
             Box::pin(handle_block_import_notifications_fut),
             Box::pin(handle_slot_notifications_fut),
         )
         .await;
     } else {
+        info!("🧑‍ Running as Full node...");
         drop(handle_slot_notifications_fut);
         handle_block_import_notifications_fut.await
     }

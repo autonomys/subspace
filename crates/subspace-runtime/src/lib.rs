@@ -42,7 +42,7 @@ use codec::{Decode, Encode, MaxEncodedLen};
 use core::mem;
 use core::num::NonZeroU64;
 use domain_runtime_primitives::{BlockNumber as DomainNumber, Hash as DomainHash};
-use frame_support::traits::{ConstBool, ConstU16, ConstU32, ConstU64, ConstU8, Everything, Get};
+use frame_support::traits::{ConstU16, ConstU32, ConstU64, ConstU8, Everything, Get};
 use frame_support::weights::constants::{RocksDbWeight, WEIGHT_REF_TIME_PER_SECOND};
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
 use frame_support::{construct_runtime, parameter_types, PalletId};
@@ -137,7 +137,7 @@ pub const MILLISECS_PER_BLOCK: u64 = 6000;
 
 // NOTE: Currently it is not possible to change the slot duration after the chain has started.
 //       Attempting to do so will brick block production.
-const SLOT_DURATION: u64 = 2000;
+const SLOT_DURATION: u64 = 1000;
 
 /// 1 in 6 slots (on average, not counting collisions) will have a block.
 /// Must match ratio between block and slot duration in constants above.
@@ -307,8 +307,6 @@ impl pallet_subspace::Config for Runtime {
     >;
 
     type WeightInfo = pallet_subspace::weights::SubstrateWeight<Runtime>;
-    // TODO: this needs to come from the cmd line enable PoT flag
-    type IsPotEnabled = ConstBool<false>;
 }
 
 impl pallet_timestamp::Config for Runtime {
@@ -913,6 +911,10 @@ impl_runtime_apis! {
 
         fn domain_block_limit(domain_id: DomainId) -> Option<sp_domains::DomainBlockLimit> {
             Domains::domain_block_limit(domain_id)
+        }
+
+        fn non_empty_bundle_exists(domain_id: DomainId) -> bool {
+            Domains::non_empty_bundle_exists(domain_id)
         }
     }
 

@@ -171,7 +171,6 @@ parameter_types! {
     pub const ReplicationFactor: u16 = 1;
     pub const ReportLongevity: u64 = 34;
     pub const ShouldAdjustSolutionRange: bool = false;
-    pub const IsPotEnabled: bool = false;
 }
 
 impl Config for Test {
@@ -194,7 +193,6 @@ impl Config for Test {
     type HandleEquivocation = EquivocationHandler<OffencesSubspace, ReportLongevity>;
 
     type WeightInfo = ();
-    type IsPotEnabled = IsPotEnabled;
 }
 
 pub fn go_to_block(
