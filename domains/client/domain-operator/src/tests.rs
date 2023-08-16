@@ -118,7 +118,7 @@ async fn test_domain_block_production() {
     for i in 0..50 {
         let (tx, slot) = if i % 2 == 0 {
             // Produce bundle and include it in the primary block hence produce a domain block
-            alice.send_remark_extrinsic().await.unwrap();
+            alice.send_system_remark().await;
             let (slot, _) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
             // `None` means collect tx from the tx pool
             (None, slot)
@@ -179,6 +179,7 @@ async fn test_domain_block_production() {
     assert_eq!(alice.client.info().best_hash, domain_block_hash);
 
     // Simply producing more block on fork C
+    alice.send_system_remark().await;
     for _ in 0..10 {
         let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
         let tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
@@ -632,7 +633,10 @@ async fn test_executor_full_node_catching_up() {
     // This also make the first consensus block being processed by the alice's domain
     // block processor be block #5, to ensure it can correctly handle the consensus
     // block even it is out of order.
-    ferdie.produce_blocks(5).await.unwrap();
+    for _ in 0..5 {
+        let slot = ferdie.produce_slot();
+        ferdie.produce_block_with_slot(slot).await.unwrap();
+    }
 
     // Run Alice (a evm domain authority node)
     let mut alice = domain_test_service::DomainNodeBuilder::new(

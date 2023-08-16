@@ -766,7 +766,7 @@ sp_api::decl_runtime_apis! {
         fn domain_block_limit(domain_id: DomainId) -> Option<DomainBlockLimit>;
 
         /// Returns true if there are any ERs in the challenge period with non empty extrinsics.
-        fn non_empty_bundle_exists(domain_id: DomainId) -> bool;
+        fn non_empty_er_exists(domain_id: DomainId) -> bool;
     }
 
     pub trait BundleProducerElectionApi<Balance: Encode + Decode> {

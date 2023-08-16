@@ -913,8 +913,8 @@ impl_runtime_apis! {
             Domains::domain_block_limit(domain_id)
         }
 
-        fn non_empty_bundle_exists(domain_id: DomainId) -> bool {
-            Domains::non_empty_bundle_exists(domain_id)
+        fn non_empty_er_exists(domain_id: DomainId) -> bool {
+            Domains::non_empty_er_exists(domain_id)
         }
     }
 
