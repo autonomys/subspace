@@ -8,7 +8,7 @@ use bytesize::ByteSize;
 use clap::{Parser, ValueEnum, ValueHint};
 use ss58::parse_ss58_reward_address;
 use std::fs;
-use std::num::{NonZeroU16, NonZeroU8, NonZeroUsize};
+use std::num::NonZeroU8;
 use std::path::PathBuf;
 use std::str::FromStr;
 use subspace_core_primitives::PublicKey;
@@ -44,18 +44,9 @@ struct FarmingArgs {
     /// Maximum number of pieces in sector (can override protocol value to something lower).
     #[arg(long)]
     max_pieces_in_sector: Option<u16>,
-    /// Number of major concurrent operations to allow for disk
-    #[arg(long, default_value = "2")]
-    disk_concurrency: NonZeroU16,
-    /// Disable farming
-    #[arg(long)]
-    disable_farming: bool,
     /// DSN parameters
     #[clap(flatten)]
     dsn: DsnArgs,
-    /// Number of plots that can be plotted concurrently, impacts RAM usage.
-    #[arg(long, default_value = "10")]
-    max_concurrent_plots: NonZeroUsize,
     /// Percentage of plot dedicated for caching purposes, 99% max.
     #[arg(long, default_value = "1", value_parser = cache_percentage_parser)]
     cache_percentage: NonZeroU8,

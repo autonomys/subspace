@@ -49,16 +49,11 @@ where
 
     let signal = shutdown_signal();
 
-    // TODO: Use variables and remove this suppression
-    #[allow(unused_variables)]
     let FarmingArgs {
         node_rpc_url,
         reward_address,
         max_pieces_in_sector,
-        disk_concurrency,
-        disable_farming,
         mut dsn,
-        max_concurrent_plots,
         cache_percentage,
         no_info: _,
     } = farming_args;
