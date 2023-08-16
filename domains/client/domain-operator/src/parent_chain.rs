@@ -58,7 +58,7 @@ pub trait ParentChainInterface<Block: BlockT, ParentChainBlock: BlockT> {
         fraud_proof: FraudProof<NumberFor<ParentChainBlock>, ParentChainBlock::Hash>,
     ) -> Result<(), sp_api::ApiError>;
 
-    fn non_empty_extrinsic_receipts_exists(
+    fn non_empty_bundle_exists(
         &self,
         at: ParentChainBlock::Hash,
         domain_id: DomainId,
@@ -192,13 +192,13 @@ where
         Ok(())
     }
 
-    fn non_empty_extrinsic_receipts_exists(
+    fn non_empty_bundle_exists(
         &self,
         at: CBlock::Hash,
         domain_id: DomainId,
     ) -> Result<bool, ApiError> {
         self.consensus_client
             .runtime_api()
-            .non_empty_extrinsic_receipts_exists(at, domain_id)
+            .non_empty_bundle_exists(at, domain_id)
     }
 }

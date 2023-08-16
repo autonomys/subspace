@@ -128,7 +128,7 @@ async fn execution_proof_creation_and_verification_should_work() {
     .await;
 
     // Bob is able to sync blocks.
-    produce_blocks!(ferdie, alice, bob, 1).await.unwrap();
+    produce_blocks!(ferdie, alice, 1, bob).await.unwrap();
 
     let alice_nonce = alice.account_nonce();
     let transfer_to_charlie = alice.construct_extrinsic(
@@ -437,7 +437,7 @@ async fn invalid_execution_proof_should_not_work() {
     .await;
 
     // Bob is able to sync blocks.
-    produce_blocks!(ferdie, alice, bob, 1).await.unwrap();
+    produce_blocks!(ferdie, alice, 1, bob).await.unwrap();
 
     let alice_nonce = alice.account_nonce();
     let transfer_to_charlie = alice.construct_extrinsic(

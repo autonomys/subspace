@@ -82,9 +82,6 @@ async fn test_domain_instance_bootstrapper() {
 
     assert_eq!(expected_genesis_state_root, genesis_state_root);
 
-    // trigger bundle production
-    alice.send_remark_extrinsic().await.unwrap();
-
     produce_blocks!(ferdie, alice, 3)
         .await
         .expect("3 consensus blocks produced successfully");
@@ -294,7 +291,6 @@ async fn test_processing_empty_consensus_block() {
     assert_eq!(alice.client.info().best_number, 0);
 
     // To process non-empty consensus blocks and produce domain blocks
-    alice.send_remark_extrinsic().await.unwrap();
     produce_blocks!(ferdie, alice, 3).await.unwrap();
     assert_eq!(alice.client.info().best_number, 3);
 }
@@ -327,7 +323,6 @@ async fn test_domain_block_deriving_from_multiple_bundles() {
     .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
     .await;
 
-    alice.send_remark_extrinsic().await.unwrap();
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 
     let pre_bob_free_balance = alice.free_balance(Bob.to_account_id());
@@ -407,7 +402,6 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
     .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut consensus_node)
     .await;
 
-    alice.send_remark_extrinsic().await.unwrap();
     produce_blocks!(consensus_node, alice, 3)
         .await
         .expect("3 consensus blocks produced successfully");
@@ -517,7 +511,6 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
 
     // Produce a new tip at #5.
     let slot = consensus_node.produce_slot();
-    alice.send_remark_extrinsic().await.unwrap();
     produce_block_with!(
         consensus_node.produce_block_with_slot_at(slot, fork_block_hash_4b, Some(vec![])),
         alice
@@ -600,14 +593,13 @@ async fn test_domain_tx_propagate() {
     .build_evm_node(Role::Full, GENESIS_DOMAIN_ID, &mut ferdie)
     .await;
 
-    alice.send_remark_extrinsic().await.unwrap();
-    produce_blocks!(ferdie, alice, bob, 5).await.unwrap();
+    produce_blocks!(ferdie, alice, 5, bob).await.unwrap();
     while alice.sync_service.is_major_syncing() || bob.sync_service.is_major_syncing() {
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
 
-    let pre_alice_free_balance = alice.free_balance(alice.key.to_account_id());
-    // Construct and send an extrinsic to bob, as bob is not a authoity node, the extrinsic has
+    let pre_bob_free_balance = alice.free_balance(bob.key.to_account_id());
+    // Construct and send an extrinsic to bob, as bob is not a authority node, the extrinsic has
     // to propagate to alice to get executed
     bob.construct_and_send_extrinsic(pallet_balances::Call::transfer {
         dest: Alice.to_account_id(),
@@ -616,9 +608,16 @@ async fn test_domain_tx_propagate() {
     .await
     .expect("Failed to send extrinsic");
 
-    produce_blocks_until!(ferdie, alice, bob, {
-        alice.free_balance(alice.key.to_account_id()) == pre_alice_free_balance + 123
-    })
+    produce_blocks_until!(
+        ferdie,
+        alice,
+        {
+            // ensure bob has reduced balance since alice might submit other transactions which cost
+            // and so exact balance check is not feasible
+            alice.free_balance(bob.key.to_account_id()) <= pre_bob_free_balance - 123
+        },
+        bob
+    )
     .await
     .unwrap();
 }
@@ -665,8 +664,7 @@ async fn test_executor_full_node_catching_up() {
     .await;
 
     // Bob is able to sync blocks.
-    alice.send_remark_extrinsic().await.unwrap();
-    produce_blocks!(ferdie, alice, bob, 3).await.unwrap();
+    produce_blocks!(ferdie, alice, 3, bob).await.unwrap();
 
     let alice_block_hash = alice
         .client
@@ -719,8 +717,7 @@ async fn test_executor_inherent_timestamp_is_set() {
     .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
     .await;
 
-    alice.send_remark_extrinsic().await.unwrap();
-    produce_blocks!(ferdie, alice, bob, 1).await.unwrap();
+    produce_blocks!(ferdie, alice, 1, bob).await.unwrap();
 
     let consensus_timestamp = ferdie
         .client
@@ -800,7 +797,6 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
         .into()
     };
 
-    alice.send_remark_extrinsic().await.unwrap();
     produce_blocks!(ferdie, alice, 5).await.unwrap();
 
     alice
@@ -925,7 +921,6 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
 
     // TODO: test the `initialize_block` fraud proof of block 1 with `wait_for_blocks(1)`
     // after https://github.com/subspace/subspace/issues/1301 is resolved.
-    alice.send_remark_extrinsic().await.unwrap();
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 
     // Get a bundle from the txn pool and change its receipt to an invalid one
@@ -1098,7 +1093,6 @@ async fn set_new_code_should_work() {
     .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
     .await;
 
-    alice.send_remark_extrinsic().await.unwrap();
     produce_blocks!(ferdie, alice, 1).await.unwrap();
 
     let new_runtime_wasm_blob = b"new_runtime_wasm_blob".to_vec();
@@ -1173,7 +1167,7 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
     .await;
 
     // Run Bob (a evm domain full node)
-    let bob = domain_test_service::DomainNodeBuilder::new(
+    let mut bob = domain_test_service::DomainNodeBuilder::new(
         tokio_handle,
         Bob,
         BasePath::new(directory.path().join("bob")),
@@ -1181,7 +1175,6 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
     .build_evm_node(Role::Full, GENESIS_DOMAIN_ID, &mut ferdie)
     .await;
 
-    alice.send_remark_extrinsic().await.unwrap();
     produce_blocks!(ferdie, alice, 1).await.unwrap();
 
     // Get a bundle from alice's tx pool and used as bundle template.
@@ -1273,7 +1266,6 @@ async fn duplicated_and_stale_bundle_should_be_rejected() {
     .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
     .await;
 
-    alice.send_remark_extrinsic().await.unwrap();
     produce_blocks!(ferdie, alice, 1).await.unwrap();
 
     let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
@@ -1304,7 +1296,6 @@ async fn duplicated_and_stale_bundle_should_be_rejected() {
     }
 
     // Wait for `BlockTreePruningDepth + 1` blocks which is 16 + 1 in test
-    alice.send_remark_extrinsic().await.unwrap();
     produce_blocks!(ferdie, alice, 17).await.unwrap();
 
     // Bundle is now rejected because its receipt is pruned.
@@ -1348,7 +1339,6 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
     .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
     .await;
 
-    alice.send_remark_extrinsic().await.unwrap();
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 
     let mut parent_hash = ferdie.client.info().best_hash;
@@ -1363,7 +1353,6 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
     .into();
 
     // Wait one block to ensure the bundle is stored on this fork
-    alice.send_remark_extrinsic().await.unwrap();
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
         .unwrap();

@@ -1445,7 +1445,7 @@ impl<T: Config> Pallet<T> {
     }
 
     /// Returns if there are any ERs in the challenge period that have non empty extrinsics.
-    pub fn non_empty_extrinsic_receipts_exists(domain_id: DomainId) -> bool {
+    pub fn non_empty_bundle_exists(domain_id: DomainId) -> bool {
         let head_number = HeadDomainNumber::<T>::get(domain_id);
         let mut to_check = head_number
             .checked_sub(&T::BlockTreePruningDepth::get())
