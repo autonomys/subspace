@@ -1,9 +1,10 @@
 use crate::endpoint::{Endpoint, EndpointRequest, EndpointResponse};
-use codec::{Decode, Encode, FullCodec};
-use frame_support::pallet_prelude::NMapKey;
-use frame_support::storage::generator::StorageNMap;
-use frame_support::Twox64Concat;
+use crate::verification::StorageProofVerifier;
+use codec::{Decode, Encode, FullCodec, MaxEncodedLen};
+use frame_support::storage::generator::StorageMap;
+use frame_support::{log, Identity};
 use scale_info::TypeInfo;
+use serde::{Deserialize, Serialize};
 use sp_core::storage::StorageKey;
 use sp_domains::DomainId;
 use sp_runtime::app_crypto::sp_core::U256;
@@ -20,7 +21,7 @@ pub type ChannelId = U256;
 /// Nonce is always increasing.
 pub type Nonce = U256;
 
-/// Unique Id of a message between two domains.
+/// Unique Id of a message between two chains.
 pub type MessageId = (ChannelId, Nonce);
 
 /// Execution Fee to execute a send or receive request.
@@ -32,13 +33,13 @@ pub struct ExecutionFee<Balance> {
     pub compute_fee: Balance,
 }
 
-/// Fee model to send a request and receive a response from another domain.
+/// Fee model to send a request and receive a response from another chain.
 /// A user of the endpoint will pay
-///     - outbox_fee on src_domain
-///     - inbox_fee on dst_domain
+///     - outbox_fee on src_chain
+///     - inbox_fee on dst_chain
 /// The reward is distributed to
-///     - src_domain relayer pool when the response is received
-///     - dst_domain relayer pool when the response acknowledgement from src_domain.
+///     - src_chain relayer pool when the response is received
+///     - dst_chain relayer pool when the response acknowledgement from src_chain.
 #[derive(Default, Debug, Encode, Decode, Clone, Copy, Eq, PartialEq, TypeInfo)]
 pub struct FeeModel<Balance> {
     /// Fee paid by the endpoint user for any outgoing message.
@@ -64,23 +65,23 @@ impl<Balance: CheckedAdd> FeeModel<Balance> {
     }
 }
 
-/// Parameters for a new channel between two domains.
+/// Parameters for a new channel between two chains.
 #[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Copy)]
 pub struct InitiateChannelParams<Balance> {
     pub max_outgoing_messages: u32,
     pub fee_model: FeeModel<Balance>,
 }
 
-/// Defines protocol requests performed on domains.
+/// Defines protocol requests performed on chains.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 pub enum ProtocolMessageRequest<Balance> {
-    /// Request to open a channel with foreign domain.
+    /// Request to open a channel with foreign chain.
     ChannelOpen(InitiateChannelParams<Balance>),
-    /// Request to close an open channel with foreign domain.
+    /// Request to close an open channel with foreign chain.
     ChannelClose,
 }
 
-/// Defines protocol requests performed on domains.
+/// Defines protocol requests performed on chains.
 pub type ProtocolMessageResponse = Result<(), DispatchError>;
 
 /// Protocol message that encompasses  request or its response.
@@ -153,45 +154,96 @@ impl MessageWeightTag {
     }
 }
 
-/// Message contains information to be sent to or received from another domain
+/// Identifier of a chain.
+#[derive(
+    Clone,
+    Copy,
+    Debug,
+    Hash,
+    Eq,
+    PartialEq,
+    Ord,
+    PartialOrd,
+    Encode,
+    Decode,
+    TypeInfo,
+    Serialize,
+    Deserialize,
+    MaxEncodedLen,
+)]
+pub enum ChainId {
+    Consensus,
+    Domain(DomainId),
+}
+
+impl ChainId {
+    #[inline]
+    pub fn consensus_chain_id() -> Self {
+        Self::Consensus
+    }
+
+    #[inline]
+    pub fn is_consensus_chain(&self) -> bool {
+        match self {
+            ChainId::Consensus => true,
+            ChainId::Domain(_) => false,
+        }
+    }
+}
+
+impl From<u32> for ChainId {
+    #[inline]
+    fn from(x: u32) -> Self {
+        Self::Domain(DomainId::new(x))
+    }
+}
+
+impl From<DomainId> for ChainId {
+    #[inline]
+    fn from(x: DomainId) -> Self {
+        Self::Domain(x)
+    }
+}
+
+/// Message contains information to be sent to or received from another chain.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 pub struct Message<Balance> {
-    /// Domain which initiated this message.
-    pub src_domain_id: DomainId,
-    /// Domain this message is intended for.
-    pub dst_domain_id: DomainId,
+    /// Chain which initiated this message.
+    pub src_chain_id: ChainId,
+    /// Chain this message is intended for.
+    pub dst_chain_id: ChainId,
     /// ChannelId the message was sent through.
     pub channel_id: ChannelId,
     /// Message nonce within the channel.
     pub nonce: Nonce,
     /// Payload of the message
     pub payload: VersionedPayload<Balance>,
-    /// Last delivered message response nonce on src_domain.
+    /// Last delivered message response nonce on src_chain.
     pub last_delivered_message_response_nonce: Option<Nonce>,
 }
 
-/// Domain block info used as part of the Cross domain message proof.
+/// Block info used as part of the Cross chain message proof.
 #[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
-pub struct DomainBlockInfo<Number, Hash> {
-    /// Block number of the domain.
+pub struct BlockInfo<Number, Hash> {
+    /// Block number of the chain.
     pub block_number: Number,
-    /// Block hash of the domain.
+    /// Block hash of the chain.
     pub block_hash: Hash,
 }
 
 /// Proof combines the storage proofs to validate messages.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 pub struct Proof<BlockNumber, BlockHash, StateRoot> {
-    /// System domain block info when proof was constructed
-    pub system_domain_block_info: DomainBlockInfo<BlockNumber, BlockHash>,
-    /// State root of System domain at above number and block hash.
+    /// Consensus chain block info when proof was constructed
+    pub consensus_chain_block_info: BlockInfo<BlockNumber, BlockHash>,
+    /// State root of Consensus chain at above number and block hash.
     /// This is the used to extract the message from proof.
-    pub system_domain_state_root: StateRoot,
-    /// Storage proof that src core domain state_root is registered on System domain.
-    /// This is optional when the src_domain is the system domain.
+    pub consensus_chain_state_root: StateRoot,
+    /// Storage proof that src chain state_root is registered on Consensus chain.
+    /// This is optional when the src_chain is Consensus.
     /// BlockNumber and BlockHash is used with storage proof to validate and fetch its state root.
-    pub core_domain_proof: Option<(DomainBlockInfo<BlockNumber, BlockHash>, StorageProof)>,
-    /// Storage proof that message is processed on src_domain.
+    pub domain_proof: Option<(BlockInfo<BlockNumber, BlockHash>, StorageProof)>,
+    /// Storage proof that message is processed on src_chain.
     pub message_proof: StorageProof,
 }
 
@@ -201,12 +253,12 @@ impl<BlockNumber: Default, BlockHash: Default, StateRoot: Default>
     #[cfg(feature = "runtime-benchmarks")]
     pub fn dummy() -> Self {
         Proof {
-            system_domain_block_info: DomainBlockInfo {
+            consensus_chain_block_info: BlockInfo {
                 block_number: Default::default(),
                 block_hash: Default::default(),
             },
-            system_domain_state_root: Default::default(),
-            core_domain_proof: None,
+            consensus_chain_state_root: Default::default(),
+            domain_proof: None,
             message_proof: StorageProof::empty(),
         }
     }
@@ -215,28 +267,28 @@ impl<BlockNumber: Default, BlockHash: Default, StateRoot: Default>
 /// Holds the Block info and state roots from which a proof was constructed.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 pub struct ExtractedStateRootsFromProof<BlockNumber, BlockHash, StateRoot> {
-    /// System domain block info when proof was constructed
-    pub system_domain_block_info: DomainBlockInfo<BlockNumber, BlockHash>,
-    /// State root of System domain at above number and block hash.
-    pub system_domain_state_root: StateRoot,
-    /// Storage proof that src core domain state_root is registered on System domain.
-    /// This is optional when the src_domain is the system domain.
+    /// Consensus chain block info when proof was constructed
+    pub consensus_chain_block_info: BlockInfo<BlockNumber, BlockHash>,
+    /// State root of Consensus chain at above number and block hash.
+    pub consensus_chain_state_root: StateRoot,
+    /// Storage proof that src chain state_root is registered on Consensus chain.
+    /// This is optional when the src_chain is the consensus chain.
     /// BlockNumber and BlockHash is used with storage proof to validate and fetch its state root.
-    pub core_domain_info: Option<(DomainId, DomainBlockInfo<BlockNumber, BlockHash>, StateRoot)>,
+    pub domain_info: Option<(DomainId, BlockInfo<BlockNumber, BlockHash>, StateRoot)>,
 }
 
-/// Cross Domain message contains Message and its proof on src_domain.
+/// Cross Domain message contains Message and its proof on src_chain.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 pub struct CrossDomainMessage<BlockNumber, BlockHash, StateRoot> {
-    /// Domain which initiated this message.
-    pub src_domain_id: DomainId,
-    /// Domain this message is intended for.
-    pub dst_domain_id: DomainId,
+    /// Chain which initiated this message.
+    pub src_chain_id: ChainId,
+    /// Chain this message is intended for.
+    pub dst_chain_id: ChainId,
     /// ChannelId the message was sent through.
     pub channel_id: ChannelId,
     /// Message nonce within the channel.
     pub nonce: Nonce,
-    /// Proof of message processed on src_domain.
+    /// Proof of message processed on src_chain.
     pub proof: Proof<BlockNumber, BlockHash, StateRoot>,
     /// The message weight tag
     pub weight_tag: MessageWeightTag,
@@ -244,7 +296,7 @@ pub struct CrossDomainMessage<BlockNumber, BlockHash, StateRoot> {
 
 impl<BlockNumber, BlockHash, StateRoot> CrossDomainMessage<BlockNumber, BlockHash, StateRoot> {
     /// Extracts state roots.
-    /// If the core domain proof is present, then then we construct the trie and extract core domain state root.
+    /// If the chain proof is present, then then we construct the trie and extract chain state root.
     pub fn extract_state_roots_from_proof<Hashing>(
         &self,
     ) -> Option<ExtractedStateRootsFromProof<BlockNumber, BlockHash, StateRoot>>
@@ -255,66 +307,62 @@ impl<BlockNumber, BlockHash, StateRoot> CrossDomainMessage<BlockNumber, BlockHas
         BlockHash: Clone + FullCodec + TypeInfo + 'static,
     {
         let xdm_proof = self.proof.clone();
-        let _system_domain_state_root = xdm_proof.system_domain_state_root.clone();
-        let _extracted_state_roots = ExtractedStateRootsFromProof {
-            system_domain_block_info: xdm_proof.system_domain_block_info,
-            system_domain_state_root: xdm_proof.system_domain_state_root,
-            core_domain_info: None,
+        let consensus_chain_state_root = xdm_proof.consensus_chain_state_root.clone();
+        let mut extracted_state_roots = ExtractedStateRootsFromProof {
+            consensus_chain_block_info: xdm_proof.consensus_chain_block_info,
+            consensus_chain_state_root: xdm_proof.consensus_chain_state_root,
+            domain_info: None,
         };
 
-        None
+        // verify intermediate domain proof and retrieve state root of the message.
+        let domain_proof = xdm_proof.domain_proof;
+        match self.src_chain_id {
+            // if the src_chain is a consensus chain, return the state root as is since message is on consensus runtime
+            ChainId::Consensus if domain_proof.is_none() => Some(extracted_state_roots),
+            // if the src_chain is a domain, then return the state root of the domain by verifying the domain proof.
+            ChainId::Domain(domain_id) if domain_proof.is_some() => {
+                let (domain_info, domain_state_root_proof) =
+                    domain_proof.expect("checked for existence value above");
+                let domain_state_root_key = DomainStateRootStorage::<_, _, StateRoot>::storage_key(
+                    domain_id,
+                    domain_info.block_number.clone(),
+                    domain_info.block_hash.clone(),
+                );
 
-        // verify intermediate core domain proof and retrieve state root of the message.
-        // let core_domain_state_root_proof = xdm_proof.core_domain_proof;
-        // TODO: system domain and core domain have been removed.
-        // if the src_domain is a system domain, return the state root as is since message is on system domain runtime
-        // if self.src_domain_id.is_system() && core_domain_state_root_proof.is_none() {
-        // Some(extracted_state_roots)
-        // }
-        // if the src_domain is a core domain, then return the state root of the core domain by verifying the core domain proof.
-        // else if self.src_domain_id.is_core() && core_domain_state_root_proof.is_some() {
-        // let (domain_info, core_domain_state_root_proof) =
-        // core_domain_state_root_proof.expect("checked for existence value above");
-        // let core_domain_state_root_key =
-        // CoreDomainStateRootStorage::<_, _, StateRoot>::storage_key(
-        // self.src_domain_id,
-        // domain_info.block_number.clone(),
-        // domain_info.block_hash.clone(),
-        // );
-        // let core_domain_state_root =
-        // match StorageProofVerifier::<Hashing>::verify_and_get_value::<StateRoot>(
-        // &system_domain_state_root.into(),
-        // core_domain_state_root_proof,
-        // core_domain_state_root_key,
-        // ) {
-        // Ok(result) => result,
-        // Err(err) => {
-        // log::error!(
-        // target: "runtime::messenger",
-        // "Failed to verify Core domain proof: {:?}",
-        // err
-        // );
-        // return None;
-        // }
-        // };
+                let domain_state_root =
+                    match StorageProofVerifier::<Hashing>::verify_and_get_value::<StateRoot>(
+                        &consensus_chain_state_root.into(),
+                        domain_state_root_proof,
+                        domain_state_root_key,
+                    ) {
+                        Ok(result) => result,
+                        Err(err) => {
+                            log::error!(
+                            target: "runtime::messenger",
+                            "Failed to verify Domain proof: {:?}",
+                            err
+                            );
+                            return None;
+                        }
+                    };
 
-        // extracted_state_roots.core_domain_info =
-        // Some((self.src_domain_id, domain_info, core_domain_state_root));
+                extracted_state_roots.domain_info =
+                    Some((domain_id, domain_info, domain_state_root));
 
-        // Some(extracted_state_roots)
-        // } else {
-        // None
-        // }
+                Some(extracted_state_roots)
+            }
+            _ => None,
+        }
     }
 }
 
 /// Relayer message with storage key to generate storage proof using the backend.
 #[derive(Debug, Encode, Decode, TypeInfo, Clone, Eq, PartialEq)]
 pub struct RelayerMessageWithStorageKey {
-    /// Domain which initiated this message.
-    pub src_domain_id: DomainId,
-    /// Domain this message is intended for.
-    pub dst_domain_id: DomainId,
+    /// Chain which initiated this message.
+    pub src_chain_id: ChainId,
+    /// Chain this message is intended for.
+    pub dst_chain_id: ChainId,
     /// ChannelId the message was sent through.
     pub channel_id: ChannelId,
     /// Message nonce within the channel.
@@ -338,8 +386,8 @@ impl<BlockNumber, BlockHash, StateRoot> CrossDomainMessage<BlockNumber, BlockHas
         proof: Proof<BlockNumber, BlockHash, StateRoot>,
     ) -> Self {
         CrossDomainMessage {
-            src_domain_id: r_msg.src_domain_id,
-            dst_domain_id: r_msg.dst_domain_id,
+            src_chain_id: r_msg.src_chain_id,
+            dst_chain_id: r_msg.dst_chain_id,
             channel_id: r_msg.channel_id,
             nonce: r_msg.nonce,
             proof,
@@ -348,29 +396,22 @@ impl<BlockNumber, BlockHash, StateRoot> CrossDomainMessage<BlockNumber, BlockHas
     }
 }
 
-type KeyGenerator<Number, Hash> = (
-    NMapKey<Twox64Concat, DomainId>,
-    NMapKey<Twox64Concat, Number>,
-    NMapKey<Twox64Concat, Hash>,
-);
-
-/// This is a representation of actual StateRoots storage in pallet-receipts.
+/// This is a representation of actual StateRoots storage in pallet-domains.
 /// Any change in key or value there should be changed here accordingly.
-pub struct CoreDomainStateRootStorage<Number, Hash, StateRoot>(
-    PhantomData<(Number, Hash, StateRoot)>,
-);
+pub struct DomainStateRootStorage<Number, Hash, StateRoot>(PhantomData<(Number, Hash, StateRoot)>);
 
-impl<Number, Hash, StateRoot> StorageNMap<KeyGenerator<Number, Hash>, StateRoot>
-    for CoreDomainStateRootStorage<Number, Hash, StateRoot>
+impl<Number, Hash, StateRoot> StorageMap<(DomainId, Number, Hash), StateRoot>
+    for DomainStateRootStorage<Number, Hash, StateRoot>
 where
     Number: FullCodec + TypeInfo + 'static,
     Hash: FullCodec + TypeInfo + 'static,
     StateRoot: FullCodec + TypeInfo + 'static,
 {
     type Query = Option<StateRoot>;
+    type Hasher = Identity;
 
     fn module_prefix() -> &'static [u8] {
-        "Settlement".as_ref()
+        "Domains".as_ref()
     }
 
     fn storage_prefix() -> &'static [u8] {
@@ -386,17 +427,15 @@ where
     }
 }
 
-impl<Number, Hash, StateRoot> CoreDomainStateRootStorage<Number, Hash, StateRoot>
+impl<Number, Hash, StateRoot> DomainStateRootStorage<Number, Hash, StateRoot>
 where
     Number: FullCodec + TypeInfo + 'static,
     Hash: FullCodec + TypeInfo + 'static,
     StateRoot: FullCodec + TypeInfo + 'static,
 {
     pub fn storage_key(domain_id: DomainId, number: Number, hash: Hash) -> StorageKey {
-        StorageKey(
-            Self::storage_n_map_final_key::<KeyGenerator<Number, Hash>, _>((
-                domain_id, number, hash,
-            )),
-        )
+        StorageKey(Self::storage_map_final_key::<(DomainId, Number, Hash)>((
+            domain_id, number, hash,
+        )))
     }
 }

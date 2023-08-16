@@ -1,15 +1,15 @@
 use crate::mock::{
     new_test_ext, AccountId, Balance, Balances, MockAccountIdConverter, MockRuntime, RuntimeEvent,
-    RuntimeOrigin, SelfDomainId, SelfEndpointId, System, Transporter, USER_ACCOUNT,
+    RuntimeOrigin, SelfChainId, SelfEndpointId, System, Transporter, USER_ACCOUNT,
 };
 use crate::{EndpointHandler, Error, Location, Transfer};
 use codec::Encode;
 use frame_support::dispatch::DispatchResult;
 use frame_support::{assert_err, assert_ok};
-use sp_domains::DomainId;
 use sp_messenger::endpoint::{
     Endpoint, EndpointHandler as EndpointHandlerT, EndpointRequest, EndpointResponse,
 };
+use sp_messenger::messages::ChainId;
 use sp_runtime::traits::Convert;
 use std::marker::PhantomData;
 
@@ -20,10 +20,10 @@ fn test_initiate_transfer_failed() {
         let balance = Balances::free_balance(account);
         assert_eq!(balance, 0);
 
-        // transfer 500 to dst_domain id 100
-        let dst_domain_id = 1.into();
+        // transfer 500 to dst_chain id 100
+        let dst_chain_id = 1.into();
         let dst_location = Location {
-            domain_id: dst_domain_id,
+            chain_id: dst_chain_id,
             account_id: MockAccountIdConverter::convert(account),
         };
         let res = Transporter::transfer(RuntimeOrigin::signed(account), dst_location, 500);
@@ -40,10 +40,10 @@ fn test_initiate_transfer() {
         let total_balance = Balances::total_issuance();
         assert_eq!(total_balance, 1000);
 
-        // transfer 500 to dst_domain id 100
-        let dst_domain_id = 1.into();
+        // transfer 500 to dst_chain id 100
+        let dst_chain_id = 1.into();
         let dst_location = Location {
-            domain_id: dst_domain_id,
+            chain_id: dst_chain_id,
             account_id: MockAccountIdConverter::convert(account),
         };
         let res = Transporter::transfer(RuntimeOrigin::signed(account), dst_location, 500);
@@ -54,20 +54,20 @@ fn test_initiate_transfer() {
         assert_eq!(total_balance, 500);
         System::assert_has_event(RuntimeEvent::Transporter(
             crate::Event::<MockRuntime>::OutgoingTransferInitiated {
-                domain_id: dst_domain_id,
+                chain_id: dst_chain_id,
                 message_id: 0,
             },
         ));
         assert_eq!(
-            Transporter::outgoing_transfers(dst_domain_id, 0).unwrap(),
+            Transporter::outgoing_transfers(dst_chain_id, 0).unwrap(),
             Transfer {
                 amount: 500,
                 sender: Location {
-                    domain_id: SelfDomainId::get(),
+                    chain_id: SelfChainId::get(),
                     account_id: MockAccountIdConverter::convert(account),
                 },
                 receiver: Location {
-                    domain_id: dst_domain_id,
+                    chain_id: dst_chain_id,
                     account_id: MockAccountIdConverter::convert(account),
                 },
             }
@@ -78,29 +78,29 @@ fn test_initiate_transfer() {
 #[test]
 fn test_transfer_response_missing_request() {
     new_test_ext().execute_with(|| {
-        let dst_domain_id: DomainId = 1.into();
+        let dst_chain_id: ChainId = 1.into();
         let amount: Balance = 500;
         let account: AccountId = 100;
         let encoded_payload = Transfer {
             amount,
             sender: Location {
-                domain_id: dst_domain_id,
+                chain_id: dst_chain_id,
                 account_id: MockAccountIdConverter::convert(account),
             },
             receiver: Location {
-                domain_id: dst_domain_id,
+                chain_id: dst_chain_id,
                 account_id: MockAccountIdConverter::convert(account),
             },
         }
         .encode();
-        let res = submit_response(dst_domain_id, encoded_payload, Ok(vec![]));
+        let res = submit_response(dst_chain_id, encoded_payload, Ok(vec![]));
         assert_err!(res, Error::<MockRuntime>::MissingTransferRequest)
     })
 }
 
-fn initiate_transfer(dst_domain_id: DomainId, account: AccountId, amount: Balance) {
+fn initiate_transfer(dst_chain_id: ChainId, account: AccountId, amount: Balance) {
     let dst_location = Location {
-        domain_id: dst_domain_id,
+        chain_id: dst_chain_id,
         account_id: MockAccountIdConverter::convert(account),
     };
 
@@ -108,20 +108,20 @@ fn initiate_transfer(dst_domain_id: DomainId, account: AccountId, amount: Balanc
     assert_ok!(res);
     System::assert_has_event(RuntimeEvent::Transporter(
         crate::Event::<MockRuntime>::OutgoingTransferInitiated {
-            domain_id: dst_domain_id,
+            chain_id: dst_chain_id,
             message_id: 0,
         },
     ));
 }
 
 fn submit_response(
-    dst_domain_id: DomainId,
+    dst_chain_id: ChainId,
     req_payload: Vec<u8>,
     resp: EndpointResponse,
 ) -> DispatchResult {
     let handler = EndpointHandler(PhantomData::<MockRuntime>);
     handler.message_response(
-        dst_domain_id,
+        dst_chain_id,
         0,
         EndpointRequest {
             src_endpoint: Endpoint::Id(SelfEndpointId::get()),
@@ -132,10 +132,10 @@ fn submit_response(
     )
 }
 
-fn submit_transfer(src_domain_id: DomainId, req_payload: Vec<u8>) -> EndpointResponse {
+fn submit_transfer(src_chain_id: ChainId, req_payload: Vec<u8>) -> EndpointResponse {
     let handler = EndpointHandler(PhantomData::<MockRuntime>);
     handler.message(
-        src_domain_id,
+        src_chain_id,
         0,
         EndpointRequest {
             src_endpoint: Endpoint::Id(SelfEndpointId::get()),
@@ -150,23 +150,23 @@ fn test_transfer_response_invalid_request() {
     new_test_ext().execute_with(|| {
         let account = USER_ACCOUNT;
         let amount: Balance = 500;
-        // transfer 500 to dst_domain id 100
-        let dst_domain_id: DomainId = 1.into();
-        initiate_transfer(dst_domain_id, account, amount);
+        // transfer 500 to dst_chain id 100
+        let dst_chain_id: ChainId = 1.into();
+        initiate_transfer(dst_chain_id, account, amount);
         let encoded_payload = Transfer {
             amount,
             sender: Location {
-                domain_id: dst_domain_id,
+                chain_id: dst_chain_id,
                 account_id: MockAccountIdConverter::convert(account),
             },
             receiver: Location {
-                domain_id: dst_domain_id,
+                chain_id: dst_chain_id,
                 // change receiver id
                 account_id: MockAccountIdConverter::convert(100),
             },
         }
         .encode();
-        let res = submit_response(dst_domain_id, encoded_payload, Ok(vec![]));
+        let res = submit_response(dst_chain_id, encoded_payload, Ok(vec![]));
         assert_err!(res, Error::<MockRuntime>::InvalidTransferRequest)
     })
 }
@@ -175,9 +175,9 @@ fn test_transfer_response_invalid_request() {
 fn test_transfer_response_revert() {
     new_test_ext().execute_with(|| {
         let account = USER_ACCOUNT;
-        // transfer 500 to dst_domain id 1
+        // transfer 500 to dst_chain id 1
         let amount: Balance = 500;
-        let dst_domain_id: DomainId = 1.into();
+        let dst_chain_id: ChainId = 1.into();
 
         // check pre dispatch balances
         let balance = Balances::free_balance(account);
@@ -186,7 +186,7 @@ fn test_transfer_response_revert() {
         assert_eq!(total_balance, 1000);
 
         // init transfer
-        initiate_transfer(dst_domain_id, account, amount);
+        initiate_transfer(dst_chain_id, account, amount);
 
         // check post init
         let balance = Balances::free_balance(account);
@@ -198,17 +198,17 @@ fn test_transfer_response_revert() {
         let encoded_payload = Transfer {
             amount,
             sender: Location {
-                domain_id: dst_domain_id,
+                chain_id: dst_chain_id,
                 account_id: MockAccountIdConverter::convert(account),
             },
             receiver: Location {
-                domain_id: dst_domain_id,
+                chain_id: dst_chain_id,
                 account_id: MockAccountIdConverter::convert(account),
             },
         }
         .encode();
         let res = submit_response(
-            dst_domain_id,
+            dst_chain_id,
             encoded_payload,
             Err(Error::<MockRuntime>::InvalidPayload.into()),
         );
@@ -221,7 +221,7 @@ fn test_transfer_response_revert() {
         assert_eq!(total_balance, 1000);
         System::assert_has_event(RuntimeEvent::Transporter(
             crate::Event::<MockRuntime>::OutgoingTransferFailed {
-                domain_id: dst_domain_id,
+                chain_id: dst_chain_id,
                 message_id: 0,
                 err: Error::<MockRuntime>::InvalidPayload.into(),
             },
@@ -233,9 +233,9 @@ fn test_transfer_response_revert() {
 fn test_transfer_response_successful() {
     new_test_ext().execute_with(|| {
         let account = USER_ACCOUNT;
-        // transfer 500 to dst_domain id 1
+        // transfer 500 to dst_chain id 1
         let amount: Balance = 500;
-        let dst_domain_id: DomainId = 1.into();
+        let dst_chain_id: ChainId = 1.into();
 
         // check pre dispatch balances
         let balance = Balances::free_balance(account);
@@ -244,7 +244,7 @@ fn test_transfer_response_successful() {
         assert_eq!(total_balance, 1000);
 
         // init transfer
-        initiate_transfer(dst_domain_id, account, amount);
+        initiate_transfer(dst_chain_id, account, amount);
 
         // check post init
         let balance = Balances::free_balance(account);
@@ -256,16 +256,16 @@ fn test_transfer_response_successful() {
         let encoded_payload = Transfer {
             amount,
             sender: Location {
-                domain_id: dst_domain_id,
+                chain_id: dst_chain_id,
                 account_id: MockAccountIdConverter::convert(account),
             },
             receiver: Location {
-                domain_id: dst_domain_id,
+                chain_id: dst_chain_id,
                 account_id: MockAccountIdConverter::convert(account),
             },
         }
         .encode();
-        let res = submit_response(dst_domain_id, encoded_payload, Ok(vec![]));
+        let res = submit_response(dst_chain_id, encoded_payload, Ok(vec![]));
         assert_ok!(res);
 
         // balance changes should be as is.
@@ -275,7 +275,7 @@ fn test_transfer_response_successful() {
         assert_eq!(total_balance, 500);
         System::assert_has_event(RuntimeEvent::Transporter(
             crate::Event::<MockRuntime>::OutgoingTransferSuccessful {
-                domain_id: dst_domain_id,
+                chain_id: dst_chain_id,
                 message_id: 0,
             },
         ));
@@ -288,8 +288,8 @@ fn test_receive_incoming_transfer() {
         let receiver = 2;
         // transfer 500
         let amount: Balance = 500;
-        let src_domain_id: DomainId = 100.into();
-        let dst_domain_id: DomainId = 1.into();
+        let src_chain_id: ChainId = 100.into();
+        let dst_chain_id: ChainId = 1.into();
 
         // check pre dispatch balances
         let balance = Balances::free_balance(receiver);
@@ -298,15 +298,15 @@ fn test_receive_incoming_transfer() {
         assert_eq!(total_balance, 1000);
 
         let resp = submit_transfer(
-            src_domain_id,
+            src_chain_id,
             Transfer {
                 amount,
                 sender: Location {
-                    domain_id: src_domain_id,
+                    chain_id: src_chain_id,
                     account_id: MockAccountIdConverter::convert(0),
                 },
                 receiver: Location {
-                    domain_id: dst_domain_id,
+                    chain_id: dst_chain_id,
                     account_id: MockAccountIdConverter::convert(receiver),
                 },
             }

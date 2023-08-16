@@ -457,6 +457,17 @@ mod pallet {
     pub(super) type HeadReceiptNumber<T: Config> =
         StorageMap<_, Identity, DomainId, T::DomainNumber, ValueQuery>;
 
+    /// State root mapped again each domain (block, hash)
+    /// This acts as an index for other protocols like XDM to fetch state roots faster.
+    #[pallet::storage]
+    pub(super) type StateRoots<T: Config> = StorageMap<
+        _,
+        Identity,
+        (DomainId, T::DomainNumber, T::DomainHash),
+        T::DomainHash,
+        OptionQuery,
+    >;
+
     /// A set of `BundleDigest` from all bundles that successfully submitted to the consensus block,
     /// these bundles will be used to construct the domain block and `ExecutionInbox` is used to:
     ///
@@ -1126,6 +1137,18 @@ impl<T: Config> Pallet<T> {
     pub fn domain_runtime_code(domain_id: DomainId) -> Option<Vec<u8>> {
         RuntimeRegistry::<T>::get(Self::runtime_id(domain_id)?)
             .map(|runtime_object| runtime_object.code)
+    }
+
+    pub fn domain_best_number(domain_id: DomainId) -> Option<T::DomainNumber> {
+        Some(HeadDomainNumber::<T>::get(domain_id))
+    }
+
+    pub fn domain_state_root(
+        domain_id: DomainId,
+        domain_block_number: T::DomainNumber,
+        domain_block_hash: T::DomainHash,
+    ) -> Option<T::DomainHash> {
+        StateRoots::<T>::get((domain_id, domain_block_number, domain_block_hash))
     }
 
     pub fn runtime_id(domain_id: DomainId) -> Option<RuntimeId> {

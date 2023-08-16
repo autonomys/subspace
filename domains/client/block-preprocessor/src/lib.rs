@@ -18,7 +18,7 @@ pub mod xdm_verifier;
 
 use crate::inherents::construct_inherent_extrinsics;
 use crate::runtime_api::{SetCodeConstructor, SignerExtractor, StateRootExtractor};
-use crate::xdm_verifier::verify_xdm_with_consensus_client;
+use crate::xdm_verifier::verify_xdm;
 use codec::{Decode, Encode};
 use domain_runtime_primitives::opaque::AccountId;
 use domain_runtime_primitives::DomainCoreApi;
@@ -451,8 +451,7 @@ where
     ) -> Vec<Block::Extrinsic> {
         exts.into_iter()
             .filter(|ext| {
-                match verify_xdm_with_consensus_client::<CClient, CBlock, Block, _>(
-                    self.domain_id,
+                match verify_xdm::<CClient, CBlock, Block, _>(
                     &self.consensus_client,
                     at,
                     &self.runtime_api,

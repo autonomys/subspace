@@ -27,14 +27,15 @@ mod benchmarks {
         let receiver: T::AccountId = account("receiver", 2, SEED);
 
         let amount: BalanceOf<T> = 100u32.into();
-        let dst_domain_id = T::SelfDomainId::get() + 1.into();
+        let dst_chain_id: ChainId = u32::MAX.into();
+        assert_ne!(T::SelfChainId::get(), dst_chain_id);
         let location = Location {
-            domain_id: dst_domain_id,
+            chain_id: dst_chain_id,
             account_id: T::AccountIdConverter::convert(receiver),
         };
 
         T::Currency::make_free_balance_be(&sender, amount + T::Currency::minimum_balance());
-        assert_ok!(T::Sender::unchecked_open_channel(dst_domain_id));
+        assert_ok!(T::Sender::unchecked_open_channel(dst_chain_id));
 
         #[extrinsic_call]
         _(RawOrigin::Signed(sender.clone()), location, amount);
@@ -49,14 +50,16 @@ mod benchmarks {
     fn message() {
         let sender: T::AccountId = account("sender", 1, SEED);
         let receiver: T::AccountId = account("receiver", 2, SEED);
+        let dst_chain_id: ChainId = u32::MAX.into();
+        assert_ne!(T::SelfChainId::get(), dst_chain_id);
         let transfer_obj: Transfer<BalanceOf<T>> = Transfer {
             amount: 10u32.into(),
             sender: Location {
-                domain_id: T::SelfDomainId::get() + 1.into(),
+                chain_id: dst_chain_id,
                 account_id: T::AccountIdConverter::convert(sender),
             },
             receiver: Location {
-                domain_id: T::SelfDomainId::get(),
+                chain_id: T::SelfChainId::get(),
                 account_id: T::AccountIdConverter::convert(receiver),
             },
         };
@@ -70,7 +73,7 @@ mod benchmarks {
         #[block]
         {
             assert_ok!(EndpointHandler(PhantomData::<T>).message(
-                T::SelfDomainId::get() + 1.into(),
+                T::SelfChainId::get() + 1,
                 message_id,
                 endpoint_req
             ));
@@ -83,16 +86,17 @@ mod benchmarks {
     fn message_response() {
         let sender: T::AccountId = account("sender", 1, SEED);
         let receiver: T::AccountId = account("receiver", 2, SEED);
-        let dst_domain_id = T::SelfDomainId::get() + 1.into();
+        let dst_chain_id: ChainId = u32::MAX.into();
+        assert_ne!(T::SelfChainId::get(), dst_chain_id);
         let amount = 10u32.into();
         let transfer_obj = Transfer {
             amount,
             sender: Location {
-                domain_id: T::SelfDomainId::get(),
+                chain_id: T::SelfChainId::get(),
                 account_id: T::AccountIdConverter::convert(sender.clone()),
             },
             receiver: Location {
-                domain_id: dst_domain_id,
+                chain_id: dst_chain_id,
                 account_id: T::AccountIdConverter::convert(receiver),
             },
         };
@@ -103,12 +107,12 @@ mod benchmarks {
         };
         let endpoint_resp = Err(DispatchError::Exhausted);
         let message_id = MessageIdOf::<T>::default();
-        OutgoingTransfers::<T>::insert(dst_domain_id, message_id, transfer_obj);
+        OutgoingTransfers::<T>::insert(dst_chain_id, message_id, transfer_obj);
 
         #[block]
         {
             assert_ok!(EndpointHandler(PhantomData::<T>).message_response(
-                dst_domain_id,
+                dst_chain_id,
                 message_id,
                 endpoint_req,
                 endpoint_resp,

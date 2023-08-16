@@ -1,6 +1,6 @@
 use crate::providers::{BlockImportProvider, RpcProvider};
 use crate::{DomainConfiguration, FullBackend, FullClient};
-use cross_domain_message_gossip::DomainTxPoolSink;
+use cross_domain_message_gossip::ChainTxPoolSink;
 use domain_client_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_client_consensus_relay_chain::DomainBlockImport;
 use domain_client_message_relayer::GossipMessageSink;
@@ -106,7 +106,7 @@ where
     /// Operator.
     pub operator: DomainOperator<Block, CBlock, CClient, RuntimeApi, ExecutorDispatch, BI>,
     /// Transaction pool sink
-    pub tx_pool_sink: DomainTxPoolSink,
+    pub tx_pool_sink: ChainTxPoolSink,
     _phantom_data: PhantomData<AccountId>,
 }
 
@@ -473,7 +473,7 @@ where
 
     if let Some(relayer_id) = domain_config.maybe_relayer_id {
         tracing::info!(?domain_id, ?relayer_id, "Starting domain relayer");
-        let relayer_worker = domain_client_message_relayer::worker::relay_system_domain_messages(
+        let relayer_worker = domain_client_message_relayer::worker::relay_domain_messages(
             relayer_id,
             client.clone(),
             sync_service.clone(),

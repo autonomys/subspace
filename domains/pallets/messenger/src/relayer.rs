@@ -5,9 +5,9 @@ use crate::{
 };
 use frame_support::ensure;
 use frame_support::traits::ReservableCurrency;
-use sp_domains::DomainId;
 use sp_messenger::messages::{
-    MessageId, MessageWeightTag, RelayerMessageWithStorageKey, RelayerMessagesWithStorageKey,
+    ChainId, MessageId, MessageWeightTag, RelayerMessageWithStorageKey,
+    RelayerMessagesWithStorageKey,
 };
 use sp_runtime::traits::Get;
 use sp_runtime::{ArithmeticError, DispatchError, DispatchResult};
@@ -17,7 +17,7 @@ use sp_std::vec::Vec;
 /// Relayer address to which rewards are paid.
 pub type RelayerId<T> = <T as frame_system::Config>::AccountId;
 
-/// Type that holds relayer details within this domain.
+/// Type that holds relayer details within this chain.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo, Copy)]
 pub struct RelayerInfo<AccountId, Balance> {
     /// Someone who owns this relayer.
@@ -29,8 +29,8 @@ pub struct RelayerInfo<AccountId, Balance> {
 /// Set of messages to be relayed by a given relayer.
 #[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 pub struct RelayerMessages {
-    pub outbox: Vec<(DomainId, MessageId, MessageWeightTag)>,
-    pub inbox_responses: Vec<(DomainId, MessageId, MessageWeightTag)>,
+    pub outbox: Vec<(ChainId, MessageId, MessageWeightTag)>,
+    pub inbox_responses: Vec<(ChainId, MessageId, MessageWeightTag)>,
 }
 
 impl<T: Config> Pallet<T> {
@@ -146,14 +146,14 @@ impl<T: Config> Pallet<T> {
 
         // create storage keys for inbox responses
         assigned_messages.inbox_responses.into_iter().for_each(
-            |(domain_id, (channel_id, nonce), weight_tag)| {
+            |(chain_id, (channel_id, nonce), weight_tag)| {
                 let storage_key =
-                    InboxResponses::<T>::hashed_key_for((domain_id, channel_id, nonce));
+                    InboxResponses::<T>::hashed_key_for((chain_id, channel_id, nonce));
                 messages_with_storage_key
                     .inbox_responses
                     .push(RelayerMessageWithStorageKey {
-                        src_domain_id: T::SelfDomainId::get(),
-                        dst_domain_id: domain_id,
+                        src_chain_id: T::SelfChainId::get(),
+                        dst_chain_id: chain_id,
                         channel_id,
                         nonce,
                         storage_key,
@@ -164,13 +164,13 @@ impl<T: Config> Pallet<T> {
 
         // create storage keys for outbox
         assigned_messages.outbox.into_iter().for_each(
-            |(domain_id, (channel_id, nonce), weight_tag)| {
-                let storage_key = Outbox::<T>::hashed_key_for((domain_id, channel_id, nonce));
+            |(chain_id, (channel_id, nonce), weight_tag)| {
+                let storage_key = Outbox::<T>::hashed_key_for((chain_id, channel_id, nonce));
                 messages_with_storage_key
                     .outbox
                     .push(RelayerMessageWithStorageKey {
-                        src_domain_id: T::SelfDomainId::get(),
-                        dst_domain_id: domain_id,
+                        src_chain_id: T::SelfChainId::get(),
+                        dst_chain_id: chain_id,
                         channel_id,
                         nonce,
                         storage_key,

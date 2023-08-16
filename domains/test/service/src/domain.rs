@@ -26,6 +26,7 @@ use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, NumberFor, ProvideRuntimeApi
 use sp_block_builder::BlockBuilder;
 use sp_core::{Decode, Encode, H256};
 use sp_domains::DomainId;
+use sp_messenger::messages::ChainId;
 use sp_messenger::{MessengerApi, RelayerApi};
 use sp_offchain::OffchainWorkerApi;
 use sp_runtime::traits::Dispatchable;
@@ -271,7 +272,7 @@ where
         if role.is_authority() {
             mock_consensus_node
                 .xdm_gossip_worker_builder()
-                .push_domain_tx_pool_sink(domain_id, tx_pool_sink.clone());
+                .push_chain_tx_pool_sink(ChainId::Domain(domain_id), tx_pool_sink.clone());
         }
 
         let addr = MultiaddrWithPeerId {
