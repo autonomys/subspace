@@ -323,9 +323,6 @@ pub enum ChainConstants {
         recent_history_fraction: (HistorySize, HistorySize),
         /// Minimum lifetime of a plotted sector, measured in archived segment.
         min_sector_lifetime: HistorySize,
-        /// If true, use the proof of time in the pre digest as source of global
-        /// randomness.
-        is_pot_enabled: bool,
     },
 }
 

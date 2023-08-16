@@ -71,7 +71,7 @@ use sp_consensus_subspace::{
 };
 use sp_core::H256;
 use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
-use sp_runtime::traits::{NumberFor as BlockNumberFor, One};
+use sp_runtime::traits::One;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
@@ -93,11 +93,11 @@ use subspace_verification::{
 /// Errors while verifying the block proof of time.
 #[derive(Debug, thiserror::Error)]
 #[allow(missing_docs)]
-pub enum PotVerifyError<Block: BlockT> {
+pub enum PotVerifyError {
     /// Block has no proof of time digest.
     #[error("Block missing proof of time : {block_number}/{parent_slot_number:?}/{slot_number}")]
     MissingPotDigest {
-        block_number: BlockNumberFor<Block>,
+        block_number: BlockNumber,
         parent_slot_number: Option<SlotNumber>,
         slot_number: SlotNumber,
     },
@@ -107,7 +107,7 @@ pub enum PotVerifyError<Block: BlockT> {
         "Parent block missing proof of time : {block_number}/{parent_slot_number}/{slot_number}"
     )]
     ParentMissingPotDigest {
-        block_number: BlockNumberFor<Block>,
+        block_number: BlockNumber,
         parent_slot_number: SlotNumber,
         slot_number: SlotNumber,
     },
@@ -179,7 +179,7 @@ where
 
 /// Errors encountered by the Subspace authorship task.
 #[derive(Debug, thiserror::Error)]
-pub enum Error<Block: BlockT, Header: HeaderT> {
+pub enum Error<Header: HeaderT> {
     /// Error during digest item extraction
     #[error("Digest item error: {0}")]
     DigestItemError(#[from] DigestError),
@@ -300,12 +300,11 @@ pub enum Error<Block: BlockT, Header: HeaderT> {
     RuntimeApi(#[from] ApiError),
     /// Proof of time verification failed.
     #[error("PoT verification failed: {0}")]
-    PotVerifyError(#[from] PotVerifyError<Block>),
+    PotVerifyError(#[from] PotVerifyError),
 }
 
-impl<Block, Header> From<VerificationError<Header>> for Error<Block, Header>
+impl<Header> From<VerificationError<Header>> for Error<Header>
 where
-    Block: BlockT,
     Header: HeaderT,
 {
     #[inline]
@@ -353,13 +352,12 @@ where
     }
 }
 
-impl<Block, Header> From<Error<Block, Header>> for String
+impl<Header> From<Error<Header>> for String
 where
-    Block: BlockT,
     Header: HeaderT,
 {
     #[inline]
-    fn from(error: Error<Block, Header>) -> String {
+    fn from(error: Error<Header>) -> String {
         error.to_string()
     }
 }
@@ -633,7 +631,7 @@ where
         header: &Block::Header,
         author: &FarmerPublicKey,
         origin: &BlockOrigin,
-    ) -> Result<(), Error<Block, Block::Header>> {
+    ) -> Result<(), Error<Block::Header>> {
         // don't report any equivocations during initial sync
         // as they are most likely stale.
         if *origin == BlockOrigin::NetworkInitialSync {
@@ -718,7 +716,7 @@ where
             FarmerPublicKey,
             FarmerSignature,
         >(&block.header)
-        .map_err(Error::<Block, Block::Header>::from)?;
+        .map_err(Error::<Block::Header>::from)?;
         let pre_digest = subspace_digest_items.pre_digest;
 
         // Check if farmer's plot is burned.
@@ -731,7 +729,7 @@ where
                 if block.state_action.skip_execution_checks() {
                     Ok(false)
                 } else {
-                    Err(Error::<Block, Block::Header>::RuntimeApi(error))
+                    Err(Error::<Block::Header>::RuntimeApi(error))
                 }
             })?
         {
@@ -741,7 +739,7 @@ where
                 pre_digest.solution.public_key
             );
 
-            return Err(Error::<Block, Block::Header>::FarmerInBlockList(
+            return Err(Error::<Block::Header>::FarmerInBlockList(
                 pre_digest.solution.public_key.clone(),
             )
             .into());
@@ -774,7 +772,7 @@ where
                 Some(pre_digest),
                 &self.kzg,
             )
-            .map_err(Error::<Block, Block::Header>::from)?
+            .map_err(Error::<Block::Header>::from)?
         };
 
         match checked_header {
@@ -823,7 +821,7 @@ where
                     "subspace.header_too_far_in_future";
                     "hash" => ?hash, "a" => ?a, "b" => ?b
                 );
-                Err(Error::<Block, Block::Header>::TooFarInFuture(hash).into())
+                Err(Error::<Block::Header>::TooFarInFuture(hash).into())
             }
         }
     }
@@ -913,7 +911,7 @@ where
             FarmerSignature,
         >,
         skip_runtime_access: bool,
-    ) -> Result<(), Error<Block, Block::Header>> {
+    ) -> Result<(), Error<Block::Header>> {
         let block_number = *header.number();
         let parent_hash = *header.parent_hash();
 
@@ -935,7 +933,7 @@ where
                 if skip_runtime_access {
                     Ok(false)
                 } else {
-                    Err(Error::<Block, Block::Header>::RuntimeApi(error))
+                    Err(Error::<Block::Header>::RuntimeApi(error))
                 }
             })?
         {
@@ -1144,13 +1142,13 @@ where
         block_number: NumberFor<Block>,
         pre_digest: &PreDigest<FarmerPublicKey, FarmerPublicKey>,
         parent_pre_digest: Option<&PreDigest<FarmerPublicKey, FarmerPublicKey>>,
-    ) -> Result<Randomness, PotVerifyError<Block>> {
+    ) -> Result<Randomness, PotVerifyError> {
         let pot_digest =
             pre_digest
                 .proof_of_time
                 .as_ref()
                 .ok_or_else(|| PotVerifyError::MissingPotDigest {
-                    block_number,
+                    block_number: block_number.into(),
                     parent_slot_number: parent_pre_digest.map(|p| p.slot.into()),
                     slot_number: pre_digest.slot.into(),
                 })?;
@@ -1162,7 +1160,7 @@ where
 
         let parent_pot_digest = parent_pre_digest.proof_of_time.as_ref().ok_or_else(|| {
             PotVerifyError::ParentMissingPotDigest {
-                block_number,
+                block_number: block_number.into(),
                 parent_slot_number: parent_pre_digest.slot.into(),
                 slot_number: pre_digest.slot.into(),
             }
@@ -1231,7 +1229,7 @@ where
             .client
             .runtime_api()
             .root_plot_public_key(*block.header.parent_hash())
-            .map_err(Error::<Block, Block::Header>::RuntimeApi)
+            .map_err(Error::<Block::Header>::RuntimeApi)
             .map_err(|e| ConsensusError::ClientImport(e.to_string()))?;
 
         self.block_import_verification(
@@ -1253,7 +1251,7 @@ where
                 .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
                 .ok_or_else(|| {
                     ConsensusError::ClientImport(
-                        Error::<Block, Block::Header>::ParentBlockNoAssociatedWeight(block_hash)
+                        Error::<Block::Header>::ParentBlockNoAssociatedWeight(block_hash)
                             .to_string(),
                     )
                 })?
@@ -1291,8 +1289,7 @@ where
                     found_segment_commitment
                 );
                 return Err(ConsensusError::ClientImport(
-                    Error::<Block, Block::Header>::DifferentSegmentCommitment(segment_index)
-                        .to_string(),
+                    Error::<Block::Header>::DifferentSegmentCommitment(segment_index).to_string(),
                 ));
             }
         }
@@ -1345,7 +1342,7 @@ where
 /// Get chain constant configurations
 pub fn get_chain_constants<Block, Client>(
     client: &Client,
-) -> Result<ChainConstants, Error<Block, Block::Header>>
+) -> Result<ChainConstants, Error<Block::Header>>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + AuxStore,
@@ -1359,7 +1356,7 @@ where
             let chain_constants = client
                 .runtime_api()
                 .chain_constants(client.info().best_hash)
-                .map_err(Error::<Block, Block::Header>::RuntimeApi)?;
+                .map_err(Error::<Block::Header>::RuntimeApi)?;
 
             aux_schema::write_chain_constants(&chain_constants, |values| {
                 client.insert_aux(
