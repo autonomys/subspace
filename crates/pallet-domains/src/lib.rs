@@ -458,7 +458,7 @@ mod pallet {
         StorageMap<_, Identity, DomainId, T::DomainNumber, ValueQuery>;
 
     /// State root mapped again each domain (block, hash)
-    /// This acts a an index for other protocols like XDM to fetch state roots faster.
+    /// This acts as an index for other protocols like XDM to fetch state roots faster.
     #[pallet::storage]
     pub(super) type StateRoots<T: Config> = StorageMap<
         _,
@@ -1140,7 +1140,7 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn domain_best_number(domain_id: DomainId) -> Option<T::DomainNumber> {
-        Some(HeadReceiptNumber::<T>::get(domain_id))
+        Some(HeadDomainNumber::<T>::get(domain_id))
     }
 
     pub fn domain_state_root(

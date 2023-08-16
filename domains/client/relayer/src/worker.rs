@@ -9,12 +9,12 @@ use sp_messenger::RelayerApi;
 use sp_runtime::traits::{CheckedSub, NumberFor, Zero};
 use std::sync::Arc;
 
-/// Starts relaying system domain messages to other domains.
+/// Starts relaying consensus chain messages to other domains.
 /// If the node is in major sync, worker waits waits until the sync is finished.
-pub async fn relay_system_domain_messages<Client, Block, SO, RelayerId>(
+pub async fn relay_domain_messages<Client, Block, SO, RelayerId>(
     relayer_id: RelayerId,
-    system_domain_client: Arc<Client>,
-    system_domain_sync_oracle: SO,
+    domain_client: Arc<Client>,
+    domain_sync_oracle: SO,
     gossip_message_sink: GossipMessageSink,
 ) where
     Block: BlockT,
@@ -29,11 +29,13 @@ pub async fn relay_system_domain_messages<Client, Block, SO, RelayerId>(
 {
     // there is not confirmation depth for relayer on system domain
     // since all the relayers will haven embed client to known the canonical chain.
-    let result = relay_domain_messages(
+    let result = start_relaying_domain_messages(
         relayer_id,
         NumberFor::<Block>::zero(),
-        system_domain_client,
+        domain_client,
         |relayer_id, client, block_hash| {
+            // TODO: this is incorrect and should instead expect a primary client.
+            //  Will be fixed in coming prs
             Relayer::submit_messages_from_system_domain(
                 relayer_id,
                 client,
@@ -41,7 +43,7 @@ pub async fn relay_system_domain_messages<Client, Block, SO, RelayerId>(
                 &gossip_message_sink,
             )
         },
-        system_domain_sync_oracle,
+        domain_sync_oracle,
         |_domain_id, _block_number| -> Result<bool, ApiError> {
             // since we just need to provide a storage proof with the state root of system domain
             // proof can always be generated for any system domain block.
@@ -60,7 +62,7 @@ pub async fn relay_system_domain_messages<Client, Block, SO, RelayerId>(
     }
 }
 
-async fn relay_domain_messages<Client, Block, MP, SO, SRM, RelayerId>(
+async fn start_relaying_domain_messages<Client, Block, MP, SO, SRM, RelayerId>(
     relayer_id: RelayerId,
     relay_confirmation_depth: NumberFor<Block>,
     domain_client: Arc<Client>,
@@ -172,25 +174,25 @@ where
 }
 
 /// Combines both system and core domain sync oracles into one.
-struct CombinedSyncOracle<SDSO, CDSO> {
-    system_domain_sync_oracle: SDSO,
-    core_domain_sync_oracle: CDSO,
+struct CombinedSyncOracle<CCSO, DSO> {
+    consensus_chain_sync_oracle: CCSO,
+    domain_sync_oracle: DSO,
 }
 
-impl<SDSO, CDSO> SyncOracle for CombinedSyncOracle<SDSO, CDSO>
+impl<CCSO, DSO> SyncOracle for CombinedSyncOracle<CCSO, DSO>
 where
-    SDSO: SyncOracle,
-    CDSO: SyncOracle,
+    CCSO: SyncOracle,
+    DSO: SyncOracle,
 {
     /// Returns true if either of the domains are in major sync.
     fn is_major_syncing(&self) -> bool {
-        self.system_domain_sync_oracle.is_major_syncing()
-            || self.core_domain_sync_oracle.is_major_syncing()
+        self.consensus_chain_sync_oracle.is_major_syncing()
+            || self.domain_sync_oracle.is_major_syncing()
     }
 
     /// Returns true if either of the domains are offline.
     fn is_offline(&self) -> bool {
-        self.system_domain_sync_oracle.is_offline() || self.core_domain_sync_oracle.is_offline()
+        self.consensus_chain_sync_oracle.is_offline() || self.domain_sync_oracle.is_offline()
     }
 }
 
@@ -198,10 +200,10 @@ impl<SDSO, CDSO> CombinedSyncOracle<SDSO, CDSO> {
     /// Returns a new sync oracle that wraps system domain and core domain sync oracle.
     // TODO: Remove or make use of it.
     #[allow(unused)]
-    fn new(system_domain_sync_oracle: SDSO, core_domain_sync_oracle: CDSO) -> Self {
+    fn new(consensus_chain_sync_oracle: SDSO, core_domain_sync_oracle: CDSO) -> Self {
         CombinedSyncOracle {
-            system_domain_sync_oracle,
-            core_domain_sync_oracle,
+            consensus_chain_sync_oracle,
+            domain_sync_oracle: core_domain_sync_oracle,
         }
     }
 }

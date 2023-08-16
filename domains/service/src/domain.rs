@@ -473,7 +473,7 @@ where
 
     if let Some(relayer_id) = domain_config.maybe_relayer_id {
         tracing::info!(?domain_id, ?relayer_id, "Starting domain relayer");
-        let relayer_worker = domain_client_message_relayer::worker::relay_system_domain_messages(
+        let relayer_worker = domain_client_message_relayer::worker::relay_domain_messages(
             relayer_id,
             client.clone(),
             sync_service.clone(),
