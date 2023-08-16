@@ -1765,7 +1765,7 @@ async fn test_restart_domain_operator() {
     ferdie.produce_block_with_slot(1.into()).await.unwrap();
 
     // Run Alice (a evm domain authority node)
-    let alice = domain_test_service::DomainNodeBuilder::new(
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -1798,7 +1798,7 @@ async fn test_restart_domain_operator() {
     ferdie.set_next_slot(next_slot);
 
     // Restart Alice
-    let alice = domain_test_service::DomainNodeBuilder::new(
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
