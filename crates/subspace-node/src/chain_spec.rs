@@ -34,7 +34,6 @@ use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, SSC};
 
 const SUBSPACE_TELEMETRY_URL: &str = "wss://telemetry.subspace.network/submit/";
 const DEVNET_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-devnet.json");
-const GEMINI_3E_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-gemini-3e.json");
 
 /// List of accounts which should receive token grants, amounts are specified in SSC.
 const TOKEN_GRANTS: &[(&str, u128)] = &[
@@ -86,13 +85,13 @@ struct GenesisParams {
     confirmation_depth_k: u32,
 }
 
-pub fn gemini_3e_compiled() -> Result<ConsensusChainSpec<GenesisConfig>, String> {
+pub fn gemini_3f_compiled() -> Result<ConsensusChainSpec<GenesisConfig>, String> {
     Ok(ConsensusChainSpec::from_genesis(
         // Name
-        "Subspace Gemini 3e",
+        "Subspace Gemini 3f",
         // ID
-        "subspace_gemini_3e",
-        ChainType::Custom("Subspace Gemini 3e".to_string()),
+        "subspace_gemini_3f",
+        ChainType::Custom("Subspace Gemini 3f".to_string()),
         || {
             let sudo_account =
                 AccountId::from_ss58check("5DNwQTHfARgKoa2NdiUM51ZUow7ve5xG9S2yYdSbVQcnYxBA")
@@ -163,7 +162,7 @@ pub fn gemini_3e_compiled() -> Result<ConsensusChainSpec<GenesisConfig>, String>
                 .map_err(|error| error.to_string())?,
         ),
         // Protocol ID
-        Some("subspace-gemini-3e"),
+        Some("subspace-gemini-3f"),
         None,
         // Properties
         Some(chain_spec_properties()),
@@ -172,8 +171,8 @@ pub fn gemini_3e_compiled() -> Result<ConsensusChainSpec<GenesisConfig>, String>
     ))
 }
 
-pub fn gemini_3e_config() -> Result<ConsensusChainSpec<GenesisConfig>, String> {
-    ConsensusChainSpec::from_json_bytes(GEMINI_3E_CHAIN_SPEC)
+pub fn gemini_3f_config() -> Result<ConsensusChainSpec<GenesisConfig>, String> {
+    Err("Gemini 3f chainspec is yet to be compiled".to_string())
 }
 
 pub fn devnet_config() -> Result<ConsensusChainSpec<GenesisConfig>, String> {

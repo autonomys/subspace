@@ -270,7 +270,7 @@ pub struct Cli {
     pub enable_subspace_block_relay: bool,
 
     /// Assigned PoT role for this node.
-    #[arg(long, default_value="none", value_parser(EnumValueParser::<CliPotRole>::new()))]
+    #[arg(long, default_value = "none", value_parser(EnumValueParser::< CliPotRole >::new()))]
     pub pot_role: CliPotRole,
 }
 
@@ -307,8 +307,8 @@ impl SubstrateCli for Cli {
 
     fn load_spec(&self, id: &str) -> Result<Box<dyn ChainSpec>, String> {
         let mut chain_spec = match id {
-            "gemini-3e-compiled" => chain_spec::gemini_3e_compiled()?,
-            "gemini-3e" => chain_spec::gemini_3e_config()?,
+            "gemini-3f-compiled" => chain_spec::gemini_3f_compiled()?,
+            "gemini-3f" => chain_spec::gemini_3f_config()?,
             "devnet" => chain_spec::devnet_config()?,
             "devnet-compiled" => chain_spec::devnet_config_compiled()?,
             "dev" => chain_spec::dev_config()?,

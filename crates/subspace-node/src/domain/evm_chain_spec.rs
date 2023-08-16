@@ -99,14 +99,14 @@ pub fn local_testnet_config<F: Fn() -> GenesisConfig + 'static + Send + Sync>(
     )
 }
 
-pub fn gemini_3e_config<F: Fn() -> GenesisConfig + 'static + Send + Sync>(
+pub fn gemini_3f_config<F: Fn() -> GenesisConfig + 'static + Send + Sync>(
     constructor: F,
 ) -> ExecutionChainSpec<GenesisConfig> {
     ExecutionChainSpec::from_genesis(
         // Name
-        "Subspace Gemini 3e EVM Domain",
+        "Subspace Gemini 3f EVM Domain",
         // ID
-        "subspace_gemini_3e_evm_domain",
+        "subspace_gemini_3f_evm_domain",
         ChainType::Live,
         constructor,
         // Bootnodes
@@ -114,7 +114,7 @@ pub fn gemini_3e_config<F: Fn() -> GenesisConfig + 'static + Send + Sync>(
         // Telemetry
         None,
         // Protocol ID
-        Some("subspace-gemini-3e-evm-domain"),
+        Some("subspace-gemini-3f-evm-domain"),
         None,
         // Properties
         Some(chain_spec_properties()),
@@ -153,7 +153,7 @@ pub fn load_chain_spec(spec_id: &str) -> Result<Box<dyn sc_cli::ChainSpec>, Stri
 
     let chain_spec = match spec_id {
         "dev" => development_config(move || constructor(SpecId::Dev)),
-        "gemini-3e" => gemini_3e_config(move || constructor(SpecId::Gemini)),
+        "gemini-3f" => gemini_3f_config(move || constructor(SpecId::Gemini)),
         "devnet" => devnet_config(move || constructor(SpecId::DevNet)),
         "" | "local" => local_testnet_config(move || constructor(SpecId::Local)),
         path => ChainSpec::from_json_file(std::path::PathBuf::from(path))?,
@@ -208,8 +208,9 @@ pub fn get_testnet_genesis_by_spec_id(spec_id: SpecId) -> (GenesisConfig, Genesi
                     1002,
                 ),
                 GenesisDomainParams {
-                    // TODO: needs to be updated for new Gemini net
-                    operator_signing_key: get_public_key_from_seed::<OperatorPublicKey>("Alice"),
+                    operator_signing_key: OperatorPublicKey::unchecked_from(hex!(
+                        "aa3b05b4d649666723e099cf3bafc2f2c04160ebe0e16ddc82f72d6ed97c4b6b"
+                    )),
                 },
             )
         }
@@ -279,7 +280,7 @@ fn load_chain_spec_with(
 
     let chain_spec = match spec_id {
         "dev" => development_config(constructor),
-        "gemini-3e" => gemini_3e_config(constructor),
+        "gemini-3f" => gemini_3f_config(constructor),
         "devnet" => devnet_config(constructor),
         "" | "local" => local_testnet_config(constructor),
         path => ChainSpec::from_json_file(std::path::PathBuf::from(path))?,
