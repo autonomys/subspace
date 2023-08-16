@@ -8,7 +8,6 @@ use crate::utils::{Handler, ResizableSemaphore, ResizableSemaphorePermit};
 use bytes::Bytes;
 use futures::channel::{mpsc, oneshot};
 use libp2p::gossipsub::{PublishError, Sha256Topic, SubscriptionError};
-use libp2p::kad::record::Key;
 use libp2p::kad::PeerRecord;
 use libp2p::{Multiaddr, PeerId};
 use parking_lot::Mutex;
@@ -59,14 +58,6 @@ pub(crate) enum Command {
         protocol_name: &'static str,
         request: Vec<u8>,
         result_sender: oneshot::Sender<Result<Vec<u8>, RequestFailure>>,
-    },
-    StartLocalAnnouncing {
-        key: Key,
-        result_sender: oneshot::Sender<bool>,
-    },
-    StopLocalAnnouncing {
-        key: Multihash,
-        result_sender: oneshot::Sender<()>,
     },
     GetProviders {
         key: Multihash,
