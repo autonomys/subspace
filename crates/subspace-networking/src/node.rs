@@ -9,7 +9,6 @@ use futures::channel::mpsc::SendError;
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, Stream, StreamExt};
 use libp2p::gossipsub::{Sha256Topic, SubscriptionError};
-use libp2p::kad::record::Key;
 use libp2p::kad::PeerRecord;
 use libp2p::{Multiaddr, PeerId};
 use parity_scale_codec::Decode;
@@ -173,46 +172,6 @@ pub enum GetProvidersError {
 }
 
 impl From<oneshot::Canceled> for GetProvidersError {
-    #[inline]
-    fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
-        Self::NodeRunnerDropped
-    }
-}
-
-#[derive(Debug, Error)]
-pub enum StopLocalAnnouncingError {
-    /// Failed to send command to the node runner
-    #[error("Failed to send command to the node runner: {0}")]
-    SendCommand(#[from] SendError),
-    /// Node runner was dropped
-    #[error("Node runner was dropped")]
-    NodeRunnerDropped,
-    /// Failed to stop local announcing an item.
-    #[error("Failed to stop local announcing an item.")]
-    StopLocalAnnouncing,
-}
-
-impl From<oneshot::Canceled> for StopLocalAnnouncingError {
-    #[inline]
-    fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
-        Self::NodeRunnerDropped
-    }
-}
-
-#[derive(Debug, Error)]
-pub enum StartLocalAnnouncingError {
-    /// Failed to send command to the node runner.
-    #[error("Failed to send command to the node runner: {0}")]
-    SendCommand(#[from] SendError),
-    /// Node runner was dropped.
-    #[error("Node runner was dropped")]
-    NodeRunnerDropped,
-    /// Failed to start local announcing an item.
-    #[error("Failed to start local announcing an item.")]
-    StartLocalAnnouncing,
-}
-
-impl From<oneshot::Canceled> for StartLocalAnnouncingError {
     #[inline]
     fn from(oneshot::Canceled: oneshot::Canceled) -> Self {
         Self::NodeRunnerDropped
@@ -439,47 +398,6 @@ impl Node {
 
         // TODO: A wrapper that'll immediately cancel query on drop
         Ok(result_receiver)
-    }
-
-    /// Start local announcing item by its key. Saves key to the local storage.
-    /// It doesn't affect Kademlia operations.
-    pub async fn start_local_announcing(
-        &self,
-        key: Key,
-    ) -> Result<bool, StartLocalAnnouncingError> {
-        let (result_sender, result_receiver) = oneshot::channel();
-
-        trace!(?key, "Starting 'start_local_announcing' request.");
-
-        self.shared
-            .command_sender
-            .clone()
-            .send(Command::StartLocalAnnouncing { key, result_sender })
-            .await?;
-
-        result_receiver
-            .await
-            .map_err(|_| StartLocalAnnouncingError::StartLocalAnnouncing)
-    }
-
-    /// Stop local announcing item by its key. Removes key from the local storage.
-    pub async fn stop_local_announcing(
-        &self,
-        key: Multihash,
-    ) -> Result<(), StopLocalAnnouncingError> {
-        let (result_sender, result_receiver) = oneshot::channel();
-
-        trace!(?key, "Starting 'stop_local_announcing' request.");
-
-        self.shared
-            .command_sender
-            .clone()
-            .send(Command::StopLocalAnnouncing { key, result_sender })
-            .await?;
-
-        result_receiver
-            .await
-            .map_err(|_| StopLocalAnnouncingError::StopLocalAnnouncing)
     }
 
     /// Get item providers by its key. Initiate 'providers' Kademlia operation.

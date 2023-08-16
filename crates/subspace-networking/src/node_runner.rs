@@ -27,11 +27,10 @@ use futures::{FutureExt, StreamExt};
 use libp2p::core::{address_translation, ConnectedPoint};
 use libp2p::gossipsub::{Event as GossipsubEvent, TopicHash};
 use libp2p::identify::Event as IdentifyEvent;
-use libp2p::kad::store::RecordStore;
 use libp2p::kad::{
     BootstrapOk, GetClosestPeersError, GetClosestPeersOk, GetProvidersError, GetProvidersOk,
     GetRecordError, GetRecordOk, InboundRequest, Kademlia, KademliaEvent, Mode, PeerRecord,
-    ProgressStep, ProviderRecord, PutRecordOk, QueryId, QueryResult, Quorum, Record,
+    ProgressStep, PutRecordOk, QueryId, QueryResult, Quorum, Record,
 };
 use libp2p::metrics::{Metrics, Recorder};
 use libp2p::swarm::{DialError, SwarmEvent};
@@ -47,7 +46,7 @@ use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::atomic::Ordering;
 use std::sync::{Arc, Weak};
-use std::time::{Duration, Instant};
+use std::time::Duration;
 use tokio::time::Sleep;
 use tracing::{debug, error, info, trace, warn};
 
@@ -59,9 +58,6 @@ const KADEMLIA_PEERS_ADDRESSES_BATCH_SIZE: usize = 20;
 /// 1 means boosting starts with second peer.
 const CONCURRENT_TASKS_BOOST_PEERS_THRESHOLD: NonZeroUsize =
     NonZeroUsize::new(5).expect("Not zero; qed");
-
-/// Defines an expiration interval for item providers in Kademlia network.
-pub const KADEMLIA_PROVIDER_TTL_IN_SECS: Option<Duration> = Some(Duration::from_secs(86400)); /* 1 day */
 
 enum QueryResultSender {
     Value {
@@ -1291,41 +1287,6 @@ where
                     result_sender,
                     IfDisconnected::TryConnect,
                 );
-            }
-            Command::StartLocalAnnouncing { key, result_sender } => {
-                let local_peer_id = *self.swarm.local_peer_id();
-                let addresses = self.swarm.external_addresses().cloned().collect::<Vec<_>>();
-
-                let provider_record = ProviderRecord {
-                    provider: local_peer_id,
-                    key: key.clone(),
-                    addresses,
-                    expires: KADEMLIA_PROVIDER_TTL_IN_SECS.map(|ttl| Instant::now() + ttl),
-                };
-
-                let res = self
-                    .swarm
-                    .behaviour_mut()
-                    .kademlia
-                    .store_mut()
-                    .add_provider(provider_record);
-
-                if let Err(error) = &res {
-                    error!(?key, ?error, "Failed to announce a piece.");
-                }
-
-                let _ = result_sender.send(res.is_ok());
-            }
-            Command::StopLocalAnnouncing { key, result_sender } => {
-                let local_peer_id = *self.swarm.local_peer_id();
-
-                self.swarm
-                    .behaviour_mut()
-                    .kademlia
-                    .store_mut()
-                    .remove_provider(&key.into(), &local_peer_id);
-
-                let _ = result_sender.send(());
             }
             Command::GetProviders {
                 key,

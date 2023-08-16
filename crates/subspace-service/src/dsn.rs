@@ -11,7 +11,7 @@ use subspace_networking::utils::strip_peer_id;
 use subspace_networking::{
     CreationError, NetworkParametersPersistenceError, NetworkingParametersManager, Node,
     NodeRunner, PeerInfoProvider, SegmentHeaderBySegmentIndexesRequestHandler,
-    SegmentHeaderRequest, SegmentHeaderResponse, KADEMLIA_PROVIDER_TTL_IN_SECS,
+    SegmentHeaderRequest, SegmentHeaderResponse,
 };
 use thiserror::Error;
 use tracing::{debug, error, trace};
@@ -100,16 +100,12 @@ where
         .transpose()?;
 
     let keypair = dsn_config.keypair.clone();
-    let mut default_networking_config = subspace_networking::Config::new(
+    let default_networking_config = subspace_networking::Config::new(
         dsn_protocol_version,
         keypair,
         (),
         Some(PeerInfoProvider::new_node()),
     );
-
-    default_networking_config
-        .kademlia
-        .set_provider_record_ttl(KADEMLIA_PROVIDER_TTL_IN_SECS);
 
     let networking_config = subspace_networking::Config {
         keypair: dsn_config.keypair.clone(),
