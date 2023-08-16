@@ -20,18 +20,17 @@
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
-mod archiver;
+pub mod archiver;
 pub mod aux_schema;
 pub mod notification;
 mod slot_worker;
 #[cfg(test)]
 mod tests;
 
-use crate::archiver::FINALIZATION_DEPTH_IN_SEGMENTS;
+use crate::archiver::{SegmentHeadersStore, FINALIZATION_DEPTH_IN_SEGMENTS};
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use crate::slot_worker::SubspaceSlotWorker;
 pub use crate::slot_worker::SubspaceSyncOracle;
-pub use archiver::{create_subspace_archiver, SegmentHeadersStore};
 use futures::channel::mpsc;
 use futures::StreamExt;
 use log::{debug, info, trace, warn};
@@ -72,7 +71,7 @@ use sp_consensus_subspace::{
 };
 use sp_core::H256;
 use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
-use sp_runtime::traits::{NumberFor as BlockNumberFor, One};
+use sp_runtime::traits::One;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
@@ -94,21 +93,21 @@ use subspace_verification::{
 /// Errors while verifying the block proof of time.
 #[derive(Debug, thiserror::Error)]
 #[allow(missing_docs)]
-pub enum PotVerifyError<Block: BlockT> {
+pub enum PotVerifyError {
+    /// Block has no proof of time digest.
+    #[error("Block missing proof of time : {block_number}/{parent_slot_number:?}/{slot_number}")]
+    MissingPotDigest {
+        block_number: BlockNumber,
+        parent_slot_number: Option<SlotNumber>,
+        slot_number: SlotNumber,
+    },
+
     /// Parent block has no proof of time digest.
     #[error(
         "Parent block missing proof of time : {block_number}/{parent_slot_number}/{slot_number}"
     )]
     ParentMissingPotDigest {
-        block_number: BlockNumberFor<Block>,
-        parent_slot_number: SlotNumber,
-        slot_number: SlotNumber,
-    },
-
-    /// Block has no proof of time digest.
-    #[error("Block missing proof of time : {block_number}/{parent_slot_number}/{slot_number}")]
-    MissingPotDigest {
-        block_number: BlockNumberFor<Block>,
+        block_number: BlockNumber,
         parent_slot_number: SlotNumber,
         slot_number: SlotNumber,
     },
@@ -299,6 +298,9 @@ pub enum Error<Header: HeaderT> {
     /// Runtime Api error.
     #[error(transparent)]
     RuntimeApi(#[from] ApiError),
+    /// Proof of time verification failed.
+    #[error("PoT verification failed: {0}")]
+    PotVerifyError(#[from] PotVerifyError),
 }
 
 impl<Header> From<VerificationError<Header>> for Error<Header>
@@ -593,6 +595,11 @@ impl<Block: BlockT> SubspaceLink<Block> {
             .peek(&block_number)
             .cloned()
             .unwrap_or_default()
+    }
+
+    /// Access KZG instance
+    pub fn kzg(&self) -> &Kzg {
+        &self.kzg
     }
 }
 
@@ -946,6 +953,8 @@ where
             .header(parent_hash)?
             .ok_or(Error::ParentUnavailable(parent_hash, block_hash))?;
 
+        #[cfg(feature = "pot")]
+        let mut parent_pre_digest = None;
         let (correct_global_randomness, correct_solution_range) = if block_number.is_one() {
             // Genesis block doesn't contain usual digest items, we need to query runtime API
             // instead
@@ -977,21 +986,28 @@ where
             };
 
             #[cfg(feature = "pot")]
-            if let Some(proof_of_time) = self.proof_of_time.as_ref() {
-                let ret = self.proof_of_time_verification(
-                    proof_of_time.as_ref(),
-                    block_number,
-                    pre_digest,
-                    &parent_subspace_digest_items.pre_digest,
-                );
-                debug!(
-                    target: "subspace",
-                    "block_import_verification: {block_number}/{}/{}/{origin:?}, ret={ret:?}",
-                    pre_digest.slot, parent_subspace_digest_items.pre_digest.slot
-                );
+            {
+                parent_pre_digest = Some(parent_subspace_digest_items.pre_digest);
             }
-
             (correct_global_randomness, correct_solution_range)
+        };
+
+        #[cfg(feature = "pot")]
+        let correct_global_randomness = if let Some(proof_of_time) = self.proof_of_time.as_ref() {
+            let ret = self.proof_of_time_verification(
+                proof_of_time.as_ref(),
+                block_number,
+                pre_digest,
+                parent_pre_digest.as_ref(),
+            );
+            debug!(
+                target: "subspace",
+                "block_import_verification: {block_number}/{}/{:?}/{origin:?}, ret={ret:?}",
+                pre_digest.slot, parent_pre_digest.as_ref().map(|p| p.slot)
+            );
+            ret.map_err(Error::PotVerifyError)?
+        } else {
+            correct_global_randomness
         };
 
         if subspace_digest_items.global_randomness != correct_global_randomness {
@@ -1116,7 +1132,8 @@ where
         Ok(())
     }
 
-    /// Verifies the proof of time in the received block.
+    /// Verifies the proof of time in the received block,
+    /// returns the randomness from the PoT pre digest if successful.
     #[allow(clippy::too_many_arguments)]
     #[cfg(feature = "pot")]
     fn proof_of_time_verification(
@@ -1124,24 +1141,30 @@ where
         proof_of_time: &dyn PotConsensusState,
         block_number: NumberFor<Block>,
         pre_digest: &PreDigest<FarmerPublicKey, FarmerPublicKey>,
-        parent_pre_digest: &PreDigest<FarmerPublicKey, FarmerPublicKey>,
-    ) -> Result<(), PotVerifyError<Block>> {
-        let parent_pot_digest = parent_pre_digest.proof_of_time.as_ref().ok_or_else(|| {
-            PotVerifyError::ParentMissingPotDigest {
-                block_number,
-                parent_slot_number: parent_pre_digest.slot.into(),
-                slot_number: pre_digest.slot.into(),
-            }
-        })?;
+        parent_pre_digest: Option<&PreDigest<FarmerPublicKey, FarmerPublicKey>>,
+    ) -> Result<Randomness, PotVerifyError> {
         let pot_digest =
             pre_digest
                 .proof_of_time
                 .as_ref()
                 .ok_or_else(|| PotVerifyError::MissingPotDigest {
-                    block_number,
-                    parent_slot_number: parent_pre_digest.slot.into(),
+                    block_number: block_number.into(),
+                    parent_slot_number: parent_pre_digest.map(|p| p.slot.into()),
                     slot_number: pre_digest.slot.into(),
                 })?;
+        let randomness = pot_digest.derive_global_randomness();
+        let parent_pre_digest = match parent_pre_digest {
+            Some(parent_pre_digest) => parent_pre_digest,
+            None => return Ok(randomness),
+        };
+
+        let parent_pot_digest = parent_pre_digest.proof_of_time.as_ref().ok_or_else(|| {
+            PotVerifyError::ParentMissingPotDigest {
+                block_number: block_number.into(),
+                parent_slot_number: parent_pre_digest.slot.into(),
+                slot_number: pre_digest.slot.into(),
+            }
+        })?;
 
         proof_of_time
             .verify_block_proofs(
@@ -1151,7 +1174,9 @@ where
                 parent_pre_digest.slot.into(),
                 parent_pot_digest,
             )
-            .map_err(PotVerifyError::PotVerifyBlockProofsError)
+            .map_err(PotVerifyError::PotVerifyBlockProofsError)?;
+
+        Ok(randomness)
     }
 }
 

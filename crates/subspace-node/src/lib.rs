@@ -20,7 +20,6 @@ mod chain_spec;
 mod chain_spec_utils;
 pub mod domain;
 
-use bytesize::ByteSize;
 use clap::builder::EnumValueParser;
 use clap::Parser;
 use sc_cli::{RunCmd, SubstrateCli};
@@ -251,10 +250,6 @@ pub struct Cli {
     /// Known external addresses
     #[arg(long, alias = "dsn-external-address")]
     pub dsn_external_addresses: Vec<Multiaddr>,
-
-    /// Piece cache size in human readable format (e.g. 10GB, 2TiB) or just bytes (e.g. 4096).
-    #[arg(long, default_value = "1GiB")]
-    pub piece_cache_size: ByteSize,
 
     /// Domain arguments
     ///

@@ -66,7 +66,7 @@ mod bootstrapper;
 mod bundle_processor;
 mod bundle_producer_election_solver;
 mod domain_block_processor;
-mod domain_bundle_producer;
+pub mod domain_bundle_producer;
 mod domain_bundle_proposer;
 mod domain_worker;
 mod domain_worker_starter;

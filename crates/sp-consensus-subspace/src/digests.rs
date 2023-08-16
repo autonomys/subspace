@@ -47,6 +47,21 @@ pub struct PreDigest<PublicKey, RewardAddress> {
     pub proof_of_time: Option<PotPreDigest>,
 }
 
+/// TODO: remove after conditional compilation is removed.
+impl<PublicKey, RewardAddress> PreDigest<PublicKey, RewardAddress> {
+    /// Accessor for the poT pre digest.
+    #[cfg(not(feature = "pot"))]
+    pub fn pot_pre_digest(&self) -> Option<&PotPreDigest> {
+        None
+    }
+
+    /// Accessor for the poT pre digest.
+    #[cfg(feature = "pot")]
+    pub fn pot_pre_digest(&self) -> Option<&PotPreDigest> {
+        self.proof_of_time.as_ref()
+    }
+}
+
 /// The proof of time included in the pre digest.
 /// TODO: versioning needs to match PotProof version,
 /// versioning added on the proof side
@@ -85,6 +100,14 @@ impl PotPreDigest {
             Self::Bootstrapping => None,
             Self::FirstBlock(slot_number) => Some(slot_number + 1),
             Self::V0(proofs) => Some(proofs.last().slot_number + 1),
+        }
+    }
+
+    /// Returns the global randomness from the proofs in the block pre digest.
+    pub fn derive_global_randomness(&self) -> Randomness {
+        match self {
+            Self::Bootstrapping | Self::FirstBlock(_) => Randomness::default(),
+            Self::V0(proofs) => proofs.last().derive_global_randomness().into(),
         }
     }
 }
@@ -615,6 +638,17 @@ where
                 // Ignore
             }
         }
+    }
+
+    // If global randomness was not in the logs, try to get it from the POT
+    #[cfg(feature = "pot")]
+    if maybe_global_randomness.is_none() {
+        maybe_global_randomness = maybe_pre_digest.as_ref().and_then(|pre_digest| {
+            pre_digest
+                .proof_of_time
+                .as_ref()
+                .map(|pot| pot.derive_global_randomness())
+        });
     }
 
     Ok(SubspaceDigestItems {

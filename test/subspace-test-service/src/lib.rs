@@ -901,16 +901,20 @@ where
 /// Produce the given number of blocks for both the primary node and the domain nodes
 #[macro_export]
 macro_rules! produce_blocks {
-    ($primary_node:ident, $($domain_node:ident),+, $count: literal) => {
-        async {
-            let domain_fut = {
-                let mut futs: Vec<std::pin::Pin<Box<dyn futures::Future<Output = ()>>>> = Vec::new();
-                $( futs.push( Box::pin( $domain_node.wait_for_blocks($count) ) ); )+
-                futures::future::join_all(futs)
-            };
-            $primary_node.produce_blocks($count).await?;
-            domain_fut.await;
-            Ok::<(), Box<dyn std::error::Error>>(())
+    ($primary_node:ident, $operator_node:ident, $count: literal $(, $domain_node:ident)*) => {
+        {
+            let _ = $operator_node.send_remark_extrinsic().await;
+            async {
+                let domain_fut = {
+                    let mut futs: Vec<std::pin::Pin<Box<dyn futures::Future<Output = ()>>>> = Vec::new();
+                    futs.push(Box::pin($operator_node.wait_for_blocks(1)));
+                    $( futs.push( Box::pin( $domain_node.wait_for_blocks($count) ) ); )*
+                    futures::future::join_all(futs)
+                };
+                $primary_node.produce_blocks($count).await?;
+                domain_fut.await;
+                Ok::<(), Box<dyn std::error::Error>>(())
+            }
         }
     };
 }
@@ -919,16 +923,20 @@ macro_rules! produce_blocks {
 /// use the `produce_block_with_xxx` function (i.e. `produce_block_with_slot`) to produce block
 #[macro_export]
 macro_rules! produce_block_with {
-    ($primary_node_produce_block:expr, $($domain_node:ident),+) => {
-        async {
-            let domain_fut = {
-                let mut futs: Vec<std::pin::Pin<Box<dyn futures::Future<Output = ()>>>> = Vec::new();
-                $( futs.push( Box::pin( $domain_node.wait_for_blocks(1) ) ); )+
-                futures::future::join_all(futs)
-            };
-            $primary_node_produce_block.await?;
-            domain_fut.await;
-            Ok::<(), Box<dyn std::error::Error>>(())
+    ($primary_node_produce_block:expr, $operator_node:ident $(, $domain_node:ident)*) => {
+        {
+            let _ = $operator_node.send_remark_extrinsic().await;
+            async {
+                let domain_fut = {
+                    let mut futs: Vec<std::pin::Pin<Box<dyn futures::Future<Output = ()>>>> = Vec::new();
+                    futs.push(Box::pin($operator_node.wait_for_blocks(1)));
+                    $( futs.push( Box::pin( $domain_node.wait_for_blocks(1) ) ); )*
+                    futures::future::join_all(futs)
+                };
+                $primary_node_produce_block.await?;
+                domain_fut.await;
+                Ok::<(), Box<dyn std::error::Error>>(())
+            }
         }
     };
 }
@@ -936,10 +944,10 @@ macro_rules! produce_block_with {
 /// Keep producing block with a fixed interval until the given condition become `true`
 #[macro_export]
 macro_rules! produce_blocks_until {
-    ($primary_node:ident, $($domain_node:ident),+, $condition: block) => {
+    ($primary_node:ident, $operator_node:ident, $condition: block $(, $domain_node:ident)*) => {
         async {
             while !$condition {
-                produce_blocks!($primary_node, $($domain_node),+, 1).await?;
+                produce_blocks!($primary_node, $operator_node, 1 $(, $domain_node),*).await?;
                 tokio::time::sleep(std::time::Duration::from_millis(10)).await;
             }
             Ok::<(), Box<dyn std::error::Error>>(())

@@ -231,11 +231,14 @@ struct Command {
 async fn main() -> anyhow::Result<()> {
     tracing_subscriber::registry()
         .with(
-            fmt::layer().with_filter(
-                EnvFilter::builder()
-                    .with_default_directive(LevelFilter::INFO.into())
-                    .from_env_lossy(),
-            ),
+            fmt::layer()
+                // TODO: Workaround for https://github.com/tokio-rs/tracing/issues/2214
+                .with_ansi(supports_color::on(supports_color::Stream::Stderr).is_some())
+                .with_filter(
+                    EnvFilter::builder()
+                        .with_default_directive(LevelFilter::INFO.into())
+                        .from_env_lossy(),
+                ),
         )
         .init();
     utils::raise_fd_limit();

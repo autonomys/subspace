@@ -835,6 +835,7 @@ impl<T: Config> Pallet<T> {
         >::default());
 
         // If global randomness was updated in previous block, set it as current.
+        #[cfg(not(feature = "pot"))]
         if let Some(next_randomness) = GlobalRandomnesses::<T>::get().next {
             GlobalRandomnesses::<T>::put(sp_consensus_subspace::GlobalRandomnesses {
                 current: next_randomness,
@@ -863,6 +864,7 @@ impl<T: Config> Pallet<T> {
         PorRandomness::<T>::put(por_randomness);
 
         // Deposit global randomness data such that light client can validate blocks later.
+        #[cfg(not(feature = "pot"))]
         frame_system::Pallet::<T>::deposit_log(DigestItem::global_randomness(
             GlobalRandomnesses::<T>::get().current,
         ));
@@ -872,10 +874,12 @@ impl<T: Config> Pallet<T> {
         ));
 
         // Enact global randomness update, if necessary.
+        #[cfg(not(feature = "pot"))]
         T::GlobalRandomnessIntervalTrigger::trigger::<T>(block_number, por_randomness);
         // Enact era change, if necessary.
         T::EraChangeTrigger::trigger::<T>(block_number);
 
+        #[cfg(not(feature = "pot"))]
         if let Some(next_global_randomness) = GlobalRandomnesses::<T>::get().next {
             // Deposit next global randomness data such that light client can validate blocks later.
             frame_system::Pallet::<T>::deposit_log(DigestItem::next_global_randomness(
@@ -1173,6 +1177,7 @@ impl<T: Config> Pallet<T> {
 /// initialization has already happened) or from `validate_unsigned` by transaction pool (meaning
 /// block initialization didn't happen yet).
 fn current_vote_verification_data<T: Config>(is_block_initialized: bool) -> VoteVerificationData {
+    // TODO: factor PoT in the vote process.
     let global_randomnesses = GlobalRandomnesses::<T>::get();
     let solution_ranges = SolutionRanges::<T>::get();
     VoteVerificationData {

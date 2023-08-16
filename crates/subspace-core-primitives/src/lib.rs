@@ -56,8 +56,8 @@ use derive_more::{Add, AsMut, AsRef, Deref, DerefMut, Display, Div, From, Into, 
 use num_traits::{WrappingAdd, WrappingSub};
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 pub use pieces::{
-    FlatPieces, Piece, PieceArray, PieceIndex, PieceIndexHash, PieceOffset, RawRecord, Record,
-    RecordCommitment, RecordWitness, SBucket,
+    FlatPieces, Piece, PieceArray, PieceIndex, PieceOffset, RawRecord, Record, RecordCommitment,
+    RecordWitness, SBucket,
 };
 use scale_info::TypeInfo;
 pub use segments::{ArchivedHistorySegment, HistorySize, RecordedHistorySegment, SegmentIndex};
@@ -881,20 +881,6 @@ impl From<u128> for U256 {
     }
 }
 
-impl From<PieceIndexHash> for U256 {
-    #[inline]
-    fn from(hash: PieceIndexHash) -> Self {
-        Self(private_u256::U256::from_big_endian(hash.as_ref()))
-    }
-}
-
-impl From<U256> for PieceIndexHash {
-    #[inline]
-    fn from(number: U256) -> Self {
-        Self::from(number.to_be_bytes())
-    }
-}
-
 impl TryFrom<U256> for u8 {
     type Error = &'static str;
 
@@ -969,14 +955,11 @@ impl AsRef<[u8]> for SectorId {
 
 impl SectorId {
     /// Create new sector ID by deriving it from public key and sector index
-    pub fn new(mut public_key_hash: Blake2b256Hash, sector_index: SectorIndex) -> Self {
-        public_key_hash
-            .iter_mut()
-            .zip(&sector_index.to_le_bytes())
-            .for_each(|(a, b)| {
-                *a ^= *b;
-            });
-        Self(public_key_hash)
+    pub fn new(public_key_hash: Blake2b256Hash, sector_index: SectorIndex) -> Self {
+        Self(blake2b_256_hash_with_key(
+            &public_key_hash,
+            &sector_index.to_le_bytes(),
+        ))
     }
 
     /// Derive piece index that should be stored in sector at `piece_offset` for specified size of

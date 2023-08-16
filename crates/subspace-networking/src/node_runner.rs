@@ -581,20 +581,23 @@ where
                             .load(Ordering::Relaxed)
                             > 1
                         {
-                            let should_temporary_ban = match &error {
-                                DialError::Transport(addresses) => {
-                                    // Ignoring other errors, those are likely temporary ban errors
-                                    !matches!(
-                                        addresses.first(),
-                                        Some((_multiaddr, TransportError::Other(_error)))
-                                    )
-                                }
-                                _ => true,
-                            };
+                            // Ban temporarily only peers without active connections.
+                            if !self.swarm.is_connected(peer_id) {
+                                let should_temporary_ban = match &error {
+                                    DialError::Transport(addresses) => {
+                                        // Ignoring other errors, those are likely temporary ban errors
+                                        !matches!(
+                                            addresses.first(),
+                                            Some((_multiaddr, TransportError::Other(_error)))
+                                        )
+                                    }
+                                    _ => true,
+                                };
 
-                            if should_temporary_ban {
-                                self.temporary_bans.lock().create_or_extend(peer_id);
-                                debug!(%peer_id, ?error, "Peer was temporarily banned.");
+                                if should_temporary_ban {
+                                    self.temporary_bans.lock().create_or_extend(peer_id);
+                                    debug!(%peer_id, ?error, "Peer was temporarily banned.");
+                                }
                             }
                         }
                     };

@@ -3,9 +3,9 @@ mod serde;
 #[cfg(test)]
 mod tests;
 
-use crate::crypto::{blake2b_256_hash, Scalar};
+use crate::crypto::Scalar;
 use crate::segments::{ArchivedHistorySegment, SegmentIndex};
-use crate::{Blake2b256Hash, RecordedHistorySegment};
+use crate::RecordedHistorySegment;
 #[cfg(feature = "serde")]
 use ::serde::{Deserialize, Serialize};
 use alloc::boxed::Box;
@@ -183,11 +183,6 @@ impl PieceIndex {
     /// Piece index 1.
     pub const ONE: PieceIndex = PieceIndex(1);
 
-    /// Derive piece index hash
-    pub fn hash(&self) -> PieceIndexHash {
-        PieceIndexHash::from(blake2b_256_hash(&self.to_bytes()))
-    }
-
     /// Create piece index from bytes.
     #[inline]
     pub const fn from_bytes(bytes: [u8; Self::SIZE]) -> Self {
@@ -305,18 +300,6 @@ impl PieceOffset {
     #[inline]
     pub const fn to_bytes(self) -> [u8; mem::size_of::<u16>()] {
         self.0.to_le_bytes()
-    }
-}
-
-/// Hash of `PieceIndex`
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Decode, Encode, From, Into)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct PieceIndexHash(Blake2b256Hash);
-
-impl AsRef<[u8]> for PieceIndexHash {
-    #[inline]
-    fn as_ref(&self) -> &[u8] {
-        self.0.as_ref()
     }
 }
 

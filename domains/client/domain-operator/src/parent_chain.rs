@@ -1,6 +1,6 @@
 use crate::ExecutionReceiptFor;
 use sc_client_api::BlockBackend;
-use sp_api::{NumberFor, ProvideRuntimeApi};
+use sp_api::{ApiError, NumberFor, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::{DomainBlockLimit, DomainId, DomainsApi};
@@ -57,6 +57,12 @@ pub trait ParentChainInterface<Block: BlockT, ParentChainBlock: BlockT> {
         &self,
         fraud_proof: FraudProof<NumberFor<ParentChainBlock>, ParentChainBlock::Hash>,
     ) -> Result<(), sp_api::ApiError>;
+
+    fn non_empty_bundle_exists(
+        &self,
+        at: ParentChainBlock::Hash,
+        domain_id: DomainId,
+    ) -> Result<bool, sp_api::ApiError>;
 }
 
 /// The parent chain of the domain.
@@ -184,5 +190,15 @@ where
         // .runtime_api()
         // .submit_fraud_proof_unsigned(at, fraud_proof)?;
         Ok(())
+    }
+
+    fn non_empty_bundle_exists(
+        &self,
+        at: CBlock::Hash,
+        domain_id: DomainId,
+    ) -> Result<bool, ApiError> {
+        self.consensus_client
+            .runtime_api()
+            .non_empty_bundle_exists(at, domain_id)
     }
 }

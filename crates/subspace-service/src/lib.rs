@@ -24,14 +24,12 @@
 
 pub mod dsn;
 mod metrics;
-pub mod piece_cache;
 pub mod rpc;
 mod sync_from_dsn;
 pub mod tx_pre_validator;
 
 use crate::dsn::{create_dsn_instance, DsnConfigurationError};
 use crate::metrics::NodeMetrics;
-use crate::piece_cache::PieceCache;
 use crate::tx_pre_validator::ConsensusChainTxPreValidator;
 use cross_domain_message_gossip::cdm_gossip_peers_set_config;
 use derive_more::{Deref, DerefMut, Into};
@@ -39,9 +37,9 @@ use domain_runtime_primitives::{BlockNumber as DomainNumber, Hash as DomainHash}
 pub use dsn::DsnConfig;
 use frame_system_rpc_runtime_api::AccountNonceApi;
 use futures::channel::oneshot;
-use futures::StreamExt;
 use jsonrpsee::RpcModule;
 use pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi;
+use parking_lot::Mutex;
 use sc_basic_authorship::ProposerFactory;
 use sc_client_api::execution_extensions::ExtensionsFactory;
 use sc_client_api::{
@@ -49,11 +47,11 @@ use sc_client_api::{
 };
 use sc_consensus::{BlockImport, DefaultImportQueue, ImportQueue};
 use sc_consensus_slots::SlotProportion;
+use sc_consensus_subspace::archiver::{create_subspace_archiver, SegmentHeadersStore};
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{
     ArchivedSegmentNotification, BlockImportingNotification, NewSlotNotification,
-    RewardSigningNotification, SegmentHeadersStore, SubspaceLink, SubspaceParams,
-    SubspaceSyncOracle,
+    RewardSigningNotification, SubspaceLink, SubspaceParams, SubspaceSyncOracle,
 };
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
@@ -64,7 +62,7 @@ use sc_subspace_block_relay::{build_consensus_relay, NetworkWrapper};
 use sc_telemetry::{Telemetry, TelemetryWorker};
 use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi, TransactionFor};
 use sp_block_builder::BlockBuilder;
-use sp_blockchain::{HeaderMetadata, Info};
+use sp_blockchain::HeaderMetadata;
 use sp_consensus::Error as ConsensusError;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::{FarmerPublicKey, KzgExtension, PosExtension, SubspaceApi};
@@ -80,12 +78,12 @@ use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use static_assertions::const_assert;
 use std::marker::PhantomData;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_fraud_proof::verifier_api::VerifierClient;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
-use subspace_networking::{peer_id, Node};
+use subspace_networking::Node;
 use subspace_proof_of_space::Table;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash, Index as Nonce};
@@ -178,8 +176,6 @@ pub enum SubspaceNetworking {
     Create {
         /// Configuration to use for DSN instantiation
         config: DsnConfig,
-        /// Piece cache size in bytes
-        piece_cache_size: u64,
     },
 }
 
@@ -264,7 +260,6 @@ pub fn new_partial<PosTable, RuntimeApi, ExecutorDispatch>(
             >,
             SubspaceLink<Block>,
             SegmentHeadersStore<FullClient<RuntimeApi, ExecutorDispatch>>,
-            Kzg,
             Option<Telemetry>,
             Option<PotComponents>,
         ),
@@ -417,7 +412,7 @@ where
         block_import.clone(),
         None,
         client.clone(),
-        kzg.clone(),
+        kzg,
         select_chain.clone(),
         move || {
             let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
@@ -442,7 +437,6 @@ where
             block_import,
             subspace_link,
             segment_headers_store,
-            kzg,
             telemetry,
             pot_components,
         ),
@@ -524,7 +518,6 @@ pub async fn new_full<PosTable, RuntimeApi, ExecutorDispatch, I>(
             I,
             SubspaceLink<Block>,
             SegmentHeadersStore<FullClient<RuntimeApi, ExecutorDispatch>>,
-            Kzg,
             Option<Telemetry>,
             Option<PotComponents>,
         ),
@@ -567,20 +560,15 @@ where
         keystore_container,
         select_chain,
         transaction_pool,
-        other:
-            (block_import, subspace_link, segment_headers_store, kzg, mut telemetry, pot_components),
+        other: (block_import, subspace_link, segment_headers_store, mut telemetry, pot_components),
     } = partial_components;
 
     let (node, bootstrap_nodes) = match config.subspace_networking.clone() {
         SubspaceNetworking::Reuse {
             node,
             bootstrap_nodes,
-            // TODO: Revisit piece cache creation when we get SDK requirements.
         } => (node, bootstrap_nodes),
-        SubspaceNetworking::Create {
-            config: dsn_config,
-            piece_cache_size,
-        } => {
+        SubspaceNetworking::Create { config: dsn_config } => {
             let dsn_protocol_version = hex::encode(client.chain_info().genesis_hash);
 
             debug!(
@@ -589,47 +577,9 @@ where
                 "Setting DSN protocol version..."
             );
 
-            let piece_cache = PieceCache::new(
-                client.clone(),
-                piece_cache_size,
-                peer_id(&dsn_config.keypair),
-            );
-
-            // Start before archiver below, so we don't have potential race condition and miss pieces
-            task_manager
-                .spawn_handle()
-                .spawn_blocking("subspace-piece-cache", None, {
-                    let mut piece_cache = piece_cache.clone();
-                    let mut archived_segment_notification_stream = subspace_link
-                        .archived_segment_notification_stream()
-                        .subscribe();
-
-                    async move {
-                        while let Some(archived_segment_notification) =
-                            archived_segment_notification_stream.next().await
-                        {
-                            let segment_index = archived_segment_notification
-                                .archived_segment
-                                .segment_header
-                                .segment_index();
-                            if let Err(error) = piece_cache.add_pieces(
-                                segment_index.first_piece_index(),
-                                &archived_segment_notification.archived_segment.pieces,
-                            ) {
-                                error!(
-                                    %segment_index,
-                                    %error,
-                                    "Failed to store pieces for segment in cache"
-                                );
-                            }
-                        }
-                    }
-                });
-
             let (node, mut node_runner) = create_dsn_instance(
                 dsn_protocol_version,
                 dsn_config.clone(),
-                piece_cache,
                 segment_headers_store.clone(),
             )?;
 
@@ -674,11 +624,7 @@ where
 
                 move |address| {
                     if matches!(address.iter().next(), Some(Protocol::Ip4(_))) {
-                        if let Some(node_address_sender) = node_address_sender
-                            .lock()
-                            .expect("Must not be poisoned here")
-                            .take()
-                        {
+                        if let Some(node_address_sender) = node_address_sender.lock().take() {
                             if let Err(err) = node_address_sender.send(address.clone()) {
                                 debug!(?err, "Couldn't send a node address to the channel.");
                             }
@@ -743,7 +689,7 @@ where
     let subspace_sync_oracle =
         SubspaceSyncOracle::new(config.force_authoring, sync_service.clone());
 
-    let subspace_archiver = sc_consensus_subspace::create_subspace_archiver(
+    let subspace_archiver = create_subspace_archiver(
         segment_headers_store.clone(),
         &subspace_link,
         client.clone(),
@@ -766,7 +712,7 @@ where
             Arc::clone(&client),
             import_queue_service,
             sync_mode,
-            kzg.clone(),
+            subspace_link.kzg().clone(),
         );
         task_manager
             .spawn_handle()
@@ -823,21 +769,17 @@ where
     let archived_segment_notification_stream = subspace_link.archived_segment_notification_stream();
 
     if config.role.is_authority() || config.force_new_slot_notifications {
-        let client_cl = client.clone();
-        let chain_info_fn: Arc<dyn Fn() -> Info<Block> + Send + Sync> =
-            Arc::new(move || client_cl.chain_info());
         let pot_consensus = pot_components
             .as_ref()
             .map(|component| component.consensus_state());
         if let Some(components) = pot_components {
             if components.is_time_keeper() {
-                let time_keeper = TimeKeeper::<Block, _, _>::new(
+                let time_keeper = TimeKeeper::<Block, _>::new(
                     components,
                     client.clone(),
-                    sync_service.clone(),
                     network_service.clone(),
                     sync_service.clone(),
-                    chain_info_fn,
+                    subspace_link.slot_duration().as_duration(),
                 );
 
                 task_manager.spawn_essential_handle().spawn_blocking(
@@ -848,13 +790,11 @@ where
                     },
                 );
             } else {
-                let pot_client = PotClient::<Block, _, _>::new(
+                let pot_client = PotClient::<Block, _>::new(
                     components,
                     client.clone(),
-                    sync_service.clone(),
                     network_service.clone(),
                     sync_service.clone(),
-                    chain_info_fn,
                 );
                 task_manager.spawn_essential_handle().spawn_blocking(
                     "subspace-proof-of-time-client",
@@ -961,6 +901,7 @@ where
                     dsn_bootstrap_nodes: dsn_bootstrap_nodes.clone(),
                     segment_headers_store: segment_headers_store.clone(),
                     sync_oracle: subspace_sync_oracle.clone(),
+                    kzg: subspace_link.kzg().clone(),
                 };
 
                 rpc::create_full(deps).map_err(Into::into)
