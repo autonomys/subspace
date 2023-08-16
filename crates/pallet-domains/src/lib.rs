@@ -45,9 +45,9 @@ use sp_domains::bundle_producer_election::{is_below_threshold, BundleProducerEle
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::{
     DomainBlockLimit, DomainId, DomainInstanceData, ExecutionReceipt, OpaqueBundle, OperatorId,
-    OperatorPublicKey, ProofOfElection, RuntimeId,
+    OperatorPublicKey, ProofOfElection, RuntimeId, EMPTY_EXTRINSIC_ROOT,
 };
-use sp_runtime::traits::{BlakeTwo256, Hash, Zero};
+use sp_runtime::traits::{BlakeTwo256, CheckedSub, Hash, One, Zero};
 use sp_runtime::{RuntimeAppPublic, SaturatedConversion, Saturating};
 use sp_std::boxed::Box;
 use sp_std::collections::btree_map::BTreeMap;
@@ -1442,6 +1442,28 @@ impl<T: Config> Pallet<T> {
                 }
             }
         });
+    }
+
+    /// Returns if there are any ERs in the challenge period that have non empty extrinsics.
+    pub fn non_empty_bundle_exists(domain_id: DomainId) -> bool {
+        let head_number = HeadDomainNumber::<T>::get(domain_id);
+        let mut to_check = head_number
+            .checked_sub(&T::BlockTreePruningDepth::get())
+            .unwrap_or(Zero::zero());
+
+        while to_check <= head_number {
+            if !ExecutionInbox::<T>::iter_prefix_values((domain_id, to_check)).all(|digests| {
+                digests
+                    .iter()
+                    .all(|digest| digest.extrinsics_root == EMPTY_EXTRINSIC_ROOT)
+            }) {
+                return true;
+            }
+
+            to_check = to_check.saturating_add(One::one())
+        }
+
+        false
     }
 }
 
