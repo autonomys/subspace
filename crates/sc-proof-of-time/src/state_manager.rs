@@ -794,26 +794,30 @@ impl PotConsensusState for StateManager {
                 .as_ref()
                 .map_or(false, |wait_time| start_ts.elapsed() < *wait_time)
         };
-        let retry_delay = tokio::time::Duration::from_millis(200);
+        let retry_delay = Duration::from_millis(200);
         let mut retries = 0;
         loop {
-            let ret =
+            let result =
                 self.state
                     .lock()
                     .get_block_proofs(block_number, current_slot, parent_pre_digest);
-            match ret {
-                Ok(_) => return ret,
+            match result {
+                Ok(_) => return result,
                 Err(PotGetBlockProofsError::ProofUnavailable { .. }) => {
                     if (should_wait)() {
                         // TODO: notification instead of sleep/retry.
                         retries += 1;
-                        trace!("get_block_proofs: {ret:?}, retry {retries}...",);
+                        trace!(
+                            ?result,
+                            %retries,
+                            "Proof unavailable, retrying...",
+                        );
                         tokio::time::sleep(retry_delay).await;
                     } else {
-                        return ret;
+                        return result;
                     }
                 }
-                _ => return ret,
+                _ => return result,
             }
         }
     }
