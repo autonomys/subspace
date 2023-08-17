@@ -220,32 +220,33 @@ impl<Instance> Behaviour<Instance> {
     /// Specifies the whether we should keep connections to the peer alive. The decision could
     /// depend on another protocol (e.g.: PeerInfo protocol event handling).
     pub fn update_keep_alive_status(&mut self, peer_id: PeerId, keep_alive: bool) {
-        let enough_connected_peers =
+        let not_enough_connected_peers =
             self.permanently_connected_peers() < self.config.target_connected_peers;
+
         // It's a known peer.
         if let Some(connection_state) = self.known_peers.get_mut(&peer_id) {
             // We're connected
             if let Some(connection_id) = connection_state.connection_id() {
-                // Check whether we have enough connected peers already
-                let (new_connection_state, keep_alive) = if enough_connected_peers {
-                    trace!(%peer_id, %keep_alive, "Insufficient number of connected peers.");
-                    // Check the decision
-                    if keep_alive {
+                if not_enough_connected_peers {
+                    trace!(%peer_id, %keep_alive, "Insufficient number of connected peers detected.");
+                } else {
+                    trace!(%peer_id, %keep_alive, "Target number of connected peers reached.");
+                }
+
+                // Check whether we have enough connected peers already and a positive decision
+                let (new_connection_state, keep_alive_handler) =
+                    if not_enough_connected_peers && keep_alive {
                         (ConnectionState::Permanent { connection_id }, KeepAlive::Yes)
                     } else {
                         (ConnectionState::NotInterested, KeepAlive::No)
-                    }
-                } else {
-                    trace!(%peer_id, %keep_alive, ?connection_id, "Target number of connected peers reached.");
+                    };
 
-                    (ConnectionState::NotInterested, KeepAlive::No)
-                };
                 *connection_state = new_connection_state;
 
                 self.peer_decision_changes
                     .push(PeerConnectionDecisionUpdate {
                         peer_id,
-                        keep_alive,
+                        keep_alive: keep_alive_handler,
                         connection_id,
                     });
                 self.wake();
