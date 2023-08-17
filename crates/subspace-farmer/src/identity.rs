@@ -1,12 +1,12 @@
-use anyhow::Error;
 use parity_scale_codec::{Decode, Encode};
 use schnorrkel::context::SigningContext;
 use schnorrkel::{ExpansionMode, Keypair, PublicKey, SecretKey, Signature};
-use std::fs;
 use std::ops::Deref;
 use std::path::Path;
+use std::{fs, io};
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use substrate_bip39::mini_secret_from_entropy;
+use thiserror::Error;
 use tracing::debug;
 use zeroize::Zeroizing;
 
@@ -22,6 +22,17 @@ fn keypair_from_entropy(entropy: &[u8]) -> Keypair {
     mini_secret_from_entropy(entropy, "")
         .expect("32 bytes can always build a key; qed")
         .expand_to_keypair(ExpansionMode::Ed25519)
+}
+
+/// Errors happening when trying to create/open single disk farm
+#[derive(Debug, Error)]
+pub enum IdentityError {
+    /// I/O error occurred
+    #[error("I/O error: {0}")]
+    Io(#[from] io::Error),
+    /// Decoding error
+    #[error("Decoding error: {0}")]
+    Decoding(#[from] parity_scale_codec::Error),
 }
 
 /// `Identity` struct is an abstraction of public & secret key related operations.
@@ -45,6 +56,8 @@ impl Deref for Identity {
 }
 
 impl Identity {
+    pub(crate) const FILE_NAME: &'static str = "identity.bin";
+
     /// Size of the identity file on disk
     pub fn file_size() -> usize {
         IdentityFileContents {
@@ -54,7 +67,7 @@ impl Identity {
     }
 
     /// Opens the existing identity, or creates a new one.
-    pub fn open_or_create<B: AsRef<Path>>(base_directory: B) -> Result<Self, Error> {
+    pub fn open_or_create<B: AsRef<Path>>(base_directory: B) -> Result<Self, IdentityError> {
         if let Some(identity) = Self::open(base_directory.as_ref())? {
             Ok(identity)
         } else {
@@ -63,8 +76,8 @@ impl Identity {
     }
 
     /// Opens the existing identity, returns `Ok(None)` if it doesn't exist.
-    pub fn open<B: AsRef<Path>>(base_directory: B) -> Result<Option<Self>, Error> {
-        let identity_file = base_directory.as_ref().join("identity.bin");
+    pub fn open<B: AsRef<Path>>(base_directory: B) -> Result<Option<Self>, IdentityError> {
+        let identity_file = base_directory.as_ref().join(Self::FILE_NAME);
         if identity_file.exists() {
             debug!("Opening existing keypair");
             let bytes = Zeroizing::new(fs::read(identity_file)?);
@@ -83,8 +96,8 @@ impl Identity {
     }
 
     /// Creates new identity, overrides identity that might already exist.
-    pub fn create<B: AsRef<Path>>(base_directory: B) -> Result<Self, Error> {
-        let identity_file = base_directory.as_ref().join("identity.bin");
+    pub fn create<B: AsRef<Path>>(base_directory: B) -> Result<Self, IdentityError> {
+        let identity_file = base_directory.as_ref().join(Self::FILE_NAME);
         debug!("Generating new keypair");
         let entropy = rand::random::<[u8; ENTROPY_LENGTH]>().to_vec();
 
@@ -107,8 +120,8 @@ impl Identity {
     pub fn from_entropy<B: AsRef<Path>>(
         base_directory: B,
         entropy: Vec<u8>,
-    ) -> Result<Self, Error> {
-        let identity_file = base_directory.as_ref().join("identity.bin");
+    ) -> Result<Self, IdentityError> {
+        let identity_file = base_directory.as_ref().join(Self::FILE_NAME);
         debug!("Creating identity from provided entropy");
 
         let identity_file_contents = IdentityFileContents { entropy };

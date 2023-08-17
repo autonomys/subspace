@@ -126,12 +126,14 @@ impl Default for WriteToDisk {
 #[allow(clippy::large_enum_variant)] // we allow large function parameter list and enums
 #[derive(Debug, clap::Subcommand)]
 enum Subcommand {
-    /// Wipes plot and identity
+    /// Wipes the farm
     Wipe,
-    /// Start a farmer using previously created plot
+    /// Start a farmer, does plotting and farming
     Farm(FarmingArgs),
     /// Print information about farm and its content
     Info,
+    /// Checks the farm for corruption and repairs errors (caused by disk errors or something else)
+    Scrub,
 }
 
 #[derive(Debug, Clone)]
@@ -300,6 +302,13 @@ async fn main() -> anyhow::Result<()> {
         }
         Subcommand::Info => {
             commands::info(disk_farms);
+        }
+        Subcommand::Scrub => {
+            let disk_farms = disk_farms
+                .into_iter()
+                .map(|disk_farm| disk_farm.directory)
+                .collect::<Vec<_>>();
+            commands::scrub(&disk_farms);
         }
     }
     Ok(())
