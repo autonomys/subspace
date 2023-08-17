@@ -16,7 +16,7 @@ use sp_core::traits::CodeExecutor;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{DomainId, DomainsApi, ExecutionReceipt, ExtrinsicsRoot, InvalidBundle};
-use sp_runtime::traits::{Block as BlockT, CheckedSub, HashFor, Header as HeaderT, One, Zero};
+use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, One, Zero};
 use sp_runtime::Digest;
 use std::cmp::Ordering;
 use std::sync::Arc;
@@ -287,22 +287,21 @@ where
             on top of parent domain block #{parent_number},{parent_hash}"
         );
 
-        if let Some(to_finalize_block_number) = consensus_block_number
-            .into()
-            .checked_sub(&self.domain_confirmation_depth)
-        {
-            if to_finalize_block_number > self.client.info().finalized_number {
-                let to_finalize_block_hash =
-                    self.client.hash(to_finalize_block_number)?.ok_or_else(|| {
-                        sp_blockchain::Error::Backend(format!(
-                            "Header for #{to_finalize_block_number} not found"
-                        ))
-                    })?;
-                self.client
-                    .finalize_block(to_finalize_block_hash, None, true)?;
-                tracing::debug!("Successfully finalized block: #{to_finalize_block_number},{to_finalize_block_hash}");
-            }
-        }
+        // if let Some(to_finalize_block_number) =
+        //     header_number.checked_sub(&self.domain_confirmation_depth)
+        // {
+        //     if to_finalize_block_number > self.client.info().finalized_number {
+        //         let to_finalize_block_hash =
+        //             self.client.hash(to_finalize_block_number)?.ok_or_else(|| {
+        //                 sp_blockchain::Error::Backend(format!(
+        //                     "Header for #{to_finalize_block_number} not found"
+        //                 ))
+        //             })?;
+        //         self.client
+        //             .finalize_block(to_finalize_block_hash, None, true)?;
+        //         tracing::debug!("Successfully finalized block: #{to_finalize_block_number},{to_finalize_block_hash}");
+        //     }
+        // }
 
         let mut roots = self.client.runtime_api().intermediate_roots(header_hash)?;
 
