@@ -75,17 +75,14 @@ impl PartialProof {
 /// Error codes for PotProtocolState APIs.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum PotProtocolStateError {
-    #[error("Failed to extend chain: {expected}/{actual}")]
-    TipMismatch {
-        expected: SlotNumber,
-        actual: SlotNumber,
-    },
-
     #[error("Proof for an older slot number: {tip_slot}/{proof_slot}")]
     StaleProof {
         tip_slot: SlotNumber,
         proof_slot: SlotNumber,
     },
+
+    #[error("Proof for a future slot: {tip}/{actual}")]
+    FutureProof { tip: SlotNumber, actual: SlotNumber },
 
     #[error("Proof had an unexpected seed: {expected:?}/{actual:?}")]
     InvalidSeed { expected: PotSeed, actual: PotSeed },
@@ -317,8 +314,8 @@ impl EntropyInjection {
         }
     }
 
-    /// Handles a block import.
-    fn handle_block_import(
+    /// Updates the state with the block details.
+    fn update(
         &mut self,
         block_number: BlockNumber,
         block_hash: BlockHash,
@@ -388,6 +385,11 @@ impl EntropyInjection {
             "Adding pending entry: "
         );
     }
+
+    /// Returns the entropy to be injected for the slot number.
+    fn get(&self, slot_number: SlotNumber) -> Option<&BlockHash> {
+        self.ready.get(&slot_number)
+    }
 }
 
 /// The shared PoT state.
@@ -445,34 +447,12 @@ impl InternalState {
         self.merge_future_proofs();
     }
 
-    /// Tries to extend the chain with the locally produced proof.
-    fn handle_local_proof(&mut self, proof: &PotProof) -> Result<(), PotProtocolStateError> {
-        let tip = match self.chain.tip() {
-            Some(tip) => tip,
-            None => {
-                self.extend_and_merge(proof.clone());
-                return Ok(());
-            }
-        };
-
-        if (tip.slot_number + 1) == proof.slot_number {
-            self.extend_and_merge(proof.clone());
-            Ok(())
-        } else {
-            // The tip moved by the time the proof was computed.
-            Err(PotProtocolStateError::TipMismatch {
-                expected: tip.slot_number + 1,
-                actual: proof.slot_number,
-            })
-        }
-    }
-
-    /// Tries to extend the chain with the proof received from a peer.
-    /// The proof is assumed to have passed the AES verification.
-    fn handle_peer_proof(
+    /// Tries to extend the chain with the proof. The proof is assumed to have passed the
+    /// AES verification. Sender is set to None for locally generated proofs.
+    fn handle_proof(
         &mut self,
-        sender: PeerId,
         proof: &PotProof,
+        sender: Option<PeerId>,
     ) -> Result<(), PotProtocolStateError> {
         let tip = match self.chain.tip() {
             Some(tip) => tip.clone(),
@@ -492,7 +472,7 @@ impl InternalState {
 
         // Case 2: the proof extends the tip
         if (tip.slot_number + 1) == proof.slot_number {
-            let expected_seed = tip.next_seed(None);
+            let expected_seed = tip.next_seed(self.entropy_injection.get(proof.slot_number));
             if proof.seed != expected_seed {
                 return Err(PotProtocolStateError::InvalidSeed {
                     expected: expected_seed,
@@ -514,7 +494,15 @@ impl InternalState {
         }
 
         // Case 3: proof for a future slot
-        self.handle_future_proof(&tip, sender, proof)
+        if let Some(sender) = sender {
+            self.handle_future_proof(&tip, sender, proof)
+        } else {
+            // We cannot receive locally generated proofs for future slots.
+            Err(PotProtocolStateError::FutureProof {
+                tip: tip.slot_number,
+                actual: proof.slot_number,
+            })
+        }
     }
 
     /// Checks if the proof is a possible candidate.
@@ -539,7 +527,7 @@ impl InternalState {
 
         // Case 2: the proof extends the tip
         if (tip.slot_number + 1) == proof.slot_number {
-            let expected_seed = tip.next_seed(None);
+            let expected_seed = tip.next_seed(self.entropy_injection.get(proof.slot_number));
             if proof.seed != expected_seed {
                 return Err(PotProtocolStateError::InvalidSeed {
                     expected: expected_seed,
@@ -613,7 +601,7 @@ impl InternalState {
                 None => return,
             };
 
-            let next_seed = tip.next_seed(None);
+            let next_seed = tip.next_seed(self.entropy_injection.get(next_slot));
             let next_key = tip.next_key();
             match proofs_for_slot
                 .values()
@@ -742,25 +730,27 @@ impl InternalState {
         Ok(())
     }
 
-    /// Handles the block import notification.
-    fn handle_block_import(
+    /// Updates the entropy injection state.
+    fn update_entropy_injection(
         &mut self,
         block_number: BlockNumber,
         block_hash: BlockHash,
         slot_number: SlotNumber,
     ) {
         self.entropy_injection
-            .handle_block_import(block_number, block_hash, slot_number)
+            .update(block_number, block_hash, slot_number)
     }
 
     /// Returns the inputs to build the next proof in the chain.
     fn next_proof_inputs(&self) -> Option<PartialProof> {
         self.tip().map(|tip| {
+            let next_slot = tip.slot_number + 1;
+            let injected_block_hash = self.entropy_injection.get(next_slot).cloned();
             PartialProof::new(
-                tip.slot_number + 1,
-                tip.next_seed(None),
+                next_slot,
+                tip.next_seed(injected_block_hash.as_ref()),
                 tip.next_key(),
-                tip.injected_block_hash,
+                injected_block_hash.unwrap_or(tip.injected_block_hash),
             )
         })
     }
@@ -824,7 +814,13 @@ impl StateManager {
                     });
                 }
 
-                if proof.seed != prev_proof.next_seed(None) {
+                let injected_block_hash = self
+                    .state
+                    .lock()
+                    .entropy_injection
+                    .get(proof.slot_number)
+                    .cloned();
+                if proof.seed != prev_proof.next_seed(injected_block_hash.as_ref()) {
                     return Err(PotVerifyBlockProofsError::UnexpectedSeed {
                         summary: summary.clone(),
                         block_number,
@@ -934,7 +930,7 @@ impl PotProtocolState for StateManager {
     }
 
     fn on_proof(&self, proof: &PotProof) -> Result<(), PotProtocolStateError> {
-        self.state.lock().handle_local_proof(proof)
+        self.state.lock().handle_proof(proof, None)
     }
 
     fn on_proof_from_peer(
@@ -942,7 +938,7 @@ impl PotProtocolState for StateManager {
         sender: PeerId,
         proof: &PotProof,
     ) -> Result<(), PotProtocolStateError> {
-        self.state.lock().handle_peer_proof(sender, proof)
+        self.state.lock().handle_proof(proof, Some(sender))
     }
 
     fn on_block_import(
@@ -953,7 +949,7 @@ impl PotProtocolState for StateManager {
     ) {
         self.state
             .lock()
-            .handle_block_import(block_number, block_hash, slot_number)
+            .update_entropy_injection(block_number, block_hash, slot_number)
     }
 
     fn is_candidate(&self, sender: PeerId, proof: &PotProof) -> Result<(), PotProtocolStateError> {
@@ -985,6 +981,7 @@ pub trait PotConsensusState: Send + Sync {
     fn verify_block_proofs(
         &self,
         block_number: BlockNumber,
+        block_hash: BlockHash,
         slot_number: SlotNumber,
         pre_digest: &PotPreDigest,
         parent_slot_number: SlotNumber,
@@ -1038,6 +1035,7 @@ impl PotConsensusState for StateManager {
     fn verify_block_proofs(
         &self,
         block_number: BlockNumber,
+        block_hash: BlockHash,
         slot_number: SlotNumber,
         pre_digest: &PotPreDigest,
         parent_slot_number: SlotNumber,
@@ -1058,7 +1056,7 @@ impl PotConsensusState for StateManager {
                 .map(|tip| (tip.slot_number + 1) == block_proofs.first().slot_number)
                 .unwrap_or(true);
             if should_append {
-                return self.verify_and_append(
+                let result = self.verify_and_append(
                     block_number,
                     slot_number,
                     block_proofs,
@@ -1066,6 +1064,14 @@ impl PotConsensusState for StateManager {
                     tip,
                     summary,
                 );
+                if result.is_ok() {
+                    self.state.lock().update_entropy_injection(
+                        block_number,
+                        block_hash,
+                        slot_number,
+                    );
+                }
+                return result;
             }
         }
 

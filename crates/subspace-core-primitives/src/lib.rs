@@ -365,11 +365,11 @@ impl PotProof {
     }
 
     /// Derives the next seed based on the injected randomness.
-    pub fn next_seed(&self, injected_hash: Option<BlockHash>) -> PotSeed {
+    pub fn next_seed(&self, injected_hash: Option<&BlockHash>) -> PotSeed {
         match injected_hash {
             Some(injected_hash) => {
                 // Next seed = Hash(last checkpoint + injected hash).
-                let hash = blake2b_256_hash_list(&[&self.output().0, &injected_hash]);
+                let hash = blake2b_256_hash_list(&[&self.output().0, injected_hash]);
                 PotSeed::from(truncate_32_bytes(hash))
             }
             None => {

@@ -80,8 +80,8 @@ use std::sync::Arc;
 use subspace_archiving::archiver::NewArchivedSegment;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    BlockNumber, HistorySize, PublicKey, Randomness, SectorId, SegmentHeader, SegmentIndex,
-    SlotNumber, Solution, SolutionRange,
+    BlockHash, BlockNumber, HistorySize, PublicKey, Randomness, SectorId, SegmentHeader,
+    SegmentIndex, SlotNumber, Solution, SolutionRange,
 };
 use subspace_proof_of_space::Table;
 use subspace_solving::REWARD_SIGNING_CONTEXT;
@@ -485,6 +485,7 @@ where
     AS: AuxStore + Send + Sync + 'static,
     Error: std::error::Error + Send + From<ConsensusError> + From<I::Error> + 'static,
     BlockNumber: From<<<Block as BlockT>::Header as HeaderT>::Number>,
+    BlockHash: From<<Block as BlockT>::Hash>,
 {
     let worker = SubspaceSlotWorker {
         client,
@@ -873,6 +874,7 @@ where
     CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
     AS: AuxStore + Send + Sync + 'static,
     BlockNumber: From<<<Block as BlockT>::Header as HeaderT>::Number>,
+    BlockHash: From<<Block as BlockT>::Hash>,
 {
     fn new(
         client: Arc<Client>,
@@ -997,6 +999,7 @@ where
             let ret = self.proof_of_time_verification(
                 proof_of_time.as_ref(),
                 block_number,
+                block_hash,
                 pre_digest,
                 parent_pre_digest.as_ref(),
             );
@@ -1140,6 +1143,7 @@ where
         &self,
         proof_of_time: &dyn PotConsensusState,
         block_number: NumberFor<Block>,
+        block_hash: Block::Hash,
         pre_digest: &PreDigest<FarmerPublicKey, FarmerPublicKey>,
         parent_pre_digest: Option<&PreDigest<FarmerPublicKey, FarmerPublicKey>>,
     ) -> Result<Randomness, PotVerifyError> {
@@ -1169,6 +1173,7 @@ where
         proof_of_time
             .verify_block_proofs(
                 block_number.into(),
+                block_hash.into(),
                 pre_digest.slot.into(),
                 pot_digest,
                 parent_pre_digest.slot.into(),
@@ -1200,6 +1205,7 @@ where
     CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
     AS: AuxStore + Send + Sync + 'static,
     BlockNumber: From<<<Block as BlockT>::Header as HeaderT>::Number>,
+    BlockHash: From<<Block as BlockT>::Hash>,
 {
     type Error = ConsensusError;
     type Transaction = TransactionFor<Client, Block>;
@@ -1398,6 +1404,7 @@ where
     CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
     AS: AuxStore + Send + Sync + 'static,
     BlockNumber: From<<<Block as BlockT>::Header as HeaderT>::Number>,
+    BlockHash: From<<Block as BlockT>::Hash>,
 {
     let (new_slot_notification_sender, new_slot_notification_stream) =
         notification::channel("subspace_new_slot_notification_stream");
