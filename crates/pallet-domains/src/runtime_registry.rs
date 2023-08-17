@@ -333,8 +333,8 @@ mod tests {
     fn go_to_block(block: u64) {
         for i in System::block_number() + 1..=block {
             let parent_hash = if System::block_number() > 1 {
-                let hdr = System::finalize();
-                hdr.hash()
+                let header = System::finalize();
+                header.hash()
             } else {
                 System::parent_hash()
             };

@@ -3,7 +3,7 @@ use tokio::signal;
 pub(crate) fn raise_fd_limit() {
     match std::panic::catch_unwind(fdlimit::raise_fd_limit) {
         Ok(Some(limit)) => {
-            tracing::info!("Increase file limit from soft to hard (limit is {limit})")
+            tracing::debug!("Increase file limit from soft to hard (limit is {limit})")
         }
         Ok(None) => tracing::debug!("Failed to increase file limit"),
         Err(err) => {
@@ -18,6 +18,7 @@ pub(crate) fn raise_fd_limit() {
         }
     }
 }
+
 #[cfg(unix)]
 pub(crate) async fn shutdown_signal() {
     use futures::FutureExt;

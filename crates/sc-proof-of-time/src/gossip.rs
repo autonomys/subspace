@@ -14,13 +14,11 @@ use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
 use std::collections::HashSet;
 use std::sync::Arc;
 use subspace_core_primitives::crypto::blake2b_256_hash;
-use subspace_core_primitives::PotProof;
+use subspace_core_primitives::{Blake2b256Hash, PotProof};
 use subspace_proof_of_time::ProofOfTime;
 use tracing::{error, trace};
 
 pub(crate) const GOSSIP_PROTOCOL: &str = "/subspace/subspace-proof-of-time";
-
-type MessageHash = [u8; 32];
 
 /// PoT gossip components.
 #[derive(Clone)]
@@ -91,7 +89,7 @@ impl<Block: BlockT> PotGossip<Block> {
                     }
                 },
                  _ = gossip_engine_poll.fuse() => {
-                    error!("Gossip engine has terminated.");
+                    error!("Gossip engine has terminated");
                     return;
                 }
             }
@@ -103,7 +101,7 @@ impl<Block: BlockT> PotGossip<Block> {
 struct PotGossipValidator {
     pot_state: Arc<dyn PotProtocolState>,
     proof_of_time: ProofOfTime,
-    pending: RwLock<HashSet<MessageHash>>,
+    pending: RwLock<HashSet<Blake2b256Hash>>,
 }
 
 impl PotGossipValidator {
@@ -119,8 +117,7 @@ impl PotGossipValidator {
     /// Called when the message is broadcast.
     fn on_broadcast(&self, msg: &[u8]) {
         let hash = blake2b_256_hash(msg);
-        let mut pending = self.pending.write();
-        pending.insert(hash);
+        self.pending.write().insert(hash);
     }
 }
 
@@ -134,11 +131,11 @@ impl<Block: BlockT> Validator<Block> for PotGossipValidator {
         match PotProof::decode(&mut data) {
             Ok(proof) => {
                 // Perform AES verification only if the proof is a candidate.
-                if let Err(err) = self.pot_state.is_candidate(*sender, &proof) {
-                    trace!("gossip::validate: not a candidate: {err:?}");
+                if let Err(error) = self.pot_state.is_candidate(*sender, &proof) {
+                    trace!(%error, "Not a candidate");
                     ValidationResult::Discard
-                } else if let Err(err) = self.proof_of_time.verify(&proof) {
-                    trace!("gossip::validate: verification failed: {err:?}");
+                } else if let Err(error) = self.proof_of_time.verify(&proof) {
+                    trace!(%error, "Verification failed");
                     ValidationResult::Discard
                 } else {
                     ValidationResult::ProcessAndKeep(topic::<Block>())
@@ -151,8 +148,7 @@ impl<Block: BlockT> Validator<Block> for PotGossipValidator {
     fn message_expired<'a>(&'a self) -> Box<dyn FnMut(Block::Hash, &[u8]) -> bool + 'a> {
         Box::new(move |_topic, data| {
             let hash = blake2b_256_hash(data);
-            let pending = self.pending.read();
-            !pending.contains(&hash)
+            !self.pending.read().contains(&hash)
         })
     }
 
@@ -161,13 +157,7 @@ impl<Block: BlockT> Validator<Block> for PotGossipValidator {
     ) -> Box<dyn FnMut(&PeerId, MessageIntent, &Block::Hash, &[u8]) -> bool + 'a> {
         Box::new(move |_who, _intent, _topic, data| {
             let hash = blake2b_256_hash(data);
-            let mut pending = self.pending.write();
-            if pending.contains(&hash) {
-                pending.remove(&hash);
-                true
-            } else {
-                false
-            }
+            self.pending.write().remove(&hash)
         })
     }
 }

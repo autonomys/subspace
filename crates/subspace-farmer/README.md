@@ -53,18 +53,28 @@ target/production/subspace-farmer --help
 
 ### Start the farmer
 ```
-target/production/subspace-farmer --farm path=/path/to/disk,size=100G farm --reward-address st...
+target/production/subspace-farmer farm --reward-address st... path=/path/to/farm,size=100G
 ```
 
-`st...` should be replaced with the reward address taken from Polkadot.js wallet (or similar), `/path/to/disk` with location where you want to store plot and `100G` replaced with desired plot size.
+`st...` should be replaced with the reward address taken from Polkadot.js wallet (or similar), `/path/to/farm` with location where you want to store plot and `100G` replaced with desired plot size.
 
 This will connect to local node and will try to solve on every slot notification, while also plotting all existing and new history of the blockchain in parallel.
 
 *NOTE: You need to have a `subspace-node` running before starting farmer, otherwise it will not be able to start*
 
-### Wipe the plot (same that was created previously)
+### Show information about the farm
 ```
-target/production/subspace-farmer --farm path=/path/to/disk,size=100G wipe
+target/production/subspace-farmer info /path/to/farm
+```
+
+### Scrub the farm to find and fix farm corruption
+```
+target/production/subspace-farmer scrub /path/to/farm
+```
+
+### Wipe the farm
+```
+target/production/subspace-farmer wipe /path/to/farm
 ```
 
 This would wipe plots in the OS-specific users local data directory.

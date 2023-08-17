@@ -14,7 +14,7 @@ use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 use std::time::Instant;
 use subspace_core_primitives::PotProof;
-use tracing::{error, info, trace, warn};
+use tracing::{debug, error, trace, warn};
 
 /// The PoT client implementation
 pub struct PotClient<Block: BlockT<Hash = H256>, Client> {
@@ -61,22 +61,24 @@ where
         self.gossip
             .process_incoming_messages(handle_gossip_message)
             .await;
-        error!("pot_client: gossip engine has terminated.");
+        error!("Gossip engine has terminated");
     }
 
     /// Initializes the chain state from the consensus tip info.
     async fn initialize(&self) {
-        info!("pot_client::initialize: waiting for initialization ...");
+        debug!("Waiting for initialization");
 
         // Wait for a block with proofs.
         let mut block_import = self.client.import_notification_stream();
         while let Some(incoming_block) = block_import.next().await {
             let pre_digest = match extract_pre_digest(&incoming_block.header) {
                 Ok(pre_digest) => pre_digest,
-                Err(err) => {
+                Err(error) => {
                     warn!(
-                        "pot_client::initialize: failed to get pre_digest: {}/{:?}/{err:?}",
-                        incoming_block.hash, incoming_block.origin
+                        %error,
+                        block_hash = %incoming_block.hash,
+                        origin = ?incoming_block.origin,
+                        "Failed to get pre_digest",
                     );
                     continue;
                 }
@@ -86,17 +88,20 @@ where
                 Some(pot_pre_digest) => pot_pre_digest,
                 None => {
                     warn!(
-                        "pot_client::initialize: failed to get pot_pre_digest: {}/{:?}",
-                        incoming_block.hash, incoming_block.origin
+                        block_hash = %incoming_block.hash,
+                        origin = ?incoming_block.origin,
+                        "Failed to get pot_pre_digest",
                     );
                     continue;
                 }
             };
 
             if pot_pre_digest.proofs().is_some() {
-                info!(
-                    "pot_client::initialize: initialization complete: {}/{:?}, pot_pre_digest = {:?}",
-                    incoming_block.hash, incoming_block.origin, pot_pre_digest
+                trace!(
+                    block_hash = %incoming_block.hash,
+                    origin = ?incoming_block.origin,
+                    ?pot_pre_digest,
+                    "Initialization complete",
                 );
                 return;
             }
@@ -109,10 +114,10 @@ where
         let ret = self.pot_state.on_proof_from_peer(sender, &proof);
         let elapsed = start_ts.elapsed();
 
-        if let Err(err) = ret {
-            trace!("pot_client::on gossip: {err:?}, {sender}");
+        if let Err(error) = ret {
+            trace!(%error, %sender, "On gossip");
         } else {
-            trace!("pot_client::on gossip: {proof}, time=[{elapsed:?}], {sender}");
+            trace!(%proof, ?elapsed, %sender, "On gossip");
         }
     }
 }
