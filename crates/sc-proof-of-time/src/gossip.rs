@@ -89,7 +89,7 @@ impl<Block: BlockT> PotGossip<Block> {
                     }
                 },
                  _ = gossip_engine_poll.fuse() => {
-                    error!("Gossip engine has terminated.");
+                    error!("Gossip engine has terminated");
                     return;
                 }
             }
@@ -131,11 +131,11 @@ impl<Block: BlockT> Validator<Block> for PotGossipValidator {
         match PotProof::decode(&mut data) {
             Ok(proof) => {
                 // Perform AES verification only if the proof is a candidate.
-                if let Err(err) = self.pot_state.is_candidate(*sender, &proof) {
-                    trace!("gossip::validate: not a candidate: {err:?}");
+                if let Err(error) = self.pot_state.is_candidate(*sender, &proof) {
+                    trace!(%error, "Not a candidate");
                     ValidationResult::Discard
-                } else if let Err(err) = self.proof_of_time.verify(&proof) {
-                    trace!("gossip::validate: verification failed: {err:?}");
+                } else if let Err(error) = self.proof_of_time.verify(&proof) {
+                    trace!(%error, "Verification failed");
                     ValidationResult::Discard
                 } else {
                     ValidationResult::ProcessAndKeep(topic::<Block>())

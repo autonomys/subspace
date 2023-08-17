@@ -18,7 +18,7 @@ use std::time::{Duration, Instant};
 use subspace_core_primitives::{NonEmptyVec, PotProof, PotSeed};
 use subspace_proof_of_time::ProofOfTime;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
-use tracing::{error, info, trace, warn};
+use tracing::{debug, error, trace, warn};
 
 /// Channel size to send the produced proofs.
 /// The proof producer thread will block if the receiver is behind and
@@ -82,14 +82,14 @@ where
             futures::select! {
                 local_proof = local_proof_receiver.recv().fuse() => {
                     if let Some(proof) = local_proof {
-                        trace!("time_keeper: got local proof: {proof}");
+                        trace!(%proof, "Got local proof");
                         self.handle_local_proof(proof);
                     }
                 },
                 _ = self.gossip.process_incoming_messages(
                     handle_gossip_message.clone()
                 ).fuse() => {
-                    error!("time_keeper: gossip engine has terminated.");
+                    error!("Gossip engine has terminated");
                     return;
                 }
             }
@@ -98,17 +98,19 @@ where
 
     /// Initializes the chain state from the consensus tip info.
     async fn initialize(&self) {
-        info!("time_keeper::initialize: waiting for initialization ...");
+        debug!("Waiting for initialization");
 
         // Wait for the first block import.
         let mut block_import = self.client.import_notification_stream();
         while let Some(incoming_block) = block_import.next().await {
             let pre_digest = match extract_pre_digest(&incoming_block.header) {
                 Ok(pre_digest) => pre_digest,
-                Err(err) => {
+                Err(error) => {
                     warn!(
-                        "time_keeper::initialize: failed to get pre_digest: {}/{:?}/{err:?}",
-                        incoming_block.hash, incoming_block.origin
+                        %error,
+                        block_hash = %incoming_block.hash,
+                        origin = ?incoming_block.origin,
+                        "Failed to get pre_digest",
                     );
                     continue;
                 }
@@ -118,16 +120,19 @@ where
                 Some(pot_pre_digest) => pot_pre_digest,
                 None => {
                     warn!(
-                        "time_keeper::initialize: failed to get pot_pre_digest: {}/{:?}",
-                        incoming_block.hash, incoming_block.origin
+                        block_hash = %incoming_block.hash,
+                        origin = ?incoming_block.origin,
+                        "Failed to get pot_pre_digest",
                     );
                     continue;
                 }
             };
 
-            info!(
-                "time_keeper::initialize: initialization complete: {}/{:?}, pot_pre_digest = {:?}",
-                incoming_block.hash, incoming_block.origin, pot_pre_digest
+            debug!(
+                block_hash = %incoming_block.hash,
+                origin = ?incoming_block.origin,
+                ?pot_pre_digest,
+                "Initialization complete",
             );
             let proofs = pot_pre_digest.proofs().cloned().unwrap_or_else(|| {
                 // Producing proofs starting from (genesis_slot + 1).
@@ -141,7 +146,7 @@ where
                         .expect("Initial slot number should be available for block_number >= 1"),
                     block_hash,
                 );
-                info!("time_keeper::initialize: creating first proof: {proof}");
+                debug!(%proof, "Creating first proof");
                 NonEmptyVec::new_with_entry(proof)
             });
 
@@ -191,14 +196,18 @@ where
                 last_proof.injected_block_hash,
             );
             let elapsed = start_ts.elapsed();
-            trace!("time_keeper::produce proofs: {next_proof}, time=[{elapsed:?}]");
+            trace!(
+                %next_proof,
+                ?elapsed,
+                "Produce proofs",
+            );
 
             // Store the new proof back into the chain and gossip to other time keepers.
-            if let Err(e) = state.on_proof(&next_proof) {
-                info!("time_keeper::produce proofs: failed to extend chain: {e:?}");
+            if let Err(error) = state.on_proof(&next_proof) {
+                error!(%error, "Produce proofs: failed to extend chain");
                 continue;
-            } else if let Err(e) = proof_sender.blocking_send(next_proof.clone()) {
-                warn!("time_keeper::produce proofs: send failed: {e:?}");
+            } else if let Err(error) = proof_sender.blocking_send(next_proof.clone()) {
+                warn!(%error, "Produce proofs: send failed");
                 return;
             }
 
@@ -225,11 +234,10 @@ where
         let ret = self.pot_state.on_proof_from_peer(sender, &proof);
         let elapsed = start_ts.elapsed();
 
-        if let Err(err) = ret {
-            trace!("time_keeper::on gossip: {err:?}, {sender}");
+        if let Err(error) = ret {
+            trace!(%error, %sender, "On gossip");
         } else {
-            trace!("time_keeper::on gossip: {proof}, time=[{elapsed:?}], {sender}");
-            self.gossip.gossip_message(proof.encode());
+            trace!(%proof, ?elapsed, %sender, "On gossip");
         }
     }
 }

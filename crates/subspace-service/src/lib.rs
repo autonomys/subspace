@@ -385,8 +385,7 @@ where
 
                     // TODO: Would be nice if the whole header was passed in here
                     let parent_block_number = client
-                        .header(parent_hash)
-                        .expect("Parent header must always exist when block is created; qed")
+                        .header(parent_hash)?
                         .expect("Parent header must always exist when block is created; qed")
                         .number;
 
