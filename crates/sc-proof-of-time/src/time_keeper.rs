@@ -6,7 +6,6 @@ use crate::PotComponents;
 use futures::{FutureExt, StreamExt};
 use parity_scale_codec::Encode;
 use sc_client_api::BlockchainEvents;
-use sc_network::PeerId;
 use sc_network_gossip::{Network as GossipNetwork, Syncing as GossipSyncing};
 use sp_blockchain::HeaderBackend;
 use sp_consensus_subspace::digests::extract_pre_digest;
@@ -74,10 +73,6 @@ where
         self.initialize().await;
 
         let mut local_proof_receiver = self.spawn_producer_thread();
-        let handle_gossip_message: Arc<dyn Fn(PeerId, PotProof) + Send + Sync> =
-            Arc::new(|sender, proof| {
-                self.handle_gossip_message(sender, proof);
-            });
         loop {
             futures::select! {
                 local_proof = local_proof_receiver.recv().fuse() => {
@@ -86,9 +81,7 @@ where
                         self.handle_local_proof(proof);
                     }
                 },
-                _ = self.gossip.process_incoming_messages(
-                    handle_gossip_message.clone()
-                ).fuse() => {
+                _ = self.gossip.process_incoming_messages().fuse() => {
                     error!("Gossip engine has terminated");
                     return;
                 }
@@ -226,18 +219,5 @@ where
     /// Gossips the locally generated proof.
     fn handle_local_proof(&self, proof: PotProof) {
         self.gossip.gossip_message(proof.encode());
-    }
-
-    /// Handles the incoming gossip message.
-    fn handle_gossip_message(&self, sender: PeerId, proof: PotProof) {
-        let start_ts = Instant::now();
-        let ret = self.pot_state.on_proof_from_peer(sender, &proof);
-        let elapsed = start_ts.elapsed();
-
-        if let Err(error) = ret {
-            trace!(%error, %sender, "On gossip");
-        } else {
-            trace!(%proof, ?elapsed, %sender, "On gossip");
-        }
     }
 }

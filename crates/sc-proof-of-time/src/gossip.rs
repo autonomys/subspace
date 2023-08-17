@@ -13,6 +13,7 @@ use sc_network_gossip::{
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
 use std::collections::HashSet;
 use std::sync::Arc;
+use std::time::Instant;
 use subspace_core_primitives::crypto::blake2b_256_hash;
 use subspace_core_primitives::{Blake2b256Hash, PotProof};
 use subspace_proof_of_time::ProofOfTime;
@@ -25,6 +26,7 @@ pub(crate) const GOSSIP_PROTOCOL: &str = "/subspace/subspace-proof-of-time";
 pub(crate) struct PotGossip<Block: BlockT> {
     engine: Arc<Mutex<GossipEngine<Block>>>,
     validator: Arc<PotGossipValidator>,
+    pot_state: Arc<dyn PotProtocolState>,
 }
 
 impl<Block: BlockT> PotGossip<Block> {
@@ -39,7 +41,10 @@ impl<Block: BlockT> PotGossip<Block> {
         Network: sc_network_gossip::Network<Block> + Send + Sync + Clone + 'static,
         GossipSync: GossipSyncing<Block> + 'static,
     {
-        let validator = Arc::new(PotGossipValidator::new(pot_state, proof_of_time));
+        let validator = Arc::new(PotGossipValidator::new(
+            Arc::clone(&pot_state),
+            proof_of_time,
+        ));
         let engine = Arc::new(Mutex::new(GossipEngine::new(
             network,
             sync,
@@ -47,7 +52,11 @@ impl<Block: BlockT> PotGossip<Block> {
             validator.clone(),
             None,
         )));
-        Self { engine, validator }
+        Self {
+            engine,
+            validator,
+            pot_state,
+        }
     }
 
     /// Gossips the message to the network.
@@ -60,10 +69,7 @@ impl<Block: BlockT> PotGossip<Block> {
 
     /// Runs the loop to process incoming messages.
     /// Returns when the gossip engine terminates.
-    pub(crate) async fn process_incoming_messages<'a>(
-        &self,
-        process_fn: Arc<dyn Fn(PeerId, PotProof) + Send + Sync + 'a>,
-    ) {
+    pub(crate) async fn process_incoming_messages(&self) {
         let message_receiver = self.engine.lock().messages_for(topic::<Block>());
         let mut incoming_messages = Box::pin(message_receiver.filter_map(
             // Filter out messages without sender or fail to decode.
@@ -85,7 +91,7 @@ impl<Block: BlockT> PotGossip<Block> {
             futures::select! {
                 gossiped = incoming_messages.next().fuse() => {
                     if let Some((sender, proof)) = gossiped {
-                        (process_fn)(sender, proof);
+                        self.handle_gossip_message(sender, proof);
                     }
                 },
                  _ = gossip_engine_poll.fuse() => {
@@ -93,6 +99,19 @@ impl<Block: BlockT> PotGossip<Block> {
                     return;
                 }
             }
+        }
+    }
+
+    /// Handles the incoming gossip message.
+    fn handle_gossip_message(&self, sender: PeerId, proof: PotProof) {
+        let start_ts = Instant::now();
+        let ret = self.pot_state.on_proof_from_peer(sender, &proof);
+        let elapsed = start_ts.elapsed();
+
+        if let Err(error) = ret {
+            trace!(%error, %sender, "On gossip");
+        } else {
+            trace!(%proof, ?elapsed, %sender, "On gossip");
         }
     }
 }
