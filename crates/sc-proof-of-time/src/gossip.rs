@@ -134,7 +134,10 @@ impl<Block: BlockT> Validator<Block> for PotGossipValidator {
                 if let Err(error) = self.pot_state.is_candidate(*sender, &proof) {
                     trace!(%error, "Not a candidate");
                     ValidationResult::Discard
-                } else if let Err(error) = self.proof_of_time.verify(&proof) {
+                } else if let Err(error) =
+                    self.proof_of_time
+                        .verify(&proof.seed, &proof.key, &proof.checkpoints)
+                {
                     trace!(%error, "Verification failed");
                     ValidationResult::Discard
                 } else {

@@ -4,7 +4,7 @@
 mod pot_aes;
 
 use core::num::{NonZeroU32, NonZeroU8};
-use subspace_core_primitives::{BlockHash, NonEmptyVec, PotKey, PotProof, PotSeed, SlotNumber};
+use subspace_core_primitives::{NonEmptyVec, PotCheckpoint, PotKey, PotSeed};
 
 #[derive(Debug)]
 #[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
@@ -65,38 +65,36 @@ impl ProofOfTime {
         })
     }
 
-    /// Builds the proof.
-    pub fn create(
-        &self,
-        seed: PotSeed,
-        key: PotKey,
-        slot_number: SlotNumber,
-        injected_block_hash: BlockHash,
-    ) -> PotProof {
-        let checkpoints = NonEmptyVec::new(pot_aes::create(
-            &seed,
-            &key,
+    /// Creates the checkpoints.
+    pub fn create(&self, seed: &PotSeed, key: &PotKey) -> NonEmptyVec<PotCheckpoint> {
+        NonEmptyVec::new(pot_aes::create(
+            seed,
+            key,
             self.num_checkpoints,
             self.checkpoint_iterations,
         ))
-        .expect("List of checkpoints is never empty; qed");
-        PotProof::new(slot_number, seed, key, checkpoints, injected_block_hash)
+        .expect("List of checkpoints is never empty; qed")
     }
 
-    /// Verifies the proof.
-    pub fn verify(&self, proof: &PotProof) -> Result<(), PotVerificationError> {
+    /// Verifies the checkpoints.
+    pub fn verify(
+        &self,
+        seed: &PotSeed,
+        key: &PotKey,
+        checkpoints: &NonEmptyVec<PotCheckpoint>,
+    ) -> Result<(), PotVerificationError> {
         // TODO: this check may break upgrades, revisit.
-        if proof.checkpoints.len() != self.num_checkpoints as usize {
+        if checkpoints.len() != self.num_checkpoints as usize {
             return Err(PotVerificationError::CheckpointCountMismatch {
                 expected: self.num_checkpoints,
-                actual: proof.checkpoints.len() as u64,
+                actual: checkpoints.len() as u64,
             });
         }
 
         if pot_aes::verify_sequential(
-            &proof.seed,
-            &proof.key,
-            proof.checkpoints.as_slice(),
+            seed,
+            key,
+            checkpoints.as_slice(),
             self.checkpoint_iterations,
         ) {
             Ok(())

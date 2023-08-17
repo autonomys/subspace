@@ -15,7 +15,7 @@ use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
-use subspace_core_primitives::{BlockNumber, NonEmptyVec, PotProof, PotSeed};
+use subspace_core_primitives::{BlockNumber, NonEmptyVec, PotKey, PotProof, PotSeed};
 use subspace_proof_of_time::ProofOfTime;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tracing::{debug, error, trace, warn};
@@ -144,12 +144,15 @@ where
                 // Producing proofs starting from (genesis_slot + 1).
                 // TODO: Proper error handling or proof
                 let block_hash = incoming_block.hash.into();
-                let proof = self.proof_of_time.create(
-                    PotSeed::from_block_hash(block_hash),
-                    Default::default(), // TODO: key from cmd line or BTC
+                let seed = PotSeed::from_block_hash(block_hash);
+                let key = PotKey::default(); // TODO: key from cmd line or BTC
+                let proof = PotProof::new(
                     pot_pre_digest
                         .next_block_initial_slot()
                         .expect("Initial slot number should be available for block_number >= 1"),
+                    seed,
+                    key,
+                    self.proof_of_time.create(&seed, &key),
                     block_hash,
                 );
                 debug!(%proof, "Creating first proof");
@@ -188,19 +191,14 @@ where
         loop {
             // Build the next proof on top of the latest tip.
             // TODO: Proper error handling or proof
-            let last_proof = state.tip().expect("Time keeper chain cannot be empty");
+            let partial_proof = state
+                .next_proof_inputs()
+                .expect("Time keeper chain cannot be empty");
 
             // TODO: injected block hash from consensus
             let start_ts = Instant::now();
-            let next_slot_number = last_proof.slot_number + 1;
-            let next_seed = last_proof.next_seed(None);
-            let next_key = last_proof.next_key();
-            let next_proof = proof_of_time.create(
-                next_seed,
-                next_key,
-                next_slot_number,
-                last_proof.injected_block_hash,
-            );
+            let checkpoints = proof_of_time.create(&partial_proof.seed, &partial_proof.key);
+            let next_proof = partial_proof.proof(checkpoints);
             let elapsed = start_ts.elapsed();
             trace!(
                 %next_proof,

@@ -11,7 +11,7 @@ use std::collections::{BTreeMap, VecDeque};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use subspace_core_primitives::{
-    BlockHash, BlockNumber, NonEmptyVec, PotKey, PotProof, PotSeed, SlotNumber,
+    BlockHash, BlockNumber, NonEmptyVec, PotCheckpoint, PotKey, PotProof, PotSeed, SlotNumber,
     POT_ENTROPY_INJECTION_DELAY, POT_ENTROPY_INJECTION_INTERVAL,
     POT_ENTROPY_INJECTION_LOOK_BACK_DEPTH,
 };
@@ -753,6 +753,18 @@ impl InternalState {
             .handle_block_import(block_number, block_hash, slot_number)
     }
 
+    /// Returns the inputs to build the next proof in the chain.
+    fn next_proof_inputs(&self) -> Option<PartialProof> {
+        self.tip().map(|tip| {
+            PartialProof::new(
+                tip.slot_number + 1,
+                tip.next_seed(None),
+                tip.next_key(),
+                tip.injected_block_hash,
+            )
+        })
+    }
+
     /// Returns the current tip of the chain.
     fn tip(&self) -> Option<PotProof> {
         self.chain.tip()
@@ -833,16 +845,16 @@ impl StateManager {
                 }
 
                 // Perform the AES check
-                self.proof_of_time.verify(proof).map_err(|err| {
-                    PotVerifyBlockProofsError::VerificationFailed {
+                self.proof_of_time
+                    .verify(&proof.seed, &proof.key, &proof.checkpoints)
+                    .map_err(|err| PotVerifyBlockProofsError::VerificationFailed {
                         summary: summary.clone(),
                         block_number,
                         slot: slot_number,
                         parent_slot: parent_slot_number,
                         error_slot: proof.slot_number,
                         err,
-                    }
-                })?;
+                    })?;
             }
             to_add.push(proof.clone());
             prev_proof = Some(proof.clone());
@@ -906,6 +918,10 @@ pub(crate) trait PotProtocolState: Send + Sync {
     /// by gossip. This acts like a Bloom filter: false positives with an
     /// error probability, no false negatives.
     fn is_candidate(&self, sender: PeerId, proof: &PotProof) -> Result<(), PotProtocolStateError>;
+
+    /// Returns the inputs to build the next proof in the chain.
+    /// Returns None if the chain is empty.
+    fn next_proof_inputs(&self) -> Option<PartialProof>;
 }
 
 impl PotProtocolState for StateManager {
@@ -942,6 +958,10 @@ impl PotProtocolState for StateManager {
 
     fn is_candidate(&self, sender: PeerId, proof: &PotProof) -> Result<(), PotProtocolStateError> {
         self.state.lock().is_candidate(sender, proof)
+    }
+
+    fn next_proof_inputs(&self) -> Option<PartialProof> {
+        self.state.lock().next_proof_inputs()
     }
 }
 
