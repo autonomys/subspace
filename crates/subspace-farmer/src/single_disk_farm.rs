@@ -6,12 +6,12 @@ mod plotting;
 use crate::identity::Identity;
 use crate::node_client::NodeClient;
 use crate::reward_signing::reward_signing;
-use crate::single_disk_plot::farming::farming;
-pub use crate::single_disk_plot::farming::FarmingError;
-use crate::single_disk_plot::piece_cache::{DiskPieceCache, DiskPieceCacheError};
-use crate::single_disk_plot::piece_reader::PieceReader;
-pub use crate::single_disk_plot::plotting::PlottingError;
-use crate::single_disk_plot::plotting::{plotting, plotting_scheduler};
+use crate::single_disk_farm::farming::farming;
+pub use crate::single_disk_farm::farming::FarmingError;
+use crate::single_disk_farm::piece_cache::{DiskPieceCache, DiskPieceCacheError};
+use crate::single_disk_farm::piece_reader::PieceReader;
+pub use crate::single_disk_farm::plotting::PlottingError;
+use crate::single_disk_farm::plotting::{plotting, plotting_scheduler};
 use crate::utils::JoinOnDrop;
 use derive_more::{Display, From};
 use event_listener_primitives::{Bag, HandlerId};
@@ -55,8 +55,8 @@ const_assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<u64>());
 
 /// Reserve 1M of space for plot metadata (for potential future expansion)
 const RESERVED_PLOT_METADATA: u64 = 1024 * 1024;
-/// Reserve 1M of space for plot info (for potential future expansion)
-const RESERVED_PLOT_INFO: u64 = 1024 * 1024;
+/// Reserve 1M of space for farm info (for potential future expansion)
+const RESERVED_FARM_INFO: u64 = 1024 * 1024;
 
 /// Semaphore that limits disk access concurrency in strategic places to the number specified during
 /// initialization
@@ -87,50 +87,50 @@ impl SingleDiskSemaphore {
     }
 }
 
-/// An identifier for single disk plot, can be used for in logs, thread names, etc.
+/// An identifier for single disk farm, can be used for in logs, thread names, etc.
 #[derive(
     Debug, Copy, Clone, Ord, PartialOrd, Eq, PartialEq, Hash, Serialize, Deserialize, Display, From,
 )]
 #[serde(untagged)]
-pub enum SingleDiskPlotId {
-    /// Plot ID
+pub enum SingleDiskFarmId {
+    /// Farm ID
     Ulid(Ulid),
 }
 
 #[allow(clippy::new_without_default)]
-impl SingleDiskPlotId {
+impl SingleDiskFarmId {
     /// Creates new ID
     pub fn new() -> Self {
         Self::Ulid(Ulid::new())
     }
 }
 
-/// Important information about the contents of the `SingleDiskPlot`
+/// Important information about the contents of the `SingleDiskFarm`
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub enum SingleDiskPlotInfo {
+pub enum SingleDiskFarmInfo {
     /// V0 of the info
     #[serde(rename_all = "camelCase")]
     V0 {
-        /// ID of the plot
-        id: SingleDiskPlotId,
-        /// Genesis hash of the chain used for plot creation
+        /// ID of the farm
+        id: SingleDiskFarmId,
+        /// Genesis hash of the chain used for farm creation
         #[serde(with = "hex::serde")]
         genesis_hash: [u8; 32],
-        /// Public key of identity used for plot creation
+        /// Public key of identity used for farm creation
         public_key: PublicKey,
         /// How many pieces does one sector contain.
         pieces_in_sector: u16,
-        /// How much space in bytes is allocated for this plot
+        /// How much space in bytes is allocated for this farm
         allocated_space: u64,
     },
 }
 
-impl SingleDiskPlotInfo {
-    const FILE_NAME: &'static str = "single_disk_plot.json";
+impl SingleDiskFarmInfo {
+    const FILE_NAME: &'static str = "single_disk_farm.json";
 
     pub fn new(
-        id: SingleDiskPlotId,
+        id: SingleDiskFarmId,
         genesis_hash: [u8; 32],
         public_key: PublicKey,
         pieces_in_sector: u16,
@@ -145,9 +145,16 @@ impl SingleDiskPlotInfo {
         }
     }
 
-    /// Load `SingleDiskPlot` from path is supposed to be stored, `None` means no info file was
+    /// Load `SingleDiskFarm` from path is supposed to be stored, `None` means no info file was
     /// found, happens during first start.
     pub fn load_from(path: &Path) -> io::Result<Option<Self>> {
+        // TODO: Remove this compatibility hack after enough time has passed
+        if path.join("single_disk_plot.json").exists() {
+            fs::rename(
+                path.join("single_disk_plot.json"),
+                path.join(Self::FILE_NAME),
+            )?;
+        }
         let bytes = match fs::read(path.join(Self::FILE_NAME)) {
             Ok(bytes) => bytes,
             Err(error) => {
@@ -164,7 +171,7 @@ impl SingleDiskPlotInfo {
             .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error))
     }
 
-    /// Store `SingleDiskPlot` info to path so it can be loaded again upon restart.
+    /// Store `SingleDiskFarm` info to path so it can be loaded again upon restart.
     pub fn store_to(&self, directory: &Path) -> io::Result<()> {
         fs::write(
             directory.join(Self::FILE_NAME),
@@ -172,19 +179,19 @@ impl SingleDiskPlotInfo {
         )
     }
 
-    // ID of the plot
-    pub fn id(&self) -> &SingleDiskPlotId {
+    // ID of the farm
+    pub fn id(&self) -> &SingleDiskFarmId {
         let Self::V0 { id, .. } = self;
         id
     }
 
-    // Genesis hash of the chain used for plot creation
+    // Genesis hash of the chain used for farm creation
     pub fn genesis_hash(&self) -> &[u8; 32] {
         let Self::V0 { genesis_hash, .. } = self;
         genesis_hash
     }
 
-    // Public key of identity used for plot creation
+    // Public key of identity used for farm creation
     pub fn public_key(&self) -> &PublicKey {
         let Self::V0 { public_key, .. } = self;
         public_key
@@ -198,7 +205,7 @@ impl SingleDiskPlotInfo {
         *pieces_in_sector
     }
 
-    /// How much space in bytes is allocated for this plot
+    /// How much space in bytes is allocated for this farm
     pub fn allocated_space(&self) -> u64 {
         let Self::V0 {
             allocated_space, ..
@@ -207,23 +214,23 @@ impl SingleDiskPlotInfo {
     }
 }
 
-/// Summary of single disk plot for presentational purposes
-pub enum SingleDiskPlotSummary {
-    /// Plot was found and read successfully
+/// Summary of single disk farm for presentational purposes
+pub enum SingleDiskFarmSummary {
+    /// Farm was found and read successfully
     Found {
-        /// Plot info
-        info: SingleDiskPlotInfo,
-        /// Path to directory where plot is stored.
+        /// Farm info
+        info: SingleDiskFarmInfo,
+        /// Path to directory where farm is stored.
         directory: PathBuf,
     },
-    /// Plot was not found
+    /// Farm was not found
     NotFound {
-        /// Path to directory where plot is stored.
+        /// Path to directory where farm is stored.
         directory: PathBuf,
     },
-    /// Failed to open plot
+    /// Failed to open farm
     Error {
-        /// Path to directory where plot is stored.
+        /// Path to directory where farm is stored.
         directory: PathBuf,
         /// Error itself
         error: io::Error,
@@ -248,13 +255,13 @@ impl PlotMetadataHeader {
     }
 }
 
-/// Options used to open single dis plot
-pub struct SingleDiskPlotOptions<NC, PG> {
-    /// Path to directory where plot is stored.
+/// Options used to open single disk farm
+pub struct SingleDiskFarmOptions<NC, PG> {
+    /// Path to directory where farm is stored.
     pub directory: PathBuf,
     /// Information necessary for farmer application
     pub farmer_app_info: FarmerAppInfo,
-    /// How much space in bytes can plot use for plot
+    /// How much space in bytes was allocated
     pub allocated_space: u64,
     /// How many pieces one sector is supposed to contain (max)
     pub max_pieces_in_sector: u16,
@@ -268,13 +275,13 @@ pub struct SingleDiskPlotOptions<NC, PG> {
     pub kzg: Kzg,
     /// Erasure coding instance to use.
     pub erasure_coding: ErasureCoding,
-    /// Percentage of disk plot dedicated for caching purposes
+    /// Percentage of allocated space dedicated for caching purposes
     pub cache_percentage: NonZeroU8,
 }
 
-/// Errors happening when trying to create/open single disk plot
+/// Errors happening when trying to create/open single disk farm
 #[derive(Debug, Error)]
-pub enum SingleDiskPlotError {
+pub enum SingleDiskFarmError {
     // TODO: Make more variants out of this generic one
     /// I/O error occurred
     #[error("I/O error: {0}")]
@@ -290,13 +297,13 @@ pub enum SingleDiskPlotError {
     CantPreallocatePlotFile(io::Error),
     /// Wrong chain (genesis hash)
     #[error(
-        "Genesis hash of plot {id} {wrong_chain} is different from {correct_chain} when plot was \
-        created, it is not possible to use plot on a different chain"
+        "Genesis hash of farm {id} {wrong_chain} is different from {correct_chain} when farm was \
+        created, it is not possible to use farm on a different chain"
     )]
     WrongChain {
-        /// Plot ID
-        id: SingleDiskPlotId,
-        /// Hex-encoded genesis hash during plot creation
+        /// Farm ID
+        id: SingleDiskFarmId,
+        /// Hex-encoded genesis hash during farm creation
         // TODO: Wrapper type with `Display` impl for genesis hash
         correct_chain: String,
         /// Hex-encoded current genesis hash
@@ -304,28 +311,28 @@ pub enum SingleDiskPlotError {
     },
     /// Public key in identity doesn't match metadata
     #[error(
-        "Public key of plot {id} {wrong_public_key} is different from {correct_public_key} when \
-        plot was created, something went wrong, likely due to manual edits"
+        "Public key of farm {id} {wrong_public_key} is different from {correct_public_key} when \
+        farm was created, something went wrong, likely due to manual edits"
     )]
     IdentityMismatch {
-        /// Plot ID
-        id: SingleDiskPlotId,
-        /// Public key used during plot creation
+        /// Farm ID
+        id: SingleDiskFarmId,
+        /// Public key used during farm creation
         correct_public_key: PublicKey,
         /// Current public key
         wrong_public_key: PublicKey,
     },
     /// Invalid number pieces in sector
     #[error(
-        "Invalid number pieces in sector: max supported {max_supported}, plot initialized with \
+        "Invalid number pieces in sector: max supported {max_supported}, farm initialized with \
         {initialized_with}"
     )]
     InvalidPiecesInSector {
-        /// Plot ID
-        id: SingleDiskPlotId,
+        /// Farm ID
+        id: SingleDiskFarmId,
         /// Max supported pieces in sector
         max_supported: u16,
-        /// Number of pieces in sector plot is initialized with
+        /// Number of pieces in sector farm is initialized with
         initialized_with: u16,
     },
     /// Failed to decode metadata header
@@ -349,13 +356,13 @@ pub enum SingleDiskPlotError {
         /// Current allocated space
         allocated_space: u64,
     },
-    /// Plot is too large
+    /// Farm is too large
     #[error(
-        "Plot is too large: allocated {allocated_sectors} sectors ({allocated_space} bytes), max \
-        supported is {max_sectors} ({max_space} bytes). Consider creating multiple smaller plots \
+        "Farm is too large: allocated {allocated_sectors} sectors ({allocated_space} bytes), max \
+        supported is {max_sectors} ({max_space} bytes). Consider creating multiple smaller farms \
         instead."
     )]
-    PlotTooLarge {
+    FarmTooLarge {
         allocated_space: u64,
         allocated_sectors: u64,
         max_space: u64,
@@ -385,14 +392,14 @@ struct Handlers {
     solution: Handler<SolutionResponse>,
 }
 
-/// Single disk plot abstraction is a container for everything necessary to plot/farm with a single
-/// disk plot.
+/// Single disk farm abstraction is a container for everything necessary to plot/farm with a single
+/// disk.
 ///
-/// Plot starts operating during creation and doesn't stop until dropped (or error happens).
+/// Farm starts operating during creation and doesn't stop until dropped (or error happens).
 #[must_use = "Plot does not function properly unless run() method is called"]
-pub struct SingleDiskPlot {
+pub struct SingleDiskFarm {
     farmer_protocol_info: FarmerProtocolInfo,
-    single_disk_plot_info: SingleDiskPlotInfo,
+    single_disk_farm_info: SingleDiskFarmInfo,
     /// Metadata of all sectors plotted so far
     sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
     pieces_in_sector: u16,
@@ -410,7 +417,7 @@ pub struct SingleDiskPlot {
     stop_sender: Option<broadcast::Sender<()>>,
 }
 
-impl Drop for SingleDiskPlot {
+impl Drop for SingleDiskFarm {
     fn drop(&mut self) {
         self.piece_reader.close_all_readers();
         // Make background threads that are waiting to do something exit immediately
@@ -420,18 +427,18 @@ impl Drop for SingleDiskPlot {
     }
 }
 
-impl SingleDiskPlot {
+impl SingleDiskFarm {
     const PLOT_FILE: &'static str = "plot.bin";
     const METADATA_FILE: &'static str = "metadata.bin";
     const SUPPORTED_PLOT_VERSION: u8 = 0;
 
-    /// Create new single disk plot instance
+    /// Create new single disk farm instance
     ///
     /// NOTE: Thought this function is async, it will do some blocking I/O.
     pub async fn new<NC, PG, PosTable>(
-        options: SingleDiskPlotOptions<NC, PG>,
+        options: SingleDiskFarmOptions<NC, PG>,
         disk_farm_index: usize,
-    ) -> Result<Self, SingleDiskPlotError>
+    ) -> Result<Self, SingleDiskFarmError>
     where
         NC: NodeClient,
         PG: PieceGetter + Send + 'static,
@@ -439,7 +446,7 @@ impl SingleDiskPlot {
     {
         let handle = Handle::current();
 
-        let SingleDiskPlotOptions {
+        let SingleDiskFarmOptions {
             directory,
             farmer_app_info,
             allocated_space,
@@ -462,29 +469,29 @@ impl SingleDiskPlot {
         let identity = Identity::open_or_create(&directory).unwrap();
         let public_key = identity.public_key().to_bytes().into();
 
-        let single_disk_plot_info = match SingleDiskPlotInfo::load_from(&directory)? {
-            Some(mut single_disk_plot_info) => {
-                if &farmer_app_info.genesis_hash != single_disk_plot_info.genesis_hash() {
-                    return Err(SingleDiskPlotError::WrongChain {
-                        id: *single_disk_plot_info.id(),
-                        correct_chain: hex::encode(single_disk_plot_info.genesis_hash()),
+        let single_disk_farm_info = match SingleDiskFarmInfo::load_from(&directory)? {
+            Some(mut single_disk_farm_info) => {
+                if &farmer_app_info.genesis_hash != single_disk_farm_info.genesis_hash() {
+                    return Err(SingleDiskFarmError::WrongChain {
+                        id: *single_disk_farm_info.id(),
+                        correct_chain: hex::encode(single_disk_farm_info.genesis_hash()),
                         wrong_chain: hex::encode(farmer_app_info.genesis_hash),
                     });
                 }
 
-                if &public_key != single_disk_plot_info.public_key() {
-                    return Err(SingleDiskPlotError::IdentityMismatch {
-                        id: *single_disk_plot_info.id(),
-                        correct_public_key: *single_disk_plot_info.public_key(),
+                if &public_key != single_disk_farm_info.public_key() {
+                    return Err(SingleDiskFarmError::IdentityMismatch {
+                        id: *single_disk_farm_info.id(),
+                        correct_public_key: *single_disk_farm_info.public_key(),
                         wrong_public_key: public_key,
                     });
                 }
 
-                let pieces_in_sector = single_disk_plot_info.pieces_in_sector();
+                let pieces_in_sector = single_disk_farm_info.pieces_in_sector();
 
                 if max_pieces_in_sector < pieces_in_sector {
-                    return Err(SingleDiskPlotError::InvalidPiecesInSector {
-                        id: *single_disk_plot_info.id(),
+                    return Err(SingleDiskFarmError::InvalidPiecesInSector {
+                        id: *single_disk_farm_info.id(),
                         max_supported: max_pieces_in_sector,
                         initialized_with: pieces_in_sector,
                     });
@@ -494,53 +501,53 @@ impl SingleDiskPlot {
                     info!(
                         pieces_in_sector,
                         max_pieces_in_sector,
-                        "Plot initialized with smaller number of pieces in sector, plot needs to \
+                        "Farm initialized with smaller number of pieces in sector, farm needs to \
                         be re-created for increase"
                     );
                 }
 
-                if allocated_space != single_disk_plot_info.allocated_space() {
+                if allocated_space != single_disk_farm_info.allocated_space() {
                     info!(
-                        old_space = %bytesize::to_string(single_disk_plot_info.allocated_space(), true),
+                        old_space = %bytesize::to_string(single_disk_farm_info.allocated_space(), true),
                         new_space = %bytesize::to_string(allocated_space, true),
                         "Farm size has changed"
                     );
 
                     {
                         let new_allocated_space = allocated_space;
-                        let SingleDiskPlotInfo::V0 {
+                        let SingleDiskFarmInfo::V0 {
                             allocated_space, ..
-                        } = &mut single_disk_plot_info;
+                        } = &mut single_disk_farm_info;
                         *allocated_space = new_allocated_space;
                     }
 
-                    single_disk_plot_info.store_to(&directory)?;
+                    single_disk_farm_info.store_to(&directory)?;
                 }
 
-                single_disk_plot_info
+                single_disk_farm_info
             }
             None => {
-                let single_disk_plot_info = SingleDiskPlotInfo::new(
-                    SingleDiskPlotId::new(),
+                let single_disk_farm_info = SingleDiskFarmInfo::new(
+                    SingleDiskFarmId::new(),
                     farmer_app_info.genesis_hash,
                     public_key,
                     max_pieces_in_sector,
                     allocated_space,
                 );
 
-                single_disk_plot_info.store_to(&directory)?;
+                single_disk_farm_info.store_to(&directory)?;
 
-                single_disk_plot_info
+                single_disk_farm_info
             }
         };
 
-        let pieces_in_sector = single_disk_plot_info.pieces_in_sector();
+        let pieces_in_sector = single_disk_farm_info.pieces_in_sector();
         let sector_size = sector_size(max_pieces_in_sector);
         let sector_metadata_size = SectorMetadataChecksummed::encoded_size();
         let single_sector_overhead = (sector_size + sector_metadata_size) as u64;
         // Fixed space usage regardless of plot size
         let fixed_space_usage = RESERVED_PLOT_METADATA
-            + RESERVED_PLOT_INFO
+            + RESERVED_FARM_INFO
             + Identity::file_size() as u64
             + NetworkingParametersManager::file_size() as u64;
         // Calculate how many sectors can fit
@@ -565,7 +572,7 @@ impl SingleDiskPlot {
                     single_sector_overhead + DiskPieceCache::element_size() as u64;
             }
 
-            return Err(SingleDiskPlotError::InsufficientAllocatedSpace {
+            return Err(SingleDiskFarmError::InsufficientAllocatedSpace {
                 min_space: fixed_space_usage + single_plot_with_cache_space,
                 allocated_space,
             });
@@ -586,7 +593,7 @@ impl SingleDiskPlot {
                 // We use this for both count and index, hence index must not reach actual `MAX`
                 // (consensus doesn't care about this, just farmer implementation detail)
                 let max_sectors = SectorIndex::MAX - 1;
-                return Err(SingleDiskPlotError::PlotTooLarge {
+                return Err(SingleDiskFarmError::FarmTooLarge {
                     allocated_space: target_sector_count * sector_size as u64,
                     allocated_sectors: target_sector_count,
                     max_space: max_sectors as u64 * sector_size as u64,
@@ -613,7 +620,7 @@ impl SingleDiskPlot {
 
             metadata_file
                 .preallocate(expected_metadata_size)
-                .map_err(SingleDiskPlotError::CantPreallocateMetadataFile)?;
+                .map_err(SingleDiskFarmError::CantPreallocateMetadataFile)?;
             metadata_file.write_all_at(metadata_header.encode().as_slice(), 0)?;
 
             let metadata_header_mmap = unsafe {
@@ -629,7 +636,7 @@ impl SingleDiskPlot {
                 // cause writes to fail later)
                 metadata_file
                     .preallocate(expected_metadata_size)
-                    .map_err(SingleDiskPlotError::CantPreallocateMetadataFile)?;
+                    .map_err(SingleDiskFarmError::CantPreallocateMetadataFile)?;
                 // Truncating file (if necessary)
                 metadata_file.set_len(expected_metadata_size)?;
             }
@@ -641,10 +648,10 @@ impl SingleDiskPlot {
 
             let mut metadata_header =
                 PlotMetadataHeader::decode(&mut metadata_header_mmap.as_ref())
-                    .map_err(SingleDiskPlotError::FailedToDecodeMetadataHeader)?;
+                    .map_err(SingleDiskFarmError::FailedToDecodeMetadataHeader)?;
 
             if metadata_header.version != Self::SUPPORTED_PLOT_VERSION {
-                return Err(SingleDiskPlotError::UnexpectedMetadataVersion(
+                return Err(SingleDiskFarmError::UnexpectedMetadataVersion(
                     metadata_header.version,
                 ));
             }
@@ -674,7 +681,7 @@ impl SingleDiskPlot {
             {
                 sectors_metadata.push(
                     SectorMetadataChecksummed::decode(&mut sector_metadata_bytes)
-                        .map_err(SingleDiskPlotError::FailedToDecodeSectorMetadata)?,
+                        .map_err(SingleDiskFarmError::FailedToDecodeSectorMetadata)?,
                 );
             }
 
@@ -693,7 +700,7 @@ impl SingleDiskPlot {
         // writes to fail later)
         plot_file
             .preallocate(sector_size as u64 * u64::from(target_sector_count))
-            .map_err(SingleDiskPlotError::CantPreallocatePlotFile)?;
+            .map_err(SingleDiskFarmError::CantPreallocatePlotFile)?;
         // Truncating file (if necessary)
         plot_file.set_len(sector_size as u64 * u64::from(target_sector_count))?;
 
@@ -720,7 +727,7 @@ impl SingleDiskPlot {
         // Some sectors may already be plotted, skip them
         let sectors_indices_left_to_plot = metadata_header.sector_count..target_sector_count;
 
-        let span = info_span!("single_disk_plot", %disk_farm_index);
+        let span = info_span!("single_disk_farm", %disk_farm_index);
 
         let plotting_join_handle = thread::Builder::new()
             .name(format!("plotting-{disk_farm_index}"))
@@ -917,7 +924,7 @@ impl SingleDiskPlot {
 
         let farm = Self {
             farmer_protocol_info: farmer_app_info.protocol_info,
-            single_disk_plot_info,
+            single_disk_farm_info,
             sectors_metadata,
             pieces_in_sector,
             span,
@@ -935,27 +942,27 @@ impl SingleDiskPlot {
         Ok(farm)
     }
 
-    /// Collect summary of single disk plot for presentational purposes
-    pub fn collect_summary(directory: PathBuf) -> SingleDiskPlotSummary {
-        let single_disk_plot_info = match SingleDiskPlotInfo::load_from(&directory) {
-            Ok(Some(single_disk_plot_info)) => single_disk_plot_info,
+    /// Collect summary of single disk farm for presentational purposes
+    pub fn collect_summary(directory: PathBuf) -> SingleDiskFarmSummary {
+        let single_disk_farm_info = match SingleDiskFarmInfo::load_from(&directory) {
+            Ok(Some(single_disk_farm_info)) => single_disk_farm_info,
             Ok(None) => {
-                return SingleDiskPlotSummary::NotFound { directory };
+                return SingleDiskFarmSummary::NotFound { directory };
             }
             Err(error) => {
-                return SingleDiskPlotSummary::Error { directory, error };
+                return SingleDiskFarmSummary::Error { directory, error };
             }
         };
 
-        SingleDiskPlotSummary::Found {
-            info: single_disk_plot_info,
+        SingleDiskFarmSummary::Found {
+            info: single_disk_farm_info,
             directory,
         }
     }
 
     /// ID of this farm
-    pub fn id(&self) -> &SingleDiskPlotId {
-        self.single_disk_plot_info.id()
+    pub fn id(&self) -> &SingleDiskFarmId {
+        self.single_disk_farm_info.id()
     }
 
     /// Number of sectors successfully plotted so far
@@ -967,7 +974,7 @@ impl SingleDiskPlot {
     pub fn plotted_sectors(
         &self,
     ) -> impl Iterator<Item = Result<PlottedSector, parity_scale_codec::Error>> + '_ {
-        let public_key = self.single_disk_plot_info.public_key();
+        let public_key = self.single_disk_farm_info.public_key();
 
         (0..).zip(self.sectors_metadata.read().clone()).map(
             move |(sector_index, sector_metadata)| {
@@ -1002,7 +1009,7 @@ impl SingleDiskPlot {
         self.piece_cache.clone()
     }
 
-    /// Get piece reader to read plot pieces later
+    /// Get piece reader to read plotted pieces later
     pub fn piece_reader(&self) -> PieceReader {
         self.piece_reader.clone()
     }
@@ -1037,24 +1044,24 @@ impl SingleDiskPlot {
         Ok(())
     }
 
-    /// Wipe everything that belongs to this single disk plot
+    /// Wipe everything that belongs to this single disk farm
     pub fn wipe(directory: &Path) -> io::Result<()> {
-        let single_disk_plot_info_path = directory.join(SingleDiskPlotInfo::FILE_NAME);
-        match SingleDiskPlotInfo::load_from(directory) {
-            Ok(Some(single_disk_plot_info)) => {
-                info!("Found single disk plot {}", single_disk_plot_info.id());
+        let single_disk_info_info_path = directory.join(SingleDiskFarmInfo::FILE_NAME);
+        match SingleDiskFarmInfo::load_from(directory) {
+            Ok(Some(single_disk_farm_info)) => {
+                info!("Found single disk farm {}", single_disk_farm_info.id());
             }
             Ok(None) => {
                 return Err(io::Error::new(
                     io::ErrorKind::NotFound,
                     format!(
-                        "Single disk plot info not found at {}",
-                        single_disk_plot_info_path.display()
+                        "Single disk farm info not found at {}",
+                        single_disk_info_info_path.display()
                     ),
                 ));
             }
             Err(error) => {
-                warn!("Found unknown single disk plot: {}", error);
+                warn!("Found unknown single disk farm: {}", error);
             }
         }
 
@@ -1078,10 +1085,19 @@ impl SingleDiskPlot {
 
         DiskPieceCache::wipe(directory)?;
 
-        info!(
-            "Deleting info file at {}",
-            single_disk_plot_info_path.display()
-        );
-        fs::remove_file(single_disk_plot_info_path)
+        // TODO: Remove this compatibility hack after enough time has passed
+        if directory.join("single_disk_plot.json").exists() {
+            info!(
+                "Deleting info file at {}",
+                directory.join("single_disk_plot.json").display()
+            );
+            fs::remove_file(directory.join("single_disk_plot.json"))
+        } else {
+            info!(
+                "Deleting info file at {}",
+                single_disk_info_info_path.display()
+            );
+            fs::remove_file(single_disk_info_info_path)
+        }
     }
 }

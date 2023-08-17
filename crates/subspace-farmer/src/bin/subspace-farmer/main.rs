@@ -12,7 +12,7 @@ use std::num::{NonZeroU16, NonZeroU8, NonZeroUsize};
 use std::path::PathBuf;
 use std::str::FromStr;
 use subspace_core_primitives::PublicKey;
-use subspace_farmer::single_disk_plot::SingleDiskPlot;
+use subspace_farmer::single_disk_farm::SingleDiskFarm;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_proof_of_space::chia::ChiaTable;
 use tempfile::TempDir;
@@ -274,7 +274,7 @@ async fn main() -> anyhow::Result<()> {
                 let _ = fs::remove_file(farm.directory.join("piece_cache_db"));
                 let _ = fs::remove_file(farm.directory.join("providers_db"));
 
-                SingleDiskPlot::wipe(&farm.directory)?;
+                SingleDiskFarm::wipe(&farm.directory)?;
             }
 
             info!("Done");

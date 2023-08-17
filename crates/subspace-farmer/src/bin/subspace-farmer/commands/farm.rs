@@ -15,8 +15,8 @@ use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{Piece, Record, SectorIndex};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer::piece_cache::PieceCache;
-use subspace_farmer::single_disk_plot::{
-    SingleDiskPlot, SingleDiskPlotError, SingleDiskPlotOptions,
+use subspace_farmer::single_disk_farm::{
+    SingleDiskFarm, SingleDiskFarmError, SingleDiskFarmOptions,
 };
 use subspace_farmer::utils::archival_storage_info::ArchivalStorageInfo;
 use subspace_farmer::utils::archival_storage_pieces::ArchivalStoragePieces;
@@ -144,7 +144,7 @@ where
         "cache-worker".to_string(),
     );
 
-    let mut single_disk_plots = Vec::with_capacity(disk_farms.len());
+    let mut single_disk_farms = Vec::with_capacity(disk_farms.len());
     let max_pieces_in_sector = match max_pieces_in_sector {
         Some(max_pieces_in_sector) => {
             if max_pieces_in_sector > farmer_app_info.protocol_info.max_pieces_in_sector {
@@ -169,8 +169,8 @@ where
         debug!(url = %node_rpc_url, %disk_farm_index, "Connecting to node RPC");
         let node_client = NodeRpcClient::new(&node_rpc_url).await?;
 
-        let single_disk_plot_fut = SingleDiskPlot::new::<_, _, PosTable>(
-            SingleDiskPlotOptions {
+        let single_disk_farm_fut = SingleDiskFarm::new::<_, _, PosTable>(
+            SingleDiskFarmOptions {
                 directory: disk_farm.directory.clone(),
                 farmer_app_info: farmer_app_info.clone(),
                 allocated_space: disk_farm.allocated_plotting_space,
@@ -185,9 +185,9 @@ where
             disk_farm_index,
         );
 
-        let single_disk_plot = match single_disk_plot_fut.await {
-            Ok(single_disk_plot) => single_disk_plot,
-            Err(SingleDiskPlotError::InsufficientAllocatedSpace {
+        let single_disk_farm = match single_disk_farm_fut.await {
+            Ok(single_disk_farm) => single_disk_farm,
+            Err(SingleDiskFarmError::InsufficientAllocatedSpace {
                 min_space,
                 allocated_space,
             }) => {
@@ -210,23 +210,23 @@ where
             print_disk_farm_info(disk_farm.directory, disk_farm_index);
         }
 
-        single_disk_plots.push(single_disk_plot);
+        single_disk_farms.push(single_disk_farm);
     }
 
     piece_cache
         .replace_backing_caches(
-            single_disk_plots
+            single_disk_farms
                 .iter()
-                .map(|single_disk_plot| single_disk_plot.piece_cache())
+                .map(|single_disk_farm| single_disk_farm.piece_cache())
                 .collect(),
         )
         .await;
     drop(piece_cache);
 
     // Store piece readers so we can reference them later
-    let piece_readers = single_disk_plots
+    let piece_readers = single_disk_farms
         .iter()
-        .map(|single_disk_plot| single_disk_plot.piece_reader())
+        .map(|single_disk_farm| single_disk_farm.piece_reader())
         .collect::<Vec<_>>();
 
     info!("Collecting already plotted pieces (this will take some time)...");
@@ -239,8 +239,8 @@ where
             archival_storage_pieces,
         ));
 
-        single_disk_plots.iter().enumerate().try_for_each(
-            |(disk_farm_index, single_disk_plot)| {
+        single_disk_farms.iter().enumerate().try_for_each(
+            |(disk_farm_index, single_disk_farm)| {
                 let disk_farm_index = disk_farm_index.try_into().map_err(|_error| {
                     anyhow!(
                         "More than 256 plots are not supported, consider running multiple farmer \
@@ -249,7 +249,7 @@ where
                 })?;
 
                 (0 as SectorIndex..)
-                    .zip(single_disk_plot.plotted_sectors())
+                    .zip(single_disk_farm.plotted_sectors())
                     .for_each(
                         |(sector_index, plotted_sector_result)| match plotted_sector_result {
                             Ok(plotted_sector) => {
@@ -273,10 +273,10 @@ where
 
     info!("Finished collecting already plotted pieces successfully");
 
-    let mut single_disk_plots_stream = single_disk_plots
+    let mut single_disk_farms_stream = single_disk_farms
         .into_iter()
         .enumerate()
-        .map(|(disk_farm_index, single_disk_plot)| {
+        .map(|(disk_farm_index, single_disk_farm)| {
             let disk_farm_index = disk_farm_index.try_into().expect(
                 "More than 256 plots are not supported, this is checked above already; qed",
             );
@@ -304,21 +304,21 @@ where
                     }
                 };
 
-            single_disk_plot
+            single_disk_farm
                 .on_sector_plotted(Arc::new(on_plotted_sector_callback))
                 .detach();
 
-            single_disk_plot.run()
+            single_disk_farm.run()
         })
         .collect::<FuturesUnordered<_>>();
 
-    // Drop original instance such that the only remaining instances are in `SingleDiskPlot`
+    // Drop original instance such that the only remaining instances are in `SingleDiskFarm`
     // event handlers
     drop(readers_and_pieces);
 
     let farm_fut = run_future_in_dedicated_thread(
         Box::pin(async move {
-            while let Some(result) = single_disk_plots_stream.next().await {
+            while let Some(result) = single_disk_farms_stream.next().await {
                 result?;
 
                 info!("Farm exited successfully");

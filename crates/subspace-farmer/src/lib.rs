@@ -38,7 +38,7 @@ pub(crate) mod identity;
 pub mod node_client;
 pub mod piece_cache;
 pub mod reward_signing;
-pub mod single_disk_plot;
+pub mod single_disk_farm;
 pub mod utils;
 
 pub use identity::Identity;

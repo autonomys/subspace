@@ -1,5 +1,5 @@
 use crate::node_client::NodeClient;
-use crate::single_disk_plot::piece_cache::{DiskPieceCache, Offset};
+use crate::single_disk_farm::piece_cache::{DiskPieceCache, Offset};
 use crate::utils::AsyncJoinOnDrop;
 use futures::{select, FutureExt, StreamExt};
 use parking_lot::RwLock;

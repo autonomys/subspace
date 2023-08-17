@@ -1,6 +1,6 @@
 use crate::node_client;
 use crate::node_client::NodeClient;
-use crate::single_disk_plot::Handlers;
+use crate::single_disk_farm::Handlers;
 use futures::channel::mpsc;
 use futures::StreamExt;
 use memmap2::Mmap;
