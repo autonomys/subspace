@@ -4,7 +4,8 @@ use super::*;
 use crate::Pallet as Messenger;
 use frame_benchmarking::v2::*;
 use frame_support::assert_ok;
-use frame_support::traits::{Get, ReservableCurrency};
+use frame_support::traits::fungible::Mutate;
+use frame_support::traits::Get;
 use frame_system::RawOrigin;
 use sp_messenger::endpoint::{Endpoint, EndpointRequest};
 use sp_messenger::messages::{
@@ -21,10 +22,11 @@ mod benchmarks {
     #[benchmark]
     fn initiate_channel() {
         let relayer = account("relayer", 1, SEED);
-        T::Currency::make_free_balance_be(
+        T::Currency::mint_into(
             &relayer,
             T::RelayerDeposit::get() + T::Currency::minimum_balance(),
-        );
+        )
+        .unwrap();
         unchecked_join_relayer_set::<T>(relayer);
         let dst_chain_id: ChainId = u32::MAX.into();
         assert_ne!(T::SelfChainId::get(), dst_chain_id);
@@ -44,10 +46,11 @@ mod benchmarks {
     #[benchmark]
     fn close_channel() {
         let relayer = account("relayer", 1, SEED);
-        T::Currency::make_free_balance_be(
+        T::Currency::mint_into(
             &relayer,
             T::RelayerDeposit::get() + T::Currency::minimum_balance(),
-        );
+        )
+        .unwrap();
         unchecked_join_relayer_set::<T>(relayer);
 
         let dst_chain_id: ChainId = u32::MAX.into();
@@ -67,10 +70,11 @@ mod benchmarks {
     #[benchmark]
     fn do_open_channel() {
         let relayer = account("relayer", 1, SEED);
-        T::Currency::make_free_balance_be(
+        T::Currency::mint_into(
             &relayer,
             T::RelayerDeposit::get() + T::Currency::minimum_balance(),
-        );
+        )
+        .unwrap();
         unchecked_join_relayer_set::<T>(relayer);
 
         let dst_chain_id: ChainId = u32::MAX.into();
@@ -95,10 +99,11 @@ mod benchmarks {
     #[benchmark]
     fn do_close_channel() {
         let relayer = account("relayer", 1, SEED);
-        T::Currency::make_free_balance_be(
+        T::Currency::mint_into(
             &relayer,
             T::RelayerDeposit::get() + T::Currency::minimum_balance(),
-        );
+        )
+        .unwrap();
         unchecked_join_relayer_set::<T>(relayer);
 
         let dst_chain_id: ChainId = u32::MAX.into();
@@ -120,10 +125,11 @@ mod benchmarks {
     #[benchmark]
     fn relay_message<T: Config>() {
         let relayer = account("relayer", 1, SEED);
-        T::Currency::make_free_balance_be(
+        T::Currency::mint_into(
             &relayer,
             T::RelayerDeposit::get() + T::Currency::minimum_balance(),
-        );
+        )
+        .unwrap();
         unchecked_join_relayer_set::<T>(relayer);
 
         let endpoint = Endpoint::Id(100);
@@ -175,10 +181,11 @@ mod benchmarks {
     #[benchmark]
     fn relay_message_response() {
         let relayer = account("relayer", 1, SEED);
-        T::Currency::make_free_balance_be(
+        T::Currency::mint_into(
             &relayer,
             T::RelayerDeposit::get() + T::Currency::minimum_balance(),
-        );
+        )
+        .unwrap();
         unchecked_join_relayer_set::<T>(relayer);
 
         let endpoint = Endpoint::Id(100);
@@ -197,7 +204,7 @@ mod benchmarks {
         // Insert a dummy outbox request message which will be handled during the `relay_message_response` call
         let req_msg: Message<BalanceOf<T>> = Message {
             src_chain_id: T::SelfChainId::get(),
-            dst_chain_id: dst_chain_id,
+            dst_chain_id,
             channel_id,
             nonce: next_outbox_nonce,
             payload: VersionedPayload::V0(Payload::Endpoint(RequestResponse::Request(
@@ -246,10 +253,11 @@ mod benchmarks {
     #[benchmark]
     fn join_relayer_set() {
         let relayer = account("relayer", 1, SEED);
-        T::Currency::make_free_balance_be(
+        T::Currency::mint_into(
             &relayer,
             T::RelayerDeposit::get() + T::Currency::minimum_balance(),
-        );
+        )
+        .unwrap();
 
         #[extrinsic_call]
         _(RawOrigin::Signed(relayer.clone()), relayer.clone());
@@ -264,10 +272,11 @@ mod benchmarks {
         let mut relayers = Vec::new();
         for i in 0..10 {
             let relayer = account("relayer", i, SEED);
-            T::Currency::make_free_balance_be(
+            T::Currency::mint_into(
                 &relayer,
                 T::RelayerDeposit::get() + T::Currency::minimum_balance(),
-            );
+            )
+            .unwrap();
             unchecked_join_relayer_set::<T>(relayer.clone());
             relayers.push(relayer);
 

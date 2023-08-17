@@ -96,7 +96,7 @@ impl<T: Config> Pallet<T> {
                 return Ok(());
             }
 
-            Self::distribute_reward_to_relayers(fee_model.inbox_fee.relayer_pool_fee)?;
+            Self::reward_relayers(fee_model.inbox_fee.relayer_pool_fee)?;
             current_nonce = nonce.checked_sub(Nonce::one())
         }
 
@@ -318,7 +318,7 @@ impl<T: Config> Pallet<T> {
         };
 
         // distribute rewards to relayers for relaying the outbox messages.
-        Self::distribute_reward_to_relayers(channel.fee.outbox_fee.relayer_pool_fee)?;
+        Self::reward_relayers(channel.fee.outbox_fee.relayer_pool_fee)?;
 
         Channels::<T>::mutate(
             dst_chain_id,

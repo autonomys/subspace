@@ -34,7 +34,7 @@ mod messages;
 mod relayer;
 
 use codec::{Decode, Encode};
-use frame_support::traits::Currency;
+use frame_support::traits::fungible::Inspect;
 pub use pallet::*;
 use scale_info::TypeInfo;
 use sp_core::U256;
@@ -85,7 +85,7 @@ pub enum OutboxMessageResult {
 
 pub(crate) type StateRootOf<T> = <<T as frame_system::Config>::Hashing as Hash>::Output;
 pub(crate) type BalanceOf<T> =
-    <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+    <<T as Config>::Currency as Inspect<<T as frame_system::Config>::AccountId>>::Balance;
 
 pub(crate) struct ValidatedRelayMessage<Balance> {
     msg: Message<Balance>,
@@ -102,7 +102,7 @@ mod pallet {
         StateRootOf, ValidatedRelayMessage, U256,
     };
     use frame_support::pallet_prelude::*;
-    use frame_support::traits::ReservableCurrency;
+    use frame_support::traits::fungible::Mutate;
     use frame_system::pallet_prelude::*;
     use sp_core::storage::StorageKey;
     use sp_messenger::endpoint::{DomainInfo, Endpoint, EndpointHandler, EndpointRequest, Sender};
@@ -126,7 +126,7 @@ mod pallet {
             endpoint: &Endpoint,
         ) -> Option<Box<dyn EndpointHandler<MessageId>>>;
         /// Currency type pallet uses for fees and deposits.
-        type Currency: ReservableCurrency<Self::AccountId>;
+        type Currency: Mutate<Self::AccountId>;
         /// Maximum number of relayers that can join this chain.
         type MaximumRelayers: Get<u32>;
         /// Relayer deposit to become a relayer for this chain.
@@ -219,6 +219,15 @@ mod pallet {
     #[pallet::getter(fn relayer_messages)]
     pub(super) type RelayerMessages<T: Config> =
         StorageMap<_, Identity, RelayerId<T>, relayer::RelayerMessages, OptionQuery>;
+
+    /// A temporary storage to store the rewards for relayers for a given block.
+    /// Rewards are cleared on block init.
+    // TODO: Ideally these rewards along with execution rewards should go into ER
+    //  But since we do not have the operator rewards yet, we store them here
+    //  This storage also can be used to prove the rewards through fraud proof if rewards did not match
+    #[pallet::storage]
+    #[pallet::getter(fn relayer_rewards)]
+    pub(super) type RelayerRewards<T: Config> = StorageValue<_, BalanceOf<T>, ValueQuery>;
 
     /// `pallet-messenger` events
     #[pallet::event]
@@ -481,6 +490,9 @@ mod pallet {
         /// Emits when there is mismatch between the message's weight tag and the message's
         /// actual processing path
         WeightTagNotMatch,
+
+        /// Emite when the there is balance overflow
+        BalanceOverflow,
     }
 
     #[pallet::hooks]

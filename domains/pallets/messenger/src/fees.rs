@@ -1,9 +1,10 @@
-use crate::{BalanceOf, Config, Pallet, Relayers};
-use frame_support::traits::ExistenceRequirement::AllowDeath;
-use frame_support::traits::{Currency, ExistenceRequirement, WithdrawReasons};
+use crate::pallet::RelayerRewards;
+use crate::{BalanceOf, Config, Error, Pallet};
+use frame_support::traits::fungible::{Inspect, Mutate};
+use frame_support::traits::tokens::{Fortitude, Precision, Preservation};
 use frame_support::PalletId;
 use sp_messenger::messages::FeeModel;
-use sp_runtime::traits::{AccountIdConversion, CheckedDiv, CheckedSub};
+use sp_runtime::traits::{AccountIdConversion, CheckedAdd};
 use sp_runtime::{ArithmeticError, DispatchResult};
 
 /// Messenger Id used to store deposits and fees.
@@ -25,22 +26,11 @@ impl<T: Config> Pallet<T> {
         // reserve outbox fee by transferring it to the messenger account.
         // we will use the funds to pay the relayers once the response is received.
         let outbox_fee = fee_model.outbox_fee().ok_or(ArithmeticError::Overflow)?;
-        T::Currency::withdraw(
-            sender,
-            outbox_fee,
-            WithdrawReasons::TRANSACTION_PAYMENT,
-            AllowDeath,
-        )?;
-        T::Currency::deposit_creating(&msgr_acc_id, outbox_fee);
+        T::Currency::transfer(sender, &msgr_acc_id, outbox_fee, Preservation::Preserve)?;
 
         // burn the fees that need to be paid on the dst_chain
         let inbox_fee = fee_model.inbox_fee().ok_or(ArithmeticError::Overflow)?;
-        T::Currency::withdraw(
-            sender,
-            inbox_fee,
-            WithdrawReasons::TRANSACTION_PAYMENT,
-            AllowDeath,
-        )?;
+        T::Currency::burn_from(sender, inbox_fee, Precision::Exact, Fortitude::Polite)?;
         Ok(())
     }
 
@@ -52,42 +42,26 @@ impl<T: Config> Pallet<T> {
     ) -> DispatchResult {
         let inbox_fee = fee_model.inbox_fee().ok_or(ArithmeticError::Overflow)?;
         let msngr_acc_id = Self::messenger_account_id();
-        T::Currency::deposit_creating(&msngr_acc_id, inbox_fee);
+        T::Currency::mint_into(&msngr_acc_id, inbox_fee)?;
         Ok(())
     }
 
-    /// Distribute the rewards to the relayers.
+    /// Increments the current block's relayer rewards.
     /// Operation is no-op if there is not enough balance to pay.
-    /// Operation is no-op if there are no relayers.
-    pub(crate) fn distribute_reward_to_relayers(reward: BalanceOf<T>) -> DispatchResult {
-        let relayers = Relayers::<T>::get();
-        let relayer_count: BalanceOf<T> = (relayers.len() as u32).into();
-        let reward_per_relayer = match reward.checked_div(&relayer_count) {
-            // no relayers yet.
-            None => return Ok(()),
-            Some(reward) => reward,
-        };
-
+    pub(crate) fn reward_relayers(reward: BalanceOf<T>) -> DispatchResult {
         // ensure we have enough to pay but maintain minimum existential deposit
         let msngr_acc_id = Self::messenger_account_id();
-        if !T::Currency::free_balance(&msngr_acc_id)
-            .checked_sub(&T::Currency::minimum_balance())
-            .map(|usable| usable >= reward)
-            .unwrap_or(false)
-        {
+        let balance =
+            T::Currency::reducible_balance(&msngr_acc_id, Preservation::Protect, Fortitude::Polite);
+        if balance < reward {
             return Ok(());
         }
 
-        // distribute reward to relayers
-        for relayer in relayers.into_iter() {
-            // ensure msngr account is still kept alive after transfer.
-            T::Currency::transfer(
-                &msngr_acc_id,
-                &relayer,
-                reward_per_relayer,
-                ExistenceRequirement::KeepAlive,
-            )?;
-        }
-        Ok(())
+        RelayerRewards::<T>::try_mutate(|current_reward| {
+            *current_reward = current_reward
+                .checked_add(&reward)
+                .ok_or(Error::<T>::BalanceOverflow)?;
+            Ok(())
+        })
     }
 }

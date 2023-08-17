@@ -863,25 +863,6 @@ fn test_transport_funds_between_chains_failed_no_open_channel() {
 }
 
 #[test]
-fn test_join_relayer_low_balance() {
-    let mut chain_a_test_ext = chain_a::new_test_ext();
-    // account with no balance
-    let account_id = 2;
-    let relayer_id = 100;
-
-    chain_a_test_ext.execute_with(|| {
-        let res = chain_a::Messenger::join_relayer_set(
-            chain_a::RuntimeOrigin::signed(account_id),
-            relayer_id,
-        );
-        assert_err!(
-            res,
-            pallet_balances::Error::<chain_a::Runtime>::InsufficientBalance
-        );
-    });
-}
-
-#[test]
 fn test_join_relayer_set() {
     let mut chain_a_test_ext = chain_a::new_test_ext();
     // account with balance
@@ -902,7 +883,6 @@ fn test_join_relayer_set() {
                 deposit_reserved: RelayerDeposit::get(),
             }
         );
-        assert_eq!(chain_a::Balances::free_balance(account_id), 500);
 
         // cannot rejoin again
         let res = chain_a::Messenger::join_relayer_set(
@@ -954,7 +934,6 @@ fn test_exit_relayer_set() {
                 }
             );
         }
-        assert_eq!(chain_a::Balances::free_balance(account_id), 500);
 
         let assigned_relayer_id = chain_a::Messenger::next_relayer().unwrap();
         assert_eq!(assigned_relayer_id, RELAYER_ID);
