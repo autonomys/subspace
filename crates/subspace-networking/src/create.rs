@@ -74,7 +74,7 @@ const SWARM_TARGET_CONNECTION_NUMBER: u32 = 30;
 // "Good citizen" supports the network health.
 const YAMUX_MAX_STREAMS: usize = 256;
 const KADEMLIA_QUERY_TIMEOUT: Duration = Duration::from_secs(40);
-const SWARM_MAX_ESTABLISHED_CONNECTIONS_PER_PEER: Option<u32> = Some(2);
+const SWARM_MAX_ESTABLISHED_CONNECTIONS_PER_PEER: Option<u32> = Some(3);
 // TODO: Consider moving this constant to configuration or removing `Toggle` wrapper when we find a
 // use-case for gossipsub protocol.
 const ENABLE_GOSSIP_PROTOCOL: bool = false;
