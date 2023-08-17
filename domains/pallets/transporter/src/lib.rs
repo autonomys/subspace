@@ -13,7 +13,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-//! Pallet transporter used to move funds between domains.
+//! Pallet transporter used to move funds between chains.
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![forbid(unsafe_code)]
@@ -24,7 +24,7 @@ use domain_runtime_primitives::{MultiAccountId, TryConvertBack};
 use frame_support::traits::Currency;
 pub use pallet::*;
 use scale_info::TypeInfo;
-use sp_domains::DomainId;
+use sp_messenger::messages::ChainId;
 
 #[cfg(test)]
 mod mock;
@@ -36,16 +36,16 @@ mod benchmarking;
 
 pub mod weights;
 
-/// Location that either sends or receives transfers between domains.
+/// Location that either sends or receives transfers between chains.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 pub struct Location {
-    /// Unique identity of domain.
-    pub domain_id: DomainId,
-    /// Unique account on domain.
+    /// Unique identity of chain.
+    pub chain_id: ChainId,
+    /// Unique account on chain.
     pub account_id: MultiAccountId,
 }
 
-/// Transfer of funds from one domain to another.
+/// Transfer of funds from one chain to another.
 #[derive(Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
 pub struct Transfer<Balance> {
     /// Amount being transferred between entities.
@@ -73,11 +73,11 @@ mod pallet {
     use frame_support::traits::{Currency, ExistenceRequirement, WithdrawReasons};
     use frame_support::weights::Weight;
     use frame_system::pallet_prelude::*;
-    use sp_domains::DomainId;
     use sp_messenger::endpoint::{
         Endpoint, EndpointHandler as EndpointHandlerT, EndpointId, EndpointRequest,
         EndpointResponse, Sender,
     };
+    use sp_messenger::messages::ChainId;
     use sp_runtime::traits::Convert;
     use sp_std::vec;
 
@@ -86,8 +86,8 @@ mod pallet {
         /// Event type for this pallet.
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 
-        /// Gets the domain_id of the current execution environment.
-        type SelfDomainId: Get<DomainId>;
+        /// Gets the chain_id of the current execution environment.
+        type SelfChainId: Get<ChainId>;
 
         /// Gets the endpoint_id of the this pallet in a given execution environment.
         type SelfEndpointId: Get<EndpointId>;
@@ -105,7 +105,7 @@ mod pallet {
         type WeightInfo: WeightInfo;
     }
 
-    /// Pallet transporter to move funds between domains.
+    /// Pallet transporter to move funds between chains.
     #[pallet::pallet]
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
@@ -116,7 +116,7 @@ mod pallet {
     pub(super) type OutgoingTransfers<T: Config> = StorageDoubleMap<
         _,
         Identity,
-        DomainId,
+        ChainId,
         Identity,
         MessageIdOf<T>,
         Transfer<BalanceOf<T>>,
@@ -129,34 +129,34 @@ mod pallet {
     pub enum Event<T: Config> {
         /// Emits when there is a new outgoing transfer.
         OutgoingTransferInitiated {
-            /// Destination domain the transfer is bound to.
-            domain_id: DomainId,
+            /// Destination chain the transfer is bound to.
+            chain_id: ChainId,
             /// Id of the transfer.
             message_id: MessageIdOf<T>,
         },
 
-        /// Emits when a given outgoing transfer was failed on dst_domain.
+        /// Emits when a given outgoing transfer was failed on dst_chain.
         OutgoingTransferFailed {
-            /// Destination domain the transfer is bound to.
-            domain_id: DomainId,
+            /// Destination chain the transfer is bound to.
+            chain_id: ChainId,
             /// Id of the transfer.
             message_id: MessageIdOf<T>,
-            /// Error from dst_domain endpoint.
+            /// Error from dst_chain endpoint.
             err: DispatchError,
         },
 
         /// Emits when a given outgoing transfer was successful.
         OutgoingTransferSuccessful {
-            /// Destination domain the transfer is bound to.
-            domain_id: DomainId,
+            /// Destination chain the transfer is bound to.
+            chain_id: ChainId,
             /// Id of the transfer.
             message_id: MessageIdOf<T>,
         },
 
         /// Emits when a given incoming transfer was successfully processed.
         IncomingTransferSuccessful {
-            /// Source domain the transfer is coming from.
-            domain_id: DomainId,
+            /// Source chain the transfer is coming from.
+            chain_id: ChainId,
             /// Id of the transfer.
             message_id: MessageIdOf<T>,
         },
@@ -173,7 +173,7 @@ mod pallet {
         MissingTransferRequest,
         /// Emits when the request doesn't match the expected one..
         InvalidTransferRequest,
-        /// Emits when the incoming message is not bound to this domain.
+        /// Emits when the incoming message is not bound to this chain.
         UnexpectedMessage,
         /// Emits when the account id type is invalid.
         InvalidAccountId,
@@ -181,8 +181,8 @@ mod pallet {
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
-        /// Initiates transfer of funds from account on src_domain to account on dst_domain.
-        /// Funds are burned on src_domain first and are minted on dst_domain using Messenger.
+        /// Initiates transfer of funds from account on src_chain to account on dst_chain.
+        /// Funds are burned on src_chain first and are minted on dst_chain using Messenger.
         #[pallet::call_index(0)]
         #[pallet::weight((T::WeightInfo::transfer(), Pays::No))]
         pub fn transfer(
@@ -202,11 +202,11 @@ mod pallet {
             .map_err(|_| Error::<T>::LowBalance)?;
 
             // initiate transfer
-            let dst_domain_id = dst_location.domain_id;
+            let dst_chain_id = dst_location.chain_id;
             let transfer = Transfer {
                 amount,
                 sender: Location {
-                    domain_id: T::SelfDomainId::get(),
+                    chain_id: T::SelfChainId::get(),
                     account_id: T::AccountIdConverter::convert(sender.clone()),
                 },
                 receiver: dst_location,
@@ -215,7 +215,7 @@ mod pallet {
             // send message
             let message_id = T::Sender::send_message(
                 &sender,
-                dst_domain_id,
+                dst_chain_id,
                 EndpointRequest {
                     src_endpoint: Endpoint::Id(T::SelfEndpointId::get()),
                     // destination endpoint must be transporter with same id
@@ -224,9 +224,9 @@ mod pallet {
                 },
             )?;
 
-            OutgoingTransfers::<T>::insert(dst_domain_id, message_id, transfer);
+            OutgoingTransfers::<T>::insert(dst_chain_id, message_id, transfer);
             Self::deposit_event(Event::<T>::OutgoingTransferInitiated {
-                domain_id: dst_domain_id,
+                chain_id: dst_chain_id,
                 message_id,
             });
             Ok(())
@@ -240,13 +240,13 @@ mod pallet {
     impl<T: Config> EndpointHandlerT<MessageIdOf<T>> for EndpointHandler<T> {
         fn message(
             &self,
-            src_domain_id: DomainId,
+            src_chain_id: ChainId,
             message_id: MessageIdOf<T>,
             req: EndpointRequest,
         ) -> EndpointResponse {
             // ensure message is not from the self
             ensure!(
-                T::SelfDomainId::get() != src_domain_id,
+                T::SelfChainId::get() != src_chain_id,
                 Error::<T>::InvalidTransferRequest
             );
 
@@ -269,7 +269,7 @@ mod pallet {
             T::Currency::deposit_creating(&account_id, req.amount);
             frame_system::Pallet::<T>::deposit_event(Into::<<T as Config>::RuntimeEvent>::into(
                 Event::<T>::IncomingTransferSuccessful {
-                    domain_id: src_domain_id,
+                    chain_id: src_chain_id,
                     message_id,
                 },
             ));
@@ -282,13 +282,13 @@ mod pallet {
 
         fn message_response(
             &self,
-            dst_domain_id: DomainId,
+            dst_chain_id: ChainId,
             message_id: MessageIdOf<T>,
             req: EndpointRequest,
             resp: EndpointResponse,
         ) -> DispatchResult {
             // ensure request is valid
-            let transfer = OutgoingTransfers::<T>::take(dst_domain_id, message_id)
+            let transfer = OutgoingTransfers::<T>::take(dst_chain_id, message_id)
                 .ok_or(Error::<T>::MissingTransferRequest)?;
             ensure!(
                 req.payload == transfer.encode(),
@@ -302,7 +302,7 @@ mod pallet {
                     frame_system::Pallet::<T>::deposit_event(
                         Into::<<T as Config>::RuntimeEvent>::into(
                             Event::<T>::OutgoingTransferSuccessful {
-                                domain_id: dst_domain_id,
+                                chain_id: dst_chain_id,
                                 message_id,
                             },
                         ),
@@ -318,7 +318,7 @@ mod pallet {
                     frame_system::Pallet::<T>::deposit_event(
                         Into::<<T as Config>::RuntimeEvent>::into(
                             Event::<T>::OutgoingTransferFailed {
-                                domain_id: dst_domain_id,
+                                chain_id: dst_chain_id,
                                 message_id,
                                 err,
                             },

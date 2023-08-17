@@ -16,9 +16,11 @@ use sp_domains::{
 use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{Block as BlockT, One, Saturating, Zero};
 use sp_runtime::RuntimeAppPublic;
+use std::convert::{AsRef, Into};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_runtime_primitives::Balance;
+use tracing::info;
 
 type OpaqueBundle<Block, CBlock> = sp_domains::OpaqueBundle<
     NumberFor<CBlock>,
@@ -167,10 +169,11 @@ where
             self.client.info().best_number.saturating_sub(One::one())
         };
 
+        let parent_chain_best_hash = self.parent_chain.best_hash();
         let should_skip_slot = {
             let head_receipt_number = self
                 .parent_chain
-                .head_receipt_number(self.parent_chain.best_hash())?;
+                .head_receipt_number(parent_chain_best_hash)?;
 
             // Operator is lagging behind the receipt chain on its parent chain as another operator
             // already processed a block higher than the local best and submitted the receipt to
@@ -210,6 +213,21 @@ where
                 .domain_bundle_proposer
                 .propose_bundle_at(proof_of_election, self.parent_chain.clone(), tx_range)
                 .await?;
+
+            // if there are no extrinsics and no receipts to confirm, skip the bundle
+            if extrinsics.is_empty()
+                && !self
+                    .parent_chain
+                    .non_empty_bundle_exists(parent_chain_best_hash, self.domain_id)?
+            {
+                tracing::warn!(
+                    ?domain_best_number,
+                    "Skipping bundle production on slot {slot}"
+                );
+                return Ok(None);
+            }
+
+            info!("🔖 Producing bundle at slot {:?}", slot_info.slot);
 
             let to_sign = bundle_header.hash();
 

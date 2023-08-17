@@ -16,16 +16,14 @@
 
 //! Subspace chain configurations.
 
-use crate::chain_spec_utils::{
-    chain_spec_properties, get_account_id_from_seed, get_public_key_from_seed,
-};
+use crate::chain_spec_utils::{chain_spec_properties, get_account_id_from_seed};
 use crate::domain::evm_chain_spec::{self, SpecId};
 use sc_service::{ChainType, NoExtension};
 use sc_subspace_chain_specs::ConsensusChainSpec;
 use sc_telemetry::TelemetryEndpoints;
 use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::crypto::{Ss58Codec, UncheckedFrom};
-use sp_domains::{OperatorPublicKey, RuntimeType};
+use sp_domains::RuntimeType;
 use sp_runtime::Percent;
 use subspace_runtime::{
     AllowAuthoringBy, BalancesConfig, DomainsConfig, GenesisConfig, MaxDomainBlockSize,
@@ -36,7 +34,7 @@ use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, SSC};
 
 const SUBSPACE_TELEMETRY_URL: &str = "wss://telemetry.subspace.network/submit/";
 const DEVNET_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-devnet.json");
-const GEMINI_3E_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-gemini-3e.json");
+const GEMINI_3F_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-gemini-3f.json");
 
 /// List of accounts which should receive token grants, amounts are specified in SSC.
 const TOKEN_GRANTS: &[(&str, u128)] = &[
@@ -88,13 +86,13 @@ struct GenesisParams {
     confirmation_depth_k: u32,
 }
 
-pub fn gemini_3e_compiled() -> Result<ConsensusChainSpec<GenesisConfig>, String> {
+pub fn gemini_3f_compiled() -> Result<ConsensusChainSpec<GenesisConfig>, String> {
     Ok(ConsensusChainSpec::from_genesis(
         // Name
-        "Subspace Gemini 3e",
+        "Subspace Gemini 3f",
         // ID
-        "subspace_gemini_3e",
-        ChainType::Custom("Subspace Gemini 3e".to_string()),
+        "subspace_gemini_3f",
+        ChainType::Custom("Subspace Gemini 3f".to_string()),
         || {
             let sudo_account =
                 AccountId::from_ss58check("5DNwQTHfARgKoa2NdiUM51ZUow7ve5xG9S2yYdSbVQcnYxBA")
@@ -165,7 +163,7 @@ pub fn gemini_3e_compiled() -> Result<ConsensusChainSpec<GenesisConfig>, String>
                 .map_err(|error| error.to_string())?,
         ),
         // Protocol ID
-        Some("subspace-gemini-3e"),
+        Some("subspace-gemini-3f"),
         None,
         // Properties
         Some(chain_spec_properties()),
@@ -174,8 +172,8 @@ pub fn gemini_3e_compiled() -> Result<ConsensusChainSpec<GenesisConfig>, String>
     ))
 }
 
-pub fn gemini_3e_config() -> Result<ConsensusChainSpec<GenesisConfig>, String> {
-    ConsensusChainSpec::from_json_bytes(GEMINI_3E_CHAIN_SPEC)
+pub fn gemini_3f_config() -> Result<ConsensusChainSpec<GenesisConfig>, String> {
+    ConsensusChainSpec::from_json_bytes(GEMINI_3F_CHAIN_SPEC)
 }
 
 pub fn devnet_config() -> Result<ConsensusChainSpec<GenesisConfig>, String> {
@@ -385,13 +383,12 @@ fn subspace_genesis_config(
         confirmation_depth_k,
     } = genesis_params;
 
-    let raw_domain_genesis_config = {
-        let mut domain_genesis_config = evm_chain_spec::get_testnet_genesis_by_spec_id(spec_id);
-        // Clear the WASM code of the genesis config since it is duplicated with `GenesisDomain::code`
-        domain_genesis_config.system.code = Default::default();
-        serde_json::to_vec(&domain_genesis_config)
-            .expect("Genesis config serialization never fails; qed")
-    };
+    let (mut domain_genesis_config, genesis_domain_params) =
+        evm_chain_spec::get_testnet_genesis_by_spec_id(spec_id);
+    // Clear the WASM code of the genesis config since it is duplicated with `GenesisDomain::code`
+    domain_genesis_config.system.code = Default::default();
+    let raw_domain_genesis_config = serde_json::to_vec(&domain_genesis_config)
+        .expect("Genesis config serialization never fails; qed");
 
     GenesisConfig {
         system: SystemConfig {
@@ -432,9 +429,7 @@ fn subspace_genesis_config(
                 bundle_slot_probability: (1, 1),
                 target_bundles_per_block: 10,
                 raw_genesis_config: raw_domain_genesis_config,
-
-                // TODO: Configurable genesis operator signing key.
-                signing_key: get_public_key_from_seed::<OperatorPublicKey>("Alice"),
+                signing_key: genesis_domain_params.operator_signing_key,
                 nomination_tax: Percent::from_percent(5),
                 minimum_nominator_stake: 100 * SSC,
             }),

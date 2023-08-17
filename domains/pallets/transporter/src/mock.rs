@@ -6,8 +6,8 @@ use frame_support::parameter_types;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64};
 use pallet_balances::AccountData;
 use sp_core::H256;
-use sp_domains::DomainId;
 use sp_messenger::endpoint::{EndpointId, EndpointRequest, Sender};
+use sp_messenger::messages::ChainId;
 use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, Convert, IdentityLookup};
 use sp_runtime::DispatchError;
@@ -77,7 +77,7 @@ impl pallet_balances::Config for MockRuntime {
 }
 
 parameter_types! {
-    pub const SelfDomainId: DomainId = DomainId::new(1);
+    pub SelfChainId: ChainId = 1.into();
     pub const SelfEndpointId: EndpointId = 100;
 }
 
@@ -89,14 +89,14 @@ impl Sender<AccountId> for MockMessenger {
 
     fn send_message(
         _sender: &AccountId,
-        _dst_domain_id: DomainId,
+        _dst_chain_id: ChainId,
         _req: EndpointRequest,
     ) -> Result<Self::MessageId, DispatchError> {
         Ok(0)
     }
 
     #[cfg(feature = "runtime-benchmarks")]
-    fn unchecked_open_channel(_dst_domain_id: DomainId) -> Result<(), DispatchError> {
+    fn unchecked_open_channel(_dst_chain_id: ChainId) -> Result<(), DispatchError> {
         Ok(())
     }
 }
@@ -121,7 +121,7 @@ impl TryConvertBack<AccountId, MultiAccountId> for MockAccountIdConverter {
 
 impl Config for MockRuntime {
     type RuntimeEvent = RuntimeEvent;
-    type SelfDomainId = SelfDomainId;
+    type SelfChainId = SelfChainId;
     type SelfEndpointId = SelfEndpointId;
     type Currency = Balances;
     type Sender = MockMessenger;

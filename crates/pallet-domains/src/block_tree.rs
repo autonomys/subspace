@@ -1,5 +1,6 @@
 //! Domain block tree
 
+use crate::pallet::StateRoots;
 use crate::{
     BalanceOf, BlockTree, Config, DomainBlocks, ExecutionInbox, ExecutionReceiptOf,
     HeadReceiptNumber, InboxedBundle,
@@ -250,6 +251,11 @@ pub(crate) fn process_execution_receipt<T: Config>(
 
                 let domain_block =
                     DomainBlocks::<T>::take(receipt).ok_or(Error::MissingDomainBlock)?;
+                _ = StateRoots::<T>::take((
+                    domain_id,
+                    domain_block.execution_receipt.domain_block_number,
+                    domain_block.execution_receipt.domain_block_hash,
+                ));
 
                 // Remove the block's `ExecutionInbox` and `InboxedBundle` as the block is pruned and
                 // does not need to verify its receipt's `extrinsics_root` anymore.
@@ -290,6 +296,15 @@ fn add_new_receipt_to_block_tree<T: Config>(
     // Construct and add a new domain block to the block tree
     let er_hash = execution_receipt.hash();
     let domain_block_number = execution_receipt.domain_block_number;
+    StateRoots::<T>::insert(
+        (
+            domain_id,
+            domain_block_number,
+            execution_receipt.domain_block_hash,
+        ),
+        execution_receipt.final_state_root,
+    );
+
     let domain_block = DomainBlock {
         execution_receipt,
         operator_ids: sp_std::vec![submitter],
@@ -315,6 +330,14 @@ pub(crate) fn import_genesis_receipt<T: Config>(
     BlockTree::<T>::mutate(domain_id, domain_block_number, |er_hashes| {
         er_hashes.insert(er_hash);
     });
+    StateRoots::<T>::insert(
+        (
+            domain_id,
+            domain_block_number,
+            domain_block.execution_receipt.domain_block_hash,
+        ),
+        domain_block.execution_receipt.final_state_root,
+    );
     DomainBlocks::<T>::insert(er_hash, domain_block);
 }
 

@@ -16,7 +16,7 @@
 
 //! EVM domain configurations.
 
-use crate::chain_spec_utils::chain_spec_properties;
+use crate::chain_spec_utils::{chain_spec_properties, get_public_key_from_seed};
 use crate::domain::AccountId32ToAccountId20Converter;
 use evm_domain_runtime::{
     AccountId, BalancesConfig, EVMChainIdConfig, EVMConfig, GenesisConfig, MessengerConfig,
@@ -26,8 +26,9 @@ use hex_literal::hex;
 use once_cell::sync::OnceCell;
 use sc_service::ChainType;
 use sc_subspace_chain_specs::ExecutionChainSpec;
+use sp_core::crypto::UncheckedFrom;
 use sp_core::{sr25519, Pair, Public};
-use sp_domains::{DomainId, DomainInstanceData, RuntimeType};
+use sp_domains::{DomainId, DomainInstanceData, OperatorPublicKey, RuntimeType};
 use sp_runtime::traits::Convert;
 use std::str::FromStr;
 use subspace_runtime_primitives::SSC;
@@ -98,14 +99,14 @@ pub fn local_testnet_config<F: Fn() -> GenesisConfig + 'static + Send + Sync>(
     )
 }
 
-pub fn gemini_3e_config<F: Fn() -> GenesisConfig + 'static + Send + Sync>(
+pub fn gemini_3f_config<F: Fn() -> GenesisConfig + 'static + Send + Sync>(
     constructor: F,
 ) -> ExecutionChainSpec<GenesisConfig> {
     ExecutionChainSpec::from_genesis(
         // Name
-        "Subspace Gemini 3e EVM Domain",
+        "Subspace Gemini 3f EVM Domain",
         // ID
-        "subspace_gemini_3e_evm_domain",
+        "subspace_gemini_3f_evm_domain",
         ChainType::Live,
         constructor,
         // Bootnodes
@@ -113,7 +114,7 @@ pub fn gemini_3e_config<F: Fn() -> GenesisConfig + 'static + Send + Sync>(
         // Telemetry
         None,
         // Protocol ID
-        Some("subspace-gemini-3e-evm-domain"),
+        Some("subspace-gemini-3f-evm-domain"),
         None,
         // Properties
         Some(chain_spec_properties()),
@@ -147,11 +148,14 @@ pub fn devnet_config<F: Fn() -> GenesisConfig + 'static + Send + Sync>(
 }
 
 pub fn load_chain_spec(spec_id: &str) -> Result<Box<dyn sc_cli::ChainSpec>, String> {
+    let constructor =
+        |spec_id: SpecId| -> GenesisConfig { get_testnet_genesis_by_spec_id(spec_id).0 };
+
     let chain_spec = match spec_id {
-        "dev" => development_config(move || get_testnet_genesis_by_spec_id(SpecId::Dev)),
-        "gemini-3e" => gemini_3e_config(move || get_testnet_genesis_by_spec_id(SpecId::Gemini)),
-        "devnet" => devnet_config(move || get_testnet_genesis_by_spec_id(SpecId::DevNet)),
-        "" | "local" => local_testnet_config(move || get_testnet_genesis_by_spec_id(SpecId::Local)),
+        "dev" => development_config(move || constructor(SpecId::Dev)),
+        "gemini-3f" => gemini_3f_config(move || constructor(SpecId::Gemini)),
+        "devnet" => devnet_config(move || constructor(SpecId::DevNet)),
+        "" | "local" => local_testnet_config(move || constructor(SpecId::Local)),
         path => ChainSpec::from_json_file(std::path::PathBuf::from(path))?,
     };
     Ok(Box::new(chain_spec))
@@ -164,67 +168,89 @@ pub enum SpecId {
     Local,
 }
 
-pub fn get_testnet_genesis_by_spec_id(spec_id: SpecId) -> GenesisConfig {
+pub struct GenesisDomainParams {
+    pub operator_signing_key: OperatorPublicKey,
+}
+
+pub fn get_testnet_genesis_by_spec_id(spec_id: SpecId) -> (GenesisConfig, GenesisDomainParams) {
     match spec_id {
         SpecId::Dev => {
             let accounts = get_dev_accounts();
-            testnet_genesis(
-                accounts.clone(),
-                // Alith is Sudo
-                Some(accounts[0]),
-                vec![(
-                    accounts[0],
-                    AccountId32ToAccountId20Converter::convert(
-                        get_from_seed::<sr25519::Public>("Alice").into(),
-                    ),
-                )],
-                1000,
+            (
+                testnet_genesis(
+                    accounts.clone(),
+                    // Alith is Sudo
+                    Some(accounts[0]),
+                    vec![(
+                        accounts[0],
+                        AccountId32ToAccountId20Converter::convert(
+                            get_from_seed::<sr25519::Public>("Alice").into(),
+                        ),
+                    )],
+                    1000,
+                ),
+                GenesisDomainParams {
+                    operator_signing_key: get_public_key_from_seed::<OperatorPublicKey>("Alice"),
+                },
             )
         }
         SpecId::Gemini => {
             let sudo_account = AccountId::from_str("f31e60022e290708c17d6997c34de6a30d09438f")
                 .expect("Invalid Sudo account");
-            testnet_genesis(
-                vec![
-                    // Genesis operator
-                    AccountId::from_str("2ac6c70c106138c8cd80da6b6a0e886b7eeee249")
-                        .expect("Wrong executor account address"),
-                    // Sudo account
-                    sudo_account,
-                ],
-                Some(sudo_account),
-                Default::default(),
-                1002,
+            (
+                testnet_genesis(
+                    vec![
+                        // Sudo account
+                        sudo_account,
+                    ],
+                    Some(sudo_account),
+                    Default::default(),
+                    1002,
+                ),
+                GenesisDomainParams {
+                    operator_signing_key: OperatorPublicKey::unchecked_from(hex!(
+                        "aa3b05b4d649666723e099cf3bafc2f2c04160ebe0e16ddc82f72d6ed97c4b6b"
+                    )),
+                },
             )
         }
         SpecId::DevNet => {
             let sudo_account = AccountId::from_str("b66a91845249464309fad766fd0ece8144547736")
                 .expect("Invalid Sudo account");
-            testnet_genesis(
-                vec![
-                    // Genesis operator
-                    AccountId::from_str("cfdf9f58d9e532c3807ce62a5489cb19cfa6942d")
-                        .expect("Wrong executor account address"),
-                    // Sudo account
-                    sudo_account,
-                ],
-                Some(sudo_account),
-                vec![(
-                    sudo_account,
-                    AccountId::from_str("5b267fd1ba3ace6e3c3234f9576c49c877b5beb9")
-                        .expect("Wrong relayer account address"),
-                )],
-                1003,
+            (
+                testnet_genesis(
+                    vec![
+                        // Sudo account
+                        sudo_account,
+                    ],
+                    Some(sudo_account),
+                    vec![(
+                        sudo_account,
+                        AccountId::from_str("5b267fd1ba3ace6e3c3234f9576c49c877b5beb9")
+                            .expect("Wrong relayer account address"),
+                    )],
+                    1003,
+                ),
+                GenesisDomainParams {
+                    operator_signing_key: OperatorPublicKey::unchecked_from(hex!(
+                        "aa3b05b4d649666723e099cf3bafc2f2c04160ebe0e16ddc82f72d6ed97c4b6b"
+                    )),
+                },
             )
         }
         SpecId::Local => {
             let accounts = get_dev_accounts();
-            testnet_genesis(
-                accounts.clone(),
-                // Alith is sudo
-                Some(accounts[0]),
-                vec![(accounts[0], accounts[0]), (accounts[1], accounts[1])],
-                1001,
+            (
+                testnet_genesis(
+                    accounts.clone(),
+                    // Alith is sudo
+                    Some(accounts[0]),
+                    vec![(accounts[0], accounts[0]), (accounts[1], accounts[1])],
+                    1001,
+                ),
+                GenesisDomainParams {
+                    operator_signing_key: get_public_key_from_seed::<OperatorPublicKey>("Alice"),
+                },
             )
         }
     }
@@ -254,7 +280,7 @@ fn load_chain_spec_with(
 
     let chain_spec = match spec_id {
         "dev" => development_config(constructor),
-        "gemini-3e" => gemini_3e_config(constructor),
+        "gemini-3f" => gemini_3f_config(constructor),
         "devnet" => devnet_config(constructor),
         "" | "local" => local_testnet_config(constructor),
         path => ChainSpec::from_json_file(std::path::PathBuf::from(path))?,

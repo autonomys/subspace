@@ -2,8 +2,7 @@
 //! Test primitive crates that expose necessary extensions that are used in tests.
 
 use codec::{Decode, Encode};
-use sp_domains::DomainId;
-use sp_messenger::messages::ChannelId;
+use sp_messenger::messages::{ChainId, ChannelId};
 use subspace_runtime_primitives::Moment;
 
 sp_api::decl_runtime_apis! {
@@ -25,6 +24,6 @@ sp_api::decl_runtime_apis! {
         fn free_balance(account_id: AccountId) -> Balance;
 
         /// Returns the last open channel for a given domain.
-        fn get_open_channel_for_domain(dst_domain_id: DomainId) -> Option<ChannelId>;
+        fn get_open_channel_for_chain(dst_chain_id: ChainId) -> Option<ChannelId>;
     }
 }

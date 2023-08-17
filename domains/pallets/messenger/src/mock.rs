@@ -2,8 +2,8 @@ use crate::{ChannelId, Channels, Config, InboxResponses, Nonce, Outbox, StateRoo
 use frame_support::storage::generator::StorageDoubleMap;
 use frame_support::weights::Weight;
 use sp_core::storage::StorageKey;
-use sp_domains::DomainId;
 use sp_messenger::endpoint::{EndpointHandler, EndpointRequest, EndpointResponse};
+use sp_messenger::messages::ChainId;
 use sp_runtime::traits::BlakeTwo256;
 use sp_runtime::DispatchResult;
 use sp_state_machine::backend::Backend;
@@ -16,9 +16,9 @@ pub(crate) type AccountId = u64;
 pub type TestExternalities = sp_state_machine::TestExternalities<BlakeTwo256>;
 
 macro_rules! impl_runtime {
-    ($runtime:ty, $domain_id:literal) => {
+    ($runtime:ty, $chain_id:literal) => {
         use crate::mock::{
-            mock_pallet_settlement, AccountId, Balance, MessageId, MockEndpoint, TestExternalities,
+            AccountId, Balance, MessageId, MockEndpoint, TestExternalities,
         };
         use crate::relayer::RelayerId;
         use codec::{Encode, Decode};
@@ -27,7 +27,7 @@ macro_rules! impl_runtime {
         use frame_support::{assert_ok, parameter_types};
         use pallet_balances::AccountData;
         use sp_core::H256;
-        use sp_domains::DomainId;
+        use sp_messenger::messages::ChainId;
         use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointId};
         use sp_runtime::testing::Header;
         use sp_runtime::traits::{BlakeTwo256, Convert, ConstU16, ConstU32, ConstU64, IdentityLookup};
@@ -43,7 +43,6 @@ macro_rules! impl_runtime {
                 UncheckedExtrinsic = UncheckedExtrinsic,
             {
                 System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
-                Settlement: mock_pallet_settlement::{Pallet, Storage},
                 Messenger: crate::{Pallet, Call, Event<T>},
                 Balances: pallet_balances::{Pallet, Call, Config<T>, Storage, Event<T>},
                 Transporter: pallet_transporter::{Pallet, Call, Storage, Event<T>},
@@ -87,17 +86,15 @@ macro_rules! impl_runtime {
             pub const RelayerConfirmationDepth: u64 = 2;
         }
 
-        impl mock_pallet_settlement::Config for $runtime {}
-
         parameter_types! {
-            pub const SelfDomainId: DomainId = DomainId::new($domain_id);
+            pub SelfChainId: ChainId = $chain_id.into();
             pub const MaximumRelayers: u32 = 10;
             pub const RelayerDeposit: Balance = 500;
         }
 
         impl crate::Config for $runtime {
             type RuntimeEvent = RuntimeEvent;
-            type SelfDomainId = SelfDomainId;
+            type SelfChainId = SelfChainId;
             type MaximumRelayers = MaximumRelayers;
             type Currency = Balances;
             type RelayerDeposit = RelayerDeposit;
@@ -108,7 +105,7 @@ macro_rules! impl_runtime {
             fn get_endpoint_response_handler(
                 endpoint: &Endpoint,
             ) -> Option<Box<dyn EndpointHandler<MessageId>>>{
-                // Return a dummy handler for benchmark to observe the outer weight when processing cross domain
+                // Return a dummy handler for benchmark to observe the outer weight when processing cross chain
                 // message (i.e. updating the `next_nonce` of the channel, assigning msg to the relayer, etc.)
                 #[cfg(feature = "runtime-benchmarks")]
                 {
@@ -164,7 +161,7 @@ macro_rules! impl_runtime {
 
         impl pallet_transporter::Config for $runtime {
             type RuntimeEvent = RuntimeEvent;
-            type SelfDomainId = SelfDomainId;
+            type SelfChainId = SelfChainId;
             type SelfEndpointId = TransporterEndpointId;
             type Currency = Balances;
             type Sender = Messenger;
@@ -212,7 +209,7 @@ pub struct MockEndpoint {}
 impl EndpointHandler<MessageId> for MockEndpoint {
     fn message(
         &self,
-        _src_domain_id: DomainId,
+        _src_chain_id: ChainId,
         _message_id: MessageId,
         req: EndpointRequest,
     ) -> EndpointResponse {
@@ -227,7 +224,7 @@ impl EndpointHandler<MessageId> for MockEndpoint {
 
     fn message_response(
         &self,
-        _dst_domain_id: DomainId,
+        _dst_chain_id: ChainId,
         _message_id: MessageId,
         _req: EndpointRequest,
         resp: EndpointResponse,
@@ -242,49 +239,11 @@ impl EndpointHandler<MessageId> for MockEndpoint {
     }
 }
 
-// TODO: Remove as pallet_settlement has been removed.
-#[frame_support::pallet]
-#[allow(dead_code)]
-pub(crate) mod mock_pallet_settlement {
-    use crate::mock::DomainId;
-    use frame_support::pallet_prelude::*;
-
-    #[pallet::config]
-    pub trait Config: frame_system::Config {}
-
-    #[pallet::pallet]
-    #[pallet::without_storage_info]
-    pub struct Pallet<T>(_);
-
-    #[pallet::storage]
-    pub(crate) type StateRoots<T: Config> = StorageNMap<
-        _,
-        (
-            NMapKey<Twox64Concat, DomainId>,
-            NMapKey<Twox64Concat, T::BlockNumber>,
-            NMapKey<Twox64Concat, T::Hash>,
-        ),
-        T::Hash,
-        OptionQuery,
-    >;
-
-    impl<T: Config> Pallet<T> {
-        pub(crate) fn set_state_root(
-            domain_id: DomainId,
-            number: T::BlockNumber,
-            hash: T::Hash,
-            state_root: T::Hash,
-        ) {
-            StateRoots::<T>::insert((domain_id, number, hash), state_root)
-        }
-    }
-}
-
-pub(crate) mod domain_a {
+pub(crate) mod chain_a {
     impl_runtime!(Runtime, 1);
 }
 
-pub(crate) mod domain_b {
+pub(crate) mod chain_b {
     impl_runtime!(Runtime, 2);
 }
 
@@ -300,10 +259,10 @@ fn storage_proof_for_key<T: Config>(
 
 pub(crate) fn storage_proof_of_channels<T: Config>(
     backend: InMemoryBackend<T::Hashing>,
-    domain_id: DomainId,
+    chain_id: ChainId,
     channel_id: ChannelId,
 ) -> (StateRootOf<T>, StorageKey, StorageProof) {
-    let key = Channels::<T>::storage_double_map_final_key(domain_id, channel_id);
+    let key = Channels::<T>::storage_double_map_final_key(chain_id, channel_id);
     let storage_key = StorageKey(key);
     let (root, proof) = storage_proof_for_key::<T>(backend, storage_key.clone());
     (root, storage_key, proof)
@@ -311,11 +270,11 @@ pub(crate) fn storage_proof_of_channels<T: Config>(
 
 pub(crate) fn storage_proof_of_outbox_messages<T: Config>(
     backend: InMemoryBackend<T::Hashing>,
-    domain_id: DomainId,
+    chain_id: ChainId,
     channel_id: ChannelId,
     nonce: Nonce,
 ) -> (StateRootOf<T>, StorageKey, StorageProof) {
-    let key = Outbox::<T>::hashed_key_for((domain_id, channel_id, nonce));
+    let key = Outbox::<T>::hashed_key_for((chain_id, channel_id, nonce));
     let storage_key = StorageKey(key);
     let (root, proof) = storage_proof_for_key::<T>(backend, storage_key.clone());
     (root, storage_key, proof)
@@ -323,11 +282,11 @@ pub(crate) fn storage_proof_of_outbox_messages<T: Config>(
 
 pub(crate) fn storage_proof_of_inbox_message_responses<T: Config>(
     backend: InMemoryBackend<T::Hashing>,
-    domain_id: DomainId,
+    chain_id: ChainId,
     channel_id: ChannelId,
     nonce: Nonce,
 ) -> (StateRootOf<T>, StorageKey, StorageProof) {
-    let key = InboxResponses::<T>::hashed_key_for((domain_id, channel_id, nonce));
+    let key = InboxResponses::<T>::hashed_key_for((chain_id, channel_id, nonce));
     let storage_key = StorageKey(key);
     let (root, proof) = storage_proof_for_key::<T>(backend, storage_key.clone());
     (root, storage_key, proof)

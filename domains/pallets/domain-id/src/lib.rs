@@ -50,4 +50,10 @@ mod pallet {
             );
         }
     }
+
+    impl<T: Config> Pallet<T> {
+        pub fn self_domain_id() -> DomainId {
+            SelfDomainId::<T>::get()
+        }
+    }
 }

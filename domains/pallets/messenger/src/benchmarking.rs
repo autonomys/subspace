@@ -26,18 +26,18 @@ mod benchmarks {
             T::RelayerDeposit::get() + T::Currency::minimum_balance(),
         );
         unchecked_join_relayer_set::<T>(relayer);
-
-        let dst_domain_id = T::SelfDomainId::get() + 1.into();
+        let dst_chain_id: ChainId = u32::MAX.into();
+        assert_ne!(T::SelfChainId::get(), dst_chain_id);
         let channel_params = dummy_channel_params::<T>();
-        let channel_id = NextChannelId::<T>::get(dst_domain_id);
+        let channel_id = NextChannelId::<T>::get(dst_chain_id);
 
         #[extrinsic_call]
-        _(RawOrigin::Root, dst_domain_id, channel_params);
+        _(RawOrigin::Root, dst_chain_id, channel_params);
 
-        let channel = Channels::<T>::get(dst_domain_id, channel_id).expect("channel should exist");
+        let channel = Channels::<T>::get(dst_chain_id, channel_id).expect("channel should exist");
         assert_eq!(channel.state, ChannelState::Initiated);
         assert!(
-            Outbox::<T>::get((dst_domain_id, channel_id, channel.next_outbox_nonce - 1)).is_some()
+            Outbox::<T>::get((dst_chain_id, channel_id, channel.next_outbox_nonce - 1)).is_some()
         );
     }
 
@@ -50,16 +50,17 @@ mod benchmarks {
         );
         unchecked_join_relayer_set::<T>(relayer);
 
-        let dst_domain_id = T::SelfDomainId::get() + 1.into();
-        let channel_id = open_channel::<T>(dst_domain_id, dummy_channel_params::<T>());
+        let dst_chain_id: ChainId = u32::MAX.into();
+        assert_ne!(T::SelfChainId::get(), dst_chain_id);
+        let channel_id = open_channel::<T>(dst_chain_id, dummy_channel_params::<T>());
 
         #[extrinsic_call]
-        _(RawOrigin::Root, dst_domain_id, channel_id);
+        _(RawOrigin::Root, dst_chain_id, channel_id);
 
-        let channel = Channels::<T>::get(dst_domain_id, channel_id).expect("channel should exist");
+        let channel = Channels::<T>::get(dst_chain_id, channel_id).expect("channel should exist");
         assert_eq!(channel.state, ChannelState::Closed);
         assert!(
-            Outbox::<T>::get((dst_domain_id, channel_id, channel.next_outbox_nonce - 1)).is_some()
+            Outbox::<T>::get((dst_chain_id, channel_id, channel.next_outbox_nonce - 1)).is_some()
         );
     }
 
@@ -72,21 +73,22 @@ mod benchmarks {
         );
         unchecked_join_relayer_set::<T>(relayer);
 
-        let dst_domain_id = T::SelfDomainId::get() + 1.into();
-        let channel_id = NextChannelId::<T>::get(dst_domain_id);
+        let dst_chain_id: ChainId = u32::MAX.into();
+        assert_ne!(T::SelfChainId::get(), dst_chain_id);
+        let channel_id = NextChannelId::<T>::get(dst_chain_id);
         assert_ok!(Messenger::<T>::do_init_channel(
-            dst_domain_id,
+            dst_chain_id,
             dummy_channel_params::<T>()
         ));
-        let channel = Channels::<T>::get(dst_domain_id, channel_id).expect("channel should exist");
+        let channel = Channels::<T>::get(dst_chain_id, channel_id).expect("channel should exist");
         assert_eq!(channel.state, ChannelState::Initiated);
 
         #[block]
         {
-            assert_ok!(Messenger::<T>::do_open_channel(dst_domain_id, channel_id));
+            assert_ok!(Messenger::<T>::do_open_channel(dst_chain_id, channel_id));
         }
 
-        let channel = Channels::<T>::get(dst_domain_id, channel_id).expect("channel should exist");
+        let channel = Channels::<T>::get(dst_chain_id, channel_id).expect("channel should exist");
         assert_eq!(channel.state, ChannelState::Open);
     }
 
@@ -99,15 +101,16 @@ mod benchmarks {
         );
         unchecked_join_relayer_set::<T>(relayer);
 
-        let dst_domain_id = T::SelfDomainId::get() + 1.into();
-        let channel_id = open_channel::<T>(dst_domain_id, dummy_channel_params::<T>());
+        let dst_chain_id: ChainId = u32::MAX.into();
+        assert_ne!(T::SelfChainId::get(), dst_chain_id);
+        let channel_id = open_channel::<T>(dst_chain_id, dummy_channel_params::<T>());
 
         #[block]
         {
-            assert_ok!(Messenger::<T>::do_close_channel(dst_domain_id, channel_id));
+            assert_ok!(Messenger::<T>::do_close_channel(dst_chain_id, channel_id));
         }
 
-        let channel = Channels::<T>::get(dst_domain_id, channel_id).expect("channel should exist");
+        let channel = Channels::<T>::get(dst_chain_id, channel_id).expect("channel should exist");
         assert_eq!(channel.state, ChannelState::Closed);
     }
 
@@ -124,14 +127,15 @@ mod benchmarks {
         unchecked_join_relayer_set::<T>(relayer);
 
         let endpoint = Endpoint::Id(100);
-        let dst_domain_id = T::SelfDomainId::get() + 1.into();
-        let channel_id = open_channel::<T>(dst_domain_id, dummy_channel_params::<T>());
-        let channel = Channels::<T>::get(dst_domain_id, channel_id).expect("channel should exist");
+        let dst_chain_id: ChainId = u32::MAX.into();
+        assert_ne!(T::SelfChainId::get(), dst_chain_id);
+        let channel_id = open_channel::<T>(dst_chain_id, dummy_channel_params::<T>());
+        let channel = Channels::<T>::get(dst_chain_id, channel_id).expect("channel should exist");
 
         // Insert a dummy inbox message which will be handled during the `relay_message` call
         let msg: Message<BalanceOf<T>> = Message {
-            src_domain_id: T::SelfDomainId::get() + 1.into(),
-            dst_domain_id: T::SelfDomainId::get(),
+            src_chain_id: dst_chain_id,
+            dst_chain_id: T::SelfChainId::get(),
             channel_id,
             nonce: channel.next_inbox_nonce,
             payload: VersionedPayload::V0(Payload::Endpoint(RequestResponse::Request(
@@ -146,8 +150,8 @@ mod benchmarks {
         Inbox::<T>::put(msg);
 
         let xdm: CrossDomainMessage<T::BlockNumber, T::Hash, StateRootOf<T>> = CrossDomainMessage {
-            src_domain_id: T::SelfDomainId::get() + 1.into(),
-            dst_domain_id: T::SelfDomainId::get(),
+            src_chain_id: dst_chain_id,
+            dst_chain_id: T::SelfChainId::get(),
             channel_id,
             nonce: channel.next_inbox_nonce,
             proof: Proof::dummy(),
@@ -158,7 +162,7 @@ mod benchmarks {
         _(RawOrigin::None, xdm);
 
         let post_channel =
-            Channels::<T>::get(dst_domain_id, channel_id).expect("channel should exist");
+            Channels::<T>::get(dst_chain_id, channel_id).expect("channel should exist");
         assert_eq!(
             post_channel.next_inbox_nonce,
             channel.next_inbox_nonce + Nonce::one()
@@ -178,9 +182,10 @@ mod benchmarks {
         unchecked_join_relayer_set::<T>(relayer);
 
         let endpoint = Endpoint::Id(100);
-        let dst_domain_id = T::SelfDomainId::get() + 1.into();
-        let channel_id = open_channel::<T>(dst_domain_id, dummy_channel_params::<T>());
-        let channel = Channels::<T>::get(dst_domain_id, channel_id).expect("channel should exist");
+        let dst_chain_id: ChainId = u32::MAX.into();
+        assert_ne!(T::SelfChainId::get(), dst_chain_id);
+        let channel_id = open_channel::<T>(dst_chain_id, dummy_channel_params::<T>());
+        let channel = Channels::<T>::get(dst_chain_id, channel_id).expect("channel should exist");
         let resp_nonce = match channel.latest_response_received_message_nonce {
             None => Nonce::zero(),
             Some(last_nonce) => last_nonce
@@ -191,8 +196,8 @@ mod benchmarks {
 
         // Insert a dummy outbox request message which will be handled during the `relay_message_response` call
         let req_msg: Message<BalanceOf<T>> = Message {
-            src_domain_id: T::SelfDomainId::get(),
-            dst_domain_id: T::SelfDomainId::get() + 1.into(),
+            src_chain_id: T::SelfChainId::get(),
+            dst_chain_id: dst_chain_id,
             channel_id,
             nonce: next_outbox_nonce,
             payload: VersionedPayload::V0(Payload::Endpoint(RequestResponse::Request(
@@ -204,11 +209,11 @@ mod benchmarks {
             ))),
             last_delivered_message_response_nonce: None,
         };
-        Outbox::<T>::insert((dst_domain_id, channel_id, next_outbox_nonce), req_msg);
+        Outbox::<T>::insert((dst_chain_id, channel_id, next_outbox_nonce), req_msg);
         // Insert a dummy response message which will be handled during the `relay_message_response` call
         let resp_msg: Message<BalanceOf<T>> = Message {
-            src_domain_id: T::SelfDomainId::get() + 1.into(),
-            dst_domain_id: T::SelfDomainId::get(),
+            src_chain_id: T::SelfChainId::get() + 1,
+            dst_chain_id: T::SelfChainId::get(),
             channel_id,
             nonce: resp_nonce,
             payload: VersionedPayload::V0(Payload::Endpoint(RequestResponse::Response(Ok(
@@ -219,8 +224,8 @@ mod benchmarks {
         OutboxResponses::<T>::put(resp_msg);
 
         let xdm: CrossDomainMessage<T::BlockNumber, T::Hash, StateRootOf<T>> = CrossDomainMessage {
-            src_domain_id: T::SelfDomainId::get() + 1.into(),
-            dst_domain_id: T::SelfDomainId::get(),
+            src_chain_id: dst_chain_id,
+            dst_chain_id: T::SelfChainId::get(),
             channel_id,
             nonce: resp_nonce,
             proof: Proof::dummy(),
@@ -231,7 +236,7 @@ mod benchmarks {
         _(RawOrigin::None, xdm);
 
         let post_channel =
-            Channels::<T>::get(dst_domain_id, channel_id).expect("channel should exist");
+            Channels::<T>::get(dst_chain_id, channel_id).expect("channel should exist");
         assert_eq!(
             post_channel.latest_response_received_message_nonce,
             Some(resp_nonce)
@@ -306,16 +311,16 @@ mod benchmarks {
     }
 
     fn open_channel<T: Config>(
-        dst_domain_id: DomainId,
+        dst_chain_id: ChainId,
         params: InitiateChannelParams<BalanceOf<T>>,
     ) -> ChannelId {
-        let channel_id = NextChannelId::<T>::get(dst_domain_id);
-        assert_ok!(Messenger::<T>::do_init_channel(dst_domain_id, params));
-        let channel = Channels::<T>::get(dst_domain_id, channel_id).expect("channel should exist");
+        let channel_id = NextChannelId::<T>::get(dst_chain_id);
+        assert_ok!(Messenger::<T>::do_init_channel(dst_chain_id, params));
+        let channel = Channels::<T>::get(dst_chain_id, channel_id).expect("channel should exist");
         assert_eq!(channel.state, ChannelState::Initiated);
 
-        assert_ok!(Messenger::<T>::do_open_channel(dst_domain_id, channel_id));
-        let channel = Channels::<T>::get(dst_domain_id, channel_id).expect("channel should exist");
+        assert_ok!(Messenger::<T>::do_open_channel(dst_chain_id, channel_id));
+        let channel = Channels::<T>::get(dst_chain_id, channel_id).expect("channel should exist");
         assert_eq!(channel.state, ChannelState::Open);
 
         channel_id
@@ -323,7 +328,7 @@ mod benchmarks {
 
     impl_benchmark_test_suite!(
         Messenger,
-        crate::mock::domain_a::new_test_ext(),
-        crate::mock::domain_a::Runtime,
+        crate::mock::chain_a::new_test_ext(),
+        crate::mock::chain_a::Runtime,
     );
 }

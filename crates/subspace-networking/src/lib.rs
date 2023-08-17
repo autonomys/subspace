@@ -36,7 +36,7 @@ pub use crate::behavior::persistent_parameters::{
 pub use crate::node::{
     GetClosestPeersError, Node, SendRequestError, SubscribeError, TopicSubscription,
 };
-pub use crate::node_runner::{NodeRunner, KADEMLIA_PROVIDER_TTL_IN_SECS};
+pub use crate::node_runner::NodeRunner;
 pub use crate::peer_info::{
     Config as PeerInfoConfig, CuckooFilterDTO, CuckooFilterProvider, Notification,
     NotificationHandler, PeerInfo, PeerInfoProvider,

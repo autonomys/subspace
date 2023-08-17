@@ -1,5 +1,5 @@
 use domain_client_block_preprocessor::runtime_api::StateRootExtractor;
-use domain_client_block_preprocessor::xdm_verifier::verify_xdm_with_consensus_client;
+use domain_client_block_preprocessor::xdm_verifier::verify_xdm;
 use sc_transaction_pool::error::Result as TxPoolResult;
 use sc_transaction_pool_api::error::Error as TxPoolError;
 use sc_transaction_pool_api::TransactionSource;
@@ -79,8 +79,7 @@ where
         _source: TransactionSource,
         uxt: Block::Extrinsic,
     ) -> TxPoolResult<()> {
-        if !verify_xdm_with_consensus_client::<CClient, CBlock, Block, SRE>(
-            self.domain_id,
+        if !verify_xdm::<CClient, CBlock, Block, SRE>(
             &self.consensus_client,
             at,
             &self.state_root_extractor,

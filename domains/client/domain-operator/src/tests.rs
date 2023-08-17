@@ -65,7 +65,7 @@ async fn test_domain_instance_bootstrapper() {
         .unwrap();
 
     // Run Alice (a evm domain authority node)
-    let alice = domain_test_service::DomainNodeBuilder::new(
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -107,7 +107,7 @@ async fn test_domain_block_production() {
     ferdie.produce_block_with_slot(1.into()).await.unwrap();
 
     // Run Alice (a evm domain authority node)
-    let alice = domain_test_service::DomainNodeBuilder::new(
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -118,6 +118,7 @@ async fn test_domain_block_production() {
     for i in 0..50 {
         let (tx, slot) = if i % 2 == 0 {
             // Produce bundle and include it in the primary block hence produce a domain block
+            alice.send_remark_extrinsic().await.unwrap();
             let (slot, _) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
             // `None` means collect tx from the tx pool
             (None, slot)
@@ -219,7 +220,7 @@ async fn test_processing_empty_consensus_block() {
     ferdie.produce_block_with_slot(1.into()).await.unwrap();
 
     // Run Alice (a evm domain authority node)
-    let alice = domain_test_service::DomainNodeBuilder::new(
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -249,19 +250,8 @@ async fn test_processing_empty_consensus_block() {
             .pending_imported_consensus_blocks(consensus_best_hash, consensus_best_number);
         match res {
             // The consensus block is processed in the above `produce_block_with_extrinsics` call,
-            // thus calling `pending_imported_consensus_blocks` again will result in an error
-            Err(err) => {
-                // `sp_blockchain::Error` is not impl `PartialEq` thus comparing the string
-                assert_eq!(
-                    err.to_string(),
-                    sp_blockchain::Error::Application(
-                        format!(
-                            "Consensus block {consensus_best_hash:?} has already been processed.",
-                        )
-                        .into()
-                    )
-                    .to_string()
-                );
+            // thus calling `pending_imported_consensus_blocks` again will result in an `Ok(None)`
+            Ok(None) => {
                 // The `latest_consensus_block` that mapped to the genesis domain block must be updated
                 let latest_consensus_block: Hash =
                     crate::aux_schema::latest_consensus_block_hash_for(
@@ -393,7 +383,7 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
         .unwrap();
 
     // Run Alice (a evm domain authority node)
-    let alice = domain_test_service::DomainNodeBuilder::new(
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -574,7 +564,7 @@ async fn test_domain_tx_propagate() {
     ferdie.produce_block_with_slot(1.into()).await.unwrap();
 
     // Run Alice (a evm domain authority node)
-    let alice = domain_test_service::DomainNodeBuilder::new(
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -592,13 +582,13 @@ async fn test_domain_tx_propagate() {
     .build_evm_node(Role::Full, GENESIS_DOMAIN_ID, &mut ferdie)
     .await;
 
-    produce_blocks!(ferdie, alice, bob, 5).await.unwrap();
+    produce_blocks!(ferdie, alice, 5, bob).await.unwrap();
     while alice.sync_service.is_major_syncing() || bob.sync_service.is_major_syncing() {
         tokio::time::sleep(std::time::Duration::from_millis(100)).await;
     }
 
-    let pre_alice_free_balance = alice.free_balance(alice.key.to_account_id());
-    // Construct and send an extrinsic to bob, as bob is not a authoity node, the extrinsic has
+    let pre_bob_free_balance = alice.free_balance(bob.key.to_account_id());
+    // Construct and send an extrinsic to bob, as bob is not a authority node, the extrinsic has
     // to propagate to alice to get executed
     bob.construct_and_send_extrinsic(pallet_balances::Call::transfer {
         dest: Alice.to_account_id(),
@@ -607,9 +597,16 @@ async fn test_domain_tx_propagate() {
     .await
     .expect("Failed to send extrinsic");
 
-    produce_blocks_until!(ferdie, alice, bob, {
-        alice.free_balance(alice.key.to_account_id()) == pre_alice_free_balance + 123
-    })
+    produce_blocks_until!(
+        ferdie,
+        alice,
+        {
+            // ensure bob has reduced balance since alice might submit other transactions which cost
+            // and so exact balance check is not feasible
+            alice.free_balance(bob.key.to_account_id()) <= pre_bob_free_balance - 123
+        },
+        bob
+    )
     .await
     .unwrap();
 }
@@ -638,7 +635,7 @@ async fn test_executor_full_node_catching_up() {
     ferdie.produce_blocks(5).await.unwrap();
 
     // Run Alice (a evm domain authority node)
-    let alice = domain_test_service::DomainNodeBuilder::new(
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -656,7 +653,7 @@ async fn test_executor_full_node_catching_up() {
     .await;
 
     // Bob is able to sync blocks.
-    produce_blocks!(ferdie, alice, bob, 3).await.unwrap();
+    produce_blocks!(ferdie, alice, 3, bob).await.unwrap();
 
     let alice_block_hash = alice
         .client
@@ -692,7 +689,7 @@ async fn test_executor_inherent_timestamp_is_set() {
     ferdie.produce_block_with_slot(1.into()).await.unwrap();
 
     // Run Alice (a evm domain authority node)
-    let alice = domain_test_service::DomainNodeBuilder::new(
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -709,7 +706,7 @@ async fn test_executor_inherent_timestamp_is_set() {
     .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
     .await;
 
-    produce_blocks!(ferdie, alice, bob, 1).await.unwrap();
+    produce_blocks!(ferdie, alice, 1, bob).await.unwrap();
 
     let consensus_timestamp = ferdie
         .client
@@ -903,7 +900,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
     ferdie.produce_block_with_slot(1.into()).await.unwrap();
 
     // Run Alice (a evm domain authority node)
-    let alice = domain_test_service::DomainNodeBuilder::new(
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -1077,7 +1074,7 @@ async fn set_new_code_should_work() {
     ferdie.produce_block_with_slot(1.into()).await.unwrap();
 
     // Run Alice (a evm domain authority node)
-    let alice = domain_test_service::DomainNodeBuilder::new(
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -1150,7 +1147,7 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
     ferdie.produce_block_with_slot(1.into()).await.unwrap();
 
     // Run Alice (a evm domain authority node)
-    let alice = domain_test_service::DomainNodeBuilder::new(
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -1159,7 +1156,7 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
     .await;
 
     // Run Bob (a evm domain full node)
-    let bob = domain_test_service::DomainNodeBuilder::new(
+    let mut bob = domain_test_service::DomainNodeBuilder::new(
         tokio_handle,
         Bob,
         BasePath::new(directory.path().join("bob")),
@@ -1250,7 +1247,7 @@ async fn duplicated_and_stale_bundle_should_be_rejected() {
     ferdie.produce_block_with_slot(1.into()).await.unwrap();
 
     // Run Alice (a evm domain authority node)
-    let alice = domain_test_service::DomainNodeBuilder::new(
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -1323,7 +1320,7 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
     ferdie.produce_block_with_slot(1.into()).await.unwrap();
 
     // Run Alice (a evm domain authority node)
-    let alice = domain_test_service::DomainNodeBuilder::new(
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -1746,3 +1743,72 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
 // .await
 // .unwrap();
 // }
+
+#[substrate_test_utils::test(flavor = "multi_thread")]
+async fn test_restart_domain_operator() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Produce 1 consensus block to initialize genesis domain
+    ferdie.produce_block_with_slot(1.into()).await.unwrap();
+
+    // Run Alice (a evm domain authority node)
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .await;
+
+    produce_blocks!(ferdie, alice, 5).await.unwrap();
+    let next_slot = ferdie.next_slot();
+
+    // Stop Ferdie and Alice and delete their database lock files
+    drop(ferdie);
+    drop(alice);
+    std::fs::remove_file(directory.path().join("ferdie/paritydb/lock")).unwrap();
+    std::fs::remove_file(
+        directory
+            .path()
+            .join(format!("alice/domain-{GENESIS_DOMAIN_ID:?}"))
+            .as_path()
+            .join("paritydb/lock"),
+    )
+    .unwrap();
+
+    // Restart Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+    ferdie.set_next_slot(next_slot);
+
+    // Restart Alice
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .await;
+
+    produce_blocks!(ferdie, alice, 5).await.unwrap();
+
+    // Chain should progress base on previous run
+    assert_eq!(ferdie.client.info().best_number, 11);
+    assert_eq!(alice.client.info().best_number, 10);
+}
