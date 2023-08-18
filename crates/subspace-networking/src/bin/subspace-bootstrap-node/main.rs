@@ -25,9 +25,10 @@ enum Command {
         #[arg(long, alias = "bootstrap-node")]
         bootstrap_nodes: Vec<Multiaddr>,
         /// Keypair for node identity, can be obtained with `generate-keypair` command
+        #[clap(long)]
         keypair: String,
         /// Multiaddr to listen on for subspace networking, multiple are supported
-        #[clap(default_value = "/ip4/0.0.0.0/tcp/0")]
+        #[clap(long, default_value = "/ip4/0.0.0.0/tcp/0")]
         listen_on: Vec<Multiaddr>,
         /// Multiaddresses of reserved peers to maintain connections to, multiple are supported
         #[arg(long, alias = "reserved-peer")]
