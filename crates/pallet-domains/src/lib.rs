@@ -468,6 +468,17 @@ mod pallet {
         OptionQuery,
     >;
 
+    /// The consensus block hash used to verify ER, only store the consensus block hash for a domain
+    /// if that consensus block contains bundle of the domain, the hash will be pruned when the ER
+    /// that point to the consensus block is pruned.
+    ///
+    /// TODO: this storage is unbounded in some cases, see https://github.com/subspace/subspace/issues/1673
+    /// for more details, this will be fixed once https://github.com/subspace/subspace/issues/1731 is implemented.
+    #[pallet::storage]
+    #[pallet::getter(fn consensus_hash)]
+    pub type ConsensusBlockHash<T: Config> =
+        StorageDoubleMap<_, Identity, DomainId, Identity, T::BlockNumber, T::Hash, OptionQuery>;
+
     /// A set of `BundleDigest` from all bundles that successfully submitted to the consensus block,
     /// these bundles will be used to construct the domain block and `ExecutionInbox` is used to:
     ///
@@ -1058,7 +1069,13 @@ mod pallet {
 
             do_upgrade_runtimes::<T>(block_number);
 
-            let _ = SuccessfulBundles::<T>::clear(u32::MAX, None);
+            // Store the hash of the parent consensus block for domain that have bundles submitted
+            // in that consensus block
+            let parent_number = block_number - One::one();
+            let parent_hash = frame_system::Pallet::<T>::block_hash(parent_number);
+            for (domain_id, _) in SuccessfulBundles::<T>::drain() {
+                ConsensusBlockHash::<T>::insert(domain_id, parent_number, parent_hash);
+            }
 
             Weight::zero()
         }
