@@ -123,6 +123,9 @@ pub trait SubspaceRpcApi {
         &self,
         segment_index: SegmentIndex,
     ) -> RpcResult<()>;
+
+    #[method(name = "subspace_lastSegmentHeaders")]
+    async fn last_segment_headers(&self, limit: u64) -> RpcResult<Vec<Option<SegmentHeader>>>;
 }
 
 #[derive(Default)]
@@ -701,27 +704,6 @@ where
         Ok(())
     }
 
-    async fn segment_headers(
-        &self,
-        segment_indexes: Vec<SegmentIndex>,
-    ) -> RpcResult<Vec<Option<SegmentHeader>>> {
-        if segment_indexes.len() > MAX_SEGMENT_HEADERS_PER_REQUEST {
-            error!(
-                "segment_indexes length exceed the limit: {} ",
-                segment_indexes.len()
-            );
-
-            return Err(JsonRpseeError::Custom(format!(
-                "segment_indexes length exceed the limit {MAX_SEGMENT_HEADERS_PER_REQUEST}"
-            )));
-        };
-
-        Ok(segment_indexes
-            .into_iter()
-            .map(|segment_index| self.segment_headers_store.get_segment_header(segment_index))
-            .collect())
-    }
-
     fn piece(&self, requested_piece_index: PieceIndex) -> RpcResult<Option<Vec<u8>>> {
         self.deny_unsafe.check_if_safe()?;
 
@@ -776,5 +758,63 @@ where
         }
 
         Ok(None)
+    }
+
+    async fn segment_headers(
+        &self,
+        segment_indexes: Vec<SegmentIndex>,
+    ) -> RpcResult<Vec<Option<SegmentHeader>>> {
+        if segment_indexes.len() > MAX_SEGMENT_HEADERS_PER_REQUEST {
+            error!(
+                "segment_indexes length exceed the limit: {} ",
+                segment_indexes.len()
+            );
+
+            return Err(JsonRpseeError::Custom(format!(
+                "segment_indexes length exceed the limit {MAX_SEGMENT_HEADERS_PER_REQUEST}"
+            )));
+        };
+
+        Ok(segment_indexes
+            .into_iter()
+            .map(|segment_index| self.segment_headers_store.get_segment_header(segment_index))
+            .collect())
+    }
+
+    async fn last_segment_headers(&self, limit: u64) -> RpcResult<Vec<Option<SegmentHeader>>> {
+        if limit as usize > MAX_SEGMENT_HEADERS_PER_REQUEST {
+            error!(
+                "Request limit ({}) exceed the server limit: {} ",
+                limit, MAX_SEGMENT_HEADERS_PER_REQUEST
+            );
+
+            return Err(JsonRpseeError::Custom(format!(
+                "Request limit ({}) exceed the server limit: {} ",
+                limit, MAX_SEGMENT_HEADERS_PER_REQUEST
+            )));
+        };
+
+        let runtime_api = self.client.runtime_api();
+        let best_hash = self.client.info().best_hash;
+
+        let last_segment_index = match runtime_api.history_size(best_hash) {
+            Ok(history_size) => history_size.segment_index().into(),
+            Err(error) => {
+                error!(?best_hash, "Failed to get history size: {}", error);
+
+                0u64 // starting segment index
+            }
+        };
+
+        let last_segment_headers = (0..=last_segment_index)
+            .rev()
+            .take(limit as usize)
+            .map(|segment_index| {
+                self.segment_headers_store
+                    .get_segment_header(segment_index.into())
+            })
+            .collect::<Vec<_>>();
+
+        Ok(last_segment_headers)
     }
 }
