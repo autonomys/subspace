@@ -213,14 +213,7 @@ mod pallet {
         /// A variation of the Identifier used for holding the funds used for staking and domains.
         type HoldIdentifier: HoldIdentifier<Self>;
 
-        /// The block tree pruning depth, its value should <= `BlockHashCount` because we
-        /// need the consensus block hash to verify execution receipt, which is used to
-        /// construct the node of the block tree.
-        ///
-        /// TODO: `BlockTreePruningDepth` <= `BlockHashCount` is not enough to guarantee the consensus block
-        /// hash must exists while verifying receipt because the domain block is not mapping to the consensus
-        /// block one by one, we need to either store the consensus block hash in runtime manually or store
-        /// the consensus block hash in the client side and use host function to get them in runtime.
+        /// The block tree pruning depth.
         #[pallet::constant]
         type BlockTreePruningDepth: Get<Self::DomainNumber>;
 
