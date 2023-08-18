@@ -798,21 +798,18 @@ where
         let best_hash = self.client.info().best_hash;
 
         let last_segment_index = match runtime_api.history_size(best_hash) {
-            Ok(history_size) => history_size.segment_index().into(),
+            Ok(history_size) => history_size.segment_index(),
             Err(error) => {
                 error!(?best_hash, "Failed to get history size: {}", error);
 
-                0u64 // starting segment index
+                SegmentIndex::ZERO
             }
         };
 
-        let last_segment_headers = (0..=last_segment_index)
+        let last_segment_headers = (SegmentIndex::ZERO..=last_segment_index)
             .rev()
             .take(limit as usize)
-            .map(|segment_index| {
-                self.segment_headers_store
-                    .get_segment_header(segment_index.into())
-            })
+            .map(|segment_index| self.segment_headers_store.get_segment_header(segment_index))
             .collect::<Vec<_>>();
 
         Ok(last_segment_headers)
