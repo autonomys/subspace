@@ -218,7 +218,7 @@ where
             if extrinsics.is_empty()
                 && !self
                     .parent_chain
-                    .non_empty_bundle_exists(parent_chain_best_hash, self.domain_id)?
+                    .non_empty_er_exists(parent_chain_best_hash, self.domain_id)?
             {
                 tracing::warn!(
                     ?domain_best_number,

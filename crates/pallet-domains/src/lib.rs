@@ -1468,7 +1468,12 @@ impl<T: Config> Pallet<T> {
     }
 
     /// Returns if there are any ERs in the challenge period that have non empty extrinsics.
-    pub fn non_empty_bundle_exists(domain_id: DomainId) -> bool {
+    /// Note that Genesis ER is also considered special and hence non empty
+    pub fn non_empty_er_exists(domain_id: DomainId) -> bool {
+        if BlockTree::<T>::contains_key(domain_id, T::DomainNumber::zero()) {
+            return true;
+        }
+
         let head_number = HeadDomainNumber::<T>::get(domain_id);
         let mut to_check = head_number
             .checked_sub(&T::BlockTreePruningDepth::get())

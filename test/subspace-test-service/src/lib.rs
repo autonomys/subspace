@@ -908,7 +908,7 @@ where
 macro_rules! produce_blocks {
     ($primary_node:ident, $operator_node:ident, $count: literal $(, $domain_node:ident)*) => {
         {
-            let _ = $operator_node.send_remark_extrinsic().await;
+            $operator_node.send_system_remark().await;
             async {
                 let domain_fut = {
                     let mut futs: Vec<std::pin::Pin<Box<dyn futures::Future<Output = ()>>>> = Vec::new();
@@ -930,7 +930,7 @@ macro_rules! produce_blocks {
 macro_rules! produce_block_with {
     ($primary_node_produce_block:expr, $operator_node:ident $(, $domain_node:ident)*) => {
         {
-            let _ = $operator_node.send_remark_extrinsic().await;
+            $operator_node.send_system_remark().await;
             async {
                 let domain_fut = {
                     let mut futs: Vec<std::pin::Pin<Box<dyn futures::Future<Output = ()>>>> = Vec::new();
