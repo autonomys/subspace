@@ -52,6 +52,7 @@ void = "1.0.2"
 version = "0.52.1"
 default-features = false
 features = [
+    "autonat",
     "dns",
     "gossipsub",
     "identify",

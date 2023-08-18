@@ -18,6 +18,7 @@ use crate::reserved_peers::{
 use crate::PeerInfoProvider;
 use derive_more::From;
 use libp2p::allow_block_list::{Behaviour as AllowBlockListBehaviour, BlockedPeers};
+use libp2p::autonat::{Behaviour as Autonat, Config as AutonatConfig, Event as AutonatEvent};
 use libp2p::connection_limits::{Behaviour as ConnectionLimitsBehaviour, ConnectionLimits};
 use libp2p::gossipsub::{
     Behaviour as Gossipsub, Config as GossipsubConfig, Event as GossipsubEvent, MessageAuthenticity,
@@ -57,6 +58,8 @@ pub(crate) struct BehaviorConfig<RecordStore> {
     pub(crate) general_connected_peers_config: Option<ConnectedPeersConfig>,
     /// The configuration for the [`ConnectedPeers`] protocol (special instance).
     pub(crate) special_connected_peers_config: Option<ConnectedPeersConfig>,
+    /// Autonat configuration (optional).
+    pub(crate) autonat: Option<AutonatConfig>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -81,6 +84,7 @@ pub(crate) struct Behavior<RecordStore> {
         Toggle<ConnectedPeersBehaviour<GeneralConnectedPeersInstance>>,
     pub(crate) special_connected_peers:
         Toggle<ConnectedPeersBehaviour<SpecialConnectedPeersInstance>>,
+    pub(crate) autonat: Toggle<Autonat>,
 }
 
 impl<RecordStore> Behavior<RecordStore>
@@ -130,6 +134,10 @@ where
                 .special_connected_peers_config
                 .map(ConnectedPeersBehaviour::new)
                 .into(),
+            autonat: config
+                .autonat
+                .map(|autonat_config| Autonat::new(config.peer_id, autonat_config))
+                .into(),
         }
     }
 }
@@ -147,4 +155,5 @@ pub(crate) enum Event {
     PeerInfo(PeerInfoEvent),
     GeneralConnectedPeers(ConnectedPeersEvent<GeneralConnectedPeersInstance>),
     SpecialConnectedPeers(ConnectedPeersEvent<SpecialConnectedPeersInstance>),
+    Autonat(AutonatEvent),
 }
