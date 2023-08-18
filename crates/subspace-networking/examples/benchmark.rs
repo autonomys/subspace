@@ -154,7 +154,7 @@ pub async fn configure_dsn(
     let default_config = Config::new(protocol_prefix, keypair, (), Some(PeerInfoProvider::Client));
 
     let config = Config {
-        listen_on: vec!["/ip4/0.0.0.0/tcp/40044".parse().unwrap()],
+        listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_global_addresses_in_dht: enable_private_ips,
         kademlia_mode: Some(Mode::Client),
         request_response_protocols: vec![PieceByIndexRequestHandler::create(|_, _| async { None })],
