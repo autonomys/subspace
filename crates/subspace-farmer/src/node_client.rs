@@ -64,4 +64,7 @@ pub trait NodeClient: Clone + Send + Sync + 'static {
         &self,
         segment_index: SegmentIndex,
     ) -> Result<(), Error>;
+
+    /// Get the last segment headers.
+    async fn last_segment_headers(&self, limit: u64) -> Result<Vec<Option<SegmentHeader>>, Error>;
 }

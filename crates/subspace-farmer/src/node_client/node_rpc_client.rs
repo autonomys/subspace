@@ -179,4 +179,14 @@ impl NodeClient for NodeRpcClient {
             )
             .await?)
     }
+
+    async fn last_segment_headers(
+        &self,
+        limit: u64,
+    ) -> Result<Vec<Option<SegmentHeader>>, RpcError> {
+        Ok(self
+            .client
+            .request("subspace_lastSegmentHeaders", rpc_params![limit])
+            .await?)
+    }
 }
