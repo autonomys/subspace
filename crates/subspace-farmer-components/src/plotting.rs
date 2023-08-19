@@ -235,7 +235,7 @@ where
             {
                 let retrieved_pieces = incremental_piece_indices
                     .iter()
-                    .filter(|maybe_piece_index| maybe_piece_index.is_some())
+                    .filter(|maybe_piece_index| maybe_piece_index.is_none())
                     .count();
                 warn!(
                     %sector_index,
