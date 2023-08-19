@@ -51,7 +51,9 @@ use sp_consensus_subspace::{
     ChainConstants, EquivocationProof, FarmerPublicKey, FarmerSignature, SignedVote, Vote,
 };
 use sp_runtime::generic::DigestItem;
-use sp_runtime::traits::{BlockNumberProvider, Hash, One, SaturatedConversion, Saturating, Zero};
+#[cfg(not(feature = "pot"))]
+use sp_runtime::traits::SaturatedConversion;
+use sp_runtime::traits::{BlockNumberProvider, Hash, One, Saturating, Zero};
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
     TransactionValidityError, ValidTransaction,
@@ -1560,6 +1562,7 @@ fn check_segment_headers<T: Config>(
     Ok(())
 }
 
+#[cfg(not(feature = "pot"))]
 impl<T: Config> OnTimestampSet<T::Moment> for Pallet<T> {
     fn on_timestamp_set(moment: T::Moment) {
         let slot_duration = Self::slot_duration();
@@ -1576,6 +1579,19 @@ impl<T: Config> OnTimestampSet<T::Moment> for Pallet<T> {
             timestamp_slot,
             "Timestamp slot must match `CurrentSlot`",
         );
+    }
+}
+
+#[cfg(feature = "pot")]
+impl<T: Config> OnTimestampSet<T::Moment> for Pallet<T> {
+    fn on_timestamp_set(_moment: T::Moment) {
+        let slot_duration = Self::slot_duration();
+        assert!(
+            !slot_duration.is_zero(),
+            "Subspace slot duration cannot be zero."
+        );
+
+        // TODO: more checks
     }
 }
 

@@ -45,8 +45,6 @@ use sp_consensus_subspace::digests::{extract_pre_digest, CompatibleDigestItem, P
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SignedVote, SubspaceApi, Vote};
 use sp_core::crypto::ByteArray;
 use sp_core::H256;
-#[cfg(feature = "pot")]
-use sp_runtime::traits::NumberFor as BlockNumberFor;
 use sp_runtime::traits::{Block as BlockT, Header, One, Saturating, Zero};
 use sp_runtime::DigestItem;
 use std::future::Future;
@@ -66,17 +64,9 @@ use subspace_verification::{
 /// Errors while building the block proof of time.
 #[cfg(feature = "pot")]
 #[derive(Debug, thiserror::Error)]
-pub enum PotCreateError<Block: BlockT> {
-    /// Parent block has no proof of time digest.
-    #[error("Parent block missing proof of time : {parent_block_number}/{parent_slot_number}/{slot_number}")]
-    ParentMissingPotDigest {
-        parent_block_number: BlockNumberFor<Block>,
-        parent_slot_number: SlotNumber,
-        slot_number: SlotNumber,
-    },
-
+pub enum PotCreateError {
     /// Proof creation failed.
-    #[error("Proof of time error: {0}")]
+    #[error("{0}")]
     PotGetBlockProofsError(#[from] PotGetBlockProofsError),
 }
 
@@ -624,30 +614,14 @@ where
         parent_header: &Block::Header,
         parent_pre_digest: &PreDigest<FarmerPublicKey, FarmerPublicKey>,
         slot_number: SlotNumber,
-    ) -> Result<PotPreDigest, PotCreateError<Block>> {
+    ) -> Result<PotPreDigest, PotCreateError> {
         let block_number = *parent_header.number() + One::one();
-
-        // Block 1 does not have proofs
-        if block_number.is_one() {
-            return Ok(PotPreDigest::FirstBlock(slot_number));
-        }
-
-        // Block 2 onwards.
-        // Get the start slot number for the proofs in the new block.
-        let parent_pot_digest = parent_pre_digest.proof_of_time.as_ref().ok_or_else(|| {
-            // PoT needs to be present in the block if feature is enabled.
-            PotCreateError::ParentMissingPotDigest {
-                parent_block_number: *parent_header.number(),
-                parent_slot_number: parent_pre_digest.slot.into(),
-                slot_number,
-            }
-        })?;
 
         proof_of_time
             .get_block_proofs(
                 block_number.into(),
                 slot_number,
-                parent_pot_digest,
+                parent_pre_digest.proof_of_time.as_ref(),
                 Some(self.subspace_link.slot_duration().as_duration()),
             )
             .await
@@ -655,8 +629,8 @@ where
                 let pot_pre_digest = PotPreDigest::new(proofs);
                 debug!(
                     target: "subspace",
-                    "build_block_pot: {block_number}/{}/{slot_number}, PoT=[{pot_pre_digest:?}], \
-                     randomness = {:?}",
+                    "build_block_pot: block_number={block_number}, parent_slot={}, \
+                     slot={slot_number}, PoT=[{pot_pre_digest:?}],  randomness = {:?}",
                     parent_pre_digest.slot, pot_pre_digest.derive_global_randomness()
                 );
                 pot_pre_digest
@@ -664,7 +638,8 @@ where
             .map_err(|err| {
                 debug!(
                     target: "subspace",
-                    "build_block_pot: {block_number}/{}/{slot_number}, err={err:?}",
+                    "build_block_pot: block_number={block_number}, parent_slot={}, \
+                     slot={slot_number}, err = {err:?}",
                     parent_pre_digest.slot
                 );
                 PotCreateError::PotGetBlockProofsError(err)

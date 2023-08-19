@@ -1,6 +1,6 @@
 //! PoT state management.
 
-use crate::PotConfig;
+use crate::{PotConfig, INITIAL_SLOT_NUMBER};
 use async_trait::async_trait;
 use core::num::NonZeroUsize;
 use parking_lot::Mutex;
@@ -52,6 +52,13 @@ pub(crate) enum PotProtocolStateError {
 /// Error codes for PotConsensusState::get_block_proofs().
 #[derive(Debug, thiserror::Error)]
 pub enum PotGetBlockProofsError {
+    #[error("Insufficient proofs: {summary:?}/{block_number}/{current_slot}")]
+    InsufficientProofs {
+        summary: PotStateSummary,
+        block_number: BlockNumber,
+        current_slot: SlotNumber,
+    },
+
     #[error("Failed to get start slot: {summary:?}/{block_number}/{proof_slot}/{current_slot}")]
     StartSlotMissing {
         summary: PotStateSummary,
@@ -83,6 +90,18 @@ pub enum PotGetBlockProofsError {
 /// Error codes for PotConsensusState::verify_block_proofs().
 #[derive(Debug, thiserror::Error)]
 pub enum PotVerifyBlockProofsError {
+    #[error(
+        "Invalid last slot: {summary:?}/{block_number}/{slot}/{parent_slot}/{expected}/{actual}"
+    )]
+    InvalidLastSlot {
+        summary: PotStateSummary,
+        block_number: BlockNumber,
+        slot: SlotNumber,
+        parent_slot: SlotNumber,
+        expected: SlotNumber,
+        actual: SlotNumber,
+    },
+
     #[error("Block has no proofs: {summary:?}/{block_number}/{slot}/{parent_slot}")]
     NoProofs {
         summary: PotStateSummary,
@@ -476,18 +495,23 @@ impl InternalState {
         &self,
         block_number: BlockNumber,
         current_slot: SlotNumber,
-        parent_pre_digest: &PotPreDigest,
+        parent_pre_digest: Option<&PotPreDigest>,
     ) -> Result<NonEmptyVec<PotProof>, PotGetBlockProofsError> {
         let summary = self.summary();
-        let proof_slot = current_slot - self.config.global_randomness_reveal_lag_slots;
-        let start_slot = parent_pre_digest.next_block_initial_slot().ok_or_else(|| {
-            PotGetBlockProofsError::StartSlotMissing {
+        if current_slot < self.config.global_randomness_reveal_lag_slots {
+            // Chain is just starting, not enough proofs to go back
+            // by global_randomness_reveal_lag_slots.
+            return Err(PotGetBlockProofsError::InsufficientProofs {
                 summary: summary.clone(),
                 block_number,
-                proof_slot,
                 current_slot,
-            }
-        })?;
+            });
+        }
+        let proof_slot = current_slot - self.config.global_randomness_reveal_lag_slots;
+        // If parent is genesis, include all proofs from height 0.
+        let start_slot = parent_pre_digest.map_or(INITIAL_SLOT_NUMBER, |pre_digest| {
+            pre_digest.next_block_initial_slot()
+        });
 
         if start_slot > proof_slot {
             return Err(PotGetBlockProofsError::InvalidRange {
@@ -526,27 +550,26 @@ impl InternalState {
         slot_number: SlotNumber,
         pre_digest: &PotPreDigest,
         parent_slot_number: SlotNumber,
-        parent_pre_digest: &PotPreDigest,
+        parent_pre_digest: Option<&PotPreDigest>,
     ) -> Result<(), PotVerifyBlockProofsError> {
         let summary = self.summary();
-        let block_proofs = pre_digest
-            .proofs()
-            .ok_or(PotVerifyBlockProofsError::NoProofs {
+        let block_proofs = pre_digest.proofs();
+        let expected_last_slot = slot_number - self.config.global_randomness_reveal_lag_slots;
+        if block_proofs.last().slot_number != expected_last_slot {
+            return Err(PotVerifyBlockProofsError::InvalidLastSlot {
                 summary: summary.clone(),
                 block_number,
                 slot: slot_number,
                 parent_slot: parent_slot_number,
-            })?;
+                expected: expected_last_slot,
+                actual: block_proofs.last().slot_number,
+            });
+        }
 
         // Get the expected slot of the first proof in this block.
-        let start_slot = parent_pre_digest.next_block_initial_slot().ok_or_else(|| {
-            PotVerifyBlockProofsError::StartSlotMissing {
-                summary: summary.clone(),
-                block_number,
-                slot: slot_number,
-                parent_slot: parent_slot_number,
-            }
-        })?;
+        let start_slot = parent_pre_digest.map_or(INITIAL_SLOT_NUMBER, |pre_digest| {
+            pre_digest.next_block_initial_slot()
+        });
 
         // Since we check the first proof starts with the parent.last_proof.slot + 1,
         // and we already verified the seed/key of the proofs in the chain were was
@@ -755,6 +778,9 @@ impl PotProtocolState for StateManager {
 /// Interface to consensus.
 #[async_trait]
 pub trait PotConsensusState: Send + Sync {
+    /// Returns the current tip.
+    fn tip(&self) -> Option<PotProof>;
+
     /// Called by consensus when trying to claim the slot.
     /// Returns the proofs in the slot range
     /// [start_slot, current_slot - global_randomness_reveal_lag_slots].
@@ -763,7 +789,7 @@ pub trait PotConsensusState: Send + Sync {
         &self,
         block_number: BlockNumber,
         current_slot: SlotNumber,
-        parent_pre_digest: &PotPreDigest,
+        parent_pre_digest: Option<&PotPreDigest>,
         wait_time: Option<Duration>,
     ) -> Result<NonEmptyVec<PotProof>, PotGetBlockProofsError>;
 
@@ -775,17 +801,21 @@ pub trait PotConsensusState: Send + Sync {
         slot_number: SlotNumber,
         pre_digest: &PotPreDigest,
         parent_slot_number: SlotNumber,
-        parent_pre_digest: &PotPreDigest,
+        parent_pre_digest: Option<&PotPreDigest>,
     ) -> Result<(), PotVerifyBlockProofsError>;
 }
 
 #[async_trait]
 impl PotConsensusState for StateManager {
+    fn tip(&self) -> Option<PotProof> {
+        self.state.lock().tip()
+    }
+
     async fn get_block_proofs(
         &self,
         block_number: BlockNumber,
         current_slot: SlotNumber,
-        parent_pre_digest: &PotPreDigest,
+        parent_pre_digest: Option<&PotPreDigest>,
         wait_time: Option<Duration>,
     ) -> Result<NonEmptyVec<PotProof>, PotGetBlockProofsError> {
         let start_ts = Instant::now();
@@ -828,32 +858,31 @@ impl PotConsensusState for StateManager {
         slot_number: SlotNumber,
         pre_digest: &PotPreDigest,
         parent_slot_number: SlotNumber,
-        parent_pre_digest: &PotPreDigest,
+        parent_pre_digest: Option<&PotPreDigest>,
     ) -> Result<(), PotVerifyBlockProofsError> {
-        if let Some(block_proofs) = pre_digest.proofs() {
-            // Opportunistically try to extend the chain with
-            // the proofs from the block.
-            // TODO: this also is done when the chain is empty and
-            // we don't have a previous proof to verify against.
-            // This needs to be revisited as part of the node sync.
-            let (tip, summary) = {
-                let state = self.state.lock();
-                (state.tip(), state.summary())
-            };
-            let should_append = tip
-                .as_ref()
-                .map(|tip| (tip.slot_number + 1) == block_proofs.first().slot_number)
-                .unwrap_or(true);
-            if should_append {
-                return self.verify_and_append(
-                    block_number,
-                    slot_number,
-                    block_proofs,
-                    parent_slot_number,
-                    tip,
-                    summary,
-                );
-            }
+        // Opportunistically try to extend the chain with
+        // the proofs from the block.
+        // TODO: this also is done when the chain is empty and
+        // we don't have a previous proof to verify against.
+        // This needs to be revisited as part of the node sync.
+        let block_proofs = pre_digest.proofs();
+        let (tip, summary) = {
+            let state = self.state.lock();
+            (state.tip(), state.summary())
+        };
+        let should_append = tip
+            .as_ref()
+            .map(|tip| (tip.slot_number + 1) == block_proofs.first().slot_number)
+            .unwrap_or(true);
+        if should_append {
+            return self.verify_and_append(
+                block_number,
+                slot_number,
+                block_proofs,
+                parent_slot_number,
+                tip,
+                summary,
+            );
         }
 
         self.state.lock().verify_block_proofs(

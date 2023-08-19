@@ -1002,7 +1002,8 @@ where
             );
             debug!(
                 target: "subspace",
-                "block_import_verification: {block_number}/{}/{:?}/{origin:?}, ret={ret:?}",
+                "block_import_verification: block_number={block_number}, slot={}, \
+                parent_slot={:?}, origin={origin:?}, {ret:?}",
                 pre_digest.slot, parent_pre_digest.as_ref().map(|p| p.slot)
             );
             ret.map_err(Error::PotVerifyError)?
@@ -1155,16 +1156,12 @@ where
         let randomness = pot_digest.derive_global_randomness();
         let parent_pre_digest = match parent_pre_digest {
             Some(parent_pre_digest) => parent_pre_digest,
+            // TODO: this allows block 1, since block 0
+            // doesn't have the digests. This needs to be changed
+            // to check the proofs are derived from the initial
+            // seed/key as part of refactoring.
             None => return Ok(randomness),
         };
-
-        let parent_pot_digest = parent_pre_digest.proof_of_time.as_ref().ok_or_else(|| {
-            PotVerifyError::ParentMissingPotDigest {
-                block_number: block_number.into(),
-                parent_slot_number: parent_pre_digest.slot.into(),
-                slot_number: pre_digest.slot.into(),
-            }
-        })?;
 
         proof_of_time
             .verify_block_proofs(
@@ -1172,7 +1169,7 @@ where
                 pre_digest.slot.into(),
                 pot_digest,
                 parent_pre_digest.slot.into(),
-                parent_pot_digest,
+                parent_pre_digest.proof_of_time.as_ref(),
             )
             .map_err(PotVerifyError::PotVerifyBlockProofsError)?;
 

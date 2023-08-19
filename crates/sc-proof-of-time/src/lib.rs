@@ -20,6 +20,9 @@ pub use state_manager::{
 };
 pub use time_keeper::TimeKeeper;
 
+/// The slot number of the first proof in the chain.
+pub(crate) const INITIAL_SLOT_NUMBER: SlotNumber = 0;
+
 // TODO: change the fields that can't be zero to NonZero types.
 #[derive(Debug, Clone)]
 pub struct PotConfig {

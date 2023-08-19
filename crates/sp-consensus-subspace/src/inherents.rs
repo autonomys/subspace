@@ -105,6 +105,11 @@ impl InherentDataProvider {
         Self::new(slot, segment_headers)
     }
 
+    /// Creates the inherent data provider from the slot.
+    pub fn from_slot(slot: Slot, segment_headers: Vec<SegmentHeader>) -> Self {
+        Self::new(slot, segment_headers)
+    }
+
     /// Returns the `data` of this inherent data provider.
     pub fn data(&self) -> &InherentType {
         &self.data

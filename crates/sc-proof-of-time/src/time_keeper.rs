@@ -2,23 +2,20 @@
 
 use crate::gossip::PotGossip;
 use crate::state_manager::PotProtocolState;
-use crate::PotComponents;
-use futures::{FutureExt, StreamExt};
+use crate::{PotComponents, INITIAL_SLOT_NUMBER};
+use futures::FutureExt;
 use parity_scale_codec::Encode;
-use sc_client_api::BlockchainEvents;
 use sc_network::PeerId;
 use sc_network_gossip::{Network as GossipNetwork, Syncing as GossipSyncing};
-use sp_blockchain::HeaderBackend;
-use sp_consensus_subspace::digests::extract_pre_digest;
 use sp_core::H256;
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
-use subspace_core_primitives::{NonEmptyVec, PotProof, PotSeed};
+use subspace_core_primitives::{BlockHash, NonEmptyVec, PotKey, PotProof, PotSeed};
 use subspace_proof_of_time::ProofOfTime;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
-use tracing::{debug, error, trace, warn};
+use tracing::{error, info, trace, warn};
 
 /// Channel size to send the produced proofs.
 /// The proof producer thread will block if the receiver is behind and
@@ -26,26 +23,23 @@ use tracing::{debug, error, trace, warn};
 const PROOFS_CHANNEL_SIZE: usize = 12; // 2 * reveal lag.
 
 /// The time keeper manages the protocol: periodic proof generation/verification, gossip.
-pub struct TimeKeeper<Block: BlockT<Hash = H256>, Client> {
+pub struct TimeKeeper<Block: BlockT<Hash = H256>> {
     proof_of_time: ProofOfTime,
     pot_state: Arc<dyn PotProtocolState>,
     gossip: PotGossip<Block>,
-    client: Arc<Client>,
     // Expected time to produce a proof.
     // TODO: this will be removed after the pot_iterations is set
     // to produce a proof/sec.
     target_proof_time: Duration,
 }
 
-impl<Block, Client> TimeKeeper<Block, Client>
+impl<Block> TimeKeeper<Block>
 where
     Block: BlockT<Hash = H256>,
-    Client: HeaderBackend<Block> + BlockchainEvents<Block>,
 {
     /// Creates the time keeper instance.
     pub fn new<Network, GossipSync>(
         components: PotComponents,
-        client: Arc<Client>,
         network: Network,
         sync: Arc<GossipSync>,
         target_proof_time: Duration,
@@ -64,14 +58,13 @@ where
             proof_of_time: proof_of_time.clone(),
             pot_state: pot_state.clone(),
             gossip: PotGossip::new(network, sync, pot_state, proof_of_time),
-            client,
             target_proof_time,
         }
     }
 
     /// Runs the time keeper processing loop.
-    pub async fn run(self) {
-        self.initialize().await;
+    pub async fn run(self, initial_hash: BlockHash, initial_key: PotKey) {
+        self.initialize(initial_hash, initial_key).await;
 
         let mut local_proof_receiver = self.spawn_producer_thread();
         let handle_gossip_message: Arc<dyn Fn(PeerId, PotProof) + Send + Sync> =
@@ -96,63 +89,16 @@ where
         }
     }
 
-    /// Initializes the chain state from the consensus tip info.
-    async fn initialize(&self) {
-        debug!("Waiting for initialization");
-
-        // Wait for the first block import.
-        let mut block_import = self.client.import_notification_stream();
-        while let Some(incoming_block) = block_import.next().await {
-            let pre_digest = match extract_pre_digest(&incoming_block.header) {
-                Ok(pre_digest) => pre_digest,
-                Err(error) => {
-                    warn!(
-                        %error,
-                        block_hash = %incoming_block.hash,
-                        origin = ?incoming_block.origin,
-                        "Failed to get pre_digest",
-                    );
-                    continue;
-                }
-            };
-
-            let pot_pre_digest = match pre_digest.pot_pre_digest() {
-                Some(pot_pre_digest) => pot_pre_digest,
-                None => {
-                    warn!(
-                        block_hash = %incoming_block.hash,
-                        origin = ?incoming_block.origin,
-                        "Failed to get pot_pre_digest",
-                    );
-                    continue;
-                }
-            };
-
-            debug!(
-                block_hash = %incoming_block.hash,
-                origin = ?incoming_block.origin,
-                ?pot_pre_digest,
-                "Initialization complete",
-            );
-            let proofs = pot_pre_digest.proofs().cloned().unwrap_or_else(|| {
-                // Producing proofs starting from (genesis_slot + 1).
-                // TODO: Proper error handling or proof
-                let block_hash = incoming_block.hash.into();
-                let proof = self.proof_of_time.create(
-                    PotSeed::from_block_hash(block_hash),
-                    Default::default(), // TODO: key from cmd line or BTC
-                    pot_pre_digest
-                        .next_block_initial_slot()
-                        .expect("Initial slot number should be available for block_number >= 1"),
-                    block_hash,
-                );
-                debug!(%proof, "Creating first proof");
-                NonEmptyVec::new_with_entry(proof)
-            });
-
-            self.pot_state.reset(proofs);
-            return;
-        }
+    /// Initializes the chain state with the first proof.
+    async fn initialize(&self, initial_hash: BlockHash, initial_key: PotKey) {
+        let proof = self.proof_of_time.create(
+            PotSeed::from_block_hash(initial_hash),
+            initial_key,
+            INITIAL_SLOT_NUMBER,
+            initial_hash,
+        );
+        info!(?initial_hash, ?initial_key, ?proof, "Creating first proof");
+        self.pot_state.reset(NonEmptyVec::new_with_entry(proof));
     }
 
     /// Starts the thread to produce the proofs.

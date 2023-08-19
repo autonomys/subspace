@@ -361,6 +361,9 @@ where
         .map_err(|error| ServiceError::Application(error.into()))?;
     let fraud_proof_block_import =
         sc_consensus_fraud_proof::block_import(client.clone(), client.clone(), proof_verifier);
+    let pot_consensus = pot_components
+        .as_ref()
+        .map(|component| component.consensus_state());
 
     let (block_import, subspace_link) = sc_consensus_subspace::block_import::<
         PosTable,
@@ -376,9 +379,11 @@ where
         kzg.clone(),
         {
             let client = client.clone();
+            let pot_consensus = pot_consensus.clone();
 
             move |parent_hash, subspace_link: SubspaceLink<Block>| {
                 let client = client.clone();
+                let pot_consensus = pot_consensus.clone();
 
                 async move {
                     let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
@@ -389,21 +394,31 @@ where
                         .expect("Parent header must always exist when block is created; qed")
                         .number;
 
-                    let subspace_inherents =
-                        sp_consensus_subspace::inherents::InherentDataProvider::from_timestamp_and_slot_duration(
-                            *timestamp,
-                            subspace_link.slot_duration(),
-                            subspace_link.segment_headers_for_block(parent_block_number + 1),
-                        );
+                    let subspace_inherents = match pot_consensus.as_ref() {
+                        Some(_) => {
+                            // We don't do any PoT specific checks in the runtime.
+                            // The proofs are checked against the parent in the block
+                            // import verification path itself.
+                            sp_consensus_subspace::inherents::InherentDataProvider::from_slot(
+                                0.into(),
+                                subspace_link.segment_headers_for_block(parent_block_number + 1),
+                            )
+                        },
+                        None => {
+                            sp_consensus_subspace::inherents::InherentDataProvider::from_timestamp_and_slot_duration(
+                                *timestamp,
+                                subspace_link.slot_duration(),
+                                subspace_link.segment_headers_for_block(parent_block_number + 1),
+                            )
+                        }
+                    };
 
                     Ok((timestamp, subspace_inherents))
                 }
             }
         },
         segment_headers_store.clone(),
-        pot_components
-            .as_ref()
-            .map(|component| component.consensus_state()),
+        pot_consensus,
     )?;
 
     let slot_duration = subspace_link.slot_duration();
@@ -562,17 +577,18 @@ where
         other: (block_import, subspace_link, segment_headers_store, mut telemetry, pot_components),
     } = partial_components;
 
+    let genesis_hash = client.chain_info().genesis_hash;
     let (node, bootstrap_nodes) = match config.subspace_networking.clone() {
         SubspaceNetworking::Reuse {
             node,
             bootstrap_nodes,
         } => (node, bootstrap_nodes),
         SubspaceNetworking::Create { config: dsn_config } => {
-            let dsn_protocol_version = hex::encode(client.chain_info().genesis_hash);
+            let dsn_protocol_version = hex::encode(genesis_hash);
 
             debug!(
                 chain_type=?config.chain_spec.chain_type(),
-                genesis_hash=%hex::encode(client.chain_info().genesis_hash),
+                genesis_hash=%hex::encode(genesis_hash),
                 "Setting DSN protocol version..."
             );
 
@@ -773,25 +789,26 @@ where
             .map(|component| component.consensus_state());
         if let Some(components) = pot_components {
             if components.is_time_keeper() {
-                let time_keeper = TimeKeeper::<Block, _>::new(
+                let time_keeper = TimeKeeper::<Block>::new(
                     components,
-                    client.clone(),
                     network_service.clone(),
                     sync_service.clone(),
                     subspace_link.slot_duration().as_duration(),
                 );
 
+                // TODO: get initial key from cmd line/spec.
                 task_manager.spawn_essential_handle().spawn_blocking(
                     "subspace-proof-of-time-time-keeper",
                     Some("pot"),
                     async move {
-                        time_keeper.run().await;
+                        time_keeper
+                            .run(genesis_hash.into(), Default::default())
+                            .await;
                     },
                 );
             } else {
-                let pot_client = PotClient::<Block, _>::new(
+                let pot_client = PotClient::<Block>::new(
                     components,
-                    client.clone(),
                     network_service.clone(),
                     sync_service.clone(),
                 );
@@ -823,13 +840,16 @@ where
             create_inherent_data_providers: {
                 let client = client.clone();
                 let subspace_link = subspace_link.clone();
+                let pot_consensus = pot_consensus.clone();
 
                 move |parent_hash, ()| {
                     let client = client.clone();
                     let subspace_link = subspace_link.clone();
+                    let pot_consensus = pot_consensus.clone();
 
                     async move {
                         let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
+                        let pot_consensus = pot_consensus.clone();
 
                         // TODO: Would be nice if the whole header was passed in here
                         let parent_block_number = client
@@ -837,12 +857,24 @@ where
                             .expect("Parent header must always exist when block is created; qed")
                             .number;
 
-                        let subspace_inherents =
-                            sp_consensus_subspace::inherents::InherentDataProvider::from_timestamp_and_slot_duration(
-                                *timestamp,
-                                subspace_link.slot_duration(),
-                                subspace_link.segment_headers_for_block(parent_block_number + 1),
-                            );
+                        let subspace_inherents = match pot_consensus.as_ref() {
+                            Some(pot_consensus) => {
+                                let tip = pot_consensus.tip()
+                                    .ok_or(format!("PoT tip not found: \
+                                                    {parent_block_number}/{parent_hash}"))?;
+                                sp_consensus_subspace::inherents::InherentDataProvider::from_slot(
+                                    tip.slot_number.into(),
+                                    subspace_link.segment_headers_for_block(parent_block_number + 1),
+                                )
+                            },
+                            None => {
+                                sp_consensus_subspace::inherents::InherentDataProvider::from_timestamp_and_slot_duration(
+                                    *timestamp,
+                                    subspace_link.slot_duration(),
+                                    subspace_link.segment_headers_for_block(parent_block_number + 1),
+                                )
+                            }
+                        };
 
                         Ok((subspace_inherents, timestamp))
                     }
