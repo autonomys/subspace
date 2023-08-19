@@ -33,7 +33,7 @@ jobs:
             dockerfile-suffix: ''
             suffix: ubuntu-x86_64-${{ github.ref_name }}
             image-suffix: ''
-            rustflags: '-C target-cpu=skylake'
+            rustflags: '-C target-cpu=x86-64-v3 -C target-feature=+adx'
           # We build AArch64
           - arch: linux/amd64
             dockerfile-suffix: '.aarch64'
@@ -90,8 +90,8 @@ jobs:
             rustflags: '-C target-cpu=x86-64-v2'
           - os: ubuntu-20.04
             target: x86_64-unknown-linux-gnu
-            suffix: ubuntu-x86_64-skylake-${{ github.ref_name }}
-            rustflags: '-C target-cpu=skylake'
+            suffix: ubuntu-x86_64-broadwell-${{ github.ref_name }}
+            rustflags: '-C target-cpu=x86-64-v3 -C target-feature=+adx'
           - os: ubuntu-20.04
             target: aarch64-unknown-linux-gnu
             suffix: ubuntu-aarch64-${{ github.ref_name }}
@@ -114,8 +114,8 @@ jobs:
             rustflags: '-C target-cpu=x86-64-v2'
           - os: windows-2022
             target: x86_64-pc-windows-msvc
-            suffix: windows-x86_64-skylake-${{ github.ref_name }}
-            rustflags: '-C target-cpu=skylake'
+            suffix: windows-x86_64-broadwell-${{ github.ref_name }}
+            rustflags: '-C target-cpu=x86-64-v3 -C target-feature=+adx'
     runs-on: ${{ matrix.build.os }}
     env:
       PRODUCTION_TARGET: target/${{ matrix.build.target }}/production
