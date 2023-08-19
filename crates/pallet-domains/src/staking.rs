@@ -128,7 +128,7 @@ pub(crate) fn do_register_operator<T: Config>(
     domain_id: DomainId,
     amount: BalanceOf<T>,
     config: OperatorConfig<BalanceOf<T>>,
-) -> Result<OperatorId, Error> {
+) -> Result<(OperatorId, EpochIndex), Error> {
     note_pending_staking_operation::<T>(domain_id)?;
 
     DomainStakingSummary::<T>::try_mutate(domain_id, |maybe_domain_stake_summary| {
@@ -173,7 +173,7 @@ pub(crate) fn do_register_operator<T: Config>(
         // update pending transfers
         PendingDeposits::<T>::insert(operator_id, operator_owner, amount);
 
-        Ok(operator_id)
+        Ok((operator_id, domain_stake_summary.current_epoch_index))
     })
 }
 
@@ -703,15 +703,12 @@ pub(crate) mod tests {
                     next_domain_id: domain_id,
                     minimum_nominator_stake: 0,
                     nomination_tax: Default::default(),
-                    current_total_stake: 0,
+                    current_total_stake: operator_stake,
                     current_epoch_rewards: 0,
-                    total_shares: 0,
+                    total_shares: operator_stake,
                     status: OperatorStatus::Registered,
                 }
             );
-            let pending_deposit =
-                PendingDeposits::<Test>::get(operator_id, operator_account).unwrap();
-            assert_eq!(pending_deposit, operator_stake);
 
             let stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
             assert!(stake_summary.next_operators.contains(&operator_id));
@@ -762,8 +759,6 @@ pub(crate) mod tests {
                 )]),
             );
 
-            let pending_deposit = PendingDeposits::<Test>::get(0, operator_account).unwrap();
-            assert_eq!(pending_deposit, operator_stake);
             let pending_deposit = PendingDeposits::<Test>::get(0, nominator_account).unwrap();
             assert_eq!(pending_deposit, nominator_stake);
 
