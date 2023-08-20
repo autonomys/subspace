@@ -229,11 +229,11 @@ impl PiecesReconstructor {
         segment_pieces: &[Option<Piece>],
         piece_position: usize,
     ) -> Result<Piece, ReconstructorError> {
-        let (reconstructed_records, polynomial) = self.reconstruct_shards(segment_pieces)?;
-
         if piece_position >= ArchivedHistorySegment::NUM_PIECES {
             return Err(ReconstructorError::IncorrectPiecePosition);
         }
+
+        let (reconstructed_records, polynomial) = self.reconstruct_shards(segment_pieces)?;
 
         let mut piece = Piece::from(&reconstructed_records[piece_position]);
 
