@@ -187,6 +187,9 @@ where
             trace!(%error, %sender, "On gossip");
         } else {
             trace!(%proof, ?elapsed, %sender, "On gossip");
+            self.engine
+                .lock()
+                .gossip_message(self.topic, proof.encode(), false);
         }
     }
 
