@@ -899,6 +899,7 @@ impl SingleDiskFarm {
                             erasure_coding,
                             handlers,
                             modifying_sector_index,
+                            target_sector_count,
                             sectors_to_plot_receiver,
                         )
                         .await
