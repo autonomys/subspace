@@ -488,6 +488,7 @@ parameter_types! {
     pub const StakeEpochDuration: DomainNumber = 100;
     pub TreasuryAccount: AccountId = PalletId(*b"treasury").into_account_truncating();
     pub const MaxPendingStakingOperation: u32 = 100;
+    pub SudoId: AccountId = Sudo::key().expect("Sudo account must exist");
 }
 
 impl pallet_domains::Config for Runtime {
@@ -514,6 +515,7 @@ impl pallet_domains::Config for Runtime {
     type TreasuryAccount = TreasuryAccount;
     type DomainBlockReward = BlockReward;
     type MaxPendingStakingOperation = MaxPendingStakingOperation;
+    type SudoId = SudoId;
 }
 
 pub struct StakingOnReward;
