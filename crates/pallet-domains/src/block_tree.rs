@@ -2,8 +2,8 @@
 
 use crate::pallet::StateRoots;
 use crate::{
-    BalanceOf, BlockTree, Config, DomainBlocks, ExecutionInbox, ExecutionReceiptOf,
-    HeadReceiptNumber, InboxedBundle,
+    BalanceOf, BlockTree, Config, ConsensusBlockHash, DomainBlocks, ExecutionInbox,
+    ExecutionReceiptOf, HeadReceiptNumber, InboxedBundle,
 };
 use codec::{Decode, Encode};
 use frame_support::{ensure, PalletError};
@@ -11,7 +11,7 @@ use scale_info::TypeInfo;
 use sp_core::Get;
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{DomainId, ExecutionReceipt, OperatorId};
-use sp_runtime::traits::{CheckedSub, One, Saturating, Zero};
+use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Saturating, Zero};
 use sp_std::cmp::Ordering;
 use sp_std::vec::Vec;
 
@@ -29,6 +29,7 @@ pub enum Error {
     MultipleERsAfterChallengePeriod,
     MissingDomainBlock,
     InvalidTraceRoot,
+    UnavailableConsensusBlockHash,
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
@@ -166,14 +167,28 @@ pub(crate) fn verify_execution_receipt<T: Config>(
             expected_execution_trace_root == *execution_trace_root,
             Error::InvalidTraceRoot
         );
-    }
 
-    let excepted_consensus_block_hash =
-        frame_system::Pallet::<T>::block_hash(consensus_block_number);
-    ensure!(
-        *consensus_block_hash == excepted_consensus_block_hash,
-        Error::BuiltOnUnknownConsensusBlock
-    );
+        let excepted_consensus_block_hash =
+            match ConsensusBlockHash::<T>::get(domain_id, consensus_block_number) {
+                Some(hash) => hash,
+                // The `initialize_block` of non-system pallets is skipped in the `validate_transaction`,
+                // thus the hash of best block, which is recorded in the this pallet's `on_initialize` hook,
+                // is unavailable at this point.
+                None => {
+                    let parent_block_number =
+                        frame_system::Pallet::<T>::current_block_number() - One::one();
+                    if *consensus_block_number == parent_block_number {
+                        frame_system::Pallet::<T>::parent_hash()
+                    } else {
+                        return Err(Error::UnavailableConsensusBlockHash);
+                    }
+                }
+            };
+        ensure!(
+            *consensus_block_hash == excepted_consensus_block_hash,
+            Error::BuiltOnUnknownConsensusBlock
+        );
+    }
 
     if let Some(parent_block_number) = domain_block_number.checked_sub(&One::one()) {
         let parent_block_exist = BlockTree::<T>::get(domain_id, parent_block_number)
@@ -267,6 +282,11 @@ pub(crate) fn process_execution_receipt<T: Config>(
                 }
                 let _ = ExecutionInbox::<T>::clear_prefix((domain_id, to_prune), u32::MAX, None);
 
+                ConsensusBlockHash::<T>::remove(
+                    domain_id,
+                    domain_block.execution_receipt.consensus_block_number,
+                );
+
                 pruned_domain_block_info = Some(PrunedDomainBlockInfo {
                     domain_block_number: to_prune,
                     operator_ids: domain_block.operator_ids,
@@ -358,6 +378,7 @@ mod tests {
     use frame_system::Pallet as System;
     use sp_core::{Pair, H256, U256};
     use sp_domains::{BundleDigest, OperatorPair, RuntimeType};
+    use sp_runtime::traits::BlockNumberProvider;
     use subspace_runtime_primitives::SSC;
 
     fn run_to_block<T: Config>(block_number: T::BlockNumber, parent_hash: T::Hash) {
@@ -422,12 +443,13 @@ mod tests {
 
         let head_node = get_block_tree_node_at::<Test>(domain_id, head_receipt_number).unwrap();
         let mut receipt = head_node.execution_receipt;
+        assert_eq!(
+            receipt.consensus_block_number,
+            frame_system::Pallet::<Test>::current_block_number()
+        );
         for block_number in (head_receipt_number + 1)..=to {
-            // Run to `block_number`
-            run_to_block::<Test>(
-                block_number,
-                frame_system::Pallet::<Test>::block_hash(block_number - 1),
-            );
+            // Finilize parent block and initialize block at `block_number`
+            run_to_block::<Test>(block_number, receipt.consensus_block_hash);
 
             // Submit a bundle with the receipt of the last block
             let bundle_extrinsics_root = H256::random();
@@ -448,7 +470,7 @@ mod tests {
                 get_block_tree_node_at::<Test>(domain_id, head_receipt_number).unwrap();
             receipt = create_dummy_receipt(
                 block_number,
-                frame_system::Pallet::<Test>::block_hash(block_number),
+                H256::random(),
                 parent_block_tree_node.execution_receipt.hash(),
                 vec![bundle_extrinsics_root],
             );
@@ -512,14 +534,29 @@ mod tests {
             // The genesis node of the block tree
             let genesis_node = get_block_tree_node_at::<Test>(domain_id, 0).unwrap();
             let mut receipt = genesis_node.execution_receipt;
+            assert_eq!(
+                receipt.consensus_block_number,
+                frame_system::Pallet::<Test>::current_block_number()
+            );
             let mut receipt_of_block_1 = None;
             let mut bundle_header_hash_of_block_1 = None;
             for block_number in 1..=(block_tree_pruning_depth + 3) {
-                // Run to `block_number`
-                run_to_block::<Test>(
-                    block_number,
-                    frame_system::Pallet::<Test>::block_hash(block_number - 1),
-                );
+                // Finilize parent block and initialize block at `block_number`
+                run_to_block::<Test>(block_number, receipt.consensus_block_hash);
+
+                if block_number != 1 {
+                    // `ConsensusBlockHash` should be set to `Some` since last consensus block contains bundle
+                    assert_eq!(
+                        ConsensusBlockHash::<Test>::get(domain_id, block_number - 1),
+                        Some(frame_system::Pallet::<Test>::block_hash(block_number - 1))
+                    );
+                    // ER point to last consensus block should have `NewHead` type
+                    assert_eq!(
+                        execution_receipt_type::<Test>(domain_id, &receipt),
+                        ReceiptType::Accepted(AcceptedReceiptType::NewHead)
+                    );
+                    assert_ok!(verify_execution_receipt::<Test>(domain_id, &receipt));
+                }
 
                 // Submit a bundle with the receipt of the last block
                 let bundle_extrinsics_root = H256::random();
@@ -563,15 +600,10 @@ mod tests {
                 // in the next bundle
                 receipt = create_dummy_receipt(
                     block_number,
-                    frame_system::Pallet::<Test>::block_hash(block_number),
+                    H256::random(),
                     *parent_domain_block_receipt,
                     vec![bundle_extrinsics_root],
                 );
-                assert_eq!(
-                    execution_receipt_type::<Test>(domain_id, &receipt),
-                    ReceiptType::Accepted(AcceptedReceiptType::NewHead)
-                );
-                assert_ok!(verify_execution_receipt::<Test>(domain_id, &receipt));
 
                 // Record receipt of block #1 for later use
                 if block_number == 1 {
@@ -595,6 +627,11 @@ mod tests {
                 verify_execution_receipt::<Test>(domain_id, &pruned_receipt),
                 Error::InvalidExtrinsicsRoots
             );
+            assert!(ConsensusBlockHash::<Test>::get(
+                domain_id,
+                pruned_receipt.consensus_block_number
+            )
+            .is_none());
         });
     }
 
@@ -765,8 +802,7 @@ mod tests {
                     .unwrap()
                     .execution_receipt;
 
-            // In future receipt will result in `UnknownParentBlockReceipt` error as its parent
-            // receipt is missing from the block tree
+            // Construct a future receipt
             let mut future_receipt = current_head_receipt.clone();
             future_receipt.domain_block_number = head_receipt_number + 2;
             future_receipt.consensus_block_number = head_receipt_number + 2;
@@ -790,6 +826,19 @@ mod tests {
                 execution_receipt_type::<Test>(domain_id, &future_receipt),
                 ReceiptType::Rejected(RejectedReceiptType::InFuture)
             );
+
+            // Return `UnavailableConsensusBlockHash` error since ER point to a future consensus block
+            assert_err!(
+                verify_execution_receipt::<Test>(domain_id, &future_receipt),
+                Error::UnavailableConsensusBlockHash
+            );
+            ConsensusBlockHash::<Test>::insert(
+                domain_id,
+                future_receipt.consensus_block_number,
+                future_receipt.consensus_block_hash,
+            );
+
+            // Return `UnknownParentBlockReceipt` error as its parent receipt is missing from the block tree
             assert_err!(
                 verify_execution_receipt::<Test>(domain_id, &future_receipt),
                 Error::UnknownParentBlockReceipt
