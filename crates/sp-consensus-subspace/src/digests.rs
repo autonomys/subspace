@@ -67,14 +67,6 @@ impl<PublicKey, RewardAddress> PreDigest<PublicKey, RewardAddress> {
 /// versioning added on the proof side
 #[derive(Clone, Encode, Decode)]
 pub enum PotPreDigest {
-    /// The block was produced in the bootstrapping phase, where
-    /// the genesis slot has not yet been determined and the proof
-    /// production has not started.
-    Bootstrapping,
-
-    /// Genesis slot determined by the bootstrap node.
-    FirstBlock(SlotNumber),
-
     /// V0 proof.
     V0(NonEmptyVec<PotProof>),
 }
@@ -86,50 +78,31 @@ impl PotPreDigest {
     }
 
     /// Returns a reference to the proofs.
-    pub fn proofs(&self) -> Option<&NonEmptyVec<PotProof>> {
+    pub fn proofs(&self) -> &NonEmptyVec<PotProof> {
         match self {
-            Self::Bootstrapping | Self::FirstBlock(_) => None,
-            Self::V0(proofs) => Some(proofs),
+            Self::V0(proofs) => proofs,
         }
     }
 
     /// Returns the starting slot number for the proofs in the next
     /// block.
-    pub fn next_block_initial_slot(&self) -> Option<SlotNumber> {
+    pub fn next_block_initial_slot(&self) -> SlotNumber {
         match self {
-            Self::Bootstrapping => None,
-            Self::FirstBlock(slot_number) => Some(slot_number + 1),
-            Self::V0(proofs) => Some(proofs.last().slot_number + 1),
+            Self::V0(proofs) => proofs.last().slot_number + 1,
         }
     }
 
     /// Returns the global randomness from the proofs in the block pre digest.
     pub fn derive_global_randomness(&self) -> Randomness {
         match self {
-            Self::Bootstrapping | Self::FirstBlock(_) => Randomness::default(),
             Self::V0(proofs) => proofs.last().derive_global_randomness().into(),
         }
-    }
-}
-
-impl Default for PotPreDigest {
-    fn default() -> Self {
-        Self::Bootstrapping
     }
 }
 
 impl fmt::Debug for PotPreDigest {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Bootstrapping => {
-                write!(f, "PotPreDigest::Bootstrapping")
-            }
-            Self::FirstBlock(slot_number) => {
-                write!(
-                    f,
-                    "PotPreDigest::FirstBlock => genesis_slot = {slot_number}"
-                )
-            }
             Self::V0(proofs) => {
                 write!(
                     f,
@@ -638,17 +611,6 @@ where
                 // Ignore
             }
         }
-    }
-
-    // If global randomness was not in the logs, try to get it from the POT
-    #[cfg(feature = "pot")]
-    if maybe_global_randomness.is_none() {
-        maybe_global_randomness = maybe_pre_digest.as_ref().and_then(|pre_digest| {
-            pre_digest
-                .proof_of_time
-                .as_ref()
-                .map(|pot| pot.derive_global_randomness())
-        });
     }
 
     Ok(SubspaceDigestItems {

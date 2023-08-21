@@ -21,7 +21,7 @@ pub use time_keeper::TimeKeeper;
 #[derive(Debug, Clone)]
 pub struct PotConfig {
     /// PoT key used initially when PoT chain starts.
-    // TODO: Use this field
+    // TODO: Also add seed field here
     pub initial_key: PotKey,
 
     /// Frequency of entropy injection from consensus.
@@ -52,6 +52,10 @@ pub struct PotConfig {
 /// Components initialized during the new_partial() phase of set up.
 #[derive(Debug)]
 pub struct PotComponents {
+    /// PoT key used initially when PoT chain starts.
+    // TODO: Remove this from here, shouldn't be necessary eventually
+    pub(crate) initial_key: PotKey,
+
     /// If the role is time keeper or node client.
     is_time_keeper: bool,
 
@@ -71,9 +75,11 @@ impl PotComponents {
         let proof_of_time = ProofOfTime::new(config.pot_iterations, config.num_checkpoints)
             // TODO: Proper error handling or proof
             .expect("Failed to initialize proof of time");
+        let initial_key = config.initial_key;
         let (protocol_state, consensus_state) = init_pot_state(config, proof_of_time);
 
         Self {
+            initial_key,
             is_time_keeper,
             proof_of_time,
             protocol_state,

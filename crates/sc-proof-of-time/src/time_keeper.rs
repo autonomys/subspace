@@ -3,8 +3,8 @@
 use crate::state_manager::PotProtocolState;
 use crate::PotComponents;
 use futures::channel::mpsc;
-use futures::{SinkExt, StreamExt};
-use sc_client_api::BlockchainEvents;
+use futures::SinkExt;
+use sc_client_api::BlockBackend;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_subspace::digests::extract_pre_digest;
 use sp_core::H256;
@@ -13,7 +13,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
-use subspace_core_primitives::{NonEmptyVec, PotProof, PotSeed};
+use subspace_core_primitives::{NonEmptyVec, PotKey, PotProof, PotSeed};
 use subspace_proof_of_time::ProofOfTime;
 use tokio::sync::mpsc::{channel, Receiver, Sender};
 use tracing::{debug, error, trace, warn};
@@ -25,6 +25,8 @@ const PROOFS_CHANNEL_SIZE: usize = 12; // 2 * reveal lag.
 
 /// The time keeper manages the protocol: periodic proof generation/verification, gossip.
 pub struct TimeKeeper<Block, Client> {
+    // TODO: Remove this from here, shouldn't be necessary eventually
+    initial_key: PotKey,
     proof_of_time: ProofOfTime,
     pot_state: Arc<dyn PotProtocolState>,
     client: Arc<Client>,
@@ -39,7 +41,7 @@ pub struct TimeKeeper<Block, Client> {
 impl<Block, Client> TimeKeeper<Block, Client>
 where
     Block: BlockT<Hash = H256>,
-    Client: HeaderBackend<Block> + BlockchainEvents<Block>,
+    Client: HeaderBackend<Block> + BlockBackend<Block>,
 {
     /// Creates the time keeper instance.
     pub fn new(
@@ -49,6 +51,7 @@ where
         gossip_sender: mpsc::Sender<PotProof>,
     ) -> Self {
         Self {
+            initial_key: components.initial_key,
             proof_of_time: components.proof_of_time,
             pot_state: Arc::clone(&components.protocol_state),
             client,
@@ -74,61 +77,61 @@ where
 
     /// Initializes the chain state from the consensus tip info.
     async fn initialize(&self) {
-        debug!("Waiting for initialization");
+        debug!("Initializing timekeeper");
 
-        // Wait for the first block import.
-        let mut block_import = self.client.import_notification_stream();
-        while let Some(incoming_block) = block_import.next().await {
-            let pre_digest = match extract_pre_digest(&incoming_block.header) {
-                Ok(pre_digest) => pre_digest,
-                Err(error) => {
-                    warn!(
-                        %error,
-                        block_hash = %incoming_block.hash,
-                        origin = ?incoming_block.origin,
-                        "Failed to get pre_digest",
-                    );
-                    continue;
-                }
-            };
-
-            let pot_pre_digest = match pre_digest.pot_pre_digest() {
-                Some(pot_pre_digest) => pot_pre_digest,
-                None => {
-                    warn!(
-                        block_hash = %incoming_block.hash,
-                        origin = ?incoming_block.origin,
-                        "Failed to get pot_pre_digest",
-                    );
-                    continue;
-                }
-            };
-
-            debug!(
-                block_hash = %incoming_block.hash,
-                origin = ?incoming_block.origin,
-                ?pot_pre_digest,
-                "Initialization complete",
-            );
-            let proofs = pot_pre_digest.proofs().cloned().unwrap_or_else(|| {
-                // Producing proofs starting from (genesis_slot + 1).
-                // TODO: Proper error handling or proof
-                let block_hash = incoming_block.hash.into();
-                let proof = self.proof_of_time.create(
-                    PotSeed::from_genesis_block_hash(block_hash),
-                    Default::default(), // TODO: key from cmd line or BTC
-                    pot_pre_digest
-                        .next_block_initial_slot()
-                        .expect("Initial slot number should be available for block_number >= 1"),
-                    block_hash,
+        let best_hash = self.client.info().best_hash;
+        let best_block = match self.client.block(best_hash) {
+            Ok(maybe_best_header) => maybe_best_header.expect("Best block must exist; qed").block,
+            Err(error) => {
+                // TODO: This is very bad, initialization must become fallible
+                error!(
+                    %error,
+                    %best_hash,
+                    "Failed to get best block",
                 );
-                debug!(%proof, "Creating first proof");
-                NonEmptyVec::new_with_entry(proof)
-            });
+                return;
+            }
+        };
 
-            self.pot_state.reset(proofs);
-            return;
-        }
+        let pre_digest = match extract_pre_digest(best_block.header()) {
+            Ok(pre_digest) => pre_digest,
+            Err(error) => {
+                // TODO: This is very bad, initialization must become fallible
+                error!(
+                    %error,
+                    %best_hash,
+                    "Failed to get pre_digest",
+                );
+                return;
+            }
+        };
+
+        let maybe_pot_pre_digest = pre_digest.pot_pre_digest();
+
+        let proofs = match maybe_pot_pre_digest {
+            Some(pot_pre_digest) => pot_pre_digest.proofs().clone(),
+            None => {
+                // TODO: We shouldn't need to generate proofs here, but current state expects parent
+                //  proofs to exist
+                // No proof of time means genesis block, produce the very first proof
+                let proof = self.proof_of_time.create(
+                    PotSeed::from_genesis_block_hash(best_hash.into()),
+                    self.initial_key,
+                    0,
+                    best_hash.into(),
+                );
+                debug!(%proof, "Created the first proof");
+                NonEmptyVec::new_with_entry(proof)
+            }
+        };
+
+        self.pot_state.reset(proofs);
+
+        debug!(
+            %best_hash,
+            ?maybe_pot_pre_digest,
+            "Initialization complete",
+        );
     }
 
     /// Starts the thread to produce the proofs.
