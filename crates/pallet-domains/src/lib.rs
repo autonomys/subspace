@@ -213,14 +213,7 @@ mod pallet {
         /// A variation of the Identifier used for holding the funds used for staking and domains.
         type HoldIdentifier: HoldIdentifier<Self>;
 
-        /// The block tree pruning depth, its value should <= `BlockHashCount` because we
-        /// need the consensus block hash to verify execution receipt, which is used to
-        /// construct the node of the block tree.
-        ///
-        /// TODO: `BlockTreePruningDepth` <= `BlockHashCount` is not enough to guarantee the consensus block
-        /// hash must exists while verifying receipt because the domain block is not mapping to the consensus
-        /// block one by one, we need to either store the consensus block hash in runtime manually or store
-        /// the consensus block hash in the client side and use host function to get them in runtime.
+        /// The block tree pruning depth.
         #[pallet::constant]
         type BlockTreePruningDepth: Get<Self::DomainNumber>;
 
@@ -279,6 +272,9 @@ mod pallet {
         /// The maximum number of pending staking operation that can perform upon epoch transition.
         #[pallet::constant]
         type MaxPendingStakingOperation: Get<u32>;
+
+        #[pallet::constant]
+        type SudoId: Get<Self::AccountId>;
     }
 
     #[pallet::pallet]
@@ -467,6 +463,17 @@ mod pallet {
         T::DomainHash,
         OptionQuery,
     >;
+
+    /// The consensus block hash used to verify ER, only store the consensus block hash for a domain
+    /// if that consensus block contains bundle of the domain, the hash will be pruned when the ER
+    /// that point to the consensus block is pruned.
+    ///
+    /// TODO: this storage is unbounded in some cases, see https://github.com/subspace/subspace/issues/1673
+    /// for more details, this will be fixed once https://github.com/subspace/subspace/issues/1731 is implemented.
+    #[pallet::storage]
+    #[pallet::getter(fn consensus_hash)]
+    pub type ConsensusBlockHash<T: Config> =
+        StorageDoubleMap<_, Identity, DomainId, Identity, T::BlockNumber, T::Hash, OptionQuery>;
 
     /// A set of `BundleDigest` from all bundles that successfully submitted to the consensus block,
     /// these bundles will be used to construct the domain block and `ExecutionInbox` is used to:
@@ -899,12 +906,21 @@ mod pallet {
         pub fn instantiate_domain(
             origin: OriginFor<T>,
             domain_config: DomainConfig,
+            raw_genesis: Vec<u8>,
         ) -> DispatchResult {
-            let who = ensure_signed(origin)?;
+            let who = if raw_genesis.is_empty() {
+                ensure_signed(origin)?
+            } else {
+                // TODO: remove once XDM is finished
+                ensure_root(origin)?;
+                T::SudoId::get()
+            };
+
             let created_at = frame_system::Pallet::<T>::current_block_number();
 
-            let domain_id = do_instantiate_domain::<T>(domain_config, who, created_at, None)
-                .map_err(Error::<T>::from)?;
+            let domain_id =
+                do_instantiate_domain::<T>(domain_config, who, created_at, Some(raw_genesis))
+                    .map_err(Error::<T>::from)?;
 
             Self::deposit_event(Event::DomainInstantiated { domain_id });
 
@@ -1067,7 +1083,13 @@ mod pallet {
 
             do_upgrade_runtimes::<T>(block_number);
 
-            let _ = SuccessfulBundles::<T>::clear(u32::MAX, None);
+            // Store the hash of the parent consensus block for domain that have bundles submitted
+            // in that consensus block
+            let parent_number = block_number - One::one();
+            let parent_hash = frame_system::Pallet::<T>::block_hash(parent_number);
+            for (domain_id, _) in SuccessfulBundles::<T>::drain() {
+                ConsensusBlockHash::<T>::insert(domain_id, parent_number, parent_hash);
+            }
 
             Weight::zero()
         }

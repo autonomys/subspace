@@ -73,7 +73,6 @@ use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
-use static_assertions::const_assert;
 use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
@@ -489,11 +488,8 @@ parameter_types! {
     pub const StakeEpochDuration: DomainNumber = 100;
     pub TreasuryAccount: AccountId = PalletId(*b"treasury").into_account_truncating();
     pub const MaxPendingStakingOperation: u32 = 100;
+    pub SudoId: AccountId = Sudo::key().expect("Sudo account must exist");
 }
-
-// `BlockTreePruningDepth` should <= `BlockHashCount` because we need the consensus block hash to verify
-// execution receipt, which is used to construct the node of the block tree.
-const_assert!(BlockTreePruningDepth::get() <= BlockHashCount::get());
 
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
@@ -519,6 +515,7 @@ impl pallet_domains::Config for Runtime {
     type TreasuryAccount = TreasuryAccount;
     type DomainBlockReward = BlockReward;
     type MaxPendingStakingOperation = MaxPendingStakingOperation;
+    type SudoId = SudoId;
 }
 
 pub struct StakingOnReward;
