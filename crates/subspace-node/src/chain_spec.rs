@@ -25,6 +25,7 @@ use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::crypto::{Ss58Codec, UncheckedFrom};
 use sp_domains::RuntimeType;
 use sp_runtime::Percent;
+use subspace_core_primitives::PotKey;
 use subspace_runtime::{
     AllowAuthoringBy, BalancesConfig, DomainsConfig, GenesisConfig, MaxDomainBlockSize,
     MaxDomainBlockWeight, RuntimeConfigsConfig, SubspaceConfig, SudoConfig, SystemConfig,
@@ -166,7 +167,14 @@ pub fn gemini_3f_compiled() -> Result<ConsensusChainSpec<GenesisConfig>, String>
         Some("subspace-gemini-3f"),
         None,
         // Properties
-        Some(chain_spec_properties()),
+        Some({
+            let mut properties = chain_spec_properties();
+            properties.insert(
+                "potInitialKey".to_string(),
+                serde_json::to_value(None::<PotKey>).expect("Serialization is not infallible; qed"),
+            );
+            properties
+        }),
         // Extensions
         NoExtension::None,
     ))
@@ -256,7 +264,14 @@ pub fn devnet_config_compiled() -> Result<ConsensusChainSpec<GenesisConfig>, Str
         Some("subspace-devnet"),
         None,
         // Properties
-        Some(chain_spec_properties()),
+        Some({
+            let mut properties = chain_spec_properties();
+            properties.insert(
+                "potInitialKey".to_string(),
+                serde_json::to_value(None::<PotKey>).expect("Serialization is not infallible; qed"),
+            );
+            properties
+        }),
         // Extensions
         NoExtension::None,
     ))
@@ -303,7 +318,14 @@ pub fn dev_config() -> Result<ConsensusChainSpec<GenesisConfig>, String> {
         None,
         None,
         // Properties
-        Some(chain_spec_properties()),
+        Some({
+            let mut properties = chain_spec_properties();
+            properties.insert(
+                "potInitialKey".to_string(),
+                serde_json::to_value(None::<PotKey>).expect("Serialization is not infallible; qed"),
+            );
+            properties
+        }),
         // Extensions
         NoExtension::None,
     ))
@@ -358,7 +380,14 @@ pub fn local_config() -> Result<ConsensusChainSpec<GenesisConfig>, String> {
         None,
         None,
         // Properties
-        Some(chain_spec_properties()),
+        Some({
+            let mut properties = chain_spec_properties();
+            properties.insert(
+                "potInitialKey".to_string(),
+                serde_json::to_value(None::<PotKey>).expect("Serialization is not infallible; qed"),
+            );
+            properties
+        }),
         // Extensions
         NoExtension::None,
     ))

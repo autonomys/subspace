@@ -9,7 +9,7 @@ mod time_keeper;
 use crate::state_manager::{init_pot_state, PotProtocolState};
 use core::num::{NonZeroU32, NonZeroU8};
 use std::sync::Arc;
-use subspace_core_primitives::{BlockNumber, SlotNumber};
+use subspace_core_primitives::{BlockNumber, PotKey, SlotNumber};
 use subspace_proof_of_time::ProofOfTime;
 
 pub use state_manager::{
@@ -20,6 +20,10 @@ pub use time_keeper::TimeKeeper;
 // TODO: change the fields that can't be zero to NonZero types.
 #[derive(Debug, Clone)]
 pub struct PotConfig {
+    /// PoT key used initially when PoT chain starts.
+    // TODO: Use this field
+    pub initial_key: PotKey,
+
     /// Frequency of entropy injection from consensus.
     pub randomness_update_interval_blocks: BlockNumber,
 
@@ -45,23 +49,6 @@ pub struct PotConfig {
     pub num_checkpoints: NonZeroU8,
 }
 
-impl Default for PotConfig {
-    fn default() -> Self {
-        // TODO: fill proper values. These are set to use less
-        // CPU and take less than 1 sec to produce per proof
-        // during the initial testing.
-        Self {
-            randomness_update_interval_blocks: 18,
-            injection_depth_blocks: 90,
-            global_randomness_reveal_lag_slots: 6,
-            pot_injection_lag_slots: 6,
-            max_future_slots: 10,
-            pot_iterations: NonZeroU32::new(4 * 1_000).expect("Not zero; qed"),
-            num_checkpoints: NonZeroU8::new(4).expect("Not zero; qed"),
-        }
-    }
-}
-
 /// Components initialized during the new_partial() phase of set up.
 #[derive(Debug)]
 pub struct PotComponents {
@@ -80,8 +67,7 @@ pub struct PotComponents {
 
 impl PotComponents {
     /// Sets up the partial components.
-    pub fn new(is_time_keeper: bool) -> Self {
-        let config = PotConfig::default();
+    pub fn new(is_time_keeper: bool, config: PotConfig) -> Self {
         let proof_of_time = ProofOfTime::new(config.pot_iterations, config.num_checkpoints)
             // TODO: Proper error handling or proof
             .expect("Failed to initialize proof of time");

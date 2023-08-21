@@ -31,6 +31,7 @@ use sc_telemetry::serde_json;
 use serde_json::Value;
 use std::io::Write;
 use std::{fs, io};
+use subspace_core_primitives::PotKey;
 use subspace_networking::libp2p::Multiaddr;
 
 /// Executor dispatch for subspace runtime
@@ -287,6 +288,12 @@ pub struct Cli {
     /// Assigned PoT role for this node.
     #[arg(long, default_value = "none", value_parser(EnumValueParser::< CliPotRole >::new()))]
     pub pot_role: CliPotRole,
+
+    /// Initial PoT key (unless specified in chain spec already).
+    ///
+    /// Key is a 16-byte hex string.
+    #[arg(long)]
+    pub pot_initial_key: Option<PotKey>,
 }
 
 impl SubstrateCli for Cli {
