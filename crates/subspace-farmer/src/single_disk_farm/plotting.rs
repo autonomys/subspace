@@ -94,6 +94,7 @@ pub(super) async fn plotting<NC, PG, PosTable>(
     erasure_coding: ErasureCoding,
     handlers: Arc<Handlers>,
     modifying_sector_index: Arc<RwLock<Option<SectorIndex>>>,
+    target_sector_count: u16,
     mut sectors_to_plot: mpsc::Receiver<(SectorIndex, oneshot::Sender<()>)>,
 ) -> Result<(), PlottingError>
 where
@@ -225,7 +226,11 @@ where
         if maybe_old_plotted_sector.is_some() {
             info!(%sector_index, "Sector replotted successfully");
         } else {
-            info!(%sector_index, "Sector plotted successfully");
+            info!(
+                %sector_index,
+                "Sector plotted successfully ({:.2}%)",
+                (sector_index + 1) as f32 / target_sector_count as f32 * 100.0
+            );
         }
 
         handlers
