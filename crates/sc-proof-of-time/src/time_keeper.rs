@@ -115,7 +115,7 @@ where
                 // TODO: Proper error handling or proof
                 let block_hash = incoming_block.hash.into();
                 let proof = self.proof_of_time.create(
-                    PotSeed::from_block_hash(block_hash),
+                    PotSeed::from_genesis_block_hash(block_hash),
                     Default::default(), // TODO: key from cmd line or BTC
                     pot_pre_digest
                         .next_block_initial_slot()

@@ -289,10 +289,9 @@ impl FromStr for PotKey {
 pub struct PotSeed(PotBytes);
 
 impl PotSeed {
-    /// Builds the seed from block hash (e.g) used to create initial seed from
-    /// genesis block hash.
+    /// Derive initial PoT seed from genesis block hash.
     #[inline]
-    pub fn from_block_hash(block_hash: BlockHash) -> Self {
+    pub fn from_genesis_block_hash(block_hash: BlockHash) -> Self {
         Self(truncate_32_bytes(block_hash))
     }
 }
