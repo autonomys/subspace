@@ -339,6 +339,7 @@ where
             self.key,
             false,
             self.account_nonce(),
+            0,
         );
         self.rpc_handlers.send_transaction(extrinsic.into()).await
     }
@@ -349,7 +350,24 @@ where
         nonce: u32,
         function: impl Into<<Runtime as frame_system::Config>::RuntimeCall>,
     ) -> UncheckedExtrinsicFor<Runtime> {
-        construct_extrinsic_generic::<Runtime, _>(&self.client, function, self.key, false, nonce)
+        construct_extrinsic_generic::<Runtime, _>(&self.client, function, self.key, false, nonce, 0)
+    }
+
+    /// Construct an extrinsic with the given transaction tip.
+    pub fn construct_extrinsic_with_tip(
+        &mut self,
+        nonce: u32,
+        tip: u32,
+        function: impl Into<<Runtime as frame_system::Config>::RuntimeCall>,
+    ) -> UncheckedExtrinsicFor<Runtime> {
+        construct_extrinsic_generic::<Runtime, _>(
+            &self.client,
+            function,
+            self.key,
+            false,
+            nonce,
+            tip,
+        )
     }
 
     /// Send an extrinsic to this node.

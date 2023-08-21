@@ -2236,6 +2236,7 @@ dependencies = [
  "domain-test-primitives",
  "domain-test-service",
  "evm-domain-test-runtime",
+ "frame-system",
  "futures",
  "futures-timer",
  "num-traits",
@@ -2835,6 +2836,7 @@ dependencies = [
  "pallet-balances",
  "pallet-base-fee 1.0.0 (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
  "pallet-domain-id",
+ "pallet-domain-transaction-fees",
  "pallet-ethereum 4.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
  "pallet-evm 6.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
  "pallet-evm-chain-id 1.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
@@ -2888,6 +2890,7 @@ dependencies = [
  "pallet-balances",
  "pallet-base-fee 1.0.0 (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
  "pallet-domain-id",
+ "pallet-domain-transaction-fees",
  "pallet-ethereum 4.0.0-dev (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
  "pallet-evm 6.0.0-dev (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
  "pallet-evm-chain-id 1.0.0-dev (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
@@ -6838,6 +6841,18 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "sp-domains",
+]
+
+[[package]]
+name = "pallet-domain-transaction-fees"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-runtime",
+ "sp-std",
 ]
 
 [[package]]
