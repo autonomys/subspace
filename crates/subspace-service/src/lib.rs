@@ -58,7 +58,7 @@ use sc_network::NetworkService;
 use sc_proof_of_time::gossip::{pot_gossip_peers_set_config, PotGossipWorker};
 use sc_proof_of_time::{PotComponents, TimeKeeper};
 use sc_service::error::Error as ServiceError;
-use sc_service::{Configuration, NetworkStarter, PartialComponents, SpawnTasksParams, TaskManager};
+use sc_service::{Configuration, NetworkStarter, SpawnTasksParams, TaskManager};
 use sc_subspace_block_relay::{build_consensus_relay, NetworkWrapper};
 use sc_telemetry::{Telemetry, TelemetryWorker};
 use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi, TransactionFor};
@@ -227,6 +227,51 @@ where
     }
 }
 
+/// Other partial components returned by [`new_partial()`]
+pub struct OtherPartialComponents<RuntimeApi, ExecutorDispatch>
+where
+    RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
+        + Send
+        + Sync
+        + 'static,
+    ExecutorDispatch: NativeExecutionDispatch + 'static,
+{
+    /// Subspace block import
+    pub block_import: Box<
+        dyn BlockImport<
+                Block,
+                Error = ConsensusError,
+                Transaction = TransactionFor<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
+            > + Send
+            + Sync,
+    >,
+    /// Subspace link
+    pub subspace_link: SubspaceLink<Block>,
+    /// Segment headers store
+    pub segment_headers_store: SegmentHeadersStore<FullClient<RuntimeApi, ExecutorDispatch>>,
+    /// Telemetry
+    pub telemetry: Option<Telemetry>,
+    /// PoT components
+    pub pot_components: Option<PotComponents>,
+}
+
+type PartialComponents<RuntimeApi, ExecutorDispatch> = sc_service::PartialComponents<
+    FullClient<RuntimeApi, ExecutorDispatch>,
+    FullBackend,
+    FullSelectChain,
+    DefaultImportQueue<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
+    FullPool<
+        Block,
+        FullClient<RuntimeApi, ExecutorDispatch>,
+        ConsensusChainTxPreValidator<
+            Block,
+            FullClient<RuntimeApi, ExecutorDispatch>,
+            FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
+        >,
+    >,
+    OtherPartialComponents<RuntimeApi, ExecutorDispatch>,
+>;
+
 /// Creates `PartialComponents` for Subspace client.
 #[allow(clippy::type_complexity)]
 pub fn new_partial<PosTable, RuntimeApi, ExecutorDispatch>(
@@ -238,35 +283,7 @@ pub fn new_partial<PosTable, RuntimeApi, ExecutorDispatch>(
         ) -> Arc<dyn GenerateGenesisStateRoot>,
     >,
     pot_components: Option<PotComponents>,
-) -> Result<
-    PartialComponents<
-        FullClient<RuntimeApi, ExecutorDispatch>,
-        FullBackend,
-        FullSelectChain,
-        DefaultImportQueue<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
-        FullPool<
-            Block,
-            FullClient<RuntimeApi, ExecutorDispatch>,
-            ConsensusChainTxPreValidator<
-                Block,
-                FullClient<RuntimeApi, ExecutorDispatch>,
-                FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
-            >,
-        >,
-        (
-            impl BlockImport<
-                Block,
-                Error = ConsensusError,
-                Transaction = TransactionFor<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
-            >,
-            SubspaceLink<Block>,
-            SegmentHeadersStore<FullClient<RuntimeApi, ExecutorDispatch>>,
-            Option<Telemetry>,
-            Option<PotComponents>,
-        ),
-    >,
-    ServiceError,
->
+) -> Result<PartialComponents<RuntimeApi, ExecutorDispatch>, ServiceError>
 where
     PosTable: Table,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
@@ -425,6 +442,14 @@ where
         config.role.is_authority(),
     )?;
 
+    let other = OtherPartialComponents {
+        block_import: Box::new(block_import),
+        subspace_link,
+        segment_headers_store,
+        telemetry,
+        pot_components,
+    };
+
     Ok(PartialComponents {
         client,
         backend,
@@ -433,13 +458,7 @@ where
         keystore_container,
         select_chain,
         transaction_pool,
-        other: (
-            block_import,
-            subspace_link,
-            segment_headers_store,
-            telemetry,
-            pot_components,
-        ),
+        other,
     })
 }
 
@@ -497,31 +516,9 @@ type FullNode<RuntimeApi, ExecutorDispatch> = NewFull<
 >;
 
 /// Builds a new service for a full client.
-#[allow(clippy::type_complexity)]
-pub async fn new_full<PosTable, RuntimeApi, ExecutorDispatch, I>(
+pub async fn new_full<PosTable, RuntimeApi, ExecutorDispatch>(
     config: SubspaceConfiguration,
-    partial_components: PartialComponents<
-        FullClient<RuntimeApi, ExecutorDispatch>,
-        FullBackend,
-        FullSelectChain,
-        DefaultImportQueue<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
-        FullPool<
-            Block,
-            FullClient<RuntimeApi, ExecutorDispatch>,
-            ConsensusChainTxPreValidator<
-                Block,
-                FullClient<RuntimeApi, ExecutorDispatch>,
-                FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
-            >,
-        >,
-        (
-            I,
-            SubspaceLink<Block>,
-            SegmentHeadersStore<FullClient<RuntimeApi, ExecutorDispatch>>,
-            Option<Telemetry>,
-            Option<PotComponents>,
-        ),
-    >,
+    partial_components: PartialComponents<RuntimeApi, ExecutorDispatch>,
     enable_rpc_extensions: bool,
     block_proposal_slot_portion: SlotProportion,
 ) -> Result<FullNode<RuntimeApi, ExecutorDispatch>, Error>
@@ -544,13 +541,6 @@ where
         + ObjectsApi<Block>
         + PreValidationObjectApi<Block, DomainNumber, DomainHash>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
-    I: BlockImport<
-            Block,
-            Error = ConsensusError,
-            Transaction = TransactionFor<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
-        > + Send
-        + Sync
-        + 'static,
 {
     let PartialComponents {
         client,
@@ -560,8 +550,15 @@ where
         keystore_container,
         select_chain,
         transaction_pool,
-        other: (block_import, subspace_link, segment_headers_store, mut telemetry, pot_components),
+        other,
     } = partial_components;
+    let OtherPartialComponents {
+        block_import,
+        subspace_link,
+        segment_headers_store,
+        mut telemetry,
+        pot_components,
+    } = other;
 
     let (node, bootstrap_nodes) = match config.subspace_networking.clone() {
         SubspaceNetworking::Reuse {

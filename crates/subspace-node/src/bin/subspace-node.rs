@@ -493,7 +493,7 @@ fn main() -> Result<(), Error> {
                             ))
                         })?;
 
-                    subspace_service::new_full::<PosTable, _, _, _>(
+                    subspace_service::new_full::<PosTable, _, _>(
                         consensus_chain_config,
                         partial_components,
                         true,
