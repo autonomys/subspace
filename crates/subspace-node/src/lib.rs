@@ -67,6 +67,15 @@ pub struct PurgeChainCmd {
     /// The base struct of the purge-chain command.
     #[clap(flatten)]
     pub base: sc_cli::PurgeChainCmd,
+
+    /// Domain arguments
+    ///
+    /// The command-line arguments provided first will be passed to the embedded consensus node,
+    /// while the arguments provided after `--` will be passed to the domain node.
+    ///
+    /// subspace-node purge-chain [consensus-chain-args] -- [domain-args]
+    #[arg(raw = true)]
+    pub domain_args: Vec<String>,
 }
 
 impl PurgeChainCmd {
@@ -74,18 +83,24 @@ impl PurgeChainCmd {
     pub fn run(
         &self,
         consensus_chain_config: sc_service::Configuration,
-        domain_config: sc_service::Configuration,
+        domain_config: Option<sc_service::Configuration>,
     ) -> sc_cli::Result<()> {
-        let db_paths = vec![
-            domain_config
+        let mut db_paths = domain_config.map_or(vec![], |dc| {
+            vec![dc
                 .database
                 .path()
-                .expect("No custom database used here; qed"),
+                .expect("No custom database used here; qed")
+                .to_path_buf()
+                .clone()]
+        });
+
+        db_paths.push(
             consensus_chain_config
                 .database
                 .path()
-                .expect("No custom database used here; qed"),
-        ];
+                .expect("No custom database used here; qed")
+                .to_path_buf(),
+        );
 
         if !self.base.yes {
             for db_path in &db_paths {
