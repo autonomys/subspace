@@ -340,6 +340,7 @@ fn main() -> Result<(), Error> {
                     }
                 })?;
             }
+            DomainSubcommand::LoadGenesisConfig(cmd) => cmd.run()?,
             _ => unimplemented!("Domain subcommand"),
         },
         None => {
