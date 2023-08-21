@@ -937,6 +937,10 @@ impl_runtime_apis! {
         fn extrinsic_weight(ext: &<Block as BlockT>::Extrinsic) -> Weight {
             ext.get_dispatch_info().weight
         }
+
+        fn block_transaction_fee() -> Balance {
+            DomainTransactionFee::block_transaction_fee()
+        }
     }
 
     impl domain_runtime_primitives::InherentExtrinsicApi<Block> for Runtime {
