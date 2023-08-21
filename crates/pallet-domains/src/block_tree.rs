@@ -412,6 +412,7 @@ mod tests {
                 bundle_slot_probability: (1, 1),
                 target_bundles_per_block: 1,
             },
+            vec![],
         )
         .unwrap();
 
@@ -629,7 +630,7 @@ mod tests {
             );
             assert!(ConsensusBlockHash::<Test>::get(
                 domain_id,
-                pruned_receipt.consensus_block_number
+                pruned_receipt.consensus_block_number,
             )
             .is_none());
         });

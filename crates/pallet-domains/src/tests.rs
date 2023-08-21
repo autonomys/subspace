@@ -193,6 +193,7 @@ impl pallet_domains::Config for Test {
     type TreasuryAccount = TreasuryAccount;
     type DomainBlockReward = BlockReward;
     type MaxPendingStakingOperation = MaxPendingStakingOperation;
+    type SudoId = ();
 }
 
 pub(crate) fn new_test_ext() -> sp_io::TestExternalities {
