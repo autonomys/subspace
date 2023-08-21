@@ -11,6 +11,7 @@ use subspace_runtime_primitives::DECIMAL_PLACES;
 pub(crate) fn chain_spec_properties() -> Properties {
     let mut properties = Properties::new();
 
+    properties.insert("dsnBootstrapNodes".into(), Vec::<String>::new().into());
     properties.insert("ss58Format".into(), <SS58Prefix as Get<u16>>::get().into());
     properties.insert("tokenDecimals".into(), DECIMAL_PLACES.into());
     properties.insert("tokenSymbol".into(), "tSSC".into());
