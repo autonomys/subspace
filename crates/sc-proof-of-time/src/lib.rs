@@ -63,6 +63,7 @@ impl Default for PotConfig {
 }
 
 /// Components initialized during the new_partial() phase of set up.
+#[derive(Debug)]
 pub struct PotComponents {
     /// If the role is time keeper or node client.
     is_time_keeper: bool,

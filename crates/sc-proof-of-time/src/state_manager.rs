@@ -8,6 +8,7 @@ use sc_network::PeerId;
 use sp_consensus_subspace::digests::PotPreDigest;
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, VecDeque};
+use std::fmt;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use subspace_core_primitives::{BlockNumber, NonEmptyVec, PotKey, PotProof, PotSeed, SlotNumber};
@@ -603,6 +604,15 @@ struct StateManager {
     proof_of_time: ProofOfTime,
 }
 
+impl fmt::Debug for StateManager {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("StateManager")
+            .field("state", &"<InternalState>")
+            .field("proof_of_time", &self.proof_of_time)
+            .finish()
+    }
+}
+
 impl StateManager {
     /// Creates the state.
     pub fn new(config: PotConfig, proof_of_time: ProofOfTime) -> Self {
@@ -697,7 +707,7 @@ impl StateManager {
 }
 
 /// Interface to the internal protocol components (time keeper, PoT client).
-pub(crate) trait PotProtocolState: Send + Sync {
+pub(crate) trait PotProtocolState: fmt::Debug + Send + Sync {
     /// Re(initializes) the chain with the given set of proofs.
     /// TODO: the proofs are assumed to have been validated, validate
     /// if needed.
@@ -754,7 +764,7 @@ impl PotProtocolState for StateManager {
 
 /// Interface to consensus.
 #[async_trait]
-pub trait PotConsensusState: Send + Sync {
+pub trait PotConsensusState: fmt::Debug + Send + Sync {
     /// Called by consensus when trying to claim the slot.
     /// Returns the proofs in the slot range
     /// [start_slot, current_slot - global_randomness_reveal_lag_slots].
