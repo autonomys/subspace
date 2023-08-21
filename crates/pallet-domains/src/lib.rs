@@ -859,12 +859,21 @@ mod pallet {
         ) -> DispatchResult {
             let owner = ensure_signed(origin)?;
 
-            let operator_id = do_register_operator::<T>(owner, domain_id, amount, config)
-                .map_err(Error::<T>::from)?;
+            let (operator_id, current_epoch_index) =
+                do_register_operator::<T>(owner, domain_id, amount, config)
+                    .map_err(Error::<T>::from)?;
+
             Self::deposit_event(Event::OperatorRegistered {
                 operator_id,
                 domain_id,
             });
+
+            // if the domain's current epoch is 0,
+            // then do an epoch transition so that operator can start producing bundles
+            if current_epoch_index.is_zero() {
+                do_finalize_domain_current_epoch::<T>(domain_id, One::one())
+                    .map_err(Error::<T>::from)?;
+            }
 
             Ok(())
         }
@@ -1076,6 +1085,18 @@ mod pallet {
         fn on_finalize(_: T::BlockNumber) {
             let _ = LastEpochStakingDistribution::<T>::clear(u32::MAX, None);
             Self::update_domain_tx_range();
+        }
+
+        // TODO: remove once the migration is done
+        fn on_runtime_upgrade() -> Weight {
+            for (domain_id, stake_summary) in DomainStakingSummary::<T>::iter() {
+                if stake_summary.current_epoch_index.is_zero() {
+                    if let Err(err) = do_finalize_domain_current_epoch::<T>(domain_id, One::one()) {
+                        log::error!(target: "runtime::domains", "Failed to do epoch transition for {domain_id:?}: {err:?}");
+                    }
+                }
+            }
+            Weight::zero()
         }
     }
 

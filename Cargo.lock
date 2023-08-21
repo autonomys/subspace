@@ -11279,7 +11279,7 @@ dependencies = [
  "parity-scale-codec",
  "parking_lot 0.12.1",
  "pin-project",
- "prometheus-client 0.19.0",
+ "prometheus-client 0.21.2",
  "rand 0.8.5",
  "serde",
  "serde_json",

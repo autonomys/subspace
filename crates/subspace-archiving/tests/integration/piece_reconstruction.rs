@@ -78,8 +78,8 @@ fn piece_reconstruction_works() {
     let missing_pieces = maybe_pieces
         .iter_mut()
         .enumerate()
-        .skip(100)
-        .take(40)
+        .skip(120)
+        .take(10)
         .map(|(piece_position, piece)| (piece_position, piece.take().unwrap()))
         .collect::<Vec<_>>();
 

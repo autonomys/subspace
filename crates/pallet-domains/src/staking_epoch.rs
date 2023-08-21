@@ -1065,8 +1065,8 @@ mod tests {
                 domain_stake_summary.current_total_stake,
                 total_updated_stake
             );
-            // epoch should be 2 since we did 3 epoch transitions
-            assert_eq!(domain_stake_summary.current_epoch_index, 2);
+            // epoch should be 3 since we did 3 epoch transitions
+            assert_eq!(domain_stake_summary.current_epoch_index, 3);
         });
     }
 

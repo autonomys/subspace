@@ -37,7 +37,7 @@ pub(crate) async fn recover_missing_piece<PG: PieceGetter>(
     let required_pieces_number = RecordedHistorySegment::NUM_RAW_RECORDS;
 
     let mut received_segment_pieces = segment_index
-        .segment_piece_indexes_source_first()
+        .segment_piece_indexes()
         .map(|piece_index| async move {
             let _permit = match semaphore.acquire().await {
                 Ok(permit) => permit,
