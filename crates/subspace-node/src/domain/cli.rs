@@ -47,8 +47,8 @@ pub enum Subcommand {
     #[clap(subcommand)]
     Benchmark(frame_benchmarking_cli::BenchmarkCmd),
 
-    /// Load the genesis config of the evm domain chain in json format
-    LoadGenesisConfig(LoadGenesisConfigCmd),
+    /// Build the genesis config of the evm domain chain in json format
+    BuildGenesisConfig(BuildGenesisConfigCmd),
 }
 
 fn parse_domain_id(s: &str) -> std::result::Result<DomainId, ParseIntError> {
@@ -322,20 +322,20 @@ impl CliConfiguration<Self> for DomainCli {
 }
 
 // TODO: make the command generic over different runtime type instead of just the evm domain runtime
-/// The `load-genesis-config` command used to load the genesis config of the evm domain chain.
+/// The `build-genesis-config` command used to build the genesis config of the evm domain chain.
 #[derive(Debug, Clone, Parser)]
-pub struct LoadGenesisConfigCmd {
+pub struct BuildGenesisConfigCmd {
     /// Whether output the WASM runtime code
     #[arg(long, default_value_t = false)]
     pub with_wasm_code: bool,
 
-    /// The base struct of the load-genesis-config command.
+    /// The base struct of the build-genesis-config command.
     #[clap(flatten)]
     pub shared_params: SharedParams,
 }
 
-impl LoadGenesisConfigCmd {
-    /// Run the load-genesis-config command
+impl BuildGenesisConfigCmd {
+    /// Run the build-genesis-config command
     pub fn run(&self) -> sc_cli::Result<()> {
         let is_dev = self.shared_params.is_dev();
         let chain_id = self.shared_params.chain_id(is_dev);
