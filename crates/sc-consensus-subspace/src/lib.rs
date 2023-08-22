@@ -495,7 +495,16 @@ where
     };
 
     info!(target: "subspace", "🧑‍🌾 Starting Subspace Authorship worker");
+    #[cfg(not(feature = "pot"))]
     let inner = sc_consensus_slots::start_slot_worker(
+        subspace_link.slot_duration(),
+        select_chain,
+        sc_consensus_slots::SimpleSlotWorkerToSlotWorker(worker),
+        sync_oracle,
+        create_inherent_data_providers,
+    );
+    #[cfg(feature = "pot")]
+    let inner = sc_proof_of_time::start_slot_worker(
         subspace_link.slot_duration(),
         select_chain,
         sc_consensus_slots::SimpleSlotWorkerToSlotWorker(worker),

@@ -282,7 +282,10 @@ impl pallet_subspace::Config for Runtime {
 impl pallet_timestamp::Config for Runtime {
     /// A timestamp: milliseconds since the unix epoch.
     type Moment = Moment;
+    #[cfg(not(feature = "pot"))]
     type OnTimestampSet = Subspace;
+    #[cfg(feature = "pot")]
+    type OnTimestampSet = ();
     type MinimumPeriod = ConstU64<{ SLOT_DURATION / 2 }>;
     type WeightInfo = ();
 }
@@ -1129,7 +1132,7 @@ impl_runtime_apis! {
         }
 
         fn slot_duration() -> SlotDuration {
-            SlotDuration::from_millis(Subspace::slot_duration())
+            SlotDuration::from_millis(SLOT_DURATION)
         }
 
         fn global_randomnesses() -> GlobalRandomnesses {

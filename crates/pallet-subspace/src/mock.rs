@@ -121,7 +121,10 @@ where
 
 impl pallet_timestamp::Config for Test {
     type Moment = u64;
+    #[cfg(not(feature = "pot"))]
     type OnTimestampSet = Subspace;
+    #[cfg(feature = "pot")]
+    type OnTimestampSet = ();
     type MinimumPeriod = ConstU64<1>;
     type WeightInfo = ();
 }
@@ -327,6 +330,7 @@ pub fn generate_equivocation_proof(
         System::reset_events();
         System::initialize(&current_block, &parent_hash, &pre_digest);
         System::set_block_number(current_block);
+        #[cfg(not(feature = "pot"))]
         Timestamp::set_timestamp(*current_slot * Subspace::slot_duration());
         System::finalize()
     };

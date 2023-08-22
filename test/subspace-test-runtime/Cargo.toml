@@ -64,6 +64,9 @@ substrate-wasm-builder = { version = "5.0.0-dev", git = "https://github.com/subs
 
 [features]
 default = ["std"]
+pot = [
+	"sp-consensus-subspace/pot",
+]
 std = [
 	"codec/std",
 	"domain-runtime-primitives/std",

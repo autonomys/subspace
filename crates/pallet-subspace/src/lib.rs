@@ -37,7 +37,9 @@ use codec::{Decode, Encode, MaxEncodedLen};
 use core::num::NonZeroU64;
 use equivocation::{HandleEquivocation, SubspaceEquivocationOffence};
 use frame_support::dispatch::{DispatchResult, DispatchResultWithPostInfo, Pays};
-use frame_support::traits::{Get, OnTimestampSet};
+use frame_support::traits::Get;
+#[cfg(not(feature = "pot"))]
+use frame_support::traits::OnTimestampSet;
 use frame_system::offchain::{SendTransactionTypes, SubmitTransaction};
 use log::{debug, error, warn};
 pub use pallet::*;
@@ -51,7 +53,9 @@ use sp_consensus_subspace::{
     ChainConstants, EquivocationProof, FarmerPublicKey, FarmerSignature, SignedVote, Vote,
 };
 use sp_runtime::generic::DigestItem;
-use sp_runtime::traits::{BlockNumberProvider, Hash, One, SaturatedConversion, Saturating, Zero};
+use sp_runtime::traits::{BlockNumberProvider, Hash, One, Zero};
+#[cfg(not(feature = "pot"))]
+use sp_runtime::traits::{SaturatedConversion, Saturating};
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
     TransactionValidityError, ValidTransaction,
@@ -676,6 +680,7 @@ mod pallet {
 
 impl<T: Config> Pallet<T> {
     /// Determine the Subspace slot duration based on the Timestamp module configuration.
+    #[cfg(not(feature = "pot"))]
     pub fn slot_duration() -> T::Moment {
         // we double the minimum block-period so each author can always propose within
         // the majority of their slot.
@@ -1559,6 +1564,7 @@ fn check_segment_headers<T: Config>(
     Ok(())
 }
 
+#[cfg(not(feature = "pot"))]
 impl<T: Config> OnTimestampSet<T::Moment> for Pallet<T> {
     fn on_timestamp_set(moment: T::Moment) {
         let slot_duration = Self::slot_duration();

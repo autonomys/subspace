@@ -632,7 +632,7 @@ where
                 block_number.into(),
                 slot_number,
                 &parent_pre_digest.proof_of_time,
-                Some(self.subspace_link.slot_duration().as_duration()),
+                None,
             )
             .await
             .map(|proofs| {

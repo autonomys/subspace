@@ -65,4 +65,6 @@ tracing = "0.1.37"
 sp-keyring = { git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
 
 [features]
-pot = []
+pot = [
+	"subspace-test-runtime/pot"
+]
