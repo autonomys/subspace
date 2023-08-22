@@ -9,7 +9,7 @@ mod time_keeper;
 use crate::state_manager::{init_pot_state, PotProtocolState};
 use core::num::{NonZeroU32, NonZeroU8};
 use std::sync::Arc;
-use subspace_core_primitives::{BlockNumber, PotKey, SlotNumber};
+use subspace_core_primitives::{BlockNumber, PotKey, PotSeed, SlotNumber};
 use subspace_proof_of_time::ProofOfTime;
 
 pub use state_manager::{
@@ -21,8 +21,10 @@ pub use time_keeper::TimeKeeper;
 // TODO: CLean up unused fields
 #[derive(Debug, Clone)]
 pub struct PotConfig {
+    /// PoT seed used initially when PoT chain starts.
+    pub initial_seed: PotSeed,
+
     /// PoT key used initially when PoT chain starts.
-    // TODO: Also add seed field here
     pub initial_key: PotKey,
 
     /// Frequency of entropy injection from consensus.
@@ -53,6 +55,10 @@ pub struct PotConfig {
 /// Components initialized during the new_partial() phase of set up.
 #[derive(Debug)]
 pub struct PotComponents {
+    /// PoT seed used initially when PoT chain starts.
+    // TODO: Remove this from here, shouldn't be necessary eventually
+    pub(crate) initial_seed: PotSeed,
+
     /// PoT key used initially when PoT chain starts.
     // TODO: Remove this from here, shouldn't be necessary eventually
     pub(crate) initial_key: PotKey,
@@ -76,10 +82,12 @@ impl PotComponents {
         let proof_of_time = ProofOfTime::new(config.pot_iterations, config.num_checkpoints)
             // TODO: Proper error handling or proof
             .expect("Failed to initialize proof of time");
+        let initial_seed = config.initial_seed;
         let initial_key = config.initial_key;
         let (protocol_state, consensus_state) = init_pot_state(config, proof_of_time);
 
         Self {
+            initial_seed,
             initial_key,
             is_time_keeper,
             proof_of_time,

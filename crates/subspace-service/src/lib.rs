@@ -82,7 +82,7 @@ use std::marker::PhantomData;
 use std::num::{NonZeroU32, NonZeroU8};
 use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
-use subspace_core_primitives::PotKey;
+use subspace_core_primitives::{PotKey, PotSeed};
 use subspace_fraud_proof::verifier_api::VerifierClient;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
@@ -398,6 +398,7 @@ where
             // CPU and take less than 1 sec to produce per proof
             // during the initial testing.
             PotConfig {
+                initial_seed: PotSeed::from_genesis_block_hash(client.info().genesis_hash.into()),
                 initial_key: pot_config.initial_key,
                 randomness_update_interval_blocks: 18,
                 injection_depth_blocks: 90,
