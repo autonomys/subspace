@@ -1,5 +1,4 @@
 use crate::single_disk_farm::piece_reader::PieceReader;
-use crate::utils::archival_storage_pieces::ArchivalStoragePieces;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::future::Future;
@@ -20,15 +19,13 @@ struct PieceDetails {
 pub struct ReadersAndPieces {
     readers: Vec<PieceReader>,
     pieces: HashMap<PieceIndex, Vec<PieceDetails>>,
-    archival_storage_pieces: ArchivalStoragePieces,
 }
 
 impl ReadersAndPieces {
-    pub fn new(readers: Vec<PieceReader>, archival_storage_pieces: ArchivalStoragePieces) -> Self {
+    pub fn new(readers: Vec<PieceReader>) -> Self {
         Self {
             readers,
             pieces: HashMap::new(),
-            archival_storage_pieces,
         }
     }
 
@@ -95,10 +92,6 @@ impl ReadersAndPieces {
                 }
             }
         }
-
-        if !new_piece_indices.is_empty() {
-            self.archival_storage_pieces.add_pieces(&new_piece_indices);
-        }
     }
 
     pub fn delete_sector(&mut self, disk_farm_index: u8, plotted_sector: &PlottedSector) {
@@ -132,11 +125,6 @@ impl ReadersAndPieces {
                     deleted_piece_indices.push(piece_index);
                 }
             }
-        }
-
-        if !deleted_piece_indices.is_empty() {
-            self.archival_storage_pieces
-                .delete_pieces(&deleted_piece_indices);
         }
     }
 

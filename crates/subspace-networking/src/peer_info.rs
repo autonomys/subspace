@@ -15,7 +15,6 @@ use libp2p::PeerId;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use std::collections::{HashSet, VecDeque};
-use std::fmt;
 use std::fmt::Debug;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -28,32 +27,11 @@ pub struct Notification;
 /// Defines a subscription to a peer-info notification.
 pub type NotificationHandler = Arc<dyn Fn(&Notification) + Send + Sync + 'static>;
 
-/// Cuckoo filter data transfer object.
-#[derive(Clone, Encode, Decode, Default)]
-pub struct CuckooFilterDTO {
-    /// Exported cuckoo filter values.
-    pub values: Vec<u8>,
-    /// Cuckoo filter items.
-    pub length: u64,
-}
-
-impl fmt::Debug for CuckooFilterDTO {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("CuckooFilterDTO")
-            .field("values", &self.length)
-            .field("length", &self.values.len())
-            .finish()
-    }
-}
-
 #[derive(Clone, Encode, Decode, Default, Debug)]
 /// Peer info data
 pub enum PeerInfo {
     /// DSN farmer.
-    Farmer {
-        /// Peer info data.
-        cuckoo_filter: Arc<CuckooFilterDTO>,
-    },
+    Farmer,
     /// DSN node.
     Node,
     /// DSN bootstrap node.
@@ -108,15 +86,7 @@ pub enum PeerInfoProvider {
     /// Provides peer-info for Client peer type.
     Client,
     /// Provides peer-info for Farmer peer type.
-    Farmer(Box<dyn CuckooFilterProvider + Send>),
-}
-
-/// Provides the current cuckoo-filter data.
-pub trait CuckooFilterProvider: Debug + 'static {
-    /// Returns the current cuckoo filter data.
-    fn cuckoo_filter(&self) -> CuckooFilterDTO;
-    /// Subscribe to cuckoo filter updates and invoke provided callback.
-    fn on_notification(&self, callback: NotificationHandler) -> Option<HandlerId>;
+    Farmer,
 }
 
 impl PeerInfoProvider {
@@ -133,8 +103,8 @@ impl PeerInfoProvider {
         Self::Client
     }
     /// Creates a new Farmer peer-info provider.
-    pub fn new_farmer(provider: Box<dyn CuckooFilterProvider + Send>) -> Self {
-        Self::Farmer(provider)
+    pub fn new_farmer() -> Self {
+        Self::Farmer
     }
 
     /// Returns the peer info data.
@@ -143,19 +113,13 @@ impl PeerInfoProvider {
             PeerInfoProvider::Node => PeerInfo::Node,
             PeerInfoProvider::BootstrapNode => PeerInfo::BootstrapNode,
             PeerInfoProvider::Client => PeerInfo::Client,
-            PeerInfoProvider::Farmer(provider) => PeerInfo::Farmer {
-                cuckoo_filter: Arc::new(provider.cuckoo_filter()),
-            },
+            PeerInfoProvider::Farmer => PeerInfo::Farmer,
         }
     }
     /// Subscribe to peer info updates and invoke provided callback.
-    pub fn on_notification(&self, handler: NotificationHandler) -> Option<HandlerId> {
-        match self {
-            PeerInfoProvider::Node | PeerInfoProvider::BootstrapNode | PeerInfoProvider::Client => {
-                None
-            }
-            PeerInfoProvider::Farmer(provider) => provider.on_notification(handler),
-        }
+    pub fn on_notification(&self, _handler: NotificationHandler) -> Option<HandlerId> {
+        // This is a stub method for future usages of notification.
+        None
     }
 }
 
