@@ -45,7 +45,6 @@ sc-consensus-slots = { version = "0.10.0-dev", git = "https://github.com/subspac
 sc-consensus-subspace = { version = "0.1.0", path = "../sc-consensus-subspace" }
 sc-subspace-chain-specs = { version = "0.1.0", path = "../sc-subspace-chain-specs" }
 sc-executor = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
-sc-proof-of-time = { version = "0.1.0", path = "../sc-proof-of-time" }
 sc-service = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71", default-features = false }
 sc-storage-monitor = { version = "0.1.0", git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71", default-features = false }
 sc-telemetry = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
@@ -79,9 +78,9 @@ substrate-build-script-utils = { version = "3.0.0", git = "https://github.com/su
 default = ["do-not-enforce-cost-of-storage"]
 pot = [
 	"sc-consensus-subspace/pot",
-	"sc-proof-of-time/pot",
 	"sp-consensus-subspace/pot",
 	"subspace-runtime/pot",
+	"subspace-service/pot",
 ]
 do-not-enforce-cost-of-storage = [
 	"subspace-runtime/do-not-enforce-cost-of-storage"

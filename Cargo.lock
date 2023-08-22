@@ -11335,7 +11335,6 @@ dependencies = [
  "sc-executor",
  "sc-network",
  "sc-network-sync",
- "sc-proof-of-time",
  "sc-service",
  "sc-storage-monitor",
  "sc-subspace-chain-specs",

@@ -56,7 +56,7 @@ use sc_consensus_subspace::{
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
 use sc_proof_of_time::gossip::{pot_gossip_peers_set_config, PotGossipWorker};
-use sc_proof_of_time::{PotComponents, TimeKeeper};
+use sc_proof_of_time::{PotComponents, PotConfig, TimeKeeper};
 use sc_service::error::Error as ServiceError;
 use sc_service::{Configuration, NetworkStarter, SpawnTasksParams, TaskManager};
 use sc_subspace_block_relay::{build_consensus_relay, NetworkWrapper};
@@ -79,8 +79,10 @@ use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use static_assertions::const_assert;
 use std::marker::PhantomData;
+use std::num::{NonZeroU32, NonZeroU8};
 use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
+use subspace_core_primitives::PotKey;
 use subspace_fraud_proof::verifier_api::VerifierClient;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
@@ -227,6 +229,15 @@ where
     }
 }
 
+/// PoT configuration used in in [`new_partial()`]
+// TODO: Better name
+pub struct PotPartialConfig {
+    /// Is this node a Timekeeper
+    pub is_timekeeper: bool,
+    /// Initial PoT key
+    pub initial_key: PotKey,
+}
+
 /// Other partial components returned by [`new_partial()`]
 pub struct OtherPartialComponents<RuntimeApi, ExecutorDispatch>
 where
@@ -282,7 +293,7 @@ pub fn new_partial<PosTable, RuntimeApi, ExecutorDispatch>(
             NativeElseWasmExecutor<ExecutorDispatch>,
         ) -> Arc<dyn GenerateGenesisStateRoot>,
     >,
-    pot_components: Option<PotComponents>,
+    maybe_pot_config: Option<PotPartialConfig>,
 ) -> Result<PartialComponents<RuntimeApi, ExecutorDispatch>, ServiceError>
 where
     PosTable: Table,
@@ -379,6 +390,25 @@ where
         .map_err(|error| ServiceError::Application(error.into()))?;
     let fraud_proof_block_import =
         sc_consensus_fraud_proof::block_import(client.clone(), client.clone(), proof_verifier);
+
+    let pot_components = maybe_pot_config.map(|pot_config| {
+        PotComponents::new(
+            pot_config.is_timekeeper,
+            // TODO: fill proper values. These are set to use less
+            // CPU and take less than 1 sec to produce per proof
+            // during the initial testing.
+            PotConfig {
+                initial_key: pot_config.initial_key,
+                randomness_update_interval_blocks: 18,
+                injection_depth_blocks: 90,
+                global_randomness_reveal_lag_slots: 6,
+                pot_injection_lag_slots: 6,
+                max_future_slots: 10,
+                pot_iterations: NonZeroU32::new(4 * 1_000).expect("Not zero; qed"),
+                num_checkpoints: NonZeroU8::new(4).expect("Not zero; qed"),
+            },
+        )
+    });
 
     let (block_import, subspace_link) = sc_consensus_subspace::block_import::<
         PosTable,

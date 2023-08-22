@@ -23,13 +23,11 @@ use futures::future::TryFutureExt;
 use log::warn;
 use sc_cli::{ChainSpec, CliConfiguration, SubstrateCli};
 use sc_consensus_slots::SlotProportion;
-use sc_proof_of_time::{PotComponents, PotConfig};
 use sc_service::PartialComponents;
 use sc_storage_monitor::StorageMonitorService;
 use sp_core::crypto::Ss58AddressFormat;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::GenerateGenesisStateRoot;
-use std::num::{NonZeroU32, NonZeroU8};
 use std::sync::Arc;
 use subspace_node::domain::{
     AccountId32ToAccountId20Converter, DomainCli, DomainGenesisBlockBuilder, DomainInstanceStarter,
@@ -38,7 +36,7 @@ use subspace_node::domain::{
 use subspace_node::{Cli, ExecutorDispatch, Subcommand};
 use subspace_proof_of_space::chia::ChiaTable;
 use subspace_runtime::{Block, RuntimeApi};
-use subspace_service::{DsnConfig, SubspaceConfiguration, SubspaceNetworking};
+use subspace_service::{DsnConfig, PotPartialConfig, SubspaceConfiguration, SubspaceNetworking};
 
 type PosTable = ChiaTable;
 
@@ -377,25 +375,13 @@ fn main() -> Result<(), Error> {
                         different explicit value"
                     );
                 }
-                let pot_components = if cli.pot_role.is_pot_enabled() {
-                    Some(PotComponents::new(
-                        cli.pot_role.is_time_keeper(),
-                        // TODO: fill proper values. These are set to use less
-                        // CPU and take less than 1 sec to produce per proof
-                        // during the initial testing.
-                        PotConfig {
-                            initial_key: maybe_chain_spec_pot_initial_key
-                                .or(cli.pot_initial_key)
-                                .unwrap_or_default(),
-                            randomness_update_interval_blocks: 18,
-                            injection_depth_blocks: 90,
-                            global_randomness_reveal_lag_slots: 6,
-                            pot_injection_lag_slots: 6,
-                            max_future_slots: 10,
-                            pot_iterations: NonZeroU32::new(4 * 1_000).expect("Not zero; qed"),
-                            num_checkpoints: NonZeroU8::new(4).expect("Not zero; qed"),
-                        },
-                    ))
+                let pot_config = if cli.pot_role.is_pot_enabled() {
+                    Some(PotPartialConfig {
+                        is_timekeeper: cli.pot_role.is_time_keeper(),
+                        initial_key: maybe_chain_spec_pot_initial_key
+                            .or(cli.pot_initial_key)
+                            .unwrap_or_default(),
+                    })
                 } else {
                     None
                 };
@@ -485,7 +471,7 @@ fn main() -> Result<(), Error> {
                         subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
                             &consensus_chain_config,
                             Some(&construct_domain_genesis_block_builder),
-                            pot_components,
+                            pot_config,
                         )
                         .map_err(|error| {
                             sc_service::Error::Other(format!(

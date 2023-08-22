@@ -18,6 +18,7 @@ pub use state_manager::{
 pub use time_keeper::TimeKeeper;
 
 // TODO: change the fields that can't be zero to NonZero types.
+// TODO: CLean up unused fields
 #[derive(Debug, Clone)]
 pub struct PotConfig {
     /// PoT key used initially when PoT chain starts.
