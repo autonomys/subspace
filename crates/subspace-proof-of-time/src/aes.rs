@@ -9,11 +9,10 @@ extern crate alloc;
 use aes::cipher::generic_array::GenericArray;
 use aes::cipher::{BlockDecrypt, BlockEncrypt, KeyInit};
 use aes::Aes128;
-#[cfg(any(not(target_arch = "x86_64"), test))]
-use subspace_core_primitives::PotCheckpoint;
-use subspace_core_primitives::{PotBytes, PotCheckpoints, PotKey, PotSeed};
+use subspace_core_primitives::{PotBytes, PotCheckpoint, PotCheckpoints, PotKey, PotSeed};
 
 /// Creates the AES based proof.
+#[inline(always)]
 pub(crate) fn create(seed: &PotSeed, key: &PotKey, checkpoint_iterations: u32) -> PotCheckpoints {
     #[cfg(target_arch = "x86_64")]
     {
@@ -24,6 +23,7 @@ pub(crate) fn create(seed: &PotSeed, key: &PotKey, checkpoint_iterations: u32) -
 }
 
 #[cfg(any(not(target_arch = "x86_64"), test))]
+#[inline(always)]
 fn create_generic(seed: &PotSeed, key: &PotKey, checkpoint_iterations: u32) -> PotCheckpoints {
     let key = GenericArray::from(PotBytes::from(*key));
     let cipher = Aes128::new(&key);
@@ -44,26 +44,27 @@ fn create_generic(seed: &PotSeed, key: &PotKey, checkpoint_iterations: u32) -> P
 /// Verifies the AES based proof sequentially.
 ///
 /// Panics if `checkpoint_iterations` is not a multiple of `2`.
+#[inline(always)]
 pub(crate) fn verify_sequential(
     seed: &PotSeed,
     key: &PotKey,
-    checkpoints: &PotCheckpoints,
-    checkpoint_iterations: u32,
+    checkpoints: &[PotCheckpoint],
+    checkpoint_iterations: u64,
 ) -> bool {
     assert_eq!(checkpoint_iterations % 2, 0);
 
     let key = GenericArray::from(PotBytes::from(*key));
     let cipher = Aes128::new(&key);
 
-    let mut inputs = [GenericArray::default(); PotCheckpoints::NUM_CHECKPOINTS as usize];
-    inputs[0] = GenericArray::from(PotBytes::from(*seed));
-    for (checkpoint, input) in checkpoints.iter().zip(inputs.iter_mut().skip(1)) {
-        *input = GenericArray::from(PotBytes::from(*checkpoint));
+    let mut inputs = Vec::with_capacity(checkpoints.len());
+    inputs.push(GenericArray::from(PotBytes::from(*seed)));
+    for checkpoint in checkpoints.iter().rev().skip(1).rev() {
+        inputs.push(GenericArray::from(PotBytes::from(*checkpoint)));
     }
-    let mut outputs = [GenericArray::default(); PotCheckpoints::NUM_CHECKPOINTS as usize];
-    for (checkpoint, output) in checkpoints.iter().zip(&mut outputs) {
-        *output = GenericArray::from(PotBytes::from(*checkpoint));
-    }
+    let mut outputs = checkpoints
+        .iter()
+        .map(|checkpoint| GenericArray::from(PotBytes::from(*checkpoint)))
+        .collect::<Vec<_>>();
 
     for _ in 0..checkpoint_iterations / 2 {
         cipher.encrypt_blocks(&mut inputs);
@@ -110,10 +111,12 @@ mod tests {
             assert_eq!(checkpoints, generic_checkpoints);
         }
 
+        let checkpoint_iterations = u64::from(checkpoint_iterations);
+
         assert!(verify_sequential(
             &seed,
             &key,
-            &checkpoints,
+            &*checkpoints,
             checkpoint_iterations
         ));
 
@@ -123,7 +126,7 @@ mod tests {
         assert!(!verify_sequential(
             &seed,
             &key,
-            &checkpoints_1,
+            &*checkpoints_1,
             checkpoint_iterations
         ));
 
@@ -131,13 +134,13 @@ mod tests {
         assert!(!verify_sequential(
             &seed,
             &key,
-            &checkpoints,
+            &*checkpoints,
             checkpoint_iterations + 2
         ));
         assert!(!verify_sequential(
             &seed,
             &key,
-            &checkpoints,
+            &*checkpoints,
             checkpoint_iterations - 2
         ));
 
@@ -145,7 +148,7 @@ mod tests {
         assert!(!verify_sequential(
             &PotSeed::from(SEED_1),
             &key,
-            &checkpoints,
+            &*checkpoints,
             checkpoint_iterations
         ));
 
@@ -153,7 +156,7 @@ mod tests {
         assert!(!verify_sequential(
             &seed,
             &PotKey::from(KEY_1),
-            &checkpoints,
+            &*checkpoints,
             checkpoint_iterations
         ));
     }

@@ -50,7 +50,7 @@ use alloc::vec::Vec;
 use core::convert::AsRef;
 use core::fmt;
 use core::iter::Iterator;
-use core::num::NonZeroU64;
+use core::num::{NonZeroU64, NonZeroU8};
 use core::simd::Simd;
 use core::str::FromStr;
 use derive_more::{Add, AsMut, AsRef, Deref, DerefMut, Display, Div, From, Into, Mul, Rem, Sub};
@@ -330,16 +330,16 @@ pub struct PotCheckpoint(PotBytes);
     TypeInfo,
     MaxEncodedLen,
 )]
-pub struct PotCheckpoints([PotCheckpoint; Self::NUM_CHECKPOINTS as usize]);
+pub struct PotCheckpoints([PotCheckpoint; Self::NUM_CHECKPOINTS.get() as usize]);
 
 impl PotCheckpoints {
     /// Number of PoT checkpoints produced (used to optimize verification)
-    pub const NUM_CHECKPOINTS: u8 = 8;
+    pub const NUM_CHECKPOINTS: NonZeroU8 = NonZeroU8::new(8).expect("Not zero; qed");
 
     /// Get proof of time output out of checkpoints (last checkpoint)
     #[inline]
     pub fn output(&self) -> PotCheckpoint {
-        self.0[Self::NUM_CHECKPOINTS as usize - 1]
+        self.0[Self::NUM_CHECKPOINTS.get() as usize - 1]
     }
 }
 

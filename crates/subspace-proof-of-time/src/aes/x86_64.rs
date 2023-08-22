@@ -1,9 +1,10 @@
 use core::arch::x86_64::*;
-use std::mem;
+use core::mem;
 use subspace_core_primitives::PotCheckpoints;
 
 /// Create PoT proof with checkpoints
 #[target_feature(enable = "aes")]
+#[inline]
 pub(super) unsafe fn create(
     seed: &[u8; 16],
     key: &[u8; 16],
@@ -67,6 +68,7 @@ macro_rules! expand_round {
 }
 
 #[target_feature(enable = "aes")]
+#[inline]
 unsafe fn expand_key(key: &[u8; 16]) -> RoundKeys {
     // SAFETY: `RoundKeys` is a `[__m128i; 11]` which can be initialized
     // with all zeroes.
