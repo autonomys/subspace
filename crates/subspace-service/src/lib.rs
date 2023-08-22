@@ -79,7 +79,7 @@ use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use static_assertions::const_assert;
 use std::marker::PhantomData;
-use std::num::{NonZeroU32, NonZeroU8};
+use std::num::NonZeroU32;
 use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{PotKey, PotSeed};
@@ -406,7 +406,6 @@ where
                 pot_injection_lag_slots: 6,
                 max_future_slots: 10,
                 pot_iterations: NonZeroU32::new(4 * 1_000).expect("Not zero; qed"),
-                num_checkpoints: NonZeroU8::new(4).expect("Not zero; qed"),
             },
         )
     });

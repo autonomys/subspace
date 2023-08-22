@@ -7,7 +7,7 @@ mod state_manager;
 mod time_keeper;
 
 use crate::state_manager::{init_pot_state, PotProtocolState};
-use core::num::{NonZeroU32, NonZeroU8};
+use core::num::NonZeroU32;
 use std::sync::Arc;
 use subspace_core_primitives::{BlockNumber, PotKey, PotSeed, SlotNumber};
 use subspace_proof_of_time::ProofOfTime;
@@ -47,9 +47,6 @@ pub struct PotConfig {
 
     /// Total iterations per proof.
     pub pot_iterations: NonZeroU32,
-
-    /// Number of checkpoints per proof.
-    pub num_checkpoints: NonZeroU8,
 }
 
 /// Components initialized during the new_partial() phase of set up.
@@ -79,7 +76,7 @@ pub struct PotComponents {
 impl PotComponents {
     /// Sets up the partial components.
     pub fn new(is_time_keeper: bool, config: PotConfig) -> Self {
-        let proof_of_time = ProofOfTime::new(config.pot_iterations, config.num_checkpoints)
+        let proof_of_time = ProofOfTime::new(config.pot_iterations)
             // TODO: Proper error handling or proof
             .expect("Failed to initialize proof of time");
         let initial_seed = config.initial_seed;

@@ -296,7 +296,7 @@ impl PotSeed {
     }
 }
 
-/// Proof of time ciphertext (output from the encryption).
+/// Proof of time checkpoint
 #[derive(
     Debug,
     Default,
@@ -315,6 +315,34 @@ impl PotSeed {
 )]
 pub struct PotCheckpoint(PotBytes);
 
+/// Proof of time checkpoints, result of proving
+#[derive(
+    Debug,
+    Default,
+    Copy,
+    Clone,
+    Eq,
+    PartialEq,
+    Deref,
+    DerefMut,
+    Encode,
+    Decode,
+    TypeInfo,
+    MaxEncodedLen,
+)]
+pub struct PotCheckpoints([PotCheckpoint; Self::NUM_CHECKPOINTS as usize]);
+
+impl PotCheckpoints {
+    /// Number of PoT checkpoints produced (used to optimize verification)
+    pub const NUM_CHECKPOINTS: u8 = 8;
+
+    /// Get proof of time output out of checkpoints (last checkpoint)
+    #[inline]
+    pub fn output(&self) -> PotCheckpoint {
+        self.0[Self::NUM_CHECKPOINTS as usize - 1]
+    }
+}
+
 /// Proof of time.
 /// TODO: versioning.
 #[derive(Debug, Clone, Encode, Decode, Eq, PartialEq)]
@@ -329,7 +357,7 @@ pub struct PotProof {
     pub key: PotKey,
 
     /// The encrypted outputs from each stage.
-    pub checkpoints: NonEmptyVec<PotCheckpoint>,
+    pub checkpoints: PotCheckpoints,
 
     /// Hash of last block at injection point.
     pub injected_block_hash: BlockHash,
@@ -341,7 +369,7 @@ impl PotProof {
         slot_number: SlotNumber,
         seed: PotSeed,
         key: PotKey,
-        checkpoints: NonEmptyVec<PotCheckpoint>,
+        checkpoints: PotCheckpoints,
         injected_block_hash: BlockHash,
     ) -> Self {
         Self {
@@ -353,9 +381,10 @@ impl PotProof {
         }
     }
 
-    /// Returns the last check point.
+    /// Get proof of time output out of checkpoints (last checkpoint)
+    #[inline]
     pub fn output(&self) -> PotCheckpoint {
-        self.checkpoints.last()
+        self.checkpoints.output()
     }
 
     /// Derives the global randomness from the output.
@@ -388,12 +417,12 @@ impl fmt::Display for PotProof {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "PotProof: [slot={}, seed={}, key={}, injected={}, checkpoints={}]",
+            "PotProof: [slot={}, seed={}, key={}, injected={}, output={}]",
             self.slot_number,
             hex::encode(self.seed.0),
             hex::encode(self.key.0),
             hex::encode(self.injected_block_hash),
-            self.checkpoints.len()
+            hex::encode(self.output().as_ref())
         )
     }
 }
