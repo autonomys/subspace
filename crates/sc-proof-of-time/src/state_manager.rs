@@ -12,6 +12,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use subspace_core_primitives::{BlockNumber, NonEmptyVec, PotKey, PotProof, PotSeed, SlotNumber};
 use subspace_proof_of_time::{PotVerificationError, ProofOfTime};
+use tokio::sync::broadcast::{channel, error, Receiver, Sender};
 use tracing::trace;
 
 /// The maximum size of the PoT chain to keep (about 5 min worth of proofs for now).
@@ -204,14 +205,17 @@ pub struct PotStateSummary {
 /// Wrapper around the PoT chain.
 struct PotChain {
     entries: VecDeque<PotProof>,
+    sender: Sender<PotProof>,
     max_entries: usize,
 }
 
 impl PotChain {
     /// Creates the chain.
     fn new(max_entries: NonZeroUsize) -> Self {
+        let (sender, _) = channel(1);
         Self {
             entries: VecDeque::new(),
+            sender,
             max_entries: max_entries.get(),
         }
     }
@@ -235,7 +239,9 @@ impl PotChain {
             // Evict the oldest entry if full
             self.entries.pop_front();
         }
-        self.entries.push_back(proof);
+        self.entries.push_back(proof.clone());
+        // This can only fail if there are no receivers.
+        let _ = self.sender.send(proof);
     }
 
     /// Returns the last entry in the chain.
@@ -251,6 +257,13 @@ impl PotChain {
     /// Returns an iterator to the entries.
     fn iter(&self) -> Box<dyn Iterator<Item = &PotProof> + '_> {
         Box::new(self.entries.iter())
+    }
+
+    /// Returns a receiver for the proofs.
+    fn proof_receiver(&self) -> ProofReceiver {
+        ProofReceiver {
+            receiver: self.sender.subscribe(),
+        }
     }
 }
 
@@ -603,6 +616,11 @@ impl InternalState {
         Ok(())
     }
 
+    /// Returns a receiver for the proofs.
+    fn proof_receiver(&self) -> ProofReceiver {
+        self.chain.proof_receiver()
+    }
+
     /// Returns the current tip of the chain.
     fn tip(&self) -> Option<PotProof> {
         self.chain.tip()
@@ -778,9 +796,6 @@ impl PotProtocolState for StateManager {
 /// Interface to consensus.
 #[async_trait]
 pub trait PotConsensusState: Send + Sync {
-    /// Returns the current tip.
-    fn tip(&self) -> Option<PotProof>;
-
     /// Called by consensus when trying to claim the slot.
     /// Returns the proofs in the slot range
     /// [start_slot, current_slot - global_randomness_reveal_lag_slots].
@@ -803,14 +818,13 @@ pub trait PotConsensusState: Send + Sync {
         parent_slot_number: SlotNumber,
         parent_pre_digest: Option<&PotPreDigest>,
     ) -> Result<(), PotVerifyBlockProofsError>;
+
+    /// Returns a receiver for the proofs.
+    fn proof_receiver(&self) -> ProofReceiver;
 }
 
 #[async_trait]
 impl PotConsensusState for StateManager {
-    fn tip(&self) -> Option<PotProof> {
-        self.state.lock().tip()
-    }
-
     async fn get_block_proofs(
         &self,
         block_number: BlockNumber,
@@ -892,6 +906,30 @@ impl PotConsensusState for StateManager {
             parent_slot_number,
             parent_pre_digest,
         )
+    }
+
+    fn proof_receiver(&self) -> ProofReceiver {
+        self.state.lock().proof_receiver()
+    }
+}
+
+/// Interface to receive the proofs added to the local chain.
+pub struct ProofReceiver {
+    receiver: Receiver<PotProof>,
+}
+
+impl ProofReceiver {
+    /// Returns the next proof added to the chain.
+    /// Only the latest added proof is returned. If the consumer is slow,
+    /// intermediate proofs may be missed.
+    pub async fn next_proof(&mut self) -> Result<PotProof, String> {
+        loop {
+            match self.receiver.recv().await {
+                Ok(proof) => return Ok(proof),
+                Err(error::RecvError::Lagged(_)) => continue,
+                Err(error::RecvError::Closed) => return Err("Channel closed".to_string()),
+            }
+        }
     }
 }
 

@@ -16,7 +16,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 #![doc = include_str!("../README.md")]
-#![feature(try_blocks)]
+#![feature(try_blocks, trait_alias)]
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
@@ -89,6 +89,16 @@ use subspace_verification::{
     calculate_block_weight, Error as VerificationPrimitiveError, PieceCheckParams,
     VerifySolutionParams,
 };
+
+/// Type for CIDP when PoT is not enabled.
+#[cfg(not(feature = "pot"))]
+pub trait ConsensusCIDP<Block: BlockT> =
+    CreateInherentDataProviders<Block, ()> + Send + Sync + 'static;
+
+/// Type for CIDP when PoT is enabled.
+#[cfg(feature = "pot")]
+pub trait ConsensusCIDP<Block: BlockT> =
+    CreateInherentDataProviders<Block, Slot> + Send + Sync + 'static;
 
 /// Errors while verifying the block proof of time.
 #[derive(Debug, thiserror::Error)]
@@ -479,7 +489,7 @@ where
         + 'static,
     SO: SyncOracle + Send + Sync + Clone + 'static,
     L: JustificationSyncLink<Block> + 'static,
-    CIDP: CreateInherentDataProviders<Block, ()> + Send + Sync + 'static,
+    CIDP: ConsensusCIDP<Block>,
     CIDP::InherentDataProviders: InherentDataProviderExt + Send,
     BS: BackoffAuthoringBlocksStrategy<NumberFor<Block>> + Send + Sync + 'static,
     AS: AuxStore + Send + Sync + 'static,
@@ -500,22 +510,47 @@ where
         max_block_proposal_slot_portion,
         telemetry,
         segment_headers_store,
-        proof_of_time,
+        proof_of_time: proof_of_time.clone(),
         _pos_table: PhantomData::<PosTable>,
     };
 
-    info!(target: "subspace", "🧑‍🌾 Starting Subspace Authorship worker");
-    let inner = sc_consensus_slots::start_slot_worker(
-        subspace_link.slot_duration(),
-        select_chain,
-        sc_consensus_slots::SimpleSlotWorkerToSlotWorker(worker),
-        sync_oracle,
-        create_inherent_data_providers,
-    );
+    #[cfg(not(feature = "pot"))]
+    {
+        info!(target: "subspace", "🧑‍🌾 Starting Subspace Authorship worker");
+        let inner = sc_consensus_slots::start_slot_worker(
+            subspace_link.slot_duration(),
+            select_chain,
+            sc_consensus_slots::SimpleSlotWorkerToSlotWorker(worker),
+            sync_oracle,
+            create_inherent_data_providers,
+        );
 
-    Ok(SubspaceWorker {
-        inner: Box::pin(inner),
-    })
+        Ok(SubspaceWorker {
+            inner: Box::pin(inner),
+        })
+    }
+
+    #[cfg(feature = "pot")]
+    {
+        // TODO: the two level of controls need to be cleaned up.
+        let proof_receiver = proof_of_time
+            .map(|proof_of_time| proof_of_time.proof_receiver())
+            .ok_or(ConsensusError::Other("proof_of_time not specified".into()))?;
+
+        info!(target: "subspace", "🧑‍🌾 Starting Subspace Authorship worker(using proof of time)");
+        let inner = slot_worker::pot_slot_worker::start_slot_worker(
+            subspace_link.slot_duration().as_duration(),
+            select_chain,
+            sc_consensus_slots::SimpleSlotWorkerToSlotWorker(worker),
+            sync_oracle,
+            create_inherent_data_providers,
+            proof_receiver,
+        );
+
+        Ok(SubspaceWorker {
+            inner: Box::pin(inner),
+        })
+    }
 }
 
 /// Worker for Subspace which implements `Future<Output=()>`. This must be polled.

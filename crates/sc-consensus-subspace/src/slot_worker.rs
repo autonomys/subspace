@@ -687,3 +687,100 @@ where
             )
         })
 }
+
+#[cfg(feature = "pot")]
+pub(crate) mod pot_slot_worker {
+    use super::{info, warn, BlockT, Slot, SlotInfo, SyncOracle};
+    use sc_consensus_slots::{InherentDataProviderExt, SlotWorker};
+    use sc_proof_of_time::ProofReceiver;
+    use sp_api::HeaderT;
+    use sp_consensus::SelectChain;
+    use sp_inherents::CreateInherentDataProviders;
+    use std::time::Duration;
+
+    // This is mostly a combination of substrate start_lot_worker + Slot::next_slot().
+    pub async fn start_slot_worker<B, C, W, SO, CIDP, Proof>(
+        slot_duration: Duration,
+        select_chain: C,
+        mut worker: W,
+        sync_oracle: SO,
+        create_inherent_data_providers: CIDP,
+        mut proof_receiver: ProofReceiver,
+    ) where
+        B: BlockT,
+        C: SelectChain<B>,
+        W: SlotWorker<B, Proof>,
+        SO: SyncOracle + Send,
+        CIDP: CreateInherentDataProviders<B, Slot> + Send + 'static,
+        CIDP::InherentDataProviders: InherentDataProviderExt + Send,
+    {
+        let mut last_slot: Slot = 0.into();
+        loop {
+            // Wait for the next proof to be produced.
+            let proof = match proof_receiver.next_proof().await {
+                Ok(proof) => proof,
+                Err(err) => {
+                    warn!(target: "subspace", "Failed to receive proof: {err}");
+                    return;
+                }
+            };
+
+            if sync_oracle.is_major_syncing() {
+                info!(target: "subspace", "Skipping proposal slot due to sync.");
+                continue;
+            }
+
+            let chain_head = match select_chain.best_chain().await {
+                Ok(x) => x,
+                Err(err) => {
+                    warn!(
+                        target: "subspace",
+                        "Unable to author block in slot {}. No best block header: {err}",
+                        proof.slot_number
+                    );
+                    // Let's retry at the next slot.
+                    continue;
+                }
+            };
+
+            let inherent_data_providers = match create_inherent_data_providers
+                .create_inherent_data_providers(chain_head.hash(), proof.slot_number.into())
+                .await
+            {
+                Ok(x) => x,
+                Err(err) => {
+                    warn!(
+                        target: "subspace",
+                        "Unable to author block in slot {}. Failure creating inherent \
+                        data provider: {err}",
+                        proof.slot_number,
+                    );
+                    // Let's retry at the next slot.
+                    continue;
+                }
+            };
+
+            let slot = inherent_data_providers.slot();
+
+            // Never yield the same slot twice.
+            if slot > last_slot {
+                last_slot = slot;
+
+                let slot_info = SlotInfo::new(
+                    slot,
+                    Box::new(inherent_data_providers),
+                    slot_duration,
+                    chain_head,
+                    None,
+                );
+                let _ = worker.on_slot(slot_info).await;
+            } else {
+                // This should never happen with PoT.
+                warn!(
+                    target: "subspace",
+                    "Received stale slot: slot = {slot}, last_slot = {last_slot}"
+                );
+            }
+        }
+    }
+}

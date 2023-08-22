@@ -840,43 +840,62 @@ where
             create_inherent_data_providers: {
                 let client = client.clone();
                 let subspace_link = subspace_link.clone();
-                let pot_consensus = pot_consensus.clone();
+                #[cfg(not(feature = "pot"))]
+                {
+                    move |parent_hash, ()| {
+                        let client = client.clone();
+                        let subspace_link = subspace_link.clone();
 
-                move |parent_hash, ()| {
-                    let client = client.clone();
-                    let subspace_link = subspace_link.clone();
-                    let pot_consensus = pot_consensus.clone();
+                        //#[cfg(not(feature = "pot"))]
+                        async move {
+                            let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
 
-                    async move {
-                        let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
-                        let pot_consensus = pot_consensus.clone();
-
-                        // TODO: Would be nice if the whole header was passed in here
-                        let parent_block_number = client
-                            .header(parent_hash)?
-                            .expect("Parent header must always exist when block is created; qed")
-                            .number;
-
-                        let subspace_inherents = match pot_consensus.as_ref() {
-                            Some(pot_consensus) => {
-                                let tip = pot_consensus.tip()
-                                    .ok_or(format!("PoT tip not found: \
-                                                    {parent_block_number}/{parent_hash}"))?;
-                                sp_consensus_subspace::inherents::InherentDataProvider::from_slot(
-                                    tip.slot_number.into(),
-                                    subspace_link.segment_headers_for_block(parent_block_number + 1),
+                            // TODO: Would be nice if the whole header was passed in here
+                            let parent_block_number = client
+                                .header(parent_hash)?
+                                .expect(
+                                    "Parent header must always exist when block is created; qed",
                                 )
-                            },
-                            None => {
+                                .number;
+
+                            let subspace_inherents =
                                 sp_consensus_subspace::inherents::InherentDataProvider::from_timestamp_and_slot_duration(
                                     *timestamp,
                                     subspace_link.slot_duration(),
                                     subspace_link.segment_headers_for_block(parent_block_number + 1),
-                                )
-                            }
-                        };
+                                );
 
-                        Ok((subspace_inherents, timestamp))
+                            Ok((subspace_inherents, timestamp))
+                        }
+                    }
+                }
+
+                #[cfg(feature = "pot")]
+                {
+                    move |parent_hash, slot| {
+                        let client = client.clone();
+                        let subspace_link = subspace_link.clone();
+
+                        async move {
+                            let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
+
+                            // TODO: Would be nice if the whole header was passed in here
+                            let parent_block_number = client
+                                .header(parent_hash)?
+                                .expect(
+                                    "Parent header must always exist when block is created; qed",
+                                )
+                                .number;
+
+                            let subspace_inherents =
+                                sp_consensus_subspace::inherents::InherentDataProvider::from_slot(
+                                    slot,
+                                    subspace_link
+                                        .segment_headers_for_block(parent_block_number + 1),
+                                );
+
+                            Ok((subspace_inherents, timestamp))
+                        }
                     }
                 }
             },

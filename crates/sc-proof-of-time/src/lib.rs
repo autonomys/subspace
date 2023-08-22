@@ -17,6 +17,7 @@ pub use gossip::pot_gossip_peers_set_config;
 pub use node_client::PotClient;
 pub use state_manager::{
     PotConsensusState, PotGetBlockProofsError, PotStateSummary, PotVerifyBlockProofsError,
+    ProofReceiver,
 };
 pub use time_keeper::TimeKeeper;
 
