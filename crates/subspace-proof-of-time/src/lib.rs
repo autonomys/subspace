@@ -1,7 +1,7 @@
 //! Proof of time implementation.
 
 #![cfg_attr(not(feature = "std"), no_std)]
-mod pot_aes;
+mod aes;
 
 use core::num::NonZeroU32;
 use subspace_core_primitives::{BlockHash, PotCheckpoints, PotKey, PotProof, PotSeed, SlotNumber};
@@ -51,13 +51,13 @@ impl ProofOfTime {
         slot_number: SlotNumber,
         injected_block_hash: BlockHash,
     ) -> PotProof {
-        let checkpoints = pot_aes::create(&seed, &key, self.checkpoint_iterations);
+        let checkpoints = aes::create(&seed, &key, self.checkpoint_iterations);
         PotProof::new(slot_number, seed, key, checkpoints, injected_block_hash)
     }
 
     /// Verifies the proof.
     pub fn verify(&self, proof: &PotProof) -> Result<(), PotVerificationError> {
-        if pot_aes::verify_sequential(
+        if aes::verify_sequential(
             &proof.seed,
             &proof.key,
             &proof.checkpoints,
