@@ -1,7 +1,5 @@
 //! Chia proof of space implementation
-use crate::chiapos::Tables;
-#[cfg(any(feature = "parallel", test))]
-use crate::chiapos::TablesCache;
+use crate::chiapos::{Tables, TablesCache};
 use crate::{PosTableType, Quality, Table, TableGenerator};
 use core::mem;
 use subspace_core_primitives::{PosProof, PosQualityBytes, PosSeed};
@@ -48,6 +46,7 @@ impl TableGenerator<ChiaTable> for ChiaTableGenerator {
         }
     }
 
+    #[cfg(any(feature = "parallel", test))]
     fn generate_parallel(&mut self, seed: &PosSeed) -> ChiaTable {
         ChiaTable {
             tables: Tables::<K>::create_parallel((*seed).into(), &mut self.tables_cache),

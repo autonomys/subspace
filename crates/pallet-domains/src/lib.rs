@@ -272,6 +272,9 @@ mod pallet {
         /// The maximum number of pending staking operation that can perform upon epoch transition.
         #[pallet::constant]
         type MaxPendingStakingOperation: Get<u32>;
+
+        #[pallet::constant]
+        type SudoId: Get<Self::AccountId>;
     }
 
     #[pallet::pallet]
@@ -903,12 +906,21 @@ mod pallet {
         pub fn instantiate_domain(
             origin: OriginFor<T>,
             domain_config: DomainConfig,
+            raw_genesis: Vec<u8>,
         ) -> DispatchResult {
-            let who = ensure_signed(origin)?;
+            let who = if raw_genesis.is_empty() {
+                ensure_signed(origin)?
+            } else {
+                // TODO: remove once XDM is finished
+                ensure_root(origin)?;
+                T::SudoId::get()
+            };
+
             let created_at = frame_system::Pallet::<T>::current_block_number();
 
-            let domain_id = do_instantiate_domain::<T>(domain_config, who, created_at, None)
-                .map_err(Error::<T>::from)?;
+            let domain_id =
+                do_instantiate_domain::<T>(domain_config, who, created_at, Some(raw_genesis))
+                    .map_err(Error::<T>::from)?;
 
             Self::deposit_event(Event::DomainInstantiated { domain_id });
 

@@ -55,7 +55,8 @@ use sc_consensus_subspace::{
 };
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
-use sc_proof_of_time::{pot_gossip_peers_set_config, PotClient, PotComponents, TimeKeeper};
+use sc_proof_of_time::gossip::{pot_gossip_peers_set_config, PotGossipWorker};
+use sc_proof_of_time::{PotComponents, TimeKeeper};
 use sc_service::error::Error as ServiceError;
 use sc_service::{Configuration, NetworkStarter, PartialComponents, SpawnTasksParams, TaskManager};
 use sc_subspace_block_relay::{build_consensus_relay, NetworkWrapper};
@@ -772,13 +773,27 @@ where
             .as_ref()
             .map(|component| component.consensus_state());
         if let Some(components) = pot_components {
+            let pot_gossip_worker = PotGossipWorker::new(
+                &components,
+                client.clone(),
+                network_service.clone(),
+                sync_service.clone(),
+            );
+            let gossip_sender = pot_gossip_worker.gossip_sender();
+            task_manager.spawn_essential_handle().spawn_blocking(
+                "pot-gossip-worker",
+                Some("pot"),
+                async move {
+                    pot_gossip_worker.run().await;
+                },
+            );
+
             if components.is_time_keeper() {
-                let time_keeper = TimeKeeper::<Block, _>::new(
-                    components,
+                let time_keeper = TimeKeeper::new(
+                    &components,
                     client.clone(),
-                    network_service.clone(),
-                    sync_service.clone(),
                     subspace_link.slot_duration().as_duration(),
+                    gossip_sender,
                 );
 
                 task_manager.spawn_essential_handle().spawn_blocking(
@@ -786,20 +801,6 @@ where
                     Some("pot"),
                     async move {
                         time_keeper.run().await;
-                    },
-                );
-            } else {
-                let pot_client = PotClient::<Block, _>::new(
-                    components,
-                    client.clone(),
-                    network_service.clone(),
-                    sync_service.clone(),
-                );
-                task_manager.spawn_essential_handle().spawn_blocking(
-                    "subspace-proof-of-time-client",
-                    Some("pot"),
-                    async move {
-                        pot_client.run().await;
                     },
                 );
             }
