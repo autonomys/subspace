@@ -29,7 +29,8 @@ async fn main() {
     // Init prometheus
     let prometheus_metrics_server_address = "127.0.0.1:63000".parse().unwrap();
 
-    match start_prometheus_metrics_server(prometheus_metrics_server_address, metric_registry) {
+    match start_prometheus_metrics_server(vec![prometheus_metrics_server_address], metric_registry)
+    {
         Err(err) => {
             error!(
                 ?prometheus_metrics_server_address,

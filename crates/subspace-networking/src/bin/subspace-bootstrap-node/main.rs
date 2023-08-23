@@ -1,6 +1,6 @@
 //! Simple bootstrap node implementation
 
-#![feature(try_blocks, type_changing_struct_update)]
+#![feature(type_changing_struct_update)]
 
 use clap::Parser;
 use futures::{select, FutureExt};
@@ -11,6 +11,7 @@ use prometheus_client::registry::Registry;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::{peer_id, start_prometheus_metrics_server, Config};
@@ -58,10 +59,10 @@ enum Command {
         /// Known external addresses
         #[arg(long, alias = "external-address")]
         external_addresses: Vec<Multiaddr>,
-        /// Defines port for the prometheus metrics server. It doesn't start without setting the
-        /// port.
-        #[arg(long)]
-        metrics_port: Option<u16>,
+        /// Defines endpoints for the prometheus metrics server. It doesn't start without at least
+        /// one specified endpoint. Format: 127.0.0.1:8080
+        #[arg(long, alias = "metrics-endpoint")]
+        metrics_endpoints: Vec<SocketAddr>,
     },
     /// Generate a new keypair
     GenerateKeypair {
@@ -124,7 +125,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             enable_private_ips,
             protocol_version,
             external_addresses,
-            metrics_port,
+            metrics_endpoints,
         } => {
             debug!(
                 "Libp2p protocol stack instantiated with version: {} ",
@@ -136,16 +137,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
             // Metrics
             let mut metric_registry = Registry::default();
-            let metrics = metrics_port.map(|_| Metrics::new(&mut metric_registry));
+            let metrics_endpoints_are_specified = !metrics_endpoints.is_empty();
+            let metrics =
+                metrics_endpoints_are_specified.then(|| Metrics::new(&mut metric_registry));
 
-            let prometheus_task = metrics_port
-                .map(|port| {
-                    let address = format!("0.0.0.0:{port}")
-                        .parse()
-                        .expect("Manual address creation.");
-
-                    start_prometheus_metrics_server(address, metric_registry)
-                })
+            let prometheus_task = metrics_endpoints_are_specified
+                .then(|| start_prometheus_metrics_server(metrics_endpoints, metric_registry))
                 .transpose()?;
 
             let config = Config {
