@@ -24,17 +24,17 @@ async fn metrics(registry: Data<SharedRegistry>) -> Result<HttpResponse, Box<dyn
 
 /// Start prometheus metrics server on the provided address.
 pub fn start_prometheus_metrics_server(
-    address: SocketAddr,
+    endpoints: Vec<SocketAddr>,
     registry: Registry,
 ) -> std::io::Result<impl Future<Output = std::io::Result<()>>> {
     let shared_registry = Arc::new(Mutex::new(registry));
     let data = Data::new(shared_registry);
 
-    info!("Starting metrics server on {} ...", address);
+    info!(?endpoints, "Starting metrics server...",);
 
     Ok(
         HttpServer::new(move || App::new().app_data(data.clone()).service(metrics))
-            .bind(address)?
+            .bind(endpoints.as_slice())?
             .run(),
     )
 }
