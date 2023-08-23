@@ -2,8 +2,7 @@
 
 #![feature(const_option)]
 
-mod gossip;
-mod node_client;
+pub mod gossip;
 mod state_manager;
 mod time_keeper;
 
@@ -13,8 +12,6 @@ use std::sync::Arc;
 use subspace_core_primitives::{BlockNumber, SlotNumber};
 use subspace_proof_of_time::ProofOfTime;
 
-pub use gossip::pot_gossip_peers_set_config;
-pub use node_client::PotClient;
 pub use state_manager::{
     PotConsensusState, PotGetBlockProofsError, PotStateSummary, PotVerifyBlockProofsError,
 };
@@ -87,7 +84,7 @@ impl PotComponents {
         let proof_of_time = ProofOfTime::new(config.pot_iterations, config.num_checkpoints)
             // TODO: Proper error handling or proof
             .expect("Failed to initialize proof of time");
-        let (protocol_state, consensus_state) = init_pot_state(config, proof_of_time.clone());
+        let (protocol_state, consensus_state) = init_pot_state(config, proof_of_time);
 
         Self {
             is_time_keeper,

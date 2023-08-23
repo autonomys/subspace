@@ -38,8 +38,7 @@ pub use crate::node::{
 };
 pub use crate::node_runner::NodeRunner;
 pub use crate::peer_info::{
-    Config as PeerInfoConfig, CuckooFilterDTO, CuckooFilterProvider, Notification,
-    NotificationHandler, PeerInfo, PeerInfoProvider,
+    Config as PeerInfoConfig, Notification, NotificationHandler, PeerInfo, PeerInfoProvider,
 };
 pub use create::{create, peer_id, Config, CreationError, LocalRecordProvider};
 pub use libp2p;

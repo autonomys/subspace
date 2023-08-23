@@ -1,17 +1,15 @@
 //! Time keeper implementation.
 
-use crate::gossip::PotGossip;
 use crate::state_manager::PotProtocolState;
 use crate::PotComponents;
-use futures::{FutureExt, StreamExt};
-use parity_scale_codec::Encode;
+use futures::channel::mpsc;
+use futures::{SinkExt, StreamExt};
 use sc_client_api::BlockchainEvents;
-use sc_network::PeerId;
-use sc_network_gossip::{Network as GossipNetwork, Syncing as GossipSyncing};
 use sp_blockchain::HeaderBackend;
 use sp_consensus_subspace::digests::extract_pre_digest;
 use sp_core::H256;
 use sp_runtime::traits::Block as BlockT;
+use std::marker::PhantomData;
 use std::sync::Arc;
 use std::thread;
 use std::time::{Duration, Instant};
@@ -26,15 +24,16 @@ use tracing::{debug, error, trace, warn};
 const PROOFS_CHANNEL_SIZE: usize = 12; // 2 * reveal lag.
 
 /// The time keeper manages the protocol: periodic proof generation/verification, gossip.
-pub struct TimeKeeper<Block: BlockT<Hash = H256>, Client> {
+pub struct TimeKeeper<Block, Client> {
     proof_of_time: ProofOfTime,
     pot_state: Arc<dyn PotProtocolState>,
-    gossip: PotGossip<Block>,
     client: Arc<Client>,
     // Expected time to produce a proof.
     // TODO: this will be removed after the pot_iterations is set
     // to produce a proof/sec.
     target_proof_time: Duration,
+    gossip_sender: mpsc::Sender<PotProof>,
+    _block: PhantomData<Block>,
 }
 
 impl<Block, Client> TimeKeeper<Block, Client>
@@ -43,55 +42,32 @@ where
     Client: HeaderBackend<Block> + BlockchainEvents<Block>,
 {
     /// Creates the time keeper instance.
-    pub fn new<Network, GossipSync>(
-        components: PotComponents,
+    pub fn new(
+        components: &PotComponents,
         client: Arc<Client>,
-        network: Network,
-        sync: Arc<GossipSync>,
         target_proof_time: Duration,
-    ) -> Self
-    where
-        Network: GossipNetwork<Block> + Send + Sync + Clone + 'static,
-        GossipSync: GossipSyncing<Block> + 'static,
-    {
-        let PotComponents {
-            proof_of_time,
-            protocol_state: pot_state,
-            ..
-        } = components;
-
+        gossip_sender: mpsc::Sender<PotProof>,
+    ) -> Self {
         Self {
-            proof_of_time: proof_of_time.clone(),
-            pot_state: pot_state.clone(),
-            gossip: PotGossip::new(network, sync, pot_state, proof_of_time),
+            proof_of_time: components.proof_of_time,
+            pot_state: Arc::clone(&components.protocol_state),
             client,
             target_proof_time,
+            gossip_sender,
+            _block: PhantomData,
         }
     }
 
     /// Runs the time keeper processing loop.
-    pub async fn run(self) {
+    pub async fn run(mut self) {
         self.initialize().await;
 
         let mut local_proof_receiver = self.spawn_producer_thread();
-        let handle_gossip_message: Arc<dyn Fn(PeerId, PotProof) + Send + Sync> =
-            Arc::new(|sender, proof| {
-                self.handle_gossip_message(sender, proof);
-            });
-        loop {
-            futures::select! {
-                local_proof = local_proof_receiver.recv().fuse() => {
-                    if let Some(proof) = local_proof {
-                        trace!(%proof, "Got local proof");
-                        self.handle_local_proof(proof);
-                    }
-                },
-                _ = self.gossip.process_incoming_messages(
-                    handle_gossip_message.clone()
-                ).fuse() => {
-                    error!("Gossip engine has terminated");
-                    return;
-                }
+        while let Some(proof) = local_proof_receiver.recv().await {
+            trace!(%proof, "Got local proof");
+            if let Err(error) = self.gossip_sender.send(proof).await {
+                error!(%error, "Failed to send proof to gossip");
+                return;
             }
         }
     }
@@ -158,7 +134,7 @@ where
     /// Starts the thread to produce the proofs.
     fn spawn_producer_thread(&self) -> Receiver<PotProof> {
         let (sender, receiver) = channel(PROOFS_CHANNEL_SIZE);
-        let proof_of_time = self.proof_of_time.clone();
+        let proof_of_time = self.proof_of_time;
         let pot_state = self.pot_state.clone();
         let target_proof_time = self.target_proof_time;
         thread::Builder::new()
@@ -220,24 +196,6 @@ where
                     thread::sleep(Duration::from_millis(pad))
                 }
             }
-        }
-    }
-
-    /// Gossips the locally generated proof.
-    fn handle_local_proof(&self, proof: PotProof) {
-        self.gossip.gossip_message(proof.encode());
-    }
-
-    /// Handles the incoming gossip message.
-    fn handle_gossip_message(&self, sender: PeerId, proof: PotProof) {
-        let start_ts = Instant::now();
-        let ret = self.pot_state.on_proof_from_peer(sender, &proof);
-        let elapsed = start_ts.elapsed();
-
-        if let Err(error) = ret {
-            trace!(%error, %sender, "On gossip");
-        } else {
-            trace!(%proof, ?elapsed, %sender, "On gossip");
         }
     }
 }

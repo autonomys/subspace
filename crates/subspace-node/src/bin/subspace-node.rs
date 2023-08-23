@@ -187,23 +187,29 @@ fn main() -> Result<(), Error> {
             let runner = cli.create_runner(&cmd.base)?;
 
             runner.sync_run(|consensus_chain_config| {
-                let domain_cli = DomainCli::new(
-                    cmd.base
-                        .base_path()?
-                        .map(|base_path| base_path.path().to_path_buf()),
-                    cli.domain_args.into_iter(),
-                );
+                let domain_config = if cmd.domain_args.is_empty() {
+                    None
+                } else {
+                    let domain_cli = DomainCli::new(
+                        cmd.base
+                            .base_path()?
+                            .map(|base_path| base_path.path().to_path_buf()),
+                        cmd.domain_args.clone().into_iter(),
+                    );
 
-                let domain_config = SubstrateCli::create_configuration(
-                    &domain_cli,
-                    &domain_cli,
-                    consensus_chain_config.tokio_handle.clone(),
-                )
-                .map_err(|error| {
-                    sc_service::Error::Other(format!(
-                        "Failed to create domain configuration: {error:?}"
-                    ))
-                })?;
+                    let domain_config = SubstrateCli::create_configuration(
+                        &domain_cli,
+                        &domain_cli,
+                        consensus_chain_config.tokio_handle.clone(),
+                    )
+                    .map_err(|error| {
+                        sc_service::Error::Other(format!(
+                            "Failed to create domain configuration: {error:?}"
+                        ))
+                    })?;
+
+                    Some(domain_config)
+                };
 
                 cmd.run(consensus_chain_config, domain_config)
             })?;
