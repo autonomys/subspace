@@ -1,4 +1,4 @@
-use crate::create::temporary_bans::TemporaryBans;
+use crate::composer::temporary_bans::TemporaryBans;
 use crate::CreationError;
 use futures::future::Either;
 use libp2p::core::multiaddr::{Multiaddr, Protocol};

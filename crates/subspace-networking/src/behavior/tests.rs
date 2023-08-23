@@ -191,7 +191,7 @@ async fn test_async_handler_works_with_pending_internal_future() {
         )],
         ..Config::default()
     };
-    let (node_1, mut node_runner_1) = crate::create(config_1).unwrap();
+    let (node_1, mut node_runner_1) = crate::compose(config_1).unwrap();
 
     let (node_1_address_sender, node_1_address_receiver) = oneshot::channel();
     let on_new_listener_handler = node_1.on_new_listener(Arc::new({
@@ -225,7 +225,7 @@ async fn test_async_handler_works_with_pending_internal_future() {
         ..Config::default()
     };
 
-    let (node_2, mut node_runner_2) = crate::create(config_2).unwrap();
+    let (node_2, mut node_runner_2) = crate::compose(config_2).unwrap();
 
     let bootstrap_fut = Box::pin({
         let node = node_2.clone();

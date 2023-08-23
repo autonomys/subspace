@@ -19,7 +19,7 @@
 #![warn(missing_docs)]
 
 mod behavior;
-mod create;
+mod composer;
 mod node;
 mod node_runner;
 mod protocols;
@@ -38,7 +38,7 @@ pub use crate::protocols::peer_info::{
     Config as PeerInfoConfig, CuckooFilterDTO, CuckooFilterProvider, Notification,
     NotificationHandler, PeerInfo, PeerInfoProvider,
 };
-pub use create::{create, peer_id, Config, CreationError, LocalRecordProvider};
+pub use composer::{compose, peer_id, Config, CreationError, LocalRecordProvider};
 pub use libp2p;
 pub use protocols::requests::handlers::generic_request_handler::{
     GenericRequest, GenericRequestHandler,

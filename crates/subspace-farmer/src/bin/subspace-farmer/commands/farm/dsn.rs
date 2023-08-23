@@ -14,7 +14,7 @@ use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::utils::strip_peer_id;
 use subspace_networking::{
-    create, Config, NetworkingParametersManager, Node, NodeRunner, PeerInfo, PeerInfoProvider,
+    compose, Config, NetworkingParametersManager, Node, NodeRunner, PeerInfo, PeerInfoProvider,
     PieceByIndexRequest, PieceByIndexRequestHandler, PieceByIndexResponse,
     SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
 };
@@ -192,7 +192,7 @@ pub(super) fn configure_dsn(
         ..default_config
     };
 
-    create(config)
+    compose(config)
         .map(|(node, node_runner)| {
             node.on_new_listener(Arc::new({
                 let node = node.clone();
