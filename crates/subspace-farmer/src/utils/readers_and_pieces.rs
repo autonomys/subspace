@@ -13,8 +13,7 @@ struct PieceDetails {
     piece_offset: PieceOffset,
 }
 
-/// Wrapper data structure for pieces plotted under multiple plots and corresponding piece readers,
-/// it also maintains filter in given [`ArchivalStoragePieces`].
+/// Wrapper data structure for pieces plotted under multiple plots and corresponding piece readers.
 #[derive(Debug)]
 pub struct ReadersAndPieces {
     readers: Vec<PieceReader>,
@@ -71,8 +70,6 @@ impl ReadersAndPieces {
     }
 
     pub fn add_sector(&mut self, disk_farm_index: u8, plotted_sector: &PlottedSector) {
-        let mut new_piece_indices = Vec::new();
-
         for (piece_offset, &piece_index) in
             (PieceOffset::ZERO..).zip(plotted_sector.piece_indexes.iter())
         {
@@ -88,15 +85,12 @@ impl ReadersAndPieces {
                 }
                 Entry::Vacant(entry) => {
                     entry.insert(vec![piece_details]);
-                    new_piece_indices.push(piece_index);
                 }
             }
         }
     }
 
     pub fn delete_sector(&mut self, disk_farm_index: u8, plotted_sector: &PlottedSector) {
-        let mut deleted_piece_indices = Vec::new();
-
         for (piece_offset, &piece_index) in
             (PieceOffset::ZERO..).zip(plotted_sector.piece_indexes.iter())
         {
@@ -122,7 +116,6 @@ impl ReadersAndPieces {
                 // We do not store empty lists
                 if piece_details.is_empty() {
                     entry.remove_entry();
-                    deleted_piece_indices.push(piece_index);
                 }
             }
         }
