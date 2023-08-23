@@ -45,12 +45,15 @@ mod pallet {
             + FixedPointOperand;
     }
 
-    // The accumulated transaction fee of all transactions included in current block
+    /// The accumulated rewards of the current block
+    ///
+    /// Currently, the only source of rewards is the transaction fees, in the furture it
+    /// will include the XDM reward.
     #[pallet::storage]
     #[pallet::getter(fn block_transaction_fee)]
-    pub(super) type BlockTransactionFee<T: Config> = StorageValue<_, T::Balance, ValueQuery>;
+    pub(super) type BlockRewards<T: Config> = StorageValue<_, T::Balance, ValueQuery>;
 
-    /// Pallet domain-transaction-fees to store the domain block transaction fee.
+    /// Pallet operator-rewards to store the accumulated rewards of the current block
     #[pallet::pallet]
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
@@ -58,15 +61,15 @@ mod pallet {
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
         fn on_initialize(_now: BlockNumberFor<T>) -> Weight {
-            BlockTransactionFee::<T>::set(Zero::zero());
+            BlockRewards::<T>::set(Zero::zero());
             T::DbWeight::get().writes(1)
         }
     }
 
     impl<T: Config> Pallet<T> {
         pub fn note_transaction_fees(tx_fee: T::Balance) {
-            let next_tx_fee = BlockTransactionFee::<T>::get().saturating_add(tx_fee);
-            BlockTransactionFee::<T>::set(next_tx_fee);
+            let next_block_rewards = BlockRewards::<T>::get().saturating_add(tx_fee);
+            BlockRewards::<T>::set(next_block_rewards);
         }
     }
 }

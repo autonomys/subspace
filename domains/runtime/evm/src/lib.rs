@@ -16,8 +16,7 @@ use fp_account::EthereumSignature;
 use fp_self_contained::SelfContainedCall;
 use frame_support::dispatch::{DispatchClass, GetDispatchInfo};
 use frame_support::traits::{
-    ConstU16, ConstU32, ConstU64, Currency, Everything, ExistenceRequirement, FindAuthor,
-    Imbalance, OnUnbalanced, WithdrawReasons,
+    ConstU16, ConstU32, ConstU64, Currency, Everything, FindAuthor, Imbalance, OnUnbalanced,
 };
 use frame_support::weights::constants::{
     BlockExecutionWeight, ExtrinsicBaseWeight, ParityDbWeight, WEIGHT_REF_TIME_PER_MILLIS,
@@ -43,10 +42,10 @@ use sp_messenger::messages::{
 };
 use sp_runtime::traits::{
     BlakeTwo256, Block as BlockT, Convert, DispatchInfoOf, Dispatchable, IdentifyAccount,
-    IdentityLookup, PostDispatchInfoOf, UniqueSaturatedInto, Verify, Zero,
+    IdentityLookup, PostDispatchInfoOf, UniqueSaturatedInto, Verify,
 };
 use sp_runtime::transaction_validity::{
-    InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
+    TransactionSource, TransactionValidity, TransactionValidityError,
 };
 use sp_runtime::{
     create_runtime_str, generic, impl_opaque_keys, ApplyExtrinsicResult, ConsensusEngineId,
@@ -326,74 +325,21 @@ impl pallet_balances::Config for Runtime {
     type MaxHolds = ();
 }
 
-impl pallet_domain_transaction_fees::Config for Runtime {
+impl pallet_operator_rewards::Config for Runtime {
     type Balance = Balance;
 }
 
 type NegativeImbalance = <Balances as Currency<AccountId>>::NegativeImbalance;
 
-/// Implementation of [`pallet_transaction_payment::OnChargeTransaction`] that charges transaction
-/// fees from the transaction sender and collect all the fee in `pallet_domain_transaction_fees`
-pub struct OnChargeTransaction;
+/// `ActualPaidFeesHandler` used to collect all the fee in `pallet_operator_rewards`
+pub struct ActualPaidFeesHandler;
 
-impl pallet_transaction_payment::OnChargeTransaction<Runtime> for OnChargeTransaction {
-    type LiquidityInfo = Option<NegativeImbalance>;
-    type Balance = Balance;
-
-    fn withdraw_fee(
-        who: &AccountId,
-        _call: &RuntimeCall,
-        _info: &DispatchInfoOf<RuntimeCall>,
-        fee: Self::Balance,
-        tip: Self::Balance,
-    ) -> Result<Self::LiquidityInfo, TransactionValidityError> {
-        if fee.is_zero() {
-            return Ok(None);
+impl OnUnbalanced<NegativeImbalance> for ActualPaidFeesHandler {
+    fn on_unbalanceds<B>(fees_then_tips: impl Iterator<Item = NegativeImbalance>) {
+        // Record both actual paid transaction fee and tip in `pallet_operator_rewards`
+        for fee in fees_then_tips {
+            OperatorRewards::note_transaction_fees(fee.peek());
         }
-
-        let withdraw_reason = if tip.is_zero() {
-            WithdrawReasons::TRANSACTION_PAYMENT
-        } else {
-            WithdrawReasons::TRANSACTION_PAYMENT | WithdrawReasons::TIP
-        };
-
-        match <Balances as Currency<AccountId>>::withdraw(
-            who,
-            fee,
-            withdraw_reason,
-            ExistenceRequirement::KeepAlive,
-        ) {
-            Ok(imbalance) => Ok(Some(imbalance)),
-            Err(_) => Err(InvalidTransaction::Payment.into()),
-        }
-    }
-
-    fn correct_and_deposit_fee(
-        who: &AccountId,
-        _dispatch_info: &DispatchInfoOf<RuntimeCall>,
-        _post_info: &PostDispatchInfoOf<RuntimeCall>,
-        corrected_fee: Self::Balance,
-        _tip: Self::Balance,
-        already_withdrawn: Self::LiquidityInfo,
-    ) -> Result<(), TransactionValidityError> {
-        if let Some(paid) = already_withdrawn {
-            // Calculate how much refund we should return
-            let refund_amount = paid.peek().saturating_sub(corrected_fee);
-            // refund to the the account that paid the fees. If this fails, the
-            // account might have dropped below the existential balance. In
-            // that case we don't refund anything.
-            let refund_imbalance = Balances::deposit_into_existing(who, refund_amount)
-                .unwrap_or_else(|_| <Balances as Currency<AccountId>>::PositiveImbalance::zero());
-            // merge the imbalance caused by paying the fees and refunding parts of it again.
-            let adjusted_paid = paid
-                .offset(refund_imbalance)
-                .same()
-                .map_err(|_| TransactionValidityError::Invalid(InvalidTransaction::Payment))?;
-
-            // Record the actual paid fees
-            DomainTransactionFee::note_transaction_fees(adjusted_paid.peek());
-        }
-        Ok(())
     }
 }
 
@@ -404,7 +350,8 @@ parameter_types! {
 
 impl pallet_transaction_payment::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type OnChargeTransaction = OnChargeTransaction;
+    type OnChargeTransaction =
+        pallet_transaction_payment::CurrencyAdapter<Balances, ActualPaidFeesHandler>;
     type WeightToFee = IdentityFee<Balance>;
     type LengthToFee = ConstantMultiplier<Balance, TransactionByteFee>;
     type FeeMultiplierUpdate = ();
@@ -532,7 +479,7 @@ struct BaseFeeHandler;
 impl OnUnbalanced<NegativeImbalance> for BaseFeeHandler {
     fn on_nonzero_unbalanced(base_fee: NegativeImbalance) {
         // Record the evm transaction base fee
-        DomainTransactionFee::note_transaction_fees(base_fee.peek())
+        OperatorRewards::note_transaction_fees(base_fee.peek())
     }
 }
 
@@ -540,7 +487,7 @@ type InnerEVMCurrencyAdapter = pallet_evm::EVMCurrencyAdapter<Balances, BaseFeeH
 
 // Implementation of [`pallet_transaction_payment::OnChargeTransaction`] that charges evm transaction
 // fees from the transaction sender and collect all the fees (including both the base fee and tip) in
-// `pallet_domain_transaction_fees`
+// `pallet_operator_rewards`
 pub struct EVMCurrencyAdapter;
 
 impl pallet_evm::OnChargeEVMTransaction<Runtime> for EVMCurrencyAdapter {
@@ -565,7 +512,7 @@ impl pallet_evm::OnChargeEVMTransaction<Runtime> for EVMCurrencyAdapter {
             >>::correct_and_deposit_fee(who, corrected_fee, base_fee, already_withdrawn);
         if let Some(t) = tip.as_ref() {
             // Record the evm transaction tip
-            DomainTransactionFee::note_transaction_fees(t.peek())
+            OperatorRewards::note_transaction_fees(t.peek())
         }
         tip
     }
@@ -674,7 +621,7 @@ construct_runtime!(
 
         // domain instance stuff
         SelfDomainId: pallet_domain_id = 90,
-        DomainTransactionFee: pallet_domain_transaction_fees = 91,
+        OperatorRewards: pallet_operator_rewards = 91,
 
         // Sudo account
         Sudo: pallet_sudo = 100,
@@ -939,7 +886,7 @@ impl_runtime_apis! {
         }
 
         fn block_transaction_fee() -> Balance {
-            DomainTransactionFee::block_transaction_fee()
+            OperatorRewards::block_transaction_fee()
         }
     }
 
