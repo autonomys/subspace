@@ -1,5 +1,4 @@
 use crate::piece_cache::PieceCache;
-use crate::utils::archival_storage_info::ArchivalStorageInfo;
 use crate::utils::readers_and_pieces::ReadersAndPieces;
 use crate::NodeClient;
 use async_trait::async_trait;
@@ -14,14 +13,13 @@ use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator, RetryPolicy};
 use subspace_networking::Node;
-use tracing::error;
+use tracing::{debug, error, trace};
 
 pub struct FarmerPieceGetter<PV, NC> {
     node: Node,
     piece_provider: PieceProvider<PV>,
     piece_cache: PieceCache,
     node_client: NC,
-    archival_storage_info: ArchivalStorageInfo,
     readers_and_pieces: Arc<Mutex<Option<ReadersAndPieces>>>,
 }
 
@@ -31,7 +29,6 @@ impl<PV, NC> FarmerPieceGetter<PV, NC> {
         piece_provider: PieceProvider<PV>,
         piece_cache: PieceCache,
         node_client: NC,
-        archival_storage_info: ArchivalStorageInfo,
         readers_and_pieces: Arc<Mutex<Option<ReadersAndPieces>>>,
     ) -> Self {
         Self {
@@ -39,7 +36,6 @@ impl<PV, NC> FarmerPieceGetter<PV, NC> {
             piece_provider,
             piece_cache,
             node_client,
-            archival_storage_info,
             readers_and_pieces,
         }
     }
@@ -111,24 +107,30 @@ where
         // L1 piece acquisition
         // TODO: consider using retry policy for L1 lookups as well.
         let connected_peers = HashSet::<PeerId>::from_iter(self.node.connected_peers().await?);
+        if connected_peers.is_empty() {
+            debug!(%piece_index, "Cannot acquire piece from L1: no connected peers.");
 
-        for peer_id in self
-            .archival_storage_info
-            .peers_contain_piece(&piece_index)
-            .iter()
-        {
-            if connected_peers.contains(peer_id) {
-                let maybe_piece = self
-                    .piece_provider
-                    .get_piece_from_peer(*peer_id, piece_index)
-                    .await;
+            return Ok(None);
+        }
 
-                if maybe_piece.is_some() {
-                    return Ok(maybe_piece);
-                }
+        for peer_id in connected_peers.iter() {
+            let maybe_piece = self
+                .piece_provider
+                .get_piece_from_peer(*peer_id, piece_index)
+                .await;
+
+            if maybe_piece.is_some() {
+                trace!(%piece_index, %peer_id, "L1 lookup succeeded.");
+
+                return Ok(maybe_piece);
             }
         }
 
+        debug!(
+            %piece_index,
+            connected_peers=%connected_peers.len(),
+            "Cannot acquire piece: all methods yielded empty result."
+        );
         Ok(None)
     }
 }

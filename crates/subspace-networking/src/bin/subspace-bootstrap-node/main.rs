@@ -3,14 +3,18 @@
 #![feature(type_changing_struct_update)]
 
 use clap::Parser;
+use futures::{select, FutureExt};
 use libp2p::identity::ed25519::Keypair;
+use libp2p::metrics::Metrics;
 use libp2p::{identity, Multiaddr, PeerId};
+use prometheus_client::registry::Registry;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use subspace_networking::libp2p::multiaddr::Protocol;
-use subspace_networking::{peer_id, Config};
+use subspace_networking::{peer_id, start_prometheus_metrics_server, Config};
 use tracing::{debug, info, Level};
 use tracing_subscriber::fmt::Subscriber;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -55,6 +59,10 @@ enum Command {
         /// Known external addresses
         #[arg(long, alias = "external-address")]
         external_addresses: Vec<Multiaddr>,
+        /// Defines endpoints for the prometheus metrics server. It doesn't start without at least
+        /// one specified endpoint. Format: 127.0.0.1:8080
+        #[arg(long, alias = "metrics-endpoint")]
+        metrics_endpoints: Vec<SocketAddr>,
     },
     /// Generate a new keypair
     GenerateKeypair {
@@ -117,6 +125,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             enable_private_ips,
             protocol_version,
             external_addresses,
+            metrics_endpoints,
         } => {
             debug!(
                 "Libp2p protocol stack instantiated with version: {} ",
@@ -125,6 +134,16 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
             let decoded_keypair = Keypair::try_from_bytes(hex::decode(keypair)?.as_mut_slice())?;
             let keypair = identity::Keypair::from(decoded_keypair);
+
+            // Metrics
+            let mut metric_registry = Registry::default();
+            let metrics_endpoints_are_specified = !metrics_endpoints.is_empty();
+            let metrics =
+                metrics_endpoints_are_specified.then(|| Metrics::new(&mut metric_registry));
+
+            let prometheus_task = metrics_endpoints_are_specified
+                .then(|| start_prometheus_metrics_server(metrics_endpoints, metric_registry))
+                .transpose()?;
 
             let config = Config {
                 listen_on,
@@ -139,6 +158,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 special_connected_peers_handler: None,
                 bootstrap_addresses: bootstrap_nodes,
                 external_addresses,
+                metrics,
 
                 ..Config::new(protocol_version.to_string(), keypair, (), None)
             };
@@ -158,7 +178,14 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .detach();
 
             info!("Subspace Bootstrap Node started");
-            node_runner.run().await;
+            if let Some(prometheus_task) = prometheus_task {
+                select! {
+                   _ = node_runner.run().fuse() => {},
+                   _ = prometheus_task.fuse() => {},
+                }
+            } else {
+                node_runner.run().await
+            }
         }
         Command::GenerateKeypair { json } => {
             let output = KeypairOutput::new(Keypair::generate());
