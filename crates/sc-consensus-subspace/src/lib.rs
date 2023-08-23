@@ -49,6 +49,8 @@ use sc_consensus::JustificationSyncLink;
 use sc_consensus_slots::{
     check_equivocation, BackoffAuthoringBlocksStrategy, InherentDataProviderExt, SlotProportion,
 };
+#[cfg(feature = "pot")]
+use sc_proof_of_time::source::PotSlotStream;
 use sc_proof_of_time::{PotConsensusState, PotVerifyBlockProofsError};
 use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_DEBUG, CONSENSUS_TRACE};
 use sc_utils::mpsc::TracingUnboundedSender;
@@ -425,6 +427,10 @@ where
 
     /// Proof of time interface.
     pub proof_of_time: Option<Arc<dyn PotConsensusState>>,
+
+    /// Stream with proof of time slots.
+    #[cfg(feature = "pot")]
+    pub pot_slot_stream: PotSlotStream,
 }
 
 /// Start the Subspace worker.
@@ -445,6 +451,8 @@ pub fn start_subspace<PosTable, Block, Client, SC, E, I, SO, CIDP, BS, L, AS, Er
         max_block_proposal_slot_portion,
         telemetry,
         proof_of_time,
+        #[cfg(feature = "pot")]
+        pot_slot_stream,
     }: SubspaceParams<Block, Client, SC, E, I, SO, L, CIDP, BS, AS>,
 ) -> Result<SubspaceWorker, sp_consensus::Error>
 where
@@ -510,6 +518,7 @@ where
         sc_consensus_slots::SimpleSlotWorkerToSlotWorker(worker),
         sync_oracle,
         create_inherent_data_providers,
+        pot_slot_stream,
     );
 
     Ok(SubspaceWorker {

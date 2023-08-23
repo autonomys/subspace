@@ -12,6 +12,7 @@ include = [
 
 [dependencies]
 async-trait = "0.1.68"
+derive_more = "0.99.17"
 futures = "0.3.28"
 parity-scale-codec = { version = "3.6.1", features = ["derive"] }
 sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }

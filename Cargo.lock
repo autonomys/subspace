@@ -9246,6 +9246,7 @@ name = "sc-proof-of-time"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "derive_more",
  "futures",
  "parity-scale-codec",
  "parking_lot 0.12.1",

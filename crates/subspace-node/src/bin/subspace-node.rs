@@ -20,6 +20,7 @@ use domain_client_operator::Bootstrapper;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
+#[cfg(feature = "pot")]
 use log::warn;
 use sc_cli::{ChainSpec, CliConfiguration, SubstrateCli};
 use sc_consensus_slots::SlotProportion;
@@ -36,7 +37,9 @@ use subspace_node::domain::{
 use subspace_node::{Cli, ExecutorDispatch, Subcommand};
 use subspace_proof_of_space::chia::ChiaTable;
 use subspace_runtime::{Block, RuntimeApi};
-use subspace_service::{DsnConfig, PotPartialConfig, SubspaceConfiguration, SubspaceNetworking};
+#[cfg(feature = "pot")]
+use subspace_service::PotPartialConfig;
+use subspace_service::{DsnConfig, SubspaceConfiguration, SubspaceNetworking};
 
 type PosTable = ChiaTable;
 
@@ -355,6 +358,7 @@ fn main() -> Result<(), Error> {
             runner.run_node_until_exit(|consensus_chain_config| async move {
                 let tokio_handle = consensus_chain_config.tokio_handle.clone();
                 let database_source = consensus_chain_config.database.clone();
+                #[cfg(feature = "pot")]
                 let maybe_chain_spec_pot_initial_key = consensus_chain_config
                     .chain_spec
                     .properties()
@@ -367,6 +371,7 @@ fn main() -> Result<(), Error> {
                         ))
                     })?
                     .flatten();
+                #[cfg(feature = "pot")]
                 if maybe_chain_spec_pot_initial_key.is_some()
                     && cli.pot_initial_key.is_some()
                     && maybe_chain_spec_pot_initial_key != cli.pot_initial_key
@@ -376,16 +381,15 @@ fn main() -> Result<(), Error> {
                         different explicit value"
                     );
                 }
-                let pot_config = if cli.pot_role.is_pot_enabled() {
-                    Some(PotPartialConfig {
-                        is_timekeeper: cli.pot_role.is_time_keeper(),
-                        initial_key: maybe_chain_spec_pot_initial_key
-                            .or(cli.pot_initial_key)
-                            .unwrap_or_default(),
-                    })
-                } else {
-                    None
-                };
+                #[cfg(feature = "pot")]
+                let pot_config = Some(PotPartialConfig {
+                    is_timekeeper: cli.timekeeper,
+                    initial_key: maybe_chain_spec_pot_initial_key
+                        .or(cli.pot_initial_key)
+                        .unwrap_or_default(),
+                });
+                #[cfg(not(feature = "pot"))]
+                let pot_config = None;
 
                 let consensus_chain_node = {
                     let span = sc_tracing::tracing::info_span!(

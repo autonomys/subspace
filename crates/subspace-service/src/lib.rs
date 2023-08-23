@@ -55,7 +55,12 @@ use sc_consensus_subspace::{
 };
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
-use sc_proof_of_time::gossip::{pot_gossip_peers_set_config, PotGossipWorker};
+use sc_proof_of_time::gossip::pot_gossip_peers_set_config;
+#[cfg(feature = "pot")]
+use sc_proof_of_time::gossip::PotGossipWorker;
+#[cfg(feature = "pot")]
+use sc_proof_of_time::source::{PotSource, PotSourceConfig};
+#[cfg(feature = "pot")]
 use sc_proof_of_time::{PotComponents, PotConfig, TimeKeeper};
 use sc_service::error::Error as ServiceError;
 use sc_service::{Configuration, NetworkStarter, SpawnTasksParams, TaskManager};
@@ -79,10 +84,13 @@ use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use static_assertions::const_assert;
 use std::marker::PhantomData;
+#[cfg(feature = "pot")]
 use std::num::NonZeroU32;
 use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
-use subspace_core_primitives::{PotKey, PotSeed};
+use subspace_core_primitives::PotKey;
+#[cfg(feature = "pot")]
+use subspace_core_primitives::PotSeed;
 use subspace_fraud_proof::verifier_api::VerifierClient;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
@@ -263,7 +271,8 @@ where
     /// Telemetry
     pub telemetry: Option<Telemetry>,
     /// PoT components
-    pub pot_components: Option<PotComponents>,
+    #[cfg(feature = "pot")]
+    pub pot_components: PotComponents,
 }
 
 type PartialComponents<RuntimeApi, ExecutorDispatch> = sc_service::PartialComponents<
@@ -293,7 +302,7 @@ pub fn new_partial<PosTable, RuntimeApi, ExecutorDispatch>(
             NativeElseWasmExecutor<ExecutorDispatch>,
         ) -> Arc<dyn GenerateGenesisStateRoot>,
     >,
-    maybe_pot_config: Option<PotPartialConfig>,
+    #[cfg_attr(not(feature = "pot"), allow(unused_variables))] pot_config: Option<PotPartialConfig>,
 ) -> Result<PartialComponents<RuntimeApi, ExecutorDispatch>, ServiceError>
 where
     PosTable: Table,
@@ -391,24 +400,26 @@ where
     let fraud_proof_block_import =
         sc_consensus_fraud_proof::block_import(client.clone(), client.clone(), proof_verifier);
 
-    let pot_components = maybe_pot_config.map(|pot_config| {
-        PotComponents::new(
-            pot_config.is_timekeeper,
-            // TODO: fill proper values. These are set to use less
-            // CPU and take less than 1 sec to produce per proof
-            // during the initial testing.
-            PotConfig {
-                initial_seed: PotSeed::from_genesis_block_hash(client.info().genesis_hash.into()),
-                initial_key: pot_config.initial_key,
-                randomness_update_interval_blocks: 18,
-                injection_depth_blocks: 90,
-                global_randomness_reveal_lag_slots: 6,
-                pot_injection_lag_slots: 6,
-                max_future_slots: 10,
-                pot_iterations: NonZeroU32::new(4 * 1_000).expect("Not zero; qed"),
-            },
-        )
-    });
+    // TODO: Temporary hack, will be removed soon
+    #[cfg(feature = "pot")]
+    let pot_config = pot_config.unwrap();
+    #[cfg(feature = "pot")]
+    let pot_components = PotComponents::new(
+        pot_config.is_timekeeper,
+        // TODO: fill proper values. These are set to use less
+        // CPU and take less than 1 sec to produce per proof
+        // during the initial testing.
+        PotConfig {
+            initial_seed: PotSeed::from_genesis_block_hash(client.info().genesis_hash.into()),
+            initial_key: pot_config.initial_key,
+            randomness_update_interval_blocks: 18,
+            injection_depth_blocks: 90,
+            global_randomness_reveal_lag_slots: 6,
+            pot_injection_lag_slots: 6,
+            max_future_slots: 10,
+            pot_iterations: NonZeroU32::new(4 * 1_000).expect("Not zero; qed"),
+        },
+    );
 
     let (block_import, subspace_link) = sc_consensus_subspace::block_import::<
         PosTable,
@@ -449,9 +460,10 @@ where
             }
         },
         segment_headers_store.clone(),
-        pot_components
-            .as_ref()
-            .map(|component| component.consensus_state()),
+        #[cfg(feature = "pot")]
+        Some(pot_components.consensus_state()),
+        #[cfg(not(feature = "pot"))]
+        None,
     )?;
 
     let slot_duration = subspace_link.slot_duration();
@@ -477,6 +489,7 @@ where
         subspace_link,
         segment_headers_store,
         telemetry,
+        #[cfg(feature = "pot")]
         pot_components,
     };
 
@@ -587,6 +600,7 @@ where
         subspace_link,
         segment_headers_store,
         mut telemetry,
+        #[cfg(feature = "pot")]
         pot_components,
     } = other;
 
@@ -796,12 +810,19 @@ where
     let archived_segment_notification_stream = subspace_link.archived_segment_notification_stream();
 
     if config.role.is_authority() || config.force_new_slot_notifications {
-        let pot_consensus = pot_components
-            .as_ref()
-            .map(|component| component.consensus_state());
-        if let Some(components) = pot_components {
+        #[cfg(feature = "pot")]
+        let (pot_source, pot_slot_stream) = PotSource::new(PotSourceConfig {
+            initial_key: pot_components.initial_key,
+        });
+        #[cfg(feature = "pot")]
+        {
+            task_manager.spawn_essential_handle().spawn_blocking(
+                "pot-source",
+                Some("pot"),
+                pot_source.run(),
+            );
             let pot_gossip_worker = PotGossipWorker::<Block>::new(
-                &components,
+                &pot_components,
                 network_service.clone(),
                 sync_service.clone(),
             );
@@ -814,9 +835,9 @@ where
                 },
             );
 
-            if components.is_time_keeper() {
+            if pot_components.is_time_keeper() {
                 let time_keeper = TimeKeeper::new(
-                    &components,
+                    &pot_components,
                     client.clone(),
                     subspace_link.slot_duration().as_duration(),
                     gossip_sender,
@@ -882,7 +903,12 @@ where
             block_proposal_slot_portion,
             max_block_proposal_slot_portion: None,
             telemetry: None,
-            proof_of_time: pot_consensus,
+            #[cfg(feature = "pot")]
+            proof_of_time: Some(pot_components.consensus_state()),
+            #[cfg(not(feature = "pot"))]
+            proof_of_time: None,
+            #[cfg(feature = "pot")]
+            pot_slot_stream,
         };
 
         let subspace =
