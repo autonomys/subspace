@@ -384,9 +384,7 @@ impl pallet_messenger::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type SelfChainId = SelfChainId;
 
-    fn get_endpoint_response_handler(
-        endpoint: &Endpoint,
-    ) -> Option<Box<dyn EndpointHandlerT<MessageId>>> {
+    fn get_endpoint_handler(endpoint: &Endpoint) -> Option<Box<dyn EndpointHandlerT<MessageId>>> {
         if endpoint == &Endpoint::Id(TransporterEndpointId::get()) {
             Some(Box::new(EndpointHandler(PhantomData::<Runtime>)))
         } else {
@@ -400,6 +398,7 @@ impl pallet_messenger::Config for Runtime {
     type DomainInfo = ();
     type ConfirmationDepth = RelayConfirmationDepth;
     type WeightInfo = pallet_messenger::weights::SubstrateWeight<Runtime>;
+    type WeightToFee = IdentityFee<Balance>;
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime

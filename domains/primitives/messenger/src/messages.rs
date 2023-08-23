@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 use sp_core::storage::StorageKey;
 use sp_domains::DomainId;
 use sp_runtime::app_crypto::sp_core::U256;
-use sp_runtime::traits::CheckedAdd;
 use sp_runtime::{sp_std, DispatchError};
 use sp_std::marker::PhantomData;
 use sp_std::vec::Vec;
@@ -24,45 +23,11 @@ pub type Nonce = U256;
 /// Unique Id of a message between two chains.
 pub type MessageId = (ChannelId, Nonce);
 
-/// Execution Fee to execute a send or receive request.
-#[derive(Default, Debug, Encode, Decode, Clone, Copy, Eq, PartialEq, TypeInfo)]
-pub struct ExecutionFee<Balance> {
-    /// Fee paid to the relayer pool for the execution.
-    pub relayer_pool_fee: Balance,
-    /// Fee paid to the network for computation.
-    pub compute_fee: Balance,
-}
-
 /// Fee model to send a request and receive a response from another chain.
-/// A user of the endpoint will pay
-///     - outbox_fee on src_chain
-///     - inbox_fee on dst_chain
-/// The reward is distributed to
-///     - src_chain relayer pool when the response is received
-///     - dst_chain relayer pool when the response acknowledgement from src_chain.
 #[derive(Default, Debug, Encode, Decode, Clone, Copy, Eq, PartialEq, TypeInfo)]
 pub struct FeeModel<Balance> {
-    /// Fee paid by the endpoint user for any outgoing message.
-    pub outbox_fee: ExecutionFee<Balance>,
-    /// Fee paid by the endpoint user any incoming message.
-    pub inbox_fee: ExecutionFee<Balance>,
-}
-
-// TODO: `compute_fee` and `relayer_pool_fee` should be distributed separately, where
-// `compute_fee` should be distributed to executor and `relayer_pool_fee` should be
-// distributed to relayer.
-impl<Balance: CheckedAdd> FeeModel<Balance> {
-    pub fn outbox_fee(&self) -> Option<Balance> {
-        self.outbox_fee
-            .compute_fee
-            .checked_add(&self.outbox_fee.relayer_pool_fee)
-    }
-
-    pub fn inbox_fee(&self) -> Option<Balance> {
-        self.inbox_fee
-            .compute_fee
-            .checked_add(&self.inbox_fee.relayer_pool_fee)
-    }
+    /// Fee to relay message from one chain to another
+    pub relay_fee: Balance,
 }
 
 /// Parameters for a new channel between two chains.
