@@ -31,7 +31,7 @@ use sc_consensus_slots::{
 };
 use sc_proof_of_time::PotConsensusState;
 #[cfg(feature = "pot")]
-use sc_proof_of_time::PotGetBlockProofsError;
+use sc_proof_of_time::{PotGetBlockProofsError, PotSlotWorker};
 use sc_telemetry::TelemetryHandle;
 use sc_utils::mpsc::tracing_unbounded;
 use schnorrkel::context::SigningContext;
@@ -51,11 +51,11 @@ use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
-#[cfg(feature = "pot")]
-use subspace_core_primitives::SlotNumber;
 use subspace_core_primitives::{
     BlockNumber, PublicKey, Randomness, RewardSignature, SectorId, Solution,
 };
+#[cfg(feature = "pot")]
+use subspace_core_primitives::{PotCheckpoints, SlotNumber};
 use subspace_proof_of_space::Table;
 use subspace_verification::{
     check_reward_signature, verify_solution, PieceCheckParams, VerifySolutionParams,
@@ -132,6 +132,17 @@ where
     #[allow(dead_code)]
     pub(super) proof_of_time: Option<Arc<dyn PotConsensusState>>,
     pub(super) _pos_table: PhantomData<PosTable>,
+}
+
+#[cfg(feature = "pot")]
+impl<PosTable, Block, Client, E, I, SO, L, BS, AS> PotSlotWorker<Block>
+    for SubspaceSlotWorker<PosTable, Block, Client, E, I, SO, L, BS, AS>
+where
+    Block: BlockT,
+{
+    fn on_proof(&mut self, slot: SlotNumber, checkpoints: PotCheckpoints) {
+        // TODO
+    }
 }
 
 #[async_trait::async_trait]

@@ -9,17 +9,17 @@ mod state_manager;
 mod time_keeper;
 
 use crate::slots::SlotInfoProducer;
-use crate::source::PotSlotStream;
+use crate::source::{PotSlotInfo, PotSlotInfoStream};
 use crate::state_manager::{init_pot_state, PotProtocolState};
 use core::num::NonZeroU32;
 use futures::StreamExt;
-use sc_consensus_slots::SlotWorker;
+use sc_consensus_slots::{SimpleSlotWorker, SimpleSlotWorkerToSlotWorker, SlotWorker};
 use sp_consensus::{SelectChain, SyncOracle};
 use sp_consensus_slots::{Slot, SlotDuration};
 use sp_inherents::CreateInherentDataProviders;
 use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
-use subspace_core_primitives::{BlockNumber, PotKey, PotSeed, SlotNumber};
+use subspace_core_primitives::{BlockNumber, PotCheckpoints, PotKey, PotSeed, SlotNumber};
 use tracing::debug;
 
 pub use state_manager::{
@@ -27,21 +27,30 @@ pub use state_manager::{
 };
 pub use time_keeper::TimeKeeper;
 
+pub trait PotSlotWorker<Block>
+where
+    Block: BlockT,
+{
+    // TODO: It should be possible to remove this once Substrate's `SlotInfo` supports extra payload
+    //  in it directly
+    fn on_proof(&mut self, slot: SlotNumber, checkpoints: PotCheckpoints);
+}
+
 /// Start a new slot worker.
 ///
 /// Every time a new slot is triggered, `worker.on_slot` is called and the future it returns is
 /// polled until completion, unless we are major syncing.
-pub async fn start_slot_worker<Block, Client, Worker, SO, CIDP, Proof>(
+pub async fn start_slot_worker<Block, Client, Worker, SO, CIDP>(
     slot_duration: SlotDuration,
     client: Client,
-    mut worker: Worker,
+    worker: Worker,
     sync_oracle: SO,
     create_inherent_data_providers: CIDP,
-    mut slot_stream: PotSlotStream,
+    mut slot_info_stream: PotSlotInfoStream,
 ) where
     Block: BlockT,
     Client: SelectChain<Block>,
-    Worker: SlotWorker<Block, Proof>,
+    Worker: PotSlotWorker<Block> + SimpleSlotWorker<Block> + Send + Sync,
     SO: SyncOracle + Send,
     CIDP: CreateInherentDataProviders<Block, ()> + Send + 'static,
 {
@@ -51,9 +60,11 @@ pub async fn start_slot_worker<Block, Client, Worker, SO, CIDP, Proof>(
         client,
     );
 
+    let mut worker = SimpleSlotWorkerToSlotWorker(worker);
+
     let mut maybe_last_slot = None;
 
-    while let Some(slot) = slot_stream.next().await {
+    while let Some(PotSlotInfo { slot, checkpoints }) = slot_info_stream.next().await {
         if sync_oracle.is_major_syncing() {
             debug!(%slot, "Skipping proposal slot due to sync");
             continue;
@@ -68,6 +79,7 @@ pub async fn start_slot_worker<Block, Client, Worker, SO, CIDP, Proof>(
         maybe_last_slot.replace(slot);
 
         if let Some(slot_info) = slot_info_producer.produce_slot_info(Slot::from(slot)).await {
+            worker.0.on_proof(slot, checkpoints);
             let _ = worker.on_slot(slot_info).await;
 
             // TODO: Remove this hack, it restricts slot production with extremely low number of

@@ -4,13 +4,21 @@ use futures::executor::block_on;
 use futures::SinkExt;
 use std::num::NonZeroU32;
 use std::thread;
-use subspace_core_primitives::{PotBytes, PotKey, PotSeed, SlotNumber};
+use subspace_core_primitives::{PotBytes, PotCheckpoints, PotKey, PotSeed, SlotNumber};
 use subspace_proof_of_time::PotError;
 use tracing::{debug, error};
 
+/// Proof of time slot information
+pub struct PotSlotInfo {
+    /// Slot number
+    pub slot: SlotNumber,
+    /// Proof of time checkpoints
+    pub checkpoints: PotCheckpoints,
+}
+
 /// Stream with proof of time slots
 #[derive(Debug, Deref, DerefMut, From)]
-pub struct PotSlotStream(mpsc::Receiver<SlotNumber>);
+pub struct PotSlotInfoStream(mpsc::Receiver<PotSlotInfo>);
 
 /// Configuration for proof of time source
 #[derive(Debug, Copy, Clone)]
@@ -29,7 +37,7 @@ pub struct PotSource {
 }
 
 impl PotSource {
-    pub fn new(config: PotSourceConfig) -> (Self, PotSlotStream) {
+    pub fn new(config: PotSourceConfig) -> (Self, PotSlotInfoStream) {
         // TODO: All 3 are incorrect and should be able to continue after node restart
         let start_slot = SlotNumber::MIN;
         let start_seed = PotSeed::default();
@@ -54,7 +62,7 @@ impl PotSource {
             Self {
                 // TODO
             },
-            PotSlotStream(slot_receiver),
+            PotSlotInfoStream(slot_receiver),
         )
     }
 
@@ -72,7 +80,7 @@ fn run_timekeeper(
     mut key: PotKey,
     mut slot: SlotNumber,
     iterations: NonZeroU32,
-    mut slot_sender: mpsc::Sender<SlotNumber>,
+    mut slot_sender: mpsc::Sender<PotSlotInfo>,
 ) -> Result<(), PotError> {
     // TODO
     loop {
@@ -84,7 +92,9 @@ fn run_timekeeper(
         seed = PotSeed::from(PotBytes::from(checkpoints.output()));
         key = PotKey::from(PotBytes::from(checkpoints.output()));
 
-        if let Err(error) = slot_sender.try_send(slot) {
+        let slot_info = PotSlotInfo { slot, checkpoints };
+
+        if let Err(error) = slot_sender.try_send(slot_info) {
             if let Err(error) = block_on(slot_sender.send(error.into_inner())) {
                 debug!(%error, "Couldn't send checkpoints, channel is closed");
                 return Ok(());

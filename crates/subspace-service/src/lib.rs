@@ -811,7 +811,7 @@ where
 
     if config.role.is_authority() || config.force_new_slot_notifications {
         #[cfg(feature = "pot")]
-        let (pot_source, pot_slot_stream) = PotSource::new(PotSourceConfig {
+        let (pot_source, pot_slot_info_stream) = PotSource::new(PotSourceConfig {
             initial_key: pot_components.initial_key,
         });
         #[cfg(feature = "pot")]
@@ -908,7 +908,7 @@ where
             #[cfg(not(feature = "pot"))]
             proof_of_time: None,
             #[cfg(feature = "pot")]
-            pot_slot_stream,
+            pot_slot_info_stream,
         };
 
         let subspace =
