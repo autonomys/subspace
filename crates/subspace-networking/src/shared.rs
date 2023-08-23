@@ -1,8 +1,8 @@
 //! Data structures shared between node and node runner, facilitating exchange and creation of
 //! queries, subscriptions, various events and shared information.
 
-use crate::peer_info::PeerInfo;
-use crate::request_responses::RequestFailure;
+use crate::protocols::peer_info::PeerInfo;
+use crate::protocols::requests::request_responses::RequestFailure;
 use crate::utils::multihash::Multihash;
 use crate::utils::{Handler, ResizableSemaphore, ResizableSemaphorePermit};
 use bytes::Bytes;

@@ -1,7 +1,7 @@
 mod handler;
 mod protocol;
 
-use crate::peer_info::handler::HandlerInEvent;
+use crate::protocols::peer_info::handler::HandlerInEvent;
 use event_listener_primitives::HandlerId;
 use handler::Handler;
 pub use handler::{Config, PeerInfoError, PeerInfoSuccess};

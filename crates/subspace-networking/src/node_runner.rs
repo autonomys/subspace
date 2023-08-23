@@ -5,15 +5,17 @@ use crate::behavior::persistent_parameters::{
 use crate::behavior::{
     Behavior, Event, GeneralConnectedPeersInstance, SpecialConnectedPeersInstance,
 };
-use crate::connected_peers::Event as ConnectedPeersEvent;
 use crate::create;
 use crate::create::temporary_bans::TemporaryBans;
 use crate::create::{
     ConnectedPeersHandler, LocalOnlyRecordStore, KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER,
     REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER,
 };
-use crate::peer_info::{Event as PeerInfoEvent, PeerInfoSuccess};
-use crate::request_responses::{Event as RequestResponseEvent, IfDisconnected};
+use crate::protocols::connected_peers::Event as ConnectedPeersEvent;
+use crate::protocols::peer_info::{Event as PeerInfoEvent, PeerInfoSuccess};
+use crate::protocols::requests::request_responses::{
+    Event as RequestResponseEvent, IfDisconnected,
+};
 use crate::shared::{Command, CreatedSubscription, NewPeerInfo, Shared};
 use crate::utils::{
     is_global_address_or_dns, strip_peer_id, PeerAddress, ResizableSemaphorePermit,

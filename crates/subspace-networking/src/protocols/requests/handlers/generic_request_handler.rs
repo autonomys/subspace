@@ -14,7 +14,9 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use crate::request_responses::{IncomingRequest, OutgoingResponse, ProtocolConfig, RequestHandler};
+use crate::protocols::requests::request_responses::{
+    IncomingRequest, OutgoingResponse, ProtocolConfig, RequestHandler,
+};
 use async_trait::async_trait;
 use futures::channel::mpsc;
 use futures::prelude::*;

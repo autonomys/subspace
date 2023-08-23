@@ -1,4 +1,4 @@
-use crate::request_responses::{
+use crate::protocols::requests::request_responses::{
     Event, IfDisconnected, IncomingRequest, OutboundFailure, OutgoingResponse, ProtocolConfig,
     RequestFailure, RequestHandler, RequestResponsesBehaviour,
 };

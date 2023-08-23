@@ -5,14 +5,14 @@ use crate::behavior::persistent_parameters::{
     NetworkingParametersRegistry, StubNetworkingParametersManager,
 };
 use crate::behavior::{Behavior, BehaviorConfig};
-use crate::connected_peers::Config as ConnectedPeersConfig;
 use crate::create::temporary_bans::TemporaryBans;
 use crate::create::transport::build_transport;
 use crate::node::Node;
 use crate::node_runner::{NodeRunner, NodeRunnerConfig};
-use crate::peer_info::PeerInfoProvider;
-use crate::request_responses::RequestHandler;
-use crate::reserved_peers::Config as ReservedPeersConfig;
+use crate::protocols::connected_peers::Config as ConnectedPeersConfig;
+use crate::protocols::peer_info::PeerInfoProvider;
+use crate::protocols::requests::request_responses::RequestHandler;
+use crate::protocols::reserved_peers::Config as ReservedPeersConfig;
 use crate::shared::Shared;
 use crate::utils::{strip_peer_id, ResizableSemaphore};
 use crate::{PeerInfo, PeerInfoConfig};

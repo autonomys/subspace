@@ -1,4 +1,4 @@
-use crate::peer_info::{protocol, PeerInfo};
+use crate::protocols::peer_info::{protocol, PeerInfo};
 use futures::future::BoxFuture;
 use futures::prelude::*;
 use libp2p::core::upgrade::ReadyUpgrade;

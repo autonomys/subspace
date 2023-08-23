@@ -2,17 +2,17 @@ pub(crate) mod persistent_parameters;
 #[cfg(test)]
 mod tests;
 
-use crate::connected_peers::{
+use crate::protocols::connected_peers::{
     Behaviour as ConnectedPeersBehaviour, Config as ConnectedPeersConfig,
     Event as ConnectedPeersEvent,
 };
-use crate::peer_info::{
+use crate::protocols::peer_info::{
     Behaviour as PeerInfoBehaviour, Config as PeerInfoConfig, Event as PeerInfoEvent,
 };
-use crate::request_responses::{
+use crate::protocols::requests::request_responses::{
     Event as RequestResponseEvent, RequestHandler, RequestResponsesBehaviour,
 };
-use crate::reserved_peers::{
+use crate::protocols::reserved_peers::{
     Behaviour as ReservedPeersBehaviour, Config as ReservedPeersConfig, Event as ReservedPeersEvent,
 };
 use crate::PeerInfoProvider;

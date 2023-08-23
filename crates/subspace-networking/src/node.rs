@@ -1,8 +1,9 @@
-use crate::request_handlers::generic_request_handler::GenericRequest;
+use crate::protocols::requests::handlers::generic_request_handler::GenericRequest;
+use crate::protocols::requests::request_responses;
+pub use crate::shared::NewPeerInfo;
 use crate::shared::{Command, CreatedSubscription, Shared};
 use crate::utils::multihash::Multihash;
 use crate::utils::{HandlerFn, ResizableSemaphorePermit};
-use crate::{request_responses, NewPeerInfo};
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;
 use futures::channel::mpsc::SendError;
@@ -513,7 +514,7 @@ impl Node {
         Ok(())
     }
 
-    /// Callback is called when we receive new [`crate::peer_info::PeerInfo`]
+    /// Callback is called when we receive new [`crate::protocols::peer_info::PeerInfo`]
     pub fn on_peer_info(&self, callback: HandlerFn<NewPeerInfo>) -> HandlerId {
         self.shared.handlers.new_peer_info.add(callback)
     }
