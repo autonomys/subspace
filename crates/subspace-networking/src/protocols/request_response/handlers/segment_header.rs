@@ -3,7 +3,7 @@
 //! Handle (i.e. answer) incoming segment headers requests from a remote peer received via
 //! `RequestResponsesBehaviour` with generic [`GenericRequestHandler`].
 
-use crate::request_handlers::generic_request_handler::{GenericRequest, GenericRequestHandler};
+use super::generic_request_handler::{GenericRequest, GenericRequestHandler};
 use parity_scale_codec::{Decode, Encode};
 use subspace_core_primitives::{SegmentHeader, SegmentIndex};
 
