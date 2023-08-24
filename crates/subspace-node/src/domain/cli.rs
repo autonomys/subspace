@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use crate::domain::evm_chain_spec;
+use crate::domain::evm_chain_spec::{self, SpecId};
 use clap::Parser;
 use domain_service::DomainConfiguration;
 use sc_cli::{
@@ -27,6 +27,7 @@ use sc_service::BasePath;
 use sp_core::crypto::AccountId32;
 use sp_domains::DomainId;
 use sp_runtime::traits::Convert;
+use std::io::Write;
 use std::net::SocketAddr;
 use std::num::ParseIntError;
 use std::path::PathBuf;
@@ -45,6 +46,9 @@ pub enum Subcommand {
     /// Sub-commands concerned with benchmarking.
     #[clap(subcommand)]
     Benchmark(frame_benchmarking_cli::BenchmarkCmd),
+
+    /// Build the genesis config of the evm domain chain in json format
+    BuildGenesisConfig(BuildGenesisConfigCmd),
 }
 
 fn parse_domain_id(s: &str) -> std::result::Result<DomainId, ParseIntError> {
@@ -314,5 +318,53 @@ impl CliConfiguration<Self> for DomainCli {
         chain_spec: &Box<dyn ChainSpec>,
     ) -> Result<Option<sc_telemetry::TelemetryEndpoints>> {
         self.run.telemetry_endpoints(chain_spec)
+    }
+}
+
+// TODO: make the command generic over different runtime type instead of just the evm domain runtime
+/// The `build-genesis-config` command used to build the genesis config of the evm domain chain.
+#[derive(Debug, Clone, Parser)]
+pub struct BuildGenesisConfigCmd {
+    /// Whether output the WASM runtime code
+    #[arg(long, default_value_t = false)]
+    pub with_wasm_code: bool,
+
+    /// The base struct of the build-genesis-config command.
+    #[clap(flatten)]
+    pub shared_params: SharedParams,
+}
+
+impl BuildGenesisConfigCmd {
+    /// Run the build-genesis-config command
+    pub fn run(&self) -> sc_cli::Result<()> {
+        let is_dev = self.shared_params.is_dev();
+        let chain_id = self.shared_params.chain_id(is_dev);
+        let mut domain_genesis_config = match chain_id.as_str() {
+            "gemini-3f" => evm_chain_spec::get_testnet_genesis_by_spec_id(SpecId::Gemini).0,
+            "devnet" => evm_chain_spec::get_testnet_genesis_by_spec_id(SpecId::DevNet).0,
+            "dev" => evm_chain_spec::get_testnet_genesis_by_spec_id(SpecId::Dev).0,
+            "" | "local" => evm_chain_spec::get_testnet_genesis_by_spec_id(SpecId::Local).0,
+            unknown_id => {
+                eprintln!(
+                    "unknown chain {unknown_id:?}, expected gemini-3f, devnet, dev, or local",
+                );
+                return Ok(());
+            }
+        };
+
+        if !self.with_wasm_code {
+            // Clear the WASM code of the genesis config
+            domain_genesis_config.system.code = Default::default();
+        }
+        let raw_domain_genesis_config = serde_json::to_vec(&domain_genesis_config)
+            .expect("Genesis config serialization never fails; qed");
+
+        if std::io::stdout()
+            .write_all(raw_domain_genesis_config.as_ref())
+            .is_err()
+        {
+            let _ = std::io::stderr().write_all(b"Error writing to stdout\n");
+        }
+        Ok(())
     }
 }
