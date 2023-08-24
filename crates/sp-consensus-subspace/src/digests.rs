@@ -27,8 +27,7 @@ use sp_runtime::DigestItem;
 use sp_std::collections::btree_map::{BTreeMap, Entry};
 use sp_std::fmt;
 use subspace_core_primitives::{
-    NonEmptyVec, PotProof, Randomness, SegmentCommitment, SegmentIndex, SlotNumber, Solution,
-    SolutionRange,
+    Randomness, SegmentCommitment, SegmentIndex, Solution, SolutionRange,
 };
 use subspace_verification::derive_randomness;
 
@@ -40,80 +39,6 @@ pub struct PreDigest<PublicKey, RewardAddress> {
     pub slot: Slot,
     /// Solution (includes PoR)
     pub solution: Solution<PublicKey, RewardAddress>,
-    #[cfg(feature = "pot")]
-    /// Proof of time included in the block
-    /// TODO: It is Option<> for now for testing, to be removed
-    /// when PoT feature is permanently enabled.
-    pub proof_of_time: Option<PotPreDigest>,
-}
-
-/// TODO: remove after conditional compilation is removed.
-impl<PublicKey, RewardAddress> PreDigest<PublicKey, RewardAddress> {
-    /// Accessor for the poT pre digest.
-    #[cfg(not(feature = "pot"))]
-    pub fn pot_pre_digest(&self) -> Option<&PotPreDigest> {
-        None
-    }
-
-    /// Accessor for the poT pre digest.
-    #[cfg(feature = "pot")]
-    pub fn pot_pre_digest(&self) -> Option<&PotPreDigest> {
-        self.proof_of_time.as_ref()
-    }
-}
-
-/// The proof of time included in the pre digest.
-/// TODO: versioning needs to match PotProof version,
-/// versioning added on the proof side
-#[derive(Clone, Encode, Decode)]
-pub enum PotPreDigest {
-    /// V0 proof.
-    V0(NonEmptyVec<PotProof>),
-}
-
-impl PotPreDigest {
-    /// Constructs the PoT for the pre digest.
-    pub fn new(proofs: NonEmptyVec<PotProof>) -> Self {
-        Self::V0(proofs)
-    }
-
-    /// Returns a reference to the proofs.
-    pub fn proofs(&self) -> &NonEmptyVec<PotProof> {
-        match self {
-            Self::V0(proofs) => proofs,
-        }
-    }
-
-    /// Returns the starting slot number for the proofs in the next
-    /// block.
-    pub fn next_block_initial_slot(&self) -> SlotNumber {
-        match self {
-            Self::V0(proofs) => proofs.last().slot_number + 1,
-        }
-    }
-
-    /// Returns the global randomness from the proofs in the block pre digest.
-    pub fn derive_global_randomness(&self) -> Randomness {
-        match self {
-            Self::V0(proofs) => proofs.last().derive_global_randomness().into(),
-        }
-    }
-}
-
-impl fmt::Debug for PotPreDigest {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::V0(proofs) => {
-                write!(
-                    f,
-                    "PotPreDigest::V0 => num_proofs: {}, proofs: [{} - {}]",
-                    proofs.len(),
-                    proofs.first(),
-                    proofs.last(),
-                )
-            }
-        }
-    }
 }
 
 /// A digest item which is usable with Subspace consensus.
@@ -645,8 +570,6 @@ where
                 FarmerPublicKey::unchecked_from([0u8; 32]),
                 FarmerPublicKey::unchecked_from([0u8; 32]),
             ),
-            #[cfg(feature = "pot")]
-            proof_of_time: Default::default(),
         });
     }
 

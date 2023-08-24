@@ -55,13 +55,8 @@ use sc_consensus_subspace::{
 };
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
-use sc_proof_of_time::gossip::pot_gossip_peers_set_config;
-#[cfg(feature = "pot")]
-use sc_proof_of_time::gossip::PotGossipWorker;
 #[cfg(feature = "pot")]
 use sc_proof_of_time::source::{PotSource, PotSourceConfig};
-#[cfg(feature = "pot")]
-use sc_proof_of_time::{PotComponents, PotConfig, TimeKeeper};
 use sc_service::error::Error as ServiceError;
 use sc_service::{Configuration, NetworkStarter, SpawnTasksParams, TaskManager};
 use sc_subspace_block_relay::{build_consensus_relay, NetworkWrapper};
@@ -84,13 +79,8 @@ use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use static_assertions::const_assert;
 use std::marker::PhantomData;
-#[cfg(feature = "pot")]
-use std::num::NonZeroU32;
 use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
-use subspace_core_primitives::PotKey;
-#[cfg(feature = "pot")]
-use subspace_core_primitives::PotSeed;
 use subspace_fraud_proof::verifier_api::VerifierClient;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
@@ -208,6 +198,9 @@ pub struct SubspaceConfiguration {
     /// Use the block request handler implementation from subspace
     /// instead of the default substrate handler.
     pub enable_subspace_block_relay: bool,
+    /// Proof of time source config
+    #[cfg(feature = "pot")]
+    pub pot_source_config: PotSourceConfig,
 }
 
 struct SubspaceExtensionsFactory<PosTable> {
@@ -237,15 +230,6 @@ where
     }
 }
 
-/// PoT configuration used in in [`new_partial()`]
-// TODO: Better name
-pub struct PotPartialConfig {
-    /// Is this node a Timekeeper
-    pub is_timekeeper: bool,
-    /// Initial PoT key
-    pub initial_key: PotKey,
-}
-
 /// Other partial components returned by [`new_partial()`]
 pub struct OtherPartialComponents<RuntimeApi, ExecutorDispatch>
 where
@@ -270,9 +254,6 @@ where
     pub segment_headers_store: SegmentHeadersStore<FullClient<RuntimeApi, ExecutorDispatch>>,
     /// Telemetry
     pub telemetry: Option<Telemetry>,
-    /// PoT components
-    #[cfg(feature = "pot")]
-    pub pot_components: PotComponents,
 }
 
 type PartialComponents<RuntimeApi, ExecutorDispatch> = sc_service::PartialComponents<
@@ -302,7 +283,6 @@ pub fn new_partial<PosTable, RuntimeApi, ExecutorDispatch>(
             NativeElseWasmExecutor<ExecutorDispatch>,
         ) -> Arc<dyn GenerateGenesisStateRoot>,
     >,
-    #[cfg_attr(not(feature = "pot"), allow(unused_variables))] pot_config: Option<PotPartialConfig>,
 ) -> Result<PartialComponents<RuntimeApi, ExecutorDispatch>, ServiceError>
 where
     PosTable: Table,
@@ -400,27 +380,6 @@ where
     let fraud_proof_block_import =
         sc_consensus_fraud_proof::block_import(client.clone(), client.clone(), proof_verifier);
 
-    // TODO: Temporary hack, will be removed soon
-    #[cfg(feature = "pot")]
-    let pot_config = pot_config.unwrap();
-    #[cfg(feature = "pot")]
-    let pot_components = PotComponents::new(
-        pot_config.is_timekeeper,
-        // TODO: fill proper values. These are set to use less
-        // CPU and take less than 1 sec to produce per proof
-        // during the initial testing.
-        PotConfig {
-            initial_seed: PotSeed::from_genesis_block_hash(client.info().genesis_hash.into()),
-            initial_key: pot_config.initial_key,
-            randomness_update_interval_blocks: 18,
-            injection_depth_blocks: 90,
-            global_randomness_reveal_lag_slots: 6,
-            pot_injection_lag_slots: 6,
-            max_future_slots: 10,
-            pot_iterations: NonZeroU32::new(4 * 1_000).expect("Not zero; qed"),
-        },
-    );
-
     let (block_import, subspace_link) = sc_consensus_subspace::block_import::<
         PosTable,
         _,
@@ -460,10 +419,6 @@ where
             }
         },
         segment_headers_store.clone(),
-        #[cfg(feature = "pot")]
-        Some(pot_components.consensus_state()),
-        #[cfg(not(feature = "pot"))]
-        None,
     )?;
 
     let slot_duration = subspace_link.slot_duration();
@@ -489,8 +444,6 @@ where
         subspace_link,
         segment_headers_store,
         telemetry,
-        #[cfg(feature = "pot")]
-        pot_components,
     };
 
     Ok(PartialComponents {
@@ -600,8 +553,6 @@ where
         subspace_link,
         segment_headers_store,
         mut telemetry,
-        #[cfg(feature = "pot")]
-        pot_components,
     } = other;
 
     let (node, bootstrap_nodes) = match config.subspace_networking.clone() {
@@ -712,7 +663,9 @@ where
     };
     let mut net_config = sc_network::config::FullNetworkConfiguration::new(&config.network);
     net_config.add_notification_protocol(cdm_gossip_peers_set_config());
-    net_config.add_notification_protocol(pot_gossip_peers_set_config());
+    // TODO: Restore PoT gossip
+    // #[cfg(feature = "pot")]
+    // net_config.add_notification_protocol(pot_gossip_peers_set_config());
     let sync_mode = Arc::clone(&net_config.network_config.sync_mode);
     let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
         sc_service::build_network(sc_service::BuildNetworkParams {
@@ -811,9 +764,7 @@ where
 
     if config.role.is_authority() || config.force_new_slot_notifications {
         #[cfg(feature = "pot")]
-        let (pot_source, pot_slot_info_stream) = PotSource::new(PotSourceConfig {
-            initial_key: pot_components.initial_key,
-        });
+        let (pot_source, pot_slot_info_stream) = PotSource::new(config.pot_source_config);
         #[cfg(feature = "pot")]
         {
             task_manager.spawn_essential_handle().spawn_blocking(
@@ -821,36 +772,20 @@ where
                 Some("pot"),
                 pot_source.run(),
             );
-            let pot_gossip_worker = PotGossipWorker::<Block>::new(
-                &pot_components,
-                network_service.clone(),
-                sync_service.clone(),
-            );
-            let gossip_sender = pot_gossip_worker.gossip_sender();
-            task_manager.spawn_essential_handle().spawn_blocking(
-                "pot-gossip-worker",
-                Some("pot"),
-                async move {
-                    pot_gossip_worker.run().await;
-                },
-            );
-
-            if pot_components.is_time_keeper() {
-                let time_keeper = TimeKeeper::new(
-                    &pot_components,
-                    client.clone(),
-                    subspace_link.slot_duration().as_duration(),
-                    gossip_sender,
-                );
-
-                task_manager.spawn_essential_handle().spawn_blocking(
-                    "subspace-proof-of-time-time-keeper",
-                    Some("pot"),
-                    async move {
-                        time_keeper.run().await;
-                    },
-                );
-            }
+            // TODO: Restore PoT gossip
+            // let pot_gossip_worker = PotGossipWorker::<Block>::new(
+            //     &pot_components,
+            //     network_service.clone(),
+            //     sync_service.clone(),
+            // );
+            // let gossip_sender = pot_gossip_worker.gossip_sender();
+            // task_manager.spawn_essential_handle().spawn_blocking(
+            //     "pot-gossip-worker",
+            //     Some("pot"),
+            //     async move {
+            //         pot_gossip_worker.run().await;
+            //     },
+            // );
         }
 
         let proposer_factory = ProposerFactory::new(
@@ -903,10 +838,6 @@ where
             block_proposal_slot_portion,
             max_block_proposal_slot_portion: None,
             telemetry: None,
-            #[cfg(feature = "pot")]
-            proof_of_time: Some(pot_components.consensus_state()),
-            #[cfg(not(feature = "pot"))]
-            proof_of_time: None,
             #[cfg(feature = "pot")]
             pot_slot_info_stream,
         };

@@ -23,6 +23,8 @@ pub struct PotSlotInfoStream(mpsc::Receiver<PotSlotInfo>);
 /// Configuration for proof of time source
 #[derive(Debug, Copy, Clone)]
 pub struct PotSourceConfig {
+    /// Is this node a Timekeeper
+    pub is_timekeeper: bool,
     /// PoT key used initially when PoT chain starts
     pub initial_key: PotKey,
 }

@@ -29,9 +29,8 @@ use sc_consensus::{JustificationSyncLink, StorageChanges};
 use sc_consensus_slots::{
     BackoffAuthoringBlocksStrategy, SimpleSlotWorker, SlotInfo, SlotLenienceType, SlotProportion,
 };
-use sc_proof_of_time::PotConsensusState;
 #[cfg(feature = "pot")]
-use sc_proof_of_time::{PotGetBlockProofsError, PotSlotWorker};
+use sc_proof_of_time::PotSlotWorker;
 use sc_telemetry::TelemetryHandle;
 use sc_utils::mpsc::tracing_unbounded;
 use schnorrkel::context::SigningContext;
@@ -39,8 +38,6 @@ use sp_api::{ApiError, NumberFor, ProvideRuntimeApi, TransactionFor};
 use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata};
 use sp_consensus::{BlockOrigin, Environment, Error as ConsensusError, Proposer, SyncOracle};
 use sp_consensus_slots::Slot;
-#[cfg(feature = "pot")]
-use sp_consensus_subspace::digests::PotPreDigest;
 use sp_consensus_subspace::digests::{extract_pre_digest, CompatibleDigestItem, PreDigest};
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SignedVote, SubspaceApi, Vote};
 use sp_core::crypto::ByteArray;
@@ -60,15 +57,6 @@ use subspace_proof_of_space::Table;
 use subspace_verification::{
     check_reward_signature, verify_solution, PieceCheckParams, VerifySolutionParams,
 };
-
-/// Errors while building the block proof of time.
-#[cfg(feature = "pot")]
-#[derive(Debug, thiserror::Error)]
-pub enum PotCreateError {
-    /// Proof creation failed.
-    #[error("Proof of time error: {0}")]
-    PotGetBlockProofsError(#[from] PotGetBlockProofsError),
-}
 
 /// Subspace sync oracle that takes into account force authoring flag, allowing to bootstrap
 /// Subspace network from scratch due to our fork of Substrate where sync state of nodes depends on
@@ -128,9 +116,6 @@ where
     pub(super) max_block_proposal_slot_portion: Option<SlotProportion>,
     pub(super) telemetry: Option<TelemetryHandle>,
     pub(super) segment_headers_store: SegmentHeadersStore<AS>,
-    // TODO: Un-suppress once we enable PoT unconditionally
-    #[allow(dead_code)]
-    pub(super) proof_of_time: Option<Arc<dyn PotConsensusState>>,
     pub(super) _pos_table: PhantomData<PosTable>,
 }
 
@@ -203,7 +188,7 @@ where
         &self,
         parent_header: &Block::Header,
         slot: Slot,
-        _epoch_data: &Self::AuxData,
+        _aux_data: &Self::AuxData,
     ) -> Option<Self::Claim> {
         let parent_pre_digest = match extract_pre_digest(parent_header) {
             Ok(pre_digest) => pre_digest,
@@ -232,40 +217,6 @@ where
         let parent_hash = parent_header.hash();
         let runtime_api = self.client.runtime_api();
 
-        // If proof of time is enabled, collect the proofs that go into this
-        // block and derive randomness from the last proof.
-        #[cfg(feature = "pot")]
-        let (pot_pre_digest, global_randomness) =
-            if let Some(proof_of_time) = self.proof_of_time.as_ref() {
-                let pot_pre_digest = self
-                    .build_block_pot(
-                        proof_of_time.as_ref(),
-                        parent_header,
-                        &parent_pre_digest,
-                        // TODO: Hack while we don't have PoT-based slot worker, remove once we do
-                        parent_pre_digest
-                            .proof_of_time
-                            .as_ref()
-                            .map(|p| p.proofs().last().slot_number)
-                            .unwrap_or_default()
-                            + SlotNumber::from(parent_slot)
-                                .checked_sub(SlotNumber::from(slot))
-                                .unwrap_or_default(),
-                    )
-                    .await
-                    .ok()?;
-                let randomness = pot_pre_digest.derive_global_randomness();
-                (Some(pot_pre_digest), randomness)
-            } else {
-                (
-                    None,
-                    extract_global_randomness_for_block(self.client.as_ref(), parent_hash).ok()?,
-                )
-            };
-
-        // TODO: There is some kind of mess with PoT randomness right now that doesn't make a
-        //  lot of sense, restore this check once that is resolved
-        // #[cfg(not(feature = "pot"))]
         let global_randomness =
             extract_global_randomness_for_block(self.client.as_ref(), parent_hash).ok()?;
 
@@ -394,12 +345,7 @@ where
                     // block reward is claimed
                     if maybe_pre_digest.is_none() && solution_distance <= solution_range / 2 {
                         info!(target: "subspace", "🚜 Claimed block at slot {slot}");
-                        maybe_pre_digest.replace(PreDigest {
-                            solution,
-                            slot,
-                            #[cfg(feature = "pot")]
-                            proof_of_time: pot_pre_digest.clone(),
-                        });
+                        maybe_pre_digest.replace(PreDigest { solution, slot });
                     } else if !parent_header.number().is_zero() {
                         // Not sending vote on top of genesis block since segment headers since piece
                         // verification wouldn't be possible due to missing (for now) segment commitment
@@ -448,7 +394,7 @@ where
         body: Vec<Block::Extrinsic>,
         storage_changes: sc_consensus_slots::StorageChanges<I::Transaction, Block>,
         pre_digest: Self::Claim,
-        _epoch_data: Self::AuxData,
+        _aux_data: Self::AuxData,
     ) -> Result<BlockImportParams<Block, I::Transaction>, ConsensusError> {
         let signature = self
             .sign_reward(
@@ -625,45 +571,6 @@ where
             "Farmer didn't sign reward. Key: {:?}",
             public_key.to_raw_vec()
         )))
-    }
-
-    /// Builds the proof of time for the block being proposed.
-    #[cfg(feature = "pot")]
-    async fn build_block_pot(
-        &self,
-        proof_of_time: &dyn PotConsensusState,
-        parent_header: &Block::Header,
-        parent_pre_digest: &PreDigest<FarmerPublicKey, FarmerPublicKey>,
-        slot_number: SlotNumber,
-    ) -> Result<PotPreDigest, PotCreateError> {
-        let block_number = *parent_header.number() + One::one();
-
-        proof_of_time
-            .get_block_proofs(
-                block_number.into(),
-                slot_number,
-                &parent_pre_digest.proof_of_time,
-                None,
-            )
-            .await
-            .map(|proofs| {
-                let pot_pre_digest = PotPreDigest::new(proofs);
-                debug!(
-                    target: "subspace",
-                    "build_block_pot: {block_number}/{}/{slot_number}, PoT=[{pot_pre_digest:?}], \
-                     randomness = {:?}",
-                    parent_pre_digest.slot, pot_pre_digest.derive_global_randomness()
-                );
-                pot_pre_digest
-            })
-            .map_err(|err| {
-                debug!(
-                    target: "subspace",
-                    "build_block_pot: {block_number}/{}/{slot_number}, err={err:?}",
-                    parent_pre_digest.slot
-                );
-                PotCreateError::PotGetBlockProofsError(err)
-            })
     }
 }
 
