@@ -10,7 +10,7 @@ use crate::protocols::peer_info::{
     Behaviour as PeerInfoBehaviour, Config as PeerInfoConfig, Event as PeerInfoEvent,
 };
 use crate::protocols::request_response::request_response_factory::{
-    Event as RequestResponseEvent, RequestHandler, RequestResponseFactory,
+    Event as RequestResponseEvent, RequestHandler, RequestResponseFactoryBehaviour,
 };
 use crate::protocols::reserved_peers::{
     Behaviour as ReservedPeersBehaviour, Config as ReservedPeersConfig, Event as ReservedPeersEvent,
@@ -75,7 +75,7 @@ pub(crate) struct Behavior<RecordStore> {
     pub(crate) kademlia: Kademlia<RecordStore>,
     pub(crate) gossipsub: Toggle<Gossipsub>,
     pub(crate) ping: Ping,
-    pub(crate) request_response: RequestResponseFactory,
+    pub(crate) request_response: RequestResponseFactoryBehaviour,
     pub(crate) connection_limits: ConnectionLimitsBehaviour,
     pub(crate) block_list: BlockListBehaviour,
     pub(crate) reserved_peers: ReservedPeersBehaviour,
@@ -119,9 +119,11 @@ where
             kademlia,
             gossipsub,
             ping: Ping::default(),
-            request_response: RequestResponseFactory::new(config.request_response_protocols)
-                //TODO: Convert to an error.
-                .expect("RequestResponse protocols registration failed."),
+            request_response: RequestResponseFactoryBehaviour::new(
+                config.request_response_protocols,
+            )
+            //TODO: Convert to an error.
+            .expect("RequestResponse protocols registration failed."),
             connection_limits: ConnectionLimitsBehaviour::new(config.connection_limits),
             block_list: BlockListBehaviour::default(),
             reserved_peers: ReservedPeersBehaviour::new(config.reserved_peers),

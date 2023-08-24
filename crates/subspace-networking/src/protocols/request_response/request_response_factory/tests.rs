@@ -1,6 +1,6 @@
 use crate::protocols::request_response::request_response_factory::{
     Event, IfDisconnected, IncomingRequest, OutboundFailure, OutgoingResponse, ProtocolConfig,
-    RequestFailure, RequestHandler, RequestResponseFactory,
+    RequestFailure, RequestHandler, RequestResponseFactoryBehaviour,
 };
 use async_trait::async_trait;
 use futures::channel::{mpsc, oneshot};
@@ -37,7 +37,7 @@ impl RequestHandler for MockRunner {
 
 fn build_swarm(
     list: impl Iterator<Item = ProtocolConfig>,
-) -> (Swarm<RequestResponseFactory>, Multiaddr) {
+) -> (Swarm<RequestResponseFactoryBehaviour>, Multiaddr) {
     let keypair = Keypair::generate_ed25519();
 
     let transport = MemoryTransport::new()
@@ -50,7 +50,7 @@ fn build_swarm(
         .into_iter()
         .map(|config| Box::new(MockRunner(config)) as Box<dyn RequestHandler>)
         .collect::<Vec<_>>();
-    let behaviour = RequestResponseFactory::new(configs).unwrap();
+    let behaviour = RequestResponseFactoryBehaviour::new(configs).unwrap();
 
     let mut swarm =
         SwarmBuilder::with_tokio_executor(transport, behaviour, keypair.public().to_peer_id())
