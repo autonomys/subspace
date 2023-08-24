@@ -743,7 +743,10 @@ where
                     header: block.header.clone(),
                     slot_now: slot_now + 1,
                     verify_solution_params: &VerifySolutionParams {
+                        #[cfg(not(feature = "pot"))]
                         global_randomness: subspace_digest_items.global_randomness,
+                        #[cfg(feature = "pot")]
+                        proof_of_time: pre_digest.proof_of_time,
                         solution_range: subspace_digest_items.solution_range,
                         piece_check_params: None,
                     },
@@ -929,17 +932,24 @@ where
             .header(parent_hash)?
             .ok_or(Error::ParentUnavailable(parent_hash, block_hash))?;
 
-        let (correct_global_randomness, correct_solution_range) = if block_number.is_one() {
+        #[cfg(not(feature = "pot"))]
+        let correct_global_randomness;
+        #[cfg_attr(feature = "pot", allow(clippy::needless_late_init))]
+        let correct_solution_range;
+
+        if block_number.is_one() {
             // Genesis block doesn't contain usual digest items, we need to query runtime API
             // instead
-            let correct_global_randomness = slot_worker::extract_global_randomness_for_block(
-                self.client.as_ref(),
-                parent_hash,
-            )?;
-            let (correct_solution_range, _) =
-                slot_worker::extract_solution_ranges_for_block(self.client.as_ref(), parent_hash)?;
-
-            (correct_global_randomness, correct_solution_range)
+            #[cfg(not(feature = "pot"))]
+            {
+                correct_global_randomness = slot_worker::extract_global_randomness_for_block(
+                    self.client.as_ref(),
+                    parent_hash,
+                )?;
+            }
+            correct_solution_range =
+                slot_worker::extract_solution_ranges_for_block(self.client.as_ref(), parent_hash)?
+                    .0;
         } else {
             let parent_subspace_digest_items = extract_subspace_digest_items::<
                 _,
@@ -948,24 +958,26 @@ where
                 FarmerSignature,
             >(&parent_header)?;
 
-            let correct_global_randomness =
-                match parent_subspace_digest_items.next_global_randomness {
-                    Some(global_randomness) => global_randomness,
-                    None => parent_subspace_digest_items.global_randomness,
-                };
+            #[cfg(not(feature = "pot"))]
+            {
+                correct_global_randomness =
+                    match parent_subspace_digest_items.next_global_randomness {
+                        Some(global_randomness) => global_randomness,
+                        None => parent_subspace_digest_items.global_randomness,
+                    };
+            }
 
-            let correct_solution_range = match parent_subspace_digest_items.next_solution_range {
+            correct_solution_range = match parent_subspace_digest_items.next_solution_range {
                 Some(solution_range) => solution_range,
                 None => parent_subspace_digest_items.solution_range,
             };
+        }
 
-            (correct_global_randomness, correct_solution_range)
-        };
-
+        // TODO: This should be checking PoT instead
+        #[cfg(not(feature = "pot"))]
         if subspace_digest_items.global_randomness != correct_global_randomness {
             // TODO: There is some kind of mess with PoT randomness right now that doesn't make a
             //  lot of sense, restore this check once that is resolved
-            #[cfg(not(feature = "pot"))]
             return Err(Error::InvalidGlobalRandomness(block_hash));
         }
 
@@ -1021,7 +1033,10 @@ where
             // Slot was already checked during initial block verification
             pre_digest.slot.into(),
             &VerifySolutionParams {
+                #[cfg(not(feature = "pot"))]
                 global_randomness: subspace_digest_items.global_randomness,
+                #[cfg(feature = "pot")]
+                proof_of_time: subspace_digest_items.pre_digest.proof_of_time,
                 solution_range: subspace_digest_items.solution_range,
                 piece_check_params: Some(PieceCheckParams {
                     max_pieces_in_sector,

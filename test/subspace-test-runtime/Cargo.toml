@@ -65,7 +65,9 @@ substrate-wasm-builder = { version = "5.0.0-dev", git = "https://github.com/subs
 [features]
 default = ["std"]
 pot = [
+	"pallet-subspace/pot",
 	"sp-consensus-subspace/pot",
+	"subspace-verification/pot",
 ]
 std = [
 	"codec/std",

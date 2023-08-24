@@ -70,4 +70,5 @@ thiserror = "1.0.38"
 pot = [
     "sc-proof-of-time/pot",
     "sp-consensus-subspace/pot",
+    "subspace-verification/pot",
 ]

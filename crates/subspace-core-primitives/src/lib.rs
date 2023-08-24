@@ -315,6 +315,13 @@ impl PotSeed {
 )]
 pub struct PotCheckpoint(PotBytes);
 
+impl PotCheckpoint {
+    /// Derives the global randomness from the output.
+    pub fn derive_global_randomness(&self) -> Randomness {
+        Randomness::from(blake2b_256_hash(&self.0))
+    }
+}
+
 /// Proof of time checkpoints, result of proving
 #[derive(
     Debug,

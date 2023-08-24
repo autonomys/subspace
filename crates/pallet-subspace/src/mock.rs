@@ -157,6 +157,7 @@ pub const INITIAL_SOLUTION_RANGE: SolutionRange =
     u64::MAX / (1024 * 1024 * 1024 / Piece::SIZE as u64) * SLOT_PROBABILITY.0 / SLOT_PROBABILITY.1;
 
 parameter_types! {
+    #[cfg(not(feature = "pot"))]
     pub const GlobalRandomnessUpdateInterval: u64 = 10;
     pub const EraDuration: u32 = 4;
     // 1GB
@@ -257,7 +258,14 @@ pub fn make_pre_digest(
     slot: Slot,
     solution: Solution<FarmerPublicKey, <Test as frame_system::Config>::AccountId>,
 ) -> Digest {
-    let log = DigestItem::subspace_pre_digest(&PreDigest { slot, solution });
+    let log = DigestItem::subspace_pre_digest(&PreDigest {
+        slot,
+        solution,
+        #[cfg(feature = "pot")]
+        proof_of_time: Default::default(),
+        #[cfg(feature = "pot")]
+        future_proof_of_time: Default::default(),
+    });
     Digest { logs: vec![log] }
 }
 

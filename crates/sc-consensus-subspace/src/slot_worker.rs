@@ -48,11 +48,11 @@ use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
-use subspace_core_primitives::{
-    BlockNumber, PublicKey, Randomness, RewardSignature, SectorId, Solution,
-};
+#[cfg(not(feature = "pot"))]
+use subspace_core_primitives::Randomness;
+use subspace_core_primitives::{BlockNumber, PublicKey, RewardSignature, SectorId, Solution};
 #[cfg(feature = "pot")]
-use subspace_core_primitives::{PotCheckpoints, SlotNumber};
+use subspace_core_primitives::{PotCheckpoint, PotCheckpoints, SlotNumber};
 use subspace_proof_of_space::Table;
 use subspace_verification::{
     check_reward_signature, verify_solution, PieceCheckParams, VerifySolutionParams,
@@ -217,6 +217,14 @@ where
         let parent_hash = parent_header.hash();
         let runtime_api = self.client.runtime_api();
 
+        // TODO: This is invalid and needs to be taken from PoT
+        #[cfg(feature = "pot")]
+        let proof_of_time = PotCheckpoint::default();
+        #[cfg(feature = "pot")]
+        let future_proof_of_time = PotCheckpoint::default();
+        #[cfg(feature = "pot")]
+        let global_randomness = proof_of_time.derive_global_randomness();
+        #[cfg(not(feature = "pot"))]
         let global_randomness =
             extract_global_randomness_for_block(self.client.as_ref(), parent_hash).ok()?;
 
@@ -324,7 +332,10 @@ where
                 &solution,
                 slot.into(),
                 &VerifySolutionParams {
+                    #[cfg(not(feature = "pot"))]
                     global_randomness,
+                    #[cfg(feature = "pot")]
+                    proof_of_time,
                     solution_range: voting_solution_range,
                     piece_check_params: Some(PieceCheckParams {
                         max_pieces_in_sector,
@@ -345,7 +356,14 @@ where
                     // block reward is claimed
                     if maybe_pre_digest.is_none() && solution_distance <= solution_range / 2 {
                         info!(target: "subspace", "🚜 Claimed block at slot {slot}");
-                        maybe_pre_digest.replace(PreDigest { solution, slot });
+                        maybe_pre_digest.replace(PreDigest {
+                            slot,
+                            solution,
+                            #[cfg(feature = "pot")]
+                            proof_of_time,
+                            #[cfg(feature = "pot")]
+                            future_proof_of_time,
+                        });
                     } else if !parent_header.number().is_zero() {
                         // Not sending vote on top of genesis block since segment headers since piece
                         // verification wouldn't be possible due to missing (for now) segment commitment
@@ -576,6 +594,7 @@ where
 
 // TODO: Replace with querying parent block header when breaking protocol
 /// Extract global randomness for block, given ID of the parent block.
+#[cfg(not(feature = "pot"))]
 pub(crate) fn extract_global_randomness_for_block<Block, Client>(
     client: &Client,
     parent_hash: Block::Hash,

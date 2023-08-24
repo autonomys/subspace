@@ -66,5 +66,6 @@ sp-keyring = { git = "https://github.com/subspace/substrate", rev = "55c157cff49
 
 [features]
 pot = [
-	"subspace-test-runtime/pot"
+	"sp-consensus-subspace/pot",
+	"subspace-test-runtime/pot",
 ]

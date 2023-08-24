@@ -43,10 +43,11 @@ use sp_runtime_interface::pass_by::PassBy;
 use sp_runtime_interface::{pass_by, runtime_interface};
 use sp_std::vec::Vec;
 use subspace_core_primitives::crypto::kzg::Kzg;
+#[cfg(not(feature = "pot"))]
+use subspace_core_primitives::Randomness;
 use subspace_core_primitives::{
-    BlockNumber, HistorySize, PublicKey, Randomness, RewardSignature, SegmentCommitment,
-    SegmentHeader, SegmentIndex, Solution, SolutionRange, PUBLIC_KEY_LENGTH,
-    REWARD_SIGNATURE_LENGTH,
+    BlockNumber, HistorySize, PublicKey, RewardSignature, SegmentCommitment, SegmentHeader,
+    SegmentIndex, Solution, SolutionRange, PUBLIC_KEY_LENGTH, REWARD_SIGNATURE_LENGTH,
 };
 #[cfg(feature = "std")]
 use subspace_proof_of_space::chia::ChiaTable;
@@ -107,12 +108,14 @@ pub type EquivocationProof<Header> = sp_consensus_slots::EquivocationProof<Heade
 enum ConsensusLog {
     /// Global randomness for this block/interval.
     #[codec(index = 0)]
+    #[cfg(not(feature = "pot"))]
     GlobalRandomness(Randomness),
     /// Solution range for this block/era.
     #[codec(index = 1)]
     SolutionRange(SolutionRange),
     /// Global randomness for next block/interval.
     #[codec(index = 2)]
+    #[cfg(not(feature = "pot"))]
     NextGlobalRandomness(Randomness),
     /// Solution range for next block/era.
     #[codec(index = 3)]
@@ -270,6 +273,7 @@ where
 
 /// Subspace global randomnesses used for deriving global challenges.
 #[derive(Default, Decode, Encode, MaxEncodedLen, PartialEq, Eq, Clone, Copy, Debug, TypeInfo)]
+#[cfg(not(feature = "pot"))]
 pub struct GlobalRandomnesses {
     /// Global randomness used for deriving global challenge in current block/interval.
     pub current: Randomness,
@@ -312,6 +316,7 @@ pub enum ChainConstants {
         /// Depth `K` after which a block enters the recorded history.
         confirmation_depth_k: BlockNumber,
         /// Number of blocks between global randomness updates.
+        #[cfg(not(feature = "pot"))]
         global_randomness_interval: BlockNumber,
         /// Era duration in blocks.
         era_duration: BlockNumber,
@@ -337,6 +342,7 @@ impl ChainConstants {
     }
 
     /// Number of blocks between global randomness updates.
+    #[cfg(not(feature = "pot"))]
     pub fn global_randomness_interval(&self) -> BlockNumber {
         let Self::V0 {
             global_randomness_interval,
@@ -507,6 +513,7 @@ pub trait Consensus {
     }
 }
 
+#[cfg(not(feature = "pot"))]
 sp_api::decl_runtime_apis! {
     /// API necessary for block authorship with Subspace.
     pub trait SubspaceApi<RewardAddress: Encode + Decode> {
@@ -515,6 +522,62 @@ sp_api::decl_runtime_apis! {
 
         /// Global randomnesses used for deriving global challenges.
         fn global_randomnesses() -> GlobalRandomnesses;
+
+        /// Solution ranges.
+        fn solution_ranges() -> SolutionRanges;
+
+        /// Submits an unsigned extrinsic to report an equivocation. The caller must provide the
+        /// equivocation proof. The extrinsic will be unsigned and should only be accepted for local
+        /// authorship (not to be broadcast to the network). This method returns `None` when
+        /// creation of the extrinsic fails, e.g. if equivocation reporting is disabled for the
+        /// given runtime (i.e. this method is hardcoded to return `None`). Only useful in an
+        /// offchain context.
+        fn submit_report_equivocation_extrinsic(
+            equivocation_proof: EquivocationProof<Block::Header>,
+        ) -> Option<()>;
+
+        /// Submit farmer vote vote that is essentially a header with bigger solution range than
+        /// acceptable for block authoring. Only useful in an offchain context.
+        fn submit_vote_extrinsic(
+            signed_vote: SignedVote<
+                <<Block as BlockT>::Header as HeaderT>::Number,
+                Block::Hash,
+                RewardAddress,
+            >,
+        );
+
+        /// Check if `farmer_public_key` is in block list (due to equivocation)
+        fn is_in_block_list(farmer_public_key: &FarmerPublicKey) -> bool;
+
+        /// Size of the blockchain history
+        fn history_size() -> HistorySize;
+
+        /// How many pieces one sector is supposed to contain (max)
+        fn max_pieces_in_sector() -> u16;
+
+        /// Get the segment commitment of records for specified segment index
+        fn segment_commitment(segment_index: SegmentIndex) -> Option<SegmentCommitment>;
+
+        /// Returns `Vec<SegmentHeader>` if a given extrinsic has them.
+        fn extract_segment_headers(ext: &Block::Extrinsic) -> Option<Vec<SegmentHeader >>;
+
+        /// Returns root plot public key in case block authoring is restricted.
+        fn root_plot_public_key() -> Option<FarmerPublicKey>;
+
+        /// Whether solution range adjustment is enabled.
+        fn should_adjust_solution_range() -> bool;
+
+        /// Get Subspace blockchain constants
+        fn chain_constants() -> ChainConstants;
+    }
+}
+
+#[cfg(feature = "pot")]
+sp_api::decl_runtime_apis! {
+    /// API necessary for block authorship with Subspace.
+    pub trait SubspaceApi<RewardAddress: Encode + Decode> {
+        /// The slot duration in milliseconds for Subspace.
+        fn slot_duration() -> SlotDuration;
 
         /// Solution ranges.
         fn solution_ranges() -> SolutionRanges;

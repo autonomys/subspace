@@ -9,10 +9,11 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
+#[cfg(not(feature = "pot"))]
+use sp_consensus_subspace::digests::derive_next_global_randomness;
 use sp_consensus_subspace::digests::{
-    derive_next_global_randomness, derive_next_solution_range, extract_pre_digest,
-    extract_subspace_digest_items, CompatibleDigestItem, DeriveNextSolutionRangeParams,
-    ErrorDigestType, PreDigest,
+    derive_next_solution_range, extract_pre_digest, extract_subspace_digest_items,
+    CompatibleDigestItem, DeriveNextSolutionRangeParams, ErrorDigestType, PreDigest,
 };
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature};
 use sp_runtime::app_crypto::UncheckedFrom;
@@ -24,6 +25,8 @@ use std::num::{NonZeroU64, NonZeroUsize};
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
+#[cfg(feature = "pot")]
+use subspace_core_primitives::PotCheckpoint;
 use subspace_core_primitives::{
     BlockWeight, HistorySize, PublicKey, Randomness, Record, RecordedHistorySegment,
     SegmentCommitment, SegmentIndex, Solution, SolutionRange,
@@ -35,23 +38,27 @@ use subspace_farmer_components::sector::{sector_size, SectorMetadataChecksummed}
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::Table;
 use subspace_solving::REWARD_SIGNING_CONTEXT;
-use subspace_verification::{
-    calculate_block_weight, derive_randomness, verify_solution, VerifySolutionParams,
-};
+#[cfg(not(feature = "pot"))]
+use subspace_verification::derive_randomness;
+use subspace_verification::{calculate_block_weight, verify_solution, VerifySolutionParams};
 
+#[cfg(not(feature = "pot"))]
 fn default_randomness() -> Randomness {
     Randomness::from([1u8; 32])
 }
 
 fn default_test_constants() -> ChainConstants<Header> {
+    #[cfg(not(feature = "pot"))]
     let global_randomness = default_randomness();
     ChainConstants {
         k_depth: 7,
         genesis_digest_items: NextDigestItems {
+            #[cfg(not(feature = "pot"))]
             next_global_randomness: global_randomness,
             next_solution_range: Default::default(),
         },
         genesis_segment_commitments: Default::default(),
+        #[cfg(not(feature = "pot"))]
         global_randomness_interval: 20,
         era_duration: 20,
         slot_probability: (1, 6),
@@ -120,7 +127,12 @@ struct ValidHeaderParams<'a> {
     number: NumberOf<Header>,
     slot: u64,
     keypair: &'a Keypair,
+    #[cfg(not(feature = "pot"))]
     global_randomness: Randomness,
+    #[cfg(feature = "pot")]
+    proof_of_time: PotCheckpoint,
+    #[cfg(feature = "pot")]
+    future_proof_of_time: PotCheckpoint,
     farmer_parameters: &'a FarmerParameters,
 }
 
@@ -138,7 +150,12 @@ fn valid_header(
         number,
         slot,
         keypair,
+        #[cfg(not(feature = "pot"))]
         global_randomness,
+        #[cfg(feature = "pot")]
+        proof_of_time,
+        #[cfg(feature = "pot")]
+        future_proof_of_time,
         farmer_parameters,
     } = params;
 
@@ -176,6 +193,8 @@ fn valid_header(
         ))
         .unwrap();
 
+        #[cfg(feature = "pot")]
+        let global_randomness = proof_of_time.derive_global_randomness();
         let global_challenge = global_randomness.derive_global_challenge(slot);
 
         let maybe_solution_candidates = audit_sector(
@@ -222,7 +241,10 @@ fn valid_header(
             &solution,
             slot,
             &VerifySolutionParams {
+                #[cfg(not(feature = "pot"))]
                 global_randomness,
+                #[cfg(feature = "pot")]
+                proof_of_time,
                 solution_range: SolutionRange::MAX,
                 piece_check_params: None,
             },
@@ -235,8 +257,13 @@ fn valid_header(
         let pre_digest = PreDigest {
             slot: slot.into(),
             solution,
+            #[cfg(feature = "pot")]
+            proof_of_time,
+            #[cfg(feature = "pot")]
+            future_proof_of_time,
         };
         let digests = vec![
+            #[cfg(not(feature = "pot"))]
             DigestItem::global_randomness(global_randomness),
             DigestItem::solution_range(solution_range),
             DigestItem::subspace_pre_digest(&pre_digest),
@@ -326,6 +353,7 @@ fn add_next_digests(store: &MockStorage, number: NumberOf<Header>, header: &mut 
         .unwrap();
 
     let digest_logs = header.digest_mut();
+    #[cfg(not(feature = "pot"))]
     if let Some(next_randomness) = derive_next_global_randomness::<Header>(
         number,
         constants.global_randomness_interval,
@@ -765,7 +793,14 @@ fn test_reorg_to_heavier_smaller_chain() {
                 number: 3,
                 slot: next_slot(constants.slot_probability, digests_at_2.pre_digest.slot).into(),
                 keypair: &keypair,
+                #[cfg(not(feature = "pot"))]
                 global_randomness: digests_at_2.global_randomness,
+                // TODO: Correct value
+                #[cfg(feature = "pot")]
+                proof_of_time: PotCheckpoint::default(),
+                // TODO: Correct value
+                #[cfg(feature = "pot")]
+                future_proof_of_time: PotCheckpoint::default(),
                 farmer_parameters: &farmer_parameters,
             });
         seal_header(&keypair, &mut header);
