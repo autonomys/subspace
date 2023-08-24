@@ -352,6 +352,13 @@ where
             })?
         };
 
+        // Get the accumulated transaction fee of all transactions included in the block
+        // and used as the operator reward
+        let total_rewards = self
+            .client
+            .runtime_api()
+            .block_transaction_fee(header_hash)?;
+
         let execution_receipt = ExecutionReceipt {
             domain_block_number: header_number,
             domain_block_hash: header_hash,
@@ -363,8 +370,7 @@ where
             final_state_root: state_root,
             execution_trace: trace,
             execution_trace_root: sp_core::H256(trace_root),
-            // TODO: set proper value
-            total_rewards: Default::default(),
+            total_rewards,
         };
 
         Ok(DomainBlockResult {

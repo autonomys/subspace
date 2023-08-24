@@ -185,6 +185,7 @@ pub fn construct_extrinsic_generic<Runtime, Client>(
     caller: EcdsaKeyring,
     immortal: bool,
     nonce: u32,
+    tip: u32,
 ) -> UncheckedExtrinsicFor<Runtime>
 where
     Runtime: frame_system::Config<Hash = H256, BlockNumber = u32>
@@ -204,7 +205,6 @@ where
         .checked_next_power_of_two()
         .map(|c| c / 2)
         .unwrap_or(2) as u64;
-    let tip = 0;
     let extra: SignedExtraFor<Runtime> = (
         frame_system::CheckNonZeroSender::<Runtime>::new(),
         frame_system::CheckSpecVersion::<Runtime>::new(),
