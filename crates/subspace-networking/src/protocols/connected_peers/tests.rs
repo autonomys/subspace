@@ -16,8 +16,8 @@ struct ConnectedPeersInstance;
 
 #[tokio::test()]
 async fn test_connection_breaks_after_timeout_without_decision() {
-    let decision_timeout = Duration::from_millis(500);
-    let large_delay = Duration::from_millis(2000);
+    let decision_timeout = Duration::from_millis(300);
+    let long_delay = Duration::from_millis(1000);
 
     let mut peer1 = new_ephemeral(
         decision_timeout,
@@ -42,20 +42,21 @@ async fn test_connection_breaks_after_timeout_without_decision() {
         select! {
             _ = peer1.next_swarm_event().fuse() => {},
             _ = peer2.next_swarm_event().fuse() => {},
-            _ = sleep(large_delay).fuse() => {
+            _ = sleep(long_delay).fuse() => {
                 break;
             }
         }
     }
 
+    // Connections should timeout without decisions.
     assert!(!peer1.is_connected(peer2.local_peer_id()));
     assert!(!peer2.is_connected(peer1.local_peer_id()));
 }
 
 #[tokio::test()]
 async fn test_connection_decision() {
-    let decision_timeout = Duration::from_millis(500);
-    let large_delay = Duration::from_millis(2000);
+    let decision_timeout = Duration::from_millis(300);
+    let long_delay = Duration::from_millis(1000);
 
     let mut peer1 = new_ephemeral(
         decision_timeout,
@@ -87,20 +88,21 @@ async fn test_connection_decision() {
         select! {
             _ = peer1.next_swarm_event().fuse() => {},
             _ = peer2.next_swarm_event().fuse() => {},
-            _ = sleep(large_delay).fuse() => {
+            _ = sleep(long_delay).fuse() => {
                 break;
             }
         }
     }
 
+    // Connections should be maintained after positive decisions.
     assert!(peer1.is_connected(peer2.local_peer_id()));
     assert!(peer2.is_connected(peer1.local_peer_id()));
 }
 
 #[tokio::test()]
 async fn test_connection_decision_symmetry() {
-    let decision_timeout = Duration::from_millis(500);
-    let large_delay = Duration::from_millis(2000);
+    let decision_timeout = Duration::from_millis(300);
+    let long_delay = Duration::from_millis(1000);
 
     let mut peer1 = new_ephemeral(
         decision_timeout,
@@ -132,20 +134,21 @@ async fn test_connection_decision_symmetry() {
         select! {
             _ = peer1.next_swarm_event().fuse() => {},
             _ = peer2.next_swarm_event().fuse() => {},
-            _ = sleep(large_delay).fuse() => {
+            _ = sleep(long_delay).fuse() => {
                 break;
             }
         }
     }
 
+    // Both peers should approve the connection to make it permanent
     assert!(!peer1.is_connected(peer2.local_peer_id()));
     assert!(!peer2.is_connected(peer1.local_peer_id()));
 }
 
 #[tokio::test()]
 async fn test_new_peer_request() {
-    let dialing_interval = Duration::from_millis(500);
-    let large_delay = Duration::from_millis(2000);
+    let dialing_interval = Duration::from_millis(300);
+    let long_delay = Duration::from_millis(1000);
 
     let mut peer1 = new_ephemeral(
         dialing_interval,
@@ -164,17 +167,19 @@ async fn test_new_peer_request() {
                     break;
                 }
             },
-            _ = sleep(large_delay).fuse() => {
+            _ = sleep(long_delay).fuse() => {
                 panic!("No new peers requests.");
             }
         }
     }
+
+    // We've received the new peers request when we don't have enough connected peers.
 }
 
 #[tokio::test()]
 async fn test_target_connected_peer_limit_number() {
-    let decision_timeout = Duration::from_millis(500);
-    let large_delay = Duration::from_millis(2000);
+    let decision_timeout = Duration::from_millis(300);
+    let long_delay = Duration::from_millis(1000);
     let target_connected_peers = 1;
 
     let mut peer1 = new_ephemeral(
@@ -238,12 +243,13 @@ async fn test_target_connected_peer_limit_number() {
             _ = peer1.next_swarm_event().fuse() => {},
             _ = peer2.next_swarm_event().fuse() => {},
             _ = peer3.next_swarm_event().fuse() => {},
-            _ = sleep(large_delay).fuse() => {
+            _ = sleep(long_delay).fuse() => {
                 break;
             }
         }
     }
 
+    // We don't maintain with new peers when we have enough connected peers
     assert!(peer1.is_connected(peer2.local_peer_id()));
     assert!(!peer1.is_connected(peer3.local_peer_id()));
 
