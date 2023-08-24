@@ -2,9 +2,7 @@
 
 use crate::protocol::compact_block::{CompactBlockClient, CompactBlockServer};
 use crate::utils::{NetworkPeerHandle, NetworkWrapper, RequestResponseErr};
-use crate::{
-    DownloadResult, ProtocolBackend, ProtocolClient, ProtocolServer, RelayError, LOG_TARGET,
-};
+use crate::{ProtocolBackend, ProtocolClient, ProtocolServer, RelayError, LOG_TARGET};
 use async_trait::async_trait;
 use codec::{Decode, Encode};
 use futures::channel::oneshot;
@@ -39,9 +37,7 @@ const SYNC_PROTOCOL: &str = "/subspace/consensus-block-relay/1";
 const NUM_PEER_HINT: NonZeroUsize = NonZeroUsize::new(100).expect("Not zero; qed");
 const TRANSACTION_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(512).expect("Not zero; qed");
 
-/// Initial request to the server
-/// We currently ignore the direction field and return a single block,
-/// revisit if needed
+/// Initial request for a single block.
 #[derive(Encode, Decode)]
 struct InitialRequest<Block: BlockT, ProtocolRequest> {
     /// Starting block
@@ -54,7 +50,7 @@ struct InitialRequest<Block: BlockT, ProtocolRequest> {
     protocol_request: ProtocolRequest,
 }
 
-/// Initial response from server
+/// Initial response for a single block.
 #[derive(Encode, Decode)]
 struct InitialResponse<Block: BlockT, ProtocolResponse> {
     ///  Hash of the block being downloaded
@@ -69,6 +65,19 @@ struct InitialResponse<Block: BlockT, ProtocolResponse> {
     /// extrinsics
     protocol_response: Option<ProtocolResponse>,
 }
+
+/// Request to download multiple/complete blocks, for scenarios like the
+/// sync phase. This does not involve the protocol optimizations, as the
+/// requesting node is just coming up and may not have the transactions
+/// in its pool. So it does not make sense to send response with tx hash,
+/// and the full blocks are sent back. This behaves like the default
+/// substrate block downloader.
+#[derive(Encode, Decode)]
+struct FullDownloadRequest<Block: BlockT>(BlockRequest<Block>);
+
+/// Response to the full download request.
+#[derive(Encode, Decode)]
+struct FullDownloadResponse<Block: BlockT>(Vec<BlockData<Block>>);
 
 /// The partial block response from the server. It has all the fields
 /// except the extrinsics. The extrinsics are handled by the protocol
@@ -123,7 +132,7 @@ where
         &self,
         who: PeerId,
         request: BlockRequest<Block>,
-    ) -> Result<DownloadResult<BlockHash<Block>, BlockData<Block>>, RelayError> {
+    ) -> Result<Vec<u8>, RelayError> {
         let start_ts = Instant::now();
         let network_peer_handle = self
             .network
@@ -159,7 +168,7 @@ where
         };
 
         // Assemble the final response
-        let block_data = BlockData::<Block> {
+        let downloaded = vec![BlockData::<Block> {
             hash: initial_response.partial_block.hash,
             header: initial_response.partial_block.header,
             body,
@@ -168,14 +177,17 @@ where
             message_queue: None,
             justification: None,
             justifications: initial_response.partial_block.justifications,
-        };
-
-        Ok(DownloadResult {
-            download_unit_id: initial_response.block_hash,
-            downloaded: block_data,
-            latency: start_ts.elapsed(),
+        }]
+        .encode();
+        trace!(
+            target: LOG_TARGET,
+            "relay::download: {:?} => {},{},{:?}",
+            initial_response.block_hash,
+            downloaded.len(),
             local_miss,
-        })
+            start_ts.elapsed()
+        );
+        Ok(downloaded)
     }
 
     /// Resolves the extrinsics from the initial response
@@ -228,18 +240,7 @@ where
     ) -> Result<Result<Vec<u8>, RequestFailure>, oneshot::Canceled> {
         let ret = self.download(who, request.clone()).await;
         match ret {
-            Ok(result) => {
-                let downloaded = result.downloaded.encode();
-                trace!(
-                    target: LOG_TARGET,
-                    "relay::download_block: {:?} => {},{},{:?}",
-                    result.download_unit_id,
-                    downloaded.len(),
-                    result.local_miss,
-                    result.latency
-                );
-                Ok(Ok(downloaded))
-            }
+            Ok(downloaded) => Ok(Ok(downloaded)),
             Err(error) => {
                 debug!(
                     target: LOG_TARGET,
@@ -271,12 +272,11 @@ where
         _request: &BlockRequest<Block>,
         response: Vec<u8>,
     ) -> Result<Vec<BlockData<Block>>, BlockResponseError> {
-        match Decode::decode(&mut response.as_ref()) {
-            Ok(block_data) => Ok(vec![block_data]),
-            Err(err) => Err(BlockResponseError::DecodeFailed(format!(
+        Decode::decode(&mut response.as_ref()).map_err(|err| {
+            BlockResponseError::DecodeFailed(format!(
                 "Failed to decode consensus response: {err:?}"
-            ))),
-        }
+            ))
+        })
     }
 }
 
