@@ -195,6 +195,9 @@ sp_api::decl_runtime_apis! {
 
         /// Return the extrinsic weight
         fn extrinsic_weight(ext: &Block::Extrinsic) -> Weight;
+
+        /// The accumulated transaction fee of all transactions included in the block
+        fn block_transaction_fee() -> Balance;
     }
 
     /// Api that construct inherent extrinsics.

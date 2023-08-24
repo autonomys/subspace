@@ -162,7 +162,7 @@ pub async fn configure_dsn(
         enable_autonat: false,
         ..default_config
     };
-    let (node, mut node_runner_1) = subspace_networking::create(config).unwrap();
+    let (node, mut node_runner_1) = subspace_networking::construct(config).unwrap();
 
     let (node_address_sender, node_address_receiver) = oneshot::channel();
     let on_new_listener_handler = node.on_new_listener(Arc::new({

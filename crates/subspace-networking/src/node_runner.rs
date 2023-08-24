@@ -5,15 +5,17 @@ use crate::behavior::persistent_parameters::{
 use crate::behavior::{
     Behavior, Event, GeneralConnectedPeersInstance, SpecialConnectedPeersInstance,
 };
-use crate::connected_peers::Event as ConnectedPeersEvent;
-use crate::create;
-use crate::create::temporary_bans::TemporaryBans;
-use crate::create::{
+use crate::constructor;
+use crate::constructor::temporary_bans::TemporaryBans;
+use crate::constructor::{
     ConnectedPeersHandler, LocalOnlyRecordStore, KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER,
     REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER,
 };
-use crate::peer_info::{Event as PeerInfoEvent, PeerInfoSuccess};
-use crate::request_responses::{Event as RequestResponseEvent, IfDisconnected};
+use crate::protocols::connected_peers::Event as ConnectedPeersEvent;
+use crate::protocols::peer_info::{Event as PeerInfoEvent, PeerInfoSuccess};
+use crate::protocols::request_response::request_response_factory::{
+    Event as RequestResponseEvent, IfDisconnected,
+};
 use crate::shared::{Command, CreatedSubscription, NewPeerInfo, Shared};
 use crate::utils::{
     is_global_address_or_dns, strip_peer_id, PeerAddress, ResizableSemaphorePermit,
@@ -98,7 +100,7 @@ enum BootstrapCommandState {
 #[must_use = "Node does not function properly unless its runner is driven forward"]
 pub struct NodeRunner<LocalRecordProvider>
 where
-    LocalRecordProvider: create::LocalRecordProvider + Send + Sync + 'static,
+    LocalRecordProvider: constructor::LocalRecordProvider + Send + Sync + 'static,
 {
     /// Should non-global addresses be added to the DHT?
     allow_non_global_addresses_in_dht: bool,
@@ -154,7 +156,7 @@ where
 // Helper struct for NodeRunner configuration (clippy requirement).
 pub(crate) struct NodeRunnerConfig<LocalRecordProvider>
 where
-    LocalRecordProvider: create::LocalRecordProvider + Send + Sync + 'static,
+    LocalRecordProvider: constructor::LocalRecordProvider + Send + Sync + 'static,
 {
     pub(crate) allow_non_global_addresses_in_dht: bool,
     pub(crate) command_receiver: mpsc::Receiver<Command>,
@@ -175,7 +177,7 @@ where
 
 impl<LocalRecordProvider> NodeRunner<LocalRecordProvider>
 where
-    LocalRecordProvider: create::LocalRecordProvider + Send + Sync + 'static,
+    LocalRecordProvider: constructor::LocalRecordProvider + Send + Sync + 'static,
 {
     pub(crate) fn new(
         NodeRunnerConfig {
