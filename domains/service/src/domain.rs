@@ -473,7 +473,8 @@ where
 
     if is_authority {
         tracing::info!(?domain_id, "Starting domain relayer");
-        let relayer_worker = domain_client_message_relayer::worker::relay_domain_messages(
+        // TODO: will be replaced with domain version once consensus chain has Relayer api
+        let relayer_worker = domain_client_message_relayer::worker::relay_consensus_chain_messages(
             client.clone(),
             sync_service.clone(),
             gossip_message_sink,
