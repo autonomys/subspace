@@ -20,7 +20,7 @@ async fn main() {
         allow_non_global_addresses_in_dht: true,
         ..Config::default()
     };
-    let (node_1, mut node_runner_1) = subspace_networking::compose(config_1).unwrap();
+    let (node_1, mut node_runner_1) = subspace_networking::construct(config_1).unwrap();
 
     println!("Node 1 ID is {}", node_1.id());
 
@@ -55,7 +55,7 @@ async fn main() {
         ..Config::default()
     };
 
-    let (node_2, mut node_runner_2) = subspace_networking::compose(config_2).unwrap();
+    let (node_2, mut node_runner_2) = subspace_networking::construct(config_2).unwrap();
 
     println!("Node 2 ID is {}", node_2.id());
 

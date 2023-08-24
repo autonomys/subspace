@@ -5,8 +5,8 @@ use crate::behavior::persistent_parameters::{
     NetworkingParametersRegistry, StubNetworkingParametersManager,
 };
 use crate::behavior::{Behavior, BehaviorConfig};
-use crate::composer::temporary_bans::TemporaryBans;
-use crate::composer::transport::build_transport;
+use crate::constructor::temporary_bans::TemporaryBans;
+use crate::constructor::transport::build_transport;
 use crate::node::Node;
 use crate::node_runner::{NodeRunner, NodeRunnerConfig};
 use crate::protocols::connected_peers::Config as ConnectedPeersConfig;
@@ -390,7 +390,7 @@ pub fn peer_id(keypair: &identity::Keypair) -> PeerId {
 }
 
 /// Create a new network node and node runner instances.
-pub fn compose<LocalRecordProvider>(
+pub fn construct<LocalRecordProvider>(
     config: Config<LocalRecordProvider>,
 ) -> Result<(Node, NodeRunner<LocalRecordProvider>), CreationError>
 where

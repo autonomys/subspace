@@ -143,7 +143,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 ..Config::new(protocol_version.to_string(), keypair, (), None)
             };
             let (node, mut node_runner) =
-                subspace_networking::compose(config).expect("Networking stack creation failed.");
+                subspace_networking::construct(config).expect("Networking stack creation failed.");
 
             node.on_new_listener(Arc::new({
                 let node_id = node.id();

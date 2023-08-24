@@ -180,5 +180,5 @@ where
         ..default_networking_config
     };
 
-    subspace_networking::compose(networking_config).map_err(Into::into)
+    subspace_networking::construct(networking_config).map_err(Into::into)
 }

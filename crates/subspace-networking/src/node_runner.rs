@@ -5,9 +5,9 @@ use crate::behavior::persistent_parameters::{
 use crate::behavior::{
     Behavior, Event, GeneralConnectedPeersInstance, SpecialConnectedPeersInstance,
 };
-use crate::composer;
-use crate::composer::temporary_bans::TemporaryBans;
-use crate::composer::{
+use crate::constructor;
+use crate::constructor::temporary_bans::TemporaryBans;
+use crate::constructor::{
     ConnectedPeersHandler, LocalOnlyRecordStore, KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER,
     REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER,
 };
@@ -100,7 +100,7 @@ enum BootstrapCommandState {
 #[must_use = "Node does not function properly unless its runner is driven forward"]
 pub struct NodeRunner<LocalRecordProvider>
 where
-    LocalRecordProvider: composer::LocalRecordProvider + Send + Sync + 'static,
+    LocalRecordProvider: constructor::LocalRecordProvider + Send + Sync + 'static,
 {
     /// Should non-global addresses be added to the DHT?
     allow_non_global_addresses_in_dht: bool,
@@ -156,7 +156,7 @@ where
 // Helper struct for NodeRunner configuration (clippy requirement).
 pub(crate) struct NodeRunnerConfig<LocalRecordProvider>
 where
-    LocalRecordProvider: composer::LocalRecordProvider + Send + Sync + 'static,
+    LocalRecordProvider: constructor::LocalRecordProvider + Send + Sync + 'static,
 {
     pub(crate) allow_non_global_addresses_in_dht: bool,
     pub(crate) command_receiver: mpsc::Receiver<Command>,
@@ -177,7 +177,7 @@ where
 
 impl<LocalRecordProvider> NodeRunner<LocalRecordProvider>
 where
-    LocalRecordProvider: composer::LocalRecordProvider + Send + Sync + 'static,
+    LocalRecordProvider: constructor::LocalRecordProvider + Send + Sync + 'static,
 {
     pub(crate) fn new(
         NodeRunnerConfig {
