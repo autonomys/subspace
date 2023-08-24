@@ -84,7 +84,7 @@ pub use self::utils::{DomainBlockImportNotification, DomainImportNotifications};
 use crate::utils::BlockInfo;
 use futures::channel::mpsc;
 use futures::Stream;
-use sc_client_api::BlockImportNotification;
+use sc_client_api::{AuxStore, BlockImportNotification};
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
@@ -238,4 +238,58 @@ where
     const MAX_ACTIVE_LEAVES: usize = 4;
 
     Ok(leaves.into_iter().rev().take(MAX_ACTIVE_LEAVES).collect())
+}
+
+pub(crate) fn load_execution_receipt_by_domain_hash<Block, CBlock, Client, CClient>(
+    domain_client: &Client,
+    consensus_client: &Arc<CClient>,
+    domain_hash: Block::Hash,
+    domain_number: NumberFor<Block>,
+) -> Result<ExecutionReceiptFor<Block, CBlock>, sp_blockchain::Error>
+where
+    Block: BlockT,
+    CBlock: BlockT,
+    Client: AuxStore,
+    CClient: HeaderBackend<CBlock>,
+{
+    let not_found_error = || {
+        sp_blockchain::Error::Backend(format!(
+            "Receipt for domain block {domain_hash}#{domain_number} not found"
+        ))
+    };
+
+    // Get all the consensus blocks that mapped to `domain_hash`
+    let consensus_block_hashes = crate::aux_schema::consensus_block_hash_for::<_, _, CBlock::Hash>(
+        domain_client,
+        domain_hash,
+    )?;
+
+    // Get the consensus block that is in the current canonical consensus chain
+    let consensus_block_hash = match consensus_block_hashes.len() {
+        0 => return Err(not_found_error()),
+        1 => consensus_block_hashes[0],
+        _ => {
+            let mut canonical_consensus_hash = None;
+            for hash in consensus_block_hashes {
+                // Check if `hash` is in the canonical chain
+                let block_number = consensus_client.number(hash)?.ok_or_else(not_found_error)?;
+                let canonical_block_hash = consensus_client
+                    .hash(block_number)?
+                    .ok_or_else(not_found_error)?;
+
+                if canonical_block_hash == hash {
+                    canonical_consensus_hash.replace(hash);
+                    break;
+                }
+            }
+            canonical_consensus_hash.ok_or_else(not_found_error)?
+        }
+    };
+
+    // Get receipt by consensus block hash
+    crate::aux_schema::load_execution_receipt::<_, Block, CBlock>(
+        domain_client,
+        consensus_block_hash,
+    )?
+    .ok_or_else(not_found_error)
 }
