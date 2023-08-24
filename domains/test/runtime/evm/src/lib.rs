@@ -37,8 +37,8 @@ use sp_core::crypto::KeyTypeId;
 use sp_core::{Get, OpaqueMetadata, H160, H256, U256};
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
-    ChainId, ChannelId, CrossDomainMessage, ExtractedStateRootsFromProof, MessageId,
-    RelayerMessagesWithStorageKey,
+    BlockMessagesWithStorageKey, ChainId, ChannelId, CrossDomainMessage,
+    ExtractedStateRootsFromProof, MessageId,
 };
 use sp_runtime::traits::{
     BlakeTwo256, Block as BlockT, Convert, DispatchInfoOf, Dispatchable, IdentifyAccount,
@@ -56,7 +56,7 @@ use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
-use subspace_runtime_primitives::{Moment, SHANNON, SSC};
+use subspace_runtime_primitives::{Moment, SHANNON};
 
 /// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
 pub type Signature = EthereumSignature;
@@ -370,13 +370,7 @@ impl pallet_sudo::Config for Runtime {
 parameter_types! {
     pub const StateRootsBound: u32 = 50;
     pub const RelayConfirmationDepth: BlockNumber = 1;
-}
-
-parameter_types! {
-    pub const MaximumRelayers: u32 = 100;
-    pub const RelayerDeposit: Balance = 100 * SSC;
-    // TODO: Proper value
-    pub SelfChainId: ChainId = 3u32.into();
+    pub SelfChainId: ChainId = SelfDomainId::self_domain_id().into();
 }
 
 impl pallet_messenger::Config for Runtime {
@@ -392,8 +386,6 @@ impl pallet_messenger::Config for Runtime {
     }
 
     type Currency = Balances;
-    type MaximumRelayers = MaximumRelayers;
-    type RelayerDeposit = RelayerDeposit;
     type DomainInfo = ();
     type ConfirmationDepth = RelayConfirmationDepth;
     type WeightInfo = pallet_messenger::weights::SubstrateWeight<Runtime>;
@@ -913,7 +905,7 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_messenger::RelayerApi<Block, AccountId, BlockNumber> for Runtime {
+    impl sp_messenger::RelayerApi<Block, BlockNumber> for Runtime {
         fn chain_id() -> ChainId {
             SelfChainId::get()
         }
@@ -930,8 +922,8 @@ impl_runtime_apis! {
             None
         }
 
-        fn relayer_assigned_messages(relayer_id: AccountId) -> RelayerMessagesWithStorageKey {
-            Messenger::relayer_assigned_messages(relayer_id)
+        fn block_messages() -> BlockMessagesWithStorageKey {
+            Messenger::get_block_messages()
         }
 
         fn outbox_message_unsigned(msg: CrossDomainMessage<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {

@@ -83,7 +83,7 @@ where
         + TransactionPaymentRuntimeApi<Block, Balance>
         + DomainCoreApi<Block>
         + MessengerApi<Block, NumberFor<Block>>
-        + RelayerApi<Block, AccountId, NumberFor<Block>>,
+        + RelayerApi<Block, NumberFor<Block>>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
     AccountId: Encode + Decode,
 {
@@ -238,12 +238,12 @@ where
     Ok(params)
 }
 
-pub struct DomainParams<CBlock, CClient, SC, IBNS, CIBNS, NSNS, AccountId, Provider>
+pub struct DomainParams<CBlock, CClient, SC, IBNS, CIBNS, NSNS, Provider>
 where
     CBlock: BlockT,
 {
     pub domain_id: DomainId,
-    pub domain_config: DomainConfiguration<AccountId>,
+    pub domain_config: DomainConfiguration,
     pub domain_created_at: NumberFor<CBlock>,
     pub consensus_client: Arc<CClient>,
     pub consensus_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
@@ -266,7 +266,7 @@ pub async fn new_full<
     AccountId,
     Provider,
 >(
-    domain_params: DomainParams<CBlock, CClient, SC, IBNS, CIBNS, NSNS, AccountId, Provider>,
+    domain_params: DomainParams<CBlock, CClient, SC, IBNS, CIBNS, NSNS, Provider>,
 ) -> sc_service::error::Result<
     NewFull<
         Arc<FullClient<Block, RuntimeApi, ExecutorDispatch>>,
@@ -313,7 +313,7 @@ where
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
-        + RelayerApi<Block, AccountId, NumberFor<Block>>,
+        + RelayerApi<Block, NumberFor<Block>>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
     AccountId: DeserializeOwned
         + Encode
@@ -471,10 +471,9 @@ where
     )
     .await?;
 
-    if let Some(relayer_id) = domain_config.maybe_relayer_id {
-        tracing::info!(?domain_id, ?relayer_id, "Starting domain relayer");
+    if is_authority {
+        tracing::info!(?domain_id, "Starting domain relayer");
         let relayer_worker = domain_client_message_relayer::worker::relay_domain_messages(
-            relayer_id,
             client.clone(),
             sync_service.clone(),
             gossip_message_sink,

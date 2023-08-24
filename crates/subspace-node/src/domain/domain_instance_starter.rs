@@ -1,5 +1,5 @@
 use super::{evm_chain_spec, DomainCli};
-use crate::domain::{AccountId20, AccountId32ToAccountId20Converter, EVMDomainExecutorDispatch};
+use crate::domain::{AccountId20, EVMDomainExecutorDispatch};
 use crate::ExecutorDispatch as CExecutorDispatch;
 use cross_domain_message_gossip::GossipWorkerBuilder;
 use domain_client_operator::{BootstrapResult, OperatorStreams};
@@ -76,13 +76,7 @@ impl DomainInstanceStarter {
                 tokio_handle,
             )?;
 
-            let maybe_relayer_id =
-                domain_cli.maybe_relayer_id::<_, AccountId32ToAccountId20Converter>()?;
-
-            DomainConfiguration {
-                service_config,
-                maybe_relayer_id,
-            }
+            DomainConfiguration { service_config }
         };
 
         let block_importing_notification_stream = || {

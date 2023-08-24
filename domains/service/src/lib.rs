@@ -39,9 +39,8 @@ pub type FullClient<Block, RuntimeApi, ExecutorDispatch> =
 pub type FullBackend<Block> = sc_service::TFullBackend<Block>;
 
 /// Domain configuration.
-pub struct DomainConfiguration<AccountId> {
+pub struct DomainConfiguration {
     pub service_config: ServiceConfiguration,
-    pub maybe_relayer_id: Option<AccountId>,
 }
 
 /// Build the network service, the network status sinks and an RPC sender.
@@ -90,7 +89,7 @@ where
     if client.requires_full_sync() {
         match config.network.sync_mode.load(Ordering::Acquire) {
             SyncMode::LightState { .. } => {
-                return Err("Fast sync doesn't work for archive nodes".into())
+                return Err("Fast sync doesn't work for archive nodes".into());
             }
             SyncMode::Warp => return Err("Warp sync doesn't work for archive nodes".into()),
             SyncMode::Full | SyncMode::Paused => {}

@@ -30,8 +30,8 @@ use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::GenerateGenesisStateRoot;
 use std::sync::Arc;
 use subspace_node::domain::{
-    AccountId32ToAccountId20Converter, DomainCli, DomainGenesisBlockBuilder, DomainInstanceStarter,
-    DomainSubcommand, EVMDomainExecutorDispatch,
+    DomainCli, DomainGenesisBlockBuilder, DomainInstanceStarter, DomainSubcommand,
+    EVMDomainExecutorDispatch,
 };
 use subspace_node::{Cli, ExecutorDispatch, Subcommand};
 use subspace_proof_of_space::chia::ChiaTable;
@@ -321,9 +321,7 @@ fn main() -> Result<(), Error> {
                         cli.domain_args.into_iter(),
                     );
                     let domain_config = domain_cli
-                        .create_domain_configuration::<_, AccountId32ToAccountId20Converter>(
-                            consensus_chain_config.tokio_handle,
-                        )
+                        .create_domain_configuration(consensus_chain_config.tokio_handle)
                         .map_err(|error| {
                             sc_service::Error::Other(format!(
                                 "Failed to create domain configuration: {error:?}"

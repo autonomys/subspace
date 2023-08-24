@@ -9,8 +9,8 @@ use sc_client_api::{AuxStore, HeaderBackend, ProofProvider};
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::ProvideRuntimeApi;
 use sp_messenger::messages::{
-    BlockInfo, ChainId, CrossDomainMessage, Proof, RelayerMessageWithStorageKey,
-    RelayerMessagesWithStorageKey,
+    BlockInfo, BlockMessageWithStorageKey, BlockMessagesWithStorageKey, ChainId,
+    CrossDomainMessage, Proof,
 };
 use sp_messenger::RelayerApi;
 use sp_runtime::traits::{Block as BlockT, CheckedSub, Header as HeaderT, NumberFor, One, Zero};
@@ -21,8 +21,8 @@ use std::sync::Arc;
 /// The logging target.
 const LOG_TARGET: &str = "message::relayer";
 
-/// Relayer relays messages between core domains using system domain as trusted third party.
-struct Relayer<Client, Block, RelayerId>(PhantomData<(Client, Block, RelayerId)>);
+/// Relayer relays messages between domains using consensus chain as trusted third party.
+struct Relayer<Client, Block>(PhantomData<(Client, Block)>);
 
 /// Sink used to submit all the gossip messages.
 pub type GossipMessageSink = TracingUnboundedSender<GossipMessage>;
@@ -80,12 +80,11 @@ impl From<sp_api::ApiError> for Error {
 type ProofOf<Block> = Proof<NumberFor<Block>, <Block as BlockT>::Hash, <Block as BlockT>::Hash>;
 type UnProcessedBlocks<Block> = Vec<(NumberFor<Block>, <Block as BlockT>::Hash)>;
 
-impl<Client, Block, RelayerId> Relayer<Client, Block, RelayerId>
+impl<Client, Block> Relayer<Client, Block>
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + AuxStore + ProofProvider<Block> + ProvideRuntimeApi<Block>,
-    Client::Api: RelayerApi<Block, RelayerId, NumberFor<Block>>,
-    RelayerId: Encode + Decode,
+    Client::Api: RelayerApi<Block, NumberFor<Block>>,
 {
     pub(crate) fn chain_id(client: &Arc<Client>) -> Result<ChainId, Error> {
         client
@@ -125,7 +124,7 @@ where
         ProofConstructor: Fn(Block::Hash, &[u8]) -> Result<Proof<NumberFor<Block>, Block::Hash, Block::Hash>, Error>,
     >(
         block_hash: Block::Hash,
-        msgs: Vec<RelayerMessageWithStorageKey>,
+        msgs: Vec<BlockMessageWithStorageKey>,
         proof_constructor: ProofConstructor,
         submitter: Submitter,
     ) -> Result<(), Error> {
@@ -157,10 +156,10 @@ where
         Ok(())
     }
 
-    fn filter_assigned_messages(
+    fn filter_messages(
         client: &Arc<Client>,
-        mut msgs: RelayerMessagesWithStorageKey,
-    ) -> Result<RelayerMessagesWithStorageKey, Error> {
+        mut msgs: BlockMessagesWithStorageKey,
+    ) -> Result<BlockMessagesWithStorageKey, Error> {
         let api = client.runtime_api();
         let best_hash = client.info().best_hash;
         msgs.outbox.retain(|msg| {
@@ -199,17 +198,15 @@ where
     }
 
     pub(crate) fn submit_messages_from_system_domain(
-        relayer_id: RelayerId,
         system_domain_client: &Arc<Client>,
         confirmed_block_hash: Block::Hash,
         gossip_message_sink: &GossipMessageSink,
     ) -> Result<(), Error> {
         let api = system_domain_client.runtime_api();
-        let assigned_messages: RelayerMessagesWithStorageKey = api
-            .relayer_assigned_messages(confirmed_block_hash, relayer_id)
+        let block_messages: BlockMessagesWithStorageKey = api
+            .block_messages(confirmed_block_hash)
             .map_err(|_| Error::FetchAssignedMessages)?;
-        let filtered_messages =
-            Self::filter_assigned_messages(system_domain_client, assigned_messages)?;
+        let filtered_messages = Self::filter_messages(system_domain_client, block_messages)?;
 
         // short circuit if the there are no messages to relay
         if filtered_messages.outbox.is_empty() && filtered_messages.inbox_responses.is_empty() {

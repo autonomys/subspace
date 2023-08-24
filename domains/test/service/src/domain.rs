@@ -88,7 +88,7 @@ where
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
-        + RelayerApi<Block, AccountId, NumberFor<Block>>,
+        + RelayerApi<Block, NumberFor<Block>>,
     ExecutorDispatch: NativeExecutionDispatch + Send + Sync + 'static,
     AccountId: Encode + Decode + FromKeyring,
 {
@@ -145,7 +145,7 @@ where
         + TransactionPaymentRuntimeApi<Block, Balance>
         + InherentExtrinsicApi<Block>
         + MessengerApi<Block, NumberFor<Block>>
-        + RelayerApi<Block, AccountId, NumberFor<Block>>
+        + RelayerApi<Block, NumberFor<Block>>
         + OnchainStateApi<Block, AccountId, Balance>
         + EthereumRuntimeRPCApi<Block>,
     ExecutorDispatch: NativeExecutionDispatch + Send + Sync + 'static,
@@ -169,7 +169,6 @@ where
         base_path: BasePath,
         domain_nodes: Vec<MultiaddrWithPeerId>,
         domain_nodes_exclusive: bool,
-        run_relayer: bool,
         role: Role,
         mock_consensus_node: &mut MockConsensusNode,
     ) -> Self {
@@ -205,15 +204,7 @@ where
 
         let multiaddr = service_config.network.listen_addresses[0].clone();
 
-        let maybe_relayer_id = if run_relayer {
-            Some(<AccountId as FromKeyring>::from_keyring(key))
-        } else {
-            None
-        };
-        let domain_config = domain_service::DomainConfiguration {
-            service_config,
-            maybe_relayer_id,
-        };
+        let domain_config = domain_service::DomainConfiguration { service_config };
         let operator_streams = OperatorStreams {
             // Set `consensus_block_import_throttling_buffer_size` to 0 to ensure the primary chain will not be
             // ahead of the execution chain by more than one block, thus slot will not be skipped in test.
@@ -394,7 +385,6 @@ pub struct DomainNodeBuilder {
     domain_nodes: Vec<MultiaddrWithPeerId>,
     domain_nodes_exclusive: bool,
     base_path: BasePath,
-    run_relayer: bool,
 }
 
 impl DomainNodeBuilder {
@@ -414,14 +404,7 @@ impl DomainNodeBuilder {
             domain_nodes: Vec::new(),
             domain_nodes_exclusive: false,
             base_path,
-            run_relayer: false,
         }
-    }
-
-    /// Run relayer with the node account id as the relayer id
-    pub fn run_relayer(mut self) -> Self {
-        self.run_relayer = true;
-        self
     }
 
     /// Instruct the node to exclusively connect to registered parachain nodes.
@@ -455,7 +438,6 @@ impl DomainNodeBuilder {
             self.base_path,
             self.domain_nodes,
             self.domain_nodes_exclusive,
-            self.run_relayer,
             role,
             mock_consensus_node,
         )

@@ -24,21 +24,11 @@ use evm_domain_runtime::AccountId as AccountId20;
 use sc_client_api::Backend;
 use sc_executor::{NativeExecutionDispatch, RuntimeVersionOf};
 use sc_service::{BuildGenesisBlock, GenesisBlockBuilder};
-use sp_core::crypto::AccountId32;
-use sp_core::{ByteArray, H160, H256};
+use sp_core::H256;
 use sp_domains::{DomainId, DomainInstanceData, RuntimeType};
-use sp_runtime::traits::{Block as BlockT, Convert, Header as HeaderT};
+use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
 use std::marker::PhantomData;
 use std::sync::Arc;
-
-pub struct AccountId32ToAccountId20Converter;
-
-impl Convert<AccountId32, AccountId20> for AccountId32ToAccountId20Converter {
-    fn convert(acc: AccountId32) -> AccountId20 {
-        // Using the full hex key, truncating to the first 20 bytes (the first 40 hex chars)
-        H160::from_slice(&acc.as_slice()[0..20]).into()
-    }
-}
 
 /// EVM domain executor instance.
 pub struct EVMDomainExecutorDispatch;

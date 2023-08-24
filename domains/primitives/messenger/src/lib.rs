@@ -23,16 +23,15 @@ pub mod verification;
 
 use codec::{Decode, Encode};
 use messages::{
-    ChainId, CrossDomainMessage, ExtractedStateRootsFromProof, MessageId,
-    RelayerMessagesWithStorageKey,
+    BlockMessagesWithStorageKey, ChainId, CrossDomainMessage, ExtractedStateRootsFromProof,
+    MessageId,
 };
 use sp_std::vec::Vec;
 
 sp_api::decl_runtime_apis! {
     /// Api useful for relayers to fetch messages and submit transactions.
-    pub trait RelayerApi<RelayerId, BlockNumber>
+    pub trait RelayerApi< BlockNumber>
     where
-        RelayerId: Encode + Decode,
         BlockNumber: Encode + Decode
     {
         /// Returns the the chain_id of the Runtime.
@@ -47,9 +46,9 @@ sp_api::decl_runtime_apis! {
         /// Returns the chain state root at the given block.
         fn chain_state_root(chain_id: ChainId, number: BlockNumber, hash: Block::Hash) -> Option<Block::Hash>;
 
-        /// Returns all the outbox and inbox responses this relayer is assigned to deliver.
+        /// Returns all the outbox and inbox responses to deliver.
         /// Storage key is used to generate the storage proof for the message.
-        fn relayer_assigned_messages(relayer_id: RelayerId) -> RelayerMessagesWithStorageKey;
+        fn block_messages() -> BlockMessagesWithStorageKey;
 
         /// Constructs an outbox message to the dst_chain as an unsigned extrinsic.
         fn outbox_message_unsigned(

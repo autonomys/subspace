@@ -31,7 +31,6 @@ pub mod weights;
 
 mod fees;
 mod messages;
-mod relayer;
 
 use codec::{Decode, Encode};
 use frame_support::traits::fungible::Inspect;
@@ -95,10 +94,9 @@ pub(crate) struct ValidatedRelayMessage<Balance> {
 
 #[frame_support::pallet]
 mod pallet {
-    use crate::relayer::{RelayerId, RelayerInfo};
     use crate::weights::WeightInfo;
     use crate::{
-        relayer, BalanceOf, Channel, ChannelId, ChannelState, FeeModel, Nonce, OutboxMessageResult,
+        BalanceOf, Channel, ChannelId, ChannelState, FeeModel, Nonce, OutboxMessageResult,
         StateRootOf, ValidatedRelayMessage, U256,
     };
     use frame_support::pallet_prelude::*;
@@ -115,7 +113,6 @@ mod pallet {
     use sp_runtime::traits::{CheckedSub, Zero};
     use sp_runtime::ArithmeticError;
     use sp_std::boxed::Box;
-    use sp_std::vec::Vec;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -127,10 +124,6 @@ mod pallet {
             -> Option<Box<dyn EndpointHandler<MessageId>>>;
         /// Currency type pallet uses for fees and deposits.
         type Currency: Mutate<Self::AccountId>;
-        /// Maximum number of relayers that can join this chain.
-        type MaximumRelayers: Get<u32>;
-        /// Relayer deposit to become a relayer for this chain.
-        type RelayerDeposit: Get<BalanceOf<Self>>;
         /// Chain info to verify chain state roots at a confirmation depth.
         type DomainInfo: DomainInfo<Self::BlockNumber, Self::Hash, StateRootOf<Self>>;
         /// Confirmation depth for XDM coming from chains.
@@ -218,24 +211,12 @@ mod pallet {
     pub(super) type OutboxResponses<T: Config> =
         StorageValue<_, Message<BalanceOf<T>>, OptionQuery>;
 
+    /// A temporary storage to store all the messages to be relayed in this block.
+    /// Will be cleared on the initialization on next block.
     #[pallet::storage]
-    #[pallet::getter(fn relayers_info)]
-    pub(super) type RelayersInfo<T: Config> =
-        StorageMap<_, Identity, RelayerId<T>, RelayerInfo<T::AccountId, BalanceOf<T>>, OptionQuery>;
-
-    #[pallet::storage]
-    #[pallet::getter(fn relayers)]
-    pub(super) type Relayers<T: Config> =
-        StorageValue<_, BoundedVec<RelayerId<T>, T::MaximumRelayers>, ValueQuery>;
-
-    #[pallet::storage]
-    #[pallet::getter(fn next_relayer_idx)]
-    pub(super) type NextRelayerIdx<T: Config> = StorageValue<_, u32, ValueQuery>;
-
-    #[pallet::storage]
-    #[pallet::getter(fn relayer_messages)]
-    pub(super) type RelayerMessages<T: Config> =
-        StorageMap<_, Identity, RelayerId<T>, relayer::RelayerMessages, OptionQuery>;
+    #[pallet::getter(fn block_messages)]
+    pub(super) type BlockMessages<T: Config> =
+        StorageValue<_, crate::messages::BlockMessages, OptionQuery>;
 
     /// A temporary storage to store the rewards for relayers for a given block.
     /// Rewards are cleared on block init.
@@ -279,7 +260,6 @@ mod pallet {
             chain_id: ChainId,
             channel_id: ChannelId,
             nonce: Nonce,
-            relayer_id: RelayerId<T>,
         },
 
         /// Emits when a message response is available for Outbox message.
@@ -313,48 +293,7 @@ mod pallet {
             /// Channel Is
             channel_id: ChannelId,
             nonce: Nonce,
-            relayer_id: RelayerId<T>,
         },
-
-        /// Emits when a relayer successfully joins the relayer set.
-        RelayerJoined {
-            /// Owner who controls the relayer.
-            owner: T::AccountId,
-            /// Relayer address to which rewards are paid.
-            relayer_id: RelayerId<T>,
-        },
-
-        /// Emits when a relayer exists the relayer set.
-        RelayerExited {
-            /// Owner who controls the relayer.
-            owner: T::AccountId,
-            /// Relayer address which exited the set.
-            relayer_id: RelayerId<T>,
-        },
-    }
-
-    #[pallet::genesis_config]
-    #[derive(Debug, frame_support::DefaultNoBound)]
-    pub struct GenesisConfig<T: Config> {
-        /// Genesis relayers that join the relayer pool.
-        pub relayers: Vec<(T::AccountId, RelayerId<T>)>,
-    }
-
-    #[pallet::genesis_build]
-    impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
-        fn build(&self) {
-            for (owner, relayer_id) in self.relayers.iter() {
-                if let Err(err) =
-                    Pallet::<T>::do_join_relayer_set(owner.clone(), relayer_id.clone())
-                {
-                    log::error!(
-                        "Failed to add relayer: {:?} to the pool: {:?}",
-                        relayer_id,
-                        err
-                    )
-                }
-            }
-        }
     }
 
     #[pallet::validate_unsigned]
@@ -489,21 +428,6 @@ mod pallet {
         /// Emits when there is no message available for the given nonce.
         MissingMessage,
 
-        /// Emits when relayer tries to re-join the relayers.
-        AlreadyRelayer,
-
-        /// Emits when a non relayer tries to do relayers specific actions.
-        NotRelayer,
-
-        /// Emits when there is mismatch between caller and relayer owner.
-        NotOwner,
-
-        /// Emits when a relayer tries to join when total relayers already reached maximum count.
-        MaximumRelayerCount,
-
-        /// Emits when there are no relayers to relay messages between chains.
-        NoRelayersToAssign,
-
         /// Emits when there is mismatch between the message's weight tag and the message's
         /// actual processing path
         WeightTagNotMatch,
@@ -515,12 +439,8 @@ mod pallet {
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
         fn on_initialize(_now: BlockNumberFor<T>) -> Weight {
-            let results = RelayerMessages::<T>::clear(u32::MAX, None);
             RelayerRewards::<T>::set(Zero::zero());
-            let db_weight = T::DbWeight::get();
-            db_weight
-                .reads(results.loops as u64)
-                .saturating_add(db_weight.writes(2))
+            T::DbWeight::get().writes(1)
         }
     }
 
@@ -603,24 +523,6 @@ mod pallet {
             ensure_none(origin)?;
             let outbox_resp_msg = OutboxResponses::<T>::take().ok_or(Error::<T>::MissingMessage)?;
             Self::process_outbox_message_responses(outbox_resp_msg, msg.weight_tag)?;
-            Ok(())
-        }
-
-        /// Declare the desire to become a relayer for this chain by reserving the relayer deposit.
-        #[pallet::call_index(4)]
-        #[pallet::weight(T::WeightInfo::join_relayer_set())]
-        pub fn join_relayer_set(origin: OriginFor<T>, relayer_id: RelayerId<T>) -> DispatchResult {
-            let who = ensure_signed(origin)?;
-            Self::do_join_relayer_set(who, relayer_id)?;
-            Ok(())
-        }
-
-        /// Declare the desire to exit relaying for this chain.
-        #[pallet::call_index(5)]
-        #[pallet::weight(T::WeightInfo::exit_relayer_set())]
-        pub fn exit_relayer_set(origin: OriginFor<T>, relayer_id: RelayerId<T>) -> DispatchResult {
-            let who = ensure_signed(origin)?;
-            Self::do_exit_relayer_set(who, relayer_id)?;
             Ok(())
         }
     }

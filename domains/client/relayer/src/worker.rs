@@ -1,6 +1,5 @@
 use crate::{BlockT, Error, GossipMessageSink, HeaderBackend, HeaderT, Relayer, LOG_TARGET};
 use futures::StreamExt;
-use parity_scale_codec::{Decode, Encode};
 use sc_client_api::{AuxStore, BlockchainEvents, ProofProvider};
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_consensus::SyncOracle;
@@ -11,8 +10,7 @@ use std::sync::Arc;
 
 /// Starts relaying consensus chain messages to other domains.
 /// If the node is in major sync, worker waits waits until the sync is finished.
-pub async fn relay_domain_messages<Client, Block, SO, RelayerId>(
-    relayer_id: RelayerId,
+pub async fn relay_domain_messages<Client, Block, SO>(
     domain_client: Arc<Client>,
     domain_sync_oracle: SO,
     gossip_message_sink: GossipMessageSink,
@@ -23,25 +21,18 @@ pub async fn relay_domain_messages<Client, Block, SO, RelayerId>(
         + AuxStore
         + ProofProvider<Block>
         + ProvideRuntimeApi<Block>,
-    Client::Api: RelayerApi<Block, RelayerId, NumberFor<Block>>,
-    RelayerId: Encode + Decode + Clone,
+    Client::Api: RelayerApi<Block, NumberFor<Block>>,
     SO: SyncOracle,
 {
     // there is not confirmation depth for relayer on system domain
     // since all the relayers will haven embed client to known the canonical chain.
     let result = start_relaying_domain_messages(
-        relayer_id,
         NumberFor::<Block>::zero(),
         domain_client,
-        |relayer_id, client, block_hash| {
+        |client, block_hash| {
             // TODO: this is incorrect and should instead expect a primary client.
             //  Will be fixed in coming prs
-            Relayer::submit_messages_from_system_domain(
-                relayer_id,
-                client,
-                block_hash,
-                &gossip_message_sink,
-            )
+            Relayer::submit_messages_from_system_domain(client, block_hash, &gossip_message_sink)
         },
         domain_sync_oracle,
         |_domain_id, _block_number| -> Result<bool, ApiError> {
@@ -62,8 +53,7 @@ pub async fn relay_domain_messages<Client, Block, SO, RelayerId>(
     }
 }
 
-async fn start_relaying_domain_messages<Client, Block, MP, SO, SRM, RelayerId>(
-    relayer_id: RelayerId,
+async fn start_relaying_domain_messages<Client, Block, MP, SO, SRM>(
     relay_confirmation_depth: NumberFor<Block>,
     domain_client: Arc<Client>,
     message_processor: MP,
@@ -77,11 +67,10 @@ where
         + AuxStore
         + ProofProvider<Block>
         + ProvideRuntimeApi<Block>,
-    Client::Api: RelayerApi<Block, RelayerId, NumberFor<Block>>,
-    MP: Fn(RelayerId, &Arc<Client>, Block::Hash) -> Result<(), Error>,
+    Client::Api: RelayerApi<Block, NumberFor<Block>>,
+    MP: Fn(&Arc<Client>, Block::Hash) -> Result<(), Error>,
     SO: SyncOracle,
     SRM: Fn(ChainId, NumberFor<Block>) -> Result<bool, ApiError>,
-    RelayerId: Encode + Decode + Clone,
 {
     let chain_id = Relayer::chain_id(&domain_client)?;
     tracing::info!(
@@ -139,7 +128,7 @@ where
                     "Chain({chain_id:?}) messages in the Block ({number:?}, {hash:?}) cannot be relayed. Skipping...",
                 );
             } else {
-                match message_processor(relayer_id.clone(), &domain_client, hash) {
+                match message_processor(&domain_client, hash) {
                     Ok(_) => {
                         Relayer::store_relayed_block(&domain_client, chain_id, number, hash)?;
                         tracing::info!(
