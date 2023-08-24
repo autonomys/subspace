@@ -149,12 +149,12 @@ where
             global_randomness,
         } = slot_info;
 
-        let best_receipt_is_written = crate::aux_schema::consensus_block_hash_for::<
+        let best_receipt_is_written = !crate::aux_schema::consensus_block_hash_for::<
             _,
             _,
             CBlock::Hash,
         >(&*self.client, self.client.info().best_hash)?
-        .is_some();
+        .is_empty();
 
         // TODO: remove once the receipt generation can be done before the domain block is
         // committed to the database, in other words, only when the receipt of block N+1 has
