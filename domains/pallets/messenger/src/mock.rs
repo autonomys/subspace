@@ -101,8 +101,9 @@ macro_rules! impl_runtime {
             type ConfirmationDepth = RelayerConfirmationDepth;
             type DomainInfo = ();
             type WeightInfo = ();
+            type WeightToFee = frame_support::weights::IdentityFee<u64>;
             /// function to fetch endpoint response handler by Endpoint.
-            fn get_endpoint_response_handler(
+            fn get_endpoint_handler(
                 endpoint: &Endpoint,
             ) -> Option<Box<dyn EndpointHandler<MessageId>>>{
                 // Return a dummy handler for benchmark to observe the outer weight when processing cross chain

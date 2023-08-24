@@ -4,7 +4,6 @@ use crate::{
     RelayerMessages as RelayerMessageStore, Relayers, RelayersInfo, TypeInfo,
 };
 use frame_support::ensure;
-use frame_support::traits::ReservableCurrency;
 use sp_messenger::messages::{
     ChainId, MessageId, MessageWeightTag, RelayerMessageWithStorageKey,
     RelayerMessagesWithStorageKey,
@@ -44,9 +43,6 @@ impl<T: Config> Pallet<T> {
             !RelayersInfo::<T>::contains_key(&relayer_id),
             Error::<T>::AlreadyRelayer
         );
-
-        // reserve the deposit
-        T::Currency::reserve(&owner, T::RelayerDeposit::get())?;
 
         // add the relayer to the pool
         RelayersInfo::<T>::insert(
@@ -103,9 +99,6 @@ impl<T: Config> Pallet<T> {
 
         // ensure caller is the owner of the relayer
         ensure!(relayer.owner == caller, Error::<T>::NotOwner);
-
-        // release the deposit
-        T::Currency::unreserve(&caller, relayer.deposit_reserved);
 
         // remove relayer_id from the list
         let idx = Relayers::<T>::mutate(|relayers| -> Result<usize, DispatchError> {
