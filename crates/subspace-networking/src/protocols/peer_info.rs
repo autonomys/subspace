@@ -1,8 +1,7 @@
 mod handler;
 mod protocol;
 
-use crate::peer_info::handler::HandlerInEvent;
-use event_listener_primitives::HandlerId;
+use crate::protocols::peer_info::handler::HandlerInEvent;
 use handler::Handler;
 pub use handler::{Config, PeerInfoError, PeerInfoSuccess};
 use libp2p::core::{Endpoint, Multiaddr};
@@ -15,9 +14,7 @@ use libp2p::PeerId;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use std::collections::{HashSet, VecDeque};
-use std::fmt;
 use std::fmt::Debug;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll, Waker};
 use tracing::debug;
@@ -28,22 +25,16 @@ pub struct Notification;
 /// Defines a subscription to a peer-info notification.
 pub type NotificationHandler = Arc<dyn Fn(&Notification) + Send + Sync + 'static>;
 
-/// Cuckoo filter data transfer object.
-#[derive(Clone, Encode, Decode, Default)]
-pub struct CuckooFilterDTO {
-    /// Exported cuckoo filter values.
-    pub values: Vec<u8>,
+//TODO: remove on the next networking breaking change
+/// Backward compatibility placeholder for the obsolete CuckooFilterDTO -
+/// "Cuckoo filter data transfer object".
+#[derive(Clone, Encode, Decode, Default, Debug)]
+pub struct PlaceHolder {
+    /// A placeholder for: "Exported cuckoo filter values" field of the CuckooFilterDTO.
+    pub field1: Vec<u8>,
     /// Cuckoo filter items.
-    pub length: u64,
-}
-
-impl fmt::Debug for CuckooFilterDTO {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("CuckooFilterDTO")
-            .field("values", &self.length)
-            .field("length", &self.values.len())
-            .finish()
-    }
+    /// A placeholder for: "Cuckoo filter items." field of the CuckooFilterDTO.
+    pub field2: u64,
 }
 
 #[derive(Clone, Encode, Decode, Default, Debug)]
@@ -51,8 +42,8 @@ impl fmt::Debug for CuckooFilterDTO {
 pub enum PeerInfo {
     /// DSN farmer.
     Farmer {
-        /// Peer info data.
-        cuckoo_filter: Arc<CuckooFilterDTO>,
+        /// Backward compatibility placeholder.
+        placeholder: PlaceHolder,
     },
     /// DSN node.
     Node,
@@ -81,10 +72,6 @@ pub struct Behaviour {
     requests: Vec<Request>,
     /// Provides up-to-date peer info.
     peer_info_provider: PeerInfoProvider,
-    /// Whether the behaviour should notify connected peers.
-    should_notify_handlers: Arc<AtomicBool>,
-    /// We just save the handler ID.
-    _notify_handler_id: Option<HandlerId>,
     /// Known connected peers.
     connected_peers: HashSet<PeerId>,
     /// Future waker.
@@ -108,15 +95,7 @@ pub enum PeerInfoProvider {
     /// Provides peer-info for Client peer type.
     Client,
     /// Provides peer-info for Farmer peer type.
-    Farmer(Box<dyn CuckooFilterProvider + Send>),
-}
-
-/// Provides the current cuckoo-filter data.
-pub trait CuckooFilterProvider: Debug + 'static {
-    /// Returns the current cuckoo filter data.
-    fn cuckoo_filter(&self) -> CuckooFilterDTO;
-    /// Subscribe to cuckoo filter updates and invoke provided callback.
-    fn on_notification(&self, callback: NotificationHandler) -> Option<HandlerId>;
+    Farmer,
 }
 
 impl PeerInfoProvider {
@@ -133,8 +112,8 @@ impl PeerInfoProvider {
         Self::Client
     }
     /// Creates a new Farmer peer-info provider.
-    pub fn new_farmer(provider: Box<dyn CuckooFilterProvider + Send>) -> Self {
-        Self::Farmer(provider)
+    pub fn new_farmer() -> Self {
+        Self::Farmer
     }
 
     /// Returns the peer info data.
@@ -143,18 +122,9 @@ impl PeerInfoProvider {
             PeerInfoProvider::Node => PeerInfo::Node,
             PeerInfoProvider::BootstrapNode => PeerInfo::BootstrapNode,
             PeerInfoProvider::Client => PeerInfo::Client,
-            PeerInfoProvider::Farmer(provider) => PeerInfo::Farmer {
-                cuckoo_filter: Arc::new(provider.cuckoo_filter()),
+            PeerInfoProvider::Farmer => PeerInfo::Farmer {
+                placeholder: Default::default(),
             },
-        }
-    }
-    /// Subscribe to peer info updates and invoke provided callback.
-    pub fn on_notification(&self, handler: NotificationHandler) -> Option<HandlerId> {
-        match self {
-            PeerInfoProvider::Node | PeerInfoProvider::BootstrapNode | PeerInfoProvider::Client => {
-                None
-            }
-            PeerInfoProvider::Farmer(provider) => provider.on_notification(handler),
         }
     }
 }
@@ -172,26 +142,12 @@ impl Behaviour {
     /// Creates a new `Peer Info` network behaviour with the given configuration.
     pub fn new(config: Config, peer_info_provider: PeerInfoProvider) -> Self {
         let waker = Arc::new(Mutex::new(None::<Waker>));
-        let should_notify_handlers = Arc::new(AtomicBool::new(false));
-        let _notify_handler_id = peer_info_provider.on_notification({
-            let should_notify_handlers = should_notify_handlers.clone();
-            let waker = waker.clone();
-
-            Arc::new(move |_| {
-                should_notify_handlers.store(true, Ordering::SeqCst);
-                if let Some(waker) = waker.lock().as_mut() {
-                    waker.wake_by_ref();
-                }
-            })
-        });
 
         Self {
-            _notify_handler_id,
             config,
             peer_info_provider,
             events: VecDeque::new(),
             requests: Vec::new(),
-            should_notify_handlers,
             connected_peers: HashSet::new(),
             waker,
         }
@@ -246,19 +202,6 @@ impl NetworkBehaviour for Behaviour {
         cx: &mut Context<'_>,
         _: &mut impl PollParameters,
     ) -> Poll<ToSwarm<Self::ToSwarm, THandlerInEvent<Self>>> {
-        if self.should_notify_handlers.swap(false, Ordering::SeqCst) {
-            debug!("Notify peer-info handlers.");
-
-            self.requests.clear();
-            let peer_info = Arc::new(self.peer_info_provider.peer_info());
-            for peer_id in self.connected_peers.iter().cloned() {
-                self.requests.push(Request {
-                    peer_id,
-                    peer_info: peer_info.clone(),
-                });
-            }
-        }
-
         if let Some(e) = self.events.pop_back() {
             let Event { result, peer_id } = &e;
 

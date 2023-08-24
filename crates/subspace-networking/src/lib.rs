@@ -19,14 +19,11 @@
 #![warn(missing_docs)]
 
 mod behavior;
-mod connected_peers;
-mod create;
+mod constructor;
 mod node;
 mod node_runner;
-mod peer_info;
-mod request_handlers;
-mod request_responses;
-mod reserved_peers;
+mod protocols;
+
 mod shared;
 pub mod utils;
 
@@ -37,17 +34,18 @@ pub use crate::node::{
     GetClosestPeersError, Node, SendRequestError, SubscribeError, TopicSubscription,
 };
 pub use crate::node_runner::NodeRunner;
-pub use crate::peer_info::{
-    Config as PeerInfoConfig, CuckooFilterDTO, CuckooFilterProvider, Notification,
-    NotificationHandler, PeerInfo, PeerInfoProvider,
+pub use crate::protocols::peer_info::{
+    Config as PeerInfoConfig, Notification, NotificationHandler, PeerInfo, PeerInfoProvider,
 };
-pub use create::{create, peer_id, Config, CreationError, LocalRecordProvider};
+pub use constructor::{construct, peer_id, Config, CreationError, LocalRecordProvider};
 pub use libp2p;
-pub use request_handlers::generic_request_handler::{GenericRequest, GenericRequestHandler};
-pub use request_handlers::piece_by_index::{
+pub use protocols::request_response::handlers::generic_request_handler::{
+    GenericRequest, GenericRequestHandler,
+};
+pub use protocols::request_response::handlers::piece_by_index::{
     PieceByIndexRequest, PieceByIndexRequestHandler, PieceByIndexResponse,
 };
-pub use request_handlers::segment_header::{
+pub use protocols::request_response::handlers::segment_header::{
     SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
 };
 pub use shared::NewPeerInfo;

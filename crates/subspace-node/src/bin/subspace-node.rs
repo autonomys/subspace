@@ -346,6 +346,7 @@ fn main() -> Result<(), Error> {
                     }
                 })?;
             }
+            DomainSubcommand::BuildGenesisConfig(cmd) => cmd.run()?,
             _ => unimplemented!("Domain subcommand"),
         },
         None => {

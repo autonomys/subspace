@@ -35,7 +35,7 @@ pub enum PotVerificationError {
 }
 
 /// Wrapper for the low level AES primitives
-#[derive(Clone)]
+#[derive(Debug, Clone, Copy)]
 pub struct ProofOfTime {
     /// Number of checkpoints per PoT.
     num_checkpoints: u8,

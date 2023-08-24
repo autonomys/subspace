@@ -13,14 +13,12 @@ use std::fs;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
-use subspace_core_primitives::{Piece, Record, SectorIndex};
+use subspace_core_primitives::{Record, SectorIndex};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer::piece_cache::PieceCache;
 use subspace_farmer::single_disk_farm::{
     SingleDiskFarm, SingleDiskFarmError, SingleDiskFarmOptions,
 };
-use subspace_farmer::utils::archival_storage_info::ArchivalStorageInfo;
-use subspace_farmer::utils::archival_storage_pieces::ArchivalStoragePieces;
 use subspace_farmer::utils::farmer_piece_getter::FarmerPieceGetter;
 use subspace_farmer::utils::piece_validator::SegmentCommitmentPieceValidator;
 use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
@@ -97,15 +95,6 @@ where
         .await
         .map_err(|error| anyhow::anyhow!(error))?;
 
-    let cuckoo_filter_capacity = disk_farms
-        .iter()
-        .map(|df| df.allocated_plotting_space as usize)
-        .sum::<usize>()
-        / Piece::SIZE
-        + 1usize;
-    let archival_storage_pieces = ArchivalStoragePieces::new(cuckoo_filter_capacity);
-    let archival_storage_info = ArchivalStorageInfo::default();
-
     let first_farm_directory = disk_farms
         .first()
         .expect("Disk farm collection is not be empty as checked above; qed")
@@ -130,8 +119,6 @@ where
             dsn,
             Arc::downgrade(&readers_and_pieces),
             node_client.clone(),
-            archival_storage_pieces.clone(),
-            archival_storage_info.clone(),
             piece_cache.clone(),
         )?
     };
@@ -159,7 +146,6 @@ where
         piece_provider,
         piece_cache.clone(),
         node_client.clone(),
-        archival_storage_info,
         Arc::clone(&readers_and_pieces),
     ));
 
@@ -258,10 +244,7 @@ where
     // Collect already plotted pieces
     {
         let mut readers_and_pieces = readers_and_pieces.lock();
-        let readers_and_pieces = readers_and_pieces.insert(ReadersAndPieces::new(
-            piece_readers,
-            archival_storage_pieces,
-        ));
+        let readers_and_pieces = readers_and_pieces.insert(ReadersAndPieces::new(piece_readers));
 
         single_disk_farms.iter().enumerate().try_for_each(
             |(disk_farm_index, single_disk_farm)| {

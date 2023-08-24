@@ -4,8 +4,6 @@ use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Arc, Weak};
 use subspace_farmer::piece_cache::PieceCache;
-use subspace_farmer::utils::archival_storage_info::ArchivalStorageInfo;
-use subspace_farmer::utils::archival_storage_pieces::ArchivalStoragePieces;
 use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
 use subspace_farmer::{NodeClient, NodeRpcClient};
 use subspace_networking::libp2p::identity::Keypair;
@@ -14,7 +12,7 @@ use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::utils::strip_peer_id;
 use subspace_networking::{
-    create, Config, NetworkingParametersManager, Node, NodeRunner, PeerInfo, PeerInfoProvider,
+    construct, Config, NetworkingParametersManager, Node, NodeRunner, PeerInfo, PeerInfoProvider,
     PieceByIndexRequest, PieceByIndexRequestHandler, PieceByIndexResponse,
     SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
 };
@@ -45,8 +43,6 @@ pub(super) fn configure_dsn(
     }: DsnArgs,
     weak_readers_and_pieces: Weak<Mutex<Option<ReadersAndPieces>>>,
     node_client: NodeRpcClient,
-    archival_storage_pieces: ArchivalStoragePieces,
-    archival_storage_info: ArchivalStorageInfo,
     piece_cache: PieceCache,
 ) -> Result<(Node, NodeRunner<PieceCache>), anyhow::Error> {
     let networking_parameters_registry = NetworkingParametersManager::new(
@@ -62,9 +58,7 @@ pub(super) fn configure_dsn(
         protocol_prefix,
         keypair,
         piece_cache.clone(),
-        Some(PeerInfoProvider::new_farmer(Box::new(
-            archival_storage_pieces,
-        ))),
+        Some(PeerInfoProvider::new_farmer()),
     );
     let config = Config {
         reserved_peers,
@@ -192,7 +186,7 @@ pub(super) fn configure_dsn(
         ..default_config
     };
 
-    create(config)
+    construct(config)
         .map(|(node, node_runner)| {
             node.on_new_listener(Arc::new({
                 let node = node.clone();
@@ -202,33 +196,6 @@ pub(super) fn configure_dsn(
                         "DSN listening on {}",
                         address.clone().with(Protocol::P2p(node.id()))
                     );
-                }
-            }))
-            .detach();
-
-            node.on_peer_info(Arc::new({
-                let archival_storage_info = archival_storage_info.clone();
-
-                move |new_peer_info| {
-                    let peer_id = new_peer_info.peer_id;
-                    let peer_info = &new_peer_info.peer_info;
-
-                    if let PeerInfo::Farmer { cuckoo_filter } = peer_info {
-                        archival_storage_info.update_cuckoo_filter(peer_id, cuckoo_filter.clone());
-
-                        debug!(%peer_id, ?peer_info, "Peer info cached",);
-                    }
-                }
-            }))
-            .detach();
-
-            node.on_disconnected_peer(Arc::new({
-                let archival_storage_info = archival_storage_info.clone();
-
-                move |peer_id| {
-                    if archival_storage_info.remove_peer_filter(peer_id) {
-                        debug!(%peer_id, "Peer filter removed.",);
-                    }
                 }
             }))
             .detach();
