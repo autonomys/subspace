@@ -2,7 +2,7 @@
 //! queries, subscriptions, various events and shared information.
 
 use crate::protocols::peer_info::PeerInfo;
-use crate::protocols::requests::request_responses::RequestFailure;
+use crate::protocols::request_response::request_response_factory::RequestFailure;
 use crate::utils::multihash::Multihash;
 use crate::utils::{Handler, ResizableSemaphore, ResizableSemaphorePermit};
 use bytes::Bytes;

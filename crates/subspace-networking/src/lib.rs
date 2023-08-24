@@ -40,13 +40,13 @@ pub use crate::protocols::peer_info::{
 };
 pub use composer::{compose, peer_id, Config, CreationError, LocalRecordProvider};
 pub use libp2p;
-pub use protocols::requests::handlers::generic_request_handler::{
+pub use protocols::request_response::handlers::generic_request_handler::{
     GenericRequest, GenericRequestHandler,
 };
-pub use protocols::requests::handlers::piece_by_index::{
+pub use protocols::request_response::handlers::piece_by_index::{
     PieceByIndexRequest, PieceByIndexRequestHandler, PieceByIndexResponse,
 };
-pub use protocols::requests::handlers::segment_header::{
+pub use protocols::request_response::handlers::segment_header::{
     SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
 };
 pub use shared::NewPeerInfo;

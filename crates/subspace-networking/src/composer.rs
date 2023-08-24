@@ -11,7 +11,7 @@ use crate::node::Node;
 use crate::node_runner::{NodeRunner, NodeRunnerConfig};
 use crate::protocols::connected_peers::Config as ConnectedPeersConfig;
 use crate::protocols::peer_info::PeerInfoProvider;
-use crate::protocols::requests::request_responses::RequestHandler;
+use crate::protocols::request_response::request_response_factory::RequestHandler;
 use crate::protocols::reserved_peers::Config as ReservedPeersConfig;
 use crate::shared::Shared;
 use crate::utils::{strip_peer_id, ResizableSemaphore};

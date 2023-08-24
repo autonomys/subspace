@@ -13,7 +13,7 @@ use crate::composer::{
 };
 use crate::protocols::connected_peers::Event as ConnectedPeersEvent;
 use crate::protocols::peer_info::{Event as PeerInfoEvent, PeerInfoSuccess};
-use crate::protocols::requests::request_responses::{
+use crate::protocols::request_response::request_response_factory::{
     Event as RequestResponseEvent, IfDisconnected,
 };
 use crate::shared::{Command, CreatedSubscription, NewPeerInfo, Shared};

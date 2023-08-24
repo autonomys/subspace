@@ -1,5 +1,5 @@
-use crate::protocols::requests::handlers::generic_request_handler::GenericRequest;
-use crate::protocols::requests::request_responses;
+use crate::protocols::request_response::handlers::generic_request_handler::GenericRequest;
+use crate::protocols::request_response::request_response_factory;
 pub use crate::shared::NewPeerInfo;
 use crate::shared::{Command, CreatedSubscription, Shared};
 use crate::utils::multihash::Multihash;
@@ -190,7 +190,7 @@ pub enum SendRequestError {
     NodeRunnerDropped,
     /// Underlying protocol returned an error, impossible to get response.
     #[error("Underlying protocol returned an error: {0}")]
-    ProtocolFailure(#[from] request_responses::RequestFailure),
+    ProtocolFailure(#[from] request_response_factory::RequestFailure),
     /// Underlying protocol returned an incorrect format, impossible to get response.
     #[error("Received incorrectly formatted response: {0}")]
     IncorrectResponseFormat(#[from] parity_scale_codec::Error),
