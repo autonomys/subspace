@@ -341,15 +341,12 @@ where
                 *genesis_header.state_root(),
             )
         } else {
-            crate::aux_schema::load_execution_receipt_by_domain_hash::<_, Block, CBlock>(
+            crate::load_execution_receipt_by_domain_hash::<Block, CBlock, _, _>(
                 &*self.client,
+                &self.consensus_client,
                 parent_hash,
+                parent_number,
             )?
-            .ok_or_else(|| {
-                sp_blockchain::Error::Backend(format!(
-                    "Receipt of domain block #{parent_number},{parent_hash} not found"
-                ))
-            })?
         };
 
         // Get the accumulated transaction fee of all transactions included in the block
