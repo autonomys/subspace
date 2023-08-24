@@ -91,20 +91,23 @@ struct PartialBlock<Block: BlockT> {
 
 /// The message to the server
 #[derive(Encode, Decode)]
-enum ServerMessage<Block: BlockT, ProtocolRequest> {
+enum ServerRequest<Block: BlockT, ProtocolRequest> {
     /// Initial message, to be handled both by the client
     /// and the protocol
-    InitialRequest(InitialRequest<Block, ProtocolRequest>),
+    Initial(InitialRequest<Block, ProtocolRequest>),
 
     /// Message to be handled by the protocol
-    ProtocolRequest(ProtocolRequest),
+    Protocol(ProtocolRequest),
+
+    /// Full download request.
+    FullDownload(FullDownloadRequest<Block>),
 }
 
 impl<Block: BlockT, ProtocolRequest> From<ProtocolRequest>
-    for ServerMessage<Block, ProtocolRequest>
+    for ServerRequest<Block, ProtocolRequest>
 {
-    fn from(inner: ProtocolRequest) -> ServerMessage<Block, ProtocolRequest> {
-        ServerMessage::ProtocolRequest(inner)
+    fn from(inner: ProtocolRequest) -> ServerRequest<Block, ProtocolRequest> {
+        ServerRequest::Protocol(inner)
     }
 }
 
@@ -127,7 +130,7 @@ where
     Pool: TransactionPool,
     ProtoClient: ProtocolClient<BlockHash<Block>, TxHash<Pool>, Extrinsic<Block>>,
 {
-    /// Downloads the requested block from the peer using the relay protocol
+    /// Downloads the requested block from the peer using the relay protocol.
     async fn download(
         &self,
         who: PeerId,
@@ -148,16 +151,16 @@ where
             protocol_request: self.protocol_client.build_initial_request(),
         };
         let initial_response = network_peer_handle
-            .request::<_, InitialResponse<Block, ProtoClient::Response>>(
-                ServerMessage::InitialRequest(initial_request),
-            )
+            .request::<_, InitialResponse<Block, ProtoClient::Response>>(ServerRequest::Initial(
+                initial_request,
+            ))
             .await?;
 
         // Resolve the protocol response to get the extrinsics
         let (body, local_miss) = if let Some(protocol_response) = initial_response.protocol_response
         {
             let (body, local_miss) = self
-                .resolve_extrinsics::<ServerMessage<Block, ProtoClient::Request>>(
+                .resolve_extrinsics::<ServerRequest<Block, ProtoClient::Request>>(
                     protocol_response,
                     &network_peer_handle,
                 )
@@ -223,6 +226,34 @@ where
             .collect();
         Ok((extrinsics, local_miss))
     }
+
+    /// Downloads the requested blocks from the peer, without using the relay protocol.
+    async fn full_download(
+        &self,
+        who: PeerId,
+        request: BlockRequest<Block>,
+    ) -> Result<Vec<u8>, RelayError> {
+        let start_ts = Instant::now();
+        let network_peer_handle = self
+            .network
+            .network_peer_handle(self.protocol_name.clone(), who)?;
+
+        let server_request: ServerRequest<Block, ProtoClient::Request> =
+            ServerRequest::FullDownload(FullDownloadRequest(request.clone()));
+        let full_response = network_peer_handle
+            .request::<_, FullDownloadResponse<Block>>(server_request)
+            .await?;
+        let downloaded_blocks = full_response.0.len();
+        let downloaded = full_response.0.encode();
+
+        trace!(
+            target: LOG_TARGET,
+            "relay::full_download: {request:?},{downloaded_blocks},{},{:?}",
+            downloaded.len(),
+            start_ts.elapsed()
+        );
+        Ok(downloaded)
+    }
 }
 
 #[async_trait]
@@ -238,7 +269,12 @@ where
         who: PeerId,
         request: BlockRequest<Block>,
     ) -> Result<Result<Vec<u8>, RequestFailure>, oneshot::Canceled> {
-        let ret = self.download(who, request.clone()).await;
+        let full_download = request.max.map_or(false, |max_blocks| max_blocks > 1);
+        let ret = if full_download {
+            self.full_download(who, request.clone()).await
+        } else {
+            self.download(who, request.clone()).await
+        };
         match ret {
             Ok(downloaded) => Ok(Ok(downloaded)),
             Err(error) => {
@@ -307,7 +343,7 @@ where
             payload,
             pending_response,
         } = request;
-        let server_msg: ServerMessage<Block, ProtoServer::Request> =
+        let server_msg: ServerRequest<Block, ProtoServer::Request> =
             match Decode::decode(&mut payload.as_ref()) {
                 Ok(msg) => msg,
                 Err(err) => {
@@ -320,8 +356,9 @@ where
             };
 
         let ret = match server_msg {
-            ServerMessage::InitialRequest(req) => self.on_initial_request(req),
-            ServerMessage::ProtocolRequest(req) => self.on_protocol_request(req),
+            ServerRequest::Initial(req) => self.on_initial_request(req),
+            ServerRequest::Protocol(req) => self.on_protocol_request(req),
+            _ => return,
         };
 
         match ret {
