@@ -1,6 +1,6 @@
 //! This module defines low-level functions for working with inbound and outbound streams.
 
-use crate::peer_info::PeerInfo;
+use crate::protocols::peer_info::PeerInfo;
 use futures::prelude::*;
 use parity_scale_codec::{Decode, Encode};
 use std::io;
