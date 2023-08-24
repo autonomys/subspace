@@ -32,7 +32,7 @@ impl<T: Config> Pallet<T> {
         let src_chain_outbox_response_execution_fee =
             T::WeightToFee::weight_to_fee(&handler.message_response_weight());
         let src_chain_fee = src_chain_outbox_response_execution_fee
-            .checked_add(&src_chain_outbox_response_execution_fee)
+            .checked_add(&fee_model.relay_fee)
             .ok_or(Error::<T>::BalanceOverflow)?;
         OutboxFee::<T>::insert(message_id, src_chain_fee);
 
