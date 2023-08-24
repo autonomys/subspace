@@ -474,6 +474,8 @@ parameter_types! {
     pub WeightPerGas: Weight = Weight::from_parts(WEIGHT_PER_GAS, 0);
 }
 
+// `BaseFeeHandler` is used to handle the base fee of the evm extrinsic separately, this is necessary
+// because `InnerEVMCurrencyAdapter::pallet_operator_rewards` only return the tip of the evm extrinsic.
 struct BaseFeeHandler;
 
 impl OnUnbalanced<NegativeImbalance> for BaseFeeHandler {
