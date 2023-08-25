@@ -1,5 +1,3 @@
-pub mod archival_storage_info;
-pub mod archival_storage_pieces;
 pub mod farmer_piece_getter;
 pub mod piece_validator;
 pub mod readers_and_pieces;

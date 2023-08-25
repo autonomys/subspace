@@ -24,12 +24,13 @@ async fn main() {
         metrics: Some(metrics),
         ..Config::default()
     };
-    let (node_1, mut node_runner_1) = subspace_networking::create(config_1).unwrap();
+    let (node_1, mut node_runner_1) = subspace_networking::construct(config_1).unwrap();
 
     // Init prometheus
     let prometheus_metrics_server_address = "127.0.0.1:63000".parse().unwrap();
 
-    match start_prometheus_metrics_server(prometheus_metrics_server_address, metric_registry) {
+    match start_prometheus_metrics_server(vec![prometheus_metrics_server_address], metric_registry)
+    {
         Err(err) => {
             error!(
                 ?prometheus_metrics_server_address,
@@ -75,7 +76,7 @@ async fn main() {
         ..Config::default()
     };
 
-    let (node_2, mut node_runner_2) = subspace_networking::create(config_2).unwrap();
+    let (node_2, mut node_runner_2) = subspace_networking::construct(config_2).unwrap();
 
     println!("Node 2 ID is {}", node_2.id());
 
