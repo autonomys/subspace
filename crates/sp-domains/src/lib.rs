@@ -347,6 +347,8 @@ pub struct ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance> {
     pub domain_block_number: DomainNumber,
     /// The block hash corresponding to `domain_block_number`.
     pub domain_block_hash: DomainHash,
+    /// Extrinsic root field of the header of domain block referenced by this ER.
+    pub domain_block_extrinsic_root: DomainHash,
     /// The hash of the ER for the last domain block.
     pub parent_domain_block_receipt_hash: ReceiptHash,
     /// A pointer to the consensus block index which contains all of the bundles that were used to derive and
@@ -391,6 +393,7 @@ impl<
         ExecutionReceipt {
             domain_block_number: Zero::zero(),
             domain_block_hash: Default::default(),
+            domain_block_extrinsic_root: Default::default(),
             parent_domain_block_receipt_hash: Default::default(),
             consensus_block_hash: consensus_genesis_hash,
             consensus_block_number: Zero::zero(),
@@ -424,6 +427,7 @@ impl<
         ExecutionReceipt {
             domain_block_number,
             domain_block_hash: Default::default(),
+            domain_block_extrinsic_root: Default::default(),
             parent_domain_block_receipt_hash,
             consensus_block_number,
             consensus_block_hash,
