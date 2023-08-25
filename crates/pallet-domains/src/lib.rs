@@ -1098,18 +1098,6 @@ mod pallet {
             let _ = LastEpochStakingDistribution::<T>::clear(u32::MAX, None);
             Self::update_domain_tx_range();
         }
-
-        // TODO: remove once the migration is done
-        fn on_runtime_upgrade() -> Weight {
-            for (domain_id, stake_summary) in DomainStakingSummary::<T>::iter() {
-                if stake_summary.current_epoch_index.is_zero() {
-                    if let Err(err) = do_finalize_domain_current_epoch::<T>(domain_id, One::one()) {
-                        log::error!(target: "runtime::domains", "Failed to do epoch transition for {domain_id:?}: {err:?}");
-                    }
-                }
-            }
-            Weight::zero()
-        }
     }
 
     /// Constructs a `TransactionValidity` with pallet-executor specific defaults.
