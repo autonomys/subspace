@@ -45,7 +45,7 @@ use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::{
     ArchivedBlockProgress, ArchivedHistorySegment, Blake2b256Hash, HistorySize, LastArchivedBlock,
     Piece, PieceOffset, PublicKey, Randomness, RecordedHistorySegment, SegmentCommitment,
-    SegmentHeader, SegmentIndex, Solution, SolutionRange,
+    SegmentHeader, SegmentIndex, SlotNumber, Solution, SolutionRange,
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector;
@@ -159,6 +159,7 @@ pub const INITIAL_SOLUTION_RANGE: SolutionRange =
 parameter_types! {
     #[cfg(not(feature = "pot"))]
     pub const GlobalRandomnessUpdateInterval: u64 = 10;
+    pub const BlockAuthoringDelay: SlotNumber = 2;
     pub const EraDuration: u32 = 4;
     // 1GB
     pub const InitialSolutionRange: SolutionRange = INITIAL_SOLUTION_RANGE;
@@ -180,6 +181,7 @@ parameter_types! {
 impl Config for Test {
     type RuntimeEvent = RuntimeEvent;
     type GlobalRandomnessUpdateInterval = GlobalRandomnessUpdateInterval;
+    type BlockAuthoringDelay = BlockAuthoringDelay;
     type EraDuration = EraDuration;
     type InitialSolutionRange = InitialSolutionRange;
     type SlotProbability = SlotProbability;

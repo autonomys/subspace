@@ -2,6 +2,7 @@ use derive_more::{Deref, DerefMut, From};
 use futures::channel::mpsc;
 use futures::executor::block_on;
 use futures::SinkExt;
+use sp_consensus_slots::Slot;
 use std::num::NonZeroU32;
 use std::thread;
 use subspace_core_primitives::{PotBytes, PotCheckpoints, PotKey, PotSeed, SlotNumber};
@@ -11,7 +12,7 @@ use tracing::{debug, error};
 /// Proof of time slot information
 pub struct PotSlotInfo {
     /// Slot number
-    pub slot: SlotNumber,
+    pub slot: Slot,
     /// Proof of time checkpoints
     pub checkpoints: PotCheckpoints,
 }
@@ -94,7 +95,10 @@ fn run_timekeeper(
         seed = PotSeed::from(PotBytes::from(checkpoints.output()));
         key = PotKey::from(PotBytes::from(checkpoints.output()));
 
-        let slot_info = PotSlotInfo { slot, checkpoints };
+        let slot_info = PotSlotInfo {
+            slot: Slot::from(slot),
+            checkpoints,
+        };
 
         if let Err(error) = slot_sender.try_send(slot_info) {
             if let Err(error) = block_on(slot_sender.send(error.into_inner())) {

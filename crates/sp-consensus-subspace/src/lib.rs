@@ -38,7 +38,7 @@ use sp_consensus_slots::{Slot, SlotDuration};
 use sp_core::crypto::KeyTypeId;
 use sp_core::H256;
 use sp_io::hashing;
-use sp_runtime::{ConsensusEngineId, DigestItem};
+use sp_runtime::{ConsensusEngineId, DigestItem, Justification};
 use sp_runtime_interface::pass_by::PassBy;
 use sp_runtime_interface::{pass_by, runtime_interface};
 use sp_std::vec::Vec;
@@ -46,8 +46,9 @@ use subspace_core_primitives::crypto::kzg::Kzg;
 #[cfg(not(feature = "pot"))]
 use subspace_core_primitives::Randomness;
 use subspace_core_primitives::{
-    BlockNumber, HistorySize, PublicKey, RewardSignature, SegmentCommitment, SegmentHeader,
-    SegmentIndex, Solution, SolutionRange, PUBLIC_KEY_LENGTH, REWARD_SIGNATURE_LENGTH,
+    BlockNumber, HistorySize, PotCheckpoints, PublicKey, RewardSignature, SegmentCommitment,
+    SegmentHeader, SegmentIndex, Solution, SolutionRange, PUBLIC_KEY_LENGTH,
+    REWARD_SIGNATURE_LENGTH,
 };
 #[cfg(feature = "std")]
 use subspace_proof_of_space::chia::ChiaTable;
@@ -99,6 +100,33 @@ impl From<&FarmerPublicKey> for PublicKey {
 
 /// The `ConsensusEngineId` of Subspace.
 const SUBSPACE_ENGINE_ID: ConsensusEngineId = *b"SUB_";
+
+/// Subspace justification
+#[derive(Debug, Clone, Encode, Decode, TypeInfo)]
+pub enum SubspaceJustification {
+    /// Proof of time checkpoints that were not seen before
+    #[codec(index = 0)]
+    Checkpoints(Vec<PotCheckpoints>),
+}
+
+impl From<SubspaceJustification> for Justification {
+    #[inline]
+    fn from(justification: SubspaceJustification) -> Self {
+        (SUBSPACE_ENGINE_ID, justification.encode())
+    }
+}
+
+impl SubspaceJustification {
+    /// Try to decode Subspace justification from generic justification.
+    ///
+    /// `None` means this is not a Subspace justification.
+    pub fn try_from_justification(
+        (consensus_engine_id, encoded_justification): &Justification,
+    ) -> Option<Result<Self, codec::Error>> {
+        (*consensus_engine_id == SUBSPACE_ENGINE_ID)
+            .then(|| Self::decode(&mut encoded_justification.as_slice()))
+    }
+}
 
 /// An equivocation proof for multiple block authorships on the same slot (i.e. double vote).
 pub type EquivocationProof<Header> = sp_consensus_slots::EquivocationProof<Header, FarmerPublicKey>;
@@ -318,6 +346,9 @@ pub enum ChainConstants {
         /// Number of blocks between global randomness updates.
         #[cfg(not(feature = "pot"))]
         global_randomness_interval: BlockNumber,
+        /// Number of slots between slot arrival and when corresponding block can be produced.
+        #[cfg(feature = "pot")]
+        block_authoring_delay: Slot,
         /// Era duration in blocks.
         era_duration: BlockNumber,
         /// Slot probability.
@@ -355,6 +386,16 @@ impl ChainConstants {
     pub fn era_duration(&self) -> BlockNumber {
         let Self::V0 { era_duration, .. } = self;
         *era_duration
+    }
+
+    /// Number of slots between slot arrival and when corresponding block can be produced.
+    #[cfg(feature = "pot")]
+    pub fn block_authoring_delay(&self) -> Slot {
+        let Self::V0 {
+            block_authoring_delay,
+            ..
+        } = self;
+        *block_authoring_delay
     }
 
     /// Slot probability.

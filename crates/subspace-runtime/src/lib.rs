@@ -78,7 +78,7 @@ use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
     HistorySize, Piece, Randomness, Record, SegmentCommitment, SegmentHeader, SegmentIndex,
-    SolutionRange, U256,
+    SlotNumber, SolutionRange, U256,
 };
 use subspace_runtime_primitives::{
     opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature,
@@ -145,6 +145,9 @@ const SLOT_PROBABILITY: (u64, u64) = (1, 1);
 
 /// The amount of time, in blocks, between updates of global randomness.
 const GLOBAL_RANDOMNESS_UPDATE_INTERVAL: BlockNumber = 256;
+
+/// Number of slots between slot arrival and when corresponding block can be produced.
+const BLOCK_AUTHORING_DELAY: SlotNumber = 6;
 
 /// Era duration in blocks.
 const ERA_DURATION_IN_BLOCKS: BlockNumber = 2016;
@@ -265,6 +268,7 @@ impl frame_system::Config for Runtime {
 }
 
 parameter_types! {
+    pub const BlockAuthoringDelay: SlotNumber = BLOCK_AUTHORING_DELAY;
     pub const SlotProbability: (u64, u64) = SLOT_PROBABILITY;
     pub const ExpectedBlockTime: Moment = MILLISECS_PER_BLOCK;
     pub const ExpectedVotesPerBlock: u32 = EXPECTED_VOTES_PER_BLOCK;
@@ -287,6 +291,7 @@ impl Get<BlockNumber> for ConfirmationDepthK {
 impl pallet_subspace::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type GlobalRandomnessUpdateInterval = ConstU32<GLOBAL_RANDOMNESS_UPDATE_INTERVAL>;
+    type BlockAuthoringDelay = BlockAuthoringDelay;
     type EraDuration = ConstU32<ERA_DURATION_IN_BLOCKS>;
     type InitialSolutionRange = ConstU64<INITIAL_SOLUTION_RANGE>;
     type SlotProbability = SlotProbability;

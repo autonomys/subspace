@@ -108,7 +108,7 @@ pub struct NewSlotNotification {
     /// New slot information.
     pub new_slot_info: NewSlotInfo,
     /// Sender that can be used to send solutions for the slot.
-    pub solution_sender: TracingUnboundedSender<Solution<FarmerPublicKey, FarmerPublicKey>>,
+    pub solution_sender: mpsc::Sender<Solution<FarmerPublicKey, FarmerPublicKey>>,
 }
 
 /// Notification with a hash that needs to be signed to receive reward and sender for signature.
@@ -349,12 +349,13 @@ where
 }
 
 /// Parameters for Subspace.
-pub struct SubspaceParams<B: BlockT, C, SC, E, I, SO, L, CIDP, BS, AS>
+pub struct SubspaceParams<Block, Client, SC, E, I, SO, L, CIDP, BS, AS>
 where
+    Block: BlockT,
     SO: SyncOracle + Send + Sync,
 {
     /// The client to use
-    pub client: Arc<C>,
+    pub client: Arc<Client>,
 
     /// The SelectChain Strategy
     pub select_chain: SC,
@@ -383,7 +384,7 @@ where
     pub backoff_authoring_blocks: Option<BS>,
 
     /// The source of timestamps for relative slots
-    pub subspace_link: SubspaceLink<B>,
+    pub subspace_link: SubspaceLink<Block>,
 
     /// Persistent storage of segment headers
     pub segment_headers_store: SegmentHeadersStore<AS>,
@@ -458,7 +459,7 @@ where
     BlockNumber: From<<<Block as BlockT>::Header as HeaderT>::Number>,
 {
     let worker = SubspaceSlotWorker {
-        client,
+        client: client.clone(),
         block_import,
         env,
         sync_oracle: sync_oracle.clone(),
@@ -471,6 +472,10 @@ where
         max_block_proposal_slot_portion,
         telemetry,
         segment_headers_store,
+        #[cfg(feature = "pot")]
+        pending_solutions: Default::default(),
+        #[cfg(feature = "pot")]
+        pot_checkpoints: Default::default(),
         _pos_table: PhantomData::<PosTable>,
     };
 
@@ -486,6 +491,7 @@ where
     #[cfg(feature = "pot")]
     let inner = sc_proof_of_time::start_slot_worker(
         subspace_link.slot_duration(),
+        client,
         select_chain,
         worker,
         sync_oracle,

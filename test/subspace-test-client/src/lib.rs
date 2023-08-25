@@ -178,7 +178,7 @@ async fn start_farming<PosTable, Client>(
 
     while let Some(NewSlotNotification {
         new_slot_info,
-        solution_sender,
+        mut solution_sender,
     }) = new_slot_notification_stream.next().await
     {
         if u64::from(new_slot_info.slot) % 2 == 0 {
@@ -206,7 +206,7 @@ async fn start_farming<PosTable, Client>(
                 &mut solution.encode().as_slice(),
             )
             .unwrap();
-            let _ = solution_sender.unbounded_send(solution);
+            let _ = solution_sender.try_send(solution);
         }
     }
 }

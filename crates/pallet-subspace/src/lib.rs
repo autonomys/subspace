@@ -199,6 +199,10 @@ mod pallet {
         // TODO: Remove when switching to PoT by default
         type GlobalRandomnessUpdateInterval: Get<Self::BlockNumber>;
 
+        /// The amount of time, in blocks, between updates of global randomness.
+        #[pallet::constant]
+        type BlockAuthoringDelay: Get<Slot>;
+
         /// The amount of time, in blocks, that each era should last.
         /// NOTE: Currently it is not possible to change the era duration after
         /// the chain has started. Attempting to do so will brick block production.
@@ -1081,6 +1085,8 @@ impl<T: Config> Pallet<T> {
             global_randomness_interval: T::GlobalRandomnessUpdateInterval::get()
                 .try_into()
                 .unwrap_or_else(|_| panic!("Block number always fits in BlockNumber; qed")),
+            #[cfg(feature = "pot")]
+            block_authoring_delay: T::BlockAuthoringDelay::get(),
             era_duration: T::EraDuration::get()
                 .try_into()
                 .unwrap_or_else(|_| panic!("Block number always fits in BlockNumber; qed")),
