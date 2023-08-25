@@ -9,10 +9,10 @@ use sp_consensus_subspace::digests::PotPreDigest;
 use std::collections::btree_map::Entry;
 use std::collections::{BTreeMap, VecDeque};
 use std::fmt;
+use std::num::NonZeroU64;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use subspace_core_primitives::{BlockNumber, NonEmptyVec, PotKey, PotProof, PotSeed, SlotNumber};
-use subspace_proof_of_time::{PotVerificationError, ProofOfTime};
 use tracing::trace;
 
 /// The maximum size of the PoT chain to keep (about 5 min worth of proofs for now).
@@ -104,16 +104,13 @@ pub enum PotVerifyBlockProofsError {
         error_slot: SlotNumber,
     },
 
-    #[error(
-    "Verification failed: {summary:?}/{block_number}/{slot}/{parent_slot}/{error_slot:?}/{err:?}"
-    )]
+    #[error("Verification failed: {summary:?}/{block_number}/{slot}/{parent_slot}/{error_slot:?}")]
     VerificationFailed {
         summary: PotStateSummary,
         block_number: BlockNumber,
         slot: SlotNumber,
         parent_slot: SlotNumber,
         error_slot: SlotNumber,
-        err: PotVerificationError,
     },
 
     #[error(
@@ -583,25 +580,26 @@ struct StateManager {
     /// The PoT state
     state: Mutex<InternalState>,
 
-    /// For AES verification
-    proof_of_time: ProofOfTime,
+    /// For PoT verification
+    iterations: NonZeroU64,
 }
 
 impl fmt::Debug for StateManager {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("StateManager")
             .field("state", &"<InternalState>")
-            .field("proof_of_time", &self.proof_of_time)
+            .field("iterations", &self.iterations)
             .finish()
     }
 }
 
 impl StateManager {
     /// Creates the state.
-    pub fn new(config: PotConfig, proof_of_time: ProofOfTime) -> Self {
+    pub fn new(config: PotConfig) -> Self {
+        let iterations = NonZeroU64::from(config.pot_iterations);
         Self {
             state: Mutex::new(InternalState::new(config)),
-            proof_of_time,
+            iterations,
         }
     }
 
@@ -652,17 +650,23 @@ impl StateManager {
                     });
                 }
 
+                let is_valid = subspace_proof_of_time::verify(
+                    proof.seed,
+                    proof.key,
+                    self.iterations,
+                    &*proof.checkpoints,
+                )
+                .unwrap_or_default();
                 // Perform the AES check
-                self.proof_of_time.verify(proof).map_err(|err| {
-                    PotVerifyBlockProofsError::VerificationFailed {
+                if !is_valid {
+                    return Err(PotVerifyBlockProofsError::VerificationFailed {
                         summary: summary.clone(),
                         block_number,
                         slot: slot_number,
                         parent_slot: parent_slot_number,
                         error_slot: proof.slot_number,
-                        err,
-                    }
-                })?;
+                    });
+                }
             } else {
                 // TODO: This is ugly, but we need initial seed and key here right now
                 let initial_seed = self.state.lock().config.initial_seed;
@@ -883,8 +887,7 @@ impl PotConsensusState for StateManager {
 
 pub(crate) fn init_pot_state(
     config: PotConfig,
-    proof_of_time: ProofOfTime,
 ) -> (Arc<dyn PotProtocolState>, Arc<dyn PotConsensusState>) {
-    let state = Arc::new(StateManager::new(config, proof_of_time));
+    let state = Arc::new(StateManager::new(config));
     (state.clone(), state)
 }

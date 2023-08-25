@@ -7,10 +7,9 @@ mod state_manager;
 mod time_keeper;
 
 use crate::state_manager::{init_pot_state, PotProtocolState};
-use core::num::{NonZeroU32, NonZeroU8};
+use core::num::NonZeroU32;
 use std::sync::Arc;
 use subspace_core_primitives::{BlockNumber, PotKey, PotSeed, SlotNumber};
-use subspace_proof_of_time::ProofOfTime;
 
 pub use state_manager::{
     PotConsensusState, PotGetBlockProofsError, PotStateSummary, PotVerifyBlockProofsError,
@@ -47,9 +46,6 @@ pub struct PotConfig {
 
     /// Total iterations per proof.
     pub pot_iterations: NonZeroU32,
-
-    /// Number of checkpoints per proof.
-    pub num_checkpoints: NonZeroU8,
 }
 
 /// Components initialized during the new_partial() phase of set up.
@@ -63,11 +59,12 @@ pub struct PotComponents {
     // TODO: Remove this from here, shouldn't be necessary eventually
     pub(crate) initial_key: PotKey,
 
+    /// PoT iterations for each slot.
+    // TODO: Remove this from here, shouldn't be necessary eventually
+    pub(crate) iterations: NonZeroU32,
+
     /// If the role is time keeper or node client.
     is_time_keeper: bool,
-
-    /// Proof of time implementation.
-    proof_of_time: ProofOfTime,
 
     /// Protocol state.
     protocol_state: Arc<dyn PotProtocolState>,
@@ -79,18 +76,16 @@ pub struct PotComponents {
 impl PotComponents {
     /// Sets up the partial components.
     pub fn new(is_time_keeper: bool, config: PotConfig) -> Self {
-        let proof_of_time = ProofOfTime::new(config.pot_iterations, config.num_checkpoints)
-            // TODO: Proper error handling or proof
-            .expect("Failed to initialize proof of time");
         let initial_seed = config.initial_seed;
         let initial_key = config.initial_key;
-        let (protocol_state, consensus_state) = init_pot_state(config, proof_of_time);
+        let iterations = config.pot_iterations;
+        let (protocol_state, consensus_state) = init_pot_state(config);
 
         Self {
             initial_seed,
             initial_key,
+            iterations,
             is_time_keeper,
-            proof_of_time,
             protocol_state,
             consensus_state,
         }

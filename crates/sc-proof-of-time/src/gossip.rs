@@ -14,11 +14,11 @@ use sc_network_gossip::{
 };
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
 use std::collections::HashSet;
+use std::num::NonZeroU64;
 use std::sync::Arc;
 use std::time::Instant;
 use subspace_core_primitives::crypto::blake2b_256_hash;
 use subspace_core_primitives::{Blake2b256Hash, PotProof};
-use subspace_proof_of_time::ProofOfTime;
 use tracing::{error, trace};
 
 pub(crate) const GOSSIP_PROTOCOL: &str = "/subspace/subspace-proof-of-time";
@@ -56,7 +56,7 @@ where
 
         let validator = Arc::new(PotGossipValidator::new(
             Arc::clone(&components.protocol_state),
-            components.proof_of_time,
+            NonZeroU64::from(components.iterations),
             topic,
         ));
         let engine = Arc::new(Mutex::new(GossipEngine::new(
@@ -155,7 +155,7 @@ where
     Block: BlockT,
 {
     pot_state: Arc<dyn PotProtocolState>,
-    proof_of_time: ProofOfTime,
+    iterations: NonZeroU64,
     pending: RwLock<HashSet<Blake2b256Hash>>,
     topic: Block::Hash,
 }
@@ -167,12 +167,12 @@ where
     /// Creates the validator.
     fn new(
         pot_state: Arc<dyn PotProtocolState>,
-        proof_of_time: ProofOfTime,
+        iterations: NonZeroU64,
         topic: Block::Hash,
     ) -> Self {
         Self {
             pot_state,
-            proof_of_time,
+            iterations,
             pending: RwLock::new(HashSet::new()),
             topic,
         }
@@ -200,12 +200,27 @@ where
                 // Perform AES verification only if the proof is a candidate.
                 if let Err(error) = self.pot_state.is_candidate(*sender, &proof) {
                     trace!(%error, "Not a candidate");
-                    ValidationResult::Discard
-                } else if let Err(error) = self.proof_of_time.verify(&proof) {
-                    trace!(%error, "Verification failed");
-                    ValidationResult::Discard
-                } else {
-                    ValidationResult::ProcessAndKeep(self.topic)
+                    return ValidationResult::Discard;
+                }
+
+                match subspace_proof_of_time::verify(
+                    proof.seed,
+                    proof.key,
+                    self.iterations,
+                    &*proof.checkpoints,
+                ) {
+                    Ok(success) => {
+                        if success {
+                            ValidationResult::ProcessAndKeep(self.topic)
+                        } else {
+                            trace!("Verification failed");
+                            ValidationResult::Discard
+                        }
+                    }
+                    Err(error) => {
+                        error!(%error, "Verification error");
+                        ValidationResult::Discard
+                    }
                 }
             }
             Err(_) => ValidationResult::Discard,
