@@ -494,6 +494,7 @@ mod tests {
         ExecutionReceipt {
             domain_block_number: consensus_block_number,
             domain_block_hash: H256::random(),
+            domain_block_extrinsic_root: H256::random(),
             parent_domain_block_receipt_hash: H256::random(),
             consensus_block_number,
             consensus_block_hash: H256::random(),
