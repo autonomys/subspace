@@ -26,6 +26,8 @@ const PROOFS_CHANNEL_SIZE: usize = 12; // 2 * reveal lag.
 /// The time keeper manages the protocol: periodic proof generation/verification, gossip.
 pub struct TimeKeeper<Block, Client> {
     // TODO: Remove this from here, shouldn't be necessary eventually
+    initial_seed: PotSeed,
+    // TODO: Remove this from here, shouldn't be necessary eventually
     initial_key: PotKey,
     proof_of_time: ProofOfTime,
     pot_state: Arc<dyn PotProtocolState>,
@@ -51,6 +53,7 @@ where
         gossip_sender: mpsc::Sender<PotProof>,
     ) -> Self {
         Self {
+            initial_seed: components.initial_seed,
             initial_key: components.initial_key,
             proof_of_time: components.proof_of_time,
             pot_state: Arc::clone(&components.protocol_state),
@@ -115,7 +118,7 @@ where
                 //  proofs to exist
                 // No proof of time means genesis block, produce the very first proof
                 let proof = self.proof_of_time.create(
-                    PotSeed::from_genesis_block_hash(best_hash.into()),
+                    self.initial_seed,
                     self.initial_key,
                     0,
                     best_hash.into(),

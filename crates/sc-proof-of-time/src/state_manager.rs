@@ -337,13 +337,18 @@ impl InternalState {
         let tip = match self.chain.tip() {
             Some(tip) => tip.clone(),
             None => {
+                if proof.seed != self.config.initial_seed {
+                    return Err(PotProtocolStateError::InvalidSeed {
+                        expected: self.config.initial_seed,
+                        actual: proof.seed,
+                    });
+                }
                 if proof.key != self.config.initial_key {
                     return Err(PotProtocolStateError::InvalidKey {
                         expected: self.config.initial_key,
                         actual: proof.key,
                     });
                 }
-                // TODO: Check initial seed
                 // Chain is empty, possible first proof.
                 return Ok(());
             }
@@ -659,7 +664,17 @@ impl StateManager {
                     }
                 })?;
             } else {
-                // TODO: This is ugly, but we need initial key here right now
+                // TODO: This is ugly, but we need initial seed and key here right now
+                let initial_seed = self.state.lock().config.initial_seed;
+                if proof.seed != initial_seed {
+                    return Err(PotVerifyBlockProofsError::UnexpectedSeed {
+                        summary: summary.clone(),
+                        block_number,
+                        slot: slot_number,
+                        parent_slot: parent_slot_number,
+                        error_slot: proof.slot_number,
+                    });
+                }
                 let initial_key = self.state.lock().config.initial_key;
                 if proof.key != initial_key {
                     return Err(PotVerifyBlockProofsError::UnexpectedKey {
@@ -670,7 +685,6 @@ impl StateManager {
                         error_slot: proof.slot_number,
                     });
                 }
-                // TODO: Check initial seed
             }
             to_add.push(proof.clone());
             prev_proof = Some(proof.clone());
