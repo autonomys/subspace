@@ -97,6 +97,7 @@ macro_rules! impl_runtime {
             type DomainInfo = ();
             type WeightInfo = ();
             type WeightToFee = frame_support::weights::IdentityFee<u64>;
+            type OnXDMRewards = ();
             /// function to fetch endpoint response handler by Endpoint.
             fn get_endpoint_handler(
                 endpoint: &Endpoint,

@@ -30,6 +30,15 @@ use messages::{
 use sp_domains::DomainId;
 use sp_std::vec::Vec;
 
+/// Trait to handle XDM rewards.
+pub trait OnXDMRewards<Balance> {
+    fn on_xdm_rewards(rewards: Balance);
+}
+
+impl<Balance> OnXDMRewards<Balance> for () {
+    fn on_xdm_rewards(_: Balance) {}
+}
+
 sp_api::decl_runtime_apis! {
     /// Api useful for relayers to fetch messages and submit transactions.
     pub trait RelayerApi< BlockNumber>

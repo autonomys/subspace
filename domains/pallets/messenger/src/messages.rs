@@ -304,7 +304,7 @@ impl<T: Config> Pallet<T> {
                         resp,
                     );
 
-                    Self::reward_operators_for_outbox_execution(dst_chain_id, (channel_id, nonce))?;
+                    Self::reward_operators_for_outbox_execution(dst_chain_id, (channel_id, nonce));
 
                     resp
                 } else {

@@ -339,7 +339,7 @@ impl OnUnbalanced<NegativeImbalance> for ActualPaidFeesHandler {
     fn on_unbalanceds<B>(fees_then_tips: impl Iterator<Item = NegativeImbalance>) {
         // Record both actual paid transaction fee and tip in `pallet_operator_rewards`
         for fee in fees_then_tips {
-            OperatorRewards::note_transaction_fees(fee.peek());
+            OperatorRewards::note_operator_rewards(fee.peek());
         }
     }
 }
@@ -375,6 +375,14 @@ parameter_types! {
     pub SelfChainId: ChainId = SelfDomainId::self_domain_id().into();
 }
 
+pub struct OnXDMRewards;
+
+impl sp_messenger::OnXDMRewards<Balance> for OnXDMRewards {
+    fn on_xdm_rewards(rewards: Balance) {
+        OperatorRewards::note_operator_rewards(rewards)
+    }
+}
+
 impl pallet_messenger::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type SelfChainId = SelfChainId;
@@ -392,6 +400,7 @@ impl pallet_messenger::Config for Runtime {
     type ConfirmationDepth = RelayConfirmationDepth;
     type WeightInfo = pallet_messenger::weights::SubstrateWeight<Runtime>;
     type WeightToFee = IdentityFee<Balance>;
+    type OnXDMRewards = OnXDMRewards;
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime
@@ -473,7 +482,7 @@ struct BaseFeeHandler;
 impl OnUnbalanced<NegativeImbalance> for BaseFeeHandler {
     fn on_nonzero_unbalanced(base_fee: NegativeImbalance) {
         // Record the evm transaction base fee
-        OperatorRewards::note_transaction_fees(base_fee.peek())
+        OperatorRewards::note_operator_rewards(base_fee.peek())
     }
 }
 
@@ -506,7 +515,7 @@ impl pallet_evm::OnChargeEVMTransaction<Runtime> for EVMCurrencyAdapter {
             >>::correct_and_deposit_fee(who, corrected_fee, base_fee, already_withdrawn);
         if let Some(t) = tip.as_ref() {
             // Record the evm transaction tip
-            OperatorRewards::note_transaction_fees(t.peek())
+            OperatorRewards::note_operator_rewards(t.peek())
         }
         tip
     }

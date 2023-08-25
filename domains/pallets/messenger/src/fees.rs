@@ -1,10 +1,11 @@
-use crate::pallet::{InboxFee, InboxResponses, OutboxFee, RelayerRewards};
+use crate::pallet::{InboxFee, InboxResponses, OutboxFee};
 use crate::{BalanceOf, Config, Error, Pallet};
 use frame_support::traits::fungible::Mutate;
 use frame_support::traits::tokens::{Fortitude, Precision};
 use frame_support::weights::WeightToFee;
 use sp_messenger::endpoint::Endpoint;
 use sp_messenger::messages::{ChainId, ChannelId, FeeModel, MessageId, Nonce};
+use sp_messenger::OnXDMRewards;
 use sp_runtime::traits::CheckedAdd;
 use sp_runtime::DispatchResult;
 
@@ -79,7 +80,7 @@ impl<T: Config> Pallet<T> {
             }
 
             if let Some(inbox_fee) = InboxFee::<T>::take((dst_chain_id, (channel_id, nonce))) {
-                Self::reward_operators(inbox_fee)?;
+                Self::reward_operators(inbox_fee);
             }
 
             current_nonce = nonce.checked_sub(Nonce::one())
@@ -91,21 +92,14 @@ impl<T: Config> Pallet<T> {
     pub(crate) fn reward_operators_for_outbox_execution(
         dst_chain_id: ChainId,
         message_id: MessageId,
-    ) -> DispatchResult {
+    ) {
         if let Some(fee) = OutboxFee::<T>::take((dst_chain_id, message_id)) {
-            Self::reward_operators(fee)?;
+            Self::reward_operators(fee);
         }
-
-        Ok(())
     }
 
     /// Increments the current block's relayer rewards.
-    fn reward_operators(reward: BalanceOf<T>) -> DispatchResult {
-        RelayerRewards::<T>::try_mutate(|current_reward| {
-            *current_reward = current_reward
-                .checked_add(&reward)
-                .ok_or(Error::<T>::BalanceOverflow)?;
-            Ok(())
-        })
+    fn reward_operators(reward: BalanceOf<T>) {
+        T::OnXDMRewards::on_xdm_rewards(reward)
     }
 }

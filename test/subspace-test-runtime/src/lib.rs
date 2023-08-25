@@ -554,6 +554,7 @@ impl pallet_messenger::Config for Runtime {
     type ConfirmationDepth = RelayConfirmationDepth;
     type WeightInfo = pallet_messenger::weights::SubstrateWeight<Runtime>;
     type WeightToFee = IdentityFee<domain_runtime_primitives::Balance>;
+    type OnXDMRewards = ();
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime

@@ -44,7 +44,7 @@ use core::num::NonZeroU64;
 use domain_runtime_primitives::{
     BlockNumber as DomainNumber, Hash as DomainHash, MultiAccountId, TryConvertBack,
 };
-use frame_support::traits::{ConstU16, ConstU32, ConstU64, ConstU8, Everything, Get};
+use frame_support::traits::{ConstU16, ConstU32, ConstU64, ConstU8, Currency, Everything, Get};
 use frame_support::weights::constants::{RocksDbWeight, WEIGHT_REF_TIME_PER_SECOND};
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
 use frame_support::{construct_runtime, parameter_types, PalletId};
@@ -89,8 +89,8 @@ use subspace_core_primitives::{
     SolutionRange, U256,
 };
 use subspace_runtime_primitives::{
-    opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature,
-    MIN_REPLICATION_FACTOR, SHANNON, SSC, STORAGE_FEES_ESCROW_BLOCK_REWARD,
+    opaque, AccountId, Balance, BlockNumber, FindBlockRewardAddress, Hash, Index, Moment,
+    Signature, MIN_REPLICATION_FACTOR, SHANNON, SSC, STORAGE_FEES_ESCROW_BLOCK_REWARD,
     STORAGE_FEES_ESCROW_BLOCK_TAX,
 };
 
@@ -478,6 +478,16 @@ impl sp_messenger::endpoint::DomainInfo<BlockNumber, Hash, Hash> for DomainInfo 
     }
 }
 
+pub struct OnXDMRewards;
+
+impl sp_messenger::OnXDMRewards<Balance> for OnXDMRewards {
+    fn on_xdm_rewards(reward: Balance) {
+        if let Some(block_author) = Subspace::find_block_reward_address() {
+            let _ = Balances::deposit_creating(&block_author, reward);
+        }
+    }
+}
+
 impl pallet_messenger::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type SelfChainId = SelfChainId;
@@ -495,6 +505,7 @@ impl pallet_messenger::Config for Runtime {
     type ConfirmationDepth = RelayConfirmationDepth;
     type WeightInfo = pallet_messenger::weights::SubstrateWeight<Runtime>;
     type WeightToFee = IdentityFee<domain_runtime_primitives::Balance>;
+    type OnXDMRewards = OnXDMRewards;
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime

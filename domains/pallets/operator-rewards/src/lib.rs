@@ -67,8 +67,8 @@ mod pallet {
     }
 
     impl<T: Config> Pallet<T> {
-        pub fn note_transaction_fees(tx_fee: T::Balance) {
-            let next_block_rewards = BlockRewards::<T>::get().saturating_add(tx_fee);
+        pub fn note_operator_rewards(rewards: T::Balance) {
+            let next_block_rewards = BlockRewards::<T>::get().saturating_add(rewards);
             BlockRewards::<T>::set(next_block_rewards);
         }
     }

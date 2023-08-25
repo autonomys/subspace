@@ -110,7 +110,8 @@ mod pallet {
         Payload, ProtocolMessageRequest, RequestResponse, VersionedPayload,
     };
     use sp_messenger::verification::{StorageProofVerifier, VerificationError};
-    use sp_runtime::traits::{CheckedSub, Zero};
+    use sp_messenger::OnXDMRewards;
+    use sp_runtime::traits::CheckedSub;
     use sp_runtime::ArithmeticError;
     use sp_std::boxed::Box;
 
@@ -132,6 +133,8 @@ mod pallet {
         type WeightInfo: WeightInfo;
         /// Weight to fee conversion.
         type WeightToFee: WeightToFee<Balance = BalanceOf<Self>>;
+        /// Handle XDM rewards.
+        type OnXDMRewards: OnXDMRewards<BalanceOf<Self>>;
     }
 
     /// Pallet messenger used to communicate between chains and other blockchains.
@@ -217,15 +220,6 @@ mod pallet {
     #[pallet::getter(fn block_messages)]
     pub(super) type BlockMessages<T: Config> =
         StorageValue<_, crate::messages::BlockMessages, OptionQuery>;
-
-    /// A temporary storage to store the rewards for relayers for a given block.
-    /// Rewards are cleared on block init.
-    // TODO: Ideally these rewards along with execution rewards should go into ER
-    //  But since we do not have the operator rewards yet, we store them here
-    //  This storage also can be used to prove the rewards through fraud proof if rewards did not match
-    #[pallet::storage]
-    #[pallet::getter(fn relayer_rewards)]
-    pub(super) type RelayerRewards<T: Config> = StorageValue<_, BalanceOf<T>, ValueQuery>;
 
     /// `pallet-messenger` events
     #[pallet::event]
@@ -440,8 +434,7 @@ mod pallet {
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
         fn on_initialize(_now: BlockNumberFor<T>) -> Weight {
             BlockMessages::<T>::kill();
-            RelayerRewards::<T>::set(Zero::zero());
-            T::DbWeight::get().writes(2)
+            T::DbWeight::get().writes(1)
         }
     }
 
