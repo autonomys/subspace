@@ -52,6 +52,7 @@ use core::fmt;
 use core::iter::Iterator;
 use core::num::NonZeroU64;
 use core::simd::Simd;
+use core::str::FromStr;
 use derive_more::{Add, AsMut, AsRef, Deref, DerefMut, Display, Div, From, Into, Mul, Rem, Sub};
 use num_traits::{WrappingAdd, WrappingSub};
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
@@ -254,7 +255,19 @@ impl PosProof {
     TypeInfo,
     MaxEncodedLen,
 )]
-pub struct PotKey(PotBytes);
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct PotKey(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] [u8; 16]);
+
+impl FromStr for PotKey {
+    type Err = hex::FromHexError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut bytes = PotBytes::default();
+        hex::decode_to_slice(s, &mut bytes)?;
+
+        Ok(Self(bytes))
+    }
+}
 
 /// Proof of time seed (input to the encryption).
 #[derive(
@@ -276,10 +289,9 @@ pub struct PotKey(PotBytes);
 pub struct PotSeed(PotBytes);
 
 impl PotSeed {
-    /// Builds the seed from block hash (e.g) used to create initial seed from
-    /// genesis block hash.
+    /// Derive initial PoT seed from genesis block hash.
     #[inline]
-    pub fn from_block_hash(block_hash: BlockHash) -> Self {
+    pub fn from_genesis_block_hash(block_hash: BlockHash) -> Self {
         Self(truncate_32_bytes(block_hash))
     }
 }

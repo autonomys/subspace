@@ -6,15 +6,12 @@ use futures::channel::mpsc;
 use futures::{FutureExt, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::{Mutex, RwLock};
-use sc_client_api::BlockchainEvents;
 use sc_network::config::NonDefaultSetConfig;
 use sc_network::PeerId;
 use sc_network_gossip::{
     GossipEngine, MessageIntent, Syncing as GossipSyncing, ValidationResult, Validator,
     ValidatorContext,
 };
-use sp_blockchain::HeaderBackend;
-use sp_consensus_subspace::digests::extract_pre_digest;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
 use std::collections::HashSet;
 use std::sync::Arc;
@@ -22,34 +19,31 @@ use std::time::Instant;
 use subspace_core_primitives::crypto::blake2b_256_hash;
 use subspace_core_primitives::{Blake2b256Hash, PotProof};
 use subspace_proof_of_time::ProofOfTime;
-use tracing::{debug, error, trace, warn};
+use tracing::{error, trace};
 
 pub(crate) const GOSSIP_PROTOCOL: &str = "/subspace/subspace-proof-of-time";
 
 /// PoT gossip worker
 #[must_use = "Gossip worker doesn't do anything unless run() method is called"]
-pub struct PotGossipWorker<Block, Client>
+pub struct PotGossipWorker<Block>
 where
     Block: BlockT,
 {
     engine: Arc<Mutex<GossipEngine<Block>>>,
     validator: Arc<PotGossipValidator<Block>>,
     pot_state: Arc<dyn PotProtocolState>,
-    client: Arc<Client>,
     topic: Block::Hash,
     outgoing_messages_sender: mpsc::Sender<PotProof>,
     outgoing_messages_receiver: mpsc::Receiver<PotProof>,
 }
 
-impl<Block, Client> PotGossipWorker<Block, Client>
+impl<Block> PotGossipWorker<Block>
 where
     Block: BlockT,
-    Client: HeaderBackend<Block> + BlockchainEvents<Block>,
 {
     /// Instantiate gossip worker
     pub fn new<Network, GossipSync>(
         components: &PotComponents,
-        client: Arc<Client>,
         network: Network,
         sync: Arc<GossipSync>,
     ) -> Self
@@ -79,7 +73,6 @@ where
             engine,
             validator,
             pot_state: Arc::clone(&components.protocol_state),
-            client,
             topic,
             outgoing_messages_sender,
             outgoing_messages_receiver,
@@ -96,8 +89,6 @@ where
     /// NOTE: Even though this function is async, it might do blocking operations internally and
     /// should be running on a dedicated thread.
     pub async fn run(mut self) {
-        self.initialize().await;
-
         let message_receiver = self.engine.lock().messages_for(self.topic);
         let mut incoming_messages = Box::pin(message_receiver.filter_map(
             // Filter out messages without sender or fail to decode.
@@ -129,50 +120,6 @@ where
                     error!("Gossip engine has terminated");
                     return;
                 }
-            }
-        }
-    }
-
-    /// Initializes the chain state from the consensus tip info.
-    async fn initialize(&self) {
-        debug!("Waiting for initialization");
-
-        // Wait for a block with proofs.
-        let mut block_import = self.client.import_notification_stream();
-        while let Some(incoming_block) = block_import.next().await {
-            let pre_digest = match extract_pre_digest(&incoming_block.header) {
-                Ok(pre_digest) => pre_digest,
-                Err(error) => {
-                    warn!(
-                        %error,
-                        block_hash = %incoming_block.hash,
-                        origin = ?incoming_block.origin,
-                        "Failed to get pre_digest",
-                    );
-                    continue;
-                }
-            };
-
-            let pot_pre_digest = match pre_digest.pot_pre_digest() {
-                Some(pot_pre_digest) => pot_pre_digest,
-                None => {
-                    warn!(
-                        block_hash = %incoming_block.hash,
-                        origin = ?incoming_block.origin,
-                        "Failed to get pot_pre_digest",
-                    );
-                    continue;
-                }
-            };
-
-            if pot_pre_digest.proofs().is_some() {
-                trace!(
-                    block_hash = %incoming_block.hash,
-                    origin = ?incoming_block.origin,
-                    ?pot_pre_digest,
-                    "Initialization complete",
-                );
-                return;
             }
         }
     }

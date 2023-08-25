@@ -773,9 +773,8 @@ where
             .as_ref()
             .map(|component| component.consensus_state());
         if let Some(components) = pot_components {
-            let pot_gossip_worker = PotGossipWorker::new(
+            let pot_gossip_worker = PotGossipWorker::<Block>::new(
                 &components,
-                client.clone(),
                 network_service.clone(),
                 sync_service.clone(),
             );

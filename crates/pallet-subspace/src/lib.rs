@@ -864,7 +864,6 @@ impl<T: Config> Pallet<T> {
         PorRandomness::<T>::put(por_randomness);
 
         // Deposit global randomness data such that light client can validate blocks later.
-        #[cfg(not(feature = "pot"))]
         frame_system::Pallet::<T>::deposit_log(DigestItem::global_randomness(
             GlobalRandomnesses::<T>::get().current,
         ));

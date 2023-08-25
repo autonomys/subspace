@@ -102,16 +102,6 @@ pub enum PotVerifyError {
         slot_number: SlotNumber,
     },
 
-    /// Parent block has no proof of time digest.
-    #[error(
-        "Parent block missing proof of time : {block_number}/{parent_slot_number}/{slot_number}"
-    )]
-    ParentMissingPotDigest {
-        block_number: BlockNumber,
-        parent_slot_number: SlotNumber,
-        slot_number: SlotNumber,
-    },
-
     /// Verification failed.
     #[error("Proof of time error: {0}")]
     PotVerifyBlockProofsError(#[from] PotVerifyBlockProofsError),
@@ -1011,6 +1001,9 @@ where
         };
 
         if subspace_digest_items.global_randomness != correct_global_randomness {
+            // TODO: There is some kind of mess with PoT randomness right now that doesn't make a
+            //  lot of sense, restore this check once that is resolved
+            #[cfg(not(feature = "pot"))]
             return Err(Error::InvalidGlobalRandomness(block_hash));
         }
 
@@ -1158,21 +1151,23 @@ where
             None => return Ok(randomness),
         };
 
-        let parent_pot_digest = parent_pre_digest.proof_of_time.as_ref().ok_or_else(|| {
-            PotVerifyError::ParentMissingPotDigest {
-                block_number: block_number.into(),
-                parent_slot_number: parent_pre_digest.slot.into(),
-                slot_number: pre_digest.slot.into(),
-            }
-        })?;
+        let maybe_parent_pot_digest = &parent_pre_digest.proof_of_time;
 
         proof_of_time
             .verify_block_proofs(
                 block_number.into(),
-                pre_digest.slot.into(),
+                // TODO: Hack while we don't have PoT-based slot worker, remove once we do
+                parent_pre_digest
+                    .proof_of_time
+                    .as_ref()
+                    .map(|p| p.proofs().last().slot_number)
+                    .unwrap_or_default()
+                    + SlotNumber::from(parent_pre_digest.slot)
+                        .checked_sub(SlotNumber::from(pre_digest.slot))
+                        .unwrap_or_default(),
                 pot_digest,
                 parent_pre_digest.slot.into(),
-                parent_pot_digest,
+                maybe_parent_pot_digest,
             )
             .map_err(PotVerifyError::PotVerifyBlockProofsError)?;
 

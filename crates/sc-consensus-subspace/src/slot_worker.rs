@@ -45,8 +45,6 @@ use sp_consensus_subspace::digests::{extract_pre_digest, CompatibleDigestItem, P
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SignedVote, SubspaceApi, Vote};
 use sp_core::crypto::ByteArray;
 use sp_core::H256;
-#[cfg(feature = "pot")]
-use sp_runtime::traits::NumberFor as BlockNumberFor;
 use sp_runtime::traits::{Block as BlockT, Header, One, Saturating, Zero};
 use sp_runtime::DigestItem;
 use std::future::Future;
@@ -66,15 +64,7 @@ use subspace_verification::{
 /// Errors while building the block proof of time.
 #[cfg(feature = "pot")]
 #[derive(Debug, thiserror::Error)]
-pub enum PotCreateError<Block: BlockT> {
-    /// Parent block has no proof of time digest.
-    #[error("Parent block missing proof of time : {parent_block_number}/{parent_slot_number}/{slot_number}")]
-    ParentMissingPotDigest {
-        parent_block_number: BlockNumberFor<Block>,
-        parent_slot_number: SlotNumber,
-        slot_number: SlotNumber,
-    },
-
+pub enum PotCreateError {
     /// Proof creation failed.
     #[error("Proof of time error: {0}")]
     PotGetBlockProofsError(#[from] PotGetBlockProofsError),
@@ -231,10 +221,6 @@ where
         let parent_hash = parent_header.hash();
         let runtime_api = self.client.runtime_api();
 
-        #[cfg(not(feature = "pot"))]
-        let global_randomness =
-            extract_global_randomness_for_block(self.client.as_ref(), parent_hash).ok()?;
-
         // If proof of time is enabled, collect the proofs that go into this
         // block and derive randomness from the last proof.
         #[cfg(feature = "pot")]
@@ -245,7 +231,15 @@ where
                         proof_of_time.as_ref(),
                         parent_header,
                         &parent_pre_digest,
-                        slot.into(),
+                        // TODO: Hack while we don't have PoT-based slot worker, remove once we do
+                        parent_pre_digest
+                            .proof_of_time
+                            .as_ref()
+                            .map(|p| p.proofs().last().slot_number)
+                            .unwrap_or_default()
+                            + SlotNumber::from(parent_slot)
+                                .checked_sub(SlotNumber::from(slot))
+                                .unwrap_or_default(),
                     )
                     .await
                     .ok()?;
@@ -257,6 +251,12 @@ where
                     extract_global_randomness_for_block(self.client.as_ref(), parent_hash).ok()?,
                 )
             };
+
+        // TODO: There is some kind of mess with PoT randomness right now that doesn't make a
+        //  lot of sense, restore this check once that is resolved
+        // #[cfg(not(feature = "pot"))]
+        let global_randomness =
+            extract_global_randomness_for_block(self.client.as_ref(), parent_hash).ok()?;
 
         let (solution_range, voting_solution_range) =
             extract_solution_ranges_for_block(self.client.as_ref(), parent_hash).ok()?;
@@ -624,30 +624,14 @@ where
         parent_header: &Block::Header,
         parent_pre_digest: &PreDigest<FarmerPublicKey, FarmerPublicKey>,
         slot_number: SlotNumber,
-    ) -> Result<PotPreDigest, PotCreateError<Block>> {
+    ) -> Result<PotPreDigest, PotCreateError> {
         let block_number = *parent_header.number() + One::one();
-
-        // Block 1 does not have proofs
-        if block_number.is_one() {
-            return Ok(PotPreDigest::FirstBlock(slot_number));
-        }
-
-        // Block 2 onwards.
-        // Get the start slot number for the proofs in the new block.
-        let parent_pot_digest = parent_pre_digest.proof_of_time.as_ref().ok_or_else(|| {
-            // PoT needs to be present in the block if feature is enabled.
-            PotCreateError::ParentMissingPotDigest {
-                parent_block_number: *parent_header.number(),
-                parent_slot_number: parent_pre_digest.slot.into(),
-                slot_number,
-            }
-        })?;
 
         proof_of_time
             .get_block_proofs(
                 block_number.into(),
                 slot_number,
-                parent_pot_digest,
+                &parent_pre_digest.proof_of_time,
                 Some(self.subspace_link.slot_duration().as_duration()),
             )
             .await

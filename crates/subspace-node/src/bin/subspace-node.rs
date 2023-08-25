@@ -20,14 +20,16 @@ use domain_client_operator::Bootstrapper;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
+use log::warn;
 use sc_cli::{ChainSpec, CliConfiguration, SubstrateCli};
 use sc_consensus_slots::SlotProportion;
-use sc_proof_of_time::PotComponents;
+use sc_proof_of_time::{PotComponents, PotConfig};
 use sc_service::PartialComponents;
 use sc_storage_monitor::StorageMonitorService;
 use sp_core::crypto::Ss58AddressFormat;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::GenerateGenesisStateRoot;
+use std::num::{NonZeroU32, NonZeroU8};
 use std::sync::Arc;
 use subspace_node::domain::{
     AccountId32ToAccountId20Converter, DomainCli, DomainGenesisBlockBuilder, DomainInstanceStarter,
@@ -355,8 +357,46 @@ fn main() -> Result<(), Error> {
             runner.run_node_until_exit(|consensus_chain_config| async move {
                 let tokio_handle = consensus_chain_config.tokio_handle.clone();
                 let database_source = consensus_chain_config.database.clone();
+                let maybe_chain_spec_pot_initial_key = consensus_chain_config
+                    .chain_spec
+                    .properties()
+                    .get("potInitialKey")
+                    .map(|d| serde_json::from_value(d.clone()))
+                    .transpose()
+                    .map_err(|error| {
+                        sc_service::Error::Other(format!(
+                            "Failed to decode PoT initial key: {error:?}"
+                        ))
+                    })?
+                    .flatten();
+                if maybe_chain_spec_pot_initial_key.is_some()
+                    && cli.pot_initial_key.is_some()
+                    && maybe_chain_spec_pot_initial_key != cli.pot_initial_key
+                {
+                    warn!(
+                        "--pot-initial-key CLI argument was ignored due to chain spec having a \
+                        different explicit value"
+                    );
+                }
                 let pot_components = if cli.pot_role.is_pot_enabled() {
-                    Some(PotComponents::new(cli.pot_role.is_time_keeper()))
+                    Some(PotComponents::new(
+                        cli.pot_role.is_time_keeper(),
+                        // TODO: fill proper values. These are set to use less
+                        // CPU and take less than 1 sec to produce per proof
+                        // during the initial testing.
+                        PotConfig {
+                            initial_key: maybe_chain_spec_pot_initial_key
+                                .or(cli.pot_initial_key)
+                                .unwrap_or_default(),
+                            randomness_update_interval_blocks: 18,
+                            injection_depth_blocks: 90,
+                            global_randomness_reveal_lag_slots: 6,
+                            pot_injection_lag_slots: 6,
+                            max_future_slots: 10,
+                            pot_iterations: NonZeroU32::new(4 * 1_000).expect("Not zero; qed"),
+                            num_checkpoints: NonZeroU8::new(4).expect("Not zero; qed"),
+                        },
+                    ))
                 } else {
                     None
                 };
@@ -389,7 +429,7 @@ fn main() -> Result<(), Error> {
                                 .transpose()
                                 .map_err(|error| {
                                     sc_service::Error::Other(format!(
-                                        "Failed to decode DSN bootsrap nodes: {error:?}"
+                                        "Failed to decode DSN bootstrap nodes: {error:?}"
                                     ))
                                 })?
                                 .unwrap_or_default()
@@ -523,7 +563,7 @@ fn main() -> Result<(), Error> {
                                     {
                                         Err(err) => {
                                             log::error!(
-                                                "Domain bootsrapper exited with an error {err:?}"
+                                                "Domain bootstrapper exited with an error {err:?}"
                                             );
                                             return;
                                         }
