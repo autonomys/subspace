@@ -133,14 +133,14 @@ impl<Block: BlockT> GossipWorker<Block> {
             futures::select! {
                 cross_chain_message = incoming_cross_chain_messages.next().fuse() => {
                     if let Some(msg) = cross_chain_message {
-                        tracing::debug!(target: LOG_TARGET, "Incoming cross chain message for chain: {:?}", msg.chain_id);
+                        tracing::debug!(target: LOG_TARGET, "Incoming cross chain message for chain from Network: {:?}", msg.chain_id);
                         self.handle_cross_chain_message(msg);
                     }
                 },
 
                 cross_chain_message = self.gossip_msg_stream.next().fuse() => {
                     if let Some(msg) = cross_chain_message {
-                        tracing::debug!(target: LOG_TARGET, "Incoming cross chain message for chain: {:?}", msg.chain_id);
+                        tracing::debug!(target: LOG_TARGET, "Incoming cross chain message for chain from Relayer: {:?}", msg.chain_id);
                         self.handle_cross_chain_message(msg);
                     }
                 }

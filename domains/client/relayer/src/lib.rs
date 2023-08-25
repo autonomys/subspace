@@ -277,6 +277,10 @@ where
         CCC::Api: RelayerApi<CCBlock, NumberFor<CCBlock>>,
     {
         let chain_id = Self::chain_id(domain_client)?;
+        let ChainId::Domain(domain_id) = chain_id else {
+            return Err(Error::InvalidChainId);
+        };
+
         let domain_block_header = domain_client.expect_header(confirmed_block_hash)?;
         let consensus_chain_api = consensus_chain_client.runtime_api();
         let best_consensus_chain_hash = consensus_chain_client.info().best_hash;
@@ -285,7 +289,7 @@ where
 
         // verify if the domain number is K-deep on Consensus chain
         if !consensus_chain_api
-            .chain_best_number(best_consensus_chain_hash, chain_id)?
+            .domain_best_number(best_consensus_chain_hash, domain_id)?
             .map(
                 |best_number| match best_number.checked_sub(&relay_confirmation_depth) {
                     None => false,
@@ -302,9 +306,9 @@ where
         // verify if the state root is matching.
         let domain_number = *domain_block_header.number();
         if !consensus_chain_api
-            .chain_state_root(
+            .domain_state_root(
                 best_consensus_chain_hash,
-                chain_id,
+                domain_id,
                 domain_number.into(),
                 confirmed_block_hash.into(),
             )?
@@ -322,10 +326,6 @@ where
             );
             return Err(Error::DomainStateRootInvalid);
         }
-
-        let ChainId::Domain(domain_id) = chain_id else {
-            return Err(Error::InvalidChainId);
-        };
 
         // fetch messages to be relayed
         let domain_api = domain_client.runtime_api();

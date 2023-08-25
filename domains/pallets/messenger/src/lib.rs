@@ -439,8 +439,9 @@ mod pallet {
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
         fn on_initialize(_now: BlockNumberFor<T>) -> Weight {
+            BlockMessages::<T>::kill();
             RelayerRewards::<T>::set(Zero::zero());
-            T::DbWeight::get().writes(1)
+            T::DbWeight::get().writes(2)
         }
     }
 

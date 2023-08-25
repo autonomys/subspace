@@ -1,7 +1,7 @@
 use super::{evm_chain_spec, DomainCli};
 use crate::domain::{AccountId20, EVMDomainExecutorDispatch};
 use crate::ExecutorDispatch as CExecutorDispatch;
-use cross_domain_message_gossip::GossipWorkerBuilder;
+use cross_domain_message_gossip::Message;
 use domain_client_operator::{BootstrapResult, OperatorStreams};
 use domain_eth_service::provider::EthProvider;
 use domain_eth_service::DefaultEthConfig;
@@ -13,10 +13,8 @@ use sc_cli::{CliConfiguration, Database, DefaultConfigurationValues, SubstrateCl
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{BlockImportingNotification, NewSlotNotification};
 use sc_service::{BasePath, Configuration};
-use sp_core::traits::SpawnEssentialNamed;
+use sc_utils::mpsc::{TracingUnboundedReceiver, TracingUnboundedSender};
 use sp_domains::RuntimeType;
-use sp_messenger::messages::ChainId;
-use sp_runtime::traits::Block as BlockT;
 use std::sync::Arc;
 use subspace_runtime::RuntimeApi as CRuntimeApi;
 use subspace_runtime_primitives::opaque::Block as CBlock;
@@ -31,10 +29,10 @@ pub struct DomainInstanceStarter {
     pub block_importing_notification_stream:
         SubspaceNotificationStream<BlockImportingNotification<CBlock>>,
     pub new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
-    pub consensus_network_service:
-        Arc<sc_network::NetworkService<CBlock, <CBlock as BlockT>::Hash>>,
     pub consensus_sync_service: Arc<sc_network_sync::SyncingService<CBlock>>,
     pub select_chain: FullSelectChain,
+    pub domain_message_receiver: TracingUnboundedReceiver<Vec<u8>>,
+    pub gossip_message_sink: TracingUnboundedSender<Message>,
 }
 
 impl DomainInstanceStarter {
@@ -54,9 +52,10 @@ impl DomainInstanceStarter {
             consensus_client,
             block_importing_notification_stream,
             new_slot_notification_stream,
-            consensus_network_service,
             consensus_sync_service,
             select_chain,
+            domain_message_receiver,
+            gossip_message_sink,
         } = self;
 
         let runtime_type = domain_instance_data.runtime_type.clone();
@@ -113,8 +112,6 @@ impl DomainInstanceStarter {
 
         match runtime_type {
             RuntimeType::Evm => {
-                let mut xdm_gossip_worker_builder = GossipWorkerBuilder::new();
-
                 let evm_base_path = BasePath::new(
                     domain_config
                         .service_config
@@ -143,7 +140,8 @@ impl DomainInstanceStarter {
                     consensus_network_sync_oracle: consensus_sync_service.clone(),
                     select_chain,
                     operator_streams,
-                    gossip_message_sink: xdm_gossip_worker_builder.gossip_msg_sink(),
+                    gossip_message_sink,
+                    domain_message_receiver,
                     provider: eth_provider,
                 };
 
@@ -160,23 +158,6 @@ impl DomainInstanceStarter {
                     _,
                 >(domain_params)
                 .await?;
-
-                xdm_gossip_worker_builder.push_chain_tx_pool_sink(
-                    ChainId::Domain(domain_cli.domain_id),
-                    domain_node.tx_pool_sink,
-                );
-
-                let cross_domain_message_gossip_worker = xdm_gossip_worker_builder
-                    .build::<CBlock, _, _>(consensus_network_service, consensus_sync_service);
-
-                domain_node
-                    .task_manager
-                    .spawn_essential_handle()
-                    .spawn_essential_blocking(
-                        "cross-domain-gossip-message-worker",
-                        None,
-                        Box::pin(cross_domain_message_gossip_worker.run()),
-                    );
 
                 domain_node.network_starter.start_network();
 

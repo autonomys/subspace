@@ -26,6 +26,8 @@ use messages::{
     BlockMessagesWithStorageKey, ChainId, CrossDomainMessage, ExtractedStateRootsFromProof,
     MessageId,
 };
+
+use sp_domains::DomainId;
 use sp_std::vec::Vec;
 
 sp_api::decl_runtime_apis! {
@@ -37,14 +39,14 @@ sp_api::decl_runtime_apis! {
         /// Returns the the chain_id of the Runtime.
         fn chain_id() -> ChainId;
 
-        /// Returns the confirmation depth to relay message
+        /// Returns the confirmation depth to relay message.
         fn relay_confirmation_depth() -> BlockNumber;
 
-        /// Returns the current best number of the chain
-        fn chain_best_number(chain_id: ChainId) -> Option<BlockNumber>;
+        /// Returns the current best number of the domain.
+        fn domain_best_number(domain_id: DomainId) -> Option<BlockNumber>;
 
         /// Returns the chain state root at the given block.
-        fn chain_state_root(chain_id: ChainId, number: BlockNumber, hash: Block::Hash) -> Option<Block::Hash>;
+        fn domain_state_root(domain_id: DomainId, number: BlockNumber, hash: Block::Hash) -> Option<Block::Hash>;
 
         /// Returns all the outbox and inbox responses to deliver.
         /// Storage key is used to generate the storage proof for the message.

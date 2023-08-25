@@ -20,7 +20,7 @@ use sc_network::{NetworkService, NetworkStateInfo};
 use sc_network_sync::SyncingService;
 use sc_service::config::MultiaddrWithPeerId;
 use sc_service::{BasePath, Role, RpcHandlers, TFullBackend, TaskManager};
-use sc_utils::mpsc::TracingUnboundedSender;
+use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedSender};
 use serde::de::DeserializeOwned;
 use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
@@ -216,9 +216,12 @@ where
             _phantom: Default::default(),
         };
 
+        let (domain_message_sink, domain_message_receiver) =
+            tracing_unbounded("domain_message_channel", 100);
         let gossip_msg_sink = mock_consensus_node
             .xdm_gossip_worker_builder()
             .gossip_msg_sink();
+
         let domain_params = domain_service::DomainParams {
             domain_id,
             domain_config,
@@ -228,6 +231,7 @@ where
             select_chain: mock_consensus_node.select_chain.clone(),
             operator_streams,
             gossip_message_sink: gossip_msg_sink,
+            domain_message_receiver,
             provider: DefaultProvider,
         };
 
@@ -256,14 +260,13 @@ where
             network_starter,
             rpc_handlers,
             operator,
-            tx_pool_sink,
             ..
         } = domain_node;
 
         if role.is_authority() {
             mock_consensus_node
                 .xdm_gossip_worker_builder()
-                .push_chain_tx_pool_sink(ChainId::Domain(domain_id), tx_pool_sink.clone());
+                .push_chain_tx_pool_sink(ChainId::Domain(domain_id), domain_message_sink.clone());
         }
 
         let addr = MultiaddrWithPeerId {
@@ -285,7 +288,7 @@ where
             addr,
             rpc_handlers,
             operator,
-            tx_pool_sink,
+            tx_pool_sink: domain_message_sink,
             _phantom_data: Default::default(),
         }
     }

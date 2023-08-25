@@ -35,6 +35,7 @@ use pallet_transporter::EndpointHandler;
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
 use sp_core::{Get, OpaqueMetadata, H160, H256, U256};
+use sp_domains::DomainId;
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
     BlockMessagesWithStorageKey, ChainId, CrossDomainMessage, ExtractedStateRootsFromProof,
@@ -370,8 +371,7 @@ impl pallet_sudo::Config for Runtime {
 }
 
 parameter_types! {
-    pub const StateRootsBound: u32 = 50;
-    pub const RelayConfirmationDepth: BlockNumber = 7;
+    pub const RelayConfirmationDepth: BlockNumber = 18;
     pub SelfChainId: ChainId = SelfDomainId::self_domain_id().into();
 }
 
@@ -915,11 +915,11 @@ impl_runtime_apis! {
             RelayConfirmationDepth::get()
         }
 
-        fn chain_best_number(_chain_id: ChainId) -> Option<BlockNumber> {
+        fn domain_best_number(_: DomainId) -> Option<BlockNumber> {
             None
         }
 
-        fn chain_state_root(_chain_id: ChainId, _number: BlockNumber, _hash: Hash) -> Option<Hash>{
+        fn domain_state_root(_: DomainId, _: BlockNumber, _: Hash) -> Option<Hash>{
             None
         }
 

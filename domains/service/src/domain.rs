@@ -1,6 +1,5 @@
 use crate::providers::{BlockImportProvider, RpcProvider};
 use crate::{DomainConfiguration, FullBackend, FullClient};
-use cross_domain_message_gossip::ChainTxPoolSink;
 use domain_client_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_client_consensus_relay_chain::DomainBlockImport;
 use domain_client_message_relayer::GossipMessageSink;
@@ -9,9 +8,10 @@ use domain_runtime_primitives::opaque::Block;
 use domain_runtime_primitives::{Balance, BlockNumber, DomainCoreApi, Hash, InherentExtrinsicApi};
 use futures::channel::mpsc;
 use futures::Stream;
-use jsonrpsee::tracing;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
-use sc_client_api::{BlockBackend, BlockImportNotification, BlockchainEvents, StateBackendFor};
+use sc_client_api::{
+    BlockBackend, BlockImportNotification, BlockchainEvents, ProofProvider, StateBackendFor,
+};
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_rpc_api::DenyUnsafe;
 use sc_service::{
@@ -19,7 +19,7 @@ use sc_service::{
     SpawnTasksParams, TFullBackend, TaskManager,
 };
 use sc_telemetry::{Telemetry, TelemetryWorker, TelemetryWorkerHandle};
-use sc_utils::mpsc::tracing_unbounded;
+use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver};
 use serde::de::DeserializeOwned;
 use sp_api::{ApiExt, BlockT, ConstructRuntimeApi, Metadata, NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
@@ -29,6 +29,7 @@ use sp_consensus_slots::Slot;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_core::{Decode, Encode};
 use sp_domains::{BundleProducerElectionApi, DomainId, DomainsApi};
+use sp_messenger::messages::ChainId;
 use sp_messenger::{MessengerApi, RelayerApi};
 use sp_offchain::OffchainWorkerApi;
 use sp_session::SessionKeys;
@@ -105,8 +106,6 @@ where
     pub network_starter: NetworkStarter,
     /// Operator.
     pub operator: DomainOperator<Block, CBlock, CClient, RuntimeApi, ExecutorDispatch, BI>,
-    /// Transaction pool sink
-    pub tx_pool_sink: ChainTxPoolSink,
     _phantom_data: PhantomData<AccountId>,
 }
 
@@ -250,6 +249,7 @@ where
     pub select_chain: SC,
     pub operator_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS>,
     pub gossip_message_sink: GossipMessageSink,
+    pub domain_message_receiver: TracingUnboundedReceiver<Vec<u8>>,
     pub provider: Provider,
 }
 
@@ -283,16 +283,18 @@ where
     CBlock: BlockT,
     NumberFor<CBlock>: From<NumberFor<Block>> + Into<u32>,
     <Block as BlockT>::Hash: From<Hash>,
-    CBlock::Hash: From<Hash>,
+    CBlock::Hash: From<Hash> + Into<Hash>,
     CClient: HeaderBackend<CBlock>
         + HeaderMetadata<CBlock, Error = sp_blockchain::Error>
         + BlockBackend<CBlock>
+        + ProofProvider<CBlock>
         + ProvideRuntimeApi<CBlock>
         + BlockchainEvents<CBlock>
         + Send
         + Sync
         + 'static,
     CClient::Api: DomainsApi<CBlock, BlockNumber, Hash>
+        + RelayerApi<CBlock, NumberFor<CBlock>>
         + BundleProducerElectionApi<CBlock, subspace_runtime_primitives::Balance>,
     SC: SelectChain<CBlock>,
     IBNS: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Send + 'static,
@@ -348,6 +350,7 @@ where
         select_chain,
         operator_streams,
         gossip_message_sink,
+        domain_message_receiver,
         provider,
     } = domain_params;
 
@@ -472,9 +475,8 @@ where
     .await?;
 
     if is_authority {
-        tracing::info!(?domain_id, "Starting domain relayer");
-        // TODO: will be replaced with domain version once consensus chain has Relayer api
-        let relayer_worker = domain_client_message_relayer::worker::relay_consensus_chain_messages(
+        let relayer_worker = domain_client_message_relayer::worker::relay_domain_messages(
+            consensus_client.clone(),
             client.clone(),
             sync_service.clone(),
             gossip_message_sink,
@@ -483,14 +485,12 @@ where
         spawn_essential.spawn_essential_blocking("domain-relayer", None, Box::pin(relayer_worker));
     }
 
-    let (msg_sender, msg_receiver) = tracing_unbounded("domain_message_channel", 100);
-
     // Start cross domain message listener for domain
-    let domain_listener = cross_domain_message_gossip::start_domain_message_listener(
-        domain_id,
+    let domain_listener = cross_domain_message_gossip::start_cross_chain_message_listener(
+        ChainId::Domain(domain_id),
         client.clone(),
         params.transaction_pool.clone(),
-        msg_receiver,
+        domain_message_receiver,
     );
 
     spawn_essential.spawn_essential_blocking(
@@ -509,7 +509,6 @@ where
         rpc_handlers,
         network_starter,
         operator,
-        tx_pool_sink: msg_sender,
         _phantom_data: Default::default(),
     };
 
