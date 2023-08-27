@@ -90,11 +90,13 @@ use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::{SelectChain, SyncOracle};
 use sp_consensus_slots::Slot;
+use sp_domain_digests::AsPredigest;
 use sp_domains::{Bundle, DomainId, ExecutionReceipt};
 use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{
     Block as BlockT, HashFor, Header as HeaderT, NumberFor, One, Saturating, Zero,
 };
+use sp_runtime::DigestItem;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::Randomness;
@@ -240,56 +242,41 @@ where
     Ok(leaves.into_iter().rev().take(MAX_ACTIVE_LEAVES).collect())
 }
 
-pub(crate) fn load_execution_receipt_by_domain_hash<Block, CBlock, Client, CClient>(
+pub(crate) fn load_execution_receipt_by_domain_hash<Block, CBlock, Client>(
     domain_client: &Client,
-    consensus_client: &Arc<CClient>,
     domain_hash: Block::Hash,
     domain_number: NumberFor<Block>,
 ) -> Result<ExecutionReceiptFor<Block, CBlock>, sp_blockchain::Error>
 where
     Block: BlockT,
     CBlock: BlockT,
-    Client: AuxStore,
-    CClient: HeaderBackend<CBlock>,
+    Client: AuxStore + HeaderBackend<Block>,
 {
-    let not_found_error = || {
+    let domain_header = domain_client.header(domain_hash)?.ok_or_else(|| {
         sp_blockchain::Error::Backend(format!(
-            "Receipt for domain block {domain_hash}#{domain_number} not found"
+            "Header for domain block {domain_hash}#{domain_number} not found"
         ))
-    };
+    })?;
 
-    // Get all the consensus blocks that mapped to `domain_hash`
-    let consensus_block_hashes = crate::aux_schema::consensus_block_hash_for::<_, _, CBlock::Hash>(
-        domain_client,
-        domain_hash,
-    )?;
-
-    // Get the consensus block that is in the current canonical consensus chain
-    let consensus_block_hash = match consensus_block_hashes.len() {
-        0 => return Err(not_found_error()),
-        1 => consensus_block_hashes[0],
-        _ => {
-            let mut canonical_consensus_hash = None;
-            for hash in consensus_block_hashes {
-                // Check if `hash` is in the canonical chain
-                let block_number = consensus_client.number(hash)?.ok_or_else(not_found_error)?;
-                let canonical_block_hash = consensus_client
-                    .hash(block_number)?
-                    .ok_or_else(not_found_error)?;
-
-                if canonical_block_hash == hash {
-                    canonical_consensus_hash.replace(hash);
-                    break;
-                }
-            }
-            canonical_consensus_hash.ok_or_else(not_found_error)?
-        }
-    };
+    let consensus_block_hash = domain_header
+        .digest()
+        .convert_first(DigestItem::as_consensus_block_info)
+        .ok_or_else(|| {
+            sp_blockchain::Error::Application(Box::from(
+                "Domain block header {domain_hash}#{domain_number} missing the consensus \
+                    block info predigest, this should not happen",
+            ))
+        })?;
 
     // Get receipt by consensus block hash
     crate::aux_schema::load_execution_receipt::<_, Block, CBlock>(
         domain_client,
         consensus_block_hash,
     )?
-    .ok_or_else(not_found_error)
+    .ok_or_else(|| {
+        sp_blockchain::Error::Backend(format!(
+            "Receipt for consensus block {consensus_block_hash} and domain block \
+                {domain_hash}#{domain_number} not found"
+        ))
+    })
 }
