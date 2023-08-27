@@ -959,7 +959,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
 
     let digest = {
         Digest {
-            logs: vec![DigestItem::primary_block_info((
+            logs: vec![DigestItem::consensus_block_info((
                 bad_receipt_number,
                 ferdie.client.hash(bad_receipt_number).unwrap().unwrap(),
             ))],
