@@ -908,19 +908,18 @@ mod pallet {
             domain_config: DomainConfig,
             raw_genesis: Vec<u8>,
         ) -> DispatchResult {
-            let who = if raw_genesis.is_empty() {
-                ensure_signed(origin)?
+            let (who, raw_genesis) = if raw_genesis.is_empty() {
+                (ensure_signed(origin)?, None)
             } else {
                 // TODO: remove once XDM is finished
                 ensure_root(origin)?;
-                T::SudoId::get()
+                (T::SudoId::get(), Some(raw_genesis))
             };
 
             let created_at = frame_system::Pallet::<T>::current_block_number();
 
-            let domain_id =
-                do_instantiate_domain::<T>(domain_config, who, created_at, Some(raw_genesis))
-                    .map_err(Error::<T>::from)?;
+            let domain_id = do_instantiate_domain::<T>(domain_config, who, created_at, raw_genesis)
+                .map_err(Error::<T>::from)?;
 
             Self::deposit_event(Event::DomainInstantiated { domain_id });
 
