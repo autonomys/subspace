@@ -52,6 +52,8 @@ use sp_application_crypto::UncheckedFrom;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::{BlockOrigin, Error as ConsensusError};
 use sp_consensus_slots::Slot;
+#[cfg(feature = "pot")]
+use sp_consensus_subspace::digests::PreDigestPotInfo;
 use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
 use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::traits::SpawnEssentialNamed;
@@ -66,6 +68,8 @@ use sp_runtime::{DigestItem, OpaqueExtrinsic};
 use sp_timestamp::Timestamp;
 use std::error::Error;
 use std::marker::PhantomData;
+#[cfg(feature = "pot")]
+use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::time;
 use subspace_core_primitives::{Randomness, Solution};
@@ -600,9 +604,11 @@ impl MockConsensusNode {
             slot,
             solution: self.mock_solution.clone(),
             #[cfg(feature = "pot")]
-            proof_of_time: Default::default(),
-            #[cfg(feature = "pot")]
-            future_proof_of_time: Default::default(),
+            pot_info: PreDigestPotInfo::Regular {
+                iterations: NonZeroU32::MIN,
+                proof_of_time: Default::default(),
+                future_proof_of_time: Default::default(),
+            },
         };
         let mut digest = Digest::default();
         digest.push(DigestItem::subspace_pre_digest(&pre_digest));

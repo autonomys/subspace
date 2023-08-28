@@ -27,6 +27,8 @@ use sp_runtime::DigestItem;
 use sp_std::collections::btree_map::{BTreeMap, Entry};
 use sp_std::fmt;
 #[cfg(feature = "pot")]
+use sp_std::num::NonZeroU32;
+#[cfg(feature = "pot")]
 use subspace_core_primitives::PotProof;
 #[cfg(not(feature = "pot"))]
 use subspace_core_primitives::Randomness;
@@ -45,12 +47,9 @@ pub enum PreDigest<PublicKey, RewardAddress> {
         slot: Slot,
         /// Solution (includes PoR)
         solution: Solution<PublicKey, RewardAddress>,
-        /// Proof of time for this slot
+        /// Proof of time information
         #[cfg(feature = "pot")]
-        proof_of_time: PotProof,
-        /// Future proof of time
-        #[cfg(feature = "pot")]
-        future_proof_of_time: PotProof,
+        pot_info: PreDigestPotInfo,
     },
 }
 
@@ -61,28 +60,47 @@ impl<PublicKey, RewardAddress> PreDigest<PublicKey, RewardAddress> {
         let Self::V0 { slot, .. } = self;
         *slot
     }
+
     /// Solution (includes PoR)
     #[inline]
     pub fn solution(&self) -> &Solution<PublicKey, RewardAddress> {
         let Self::V0 { solution, .. } = self;
         solution
     }
+
+    /// Proof of time information
+    #[cfg(feature = "pot")]
+    #[inline]
+    pub fn pot_info(&self) -> &PreDigestPotInfo {
+        let Self::V0 { pot_info, .. } = self;
+        pot_info
+    }
+}
+
+/// Proof of time information in pre-digest
+#[cfg(feature = "pot")]
+#[derive(Debug, Clone, Encode, Decode)]
+pub enum PreDigestPotInfo {
+    /// Regular information
+    #[codec(index = 0)]
+    Regular {
+        /// Number of iterations per slot in proof of time
+        iterations: NonZeroU32,
+        /// Proof of time for this slot
+        proof_of_time: PotProof,
+        /// Future proof of time
+        future_proof_of_time: PotProof,
+    },
+}
+
+#[cfg(feature = "pot")]
+impl PreDigestPotInfo {
     /// Proof of time for this slot
     #[cfg(feature = "pot")]
     #[inline]
     pub fn proof_of_time(&self) -> PotProof {
-        let Self::V0 { proof_of_time, .. } = self;
+        let Self::Regular { proof_of_time, .. } = self;
         *proof_of_time
-    }
-    /// Future proof of time
-    #[cfg(feature = "pot")]
-    #[inline]
-    pub fn future_proof_of_time(&self) -> PotProof {
-        let Self::V0 {
-            future_proof_of_time,
-            ..
-        } = self;
-        *future_proof_of_time
     }
 }
 
@@ -636,9 +654,11 @@ where
                 FarmerPublicKey::unchecked_from([0u8; 32]),
             ),
             #[cfg(feature = "pot")]
-            proof_of_time: Default::default(),
-            #[cfg(feature = "pot")]
-            future_proof_of_time: Default::default(),
+            pot_info: PreDigestPotInfo::Regular {
+                iterations: NonZeroU32::MIN,
+                proof_of_time: Default::default(),
+                future_proof_of_time: Default::default(),
+            },
         });
     }
 

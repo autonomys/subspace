@@ -409,7 +409,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
                 #[cfg(not(feature = "pot"))]
                 global_randomness: header_digests.global_randomness,
                 #[cfg(feature = "pot")]
-                proof_of_time: header_digests.pre_digest.proof_of_time(),
+                proof_of_time: header_digests.pre_digest.pot_info().proof_of_time(),
                 solution_range: header_digests.solution_range,
                 piece_check_params: Some(PieceCheckParams {
                     max_pieces_in_sector,

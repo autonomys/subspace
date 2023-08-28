@@ -340,6 +340,7 @@ impl Default for SolutionRanges {
 #[derive(Debug, Encode, Decode, MaxEncodedLen, PartialEq, Eq, Clone, Copy, TypeInfo)]
 pub enum ChainConstants {
     /// V0 of the chain constants.
+    #[codec(index = 0)]
     V0 {
         /// Depth `K` after which a block enters the recorded history.
         confirmation_depth_k: BlockNumber,

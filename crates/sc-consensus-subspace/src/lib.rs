@@ -755,7 +755,7 @@ where
                         #[cfg(not(feature = "pot"))]
                         global_randomness: subspace_digest_items.global_randomness,
                         #[cfg(feature = "pot")]
-                        proof_of_time: pre_digest.proof_of_time(),
+                        proof_of_time: pre_digest.pot_info().proof_of_time(),
                         solution_range: subspace_digest_items.solution_range,
                         piece_check_params: None,
                     },
@@ -1045,7 +1045,7 @@ where
                 #[cfg(not(feature = "pot"))]
                 global_randomness: subspace_digest_items.global_randomness,
                 #[cfg(feature = "pot")]
-                proof_of_time: subspace_digest_items.pre_digest.proof_of_time(),
+                proof_of_time: subspace_digest_items.pre_digest.pot_info().proof_of_time(),
                 solution_range: subspace_digest_items.solution_range,
                 piece_check_params: Some(PieceCheckParams {
                     max_pieces_in_sector,

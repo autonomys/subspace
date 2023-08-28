@@ -1,3 +1,5 @@
+#[cfg(feature = "pot")]
+use crate::digests::PreDigestPotInfo;
 use crate::{
     is_equivocation_proof_valid, CompatibleDigestItem, EquivocationProof, FarmerPublicKey,
     FarmerSignature,
@@ -7,6 +9,8 @@ use sp_consensus_slots::Slot;
 use sp_core::crypto::UncheckedFrom;
 use sp_runtime::traits::BlakeTwo256;
 use sp_runtime::{Digest, DigestItem};
+#[cfg(feature = "pot")]
+use std::num::NonZeroU32;
 use std::num::NonZeroU64;
 use subspace_core_primitives::{HistorySize, PieceOffset, Solution};
 use subspace_solving::REWARD_SIGNING_CONTEXT;
@@ -43,9 +47,11 @@ fn test_is_equivocation_proof_valid() {
                 slot,
                 solution: solution.clone(),
                 #[cfg(feature = "pot")]
-                proof_of_time: Default::default(),
-                #[cfg(feature = "pot")]
-                future_proof_of_time: Default::default(),
+                pot_info: PreDigestPotInfo::Regular {
+                    iterations: NonZeroU32::MIN,
+                    proof_of_time: Default::default(),
+                    future_proof_of_time: Default::default(),
+                },
             })],
         },
     };
@@ -71,9 +77,11 @@ fn test_is_equivocation_proof_valid() {
                 slot,
                 solution,
                 #[cfg(feature = "pot")]
-                proof_of_time: Default::default(),
-                #[cfg(feature = "pot")]
-                future_proof_of_time: Default::default(),
+                pot_info: PreDigestPotInfo::Regular {
+                    iterations: NonZeroU32::MIN,
+                    proof_of_time: Default::default(),
+                    future_proof_of_time: Default::default(),
+                },
             })],
         },
     };

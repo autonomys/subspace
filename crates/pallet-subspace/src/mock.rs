@@ -28,6 +28,8 @@ use futures::executor::block_on;
 use rand::Rng;
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
+#[cfg(feature = "pot")]
+use sp_consensus_subspace::digests::PreDigestPotInfo;
 use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
 use sp_consensus_subspace::{FarmerSignature, KzgExtension, PosExtension, SignedVote, Vote};
 use sp_core::crypto::UncheckedFrom;
@@ -264,9 +266,11 @@ pub fn make_pre_digest(
         slot,
         solution,
         #[cfg(feature = "pot")]
-        proof_of_time: Default::default(),
-        #[cfg(feature = "pot")]
-        future_proof_of_time: Default::default(),
+        pot_info: PreDigestPotInfo::Regular {
+            iterations: NonZeroU32::new(100_000).unwrap(),
+            proof_of_time: Default::default(),
+            future_proof_of_time: Default::default(),
+        },
     });
     Digest { logs: vec![log] }
 }

@@ -40,6 +40,8 @@ use sp_api::{ApiError, NumberFor, ProvideRuntimeApi, TransactionFor};
 use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata};
 use sp_consensus::{BlockOrigin, Environment, Error as ConsensusError, Proposer, SyncOracle};
 use sp_consensus_slots::Slot;
+#[cfg(feature = "pot")]
+use sp_consensus_subspace::digests::PreDigestPotInfo;
 use sp_consensus_subspace::digests::{extract_pre_digest, CompatibleDigestItem, PreDigest};
 #[cfg(feature = "pot")]
 use sp_consensus_subspace::SubspaceJustification;
@@ -52,6 +54,8 @@ use sp_runtime::DigestItem;
 use std::collections::BTreeMap;
 use std::future::Future;
 use std::marker::PhantomData;
+#[cfg(feature = "pot")]
+use std::num::NonZeroU32;
 use std::pin::Pin;
 use std::sync::Arc;
 #[cfg(feature = "pot")]
@@ -468,9 +472,12 @@ where
                             slot,
                             solution,
                             #[cfg(feature = "pot")]
-                            proof_of_time,
-                            #[cfg(feature = "pot")]
-                            future_proof_of_time,
+                            pot_info: PreDigestPotInfo::Regular {
+                                // TODO: Replace with correct value from runtime state
+                                iterations: NonZeroU32::MIN,
+                                proof_of_time,
+                                future_proof_of_time,
+                            },
                         });
                     } else if !parent_header.number().is_zero() {
                         // Not sending vote on top of genesis block since segment headers since piece
