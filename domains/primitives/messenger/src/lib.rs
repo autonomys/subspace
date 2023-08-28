@@ -21,12 +21,12 @@ pub mod endpoint;
 pub mod messages;
 pub mod verification;
 
+use crate::messages::BlockInfo;
 use codec::{Decode, Encode};
 use messages::{
     BlockMessagesWithStorageKey, ChainId, CrossDomainMessage, ExtractedStateRootsFromProof,
     MessageId,
 };
-
 use sp_domains::DomainId;
 use sp_std::vec::Vec;
 
@@ -50,12 +50,6 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the confirmation depth to relay message.
         fn relay_confirmation_depth() -> BlockNumber;
-
-        /// Returns the current best number of the domain.
-        fn domain_best_number(domain_id: DomainId) -> Option<BlockNumber>;
-
-        /// Returns the chain state root at the given block.
-        fn domain_state_root(domain_id: DomainId, number: BlockNumber, hash: Block::Hash) -> Option<Block::Hash>;
 
         /// Returns all the outbox and inbox responses to deliver.
         /// Storage key is used to generate the storage proof for the message.
@@ -84,6 +78,10 @@ sp_api::decl_runtime_apis! {
             extrinsic: Vec<u8>
         ) -> Option<ExtractedStateRootsFromProof<BlockNumber, Block::Hash, Block::Hash>>;
 
-        fn confirmation_depth() -> BlockNumber;
+        fn is_domain_info_confirmed(
+            domain_id: DomainId,
+            domain_block_info: BlockInfo<BlockNumber, Block::Hash>,
+            domain_state_root: Block::Hash,
+        ) -> bool;
     }
 }

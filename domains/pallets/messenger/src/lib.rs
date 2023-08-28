@@ -104,10 +104,11 @@ mod pallet {
     use frame_support::weights::WeightToFee;
     use frame_system::pallet_prelude::*;
     use sp_core::storage::StorageKey;
+    use sp_domains::DomainId;
     use sp_messenger::endpoint::{DomainInfo, Endpoint, EndpointHandler, EndpointRequest, Sender};
     use sp_messenger::messages::{
-        ChainId, CrossDomainMessage, InitiateChannelParams, Message, MessageId, MessageWeightTag,
-        Payload, ProtocolMessageRequest, RequestResponse, VersionedPayload,
+        BlockInfo, ChainId, CrossDomainMessage, InitiateChannelParams, Message, MessageId,
+        MessageWeightTag, Payload, ProtocolMessageRequest, RequestResponse, VersionedPayload,
     };
     use sp_messenger::verification::{StorageProofVerifier, VerificationError};
     use sp_messenger::OnXDMRewards;
@@ -850,25 +851,10 @@ mod pallet {
                 if let Some((domain_id, block_info, state_root)) =
                     extracted_state_roots.domain_info.clone()
                 {
-                    // ensure the block is at-least k-deep
-                    let confirmed = T::DomainInfo::domain_best_number(domain_id)
-                        .and_then(|best_number| {
-                            best_number
-                                .checked_sub(&T::ConfirmationDepth::get())
-                                .map(|confirmed_number| confirmed_number >= block_info.block_number)
-                        })
-                        .unwrap_or(false);
-                    ensure!(confirmed, InvalidTransaction::BadMandatory);
-
-                    // verify state root of the block
-                    let valid_state_root = T::DomainInfo::domain_state_root(
-                        domain_id,
-                        block_info.block_number,
-                        block_info.block_hash,
+                    ensure!(
+                        Self::is_domain_info_confirmed(domain_id, block_info, state_root),
+                        InvalidTransaction::BadProof
                     )
-                    .map(|got_state_root| got_state_root == state_root)
-                    .unwrap_or(false);
-                    ensure!(valid_state_root, InvalidTransaction::BadMandatory)
                 }
             }
 
@@ -891,6 +877,32 @@ mod pallet {
             })?;
 
             Ok(msg)
+        }
+
+        pub fn is_domain_info_confirmed(
+            domain_id: DomainId,
+            domain_block_info: BlockInfo<T::BlockNumber, T::Hash>,
+            domain_state_root: T::Hash,
+        ) -> bool {
+            // ensure the block is at-least k-deep
+            let confirmed = T::DomainInfo::domain_best_number(domain_id)
+                .and_then(|best_number| {
+                    best_number
+                        .checked_sub(&T::ConfirmationDepth::get())
+                        .map(|confirmed_number| confirmed_number >= domain_block_info.block_number)
+                })
+                .unwrap_or(false);
+
+            // verify state root of the block
+            let valid_state_root = T::DomainInfo::domain_state_root(
+                domain_id,
+                domain_block_info.block_number,
+                domain_block_info.block_hash,
+            )
+            .map(|got_state_root| got_state_root == domain_state_root)
+            .unwrap_or(false);
+
+            confirmed && valid_state_root
         }
     }
 }

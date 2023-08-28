@@ -9,6 +9,7 @@ use sc_client_api::{AuxStore, HeaderBackend, ProofProvider, StorageProof};
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::scale_info::TypeInfo;
 use sp_api::ProvideRuntimeApi;
+use sp_domains::DomainsApi;
 use sp_messenger::messages::{
     BlockInfo, BlockMessageWithStorageKey, BlockMessagesWithStorageKey, ChainId,
     CrossDomainMessage, DomainStateRootStorage, Proof,
@@ -265,16 +266,16 @@ where
         consensus_chain_client: &Arc<CCC>,
         confirmed_block_hash: Block::Hash,
         gossip_message_sink: &GossipMessageSink,
-        relay_confirmation_depth: NumberFor<CCBlock>,
+        relay_confirmation_depth: NumberFor<Block>,
     ) -> Result<(), Error>
     where
         CCBlock: BlockT,
         Block::Hash: FullCodec,
         NumberFor<Block>: FullCodec + TypeInfo,
-        NumberFor<CCBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
-        CCBlock::Hash: Into<Block::Hash> + From<Block::Hash>,
+        NumberFor<CCBlock>: Into<NumberFor<Block>>,
+        CCBlock::Hash: Into<Block::Hash>,
         CCC: HeaderBackend<CCBlock> + ProvideRuntimeApi<CCBlock> + ProofProvider<CCBlock>,
-        CCC::Api: RelayerApi<CCBlock, NumberFor<CCBlock>>,
+        CCC::Api: DomainsApi<CCBlock, NumberFor<Block>, Block::Hash>,
     {
         let chain_id = Self::chain_id(domain_client)?;
         let ChainId::Domain(domain_id) = chain_id else {
@@ -293,9 +294,7 @@ where
             .map(
                 |best_number| match best_number.checked_sub(&relay_confirmation_depth) {
                     None => false,
-                    Some(best_confirmed) => {
-                        best_confirmed >= (*domain_block_header.number()).into()
-                    }
+                    Some(best_confirmed) => best_confirmed >= (*domain_block_header.number()),
                 },
             )
             .unwrap_or(false)
@@ -309,10 +308,10 @@ where
             .domain_state_root(
                 best_consensus_chain_hash,
                 domain_id,
-                domain_number.into(),
-                confirmed_block_hash.into(),
+                domain_number,
+                confirmed_block_hash,
             )?
-            .map(|state_root| state_root == (*domain_block_header.state_root()).into())
+            .map(|state_root| state_root == (*domain_block_header.state_root()))
             .unwrap_or_else(|| {
                 // if this is genesis block, ignore as state root of genesis for domain is not tracked on runtime
                 domain_number.is_zero()

@@ -87,6 +87,7 @@ where
         + Sync
         + 'static,
     CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>
+        + MessengerApi<CBlock, NumberFor<CBlock>>
         + BundleProducerElectionApi<CBlock, Balance>,
     Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,

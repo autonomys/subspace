@@ -1,5 +1,5 @@
 use domain_client_block_preprocessor::runtime_api::StateRootExtractor;
-use domain_client_block_preprocessor::xdm_verifier::verify_xdm;
+use domain_client_block_preprocessor::xdm_verifier::is_valid_xdm;
 use sc_transaction_pool::error::Result as TxPoolResult;
 use sc_transaction_pool_api::error::Error as TxPoolError;
 use sc_transaction_pool_api::TransactionSource;
@@ -7,6 +7,7 @@ use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::SpawnNamed;
 use sp_domains::{DomainId, DomainsApi};
+use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -69,7 +70,8 @@ where
     NumberFor<CBlock>: From<NumberFor<Block>>,
     Client: ProvideRuntimeApi<Block> + Send + Sync,
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock> + 'static,
-    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
+    CClient::Api:
+        DomainsApi<CBlock, NumberFor<Block>, Block::Hash> + MessengerApi<CBlock, NumberFor<CBlock>>,
     SRE: StateRootExtractor<Block> + Send + Sync,
 {
     type Block = Block;
@@ -79,7 +81,7 @@ where
         _source: TransactionSource,
         uxt: Block::Extrinsic,
     ) -> TxPoolResult<()> {
-        if !verify_xdm::<CClient, CBlock, Block, SRE>(
+        if !is_valid_xdm::<CClient, CBlock, Block, SRE>(
             &self.consensus_client,
             at,
             &self.state_root_extractor,

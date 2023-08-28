@@ -19,6 +19,16 @@ pub trait StateRootExtractor<Block: BlockT> {
     ) -> Result<ExtractedStateRoots<Block>, ApiError>;
 }
 
+/// Trait to verify XDM.
+pub trait XDMVerifier<Block: BlockT> {
+    /// Extracts the state roots from the extrinsic.
+    fn verify_xdm(
+        &self,
+        at: Block::Hash,
+        ext: &Block::Extrinsic,
+    ) -> Result<ExtractedStateRoots<Block>, ApiError>;
+}
+
 /// Trait to construct inherent extrinsics
 pub trait InherentExtrinsicConstructor<Block: BlockT> {
     /// Returns Inherent timestamp extrinsic if the Runtime implements the API.

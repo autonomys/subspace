@@ -771,6 +771,12 @@ sp_api::decl_runtime_apis! {
 
         /// Returns true if there are any ERs in the challenge period with non empty extrinsics.
         fn non_empty_er_exists(domain_id: DomainId) -> bool;
+
+        /// Returns the current best number of the domain.
+        fn domain_best_number(domain_id: DomainId) -> Option<DomainNumber>;
+
+        /// Returns the chain state root at the given block.
+        fn domain_state_root(domain_id: DomainId, number: DomainNumber, hash: DomainHash) -> Option<DomainHash>;
     }
 
     pub trait BundleProducerElectionApi<Balance: Encode + Decode> {

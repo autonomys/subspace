@@ -38,8 +38,8 @@ use sp_core::{Get, OpaqueMetadata, H160, H256, U256};
 use sp_domains::DomainId;
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
-    BlockMessagesWithStorageKey, ChainId, CrossDomainMessage, ExtractedStateRootsFromProof,
-    MessageId,
+    BlockInfo, BlockMessagesWithStorageKey, ChainId, CrossDomainMessage,
+    ExtractedStateRootsFromProof, MessageId,
 };
 use sp_runtime::traits::{
     BlakeTwo256, Block as BlockT, Convert, DispatchInfoOf, Dispatchable, IdentifyAccount,
@@ -910,8 +910,13 @@ impl_runtime_apis! {
             extract_xdm_proof_state_roots(extrinsic)
         }
 
-        fn confirmation_depth() -> BlockNumber {
-            RelayConfirmationDepth::get()
+        fn is_domain_info_confirmed(
+            _domain_id: DomainId,
+            _domain_block_info: BlockInfo<BlockNumber, <Block as BlockT>::Hash>,
+            _domain_state_root: <Block as BlockT>::Hash,
+        ) -> bool{
+            // not valid on evm domain
+            false
         }
     }
 
@@ -922,14 +927,6 @@ impl_runtime_apis! {
 
         fn relay_confirmation_depth() -> BlockNumber {
             RelayConfirmationDepth::get()
-        }
-
-        fn domain_best_number(_: DomainId) -> Option<BlockNumber> {
-            None
-        }
-
-        fn domain_state_root(_: DomainId, _: BlockNumber, _: Hash) -> Option<Hash>{
-            None
         }
 
         fn block_messages() -> BlockMessagesWithStorageKey {

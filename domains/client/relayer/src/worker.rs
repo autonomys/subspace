@@ -66,8 +66,8 @@ pub async fn relay_domain_messages<CCC, DC, CCBlock, Block, SO>(
     CCBlock: BlockT,
     Block::Hash: FullCodec,
     NumberFor<Block>: FullCodec + TypeInfo,
-    NumberFor<CCBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
-    CCBlock::Hash: Into<Block::Hash> + From<Block::Hash>,
+    NumberFor<CCBlock>: Into<NumberFor<Block>>,
+    CCBlock::Hash: Into<Block::Hash>,
     DC: BlockchainEvents<Block>
         + HeaderBackend<Block>
         + AuxStore
@@ -75,8 +75,7 @@ pub async fn relay_domain_messages<CCC, DC, CCBlock, Block, SO>(
         + ProvideRuntimeApi<Block>,
     DC::Api: RelayerApi<Block, NumberFor<Block>>,
     CCC: HeaderBackend<CCBlock> + ProvideRuntimeApi<CCBlock> + ProofProvider<CCBlock>,
-    CCC::Api: RelayerApi<CCBlock, NumberFor<CCBlock>>
-        + DomainsApi<CCBlock, NumberFor<Block>, Block::Hash>,
+    CCC::Api: DomainsApi<CCBlock, NumberFor<Block>, Block::Hash>,
     SO: SyncOracle + Send,
 {
     let relay_confirmation_depth = match Relayer::relay_confirmation_depth(&domain_client) {
@@ -96,7 +95,7 @@ pub async fn relay_domain_messages<CCC, DC, CCBlock, Block, SO>(
                 &consensus_chain_client,
                 block_hash,
                 &gossip_message_sink,
-                relay_confirmation_depth.into(),
+                relay_confirmation_depth,
             )
         },
         sync_oracle,

@@ -69,7 +69,7 @@ where
         + Send
         + Sync
         + 'static,
-    CClient::Api: DomainsApi<CBlock, BlockNumber, Hash>,
+    CClient::Api: DomainsApi<CBlock, BlockNumber, Hash> + MessengerApi<CBlock, NumberFor<CBlock>>,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>
         + Send
         + Sync
@@ -158,7 +158,7 @@ where
         + Send
         + Sync
         + 'static,
-    CClient::Api: DomainsApi<CBlock, BlockNumber, Hash>,
+    CClient::Api: DomainsApi<CBlock, BlockNumber, Hash> + MessengerApi<CBlock, NumberFor<CBlock>>,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>
         + Send
         + Sync
@@ -295,6 +295,7 @@ where
         + 'static,
     CClient::Api: DomainsApi<CBlock, BlockNumber, Hash>
         + RelayerApi<CBlock, NumberFor<CBlock>>
+        + MessengerApi<CBlock, NumberFor<CBlock>>
         + BundleProducerElectionApi<CBlock, subspace_runtime_primitives::Balance>,
     SC: SelectChain<CBlock>,
     IBNS: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Send + 'static,

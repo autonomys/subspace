@@ -61,8 +61,8 @@ use sp_domains::{
 };
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
-    BlockMessagesWithStorageKey, ChainId, CrossDomainMessage, ExtractedStateRootsFromProof,
-    MessageId,
+    BlockInfo, BlockMessagesWithStorageKey, ChainId, CrossDomainMessage,
+    ExtractedStateRootsFromProof, MessageId,
 };
 use sp_runtime::traits::{
     AccountIdConversion, AccountIdLookup, BlakeTwo256, Convert, DispatchInfoOf, NumberFor,
@@ -1369,6 +1369,14 @@ impl_runtime_apis! {
         fn non_empty_er_exists(domain_id: DomainId) -> bool {
             Domains::non_empty_er_exists(domain_id)
         }
+
+        fn domain_best_number(domain_id: DomainId) -> Option<DomainNumber> {
+            Domains::domain_best_number(domain_id)
+        }
+
+        fn domain_state_root(domain_id: DomainId, number: DomainNumber, hash: DomainHash) -> Option<DomainHash>{
+            Domains::domain_state_root(domain_id, number, hash)
+        }
     }
 
     impl sp_domains::BundleProducerElectionApi<Block, Balance> for Runtime {
@@ -1427,8 +1435,12 @@ impl_runtime_apis! {
             extract_xdm_proof_state_roots(extrinsic)
         }
 
-        fn confirmation_depth() -> BlockNumber {
-            RelayConfirmationDepth::get()
+        fn is_domain_info_confirmed(
+            domain_id: DomainId,
+            domain_block_info: BlockInfo<BlockNumber, <Block as BlockT>::Hash>,
+            domain_state_root: <Block as BlockT>::Hash,
+        ) -> bool{
+            Messenger::is_domain_info_confirmed(domain_id, domain_block_info, domain_state_root)
         }
     }
 
@@ -1439,14 +1451,6 @@ impl_runtime_apis! {
 
         fn relay_confirmation_depth() -> BlockNumber {
             RelayConfirmationDepth::get()
-        }
-
-        fn domain_best_number(domain_id: DomainId) -> Option<BlockNumber> {
-            Domains::domain_best_number(domain_id)
-        }
-
-        fn domain_state_root(domain_id: DomainId, number: BlockNumber, hash: Hash) -> Option<Hash>{
-            Domains::domain_state_root(domain_id, number, hash)
         }
 
         fn block_messages() -> BlockMessagesWithStorageKey {
