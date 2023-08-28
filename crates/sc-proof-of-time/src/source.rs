@@ -11,7 +11,7 @@ use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::thread;
-use subspace_core_primitives::{PotCheckpoints, PotKey, PotSeed, SlotNumber};
+use subspace_core_primitives::{BlockHash, PotCheckpoints, PotKey, PotSeed, SlotNumber};
 use subspace_proof_of_time::PotError;
 use tracing::{debug, error};
 
@@ -51,6 +51,7 @@ pub struct PotSource<Block, Client> {
 impl<Block, Client> PotSource<Block, Client>
 where
     Block: BlockT,
+    BlockHash: From<Block::Hash>,
     Client: ProvideRuntimeApi<Block> + HeaderBackend<Block>,
     Client::Api: SubspaceRuntimeApi<Block, FarmerPublicKey>,
 {
@@ -63,12 +64,13 @@ where
             is_timekeeper: _,
             initial_key,
         } = config;
+        let info = client.info();
         // TODO: All 3 are incorrect and should be able to continue after node restart
         let start_slot = SlotNumber::MIN;
-        let start_seed = PotSeed::default();
+        let start_seed = PotSeed::from_genesis_block_hash(BlockHash::from(info.genesis_hash));
         let start_key = initial_key;
         #[cfg(feature = "pot")]
-        let best_hash = client.info().best_hash;
+        let best_hash = info.best_hash;
         #[cfg(feature = "pot")]
         let runtime_api = client.runtime_api();
         #[cfg(feature = "pot")]
