@@ -232,22 +232,42 @@ where
     AS: AuxStore + Send + Sync + 'static,
 {
     /// Creates a new instance of the `SubspaceRpc` handler.
+    #[cfg(feature = "pot")]
     pub fn new(config: SubspaceRpcConfig<Client, SO, AS>) -> Result<Self, ApiError> {
-        #[cfg(feature = "pot")]
         let best_hash = config.client.info().best_hash;
-        #[cfg(feature = "pot")]
         let runtime_api = config.client.runtime_api();
-        #[cfg(feature = "pot")]
         let chain_constants = runtime_api.chain_constants(best_hash)?;
-        #[cfg(feature = "pot")]
         let block_authoring_delay = u64::from(chain_constants.block_authoring_delay());
-        #[cfg(feature = "pot")]
         let block_authoring_delay = usize::try_from(block_authoring_delay)
             .expect("Block authoring delay will never exceed usize on any platform; qed");
-        #[cfg(feature = "pot")]
         let solution_response_senders_capacity =
             NonZeroUsize::try_from(block_authoring_delay).unwrap_or(NonZeroUsize::MIN);
-        #[cfg(not(feature = "pot"))]
+
+        Ok(Self {
+            client: config.client,
+            subscription_executor: config.subscription_executor,
+            new_slot_notification_stream: config.new_slot_notification_stream,
+            reward_signing_notification_stream: config.reward_signing_notification_stream,
+            archived_segment_notification_stream: config.archived_segment_notification_stream,
+            solution_response_senders: Arc::new(Mutex::new(LruCache::new(
+                solution_response_senders_capacity,
+            ))),
+            reward_signature_senders: Arc::default(),
+            dsn_bootstrap_nodes: config.dsn_bootstrap_nodes,
+            segment_headers_store: config.segment_headers_store,
+            cached_archived_segment: Arc::default(),
+            archived_segment_acknowledgement_senders: Arc::default(),
+            next_subscription_id: AtomicU64::default(),
+            sync_oracle: config.sync_oracle,
+            kzg: config.kzg,
+            deny_unsafe: config.deny_unsafe,
+            _block: PhantomData,
+        })
+    }
+
+    /// Creates a new instance of the `SubspaceRpc` handler.
+    #[cfg(not(feature = "pot"))]
+    pub fn new(config: SubspaceRpcConfig<Client, SO, AS>) -> Result<Self, ApiError> {
         let solution_response_senders_capacity = NonZeroUsize::MIN;
 
         Ok(Self {
