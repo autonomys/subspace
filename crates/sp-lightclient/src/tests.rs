@@ -29,7 +29,7 @@ use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::PotCheckpoint;
 use subspace_core_primitives::{
     BlockWeight, HistorySize, PublicKey, Randomness, Record, RecordedHistorySegment,
-    SegmentCommitment, SegmentIndex, Solution, SolutionRange,
+    SegmentCommitment, SegmentIndex, SlotNumber, Solution, SolutionRange,
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector;
@@ -254,7 +254,7 @@ fn valid_header(
         let solution_range = solution_distance * 2;
         let block_weight = calculate_block_weight(solution_range);
 
-        let pre_digest = PreDigest {
+        let pre_digest = PreDigest::V0 {
             slot: slot.into(),
             solution,
             #[cfg(feature = "pot")]
@@ -367,7 +367,7 @@ fn add_next_digests(store: &MockStorage, number: NumberOf<Header>, header: &mut 
             number,
             era_duration: constants.era_duration,
             slot_probability: constants.slot_probability,
-            current_slot: digests.pre_digest.slot,
+            current_slot: digests.pre_digest.slot(),
             current_solution_range: digests.solution_range,
             era_start_slot: parent_header.era_start_slot,
             should_adjust_solution_range: true,
@@ -398,13 +398,13 @@ fn add_headers_to_chain(
         let header = importer.store.header(parent_hash).unwrap();
         let digests = extract_pre_digest(&header.header).unwrap();
 
-        (parent_hash, *header.header.number(), digests.slot)
+        (parent_hash, *header.header.number(), digests.slot())
     } else {
         let digests = extract_pre_digest(&best_header_ext.header).unwrap();
         (
             best_header_ext.header.hash(),
             *best_header_ext.header.number(),
-            digests.slot,
+            digests.slot(),
         )
     };
 
@@ -791,7 +791,7 @@ fn test_reorg_to_heavier_smaller_chain() {
             valid_header(ValidHeaderParams {
                 parent_hash: header_at_2.header.hash(),
                 number: 3,
-                slot: next_slot(constants.slot_probability, digests_at_2.pre_digest.slot).into(),
+                slot: next_slot(constants.slot_probability, digests_at_2.pre_digest.slot()).into(),
                 keypair: &keypair,
                 #[cfg(not(feature = "pot"))]
                 global_randomness: digests_at_2.global_randomness,
@@ -853,7 +853,7 @@ fn test_next_global_randomness_digest() {
             valid_header(ValidHeaderParams {
                 parent_hash: header_at_4.header.hash(),
                 number: 5,
-                slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot).into(),
+                slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot()).into(),
                 keypair: &keypair,
                 global_randomness: digests_at_4.global_randomness,
                 farmer_parameters: &farmer_parameters,
@@ -880,7 +880,7 @@ fn test_next_global_randomness_digest() {
         // add next global randomness
         remove_seal(&mut header);
         let pre_digest = extract_pre_digest(&header).unwrap();
-        let randomness = derive_randomness(&pre_digest.solution, pre_digest.slot.into());
+        let randomness = derive_randomness(pre_digest.solution(), pre_digest.slot().into());
         let digests = header.digest_mut();
         digests.push(DigestItem::next_global_randomness(randomness));
         seal_header(&keypair, &mut header);
@@ -920,7 +920,7 @@ fn test_next_solution_range_digest_with_adjustment_enabled() {
             valid_header(ValidHeaderParams {
                 parent_hash: header_at_4.header.hash(),
                 number: 5,
-                slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot).into(),
+                slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot()).into(),
                 keypair: &keypair,
                 global_randomness: digests_at_4.global_randomness,
                 farmer_parameters: &farmer_parameters,
@@ -948,8 +948,8 @@ fn test_next_solution_range_digest_with_adjustment_enabled() {
         // add next solution range
         remove_seal(&mut header);
         let next_solution_range = subspace_verification::derive_next_solution_range(
-            u64::from(header_at_4.era_start_slot),
-            u64::from(pre_digest.slot),
+            SlotNumber::from(header_at_4.era_start_slot),
+            SlotNumber::from(pre_digest.slot()),
             constants.slot_probability,
             solution_range,
             constants.era_duration,
@@ -993,7 +993,7 @@ fn test_next_solution_range_digest_with_adjustment_disabled() {
             valid_header(ValidHeaderParams {
                 parent_hash: header_at_4.header.hash(),
                 number: 5,
-                slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot).into(),
+                slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot()).into(),
                 keypair: &keypair,
                 global_randomness: digests_at_4.global_randomness,
                 farmer_parameters: &farmer_parameters,
@@ -1053,7 +1053,7 @@ fn test_enable_solution_range_adjustment_without_override() {
             valid_header(ValidHeaderParams {
                 parent_hash: header_at_4.header.hash(),
                 number: 5,
-                slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot).into(),
+                slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot()).into(),
                 keypair: &keypair,
                 global_randomness: digests_at_4.global_randomness,
                 farmer_parameters: &farmer_parameters,
@@ -1069,8 +1069,8 @@ fn test_enable_solution_range_adjustment_without_override() {
             .override_cumulative_weight(header_at_4.header.hash(), 0);
         let pre_digest = extract_pre_digest(&header).unwrap();
         let next_solution_range = subspace_verification::derive_next_solution_range(
-            u64::from(header_at_4.era_start_slot),
-            u64::from(pre_digest.slot),
+            SlotNumber::from(header_at_4.era_start_slot),
+            SlotNumber::from(pre_digest.slot()),
             constants.slot_probability,
             solution_range,
             constants.era_duration,
@@ -1122,7 +1122,7 @@ fn test_enable_solution_range_adjustment_with_override_between_update_intervals(
             valid_header(ValidHeaderParams {
                 parent_hash: header_at_3.header.hash(),
                 number: 4,
-                slot: next_slot(constants.slot_probability, digests_at_3.pre_digest.slot).into(),
+                slot: next_slot(constants.slot_probability, digests_at_3.pre_digest.slot()).into(),
                 keypair: &keypair,
                 global_randomness: digests_at_3.global_randomness,
                 farmer_parameters: &farmer_parameters,
@@ -1191,7 +1191,7 @@ fn test_enable_solution_range_adjustment_with_override_at_interval_change() {
             valid_header(ValidHeaderParams {
                 parent_hash: header_at_4.header.hash(),
                 number: 5,
-                slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot).into(),
+                slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot()).into(),
                 keypair: &keypair,
                 global_randomness: digests_at_4.global_randomness,
                 farmer_parameters: &farmer_parameters,
@@ -1252,7 +1252,7 @@ fn test_disallow_enable_solution_range_digest_when_solution_range_adjustment_is_
             valid_header(ValidHeaderParams {
                 parent_hash: header_at_4.header.hash(),
                 number: 5,
-                slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot).into(),
+                slot: next_slot(constants.slot_probability, digests_at_4.pre_digest.slot()).into(),
                 keypair: &keypair,
                 global_randomness: digests_at_4.global_randomness,
                 farmer_parameters: &farmer_parameters,

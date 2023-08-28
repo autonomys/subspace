@@ -39,7 +39,7 @@ fn test_is_equivocation_proof_valid() {
         state_root: Default::default(),
         extrinsics_root: Default::default(),
         digest: Digest {
-            logs: vec![DigestItem::subspace_pre_digest(&PreDigest {
+            logs: vec![DigestItem::subspace_pre_digest(&PreDigest::V0 {
                 slot,
                 solution: solution.clone(),
                 #[cfg(feature = "pot")]
@@ -67,7 +67,7 @@ fn test_is_equivocation_proof_valid() {
         state_root: Default::default(),
         extrinsics_root: Default::default(),
         digest: Digest {
-            logs: vec![DigestItem::subspace_pre_digest(&PreDigest {
+            logs: vec![DigestItem::subspace_pre_digest(&PreDigest::V0 {
                 slot,
                 solution,
                 #[cfg(feature = "pot")]

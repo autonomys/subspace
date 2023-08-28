@@ -260,7 +260,7 @@ pub fn make_pre_digest(
     slot: Slot,
     solution: Solution<FarmerPublicKey, <Test as frame_system::Config>::AccountId>,
 ) -> Digest {
-    let log = DigestItem::subspace_pre_digest(&PreDigest {
+    let log = DigestItem::subspace_pre_digest(&PreDigest::V0 {
         slot,
         solution,
         #[cfg(feature = "pot")]

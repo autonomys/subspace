@@ -279,17 +279,17 @@ where
 
     // both headers must be targeting the same slot and it must
     // be the same as the one in the proof.
-    if !(proof.slot == first_pre_digest.slot && proof.slot == second_pre_digest.slot) {
+    if !(proof.slot == first_pre_digest.slot() && proof.slot == second_pre_digest.slot()) {
         return false;
     }
 
     // both headers must have the same sector index
-    if first_pre_digest.solution.sector_index != second_pre_digest.solution.sector_index {
+    if first_pre_digest.solution().sector_index != second_pre_digest.solution().sector_index {
         return false;
     }
 
     // both headers must have been authored by the same farmer
-    if first_pre_digest.solution.public_key != second_pre_digest.solution.public_key {
+    if first_pre_digest.solution().public_key != second_pre_digest.solution().public_key {
         return false;
     }
 
@@ -761,7 +761,7 @@ where
         None => find_pre_digest::<Header, RewardAddress>(&header)
             .ok_or(VerificationError::NoPreRuntimeDigest)?,
     };
-    let slot = pre_digest.slot;
+    let slot = pre_digest.slot();
 
     let seal = header
         .digest_mut()
@@ -775,16 +775,16 @@ where
     // The pre-hash of the header doesn't include the seal and that's what we sign
     let pre_hash = header.hash();
 
-    if pre_digest.slot > slot_now {
+    if pre_digest.slot() > slot_now {
         header.digest_mut().push(seal);
-        return Ok(CheckedHeader::Deferred(header, pre_digest.slot));
+        return Ok(CheckedHeader::Deferred(header, pre_digest.slot()));
     }
 
     // Verify that block is signed properly
     if check_reward_signature(
         pre_hash.as_ref(),
         &RewardSignature::from(&signature),
-        &PublicKey::from(&pre_digest.solution.public_key),
+        &PublicKey::from(&pre_digest.solution().public_key),
         reward_signing_context,
     )
     .is_err()
@@ -794,7 +794,7 @@ where
 
     // Verify that solution is valid
     verify_solution::<PosTable, _, _>(
-        &pre_digest.solution,
+        pre_digest.solution(),
         slot.into(),
         verify_solution_params,
         kzg,

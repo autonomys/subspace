@@ -37,17 +37,53 @@ use subspace_verification::derive_randomness;
 /// A Subspace pre-runtime digest. This contains all data required to validate a block and for the
 /// Subspace runtime module.
 #[derive(Debug, Clone, Encode, Decode)]
-pub struct PreDigest<PublicKey, RewardAddress> {
+pub enum PreDigest<PublicKey, RewardAddress> {
+    /// Initial version of the pre-digest
+    #[codec(index = 0)]
+    V0 {
+        /// Slot
+        slot: Slot,
+        /// Solution (includes PoR)
+        solution: Solution<PublicKey, RewardAddress>,
+        /// Proof of time for this slot
+        #[cfg(feature = "pot")]
+        proof_of_time: PotCheckpoint,
+        /// Future proof of time
+        #[cfg(feature = "pot")]
+        future_proof_of_time: PotCheckpoint,
+    },
+}
+
+impl<PublicKey, RewardAddress> PreDigest<PublicKey, RewardAddress> {
     /// Slot
-    pub slot: Slot,
+    #[inline]
+    pub fn slot(&self) -> Slot {
+        let Self::V0 { slot, .. } = self;
+        *slot
+    }
     /// Solution (includes PoR)
-    pub solution: Solution<PublicKey, RewardAddress>,
+    #[inline]
+    pub fn solution(&self) -> &Solution<PublicKey, RewardAddress> {
+        let Self::V0 { solution, .. } = self;
+        solution
+    }
     /// Proof of time for this slot
     #[cfg(feature = "pot")]
-    pub proof_of_time: PotCheckpoint,
+    #[inline]
+    pub fn proof_of_time(&self) -> PotCheckpoint {
+        let Self::V0 { proof_of_time, .. } = self;
+        *proof_of_time
+    }
     /// Future proof of time
     #[cfg(feature = "pot")]
-    pub future_proof_of_time: PotCheckpoint,
+    #[inline]
+    pub fn future_proof_of_time(&self) -> PotCheckpoint {
+        let Self::V0 {
+            future_proof_of_time,
+            ..
+        } = self;
+        *future_proof_of_time
+    }
 }
 
 /// A digest item which is usable with Subspace consensus.
@@ -593,7 +629,7 @@ where
     // genesis block doesn't contain a pre digest so let's generate a
     // dummy one to not break any invariants in the rest of the code
     if header.number().is_zero() {
-        return Ok(PreDigest {
+        return Ok(PreDigest::V0 {
             slot: Slot::from(0),
             solution: Solution::genesis_solution(
                 FarmerPublicKey::unchecked_from([0u8; 32]),
@@ -632,8 +668,8 @@ pub fn derive_next_global_randomness<Header: HeaderT>(
     }
 
     Some(derive_randomness(
-        &pre_digest.solution,
-        pre_digest.slot.into(),
+        pre_digest.solution(),
+        pre_digest.slot().into(),
     ))
 }
 
@@ -779,7 +815,7 @@ pub fn verify_next_digests<Header: HeaderT>(
             number,
             era_duration,
             slot_probability,
-            current_slot: header_digests.pre_digest.slot,
+            current_slot: header_digests.pre_digest.slot(),
             current_solution_range: header_digests.solution_range,
             era_start_slot,
             should_adjust_solution_range: *should_adjust_solution_range,
@@ -801,7 +837,7 @@ pub fn verify_next_digests<Header: HeaderT>(
             Some(updated_root_plot_public_key) => {
                 if number.is_one()
                     && root_plot_public_key.is_none()
-                    && &header_digests.pre_digest.solution.public_key
+                    && &header_digests.pre_digest.solution().public_key
                         == updated_root_plot_public_key
                 {
                     root_plot_public_key.replace(updated_root_plot_public_key.clone());

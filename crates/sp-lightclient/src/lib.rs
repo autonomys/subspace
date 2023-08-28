@@ -333,9 +333,9 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         let constants = self.store.chain_constants();
         let mut maybe_root_plot_public_key = parent_header.maybe_root_plot_public_key;
         if let Some(root_plot_public_key) = &maybe_root_plot_public_key {
-            if root_plot_public_key != &header_digests.pre_digest.solution.public_key {
+            if root_plot_public_key != &header_digests.pre_digest.solution().public_key {
                 return Err(ImportError::IncorrectBlockAuthor(
-                    header_digests.pre_digest.solution.public_key,
+                    header_digests.pre_digest.solution().public_key.clone(),
                 ));
             }
         }
@@ -360,20 +360,23 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         Self::verify_slot(&parent_header.header, &header_digests.pre_digest)?;
 
         // verify block signature
-        Self::verify_block_signature(&mut header, &header_digests.pre_digest.solution.public_key)?;
+        Self::verify_block_signature(
+            &mut header,
+            &header_digests.pre_digest.solution().public_key,
+        )?;
 
         // verify solution
         let sector_id = SectorId::new(
-            PublicKey::from(&header_digests.pre_digest.solution.public_key).hash(),
-            header_digests.pre_digest.solution.sector_index,
+            PublicKey::from(&header_digests.pre_digest.solution().public_key).hash(),
+            header_digests.pre_digest.solution().sector_index,
         );
 
         let max_pieces_in_sector = self.store.max_pieces_in_sector();
 
         let segment_index = sector_id
             .derive_piece_index(
-                header_digests.pre_digest.solution.piece_offset,
-                header_digests.pre_digest.solution.history_size,
+                header_digests.pre_digest.solution().piece_offset,
+                header_digests.pre_digest.solution().history_size,
                 max_pieces_in_sector,
                 constants.recent_segments,
                 constants.recent_history_fraction,
@@ -391,7 +394,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             .find_segment_commitment_for_segment_index(
                 header_digests
                     .pre_digest
-                    .solution
+                    .solution()
                     .history_size
                     .sector_expiration_check(constants.min_sector_lifetime)
                     .ok_or(ImportError::InvalidHistorySize)?
@@ -400,13 +403,13 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             )?;
 
         verify_solution(
-            (&header_digests.pre_digest.solution).into(),
-            header_digests.pre_digest.slot.into(),
+            header_digests.pre_digest.solution().into(),
+            header_digests.pre_digest.slot().into(),
             (&VerifySolutionParams {
                 #[cfg(not(feature = "pot"))]
                 global_randomness: header_digests.global_randomness,
                 #[cfg(feature = "pot")]
-                proof_of_time: header_digests.pre_digest.proof_of_time,
+                proof_of_time: header_digests.pre_digest.proof_of_time(),
                 solution_range: header_digests.solution_range,
                 piece_check_params: Some(PieceCheckParams {
                     max_pieces_in_sector,
@@ -432,7 +435,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
 
         // check if era has changed
         let era_start_slot = if Self::has_era_changed(&header, constants.era_duration) {
-            header_digests.pre_digest.slot
+            header_digests.pre_digest.slot()
         } else {
             parent_header.era_start_slot
         };
@@ -531,7 +534,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
     ) -> Result<(), ImportError<Header>> {
         let parent_pre_digest = extract_pre_digest(parent_header)?;
 
-        if pre_digest.slot <= parent_pre_digest.slot {
+        if pre_digest.slot() <= parent_pre_digest.slot() {
             return Err(ImportError::InvalidSlot);
         }
 

@@ -276,7 +276,7 @@ where
                 return None;
             }
         };
-        let parent_slot = parent_pre_digest.slot;
+        let parent_slot = parent_pre_digest.slot();
 
         if slot <= parent_slot {
             debug!(
@@ -464,7 +464,7 @@ where
                     // block reward is claimed
                     if maybe_pre_digest.is_none() && solution_distance <= solution_range / 2 {
                         info!(target: "subspace", "🚜 Claimed block at slot {slot}");
-                        maybe_pre_digest.replace(PreDigest {
+                        maybe_pre_digest.replace(PreDigest::V0 {
                             slot,
                             solution,
                             #[cfg(feature = "pot")]
@@ -541,7 +541,7 @@ where
         let signature = self
             .sign_reward(
                 H256::from_slice(header_hash.as_ref()),
-                &pre_digest.solution.public_key,
+                &pre_digest.solution().public_key,
             )
             .await?;
 
@@ -568,7 +568,8 @@ where
 
     fn should_backoff(&self, slot: Slot, chain_head: &Block::Header) -> bool {
         if let Some(ref strategy) = self.backoff_authoring_blocks {
-            if let Ok(chain_head_slot) = extract_pre_digest(chain_head).map(|digest| digest.slot) {
+            if let Ok(chain_head_slot) = extract_pre_digest(chain_head).map(|digest| digest.slot())
+            {
                 return strategy.should_backoff(
                     *chain_head.number(),
                     chain_head_slot,
@@ -604,7 +605,7 @@ where
     fn proposing_remaining_duration(&self, slot_info: &SlotInfo<Block>) -> std::time::Duration {
         let parent_slot = extract_pre_digest(&slot_info.chain_head)
             .ok()
-            .map(|d| d.slot);
+            .map(|d| d.slot());
 
         sc_consensus_slots::proposing_remaining_duration(
             parent_slot,

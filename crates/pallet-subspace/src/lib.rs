@@ -785,15 +785,15 @@ impl<T: Config> Pallet<T> {
         // On the first non-zero block (i.e. block #1) we need to adjust internal storage
         // accordingly.
         if *GenesisSlot::<T>::get() == 0 {
-            GenesisSlot::<T>::put(pre_digest.slot);
+            GenesisSlot::<T>::put(pre_digest.slot());
             debug_assert_ne!(*GenesisSlot::<T>::get(), 0);
         }
 
         // The slot number of the current block being initialized.
-        CurrentSlot::<T>::put(pre_digest.slot);
+        CurrentSlot::<T>::put(pre_digest.slot());
 
         {
-            let farmer_public_key = pre_digest.solution.public_key.clone();
+            let farmer_public_key = pre_digest.solution().public_key.clone();
 
             // Optional restriction for block authoring to the root user
             if !AllowAuthoringByAnyone::<T>::get() {
@@ -817,10 +817,10 @@ impl<T: Config> Pallet<T> {
 
             let key = (
                 farmer_public_key,
-                pre_digest.solution.sector_index,
-                pre_digest.solution.chunk,
-                AuditChunkOffset(pre_digest.solution.audit_chunk_offset),
-                pre_digest.slot,
+                pre_digest.solution().sector_index,
+                pre_digest.solution().chunk,
+                AuditChunkOffset(pre_digest.solution().audit_chunk_offset),
+                pre_digest.slot(),
             );
             if ParentBlockVoters::<T>::get().contains_key(&key) {
                 let (public_key, _sector_index, _chunk, _audit_chunk_offset, slot) = key;
@@ -848,7 +848,7 @@ impl<T: Config> Pallet<T> {
                     chunk,
                     audit_chunk_offset,
                     slot,
-                    pre_digest.solution.reward_address.clone(),
+                    pre_digest.solution().reward_address.clone(),
                 ));
             }
         }
@@ -883,7 +883,7 @@ impl<T: Config> Pallet<T> {
 
         // Extract PoR randomness from pre-digest.
         #[cfg(not(feature = "pot"))]
-        let por_randomness = derive_randomness(&pre_digest.solution, pre_digest.slot.into());
+        let por_randomness = derive_randomness(pre_digest.solution(), pre_digest.slot().into());
         // Store PoR randomness for block duration as it might be useful.
         #[cfg(not(feature = "pot"))]
         PorRandomness::<T>::put(por_randomness);

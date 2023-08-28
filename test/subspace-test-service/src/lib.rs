@@ -596,7 +596,7 @@ impl MockConsensusNode {
     }
 
     fn mock_subspace_digest(&self, slot: Slot) -> Digest {
-        let pre_digest: PreDigest<FarmerPublicKey, AccountId> = PreDigest {
+        let pre_digest: PreDigest<FarmerPublicKey, AccountId> = PreDigest::V0 {
             slot,
             solution: self.mock_solution.clone(),
             #[cfg(feature = "pot")]
