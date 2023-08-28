@@ -19,6 +19,13 @@
 #![warn(rust_2018_idioms, missing_docs)]
 #![cfg_attr(not(feature = "std"), no_std)]
 
+// TODO: Unlock tests for PoT as well once PoT implementation settled (there are multiple items with
+//  this conditional compilation in the file
+#[cfg(all(test, not(feature = "pot")))]
+mod mock;
+#[cfg(all(test, not(feature = "pot")))]
+mod tests;
+
 use codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_arithmetic::traits::{CheckedAdd, CheckedSub, One, Zero};
@@ -36,20 +43,16 @@ use sp_std::cmp::Ordering;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::marker::PhantomData;
 use sp_std::num::NonZeroU64;
+#[cfg(not(feature = "pot"))]
+use subspace_core_primitives::Randomness;
 use subspace_core_primitives::{
-    ArchivedHistorySegment, BlockWeight, HistorySize, PublicKey, Randomness, RewardSignature,
-    SectorId, SegmentCommitment, SegmentIndex, SolutionRange,
+    ArchivedHistorySegment, BlockWeight, HistorySize, PublicKey, RewardSignature, SectorId,
+    SegmentCommitment, SegmentIndex, SolutionRange,
 };
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{
     calculate_block_weight, check_reward_signature, PieceCheckParams, VerifySolutionParams,
 };
-
-#[cfg(test)]
-mod tests;
-
-#[cfg(test)]
-mod mock;
 
 /// Chain constants.
 #[derive(Debug, Encode, Decode, Clone, TypeInfo)]
@@ -65,6 +68,7 @@ pub struct ChainConstants<Header: HeaderT> {
     /// the storage.
     pub genesis_segment_commitments: BTreeMap<SegmentIndex, SegmentCommitment>,
     /// Defines interval at which randomness is updated.
+    #[cfg(not(feature = "pot"))]
     pub global_randomness_interval: NumberOf<Header>,
     /// Era duration at which solution range is updated.
     pub era_duration: NumberOf<Header>,
@@ -109,7 +113,7 @@ pub struct HeaderExt<Header> {
     /// Restrict block authoring to this public key.
     pub maybe_root_plot_public_key: Option<FarmerPublicKey>,
 
-    #[cfg(test)]
+    #[cfg(all(test, not(feature = "pot")))]
     test_overrides: mock::TestOverrides,
 }
 
@@ -117,14 +121,19 @@ pub struct HeaderExt<Header> {
 /// descendant.
 #[derive(Default, Debug, Encode, Decode, Clone, TypeInfo)]
 pub struct NextDigestItems {
+    #[cfg(not(feature = "pot"))]
     next_global_randomness: Randomness,
     next_solution_range: SolutionRange,
 }
 
 impl NextDigestItems {
     /// Constructs self with provided next digest items.
-    pub fn new(next_global_randomness: Randomness, next_solution_range: SolutionRange) -> Self {
+    pub fn new(
+        #[cfg(not(feature = "pot"))] next_global_randomness: Randomness,
+        next_solution_range: SolutionRange,
+    ) -> Self {
         Self {
+            #[cfg(not(feature = "pot"))]
             next_global_randomness,
             next_solution_range,
         }
@@ -136,8 +145,10 @@ impl<Header: HeaderT> HeaderExt<Header> {
     /// If next digests are not present, then we fallback to the current ones.
     fn extract_next_digest_items(&self) -> Result<NextDigestItems, ImportError<Header>> {
         let SubspaceDigestItems {
+            #[cfg(not(feature = "pot"))]
             global_randomness,
             solution_range,
+            #[cfg(not(feature = "pot"))]
             next_global_randomness,
             next_solution_range,
             ..
@@ -150,7 +161,7 @@ impl<Header: HeaderT> HeaderExt<Header> {
             .maybe_current_solution_range_override
             .unwrap_or(solution_range);
 
-        #[cfg(test)]
+        #[cfg(all(test, not(feature = "pot")))]
         let solution_range = {
             if self.test_overrides.solution_range.is_some() {
                 self.test_overrides.solution_range.unwrap()
@@ -159,7 +170,7 @@ impl<Header: HeaderT> HeaderExt<Header> {
             }
         };
 
-        #[cfg(test)]
+        #[cfg(all(test, not(feature = "pot")))]
         let next_solution_range = {
             if self.test_overrides.next_solution_range.is_some() {
                 self.test_overrides.next_solution_range
@@ -169,6 +180,7 @@ impl<Header: HeaderT> HeaderExt<Header> {
         };
 
         Ok(NextDigestItems {
+            #[cfg(not(feature = "pot"))]
             next_global_randomness: next_global_randomness.unwrap_or(global_randomness),
             next_solution_range: next_solution_range.unwrap_or(solution_range),
         })
@@ -334,6 +346,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         verify_next_digests::<Header>(NextDigestsVerificationParams {
             number: *header.number(),
             header_digests: &header_digests,
+            #[cfg(not(feature = "pot"))]
             global_randomness_interval: constants.global_randomness_interval,
             era_duration: constants.era_duration,
             slot_probability: constants.slot_probability,
@@ -390,7 +403,10 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             (&header_digests.pre_digest.solution).into(),
             header_digests.pre_digest.slot.into(),
             (&VerifySolutionParams {
+                #[cfg(not(feature = "pot"))]
                 global_randomness: header_digests.global_randomness,
+                #[cfg(feature = "pot")]
+                proof_of_time: header_digests.pre_digest.proof_of_time,
                 solution_range: header_digests.solution_range,
                 piece_check_params: Some(PieceCheckParams {
                     max_pieces_in_sector,
@@ -449,7 +465,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
             maybe_next_solution_range_override,
             maybe_root_plot_public_key,
 
-            #[cfg(test)]
+            #[cfg(all(test, not(feature = "pot")))]
             test_overrides: Default::default(),
         };
 
@@ -494,6 +510,7 @@ impl<Header: HeaderT, Store: Storage<Header>> HeaderImporter<Header, Store> {
         };
 
         // check the digest items against the next digest items from parent header
+        #[cfg(not(feature = "pot"))]
         if pre_digest_items.global_randomness != next_digest_items.next_global_randomness {
             return Err(ImportError::InvalidDigest(
                 ErrorDigestType::GlobalRandomness,
