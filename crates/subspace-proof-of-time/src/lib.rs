@@ -43,8 +43,8 @@ pub fn prove(
     }
 
     Ok(aes::create(
-        &seed,
-        &key,
+        seed,
+        key,
         iterations.get() / u32::from(PotCheckpoints::NUM_CHECKPOINTS.get()),
     ))
 }
@@ -68,8 +68,8 @@ pub fn verify(
     }
 
     Ok(aes::verify_sequential(
-        &seed,
-        &key,
+        seed,
+        key,
         checkpoints,
         iterations.get() / num_checkpoints,
     ))

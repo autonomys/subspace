@@ -5,7 +5,7 @@ use futures::SinkExt;
 use sp_consensus_slots::Slot;
 use std::num::NonZeroU32;
 use std::thread;
-use subspace_core_primitives::{PotBytes, PotCheckpoints, PotKey, PotSeed, SlotNumber};
+use subspace_core_primitives::{PotCheckpoints, PotKey, PotSeed, SlotNumber};
 use subspace_proof_of_time::PotError;
 use tracing::{debug, error};
 
@@ -85,15 +85,11 @@ fn run_timekeeper(
     iterations: NonZeroU32,
     mut slot_sender: mpsc::Sender<PotSlotInfo>,
 ) -> Result<(), PotError> {
-    // TODO
     loop {
         let checkpoints = subspace_proof_of_time::prove(seed, key, iterations)?;
 
-        // TODO: Store checkpoints somewhere
-
-        // TODO: These two are wrong and need to be updated
-        seed = PotSeed::from(PotBytes::from(checkpoints.output()));
-        key = PotKey::from(PotBytes::from(checkpoints.output()));
+        seed = checkpoints.output().seed();
+        key = seed.key();
 
         let slot_info = PotSlotInfo {
             slot: Slot::from(slot),
