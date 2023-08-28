@@ -4,7 +4,7 @@
 mod aes;
 
 use core::num::{NonZeroU32, NonZeroU64};
-use subspace_core_primitives::{PotCheckpoint, PotCheckpoints, PotKey, PotSeed};
+use subspace_core_primitives::{PotCheckpoints, PotKey, PotProof, PotSeed};
 
 /// Proof of time error
 #[derive(Debug)]
@@ -57,7 +57,7 @@ pub fn verify(
     seed: PotSeed,
     key: PotKey,
     iterations: NonZeroU64,
-    checkpoints: &[PotCheckpoint],
+    checkpoints: &[PotProof],
 ) -> Result<bool, PotError> {
     let num_checkpoints = checkpoints.len() as u64;
     if iterations.get() % (num_checkpoints * 2) != 0 {

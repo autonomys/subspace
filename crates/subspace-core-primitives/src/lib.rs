@@ -313,9 +313,9 @@ impl PotSeed {
     TypeInfo,
     MaxEncodedLen,
 )]
-pub struct PotCheckpoint(PotBytes);
+pub struct PotProof(PotBytes);
 
-impl PotCheckpoint {
+impl PotProof {
     /// Derives the global randomness from the output.
     pub fn derive_global_randomness(&self) -> Randomness {
         Randomness::from(blake2b_256_hash(&self.0))
@@ -337,7 +337,7 @@ impl PotCheckpoint {
     TypeInfo,
     MaxEncodedLen,
 )]
-pub struct PotCheckpoints([PotCheckpoint; Self::NUM_CHECKPOINTS.get() as usize]);
+pub struct PotCheckpoints([PotProof; Self::NUM_CHECKPOINTS.get() as usize]);
 
 impl PotCheckpoints {
     /// Number of PoT checkpoints produced (used to optimize verification)
@@ -345,92 +345,8 @@ impl PotCheckpoints {
 
     /// Get proof of time output out of checkpoints (last checkpoint)
     #[inline]
-    pub fn output(&self) -> PotCheckpoint {
+    pub fn output(&self) -> PotProof {
         self.0[Self::NUM_CHECKPOINTS.get() as usize - 1]
-    }
-}
-
-/// Proof of time.
-/// TODO: versioning.
-#[derive(Debug, Clone, Encode, Decode, Eq, PartialEq)]
-pub struct PotProof {
-    /// Slot the proof was evaluated for.
-    pub slot_number: SlotNumber,
-
-    /// The seed used for evaluation.
-    pub seed: PotSeed,
-
-    /// The key used for evaluation.
-    pub key: PotKey,
-
-    /// The encrypted outputs from each stage.
-    pub checkpoints: PotCheckpoints,
-
-    /// Hash of last block at injection point.
-    pub injected_block_hash: BlockHash,
-}
-
-impl PotProof {
-    /// Create the proof.
-    pub fn new(
-        slot_number: SlotNumber,
-        seed: PotSeed,
-        key: PotKey,
-        checkpoints: PotCheckpoints,
-        injected_block_hash: BlockHash,
-    ) -> Self {
-        Self {
-            slot_number,
-            seed,
-            key,
-            checkpoints,
-            injected_block_hash,
-        }
-    }
-
-    /// Get proof of time output out of checkpoints (last checkpoint)
-    #[inline]
-    pub fn output(&self) -> PotCheckpoint {
-        self.checkpoints.output()
-    }
-
-    /// Derives the global randomness from the output.
-    pub fn derive_global_randomness(&self) -> Blake2b256Hash {
-        blake2b_256_hash(&PotBytes::from(self.output()))
-    }
-
-    /// Derives the next seed based on the injected randomness.
-    pub fn next_seed(&self, injected_hash: Option<BlockHash>) -> PotSeed {
-        match injected_hash {
-            Some(injected_hash) => {
-                // Next seed = Hash(last checkpoint + injected hash).
-                let hash = blake2b_256_hash_list(&[&self.output().0, &injected_hash]);
-                PotSeed::from(truncate_32_bytes(hash))
-            }
-            None => {
-                // No injected randomness, next seed = last checkpoint.
-                PotSeed::from(self.output().0)
-            }
-        }
-    }
-
-    /// Derives the next key from the hash of the current seed.
-    pub fn next_key(&self) -> PotKey {
-        PotKey::from(truncate_32_bytes(blake2b_256_hash(&self.seed.0)))
-    }
-}
-
-impl fmt::Display for PotProof {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "PotProof: [slot={}, seed={}, key={}, injected={}, output={}]",
-            self.slot_number,
-            hex::encode(self.seed.0),
-            hex::encode(self.key.0),
-            hex::encode(self.injected_block_hash),
-            hex::encode(self.output().as_ref())
-        )
     }
 }
 

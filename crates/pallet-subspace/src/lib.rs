@@ -68,7 +68,7 @@ use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 use subspace_core_primitives::crypto::Scalar;
 #[cfg(feature = "pot")]
-use subspace_core_primitives::PotCheckpoint;
+use subspace_core_primitives::PotProof;
 use subspace_core_primitives::{
     ArchivedHistorySegment, HistorySize, PublicKey, Randomness, RewardSignature, SectorId,
     SectorIndex, SegmentHeader, SegmentIndex, SolutionRange,
@@ -1447,7 +1447,7 @@ fn check_vote<T: Config>(
             global_randomness: vote_verification_data.global_randomness,
             // TODO: This is incorrect, find a way to verify votes
             #[cfg(feature = "pot")]
-            proof_of_time: PotCheckpoint::default(),
+            proof_of_time: PotProof::default(),
             solution_range: vote_verification_data.solution_range,
             piece_check_params: Some(PieceCheckParams {
                 max_pieces_in_sector: T::MaxPiecesInSector::get(),

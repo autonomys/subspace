@@ -27,7 +27,7 @@ use sp_runtime::DigestItem;
 use sp_std::collections::btree_map::{BTreeMap, Entry};
 use sp_std::fmt;
 #[cfg(feature = "pot")]
-use subspace_core_primitives::PotCheckpoint;
+use subspace_core_primitives::PotProof;
 #[cfg(not(feature = "pot"))]
 use subspace_core_primitives::Randomness;
 use subspace_core_primitives::{SegmentCommitment, SegmentIndex, Solution, SolutionRange};
@@ -47,10 +47,10 @@ pub enum PreDigest<PublicKey, RewardAddress> {
         solution: Solution<PublicKey, RewardAddress>,
         /// Proof of time for this slot
         #[cfg(feature = "pot")]
-        proof_of_time: PotCheckpoint,
+        proof_of_time: PotProof,
         /// Future proof of time
         #[cfg(feature = "pot")]
-        future_proof_of_time: PotCheckpoint,
+        future_proof_of_time: PotProof,
     },
 }
 
@@ -70,14 +70,14 @@ impl<PublicKey, RewardAddress> PreDigest<PublicKey, RewardAddress> {
     /// Proof of time for this slot
     #[cfg(feature = "pot")]
     #[inline]
-    pub fn proof_of_time(&self) -> PotCheckpoint {
+    pub fn proof_of_time(&self) -> PotProof {
         let Self::V0 { proof_of_time, .. } = self;
         *proof_of_time
     }
     /// Future proof of time
     #[cfg(feature = "pot")]
     #[inline]
-    pub fn future_proof_of_time(&self) -> PotCheckpoint {
+    pub fn future_proof_of_time(&self) -> PotProof {
         let Self::V0 {
             future_proof_of_time,
             ..
