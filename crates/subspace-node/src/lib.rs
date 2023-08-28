@@ -257,7 +257,7 @@ pub struct Cli {
 
     /// Use the block request handler implementation from subspace
     /// instead of the default substrate handler.
-    #[arg(long)]
+    #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
     pub enable_subspace_block_relay: bool,
 
     /// Assigned PoT role for this node.
