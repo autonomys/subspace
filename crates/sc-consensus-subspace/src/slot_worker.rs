@@ -54,8 +54,6 @@ use sp_runtime::DigestItem;
 use std::collections::BTreeMap;
 use std::future::Future;
 use std::marker::PhantomData;
-#[cfg(feature = "pot")]
-use std::num::NonZeroU32;
 use std::pin::Pin;
 use std::sync::Arc;
 #[cfg(feature = "pot")]
@@ -299,9 +297,10 @@ where
         let (solution_range, voting_solution_range) =
             extract_solution_ranges_for_block(self.client.as_ref(), parent_hash).ok()?;
 
+        #[cfg(feature = "pot")]
+        let pot_slot_iterations = runtime_api.pot_slot_iterations(parent_hash).ok()?;
         let maybe_root_plot_public_key = runtime_api.root_plot_public_key(parent_hash).ok()?;
 
-        // TODO: Store `new_checkpoints`
         #[cfg(feature = "pot")]
         let (proof_of_time, future_proof_of_time, new_checkpoints) = {
             let mut pot_checkpoints = self.pot_checkpoints.lock();
@@ -473,8 +472,7 @@ where
                             solution,
                             #[cfg(feature = "pot")]
                             pot_info: PreDigestPotInfo::Regular {
-                                // TODO: Replace with correct value from runtime state
-                                iterations: NonZeroU32::MIN,
+                                iterations: pot_slot_iterations,
                                 proof_of_time,
                                 future_proof_of_time,
                             },

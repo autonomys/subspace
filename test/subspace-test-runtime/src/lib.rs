@@ -77,6 +77,8 @@ use sp_runtime::{
 };
 use sp_std::iter::Peekable;
 use sp_std::marker::PhantomData;
+#[cfg(feature = "pot")]
+use sp_std::num::NonZeroU32;
 use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
@@ -1562,16 +1564,12 @@ impl_runtime_apis! {
     }
 
     impl sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey> for Runtime {
-        fn history_size() -> HistorySize {
-            <pallet_subspace::Pallet<Runtime>>::history_size()
-        }
-
-        fn max_pieces_in_sector() -> u16 {
-            MAX_PIECES_IN_SECTOR
-        }
-
         fn slot_duration() -> SlotDuration {
             SlotDuration::from_millis(SLOT_DURATION)
+        }
+
+        fn pot_slot_iterations() -> NonZeroU32 {
+            Subspace::pot_slot_iterations()
         }
 
         fn solution_ranges() -> SolutionRanges {
@@ -1610,6 +1608,14 @@ impl_runtime_apis! {
             // TODO: Either check tx pool too for pending equivocations or replace equivocation
             //  mechanism with an alternative one, so that blocking happens faster
             Subspace::is_in_block_list(farmer_public_key)
+        }
+
+        fn history_size() -> HistorySize {
+            <pallet_subspace::Pallet<Runtime>>::history_size()
+        }
+
+        fn max_pieces_in_sector() -> u16 {
+            MAX_PIECES_IN_SECTOR
         }
 
         fn segment_commitment(segment_index: SegmentIndex) -> Option<SegmentCommitment> {

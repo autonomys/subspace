@@ -6,6 +6,7 @@ use sp_core::{sr25519, Pair, Public};
 use sp_domains::{GenesisDomain, OperatorPublicKey, RuntimeType};
 use sp_runtime::traits::{IdentifyAccount, Verify};
 use sp_runtime::Percent;
+use std::num::NonZeroU32;
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, Signature};
 use subspace_test_runtime::{
     AllowAuthoringBy, BalancesConfig, DomainsConfig, GenesisConfig, MaxDomainBlockSize,
@@ -99,6 +100,7 @@ fn create_genesis_config(
             enable_rewards: false,
             enable_storage_access: false,
             allow_authoring_by: AllowAuthoringBy::Anyone,
+            pot_slot_iterations: NonZeroU32::new(50_000_000).expect("Not zero; qed"),
         },
         vesting: VestingConfig { vesting },
         domains: DomainsConfig {

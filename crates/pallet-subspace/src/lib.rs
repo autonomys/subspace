@@ -65,6 +65,7 @@ use sp_runtime::transaction_validity::{
 };
 use sp_runtime::DispatchError;
 use sp_std::collections::btree_map::BTreeMap;
+use sp_std::num::NonZeroU32;
 use sp_std::prelude::*;
 use subspace_core_primitives::crypto::Scalar;
 #[cfg(feature = "pot")]
@@ -148,6 +149,7 @@ mod pallet {
     use sp_consensus_subspace::{EquivocationProof, FarmerPublicKey, FarmerSignature, SignedVote};
     use sp_runtime::DigestItem;
     use sp_std::collections::btree_map::BTreeMap;
+    use sp_std::num::NonZeroU32;
     use sp_std::prelude::*;
     use subspace_core_primitives::crypto::Scalar;
     use subspace_core_primitives::{
@@ -299,16 +301,16 @@ mod pallet {
         pub enable_storage_access: bool,
         /// Who can author blocks at genesis.
         pub allow_authoring_by: AllowAuthoringBy,
+        /// Number of iterations for proof of time per slot
+        pub pot_slot_iterations: NonZeroU32,
     }
 
     impl Default for GenesisConfig {
         #[inline]
         fn default() -> Self {
-            Self {
-                enable_rewards: true,
-                enable_storage_access: true,
-                allow_authoring_by: AllowAuthoringBy::Anyone,
-            }
+            // TODO: Remove once https://github.com/paritytech/polkadot-sdk/pull/1221 is in our
+            //  fork
+            unreachable!("Config must be initialized explicitly");
         }
     }
 
@@ -331,6 +333,7 @@ mod pallet {
                     RootPlotPublicKey::<T>::put(root_farmer.clone());
                 }
             }
+            PotSlotIterations::<T>::put(self.pot_slot_iterations.get());
         }
     }
 
@@ -375,6 +378,22 @@ mod pallet {
     #[cfg(not(feature = "pot"))]
     pub(super) type GlobalRandomnesses<T> =
         StorageValue<_, sp_consensus_subspace::GlobalRandomnesses, ValueQuery>;
+
+    pub(super) struct DefaultPotSlotIterations {}
+
+    // TODO: Replace with `NonZeroU32` once we can use it:
+    //  https://github.com/paritytech/parity-scale-codec/pull/505
+    impl Get<u32> for DefaultPotSlotIterations {
+        fn get() -> u32 {
+            unreachable!("Always instantiated during genesis; qed");
+        }
+    }
+
+    /// Number of iterations for proof of time per slot
+    #[pallet::storage]
+    // #[pallet::getter(fn pot_slot_iterations)]
+    pub(super) type PotSlotIterations<T> =
+        StorageValue<_, u32, ValueQuery, DefaultPotSlotIterations>;
 
     /// Solution ranges used for challenges.
     #[pallet::storage]
@@ -1062,6 +1081,14 @@ impl<T: Config> Pallet<T> {
     ) -> Option<()> {
         BlockList::<T>::insert(equivocation_proof.offender, ());
         Some(())
+    }
+
+    /// Number of iterations for proof of time per slot
+    // TODO: Remove once we can use `NonZeroU32` directly:
+    //  https://github.com/paritytech/parity-scale-codec/pull/505
+    pub fn pot_slot_iterations() -> NonZeroU32 {
+        NonZeroU32::new(PotSlotIterations::<T>::get())
+            .expect("Always initialized to non-zero value; qed")
     }
 
     /// Check if `farmer_public_key` is in block list (due to equivocation)

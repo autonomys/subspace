@@ -2,8 +2,14 @@ use derive_more::{Deref, DerefMut, From};
 use futures::channel::mpsc;
 use futures::executor::block_on;
 use futures::SinkExt;
+use sp_api::{ApiError, ProvideRuntimeApi};
+use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
+use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi as SubspaceRuntimeApi};
+use sp_runtime::traits::Block as BlockT;
+use std::marker::PhantomData;
 use std::num::NonZeroU32;
+use std::sync::Arc;
 use std::thread;
 use subspace_core_primitives::{PotCheckpoints, PotKey, PotSeed, SlotNumber};
 use subspace_proof_of_time::PotError;
@@ -35,18 +41,40 @@ pub struct PotSourceConfig {
 /// Depending on configuration may produce proofs of time locally, send/receive via gossip and keep
 /// up to day with blockchain reorgs.
 #[derive(Debug)]
-pub struct PotSource {
-    // TODO
+pub struct PotSource<Block, Client> {
+    // TODO: Use this in `fn run`
+    #[allow(dead_code)]
+    client: Arc<Client>,
+    _block: PhantomData<Block>,
 }
 
-impl PotSource {
-    pub fn new(config: PotSourceConfig) -> (Self, PotSlotInfoStream) {
+impl<Block, Client> PotSource<Block, Client>
+where
+    Block: BlockT,
+    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block>,
+    Client::Api: SubspaceRuntimeApi<Block, FarmerPublicKey>,
+{
+    pub fn new(
+        config: PotSourceConfig,
+        client: Arc<Client>,
+    ) -> Result<(Self, PotSlotInfoStream), ApiError> {
+        let PotSourceConfig {
+            // TODO: Respect this boolean flag
+            is_timekeeper: _,
+            initial_key,
+        } = config;
         // TODO: All 3 are incorrect and should be able to continue after node restart
         let start_slot = SlotNumber::MIN;
         let start_seed = PotSeed::default();
-        let start_key = config.initial_key;
-        // TODO: Change to correct values taken from blockchain
-        let iterations = NonZeroU32::new(1024).expect("Not zero; qed");
+        let start_key = initial_key;
+        #[cfg(feature = "pot")]
+        let best_hash = client.info().best_hash;
+        #[cfg(feature = "pot")]
+        let runtime_api = client.runtime_api();
+        #[cfg(feature = "pot")]
+        let iterations = runtime_api.pot_slot_iterations(best_hash)?;
+        #[cfg(not(feature = "pot"))]
+        let iterations = NonZeroU32::new(100_000_000).expect("Not zero; qed");
 
         // TODO: Correct capacity
         let (slot_sender, slot_receiver) = mpsc::channel(10);
@@ -61,12 +89,13 @@ impl PotSource {
             })
             .expect("Thread creation must not panic");
 
-        (
+        Ok((
             Self {
-                // TODO
+                client,
+                _block: PhantomData,
             },
             PotSlotInfoStream(slot_receiver),
-        )
+        ))
     }
 
     /// Run proof of time source

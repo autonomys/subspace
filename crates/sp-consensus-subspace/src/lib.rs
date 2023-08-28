@@ -41,6 +41,8 @@ use sp_io::hashing;
 use sp_runtime::{ConsensusEngineId, DigestItem, Justification};
 use sp_runtime_interface::pass_by::PassBy;
 use sp_runtime_interface::{pass_by, runtime_interface};
+#[cfg(feature = "pot")]
+use sp_std::num::NonZeroU32;
 use sp_std::vec::Vec;
 use subspace_core_primitives::crypto::kzg::Kzg;
 #[cfg(not(feature = "pot"))]
@@ -620,6 +622,9 @@ sp_api::decl_runtime_apis! {
     pub trait SubspaceApi<RewardAddress: Encode + Decode> {
         /// The slot duration in milliseconds for Subspace.
         fn slot_duration() -> SlotDuration;
+
+        /// Number of iterations for proof of time per slot
+        fn pot_slot_iterations() -> NonZeroU32;
 
         /// Solution ranges.
         fn solution_ranges() -> SolutionRanges;

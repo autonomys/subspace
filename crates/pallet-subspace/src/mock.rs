@@ -18,8 +18,8 @@
 
 use crate::equivocation::EquivocationHandler;
 use crate::{
-    self as pallet_subspace, Config, CurrentSlot, FarmerPublicKey, NormalEraChange,
-    NormalGlobalRandomnessInterval,
+    self as pallet_subspace, AllowAuthoringBy, Config, CurrentSlot, FarmerPublicKey,
+    NormalEraChange, NormalGlobalRandomnessInterval,
 };
 use frame_support::pallet_prelude::Weight;
 use frame_support::parameter_types;
@@ -39,7 +39,7 @@ use sp_runtime::testing::{Digest, DigestItem, Header, TestXt};
 use sp_runtime::traits::{Block as BlockT, Header as _, IdentityLookup};
 use sp_runtime::Perbill;
 use std::iter;
-use std::num::NonZeroU64;
+use std::num::{NonZeroU32, NonZeroU64};
 use std::sync::Once;
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
@@ -286,7 +286,12 @@ pub fn new_test_ext() -> TestExternalities {
         .unwrap();
 
     GenesisBuild::<Test>::assimilate_storage(
-        &pallet_subspace::GenesisConfig::default(),
+        &pallet_subspace::GenesisConfig {
+            enable_rewards: true,
+            enable_storage_access: true,
+            allow_authoring_by: AllowAuthoringBy::Anyone,
+            pot_slot_iterations: NonZeroU32::new(100_000).unwrap(),
+        },
         &mut storage,
     )
     .unwrap();
