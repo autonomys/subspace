@@ -263,8 +263,7 @@ where
         .convert_first(DigestItem::as_consensus_block_info)
         .ok_or_else(|| {
             sp_blockchain::Error::Application(Box::from(
-                "Domain block header {domain_hash}#{domain_number} missing the consensus \
-                    block info predigest, this should not happen",
+                "Domain block header {domain_hash}#{domain_number} must have consensus block info predigest"
             ))
         })?;
 
