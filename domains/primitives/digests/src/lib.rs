@@ -7,20 +7,19 @@ const DOMAIN_REGISTRY_ENGINE_ID: ConsensusEngineId = *b"RGTR";
 
 /// Trait to provide simpler abstractions to create predigests for runtime.
 pub trait AsPredigest {
-    /// Return a pair of (primary_block_number, primary_block_hash).
-    fn as_primary_block_info<Number: Decode, Hash: Decode>(&self) -> Option<(Number, Hash)>;
+    /// Return `consensus_block_hash`
+    fn as_consensus_block_info<Hash: Decode>(&self) -> Option<Hash>;
 
-    /// Creates a new digest of primary block info for system domain.
-    fn primary_block_info<Number: Encode, Hash: Encode>(info: (Number, Hash)) -> Self;
+    /// Creates a new digest of the consensus block that derive the domain block.
+    fn consensus_block_info<Hash: Encode>(consensus_block_hash: Hash) -> Self;
 }
 
 impl AsPredigest for DigestItem {
-    /// Return a pair of (primary_block_number, primary_block_hash).
-    fn as_primary_block_info<Number: Decode, Hash: Decode>(&self) -> Option<(Number, Hash)> {
+    fn as_consensus_block_info<Hash: Decode>(&self) -> Option<Hash> {
         self.pre_runtime_try_to(&DOMAIN_REGISTRY_ENGINE_ID)
     }
 
-    fn primary_block_info<Number: Encode, Hash: Encode>(info: (Number, Hash)) -> Self {
-        DigestItem::PreRuntime(DOMAIN_REGISTRY_ENGINE_ID, info.encode())
+    fn consensus_block_info<Hash: Encode>(consensus_block_hash: Hash) -> Self {
+        DigestItem::PreRuntime(DOMAIN_REGISTRY_ENGINE_ID, consensus_block_hash.encode())
     }
 }

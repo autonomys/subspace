@@ -181,7 +181,7 @@ async fn execution_proof_creation_and_verification_should_work() {
     let create_block_builder = || {
         let primary_hash = ferdie.client.hash(*header.number()).unwrap().unwrap();
         let digest = Digest {
-            logs: vec![DigestItem::primary_block_info((
+            logs: vec![DigestItem::consensus_block_info((
                 *header.number(),
                 primary_hash,
             ))],
@@ -218,7 +218,7 @@ async fn execution_proof_creation_and_verification_should_work() {
         Default::default(),
         parent_header.hash(),
         Digest {
-            logs: vec![DigestItem::primary_block_info((
+            logs: vec![DigestItem::consensus_block_info((
                 *header.number(),
                 primary_hash,
             ))],
@@ -487,7 +487,7 @@ async fn invalid_execution_proof_should_not_work() {
             *parent_header.number(),
             RecordProof::No,
             Digest {
-                logs: vec![DigestItem::primary_block_info((
+                logs: vec![DigestItem::consensus_block_info((
                     *header.number(),
                     header.hash(),
                 ))],

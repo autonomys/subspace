@@ -959,7 +959,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
 
     let digest = {
         Digest {
-            logs: vec![DigestItem::primary_block_info((
+            logs: vec![DigestItem::consensus_block_info((
                 bad_receipt_number,
                 ferdie.client.hash(bad_receipt_number).unwrap().unwrap(),
             ))],
@@ -1888,7 +1888,7 @@ async fn test_domain_transaction_fee_and_operator_reward() {
 }
 
 #[substrate_test_utils::test(flavor = "multi_thread")]
-async fn test_multiple_consensus_blocks_derive_same_domain_block() {
+async fn test_multiple_consensus_blocks_derive_similar_domain_block() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
     let mut builder = sc_cli::LoggerBuilder::new("");
@@ -1951,18 +1951,61 @@ async fn test_multiple_consensus_blocks_derive_same_domain_block() {
         .await
         .unwrap();
 
-    // The same domain block mapped to 2 different consensus blocks
-    let consensus_best_hashes = crate::aux_schema::consensus_block_hash_for::<
-        _,
-        _,
-        <CBlock as BlockT>::Hash,
-    >(&*alice.client, alice.client.info().best_hash)
-    .unwrap();
-    assert_eq!(
-        consensus_best_hashes,
-        vec![consensus_block_hash_fork_a, consensus_block_hash_fork_b]
-    );
     assert_ne!(consensus_block_hash_fork_a, consensus_block_hash_fork_b);
+
+    // Both consensus block from fork A and B should derive a corresponding domain block
+    let domain_block_hash_fork_a =
+        crate::aux_schema::best_domain_hash_for(&*alice.client, &consensus_block_hash_fork_a)
+            .unwrap()
+            .unwrap();
+    let domain_block_hash_fork_b =
+        crate::aux_schema::best_domain_hash_for(&*alice.client, &consensus_block_hash_fork_b)
+            .unwrap()
+            .unwrap();
+    assert_ne!(domain_block_hash_fork_a, domain_block_hash_fork_b);
+
+    // The domain block header should contains digest that point to the consensus block, which
+    // devrive the domain block
+    let get_header = |hash| alice.client.header(hash).unwrap().unwrap();
+    let get_digest_consensus_block_hash = |header: &Header| -> <CBlock as BlockT>::Hash {
+        header
+            .digest()
+            .convert_first(DigestItem::as_consensus_block_info)
+            .unwrap()
+    };
+    let domain_block_header_fork_a = get_header(domain_block_hash_fork_a);
+    let domain_block_header_fork_b = get_header(domain_block_hash_fork_b);
+    let digest_consensus_block_hash_fork_a =
+        get_digest_consensus_block_hash(&domain_block_header_fork_a);
+    assert_eq!(
+        digest_consensus_block_hash_fork_a,
+        consensus_block_hash_fork_a
+    );
+    let digest_consensus_block_hash_fork_b =
+        get_digest_consensus_block_hash(&domain_block_header_fork_b);
+    assert_eq!(
+        digest_consensus_block_hash_fork_b,
+        consensus_block_hash_fork_b
+    );
+
+    // The domain block headers should have the same `parent_hash` and `extrinsics_root`
+    // but different digest and `state_root` (because digest is stored on chain)
+    assert_eq!(
+        domain_block_header_fork_a.parent_hash(),
+        domain_block_header_fork_b.parent_hash()
+    );
+    assert_eq!(
+        domain_block_header_fork_a.extrinsics_root(),
+        domain_block_header_fork_b.extrinsics_root()
+    );
+    assert_ne!(
+        domain_block_header_fork_a.digest(),
+        domain_block_header_fork_b.digest()
+    );
+    assert_ne!(
+        domain_block_header_fork_a.state_root(),
+        domain_block_header_fork_b.state_root()
+    );
 
     // Produce one more block at fork A to make it the canonical chain and the operator
     // should submit the ER of fork A
