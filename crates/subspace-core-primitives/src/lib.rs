@@ -50,8 +50,9 @@ use alloc::vec::Vec;
 use core::convert::AsRef;
 use core::fmt;
 use core::iter::Iterator;
-use core::num::NonZeroU64;
+use core::num::{NonZeroU64, NonZeroU8};
 use core::simd::Simd;
+use core::str::FromStr;
 use derive_more::{Add, AsMut, AsRef, Deref, DerefMut, Display, Div, From, Into, Mul, Rem, Sub};
 use num_traits::{WrappingAdd, WrappingSub};
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
@@ -254,7 +255,19 @@ impl PosProof {
     TypeInfo,
     MaxEncodedLen,
 )]
-pub struct PotKey(PotBytes);
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct PotKey(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] [u8; 16]);
+
+impl FromStr for PotKey {
+    type Err = hex::FromHexError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut bytes = PotBytes::default();
+        hex::decode_to_slice(s, &mut bytes)?;
+
+        Ok(Self(bytes))
+    }
+}
 
 /// Proof of time seed (input to the encryption).
 #[derive(
@@ -276,15 +289,14 @@ pub struct PotKey(PotBytes);
 pub struct PotSeed(PotBytes);
 
 impl PotSeed {
-    /// Builds the seed from block hash (e.g) used to create initial seed from
-    /// genesis block hash.
+    /// Derive initial PoT seed from genesis block hash.
     #[inline]
-    pub fn from_block_hash(block_hash: BlockHash) -> Self {
+    pub fn from_genesis_block_hash(block_hash: BlockHash) -> Self {
         Self(truncate_32_bytes(block_hash))
     }
 }
 
-/// Proof of time ciphertext (output from the encryption).
+/// Proof of time checkpoint
 #[derive(
     Debug,
     Default,
@@ -303,6 +315,41 @@ impl PotSeed {
 )]
 pub struct PotCheckpoint(PotBytes);
 
+impl PotCheckpoint {
+    /// Derives the global randomness from the output.
+    pub fn derive_global_randomness(&self) -> Randomness {
+        Randomness::from(blake2b_256_hash(&self.0))
+    }
+}
+
+/// Proof of time checkpoints, result of proving
+#[derive(
+    Debug,
+    Default,
+    Copy,
+    Clone,
+    Eq,
+    PartialEq,
+    Deref,
+    DerefMut,
+    Encode,
+    Decode,
+    TypeInfo,
+    MaxEncodedLen,
+)]
+pub struct PotCheckpoints([PotCheckpoint; Self::NUM_CHECKPOINTS.get() as usize]);
+
+impl PotCheckpoints {
+    /// Number of PoT checkpoints produced (used to optimize verification)
+    pub const NUM_CHECKPOINTS: NonZeroU8 = NonZeroU8::new(8).expect("Not zero; qed");
+
+    /// Get proof of time output out of checkpoints (last checkpoint)
+    #[inline]
+    pub fn output(&self) -> PotCheckpoint {
+        self.0[Self::NUM_CHECKPOINTS.get() as usize - 1]
+    }
+}
+
 /// Proof of time.
 /// TODO: versioning.
 #[derive(Debug, Clone, Encode, Decode, Eq, PartialEq)]
@@ -317,7 +364,7 @@ pub struct PotProof {
     pub key: PotKey,
 
     /// The encrypted outputs from each stage.
-    pub checkpoints: NonEmptyVec<PotCheckpoint>,
+    pub checkpoints: PotCheckpoints,
 
     /// Hash of last block at injection point.
     pub injected_block_hash: BlockHash,
@@ -329,7 +376,7 @@ impl PotProof {
         slot_number: SlotNumber,
         seed: PotSeed,
         key: PotKey,
-        checkpoints: NonEmptyVec<PotCheckpoint>,
+        checkpoints: PotCheckpoints,
         injected_block_hash: BlockHash,
     ) -> Self {
         Self {
@@ -341,9 +388,10 @@ impl PotProof {
         }
     }
 
-    /// Returns the last check point.
+    /// Get proof of time output out of checkpoints (last checkpoint)
+    #[inline]
     pub fn output(&self) -> PotCheckpoint {
-        self.checkpoints.last()
+        self.checkpoints.output()
     }
 
     /// Derives the global randomness from the output.
@@ -376,12 +424,12 @@ impl fmt::Display for PotProof {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "PotProof: [slot={}, seed={}, key={}, injected={}, checkpoints={}]",
+            "PotProof: [slot={}, seed={}, key={}, injected={}, output={}]",
             self.slot_number,
             hex::encode(self.seed.0),
             hex::encode(self.key.0),
             hex::encode(self.injected_block_hash),
-            self.checkpoints.len()
+            hex::encode(self.output().as_ref())
         )
     }
 }

@@ -23,15 +23,16 @@ use crate::{
 use futures::channel::mpsc;
 use futures::{StreamExt, TryFutureExt};
 use log::{debug, error, info, warn};
+#[cfg(feature = "pot")]
+use parking_lot::Mutex;
 use sc_client_api::AuxStore;
 use sc_consensus::block_import::{BlockImport, BlockImportParams, StateAction};
 use sc_consensus::{JustificationSyncLink, StorageChanges};
 use sc_consensus_slots::{
     BackoffAuthoringBlocksStrategy, SimpleSlotWorker, SlotInfo, SlotLenienceType, SlotProportion,
 };
-use sc_proof_of_time::PotConsensusState;
 #[cfg(feature = "pot")]
-use sc_proof_of_time::PotGetBlockProofsError;
+use sc_proof_of_time::PotSlotWorker;
 use sc_telemetry::TelemetryHandle;
 use sc_utils::mpsc::tracing_unbounded;
 use schnorrkel::context::SigningContext;
@@ -39,46 +40,32 @@ use sp_api::{ApiError, NumberFor, ProvideRuntimeApi, TransactionFor};
 use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata};
 use sp_consensus::{BlockOrigin, Environment, Error as ConsensusError, Proposer, SyncOracle};
 use sp_consensus_slots::Slot;
-#[cfg(feature = "pot")]
-use sp_consensus_subspace::digests::PotPreDigest;
 use sp_consensus_subspace::digests::{extract_pre_digest, CompatibleDigestItem, PreDigest};
+#[cfg(feature = "pot")]
+use sp_consensus_subspace::SubspaceJustification;
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SignedVote, SubspaceApi, Vote};
 use sp_core::crypto::ByteArray;
 use sp_core::H256;
-#[cfg(feature = "pot")]
-use sp_runtime::traits::NumberFor as BlockNumberFor;
 use sp_runtime::traits::{Block as BlockT, Header, One, Saturating, Zero};
 use sp_runtime::DigestItem;
+#[cfg(feature = "pot")]
+use std::collections::BTreeMap;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
 #[cfg(feature = "pot")]
-use subspace_core_primitives::SlotNumber;
-use subspace_core_primitives::{
-    BlockNumber, PublicKey, Randomness, RewardSignature, SectorId, Solution,
-};
+use subspace_core_primitives::PotCheckpoints;
+#[cfg(not(feature = "pot"))]
+use subspace_core_primitives::Randomness;
+use subspace_core_primitives::{BlockNumber, PublicKey, RewardSignature, SectorId, Solution};
 use subspace_proof_of_space::Table;
 use subspace_verification::{
     check_reward_signature, verify_solution, PieceCheckParams, VerifySolutionParams,
 };
 
-/// Errors while building the block proof of time.
-#[cfg(feature = "pot")]
-#[derive(Debug, thiserror::Error)]
-pub enum PotCreateError<Block: BlockT> {
-    /// Parent block has no proof of time digest.
-    #[error("Parent block missing proof of time : {parent_block_number}/{parent_slot_number}/{slot_number}")]
-    ParentMissingPotDigest {
-        parent_block_number: BlockNumberFor<Block>,
-        parent_slot_number: SlotNumber,
-        slot_number: SlotNumber,
-    },
-
-    /// Proof creation failed.
-    #[error("Proof of time error: {0}")]
-    PotGetBlockProofsError(#[from] PotGetBlockProofsError),
-}
+/// Large enough size for any practical purposes, there shouldn't be even this many solutions.
+const PENDING_SOLUTIONS_CHANNEL_CAPACITY: usize = 10;
 
 /// Subspace sync oracle that takes into account force authoring flag, allowing to bootstrap
 /// Subspace network from scratch due to our fork of Substrate where sync state of nodes depends on
@@ -138,10 +125,77 @@ where
     pub(super) max_block_proposal_slot_portion: Option<SlotProportion>,
     pub(super) telemetry: Option<TelemetryHandle>,
     pub(super) segment_headers_store: SegmentHeadersStore<AS>,
-    // TODO: Un-suppress once we enable PoT unconditionally
-    #[allow(dead_code)]
-    pub(super) proof_of_time: Option<Arc<dyn PotConsensusState>>,
+    /// Solution receivers for challenges that were sent to farmers and expected to be received
+    /// eventually
+    #[cfg(feature = "pot")]
+    // TODO: Substrate should make `fn claim_slot` take `&mut self`, the  we'll not need `Mutex`
+    pub(super) pending_solutions:
+        Mutex<BTreeMap<Slot, mpsc::Receiver<Solution<FarmerPublicKey, FarmerPublicKey>>>>,
+    /// Collection of PoT slots that can be retrieved later if needed by block production
+    #[cfg(feature = "pot")]
+    // TODO: Substrate should make `fn claim_slot` take `&mut self`, the  we'll not need `Mutex`
+    pub(super) pot_checkpoints: Mutex<BTreeMap<Slot, PotCheckpoints>>,
     pub(super) _pos_table: PhantomData<PosTable>,
+}
+
+#[cfg(feature = "pot")]
+impl<PosTable, Block, Client, E, I, SO, L, BS, AS> PotSlotWorker<Block>
+    for SubspaceSlotWorker<PosTable, Block, Client, E, I, SO, L, BS, AS>
+where
+    Block: BlockT,
+    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block>,
+    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
+    SO: SyncOracle + Send + Sync,
+{
+    fn on_proof(&mut self, slot: Slot, checkpoints: PotCheckpoints) {
+        self.pot_checkpoints.lock().insert(slot, checkpoints);
+
+        if self.sync_oracle.is_major_syncing() {
+            debug!(
+                target: "subspace",
+                "Skipping farming slot {slot} due to sync"
+            );
+            return;
+        }
+
+        let proof_of_time = checkpoints.output();
+        let global_randomness = proof_of_time.derive_global_randomness();
+
+        // NOTE: Best hash is not necessarily going to be the parent of corresponding block, but
+        // solution range shouldn't be too far off
+        let best_hash = self.client.info().best_hash;
+        let (solution_range, voting_solution_range) =
+            match extract_solution_ranges_for_block(self.client.as_ref(), best_hash) {
+                Ok(solution_ranges) => solution_ranges,
+                Err(error) => {
+                    warn!(
+                        target: "subspace",
+                        "Failed to extract solution ranges for block at slot {slot}: {error}"
+                    );
+                    return;
+                }
+            };
+
+        let new_slot_info = NewSlotInfo {
+            slot,
+            global_randomness,
+            solution_range,
+            voting_solution_range,
+        };
+        let (solution_sender, solution_receiver) =
+            mpsc::channel(PENDING_SOLUTIONS_CHANNEL_CAPACITY);
+
+        self.subspace_link
+            .new_slot_notification_sender
+            .notify(|| NewSlotNotification {
+                new_slot_info,
+                solution_sender,
+            });
+
+        self.pending_solutions
+            .lock()
+            .insert(slot, solution_receiver);
+    }
 }
 
 #[async_trait::async_trait]
@@ -172,6 +226,12 @@ where
     type CreateProposer =
         Pin<Box<dyn Future<Output = Result<E::Proposer, ConsensusError>> + Send + 'static>>;
     type Proposer = E::Proposer;
+    #[cfg(feature = "pot")]
+    type Claim = (
+        PreDigest<FarmerPublicKey, FarmerPublicKey>,
+        SubspaceJustification,
+    );
+    #[cfg(not(feature = "pot"))]
     type Claim = PreDigest<FarmerPublicKey, FarmerPublicKey>;
     type AuxData = ();
 
@@ -202,8 +262,9 @@ where
         &self,
         parent_header: &Block::Header,
         slot: Slot,
-        _epoch_data: &Self::AuxData,
+        _aux_data: &Self::AuxData,
     ) -> Option<Self::Claim> {
+        let chain_constants = get_chain_constants(self.client.as_ref()).ok()?;
         let parent_pre_digest = match extract_pre_digest(parent_header) {
             Ok(pre_digest) => pre_digest,
             Err(error) => {
@@ -231,57 +292,75 @@ where
         let parent_hash = parent_header.hash();
         let runtime_api = self.client.runtime_api();
 
+        let (solution_range, voting_solution_range) =
+            extract_solution_ranges_for_block(self.client.as_ref(), parent_hash).ok()?;
+
+        let maybe_root_plot_public_key = runtime_api.root_plot_public_key(parent_hash).ok()?;
+
+        // TODO: Store `new_checkpoints`
+        #[cfg(feature = "pot")]
+        let (proof_of_time, future_proof_of_time, new_checkpoints) = {
+            let mut pot_checkpoints = self.pot_checkpoints.lock();
+
+            // Remove checkpoints from old slots we will not need anymore
+            pot_checkpoints.retain(|&stored_slot, _checkpoints| stored_slot > parent_slot);
+
+            let proof_of_time = pot_checkpoints.get(&slot)?.output();
+
+            // Future slot for which proof must be available before authoring block at this slot
+            let future_slot = slot + chain_constants.block_authoring_delay();
+            let parent_future_slot = parent_slot + chain_constants.block_authoring_delay();
+            let future_proof_of_time = pot_checkpoints.get(&future_slot)?.output();
+
+            // New checkpoints that were produced since parent block's future slot up to current
+            // future slot (inclusive)
+            let new_checkpoints = pot_checkpoints
+                .iter()
+                .filter_map(|(&stored_slot, &checkpoints)| {
+                    (stored_slot > parent_future_slot && stored_slot <= future_slot)
+                        .then_some(checkpoints)
+                })
+                .collect::<Vec<_>>();
+
+            (proof_of_time, future_proof_of_time, new_checkpoints)
+        };
+
+        #[cfg(feature = "pot")]
+        let mut solution_receiver = {
+            let mut pending_solutions = self.pending_solutions.lock();
+            // Remove receivers for old slots we will not need anymore
+            pending_solutions.retain(|&stored_slot, _solution_receiver| stored_slot >= slot);
+
+            let mut solution_receiver = pending_solutions.remove(&slot)?;
+            // Time is out, we will not accept any more solutions
+            solution_receiver.close();
+            solution_receiver
+        };
+
         #[cfg(not(feature = "pot"))]
         let global_randomness =
             extract_global_randomness_for_block(self.client.as_ref(), parent_hash).ok()?;
 
-        // If proof of time is enabled, collect the proofs that go into this
-        // block and derive randomness from the last proof.
-        #[cfg(feature = "pot")]
-        let (pot_pre_digest, global_randomness) =
-            if let Some(proof_of_time) = self.proof_of_time.as_ref() {
-                let pot_pre_digest = self
-                    .build_block_pot(
-                        proof_of_time.as_ref(),
-                        parent_header,
-                        &parent_pre_digest,
-                        slot.into(),
-                    )
-                    .await
-                    .ok()?;
-                let randomness = pot_pre_digest.derive_global_randomness();
-                (Some(pot_pre_digest), randomness)
-            } else {
-                (
-                    None,
-                    extract_global_randomness_for_block(self.client.as_ref(), parent_hash).ok()?,
-                )
+        #[cfg(not(feature = "pot"))]
+        let mut solution_receiver = {
+            let new_slot_info = NewSlotInfo {
+                slot,
+                global_randomness,
+                solution_range,
+                voting_solution_range,
             };
+            let (solution_sender, solution_receiver) =
+                mpsc::channel(PENDING_SOLUTIONS_CHANNEL_CAPACITY);
 
-        let (solution_range, voting_solution_range) =
-            extract_solution_ranges_for_block(self.client.as_ref(), parent_hash).ok()?;
+            self.subspace_link
+                .new_slot_notification_sender
+                .notify(|| NewSlotNotification {
+                    new_slot_info,
+                    solution_sender,
+                });
 
-        let maybe_root_plot_public_key = self
-            .client
-            .runtime_api()
-            .root_plot_public_key(parent_hash)
-            .ok()?;
-
-        let new_slot_info = NewSlotInfo {
-            slot,
-            global_randomness,
-            solution_range,
-            voting_solution_range,
+            solution_receiver
         };
-        let (solution_sender, mut solution_receiver) =
-            tracing_unbounded("subspace_slot_solution_stream", 100);
-
-        self.subspace_link
-            .new_slot_notification_sender
-            .notify(|| NewSlotNotification {
-                new_slot_info,
-                solution_sender,
-            });
 
         let mut maybe_pre_digest = None;
 
@@ -317,7 +396,6 @@ where
 
             let history_size = runtime_api.history_size(parent_hash).ok()?;
             let max_pieces_in_sector = runtime_api.max_pieces_in_sector(parent_hash).ok()?;
-            let chain_constants = get_chain_constants(self.client.as_ref()).ok()?;
 
             let segment_index = sector_id
                 .derive_piece_index(
@@ -362,7 +440,10 @@ where
                 &solution,
                 slot.into(),
                 &VerifySolutionParams {
+                    #[cfg(not(feature = "pot"))]
                     global_randomness,
+                    #[cfg(feature = "pot")]
+                    proof_of_time,
                     solution_range: voting_solution_range,
                     piece_check_params: Some(PieceCheckParams {
                         max_pieces_in_sector,
@@ -384,10 +465,12 @@ where
                     if maybe_pre_digest.is_none() && solution_distance <= solution_range / 2 {
                         info!(target: "subspace", "🚜 Claimed block at slot {slot}");
                         maybe_pre_digest.replace(PreDigest {
-                            solution,
                             slot,
+                            solution,
                             #[cfg(feature = "pot")]
-                            proof_of_time: pot_pre_digest.clone(),
+                            proof_of_time,
+                            #[cfg(feature = "pot")]
+                            future_proof_of_time,
                         });
                     } else if !parent_header.number().is_zero() {
                         // Not sending vote on top of genesis block since segment headers since piece
@@ -423,11 +506,26 @@ where
             }
         }
 
+        #[cfg(feature = "pot")]
+        {
+            maybe_pre_digest.map(|pre_digest| {
+                (
+                    pre_digest,
+                    SubspaceJustification::Checkpoints(new_checkpoints),
+                )
+            })
+        }
+        #[cfg(not(feature = "pot"))]
         maybe_pre_digest
     }
 
-    fn pre_digest_data(&self, _slot: Slot, claim: &Self::Claim) -> Vec<DigestItem> {
-        vec![DigestItem::subspace_pre_digest(claim)]
+    fn pre_digest_data(
+        &self,
+        _slot: Slot,
+        #[cfg(feature = "pot")] (pre_digest, _justification): &Self::Claim,
+        #[cfg(not(feature = "pot"))] pre_digest: &Self::Claim,
+    ) -> Vec<DigestItem> {
+        vec![DigestItem::subspace_pre_digest(pre_digest)]
     }
 
     async fn block_import_params(
@@ -436,8 +534,9 @@ where
         header_hash: &Block::Hash,
         body: Vec<Block::Extrinsic>,
         storage_changes: sc_consensus_slots::StorageChanges<I::Transaction, Block>,
-        pre_digest: Self::Claim,
-        _epoch_data: Self::AuxData,
+        #[cfg(feature = "pot")] (pre_digest, _justification): Self::Claim,
+        #[cfg(not(feature = "pot"))] pre_digest: Self::Claim,
+        _aux_data: Self::AuxData,
     ) -> Result<BlockImportParams<Block, I::Transaction>, ConsensusError> {
         let signature = self
             .sign_reward(
@@ -453,6 +552,12 @@ where
         import_block.body = Some(body);
         import_block.state_action =
             StateAction::ApplyChanges(StorageChanges::Changes(storage_changes));
+        // TODO: Substrate only allows justifications in finalized blocks, need to figure out a way
+        //  to pass this along (could use auxiliary, but then will not be gossiped to other nodes)
+        // #[cfg(feature = "pot")]
+        // import_block
+        //     .justifications
+        //     .replace(Justifications::from(Justification::from(justification)));
 
         Ok(import_block)
     }
@@ -615,65 +720,11 @@ where
             public_key.to_raw_vec()
         )))
     }
-
-    /// Builds the proof of time for the block being proposed.
-    #[cfg(feature = "pot")]
-    async fn build_block_pot(
-        &self,
-        proof_of_time: &dyn PotConsensusState,
-        parent_header: &Block::Header,
-        parent_pre_digest: &PreDigest<FarmerPublicKey, FarmerPublicKey>,
-        slot_number: SlotNumber,
-    ) -> Result<PotPreDigest, PotCreateError<Block>> {
-        let block_number = *parent_header.number() + One::one();
-
-        // Block 1 does not have proofs
-        if block_number.is_one() {
-            return Ok(PotPreDigest::FirstBlock(slot_number));
-        }
-
-        // Block 2 onwards.
-        // Get the start slot number for the proofs in the new block.
-        let parent_pot_digest = parent_pre_digest.proof_of_time.as_ref().ok_or_else(|| {
-            // PoT needs to be present in the block if feature is enabled.
-            PotCreateError::ParentMissingPotDigest {
-                parent_block_number: *parent_header.number(),
-                parent_slot_number: parent_pre_digest.slot.into(),
-                slot_number,
-            }
-        })?;
-
-        proof_of_time
-            .get_block_proofs(
-                block_number.into(),
-                slot_number,
-                parent_pot_digest,
-                Some(self.subspace_link.slot_duration().as_duration()),
-            )
-            .await
-            .map(|proofs| {
-                let pot_pre_digest = PotPreDigest::new(proofs);
-                debug!(
-                    target: "subspace",
-                    "build_block_pot: {block_number}/{}/{slot_number}, PoT=[{pot_pre_digest:?}], \
-                     randomness = {:?}",
-                    parent_pre_digest.slot, pot_pre_digest.derive_global_randomness()
-                );
-                pot_pre_digest
-            })
-            .map_err(|err| {
-                debug!(
-                    target: "subspace",
-                    "build_block_pot: {block_number}/{}/{slot_number}, err={err:?}",
-                    parent_pre_digest.slot
-                );
-                PotCreateError::PotGetBlockProofsError(err)
-            })
-    }
 }
 
 // TODO: Replace with querying parent block header when breaking protocol
 /// Extract global randomness for block, given ID of the parent block.
+#[cfg(not(feature = "pot"))]
 pub(crate) fn extract_global_randomness_for_block<Block, Client>(
     client: &Client,
     parent_hash: Block::Hash,

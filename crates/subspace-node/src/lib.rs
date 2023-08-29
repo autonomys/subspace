@@ -20,7 +20,6 @@ mod chain_spec;
 mod chain_spec_utils;
 pub mod domain;
 
-use clap::builder::EnumValueParser;
 use clap::Parser;
 use sc_cli::{RunCmd, SubstrateCli};
 use sc_executor::{NativeExecutionDispatch, RuntimeVersion};
@@ -31,6 +30,8 @@ use sc_telemetry::serde_json;
 use serde_json::Value;
 use std::io::Write;
 use std::{fs, io};
+#[cfg(feature = "pot")]
+use subspace_core_primitives::PotKey;
 use subspace_networking::libp2p::Multiaddr;
 
 /// Executor dispatch for subspace runtime
@@ -179,31 +180,6 @@ pub enum Subcommand {
     Benchmark(frame_benchmarking_cli::BenchmarkCmd),
 }
 
-/// Assigned proof of time role.
-#[derive(Debug, Clone, Eq, PartialEq, clap::ValueEnum)]
-pub enum CliPotRole {
-    /// Time keeper role of producing proofs.
-    TimeKeeper,
-
-    /// Listens to proofs from time keepers.
-    NodeClient,
-
-    /// Proof of time is disabled.
-    None,
-}
-
-impl CliPotRole {
-    /// Checks if PoT is enabled.
-    pub fn is_pot_enabled(&self) -> bool {
-        *self == Self::TimeKeeper || *self == Self::NodeClient
-    }
-
-    /// Checks if PoT role is time keeper.
-    pub fn is_time_keeper(&self) -> bool {
-        *self == Self::TimeKeeper
-    }
-}
-
 /// Subspace Cli.
 #[derive(Debug, Parser)]
 #[clap(
@@ -285,8 +261,16 @@ pub struct Cli {
     pub enable_subspace_block_relay: bool,
 
     /// Assigned PoT role for this node.
-    #[arg(long, default_value = "none", value_parser(EnumValueParser::< CliPotRole >::new()))]
-    pub pot_role: CliPotRole,
+    #[arg(long)]
+    #[cfg(feature = "pot")]
+    pub timekeeper: bool,
+
+    /// Initial PoT key (unless specified in chain spec already).
+    ///
+    /// Key is a 16-byte hex string.
+    #[arg(long)]
+    #[cfg(feature = "pot")]
+    pub pot_initial_key: Option<PotKey>,
 }
 
 impl SubstrateCli for Cli {

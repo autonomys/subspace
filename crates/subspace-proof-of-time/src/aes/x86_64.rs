@@ -1,21 +1,22 @@
 use core::arch::x86_64::*;
-use std::mem;
+use core::mem;
+use subspace_core_primitives::PotCheckpoints;
 
 /// Create PoT proof with checkpoints
 #[target_feature(enable = "aes")]
+#[inline]
 pub(super) unsafe fn create(
     seed: &[u8; 16],
     key: &[u8; 16],
-    num_checkpoints: u8,
     checkpoint_iterations: u32,
-) -> Vec<[u8; 16]> {
-    let mut checkpoints = Vec::with_capacity(usize::from(num_checkpoints));
+) -> PotCheckpoints {
+    let mut checkpoints = PotCheckpoints::default();
 
     let keys_reg = expand_key(key);
     let xor_key = _mm_xor_si128(keys_reg[10], keys_reg[0]);
     let mut seed_reg = _mm_loadu_si128(seed.as_ptr() as *const __m128i);
     seed_reg = _mm_xor_si128(seed_reg, keys_reg[0]);
-    for _ in 0..num_checkpoints {
+    for checkpoint in checkpoints.iter_mut() {
         for _ in 0..checkpoint_iterations {
             seed_reg = _mm_aesenc_si128(seed_reg, keys_reg[1]);
             seed_reg = _mm_aesenc_si128(seed_reg, keys_reg[2]);
@@ -30,10 +31,10 @@ pub(super) unsafe fn create(
         }
 
         let checkpoint_reg = _mm_xor_si128(seed_reg, keys_reg[0]);
-        let mut checkpoint: [u8; 16] = mem::zeroed();
-        _mm_storeu_si128(checkpoint.as_mut_ptr() as *mut __m128i, checkpoint_reg);
-
-        checkpoints.push(checkpoint);
+        _mm_storeu_si128(
+            checkpoint.as_mut().as_mut_ptr() as *mut __m128i,
+            checkpoint_reg,
+        );
     }
 
     checkpoints
@@ -67,6 +68,7 @@ macro_rules! expand_round {
 }
 
 #[target_feature(enable = "aes")]
+#[inline]
 unsafe fn expand_key(key: &[u8; 16]) -> RoundKeys {
     // SAFETY: `RoundKeys` is a `[__m128i; 11]` which can be initialized
     // with all zeroes.

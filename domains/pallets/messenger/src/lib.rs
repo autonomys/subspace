@@ -34,7 +34,7 @@ mod messages;
 mod relayer;
 
 use codec::{Decode, Encode};
-use frame_support::traits::Currency;
+use frame_support::traits::fungible::Inspect;
 pub use pallet::*;
 use scale_info::TypeInfo;
 use sp_core::U256;
@@ -85,7 +85,7 @@ pub enum OutboxMessageResult {
 
 pub(crate) type StateRootOf<T> = <<T as frame_system::Config>::Hashing as Hash>::Output;
 pub(crate) type BalanceOf<T> =
-    <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+    <<T as Config>::Currency as Inspect<<T as frame_system::Config>::AccountId>>::Balance;
 
 pub(crate) struct ValidatedRelayMessage<Balance> {
     msg: Message<Balance>,
@@ -102,7 +102,8 @@ mod pallet {
         StateRootOf, ValidatedRelayMessage, U256,
     };
     use frame_support::pallet_prelude::*;
-    use frame_support::traits::ReservableCurrency;
+    use frame_support::traits::fungible::Mutate;
+    use frame_support::weights::WeightToFee;
     use frame_system::pallet_prelude::*;
     use sp_core::storage::StorageKey;
     use sp_messenger::endpoint::{DomainInfo, Endpoint, EndpointHandler, EndpointRequest, Sender};
@@ -111,7 +112,7 @@ mod pallet {
         Payload, ProtocolMessageRequest, RequestResponse, VersionedPayload,
     };
     use sp_messenger::verification::{StorageProofVerifier, VerificationError};
-    use sp_runtime::traits::CheckedSub;
+    use sp_runtime::traits::{CheckedSub, Zero};
     use sp_runtime::ArithmeticError;
     use sp_std::boxed::Box;
     use sp_std::vec::Vec;
@@ -122,11 +123,10 @@ mod pallet {
         /// Gets the chain_id that is treated as src_chain_id for outgoing messages.
         type SelfChainId: Get<ChainId>;
         /// function to fetch endpoint response handler by Endpoint.
-        fn get_endpoint_response_handler(
-            endpoint: &Endpoint,
-        ) -> Option<Box<dyn EndpointHandler<MessageId>>>;
+        fn get_endpoint_handler(endpoint: &Endpoint)
+            -> Option<Box<dyn EndpointHandler<MessageId>>>;
         /// Currency type pallet uses for fees and deposits.
-        type Currency: ReservableCurrency<Self::AccountId>;
+        type Currency: Mutate<Self::AccountId>;
         /// Maximum number of relayers that can join this chain.
         type MaximumRelayers: Get<u32>;
         /// Relayer deposit to become a relayer for this chain.
@@ -137,6 +137,8 @@ mod pallet {
         type ConfirmationDepth: Get<Self::BlockNumber>;
         /// Weight information for extrinsics in this pallet.
         type WeightInfo: WeightInfo;
+        /// Weight to fee conversion.
+        type WeightToFee: WeightToFee<Balance = BalanceOf<Self>>;
     }
 
     /// Pallet messenger used to communicate between chains and other blockchains.
@@ -169,6 +171,21 @@ mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn inbox)]
     pub(super) type Inbox<T: Config> = StorageValue<_, Message<BalanceOf<T>>, OptionQuery>;
+
+    /// A temporary storage of fees for executing an inbox message.
+    /// The storage is cleared when the acknowledgement of inbox response is received
+    /// from the src_chain.
+    #[pallet::storage]
+    #[pallet::getter(fn inbox_fees)]
+    pub(super) type InboxFee<T: Config> =
+        StorageMap<_, Identity, (ChainId, MessageId), BalanceOf<T>, OptionQuery>;
+
+    /// A temporary storage of fees for executing an outbox message and its response from dst_chain.
+    /// The storage is cleared when src_chain receives the response from dst_chain.
+    #[pallet::storage]
+    #[pallet::getter(fn outbox_fees)]
+    pub(super) type OutboxFee<T: Config> =
+        StorageMap<_, Identity, (ChainId, MessageId), BalanceOf<T>, OptionQuery>;
 
     /// Stores the message responses of the incoming processed responses.
     /// Used by the dst_chains to verify the message response.
@@ -219,6 +236,15 @@ mod pallet {
     #[pallet::getter(fn relayer_messages)]
     pub(super) type RelayerMessages<T: Config> =
         StorageMap<_, Identity, RelayerId<T>, relayer::RelayerMessages, OptionQuery>;
+
+    /// A temporary storage to store the rewards for relayers for a given block.
+    /// Rewards are cleared on block init.
+    // TODO: Ideally these rewards along with execution rewards should go into ER
+    //  But since we do not have the operator rewards yet, we store them here
+    //  This storage also can be used to prove the rewards through fraud proof if rewards did not match
+    #[pallet::storage]
+    #[pallet::getter(fn relayer_rewards)]
+    pub(super) type RelayerRewards<T: Config> = StorageValue<_, BalanceOf<T>, ValueQuery>;
 
     /// `pallet-messenger` events
     #[pallet::event]
@@ -481,16 +507,20 @@ mod pallet {
         /// Emits when there is mismatch between the message's weight tag and the message's
         /// actual processing path
         WeightTagNotMatch,
+
+        /// Emite when the there is balance overflow
+        BalanceOverflow,
     }
 
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
         fn on_initialize(_now: BlockNumberFor<T>) -> Weight {
             let results = RelayerMessages::<T>::clear(u32::MAX, None);
+            RelayerRewards::<T>::set(Zero::zero());
             let db_weight = T::DbWeight::get();
             db_weight
                 .reads(results.loops as u64)
-                .saturating_add(db_weight.writes(1))
+                .saturating_add(db_weight.writes(2))
         }
     }
 
@@ -606,15 +636,22 @@ mod pallet {
             let (channel_id, fee_model) =
                 Self::get_open_channel_for_chain(dst_chain_id).ok_or(Error::<T>::NoOpenChannel)?;
 
-            // ensure fees are paid by the sender
-            Self::ensure_fees_for_outbox_message(sender, &fee_model)?;
-
+            let src_endpoint = req.src_endpoint.clone();
             let nonce = Self::new_outbox_message(
                 T::SelfChainId::get(),
                 dst_chain_id,
                 channel_id,
                 VersionedPayload::V0(Payload::Endpoint(RequestResponse::Request(req))),
             )?;
+
+            // ensure fees are paid by the sender
+            Self::collect_fees_for_message(
+                sender,
+                (dst_chain_id, (channel_id, nonce)),
+                &fee_model,
+                &src_endpoint,
+            )?;
+
             Ok((channel_id, nonce))
         }
 
@@ -623,8 +660,7 @@ mod pallet {
         #[cfg(feature = "runtime-benchmarks")]
         fn unchecked_open_channel(dst_chain_id: ChainId) -> Result<(), DispatchError> {
             let fee_model = FeeModel {
-                outbox_fee: Default::default(),
-                inbox_fee: Default::default(),
+                relay_fee: Default::default(),
             };
             let init_params = InitiateChannelParams {
                 max_outgoing_messages: 100,
@@ -643,13 +679,13 @@ mod pallet {
                 MessageWeightTag::ProtocolChannelOpen => T::WeightInfo::do_open_channel(),
                 MessageWeightTag::ProtocolChannelClose => T::WeightInfo::do_close_channel(),
                 MessageWeightTag::EndpointRequest(endpoint) => {
-                    T::get_endpoint_response_handler(endpoint)
+                    T::get_endpoint_handler(endpoint)
                         .map(|endpoint_handler| endpoint_handler.message_weight())
                         // If there is no endpoint handler the request won't be handled thus reture zero weight
                         .unwrap_or(Weight::zero())
                 }
                 MessageWeightTag::EndpointResponse(endpoint) => {
-                    T::get_endpoint_response_handler(endpoint)
+                    T::get_endpoint_handler(endpoint)
                         .map(|endpoint_handler| endpoint_handler.message_response_weight())
                         // If there is no endpoint handler the request won't be handled thus reture zero weight
                         .unwrap_or(Weight::zero())
@@ -843,14 +879,6 @@ mod pallet {
                     return Err(InvalidTransaction::Call.into());
                 }
             }
-
-            let channel = Channels::<T>::get(msg.src_chain_id, msg.channel_id)
-                .ok_or(InvalidTransaction::Call)?;
-
-            // ensure the fees are deposited to the messenger account to pay
-            // for relayer set.
-            Self::ensure_fees_for_inbox_message(&channel.fee)
-                .map_err(|_| TransactionValidityError::Invalid(InvalidTransaction::Payment))?;
 
             Self::deposit_event(Event::InboxMessage {
                 chain_id: msg.src_chain_id,

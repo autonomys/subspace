@@ -70,6 +70,7 @@ default = ["std"]
 pot = [
 	"pallet-subspace/pot",
 	"sp-consensus-subspace/pot",
+	"subspace-verification/pot",
 ]
 std = [
 	"codec/std",

@@ -908,19 +908,18 @@ mod pallet {
             domain_config: DomainConfig,
             raw_genesis: Vec<u8>,
         ) -> DispatchResult {
-            let who = if raw_genesis.is_empty() {
-                ensure_signed(origin)?
+            let (who, raw_genesis) = if raw_genesis.is_empty() {
+                (ensure_signed(origin)?, None)
             } else {
                 // TODO: remove once XDM is finished
                 ensure_root(origin)?;
-                T::SudoId::get()
+                (T::SudoId::get(), Some(raw_genesis))
             };
 
             let created_at = frame_system::Pallet::<T>::current_block_number();
 
-            let domain_id =
-                do_instantiate_domain::<T>(domain_config, who, created_at, Some(raw_genesis))
-                    .map_err(Error::<T>::from)?;
+            let domain_id = do_instantiate_domain::<T>(domain_config, who, created_at, raw_genesis)
+                .map_err(Error::<T>::from)?;
 
             Self::deposit_event(Event::DomainInstantiated { domain_id });
 
@@ -1097,18 +1096,6 @@ mod pallet {
         fn on_finalize(_: T::BlockNumber) {
             let _ = LastEpochStakingDistribution::<T>::clear(u32::MAX, None);
             Self::update_domain_tx_range();
-        }
-
-        // TODO: remove once the migration is done
-        fn on_runtime_upgrade() -> Weight {
-            for (domain_id, stake_summary) in DomainStakingSummary::<T>::iter() {
-                if stake_summary.current_epoch_index.is_zero() {
-                    if let Err(err) = do_finalize_domain_current_epoch::<T>(domain_id, One::one()) {
-                        log::error!(target: "runtime::domains", "Failed to do epoch transition for {domain_id:?}: {err:?}");
-                    }
-                }
-            }
-            Weight::zero()
         }
     }
 

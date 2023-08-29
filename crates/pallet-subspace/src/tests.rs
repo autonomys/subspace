@@ -33,7 +33,9 @@ use frame_support::{assert_err, assert_ok};
 use frame_system::{EventRecord, Phase};
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, GlobalRandomnesses, SolutionRanges};
+#[cfg(not(feature = "pot"))]
+use sp_consensus_subspace::GlobalRandomnesses;
+use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SolutionRanges};
 use sp_core::crypto::UncheckedFrom;
 use sp_runtime::traits::{BlockNumberProvider, Header};
 use sp_runtime::transaction_validity::{

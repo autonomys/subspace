@@ -15,7 +15,9 @@ use domain_runtime_primitives::{MultiAccountId, TryConvertBack, SLOT_DURATION};
 use fp_account::EthereumSignature;
 use fp_self_contained::SelfContainedCall;
 use frame_support::dispatch::{DispatchClass, GetDispatchInfo};
-use frame_support::traits::{ConstU16, ConstU32, ConstU64, Everything, FindAuthor};
+use frame_support::traits::{
+    ConstU16, ConstU32, ConstU64, Currency, Everything, FindAuthor, Imbalance, OnUnbalanced,
+};
 use frame_support::weights::constants::{
     BlockExecutionWeight, ExtrinsicBaseWeight, ParityDbWeight, WEIGHT_REF_TIME_PER_MILLIS,
     WEIGHT_REF_TIME_PER_SECOND,
@@ -323,6 +325,24 @@ impl pallet_balances::Config for Runtime {
     type MaxHolds = ();
 }
 
+impl pallet_operator_rewards::Config for Runtime {
+    type Balance = Balance;
+}
+
+type NegativeImbalance = <Balances as Currency<AccountId>>::NegativeImbalance;
+
+/// `ActualPaidFeesHandler` used to collect all the fee in `pallet_operator_rewards`
+pub struct ActualPaidFeesHandler;
+
+impl OnUnbalanced<NegativeImbalance> for ActualPaidFeesHandler {
+    fn on_unbalanceds<B>(fees_then_tips: impl Iterator<Item = NegativeImbalance>) {
+        // Record both actual paid transaction fee and tip in `pallet_operator_rewards`
+        for fee in fees_then_tips {
+            OperatorRewards::note_transaction_fees(fee.peek());
+        }
+    }
+}
+
 parameter_types! {
     pub const TransactionByteFee: Balance = 1;
     pub const OperationalFeeMultiplier: u8 = 5;
@@ -330,7 +350,8 @@ parameter_types! {
 
 impl pallet_transaction_payment::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type OnChargeTransaction = pallet_transaction_payment::CurrencyAdapter<Balances, ()>;
+    type OnChargeTransaction =
+        pallet_transaction_payment::CurrencyAdapter<Balances, ActualPaidFeesHandler>;
     type WeightToFee = IdentityFee<Balance>;
     type LengthToFee = ConstantMultiplier<Balance, TransactionByteFee>;
     type FeeMultiplierUpdate = ();
@@ -363,9 +384,7 @@ impl pallet_messenger::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type SelfChainId = SelfChainId;
 
-    fn get_endpoint_response_handler(
-        endpoint: &Endpoint,
-    ) -> Option<Box<dyn EndpointHandlerT<MessageId>>> {
+    fn get_endpoint_handler(endpoint: &Endpoint) -> Option<Box<dyn EndpointHandlerT<MessageId>>> {
         if endpoint == &Endpoint::Id(TransporterEndpointId::get()) {
             Some(Box::new(EndpointHandler(PhantomData::<Runtime>)))
         } else {
@@ -379,6 +398,7 @@ impl pallet_messenger::Config for Runtime {
     type DomainInfo = ();
     type ConfirmationDepth = RelayConfirmationDepth;
     type WeightInfo = pallet_messenger::weights::SubstrateWeight<Runtime>;
+    type WeightToFee = IdentityFee<Balance>;
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime
@@ -453,6 +473,58 @@ parameter_types! {
     pub WeightPerGas: Weight = Weight::from_parts(WEIGHT_PER_GAS, 0);
 }
 
+// `BaseFeeHandler` is used to handle the base fee of the evm extrinsic separately, this is necessary
+// because `InnerEVMCurrencyAdapter::pallet_operator_rewards` only return the tip of the evm extrinsic.
+struct BaseFeeHandler;
+
+impl OnUnbalanced<NegativeImbalance> for BaseFeeHandler {
+    fn on_nonzero_unbalanced(base_fee: NegativeImbalance) {
+        // Record the evm transaction base fee
+        OperatorRewards::note_transaction_fees(base_fee.peek())
+    }
+}
+
+type InnerEVMCurrencyAdapter = pallet_evm::EVMCurrencyAdapter<Balances, BaseFeeHandler>;
+
+// Implementation of [`pallet_transaction_payment::OnChargeTransaction`] that charges evm transaction
+// fees from the transaction sender and collect all the fees (including both the base fee and tip) in
+// `pallet_operator_rewards`
+pub struct EVMCurrencyAdapter;
+
+impl pallet_evm::OnChargeEVMTransaction<Runtime> for EVMCurrencyAdapter {
+    type LiquidityInfo = Option<NegativeImbalance>;
+
+    fn withdraw_fee(
+        who: &H160,
+        fee: U256,
+    ) -> Result<Self::LiquidityInfo, pallet_evm::Error<Runtime>> {
+        InnerEVMCurrencyAdapter::withdraw_fee(who, fee)
+    }
+
+    fn correct_and_deposit_fee(
+        who: &H160,
+        corrected_fee: U256,
+        base_fee: U256,
+        already_withdrawn: Self::LiquidityInfo,
+    ) -> Self::LiquidityInfo {
+        let tip =
+            <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<
+                Runtime,
+            >>::correct_and_deposit_fee(who, corrected_fee, base_fee, already_withdrawn);
+        if let Some(t) = tip.as_ref() {
+            // Record the evm transaction tip
+            OperatorRewards::note_transaction_fees(t.peek())
+        }
+        tip
+    }
+
+    fn pay_priority_fee(tip: Self::LiquidityInfo) {
+        <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<Runtime>>::pay_priority_fee(
+            tip,
+        );
+    }
+}
+
 impl pallet_evm::Config for Runtime {
     type FeeCalculator = BaseFee;
     type GasWeightMapping = pallet_evm::FixedGasWeightMapping<Self>;
@@ -468,7 +540,7 @@ impl pallet_evm::Config for Runtime {
     type ChainId = EVMChainId;
     type BlockGasLimit = BlockGasLimit;
     type Runner = pallet_evm::runner::stack::Runner<Self>;
-    type OnChargeTransaction = ();
+    type OnChargeTransaction = EVMCurrencyAdapter;
     type OnCreate = ();
     type FindAuthor = FindAuthorTruncated;
     type Timestamp = Timestamp;
@@ -550,6 +622,7 @@ construct_runtime!(
 
         // domain instance stuff
         SelfDomainId: pallet_domain_id = 90,
+        OperatorRewards: pallet_operator_rewards = 91,
 
         // Sudo account
         Sudo: pallet_sudo = 100,
@@ -811,6 +884,10 @@ impl_runtime_apis! {
 
         fn extrinsic_weight(ext: &<Block as BlockT>::Extrinsic) -> Weight {
             ext.get_dispatch_info().weight
+        }
+
+        fn block_transaction_fee() -> Balance {
+            OperatorRewards::block_transaction_fee()
         }
     }
 

@@ -601,6 +601,8 @@ impl MockConsensusNode {
             solution: self.mock_solution.clone(),
             #[cfg(feature = "pot")]
             proof_of_time: Default::default(),
+            #[cfg(feature = "pot")]
+            future_proof_of_time: Default::default(),
         };
         let mut digest = Digest::default();
         digest.push(DigestItem::subspace_pre_digest(&pre_digest));

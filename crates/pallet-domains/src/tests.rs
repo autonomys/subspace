@@ -250,6 +250,7 @@ pub(crate) fn create_dummy_receipt(
     ExecutionReceipt {
         domain_block_number: block_number,
         domain_block_hash: H256::random(),
+        domain_block_extrinsic_root: Default::default(),
         parent_domain_block_receipt_hash,
         consensus_block_number: block_number,
         consensus_block_hash,

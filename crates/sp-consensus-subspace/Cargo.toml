@@ -38,7 +38,9 @@ thiserror = { version = "1.0.38", optional = true }
 
 [features]
 default = ["std"]
-pot = []
+pot = [
+	"subspace-verification/pot",
+]
 std = [
 	"async-trait",
 	"codec/std",

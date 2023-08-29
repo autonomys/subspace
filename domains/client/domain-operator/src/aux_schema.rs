@@ -24,9 +24,12 @@ const BAD_RECEIPT_MISMATCH_INFO: &[u8] = b"bad_receipt_mismatch_info";
 /// NOTE: Unbounded but the size is not expected to be large.
 const BAD_RECEIPT_NUMBERS: &[u8] = b"bad_receipt_numbers";
 
-/// domain_block_hash => consensus_block_hash
+/// domain_block_hash => Vec<consensus_block_hash>
 ///
 /// Updated only when there is a new domain block produced
+///
+/// NOTE: different consensus blocks may derive the exact same domain block, thus one domain block may
+/// mapping to multiple consensus block.
 const CONSENSUS_HASH: &[u8] = b"consensus_block_hash";
 
 /// domain_block_hash => latest_consensus_block_hash
@@ -128,6 +131,13 @@ where
         }
     }
 
+    let consensus_hashes = {
+        let mut hashes =
+            consensus_block_hash_for::<Backend, Block::Hash, CBlock::Hash>(backend, domain_hash)?;
+        hashes.push(consensus_hash);
+        hashes
+    };
+
     backend.insert_aux(
         &[
             (
@@ -137,7 +147,7 @@ where
             // TODO: prune the stale mappings.
             (
                 (CONSENSUS_HASH, domain_hash).encode().as_slice(),
-                consensus_hash.encode().as_slice(),
+                consensus_hashes.encode().as_slice(),
             ),
             (
                 block_number_key.as_slice(),
@@ -153,25 +163,6 @@ where
             .map(|k| &k[..])
             .collect::<Vec<&[u8]>>()[..],
     )
-}
-
-/// Load the execution receipt for given domain block hash.
-pub(super) fn load_execution_receipt_by_domain_hash<Backend, Block, CBlock>(
-    backend: &Backend,
-    domain_hash: Block::Hash,
-) -> ClientResult<Option<ExecutionReceiptFor<Block, CBlock>>>
-where
-    Backend: AuxStore,
-    Block: BlockT,
-    CBlock: BlockT,
-{
-    match consensus_block_hash_for::<Backend, Block::Hash, CBlock::Hash>(backend, domain_hash)? {
-        Some(consensus_block_hash) => load_decode(
-            backend,
-            execution_receipt_key(consensus_block_hash).as_slice(),
-        ),
-        None => Ok(None),
-    }
 }
 
 /// Load the execution receipt for given consensus block hash.
@@ -254,13 +245,16 @@ where
 pub(super) fn consensus_block_hash_for<Backend, Hash, PHash>(
     backend: &Backend,
     domain_hash: Hash,
-) -> ClientResult<Option<PHash>>
+) -> ClientResult<Vec<PHash>>
 where
     Backend: AuxStore,
     Hash: Encode,
     PHash: Decode,
 {
-    load_decode(backend, (CONSENSUS_HASH, domain_hash).encode().as_slice())
+    Ok(
+        load_decode(backend, (CONSENSUS_HASH, domain_hash).encode().as_slice())?
+            .unwrap_or_default(),
+    )
 }
 
 // TODO: Unlock once domain test infra is workable again.
@@ -500,6 +494,7 @@ mod tests {
         ExecutionReceipt {
             domain_block_number: consensus_block_number,
             domain_block_hash: H256::random(),
+            domain_block_extrinsic_root: H256::random(),
             parent_domain_block_receipt_hash: H256::random(),
             consensus_block_number,
             consensus_block_hash: H256::random(),

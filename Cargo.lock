@@ -2314,6 +2314,7 @@ dependencies = [
  "domain-test-primitives",
  "domain-test-service",
  "evm-domain-test-runtime",
+ "frame-system",
  "futures",
  "futures-timer",
  "num-traits",
@@ -2920,6 +2921,7 @@ dependencies = [
  "pallet-evm-precompile-sha3fips 2.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
  "pallet-evm-precompile-simple 2.0.0-dev (git+https://github.com/subspace/frontier?rev=74483666645e121c0c5e6616f43fdfd8664ea0d3)",
  "pallet-messenger",
+ "pallet-operator-rewards",
  "pallet-sudo",
  "pallet-timestamp",
  "pallet-transaction-payment",
@@ -2973,6 +2975,7 @@ dependencies = [
  "pallet-evm-precompile-sha3fips 2.0.0-dev (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
  "pallet-evm-precompile-simple 2.0.0-dev (git+https://github.com/subspace/frontier?rev=c13d670b25b5506c1c5243f352941dc46c82ffe4)",
  "pallet-messenger",
+ "pallet-operator-rewards",
  "pallet-sudo",
  "pallet-timestamp",
  "pallet-transaction-payment",
@@ -7268,6 +7271,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-operator-rewards"
+version = "0.1.0"
+dependencies = [
+ "frame-support",
+ "frame-system",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
 name = "pallet-rewards"
 version = "0.1.0"
 dependencies = [
@@ -9036,6 +9051,7 @@ dependencies = [
  "futures",
  "futures-timer",
  "jsonrpsee",
+ "lru 0.10.0",
  "parity-scale-codec",
  "parking_lot 0.12.1",
  "sc-client-api",
@@ -9363,16 +9379,21 @@ name = "sc-proof-of-time"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "derive_more",
  "futures",
  "parity-scale-codec",
  "parking_lot 0.12.1",
  "sc-client-api",
+ "sc-consensus-slots",
  "sc-network",
  "sc-network-gossip",
+ "sp-api",
  "sp-blockchain",
  "sp-consensus",
+ "sp-consensus-slots",
  "sp-consensus-subspace",
  "sp-core",
+ "sp-inherents",
  "sp-runtime",
  "subspace-core-primitives",
  "subspace-proof-of-time",

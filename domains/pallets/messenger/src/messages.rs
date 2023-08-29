@@ -1,5 +1,5 @@
 use crate::{
-    BalanceOf, ChannelId, Channels, Config, Error, Event, FeeModel, InboxResponses, Nonce, Outbox,
+    BalanceOf, ChannelId, Channels, Config, Error, Event, InboxResponses, Nonce, Outbox,
     OutboxMessageResult, Pallet, RelayerMessages,
 };
 use frame_support::ensure;
@@ -80,29 +80,6 @@ impl<T: Config> Pallet<T> {
         )
     }
 
-    /// Removes messages responses from Inbox responses as the src_chain signalled that responses are delivered.
-    /// all the messages with nonce <= latest_confirmed_nonce are deleted.
-    fn distribute_rewards_for_delivered_message_responses(
-        dst_chain_id: ChainId,
-        channel_id: ChannelId,
-        latest_confirmed_nonce: Option<Nonce>,
-        fee_model: &FeeModel<BalanceOf<T>>,
-    ) -> DispatchResult {
-        let mut current_nonce = latest_confirmed_nonce;
-
-        while let Some(nonce) = current_nonce {
-            // for every inbox response we take, distribute the reward to the relayers.
-            if InboxResponses::<T>::take((dst_chain_id, channel_id, nonce)).is_none() {
-                return Ok(());
-            }
-
-            Self::distribute_reward_to_relayers(fee_model.inbox_fee.relayer_pool_fee)?;
-            current_nonce = nonce.checked_sub(Nonce::one())
-        }
-
-        Ok(())
-    }
-
     /// Process the incoming messages from given chain_id and channel_id.
     pub(crate) fn process_inbox_messages(
         msg: Message<BalanceOf<T>>,
@@ -134,12 +111,20 @@ impl<T: Config> Pallet<T> {
             // process incoming endpoint message.
             VersionedPayload::V0(Payload::Endpoint(RequestResponse::Request(req))) => {
                 let response = if let Some(endpoint_handler) =
-                    T::get_endpoint_response_handler(&req.dst_endpoint)
+                    T::get_endpoint_handler(&req.dst_endpoint)
                 {
                     if msg_weight_tag != MessageWeightTag::EndpointRequest(req.dst_endpoint.clone())
                     {
                         return Err(Error::<T>::WeightTagNotMatch.into());
                     }
+
+                    // store fees for inbox message execution
+                    Self::store_fees_for_inbox_message(
+                        (dst_chain_id, (channel_id, nonce)),
+                        &channel.fee,
+                        &req.src_endpoint,
+                    )?;
+
                     endpoint_handler.message(dst_chain_id, (channel_id, nonce), req)
                 } else {
                     Err(Error::<T>::NoMessageHandler.into())
@@ -199,11 +184,10 @@ impl<T: Config> Pallet<T> {
 
         // reward relayers for relaying message responses to src_chain.
         // clean any delivered inbox responses
-        Self::distribute_rewards_for_delivered_message_responses(
+        Self::reward_operators_for_inbox_execution(
             dst_chain_id,
             channel_id,
             msg.last_delivered_message_response_nonce,
-            &channel.fee,
         )?;
 
         Self::deposit_event(Event::InboxMessageResponse {
@@ -301,14 +285,23 @@ impl<T: Config> Pallet<T> {
                 VersionedPayload::V0(Payload::Endpoint(RequestResponse::Request(req))),
                 VersionedPayload::V0(Payload::Endpoint(RequestResponse::Response(resp))),
             ) => {
-                if let Some(endpoint_handler) = T::get_endpoint_response_handler(&req.dst_endpoint)
-                {
+                if let Some(endpoint_handler) = T::get_endpoint_handler(&req.dst_endpoint) {
                     if resp_msg_weight_tag
                         != MessageWeightTag::EndpointResponse(req.dst_endpoint.clone())
                     {
                         return Err(Error::<T>::WeightTagNotMatch.into());
                     }
-                    endpoint_handler.message_response(dst_chain_id, (channel_id, nonce), req, resp)
+
+                    let resp = endpoint_handler.message_response(
+                        dst_chain_id,
+                        (channel_id, nonce),
+                        req,
+                        resp,
+                    );
+
+                    Self::reward_operators_for_outbox_execution(dst_chain_id, (channel_id, nonce))?;
+
+                    resp
                 } else {
                     Err(Error::<T>::NoMessageHandler.into())
                 }
@@ -316,9 +309,6 @@ impl<T: Config> Pallet<T> {
 
             (_, _) => Err(Error::<T>::InvalidMessagePayload.into()),
         };
-
-        // distribute rewards to relayers for relaying the outbox messages.
-        Self::distribute_reward_to_relayers(channel.fee.outbox_fee.relayer_pool_fee)?;
 
         Channels::<T>::mutate(
             dst_chain_id,

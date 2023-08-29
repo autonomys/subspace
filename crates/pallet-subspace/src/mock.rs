@@ -45,7 +45,7 @@ use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::{
     ArchivedBlockProgress, ArchivedHistorySegment, Blake2b256Hash, HistorySize, LastArchivedBlock,
     Piece, PieceOffset, PublicKey, Randomness, RecordedHistorySegment, SegmentCommitment,
-    SegmentHeader, SegmentIndex, Solution, SolutionRange,
+    SegmentHeader, SegmentIndex, SlotNumber, Solution, SolutionRange,
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector;
@@ -121,7 +121,10 @@ where
 
 impl pallet_timestamp::Config for Test {
     type Moment = u64;
+    #[cfg(not(feature = "pot"))]
     type OnTimestampSet = Subspace;
+    #[cfg(feature = "pot")]
+    type OnTimestampSet = ();
     type MinimumPeriod = ConstU64<1>;
     type WeightInfo = ();
 }
@@ -154,7 +157,9 @@ pub const INITIAL_SOLUTION_RANGE: SolutionRange =
     u64::MAX / (1024 * 1024 * 1024 / Piece::SIZE as u64) * SLOT_PROBABILITY.0 / SLOT_PROBABILITY.1;
 
 parameter_types! {
+    #[cfg(not(feature = "pot"))]
     pub const GlobalRandomnessUpdateInterval: u64 = 10;
+    pub const BlockAuthoringDelay: SlotNumber = 2;
     pub const EraDuration: u32 = 4;
     // 1GB
     pub const InitialSolutionRange: SolutionRange = INITIAL_SOLUTION_RANGE;
@@ -176,6 +181,7 @@ parameter_types! {
 impl Config for Test {
     type RuntimeEvent = RuntimeEvent;
     type GlobalRandomnessUpdateInterval = GlobalRandomnessUpdateInterval;
+    type BlockAuthoringDelay = BlockAuthoringDelay;
     type EraDuration = EraDuration;
     type InitialSolutionRange = InitialSolutionRange;
     type SlotProbability = SlotProbability;
@@ -259,6 +265,8 @@ pub fn make_pre_digest(
         solution,
         #[cfg(feature = "pot")]
         proof_of_time: Default::default(),
+        #[cfg(feature = "pot")]
+        future_proof_of_time: Default::default(),
     });
     Digest { logs: vec![log] }
 }
@@ -327,6 +335,7 @@ pub fn generate_equivocation_proof(
         System::reset_events();
         System::initialize(&current_block, &parent_hash, &pre_digest);
         System::set_block_number(current_block);
+        #[cfg(not(feature = "pot"))]
         Timestamp::set_timestamp(*current_slot * Subspace::slot_duration());
         System::finalize()
     };
