@@ -266,7 +266,7 @@ pub fn make_pre_digest(
         slot,
         solution,
         #[cfg(feature = "pot")]
-        pot_info: PreDigestPotInfo::Regular {
+        pot_info: PreDigestPotInfo::V0 {
             iterations: NonZeroU32::new(100_000).unwrap(),
             proof_of_time: Default::default(),
             future_proof_of_time: Default::default(),

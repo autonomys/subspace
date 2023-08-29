@@ -68,8 +68,6 @@ use sp_runtime::{DigestItem, OpaqueExtrinsic};
 use sp_timestamp::Timestamp;
 use std::error::Error;
 use std::marker::PhantomData;
-#[cfg(feature = "pot")]
-use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::time;
 use subspace_core_primitives::{Randomness, Solution};
@@ -604,8 +602,7 @@ impl MockConsensusNode {
             slot,
             solution: self.mock_solution.clone(),
             #[cfg(feature = "pot")]
-            pot_info: PreDigestPotInfo::Regular {
-                iterations: NonZeroU32::MIN,
+            pot_info: PreDigestPotInfo::V0 {
                 proof_of_time: Default::default(),
                 future_proof_of_time: Default::default(),
             },

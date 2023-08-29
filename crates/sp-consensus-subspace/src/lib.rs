@@ -47,6 +47,8 @@ use sp_std::vec::Vec;
 use subspace_core_primitives::crypto::kzg::Kzg;
 #[cfg(not(feature = "pot"))]
 use subspace_core_primitives::Randomness;
+#[cfg(feature = "pot")]
+use subspace_core_primitives::{Blake2b256Hash, PotSeed};
 use subspace_core_primitives::{
     BlockNumber, HistorySize, PotCheckpoints, PublicKey, RewardSignature, SegmentCommitment,
     SegmentHeader, SegmentIndex, Solution, SolutionRange, PUBLIC_KEY_LENGTH,
@@ -133,9 +135,26 @@ impl SubspaceJustification {
 /// An equivocation proof for multiple block authorships on the same slot (i.e. double vote).
 pub type EquivocationProof<Header> = sp_consensus_slots::EquivocationProof<Header, FarmerPublicKey>;
 
+/// Change of parameters to apply to PoT chain
+#[cfg(feature = "pot")]
+#[derive(Debug, Clone, PartialEq, Eq, Decode, Encode, TypeInfo, MaxEncodedLen)]
+pub struct PotParametersChange {
+    /// At which slot change of parameters takes effect
+    pub slot: Slot,
+    /// New number of iterations
+    pub iterations: NonZeroU32,
+    /// Entropy that should be injected at this time
+    // TODO: Reconsider if the type is correct here
+    pub entropy: Blake2b256Hash,
+}
+
 /// An consensus log item for Subspace.
 #[derive(Debug, Decode, Encode, Clone, PartialEq, Eq)]
 enum ConsensusLog {
+    /// Number of iterations for proof of time per slot.
+    #[codec(index = 0)]
+    #[cfg(feature = "pot")]
+    PotSlotIterations(NonZeroU32),
     /// Global randomness for this block/interval.
     #[codec(index = 0)]
     #[cfg(not(feature = "pot"))]
@@ -143,6 +162,10 @@ enum ConsensusLog {
     /// Solution range for this block/era.
     #[codec(index = 1)]
     SolutionRange(SolutionRange),
+    /// Change of parameters to apply to PoT chain.
+    #[codec(index = 2)]
+    #[cfg(feature = "pot")]
+    PotParametersChange(PotParametersChange),
     /// Global randomness for next block/interval.
     #[codec(index = 2)]
     #[cfg(not(feature = "pot"))]
@@ -159,6 +182,10 @@ enum ConsensusLog {
     /// Root plot public key was updated.
     #[codec(index = 6)]
     RootPlotPublicKeyUpdate(Option<FarmerPublicKey>),
+    /// Future proof of time seed, essentially output of parent block's future proof of time.
+    #[codec(index = 7)]
+    #[cfg(feature = "pot")]
+    FuturePotSeed(PotSeed),
 }
 
 /// Farmer vote.
@@ -616,6 +643,38 @@ sp_api::decl_runtime_apis! {
     }
 }
 
+/// Proof of time parameters
+#[cfg(feature = "pot")]
+#[derive(Debug, Clone, Encode, Decode, TypeInfo, MaxEncodedLen)]
+pub enum PotParameters {
+    /// Initial version of the parameters
+    V0 {
+        /// Base number of iterations
+        iterations: NonZeroU32,
+        /// Optional next scheduled change of parameters
+        next_change: Option<PotParametersChange>,
+    },
+}
+
+#[cfg(feature = "pot")]
+impl PotParameters {
+    /// Number of iterations for proof of time per slot, taking into account potential future change
+    pub fn iterations(&self, slot: Slot) -> NonZeroU32 {
+        let Self::V0 {
+            iterations,
+            next_change,
+        } = self;
+
+        if let Some(next_change) = next_change {
+            if next_change.slot >= slot {
+                return next_change.iterations;
+            }
+        }
+
+        *iterations
+    }
+}
+
 #[cfg(feature = "pot")]
 sp_api::decl_runtime_apis! {
     /// API necessary for block authorship with Subspace.
@@ -623,8 +682,8 @@ sp_api::decl_runtime_apis! {
         /// The slot duration in milliseconds for Subspace.
         fn slot_duration() -> SlotDuration;
 
-        /// Number of iterations for proof of time per slot
-        fn pot_slot_iterations() -> NonZeroU32;
+        /// Proof of time parameters
+        fn pot_parameters() -> PotParameters;
 
         /// Solution ranges.
         fn solution_ranges() -> SolutionRanges;

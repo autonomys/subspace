@@ -297,8 +297,6 @@ where
         let (solution_range, voting_solution_range) =
             extract_solution_ranges_for_block(self.client.as_ref(), parent_hash).ok()?;
 
-        #[cfg(feature = "pot")]
-        let pot_slot_iterations = runtime_api.pot_slot_iterations(parent_hash).ok()?;
         let maybe_root_plot_public_key = runtime_api.root_plot_public_key(parent_hash).ok()?;
 
         #[cfg(feature = "pot")]
@@ -471,8 +469,7 @@ where
                             slot,
                             solution,
                             #[cfg(feature = "pot")]
-                            pot_info: PreDigestPotInfo::Regular {
-                                iterations: pot_slot_iterations,
+                            pot_info: PreDigestPotInfo::V0 {
                                 proof_of_time,
                                 future_proof_of_time,
                             },

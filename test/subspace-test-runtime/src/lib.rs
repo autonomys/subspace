@@ -48,6 +48,8 @@ use sp_consensus_slots::SlotDuration;
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 #[cfg(not(feature = "pot"))]
 use sp_consensus_subspace::GlobalRandomnesses;
+#[cfg(feature = "pot")]
+use sp_consensus_subspace::PotParameters;
 use sp_consensus_subspace::{
     ChainConstants, EquivocationProof, FarmerPublicKey, SignedVote, SolutionRanges, Vote,
 };
@@ -77,8 +79,6 @@ use sp_runtime::{
 };
 use sp_std::iter::Peekable;
 use sp_std::marker::PhantomData;
-#[cfg(feature = "pot")]
-use sp_std::num::NonZeroU32;
 use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
@@ -1568,8 +1568,8 @@ impl_runtime_apis! {
             SlotDuration::from_millis(SLOT_DURATION)
         }
 
-        fn pot_slot_iterations() -> NonZeroU32 {
-            Subspace::pot_slot_iterations()
+        fn pot_parameters() -> PotParameters {
+            Subspace::pot_parameters()
         }
 
         fn solution_ranges() -> SolutionRanges {

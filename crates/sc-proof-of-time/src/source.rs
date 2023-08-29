@@ -74,7 +74,9 @@ where
         #[cfg(feature = "pot")]
         let runtime_api = client.runtime_api();
         #[cfg(feature = "pot")]
-        let iterations = runtime_api.pot_slot_iterations(best_hash)?;
+        let iterations = runtime_api
+            .pot_parameters(best_hash)?
+            .iterations(Slot::from(start_slot));
         #[cfg(not(feature = "pot"))]
         let iterations = NonZeroU32::new(100_000_000).expect("Not zero; qed");
 

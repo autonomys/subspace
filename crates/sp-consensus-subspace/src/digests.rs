@@ -16,6 +16,8 @@
 
 //! Private implementation details of Subspace consensus digests.
 
+#[cfg(feature = "pot")]
+use crate::PotParametersChange;
 use crate::{ConsensusLog, FarmerPublicKey, FarmerSignature, SUBSPACE_ENGINE_ID};
 use codec::{Decode, Encode};
 use log::trace;
@@ -28,10 +30,10 @@ use sp_std::collections::btree_map::{BTreeMap, Entry};
 use sp_std::fmt;
 #[cfg(feature = "pot")]
 use sp_std::num::NonZeroU32;
-#[cfg(feature = "pot")]
-use subspace_core_primitives::PotProof;
 #[cfg(not(feature = "pot"))]
 use subspace_core_primitives::Randomness;
+#[cfg(feature = "pot")]
+use subspace_core_primitives::{PotProof, PotSeed};
 use subspace_core_primitives::{SegmentCommitment, SegmentIndex, Solution, SolutionRange};
 #[cfg(not(feature = "pot"))]
 use subspace_verification::derive_randomness;
@@ -81,11 +83,9 @@ impl<PublicKey, RewardAddress> PreDigest<PublicKey, RewardAddress> {
 #[cfg(feature = "pot")]
 #[derive(Debug, Clone, Encode, Decode)]
 pub enum PreDigestPotInfo {
-    /// Regular information
+    /// Initial version of proof of time information
     #[codec(index = 0)]
-    Regular {
-        /// Number of iterations per slot in proof of time
-        iterations: NonZeroU32,
+    V0 {
         /// Proof of time for this slot
         proof_of_time: PotProof,
         /// Future proof of time
@@ -99,8 +99,19 @@ impl PreDigestPotInfo {
     #[cfg(feature = "pot")]
     #[inline]
     pub fn proof_of_time(&self) -> PotProof {
-        let Self::Regular { proof_of_time, .. } = self;
+        let Self::V0 { proof_of_time, .. } = self;
         *proof_of_time
+    }
+
+    /// Future proof of time
+    #[cfg(feature = "pot")]
+    #[inline]
+    pub fn future_proof_of_time(&self) -> PotProof {
+        let Self::V0 {
+            future_proof_of_time,
+            ..
+        } = self;
+        *future_proof_of_time
     }
 }
 
@@ -122,6 +133,14 @@ pub trait CompatibleDigestItem: Sized {
     /// If this item is a Subspace signature, return the signature.
     fn as_subspace_seal(&self) -> Option<FarmerSignature>;
 
+    /// Number of iterations for proof of time per slot
+    #[cfg(feature = "pot")]
+    fn pot_slot_iterations(pot_slot_iterations: NonZeroU32) -> Self;
+
+    /// If this item is a Subspace proof of time slot iterations, return it.
+    #[cfg(feature = "pot")]
+    fn as_pot_slot_iterations(&self) -> Option<NonZeroU32>;
+
     /// Construct a digest item which contains a global randomness.
     #[cfg(not(feature = "pot"))]
     fn global_randomness(global_randomness: Randomness) -> Self;
@@ -135,6 +154,14 @@ pub trait CompatibleDigestItem: Sized {
 
     /// If this item is a Subspace solution range, return it.
     fn as_solution_range(&self) -> Option<SolutionRange>;
+
+    /// Change of parameters to apply to PoT chain
+    #[cfg(feature = "pot")]
+    fn pot_parameters_change(pot_parameters_change: PotParametersChange) -> Self;
+
+    /// If this item is a Subspace proof of time change of parameters, return it.
+    #[cfg(feature = "pot")]
+    fn as_pot_parameters_change(&self) -> Option<PotParametersChange>;
 
     /// Construct a digest item which contains next global randomness.
     #[cfg(not(feature = "pot"))]
@@ -169,11 +196,20 @@ pub trait CompatibleDigestItem: Sized {
     /// range, return it.
     fn as_enable_solution_range_adjustment_and_override(&self) -> Option<Option<SolutionRange>>;
 
-    /// Construct digest item than indicates update of root plot public key.
+    /// Construct digest item that indicates update of root plot public key.
     fn root_plot_public_key_update(root_plot_public_key: Option<FarmerPublicKey>) -> Self;
 
     /// If this item is a Subspace update of root plot public key, return it.
     fn as_root_plot_public_key_update(&self) -> Option<Option<FarmerPublicKey>>;
+
+    /// Construct a digest item which contains future proof of time seed, essentially output of
+    /// parent block's future proof of time.
+    #[cfg(feature = "pot")]
+    fn future_pot_seed(pot_seed: PotSeed) -> Self;
+
+    /// If this item is a Subspace future proof of time seed, return it.
+    #[cfg(feature = "pot")]
+    fn as_future_pot_seed(&self) -> Option<PotSeed>;
 }
 
 impl CompatibleDigestItem for DigestItem {
@@ -195,6 +231,25 @@ impl CompatibleDigestItem for DigestItem {
 
     fn as_subspace_seal(&self) -> Option<FarmerSignature> {
         self.seal_try_to(&SUBSPACE_ENGINE_ID)
+    }
+
+    #[cfg(feature = "pot")]
+    fn pot_slot_iterations(pot_slot_iterations: NonZeroU32) -> Self {
+        Self::Consensus(
+            SUBSPACE_ENGINE_ID,
+            ConsensusLog::PotSlotIterations(pot_slot_iterations).encode(),
+        )
+    }
+
+    #[cfg(feature = "pot")]
+    fn as_pot_slot_iterations(&self) -> Option<NonZeroU32> {
+        self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
+            if let ConsensusLog::PotSlotIterations(pot_slot_iterations) = c {
+                Some(pot_slot_iterations)
+            } else {
+                None
+            }
+        })
     }
 
     #[cfg(not(feature = "pot"))]
@@ -227,6 +282,25 @@ impl CompatibleDigestItem for DigestItem {
         self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
             if let ConsensusLog::SolutionRange(solution_range) = c {
                 Some(solution_range)
+            } else {
+                None
+            }
+        })
+    }
+
+    #[cfg(feature = "pot")]
+    fn pot_parameters_change(pot_parameters_change: PotParametersChange) -> Self {
+        Self::Consensus(
+            SUBSPACE_ENGINE_ID,
+            ConsensusLog::PotParametersChange(pot_parameters_change).encode(),
+        )
+    }
+
+    #[cfg(feature = "pot")]
+    fn as_pot_parameters_change(&self) -> Option<PotParametersChange> {
+        self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
+            if let ConsensusLog::PotParametersChange(pot_parameters_change) = c {
+                Some(pot_parameters_change)
             } else {
                 None
             }
@@ -328,6 +402,25 @@ impl CompatibleDigestItem for DigestItem {
             }
         })
     }
+
+    #[cfg(feature = "pot")]
+    fn future_pot_seed(pot_seed: PotSeed) -> Self {
+        Self::Consensus(
+            SUBSPACE_ENGINE_ID,
+            ConsensusLog::FuturePotSeed(pot_seed).encode(),
+        )
+    }
+
+    #[cfg(feature = "pot")]
+    fn as_future_pot_seed(&self) -> Option<PotSeed> {
+        self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
+            if let ConsensusLog::FuturePotSeed(pot_seed) = c {
+                Some(pot_seed)
+            } else {
+                None
+            }
+        })
+    }
 }
 
 /// Various kinds of digest types used in errors
@@ -337,11 +430,17 @@ pub enum ErrorDigestType {
     PreDigest,
     /// Seal (signature)
     Seal,
+    /// Number of iterations for proof of time per slot
+    #[cfg(feature = "pot")]
+    PotSlotIterations,
     /// Global randomness
     #[cfg(not(feature = "pot"))]
     GlobalRandomness,
     /// Solution range
     SolutionRange,
+    /// Change of parameters to apply to PoT chain
+    #[cfg(feature = "pot")]
+    PotParametersChange,
     /// Next global randomness
     #[cfg(not(feature = "pot"))]
     NextGlobalRandomness,
@@ -355,6 +454,9 @@ pub enum ErrorDigestType {
     EnableSolutionRangeAdjustmentAndOverride,
     /// Root plot public key was updated
     RootPlotPublicKeyUpdate,
+    /// Future proof of time seed, essentially output of parent block's future proof of time.
+    #[cfg(feature = "pot")]
+    FuturePotSeed,
 }
 
 impl fmt::Display for ErrorDigestType {
@@ -366,12 +468,20 @@ impl fmt::Display for ErrorDigestType {
             ErrorDigestType::Seal => {
                 write!(f, "Seal")
             }
+            #[cfg(feature = "pot")]
+            ErrorDigestType::PotSlotIterations => {
+                write!(f, "PotSlotIterations")
+            }
             #[cfg(not(feature = "pot"))]
             ErrorDigestType::GlobalRandomness => {
                 write!(f, "GlobalRandomness")
             }
             ErrorDigestType::SolutionRange => {
                 write!(f, "SolutionRange")
+            }
+            #[cfg(feature = "pot")]
+            ErrorDigestType::PotParametersChange => {
+                write!(f, "PotParametersChange")
             }
             #[cfg(not(feature = "pot"))]
             ErrorDigestType::NextGlobalRandomness => {
@@ -391,6 +501,10 @@ impl fmt::Display for ErrorDigestType {
             }
             ErrorDigestType::RootPlotPublicKeyUpdate => {
                 write!(f, "RootPlotPublicKeyUpdate")
+            }
+            #[cfg(feature = "pot")]
+            ErrorDigestType::FuturePotSeed => {
+                write!(f, "FuturePotSeed")
             }
         }
     }
@@ -446,11 +560,17 @@ pub struct SubspaceDigestItems<PublicKey, RewardAddress, Signature> {
     pub pre_digest: PreDigest<PublicKey, RewardAddress>,
     /// Signature (seal) if present
     pub signature: Option<Signature>,
+    /// Number of iterations for proof of time per slot
+    #[cfg(feature = "pot")]
+    pub pot_slot_iterations: NonZeroU32,
     /// Global randomness
     #[cfg(not(feature = "pot"))]
     pub global_randomness: Randomness,
     /// Solution range
     pub solution_range: SolutionRange,
+    /// Change of parameters to apply to PoT chain
+    #[cfg(feature = "pot")]
+    pub pot_parameters_change: Option<PotParametersChange>,
     /// Next global randomness
     #[cfg(not(feature = "pot"))]
     pub next_global_randomness: Option<Randomness>,
@@ -462,6 +582,9 @@ pub struct SubspaceDigestItems<PublicKey, RewardAddress, Signature> {
     pub enable_solution_range_adjustment_and_override: Option<Option<SolutionRange>>,
     /// Root plot public key was updated
     pub root_plot_public_key_update: Option<Option<FarmerPublicKey>>,
+    /// Future proof of time seed, essentially output of parent block's future proof of time.
+    #[cfg(feature = "pot")]
+    pub future_pot_seed: PotSeed,
 }
 
 /// Extract the Subspace global randomness from the given header.
@@ -476,15 +599,21 @@ where
 {
     let mut maybe_pre_digest = None;
     let mut maybe_seal = None;
+    #[cfg(feature = "pot")]
+    let mut maybe_pot_slot_iterations = None;
     #[cfg(not(feature = "pot"))]
     let mut maybe_global_randomness = None;
     let mut maybe_solution_range = None;
+    #[cfg(feature = "pot")]
+    let mut maybe_pot_parameters_change = None;
     #[cfg(not(feature = "pot"))]
     let mut maybe_next_global_randomness = None;
     let mut maybe_next_solution_range = None;
     let mut segment_commitments = BTreeMap::new();
     let mut maybe_enable_and_override_solution_range = None;
     let mut maybe_root_plot_public_key_update = None;
+    #[cfg(feature = "pot")]
+    let mut maybe_future_pot_seed = None;
 
     for log in header.digest().logs() {
         match log {
@@ -516,6 +645,17 @@ where
                     .map_err(|error| Error::FailedToDecode(ErrorDigestType::Consensus, error))?;
 
                 match consensus {
+                    #[cfg(feature = "pot")]
+                    ConsensusLog::PotSlotIterations(pot_slot_iterations) => {
+                        match maybe_pot_slot_iterations {
+                            Some(_) => {
+                                return Err(Error::Duplicate(ErrorDigestType::PotSlotIterations));
+                            }
+                            None => {
+                                maybe_pot_slot_iterations.replace(pot_slot_iterations);
+                            }
+                        }
+                    }
                     #[cfg(not(feature = "pot"))]
                     ConsensusLog::GlobalRandomness(global_randomness) => {
                         match maybe_global_randomness {
@@ -535,6 +675,17 @@ where
                             maybe_solution_range.replace(solution_range);
                         }
                     },
+                    #[cfg(feature = "pot")]
+                    ConsensusLog::PotParametersChange(pot_parameters_change) => {
+                        match maybe_pot_parameters_change {
+                            Some(_) => {
+                                return Err(Error::Duplicate(ErrorDigestType::PotParametersChange));
+                            }
+                            None => {
+                                maybe_pot_parameters_change.replace(pot_parameters_change);
+                            }
+                        }
+                    }
                     #[cfg(not(feature = "pot"))]
                     ConsensusLog::NextGlobalRandomness(global_randomness) => {
                         match maybe_next_global_randomness {
@@ -568,29 +719,38 @@ where
                     ConsensusLog::EnableSolutionRangeAdjustmentAndOverride(
                         override_solution_range,
                     ) => match maybe_enable_and_override_solution_range {
-                        None => {
-                            maybe_enable_and_override_solution_range
-                                .replace(override_solution_range);
-                        }
                         Some(_) => {
                             return Err(Error::Duplicate(
                                 ErrorDigestType::EnableSolutionRangeAdjustmentAndOverride,
                             ));
                         }
+                        None => {
+                            maybe_enable_and_override_solution_range
+                                .replace(override_solution_range);
+                        }
                     },
                     ConsensusLog::RootPlotPublicKeyUpdate(root_plot_public_key_update) => {
-                        match maybe_enable_and_override_solution_range {
-                            None => {
-                                maybe_root_plot_public_key_update
-                                    .replace(root_plot_public_key_update);
-                            }
+                        match maybe_root_plot_public_key_update {
                             Some(_) => {
                                 return Err(Error::Duplicate(
                                     ErrorDigestType::EnableSolutionRangeAdjustmentAndOverride,
                                 ));
                             }
+                            None => {
+                                maybe_root_plot_public_key_update
+                                    .replace(root_plot_public_key_update);
+                            }
                         }
                     }
+                    #[cfg(feature = "pot")]
+                    ConsensusLog::FuturePotSeed(pot_seed) => match maybe_future_pot_seed {
+                        Some(_) => {
+                            return Err(Error::Duplicate(ErrorDigestType::FuturePotSeed));
+                        }
+                        None => {
+                            maybe_future_pot_seed.replace(pot_seed);
+                        }
+                    },
                 }
             }
             DigestItem::Seal(id, data) => {
@@ -622,17 +782,25 @@ where
     Ok(SubspaceDigestItems {
         pre_digest: maybe_pre_digest.ok_or(Error::Missing(ErrorDigestType::PreDigest))?,
         signature: maybe_seal,
+        #[cfg(feature = "pot")]
+        pot_slot_iterations: maybe_pot_slot_iterations
+            .ok_or(Error::Missing(ErrorDigestType::PotSlotIterations))?,
         #[cfg(not(feature = "pot"))]
         global_randomness: maybe_global_randomness
             .ok_or(Error::Missing(ErrorDigestType::GlobalRandomness))?,
         solution_range: maybe_solution_range
             .ok_or(Error::Missing(ErrorDigestType::SolutionRange))?,
+        #[cfg(feature = "pot")]
+        pot_parameters_change: maybe_pot_parameters_change,
         #[cfg(not(feature = "pot"))]
         next_global_randomness: maybe_next_global_randomness,
         next_solution_range: maybe_next_solution_range,
         segment_commitments,
         enable_solution_range_adjustment_and_override: maybe_enable_and_override_solution_range,
         root_plot_public_key_update: maybe_root_plot_public_key_update,
+        #[cfg(feature = "pot")]
+        future_pot_seed: maybe_future_pot_seed
+            .ok_or(Error::Missing(ErrorDigestType::FuturePotSeed))?,
     })
 }
 
@@ -654,8 +822,7 @@ where
                 FarmerPublicKey::unchecked_from([0u8; 32]),
             ),
             #[cfg(feature = "pot")]
-            pot_info: PreDigestPotInfo::Regular {
-                iterations: NonZeroU32::MIN,
+            pot_info: PreDigestPotInfo::V0 {
                 proof_of_time: Default::default(),
                 future_proof_of_time: Default::default(),
             },

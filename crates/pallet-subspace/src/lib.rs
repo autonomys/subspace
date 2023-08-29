@@ -50,6 +50,8 @@ use sp_consensus_slots::Slot;
 use sp_consensus_subspace::consensus::verify_solution;
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::offence::{OffenceDetails, OffenceError, OnOffenceHandler};
+#[cfg(feature = "pot")]
+use sp_consensus_subspace::PotParameters;
 use sp_consensus_subspace::{
     ChainConstants, EquivocationProof, FarmerPublicKey, FarmerSignature, SignedVote, Vote,
 };
@@ -65,15 +67,14 @@ use sp_runtime::transaction_validity::{
 };
 use sp_runtime::DispatchError;
 use sp_std::collections::btree_map::BTreeMap;
-use sp_std::num::NonZeroU32;
 use sp_std::prelude::*;
 use subspace_core_primitives::crypto::Scalar;
-#[cfg(feature = "pot")]
-use subspace_core_primitives::PotProof;
 use subspace_core_primitives::{
     ArchivedHistorySegment, HistorySize, PublicKey, Randomness, RewardSignature, SectorId,
     SectorIndex, SegmentHeader, SegmentIndex, SolutionRange,
 };
+#[cfg(feature = "pot")]
+use subspace_core_primitives::{PotProof, PotSeed};
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 #[cfg(not(feature = "pot"))]
 use subspace_verification::derive_randomness;
@@ -153,7 +154,7 @@ mod pallet {
     use sp_std::prelude::*;
     use subspace_core_primitives::crypto::Scalar;
     use subspace_core_primitives::{
-        HistorySize, Randomness, SectorIndex, SegmentHeader, SegmentIndex, SolutionRange,
+        HistorySize, PotSeed, Randomness, SectorIndex, SegmentHeader, SegmentIndex, SolutionRange,
     };
 
     pub(super) struct InitialSolutionRanges<T: Config> {
@@ -333,7 +334,7 @@ mod pallet {
                     RootPlotPublicKey::<T>::put(root_farmer.clone());
                 }
             }
-            PotSlotIterations::<T>::put(self.pot_slot_iterations.get());
+            PotSlotIterations::<T>::put(self.pot_slot_iterations);
         }
     }
 
@@ -381,19 +382,19 @@ mod pallet {
 
     pub(super) struct DefaultPotSlotIterations {}
 
-    // TODO: Replace with `NonZeroU32` once we can use it:
-    //  https://github.com/paritytech/parity-scale-codec/pull/505
-    impl Get<u32> for DefaultPotSlotIterations {
-        fn get() -> u32 {
-            unreachable!("Always instantiated during genesis; qed");
+    impl Get<NonZeroU32> for DefaultPotSlotIterations {
+        fn get() -> NonZeroU32 {
+            // TODO: Replace with below panic if/when https://github.com/paritytech/polkadot-sdk/issues/1282
+            //  is resolved upstream
+            NonZeroU32::MIN
+            // unreachable!("Always instantiated during genesis; qed");
         }
     }
 
     /// Number of iterations for proof of time per slot
     #[pallet::storage]
-    // #[pallet::getter(fn pot_slot_iterations)]
     pub(super) type PotSlotIterations<T> =
-        StorageValue<_, u32, ValueQuery, DefaultPotSlotIterations>;
+        StorageValue<_, NonZeroU32, ValueQuery, DefaultPotSlotIterations>;
 
     /// Solution ranges used for challenges.
     #[pallet::storage]
@@ -500,6 +501,10 @@ mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn root_plot_public_key)]
     pub(super) type RootPlotPublicKey<T> = StorageValue<_, FarmerPublicKey>;
+
+    /// Future proof of time seed, essentially output of parent block's future proof of time.
+    #[pallet::storage]
+    pub(super) type FuturePotSeed<T> = StorageValue<_, PotSeed>;
 
     #[pallet::hooks]
     impl<T: Config> Hooks<T::BlockNumber> for Pallet<T> {
@@ -795,6 +800,22 @@ impl<T: Config> Pallet<T> {
     }
 
     fn do_initialize(block_number: T::BlockNumber) {
+        #[cfg(feature = "pot")]
+        frame_system::Pallet::<T>::deposit_log(DigestItem::future_pot_seed(
+            if block_number.is_one() {
+                PotSeed::from_genesis_block_hash(
+                    frame_system::Pallet::<T>::block_hash(T::BlockNumber::zero())
+                        .as_ref()
+                        .try_into()
+                        .expect("Genesis block hash length must match, panic otherwise"),
+                )
+            } else {
+                FuturePotSeed::<T>::get().expect(
+                    "Is set at the end of `do_initialize` of every block after genesis; qed",
+                )
+            },
+        ));
+
         let pre_digest = <frame_system::Pallet<T>>::digest()
             .logs
             .iter()
@@ -930,6 +951,15 @@ impl<T: Config> Pallet<T> {
                 next_global_randomness,
             ));
         }
+
+        #[cfg(feature = "pot")]
+        frame_system::Pallet::<T>::deposit_log(DigestItem::pot_slot_iterations(
+            PotSlotIterations::<T>::get(),
+        ));
+        // TODO: Once we have entropy injection, it might take effect right here and should be
+        //  accounted for
+        #[cfg(feature = "pot")]
+        FuturePotSeed::<T>::put(pre_digest.pot_info().future_proof_of_time().seed());
     }
 
     fn do_finalize(_block_number: T::BlockNumber) {
@@ -1083,12 +1113,15 @@ impl<T: Config> Pallet<T> {
         Some(())
     }
 
-    /// Number of iterations for proof of time per slot
-    // TODO: Remove once we can use `NonZeroU32` directly:
-    //  https://github.com/paritytech/parity-scale-codec/pull/505
-    pub fn pot_slot_iterations() -> NonZeroU32 {
-        NonZeroU32::new(PotSlotIterations::<T>::get())
-            .expect("Always initialized to non-zero value; qed")
+    /// Proof of time parameters
+    #[cfg(feature = "pot")]
+    pub fn pot_parameters() -> PotParameters {
+        PotParameters::V0 {
+            iterations: PotSlotIterations::<T>::get(),
+            // TODO: This is where adjustment for number of iterations and entropy injection will
+            //  happen for runtime API calls
+            next_change: None,
+        }
     }
 
     /// Check if `farmer_public_key` is in block list (due to equivocation)

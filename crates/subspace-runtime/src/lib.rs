@@ -58,6 +58,8 @@ use sp_api::{impl_runtime_apis, BlockT};
 use sp_consensus_slots::SlotDuration;
 #[cfg(not(feature = "pot"))]
 use sp_consensus_subspace::GlobalRandomnesses;
+#[cfg(feature = "pot")]
+use sp_consensus_subspace::PotParameters;
 use sp_consensus_subspace::{
     ChainConstants, EquivocationProof, FarmerPublicKey, SignedVote, SolutionRanges, Vote,
 };
@@ -78,8 +80,6 @@ use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{
     create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, Perbill, SaturatedConversion,
 };
-#[cfg(feature = "pot")]
-use sp_std::num::NonZeroU32;
 use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
 #[cfg(feature = "std")]
@@ -1269,8 +1269,8 @@ impl_runtime_apis! {
             SlotDuration::from_millis(SLOT_DURATION)
         }
 
-        fn pot_slot_iterations() -> NonZeroU32 {
-            Subspace::pot_slot_iterations()
+        fn pot_parameters() -> PotParameters {
+            Subspace::pot_parameters()
         }
 
         fn solution_ranges() -> SolutionRanges {
