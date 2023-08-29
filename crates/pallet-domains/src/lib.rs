@@ -264,11 +264,6 @@ mod pallet {
         #[pallet::constant]
         type TreasuryAccount: Get<Self::AccountId>;
 
-        /// A fixed domain block reward.
-        // TODO: remove once we have operator rewards on client side is available
-        #[pallet::constant]
-        type DomainBlockReward: Get<BalanceOf<Self>>;
-
         /// The maximum number of pending staking operation that can perform upon epoch transition.
         #[pallet::constant]
         type MaxPendingStakingOperation: Get<u32>;
@@ -728,7 +723,7 @@ mod pallet {
                         do_reward_operators::<T>(
                             domain_id,
                             pruned_block_info.operator_ids.into_iter(),
-                            T::DomainBlockReward::get(),
+                            pruned_block_info.rewards,
                         )
                         .map_err(Error::<T>::from)?;
 

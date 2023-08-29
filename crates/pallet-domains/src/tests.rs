@@ -191,7 +191,6 @@ impl pallet_domains::Config for Test {
     type StakeWithdrawalLockingPeriod = StakeWithdrawalLockingPeriod;
     type StakeEpochDuration = StakeEpochDuration;
     type TreasuryAccount = TreasuryAccount;
-    type DomainBlockReward = BlockReward;
     type MaxPendingStakingOperation = MaxPendingStakingOperation;
     type SudoId = ();
 }
