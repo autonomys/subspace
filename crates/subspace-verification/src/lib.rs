@@ -31,6 +31,8 @@ use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::crypto::{
     blake2b_256_254_hash_to_scalar, blake2b_256_hash_list, blake2b_256_hash_with_key,
 };
+#[cfg(feature = "pot")]
+use subspace_core_primitives::PotCheckpoint;
 use subspace_core_primitives::{
     Blake2b256Hash, BlockNumber, BlockWeight, HistorySize, PublicKey, Randomness, Record,
     RewardSignature, SectorId, SectorSlotChallenge, SegmentCommitment, SlotNumber, Solution,
@@ -163,7 +165,11 @@ pub struct PieceCheckParams {
 #[derive(Debug, Clone, Encode, Decode, MaxEncodedLen)]
 pub struct VerifySolutionParams {
     /// Global randomness
+    #[cfg(not(feature = "pot"))]
     pub global_randomness: Randomness,
+    /// Proof of time for which solution is built
+    #[cfg(feature = "pot")]
+    pub proof_of_time: PotCheckpoint,
     /// Solution range
     pub solution_range: SolutionRange,
     /// Parameters for checking piece validity.
@@ -190,7 +196,10 @@ where
     PublicKey: From<&'a FarmerPublicKey>,
 {
     let VerifySolutionParams {
+        #[cfg(not(feature = "pot"))]
         global_randomness,
+        #[cfg(feature = "pot")]
+        proof_of_time,
         solution_range,
         piece_check_params,
     } = params;
@@ -200,6 +209,8 @@ where
         solution.sector_index,
     );
 
+    #[cfg(feature = "pot")]
+    let global_randomness = proof_of_time.derive_global_randomness();
     let global_challenge = global_randomness.derive_global_challenge(slot);
     let sector_slot_challenge = sector_id.derive_sector_slot_challenge(&global_challenge);
     let s_bucket_audit_index = sector_slot_challenge.s_bucket_audit_index();
@@ -317,6 +328,7 @@ where
 }
 
 /// Derive on-chain randomness from solution.
+// TODO: Remove once PoT is enabled by default
 pub fn derive_randomness<PublicKey, RewardAddress>(
     solution: &Solution<PublicKey, RewardAddress>,
     slot: SlotNumber,

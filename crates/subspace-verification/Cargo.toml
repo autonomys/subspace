@@ -29,6 +29,7 @@ thiserror = { version = "1.0.38", optional = true }
 
 [features]
 default = ["std"]
+pot = []
 std = [
     "codec/std",
     "scale-info/std",

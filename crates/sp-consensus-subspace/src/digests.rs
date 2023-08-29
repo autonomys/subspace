@@ -26,10 +26,12 @@ use sp_runtime::traits::{One, Zero};
 use sp_runtime::DigestItem;
 use sp_std::collections::btree_map::{BTreeMap, Entry};
 use sp_std::fmt;
-use subspace_core_primitives::{
-    NonEmptyVec, PotProof, Randomness, SegmentCommitment, SegmentIndex, SlotNumber, Solution,
-    SolutionRange,
-};
+#[cfg(feature = "pot")]
+use subspace_core_primitives::PotCheckpoint;
+#[cfg(not(feature = "pot"))]
+use subspace_core_primitives::Randomness;
+use subspace_core_primitives::{SegmentCommitment, SegmentIndex, Solution, SolutionRange};
+#[cfg(not(feature = "pot"))]
 use subspace_verification::derive_randomness;
 
 /// A Subspace pre-runtime digest. This contains all data required to validate a block and for the
@@ -40,80 +42,12 @@ pub struct PreDigest<PublicKey, RewardAddress> {
     pub slot: Slot,
     /// Solution (includes PoR)
     pub solution: Solution<PublicKey, RewardAddress>,
+    /// Proof of time for this slot
     #[cfg(feature = "pot")]
-    /// Proof of time included in the block
-    /// TODO: It is Option<> for now for testing, to be removed
-    /// when PoT feature is permanently enabled.
-    pub proof_of_time: Option<PotPreDigest>,
-}
-
-/// TODO: remove after conditional compilation is removed.
-impl<PublicKey, RewardAddress> PreDigest<PublicKey, RewardAddress> {
-    /// Accessor for the poT pre digest.
-    #[cfg(not(feature = "pot"))]
-    pub fn pot_pre_digest(&self) -> Option<&PotPreDigest> {
-        None
-    }
-
-    /// Accessor for the poT pre digest.
+    pub proof_of_time: PotCheckpoint,
+    /// Future proof of time
     #[cfg(feature = "pot")]
-    pub fn pot_pre_digest(&self) -> Option<&PotPreDigest> {
-        self.proof_of_time.as_ref()
-    }
-}
-
-/// The proof of time included in the pre digest.
-/// TODO: versioning needs to match PotProof version,
-/// versioning added on the proof side
-#[derive(Clone, Encode, Decode)]
-pub enum PotPreDigest {
-    /// V0 proof.
-    V0(NonEmptyVec<PotProof>),
-}
-
-impl PotPreDigest {
-    /// Constructs the PoT for the pre digest.
-    pub fn new(proofs: NonEmptyVec<PotProof>) -> Self {
-        Self::V0(proofs)
-    }
-
-    /// Returns a reference to the proofs.
-    pub fn proofs(&self) -> &NonEmptyVec<PotProof> {
-        match self {
-            Self::V0(proofs) => proofs,
-        }
-    }
-
-    /// Returns the starting slot number for the proofs in the next
-    /// block.
-    pub fn next_block_initial_slot(&self) -> SlotNumber {
-        match self {
-            Self::V0(proofs) => proofs.last().slot_number + 1,
-        }
-    }
-
-    /// Returns the global randomness from the proofs in the block pre digest.
-    pub fn derive_global_randomness(&self) -> Randomness {
-        match self {
-            Self::V0(proofs) => proofs.last().derive_global_randomness().into(),
-        }
-    }
-}
-
-impl fmt::Debug for PotPreDigest {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::V0(proofs) => {
-                write!(
-                    f,
-                    "PotPreDigest::V0 => num_proofs: {}, proofs: [{} - {}]",
-                    proofs.len(),
-                    proofs.first(),
-                    proofs.last(),
-                )
-            }
-        }
-    }
+    pub future_proof_of_time: PotCheckpoint,
 }
 
 /// A digest item which is usable with Subspace consensus.
@@ -135,9 +69,11 @@ pub trait CompatibleDigestItem: Sized {
     fn as_subspace_seal(&self) -> Option<FarmerSignature>;
 
     /// Construct a digest item which contains a global randomness.
+    #[cfg(not(feature = "pot"))]
     fn global_randomness(global_randomness: Randomness) -> Self;
 
     /// If this item is a Subspace global randomness, return it.
+    #[cfg(not(feature = "pot"))]
     fn as_global_randomness(&self) -> Option<Randomness>;
 
     /// Construct a digest item which contains a solution range.
@@ -147,9 +83,11 @@ pub trait CompatibleDigestItem: Sized {
     fn as_solution_range(&self) -> Option<SolutionRange>;
 
     /// Construct a digest item which contains next global randomness.
+    #[cfg(not(feature = "pot"))]
     fn next_global_randomness(global_randomness: Randomness) -> Self;
 
     /// If this item is a Subspace next global randomness, return it.
+    #[cfg(not(feature = "pot"))]
     fn as_next_global_randomness(&self) -> Option<Randomness>;
 
     /// Construct a digest item which contains next solution range.
@@ -205,6 +143,7 @@ impl CompatibleDigestItem for DigestItem {
         self.seal_try_to(&SUBSPACE_ENGINE_ID)
     }
 
+    #[cfg(not(feature = "pot"))]
     fn global_randomness(global_randomness: Randomness) -> Self {
         Self::Consensus(
             SUBSPACE_ENGINE_ID,
@@ -212,6 +151,7 @@ impl CompatibleDigestItem for DigestItem {
         )
     }
 
+    #[cfg(not(feature = "pot"))]
     fn as_global_randomness(&self) -> Option<Randomness> {
         self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
             if let ConsensusLog::GlobalRandomness(global_randomness) = c {
@@ -239,6 +179,7 @@ impl CompatibleDigestItem for DigestItem {
         })
     }
 
+    #[cfg(not(feature = "pot"))]
     fn next_global_randomness(global_randomness: Randomness) -> Self {
         Self::Consensus(
             SUBSPACE_ENGINE_ID,
@@ -246,6 +187,7 @@ impl CompatibleDigestItem for DigestItem {
         )
     }
 
+    #[cfg(not(feature = "pot"))]
     fn as_next_global_randomness(&self) -> Option<Randomness> {
         self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
             if let ConsensusLog::NextGlobalRandomness(global_randomness) = c {
@@ -342,10 +284,12 @@ pub enum ErrorDigestType {
     /// Seal (signature)
     Seal,
     /// Global randomness
+    #[cfg(not(feature = "pot"))]
     GlobalRandomness,
     /// Solution range
     SolutionRange,
     /// Next global randomness
+    #[cfg(not(feature = "pot"))]
     NextGlobalRandomness,
     /// Next solution range
     NextSolutionRange,
@@ -368,12 +312,14 @@ impl fmt::Display for ErrorDigestType {
             ErrorDigestType::Seal => {
                 write!(f, "Seal")
             }
+            #[cfg(not(feature = "pot"))]
             ErrorDigestType::GlobalRandomness => {
                 write!(f, "GlobalRandomness")
             }
             ErrorDigestType::SolutionRange => {
                 write!(f, "SolutionRange")
             }
+            #[cfg(not(feature = "pot"))]
             ErrorDigestType::NextGlobalRandomness => {
                 write!(f, "NextGlobalRandomness")
             }
@@ -447,10 +393,12 @@ pub struct SubspaceDigestItems<PublicKey, RewardAddress, Signature> {
     /// Signature (seal) if present
     pub signature: Option<Signature>,
     /// Global randomness
+    #[cfg(not(feature = "pot"))]
     pub global_randomness: Randomness,
     /// Solution range
     pub solution_range: SolutionRange,
     /// Next global randomness
+    #[cfg(not(feature = "pot"))]
     pub next_global_randomness: Option<Randomness>,
     /// Next solution range
     pub next_solution_range: Option<SolutionRange>,
@@ -474,8 +422,10 @@ where
 {
     let mut maybe_pre_digest = None;
     let mut maybe_seal = None;
+    #[cfg(not(feature = "pot"))]
     let mut maybe_global_randomness = None;
     let mut maybe_solution_range = None;
+    #[cfg(not(feature = "pot"))]
     let mut maybe_next_global_randomness = None;
     let mut maybe_next_solution_range = None;
     let mut segment_commitments = BTreeMap::new();
@@ -512,6 +462,7 @@ where
                     .map_err(|error| Error::FailedToDecode(ErrorDigestType::Consensus, error))?;
 
                 match consensus {
+                    #[cfg(not(feature = "pot"))]
                     ConsensusLog::GlobalRandomness(global_randomness) => {
                         match maybe_global_randomness {
                             Some(_) => {
@@ -530,6 +481,7 @@ where
                             maybe_solution_range.replace(solution_range);
                         }
                     },
+                    #[cfg(not(feature = "pot"))]
                     ConsensusLog::NextGlobalRandomness(global_randomness) => {
                         match maybe_next_global_randomness {
                             Some(_) => {
@@ -616,10 +568,12 @@ where
     Ok(SubspaceDigestItems {
         pre_digest: maybe_pre_digest.ok_or(Error::Missing(ErrorDigestType::PreDigest))?,
         signature: maybe_seal,
+        #[cfg(not(feature = "pot"))]
         global_randomness: maybe_global_randomness
             .ok_or(Error::Missing(ErrorDigestType::GlobalRandomness))?,
         solution_range: maybe_solution_range
             .ok_or(Error::Missing(ErrorDigestType::SolutionRange))?,
+        #[cfg(not(feature = "pot"))]
         next_global_randomness: maybe_next_global_randomness,
         next_solution_range: maybe_next_solution_range,
         segment_commitments,
@@ -647,6 +601,8 @@ where
             ),
             #[cfg(feature = "pot")]
             proof_of_time: Default::default(),
+            #[cfg(feature = "pot")]
+            future_proof_of_time: Default::default(),
         });
     }
 
@@ -665,6 +621,7 @@ where
 type NumberOf<T> = <T as HeaderT>::Number;
 
 /// Returns the next global randomness if interval is met.
+#[cfg(not(feature = "pot"))]
 pub fn derive_next_global_randomness<Header: HeaderT>(
     number: NumberOf<Header>,
     global_randomness_interval: NumberOf<Header>,
@@ -747,6 +704,7 @@ pub struct NextDigestsVerificationParams<'a, Header: HeaderT> {
     /// Digests present in the header that corresponds to number above.
     pub header_digests: &'a SubspaceDigestItems<FarmerPublicKey, FarmerPublicKey, FarmerSignature>,
     /// Randomness interval at which next randomness is derived.
+    #[cfg(not(feature = "pot"))]
     pub global_randomness_interval: NumberOf<Header>,
     /// Era duration at which solution range is updated.
     pub era_duration: NumberOf<Header>,
@@ -772,6 +730,7 @@ pub fn verify_next_digests<Header: HeaderT>(
     let NextDigestsVerificationParams {
         number,
         header_digests,
+        #[cfg(not(feature = "pot"))]
         global_randomness_interval,
         era_duration,
         slot_probability,
@@ -782,11 +741,13 @@ pub fn verify_next_digests<Header: HeaderT>(
     } = params;
 
     // verify if the randomness is supposed to derived at this block header
+    #[cfg(not(feature = "pot"))]
     let expected_next_randomness = derive_next_global_randomness::<Header>(
         number,
         global_randomness_interval,
         &header_digests.pre_digest,
     );
+    #[cfg(not(feature = "pot"))]
     if expected_next_randomness != header_digests.next_global_randomness {
         return Err(Error::NextDigestVerificationError(
             ErrorDigestType::NextGlobalRandomness,

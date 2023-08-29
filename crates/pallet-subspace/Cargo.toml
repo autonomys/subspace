@@ -50,6 +50,7 @@ subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-spac
 default = ["std"]
 pot = [
 	"sp-consensus-subspace/pot",
+	"subspace-verification/pot",
 ]
 std = [
 	"codec/std",
