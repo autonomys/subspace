@@ -16,14 +16,13 @@
 
 use crate::domain::evm_chain_spec::{self, SpecId};
 use clap::Parser;
-use domain_service::DomainConfiguration;
 use sc_cli::{
     ChainSpec, CliConfiguration, DefaultConfigurationValues, ImportParams, KeystoreParams,
     NetworkParams, Result, Role, RunCmd as SubstrateRunCmd, RuntimeVersion, SharedParams,
     SubstrateCli,
 };
 use sc_service::config::PrometheusConfig;
-use sc_service::BasePath;
+use sc_service::{BasePath, Configuration};
 use sp_domains::DomainId;
 use std::io::Write;
 use std::net::SocketAddr;
@@ -104,9 +103,9 @@ impl DomainCli {
     pub fn create_domain_configuration(
         &self,
         tokio_handle: tokio::runtime::Handle,
-    ) -> sc_cli::Result<DomainConfiguration> {
+    ) -> sc_cli::Result<Configuration> {
         let service_config = SubstrateCli::create_configuration(self, self, tokio_handle)?;
-        Ok(DomainConfiguration { service_config })
+        Ok(service_config)
     }
 }
 

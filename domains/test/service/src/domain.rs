@@ -184,7 +184,7 @@ where
                 .expect("Failed to get domain instance data")
         };
         let chain_spec = create_domain_spec(domain_id, domain_instance_data);
-        let service_config = node_config(
+        let domain_config = node_config(
             domain_id,
             tokio_handle.clone(),
             key,
@@ -198,13 +198,12 @@ where
 
         let span = sc_tracing::tracing::info_span!(
             sc_tracing::logging::PREFIX_LOG_SPAN,
-            name = service_config.network.node_name.as_str()
+            name = domain_config.network.node_name.as_str()
         );
         let _enter = span.enter();
 
-        let multiaddr = service_config.network.listen_addresses[0].clone();
+        let multiaddr = domain_config.network.listen_addresses[0].clone();
 
-        let domain_config = domain_service::DomainConfiguration { service_config };
         let operator_streams = OperatorStreams {
             // Set `consensus_block_import_throttling_buffer_size` to 0 to ensure the primary chain will not be
             // ahead of the execution chain by more than one block, thus slot will not be skipped in test.

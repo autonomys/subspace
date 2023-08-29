@@ -20,8 +20,8 @@ use sc_network_sync::state_request_handler::StateRequestHandler;
 use sc_network_sync::SyncingService;
 use sc_service::config::SyncMode;
 use sc_service::{
-    build_system_rpc_future, BuildNetworkParams, Configuration as ServiceConfiguration,
-    NetworkStarter, TFullClient, TransactionPoolAdapter,
+    build_system_rpc_future, BuildNetworkParams, NetworkStarter, TFullClient,
+    TransactionPoolAdapter,
 };
 use sc_transaction_pool_api::MaintainedTransactionPool;
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedSender};
@@ -37,11 +37,6 @@ pub type FullClient<Block, RuntimeApi, ExecutorDispatch> =
     TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<ExecutorDispatch>>;
 
 pub type FullBackend<Block> = sc_service::TFullBackend<Block>;
-
-/// Domain configuration.
-pub struct DomainConfiguration {
-    pub service_config: ServiceConfiguration,
-}
 
 /// Build the network service, the network status sinks and an RPC sender.
 ///

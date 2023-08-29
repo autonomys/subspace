@@ -342,9 +342,7 @@ fn main() -> Result<(), Error> {
                                         .into(),
                                 );
                             }
-                            cmd.run::<DomainBlock, EVMDomainExecutorDispatch>(
-                                domain_config.service_config,
-                            )
+                            cmd.run::<DomainBlock, EVMDomainExecutorDispatch>(domain_config)
                         }
                         _ => todo!("Not implemented"),
                     }

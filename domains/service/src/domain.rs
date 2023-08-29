@@ -1,5 +1,5 @@
 use crate::providers::{BlockImportProvider, RpcProvider};
-use crate::{DomainConfiguration, FullBackend, FullClient};
+use crate::{FullBackend, FullClient};
 use domain_client_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_client_consensus_relay_chain::DomainBlockImport;
 use domain_client_message_relayer::GossipMessageSink;
@@ -242,7 +242,7 @@ where
     CBlock: BlockT,
 {
     pub domain_id: DomainId,
-    pub domain_config: DomainConfiguration,
+    pub domain_config: ServiceConfiguration,
     pub domain_created_at: NumberFor<CBlock>,
     pub consensus_client: Arc<CClient>,
     pub consensus_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
@@ -359,7 +359,7 @@ where
     // domain_config.announce_block = false;
 
     let params = new_partial(
-        &domain_config.service_config,
+        &domain_config,
         domain_id,
         consensus_client.clone(),
         &provider,
@@ -372,8 +372,7 @@ where
 
     let transaction_pool = params.transaction_pool.clone();
     let mut task_manager = params.task_manager;
-    let mut net_config =
-        sc_network::config::FullNetworkConfiguration::new(&domain_config.service_config.network);
+    let mut net_config = sc_network::config::FullNetworkConfiguration::new(&domain_config.network);
 
     net_config.add_notification_protocol(
         domain_client_subnet_gossip::domain_subnet_gossip_peers_set_config(),
@@ -381,7 +380,7 @@ where
 
     let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
         crate::build_network(BuildNetworkParams {
-            config: &domain_config.service_config,
+            config: &domain_config,
             net_config,
             client: client.clone(),
             transaction_pool: transaction_pool.clone(),
@@ -393,20 +392,20 @@ where
             block_relay: None,
         })?;
 
-    let is_authority = domain_config.service_config.role.is_authority();
-    domain_config.service_config.rpc_id_provider = provider.rpc_id();
+    let is_authority = domain_config.role.is_authority();
+    domain_config.rpc_id_provider = provider.rpc_id();
     let rpc_builder = {
         let deps = crate::rpc::FullDeps {
             client: client.clone(),
             pool: transaction_pool.clone(),
             graph: transaction_pool.pool().clone(),
-            chain_spec: domain_config.service_config.chain_spec.cloned_box(),
+            chain_spec: domain_config.chain_spec.cloned_box(),
             deny_unsafe: DenyUnsafe::Yes,
             network: network_service.clone(),
             sync: sync_service.clone(),
             is_authority,
-            prometheus_registry: domain_config.service_config.prometheus_registry().cloned(),
-            database_source: domain_config.service_config.database.clone(),
+            prometheus_registry: domain_config.prometheus_registry().cloned(),
+            database_source: domain_config.database.clone(),
             task_spawner: task_manager.spawn_handle(),
             backend: backend.clone(),
         };
@@ -430,7 +429,7 @@ where
         client: client.clone(),
         transaction_pool: transaction_pool.clone(),
         task_manager: &mut task_manager,
-        config: domain_config.service_config,
+        config: domain_config,
         keystore: params.keystore_container.keystore(),
         backend: backend.clone(),
         network: network_service.clone(),

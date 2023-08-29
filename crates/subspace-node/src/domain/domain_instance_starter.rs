@@ -6,7 +6,7 @@ use domain_client_operator::{BootstrapResult, OperatorStreams};
 use domain_eth_service::provider::EthProvider;
 use domain_eth_service::DefaultEthConfig;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
-use domain_service::{DomainConfiguration, FullBackend, FullClient};
+use domain_service::{FullBackend, FullClient};
 use futures::StreamExt;
 use sc_chain_spec::ChainSpec;
 use sc_cli::{CliConfiguration, Database, DefaultConfigurationValues, SubstrateCli};
@@ -69,13 +69,7 @@ impl DomainInstanceStarter {
                 domain_instance_data,
             )?;
 
-            let service_config = create_configuration::<_, DomainCli, DomainCli>(
-                &domain_cli,
-                domain_spec,
-                tokio_handle,
-            )?;
-
-            DomainConfiguration { service_config }
+            create_configuration::<_, DomainCli, DomainCli>(&domain_cli, domain_spec, tokio_handle)?
         };
 
         let block_importing_notification_stream = || {
@@ -114,9 +108,8 @@ impl DomainInstanceStarter {
             RuntimeType::Evm => {
                 let evm_base_path = BasePath::new(
                     domain_config
-                        .service_config
                         .base_path
-                        .config_dir(domain_config.service_config.chain_spec.id()),
+                        .config_dir(domain_config.chain_spec.id()),
                 );
 
                 let eth_provider =
