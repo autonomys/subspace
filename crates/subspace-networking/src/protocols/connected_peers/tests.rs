@@ -249,15 +249,18 @@ async fn test_target_connected_peer_limit_number() {
         }
     }
 
-    // We don't maintain with new peers when we have enough connected peers
+    // We don't maintain with new peers when we have enough connected peers.
+    // Peer1 has a slot with peer2
     assert!(peer1.is_connected(peer2.local_peer_id()));
     assert!(!peer1.is_connected(peer3.local_peer_id()));
 
+    // Peer2 has a slot with peer2
     assert!(peer2.is_connected(peer1.local_peer_id()));
     assert!(!peer2.is_connected(peer3.local_peer_id()));
 
+    // Peer3 doesn't have connection slots because "target_connected_peers = 1"
     assert!(!peer3.is_connected(peer1.local_peer_id()));
-    assert!(!peer2.is_connected(peer2.local_peer_id()));
+    assert!(!peer3.is_connected(peer2.local_peer_id()));
 }
 
 fn new_ephemeral<NB: NetworkBehaviour>(connection_timeout: Duration, behaviour: NB) -> Swarm<NB> {
