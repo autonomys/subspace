@@ -1708,6 +1708,14 @@ impl_runtime_apis! {
         fn non_empty_er_exists(domain_id: DomainId) -> bool {
             Domains::non_empty_er_exists(domain_id)
         }
+
+        fn domain_best_number(domain_id: DomainId) -> Option<DomainNumber> {
+            Domains::domain_best_number(domain_id)
+        }
+
+        fn domain_state_root(domain_id: DomainId, number: DomainNumber, hash: DomainHash) -> Option<DomainHash>{
+            Domains::domain_state_root(domain_id, number, hash)
+        }
     }
 
     impl sp_domains::BundleProducerElectionApi<Block, Balance> for Runtime {
@@ -1756,6 +1764,52 @@ impl_runtime_apis! {
         }
         fn query_length_to_fee(length: u32) -> Balance {
             TransactionPayment::length_to_fee(length)
+        }
+    }
+
+    impl sp_messenger::MessengerApi<Block, BlockNumber> for Runtime {
+        fn extract_xdm_proof_state_roots(
+            extrinsic: Vec<u8>,
+        ) -> Option<ExtractedStateRootsFromProof<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>> {
+            extract_xdm_proof_state_roots(extrinsic)
+        }
+
+        fn is_domain_info_confirmed(
+            domain_id: DomainId,
+            domain_block_info: BlockInfo<BlockNumber, <Block as BlockT>::Hash>,
+            domain_state_root: <Block as BlockT>::Hash,
+        ) -> bool{
+            Messenger::is_domain_info_confirmed(domain_id, domain_block_info, domain_state_root)
+        }
+    }
+
+    impl sp_messenger::RelayerApi<Block, BlockNumber> for Runtime {
+        fn chain_id() -> ChainId {
+            SelfChainId::get()
+        }
+
+        fn relay_confirmation_depth() -> BlockNumber {
+            RelayConfirmationDepth::get()
+        }
+
+        fn block_messages() -> BlockMessagesWithStorageKey {
+            Messenger::get_block_messages()
+        }
+
+        fn outbox_message_unsigned(msg: CrossDomainMessage<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
+            Messenger::outbox_message_unsigned(msg)
+        }
+
+        fn inbox_response_message_unsigned(msg: CrossDomainMessage<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
+            Messenger::inbox_response_message_unsigned(msg)
+        }
+
+        fn should_relay_outbox_message(dst_chain_id: ChainId, msg_id: MessageId) -> bool {
+            Messenger::should_relay_outbox_message(dst_chain_id, msg_id)
+        }
+
+        fn should_relay_inbox_message_response(dst_chain_id: ChainId, msg_id: MessageId) -> bool {
+            Messenger::should_relay_inbox_message_response(dst_chain_id, msg_id)
         }
     }
 }
