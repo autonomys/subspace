@@ -380,21 +380,9 @@ mod pallet {
     pub(super) type GlobalRandomnesses<T> =
         StorageValue<_, sp_consensus_subspace::GlobalRandomnesses, ValueQuery>;
 
-    pub(super) struct DefaultPotSlotIterations {}
-
-    impl Get<NonZeroU32> for DefaultPotSlotIterations {
-        fn get() -> NonZeroU32 {
-            // TODO: Replace with below panic if/when https://github.com/paritytech/polkadot-sdk/issues/1282
-            //  is resolved upstream
-            NonZeroU32::MIN
-            // unreachable!("Always instantiated during genesis; qed");
-        }
-    }
-
     /// Number of iterations for proof of time per slot
     #[pallet::storage]
-    pub(super) type PotSlotIterations<T> =
-        StorageValue<_, NonZeroU32, ValueQuery, DefaultPotSlotIterations>;
+    pub(super) type PotSlotIterations<T> = StorageValue<_, NonZeroU32>;
 
     /// Solution ranges used for challenges.
     #[pallet::storage]
@@ -954,7 +942,7 @@ impl<T: Config> Pallet<T> {
 
         #[cfg(feature = "pot")]
         frame_system::Pallet::<T>::deposit_log(DigestItem::pot_slot_iterations(
-            PotSlotIterations::<T>::get(),
+            PotSlotIterations::<T>::get().expect("Always instantiated during genesis; qed"),
         ));
         // TODO: Once we have entropy injection, it might take effect right here and should be
         //  accounted for
@@ -1117,7 +1105,8 @@ impl<T: Config> Pallet<T> {
     #[cfg(feature = "pot")]
     pub fn pot_parameters() -> PotParameters {
         PotParameters::V0 {
-            iterations: PotSlotIterations::<T>::get(),
+            iterations: PotSlotIterations::<T>::get()
+                .expect("Always instantiated during genesis; qed"),
             // TODO: This is where adjustment for number of iterations and entropy injection will
             //  happen for runtime API calls
             next_change: None,
