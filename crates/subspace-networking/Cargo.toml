@@ -61,6 +61,7 @@ features = [
     "metrics",
     "noise",
     "ping",
+    "plaintext",
     "request-response",
     "serde",
     "tcp",
@@ -82,3 +83,4 @@ version = "0.2.1"
 
 [dev-dependencies]
 rand = "0.8.5"
+libp2p-swarm-test = "0.2.0"
