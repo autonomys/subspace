@@ -73,7 +73,7 @@ mod benchmarks {
         #[block]
         {
             assert_ok!(EndpointHandler(PhantomData::<T>).message(
-                T::SelfChainId::get() + 1,
+                dst_chain_id,
                 message_id,
                 endpoint_req
             ));

@@ -231,7 +231,11 @@ mod benchmarks {
         };
 
         #[extrinsic_call]
-        _(RawOrigin::Signed(creator.clone()), domain_config.clone());
+        _(
+            RawOrigin::Signed(creator.clone()),
+            domain_config.clone(),
+            vec![],
+        );
 
         let domain_obj = DomainRegistry::<T>::get(domain_id).expect("domain object must exist");
         assert_eq!(domain_obj.domain_config, domain_config);
@@ -482,7 +486,8 @@ mod benchmarks {
 
         assert_ok!(Domains::<T>::instantiate_domain(
             RawOrigin::Signed(creator.clone()).into(),
-            domain_config.clone()
+            domain_config.clone(),
+            vec![]
         ));
 
         let domain_obj = DomainRegistry::<T>::get(domain_id).expect("domain object must exist");

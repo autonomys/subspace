@@ -35,10 +35,11 @@ use pallet_transporter::EndpointHandler;
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
 use sp_core::{Get, OpaqueMetadata, H160, H256, U256};
+use sp_domains::DomainId;
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
-    ChainId, CrossDomainMessage, ExtractedStateRootsFromProof, MessageId,
-    RelayerMessagesWithStorageKey,
+    BlockInfo, BlockMessagesWithStorageKey, ChainId, CrossDomainMessage,
+    ExtractedStateRootsFromProof, MessageId,
 };
 use sp_runtime::traits::{
     BlakeTwo256, Block as BlockT, Convert, DispatchInfoOf, Dispatchable, IdentifyAccount,
@@ -56,7 +57,7 @@ use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
-use subspace_runtime_primitives::{Moment, SHANNON, SSC};
+use subspace_runtime_primitives::{Moment, SHANNON};
 
 /// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
 pub type Signature = EthereumSignature;
@@ -338,7 +339,7 @@ impl OnUnbalanced<NegativeImbalance> for ActualPaidFeesHandler {
     fn on_unbalanceds<B>(fees_then_tips: impl Iterator<Item = NegativeImbalance>) {
         // Record both actual paid transaction fee and tip in `pallet_operator_rewards`
         for fee in fees_then_tips {
-            OperatorRewards::note_transaction_fees(fee.peek());
+            OperatorRewards::note_operator_rewards(fee.peek());
         }
     }
 }
@@ -370,14 +371,16 @@ impl pallet_sudo::Config for Runtime {
 }
 
 parameter_types! {
-    pub const StateRootsBound: u32 = 50;
-    pub const RelayConfirmationDepth: BlockNumber = 7;
+    pub const RelayConfirmationDepth: BlockNumber = 18;
+    pub SelfChainId: ChainId = SelfDomainId::self_domain_id().into();
 }
 
-parameter_types! {
-    pub const MaximumRelayers: u32 = 100;
-    pub const RelayerDeposit: Balance = 100 * SSC;
-    pub SelfChainId: ChainId = SelfDomainId::self_domain_id().into();
+pub struct OnXDMRewards;
+
+impl sp_messenger::OnXDMRewards<Balance> for OnXDMRewards {
+    fn on_xdm_rewards(rewards: Balance) {
+        OperatorRewards::note_operator_rewards(rewards)
+    }
 }
 
 impl pallet_messenger::Config for Runtime {
@@ -393,12 +396,11 @@ impl pallet_messenger::Config for Runtime {
     }
 
     type Currency = Balances;
-    type MaximumRelayers = MaximumRelayers;
-    type RelayerDeposit = RelayerDeposit;
     type DomainInfo = ();
     type ConfirmationDepth = RelayConfirmationDepth;
     type WeightInfo = pallet_messenger::weights::SubstrateWeight<Runtime>;
     type WeightToFee = IdentityFee<Balance>;
+    type OnXDMRewards = OnXDMRewards;
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime
@@ -480,7 +482,7 @@ struct BaseFeeHandler;
 impl OnUnbalanced<NegativeImbalance> for BaseFeeHandler {
     fn on_nonzero_unbalanced(base_fee: NegativeImbalance) {
         // Record the evm transaction base fee
-        OperatorRewards::note_transaction_fees(base_fee.peek())
+        OperatorRewards::note_operator_rewards(base_fee.peek())
     }
 }
 
@@ -513,7 +515,7 @@ impl pallet_evm::OnChargeEVMTransaction<Runtime> for EVMCurrencyAdapter {
             >>::correct_and_deposit_fee(who, corrected_fee, base_fee, already_withdrawn);
         if let Some(t) = tip.as_ref() {
             // Record the evm transaction tip
-            OperatorRewards::note_transaction_fees(t.peek())
+            OperatorRewards::note_operator_rewards(t.peek())
         }
         tip
     }
@@ -908,12 +910,17 @@ impl_runtime_apis! {
             extract_xdm_proof_state_roots(extrinsic)
         }
 
-        fn confirmation_depth() -> BlockNumber {
-            RelayConfirmationDepth::get()
+        fn is_domain_info_confirmed(
+            _domain_id: DomainId,
+            _domain_block_info: BlockInfo<BlockNumber, <Block as BlockT>::Hash>,
+            _domain_state_root: <Block as BlockT>::Hash,
+        ) -> bool{
+            // not valid on evm domain
+            false
         }
     }
 
-    impl sp_messenger::RelayerApi<Block, AccountId, BlockNumber> for Runtime {
+    impl sp_messenger::RelayerApi<Block, BlockNumber> for Runtime {
         fn chain_id() -> ChainId {
             SelfChainId::get()
         }
@@ -922,16 +929,8 @@ impl_runtime_apis! {
             RelayConfirmationDepth::get()
         }
 
-        fn chain_best_number(_chain_id: ChainId) -> Option<BlockNumber> {
-            None
-        }
-
-        fn chain_state_root(_chain_id: ChainId, _number: BlockNumber, _hash: Hash) -> Option<Hash>{
-            None
-        }
-
-        fn relayer_assigned_messages(relayer_id: AccountId) -> RelayerMessagesWithStorageKey {
-            Messenger::relayer_assigned_messages(relayer_id)
+        fn block_messages() -> BlockMessagesWithStorageKey {
+            Messenger::get_block_messages()
         }
 
         fn outbox_message_unsigned(msg: CrossDomainMessage<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {

@@ -1,14 +1,25 @@
 use crate::{
-    BalanceOf, ChannelId, Channels, Config, Error, Event, InboxResponses, Nonce, Outbox,
-    OutboxMessageResult, Pallet, RelayerMessages,
+    BalanceOf, BlockMessages as BlockMessagesStore, ChannelId, Channels, Config, Error, Event,
+    InboxResponses, Nonce, Outbox, OutboxMessageResult, Pallet,
 };
+use codec::{Decode, Encode};
+use frame_support::dispatch::TypeInfo;
 use frame_support::ensure;
 use sp_messenger::messages::{
-    ChainId, Message, MessageWeightTag, Payload, ProtocolMessageRequest, ProtocolMessageResponse,
-    RequestResponse, VersionedPayload,
+    BlockMessageWithStorageKey, BlockMessagesWithStorageKey, ChainId, Message, MessageId,
+    MessageWeightTag, Payload, ProtocolMessageRequest, ProtocolMessageResponse, RequestResponse,
+    VersionedPayload,
 };
 use sp_runtime::traits::Get;
 use sp_runtime::{ArithmeticError, DispatchError, DispatchResult};
+use sp_std::vec::Vec;
+
+/// Set of messages to be relayed by a given relayer.
+#[derive(Default, Debug, Encode, Decode, Clone, Eq, PartialEq, TypeInfo)]
+pub struct BlockMessages {
+    pub outbox: Vec<(ChainId, MessageId, MessageWeightTag)>,
+    pub inbox_responses: Vec<(ChainId, MessageId, MessageWeightTag)>,
+}
 
 impl<T: Config> Pallet<T> {
     /// Takes a new message destined for dst_chain and adds the message to the outbox.
@@ -56,9 +67,7 @@ impl<T: Config> Pallet<T> {
                     .checked_add(Nonce::one())
                     .ok_or(DispatchError::Arithmetic(ArithmeticError::Overflow))?;
 
-                // get next relayer
-                let relayer_id = Self::next_relayer()?;
-                RelayerMessages::<T>::mutate(relayer_id.clone(), |maybe_messages| {
+                BlockMessagesStore::<T>::mutate(|maybe_messages| {
                     let mut messages = maybe_messages.as_mut().cloned().unwrap_or_default();
                     messages.outbox.push((
                         dst_chain_id,
@@ -73,7 +82,6 @@ impl<T: Config> Pallet<T> {
                     chain_id: dst_chain_id,
                     channel_id,
                     nonce: next_outbox_nonce,
-                    relayer_id,
                 });
                 Ok(next_outbox_nonce)
             },
@@ -160,9 +168,7 @@ impl<T: Config> Pallet<T> {
             },
         );
 
-        // get the next relayer
-        let relayer_id = Self::next_relayer()?;
-        RelayerMessages::<T>::mutate(relayer_id.clone(), |maybe_messages| {
+        BlockMessagesStore::<T>::mutate(|maybe_messages| {
             let mut messages = maybe_messages.as_mut().cloned().unwrap_or_default();
             messages
                 .inbox_responses
@@ -194,7 +200,6 @@ impl<T: Config> Pallet<T> {
             chain_id: dst_chain_id,
             channel_id,
             nonce,
-            relayer_id,
         });
 
         Ok(())
@@ -299,7 +304,7 @@ impl<T: Config> Pallet<T> {
                         resp,
                     );
 
-                    Self::reward_operators_for_outbox_execution(dst_chain_id, (channel_id, nonce))?;
+                    Self::reward_operators_for_outbox_execution(dst_chain_id, (channel_id, nonce));
 
                     resp
                 } else {
@@ -337,5 +342,51 @@ impl<T: Config> Pallet<T> {
         }
 
         Ok(())
+    }
+
+    pub fn get_block_messages() -> BlockMessagesWithStorageKey {
+        let block_messages = match crate::pallet::BlockMessages::<T>::get() {
+            None => return Default::default(),
+            Some(messages) => messages,
+        };
+
+        let mut messages_with_storage_key = BlockMessagesWithStorageKey::default();
+
+        // create storage keys for inbox responses
+        block_messages.inbox_responses.into_iter().for_each(
+            |(chain_id, (channel_id, nonce), weight_tag)| {
+                let storage_key =
+                    InboxResponses::<T>::hashed_key_for((chain_id, channel_id, nonce));
+                messages_with_storage_key
+                    .inbox_responses
+                    .push(BlockMessageWithStorageKey {
+                        src_chain_id: T::SelfChainId::get(),
+                        dst_chain_id: chain_id,
+                        channel_id,
+                        nonce,
+                        storage_key,
+                        weight_tag,
+                    })
+            },
+        );
+
+        // create storage keys for outbox
+        block_messages.outbox.into_iter().for_each(
+            |(chain_id, (channel_id, nonce), weight_tag)| {
+                let storage_key = Outbox::<T>::hashed_key_for((chain_id, channel_id, nonce));
+                messages_with_storage_key
+                    .outbox
+                    .push(BlockMessageWithStorageKey {
+                        src_chain_id: T::SelfChainId::get(),
+                        dst_chain_id: chain_id,
+                        channel_id,
+                        nonce,
+                        storage_key,
+                        weight_tag,
+                    })
+            },
+        );
+
+        messages_with_storage_key
     }
 }

@@ -17,28 +17,18 @@
 //! EVM domain configurations.
 
 use crate::chain_spec_utils::{chain_spec_properties, get_public_key_from_seed};
-use crate::domain::AccountId32ToAccountId20Converter;
 use evm_domain_runtime::{
-    AccountId, BalancesConfig, EVMChainIdConfig, EVMConfig, GenesisConfig, MessengerConfig,
-    Precompiles, SelfDomainIdConfig, SudoConfig, SystemConfig, WASM_BINARY,
+    AccountId, BalancesConfig, EVMChainIdConfig, EVMConfig, GenesisConfig, Precompiles,
+    SelfDomainIdConfig, SudoConfig, SystemConfig, WASM_BINARY,
 };
 use hex_literal::hex;
 use once_cell::sync::OnceCell;
 use sc_service::ChainType;
 use sc_subspace_chain_specs::ExecutionChainSpec;
 use sp_core::crypto::UncheckedFrom;
-use sp_core::{sr25519, Pair, Public};
 use sp_domains::{DomainId, DomainInstanceData, OperatorPublicKey, RuntimeType};
-use sp_runtime::traits::Convert;
 use std::str::FromStr;
 use subspace_runtime_primitives::SSC;
-
-/// Generate a crypto pair from seed.
-pub fn get_from_seed<TPublic: Public>(seed: &str) -> <TPublic::Pair as Pair>::Public {
-    TPublic::Pair::from_string(&format!("//{}", seed), None)
-        .expect("static values are valid; qed")
-        .public()
-}
 
 pub type ChainSpec = ExecutionChainSpec<GenesisConfig>;
 
@@ -181,12 +171,6 @@ pub fn get_testnet_genesis_by_spec_id(spec_id: SpecId) -> (GenesisConfig, Genesi
                     accounts.clone(),
                     // Alith is Sudo
                     Some(accounts[0]),
-                    vec![(
-                        accounts[0],
-                        AccountId32ToAccountId20Converter::convert(
-                            get_from_seed::<sr25519::Public>("Alice").into(),
-                        ),
-                    )],
                     1000,
                 ),
                 GenesisDomainParams {
@@ -204,7 +188,6 @@ pub fn get_testnet_genesis_by_spec_id(spec_id: SpecId) -> (GenesisConfig, Genesi
                         sudo_account,
                     ],
                     Some(sudo_account),
-                    Default::default(),
                     1002,
                 ),
                 GenesisDomainParams {
@@ -224,11 +207,6 @@ pub fn get_testnet_genesis_by_spec_id(spec_id: SpecId) -> (GenesisConfig, Genesi
                         sudo_account,
                     ],
                     Some(sudo_account),
-                    vec![(
-                        sudo_account,
-                        AccountId::from_str("5b267fd1ba3ace6e3c3234f9576c49c877b5beb9")
-                            .expect("Wrong relayer account address"),
-                    )],
                     1003,
                 ),
                 GenesisDomainParams {
@@ -245,7 +223,6 @@ pub fn get_testnet_genesis_by_spec_id(spec_id: SpecId) -> (GenesisConfig, Genesi
                     accounts.clone(),
                     // Alith is sudo
                     Some(accounts[0]),
-                    vec![(accounts[0], accounts[0]), (accounts[1], accounts[1])],
                     1001,
                 ),
                 GenesisDomainParams {
@@ -321,7 +298,6 @@ pub fn create_domain_spec(
 fn testnet_genesis(
     endowed_accounts: Vec<AccountId>,
     maybe_sudo_account: Option<AccountId>,
-    relayers: Vec<(AccountId, AccountId)>,
     chain_id: u64,
 ) -> GenesisConfig {
     // This is the simplest bytecode to revert without returning any data.
@@ -347,7 +323,6 @@ fn testnet_genesis(
                 .map(|k| (k, 1_000_000 * SSC))
                 .collect(),
         },
-        messenger: MessengerConfig { relayers },
         evm_chain_id: EVMChainIdConfig { chain_id },
         evm: EVMConfig {
             // We need _some_ code inserted at the precompile address so that
