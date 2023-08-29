@@ -31,7 +31,9 @@ use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
 use sp_api::RuntimeVersion;
 use sp_core::crypto::KeyTypeId;
-use sp_core::sr25519::vrf::{VrfOutput, VrfProof, VrfSignature};
+use sp_core::sr25519::vrf::VrfSignature;
+#[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
+use sp_core::sr25519::vrf::{VrfOutput, VrfProof};
 use sp_core::H256;
 use sp_runtime::generic::OpaqueDigestItemId;
 use sp_runtime::traits::{

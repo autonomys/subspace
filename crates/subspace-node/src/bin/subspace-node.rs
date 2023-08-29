@@ -21,9 +21,12 @@ use domain_client_operator::Bootstrapper;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
+#[cfg(feature = "pot")]
 use log::warn;
 use sc_cli::{ChainSpec, CliConfiguration, SubstrateCli};
 use sc_consensus_slots::SlotProportion;
+#[cfg(feature = "pot")]
+use sc_proof_of_time::source::PotSourceConfig;
 use sc_service::PartialComponents;
 use sc_storage_monitor::StorageMonitorService;
 use sc_utils::mpsc::tracing_unbounded;
@@ -39,7 +42,7 @@ use subspace_node::domain::{
 use subspace_node::{Cli, ExecutorDispatch, Subcommand};
 use subspace_proof_of_space::chia::ChiaTable;
 use subspace_runtime::{Block, RuntimeApi};
-use subspace_service::{DsnConfig, PotPartialConfig, SubspaceConfiguration, SubspaceNetworking};
+use subspace_service::{DsnConfig, SubspaceConfiguration, SubspaceNetworking};
 
 type PosTable = ChiaTable;
 
@@ -109,7 +112,7 @@ fn main() -> Result<(), Error> {
                     task_manager,
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
-                    &config, None, None,
+                    &config, None,
                 )?;
                 Ok((
                     cmd.run(client, import_queue).map_err(Error::SubstrateCli),
@@ -126,7 +129,7 @@ fn main() -> Result<(), Error> {
                     task_manager,
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
-                    &config, None, None,
+                    &config, None,
                 )?;
                 Ok((
                     cmd.run(client, config.database)
@@ -144,7 +147,7 @@ fn main() -> Result<(), Error> {
                     task_manager,
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
-                    &config, None, None,
+                    &config, None,
                 )?;
                 Ok((
                     cmd.run(client, config.chain_spec)
@@ -163,7 +166,7 @@ fn main() -> Result<(), Error> {
                     task_manager,
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
-                    &config, None, None,
+                    &config, None,
                 )?;
                 Ok((
                     cmd.run(client, import_queue).map_err(Error::SubstrateCli),
@@ -227,7 +230,7 @@ fn main() -> Result<(), Error> {
                     task_manager,
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
-                    &config, None, None,
+                    &config, None,
                 )?;
                 Ok((
                     cmd.run(client, backend, None).map_err(Error::SubstrateCli),
@@ -263,7 +266,7 @@ fn main() -> Result<(), Error> {
                             RuntimeApi,
                             ExecutorDispatch,
                         >(
-                            &config, None, None
+                            &config, None
                         )?;
 
                         cmd.run(client)
@@ -272,7 +275,7 @@ fn main() -> Result<(), Error> {
                         let PartialComponents {
                             client, backend, ..
                         } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
-                            &config, None, None,
+                            &config, None,
                         )?;
                         let db = backend.expose_db();
                         let storage = backend.expose_storage();
@@ -356,38 +359,6 @@ fn main() -> Result<(), Error> {
             runner.run_node_until_exit(|consensus_chain_config| async move {
                 let tokio_handle = consensus_chain_config.tokio_handle.clone();
                 let database_source = consensus_chain_config.database.clone();
-                let maybe_chain_spec_pot_initial_key = consensus_chain_config
-                    .chain_spec
-                    .properties()
-                    .get("potInitialKey")
-                    .map(|d| serde_json::from_value(d.clone()))
-                    .transpose()
-                    .map_err(|error| {
-                        sc_service::Error::Other(format!(
-                            "Failed to decode PoT initial key: {error:?}"
-                        ))
-                    })?
-                    .flatten();
-                if maybe_chain_spec_pot_initial_key.is_some()
-                    && cli.pot_initial_key.is_some()
-                    && maybe_chain_spec_pot_initial_key != cli.pot_initial_key
-                {
-                    warn!(
-                        "--pot-initial-key CLI argument was ignored due to chain spec having a \
-                        different explicit value"
-                    );
-                }
-                let pot_config = if cli.pot_role.is_pot_enabled() {
-                    Some(PotPartialConfig {
-                        is_timekeeper: cli.pot_role.is_time_keeper(),
-                        initial_key: maybe_chain_spec_pot_initial_key
-                            .or(cli.pot_initial_key)
-                            .unwrap_or_default(),
-                    })
-                } else {
-                    None
-                };
-
                 let (consensus_chain_node, mut xdm_gossip_worker_builder) = {
                     let span = sc_tracing::tracing::info_span!(
                         sc_tracing::logging::PREFIX_LOG_SPAN,
@@ -455,6 +426,37 @@ fn main() -> Result<(), Error> {
                         }
                     };
 
+                    #[cfg(feature = "pot")]
+                    let maybe_chain_spec_pot_initial_key = consensus_chain_config
+                        .chain_spec
+                        .properties()
+                        .get("potInitialKey")
+                        .map(|d| serde_json::from_value(d.clone()))
+                        .transpose()
+                        .map_err(|error| {
+                            sc_service::Error::Other(format!(
+                                "Failed to decode PoT initial key: {error:?}"
+                            ))
+                        })?
+                        .flatten();
+                    #[cfg(feature = "pot")]
+                    if maybe_chain_spec_pot_initial_key.is_some()
+                        && cli.pot_initial_key.is_some()
+                        && maybe_chain_spec_pot_initial_key != cli.pot_initial_key
+                    {
+                        warn!(
+                        "--pot-initial-key CLI argument was ignored due to chain spec having a \
+                        different explicit value"
+                    );
+                    }
+                    #[cfg(feature = "pot")]
+                    let pot_source_config = PotSourceConfig {
+                        is_timekeeper: cli.timekeeper,
+                        initial_key: maybe_chain_spec_pot_initial_key
+                            .or(cli.pot_initial_key)
+                            .unwrap_or_default(),
+                    };
+
                     let consensus_chain_config = SubspaceConfiguration {
                         base: consensus_chain_config,
                         // Domain node needs slots notifications for bundle production.
@@ -463,6 +465,8 @@ fn main() -> Result<(), Error> {
                         sync_from_dsn: cli.sync_from_dsn,
                         enable_subspace_block_relay: cli.enable_subspace_block_relay
                             || cli.run.is_dev().unwrap_or(false),
+                        #[cfg(feature = "pot")]
+                        pot_source_config,
                     };
 
                     let construct_domain_genesis_block_builder =
@@ -473,7 +477,6 @@ fn main() -> Result<(), Error> {
                         subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
                             &consensus_chain_config,
                             Some(&construct_domain_genesis_block_builder),
-                            pot_config,
                         )
                         .map_err(|error| {
                             sc_service::Error::Other(format!(

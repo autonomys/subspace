@@ -2,102 +2,115 @@
 
 #![feature(const_option)]
 
-pub mod gossip;
-mod state_manager;
-mod time_keeper;
+// TODO: Adjust or remove unused modules in the future
+// pub mod gossip;
+mod slots;
+pub mod source;
+// mod state_manager;
+// mod time_keeper;
 
-use crate::state_manager::{init_pot_state, PotProtocolState};
-use core::num::NonZeroU32;
+use crate::slots::SlotInfoProducer;
+use crate::source::{PotSlotInfo, PotSlotInfoStream};
+use futures::StreamExt;
+use sc_consensus_slots::{SimpleSlotWorker, SimpleSlotWorkerToSlotWorker, SlotWorker};
+use sp_api::ProvideRuntimeApi;
+use sp_blockchain::HeaderBackend;
+use sp_consensus::{SelectChain, SyncOracle};
+use sp_consensus_slots::{Slot, SlotDuration};
+use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi as SubspaceRuntimeApi};
+use sp_inherents::CreateInherentDataProviders;
+use sp_runtime::traits::Block as BlockT;
+#[cfg(feature = "pot")]
 use std::sync::Arc;
-use subspace_core_primitives::{BlockNumber, PotKey, PotSeed, SlotNumber};
+use subspace_core_primitives::PotCheckpoints;
+#[cfg(feature = "pot")]
+use tracing::error;
+use tracing::{debug, trace};
 
-pub use state_manager::{
-    PotConsensusState, PotGetBlockProofsError, PotStateSummary, PotVerifyBlockProofsError,
-};
-pub use time_keeper::TimeKeeper;
-
-// TODO: change the fields that can't be zero to NonZero types.
-// TODO: CLean up unused fields
-#[derive(Debug, Clone)]
-pub struct PotConfig {
-    /// PoT seed used initially when PoT chain starts.
-    pub initial_seed: PotSeed,
-
-    /// PoT key used initially when PoT chain starts.
-    pub initial_key: PotKey,
-
-    /// Frequency of entropy injection from consensus.
-    pub randomness_update_interval_blocks: BlockNumber,
-
-    /// Starting point for entropy injection from consensus.
-    pub injection_depth_blocks: BlockNumber,
-
-    /// Number of slots it takes for updated global randomness to
-    /// take effect.
-    pub global_randomness_reveal_lag_slots: SlotNumber,
-
-    /// Number of slots it takes for injected randomness to
-    /// take effect.
-    pub pot_injection_lag_slots: SlotNumber,
-
-    /// If the received proof is more than max_future_slots into the
-    /// future from the current tip's slot, reject it.
-    pub max_future_slots: SlotNumber,
-
-    /// Total iterations per proof.
-    pub pot_iterations: NonZeroU32,
+pub trait PotSlotWorker<Block>
+where
+    Block: BlockT,
+{
+    /// Called when new proof of time is available for slot.
+    ///
+    /// NOTE: Can be called more than once in case of reorgs to override old slots.
+    fn on_proof(&mut self, slot: Slot, checkpoints: PotCheckpoints);
 }
 
-/// Components initialized during the new_partial() phase of set up.
-#[derive(Debug)]
-pub struct PotComponents {
-    /// PoT seed used initially when PoT chain starts.
-    // TODO: Remove this from here, shouldn't be necessary eventually
-    pub(crate) initial_seed: PotSeed,
-
-    /// PoT key used initially when PoT chain starts.
-    // TODO: Remove this from here, shouldn't be necessary eventually
-    pub(crate) initial_key: PotKey,
-
-    /// PoT iterations for each slot.
-    // TODO: Remove this from here, shouldn't be necessary eventually
-    pub(crate) iterations: NonZeroU32,
-
-    /// If the role is time keeper or node client.
-    is_time_keeper: bool,
-
-    /// Protocol state.
-    protocol_state: Arc<dyn PotProtocolState>,
-
-    /// Consensus state.
-    consensus_state: Arc<dyn PotConsensusState>,
-}
-
-impl PotComponents {
-    /// Sets up the partial components.
-    pub fn new(is_time_keeper: bool, config: PotConfig) -> Self {
-        let initial_seed = config.initial_seed;
-        let initial_key = config.initial_key;
-        let iterations = config.pot_iterations;
-        let (protocol_state, consensus_state) = init_pot_state(config);
-
-        Self {
-            initial_seed,
-            initial_key,
-            iterations,
-            is_time_keeper,
-            protocol_state,
-            consensus_state,
+/// Start a new slot worker.
+///
+/// Every time a new slot is triggered, `worker.on_slot` is called and the future it returns is
+/// polled until completion, unless we are major syncing.
+pub async fn start_slot_worker<Block, Client, SC, Worker, SO, CIDP>(
+    slot_duration: SlotDuration,
+    #[cfg(feature = "pot")] client: Arc<Client>,
+    select_chain: SC,
+    worker: Worker,
+    sync_oracle: SO,
+    create_inherent_data_providers: CIDP,
+    mut slot_info_stream: PotSlotInfoStream,
+) where
+    Block: BlockT,
+    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block>,
+    Client::Api: SubspaceRuntimeApi<Block, FarmerPublicKey>,
+    SC: SelectChain<Block>,
+    Worker: PotSlotWorker<Block> + SimpleSlotWorker<Block> + Send + Sync,
+    SO: SyncOracle + Send,
+    CIDP: CreateInherentDataProviders<Block, ()> + Send + 'static,
+{
+    #[cfg(feature = "pot")]
+    let best_hash = client.info().best_hash;
+    #[cfg(feature = "pot")]
+    let runtime_api = client.runtime_api();
+    #[cfg(feature = "pot")]
+    let block_authoring_delay = match runtime_api.chain_constants(best_hash) {
+        Ok(chain_constants) => chain_constants.block_authoring_delay(),
+        Err(error) => {
+            error!(%error, "Failed to retrieve chain constants from runtime API");
+            return;
         }
-    }
+    };
+    #[cfg(not(feature = "pot"))]
+    let block_authoring_delay = Slot::from(6);
 
-    /// Checks if the role is time keeper or node client.
-    pub fn is_time_keeper(&self) -> bool {
-        self.is_time_keeper
-    }
+    let slot_info_producer = SlotInfoProducer::new(
+        slot_duration.as_duration(),
+        create_inherent_data_providers,
+        select_chain,
+    );
 
-    /// Returns the consensus interface.
-    pub fn consensus_state(&self) -> Arc<dyn PotConsensusState> {
-        self.consensus_state.clone()
+    let mut worker = SimpleSlotWorkerToSlotWorker(worker);
+
+    let mut maybe_last_claimed_slot = None;
+
+    while let Some(PotSlotInfo { slot, checkpoints }) = slot_info_stream.next().await {
+        worker.0.on_proof(slot, checkpoints);
+
+        if sync_oracle.is_major_syncing() {
+            debug!(%slot, "Skipping proposal slot due to sync");
+            continue;
+        }
+
+        // Slots that we claim must be `block_authoring_delay` behind the best slot we know of
+        let Some(slot_to_claim) = slot.checked_sub(*block_authoring_delay).map(Slot::from) else {
+            trace!("Skipping very early slot during chain start");
+            continue;
+        };
+
+        if let Some(last_claimed_slot) = maybe_last_claimed_slot {
+            if last_claimed_slot >= slot_to_claim {
+                // Already processed
+                continue;
+            }
+        }
+        maybe_last_claimed_slot.replace(slot_to_claim);
+
+        if let Some(slot_info) = slot_info_producer.produce_slot_info(slot_to_claim).await {
+            let _ = worker.on_slot(slot_info).await;
+
+            // TODO: Remove this hack, it restricts slot production with extremely low number of
+            //  iterations
+            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
+        }
     }
 }
