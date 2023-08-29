@@ -188,12 +188,12 @@ where
             "Collecting receipts at {parent_chain_block_hash:?}"
         );
 
-        let header_block_receipt_is_written = !crate::aux_schema::consensus_block_hash_for::<
+        let header_block_receipt_is_written = crate::aux_schema::latest_consensus_block_hash_for::<
             _,
             _,
             CBlock::Hash,
-        >(&*self.client, header_hash)?
-        .is_empty();
+        >(&*self.client, &header_hash)?
+        .is_some();
 
         // TODO: remove once the receipt generation can be done before the domain block is
         // committed to the database, in other words, only when the receipt of block N+1 has
@@ -223,15 +223,15 @@ where
             ));
         }
 
+        // Get the domain block hash corresponding to `receipt_number` in the domain canonical chain
         let domain_hash = self.client.hash(receipt_number)?.ok_or_else(|| {
             sp_blockchain::Error::Backend(format!(
                 "Domain block hash for #{receipt_number:?} not found"
             ))
         })?;
 
-        crate::load_execution_receipt_by_domain_hash::<Block, CBlock, _, _>(
+        crate::load_execution_receipt_by_domain_hash::<Block, CBlock, _>(
             &*self.client,
-            &self.consensus_client,
             domain_hash,
             receipt_number,
         )

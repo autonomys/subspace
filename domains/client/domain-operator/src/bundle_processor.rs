@@ -11,11 +11,12 @@ use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::BlockOrigin;
 use sp_core::traits::CodeExecutor;
+use sp_domain_digests::AsPredigest;
 use sp_domains::{DomainId, DomainsApi, InvalidReceipt, ReceiptValidity};
 use sp_keystore::KeystorePtr;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, HashFor, Zero};
-use sp_runtime::Digest;
+use sp_runtime::{Digest, DigestItem};
 use std::sync::Arc;
 
 type DomainReceiptsChecker<Block, CBlock, Client, CClient, Backend, E> = ReceiptsChecker<
@@ -293,6 +294,10 @@ where
             return Ok(None);
         };
 
+        let digest = Digest {
+            logs: vec![DigestItem::consensus_block_info(consensus_block_hash)],
+        };
+
         let domain_block_result = self
             .domain_block_processor
             .process_domain_block(
@@ -301,7 +306,7 @@ where
                 extrinsics,
                 invalid_bundles,
                 extrinsics_roots,
-                Digest::default(),
+                digest,
             )
             .await?;
 
