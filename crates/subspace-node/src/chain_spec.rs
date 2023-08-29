@@ -250,7 +250,7 @@ pub fn devnet_config_compiled() -> Result<ConsensusChainSpec<GenesisConfig>, Str
                     enable_rewards: false,
                     enable_storage_access: false,
                     allow_authoring_by: AllowAuthoringBy::FirstFarmer,
-                    pot_slot_iterations: NonZeroU32::new(100_000_000).expect("Not zero; qed"),
+                    pot_slot_iterations: NonZeroU32::new(150_000_000).expect("Not zero; qed"),
                     enable_domains: true,
                     enable_transfer: true,
                     confirmation_depth_k: 100, // TODO: Proper value here
@@ -308,7 +308,7 @@ pub fn dev_config() -> Result<ConsensusChainSpec<GenesisConfig>, String> {
                     enable_rewards: false,
                     enable_storage_access: false,
                     allow_authoring_by: AllowAuthoringBy::Anyone,
-                    pot_slot_iterations: NonZeroU32::new(150_000_000).expect("Not zero; qed"),
+                    pot_slot_iterations: NonZeroU32::new(100_000_000).expect("Not zero; qed"),
                     enable_domains: true,
                     enable_transfer: true,
                     confirmation_depth_k: 5,
