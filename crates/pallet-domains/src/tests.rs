@@ -169,6 +169,14 @@ parameter_types! {
     pub const MaxPendingStakingOperation: u32 = 100;
 }
 
+pub struct MockRandomness;
+
+impl frame_support::traits::Randomness<Hash, BlockNumber> for MockRandomness {
+    fn random(_: &[u8]) -> (Hash, BlockNumber) {
+        (Default::default(), Default::default())
+    }
+}
+
 impl pallet_domains::Config for Test {
     type RuntimeEvent = RuntimeEvent;
     type DomainNumber = BlockNumber;
@@ -193,6 +201,7 @@ impl pallet_domains::Config for Test {
     type TreasuryAccount = TreasuryAccount;
     type MaxPendingStakingOperation = MaxPendingStakingOperation;
     type SudoId = ();
+    type Randomness = MockRandomness;
 }
 
 pub(crate) fn new_test_ext() -> sp_io::TestExternalities {

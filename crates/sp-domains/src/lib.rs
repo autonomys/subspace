@@ -739,7 +739,7 @@ sp_api::decl_runtime_apis! {
         ) -> OpaqueBundles<Block, DomainNumber, DomainHash, Balance>;
 
         /// Generates a randomness seed for extrinsics shuffling.
-        fn extrinsics_shuffling_seed(header: Block::Header) -> Randomness;
+        fn extrinsics_shuffling_seed() -> Randomness;
 
         /// Returns the WASM bundle for given `domain_id`.
         fn domain_runtime_code(domain_id: DomainId) -> Option<Vec<u8>>;

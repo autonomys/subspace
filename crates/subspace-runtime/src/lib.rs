@@ -611,6 +611,7 @@ impl pallet_domains::Config for Runtime {
     type TreasuryAccount = TreasuryAccount;
     type MaxPendingStakingOperation = MaxPendingStakingOperation;
     type SudoId = SudoId;
+    type Randomness = Subspace;
 }
 
 pub struct StakingOnReward;
@@ -991,8 +992,8 @@ impl_runtime_apis! {
             crate::domains::extract_successful_bundles(domain_id, extrinsics)
         }
 
-        fn extrinsics_shuffling_seed(header: <Block as BlockT>::Header) -> Randomness {
-            crate::domains::extrinsics_shuffling_seed::<Block>(header)
+        fn extrinsics_shuffling_seed() -> Randomness {
+            Randomness::from(Domains::extrinsics_shuffling_seed().to_fixed_bytes())
         }
 
         fn domain_runtime_code(domain_id: DomainId) -> Option<Vec<u8>> {
@@ -1356,7 +1357,7 @@ impl_runtime_apis! {
         }
 
         fn extrinsics_shuffling_seed(header: <Block as BlockT>::Header) -> Randomness {
-            crate::domains::extrinsics_shuffling_seed::<Block>(header)
+            Randomness::from(Domains::extrinsics_shuffling_seed().to_fixed_bytes())
         }
 
         fn domain_runtime_code(domain_id: DomainId) -> Option<Vec<u8>> {

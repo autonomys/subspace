@@ -45,7 +45,6 @@ use pallet_transporter::EndpointHandler;
 use scale_info::TypeInfo;
 use sp_api::{impl_runtime_apis, BlockT, HashT, HeaderT};
 use sp_consensus_slots::SlotDuration;
-use sp_consensus_subspace::digests::CompatibleDigestItem;
 #[cfg(not(feature = "pot"))]
 use sp_consensus_subspace::GlobalRandomnesses;
 use sp_consensus_subspace::{
@@ -90,7 +89,6 @@ use subspace_runtime_primitives::{
     opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature,
     MIN_REPLICATION_FACTOR, STORAGE_FEES_ESCROW_BLOCK_REWARD, STORAGE_FEES_ESCROW_BLOCK_TAX,
 };
-use subspace_verification::derive_randomness;
 
 sp_runtime::impl_opaque_keys! {
     pub struct SessionKeys {
@@ -655,6 +653,7 @@ impl pallet_domains::Config for Runtime {
     type TreasuryAccount = TreasuryAccount;
     type MaxPendingStakingOperation = MaxPendingStakingOperation;
     type SudoId = SudoId;
+    type Randomness = Subspace;
 }
 
 parameter_types! {
@@ -1107,34 +1106,6 @@ fn extract_pre_validation_object(
     }
 }
 
-fn extrinsics_shuffling_seed<Block: BlockT>(header: Block::Header) -> Randomness {
-    if header.number().is_zero() {
-        Randomness::default()
-    } else {
-        let mut pre_digest: Option<_> = None;
-        for log in header.digest().logs() {
-            match (
-                log.as_subspace_pre_digest::<FarmerPublicKey>(),
-                pre_digest.is_some(),
-            ) {
-                (Some(_), true) => panic!("Multiple Subspace pre-runtime digests in a header"),
-                (None, _) => {}
-                (s, false) => pre_digest = s,
-            }
-        }
-
-        let pre_digest = pre_digest.expect("Header must contain one pre-runtime digest; qed");
-
-        let seed: &[u8] = b"extrinsics-shuffling-seed";
-        let randomness = derive_randomness(&pre_digest.solution, pre_digest.slot.into());
-        let mut data = Vec::with_capacity(seed.len() + randomness.len());
-        data.extend_from_slice(seed);
-        data.extend_from_slice(randomness.as_ref());
-
-        Randomness::from(BlakeTwo256::hash_of(&data).to_fixed_bytes())
-    }
-}
-
 struct RewardAddress([u8; 32]);
 
 impl From<FarmerPublicKey> for RewardAddress {
@@ -1331,8 +1302,8 @@ impl_runtime_apis! {
             extract_successful_bundles(domain_id, extrinsics)
         }
 
-        fn extrinsics_shuffling_seed(header: <Block as BlockT>::Header) -> Randomness {
-            extrinsics_shuffling_seed::<Block>(header)
+        fn extrinsics_shuffling_seed() -> Randomness {
+            Randomness::from(Domains::extrinsics_shuffling_seed().to_fixed_bytes())
         }
 
         fn domain_runtime_code(domain_id: DomainId) -> Option<Vec<u8>> {
@@ -1655,7 +1626,7 @@ impl_runtime_apis! {
         }
 
         fn extrinsics_shuffling_seed(header: <Block as BlockT>::Header) -> Randomness {
-            extrinsics_shuffling_seed::<Block>(header)
+            Randomness::from(Domains::extrinsics_shuffling_seed().to_fixed_bytes())
         }
 
         fn domain_runtime_code(domain_id: DomainId) -> Option<Vec<u8>> {

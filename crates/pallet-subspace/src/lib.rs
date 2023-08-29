@@ -462,7 +462,7 @@ mod pallet {
         >,
     >;
 
-    /// Temporary value (cleared at block finalization) which contains current block PoR randomness.
+    /// Temporary value which contains current block PoR randomness.
     #[pallet::storage]
     pub(super) type PorRandomness<T> = StorageValue<_, Randomness>;
 
@@ -884,8 +884,11 @@ impl<T: Config> Pallet<T> {
         // Extract PoR randomness from pre-digest.
         #[cfg(not(feature = "pot"))]
         let por_randomness = derive_randomness(&pre_digest.solution, pre_digest.slot.into());
+
+        #[cfg(feature = "pot")]
+        let por_randomness = pre_digest.proof_of_time.derive_global_randomness();
+
         // Store PoR randomness for block duration as it might be useful.
-        #[cfg(not(feature = "pot"))]
         PorRandomness::<T>::put(por_randomness);
 
         // Deposit global randomness data such that light client can validate blocks later.
@@ -922,9 +925,6 @@ impl<T: Config> Pallet<T> {
                 next_solution_range,
             ));
         }
-
-        #[cfg(not(feature = "pot"))]
-        PorRandomness::<T>::take();
 
         if let Some((public_key, sector_index, scalar, audit_chunk_offset, slot, _reward_address)) =
             CurrentBlockAuthorInfo::<T>::take()
@@ -1657,7 +1657,6 @@ impl<T: Config> subspace_runtime_primitives::FindVotingRewardAddresses<T::Accoun
     }
 }
 
-#[cfg(not(feature = "pot"))]
 impl<T: Config> frame_support::traits::Randomness<T::Hash, T::BlockNumber> for Pallet<T> {
     fn random(subject: &[u8]) -> (T::Hash, T::BlockNumber) {
         let mut subject = subject.to_vec();

@@ -103,7 +103,7 @@ where
 
     let shuffling_seed = consensus_client
         .runtime_api()
-        .extrinsics_shuffling_seed(block_hash, header)?;
+        .extrinsics_shuffling_seed(block_hash)?;
 
     Ok((extrinsics, shuffling_seed, maybe_new_runtime))
 }

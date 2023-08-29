@@ -36,7 +36,7 @@ use crate::staking::{do_nominate_operator, Operator, OperatorStatus};
 use codec::{Decode, Encode};
 use frame_support::ensure;
 use frame_support::traits::fungible::{Inspect, InspectHold};
-use frame_support::traits::Get;
+use frame_support::traits::{Get, Randomness as RandomnessT};
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use scale_info::TypeInfo;
@@ -124,6 +124,7 @@ mod pallet {
     use codec::FullCodec;
     use frame_support::pallet_prelude::{StorageMap, *};
     use frame_support::traits::fungible::{InspectHold, Mutate, MutateHold};
+    use frame_support::traits::Randomness as RandomnessT;
     use frame_support::weights::Weight;
     use frame_support::{Identity, PalletError};
     use frame_system::pallet_prelude::*;
@@ -270,6 +271,9 @@ mod pallet {
 
         #[pallet::constant]
         type SudoId: Get<Self::AccountId>;
+
+        /// Randomness source.
+        type Randomness: RandomnessT<Self::Hash, Self::BlockNumber>;
     }
 
     #[pallet::pallet]
@@ -1517,6 +1521,12 @@ impl<T: Config> Pallet<T> {
         }
 
         false
+    }
+
+    pub fn extrinsics_shuffling_seed() -> T::Hash {
+        let seed: &[u8] = b"extrinsics-shuffling-seed";
+        let (randomness, _) = T::Randomness::random(seed);
+        randomness
     }
 }
 
