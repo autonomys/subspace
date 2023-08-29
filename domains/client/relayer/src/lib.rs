@@ -339,7 +339,7 @@ where
             return Ok(());
         }
 
-        // generate core domain proof that points to the state root of the core domain block on System domain.
+        // generate domain proof that points to the state root of the domain block on Consensus chain.
         let storage_key =
             DomainStateRootStorage::<NumberFor<Block>, Block::Hash, Block::Hash>::storage_key(
                 domain_id,
