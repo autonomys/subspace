@@ -710,7 +710,10 @@ where
         if self
             .client
             .runtime_api()
-            .is_in_block_list(*block.header.parent_hash(), &pre_digest.solution.public_key)
+            .is_in_block_list(
+                *block.header.parent_hash(),
+                &pre_digest.solution().public_key,
+            )
             .or_else(|error| {
                 if block.state_action.skip_execution_checks() {
                     Ok(false)
@@ -722,11 +725,11 @@ where
             warn!(
                 target: "subspace",
                 "Verifying block with solution provided by farmer in block list: {}",
-                pre_digest.solution.public_key
+                pre_digest.solution().public_key
             );
 
             return Err(Error::<Block::Header>::FarmerInBlockList(
-                pre_digest.solution.public_key.clone(),
+                pre_digest.solution().public_key.clone(),
             )
             .into());
         }
@@ -752,7 +755,7 @@ where
                         #[cfg(not(feature = "pot"))]
                         global_randomness: subspace_digest_items.global_randomness,
                         #[cfg(feature = "pot")]
-                        proof_of_time: pre_digest.proof_of_time,
+                        proof_of_time: pre_digest.pot_info().proof_of_time(),
                         solution_range: subspace_digest_items.solution_range,
                         piece_check_params: None,
                     },
@@ -766,7 +769,7 @@ where
 
         match checked_header {
             CheckedHeader::Checked(pre_header, verified_info) => {
-                let slot = verified_info.pre_digest.slot;
+                let slot = verified_info.pre_digest.slot();
 
                 // the header is valid but let's check if there was something else already
                 // proposed at the same slot by the given author. if there was, we will
@@ -776,7 +779,7 @@ where
                         slot_now,
                         slot,
                         &block.header,
-                        &verified_info.pre_digest.solution.public_key,
+                        &verified_info.pre_digest.solution().public_key,
                         &block.origin,
                     )
                     .await
@@ -902,7 +905,7 @@ where
 
         let pre_digest = &subspace_digest_items.pre_digest;
         if let Some(root_plot_public_key) = root_plot_public_key {
-            if &pre_digest.solution.public_key != root_plot_public_key {
+            if &pre_digest.solution().public_key != root_plot_public_key {
                 // Only root plot public key is allowed.
                 return Err(Error::OnlyRootPlotPublicKeyAllowed);
             }
@@ -913,7 +916,7 @@ where
         if self
             .client
             .runtime_api()
-            .is_in_block_list(parent_hash, &pre_digest.solution.public_key)
+            .is_in_block_list(parent_hash, &pre_digest.solution().public_key)
             .or_else(|error| {
                 if skip_runtime_access {
                     Ok(false)
@@ -925,11 +928,11 @@ where
             warn!(
                 target: "subspace",
                 "Ignoring block with solution provided by farmer in block list: {}",
-                pre_digest.solution.public_key
+                pre_digest.solution().public_key
             );
 
             return Err(Error::FarmerInBlockList(
-                pre_digest.solution.public_key.clone(),
+                pre_digest.solution().public_key.clone(),
             ));
         }
 
@@ -992,8 +995,8 @@ where
         }
 
         let sector_id = SectorId::new(
-            PublicKey::from(&pre_digest.solution.public_key).hash(),
-            pre_digest.solution.sector_index,
+            PublicKey::from(&pre_digest.solution().public_key).hash(),
+            pre_digest.solution().sector_index,
         );
 
         let chain_constants = get_chain_constants(self.client.as_ref())?;
@@ -1005,8 +1008,8 @@ where
             .runtime_api()
             .max_pieces_in_sector(parent_hash)?;
         let piece_index = sector_id.derive_piece_index(
-            pre_digest.solution.piece_offset,
-            pre_digest.solution.history_size,
+            pre_digest.solution().piece_offset,
+            pre_digest.solution().history_size,
             max_pieces_in_sector,
             chain_constants.recent_segments(),
             chain_constants.recent_history_fraction(),
@@ -1024,7 +1027,7 @@ where
             .get_segment_header(
                 subspace_digest_items
                     .pre_digest
-                    .solution
+                    .solution()
                     .history_size
                     .sector_expiration_check(chain_constants.min_sector_lifetime())
                     .ok_or(Error::InvalidHistorySize)?
@@ -1035,14 +1038,14 @@ where
         // Piece is not checked during initial block verification because it requires access to
         // segment header and runtime, check it now.
         subspace_verification::verify_solution::<PosTable, _, _>(
-            &pre_digest.solution,
+            pre_digest.solution(),
             // Slot was already checked during initial block verification
-            pre_digest.slot.into(),
+            pre_digest.slot().into(),
             &VerifySolutionParams {
                 #[cfg(not(feature = "pot"))]
                 global_randomness: subspace_digest_items.global_randomness,
                 #[cfg(feature = "pot")]
-                proof_of_time: subspace_digest_items.pre_digest.proof_of_time,
+                proof_of_time: subspace_digest_items.pre_digest.pot_info().proof_of_time(),
                 solution_range: subspace_digest_items.solution_range,
                 piece_check_params: Some(PieceCheckParams {
                     max_pieces_in_sector,
@@ -1059,13 +1062,13 @@ where
             },
             &self.subspace_link.kzg,
         )
-        .map_err(|error| VerificationError::VerificationError(pre_digest.slot, error))?;
+        .map_err(|error| VerificationError::VerificationError(pre_digest.slot(), error))?;
 
-        let parent_slot = extract_pre_digest(&parent_header).map(|d| d.slot)?;
+        let parent_slot = extract_pre_digest(&parent_header).map(|d| d.slot())?;
 
         // Make sure that slot number is strictly increasing
-        if pre_digest.slot <= parent_slot {
-            return Err(Error::SlotMustIncrease(parent_slot, pre_digest.slot));
+        if pre_digest.slot() <= parent_slot {
+            return Err(Error::SlotMustIncrease(parent_slot, pre_digest.slot()));
         }
 
         if !skip_runtime_access {

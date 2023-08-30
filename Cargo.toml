@@ -64,12 +64,14 @@ sha2 = { opt-level = 3 }
 sha3 = { opt-level = 3 }
 smallvec = { opt-level = 3 }
 snow = { opt-level = 3 }
+sc-proof-of-time = { opt-level = 3 }
 subspace-archiving = { opt-level = 3 }
 subspace-chiapos = { opt-level = 3 }
 subspace-core-primitives = { opt-level = 3 }
 subspace-erasure-coding = { opt-level = 3 }
 subspace-farmer-components = { opt-level = 3 }
 subspace-proof-of-space = { opt-level = 3 }
+subspace-proof-of-time = { opt-level = 3 }
 twox-hash = { opt-level = 3 }
 uint = { opt-level = 3 }
 x25519-dalek = { opt-level = 3 }

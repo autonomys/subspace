@@ -52,6 +52,8 @@ use sp_application_crypto::UncheckedFrom;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::{BlockOrigin, Error as ConsensusError};
 use sp_consensus_slots::Slot;
+#[cfg(feature = "pot")]
+use sp_consensus_subspace::digests::PreDigestPotInfo;
 use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
 use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::traits::SpawnEssentialNamed;
@@ -596,13 +598,14 @@ impl MockConsensusNode {
     }
 
     fn mock_subspace_digest(&self, slot: Slot) -> Digest {
-        let pre_digest: PreDigest<FarmerPublicKey, AccountId> = PreDigest {
+        let pre_digest: PreDigest<FarmerPublicKey, AccountId> = PreDigest::V0 {
             slot,
             solution: self.mock_solution.clone(),
             #[cfg(feature = "pot")]
-            proof_of_time: Default::default(),
-            #[cfg(feature = "pot")]
-            future_proof_of_time: Default::default(),
+            pot_info: PreDigestPotInfo::V0 {
+                proof_of_time: Default::default(),
+                future_proof_of_time: Default::default(),
+            },
         };
         let mut digest = Digest::default();
         digest.push(DigestItem::subspace_pre_digest(&pre_digest));

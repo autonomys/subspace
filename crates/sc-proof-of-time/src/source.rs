@@ -2,10 +2,16 @@ use derive_more::{Deref, DerefMut, From};
 use futures::channel::mpsc;
 use futures::executor::block_on;
 use futures::SinkExt;
+use sp_api::{ApiError, ProvideRuntimeApi};
+use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
+use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi as SubspaceRuntimeApi};
+use sp_runtime::traits::Block as BlockT;
+use std::marker::PhantomData;
 use std::num::NonZeroU32;
+use std::sync::Arc;
 use std::thread;
-use subspace_core_primitives::{PotBytes, PotCheckpoints, PotKey, PotSeed, SlotNumber};
+use subspace_core_primitives::{BlockHash, PotCheckpoints, PotKey, PotSeed, SlotNumber};
 use subspace_proof_of_time::PotError;
 use tracing::{debug, error};
 
@@ -35,18 +41,44 @@ pub struct PotSourceConfig {
 /// Depending on configuration may produce proofs of time locally, send/receive via gossip and keep
 /// up to day with blockchain reorgs.
 #[derive(Debug)]
-pub struct PotSource {
-    // TODO
+pub struct PotSource<Block, Client> {
+    // TODO: Use this in `fn run`
+    #[allow(dead_code)]
+    client: Arc<Client>,
+    _block: PhantomData<Block>,
 }
 
-impl PotSource {
-    pub fn new(config: PotSourceConfig) -> (Self, PotSlotInfoStream) {
+impl<Block, Client> PotSource<Block, Client>
+where
+    Block: BlockT,
+    BlockHash: From<Block::Hash>,
+    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block>,
+    Client::Api: SubspaceRuntimeApi<Block, FarmerPublicKey>,
+{
+    pub fn new(
+        config: PotSourceConfig,
+        client: Arc<Client>,
+    ) -> Result<(Self, PotSlotInfoStream), ApiError> {
+        let PotSourceConfig {
+            // TODO: Respect this boolean flag
+            is_timekeeper: _,
+            initial_key,
+        } = config;
+        let info = client.info();
         // TODO: All 3 are incorrect and should be able to continue after node restart
         let start_slot = SlotNumber::MIN;
-        let start_seed = PotSeed::default();
-        let start_key = config.initial_key;
-        // TODO: Change to correct values taken from blockchain
-        let iterations = NonZeroU32::new(1024).expect("Not zero; qed");
+        let start_seed = PotSeed::from_genesis_block_hash(BlockHash::from(info.genesis_hash));
+        let start_key = initial_key;
+        #[cfg(feature = "pot")]
+        let best_hash = info.best_hash;
+        #[cfg(feature = "pot")]
+        let runtime_api = client.runtime_api();
+        #[cfg(feature = "pot")]
+        let iterations = runtime_api
+            .pot_parameters(best_hash)?
+            .iterations(Slot::from(start_slot));
+        #[cfg(not(feature = "pot"))]
+        let iterations = NonZeroU32::new(100_000_000).expect("Not zero; qed");
 
         // TODO: Correct capacity
         let (slot_sender, slot_receiver) = mpsc::channel(10);
@@ -61,12 +93,13 @@ impl PotSource {
             })
             .expect("Thread creation must not panic");
 
-        (
+        Ok((
             Self {
-                // TODO
+                client,
+                _block: PhantomData,
             },
             PotSlotInfoStream(slot_receiver),
-        )
+        ))
     }
 
     /// Run proof of time source
@@ -85,15 +118,11 @@ fn run_timekeeper(
     iterations: NonZeroU32,
     mut slot_sender: mpsc::Sender<PotSlotInfo>,
 ) -> Result<(), PotError> {
-    // TODO
     loop {
         let checkpoints = subspace_proof_of_time::prove(seed, key, iterations)?;
 
-        // TODO: Store checkpoints somewhere
-
-        // TODO: These two are wrong and need to be updated
-        seed = PotSeed::from(PotBytes::from(checkpoints.output()));
-        key = PotKey::from(PotBytes::from(checkpoints.output()));
+        seed = checkpoints.output().seed();
+        key = seed.key();
 
         let slot_info = PotSlotInfo {
             slot: Slot::from(slot),

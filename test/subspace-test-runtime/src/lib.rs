@@ -48,6 +48,8 @@ use sp_consensus_slots::SlotDuration;
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 #[cfg(not(feature = "pot"))]
 use sp_consensus_subspace::GlobalRandomnesses;
+#[cfg(feature = "pot")]
+use sp_consensus_subspace::PotParameters;
 use sp_consensus_subspace::{
     ChainConstants, EquivocationProof, FarmerPublicKey, SignedVote, SolutionRanges, Vote,
 };
@@ -1127,7 +1129,7 @@ fn extrinsics_shuffling_seed<Block: BlockT>(header: Block::Header) -> Randomness
         let pre_digest = pre_digest.expect("Header must contain one pre-runtime digest; qed");
 
         let seed: &[u8] = b"extrinsics-shuffling-seed";
-        let randomness = derive_randomness(&pre_digest.solution, pre_digest.slot.into());
+        let randomness = derive_randomness(pre_digest.solution(), pre_digest.slot().into());
         let mut data = Vec::with_capacity(seed.len() + randomness.len());
         data.extend_from_slice(seed);
         data.extend_from_slice(randomness.as_ref());
@@ -1562,16 +1564,12 @@ impl_runtime_apis! {
     }
 
     impl sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey> for Runtime {
-        fn history_size() -> HistorySize {
-            <pallet_subspace::Pallet<Runtime>>::history_size()
-        }
-
-        fn max_pieces_in_sector() -> u16 {
-            MAX_PIECES_IN_SECTOR
-        }
-
         fn slot_duration() -> SlotDuration {
             SlotDuration::from_millis(SLOT_DURATION)
+        }
+
+        fn pot_parameters() -> PotParameters {
+            Subspace::pot_parameters()
         }
 
         fn solution_ranges() -> SolutionRanges {
@@ -1610,6 +1608,14 @@ impl_runtime_apis! {
             // TODO: Either check tx pool too for pending equivocations or replace equivocation
             //  mechanism with an alternative one, so that blocking happens faster
             Subspace::is_in_block_list(farmer_public_key)
+        }
+
+        fn history_size() -> HistorySize {
+            <pallet_subspace::Pallet<Runtime>>::history_size()
+        }
+
+        fn max_pieces_in_sector() -> u16 {
+            MAX_PIECES_IN_SECTOR
         }
 
         fn segment_commitment(segment_index: SegmentIndex) -> Option<SegmentCommitment> {
@@ -1702,6 +1708,14 @@ impl_runtime_apis! {
         fn non_empty_er_exists(domain_id: DomainId) -> bool {
             Domains::non_empty_er_exists(domain_id)
         }
+
+        fn domain_best_number(domain_id: DomainId) -> Option<DomainNumber> {
+            Domains::domain_best_number(domain_id)
+        }
+
+        fn domain_state_root(domain_id: DomainId, number: DomainNumber, hash: DomainHash) -> Option<DomainHash>{
+            Domains::domain_state_root(domain_id, number, hash)
+        }
     }
 
     impl sp_domains::BundleProducerElectionApi<Block, Balance> for Runtime {
@@ -1750,6 +1764,52 @@ impl_runtime_apis! {
         }
         fn query_length_to_fee(length: u32) -> Balance {
             TransactionPayment::length_to_fee(length)
+        }
+    }
+
+    impl sp_messenger::MessengerApi<Block, BlockNumber> for Runtime {
+        fn extract_xdm_proof_state_roots(
+            extrinsic: Vec<u8>,
+        ) -> Option<ExtractedStateRootsFromProof<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>> {
+            extract_xdm_proof_state_roots(extrinsic)
+        }
+
+        fn is_domain_info_confirmed(
+            domain_id: DomainId,
+            domain_block_info: BlockInfo<BlockNumber, <Block as BlockT>::Hash>,
+            domain_state_root: <Block as BlockT>::Hash,
+        ) -> bool{
+            Messenger::is_domain_info_confirmed(domain_id, domain_block_info, domain_state_root)
+        }
+    }
+
+    impl sp_messenger::RelayerApi<Block, BlockNumber> for Runtime {
+        fn chain_id() -> ChainId {
+            SelfChainId::get()
+        }
+
+        fn relay_confirmation_depth() -> BlockNumber {
+            RelayConfirmationDepth::get()
+        }
+
+        fn block_messages() -> BlockMessagesWithStorageKey {
+            Messenger::get_block_messages()
+        }
+
+        fn outbox_message_unsigned(msg: CrossDomainMessage<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
+            Messenger::outbox_message_unsigned(msg)
+        }
+
+        fn inbox_response_message_unsigned(msg: CrossDomainMessage<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
+            Messenger::inbox_response_message_unsigned(msg)
+        }
+
+        fn should_relay_outbox_message(dst_chain_id: ChainId, msg_id: MessageId) -> bool {
+            Messenger::should_relay_outbox_message(dst_chain_id, msg_id)
+        }
+
+        fn should_relay_inbox_message_response(dst_chain_id: ChainId, msg_id: MessageId) -> bool {
+            Messenger::should_relay_inbox_message_response(dst_chain_id, msg_id)
         }
     }
 }
