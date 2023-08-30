@@ -1,7 +1,9 @@
 //! Relay implementation for consensus blocks.
 
 use crate::protocol::compact_block::{CompactBlockClient, CompactBlockServer};
-use crate::utils::{NetworkPeerHandle, NetworkWrapper, RequestResponseErr};
+use crate::utils::{
+    BlockDecoder, BlockEncoder, NetworkPeerHandle, NetworkWrapper, RequestResponseErr,
+};
 use crate::{ProtocolBackend, ProtocolClient, ProtocolServer, RelayError, LOG_TARGET};
 use async_trait::async_trait;
 use codec::{Decode, Encode};
@@ -82,10 +84,6 @@ struct InitialResponse<Block: BlockT, ProtocolResponse> {
 /// substrate block downloader.
 #[derive(Encode, Decode)]
 struct FullDownloadRequest<Block: BlockT>(BlockRequest<Block>);
-
-/// Response to the full download request.
-#[derive(Encode, Decode)]
-struct FullDownloadResponse<Block: BlockT>(Vec<BlockData<Block>>);
 
 /// The partial block response from the server. It has all the fields
 /// except the extrinsics(and some other meta info). The extrinsics
@@ -224,10 +222,9 @@ where
 
         let server_request: ServerMessage<Block, ProtoClient::Request> =
             ServerMessage::FullDownloadRequest(FullDownloadRequest(request.clone()));
-        let full_response = network_peer_handle
-            .request::<_, FullDownloadResponse<Block>>(server_request)
-            .await?;
-        let downloaded = full_response.0;
+        let bytes = network_peer_handle.request_raw::<_>(server_request).await?;
+        let decoder = BlockDecoder::new(bytes);
+        let downloaded = decoder.decode::<Block>()?;
 
         debug!(
             target: LOG_TARGET,
@@ -447,17 +444,16 @@ where
         full_download_request: FullDownloadRequest<Block>,
     ) -> Result<Vec<u8>, RelayError> {
         let block_request = full_download_request.0;
-        let mut blocks = Vec::new();
         let mut block_id = match block_request.from {
             FromBlock::Hash(h) => BlockId::<Block>::Hash(h),
             FromBlock::Number(n) => BlockId::<Block>::Number(n),
         };
 
-        let mut total_size: usize = 0;
+        let mut encoder = BlockEncoder::new(MAX_RESPONSE_SIZE);
         let max_blocks = block_request.max.map_or(MAX_RESPONSE_BLOCKS.into(), |val| {
             std::cmp::min(val, MAX_RESPONSE_BLOCKS.into())
         });
-        while blocks.len() < max_blocks as usize {
+        while encoder.num_blocks() < max_blocks {
             let block_hash = self.block_hash(&block_id)?;
             let partial_block = self.get_partial_block(&block_hash, block_request.fields)?;
             let body = if block_request.fields.contains(BlockAttributes::BODY) {
@@ -469,13 +465,10 @@ where
             let parent_hash = partial_block.parent_hash;
             let block_data = partial_block.block_data(body);
 
-            // Enforce the max limit on response size.
-            let bytes = block_data.encoded_size();
-            if !blocks.is_empty() && (total_size + bytes) > MAX_RESPONSE_SIZE.into() {
+            if !encoder.append::<Block>(block_data) {
+                // Reached maximum byte size limit.
                 break;
             }
-            total_size += bytes;
-            blocks.push(block_data);
 
             block_id = match block_request.direction {
                 Direction::Ascending => BlockId::Number(block_number + One::one()),
@@ -488,7 +481,7 @@ where
             };
         }
 
-        Ok(blocks.encode())
+        Ok(encoder.encode())
     }
 
     /// Builds the partial block response
