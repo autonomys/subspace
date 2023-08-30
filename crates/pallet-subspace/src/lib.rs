@@ -86,7 +86,7 @@ use subspace_verification::{
 pub trait GlobalRandomnessIntervalTrigger {
     /// Trigger a global randomness update. This should be called during every block, after
     /// initialization is done.
-    fn trigger<T: Config>(block_number: T::BlockNumber, por_randomness: Randomness);
+    fn trigger<T: Config>(block_number: T::BlockNumber, block_randomness: Randomness);
 }
 
 /// A type signifying to Subspace that it should perform a global randomness update with an internal
@@ -96,9 +96,9 @@ pub struct NormalGlobalRandomnessInterval;
 
 // TODO: Remove when switching to PoT by default
 impl GlobalRandomnessIntervalTrigger for NormalGlobalRandomnessInterval {
-    fn trigger<T: Config>(block_number: T::BlockNumber, por_randomness: Randomness) {
+    fn trigger<T: Config>(block_number: T::BlockNumber, block_randomness: Randomness) {
         if <Pallet<T>>::should_update_global_randomness(block_number) {
-            <Pallet<T>>::enact_update_global_randomness(block_number, por_randomness);
+            <Pallet<T>>::enact_update_global_randomness(block_number, block_randomness);
         }
     }
 }
@@ -470,9 +470,10 @@ mod pallet {
         >,
     >;
 
-    /// Temporary value which contains current block PoR randomness.
+    /// The current block randomness, updated at block initialization. When the proof of time feature
+    /// is enabled it derived from PoT otherwise PoR.
     #[pallet::storage]
-    pub(super) type PorRandomness<T> = StorageValue<_, Randomness>;
+    pub(super) type BlockRandomness<T> = StorageValue<_, Randomness>;
 
     /// Enable storage access for all users.
     #[pallet::storage]
@@ -737,10 +738,10 @@ impl<T: Config> Pallet<T> {
     /// has returned `true`, and the caller is the only caller of this function.
     // TODO: Remove when switching to PoT by default
     #[cfg_attr(feature = "pot", allow(unused_variables))]
-    fn enact_update_global_randomness(_block_number: T::BlockNumber, por_randomness: Randomness) {
+    fn enact_update_global_randomness(_block_number: T::BlockNumber, block_randomness: Randomness) {
         #[cfg(not(feature = "pot"))]
         GlobalRandomnesses::<T>::mutate(|global_randomnesses| {
-            global_randomnesses.next = Some(por_randomness);
+            global_randomnesses.next = Some(block_randomness);
         });
     }
 
@@ -911,13 +912,13 @@ impl<T: Config> Pallet<T> {
 
         // Extract PoR randomness from pre-digest.
         #[cfg(not(feature = "pot"))]
-        let por_randomness = derive_randomness(pre_digest.solution(), pre_digest.slot().into());
+        let block_randomness = derive_randomness(pre_digest.solution(), pre_digest.slot().into());
 
         #[cfg(feature = "pot")]
-        let por_randomness = pre_digest.proof_of_time.derive_global_randomness();
+        let block_randomness = pre_digest.proof_of_time.derive_global_randomness();
 
-        // Store PoR randomness for block duration as it might be useful.
-        PorRandomness::<T>::put(por_randomness);
+        // Update the block randomness.
+        BlockRandomness::<T>::put(block_randomness);
 
         // Deposit global randomness data such that light client can validate blocks later.
         #[cfg(not(feature = "pot"))]
@@ -931,7 +932,7 @@ impl<T: Config> Pallet<T> {
 
         // Enact global randomness update, if necessary.
         #[cfg(not(feature = "pot"))]
-        T::GlobalRandomnessIntervalTrigger::trigger::<T>(block_number, por_randomness);
+        T::GlobalRandomnessIntervalTrigger::trigger::<T>(block_number, block_randomness);
         // Enact era change, if necessary.
         T::EraChangeTrigger::trigger::<T>(block_number);
 
@@ -1710,8 +1711,8 @@ impl<T: Config> frame_support::traits::Randomness<T::Hash, T::BlockNumber> for P
     fn random(subject: &[u8]) -> (T::Hash, T::BlockNumber) {
         let mut subject = subject.to_vec();
         subject.extend_from_slice(
-            PorRandomness::<T>::get()
-                .expect("PoR randomness is always set in block initialization; qed")
+            BlockRandomness::<T>::get()
+                .expect("Block randomness is always set in block initialization; qed")
                 .as_ref(),
         );
 
@@ -1724,8 +1725,8 @@ impl<T: Config> frame_support::traits::Randomness<T::Hash, T::BlockNumber> for P
     fn random_seed() -> (T::Hash, T::BlockNumber) {
         (
             T::Hashing::hash(
-                PorRandomness::<T>::get()
-                    .expect("PoR randomness is always set in block initialization; qed")
+                BlockRandomness::<T>::get()
+                    .expect("Block randomness is always set in block initialization; qed")
                     .as_ref(),
             ),
             frame_system::Pallet::<T>::current_block_number(),
