@@ -12,7 +12,9 @@ use subspace_farmer_components::plotting::{PieceGetter, PieceGetterRetryPolicy};
 use subspace_networking::libp2p::kad::{ProviderRecord, RecordKey};
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::ToMultihash;
-use subspace_networking::{KeyWrapper, LocalRecordProvider, UniqueRecordBinaryHeap};
+use subspace_networking::{
+    KeyWrapper, LocalRecordProvider, UniqueRecordBinaryHeap, PIECE_GETTER_RETRY_NUMBER,
+};
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, trace, warn};
 
@@ -255,7 +257,10 @@ where
         // TODO: Can probably do concurrency here
         for (index, piece_index) in piece_indices_to_store.into_values().enumerate() {
             let result = piece_getter
-                .get_piece(piece_index, PieceGetterRetryPolicy::Limited(1))
+                .get_piece(
+                    piece_index,
+                    PieceGetterRetryPolicy::Limited(PIECE_GETTER_RETRY_NUMBER.get()),
+                )
                 .await;
 
             let piece = match result {
@@ -432,7 +437,10 @@ where
             trace!(%piece_index, "Piece needs to be cached #1");
 
             let result = piece_getter
-                .get_piece(piece_index, PieceGetterRetryPolicy::Limited(1))
+                .get_piece(
+                    piece_index,
+                    PieceGetterRetryPolicy::Limited(PIECE_GETTER_RETRY_NUMBER.get()),
+                )
                 .await;
 
             let piece = match result {
