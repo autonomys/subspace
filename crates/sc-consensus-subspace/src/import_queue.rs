@@ -9,7 +9,9 @@ use sc_consensus::import_queue::{
     BasicQueue, BoxJustificationImport, DefaultImportQueue, Verifier,
 };
 use sc_consensus_slots::check_equivocation;
-use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_DEBUG, CONSENSUS_TRACE};
+#[cfg(not(feature = "pot"))]
+use sc_telemetry::CONSENSUS_DEBUG;
+use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_TRACE};
 use schnorrkel::context::SigningContext;
 use sp_api::{ApiExt, BlockT, HeaderT, ProvideRuntimeApi, TransactionFor};
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
@@ -109,6 +111,7 @@ pub enum VerificationError<Header: HeaderT> {
 enum CheckedHeader<H, S> {
     /// A header which has slot in the future. this is the full header (not stripped)
     /// and the slot in which it should be processed.
+    #[cfg(not(feature = "pot"))]
     Deferred(H, Slot),
     /// A header which is fully checked, including signature. This is the pre-header
     /// accompanied by the seal components.
@@ -125,6 +128,8 @@ where
     /// The header being verified.
     header: Header,
     /// The slot number of the current time.
+    // TODO: Remove field once PoT is the only option
+    #[cfg(not(feature = "pot"))]
     slot_now: Slot,
     /// Parameters for solution verification
     verify_solution_params: &'a VerifySolutionParams,
@@ -145,6 +150,7 @@ struct SubspaceVerifier<PosTable, Block: BlockT, Client, SelectChain, SN> {
     client: Arc<Client>,
     kzg: Kzg,
     select_chain: SelectChain,
+    // TODO: Remove field once PoT is the only option
     slot_now: SN,
     telemetry: Option<TelemetryHandle>,
     reward_signing_context: SigningContext,
@@ -173,14 +179,15 @@ where
     ///
     /// `pre_digest` argument is optional in case it is available to avoid doing the work of
     /// extracting it from the header twice.
-    fn check_header(
+    async fn check_header(
         &self,
-        params: VerificationParams<Block::Header>,
+        params: VerificationParams<'_, Block::Header>,
         pre_digest: PreDigest<FarmerPublicKey, FarmerPublicKey>,
     ) -> Result<CheckedHeader<Block::Header, VerifiedHeaderInfo>, VerificationError<Block::Header>>
     {
         let VerificationParams {
             mut header,
+            #[cfg(not(feature = "pot"))]
             slot_now,
             verify_solution_params,
             reward_signing_context,
@@ -200,10 +207,13 @@ where
         // The pre-hash of the header doesn't include the seal and that's what we sign
         let pre_hash = header.hash();
 
+        #[cfg(not(feature = "pot"))]
         if slot > slot_now {
             header.digest_mut().push(seal);
             return Ok(CheckedHeader::Deferred(header, slot));
         }
+
+        // TODO: PoT verification here
 
         // Verify that block is signed properly
         if check_reward_signature(
@@ -365,13 +375,11 @@ where
         // from the header are checked against expected correct values during block import as well
         // as whether piece in the header corresponds to the actual archival history of the
         // blockchain.
-        let checked_header = {
-            // We add one to the current slot to allow for some small drift.
-            // FIXME https://github.com/paritytech/substrate/issues/1019 in the future, alter this
-            //  queue to allow deferring of headers
-            self.check_header(
+        let checked_header = self
+            .check_header(
                 VerificationParams {
                     header: block.header.clone(),
+                    #[cfg(not(feature = "pot"))]
                     slot_now: slot_now + 1,
                     verify_solution_params: &VerifySolutionParams {
                         #[cfg(not(feature = "pot"))]
@@ -385,8 +393,8 @@ where
                 },
                 pre_digest,
             )
-            .map_err(Error::<Block::Header>::from)?
-        };
+            .await
+            .map_err(Error::<Block::Header>::from)?;
 
         match checked_header {
             CheckedHeader::Checked(pre_header, verified_info) => {
@@ -426,6 +434,7 @@ where
 
                 Ok(block)
             }
+            #[cfg(not(feature = "pot"))]
             CheckedHeader::Deferred(a, b) => {
                 debug!(target: "subspace", "Checking {:?} failed; {:?}, {:?}.", hash, a, b);
                 telemetry!(

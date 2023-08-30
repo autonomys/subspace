@@ -149,6 +149,7 @@ pub enum Error<Header: HeaderT> {
     DigestItemError(#[from] DigestError),
     /// Header rejected: too far in the future
     #[error("Header {0:?} rejected: too far in the future")]
+    #[cfg(not(feature = "pot"))]
     TooFarInFuture(Header::Hash),
     /// Parent unavailable. Cannot import
     #[error("Parent ({0}) of {1} unavailable. Cannot import")]

@@ -428,6 +428,7 @@ where
         client.clone(),
         kzg,
         select_chain.clone(),
+        // TODO: Remove use current best slot known from PoT verifier in PoT case
         move || {
             let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
 
