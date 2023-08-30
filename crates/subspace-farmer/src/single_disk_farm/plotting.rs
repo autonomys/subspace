@@ -33,10 +33,10 @@ use thiserror::Error;
 use tracing::{debug, info, trace, warn};
 
 const FARMER_APP_INFO_RETRY_INTERVAL: Duration = Duration::from_millis(500);
-/// Get piece retry attempts number.
-const PIECE_GETTER_RETRY_NUMBER: NonZeroU16 = NonZeroU16::new(3).expect("Not zero; qed");
 /// Size of the cache of archived segments for the purposes of faster sector expiration checks.
 const ARCHIVED_SEGMENTS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(1000).expect("Not zero; qed");
+/// Get piece retry attempts number.
+const PIECE_GETTER_RETRY_NUMBER: NonZeroU16 = NonZeroU16::new(3).expect("Not zero; qed");
 
 /// Errors that happen during plotting
 #[derive(Debug, Error)]
