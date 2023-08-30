@@ -6,6 +6,7 @@ use parking_lot::RwLock;
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::mem;
+use std::num::NonZeroU16;
 use std::sync::Arc;
 use subspace_core_primitives::{Piece, PieceIndex, SegmentIndex};
 use subspace_farmer_components::plotting::{PieceGetter, PieceGetterRetryPolicy};
@@ -20,6 +21,8 @@ const WORKER_CHANNEL_CAPACITY: usize = 100;
 /// Make caches available as they are building without waiting for the initialization to finish,
 /// this number defines an interval in pieces after which cache is updated
 const INTERMEDIATE_CACHE_UPDATE_INTERVAL: usize = 100;
+/// Get piece retry attempts number.
+const PIECE_GETTER_RETRY_NUMBER: NonZeroU16 = NonZeroU16::new(3).expect("Not zero; qed");
 
 #[derive(Debug, Clone)]
 struct DiskPieceCacheState {
@@ -255,7 +258,10 @@ where
         // TODO: Can probably do concurrency here
         for (index, piece_index) in piece_indices_to_store.into_values().enumerate() {
             let result = piece_getter
-                .get_piece(piece_index, PieceGetterRetryPolicy::Limited(1))
+                .get_piece(
+                    piece_index,
+                    PieceGetterRetryPolicy::Limited(PIECE_GETTER_RETRY_NUMBER.get()),
+                )
                 .await;
 
             let piece = match result {
@@ -432,7 +438,10 @@ where
             trace!(%piece_index, "Piece needs to be cached #1");
 
             let result = piece_getter
-                .get_piece(piece_index, PieceGetterRetryPolicy::Limited(1))
+                .get_piece(
+                    piece_index,
+                    PieceGetterRetryPolicy::Limited(PIECE_GETTER_RETRY_NUMBER.get()),
+                )
                 .await;
 
             let piece = match result {
