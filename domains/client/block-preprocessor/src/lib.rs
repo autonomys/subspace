@@ -18,7 +18,7 @@ pub mod xdm_verifier;
 
 use crate::inherents::construct_inherent_extrinsics;
 use crate::runtime_api::{SetCodeConstructor, SignerExtractor, StateRootExtractor};
-use crate::xdm_verifier::verify_xdm;
+use crate::xdm_verifier::is_valid_xdm;
 use codec::{Decode, Encode};
 use domain_runtime_primitives::opaque::AccountId;
 use domain_runtime_primitives::DomainCoreApi;
@@ -33,6 +33,7 @@ use sp_domains::{
     BundleValidity, DomainId, DomainsApi, DomainsDigestItem, ExecutionReceipt, ExtrinsicsRoot,
     InvalidBundle, InvalidBundleType, OpaqueBundle, OpaqueBundles, ReceiptValidity,
 };
+use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, VecDeque};
@@ -259,7 +260,8 @@ where
         + Send
         + Sync
         + 'static,
-    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
+    CClient::Api:
+        DomainsApi<CBlock, NumberFor<Block>, Block::Hash> + MessengerApi<CBlock, NumberFor<CBlock>>,
     ReceiptValidator: ValidateReceipt<Block, CBlock>,
 {
     pub fn new(
@@ -451,7 +453,7 @@ where
     ) -> Vec<Block::Extrinsic> {
         exts.into_iter()
             .filter(|ext| {
-                match verify_xdm::<CClient, CBlock, Block, _>(
+                match is_valid_xdm::<CClient, CBlock, Block, _>(
                     &self.consensus_client,
                     at,
                     &self.runtime_api,

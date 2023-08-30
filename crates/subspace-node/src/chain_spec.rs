@@ -25,6 +25,7 @@ use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::crypto::{Ss58Codec, UncheckedFrom};
 use sp_domains::RuntimeType;
 use sp_runtime::Percent;
+use std::num::NonZeroU32;
 use subspace_core_primitives::PotKey;
 use subspace_runtime::{
     AllowAuthoringBy, BalancesConfig, DomainsConfig, GenesisConfig, MaxDomainBlockSize,
@@ -81,6 +82,7 @@ struct GenesisParams {
     enable_rewards: bool,
     enable_storage_access: bool,
     allow_authoring_by: AllowAuthoringBy,
+    pot_slot_iterations: NonZeroU32,
     enable_domains: bool,
     enable_transfer: bool,
     confirmation_depth_k: u32,
@@ -149,6 +151,8 @@ pub fn gemini_3f_compiled() -> Result<ConsensusChainSpec<GenesisConfig>, String>
                             "8aecbcf0b404590ddddc01ebacb205a562d12fdb5c2aa6a4035c1a20f23c9515"
                         )),
                     ),
+                    // TODO: Adjust once we bench PoT on faster hardware
+                    pot_slot_iterations: NonZeroU32::new(183_270_000).expect("Not zero; qed"),
                     enable_domains: true,
                     enable_transfer: false,
                     confirmation_depth_k: 100, // TODO: Proper value here
@@ -246,6 +250,7 @@ pub fn devnet_config_compiled() -> Result<ConsensusChainSpec<GenesisConfig>, Str
                     enable_rewards: false,
                     enable_storage_access: false,
                     allow_authoring_by: AllowAuthoringBy::FirstFarmer,
+                    pot_slot_iterations: NonZeroU32::new(150_000_000).expect("Not zero; qed"),
                     enable_domains: true,
                     enable_transfer: true,
                     confirmation_depth_k: 100, // TODO: Proper value here
@@ -303,6 +308,7 @@ pub fn dev_config() -> Result<ConsensusChainSpec<GenesisConfig>, String> {
                     enable_rewards: false,
                     enable_storage_access: false,
                     allow_authoring_by: AllowAuthoringBy::Anyone,
+                    pot_slot_iterations: NonZeroU32::new(100_000_000).expect("Not zero; qed"),
                     enable_domains: true,
                     enable_transfer: true,
                     confirmation_depth_k: 5,
@@ -365,6 +371,7 @@ pub fn local_config() -> Result<ConsensusChainSpec<GenesisConfig>, String> {
                     enable_rewards: false,
                     enable_storage_access: false,
                     allow_authoring_by: AllowAuthoringBy::Anyone,
+                    pot_slot_iterations: NonZeroU32::new(100_000_000).expect("Not zero; qed"),
                     enable_domains: true,
                     enable_transfer: true,
                     confirmation_depth_k: 1,
@@ -406,6 +413,7 @@ fn subspace_genesis_config(
         enable_rewards,
         enable_storage_access,
         allow_authoring_by,
+        pot_slot_iterations,
         enable_domains,
         enable_transfer,
         confirmation_depth_k,
@@ -433,6 +441,7 @@ fn subspace_genesis_config(
             enable_rewards,
             enable_storage_access,
             allow_authoring_by,
+            pot_slot_iterations,
         },
         vesting: VestingConfig { vesting },
         runtime_configs: RuntimeConfigsConfig {

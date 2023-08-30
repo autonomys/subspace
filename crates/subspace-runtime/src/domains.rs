@@ -103,7 +103,7 @@ pub(crate) fn extrinsics_shuffling_seed<Block: BlockT>(header: Block::Header) ->
         let pre_digest = pre_digest.expect("Header must contain one pre-runtime digest; qed");
 
         let seed: &[u8] = b"extrinsics-shuffling-seed";
-        let randomness = derive_randomness(&pre_digest.solution, pre_digest.slot.into());
+        let randomness = derive_randomness(pre_digest.solution(), pre_digest.slot().into());
         let mut data = Vec::with_capacity(seed.len() + randomness.len());
         data.extend_from_slice(seed);
         data.extend_from_slice(randomness.as_ref());

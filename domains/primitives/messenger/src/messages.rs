@@ -102,10 +102,10 @@ impl MessageWeightTag {
     // Construct the weight tag for inbox response based on the weight tag of the request
     // message and the response payload
     pub fn inbox_response<Balance>(
-        req_tyep: MessageWeightTag,
+        req_type: MessageWeightTag,
         resp_payload: &VersionedPayload<Balance>,
     ) -> Self {
-        match (req_tyep, resp_payload) {
+        match (req_type, resp_payload) {
             (
                 MessageWeightTag::ProtocolChannelOpen,
                 VersionedPayload::V0(Payload::Protocol(RequestResponse::Response(Ok(_)))),
@@ -321,9 +321,9 @@ impl<BlockNumber, BlockHash, StateRoot> CrossDomainMessage<BlockNumber, BlockHas
     }
 }
 
-/// Relayer message with storage key to generate storage proof using the backend.
+/// Message with storage key to generate storage proof using the backend.
 #[derive(Debug, Encode, Decode, TypeInfo, Clone, Eq, PartialEq)]
-pub struct RelayerMessageWithStorageKey {
+pub struct BlockMessageWithStorageKey {
     /// Chain which initiated this message.
     pub src_chain_id: ChainId,
     /// Chain this message is intended for.
@@ -338,16 +338,16 @@ pub struct RelayerMessageWithStorageKey {
     pub weight_tag: MessageWeightTag,
 }
 
-/// Set of messages with storage keys to be relayed by a given relayer.
+/// Set of messages with storage keys to be relayed in a given block..
 #[derive(Default, Debug, Encode, Decode, TypeInfo, Clone, Eq, PartialEq)]
-pub struct RelayerMessagesWithStorageKey {
-    pub outbox: Vec<RelayerMessageWithStorageKey>,
-    pub inbox_responses: Vec<RelayerMessageWithStorageKey>,
+pub struct BlockMessagesWithStorageKey {
+    pub outbox: Vec<BlockMessageWithStorageKey>,
+    pub inbox_responses: Vec<BlockMessageWithStorageKey>,
 }
 
 impl<BlockNumber, BlockHash, StateRoot> CrossDomainMessage<BlockNumber, BlockHash, StateRoot> {
     pub fn from_relayer_msg_with_proof(
-        r_msg: RelayerMessageWithStorageKey,
+        r_msg: BlockMessageWithStorageKey,
         proof: Proof<BlockNumber, BlockHash, StateRoot>,
     ) -> Self {
         CrossDomainMessage {

@@ -41,10 +41,14 @@ use sp_io::hashing;
 use sp_runtime::{ConsensusEngineId, DigestItem, Justification};
 use sp_runtime_interface::pass_by::PassBy;
 use sp_runtime_interface::{pass_by, runtime_interface};
+#[cfg(feature = "pot")]
+use sp_std::num::NonZeroU32;
 use sp_std::vec::Vec;
 use subspace_core_primitives::crypto::kzg::Kzg;
 #[cfg(not(feature = "pot"))]
 use subspace_core_primitives::Randomness;
+#[cfg(feature = "pot")]
+use subspace_core_primitives::{Blake2b256Hash, PotSeed};
 use subspace_core_primitives::{
     BlockNumber, HistorySize, PotCheckpoints, PublicKey, RewardSignature, SegmentCommitment,
     SegmentHeader, SegmentIndex, Solution, SolutionRange, PUBLIC_KEY_LENGTH,
@@ -131,9 +135,26 @@ impl SubspaceJustification {
 /// An equivocation proof for multiple block authorships on the same slot (i.e. double vote).
 pub type EquivocationProof<Header> = sp_consensus_slots::EquivocationProof<Header, FarmerPublicKey>;
 
+/// Change of parameters to apply to PoT chain
+#[cfg(feature = "pot")]
+#[derive(Debug, Clone, PartialEq, Eq, Decode, Encode, TypeInfo, MaxEncodedLen)]
+pub struct PotParametersChange {
+    /// At which slot change of parameters takes effect
+    pub slot: Slot,
+    /// New number of iterations
+    pub iterations: NonZeroU32,
+    /// Entropy that should be injected at this time
+    // TODO: Reconsider if the type is correct here
+    pub entropy: Blake2b256Hash,
+}
+
 /// An consensus log item for Subspace.
 #[derive(Debug, Decode, Encode, Clone, PartialEq, Eq)]
 enum ConsensusLog {
+    /// Number of iterations for proof of time per slot.
+    #[codec(index = 0)]
+    #[cfg(feature = "pot")]
+    PotSlotIterations(NonZeroU32),
     /// Global randomness for this block/interval.
     #[codec(index = 0)]
     #[cfg(not(feature = "pot"))]
@@ -141,6 +162,10 @@ enum ConsensusLog {
     /// Solution range for this block/era.
     #[codec(index = 1)]
     SolutionRange(SolutionRange),
+    /// Change of parameters to apply to PoT chain.
+    #[codec(index = 2)]
+    #[cfg(feature = "pot")]
+    PotParametersChange(PotParametersChange),
     /// Global randomness for next block/interval.
     #[codec(index = 2)]
     #[cfg(not(feature = "pot"))]
@@ -157,6 +182,10 @@ enum ConsensusLog {
     /// Root plot public key was updated.
     #[codec(index = 6)]
     RootPlotPublicKeyUpdate(Option<FarmerPublicKey>),
+    /// Future proof of time seed, essentially output of parent block's future proof of time.
+    #[codec(index = 7)]
+    #[cfg(feature = "pot")]
+    FuturePotSeed(PotSeed),
 }
 
 /// Farmer vote.
@@ -279,17 +308,17 @@ where
 
     // both headers must be targeting the same slot and it must
     // be the same as the one in the proof.
-    if !(proof.slot == first_pre_digest.slot && proof.slot == second_pre_digest.slot) {
+    if !(proof.slot == first_pre_digest.slot() && proof.slot == second_pre_digest.slot()) {
         return false;
     }
 
     // both headers must have the same sector index
-    if first_pre_digest.solution.sector_index != second_pre_digest.solution.sector_index {
+    if first_pre_digest.solution().sector_index != second_pre_digest.solution().sector_index {
         return false;
     }
 
     // both headers must have been authored by the same farmer
-    if first_pre_digest.solution.public_key != second_pre_digest.solution.public_key {
+    if first_pre_digest.solution().public_key != second_pre_digest.solution().public_key {
         return false;
     }
 
@@ -340,6 +369,7 @@ impl Default for SolutionRanges {
 #[derive(Debug, Encode, Decode, MaxEncodedLen, PartialEq, Eq, Clone, Copy, TypeInfo)]
 pub enum ChainConstants {
     /// V0 of the chain constants.
+    #[codec(index = 0)]
     V0 {
         /// Depth `K` after which a block enters the recorded history.
         confirmation_depth_k: BlockNumber,
@@ -613,12 +643,47 @@ sp_api::decl_runtime_apis! {
     }
 }
 
+/// Proof of time parameters
+#[cfg(feature = "pot")]
+#[derive(Debug, Clone, Encode, Decode, TypeInfo, MaxEncodedLen)]
+pub enum PotParameters {
+    /// Initial version of the parameters
+    V0 {
+        /// Base number of iterations
+        iterations: NonZeroU32,
+        /// Optional next scheduled change of parameters
+        next_change: Option<PotParametersChange>,
+    },
+}
+
+#[cfg(feature = "pot")]
+impl PotParameters {
+    /// Number of iterations for proof of time per slot, taking into account potential future change
+    pub fn iterations(&self, slot: Slot) -> NonZeroU32 {
+        let Self::V0 {
+            iterations,
+            next_change,
+        } = self;
+
+        if let Some(next_change) = next_change {
+            if next_change.slot >= slot {
+                return next_change.iterations;
+            }
+        }
+
+        *iterations
+    }
+}
+
 #[cfg(feature = "pot")]
 sp_api::decl_runtime_apis! {
     /// API necessary for block authorship with Subspace.
     pub trait SubspaceApi<RewardAddress: Encode + Decode> {
         /// The slot duration in milliseconds for Subspace.
         fn slot_duration() -> SlotDuration;
+
+        /// Proof of time parameters
+        fn pot_parameters() -> PotParameters;
 
         /// Solution ranges.
         fn solution_ranges() -> SolutionRanges;
@@ -761,7 +826,7 @@ where
         None => find_pre_digest::<Header, RewardAddress>(&header)
             .ok_or(VerificationError::NoPreRuntimeDigest)?,
     };
-    let slot = pre_digest.slot;
+    let slot = pre_digest.slot();
 
     let seal = header
         .digest_mut()
@@ -775,16 +840,16 @@ where
     // The pre-hash of the header doesn't include the seal and that's what we sign
     let pre_hash = header.hash();
 
-    if pre_digest.slot > slot_now {
+    if pre_digest.slot() > slot_now {
         header.digest_mut().push(seal);
-        return Ok(CheckedHeader::Deferred(header, pre_digest.slot));
+        return Ok(CheckedHeader::Deferred(header, pre_digest.slot()));
     }
 
     // Verify that block is signed properly
     if check_reward_signature(
         pre_hash.as_ref(),
         &RewardSignature::from(&signature),
-        &PublicKey::from(&pre_digest.solution.public_key),
+        &PublicKey::from(&pre_digest.solution().public_key),
         reward_signing_context,
     )
     .is_err()
@@ -794,7 +859,7 @@ where
 
     // Verify that solution is valid
     verify_solution::<PosTable, _, _>(
-        &pre_digest.solution,
+        pre_digest.solution(),
         slot.into(),
         verify_solution_params,
         kzg,

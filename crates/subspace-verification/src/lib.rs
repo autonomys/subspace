@@ -32,7 +32,7 @@ use subspace_core_primitives::crypto::{
     blake2b_256_254_hash_to_scalar, blake2b_256_hash_list, blake2b_256_hash_with_key,
 };
 #[cfg(feature = "pot")]
-use subspace_core_primitives::PotCheckpoint;
+use subspace_core_primitives::PotProof;
 use subspace_core_primitives::{
     Blake2b256Hash, BlockNumber, BlockWeight, HistorySize, PublicKey, Randomness, Record,
     RewardSignature, SectorId, SectorSlotChallenge, SegmentCommitment, SlotNumber, Solution,
@@ -169,7 +169,7 @@ pub struct VerifySolutionParams {
     pub global_randomness: Randomness,
     /// Proof of time for which solution is built
     #[cfg(feature = "pot")]
-    pub proof_of_time: PotCheckpoint,
+    pub proof_of_time: PotProof,
     /// Solution range
     pub solution_range: SolutionRange,
     /// Parameters for checking piece validity.

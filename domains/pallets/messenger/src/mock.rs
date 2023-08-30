@@ -20,11 +20,10 @@ macro_rules! impl_runtime {
         use crate::mock::{
             AccountId, Balance, MessageId, MockEndpoint, TestExternalities,
         };
-        use crate::relayer::RelayerId;
         use codec::{Encode, Decode};
         use domain_runtime_primitives::{MultiAccountId, TryConvertBack};
         use frame_support::pallet_prelude::PhantomData;
-        use frame_support::{assert_ok, parameter_types};
+        use frame_support::parameter_types;
         use pallet_balances::AccountData;
         use sp_core::H256;
         use sp_messenger::messages::ChainId;
@@ -88,20 +87,17 @@ macro_rules! impl_runtime {
 
         parameter_types! {
             pub SelfChainId: ChainId = $chain_id.into();
-            pub const MaximumRelayers: u32 = 10;
-            pub const RelayerDeposit: Balance = 500;
         }
 
         impl crate::Config for $runtime {
             type RuntimeEvent = RuntimeEvent;
             type SelfChainId = SelfChainId;
-            type MaximumRelayers = MaximumRelayers;
             type Currency = Balances;
-            type RelayerDeposit = RelayerDeposit;
             type ConfirmationDepth = RelayerConfirmationDepth;
             type DomainInfo = ();
             type WeightInfo = ();
             type WeightToFee = frame_support::weights::IdentityFee<u64>;
+            type OnXDMRewards = ();
             /// function to fetch endpoint response handler by Endpoint.
             fn get_endpoint_handler(
                 endpoint: &Endpoint,
@@ -172,9 +168,6 @@ macro_rules! impl_runtime {
 
         pub const USER_ACCOUNT: AccountId = 1;
         pub const USER_INITIAL_BALANCE: Balance = 1000;
-        pub const RELAYER_OWNER_ACCOUNT: AccountId = 200;
-        pub const RELAYER_BALANCE: Balance = 1000;
-        pub const RELAYER_ID: RelayerId<$runtime> = 300;
 
         pub fn new_test_ext() -> TestExternalities {
            let mut t = frame_system::GenesisConfig::default()
@@ -184,7 +177,6 @@ macro_rules! impl_runtime {
            pallet_balances::GenesisConfig::<$runtime> {
                 balances: vec![
                     (USER_ACCOUNT, USER_INITIAL_BALANCE),
-                    (RELAYER_OWNER_ACCOUNT, RELAYER_BALANCE),
                 ],
            }
             .assimilate_storage(&mut t)
@@ -192,12 +184,6 @@ macro_rules! impl_runtime {
 
            let mut t: TestExternalities = t.into();
            t.execute_with(|| System::set_block_number(1));
-
-           // add a relayer to messenger
-           t.execute_with(|| {
-               let res = Messenger::join_relayer_set(RuntimeOrigin::signed(RELAYER_OWNER_ACCOUNT), RELAYER_ID);
-               assert_ok!(res);
-           });
            t
         }
     };

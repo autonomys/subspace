@@ -50,6 +50,8 @@ use sp_consensus_slots::Slot;
 use sp_consensus_subspace::consensus::verify_solution;
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::offence::{OffenceDetails, OffenceError, OnOffenceHandler};
+#[cfg(feature = "pot")]
+use sp_consensus_subspace::PotParameters;
 use sp_consensus_subspace::{
     ChainConstants, EquivocationProof, FarmerPublicKey, FarmerSignature, SignedVote, Vote,
 };
@@ -67,12 +69,12 @@ use sp_runtime::DispatchError;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 use subspace_core_primitives::crypto::Scalar;
-#[cfg(feature = "pot")]
-use subspace_core_primitives::PotCheckpoint;
 use subspace_core_primitives::{
     ArchivedHistorySegment, HistorySize, PublicKey, Randomness, RewardSignature, SectorId,
     SectorIndex, SegmentHeader, SegmentIndex, SolutionRange,
 };
+#[cfg(feature = "pot")]
+use subspace_core_primitives::{PotProof, PotSeed};
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 #[cfg(not(feature = "pot"))]
 use subspace_verification::derive_randomness;
@@ -148,10 +150,11 @@ mod pallet {
     use sp_consensus_subspace::{EquivocationProof, FarmerPublicKey, FarmerSignature, SignedVote};
     use sp_runtime::DigestItem;
     use sp_std::collections::btree_map::BTreeMap;
+    use sp_std::num::NonZeroU32;
     use sp_std::prelude::*;
     use subspace_core_primitives::crypto::Scalar;
     use subspace_core_primitives::{
-        HistorySize, Randomness, SectorIndex, SegmentHeader, SegmentIndex, SolutionRange,
+        HistorySize, PotSeed, Randomness, SectorIndex, SegmentHeader, SegmentIndex, SolutionRange,
     };
 
     pub(super) struct InitialSolutionRanges<T: Config> {
@@ -299,16 +302,16 @@ mod pallet {
         pub enable_storage_access: bool,
         /// Who can author blocks at genesis.
         pub allow_authoring_by: AllowAuthoringBy,
+        /// Number of iterations for proof of time per slot
+        pub pot_slot_iterations: NonZeroU32,
     }
 
     impl Default for GenesisConfig {
         #[inline]
         fn default() -> Self {
-            Self {
-                enable_rewards: true,
-                enable_storage_access: true,
-                allow_authoring_by: AllowAuthoringBy::Anyone,
-            }
+            // TODO: Remove once https://github.com/paritytech/polkadot-sdk/pull/1221 is in our
+            //  fork
+            unreachable!("Config must be initialized explicitly");
         }
     }
 
@@ -331,6 +334,7 @@ mod pallet {
                     RootPlotPublicKey::<T>::put(root_farmer.clone());
                 }
             }
+            PotSlotIterations::<T>::put(self.pot_slot_iterations);
         }
     }
 
@@ -375,6 +379,10 @@ mod pallet {
     #[cfg(not(feature = "pot"))]
     pub(super) type GlobalRandomnesses<T> =
         StorageValue<_, sp_consensus_subspace::GlobalRandomnesses, ValueQuery>;
+
+    /// Number of iterations for proof of time per slot
+    #[pallet::storage]
+    pub(super) type PotSlotIterations<T> = StorageValue<_, NonZeroU32>;
 
     /// Solution ranges used for challenges.
     #[pallet::storage]
@@ -481,6 +489,10 @@ mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn root_plot_public_key)]
     pub(super) type RootPlotPublicKey<T> = StorageValue<_, FarmerPublicKey>;
+
+    /// Future proof of time seed, essentially output of parent block's future proof of time.
+    #[pallet::storage]
+    pub(super) type FuturePotSeed<T> = StorageValue<_, PotSeed>;
 
     #[pallet::hooks]
     impl<T: Config> Hooks<T::BlockNumber> for Pallet<T> {
@@ -776,6 +788,22 @@ impl<T: Config> Pallet<T> {
     }
 
     fn do_initialize(block_number: T::BlockNumber) {
+        #[cfg(feature = "pot")]
+        frame_system::Pallet::<T>::deposit_log(DigestItem::future_pot_seed(
+            if block_number.is_one() {
+                PotSeed::from_genesis_block_hash(
+                    frame_system::Pallet::<T>::block_hash(T::BlockNumber::zero())
+                        .as_ref()
+                        .try_into()
+                        .expect("Genesis block hash length must match, panic otherwise"),
+                )
+            } else {
+                FuturePotSeed::<T>::get().expect(
+                    "Is set at the end of `do_initialize` of every block after genesis; qed",
+                )
+            },
+        ));
+
         let pre_digest = <frame_system::Pallet<T>>::digest()
             .logs
             .iter()
@@ -785,15 +813,15 @@ impl<T: Config> Pallet<T> {
         // On the first non-zero block (i.e. block #1) we need to adjust internal storage
         // accordingly.
         if *GenesisSlot::<T>::get() == 0 {
-            GenesisSlot::<T>::put(pre_digest.slot);
+            GenesisSlot::<T>::put(pre_digest.slot());
             debug_assert_ne!(*GenesisSlot::<T>::get(), 0);
         }
 
         // The slot number of the current block being initialized.
-        CurrentSlot::<T>::put(pre_digest.slot);
+        CurrentSlot::<T>::put(pre_digest.slot());
 
         {
-            let farmer_public_key = pre_digest.solution.public_key.clone();
+            let farmer_public_key = pre_digest.solution().public_key.clone();
 
             // Optional restriction for block authoring to the root user
             if !AllowAuthoringByAnyone::<T>::get() {
@@ -817,10 +845,10 @@ impl<T: Config> Pallet<T> {
 
             let key = (
                 farmer_public_key,
-                pre_digest.solution.sector_index,
-                pre_digest.solution.chunk,
-                AuditChunkOffset(pre_digest.solution.audit_chunk_offset),
-                pre_digest.slot,
+                pre_digest.solution().sector_index,
+                pre_digest.solution().chunk,
+                AuditChunkOffset(pre_digest.solution().audit_chunk_offset),
+                pre_digest.slot(),
             );
             if ParentBlockVoters::<T>::get().contains_key(&key) {
                 let (public_key, _sector_index, _chunk, _audit_chunk_offset, slot) = key;
@@ -848,7 +876,7 @@ impl<T: Config> Pallet<T> {
                     chunk,
                     audit_chunk_offset,
                     slot,
-                    pre_digest.solution.reward_address.clone(),
+                    pre_digest.solution().reward_address.clone(),
                 ));
             }
         }
@@ -883,7 +911,7 @@ impl<T: Config> Pallet<T> {
 
         // Extract PoR randomness from pre-digest.
         #[cfg(not(feature = "pot"))]
-        let por_randomness = derive_randomness(&pre_digest.solution, pre_digest.slot.into());
+        let por_randomness = derive_randomness(pre_digest.solution(), pre_digest.slot().into());
         // Store PoR randomness for block duration as it might be useful.
         #[cfg(not(feature = "pot"))]
         PorRandomness::<T>::put(por_randomness);
@@ -911,6 +939,15 @@ impl<T: Config> Pallet<T> {
                 next_global_randomness,
             ));
         }
+
+        #[cfg(feature = "pot")]
+        frame_system::Pallet::<T>::deposit_log(DigestItem::pot_slot_iterations(
+            PotSlotIterations::<T>::get().expect("Always instantiated during genesis; qed"),
+        ));
+        // TODO: Once we have entropy injection, it might take effect right here and should be
+        //  accounted for
+        #[cfg(feature = "pot")]
+        FuturePotSeed::<T>::put(pre_digest.pot_info().future_proof_of_time().seed());
     }
 
     fn do_finalize(_block_number: T::BlockNumber) {
@@ -1062,6 +1099,18 @@ impl<T: Config> Pallet<T> {
     ) -> Option<()> {
         BlockList::<T>::insert(equivocation_proof.offender, ());
         Some(())
+    }
+
+    /// Proof of time parameters
+    #[cfg(feature = "pot")]
+    pub fn pot_parameters() -> PotParameters {
+        PotParameters::V0 {
+            iterations: PotSlotIterations::<T>::get()
+                .expect("Always instantiated during genesis; qed"),
+            // TODO: This is where adjustment for number of iterations and entropy injection will
+            //  happen for runtime API calls
+            next_change: None,
+        }
     }
 
     /// Check if `farmer_public_key` is in block list (due to equivocation)
@@ -1447,7 +1496,7 @@ fn check_vote<T: Config>(
             global_randomness: vote_verification_data.global_randomness,
             // TODO: This is incorrect, find a way to verify votes
             #[cfg(feature = "pot")]
-            proof_of_time: PotCheckpoint::default(),
+            proof_of_time: PotProof::default(),
             solution_range: vote_verification_data.solution_range,
             piece_check_params: Some(PieceCheckParams {
                 max_pieces_in_sector: T::MaxPiecesInSector::get(),

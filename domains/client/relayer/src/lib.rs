@@ -4,13 +4,15 @@ pub mod worker;
 
 use async_channel::TrySendError;
 use cross_domain_message_gossip::Message as GossipMessage;
-use parity_scale_codec::{Decode, Encode};
-use sc_client_api::{AuxStore, HeaderBackend, ProofProvider};
+use parity_scale_codec::{Decode, Encode, FullCodec};
+use sc_client_api::{AuxStore, HeaderBackend, ProofProvider, StorageProof};
 use sc_utils::mpsc::TracingUnboundedSender;
+use sp_api::scale_info::TypeInfo;
 use sp_api::ProvideRuntimeApi;
+use sp_domains::DomainsApi;
 use sp_messenger::messages::{
-    BlockInfo, ChainId, CrossDomainMessage, Proof, RelayerMessageWithStorageKey,
-    RelayerMessagesWithStorageKey,
+    BlockInfo, BlockMessageWithStorageKey, BlockMessagesWithStorageKey, ChainId,
+    CrossDomainMessage, DomainStateRootStorage, Proof,
 };
 use sp_messenger::RelayerApi;
 use sp_runtime::traits::{Block as BlockT, CheckedSub, Header as HeaderT, NumberFor, One, Zero};
@@ -21,8 +23,8 @@ use std::sync::Arc;
 /// The logging target.
 const LOG_TARGET: &str = "message::relayer";
 
-/// Relayer relays messages between core domains using system domain as trusted third party.
-struct Relayer<Client, Block, RelayerId>(PhantomData<(Client, Block, RelayerId)>);
+/// Relayer relays messages between domains using consensus chain as trusted third party.
+struct Relayer<Client, Block>(PhantomData<(Client, Block)>);
 
 /// Sink used to submit all the gossip messages.
 pub type GossipMessageSink = TracingUnboundedSender<GossipMessage>;
@@ -49,11 +51,13 @@ pub enum Error {
     /// Api related error.
     ApiError(sp_api::ApiError),
     /// Emits when the core domain block is not yet confirmed on the system domain.
-    CoreDomainNonConfirmedOnSystemDomain,
+    DomainNonConfirmedOnConsensusChain,
     /// Emits when the core domain block state root is invalid.
-    CoreDomainStateRootInvalid,
+    DomainStateRootInvalid,
     /// Failed to submit a cross domain message
     UnableToSubmitCrossDomainMessage(TrySendError<GossipMessage>),
+    /// Invalid ChainId
+    InvalidChainId,
 }
 
 impl From<sp_blockchain::Error> for Error {
@@ -80,12 +84,11 @@ impl From<sp_api::ApiError> for Error {
 type ProofOf<Block> = Proof<NumberFor<Block>, <Block as BlockT>::Hash, <Block as BlockT>::Hash>;
 type UnProcessedBlocks<Block> = Vec<(NumberFor<Block>, <Block as BlockT>::Hash)>;
 
-impl<Client, Block, RelayerId> Relayer<Client, Block, RelayerId>
+impl<Client, Block> Relayer<Client, Block>
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + AuxStore + ProofProvider<Block> + ProvideRuntimeApi<Block>,
-    Client::Api: RelayerApi<Block, RelayerId, NumberFor<Block>>,
-    RelayerId: Encode + Decode,
+    Client::Api: RelayerApi<Block, NumberFor<Block>>,
 {
     pub(crate) fn chain_id(client: &Arc<Client>) -> Result<ChainId, Error> {
         client
@@ -94,17 +97,26 @@ where
             .map_err(|_| Error::UnableToFetchDomainId)
     }
 
-    /// Constructs the proof for the given key using the system domain backend.
-    fn construct_system_domain_storage_proof_for_key_at(
-        system_domain_client: &Arc<Client>,
+    pub(crate) fn relay_confirmation_depth(
+        client: &Arc<Client>,
+    ) -> Result<NumberFor<Block>, Error> {
+        let best_block_id = client.info().best_hash;
+        let api = client.runtime_api();
+        api.relay_confirmation_depth(best_block_id)
+            .map_err(|_| Error::UnableToFetchRelayConfirmationDepth)
+    }
+
+    /// Constructs the proof for the given key using the consensus chain backend.
+    fn construct_consensus_chain_storage_proof_for_key_at(
+        consensus_chain_client: &Arc<Client>,
         block_hash: Block::Hash,
         key: &[u8],
     ) -> Result<ProofOf<Block>, Error> {
-        system_domain_client
+        consensus_chain_client
             .header(block_hash)?
             .map(|header| (*header.number(), header.hash(), *header.state_root()))
             .and_then(|(block_number, block_hash, state_root)| {
-                let proof = system_domain_client
+                let proof = consensus_chain_client
                     .read_proof(block_hash, &mut [key].into_iter())
                     .ok()?;
                 Some(Proof {
@@ -120,12 +132,12 @@ where
             .ok_or(Error::ConstructStorageProof)
     }
 
-    fn construct_cross_domain_message_and_submit<
+    fn construct_cross_chain_message_and_submit<
         Submitter: Fn(CrossDomainMessage<NumberFor<Block>, Block::Hash, Block::Hash>) -> Result<(), Error>,
         ProofConstructor: Fn(Block::Hash, &[u8]) -> Result<Proof<NumberFor<Block>, Block::Hash, Block::Hash>, Error>,
     >(
         block_hash: Block::Hash,
-        msgs: Vec<RelayerMessageWithStorageKey>,
+        msgs: Vec<BlockMessageWithStorageKey>,
         proof_constructor: ProofConstructor,
         submitter: Submitter,
     ) -> Result<(), Error> {
@@ -157,10 +169,10 @@ where
         Ok(())
     }
 
-    fn filter_assigned_messages(
+    fn filter_messages(
         client: &Arc<Client>,
-        mut msgs: RelayerMessagesWithStorageKey,
-    ) -> Result<RelayerMessagesWithStorageKey, Error> {
+        mut msgs: BlockMessagesWithStorageKey,
+    ) -> Result<BlockMessagesWithStorageKey, Error> {
         let api = client.runtime_api();
         let best_hash = client.info().best_hash;
         msgs.outbox.retain(|msg| {
@@ -198,53 +210,226 @@ where
         Ok(msgs)
     }
 
-    pub(crate) fn submit_messages_from_system_domain(
-        relayer_id: RelayerId,
-        system_domain_client: &Arc<Client>,
+    pub(crate) fn submit_messages_from_consensus_chain(
+        consensus_chain_client: &Arc<Client>,
         confirmed_block_hash: Block::Hash,
         gossip_message_sink: &GossipMessageSink,
     ) -> Result<(), Error> {
-        let api = system_domain_client.runtime_api();
-        let assigned_messages: RelayerMessagesWithStorageKey = api
-            .relayer_assigned_messages(confirmed_block_hash, relayer_id)
+        let api = consensus_chain_client.runtime_api();
+        let block_messages: BlockMessagesWithStorageKey = api
+            .block_messages(confirmed_block_hash)
             .map_err(|_| Error::FetchAssignedMessages)?;
-        let filtered_messages =
-            Self::filter_assigned_messages(system_domain_client, assigned_messages)?;
+        let filtered_messages = Self::filter_messages(consensus_chain_client, block_messages)?;
 
         // short circuit if the there are no messages to relay
         if filtered_messages.outbox.is_empty() && filtered_messages.inbox_responses.is_empty() {
             return Ok(());
         }
 
-        Self::construct_cross_domain_message_and_submit(
+        Self::construct_cross_chain_message_and_submit(
             confirmed_block_hash,
             filtered_messages.outbox,
             |block_id, key| {
-                Self::construct_system_domain_storage_proof_for_key_at(
-                    system_domain_client,
+                Self::construct_consensus_chain_storage_proof_for_key_at(
+                    consensus_chain_client,
                     block_id,
                     key,
                 )
             },
-            |msg| Self::gossip_outbox_message(system_domain_client, msg, gossip_message_sink),
+            |msg| Self::gossip_outbox_message(consensus_chain_client, msg, gossip_message_sink),
         )?;
 
-        Self::construct_cross_domain_message_and_submit(
+        Self::construct_cross_chain_message_and_submit(
             confirmed_block_hash,
             filtered_messages.inbox_responses,
             |block_id, key| {
-                Self::construct_system_domain_storage_proof_for_key_at(
-                    system_domain_client,
+                Self::construct_consensus_chain_storage_proof_for_key_at(
+                    consensus_chain_client,
                     block_id,
                     key,
                 )
             },
             |msg| {
-                Self::gossip_inbox_message_response(system_domain_client, msg, gossip_message_sink)
+                Self::gossip_inbox_message_response(
+                    consensus_chain_client,
+                    msg,
+                    gossip_message_sink,
+                )
             },
         )?;
 
         Ok(())
+    }
+
+    pub(crate) fn submit_messages_from_domain<CCC, CCBlock>(
+        domain_client: &Arc<Client>,
+        consensus_chain_client: &Arc<CCC>,
+        confirmed_block_hash: Block::Hash,
+        gossip_message_sink: &GossipMessageSink,
+        relay_confirmation_depth: NumberFor<Block>,
+    ) -> Result<(), Error>
+    where
+        CCBlock: BlockT,
+        Block::Hash: FullCodec,
+        NumberFor<Block>: FullCodec + TypeInfo,
+        NumberFor<CCBlock>: Into<NumberFor<Block>>,
+        CCBlock::Hash: Into<Block::Hash>,
+        CCC: HeaderBackend<CCBlock> + ProvideRuntimeApi<CCBlock> + ProofProvider<CCBlock>,
+        CCC::Api: DomainsApi<CCBlock, NumberFor<Block>, Block::Hash>,
+    {
+        let chain_id = Self::chain_id(domain_client)?;
+        let ChainId::Domain(domain_id) = chain_id else {
+            return Err(Error::InvalidChainId);
+        };
+
+        let domain_block_header = domain_client.expect_header(confirmed_block_hash)?;
+        let consensus_chain_api = consensus_chain_client.runtime_api();
+        let best_consensus_chain_hash = consensus_chain_client.info().best_hash;
+        let best_consensus_chain_block_header =
+            consensus_chain_client.expect_header(best_consensus_chain_hash)?;
+
+        // verify if the domain number is K-deep on Consensus chain
+        if !consensus_chain_api
+            .domain_best_number(best_consensus_chain_hash, domain_id)?
+            .map(
+                |best_number| match best_number.checked_sub(&relay_confirmation_depth) {
+                    None => false,
+                    Some(best_confirmed) => best_confirmed >= (*domain_block_header.number()),
+                },
+            )
+            .unwrap_or(false)
+        {
+            return Err(Error::DomainNonConfirmedOnConsensusChain);
+        }
+
+        // verify if the state root is matching.
+        let domain_number = *domain_block_header.number();
+        if !consensus_chain_api
+            .domain_state_root(
+                best_consensus_chain_hash,
+                domain_id,
+                domain_number,
+                confirmed_block_hash,
+            )?
+            .map(|state_root| state_root == (*domain_block_header.state_root()))
+            .unwrap_or_else(|| {
+                // if this is genesis block, ignore as state root of genesis for domain is not tracked on runtime
+                domain_number.is_zero()
+            })
+        {
+            tracing::error!(
+                target: LOG_TARGET,
+                "Domain state root mismatch at: Number: {:?}, Hash: {:?}",
+                domain_number,
+                confirmed_block_hash
+            );
+            return Err(Error::DomainStateRootInvalid);
+        }
+
+        // fetch messages to be relayed
+        let domain_api = domain_client.runtime_api();
+        let block_messages: BlockMessagesWithStorageKey = domain_api
+            .block_messages(confirmed_block_hash)
+            .map_err(|_| Error::FetchAssignedMessages)?;
+
+        let filtered_messages = Self::filter_messages(domain_client, block_messages)?;
+
+        // short circuit if the there are no messages to relay
+        if filtered_messages.outbox.is_empty() && filtered_messages.inbox_responses.is_empty() {
+            return Ok(());
+        }
+
+        // generate domain proof that points to the state root of the domain block on Consensus chain.
+        let storage_key =
+            DomainStateRootStorage::<NumberFor<Block>, Block::Hash, Block::Hash>::storage_key(
+                domain_id,
+                *domain_block_header.number(),
+                domain_block_header.hash(),
+            );
+
+        // construct storage proof for the core domain state root using system domain backend.
+        let domain_state_root_proof = consensus_chain_client.read_proof(
+            best_consensus_chain_hash,
+            &mut [storage_key.as_ref()].into_iter(),
+        )?;
+
+        let consensus_chain_block_info = BlockInfo {
+            block_number: *best_consensus_chain_block_header.number(),
+            block_hash: best_consensus_chain_hash,
+        };
+
+        Self::construct_cross_chain_message_and_submit(
+            confirmed_block_hash,
+            filtered_messages.outbox,
+            |block_hash, key| {
+                Self::construct_domain_storage_proof_for_key_at(
+                    consensus_chain_block_info.clone(),
+                    domain_client,
+                    block_hash,
+                    key,
+                    *best_consensus_chain_block_header.state_root(),
+                    domain_state_root_proof.clone(),
+                )
+            },
+            |msg| Self::gossip_outbox_message(domain_client, msg, gossip_message_sink),
+        )?;
+
+        Self::construct_cross_chain_message_and_submit(
+            confirmed_block_hash,
+            filtered_messages.inbox_responses,
+            |block_id, key| {
+                Self::construct_domain_storage_proof_for_key_at(
+                    consensus_chain_block_info.clone(),
+                    domain_client,
+                    block_id,
+                    key,
+                    *best_consensus_chain_block_header.state_root(),
+                    domain_state_root_proof.clone(),
+                )
+            },
+            |msg| Self::gossip_inbox_message_response(domain_client, msg, gossip_message_sink),
+        )?;
+
+        Ok(())
+    }
+
+    /// Constructs the proof for the given key using the domain backend.
+    fn construct_domain_storage_proof_for_key_at<CNumber, CHash>(
+        consensus_chain_block_info: BlockInfo<CNumber, CHash>,
+        domain_client: &Arc<Client>,
+        block_hash: Block::Hash,
+        key: &[u8],
+        consensus_chain_state_root: CHash,
+        domain_proof: StorageProof,
+    ) -> Result<ProofOf<Block>, Error>
+    where
+        CNumber: Into<NumberFor<Block>>,
+        CHash: Into<Block::Hash>,
+    {
+        domain_client
+            .header(block_hash)?
+            .map(|header| (*header.number(), header.hash()))
+            .and_then(|(number, hash)| {
+                let proof = domain_client
+                    .read_proof(block_hash, &mut [key].into_iter())
+                    .ok()?;
+                Some(Proof {
+                    consensus_chain_block_info: BlockInfo {
+                        block_number: consensus_chain_block_info.block_number.into(),
+                        block_hash: consensus_chain_block_info.block_hash.into(),
+                    },
+                    consensus_chain_state_root: consensus_chain_state_root.into(),
+                    domain_proof: Some((
+                        BlockInfo {
+                            block_number: number,
+                            block_hash: hash,
+                        },
+                        domain_proof,
+                    )),
+                    message_proof: proof,
+                })
+            })
+            .ok_or(Error::ConstructStorageProof)
     }
 
     /// Sends an Outbox message from src_domain to dst_domain.
