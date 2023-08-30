@@ -88,9 +88,6 @@ where
 #[derive(Debug, Eq, PartialEq)]
 #[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 pub enum VerificationError<Header: HeaderT> {
-    /// No Subspace pre-runtime digest found
-    #[cfg_attr(feature = "thiserror", error("No Subspace pre-runtime digest found"))]
-    NoPreRuntimeDigest,
     /// Header has a bad seal
     #[cfg_attr(feature = "thiserror", error("Header {0:?} has a bad seal"))]
     HeaderBadSeal(Header::Hash),
@@ -179,7 +176,7 @@ where
     fn check_header(
         &self,
         params: VerificationParams<Block::Header>,
-        pre_digest: Option<PreDigest<FarmerPublicKey, FarmerPublicKey>>,
+        pre_digest: PreDigest<FarmerPublicKey, FarmerPublicKey>,
     ) -> Result<CheckedHeader<Block::Header, VerifiedHeaderInfo>, VerificationError<Block::Header>>
     {
         let VerificationParams {
@@ -189,15 +186,6 @@ where
             reward_signing_context,
         } = params;
 
-        let pre_digest = match pre_digest {
-            Some(pre_digest) => pre_digest,
-            None => header
-                .digest()
-                .logs()
-                .iter()
-                .find_map(|log| log.as_subspace_pre_digest())
-                .ok_or(VerificationError::NoPreRuntimeDigest)?,
-        };
         let slot = pre_digest.slot();
 
         let seal = header
@@ -212,9 +200,9 @@ where
         // The pre-hash of the header doesn't include the seal and that's what we sign
         let pre_hash = header.hash();
 
-        if pre_digest.slot() > slot_now {
+        if slot > slot_now {
             header.digest_mut().push(seal);
-            return Ok(CheckedHeader::Deferred(header, pre_digest.slot()));
+            return Ok(CheckedHeader::Deferred(header, slot));
         }
 
         // Verify that block is signed properly
@@ -395,7 +383,7 @@ where
                     },
                     reward_signing_context: &self.reward_signing_context,
                 },
-                Some(pre_digest),
+                pre_digest,
             )
             .map_err(Error::<Block::Header>::from)?
         };

@@ -147,9 +147,6 @@ pub enum Error<Header: HeaderT> {
     /// Error during digest item extraction
     #[error("Digest item error: {0}")]
     DigestItemError(#[from] DigestError),
-    /// No Subspace pre-runtime digest found
-    #[error("No Subspace pre-runtime digest found")]
-    NoPreRuntimeDigest,
     /// Header rejected: too far in the future
     #[error("Header {0:?} rejected: too far in the future")]
     TooFarInFuture(Header::Hash),
@@ -271,7 +268,6 @@ where
     #[inline]
     fn from(error: VerificationError<Header>) -> Self {
         match error {
-            VerificationError::NoPreRuntimeDigest => Error::NoPreRuntimeDigest,
             VerificationError::HeaderBadSeal(block_hash) => Error::HeaderBadSeal(block_hash),
             VerificationError::HeaderUnsealed(block_hash) => Error::HeaderUnsealed(block_hash),
             VerificationError::BadRewardSignature(block_hash) => {
