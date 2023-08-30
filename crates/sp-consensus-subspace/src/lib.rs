@@ -632,6 +632,9 @@ sp_api::decl_runtime_apis! {
         /// Returns `Vec<SegmentHeader>` if a given extrinsic has them.
         fn extract_segment_headers(ext: &Block::Extrinsic) -> Option<Vec<SegmentHeader >>;
 
+        /// Checks if the extrinsic is an inherent.
+        fn is_inherent(ext: &Block::Extrinsic) -> bool;
+
         /// Returns root plot public key in case block authoring is restricted.
         fn root_plot_public_key() -> Option<FarmerPublicKey>;
 
