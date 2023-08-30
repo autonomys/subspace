@@ -461,8 +461,7 @@ fn main() -> Result<(), Error> {
                         force_new_slot_notifications: !cli.domain_args.is_empty(),
                         subspace_networking: SubspaceNetworking::Create { config: dsn_config },
                         sync_from_dsn: cli.sync_from_dsn,
-                        enable_subspace_block_relay: cli.enable_subspace_block_relay
-                            || cli.run.is_dev().unwrap_or(false),
+                        enable_subspace_block_relay: cli.enable_subspace_block_relay,
                         #[cfg(feature = "pot")]
                         pot_source_config,
                     };

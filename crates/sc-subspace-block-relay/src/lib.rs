@@ -43,7 +43,6 @@
 use crate::utils::{NetworkPeerHandle, RelayError};
 use async_trait::async_trait;
 use codec::{Decode, Encode};
-use std::time::Duration;
 
 mod consensus;
 mod protocol;
@@ -53,22 +52,6 @@ pub use crate::consensus::build_consensus_relay;
 pub use crate::utils::NetworkWrapper;
 
 pub(crate) const LOG_TARGET: &str = "block_relay";
-
-/// The downloaded entry and meta info
-pub(crate) struct DownloadResult<DownloadUnitId, DownloadUnit: Encode> {
-    /// Downloaded unit Id
-    download_unit_id: DownloadUnitId,
-
-    /// Downloaded entry
-    downloaded: DownloadUnit,
-
-    /// Total transactions (in bytes) that could not be resolved
-    /// locally, and had to be fetched from the server
-    local_miss: usize,
-
-    /// Download latency
-    latency: Duration,
-}
 
 /// The resolved protocol unit related info
 pub(crate) struct Resolved<ProtocolUnitId, ProtocolUnit> {
