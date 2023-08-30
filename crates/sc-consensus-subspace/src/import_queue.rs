@@ -16,16 +16,18 @@ use sp_block_builder::BlockBuilder as BlockBuilderApi;
 use sp_blockchain::{HeaderBackend, Result as ClientResult};
 use sp_consensus::{BlockOrigin, Error as ConsensusError};
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::digests::extract_subspace_digest_items;
-use sp_consensus_subspace::{
-    check_header, CheckedHeader, FarmerPublicKey, FarmerSignature, SubspaceApi, VerificationParams,
+use sp_consensus_subspace::digests::{
+    extract_subspace_digest_items, CompatibleDigestItem, PreDigest,
 };
+use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi};
+use sp_runtime::DigestItem;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::Kzg;
+use subspace_core_primitives::{PublicKey, RewardSignature};
 use subspace_proof_of_space::Table;
 use subspace_solving::REWARD_SIGNING_CONTEXT;
-use subspace_verification::VerifySolutionParams;
+use subspace_verification::{check_reward_signature, verify_solution, VerifySolutionParams};
 
 /// Start an import queue for the Subspace consensus algorithm.
 ///
@@ -82,6 +84,65 @@ where
     ))
 }
 
+/// Errors encountered by the Subspace authorship task.
+#[derive(Debug, Eq, PartialEq)]
+#[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
+pub enum VerificationError<Header: HeaderT> {
+    /// No Subspace pre-runtime digest found
+    #[cfg_attr(feature = "thiserror", error("No Subspace pre-runtime digest found"))]
+    NoPreRuntimeDigest,
+    /// Header has a bad seal
+    #[cfg_attr(feature = "thiserror", error("Header {0:?} has a bad seal"))]
+    HeaderBadSeal(Header::Hash),
+    /// Header is unsealed
+    #[cfg_attr(feature = "thiserror", error("Header {0:?} is unsealed"))]
+    HeaderUnsealed(Header::Hash),
+    /// Bad reward signature
+    #[cfg_attr(feature = "thiserror", error("Bad reward signature on {0:?}"))]
+    BadRewardSignature(Header::Hash),
+    /// Verification error
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Verification error on slot {0:?}: {1:?}")
+    )]
+    VerificationError(Slot, subspace_verification::Error),
+}
+
+/// A header which has been checked
+enum CheckedHeader<H, S> {
+    /// A header which has slot in the future. this is the full header (not stripped)
+    /// and the slot in which it should be processed.
+    Deferred(H, Slot),
+    /// A header which is fully checked, including signature. This is the pre-header
+    /// accompanied by the seal components.
+    ///
+    /// Includes the digest item that encoded the seal.
+    Checked(H, S),
+}
+
+/// Subspace verification parameters
+struct VerificationParams<'a, Header>
+where
+    Header: HeaderT + 'a,
+{
+    /// The header being verified.
+    header: Header,
+    /// The slot number of the current time.
+    slot_now: Slot,
+    /// Parameters for solution verification
+    verify_solution_params: &'a VerifySolutionParams,
+    /// Signing context for reward signature
+    reward_signing_context: &'a SigningContext,
+}
+
+/// Information from verified header
+struct VerifiedHeaderInfo {
+    /// Pre-digest
+    pre_digest: PreDigest<FarmerPublicKey, FarmerPublicKey>,
+    /// Seal (signature)
+    seal: DigestItem,
+}
+
 /// A verifier for Subspace blocks.
 struct SubspaceVerifier<PosTable, Block: BlockT, Client, SelectChain, SN> {
     client: Arc<Client>,
@@ -98,11 +159,91 @@ struct SubspaceVerifier<PosTable, Block: BlockT, Client, SelectChain, SN> {
 impl<PosTable, Block, Client, SelectChain, SN>
     SubspaceVerifier<PosTable, Block, Client, SelectChain, SN>
 where
+    PosTable: Table,
     Block: BlockT,
     Client: AuxStore + HeaderBackend<Block> + ProvideRuntimeApi<Block>,
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey>,
     SelectChain: sp_consensus::SelectChain<Block>,
 {
+    /// Check a header has been signed correctly and whether solution is correct. If the slot is too
+    /// far in the future, an error will be returned. If successful, returns the pre-header and the
+    /// digest item containing the seal.
+    ///
+    /// The seal must be the last digest. Otherwise, the whole header is considered unsigned. This
+    /// is required for security and must not be changed.
+    ///
+    /// This digest item will always return `Some` when used with `as_subspace_pre_digest`.
+    ///
+    /// `pre_digest` argument is optional in case it is available to avoid doing the work of
+    /// extracting it from the header twice.
+    fn check_header(
+        &self,
+        params: VerificationParams<Block::Header>,
+        pre_digest: Option<PreDigest<FarmerPublicKey, FarmerPublicKey>>,
+    ) -> Result<CheckedHeader<Block::Header, VerifiedHeaderInfo>, VerificationError<Block::Header>>
+    {
+        let VerificationParams {
+            mut header,
+            slot_now,
+            verify_solution_params,
+            reward_signing_context,
+        } = params;
+
+        let pre_digest = match pre_digest {
+            Some(pre_digest) => pre_digest,
+            None => header
+                .digest()
+                .logs()
+                .iter()
+                .find_map(|log| log.as_subspace_pre_digest())
+                .ok_or(VerificationError::NoPreRuntimeDigest)?,
+        };
+        let slot = pre_digest.slot();
+
+        let seal = header
+            .digest_mut()
+            .pop()
+            .ok_or_else(|| VerificationError::HeaderUnsealed(header.hash()))?;
+
+        let signature = seal
+            .as_subspace_seal()
+            .ok_or_else(|| VerificationError::HeaderBadSeal(header.hash()))?;
+
+        // The pre-hash of the header doesn't include the seal and that's what we sign
+        let pre_hash = header.hash();
+
+        if pre_digest.slot() > slot_now {
+            header.digest_mut().push(seal);
+            return Ok(CheckedHeader::Deferred(header, pre_digest.slot()));
+        }
+
+        // Verify that block is signed properly
+        if check_reward_signature(
+            pre_hash.as_ref(),
+            &RewardSignature::from(&signature),
+            &PublicKey::from(&pre_digest.solution().public_key),
+            reward_signing_context,
+        )
+        .is_err()
+        {
+            return Err(VerificationError::BadRewardSignature(pre_hash));
+        }
+
+        // Verify that solution is valid
+        verify_solution::<PosTable, _, _>(
+            pre_digest.solution(),
+            slot.into(),
+            verify_solution_params,
+            &self.kzg,
+        )
+        .map_err(|error| VerificationError::VerificationError(slot, error))?;
+
+        Ok(CheckedHeader::Checked(
+            header,
+            VerifiedHeaderInfo { pre_digest, seal },
+        ))
+    }
+
     async fn check_and_report_equivocation(
         &self,
         slot_now: Slot,
@@ -240,7 +381,7 @@ where
             // We add one to the current slot to allow for some small drift.
             // FIXME https://github.com/paritytech/substrate/issues/1019 in the future, alter this
             //  queue to allow deferring of headers
-            check_header::<PosTable, _, FarmerPublicKey>(
+            self.check_header(
                 VerificationParams {
                     header: block.header.clone(),
                     slot_now: slot_now + 1,
@@ -255,7 +396,6 @@ where
                     reward_signing_context: &self.reward_signing_context,
                 },
                 Some(pre_digest),
-                &self.kzg,
             )
             .map_err(Error::<Block::Header>::from)?
         };
