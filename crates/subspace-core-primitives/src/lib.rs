@@ -42,7 +42,9 @@ mod tests;
 extern crate alloc;
 
 use crate::crypto::kzg::{Commitment, Witness};
-use crate::crypto::{blake2b_256_hash, blake2b_256_hash_list, blake2b_256_hash_with_key, Scalar};
+use crate::crypto::{
+    blake2b_256_hash, blake2b_256_hash_list, blake2b_256_hash_with_key, blake3_hash, Scalar,
+};
 #[cfg(feature = "serde")]
 use ::serde::{Deserialize, Serialize};
 use alloc::boxed::Box;
@@ -81,9 +83,6 @@ pub const BLAKE3_HASH_SIZE: usize = 32;
 
 /// BLAKE3 hash output
 pub type Blake3Hash = [u8; BLAKE3_HASH_SIZE];
-
-/// 128 bits for the proof of time data types.
-pub type PotBytes = [u8; 16];
 
 /// Type of randomness.
 #[derive(
@@ -247,29 +246,36 @@ impl PosProof {
     Eq,
     PartialEq,
     From,
-    Into,
     AsRef,
     AsMut,
+    Deref,
+    DerefMut,
     Encode,
     Decode,
     TypeInfo,
     MaxEncodedLen,
 )]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct PotKey(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] [u8; 16]);
+pub struct PotKey(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] [u8; Self::SIZE]);
 
 impl FromStr for PotKey {
     type Err = hex::FromHexError;
 
+    #[inline]
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let mut bytes = PotBytes::default();
-        hex::decode_to_slice(s, &mut bytes)?;
+        let mut key = Self::default();
+        hex::decode_to_slice(s, key.as_mut())?;
 
-        Ok(Self(bytes))
+        Ok(key)
     }
 }
 
-/// Proof of time seed (input to the encryption).
+impl PotKey {
+    /// Size of proof of time key in bytes
+    pub const SIZE: usize = 16;
+}
+
+/// Proof of time seed
 #[derive(
     Debug,
     Default,
@@ -278,21 +284,36 @@ impl FromStr for PotKey {
     Eq,
     PartialEq,
     From,
-    Into,
     AsRef,
     AsMut,
+    Deref,
+    DerefMut,
     Encode,
     Decode,
     TypeInfo,
     MaxEncodedLen,
 )]
-pub struct PotSeed(PotBytes);
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct PotSeed(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] [u8; Self::SIZE]);
 
 impl PotSeed {
-    /// Derive initial PoT seed from genesis block hash.
+    /// Size of proof of time seed in bytes
+    pub const SIZE: usize = 16;
+
+    /// Derive initial PoT seed from genesis block hash
     #[inline]
     pub fn from_genesis_block_hash(block_hash: BlockHash) -> Self {
-        Self(truncate_32_bytes(block_hash))
+        let mut seed = Self::default();
+        seed.copy_from_slice(&block_hash[..Self::SIZE]);
+        seed
+    }
+
+    /// Derive key from proof of time seed
+    #[inline]
+    pub fn key(&self) -> PotKey {
+        let mut key = PotKey::default();
+        key.copy_from_slice(&blake3_hash(&self.0)[..Self::SIZE]);
+        key
     }
 }
 
@@ -305,20 +326,32 @@ impl PotSeed {
     Eq,
     PartialEq,
     From,
-    Into,
     AsRef,
     AsMut,
+    Deref,
+    DerefMut,
     Encode,
     Decode,
     TypeInfo,
     MaxEncodedLen,
 )]
-pub struct PotCheckpoint(PotBytes);
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct PotProof(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] [u8; Self::SIZE]);
 
-impl PotCheckpoint {
-    /// Derives the global randomness from the output.
+impl PotProof {
+    /// Size of proof of time proof in bytes
+    pub const SIZE: usize = 16;
+
+    /// Derives the global randomness from the output
+    #[inline]
     pub fn derive_global_randomness(&self) -> Randomness {
         Randomness::from(blake2b_256_hash(&self.0))
+    }
+
+    /// Derive seed from proof of time in case entropy injection is not needed
+    #[inline]
+    pub fn seed(&self) -> PotSeed {
+        PotSeed(self.0)
     }
 }
 
@@ -337,7 +370,7 @@ impl PotCheckpoint {
     TypeInfo,
     MaxEncodedLen,
 )]
-pub struct PotCheckpoints([PotCheckpoint; Self::NUM_CHECKPOINTS.get() as usize]);
+pub struct PotCheckpoints([PotProof; Self::NUM_CHECKPOINTS.get() as usize]);
 
 impl PotCheckpoints {
     /// Number of PoT checkpoints produced (used to optimize verification)
@@ -345,100 +378,9 @@ impl PotCheckpoints {
 
     /// Get proof of time output out of checkpoints (last checkpoint)
     #[inline]
-    pub fn output(&self) -> PotCheckpoint {
+    pub fn output(&self) -> PotProof {
         self.0[Self::NUM_CHECKPOINTS.get() as usize - 1]
     }
-}
-
-/// Proof of time.
-/// TODO: versioning.
-#[derive(Debug, Clone, Encode, Decode, Eq, PartialEq)]
-pub struct PotProof {
-    /// Slot the proof was evaluated for.
-    pub slot_number: SlotNumber,
-
-    /// The seed used for evaluation.
-    pub seed: PotSeed,
-
-    /// The key used for evaluation.
-    pub key: PotKey,
-
-    /// The encrypted outputs from each stage.
-    pub checkpoints: PotCheckpoints,
-
-    /// Hash of last block at injection point.
-    pub injected_block_hash: BlockHash,
-}
-
-impl PotProof {
-    /// Create the proof.
-    pub fn new(
-        slot_number: SlotNumber,
-        seed: PotSeed,
-        key: PotKey,
-        checkpoints: PotCheckpoints,
-        injected_block_hash: BlockHash,
-    ) -> Self {
-        Self {
-            slot_number,
-            seed,
-            key,
-            checkpoints,
-            injected_block_hash,
-        }
-    }
-
-    /// Get proof of time output out of checkpoints (last checkpoint)
-    #[inline]
-    pub fn output(&self) -> PotCheckpoint {
-        self.checkpoints.output()
-    }
-
-    /// Derives the global randomness from the output.
-    pub fn derive_global_randomness(&self) -> Blake2b256Hash {
-        blake2b_256_hash(&PotBytes::from(self.output()))
-    }
-
-    /// Derives the next seed based on the injected randomness.
-    pub fn next_seed(&self, injected_hash: Option<BlockHash>) -> PotSeed {
-        match injected_hash {
-            Some(injected_hash) => {
-                // Next seed = Hash(last checkpoint + injected hash).
-                let hash = blake2b_256_hash_list(&[&self.output().0, &injected_hash]);
-                PotSeed::from(truncate_32_bytes(hash))
-            }
-            None => {
-                // No injected randomness, next seed = last checkpoint.
-                PotSeed::from(self.output().0)
-            }
-        }
-    }
-
-    /// Derives the next key from the hash of the current seed.
-    pub fn next_key(&self) -> PotKey {
-        PotKey::from(truncate_32_bytes(blake2b_256_hash(&self.seed.0)))
-    }
-}
-
-impl fmt::Display for PotProof {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(
-            f,
-            "PotProof: [slot={}, seed={}, key={}, injected={}, output={}]",
-            self.slot_number,
-            hex::encode(self.seed.0),
-            hex::encode(self.key.0),
-            hex::encode(self.injected_block_hash),
-            hex::encode(self.output().as_ref())
-        )
-    }
-}
-
-/// Helper to truncate the 32 bytes to 16 bytes.
-fn truncate_32_bytes(bytes: [u8; 32]) -> PotBytes {
-    bytes[..core::mem::size_of::<PotBytes>()]
-        .try_into()
-        .expect("Hash is longer than seed; qed")
 }
 
 /// A Ristretto Schnorr public key as bytes produced by `schnorrkel` crate.

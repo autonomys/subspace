@@ -39,6 +39,8 @@ enum Command {
         max_pieces: usize,
         #[arg(long, default_value_t = 0)]
         start_with: usize,
+        #[arg(long, default_value_t = 0)]
+        retries: u16,
     },
 }
 
@@ -61,8 +63,9 @@ async fn main() {
         Command::Simple {
             max_pieces,
             start_with,
+            retries,
         } => {
-            simple_benchmark(node, max_pieces, start_with).await;
+            simple_benchmark(node, max_pieces, start_with, retries).await;
         }
     }
 
@@ -102,7 +105,7 @@ impl PieceRequestStats {
     }
 }
 
-async fn simple_benchmark(node: Node, max_pieces: usize, start_with: usize) {
+async fn simple_benchmark(node: Node, max_pieces: usize, start_with: usize, retries: u16) {
     let mut stats = PieceRequestStats::default();
     if max_pieces == 0 {
         error!("Incorrect max_pieces variable set:{max_pieces}");
@@ -115,7 +118,7 @@ async fn simple_benchmark(node: Node, max_pieces: usize, start_with: usize) {
         let piece_index = PieceIndex::from(i as u64);
         let start = Instant::now();
         let piece = piece_provider
-            .get_piece(piece_index, RetryPolicy::Limited(0))
+            .get_piece(piece_index, RetryPolicy::Limited(retries))
             .await;
         let end = Instant::now();
         let duration = end.duration_since(start);

@@ -107,10 +107,6 @@ pub async fn start_slot_worker<Block, Client, SC, Worker, SO, CIDP>(
 
         if let Some(slot_info) = slot_info_producer.produce_slot_info(slot_to_claim).await {
             let _ = worker.on_slot(slot_info).await;
-
-            // TODO: Remove this hack, it restricts slot production with extremely low number of
-            //  iterations
-            tokio::time::sleep(std::time::Duration::from_secs(1)).await;
         }
     }
 }
