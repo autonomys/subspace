@@ -583,8 +583,10 @@ pub struct SubspaceDigestItems<PublicKey, RewardAddress, Signature> {
     /// Root plot public key was updated
     pub root_plot_public_key_update: Option<Option<FarmerPublicKey>>,
     /// Future proof of time seed, essentially output of parent block's future proof of time.
+    ///
+    /// This value is missing in block #1, but present in all blocks after that.
     #[cfg(feature = "pot")]
-    pub future_pot_seed: PotSeed,
+    pub future_pot_seed: Option<PotSeed>,
 }
 
 /// Extract the Subspace global randomness from the given header.
@@ -799,8 +801,7 @@ where
         enable_solution_range_adjustment_and_override: maybe_enable_and_override_solution_range,
         root_plot_public_key_update: maybe_root_plot_public_key_update,
         #[cfg(feature = "pot")]
-        future_pot_seed: maybe_future_pot_seed
-            .ok_or(Error::Missing(ErrorDigestType::FuturePotSeed))?,
+        future_pot_seed: maybe_future_pot_seed,
     })
 }
 

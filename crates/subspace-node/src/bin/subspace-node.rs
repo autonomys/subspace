@@ -425,10 +425,10 @@ fn main() -> Result<(), Error> {
                     };
 
                     #[cfg(feature = "pot")]
-                    let maybe_chain_spec_pot_initial_key = consensus_chain_config
+                    let maybe_chain_spec_pot_external_entropy = consensus_chain_config
                         .chain_spec
                         .properties()
-                        .get("potInitialKey")
+                        .get("potExternalEntropy")
                         .map(|d| serde_json::from_value(d.clone()))
                         .transpose()
                         .map_err(|error| {
@@ -438,20 +438,20 @@ fn main() -> Result<(), Error> {
                         })?
                         .flatten();
                     #[cfg(feature = "pot")]
-                    if maybe_chain_spec_pot_initial_key.is_some()
-                        && cli.pot_initial_key.is_some()
-                        && maybe_chain_spec_pot_initial_key != cli.pot_initial_key
+                    if maybe_chain_spec_pot_external_entropy.is_some()
+                        && cli.pot_external_entropy.is_some()
+                        && maybe_chain_spec_pot_external_entropy != cli.pot_external_entropy
                     {
                         warn!(
-                        "--pot-initial-key CLI argument was ignored due to chain spec having a \
-                        different explicit value"
+                        "--pot-external-entropy CLI argument was ignored due to chain spec having \
+                        a different explicit value"
                     );
                     }
                     #[cfg(feature = "pot")]
                     let pot_source_config = PotSourceConfig {
                         is_timekeeper: cli.timekeeper,
-                        initial_key: maybe_chain_spec_pot_initial_key
-                            .or(cli.pot_initial_key)
+                        external_entropy: maybe_chain_spec_pot_external_entropy
+                            .or(cli.pot_external_entropy)
                             .unwrap_or_default(),
                     };
 

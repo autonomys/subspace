@@ -4,7 +4,7 @@
 mod aes;
 
 use core::num::{NonZeroU32, NonZeroU64};
-use subspace_core_primitives::{PotCheckpoints, PotKey, PotProof, PotSeed};
+use subspace_core_primitives::{PotCheckpoints, PotProof, PotSeed};
 
 /// Proof of time error
 #[derive(Debug)]
@@ -30,11 +30,7 @@ pub enum PotError {
 ///
 /// Returns error if `iterations` is not a multiple of checkpoints times two.
 #[inline]
-pub fn prove(
-    seed: PotSeed,
-    key: PotKey,
-    iterations: NonZeroU32,
-) -> Result<PotCheckpoints, PotError> {
+pub fn prove(seed: PotSeed, iterations: NonZeroU32) -> Result<PotCheckpoints, PotError> {
     if iterations.get() % u32::from(PotCheckpoints::NUM_CHECKPOINTS.get() * 2) != 0 {
         return Err(PotError::NotMultipleOfCheckpoints {
             iterations: NonZeroU64::from(iterations),
@@ -44,7 +40,7 @@ pub fn prove(
 
     Ok(aes::create(
         seed,
-        key,
+        seed.key(),
         iterations.get() / u32::from(PotCheckpoints::NUM_CHECKPOINTS.get()),
     ))
 }
@@ -55,7 +51,6 @@ pub fn prove(
 #[inline]
 pub fn verify(
     seed: PotSeed,
-    key: PotKey,
     iterations: NonZeroU64,
     checkpoints: &[PotProof],
 ) -> Result<bool, PotError> {
@@ -69,7 +64,7 @@ pub fn verify(
 
     Ok(aes::verify_sequential(
         seed,
-        key,
+        seed.key(),
         checkpoints,
         iterations.get() / num_checkpoints,
     ))

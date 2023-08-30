@@ -69,12 +69,12 @@ use sp_runtime::DispatchError;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 use subspace_core_primitives::crypto::Scalar;
+#[cfg(feature = "pot")]
+use subspace_core_primitives::PotProof;
 use subspace_core_primitives::{
     ArchivedHistorySegment, HistorySize, PublicKey, Randomness, RewardSignature, SectorId,
     SectorIndex, SegmentHeader, SegmentIndex, SolutionRange,
 };
-#[cfg(feature = "pot")]
-use subspace_core_primitives::{PotProof, PotSeed};
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 #[cfg(not(feature = "pot"))]
 use subspace_verification::derive_randomness;
@@ -789,20 +789,13 @@ impl<T: Config> Pallet<T> {
 
     fn do_initialize(block_number: T::BlockNumber) {
         #[cfg(feature = "pot")]
-        frame_system::Pallet::<T>::deposit_log(DigestItem::future_pot_seed(
-            if block_number.is_one() {
-                PotSeed::from_genesis_block_hash(
-                    frame_system::Pallet::<T>::block_hash(T::BlockNumber::zero())
-                        .as_ref()
-                        .try_into()
-                        .expect("Genesis block hash length must match, panic otherwise"),
-                )
-            } else {
+        if !block_number.is_one() {
+            frame_system::Pallet::<T>::deposit_log(DigestItem::future_pot_seed(
                 FuturePotSeed::<T>::get().expect(
                     "Is set at the end of `do_initialize` of every block after genesis; qed",
-                )
-            },
-        ));
+                ),
+            ));
+        }
 
         let pre_digest = <frame_system::Pallet<T>>::digest()
             .logs

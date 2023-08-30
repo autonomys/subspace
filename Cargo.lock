@@ -11482,6 +11482,7 @@ dependencies = [
  "frame-benchmarking-cli",
  "frame-support",
  "futures",
+ "hex",
  "hex-literal",
  "log",
  "once_cell",

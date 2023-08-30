@@ -765,7 +765,7 @@ where
     if config.role.is_authority() || config.force_new_slot_notifications {
         #[cfg(feature = "pot")]
         let (pot_source, pot_slot_info_stream) =
-            PotSource::new(config.pot_source_config, client.clone())
+            PotSource::new(config.pot_source_config.clone(), client.clone())
                 .map_err(|error| Error::Other(error.into()))?;
         #[cfg(feature = "pot")]
         {

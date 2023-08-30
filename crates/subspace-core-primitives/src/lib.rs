@@ -43,7 +43,8 @@ extern crate alloc;
 
 use crate::crypto::kzg::{Commitment, Witness};
 use crate::crypto::{
-    blake2b_256_hash, blake2b_256_hash_list, blake2b_256_hash_with_key, blake3_hash, Scalar,
+    blake2b_256_hash, blake2b_256_hash_list, blake2b_256_hash_with_key, blake3_hash,
+    blake3_hash_list, Scalar,
 };
 #[cfg(feature = "serde")]
 use ::serde::{Deserialize, Serialize};
@@ -140,9 +141,6 @@ pub type SolutionRange = u64;
 ///
 /// The closer solution's tag is to the target, the heavier it is.
 pub type BlockWeight = u128;
-
-/// Block hash (the bytes from H256)
-pub type BlockHash = [u8; 32];
 
 // TODO: New type
 /// Segment commitment type.
@@ -302,9 +300,10 @@ impl PotSeed {
 
     /// Derive initial PoT seed from genesis block hash
     #[inline]
-    pub fn from_genesis_block_hash(block_hash: BlockHash) -> Self {
+    pub fn from_genesis(genesis_block_hash: &[u8], external_entropy: &[u8]) -> Self {
+        let hash = blake3_hash_list(&[genesis_block_hash, external_entropy]);
         let mut seed = Self::default();
-        seed.copy_from_slice(&block_hash[..Self::SIZE]);
+        seed.copy_from_slice(&hash[..Self::SIZE]);
         seed
     }
 

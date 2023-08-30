@@ -11,7 +11,7 @@ use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::thread;
-use subspace_core_primitives::{BlockHash, PotCheckpoints, PotKey, PotSeed, SlotNumber};
+use subspace_core_primitives::{PotCheckpoints, PotSeed, SlotNumber};
 use subspace_proof_of_time::PotError;
 use tracing::{debug, error};
 
@@ -28,12 +28,12 @@ pub struct PotSlotInfo {
 pub struct PotSlotInfoStream(mpsc::Receiver<PotSlotInfo>);
 
 /// Configuration for proof of time source
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Clone)]
 pub struct PotSourceConfig {
     /// Is this node a Timekeeper
     pub is_timekeeper: bool,
-    /// PoT key used initially when PoT chain starts
-    pub initial_key: PotKey,
+    /// External entropy, used initially when PoT chain starts to derive the first seed
+    pub external_entropy: Vec<u8>,
 }
 
 /// Source of proofs of time.
@@ -51,7 +51,6 @@ pub struct PotSource<Block, Client> {
 impl<Block, Client> PotSource<Block, Client>
 where
     Block: BlockT,
-    BlockHash: From<Block::Hash>,
     Client: ProvideRuntimeApi<Block> + HeaderBackend<Block>,
     Client::Api: SubspaceRuntimeApi<Block, FarmerPublicKey>,
 {
@@ -62,13 +61,12 @@ where
         let PotSourceConfig {
             // TODO: Respect this boolean flag
             is_timekeeper: _,
-            initial_key,
+            external_entropy,
         } = config;
         let info = client.info();
         // TODO: All 3 are incorrect and should be able to continue after node restart
         let start_slot = SlotNumber::MIN;
-        let start_seed = PotSeed::from_genesis_block_hash(BlockHash::from(info.genesis_hash));
-        let start_key = initial_key;
+        let start_seed = PotSeed::from_genesis(info.genesis_hash.as_ref(), &external_entropy);
         #[cfg(feature = "pot")]
         let best_hash = info.best_hash;
         #[cfg(feature = "pot")]
@@ -85,8 +83,7 @@ where
         thread::Builder::new()
             .name("timekeeper".to_string())
             .spawn(move || {
-                if let Err(error) =
-                    run_timekeeper(start_seed, start_key, start_slot, iterations, slot_sender)
+                if let Err(error) = run_timekeeper(start_seed, start_slot, iterations, slot_sender)
                 {
                     error!(%error, "Timekeeper exited with an error");
                 }
@@ -113,16 +110,14 @@ where
 /// Runs timekeeper, must be running on a fast dedicated CPU core
 fn run_timekeeper(
     mut seed: PotSeed,
-    mut key: PotKey,
     mut slot: SlotNumber,
     iterations: NonZeroU32,
     mut slot_sender: mpsc::Sender<PotSlotInfo>,
 ) -> Result<(), PotError> {
     loop {
-        let checkpoints = subspace_proof_of_time::prove(seed, key, iterations)?;
+        let checkpoints = subspace_proof_of_time::prove(seed, iterations)?;
 
         seed = checkpoints.output().seed();
-        key = seed.key();
 
         let slot_info = PotSlotInfo {
             slot: Slot::from(slot),
