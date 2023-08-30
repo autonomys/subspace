@@ -20,8 +20,8 @@ use sc_network_sync::state_request_handler::StateRequestHandler;
 use sc_network_sync::SyncingService;
 use sc_service::config::SyncMode;
 use sc_service::{
-    build_system_rpc_future, BuildNetworkParams, Configuration as ServiceConfiguration,
-    NetworkStarter, TFullClient, TransactionPoolAdapter,
+    build_system_rpc_future, BuildNetworkParams, NetworkStarter, TFullClient,
+    TransactionPoolAdapter,
 };
 use sc_transaction_pool_api::MaintainedTransactionPool;
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedSender};
@@ -37,12 +37,6 @@ pub type FullClient<Block, RuntimeApi, ExecutorDispatch> =
     TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<ExecutorDispatch>>;
 
 pub type FullBackend<Block> = sc_service::TFullBackend<Block>;
-
-/// Domain configuration.
-pub struct DomainConfiguration<AccountId> {
-    pub service_config: ServiceConfiguration,
-    pub maybe_relayer_id: Option<AccountId>,
-}
 
 /// Build the network service, the network status sinks and an RPC sender.
 ///
@@ -90,7 +84,7 @@ where
     if client.requires_full_sync() {
         match config.network.sync_mode.load(Ordering::Acquire) {
             SyncMode::LightState { .. } => {
-                return Err("Fast sync doesn't work for archive nodes".into())
+                return Err("Fast sync doesn't work for archive nodes".into());
             }
             SyncMode::Warp => return Err("Warp sync doesn't work for archive nodes".into()),
             SyncMode::Full | SyncMode::Paused => {}

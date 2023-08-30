@@ -24,14 +24,6 @@ const BAD_RECEIPT_MISMATCH_INFO: &[u8] = b"bad_receipt_mismatch_info";
 /// NOTE: Unbounded but the size is not expected to be large.
 const BAD_RECEIPT_NUMBERS: &[u8] = b"bad_receipt_numbers";
 
-/// domain_block_hash => Vec<consensus_block_hash>
-///
-/// Updated only when there is a new domain block produced
-///
-/// NOTE: different consensus blocks may derive the exact same domain block, thus one domain block may
-/// mapping to multiple consensus block.
-const CONSENSUS_HASH: &[u8] = b"consensus_block_hash";
-
 /// domain_block_hash => latest_consensus_block_hash
 ///
 /// It's important to note that a consensus block could possibly contain no bundles for a specific domain,
@@ -93,7 +85,6 @@ where
 {
     let block_number = execution_receipt.consensus_block_number;
     let consensus_hash = execution_receipt.consensus_block_hash;
-    let domain_hash = execution_receipt.domain_block_hash;
 
     let block_number_key = (EXECUTION_RECEIPT_BLOCK_NUMBER, block_number).encode();
     let mut hashes_at_block_number =
@@ -131,23 +122,11 @@ where
         }
     }
 
-    let consensus_hashes = {
-        let mut hashes =
-            consensus_block_hash_for::<Backend, Block::Hash, CBlock::Hash>(backend, domain_hash)?;
-        hashes.push(consensus_hash);
-        hashes
-    };
-
     backend.insert_aux(
         &[
             (
                 execution_receipt_key(consensus_hash).as_slice(),
                 execution_receipt.encode().as_slice(),
-            ),
-            // TODO: prune the stale mappings.
-            (
-                (CONSENSUS_HASH, domain_hash).encode().as_slice(),
-                consensus_hashes.encode().as_slice(),
             ),
             (
                 block_number_key.as_slice(),
@@ -239,21 +218,6 @@ where
     load_decode(
         backend,
         (LATEST_CONSENSUS_HASH, domain_hash).encode().as_slice(),
-    )
-}
-
-pub(super) fn consensus_block_hash_for<Backend, Hash, PHash>(
-    backend: &Backend,
-    domain_hash: Hash,
-) -> ClientResult<Vec<PHash>>
-where
-    Backend: AuxStore,
-    Hash: Encode,
-    PHash: Decode,
-{
-    Ok(
-        load_decode(backend, (CONSENSUS_HASH, domain_hash).encode().as_slice())?
-            .unwrap_or_default(),
     )
 }
 

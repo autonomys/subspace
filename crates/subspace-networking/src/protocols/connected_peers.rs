@@ -23,6 +23,8 @@
 //! a single connection for each peer. Multiple protocol instances could be instantiated.
 
 mod handler;
+#[cfg(test)]
+mod tests;
 
 use crate::utils::PeerAddress;
 use futures::FutureExt;

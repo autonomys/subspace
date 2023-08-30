@@ -20,7 +20,7 @@ use sc_network::{NetworkService, NetworkStateInfo};
 use sc_network_sync::SyncingService;
 use sc_service::config::MultiaddrWithPeerId;
 use sc_service::{BasePath, Role, RpcHandlers, TFullBackend, TaskManager};
-use sc_utils::mpsc::TracingUnboundedSender;
+use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedSender};
 use serde::de::DeserializeOwned;
 use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
@@ -88,7 +88,7 @@ where
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
-        + RelayerApi<Block, AccountId, NumberFor<Block>>,
+        + RelayerApi<Block, NumberFor<Block>>,
     ExecutorDispatch: NativeExecutionDispatch + Send + Sync + 'static,
     AccountId: Encode + Decode + FromKeyring,
 {
@@ -145,7 +145,7 @@ where
         + TransactionPaymentRuntimeApi<Block, Balance>
         + InherentExtrinsicApi<Block>
         + MessengerApi<Block, NumberFor<Block>>
-        + RelayerApi<Block, AccountId, NumberFor<Block>>
+        + RelayerApi<Block, NumberFor<Block>>
         + OnchainStateApi<Block, AccountId, Balance>
         + EthereumRuntimeRPCApi<Block>,
     ExecutorDispatch: NativeExecutionDispatch + Send + Sync + 'static,
@@ -169,7 +169,6 @@ where
         base_path: BasePath,
         domain_nodes: Vec<MultiaddrWithPeerId>,
         domain_nodes_exclusive: bool,
-        run_relayer: bool,
         role: Role,
         mock_consensus_node: &mut MockConsensusNode,
     ) -> Self {
@@ -185,7 +184,7 @@ where
                 .expect("Failed to get domain instance data")
         };
         let chain_spec = create_domain_spec(domain_id, domain_instance_data);
-        let service_config = node_config(
+        let domain_config = node_config(
             domain_id,
             tokio_handle.clone(),
             key,
@@ -199,21 +198,12 @@ where
 
         let span = sc_tracing::tracing::info_span!(
             sc_tracing::logging::PREFIX_LOG_SPAN,
-            name = service_config.network.node_name.as_str()
+            name = domain_config.network.node_name.as_str()
         );
         let _enter = span.enter();
 
-        let multiaddr = service_config.network.listen_addresses[0].clone();
+        let multiaddr = domain_config.network.listen_addresses[0].clone();
 
-        let maybe_relayer_id = if run_relayer {
-            Some(<AccountId as FromKeyring>::from_keyring(key))
-        } else {
-            None
-        };
-        let domain_config = domain_service::DomainConfiguration {
-            service_config,
-            maybe_relayer_id,
-        };
         let operator_streams = OperatorStreams {
             // Set `consensus_block_import_throttling_buffer_size` to 0 to ensure the primary chain will not be
             // ahead of the execution chain by more than one block, thus slot will not be skipped in test.
@@ -225,9 +215,12 @@ where
             _phantom: Default::default(),
         };
 
+        let (domain_message_sink, domain_message_receiver) =
+            tracing_unbounded("domain_message_channel", 100);
         let gossip_msg_sink = mock_consensus_node
             .xdm_gossip_worker_builder()
             .gossip_msg_sink();
+
         let domain_params = domain_service::DomainParams {
             domain_id,
             domain_config,
@@ -237,6 +230,7 @@ where
             select_chain: mock_consensus_node.select_chain.clone(),
             operator_streams,
             gossip_message_sink: gossip_msg_sink,
+            domain_message_receiver,
             provider: DefaultProvider,
         };
 
@@ -265,14 +259,13 @@ where
             network_starter,
             rpc_handlers,
             operator,
-            tx_pool_sink,
             ..
         } = domain_node;
 
         if role.is_authority() {
             mock_consensus_node
                 .xdm_gossip_worker_builder()
-                .push_chain_tx_pool_sink(ChainId::Domain(domain_id), tx_pool_sink.clone());
+                .push_chain_tx_pool_sink(ChainId::Domain(domain_id), domain_message_sink.clone());
         }
 
         let addr = MultiaddrWithPeerId {
@@ -294,7 +287,7 @@ where
             addr,
             rpc_handlers,
             operator,
-            tx_pool_sink,
+            tx_pool_sink: domain_message_sink,
             _phantom_data: Default::default(),
         }
     }
@@ -394,7 +387,6 @@ pub struct DomainNodeBuilder {
     domain_nodes: Vec<MultiaddrWithPeerId>,
     domain_nodes_exclusive: bool,
     base_path: BasePath,
-    run_relayer: bool,
 }
 
 impl DomainNodeBuilder {
@@ -414,14 +406,7 @@ impl DomainNodeBuilder {
             domain_nodes: Vec::new(),
             domain_nodes_exclusive: false,
             base_path,
-            run_relayer: false,
         }
-    }
-
-    /// Run relayer with the node account id as the relayer id
-    pub fn run_relayer(mut self) -> Self {
-        self.run_relayer = true;
-        self
     }
 
     /// Instruct the node to exclusively connect to registered parachain nodes.
@@ -455,7 +440,6 @@ impl DomainNodeBuilder {
             self.base_path,
             self.domain_nodes,
             self.domain_nodes_exclusive,
-            self.run_relayer,
             role,
             mock_consensus_node,
         )
