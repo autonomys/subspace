@@ -4,7 +4,7 @@ use crate::protocol::compact_block::{CompactBlockClient, CompactBlockServer};
 use crate::utils::{NetworkPeerHandle, NetworkWrapper, RequestResponseErr};
 use crate::{ProtocolBackend, ProtocolClient, ProtocolServer, RelayError, LOG_TARGET};
 use async_trait::async_trait;
-use codec::{Decode, Encode};
+use codec::{Compact, CompactLen, Decode, Encode};
 use futures::channel::oneshot;
 use futures::stream::StreamExt;
 use lru::LruCache;
@@ -453,7 +453,8 @@ where
             FromBlock::Number(n) => BlockId::<Block>::Number(n),
         };
 
-        let mut total_size: usize = 0;
+        // This is a compact length encoding of max number of blocks to be sent in response
+        let mut total_size = Compact::compact_len(&MAX_RESPONSE_BLOCKS.get());
         let max_blocks = block_request.max.map_or(MAX_RESPONSE_BLOCKS.into(), |val| {
             std::cmp::min(val, MAX_RESPONSE_BLOCKS.into())
         });
