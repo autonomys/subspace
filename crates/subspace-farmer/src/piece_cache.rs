@@ -6,15 +6,14 @@ use parking_lot::RwLock;
 use rayon::prelude::*;
 use std::collections::HashMap;
 use std::mem;
+use std::num::NonZeroU16;
 use std::sync::Arc;
 use subspace_core_primitives::{Piece, PieceIndex, SegmentIndex};
 use subspace_farmer_components::plotting::{PieceGetter, PieceGetterRetryPolicy};
 use subspace_networking::libp2p::kad::{ProviderRecord, RecordKey};
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::ToMultihash;
-use subspace_networking::{
-    KeyWrapper, LocalRecordProvider, UniqueRecordBinaryHeap, PIECE_GETTER_RETRY_NUMBER,
-};
+use subspace_networking::{KeyWrapper, LocalRecordProvider, UniqueRecordBinaryHeap};
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, trace, warn};
 
@@ -22,6 +21,8 @@ const WORKER_CHANNEL_CAPACITY: usize = 100;
 /// Make caches available as they are building without waiting for the initialization to finish,
 /// this number defines an interval in pieces after which cache is updated
 const INTERMEDIATE_CACHE_UPDATE_INTERVAL: usize = 100;
+/// Get piece retry attempts number.
+const PIECE_GETTER_RETRY_NUMBER: NonZeroU16 = NonZeroU16::new(3).expect("Not zero; qed");
 
 #[derive(Debug, Clone)]
 struct DiskPieceCacheState {

@@ -49,10 +49,6 @@ pub use protocols::request_response::handlers::segment_header::{
     SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
 };
 pub use shared::NewPeerInfo;
-use std::num::NonZeroU16;
 pub use utils::multihash::Multihash;
 pub use utils::prometheus::start_prometheus_metrics_server;
 pub use utils::unique_record_binary_heap::{KeyWrapper, UniqueRecordBinaryHeap};
-
-/// Get piece retry attempts number.
-pub const PIECE_GETTER_RETRY_NUMBER: NonZeroU16 = NonZeroU16::new(3).expect("Not zero; qed");
