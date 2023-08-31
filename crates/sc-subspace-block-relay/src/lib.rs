@@ -106,11 +106,16 @@ pub(crate) trait ProtocolServer<DownloadUnitId> {
 
 /// The relay user specific backend interface
 pub(crate) trait ProtocolBackend<DownloadUnitId, ProtocolUnitId, ProtocolUnit> {
-    /// Returns all the protocol units for the given download unit
+    /// Returns the protocol units for the given download unit, to be returned
+    /// with the initial response. Some of the items may have the full entry
+    /// along with the Id (e.g) consensus may choose to return the full
+    /// transaction for inherents/small transactions in the block. And return
+    /// only the Tx hash for the remaining extrinsics. Further protocol
+    /// handshake would be used only for resolving these remaining items.
     fn download_unit_members(
         &self,
         id: &DownloadUnitId,
-    ) -> Result<Vec<(ProtocolUnitId, ProtocolUnit)>, RelayError>;
+    ) -> Result<Vec<ProtocolUnitInfo<ProtocolUnitId, ProtocolUnit>>, RelayError>;
 
     /// Returns the protocol unit for the given download/protocol unit
     fn protocol_unit(
@@ -118,4 +123,16 @@ pub(crate) trait ProtocolBackend<DownloadUnitId, ProtocolUnitId, ProtocolUnit> {
         download_unit_id: &DownloadUnitId,
         protocol_unit_id: &ProtocolUnitId,
     ) -> Result<Option<ProtocolUnit>, RelayError>;
+}
+
+/// The protocol unit info carried in the initial response
+#[derive(Encode, Decode)]
+struct ProtocolUnitInfo<ProtocolUnitId, ProtocolUnit> {
+    /// The protocol unit Id
+    id: ProtocolUnitId,
+
+    /// The server can optionally return the protocol unit
+    /// as part of the initial response. No further
+    /// action is needed on client side to resolve it
+    unit: Option<ProtocolUnit>,
 }

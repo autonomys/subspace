@@ -44,6 +44,7 @@ use core::num::NonZeroU64;
 use domain_runtime_primitives::{
     BlockNumber as DomainNumber, Hash as DomainHash, MultiAccountId, TryConvertBack,
 };
+use frame_support::inherent::ProvideInherent;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, ConstU8, Currency, Everything, Get};
 use frame_support::weights::constants::{RocksDbWeight, WEIGHT_REF_TIME_PER_SECOND};
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
@@ -957,6 +958,14 @@ impl_runtime_apis! {
 
         fn extract_segment_headers(ext: &<Block as BlockT>::Extrinsic) -> Option<Vec<SegmentHeader >> {
             extract_segment_headers(ext)
+        }
+
+        fn is_inherent(ext: &<Block as BlockT>::Extrinsic) -> bool {
+            match &ext.function {
+                RuntimeCall::Subspace(call) => Subspace::is_inherent(call),
+                RuntimeCall::Timestamp(call) => Timestamp::is_inherent(call),
+                _ => false,
+            }
         }
 
         fn root_plot_public_key() -> Option<FarmerPublicKey> {

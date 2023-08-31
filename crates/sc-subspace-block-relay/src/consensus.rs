@@ -2,7 +2,9 @@
 
 use crate::protocol::compact_block::{CompactBlockClient, CompactBlockServer};
 use crate::utils::{NetworkPeerHandle, NetworkWrapper, RequestResponseErr};
-use crate::{ProtocolBackend, ProtocolClient, ProtocolServer, RelayError, LOG_TARGET};
+use crate::{
+    ProtocolBackend, ProtocolClient, ProtocolServer, ProtocolUnitInfo, RelayError, LOG_TARGET,
+};
 use async_trait::async_trait;
 use codec::{Compact, CompactLen, Decode, Encode};
 use futures::channel::oneshot;
@@ -21,6 +23,8 @@ use sc_network_sync::block_relay_protocol::{
 };
 use sc_service::SpawnTaskHandle;
 use sc_transaction_pool_api::{InPoolTransaction, TransactionPool, TxHash};
+use sp_api::ProvideRuntimeApi;
+use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, Header, NumberFor, One, Zero};
 use sp_runtime::Justifications;
@@ -44,6 +48,10 @@ const TRANSACTION_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(512).expect("Not 
 const MAX_RESPONSE_SIZE: NonZeroUsize = NonZeroUsize::new(8 * 1024 * 1024).expect("Not zero; qed");
 /// Maximum blocks in the response.
 const MAX_RESPONSE_BLOCKS: NonZeroU32 = NonZeroU32::new(128).expect("Not zero; qed");
+
+/// If the encoded size of the extrinsic is less than the threshold,
+/// return the full extrinsic along with the tx hash.
+const TX_SIZE_THRESHOLD: NonZeroUsize = NonZeroUsize::new(32).expect("Not zero; qed");
 
 /// Initial request for a single block.
 #[derive(Encode, Decode)]
@@ -603,7 +611,8 @@ struct ConsensusBackend<Block: BlockT, Client, Pool: TransactionPool> {
 impl<Block, Client, Pool> ConsensusBackend<Block, Client, Pool>
 where
     Block: BlockT,
-    Client: HeaderBackend<Block> + BlockBackend<Block>,
+    Client: HeaderBackend<Block> + BlockBackend<Block> + ProvideRuntimeApi<Block>,
+    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
     Pool: TransactionPool<Block = Block> + 'static,
 {
     fn new(
@@ -645,17 +654,29 @@ impl<Block, Client, Pool> ProtocolBackend<BlockHash<Block>, TxHash<Pool>, Extrin
     for ConsensusBackend<Block, Client, Pool>
 where
     Block: BlockT,
-    Client: HeaderBackend<Block> + BlockBackend<Block>,
+    Client: HeaderBackend<Block> + BlockBackend<Block> + ProvideRuntimeApi<Block>,
+    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
     Pool: TransactionPool<Block = Block> + 'static,
 {
     fn download_unit_members(
         &self,
         block_hash: &BlockHash<Block>,
-    ) -> Result<Vec<(TxHash<Pool>, Extrinsic<Block>)>, RelayError> {
-        let tx = block_transactions(block_hash, self.client.as_ref())?;
-        Ok(tx
+    ) -> Result<Vec<ProtocolUnitInfo<TxHash<Pool>, Extrinsic<Block>>>, RelayError> {
+        let txns = block_transactions(block_hash, self.client.as_ref())?;
+        Ok(txns
             .into_iter()
-            .map(|extrinsic| (self.transaction_pool.hash_of(&extrinsic), extrinsic))
+            .map(|extrinsic| {
+                let send_tx = extrinsic.encoded_size() <= TX_SIZE_THRESHOLD.get()
+                    || self
+                        .client
+                        .runtime_api()
+                        .is_inherent(*block_hash, &extrinsic)
+                        .unwrap_or(false);
+                ProtocolUnitInfo {
+                    id: self.transaction_pool.hash_of(&extrinsic),
+                    unit: if send_tx { Some(extrinsic) } else { None },
+                }
+            })
             .collect())
     }
 
@@ -728,7 +749,8 @@ pub fn build_consensus_relay<Block, Client, Pool>(
 ) -> BlockRelayParams<Block>
 where
     Block: BlockT,
-    Client: HeaderBackend<Block> + BlockBackend<Block> + 'static,
+    Client: HeaderBackend<Block> + BlockBackend<Block> + ProvideRuntimeApi<Block> + 'static,
+    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
     Pool: TransactionPool<Block = Block> + 'static,
 {
     let (tx, request_receiver) = async_channel::bounded(NUM_PEER_HINT.get());

@@ -1,21 +1,15 @@
 //! Compact block implementation.
 
 use crate::utils::NetworkPeerHandle;
-use crate::{ProtocolBackend, ProtocolClient, ProtocolServer, RelayError, Resolved, LOG_TARGET};
+use crate::{
+    ProtocolBackend, ProtocolClient, ProtocolServer, ProtocolUnitInfo, RelayError, Resolved,
+    LOG_TARGET,
+};
 use async_trait::async_trait;
 use codec::{Decode, Encode};
 use std::collections::BTreeMap;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 use tracing::{trace, warn};
-
-/// If the encoded size of the protocol unit is less than the threshold,
-/// return the full protocol unit along with the protocol unit Id in the
-/// compact response. This catches the common cases like inherents with
-/// no segment headers. Since inherents are not gossiped, this causes
-/// a local miss/extra round trip. This threshold based scheme could be
-/// replaced by using the is_inherent() API if needed
-const PROTOCOL_UNIT_SIZE_THRESHOLD: NonZeroUsize = NonZeroUsize::new(32).expect("Not zero; qed");
 
 /// Request messages
 #[derive(Encode, Decode)]
@@ -35,18 +29,6 @@ pub(crate) enum CompactBlockResponse<DownloadUnitId, ProtocolUnitId, ProtocolUni
 
     /// Response for missing transactions request
     MissingEntries(MissingEntriesResponse<ProtocolUnit>),
-}
-
-/// The protocol unit info carried in the compact response
-#[derive(Encode, Decode)]
-struct ProtocolUnitInfo<ProtocolUnitId, ProtocolUnit> {
-    /// The protocol unit Id
-    id: ProtocolUnitId,
-
-    /// The server can optionally return the protocol unit
-    /// as part of the initial response. No further
-    /// action is needed on client side to resolve it
-    unit: Option<ProtocolUnit>,
 }
 
 /// The compact response
@@ -288,21 +270,10 @@ where
             return Err(RelayError::UnexpectedInitialRequest);
         }
 
-        // Return the hash of the members in the download unit.
-        let members = self.backend.download_unit_members(download_unit_id)?;
+        // Return the info of the members in the download unit.
         let response = InitialResponse {
             download_unit_id: download_unit_id.clone(),
-            protocol_units: members
-                .into_iter()
-                .map(|(id, unit)| {
-                    let unit = if unit.encoded_size() <= PROTOCOL_UNIT_SIZE_THRESHOLD.get() {
-                        Some(unit)
-                    } else {
-                        None
-                    };
-                    ProtocolUnitInfo { id, unit }
-                })
-                .collect(),
+            protocol_units: self.backend.download_unit_members(download_unit_id)?,
         };
         Ok(CompactBlockResponse::Initial(response))
     }
