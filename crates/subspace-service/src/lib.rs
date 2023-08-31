@@ -422,7 +422,7 @@ where
     )?;
 
     let slot_duration = subspace_link.slot_duration();
-    let import_queue = sc_consensus_subspace::import_queue::<PosTable, _, _, _, _, _>(
+    let import_queue = sc_consensus_subspace::import_queue::import_queue::<PosTable, _, _, _, _, _>(
         block_import.clone(),
         None,
         client.clone(),

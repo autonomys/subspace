@@ -32,13 +32,12 @@ use alloc::borrow::Cow;
 use alloc::string::String;
 use codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
-use schnorrkel::context::SigningContext;
 use sp_api::{BlockT, HeaderT};
 use sp_consensus_slots::{Slot, SlotDuration};
 use sp_core::crypto::KeyTypeId;
 use sp_core::H256;
 use sp_io::hashing;
-use sp_runtime::{ConsensusEngineId, DigestItem, Justification};
+use sp_runtime::{ConsensusEngineId, Justification};
 use sp_runtime_interface::pass_by::PassBy;
 use sp_runtime_interface::{pass_by, runtime_interface};
 #[cfg(feature = "pot")]
@@ -62,7 +61,7 @@ use subspace_proof_of_space::shim::ShimTable;
 use subspace_proof_of_space::PosTableType;
 use subspace_proof_of_space::Table;
 use subspace_solving::REWARD_SIGNING_CONTEXT;
-use subspace_verification::{check_reward_signature, verify_solution, Error, VerifySolutionParams};
+use subspace_verification::{check_reward_signature, VerifySolutionParams};
 
 /// Key type for Subspace pallet.
 const KEY_TYPE: KeyTypeId = KeyTypeId(*b"sub_");
@@ -732,142 +731,4 @@ sp_api::decl_runtime_apis! {
         /// Get Subspace blockchain constants
         fn chain_constants() -> ChainConstants;
     }
-}
-
-/// Errors encountered by the Subspace authorship task.
-#[derive(Debug, Eq, PartialEq)]
-#[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
-pub enum VerificationError<Header: HeaderT> {
-    /// No Subspace pre-runtime digest found
-    #[cfg_attr(feature = "thiserror", error("No Subspace pre-runtime digest found"))]
-    NoPreRuntimeDigest,
-    /// Header has a bad seal
-    #[cfg_attr(feature = "thiserror", error("Header {0:?} has a bad seal"))]
-    HeaderBadSeal(Header::Hash),
-    /// Header is unsealed
-    #[cfg_attr(feature = "thiserror", error("Header {0:?} is unsealed"))]
-    HeaderUnsealed(Header::Hash),
-    /// Bad reward signature
-    #[cfg_attr(feature = "thiserror", error("Bad reward signature on {0:?}"))]
-    BadRewardSignature(Header::Hash),
-    /// Verification error
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Verification error on slot {0:?}: {1:?}")
-    )]
-    VerificationError(Slot, Error),
-}
-
-/// A header which has been checked
-pub enum CheckedHeader<H, S> {
-    /// A header which has slot in the future. this is the full header (not stripped)
-    /// and the slot in which it should be processed.
-    Deferred(H, Slot),
-    /// A header which is fully checked, including signature. This is the pre-header
-    /// accompanied by the seal components.
-    ///
-    /// Includes the digest item that encoded the seal.
-    Checked(H, S),
-}
-
-/// Subspace verification parameters
-pub struct VerificationParams<'a, Header>
-where
-    Header: HeaderT + 'a,
-{
-    /// The header being verified.
-    pub header: Header,
-    /// The slot number of the current time.
-    pub slot_now: Slot,
-    /// Parameters for solution verification
-    pub verify_solution_params: &'a VerifySolutionParams,
-    /// Signing context for reward signature
-    pub reward_signing_context: &'a SigningContext,
-}
-
-/// Information from verified header
-pub struct VerifiedHeaderInfo<RewardAddress> {
-    /// Pre-digest
-    pub pre_digest: PreDigest<FarmerPublicKey, RewardAddress>,
-    /// Seal (signature)
-    pub seal: DigestItem,
-}
-
-/// Check a header has been signed correctly and whether solution is correct. If the slot is too far
-/// in the future, an error will be returned. If successful, returns the pre-header and the digest
-/// item containing the seal.
-///
-/// The seal must be the last digest. Otherwise, the whole header is considered unsigned. This is
-/// required for security and must not be changed.
-///
-/// This digest item will always return `Some` when used with `as_subspace_pre_digest`.
-///
-/// `pre_digest` argument is optional in case it is available to avoid doing the work of extracting
-/// it from the header twice.
-pub fn check_header<PosTable, Header, RewardAddress>(
-    params: VerificationParams<Header>,
-    pre_digest: Option<PreDigest<FarmerPublicKey, RewardAddress>>,
-    kzg: &Kzg,
-) -> Result<CheckedHeader<Header, VerifiedHeaderInfo<RewardAddress>>, VerificationError<Header>>
-where
-    PosTable: Table,
-    Header: HeaderT,
-    RewardAddress: Decode,
-{
-    let VerificationParams {
-        mut header,
-        slot_now,
-        verify_solution_params,
-        reward_signing_context,
-    } = params;
-
-    let pre_digest = match pre_digest {
-        Some(pre_digest) => pre_digest,
-        None => find_pre_digest::<Header, RewardAddress>(&header)
-            .ok_or(VerificationError::NoPreRuntimeDigest)?,
-    };
-    let slot = pre_digest.slot();
-
-    let seal = header
-        .digest_mut()
-        .pop()
-        .ok_or_else(|| VerificationError::HeaderUnsealed(header.hash()))?;
-
-    let signature = seal
-        .as_subspace_seal()
-        .ok_or_else(|| VerificationError::HeaderBadSeal(header.hash()))?;
-
-    // The pre-hash of the header doesn't include the seal and that's what we sign
-    let pre_hash = header.hash();
-
-    if pre_digest.slot() > slot_now {
-        header.digest_mut().push(seal);
-        return Ok(CheckedHeader::Deferred(header, pre_digest.slot()));
-    }
-
-    // Verify that block is signed properly
-    if check_reward_signature(
-        pre_hash.as_ref(),
-        &RewardSignature::from(&signature),
-        &PublicKey::from(&pre_digest.solution().public_key),
-        reward_signing_context,
-    )
-    .is_err()
-    {
-        return Err(VerificationError::BadRewardSignature(pre_hash));
-    }
-
-    // Verify that solution is valid
-    verify_solution::<PosTable, _, _>(
-        pre_digest.solution(),
-        slot.into(),
-        verify_solution_params,
-        kzg,
-    )
-    .map_err(|error| VerificationError::VerificationError(slot, error))?;
-
-    Ok(CheckedHeader::Checked(
-        header,
-        VerifiedHeaderInfo { pre_digest, seal },
-    ))
 }
