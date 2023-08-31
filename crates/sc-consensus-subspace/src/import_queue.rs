@@ -1,5 +1,7 @@
 //! Subspace block import implementation
 
+#[cfg(feature = "pot")]
+use crate::get_chain_constants;
 use crate::Error;
 use log::{debug, info, trace, warn};
 use prometheus_endpoint::Registry;
@@ -9,18 +11,22 @@ use sc_consensus::import_queue::{
     BasicQueue, BoxJustificationImport, DefaultImportQueue, Verifier,
 };
 use sc_consensus_slots::check_equivocation;
+#[cfg(feature = "pot")]
+use sc_proof_of_time::verifier::PotVerifier;
 #[cfg(not(feature = "pot"))]
 use sc_telemetry::CONSENSUS_DEBUG;
 use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_TRACE};
 use schnorrkel::context::SigningContext;
 use sp_api::{ApiExt, BlockT, HeaderT, ProvideRuntimeApi, TransactionFor};
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
-use sp_blockchain::{HeaderBackend, Result as ClientResult};
+use sp_blockchain::HeaderBackend;
 use sp_consensus::{BlockOrigin, Error as ConsensusError};
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{
-    extract_subspace_digest_items, CompatibleDigestItem, PreDigest,
+    extract_subspace_digest_items, CompatibleDigestItem, PreDigest, SubspaceDigestItems,
 };
+#[cfg(feature = "pot")]
+use sp_consensus_subspace::ChainConstants;
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi};
 use sp_runtime::DigestItem;
 use std::marker::PhantomData;
@@ -53,7 +59,8 @@ pub fn import_queue<PosTable, Block: BlockT, Client, SelectChain, Inner, SN>(
     registry: Option<&Registry>,
     telemetry: Option<TelemetryHandle>,
     is_authoring_blocks: bool,
-) -> ClientResult<DefaultImportQueue<Block, Client>>
+    #[cfg(feature = "pot")] pot_verifier: PotVerifier,
+) -> Result<DefaultImportQueue<Block, Client>, sp_blockchain::Error>
 where
     PosTable: Table,
     Inner: BlockImport<Block, Error = ConsensusError, Transaction = TransactionFor<Client, Block>>
@@ -65,14 +72,22 @@ where
     SelectChain: sp_consensus::SelectChain<Block> + 'static,
     SN: Fn() -> Slot + Send + Sync + 'static,
 {
+    #[cfg(feature = "pot")]
+    let chain_constants = get_chain_constants(client.as_ref())
+        .map_err(|error| sp_blockchain::Error::Application(error.into()))?;
+
     let verifier = SubspaceVerifier {
         client,
         kzg,
         select_chain,
         slot_now,
         telemetry,
+        #[cfg(feature = "pot")]
+        chain_constants,
         reward_signing_context: schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT),
         is_authoring_blocks,
+        #[cfg(feature = "pot")]
+        pot_verifier,
         _pos_table: PhantomData::<PosTable>,
         _block: PhantomData,
     };
@@ -87,23 +102,23 @@ where
 }
 
 /// Errors encountered by the Subspace authorship task.
-#[derive(Debug, Eq, PartialEq)]
-#[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
+#[derive(Debug, Eq, PartialEq, thiserror::Error)]
 pub enum VerificationError<Header: HeaderT> {
     /// Header has a bad seal
-    #[cfg_attr(feature = "thiserror", error("Header {0:?} has a bad seal"))]
+    #[error("Header {0:?} has a bad seal")]
     HeaderBadSeal(Header::Hash),
     /// Header is unsealed
-    #[cfg_attr(feature = "thiserror", error("Header {0:?} is unsealed"))]
+    #[error("Header {0:?} is unsealed")]
     HeaderUnsealed(Header::Hash),
     /// Bad reward signature
-    #[cfg_attr(feature = "thiserror", error("Bad reward signature on {0:?}"))]
+    #[error("Bad reward signature on {0:?}")]
     BadRewardSignature(Header::Hash),
+    /// Invalid proof of time
+    #[cfg(feature = "pot")]
+    #[error("Invalid proof of time")]
+    InvalidProofOfTime,
     /// Verification error
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Verification error on slot {0:?}: {1:?}")
-    )]
+    #[error("Verification error on slot {0:?}: {1:?}")]
     VerificationError(Slot, subspace_verification::Error),
 }
 
@@ -133,8 +148,6 @@ where
     slot_now: Slot,
     /// Parameters for solution verification
     verify_solution_params: &'a VerifySolutionParams,
-    /// Signing context for reward signature
-    reward_signing_context: &'a SigningContext,
 }
 
 /// Information from verified header
@@ -153,8 +166,12 @@ struct SubspaceVerifier<PosTable, Block: BlockT, Client, SelectChain, SN> {
     // TODO: Remove field once PoT is the only option
     slot_now: SN,
     telemetry: Option<TelemetryHandle>,
+    #[cfg(feature = "pot")]
+    chain_constants: ChainConstants,
     reward_signing_context: SigningContext,
     is_authoring_blocks: bool,
+    #[cfg(feature = "pot")]
+    pot_verifier: PotVerifier,
     _pos_table: PhantomData<PosTable>,
     _block: PhantomData<Block>,
 }
@@ -182,7 +199,11 @@ where
     async fn check_header(
         &self,
         params: VerificationParams<'_, Block::Header>,
-        pre_digest: PreDigest<FarmerPublicKey, FarmerPublicKey>,
+        subspace_digest_items: SubspaceDigestItems<
+            FarmerPublicKey,
+            FarmerPublicKey,
+            FarmerSignature,
+        >,
     ) -> Result<CheckedHeader<Block::Header, VerifiedHeaderInfo>, VerificationError<Block::Header>>
     {
         let VerificationParams {
@@ -190,9 +211,9 @@ where
             #[cfg(not(feature = "pot"))]
             slot_now,
             verify_solution_params,
-            reward_signing_context,
         } = params;
 
+        let pre_digest = subspace_digest_items.pre_digest;
         let slot = pre_digest.slot();
 
         let seal = header
@@ -213,14 +234,28 @@ where
             return Ok(CheckedHeader::Deferred(header, slot));
         }
 
-        // TODO: PoT verification here
+        // TODO: Extend/optimize this check once we have checkpoints in justifications
+        // Check proof of time between slot of the block and future proof of time
+        #[cfg(feature = "pot")]
+        if !self
+            .pot_verifier
+            .is_proof_valid(
+                pre_digest.pot_info().proof_of_time().seed(),
+                subspace_digest_items.pot_slot_iterations,
+                self.chain_constants.block_authoring_delay(),
+                pre_digest.pot_info().future_proof_of_time(),
+            )
+            .await
+        {
+            return Err(VerificationError::InvalidProofOfTime);
+        }
 
         // Verify that block is signed properly
         if check_reward_signature(
             pre_hash.as_ref(),
             &RewardSignature::from(&signature),
             &PublicKey::from(&pre_digest.solution().public_key),
-            reward_signing_context,
+            &self.reward_signing_context,
         )
         .is_err()
         {
@@ -335,7 +370,6 @@ where
             FarmerSignature,
         >(&block.header)
         .map_err(Error::<Block::Header>::from)?;
-        let pre_digest = subspace_digest_items.pre_digest;
 
         // Check if farmer's plot is burned.
         // TODO: Add to header and store in aux storage?
@@ -344,7 +378,7 @@ where
             .runtime_api()
             .is_in_block_list(
                 *block.header.parent_hash(),
-                &pre_digest.solution().public_key,
+                &subspace_digest_items.pre_digest.solution().public_key,
             )
             .or_else(|error| {
                 if block.state_action.skip_execution_checks() {
@@ -357,11 +391,15 @@ where
             warn!(
                 target: "subspace",
                 "Verifying block with solution provided by farmer in block list: {}",
-                pre_digest.solution().public_key
+                subspace_digest_items.pre_digest.solution().public_key
             );
 
             return Err(Error::<Block::Header>::FarmerInBlockList(
-                pre_digest.solution().public_key.clone(),
+                subspace_digest_items
+                    .pre_digest
+                    .solution()
+                    .public_key
+                    .clone(),
             )
             .into());
         }
@@ -385,13 +423,12 @@ where
                         #[cfg(not(feature = "pot"))]
                         global_randomness: subspace_digest_items.global_randomness,
                         #[cfg(feature = "pot")]
-                        proof_of_time: pre_digest.pot_info().proof_of_time(),
+                        proof_of_time: subspace_digest_items.pre_digest.pot_info().proof_of_time(),
                         solution_range: subspace_digest_items.solution_range,
                         piece_check_params: None,
                     },
-                    reward_signing_context: &self.reward_signing_context,
                 },
-                pre_digest,
+                subspace_digest_items,
             )
             .await
             .map_err(Error::<Block::Header>::from)?;

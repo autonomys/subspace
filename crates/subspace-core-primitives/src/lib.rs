@@ -256,6 +256,12 @@ impl PosProof {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PotKey(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] [u8; Self::SIZE]);
 
+impl fmt::Display for PotKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", hex::encode(self.0))
+    }
+}
+
 impl FromStr for PotKey {
     type Err = hex::FromHexError;
 
@@ -281,6 +287,7 @@ impl PotKey {
     Clone,
     Eq,
     PartialEq,
+    Hash,
     From,
     AsRef,
     AsMut,
@@ -293,6 +300,12 @@ impl PotKey {
 )]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PotSeed(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] [u8; Self::SIZE]);
+
+impl fmt::Display for PotSeed {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", hex::encode(self.0))
+    }
+}
 
 impl PotSeed {
     /// Size of proof of time seed in bytes
@@ -336,6 +349,12 @@ impl PotSeed {
 )]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PotProof(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] [u8; Self::SIZE]);
+
+impl fmt::Display for PotProof {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", hex::encode(self.0))
+    }
+}
 
 impl PotProof {
     /// Size of proof of time proof in bytes

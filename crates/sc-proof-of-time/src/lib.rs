@@ -6,6 +6,7 @@
 // pub mod gossip;
 mod slots;
 pub mod source;
+pub mod verifier;
 // mod state_manager;
 // mod time_keeper;
 

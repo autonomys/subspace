@@ -3,7 +3,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 mod aes;
 
-use core::num::{NonZeroU32, NonZeroU64};
+use core::num::NonZeroU32;
 use subspace_core_primitives::{PotCheckpoints, PotProof, PotSeed};
 
 /// Proof of time error
@@ -20,9 +20,9 @@ pub enum PotError {
     )]
     NotMultipleOfCheckpoints {
         /// Slot iterations provided
-        iterations: NonZeroU64,
+        iterations: NonZeroU32,
         /// Number of checkpoints
-        num_checkpoints: u64,
+        num_checkpoints: u32,
     },
 }
 
@@ -33,8 +33,8 @@ pub enum PotError {
 pub fn prove(seed: PotSeed, iterations: NonZeroU32) -> Result<PotCheckpoints, PotError> {
     if iterations.get() % u32::from(PotCheckpoints::NUM_CHECKPOINTS.get() * 2) != 0 {
         return Err(PotError::NotMultipleOfCheckpoints {
-            iterations: NonZeroU64::from(iterations),
-            num_checkpoints: u64::from(PotCheckpoints::NUM_CHECKPOINTS.get()),
+            iterations,
+            num_checkpoints: u32::from(PotCheckpoints::NUM_CHECKPOINTS.get()),
         });
     }
 
@@ -51,10 +51,10 @@ pub fn prove(seed: PotSeed, iterations: NonZeroU32) -> Result<PotCheckpoints, Po
 #[inline]
 pub fn verify(
     seed: PotSeed,
-    iterations: NonZeroU64,
+    iterations: NonZeroU32,
     checkpoints: &[PotProof],
 ) -> Result<bool, PotError> {
-    let num_checkpoints = checkpoints.len() as u64;
+    let num_checkpoints = checkpoints.len() as u32;
     if iterations.get() % (num_checkpoints * 2) != 0 {
         return Err(PotError::NotMultipleOfCheckpoints {
             iterations,

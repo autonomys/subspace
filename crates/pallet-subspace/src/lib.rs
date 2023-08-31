@@ -920,6 +920,7 @@ impl<T: Config> Pallet<T> {
             ));
         }
 
+        // TODO: Take adjustment of iterations into account once we have it
         #[cfg(feature = "pot")]
         frame_system::Pallet::<T>::deposit_log(DigestItem::pot_slot_iterations(
             PotSlotIterations::<T>::get().expect("Always instantiated during genesis; qed"),

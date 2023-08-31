@@ -47,6 +47,8 @@ use sc_consensus::JustificationSyncLink;
 use sc_consensus_slots::{BackoffAuthoringBlocksStrategy, InherentDataProviderExt, SlotProportion};
 #[cfg(feature = "pot")]
 use sc_proof_of_time::source::PotSlotInfoStream;
+#[cfg(feature = "pot")]
+use sc_proof_of_time::verifier::PotVerifier;
 use sc_telemetry::TelemetryHandle;
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::{ApiError, ApiExt, BlockT, HeaderT, NumberFor, ProvideRuntimeApi, TransactionFor};
@@ -169,6 +171,10 @@ pub enum Error<Header: HeaderT> {
     /// Bad reward signature
     #[error("Bad reward signature on {0:?}")]
     BadRewardSignature(Header::Hash),
+    /// Invalid proof of time
+    #[cfg(feature = "pot")]
+    #[error("Invalid proof of time")]
+    InvalidProofOfTime,
     /// Solution is outside of solution range
     #[error(
         "Solution distance {solution_distance} is outside of solution range \
@@ -208,6 +214,7 @@ pub enum Error<Header: HeaderT> {
     #[error("Parent block of {0} has no associated weight")]
     ParentBlockNoAssociatedWeight(Header::Hash),
     /// Block has invalid associated global randomness
+    #[cfg(not(feature = "pot"))]
     #[error("Invalid global randomness for block {0}")]
     InvalidGlobalRandomness(Header::Hash),
     /// Block has invalid associated solution range
@@ -274,6 +281,8 @@ where
             VerificationError::BadRewardSignature(block_hash) => {
                 Error::BadRewardSignature(block_hash)
             }
+            #[cfg(feature = "pot")]
+            VerificationError::InvalidProofOfTime => Error::InvalidProofOfTime,
             VerificationError::VerificationError(slot, error) => match error {
                 VerificationPrimitiveError::InvalidPieceOffset {
                     piece_offset,
@@ -593,6 +602,8 @@ where
     create_inherent_data_providers: CIDP,
     chain_constants: ChainConstants,
     segment_headers_store: SegmentHeadersStore<AS>,
+    #[cfg(feature = "pot")]
+    pot_verifier: PotVerifier,
     _pos_table: PhantomData<PosTable>,
 }
 
@@ -612,6 +623,8 @@ where
             create_inherent_data_providers: self.create_inherent_data_providers.clone(),
             chain_constants: self.chain_constants,
             segment_headers_store: self.segment_headers_store.clone(),
+            #[cfg(feature = "pot")]
+            pot_verifier: self.pot_verifier.clone(),
             _pos_table: PhantomData,
         }
     }
@@ -627,6 +640,8 @@ where
     AS: AuxStore + Send + Sync + 'static,
     BlockNumber: From<<<Block as BlockT>::Header as HeaderT>::Number>,
 {
+    // TODO: Create a struct for these parameters
+    #[allow(clippy::too_many_arguments)]
     fn new(
         client: Arc<Client>,
         block_import: I,
@@ -637,6 +652,7 @@ where
         create_inherent_data_providers: CIDP,
         chain_constants: ChainConstants,
         segment_headers_store: SegmentHeadersStore<AS>,
+        #[cfg(feature = "pot")] pot_verifier: PotVerifier,
     ) -> Self {
         Self {
             client,
@@ -646,6 +662,8 @@ where
             create_inherent_data_providers,
             chain_constants,
             segment_headers_store,
+            #[cfg(feature = "pot")]
+            pot_verifier,
             _pos_table: PhantomData,
         }
     }
@@ -706,9 +724,27 @@ where
             .header(parent_hash)?
             .ok_or(Error::ParentUnavailable(parent_hash, block_hash))?;
 
+        let parent_slot = extract_pre_digest(&parent_header).map(|d| d.slot())?;
+
+        // Make sure that slot number is strictly increasing
+        #[cfg_attr(not(feature = "pot"), allow(unused_variables))]
+        let slots_since_parent = match pre_digest.slot().checked_sub(*parent_slot) {
+            Some(slots_since_parent) => {
+                if slots_since_parent > 0 {
+                    Slot::from(slots_since_parent)
+                } else {
+                    return Err(Error::SlotMustIncrease(parent_slot, pre_digest.slot()));
+                }
+            }
+            None => {
+                return Err(Error::SlotMustIncrease(parent_slot, pre_digest.slot()));
+            }
+        };
+
         #[cfg(not(feature = "pot"))]
         let correct_global_randomness;
-        #[cfg_attr(feature = "pot", allow(clippy::needless_late_init))]
+        #[cfg(feature = "pot")]
+        let pot_seed;
         let correct_solution_range;
 
         if block_number.is_one() {
@@ -721,6 +757,11 @@ where
                     parent_hash,
                 )?;
             }
+            #[cfg(feature = "pot")]
+            {
+                pot_seed = self.pot_verifier.genesis_seed();
+            }
+
             correct_solution_range =
                 slot_worker::extract_solution_ranges_for_block(self.client.as_ref(), parent_hash)?
                     .0;
@@ -740,6 +781,14 @@ where
                         None => parent_subspace_digest_items.global_randomness,
                     };
             }
+            #[cfg(feature = "pot")]
+            {
+                pot_seed = parent_subspace_digest_items
+                    .pre_digest
+                    .pot_info()
+                    .proof_of_time()
+                    .seed();
+            }
 
             correct_solution_range = match parent_subspace_digest_items.next_solution_range {
                 Some(solution_range) => solution_range,
@@ -747,12 +796,23 @@ where
             };
         }
 
-        // TODO: This should be checking PoT instead
         #[cfg(not(feature = "pot"))]
         if subspace_digest_items.global_randomness != correct_global_randomness {
-            // TODO: There is some kind of mess with PoT randomness right now that doesn't make a
-            //  lot of sense, restore this check once that is resolved
             return Err(Error::InvalidGlobalRandomness(block_hash));
+        }
+        #[cfg(feature = "pot")]
+        // TODO: Extend/optimize this check once we have checkpoints in justifications
+        if !self
+            .pot_verifier
+            .is_proof_valid(
+                pot_seed,
+                subspace_digest_items.pot_slot_iterations,
+                slots_since_parent,
+                subspace_digest_items.pre_digest.pot_info().proof_of_time(),
+            )
+            .await
+        {
+            return Err(Error::InvalidProofOfTime);
         }
 
         if subspace_digest_items.solution_range != correct_solution_range {
@@ -827,13 +887,6 @@ where
             &self.subspace_link.kzg,
         )
         .map_err(|error| VerificationError::VerificationError(pre_digest.slot(), error))?;
-
-        let parent_slot = extract_pre_digest(&parent_header).map(|d| d.slot())?;
-
-        // Make sure that slot number is strictly increasing
-        if pre_digest.slot() <= parent_slot {
-            return Err(Error::SlotMustIncrease(parent_slot, pre_digest.slot()));
-        }
 
         if !skip_runtime_access {
             // If the body is passed through, we need to use the runtime to check that the
@@ -1081,6 +1134,7 @@ pub fn block_import<PosTable, Client, Block, I, CIDP, AS>(
     kzg: Kzg,
     create_inherent_data_providers: CIDP,
     segment_headers_store: SegmentHeadersStore<AS>,
+    #[cfg(feature = "pot")] pot_verifier: PotVerifier,
 ) -> Result<
     (
         SubspaceBlockImport<PosTable, Block, Client, I, CIDP, AS>,
@@ -1138,6 +1192,8 @@ where
         create_inherent_data_providers,
         chain_constants,
         segment_headers_store,
+        #[cfg(feature = "pot")]
+        pot_verifier,
     );
 
     Ok((import, link))

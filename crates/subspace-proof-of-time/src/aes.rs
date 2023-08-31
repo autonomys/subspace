@@ -49,7 +49,7 @@ pub(crate) fn verify_sequential(
     seed: PotSeed,
     key: PotKey,
     checkpoints: &[PotProof],
-    checkpoint_iterations: u64,
+    checkpoint_iterations: u32,
 ) -> bool {
     assert_eq!(checkpoint_iterations % 2, 0);
 
@@ -110,8 +110,6 @@ mod tests {
             let generic_checkpoints = create_generic(seed, key, checkpoint_iterations);
             assert_eq!(checkpoints, generic_checkpoints);
         }
-
-        let checkpoint_iterations = u64::from(checkpoint_iterations);
 
         assert!(verify_sequential(
             seed,

@@ -26,7 +26,7 @@ use log::warn;
 use sc_cli::{ChainSpec, CliConfiguration, SubstrateCli};
 use sc_consensus_slots::SlotProportion;
 #[cfg(feature = "pot")]
-use sc_proof_of_time::source::PotSourceConfig;
+use sc_service::Configuration;
 use sc_service::PartialComponents;
 use sc_storage_monitor::StorageMonitorService;
 use sc_utils::mpsc::tracing_unbounded;
@@ -93,6 +93,35 @@ fn set_default_ss58_version<C: AsRef<dyn ChainSpec>>(chain_spec: C) {
     }
 }
 
+#[cfg(feature = "pot")]
+fn pot_external_entropy(
+    consensus_chain_config: &Configuration,
+    cli: &Cli,
+) -> Result<Vec<u8>, sc_service::Error> {
+    let maybe_chain_spec_pot_external_entropy = consensus_chain_config
+        .chain_spec
+        .properties()
+        .get("potExternalEntropy")
+        .map(|d| serde_json::from_value(d.clone()))
+        .transpose()
+        .map_err(|error| {
+            sc_service::Error::Other(format!("Failed to decode PoT initial key: {error:?}"))
+        })?
+        .flatten();
+    if maybe_chain_spec_pot_external_entropy.is_some()
+        && cli.pot_external_entropy.is_some()
+        && maybe_chain_spec_pot_external_entropy != cli.pot_external_entropy
+    {
+        warn!(
+            "--pot-external-entropy CLI argument was ignored due to chain spec having a different \
+            explicit value"
+        );
+    }
+    Ok(maybe_chain_spec_pot_external_entropy
+        .or(cli.pot_external_entropy.clone())
+        .unwrap_or_default())
+}
+
 fn main() -> Result<(), Error> {
     let cli = Cli::from_args();
 
@@ -112,7 +141,10 @@ fn main() -> Result<(), Error> {
                     task_manager,
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
-                    &config, None,
+                    &config,
+                    None,
+                    #[cfg(feature = "pot")]
+                    &pot_external_entropy(&config, &cli)?,
                 )?;
                 Ok((
                     cmd.run(client, import_queue).map_err(Error::SubstrateCli),
@@ -129,7 +161,10 @@ fn main() -> Result<(), Error> {
                     task_manager,
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
-                    &config, None,
+                    &config,
+                    None,
+                    #[cfg(feature = "pot")]
+                    &pot_external_entropy(&config, &cli)?,
                 )?;
                 Ok((
                     cmd.run(client, config.database)
@@ -147,7 +182,10 @@ fn main() -> Result<(), Error> {
                     task_manager,
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
-                    &config, None,
+                    &config,
+                    None,
+                    #[cfg(feature = "pot")]
+                    &pot_external_entropy(&config, &cli)?,
                 )?;
                 Ok((
                     cmd.run(client, config.chain_spec)
@@ -166,7 +204,10 @@ fn main() -> Result<(), Error> {
                     task_manager,
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
-                    &config, None,
+                    &config,
+                    None,
+                    #[cfg(feature = "pot")]
+                    &pot_external_entropy(&config, &cli)?,
                 )?;
                 Ok((
                     cmd.run(client, import_queue).map_err(Error::SubstrateCli),
@@ -230,7 +271,10 @@ fn main() -> Result<(), Error> {
                     task_manager,
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
-                    &config, None,
+                    &config,
+                    None,
+                    #[cfg(feature = "pot")]
+                    &pot_external_entropy(&config, &cli)?,
                 )?;
                 Ok((
                     cmd.run(client, backend, None).map_err(Error::SubstrateCli),
@@ -266,7 +310,10 @@ fn main() -> Result<(), Error> {
                             RuntimeApi,
                             ExecutorDispatch,
                         >(
-                            &config, None
+                            &config,
+                            None,
+                            #[cfg(feature = "pot")]
+                            &pot_external_entropy(&config, &cli)?,
                         )?;
 
                         cmd.run(client)
@@ -275,7 +322,10 @@ fn main() -> Result<(), Error> {
                         let PartialComponents {
                             client, backend, ..
                         } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
-                            &config, None,
+                            &config,
+                            None,
+                            #[cfg(feature = "pot")]
+                            &pot_external_entropy(&config, &cli)?,
                         )?;
                         let db = backend.expose_db();
                         let storage = backend.expose_storage();
@@ -364,6 +414,9 @@ fn main() -> Result<(), Error> {
                     );
                     let _enter = span.enter();
 
+                    #[cfg(feature = "pot")]
+                    let pot_external_entropy = pot_external_entropy(&consensus_chain_config, &cli)?;
+
                     let dsn_config = {
                         let network_keypair = consensus_chain_config
                             .network
@@ -424,37 +477,6 @@ fn main() -> Result<(), Error> {
                         }
                     };
 
-                    #[cfg(feature = "pot")]
-                    let maybe_chain_spec_pot_external_entropy = consensus_chain_config
-                        .chain_spec
-                        .properties()
-                        .get("potExternalEntropy")
-                        .map(|d| serde_json::from_value(d.clone()))
-                        .transpose()
-                        .map_err(|error| {
-                            sc_service::Error::Other(format!(
-                                "Failed to decode PoT initial key: {error:?}"
-                            ))
-                        })?
-                        .flatten();
-                    #[cfg(feature = "pot")]
-                    if maybe_chain_spec_pot_external_entropy.is_some()
-                        && cli.pot_external_entropy.is_some()
-                        && maybe_chain_spec_pot_external_entropy != cli.pot_external_entropy
-                    {
-                        warn!(
-                        "--pot-external-entropy CLI argument was ignored due to chain spec having \
-                        a different explicit value"
-                    );
-                    }
-                    #[cfg(feature = "pot")]
-                    let pot_source_config = PotSourceConfig {
-                        is_timekeeper: cli.timekeeper,
-                        external_entropy: maybe_chain_spec_pot_external_entropy
-                            .or(cli.pot_external_entropy)
-                            .unwrap_or_default(),
-                    };
-
                     let consensus_chain_config = SubspaceConfiguration {
                         base: consensus_chain_config,
                         // Domain node needs slots notifications for bundle production.
@@ -463,7 +485,7 @@ fn main() -> Result<(), Error> {
                         sync_from_dsn: cli.sync_from_dsn,
                         enable_subspace_block_relay: cli.enable_subspace_block_relay,
                         #[cfg(feature = "pot")]
-                        pot_source_config,
+                        is_timekeeper: cli.timekeeper,
                     };
 
                     let construct_domain_genesis_block_builder =
@@ -474,6 +496,8 @@ fn main() -> Result<(), Error> {
                         subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
                             &consensus_chain_config,
                             Some(&construct_domain_genesis_block_builder),
+                            #[cfg(feature = "pot")]
+                            &pot_external_entropy,
                         )
                         .map_err(|error| {
                             sc_service::Error::Other(format!(

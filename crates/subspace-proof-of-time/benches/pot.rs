@@ -1,7 +1,6 @@
 use core::num::NonZeroU32;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use rand::{thread_rng, Rng};
-use std::num::NonZeroU64;
 use subspace_core_primitives::PotSeed;
 use subspace_proof_of_time::{prove, verify};
 
@@ -18,8 +17,6 @@ fn criterion_benchmark(c: &mut Criterion) {
     });
 
     let checkpoints = prove(seed, pot_iterations).unwrap();
-
-    let pot_iterations = NonZeroU64::from(pot_iterations);
 
     c.bench_function("verify", |b| {
         b.iter(|| {
