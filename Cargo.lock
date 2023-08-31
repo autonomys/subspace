@@ -9611,6 +9611,8 @@ dependencies = [
  "sc-network-sync",
  "sc-service",
  "sc-transaction-pool-api",
+ "sp-api",
+ "sp-consensus-subspace",
  "sp-runtime",
  "thiserror",
  "tracing",
