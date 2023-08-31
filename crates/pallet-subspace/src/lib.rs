@@ -154,7 +154,7 @@ mod pallet {
     use sp_std::prelude::*;
     use subspace_core_primitives::crypto::Scalar;
     use subspace_core_primitives::{
-        HistorySize, PotSeed, Randomness, SectorIndex, SegmentHeader, SegmentIndex, SolutionRange,
+        HistorySize, Randomness, SectorIndex, SegmentHeader, SegmentIndex, SolutionRange,
     };
 
     pub(super) struct InitialSolutionRanges<T: Config> {
@@ -490,10 +490,6 @@ mod pallet {
     #[pallet::getter(fn root_plot_public_key)]
     pub(super) type RootPlotPublicKey<T> = StorageValue<_, FarmerPublicKey>;
 
-    /// Future proof of time seed, essentially output of parent block's future proof of time.
-    #[pallet::storage]
-    pub(super) type FuturePotSeed<T> = StorageValue<_, PotSeed>;
-
     #[pallet::hooks]
     impl<T: Config> Hooks<T::BlockNumber> for Pallet<T> {
         fn on_initialize(block_number: T::BlockNumber) -> Weight {
@@ -788,15 +784,6 @@ impl<T: Config> Pallet<T> {
     }
 
     fn do_initialize(block_number: T::BlockNumber) {
-        #[cfg(feature = "pot")]
-        if !block_number.is_one() {
-            frame_system::Pallet::<T>::deposit_log(DigestItem::future_pot_seed(
-                FuturePotSeed::<T>::get().expect(
-                    "Is set at the end of `do_initialize` of every block after genesis; qed",
-                ),
-            ));
-        }
-
         let pre_digest = <frame_system::Pallet<T>>::digest()
             .logs
             .iter()
@@ -937,10 +924,6 @@ impl<T: Config> Pallet<T> {
         frame_system::Pallet::<T>::deposit_log(DigestItem::pot_slot_iterations(
             PotSlotIterations::<T>::get().expect("Always instantiated during genesis; qed"),
         ));
-        // TODO: Once we have entropy injection, it might take effect right here and should be
-        //  accounted for
-        #[cfg(feature = "pot")]
-        FuturePotSeed::<T>::put(pre_digest.pot_info().future_proof_of_time().seed());
     }
 
     fn do_finalize(_block_number: T::BlockNumber) {

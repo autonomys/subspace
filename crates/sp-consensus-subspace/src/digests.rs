@@ -30,10 +30,10 @@ use sp_std::collections::btree_map::{BTreeMap, Entry};
 use sp_std::fmt;
 #[cfg(feature = "pot")]
 use sp_std::num::NonZeroU32;
+#[cfg(feature = "pot")]
+use subspace_core_primitives::PotProof;
 #[cfg(not(feature = "pot"))]
 use subspace_core_primitives::Randomness;
-#[cfg(feature = "pot")]
-use subspace_core_primitives::{PotProof, PotSeed};
 use subspace_core_primitives::{SegmentCommitment, SegmentIndex, Solution, SolutionRange};
 #[cfg(not(feature = "pot"))]
 use subspace_verification::derive_randomness;
@@ -201,15 +201,6 @@ pub trait CompatibleDigestItem: Sized {
 
     /// If this item is a Subspace update of root plot public key, return it.
     fn as_root_plot_public_key_update(&self) -> Option<Option<FarmerPublicKey>>;
-
-    /// Construct a digest item which contains future proof of time seed, essentially output of
-    /// parent block's future proof of time.
-    #[cfg(feature = "pot")]
-    fn future_pot_seed(pot_seed: PotSeed) -> Self;
-
-    /// If this item is a Subspace future proof of time seed, return it.
-    #[cfg(feature = "pot")]
-    fn as_future_pot_seed(&self) -> Option<PotSeed>;
 }
 
 impl CompatibleDigestItem for DigestItem {
@@ -402,25 +393,6 @@ impl CompatibleDigestItem for DigestItem {
             }
         })
     }
-
-    #[cfg(feature = "pot")]
-    fn future_pot_seed(pot_seed: PotSeed) -> Self {
-        Self::Consensus(
-            SUBSPACE_ENGINE_ID,
-            ConsensusLog::FuturePotSeed(pot_seed).encode(),
-        )
-    }
-
-    #[cfg(feature = "pot")]
-    fn as_future_pot_seed(&self) -> Option<PotSeed> {
-        self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
-            if let ConsensusLog::FuturePotSeed(pot_seed) = c {
-                Some(pot_seed)
-            } else {
-                None
-            }
-        })
-    }
 }
 
 /// Various kinds of digest types used in errors
@@ -454,9 +426,6 @@ pub enum ErrorDigestType {
     EnableSolutionRangeAdjustmentAndOverride,
     /// Root plot public key was updated
     RootPlotPublicKeyUpdate,
-    /// Future proof of time seed, essentially output of parent block's future proof of time.
-    #[cfg(feature = "pot")]
-    FuturePotSeed,
 }
 
 impl fmt::Display for ErrorDigestType {
@@ -501,10 +470,6 @@ impl fmt::Display for ErrorDigestType {
             }
             ErrorDigestType::RootPlotPublicKeyUpdate => {
                 write!(f, "RootPlotPublicKeyUpdate")
-            }
-            #[cfg(feature = "pot")]
-            ErrorDigestType::FuturePotSeed => {
-                write!(f, "FuturePotSeed")
             }
         }
     }
@@ -582,11 +547,6 @@ pub struct SubspaceDigestItems<PublicKey, RewardAddress, Signature> {
     pub enable_solution_range_adjustment_and_override: Option<Option<SolutionRange>>,
     /// Root plot public key was updated
     pub root_plot_public_key_update: Option<Option<FarmerPublicKey>>,
-    /// Future proof of time seed, essentially output of parent block's future proof of time.
-    ///
-    /// This value is missing in block #1, but present in all blocks after that.
-    #[cfg(feature = "pot")]
-    pub future_pot_seed: Option<PotSeed>,
 }
 
 /// Extract the Subspace global randomness from the given header.
@@ -614,8 +574,6 @@ where
     let mut segment_commitments = BTreeMap::new();
     let mut maybe_enable_and_override_solution_range = None;
     let mut maybe_root_plot_public_key_update = None;
-    #[cfg(feature = "pot")]
-    let mut maybe_future_pot_seed = None;
 
     for log in header.digest().logs() {
         match log {
@@ -744,15 +702,6 @@ where
                             }
                         }
                     }
-                    #[cfg(feature = "pot")]
-                    ConsensusLog::FuturePotSeed(pot_seed) => match maybe_future_pot_seed {
-                        Some(_) => {
-                            return Err(Error::Duplicate(ErrorDigestType::FuturePotSeed));
-                        }
-                        None => {
-                            maybe_future_pot_seed.replace(pot_seed);
-                        }
-                    },
                 }
             }
             DigestItem::Seal(id, data) => {
@@ -800,8 +749,6 @@ where
         segment_commitments,
         enable_solution_range_adjustment_and_override: maybe_enable_and_override_solution_range,
         root_plot_public_key_update: maybe_root_plot_public_key_update,
-        #[cfg(feature = "pot")]
-        future_pot_seed: maybe_future_pot_seed,
     })
 }
 
