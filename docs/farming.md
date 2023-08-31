@@ -324,7 +324,7 @@ Examples:
 ```bash
 # Replace `FARMER_FILE_NAME` with the name of the node file you downloaded from releases
 ./FARMER_FILE_NAME farm --help
-./FARMER_FILE_NAME wipe
+./FARMER_FILE_NAME wipe PATH_TO_FARM
 ```
 
 ## [Advanced] Support for multiple disks
