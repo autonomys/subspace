@@ -3,14 +3,13 @@
 use crate::protocol::compact_block::{CompactBlockClient, CompactBlockServer};
 use crate::utils::{NetworkPeerHandle, NetworkWrapper, RequestResponseErr};
 use crate::{
-    ProtocolBackend, ProtocolClient, ProtocolServer, ProtocolUnitInfo, RelayError, LOG_TARGET,
+    ClientBackend, ProtocolClient, ProtocolServer, ProtocolUnitInfo, RelayError, ServerBackend,
+    LOG_TARGET,
 };
 use async_trait::async_trait;
 use codec::{Compact, CompactLen, Decode, Encode};
 use futures::channel::oneshot;
 use futures::stream::StreamExt;
-use lru::LruCache;
-use parking_lot::Mutex;
 use sc_client_api::{BlockBackend, HeaderBackend};
 use sc_network::request_responses::{IncomingRequest, OutgoingResponse, ProtocolConfig};
 use sc_network::types::ProtocolName;
@@ -21,7 +20,6 @@ use sc_network_common::sync::message::{
 use sc_network_sync::block_relay_protocol::{
     BlockDownloader, BlockRelayParams, BlockResponseError, BlockServer,
 };
-use sc_service::SpawnTaskHandle;
 use sc_transaction_pool_api::{InPoolTransaction, TransactionPool, TxHash};
 use sp_api::ProvideRuntimeApi;
 use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
@@ -41,7 +39,6 @@ const SYNC_PROTOCOL: &str = "/subspace/consensus-block-relay/1";
 
 // TODO: size these properly, or move to config
 const NUM_PEER_HINT: NonZeroUsize = NonZeroUsize::new(100).expect("Not zero; qed");
-const TRANSACTION_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(512).expect("Not zero; qed");
 
 /// These are the same limits used by substrate block handler.
 /// Maximum response size (bytes).
@@ -353,7 +350,7 @@ struct ConsensusRelayServer<
     ProtoServer: ProtocolServer<BlockHash<Block>> + Send,
 > {
     client: Arc<Client>,
-    protocol: Box<ProtoServer>,
+    protocol_server: Box<ProtoServer>,
     request_receiver: async_channel::Receiver<IncomingRequest>,
     _block: std::marker::PhantomData<Block>,
 }
@@ -425,7 +422,7 @@ where
         let partial_block = self.get_partial_block(&block_hash, block_attributes)?;
         let protocol_response = if block_attributes.contains(BlockAttributes::BODY) {
             Some(
-                self.protocol
+                self.protocol_server
                     .build_initial_response(&block_hash, initial_request.protocol_request)?,
             )
         } else {
@@ -445,7 +442,7 @@ where
         &mut self,
         request: ProtoServer::Request,
     ) -> Result<Vec<u8>, RelayError> {
-        let response = self.protocol.on_request(request)?;
+        let response = self.protocol_server.on_request(request)?;
         Ok(response.encode())
     }
 
@@ -601,57 +598,32 @@ where
     }
 }
 
-/// The backend interface for the consensus block relay
-struct ConsensusBackend<Block: BlockT, Client, Pool: TransactionPool> {
-    client: Arc<Client>,
+/// The client backend.
+struct ConsensusClientBackend<Pool> {
     transaction_pool: Arc<Pool>,
-    transaction_cache: Arc<Mutex<LruCache<TxHash<Pool>, Extrinsic<Block>>>>,
 }
 
-impl<Block, Client, Pool> ConsensusBackend<Block, Client, Pool>
+impl<Block, Pool> ClientBackend<TxHash<Pool>, Extrinsic<Block>> for ConsensusClientBackend<Pool>
 where
     Block: BlockT,
-    Client: HeaderBackend<Block> + BlockBackend<Block> + ProvideRuntimeApi<Block>,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
     Pool: TransactionPool<Block = Block> + 'static,
 {
-    fn new(
-        client: Arc<Client>,
-        transaction_pool: Arc<Pool>,
-        spawn_handle: SpawnTaskHandle,
-    ) -> Self {
-        let transaction_cache = Arc::new(Mutex::new(LruCache::new(TRANSACTION_CACHE_SIZE)));
-        spawn_handle.spawn_blocking("block-relay-transaction-import", None, {
-            let transaction_pool = transaction_pool.clone();
-            let transaction_cache = transaction_cache.clone();
-            Box::pin(async move {
-                while let Some(hash) = transaction_pool.import_notification_stream().next().await {
-                    if let Some(transaction) = transaction_pool.ready_transaction(&hash) {
-                        transaction_cache
-                            .lock()
-                            .put(hash.clone(), transaction.data().clone());
-                    }
-                }
-            })
-        });
-
-        Self {
-            client,
-            transaction_pool,
-            transaction_cache,
-        }
-    }
-
-    /// Adds the entry to the cache
-    fn update_cache(&self, tx_hash: &TxHash<Pool>, extrinsic: &Extrinsic<Block>) {
-        self.transaction_cache
-            .lock()
-            .put(tx_hash.clone(), extrinsic.clone());
+    fn protocol_unit(&self, tx_hash: &TxHash<Pool>) -> Option<Extrinsic<Block>> {
+        // Look up the transaction pool.
+        self.transaction_pool
+            .ready_transaction(tx_hash)
+            .map(|in_pool_tx| in_pool_tx.data().clone())
     }
 }
 
-impl<Block, Client, Pool> ProtocolBackend<BlockHash<Block>, TxHash<Pool>, Extrinsic<Block>>
-    for ConsensusBackend<Block, Client, Pool>
+/// The server backend.
+struct ConsensusServerBackend<Client, Pool> {
+    client: Arc<Client>,
+    transaction_pool: Arc<Pool>,
+}
+
+impl<Block, Client, Pool> ServerBackend<BlockHash<Block>, TxHash<Pool>, Extrinsic<Block>>
+    for ConsensusServerBackend<Client, Pool>
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + BlockBackend<Block> + ProvideRuntimeApi<Block>,
@@ -684,42 +656,31 @@ where
         &self,
         block_hash: &BlockHash<Block>,
         tx_hash: &TxHash<Pool>,
-    ) -> Result<Option<Extrinsic<Block>>, RelayError> {
-        // First look up the cache
-        if let Some(extrinsic) = self.transaction_cache.lock().get(tx_hash) {
-            return Ok(Some(extrinsic.clone()));
-        }
-
-        // Next look up the block extrinsics
-        if let Ok(Some(extrinsics)) = self.client.block_body(*block_hash) {
-            if !extrinsics.is_empty() {
-                let len = extrinsics.len();
+    ) -> Option<Extrinsic<Block>> {
+        // Look up the block extrinsics.
+        match block_transactions(block_hash, self.client.as_ref()) {
+            Ok(extrinsics) => {
                 for extrinsic in extrinsics {
                     if self.transaction_pool.hash_of(&extrinsic) == *tx_hash {
-                        // TODO: avoid adding inherents to the cache
-                        self.update_cache(tx_hash, &extrinsic);
-                        return Ok(Some(extrinsic));
+                        return Some(extrinsic);
                     }
                 }
-                trace!(
+            }
+            Err(err) => {
+                debug!(
                     target: LOG_TARGET,
-                    ?tx_hash,
                     ?block_hash,
-                    %len,
-                    "protocol_unit",
+                    ?tx_hash,
+                    ?err,
+                    "consensus server protocol_unit: "
                 );
             }
         }
 
-        // Failed to find the transaction among the block extrinsics, look up the
-        // transaction pool
-        if let Some(in_pool_transaction) = self.transaction_pool.ready_transaction(tx_hash) {
-            let extrinsic = in_pool_transaction.data().clone();
-            self.update_cache(tx_hash, &extrinsic);
-            return Ok(Some(extrinsic));
-        }
-
-        Ok(None)
+        // Next look up the transaction pool.
+        self.transaction_pool
+            .ready_transaction(tx_hash)
+            .map(|in_pool_tx| in_pool_tx.data().clone())
     }
 }
 
@@ -745,7 +706,6 @@ pub fn build_consensus_relay<Block, Client, Pool>(
     network: Arc<NetworkWrapper>,
     client: Arc<Client>,
     pool: Arc<Pool>,
-    spawn_handle: SpawnTaskHandle,
 ) -> BlockRelayParams<Block>
 where
     Block: BlockT,
@@ -755,19 +715,23 @@ where
 {
     let (tx, request_receiver) = async_channel::bounded(NUM_PEER_HINT.get());
 
-    let backend = Arc::new(ConsensusBackend::new(client.clone(), pool, spawn_handle));
+    let backend = Arc::new(ConsensusClientBackend {
+        transaction_pool: pool.clone(),
+    });
     let relay_client: ConsensusRelayClient<Block, Pool, _> = ConsensusRelayClient {
         network,
         protocol_name: SYNC_PROTOCOL.into(),
-        protocol_client: Arc::new(CompactBlockClient {
-            backend: backend.clone(),
-        }),
+        protocol_client: Arc::new(CompactBlockClient::new(backend)),
         _phantom_data: Default::default(),
     };
 
+    let backend = Arc::new(ConsensusServerBackend {
+        client: client.clone(),
+        transaction_pool: pool.clone(),
+    });
     let relay_server = ConsensusRelayServer {
         client,
-        protocol: Box::new(CompactBlockServer { backend }),
+        protocol_server: Box::new(CompactBlockServer::new(backend)),
         request_receiver,
         _block: Default::default(),
     };

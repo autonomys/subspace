@@ -104,8 +104,14 @@ pub(crate) trait ProtocolServer<DownloadUnitId> {
     fn on_request(&self, request: Self::Request) -> Result<Self::Response, RelayError>;
 }
 
-/// The relay user specific backend interface
-pub(crate) trait ProtocolBackend<DownloadUnitId, ProtocolUnitId, ProtocolUnit> {
+/// The relay user specific backend for the client side.
+pub(crate) trait ClientBackend<ProtocolUnitId, ProtocolUnit> {
+    /// Returns the protocol unit for the protocol unit id.
+    fn protocol_unit(&self, protocol_unit_id: &ProtocolUnitId) -> Option<ProtocolUnit>;
+}
+
+/// The relay user specific backend for the server side.
+pub(crate) trait ServerBackend<DownloadUnitId, ProtocolUnitId, ProtocolUnit> {
     /// Returns the protocol units for the given download unit, to be returned
     /// with the initial response. Some of the items may have the full entry
     /// along with the Id (e.g) consensus may choose to return the full
@@ -117,12 +123,12 @@ pub(crate) trait ProtocolBackend<DownloadUnitId, ProtocolUnitId, ProtocolUnit> {
         id: &DownloadUnitId,
     ) -> Result<Vec<ProtocolUnitInfo<ProtocolUnitId, ProtocolUnit>>, RelayError>;
 
-    /// Returns the protocol unit for the given download/protocol unit
+    /// Returns the protocol unit for the given download/protocol unit.
     fn protocol_unit(
         &self,
         download_unit_id: &DownloadUnitId,
         protocol_unit_id: &ProtocolUnitId,
-    ) -> Result<Option<ProtocolUnit>, RelayError>;
+    ) -> Option<ProtocolUnit>;
 }
 
 /// The protocol unit info carried in the initial response

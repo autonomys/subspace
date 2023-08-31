@@ -2,8 +2,8 @@
 
 use crate::utils::NetworkPeerHandle;
 use crate::{
-    ProtocolBackend, ProtocolClient, ProtocolServer, ProtocolUnitInfo, RelayError, Resolved,
-    LOG_TARGET,
+    ClientBackend, ProtocolClient, ProtocolServer, ProtocolUnitInfo, RelayError, Resolved,
+    ServerBackend, LOG_TARGET,
 };
 use async_trait::async_trait;
 use codec::{Decode, Encode};
@@ -66,9 +66,8 @@ struct ResolveContext<ProtocolUnitId, ProtocolUnit> {
 }
 
 pub(crate) struct CompactBlockClient<DownloadUnitId, ProtocolUnitId, ProtocolUnit> {
-    pub(crate) backend: Arc<
-        dyn ProtocolBackend<DownloadUnitId, ProtocolUnitId, ProtocolUnit> + Send + Sync + 'static,
-    >,
+    backend: Arc<dyn ClientBackend<ProtocolUnitId, ProtocolUnit> + Send + Sync + 'static>,
+    _phantom_data: std::marker::PhantomData<DownloadUnitId>,
 }
 
 impl<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
@@ -78,6 +77,16 @@ where
     ProtocolUnitId: Send + Sync + Encode + Decode + Clone,
     ProtocolUnit: Send + Sync + Encode + Decode + Clone,
 {
+    /// Creates the client.
+    pub(crate) fn new(
+        backend: Arc<dyn ClientBackend<ProtocolUnitId, ProtocolUnit> + Send + Sync + 'static>,
+    ) -> Self {
+        Self {
+            backend,
+            _phantom_data: Default::default(),
+        }
+    }
+
     /// Tries to resolve the entries in InitialResponse locally
     fn resolve_local(
         &self,
@@ -103,11 +112,8 @@ where
                 continue;
             }
 
-            match self
-                .backend
-                .protocol_unit(&compact_response.download_unit_id, id)
-            {
-                Ok(Some(ret)) => {
+            match self.backend.protocol_unit(id) {
+                Some(ret) => {
                     context.resolved.insert(
                         index as u64,
                         Resolved {
@@ -117,10 +123,9 @@ where
                         },
                     );
                 }
-                Ok(None) => {
+                None => {
                     context.local_miss.insert(index as u64, id.clone());
                 }
-                Err(err) => return Err(err),
             }
         }
 
@@ -245,9 +250,22 @@ where
 }
 
 pub(crate) struct CompactBlockServer<DownloadUnitId, ProtocolUnitId, ProtocolUnit> {
-    pub(crate) backend: Arc<
-        dyn ProtocolBackend<DownloadUnitId, ProtocolUnitId, ProtocolUnit> + Send + Sync + 'static,
+    backend: Arc<
+        dyn ServerBackend<DownloadUnitId, ProtocolUnitId, ProtocolUnit> + Send + Sync + 'static,
     >,
+}
+
+impl<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
+    CompactBlockServer<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
+{
+    /// Creates the server.
+    pub(crate) fn new(
+        backend: Arc<
+            dyn ServerBackend<DownloadUnitId, ProtocolUnitId, ProtocolUnit> + Send + Sync + 'static,
+        >,
+    ) -> Self {
+        Self { backend }
+    }
 }
 
 #[async_trait]
@@ -289,7 +307,7 @@ where
         for (missing_id, protocol_unit_id) in request.protocol_unit_ids {
             if let Some(protocol_unit) = self
                 .backend
-                .protocol_unit(&request.download_unit_id, &protocol_unit_id)?
+                .protocol_unit(&request.download_unit_id, &protocol_unit_id)
             {
                 protocol_units.insert(missing_id, protocol_unit);
             } else {

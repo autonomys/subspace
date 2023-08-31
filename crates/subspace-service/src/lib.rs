@@ -686,7 +686,6 @@ where
             network_wrapper.clone(),
             client.clone(),
             transaction_pool.clone(),
-            task_manager.spawn_handle(),
         ))
     } else {
         None
