@@ -72,18 +72,19 @@ where
         #[cfg(feature = "pot")]
         let runtime_api = client.runtime_api();
         #[cfg(feature = "pot")]
-        let iterations = runtime_api
+        let slot_iterations = runtime_api
             .pot_parameters(best_hash)?
-            .iterations(Slot::from(start_slot));
+            .slot_iterations(Slot::from(start_slot));
         #[cfg(not(feature = "pot"))]
-        let iterations = NonZeroU32::new(100_000_000).expect("Not zero; qed");
+        let slot_iterations = NonZeroU32::new(100_000_000).expect("Not zero; qed");
 
         // TODO: Correct capacity
         let (slot_sender, slot_receiver) = mpsc::channel(10);
         thread::Builder::new()
             .name("timekeeper".to_string())
             .spawn(move || {
-                if let Err(error) = run_timekeeper(start_seed, start_slot, iterations, slot_sender)
+                if let Err(error) =
+                    run_timekeeper(start_seed, start_slot, slot_iterations, slot_sender)
                 {
                     error!(%error, "Timekeeper exited with an error");
                 }
@@ -111,11 +112,11 @@ where
 fn run_timekeeper(
     mut seed: PotSeed,
     mut slot: SlotNumber,
-    iterations: NonZeroU32,
+    slot_iterations: NonZeroU32,
     mut slot_sender: mpsc::Sender<PotSlotInfo>,
 ) -> Result<(), PotError> {
     loop {
-        let checkpoints = subspace_proof_of_time::prove(seed, iterations)?;
+        let checkpoints = subspace_proof_of_time::prove(seed, slot_iterations)?;
 
         seed = checkpoints.output().seed();
 

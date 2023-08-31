@@ -651,8 +651,8 @@ sp_api::decl_runtime_apis! {
 pub enum PotParameters {
     /// Initial version of the parameters
     V0 {
-        /// Base number of iterations
-        iterations: NonZeroU32,
+        /// Base number of iterations per slot
+        slot_iterations: NonZeroU32,
         /// Optional next scheduled change of parameters
         next_change: Option<PotParametersChange>,
     },
@@ -661,9 +661,9 @@ pub enum PotParameters {
 #[cfg(feature = "pot")]
 impl PotParameters {
     /// Number of iterations for proof of time per slot, taking into account potential future change
-    pub fn iterations(&self, slot: Slot) -> NonZeroU32 {
+    pub fn slot_iterations(&self, slot: Slot) -> NonZeroU32 {
         let Self::V0 {
-            iterations,
+            slot_iterations,
             next_change,
         } = self;
 
@@ -673,7 +673,7 @@ impl PotParameters {
             }
         }
 
-        *iterations
+        *slot_iterations
     }
 }
 

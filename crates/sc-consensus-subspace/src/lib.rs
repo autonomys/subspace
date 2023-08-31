@@ -459,6 +459,8 @@ where
         block_proposal_slot_portion,
         max_block_proposal_slot_portion,
         telemetry,
+        chain_constants: get_chain_constants(client.as_ref())
+            .map_err(|error| sp_consensus::Error::Other(error.into()))?,
         segment_headers_store,
         #[cfg(feature = "pot")]
         pending_solutions: Default::default(),
@@ -588,6 +590,7 @@ where
         SubspaceNotificationSender<BlockImportingNotification<Block>>,
     subspace_link: SubspaceLink<Block>,
     create_inherent_data_providers: CIDP,
+    chain_constants: ChainConstants,
     segment_headers_store: SegmentHeadersStore<AS>,
     _pos_table: PhantomData<PosTable>,
 }
@@ -606,6 +609,7 @@ where
             block_importing_notification_sender: self.block_importing_notification_sender.clone(),
             subspace_link: self.subspace_link.clone(),
             create_inherent_data_providers: self.create_inherent_data_providers.clone(),
+            chain_constants: self.chain_constants,
             segment_headers_store: self.segment_headers_store.clone(),
             _pos_table: PhantomData,
         }
@@ -630,14 +634,16 @@ where
         >,
         subspace_link: SubspaceLink<Block>,
         create_inherent_data_providers: CIDP,
+        chain_constants: ChainConstants,
         segment_headers_store: SegmentHeadersStore<AS>,
     ) -> Self {
-        SubspaceBlockImport {
+        Self {
             client,
             inner: block_import,
             block_importing_notification_sender,
             subspace_link,
             create_inherent_data_providers,
+            chain_constants,
             segment_headers_store,
             _pos_table: PhantomData,
         }
@@ -757,7 +763,6 @@ where
             pre_digest.solution().sector_index,
         );
 
-        let chain_constants = get_chain_constants(self.client.as_ref())?;
         // TODO: Below `skip_runtime_access` has no impact on this, but ideally it
         //  should (though we don't support fast sync yet, so doesn't matter in
         //  practice)
@@ -769,8 +774,8 @@ where
             pre_digest.solution().piece_offset,
             pre_digest.solution().history_size,
             max_pieces_in_sector,
-            chain_constants.recent_segments(),
-            chain_constants.recent_history_fraction(),
+            self.chain_constants.recent_segments(),
+            self.chain_constants.recent_history_fraction(),
         );
         let segment_index = piece_index.segment_index();
 
@@ -787,7 +792,7 @@ where
                     .pre_digest
                     .solution()
                     .history_size
-                    .sector_expiration_check(chain_constants.min_sector_lifetime())
+                    .sector_expiration_check(self.chain_constants.min_sector_lifetime())
                     .ok_or(Error::InvalidHistorySize)?
                     .segment_index(),
             )
@@ -808,9 +813,9 @@ where
                 piece_check_params: Some(PieceCheckParams {
                     max_pieces_in_sector,
                     segment_commitment,
-                    recent_segments: chain_constants.recent_segments(),
-                    recent_history_fraction: chain_constants.recent_history_fraction(),
-                    min_sector_lifetime: chain_constants.min_sector_lifetime(),
+                    recent_segments: self.chain_constants.recent_segments(),
+                    recent_history_fraction: self.chain_constants.recent_history_fraction(),
+                    min_sector_lifetime: self.chain_constants.min_sector_lifetime(),
                     // TODO: Below `skip_runtime_access` has no impact on this, but ideally it
                     //  should (though we don't support fast sync yet, so doesn't matter in
                     //  practice)
@@ -1075,10 +1080,13 @@ pub fn block_import<PosTable, Client, Block, I, CIDP, AS>(
     kzg: Kzg,
     create_inherent_data_providers: CIDP,
     segment_headers_store: SegmentHeadersStore<AS>,
-) -> ClientResult<(
-    SubspaceBlockImport<PosTable, Block, Client, I, CIDP, AS>,
-    SubspaceLink<Block>,
-)>
+) -> Result<
+    (
+        SubspaceBlockImport<PosTable, Block, Client, I, CIDP, AS>,
+        SubspaceLink<Block>,
+    ),
+    sp_blockchain::Error,
+>
 where
     PosTable: Table,
     Block: BlockT,
@@ -1097,9 +1105,8 @@ where
     let (block_importing_notification_sender, block_importing_notification_stream) =
         notification::channel("subspace_block_importing_notification_stream");
 
-    let confirmation_depth_k = get_chain_constants(client.as_ref())
-        .expect("Must always be able to get chain constants")
-        .confirmation_depth_k();
+    let chain_constants = get_chain_constants(client.as_ref())
+        .map_err(|error| sp_blockchain::Error::Application(error.into()))?;
 
     let link = SubspaceLink {
         slot_duration,
@@ -1114,7 +1121,8 @@ where
         // TODO: Consider making `confirmation_depth_k` non-zero
         segment_headers: Arc::new(Mutex::new(LruCache::new(
             NonZeroUsize::new(
-                (FINALIZATION_DEPTH_IN_SEGMENTS + 1).max(confirmation_depth_k as usize),
+                (FINALIZATION_DEPTH_IN_SEGMENTS + 1)
+                    .max(chain_constants.confirmation_depth_k() as usize),
             )
             .expect("Confirmation depth of zero is not supported"),
         ))),
@@ -1127,6 +1135,7 @@ where
         block_importing_notification_sender,
         link.clone(),
         create_inherent_data_providers,
+        chain_constants,
         segment_headers_store,
     );
 

@@ -1098,7 +1098,7 @@ impl<T: Config> Pallet<T> {
     #[cfg(feature = "pot")]
     pub fn pot_parameters() -> PotParameters {
         PotParameters::V0 {
-            iterations: PotSlotIterations::<T>::get()
+            slot_iterations: PotSlotIterations::<T>::get()
                 .expect("Always instantiated during genesis; qed"),
             // TODO: This is where adjustment for number of iterations and entropy injection will
             //  happen for runtime API calls

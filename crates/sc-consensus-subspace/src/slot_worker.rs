@@ -17,8 +17,8 @@
 
 use crate::archiver::SegmentHeadersStore;
 use crate::{
-    get_chain_constants, BlockImportingNotification, NewSlotInfo, NewSlotNotification,
-    RewardSigningNotification, SubspaceLink,
+    BlockImportingNotification, NewSlotInfo, NewSlotNotification, RewardSigningNotification,
+    SubspaceLink,
 };
 use futures::channel::mpsc;
 use futures::{StreamExt, TryFutureExt};
@@ -45,7 +45,9 @@ use sp_consensus_subspace::digests::PreDigestPotInfo;
 use sp_consensus_subspace::digests::{extract_pre_digest, CompatibleDigestItem, PreDigest};
 #[cfg(feature = "pot")]
 use sp_consensus_subspace::SubspaceJustification;
-use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SignedVote, SubspaceApi, Vote};
+use sp_consensus_subspace::{
+    ChainConstants, FarmerPublicKey, FarmerSignature, SignedVote, SubspaceApi, Vote,
+};
 use sp_core::crypto::ByteArray;
 use sp_core::H256;
 use sp_runtime::traits::{Block as BlockT, Header, One, Saturating, Zero};
@@ -126,6 +128,7 @@ where
     pub(super) block_proposal_slot_portion: SlotProportion,
     pub(super) max_block_proposal_slot_portion: Option<SlotProportion>,
     pub(super) telemetry: Option<TelemetryHandle>,
+    pub(super) chain_constants: ChainConstants,
     pub(super) segment_headers_store: SegmentHeadersStore<AS>,
     /// Solution receivers for challenges that were sent to farmers and expected to be received
     /// eventually
@@ -266,7 +269,6 @@ where
         slot: Slot,
         _aux_data: &Self::AuxData,
     ) -> Option<Self::Claim> {
-        let chain_constants = get_chain_constants(self.client.as_ref()).ok()?;
         let parent_pre_digest = match extract_pre_digest(parent_header) {
             Ok(pre_digest) => pre_digest,
             Err(error) => {
@@ -309,8 +311,8 @@ where
             let proof_of_time = pot_checkpoints.get(&slot)?.output();
 
             // Future slot for which proof must be available before authoring block at this slot
-            let future_slot = slot + chain_constants.block_authoring_delay();
-            let parent_future_slot = parent_slot + chain_constants.block_authoring_delay();
+            let future_slot = slot + self.chain_constants.block_authoring_delay();
+            let parent_future_slot = parent_slot + self.chain_constants.block_authoring_delay();
             let future_proof_of_time = pot_checkpoints.get(&future_slot)?.output();
 
             // New checkpoints that were produced since parent block's future slot up to current
@@ -403,8 +405,8 @@ where
                     solution.piece_offset,
                     solution.history_size,
                     max_pieces_in_sector,
-                    chain_constants.recent_segments(),
-                    chain_constants.recent_history_fraction(),
+                    self.chain_constants.recent_segments(),
+                    self.chain_constants.recent_history_fraction(),
                 )
                 .segment_index();
             let maybe_segment_commitment = self
@@ -426,7 +428,7 @@ where
             };
             let sector_expiration_check_segment_index = match solution
                 .history_size
-                .sector_expiration_check(chain_constants.min_sector_lifetime())
+                .sector_expiration_check(self.chain_constants.min_sector_lifetime())
             {
                 Some(sector_expiration_check) => sector_expiration_check.segment_index(),
                 None => {
@@ -449,9 +451,9 @@ where
                     piece_check_params: Some(PieceCheckParams {
                         max_pieces_in_sector,
                         segment_commitment,
-                        recent_segments: chain_constants.recent_segments(),
-                        recent_history_fraction: chain_constants.recent_history_fraction(),
-                        min_sector_lifetime: chain_constants.min_sector_lifetime(),
+                        recent_segments: self.chain_constants.recent_segments(),
+                        recent_history_fraction: self.chain_constants.recent_history_fraction(),
+                        min_sector_lifetime: self.chain_constants.min_sector_lifetime(),
                         current_history_size: history_size,
                         sector_expiration_check_segment_commitment,
                     }),
