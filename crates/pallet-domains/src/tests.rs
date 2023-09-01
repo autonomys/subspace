@@ -77,7 +77,7 @@ impl frame_system::Config for Test {
 
 parameter_types! {
     pub const MaximumReceiptDrift: BlockNumber = 128;
-    pub const InitialDomainTxRange: u64 = 10;
+    pub const InitialDomainTxRange: u64 = 3;
     pub const DomainTxRangeAdjustmentInterval: u64 = 100;
     pub const DomainRuntimeUpgradeDelay: BlockNumber = 100;
     pub const MaxBundlesPerBlock: u32 = 10;
