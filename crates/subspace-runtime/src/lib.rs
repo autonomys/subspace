@@ -1336,6 +1336,14 @@ impl_runtime_apis! {
             extract_segment_headers(ext)
         }
 
+        fn is_inherent(ext: &<Block as BlockT>::Extrinsic) -> bool {
+            match &ext.function {
+                RuntimeCall::Subspace(call) => Subspace::is_inherent(call),
+                RuntimeCall::Timestamp(call) => Timestamp::is_inherent(call),
+                _ => false,
+            }
+        }
+
         fn root_plot_public_key() -> Option<FarmerPublicKey> {
             Subspace::root_plot_public_key()
         }
