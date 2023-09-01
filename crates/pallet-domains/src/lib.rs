@@ -702,7 +702,6 @@ mod pallet {
                 // The stale receipt should not be further processed, but we still track them for purposes
                 // of measuring the bundle production rate.
                 ReceiptType::Stale => {
-                    Self::note_domain_bundle(domain_id);
                     return Ok(());
                 }
                 ReceiptType::Rejected(rejected_receipt_type) => {
@@ -780,8 +779,6 @@ mod pallet {
             InboxedBundle::<T>::insert(bundle_header_hash, operator_id);
 
             SuccessfulBundles::<T>::append(domain_id, bundle_hash);
-
-            Self::note_domain_bundle(domain_id);
 
             Self::deposit_event(Event::BundleStored {
                 domain_id,
@@ -1096,7 +1093,6 @@ mod pallet {
 
         fn on_finalize(_: T::BlockNumber) {
             let _ = LastEpochStakingDistribution::<T>::clear(u32::MAX, None);
-            Self::update_domain_tx_range();
         }
 
         // TODO: remove once the migration is done
@@ -1401,6 +1397,8 @@ impl<T: Config> Pallet<T> {
 
     /// Called when a bundle is added to update the bundle state for tx range
     /// calculation.
+    #[allow(dead_code)]
+    // TODO: use once we support tx-range dynamic adjustment properly
     fn note_domain_bundle(domain_id: DomainId) {
         DomainTxRangeState::<T>::mutate(domain_id, |maybe_state| match maybe_state {
             Some(state) => {
@@ -1418,6 +1416,8 @@ impl<T: Config> Pallet<T> {
 
     /// Called when the block is finalized to update the tx range for all the
     /// domains with bundles in the block.
+    #[allow(dead_code)]
+    // TODO: use once we support tx-range dynamic adjustment properly
     fn update_domain_tx_range() {
         for domain_id in DomainTxRangeState::<T>::iter_keys() {
             if let Some(domain_config) =
