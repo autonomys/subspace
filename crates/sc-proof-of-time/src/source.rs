@@ -6,8 +6,12 @@ use futures::{SinkExt, StreamExt};
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
+#[cfg(feature = "pot")]
+use sp_consensus_subspace::digests::extract_pre_digest;
 use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi as SubspaceRuntimeApi};
 use sp_runtime::traits::Block as BlockT;
+#[cfg(feature = "pot")]
+use sp_runtime::traits::{Header, Zero};
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use std::sync::Arc;
@@ -45,6 +49,7 @@ pub struct PotSlotInfoStream(mpsc::Receiver<PotSlotInfo>);
 /// Depending on configuration may produce proofs of time locally, send/receive via gossip and keep
 /// up to day with blockchain reorgs.
 #[derive(Debug)]
+#[must_use = "Proof of time source doesn't do anything unless run() method is called"]
 pub struct PotSource<Block, Client> {
     // TODO: Use this in `fn run`
     #[allow(dead_code)]
@@ -67,18 +72,45 @@ where
         client: Arc<Client>,
         pot_verifier: PotVerifier,
     ) -> Result<(Self, PotSlotInfoStream), ApiError> {
-        // TODO: Both of following are incorrect and should be able to continue after node restart
-        let start_slot = 1;
-        let start_seed = pot_verifier.genesis_seed();
+        let start_slot;
+        let start_seed;
+        let slot_iterations;
         #[cfg(feature = "pot")]
-        let best_hash = client.info().best_hash;
-        #[cfg(feature = "pot")]
-        let slot_iterations = client
-            .runtime_api()
-            .pot_parameters(best_hash)?
-            .slot_iterations(Slot::from(start_slot));
+        {
+            let best_hash = client.info().best_hash;
+            let chain_constants = client.runtime_api().chain_constants(best_hash)?;
+
+            let best_header = client.header(best_hash)?.ok_or_else(|| {
+                ApiError::UnknownBlock(format!("Parent block {best_hash} not found"))
+            })?;
+            let best_pre_digest = extract_pre_digest(&best_header)
+                .map_err(|error| ApiError::Application(error.into()))?;
+
+            start_slot = if best_header.number().is_zero() {
+                1
+            } else {
+                // Next slot after the best one seen
+                SlotNumber::from(best_pre_digest.slot() + chain_constants.block_authoring_delay())
+                    + 1
+            };
+            // TODO: Support parameters change
+            start_seed = if best_header.number().is_zero() {
+                pot_verifier.genesis_seed()
+            } else {
+                best_pre_digest.pot_info().future_proof_of_time().seed()
+            };
+            // TODO: Support parameters change
+            slot_iterations = client
+                .runtime_api()
+                .pot_parameters(best_hash)?
+                .slot_iterations(Slot::from(start_slot));
+        }
         #[cfg(not(feature = "pot"))]
-        let slot_iterations = NonZeroU32::new(100_000_000).expect("Not zero; qed");
+        {
+            start_slot = 1;
+            start_seed = pot_verifier.genesis_seed();
+            slot_iterations = NonZeroU32::new(100_000_000).expect("Not zero; qed");
+        }
 
         // TODO: Correct capacity
         let (local_proofs_sender, local_proofs_receiver) = mpsc::channel(10);
