@@ -527,7 +527,7 @@ impl pallet_offences_subspace::Config for Runtime {
 
 parameter_types! {
     pub const MaximumReceiptDrift: BlockNumber = 2;
-    pub const InitialDomainTxRange: u64 = 10;
+    pub const InitialDomainTxRange: u64 = 3;
     pub const DomainTxRangeAdjustmentInterval: u64 = 100;
     pub const DomainRuntimeUpgradeDelay: BlockNumber = 10;
     pub const MinOperatorStake: Balance = 100 * SSC;
