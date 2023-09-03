@@ -11,7 +11,6 @@ use sp_consensus_slots::Slot;
 use std::num::{NonZeroU32, NonZeroUsize};
 use std::sync::Arc;
 use subspace_core_primitives::{PotCheckpoints, PotProof, PotSeed};
-use subspace_proof_of_time::{prove, verify};
 use tracing::trace;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
@@ -154,7 +153,7 @@ impl PotVerifier {
             let (result_sender, result_receiver) = oneshot::channel();
 
             rayon::spawn(move || {
-                let result = prove(seed, slot_iterations);
+                let result = subspace_proof_of_time::prove(seed, slot_iterations);
 
                 if let Err(_error) = result_sender.send(result) {
                     trace!("Verification result receiver is gone before result was sent");
@@ -231,7 +230,8 @@ impl PotVerifier {
             let checkpoints = *checkpoints;
             rayon::spawn(move || {
                 let result =
-                    verify(seed, slot_iterations, checkpoints.as_slice()).unwrap_or_default();
+                    subspace_proof_of_time::verify(seed, slot_iterations, checkpoints.as_slice())
+                        .unwrap_or_default();
 
                 if let Err(_error) = result_sender.send(result) {
                     trace!("Verification result receiver is gone before result was sent");

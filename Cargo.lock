@@ -9405,6 +9405,7 @@ version = "0.1.0"
 dependencies = [
  "async-lock",
  "async-trait",
+ "atomic",
  "derive_more",
  "futures",
  "lru 0.11.0",

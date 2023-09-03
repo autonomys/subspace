@@ -3,7 +3,7 @@
 #![feature(const_option)]
 
 // TODO: Adjust or remove unused modules in the future
-// pub mod gossip;
+pub mod gossip;
 mod slots;
 pub mod source;
 pub mod verifier;
