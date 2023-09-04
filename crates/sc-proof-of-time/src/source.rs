@@ -293,10 +293,21 @@ where
         _sender: PeerId,
         gossip_checkpoints: GossipCheckpoints,
     ) {
-        if gossip_checkpoints.slot == self.state.next_slot_input.slot
-            && gossip_checkpoints.slot_iterations == self.state.next_slot_input.slot_iterations
-            && gossip_checkpoints.seed == self.state.next_slot_input.seed
-        {
+        let expected_next_slot_input = NextSlotInput {
+            slot: gossip_checkpoints.slot,
+            slot_iterations: gossip_checkpoints.slot_iterations,
+            seed: gossip_checkpoints.seed,
+        };
+
+        #[cfg_attr(not(feature = "pot"), allow(unused_variables))]
+        if let Some(next_slot_input) = self.state.try_extend(
+            expected_next_slot_input,
+            gossip_checkpoints.slot,
+            gossip_checkpoints.checkpoints.output(),
+            #[cfg(feature = "pot")]
+            None,
+            &self.pot_verifier,
+        ) {
             // We don't care if block production is too slow or block production is not enabled on
             // this node at all
             let _ = self.slot_sender.try_send(PotSlotInfo {
@@ -304,18 +315,9 @@ where
                 checkpoints: gossip_checkpoints.checkpoints,
             });
 
-            self.state.update(
-                gossip_checkpoints.slot,
-                gossip_checkpoints.checkpoints.output(),
-                #[cfg(feature = "pot")]
-                None,
-                &self.pot_verifier,
-            );
             #[cfg(feature = "pot")]
-            self.current_slot_iterations.store(
-                self.state.next_slot_input.slot_iterations,
-                Ordering::Relaxed,
-            );
+            self.current_slot_iterations
+                .store(next_slot_input.slot_iterations, Ordering::Relaxed);
         }
     }
 

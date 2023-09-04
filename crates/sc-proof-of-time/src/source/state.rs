@@ -5,7 +5,7 @@ use sp_consensus_subspace::PotParametersChange;
 use std::num::NonZeroU32;
 use subspace_core_primitives::{PotProof, PotSeed};
 
-#[derive(Debug, Copy, Clone)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub(super) struct NextSlotInput {
     pub(super) slot: Slot,
     pub(super) slot_iterations: NonZeroU32,
@@ -20,6 +20,34 @@ pub(super) struct PotState {
 }
 
 impl PotState {
+    /// Extend state if it matches provided expected next slot input.
+    ///
+    /// Returns `Some` if state was extended.
+    pub(super) fn try_extend(
+        &mut self,
+        expected_next_slot_input: NextSlotInput,
+        best_slot: Slot,
+        best_proof: PotProof,
+        #[cfg(feature = "pot")] maybe_updated_parameters_change: Option<
+            Option<PotParametersChange>,
+        >,
+        pot_verifier: &PotVerifier,
+    ) -> Option<NextSlotInput> {
+        if expected_next_slot_input != self.next_slot_input {
+            return None;
+        }
+
+        self.update(
+            best_slot,
+            best_proof,
+            #[cfg(feature = "pot")]
+            maybe_updated_parameters_change,
+            pot_verifier,
+        );
+
+        Some(self.next_slot_input)
+    }
+
     pub(super) fn update(
         &mut self,
         mut best_slot: Slot,
