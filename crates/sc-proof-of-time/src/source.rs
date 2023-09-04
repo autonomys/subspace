@@ -284,7 +284,12 @@ where
             .send(PotSlotInfo { slot, checkpoints })
             .await;
 
-        self.update_next_slot_input(slot, checkpoints.output());
+        self.update_next_slot_input(
+            slot,
+            checkpoints.output(),
+            #[cfg(feature = "pot")]
+            None,
+        );
     }
 
     // TODO: Follow both verified and unverified checkpoints to start secondary timekeeper ASAP in
@@ -310,6 +315,8 @@ where
             self.update_next_slot_input(
                 gossip_checkpoints.slot,
                 gossip_checkpoints.checkpoints.output(),
+                #[cfg(feature = "pot")]
+                None,
             );
         }
     }
@@ -355,9 +362,6 @@ where
             }
         };
 
-        #[cfg(feature = "pot")]
-        self.parameters_change = pot_parameters.next_parameters_change();
-
         let best_slot = pre_digest.slot() + self.chain_constants.block_authoring_delay();
         let best_proof = pre_digest.pot_info().future_proof_of_time();
 
@@ -366,10 +370,26 @@ where
         // * if block import is on a different PoT chain, it will update next slot input to the
         //   correct fork
         // * if block import is on the same PoT chain this will essentially do nothing
-        self.update_next_slot_input(best_slot, best_proof);
+        self.update_next_slot_input(
+            best_slot,
+            best_proof,
+            #[cfg(feature = "pot")]
+            Some(pot_parameters.next_parameters_change()),
+        );
     }
 
-    fn update_next_slot_input(&mut self, mut best_slot: Slot, mut best_proof: PotProof) {
+    fn update_next_slot_input(
+        &mut self,
+        mut best_slot: Slot,
+        mut best_proof: PotProof,
+        #[cfg(feature = "pot")] maybe_updated_parameters_change: Option<
+            Option<PotParametersChange>,
+        >,
+    ) {
+        #[cfg(feature = "pot")]
+        if let Some(updated_parameters_change) = maybe_updated_parameters_change {
+            self.parameters_change = updated_parameters_change;
+        }
         loop {
             let next_slot = best_slot + Slot::from(1);
             let next_slot_iterations;
