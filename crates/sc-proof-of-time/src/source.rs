@@ -34,6 +34,7 @@ use tracing::{debug, error};
 const LOCAL_PROOFS_CHANNEL_CAPACITY: usize = 10;
 const SLOTS_CHANNEL_CAPACITY: usize = 10;
 const GOSSIP_OUTGOING_CHANNEL_CAPACITY: usize = 10;
+const GOSSIP_INCOMING_CHANNEL_CAPACITY: usize = 10;
 
 /// Proof of time slot information
 pub struct PotSlotInfo {
@@ -189,7 +190,7 @@ where
         let (outgoing_messages_sender, outgoing_messages_receiver) =
             mpsc::channel(GOSSIP_OUTGOING_CHANNEL_CAPACITY);
         let (incoming_messages_sender, incoming_messages_receiver) =
-            mpsc::channel(GOSSIP_OUTGOING_CHANNEL_CAPACITY);
+            mpsc::channel(GOSSIP_INCOMING_CHANNEL_CAPACITY);
         let gossip = PotGossipWorker::new(
             outgoing_messages_receiver,
             incoming_messages_sender,
@@ -231,12 +232,12 @@ where
             select! {
                 // List of blocks that the client has finalized.
                 timekeeper_checkpoints = self.timekeeper_checkpoints_receiver.select_next_some() => {
-                    self.handle_timekeeper_checkpoints(timekeeper_checkpoints).await;
+                    self.handle_timekeeper_checkpoints(timekeeper_checkpoints);
                 }
                 // List of blocks that the client has finalized.
                 maybe_gossip_checkpoints = self.incoming_messages_receiver.next() => {
                     if let Some((sender, gossip_checkpoints)) = maybe_gossip_checkpoints {
-                        self.handle_gossip_checkpoints(sender, gossip_checkpoints).await;
+                        self.handle_gossip_checkpoints(sender, gossip_checkpoints);
                     } else {
                         debug!("Incoming gossip messages stream ended, exiting");
                         return;
@@ -244,7 +245,7 @@ where
                 }
                 maybe_import_notification = import_notification_stream.next() => {
                     if let Some(import_notification) = maybe_import_notification {
-                        self.handle_import_notification(import_notification).await;
+                        self.handle_import_notification(import_notification);
                     } else {
                         debug!("Import notifications stream ended, exiting");
                         return;
@@ -254,10 +255,7 @@ where
         }
     }
 
-    async fn handle_timekeeper_checkpoints(
-        &mut self,
-        timekeeper_checkpoints: TimekeeperCheckpoints,
-    ) {
+    fn handle_timekeeper_checkpoints(&mut self, timekeeper_checkpoints: TimekeeperCheckpoints) {
         let TimekeeperCheckpoints {
             seed,
             slot_iterations,
@@ -278,11 +276,9 @@ where
             debug!(%slot, "Gossip is not able to keep-up with slot production");
         }
 
-        // It doesn't matter if receiver is dropped
-        let _ = self
-            .slot_sender
-            .send(PotSlotInfo { slot, checkpoints })
-            .await;
+        // We don't care if block production is too slow or block production is not enabled on this
+        // node at all
+        let _ = self.slot_sender.try_send(PotSlotInfo { slot, checkpoints });
 
         self.update_next_slot_input(
             slot,
@@ -294,7 +290,7 @@ where
 
     // TODO: Follow both verified and unverified checkpoints to start secondary timekeeper ASAP in
     //  case verification succeeds
-    async fn handle_gossip_checkpoints(
+    fn handle_gossip_checkpoints(
         &mut self,
         _sender: PeerId,
         gossip_checkpoints: GossipCheckpoints,
@@ -303,14 +299,12 @@ where
             && gossip_checkpoints.slot_iterations == self.next_slot_input.slot_iterations
             && gossip_checkpoints.seed == self.next_slot_input.seed
         {
-            // It doesn't matter if receiver is dropped
-            let _ = self
-                .slot_sender
-                .send(PotSlotInfo {
-                    slot: gossip_checkpoints.slot,
-                    checkpoints: gossip_checkpoints.checkpoints,
-                })
-                .await;
+            // We don't care if block production is too slow or block production is not enabled on
+            // this node at all
+            let _ = self.slot_sender.try_send(PotSlotInfo {
+                slot: gossip_checkpoints.slot,
+                checkpoints: gossip_checkpoints.checkpoints,
+            });
 
             self.update_next_slot_input(
                 gossip_checkpoints.slot,
@@ -322,17 +316,11 @@ where
     }
 
     #[cfg(not(feature = "pot"))]
-    async fn handle_import_notification(
-        &mut self,
-        _import_notification: BlockImportNotification<Block>,
-    ) {
+    fn handle_import_notification(&mut self, _import_notification: BlockImportNotification<Block>) {
     }
 
     #[cfg(feature = "pot")]
-    async fn handle_import_notification(
-        &mut self,
-        import_notification: BlockImportNotification<Block>,
-    ) {
+    fn handle_import_notification(&mut self, import_notification: BlockImportNotification<Block>) {
         let pre_digest = match extract_pre_digest(&import_notification.header) {
             Ok(pre_digest) => pre_digest,
             Err(error) => {
