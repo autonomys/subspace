@@ -25,6 +25,7 @@ use sc_tracing::tracing::{debug, trace};
 use sp_consensus::BlockOrigin;
 use sp_runtime::traits::{Block as BlockT, Header, NumberFor, One};
 use sp_runtime::Saturating;
+use std::num::NonZeroU16;
 use std::time::Duration;
 use subspace_archiving::reconstructor::Reconstructor;
 use subspace_core_primitives::{
@@ -33,6 +34,9 @@ use subspace_core_primitives::{
 use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator, RetryPolicy};
 use tokio::sync::Semaphore;
 use tracing::warn;
+
+/// Get piece retry attempts number.
+const PIECE_GETTER_RETRY_NUMBER: NonZeroU16 = NonZeroU16::new(3).expect("Not zero; qed");
 
 /// How many blocks to queue before pausing and waiting for blocks to be imported, this is
 /// essentially used to ensure we use a bounded amount of RAM during sync process.
@@ -269,7 +273,10 @@ where
                     }
                 };
                 let maybe_piece = match piece_provider
-                    .get_piece(piece_index, RetryPolicy::Limited(0))
+                    .get_piece(
+                        piece_index,
+                        RetryPolicy::Limited(PIECE_GETTER_RETRY_NUMBER.get()),
+                    )
                     .await
                 {
                     Ok(maybe_piece) => maybe_piece,

@@ -16,6 +16,7 @@
 
 //! Service and ServiceFactory implementation. Specialized wrapper over substrate service.
 #![feature(
+    const_option,
     impl_trait_in_assoc_type,
     int_roundings,
     type_alias_impl_trait,
