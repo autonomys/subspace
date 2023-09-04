@@ -74,6 +74,7 @@ pub struct PotSlotInfoStream(mpsc::Receiver<PotSlotInfo>);
 #[must_use = "Proof of time source doesn't do anything unless run() method is called"]
 pub struct PotSource<Block, Client> {
     client: Arc<Client>,
+    pot_verifier: PotVerifier,
     #[cfg(feature = "pot")]
     chain_constants: ChainConstants,
     timekeeper_checkpoints_receiver: mpsc::Receiver<TimekeeperCheckpoints>,
@@ -192,7 +193,7 @@ where
         let gossip = PotGossipWorker::new(
             outgoing_messages_receiver,
             incoming_messages_sender,
-            pot_verifier,
+            pot_verifier.clone(),
             Arc::clone(&current_slot_iterations),
             network,
             sync,
@@ -200,6 +201,7 @@ where
 
         let source = Self {
             client,
+            pot_verifier,
             #[cfg(feature = "pot")]
             chain_constants,
             timekeeper_checkpoints_receiver,
@@ -357,53 +359,65 @@ where
         self.parameters_change = pot_parameters.next_parameters_change();
 
         let best_slot = pre_digest.slot() + self.chain_constants.block_authoring_delay();
+        let best_proof = pre_digest.pot_info().future_proof_of_time();
 
-        // In case block import is ahead of timekeeper and gossip, update next slot input
-        if best_slot + Slot::from(1) >= self.next_slot_input.slot {
-            self.update_next_slot_input(best_slot, pre_digest.pot_info().future_proof_of_time());
-        }
+        // This will do one of 3 things depending on circumstances:
+        // * if block import is ahead of timekeeper and gossip, it will update next slot input
+        // * if block import is on a different PoT chain, it will update next slot input to the
+        //   correct fork
+        // * if block import is on the same PoT chain this will essentially do nothing
+        self.update_next_slot_input(best_slot, best_proof);
     }
 
-    fn update_next_slot_input(&mut self, best_slot: Slot, best_proof: PotProof) {
-        let next_slot = best_slot + Slot::from(1);
-        let next_slot_iterations;
-        let next_seed;
+    fn update_next_slot_input(&mut self, mut best_slot: Slot, mut best_proof: PotProof) {
+        loop {
+            let next_slot = best_slot + Slot::from(1);
+            let next_slot_iterations;
+            let next_seed;
 
-        #[cfg(feature = "pot")]
-        // The change to number of iterations might have happened before `next_slot`
-        if let Some(parameters_change) = self.parameters_change
-            && parameters_change.slot <= next_slot
-        {
-            next_slot_iterations = parameters_change.slot_iterations;
-            // Only if entropy injection happens on this exact slot we need to mix it in
-            if parameters_change.slot == next_slot {
-                next_seed = best_proof.seed_with_entropy(&parameters_change.entropy);
-
-                self.parameters_change.take();
+            #[cfg(feature = "pot")]
+            // The change to number of iterations might have happened before `next_slot`
+            if let Some(parameters_change) = self.parameters_change
+                && parameters_change.slot <= next_slot
+            {
+                next_slot_iterations = parameters_change.slot_iterations;
+                // Only if entropy injection happens on this exact slot we need to mix it in
+                if parameters_change.slot == next_slot {
+                    next_seed = best_proof.seed_with_entropy(&parameters_change.entropy);
+                    self.parameters_change.take();
+                } else {
+                    next_seed = best_proof.seed();
+                }
             } else {
+                next_slot_iterations = self.next_slot_input.slot_iterations;
                 next_seed = best_proof.seed();
             }
-        } else {
-            next_slot_iterations = self.next_slot_input.slot_iterations;
-            next_seed = best_proof.seed();
-        }
-        #[cfg(not(feature = "pot"))]
-        {
-            next_slot_iterations = self.next_slot_input.slot_iterations;
-            next_seed = best_proof.seed();
-        }
+            #[cfg(not(feature = "pot"))]
+            {
+                next_slot_iterations = self.next_slot_input.slot_iterations;
+                next_seed = best_proof.seed();
+            }
 
-        self.next_slot_input = NextSlotInput {
-            slot: next_slot,
-            slot_iterations: next_slot_iterations,
-            seed: next_seed,
-        };
-        #[cfg(feature = "pot")]
-        self.current_slot_iterations
-            .store(self.next_slot_input.slot_iterations, Ordering::Relaxed);
+            self.next_slot_input = NextSlotInput {
+                slot: next_slot,
+                slot_iterations: next_slot_iterations,
+                seed: next_seed,
+            };
+            #[cfg(feature = "pot")]
+            self.current_slot_iterations
+                .store(next_slot_iterations, Ordering::Relaxed);
 
-        // TODO: Try to get higher time slot using verifier, we are behind and need to catch up
-        //  and may have already received newer proofs via gossip
+            // Advance further as far as possible using previously verified proofs/checkpoints
+            if let Some(checkpoints) = self
+                .pot_verifier
+                .get_checkpoints(next_seed, next_slot_iterations)
+            {
+                best_slot = best_slot + Slot::from(1);
+                best_proof = checkpoints.output();
+            } else {
+                break;
+            }
+        }
     }
 }
 

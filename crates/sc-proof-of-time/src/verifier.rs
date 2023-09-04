@@ -64,6 +64,22 @@ impl PotVerifier {
         self.genesis_seed
     }
 
+    pub fn get_checkpoints(
+        &self,
+        seed: PotSeed,
+        slot_iterations: NonZeroU32,
+    ) -> Option<PotCheckpoints> {
+        let cache_key = CacheKey {
+            seed,
+            slot_iterations,
+        };
+
+        self.cache
+            .lock()
+            .peek(&cache_key)
+            .and_then(|value| value.checkpoints.try_lock()?.as_ref().copied())
+    }
+
     /// Verify a single proof of time that is `slots` slots away from `seed`.
     ///
     /// In case `maybe_parameters_change` is present, it will not affect provided `seed` and
