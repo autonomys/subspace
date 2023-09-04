@@ -141,12 +141,12 @@ impl PotVerifier {
                 checkpoints: Arc::default(),
             };
             let checkpoints = Arc::clone(&cache_value.checkpoints);
+            // Take a lock before anyone else
             let mut checkpoints = checkpoints
                 .try_lock()
                 .expect("No one can access this mutex yet; qed");
             // Store pending verification entry in cache
             cache.push(cache_key, cache_value);
-            // Take a lock before anyone else
             // Cache lock is no longer necessary, other callers should be able to access cache
             // too
             drop(cache);
@@ -217,12 +217,12 @@ impl PotVerifier {
                 checkpoints: Arc::default(),
             };
             let correct_checkpoints = Arc::clone(&cache_value.checkpoints);
+            // Take a lock before anyone else
             let mut correct_checkpoints = correct_checkpoints
                 .try_lock()
                 .expect("No one can access this mutex yet; qed");
             // Store pending verification entry in cache
             cache.push(cache_key, cache_value);
-            // Take a lock before anyone else
             // Cache lock is no longer necessary, other callers should be able to access cache too
             drop(cache);
 
