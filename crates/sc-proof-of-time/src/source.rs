@@ -15,6 +15,8 @@ use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::extract_pre_digest;
 #[cfg(feature = "pot")]
 use sp_consensus_subspace::ChainConstants;
+#[cfg(feature = "pot")]
+use sp_consensus_subspace::PotParametersChange;
 use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi as SubspaceRuntimeApi};
 use sp_runtime::traits::Block as BlockT;
 #[cfg(feature = "pot")]
@@ -25,7 +27,7 @@ use std::num::NonZeroU32;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::thread;
-use subspace_core_primitives::{PotCheckpoints, PotSeed, SlotNumber};
+use subspace_core_primitives::{PotCheckpoints, PotProof, PotSeed, SlotNumber};
 use subspace_proof_of_time::PotError;
 use tracing::{debug, error};
 
@@ -53,6 +55,13 @@ struct TimekeeperCheckpoints {
     checkpoints: PotCheckpoints,
 }
 
+#[derive(Debug)]
+struct NextSlotInput {
+    slot: Slot,
+    slot_iterations: NonZeroU32,
+    seed: PotSeed,
+}
+
 /// Stream with proof of time slots
 #[derive(Debug, Deref, DerefMut, From)]
 pub struct PotSlotInfoStream(mpsc::Receiver<PotSlotInfo>);
@@ -71,11 +80,14 @@ pub struct PotSource<Block, Client> {
     outgoing_messages_sender: mpsc::Sender<GossipCheckpoints>,
     incoming_messages_receiver: mpsc::Receiver<(PeerId, GossipCheckpoints)>,
     slot_sender: mpsc::Sender<PotSlotInfo>,
+    /// Rough current number of slot iterations used by gossip for verification purposes
     #[cfg(feature = "pot")]
     current_slot_iterations: Arc<Atomic<NonZeroU32>>,
     // TODO: Make this shared with Timekeeper instead so it can follow latest parameters
     //  automatically, this will implement Timekeeper "reset"
-    next_slot_and_seed: (Slot, PotSeed),
+    next_slot_input: NextSlotInput,
+    #[cfg(feature = "pot")]
+    parameters_change: Option<PotParametersChange>,
     _block: PhantomData<Block>,
 }
 
@@ -100,7 +112,7 @@ where
         let chain_constants;
         let start_slot;
         let start_seed;
-        let current_slot_iterations;
+        let slot_iterations;
         #[cfg(feature = "pot")]
         {
             let best_hash = client.info().best_hash;
@@ -125,7 +137,7 @@ where
                 best_pre_digest.pot_info().future_proof_of_time().seed()
             };
             // TODO: Support parameters change
-            current_slot_iterations = client
+            slot_iterations = client
                 .runtime_api()
                 .pot_parameters(best_hash)?
                 .slot_iterations(start_slot);
@@ -134,7 +146,7 @@ where
         {
             start_slot = Slot::from(1);
             start_seed = pot_verifier.genesis_seed();
-            current_slot_iterations = NonZeroU32::new(100_000_000).expect("Not zero; qed");
+            slot_iterations = NonZeroU32::new(100_000_000).expect("Not zero; qed");
         }
 
         let (timekeeper_checkpoints_sender, timekeeper_checkpoints_receiver) =
@@ -149,7 +161,7 @@ where
                     if let Err(error) = run_timekeeper(
                         start_seed,
                         start_slot,
-                        current_slot_iterations,
+                        slot_iterations,
                         pot_verifier,
                         timekeeper_checkpoints_sender,
                     ) {
@@ -159,7 +171,7 @@ where
                 .expect("Thread creation must not panic");
         }
 
-        let current_slot_iterations = Arc::new(Atomic::new(current_slot_iterations));
+        let current_slot_iterations = Arc::new(Atomic::new(slot_iterations));
 
         let (outgoing_messages_sender, outgoing_messages_receiver) =
             mpsc::channel(GOSSIP_OUTGOING_CHANNEL_CAPACITY);
@@ -184,7 +196,13 @@ where
             slot_sender,
             #[cfg(feature = "pot")]
             current_slot_iterations,
-            next_slot_and_seed: (start_slot, start_seed),
+            next_slot_input: NextSlotInput {
+                slot: start_slot,
+                slot_iterations,
+                seed: start_seed,
+            },
+            #[cfg(feature = "pot")]
+            parameters_change: None,
             _block: PhantomData,
         };
 
@@ -252,7 +270,7 @@ where
             .send(PotSlotInfo { slot, checkpoints })
             .await;
 
-        self.next_slot_and_seed = (slot + Slot::from(1), checkpoints.output().seed());
+        self.update_next_slot_input(slot, checkpoints.output());
     }
 
     // TODO: Follow both verified and unverified checkpoints to start secondary timekeeper ASAP in
@@ -262,8 +280,10 @@ where
         _sender: PeerId,
         gossip_checkpoints: GossipCheckpoints,
     ) {
-        let (next_slot, next_seed) = self.next_slot_and_seed;
-        if gossip_checkpoints.slot == next_slot && gossip_checkpoints.seed == next_seed {
+        if gossip_checkpoints.slot == self.next_slot_input.slot
+            && gossip_checkpoints.slot_iterations == self.next_slot_input.slot_iterations
+            && gossip_checkpoints.seed == self.next_slot_input.seed
+        {
             // It doesn't matter if receiver is dropped
             let _ = self
                 .slot_sender
@@ -273,9 +293,9 @@ where
                 })
                 .await;
 
-            self.next_slot_and_seed = (
-                gossip_checkpoints.slot + Slot::from(1),
-                gossip_checkpoints.checkpoints.output().seed(),
+            self.update_next_slot_input(
+                gossip_checkpoints.slot,
+                gossip_checkpoints.checkpoints.output(),
             );
         }
     }
@@ -321,22 +341,30 @@ where
             }
         };
 
-        let next_slot =
-            pre_digest.slot() + self.chain_constants.block_authoring_delay() + Slot::from(1);
-        self.current_slot_iterations
-            .store(pot_parameters.slot_iterations(next_slot), Ordering::Relaxed);
+        #[cfg(feature = "pot")]
+        self.parameters_change = pot_parameters.next_parameters_change();
 
-        // In case block import is ahead of timekeeper and gossip, update `next_slot_and_seed`
-        if next_slot >= self.next_slot_and_seed.0 {
-            // TODO: Account for entropy injection here
-            self.next_slot_and_seed = (
-                next_slot,
-                pre_digest.pot_info().future_proof_of_time().seed(),
-            );
+        let best_slot = pre_digest.slot() + self.chain_constants.block_authoring_delay();
 
-            // TODO: Try to get higher time slot using verifier, we are behind and need to catch up
-            //  and may have already received newer proofs via gossip
+        // In case block import is ahead of timekeeper and gossip, update next slot input
+        if best_slot + Slot::from(1) >= self.next_slot_input.slot {
+            self.update_next_slot_input(best_slot, pre_digest.pot_info().future_proof_of_time());
         }
+    }
+
+    fn update_next_slot_input(&mut self, best_slot: Slot, best_proof: PotProof) {
+        // TODO: Take `self.parameters_change` into consideration
+        self.next_slot_input = NextSlotInput {
+            slot: best_slot + Slot::from(1),
+            slot_iterations: self.next_slot_input.slot_iterations,
+            seed: best_proof.seed(),
+        };
+        #[cfg(feature = "pot")]
+        self.current_slot_iterations
+            .store(self.next_slot_input.slot_iterations, Ordering::Relaxed);
+
+        // TODO: Try to get higher time slot using verifier, we are behind and need to catch up
+        //  and may have already received newer proofs via gossip
     }
 }
 

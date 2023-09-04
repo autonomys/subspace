@@ -136,7 +136,7 @@ pub type EquivocationProof<Header> = sp_consensus_slots::EquivocationProof<Heade
 
 /// Change of parameters to apply to PoT chain
 #[cfg(feature = "pot")]
-#[derive(Debug, Clone, PartialEq, Eq, Decode, Encode, TypeInfo, MaxEncodedLen)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Decode, Encode, TypeInfo, MaxEncodedLen)]
 pub struct PotParametersChange {
     /// At which slot change of parameters takes effect
     pub slot: Slot,
@@ -670,6 +670,13 @@ impl PotParameters {
         }
 
         *slot_iterations
+    }
+
+    /// Get next proof of time parameters change if any
+    pub fn next_parameters_change(&self) -> Option<PotParametersChange> {
+        let Self::V0 { next_change, .. } = self;
+
+        *next_change
     }
 }
 
