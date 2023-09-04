@@ -57,7 +57,7 @@ use sc_consensus_subspace::{
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
 #[cfg(feature = "pot")]
-use sc_proof_of_time::gossip::pot_gossip_peers_set_config;
+use sc_proof_of_time::source::gossip::pot_gossip_peers_set_config;
 #[cfg(feature = "pot")]
 use sc_proof_of_time::source::PotSource;
 #[cfg(feature = "pot")]

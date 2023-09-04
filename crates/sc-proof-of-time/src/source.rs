@@ -1,6 +1,7 @@
+pub mod gossip;
 mod state;
 
-use crate::gossip::{GossipCheckpoints, PotGossipWorker};
+use crate::source::gossip::{GossipCheckpoints, PotGossipWorker};
 use crate::source::state::{NextSlotInput, PotState};
 use crate::verifier::PotVerifier;
 use atomic::Atomic;

@@ -2,7 +2,6 @@
 
 #![feature(let_chains, stmt_expr_attributes)]
 
-pub mod gossip;
 mod slots;
 pub mod source;
 pub mod verifier;
