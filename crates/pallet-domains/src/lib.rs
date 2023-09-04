@@ -1097,12 +1097,9 @@ mod pallet {
 
         // TODO: remove once the migration is done
         fn on_runtime_upgrade() -> Weight {
-            for (domain_id, stake_summary) in DomainStakingSummary::<T>::iter() {
-                if stake_summary.current_epoch_index.is_zero() {
-                    if let Err(err) = do_finalize_domain_current_epoch::<T>(domain_id, One::one()) {
-                        log::error!(target: "runtime::domains", "Failed to do epoch transition for {domain_id:?}: {err:?}");
-                    }
-                }
+            for (domain_id, mut tx_range_state) in DomainTxRangeState::<T>::iter() {
+                tx_range_state.tx_range = Self::initial_tx_range();
+                DomainTxRangeState::<T>::set(domain_id, Some(tx_range_state));
             }
             Weight::zero()
         }
