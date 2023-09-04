@@ -1,7 +1,7 @@
 //! PoT gossip functionality.
 
+use crate::source::state::PotState;
 use crate::verifier::PotVerifier;
-use atomic::Atomic;
 use futures::channel::mpsc;
 use futures::{FutureExt, SinkExt, StreamExt};
 use parity_scale_codec::{Decode, Encode};
@@ -31,15 +31,15 @@ pub fn pot_gossip_peers_set_config() -> NonDefaultSetConfig {
 }
 
 #[derive(Debug, Copy, Clone, Encode, Decode)]
-pub(crate) struct GossipCheckpoints {
+pub(super) struct GossipCheckpoints {
     /// Slot number
-    pub(crate) slot: Slot,
+    pub(super) slot: Slot,
     /// Proof of time seed
-    pub(crate) seed: PotSeed,
+    pub(super) seed: PotSeed,
     /// Iterations per slot
-    pub(crate) slot_iterations: NonZeroU32,
+    pub(super) slot_iterations: NonZeroU32,
     /// Proof of time checkpoints
-    pub(crate) checkpoints: PotCheckpoints,
+    pub(super) checkpoints: PotCheckpoints,
 }
 
 /// PoT gossip worker
@@ -59,11 +59,11 @@ where
     Block: BlockT,
 {
     /// Instantiate gossip worker
-    pub(crate) fn new<Network, GossipSync>(
+    pub(super) fn new<Network, GossipSync>(
         outgoing_messages_receiver: mpsc::Receiver<GossipCheckpoints>,
         incoming_messages_sender: mpsc::Sender<(PeerId, GossipCheckpoints)>,
         pot_verifier: PotVerifier,
-        current_slot_iterations: Arc<Atomic<NonZeroU32>>,
+        state: Arc<PotState>,
         network: Network,
         sync: Arc<GossipSync>,
     ) -> Self
@@ -73,11 +73,7 @@ where
     {
         let topic = <<Block::Header as HeaderT>::Hashing as HashT>::hash(b"checkpoints");
 
-        let validator = Arc::new(PotGossipValidator::new(
-            pot_verifier,
-            current_slot_iterations,
-            topic,
-        ));
+        let validator = Arc::new(PotGossipValidator::new(pot_verifier, state, topic));
         let engine = GossipEngine::new(network, sync, GOSSIP_PROTOCOL, validator, None);
 
         Self {
@@ -146,7 +142,7 @@ where
     Block: BlockT,
 {
     pot_verifier: PotVerifier,
-    current_slot_iterations: Arc<Atomic<NonZeroU32>>,
+    state: Arc<PotState>,
     topic: Block::Hash,
 }
 
@@ -155,14 +151,10 @@ where
     Block: BlockT,
 {
     /// Creates the validator.
-    fn new(
-        pot_verifier: PotVerifier,
-        current_slot_iterations: Arc<Atomic<NonZeroU32>>,
-        topic: Block::Hash,
-    ) -> Self {
+    fn new(pot_verifier: PotVerifier, state: Arc<PotState>, topic: Block::Hash) -> Self {
         Self {
             pot_verifier,
-            current_slot_iterations,
+            state,
             topic,
         }
     }
@@ -184,7 +176,10 @@ where
             Ok(message) => {
                 // TODO: Gossip validation should be non-blocking!
                 // TODO: Check that slot number is not too far in the past of future
-                let current_slot_iterations = self.current_slot_iterations.load(Ordering::Relaxed);
+                let current_slot_iterations = self
+                    .state
+                    .next_slot_input(Ordering::Relaxed)
+                    .slot_iterations;
 
                 // Check that number of slot iterations is between 2/3 and 1.5 of current slot
                 // iterations, otherwise ignore

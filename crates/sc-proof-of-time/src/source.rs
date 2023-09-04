@@ -4,7 +4,6 @@ mod state;
 use crate::source::gossip::{GossipCheckpoints, PotGossipWorker};
 use crate::source::state::{NextSlotInput, PotState};
 use crate::verifier::PotVerifier;
-use atomic::Atomic;
 use derive_more::{Deref, DerefMut, From};
 use futures::channel::mpsc;
 use futures::executor::block_on;
@@ -25,8 +24,6 @@ use sp_runtime::traits::Block as BlockT;
 use sp_runtime::traits::{Header, Zero};
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
-#[cfg(feature = "pot")]
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::thread;
 use subspace_core_primitives::{PotCheckpoints, PotSeed, SlotNumber};
@@ -70,19 +67,15 @@ pub struct PotSlotInfoStream(mpsc::Receiver<PotSlotInfo>);
 #[must_use = "Proof of time source doesn't do anything unless run() method is called"]
 pub struct PotSource<Block, Client> {
     client: Arc<Client>,
-    pot_verifier: PotVerifier,
     #[cfg(feature = "pot")]
     chain_constants: ChainConstants,
     timekeeper_checkpoints_receiver: mpsc::Receiver<TimekeeperCheckpoints>,
     outgoing_messages_sender: mpsc::Sender<GossipCheckpoints>,
     incoming_messages_receiver: mpsc::Receiver<(PeerId, GossipCheckpoints)>,
     slot_sender: mpsc::Sender<PotSlotInfo>,
-    /// Rough current number of slot iterations used by gossip for verification purposes
-    #[cfg(feature = "pot")]
-    current_slot_iterations: Arc<Atomic<NonZeroU32>>,
     // TODO: Make this shared with Timekeeper so it can follow latest parameters automatically,
     //  this will help implementing Timekeeper "reset"
-    state: PotState,
+    state: Arc<PotState>,
     _block: PhantomData<Block>,
 }
 
@@ -154,6 +147,17 @@ where
             slot_iterations = NonZeroU32::new(100_000_000).expect("Not zero; qed");
         }
 
+        let state = Arc::new(PotState::new(
+            NextSlotInput {
+                slot: start_slot,
+                slot_iterations,
+                seed: start_seed,
+            },
+            #[cfg(feature = "pot")]
+            maybe_next_parameters_change,
+            pot_verifier.clone(),
+        ));
+
         let (timekeeper_checkpoints_sender, timekeeper_checkpoints_receiver) =
             mpsc::channel(LOCAL_PROOFS_CHANNEL_CAPACITY);
         let (slot_sender, slot_receiver) = mpsc::channel(SLOTS_CHANNEL_CAPACITY);
@@ -176,8 +180,6 @@ where
                 .expect("Thread creation must not panic");
         }
 
-        let current_slot_iterations = Arc::new(Atomic::new(slot_iterations));
-
         let (outgoing_messages_sender, outgoing_messages_receiver) =
             mpsc::channel(GOSSIP_OUTGOING_CHANNEL_CAPACITY);
         let (incoming_messages_sender, incoming_messages_receiver) =
@@ -186,31 +188,20 @@ where
             outgoing_messages_receiver,
             incoming_messages_sender,
             pot_verifier.clone(),
-            Arc::clone(&current_slot_iterations),
+            Arc::clone(&state),
             network,
             sync,
         );
 
         let source = Self {
             client,
-            pot_verifier,
             #[cfg(feature = "pot")]
             chain_constants,
             timekeeper_checkpoints_receiver,
             outgoing_messages_sender,
             incoming_messages_receiver,
             slot_sender,
-            #[cfg(feature = "pot")]
-            current_slot_iterations,
-            state: PotState {
-                next_slot_input: NextSlotInput {
-                    slot: start_slot,
-                    slot_iterations,
-                    seed: start_seed,
-                },
-                #[cfg(feature = "pot")]
-                parameters_change: maybe_next_parameters_change,
-            },
+            state,
             _block: PhantomData,
         };
 
@@ -278,12 +269,6 @@ where
             checkpoints.output(),
             #[cfg(feature = "pot")]
             None,
-            &self.pot_verifier,
-        );
-        #[cfg(feature = "pot")]
-        self.current_slot_iterations.store(
-            self.state.next_slot_input.slot_iterations,
-            Ordering::Relaxed,
         );
     }
 
@@ -300,25 +285,23 @@ where
             seed: gossip_checkpoints.seed,
         };
 
-        #[cfg_attr(not(feature = "pot"), allow(unused_variables))]
-        if let Some(next_slot_input) = self.state.try_extend(
-            expected_next_slot_input,
-            gossip_checkpoints.slot,
-            gossip_checkpoints.checkpoints.output(),
-            #[cfg(feature = "pot")]
-            None,
-            &self.pot_verifier,
-        ) {
+        if self
+            .state
+            .try_extend(
+                expected_next_slot_input,
+                gossip_checkpoints.slot,
+                gossip_checkpoints.checkpoints.output(),
+                #[cfg(feature = "pot")]
+                None,
+            )
+            .is_some()
+        {
             // We don't care if block production is too slow or block production is not enabled on
             // this node at all
             let _ = self.slot_sender.try_send(PotSlotInfo {
                 slot: gossip_checkpoints.slot,
                 checkpoints: gossip_checkpoints.checkpoints,
             });
-
-            #[cfg(feature = "pot")]
-            self.current_slot_iterations
-                .store(next_slot_input.slot_iterations, Ordering::Relaxed);
         }
     }
 
@@ -327,7 +310,7 @@ where
     }
 
     #[cfg(feature = "pot")]
-    fn handle_import_notification(&mut self, import_notification: BlockImportNotification<Block>) {
+    fn handle_import_notification(&self, import_notification: BlockImportNotification<Block>) {
         let pre_digest = match extract_pre_digest(&import_notification.header) {
             Ok(pre_digest) => pre_digest,
             Err(error) => {
@@ -370,12 +353,6 @@ where
             best_proof,
             #[cfg(feature = "pot")]
             Some(pot_parameters.next_parameters_change()),
-            &self.pot_verifier,
-        );
-        #[cfg(feature = "pot")]
-        self.current_slot_iterations.store(
-            self.state.next_slot_input.slot_iterations,
-            Ordering::Relaxed,
         );
     }
 }
