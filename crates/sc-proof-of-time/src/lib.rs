@@ -1,6 +1,6 @@
 //! Subspace proof of time implementation.
 
-#![feature(stmt_expr_attributes)]
+#![feature(let_chains, stmt_expr_attributes)]
 
 pub mod gossip;
 mod slots;

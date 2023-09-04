@@ -16,7 +16,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 #![doc = include_str!("../README.md")]
-#![feature(try_blocks)]
+#![feature(let_chains, try_blocks)]
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 
@@ -745,6 +745,8 @@ where
         let correct_global_randomness;
         #[cfg(feature = "pot")]
         let pot_seed;
+        #[cfg(feature = "pot")]
+        let slot_iterations;
         let correct_solution_range;
 
         if block_number.is_one() {
@@ -759,6 +761,11 @@ where
             }
             #[cfg(feature = "pot")]
             {
+                slot_iterations = self
+                    .client
+                    .runtime_api()
+                    .pot_parameters(parent_hash)?
+                    .slot_iterations();
                 pot_seed = self.pot_verifier.genesis_seed();
             }
 
@@ -782,7 +789,19 @@ where
                     };
             }
             #[cfg(feature = "pot")]
+            // In case parameters change in the very first slot after slot of the parent block,
+            // account for them
+            if let Some(parameters_change) = subspace_digest_items.pot_parameters_change
+                && parameters_change.slot == (parent_slot + Slot::from(1))
             {
+                slot_iterations = parameters_change.slot_iterations;
+                pot_seed = parent_subspace_digest_items
+                    .pre_digest
+                    .pot_info()
+                    .proof_of_time()
+                    .seed_with_entropy(&parameters_change.entropy);
+            } else {
+                slot_iterations = subspace_digest_items.pot_slot_iterations;
                 pot_seed = parent_subspace_digest_items
                     .pre_digest
                     .pot_info()
@@ -802,13 +821,21 @@ where
         }
         #[cfg(feature = "pot")]
         // TODO: Extend/optimize this check once we have checkpoints in justifications
+        // Here we check that there is continuity from parent block's proof of time (but not future
+        // entropy since this block may be produced before slot corresponding to parent block's
+        // future proof of time) to current block's proof of time. During stateless verification we
+        // do not have access to parent block, thus only verify proofs after proof of time of at
+        // current slot up until future proof of time (inclusive), here during block import we
+        // verify the rest.
         if !self
             .pot_verifier
             .is_proof_valid(
+                pre_digest.slot(),
                 pot_seed,
-                subspace_digest_items.pot_slot_iterations,
+                slot_iterations,
                 slots_since_parent,
                 subspace_digest_items.pre_digest.pot_info().proof_of_time(),
+                subspace_digest_items.pot_parameters_change,
             )
             .await
         {

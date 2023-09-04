@@ -83,10 +83,12 @@ pub struct PotSource<Block, Client> {
     /// Rough current number of slot iterations used by gossip for verification purposes
     #[cfg(feature = "pot")]
     current_slot_iterations: Arc<Atomic<NonZeroU32>>,
-    // TODO: Make this shared with Timekeeper instead so it can follow latest parameters
-    //  automatically, this will implement Timekeeper "reset"
+    // TODO: Make this shared with Timekeeper so it can follow latest parameters automatically,
+    //  this will help implementing Timekeeper "reset"
     next_slot_input: NextSlotInput,
     #[cfg(feature = "pot")]
+    // TODO: Make this shared with Timekeeper so it can follow latest parameters automatically,
+    //  this will help implementing Timekeeper "reset"
     parameters_change: Option<PotParametersChange>,
     _block: PhantomData<Block>,
 }
@@ -110,13 +112,16 @@ where
     {
         #[cfg(feature = "pot")]
         let chain_constants;
+        #[cfg(feature = "pot")]
+        let mut maybe_next_parameters_change;
         let start_slot;
         let start_seed;
         let slot_iterations;
         #[cfg(feature = "pot")]
         {
             let best_hash = client.info().best_hash;
-            chain_constants = client.runtime_api().chain_constants(best_hash)?;
+            let runtime_api = client.runtime_api();
+            chain_constants = runtime_api.chain_constants(best_hash)?;
 
             let best_header = client.header(best_hash)?.ok_or_else(|| {
                 ApiError::UnknownBlock(format!("Parent block {best_hash} not found"))
@@ -130,17 +135,24 @@ where
                 // Next slot after the best one seen
                 best_pre_digest.slot() + chain_constants.block_authoring_delay() + Slot::from(1)
             };
-            // TODO: Support parameters change
-            start_seed = if best_header.number().is_zero() {
-                pot_verifier.genesis_seed()
+
+            let pot_parameters = runtime_api.pot_parameters(best_hash)?;
+            maybe_next_parameters_change = pot_parameters.next_parameters_change();
+
+            if let Some(parameters_change) = maybe_next_parameters_change
+                && parameters_change.slot == start_slot
+            {
+                start_seed = best_pre_digest.pot_info().future_proof_of_time().seed_with_entropy(&parameters_change.entropy);
+                slot_iterations = parameters_change.slot_iterations;
+                maybe_next_parameters_change.take();
             } else {
-                best_pre_digest.pot_info().future_proof_of_time().seed()
-            };
-            // TODO: Support parameters change
-            slot_iterations = client
-                .runtime_api()
-                .pot_parameters(best_hash)?
-                .slot_iterations(start_slot);
+                start_seed = if best_header.number().is_zero() {
+                    pot_verifier.genesis_seed()
+                } else {
+                    best_pre_digest.pot_info().future_proof_of_time().seed()
+                };
+                slot_iterations = pot_parameters.slot_iterations();
+            }
         }
         #[cfg(not(feature = "pot"))]
         {
@@ -202,7 +214,7 @@ where
                 seed: start_seed,
             },
             #[cfg(feature = "pot")]
-            parameters_change: None,
+            parameters_change: maybe_next_parameters_change,
             _block: PhantomData,
         };
 
@@ -353,11 +365,38 @@ where
     }
 
     fn update_next_slot_input(&mut self, best_slot: Slot, best_proof: PotProof) {
-        // TODO: Take `self.parameters_change` into consideration
+        let next_slot = best_slot + Slot::from(1);
+        let next_slot_iterations;
+        let next_seed;
+
+        #[cfg(feature = "pot")]
+        // The change to number of iterations might have happened before `next_slot`
+        if let Some(parameters_change) = self.parameters_change
+            && parameters_change.slot <= next_slot
+        {
+            next_slot_iterations = parameters_change.slot_iterations;
+            // Only if entropy injection happens on this exact slot we need to mix it in
+            if parameters_change.slot == next_slot {
+                next_seed = best_proof.seed_with_entropy(&parameters_change.entropy);
+
+                self.parameters_change.take();
+            } else {
+                next_seed = best_proof.seed();
+            }
+        } else {
+            next_slot_iterations = self.next_slot_input.slot_iterations;
+            next_seed = best_proof.seed();
+        }
+        #[cfg(not(feature = "pot"))]
+        {
+            next_slot_iterations = self.next_slot_input.slot_iterations;
+            next_seed = best_proof.seed();
+        }
+
         self.next_slot_input = NextSlotInput {
-            slot: best_slot + Slot::from(1),
-            slot_iterations: self.next_slot_input.slot_iterations,
-            seed: best_proof.seed(),
+            slot: next_slot,
+            slot_iterations: next_slot_iterations,
+            seed: next_seed,
         };
         #[cfg(feature = "pot")]
         self.current_slot_iterations

@@ -371,6 +371,15 @@ impl PotProof {
     pub fn seed(&self) -> PotSeed {
         PotSeed(self.0)
     }
+
+    /// Derive seed from proof of time with entropy injection
+    #[inline]
+    pub fn seed_with_entropy(&self, entropy: &Blake3Hash) -> PotSeed {
+        let hash = blake3_hash_list(&[entropy, &self.0]);
+        let mut seed = PotSeed::default();
+        seed.copy_from_slice(&hash[..Self::SIZE]);
+        seed
+    }
 }
 
 /// Proof of time checkpoints, result of proving
