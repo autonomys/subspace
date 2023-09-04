@@ -69,12 +69,12 @@ use sp_runtime::DispatchError;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 use subspace_core_primitives::crypto::Scalar;
+#[cfg(feature = "pot")]
+use subspace_core_primitives::PotProof;
 use subspace_core_primitives::{
     ArchivedHistorySegment, HistorySize, PublicKey, Randomness, RewardSignature, SectorId,
     SectorIndex, SegmentHeader, SegmentIndex, SolutionRange,
 };
-#[cfg(feature = "pot")]
-use subspace_core_primitives::{PotProof, PotSeed};
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 #[cfg(not(feature = "pot"))]
 use subspace_verification::derive_randomness;
@@ -154,7 +154,7 @@ mod pallet {
     use sp_std::prelude::*;
     use subspace_core_primitives::crypto::Scalar;
     use subspace_core_primitives::{
-        HistorySize, PotSeed, Randomness, SectorIndex, SegmentHeader, SegmentIndex, SolutionRange,
+        HistorySize, Randomness, SectorIndex, SegmentHeader, SegmentIndex, SolutionRange,
     };
 
     pub(super) struct InitialSolutionRanges<T: Config> {
@@ -491,10 +491,6 @@ mod pallet {
     #[pallet::getter(fn root_plot_public_key)]
     pub(super) type RootPlotPublicKey<T> = StorageValue<_, FarmerPublicKey>;
 
-    /// Future proof of time seed, essentially output of parent block's future proof of time.
-    #[pallet::storage]
-    pub(super) type FuturePotSeed<T> = StorageValue<_, PotSeed>;
-
     #[pallet::hooks]
     impl<T: Config> Hooks<T::BlockNumber> for Pallet<T> {
         fn on_initialize(block_number: T::BlockNumber) -> Weight {
@@ -789,22 +785,6 @@ impl<T: Config> Pallet<T> {
     }
 
     fn do_initialize(block_number: T::BlockNumber) {
-        #[cfg(feature = "pot")]
-        frame_system::Pallet::<T>::deposit_log(DigestItem::future_pot_seed(
-            if block_number.is_one() {
-                PotSeed::from_genesis_block_hash(
-                    frame_system::Pallet::<T>::block_hash(T::BlockNumber::zero())
-                        .as_ref()
-                        .try_into()
-                        .expect("Genesis block hash length must match, panic otherwise"),
-                )
-            } else {
-                FuturePotSeed::<T>::get().expect(
-                    "Is set at the end of `do_initialize` of every block after genesis; qed",
-                )
-            },
-        ));
-
         let pre_digest = <frame_system::Pallet<T>>::digest()
             .logs
             .iter()
@@ -944,14 +924,11 @@ impl<T: Config> Pallet<T> {
             ));
         }
 
+        // TODO: Take adjustment of iterations into account once we have it
         #[cfg(feature = "pot")]
         frame_system::Pallet::<T>::deposit_log(DigestItem::pot_slot_iterations(
             PotSlotIterations::<T>::get().expect("Always instantiated during genesis; qed"),
         ));
-        // TODO: Once we have entropy injection, it might take effect right here and should be
-        //  accounted for
-        #[cfg(feature = "pot")]
-        FuturePotSeed::<T>::put(pre_digest.pot_info().future_proof_of_time().seed());
     }
 
     fn do_finalize(_block_number: T::BlockNumber) {
@@ -1106,7 +1083,7 @@ impl<T: Config> Pallet<T> {
     #[cfg(feature = "pot")]
     pub fn pot_parameters() -> PotParameters {
         PotParameters::V0 {
-            iterations: PotSlotIterations::<T>::get()
+            slot_iterations: PotSlotIterations::<T>::get()
                 .expect("Always instantiated during genesis; qed"),
             // TODO: This is where adjustment for number of iterations and entropy injection will
             //  happen for runtime API calls

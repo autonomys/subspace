@@ -44,10 +44,10 @@ use sp_runtime_interface::{pass_by, runtime_interface};
 use sp_std::num::NonZeroU32;
 use sp_std::vec::Vec;
 use subspace_core_primitives::crypto::kzg::Kzg;
+#[cfg(feature = "pot")]
+use subspace_core_primitives::Blake2b256Hash;
 #[cfg(not(feature = "pot"))]
 use subspace_core_primitives::Randomness;
-#[cfg(feature = "pot")]
-use subspace_core_primitives::{Blake2b256Hash, PotSeed};
 use subspace_core_primitives::{
     BlockNumber, HistorySize, PotCheckpoints, PublicKey, RewardSignature, SegmentCommitment,
     SegmentHeader, SegmentIndex, Solution, SolutionRange, PUBLIC_KEY_LENGTH,
@@ -181,10 +181,6 @@ enum ConsensusLog {
     /// Root plot public key was updated.
     #[codec(index = 6)]
     RootPlotPublicKeyUpdate(Option<FarmerPublicKey>),
-    /// Future proof of time seed, essentially output of parent block's future proof of time.
-    #[codec(index = 7)]
-    #[cfg(feature = "pot")]
-    FuturePotSeed(PotSeed),
 }
 
 /// Farmer vote.
@@ -651,8 +647,8 @@ sp_api::decl_runtime_apis! {
 pub enum PotParameters {
     /// Initial version of the parameters
     V0 {
-        /// Base number of iterations
-        iterations: NonZeroU32,
+        /// Base number of iterations per slot
+        slot_iterations: NonZeroU32,
         /// Optional next scheduled change of parameters
         next_change: Option<PotParametersChange>,
     },
@@ -661,9 +657,9 @@ pub enum PotParameters {
 #[cfg(feature = "pot")]
 impl PotParameters {
     /// Number of iterations for proof of time per slot, taking into account potential future change
-    pub fn iterations(&self, slot: Slot) -> NonZeroU32 {
+    pub fn slot_iterations(&self, slot: Slot) -> NonZeroU32 {
         let Self::V0 {
-            iterations,
+            slot_iterations,
             next_change,
         } = self;
 
@@ -673,7 +669,7 @@ impl PotParameters {
             }
         }
 
-        *iterations
+        *slot_iterations
     }
 }
 
@@ -724,6 +720,9 @@ sp_api::decl_runtime_apis! {
 
         /// Returns `Vec<SegmentHeader>` if a given extrinsic has them.
         fn extract_segment_headers(ext: &Block::Extrinsic) -> Option<Vec<SegmentHeader >>;
+
+        /// Checks if the extrinsic is an inherent.
+        fn is_inherent(ext: &Block::Extrinsic) -> bool;
 
         /// Returns root plot public key in case block authoring is restricted.
         fn root_plot_public_key() -> Option<FarmerPublicKey>;

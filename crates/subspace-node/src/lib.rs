@@ -30,8 +30,6 @@ use sc_telemetry::serde_json;
 use serde_json::Value;
 use std::io::Write;
 use std::{fs, io};
-#[cfg(feature = "pot")]
-use subspace_core_primitives::PotKey;
 use subspace_networking::libp2p::Multiaddr;
 
 /// Executor dispatch for subspace runtime
@@ -180,6 +178,11 @@ pub enum Subcommand {
     Benchmark(frame_benchmarking_cli::BenchmarkCmd),
 }
 
+#[cfg(feature = "pot")]
+fn parse_pot_external_entropy(s: &str) -> Result<Vec<u8>, hex::FromHexError> {
+    hex::decode(s)
+}
+
 /// Subspace Cli.
 #[derive(Debug, Parser)]
 #[clap(
@@ -265,12 +268,10 @@ pub struct Cli {
     #[cfg(feature = "pot")]
     pub timekeeper: bool,
 
-    /// Initial PoT key (unless specified in chain spec already).
-    ///
-    /// Key is a 16-byte hex string.
-    #[arg(long)]
+    /// External entropy, used initially when PoT chain starts to derive the first seed
+    #[arg(long, value_parser = parse_pot_external_entropy)]
     #[cfg(feature = "pot")]
-    pub pot_initial_key: Option<PotKey>,
+    pub pot_external_entropy: Option<Vec<u8>>,
 }
 
 impl SubstrateCli for Cli {

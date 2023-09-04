@@ -16,6 +16,7 @@
 
 //! Service and ServiceFactory implementation. Specialized wrapper over substrate service.
 #![feature(
+    const_option,
     impl_trait_in_assoc_type,
     int_roundings,
     type_alias_impl_trait,
@@ -56,7 +57,9 @@ use sc_consensus_subspace::{
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
 #[cfg(feature = "pot")]
-use sc_proof_of_time::source::{PotSource, PotSourceConfig};
+use sc_proof_of_time::source::PotSource;
+#[cfg(feature = "pot")]
+use sc_proof_of_time::verifier::PotVerifier;
 use sc_service::error::Error as ServiceError;
 use sc_service::{Configuration, NetworkStarter, SpawnTasksParams, TaskManager};
 use sc_subspace_block_relay::{build_consensus_relay, NetworkWrapper};
@@ -79,8 +82,12 @@ use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use static_assertions::const_assert;
 use std::marker::PhantomData;
+#[cfg(feature = "pot")]
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
+#[cfg(feature = "pot")]
+use subspace_core_primitives::PotSeed;
 use subspace_fraud_proof::verifier_api::VerifierClient;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
@@ -94,6 +101,11 @@ use tracing::{debug, error, info, Instrument};
 // There are multiple places where it is assumed that node is running on 64-bit system, refuse to
 // compile otherwise
 const_assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<u64>());
+
+/// This is over 15 minutes of slots assuming there are no forks, should be both sufficient and not
+/// too large to handle
+#[cfg(feature = "pot")]
+const POT_VERIFIER_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(10_000).expect("Not zero; qed");
 
 /// Error type for Subspace service.
 #[derive(thiserror::Error, Debug)]
@@ -198,9 +210,9 @@ pub struct SubspaceConfiguration {
     /// Use the block request handler implementation from subspace
     /// instead of the default substrate handler.
     pub enable_subspace_block_relay: bool,
-    /// Proof of time source config
+    /// Is this node a Timekeeper
     #[cfg(feature = "pot")]
-    pub pot_source_config: PotSourceConfig,
+    pub is_timekeeper: bool,
 }
 
 struct SubspaceExtensionsFactory<PosTable> {
@@ -252,6 +264,9 @@ where
     pub subspace_link: SubspaceLink<Block>,
     /// Segment headers store
     pub segment_headers_store: SegmentHeadersStore<FullClient<RuntimeApi, ExecutorDispatch>>,
+    /// Proof of time verifier
+    #[cfg(feature = "pot")]
+    pub pot_verifier: PotVerifier,
     /// Telemetry
     pub telemetry: Option<Telemetry>,
 }
@@ -283,6 +298,7 @@ pub fn new_partial<PosTable, RuntimeApi, ExecutorDispatch>(
             NativeElseWasmExecutor<ExecutorDispatch>,
         ) -> Arc<dyn GenerateGenesisStateRoot>,
     >,
+    #[cfg(feature = "pot")] pot_external_entropy: &[u8],
 ) -> Result<PartialComponents<RuntimeApi, ExecutorDispatch>, ServiceError>
 where
     PosTable: Table,
@@ -380,6 +396,11 @@ where
     let fraud_proof_block_import =
         sc_consensus_fraud_proof::block_import(client.clone(), client.clone(), proof_verifier);
 
+    #[cfg(feature = "pot")]
+    let pot_verifier = PotVerifier::new(
+        PotSeed::from_genesis(client.info().genesis_hash.as_ref(), pot_external_entropy),
+        POT_VERIFIER_CACHE_SIZE,
+    );
     let (block_import, subspace_link) = sc_consensus_subspace::block_import::<
         PosTable,
         _,
@@ -419,6 +440,8 @@ where
             }
         },
         segment_headers_store.clone(),
+        #[cfg(feature = "pot")]
+        pot_verifier.clone(),
     )?;
 
     let slot_duration = subspace_link.slot_duration();
@@ -428,6 +451,7 @@ where
         client.clone(),
         kzg,
         select_chain.clone(),
+        // TODO: Remove use current best slot known from PoT verifier in PoT case
         move || {
             let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
 
@@ -437,12 +461,16 @@ where
         config.prometheus_registry(),
         telemetry.as_ref().map(|x| x.handle()),
         config.role.is_authority(),
+        #[cfg(feature = "pot")]
+        pot_verifier.clone(),
     )?;
 
     let other = OtherPartialComponents {
         block_import: Box::new(block_import),
         subspace_link,
         segment_headers_store,
+        #[cfg(feature = "pot")]
+        pot_verifier,
         telemetry,
     };
 
@@ -552,6 +580,8 @@ where
         block_import,
         subspace_link,
         segment_headers_store,
+        #[cfg(feature = "pot")]
+        pot_verifier,
         mut telemetry,
     } = other;
 
@@ -765,7 +795,7 @@ where
     if config.role.is_authority() || config.force_new_slot_notifications {
         #[cfg(feature = "pot")]
         let (pot_source, pot_slot_info_stream) =
-            PotSource::new(config.pot_source_config, client.clone())
+            PotSource::new(config.is_timekeeper, client.clone(), pot_verifier)
                 .map_err(|error| Error::Other(error.into()))?;
         #[cfg(feature = "pot")]
         {

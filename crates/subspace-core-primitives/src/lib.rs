@@ -43,7 +43,8 @@ extern crate alloc;
 
 use crate::crypto::kzg::{Commitment, Witness};
 use crate::crypto::{
-    blake2b_256_hash, blake2b_256_hash_list, blake2b_256_hash_with_key, blake3_hash, Scalar,
+    blake2b_256_hash, blake2b_256_hash_list, blake2b_256_hash_with_key, blake3_hash,
+    blake3_hash_list, Scalar,
 };
 #[cfg(feature = "serde")]
 use ::serde::{Deserialize, Serialize};
@@ -140,9 +141,6 @@ pub type SolutionRange = u64;
 ///
 /// The closer solution's tag is to the target, the heavier it is.
 pub type BlockWeight = u128;
-
-/// Block hash (the bytes from H256)
-pub type BlockHash = [u8; 32];
 
 // TODO: New type
 /// Segment commitment type.
@@ -258,6 +256,12 @@ impl PosProof {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PotKey(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] [u8; Self::SIZE]);
 
+impl fmt::Display for PotKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", hex::encode(self.0))
+    }
+}
+
 impl FromStr for PotKey {
     type Err = hex::FromHexError;
 
@@ -283,6 +287,7 @@ impl PotKey {
     Clone,
     Eq,
     PartialEq,
+    Hash,
     From,
     AsRef,
     AsMut,
@@ -296,15 +301,22 @@ impl PotKey {
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PotSeed(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] [u8; Self::SIZE]);
 
+impl fmt::Display for PotSeed {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", hex::encode(self.0))
+    }
+}
+
 impl PotSeed {
     /// Size of proof of time seed in bytes
     pub const SIZE: usize = 16;
 
     /// Derive initial PoT seed from genesis block hash
     #[inline]
-    pub fn from_genesis_block_hash(block_hash: BlockHash) -> Self {
+    pub fn from_genesis(genesis_block_hash: &[u8], external_entropy: &[u8]) -> Self {
+        let hash = blake3_hash_list(&[genesis_block_hash, external_entropy]);
         let mut seed = Self::default();
-        seed.copy_from_slice(&block_hash[..Self::SIZE]);
+        seed.copy_from_slice(&hash[..Self::SIZE]);
         seed
     }
 
@@ -337,6 +349,12 @@ impl PotSeed {
 )]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub struct PotProof(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] [u8; Self::SIZE]);
+
+impl fmt::Display for PotProof {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", hex::encode(self.0))
+    }
+}
 
 impl PotProof {
     /// Size of proof of time proof in bytes
