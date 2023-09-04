@@ -97,6 +97,8 @@ mod benchmarks {
         let epoch_duration = T::StakeEpochDuration::get();
         let minimum_nominator_stake = T::Currency::minimum_balance();
         let withdraw_amount = T::MinOperatorStake::get();
+        let operator_rewards =
+            T::Currency::minimum_balance().saturating_mul(BalanceOf::<T>::from(100u32));
 
         let domain_id = register_domain::<T>();
         let (_, operator_id) = register_helper_operator::<T>(domain_id, minimum_nominator_stake);
@@ -138,12 +140,8 @@ mod benchmarks {
 
         #[block]
         {
-            do_reward_operators::<T>(
-                domain_id,
-                vec![operator_id].into_iter(),
-                T::DomainBlockReward::get(),
-            )
-            .expect("reward operator should success");
+            do_reward_operators::<T>(domain_id, vec![operator_id].into_iter(), operator_rewards)
+                .expect("reward operator should success");
 
             do_finalize_domain_current_epoch::<T>(domain_id, epoch_duration * 2u32.into())
                 .expect("finalize domain staking should success");

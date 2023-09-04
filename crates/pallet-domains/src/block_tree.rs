@@ -221,8 +221,6 @@ pub(crate) fn verify_execution_receipt<T: Config>(
 pub(crate) struct PrunedDomainBlockInfo<DomainNumber, Balance> {
     pub domain_block_number: DomainNumber,
     pub operator_ids: Vec<OperatorId>,
-    #[allow(dead_code)]
-    // TODO: use once actual rewards are set
     pub rewards: Balance,
 }
 
