@@ -578,34 +578,27 @@ where
                     if let Some(shared) = self.shared_weak.upgrade() {
                         // One peer is possibly a node peer is connected to, hence expecting more
                         // than one for online status
-                        if shared
+                        let other_connections_exist = shared
                             .num_established_peer_connections
                             .load(Ordering::Relaxed)
-                            > 1
-                        {
-                            // Ban temporarily only peers without active connections.
-                            if !self.swarm.is_connected(peer_id) {
-                                let should_temporary_ban = match &error {
-                                    DialError::Transport(addresses) => {
-                                        // Ignoring other errors, those are likely temporary ban errors
-                                        !matches!(
-                                            addresses.first(),
-                                            Some((_multiaddr, TransportError::Other(_error)))
-                                        )
-                                    }
-                                    _ => true,
-                                };
+                            > 1;
+                        let should_ban_temporarily =
+                            self.should_temporary_ban_on_dial_error(peer_id, &error);
 
-                                if should_temporary_ban {
-                                    self.temporary_bans.lock().create_or_extend(peer_id);
-                                    debug!(%peer_id, ?error, "Peer was temporarily banned.");
-                                }
-                            }
+                        trace!(%should_ban_temporarily, %other_connections_exist, "Temporary bans conditions.");
+
+                        if other_connections_exist && should_ban_temporarily {
+                            self.temporary_bans.lock().create_or_extend(peer_id);
+                            debug!(%peer_id, ?error, "Peer was temporarily banned.");
                         }
                     };
                 }
 
-                debug!(?peer_id, "SwarmEvent::OutgoingConnectionError for peer.");
+                debug!(
+                    ?peer_id,
+                    ?error,
+                    "SwarmEvent::OutgoingConnectionError for peer."
+                );
 
                 match error {
                     DialError::Transport(ref addresses) => {
@@ -633,6 +626,59 @@ where
             }
             other => {
                 trace!("Other swarm event: {:?}", other);
+            }
+        }
+    }
+
+    fn should_temporary_ban_on_dial_error(&self, peer_id: &PeerId, error: &DialError) -> bool {
+        // Ban temporarily only peers without active connections.
+        if !self.swarm.is_connected(peer_id) {
+            return false;
+        }
+
+        match &error {
+            DialError::Transport(addresses) => {
+                for (_, error) in addresses {
+                    match error {
+                        TransportError::MultiaddrNotSupported(_) => {
+                            return true;
+                        }
+                        TransportError::Other(_) => {
+                            // Ignore "temporary ban" errors
+                            if self.temporary_bans.lock().is_banned(peer_id) {
+                                return false;
+                            }
+                        }
+                    }
+                }
+                // Other errors that are not related to temporary bans
+                true
+            }
+            DialError::LocalPeerId { .. } => {
+                // We don't ban ourselves
+                debug!("Local peer dial attempt detected.");
+
+                false
+            }
+            DialError::NoAddresses => {
+                // Let's wait until we get addresses
+                true
+            }
+            DialError::DialPeerConditionFalse(_) => {
+                // These are local conditions, we don't need to ban remote peers
+                false
+            }
+            DialError::Aborted => {
+                // Seems like a transient event
+                false
+            }
+            DialError::WrongPeerId { .. } => {
+                // It's likely that peer was restarted with different identity
+                false
+            }
+            DialError::Denied { .. } => {
+                // We exceeded the connection limits or we hit a black listed peer
+                false
             }
         }
     }
