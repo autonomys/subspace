@@ -181,6 +181,86 @@ pub enum VerificationError {
     Oneshot(String),
 }
 
+// TODO: Define rest of the fraud proof fields
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub struct MissingInvalidBundleEntryFraudProof {
+    domain_id: DomainId,
+    bundle_index: u32,
+}
+
+impl MissingInvalidBundleEntryFraudProof {
+    pub fn new(domain_id: DomainId, bundle_index: u32) -> Self {
+        Self {
+            domain_id,
+            bundle_index,
+        }
+    }
+}
+
+// TODO: Define rest of the fraud proof fields
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub struct AdditionalInvalidBundleEntryFraudProof {
+    domain_id: DomainId,
+    bundle_index: u32,
+}
+
+impl AdditionalInvalidBundleEntryFraudProof {
+    pub fn new(domain_id: DomainId, bundle_index: u32) -> Self {
+        Self {
+            domain_id,
+            bundle_index,
+        }
+    }
+}
+
+// TODO: Define rest of the fraud proof fields
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub struct MisclassifiedInvalidBundleFraudProof {
+    domain_id: DomainId,
+    bundle_index: u32,
+}
+
+impl MisclassifiedInvalidBundleFraudProof {
+    pub fn new(domain_id: DomainId, bundle_index: u32) -> Self {
+        Self {
+            domain_id,
+            bundle_index,
+        }
+    }
+}
+
+// TODO: Define rest of the fraud proof fields
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub struct IncorrectSortitionFraudProof {
+    domain_id: DomainId,
+}
+
+impl IncorrectSortitionFraudProof {
+    pub fn new(domain_id: DomainId) -> Self {
+        Self { domain_id }
+    }
+}
+
+/// Fraud proof indicating that `invalid_bundles` field of the receipt is incorrect
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub enum InvalidBundlesFraudProof {
+    MissingInvalidBundleEntry(MissingInvalidBundleEntryFraudProof),
+    AdditionalInvalidBundleEntry(AdditionalInvalidBundleEntryFraudProof),
+    MisclassifiedInvalidBundleEntry(MisclassifiedInvalidBundleFraudProof),
+    IncorrectSortition(IncorrectSortitionFraudProof),
+}
+
+impl InvalidBundlesFraudProof {
+    pub fn domain_id(&self) -> DomainId {
+        match self {
+            InvalidBundlesFraudProof::MissingInvalidBundleEntry(proof) => proof.domain_id,
+            InvalidBundlesFraudProof::AdditionalInvalidBundleEntry(proof) => proof.domain_id,
+            InvalidBundlesFraudProof::MisclassifiedInvalidBundleEntry(proof) => proof.domain_id,
+            InvalidBundlesFraudProof::IncorrectSortition(proof) => proof.domain_id,
+        }
+    }
+}
+
 /// Fraud proof.
 // TODO: Revisit when fraud proof v2 is implemented.
 #[allow(clippy::large_enum_variant)]
@@ -190,6 +270,7 @@ pub enum FraudProof<Number, Hash> {
     InvalidTransaction(InvalidTransactionProof),
     BundleEquivocation(BundleEquivocationProof<Number, Hash>),
     ImproperTransactionSortition(ImproperTransactionSortitionProof),
+    InvalidBundles(InvalidBundlesFraudProof),
 }
 
 impl<Number, Hash> FraudProof<Number, Hash> {
@@ -199,6 +280,7 @@ impl<Number, Hash> FraudProof<Number, Hash> {
             Self::InvalidTransaction(proof) => proof.domain_id,
             Self::BundleEquivocation(proof) => proof.domain_id,
             Self::ImproperTransactionSortition(proof) => proof.domain_id,
+            Self::InvalidBundles(proof) => proof.domain_id(),
         }
     }
 }

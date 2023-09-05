@@ -1,6 +1,8 @@
 use crate::domain_block_processor::{
     DomainBlockProcessor, PendingConsensusBlocks, ReceiptsChecker,
 };
+use crate::fraud_proof::FraudProofGenerator;
+use crate::parent_chain::ParentChainInterface;
 use crate::{DomainParentChain, ExecutionReceiptFor, TransactionFor};
 use domain_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_block_preprocessor::{DomainBlockPreprocessor, PreprocessResult};
@@ -12,16 +14,35 @@ use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::BlockOrigin;
 use sp_core::traits::CodeExecutor;
 use sp_domain_digests::AsPredigest;
+use sp_domains::fraud_proof::{
+    AdditionalInvalidBundleEntryFraudProof, FraudProof, IncorrectSortitionFraudProof,
+    InvalidBundlesFraudProof, MisclassifiedInvalidBundleFraudProof,
+    MissingInvalidBundleEntryFraudProof,
+};
 use sp_domains::{DomainId, DomainsApi, InvalidReceipt, ReceiptValidity};
 use sp_keystore::KeystorePtr;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, HashFor, Zero};
 use sp_runtime::{Digest, DigestItem};
+use std::collections::hash_map::Entry;
+use std::collections::HashMap;
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 type DomainReceiptsChecker<Block, CBlock, Client, CClient, Backend, E> = ReceiptsChecker<
     Block,
     Client,
+    CBlock,
+    CClient,
+    Backend,
+    E,
+    DomainParentChain<Block, CBlock, CClient>,
+    CBlock,
+>;
+
+type DomainReceiptsValidator<Block, CBlock, Client, CClient, Backend, E> = ReceiptValidator<
+    Client,
+    Block,
     CBlock,
     CClient,
     Backend,
@@ -47,7 +68,7 @@ where
         Client,
         CClient,
         RuntimeApiFull<Client>,
-        ReceiptValidator<Client>,
+        DomainReceiptsValidator<Block, CBlock, Client, CClient, Backend, E>,
     >,
     domain_block_processor: DomainBlockProcessor<Block, CBlock, Client, CClient, Backend, BI>,
 }
@@ -72,30 +93,154 @@ where
     }
 }
 
-struct ReceiptValidator<Client> {
+struct ReceiptValidator<Client, Block, CBlock, CClient, Backend, E, ParentChain, ParentChainBlock> {
+    domain_id: DomainId,
     client: Arc<Client>,
+    fraud_proof_generator: FraudProofGenerator<Block, CBlock, Client, CClient, Backend, E>,
+    parent_chain: ParentChain,
+    _phantom: std::marker::PhantomData<ParentChainBlock>,
 }
 
-impl<Client> Clone for ReceiptValidator<Client> {
+impl<Client, Block, CBlock, CClient, Backend, E, ParentChain, ParentChainBlock> Clone
+    for ReceiptValidator<Client, Block, CBlock, CClient, Backend, E, ParentChain, ParentChainBlock>
+where
+    ParentChain: Clone,
+    ParentChainBlock: BlockT,
+{
     fn clone(&self) -> Self {
         Self {
+            domain_id: self.domain_id,
             client: self.client.clone(),
+            fraud_proof_generator: self.fraud_proof_generator.clone(),
+            parent_chain: self.parent_chain.clone(),
+            _phantom: self._phantom,
         }
     }
 }
 
-impl<Client> ReceiptValidator<Client> {
-    pub fn new(client: Arc<Client>) -> Self {
-        Self { client }
+impl<Client, Block, CBlock, CClient, Backend, E, ParentChain, ParentChainBlock>
+    ReceiptValidator<Client, Block, CBlock, CClient, Backend, E, ParentChain, ParentChainBlock>
+{
+    pub fn new(
+        domain_id: DomainId,
+        client: Arc<Client>,
+        fraud_proof_generator: FraudProofGenerator<Block, CBlock, Client, CClient, Backend, E>,
+        parent_chain: ParentChain,
+    ) -> Self {
+        Self {
+            domain_id,
+            client,
+            fraud_proof_generator,
+            parent_chain,
+            _phantom: PhantomData,
+        }
     }
 }
 
-impl<Block, CBlock, Client> domain_block_preprocessor::ValidateReceipt<Block, CBlock>
-    for ReceiptValidator<Client>
+impl<Client, Block, CBlock, CClient, Backend, E, ParentChain, ParentChainBlock>
+    ReceiptValidator<Client, Block, CBlock, CClient, Backend, E, ParentChain, ParentChainBlock>
 where
     Block: BlockT,
     CBlock: BlockT,
-    Client: AuxStore,
+    Client:
+        HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
+    Client::Api: sp_block_builder::BlockBuilder<Block>
+        + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
+    CClient: HeaderBackend<CBlock> + 'static,
+    Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
+    TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
+    E: CodeExecutor,
+    ParentChainBlock: BlockT,
+    ParentChain: ParentChainInterface<Block, ParentChainBlock>,
+{
+    fn check_invalid_bundles_field(
+        &self,
+        local_receipt: &ExecutionReceiptFor<Block, CBlock>,
+        user_receipt: &ExecutionReceiptFor<Block, CBlock>,
+    ) -> bool {
+        let mut local_invalid_bundles_map = HashMap::new();
+        let mut fraud_proofs: Vec<FraudProof<NumberFor<Block>, Block::Hash>> = vec![];
+        if local_receipt.invalid_bundles != user_receipt.invalid_bundles {
+            for invalid_bundle in &local_receipt.invalid_bundles {
+                local_invalid_bundles_map.insert(
+                    invalid_bundle.bundle_index,
+                    (invalid_bundle.invalid_bundle_type.clone(), false),
+                );
+            }
+
+            for invalid_bundle in &user_receipt.invalid_bundles {
+                let entry = local_invalid_bundles_map.entry(invalid_bundle.bundle_index);
+                match entry {
+                    Entry::Occupied(mut occupied_entry) => {
+                        if occupied_entry.get().0 != invalid_bundle.invalid_bundle_type {
+                            fraud_proofs.push(FraudProof::InvalidBundles(
+                                InvalidBundlesFraudProof::MisclassifiedInvalidBundleEntry(
+                                    MisclassifiedInvalidBundleFraudProof::new(
+                                        self.domain_id,
+                                        invalid_bundle.bundle_index,
+                                    ),
+                                ),
+                            ));
+                        } else {
+                            *occupied_entry.get_mut() =
+                                (invalid_bundle.invalid_bundle_type.clone(), true);
+                        }
+                    }
+                    Entry::Vacant(_) => {
+                        fraud_proofs.push(FraudProof::InvalidBundles(
+                            InvalidBundlesFraudProof::AdditionalInvalidBundleEntry(
+                                AdditionalInvalidBundleEntryFraudProof::new(
+                                    self.domain_id,
+                                    invalid_bundle.bundle_index,
+                                ),
+                            ),
+                        ));
+                    }
+                }
+            }
+
+            for (bundle_index, v) in local_invalid_bundles_map.iter() {
+                // This bundle is missing from the input receipt's invalid bundles vector
+                if !v.1 {
+                    fraud_proofs.push(FraudProof::InvalidBundles(
+                        InvalidBundlesFraudProof::MissingInvalidBundleEntry(
+                            MissingInvalidBundleEntryFraudProof::new(self.domain_id, *bundle_index),
+                        ),
+                    ));
+                }
+            }
+
+            if fraud_proofs.is_empty() {
+                fraud_proofs.push(FraudProof::InvalidBundles(
+                    InvalidBundlesFraudProof::IncorrectSortition(
+                        IncorrectSortitionFraudProof::new(self.domain_id),
+                    ),
+                ));
+            }
+        }
+
+        // TODO: Submit the fraud proofs to parent chain, once we have proper proof data in place
+
+        fraud_proofs.is_empty()
+    }
+}
+
+impl<Client, Block, CBlock, CClient, Backend, E, ParentChain, ParentChainBlock>
+    domain_block_preprocessor::ValidateReceipt<Block, CBlock>
+    for ReceiptValidator<Client, Block, CBlock, CClient, Backend, E, ParentChain, ParentChainBlock>
+where
+    Block: BlockT,
+    CBlock: BlockT,
+    Client:
+        HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
+    Client::Api: sp_block_builder::BlockBuilder<Block>
+        + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
+    CClient: HeaderBackend<CBlock> + 'static,
+    Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
+    TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
+    E: CodeExecutor,
+    ParentChainBlock: BlockT,
+    ParentChain: ParentChainInterface<Block, ParentChainBlock>,
 {
     fn validate_receipt(
         &self,
@@ -117,8 +262,7 @@ where
             ))
         })?;
 
-        if local_receipt.invalid_bundles != receipt.invalid_bundles {
-            // TODO: Generate fraud proof
+        if !self.check_invalid_bundles_field(&local_receipt, receipt) {
             return Ok(ReceiptValidity::Invalid(InvalidReceipt::InvalidBundles));
         }
 
@@ -175,7 +319,12 @@ where
             client.clone(),
             consensus_client.clone(),
             RuntimeApiFull::new(client.clone()),
-            ReceiptValidator::new(client.clone()),
+            ReceiptValidator::new(
+                domain_id,
+                client.clone(),
+                domain_receipts_checker.fraud_proof_generator.clone(),
+                domain_receipts_checker.parent_chain.clone(),
+            ),
         );
         Self {
             domain_id,
