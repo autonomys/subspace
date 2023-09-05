@@ -56,9 +56,7 @@ use sp_consensus_subspace::{
     ChainConstants, EquivocationProof, FarmerPublicKey, FarmerSignature, SignedVote, Vote,
 };
 use sp_runtime::generic::DigestItem;
-#[cfg(not(feature = "pot"))]
-use sp_runtime::traits::Hash;
-use sp_runtime::traits::{BlockNumberProvider, One, Zero};
+use sp_runtime::traits::{BlockNumberProvider, Hash, One, Zero};
 #[cfg(not(feature = "pot"))]
 use sp_runtime::traits::{SaturatedConversion, Saturating};
 use sp_runtime::transaction_validity::{
@@ -895,7 +893,10 @@ impl<T: Config> Pallet<T> {
         let block_randomness = derive_randomness(pre_digest.solution(), pre_digest.slot().into());
 
         #[cfg(feature = "pot")]
-        let block_randomness = pre_digest.proof_of_time.derive_global_randomness();
+        let block_randomness = pre_digest
+            .pot_info()
+            .proof_of_time()
+            .derive_global_randomness();
 
         // Update the block randomness.
         BlockRandomness::<T>::put(block_randomness);
