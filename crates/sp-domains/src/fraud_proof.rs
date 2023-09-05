@@ -181,6 +181,54 @@ pub enum VerificationError {
     Oneshot(String),
 }
 
+// TODO: Define rest of the fraud proof fields
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub struct MissingInvalidBundleEntryFraudProof {
+    domain_id: DomainId,
+    bundle_index: u32,
+}
+
+impl MissingInvalidBundleEntryFraudProof {
+    pub fn new(domain_id: DomainId, bundle_index: u32) -> Self {
+        Self {
+            domain_id,
+            bundle_index,
+        }
+    }
+}
+
+// TODO: Define rest of the fraud proof fields
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub struct ValidAsInvalidBundleEntryFraudProof {
+    domain_id: DomainId,
+    bundle_index: u32,
+}
+
+impl ValidAsInvalidBundleEntryFraudProof {
+    pub fn new(domain_id: DomainId, bundle_index: u32) -> Self {
+        Self {
+            domain_id,
+            bundle_index,
+        }
+    }
+}
+
+/// Fraud proof indicating that `invalid_bundles` field of the receipt is incorrect
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub enum InvalidBundlesFraudProof {
+    MissingInvalidBundleEntry(MissingInvalidBundleEntryFraudProof),
+    ValidAsInvalid(ValidAsInvalidBundleEntryFraudProof),
+}
+
+impl InvalidBundlesFraudProof {
+    pub fn domain_id(&self) -> DomainId {
+        match self {
+            InvalidBundlesFraudProof::MissingInvalidBundleEntry(proof) => proof.domain_id,
+            InvalidBundlesFraudProof::ValidAsInvalid(proof) => proof.domain_id,
+        }
+    }
+}
+
 /// Fraud proof.
 // TODO: Revisit when fraud proof v2 is implemented.
 #[allow(clippy::large_enum_variant)]
@@ -199,6 +247,7 @@ pub enum FraudProof<Number, Hash> {
         /// Hash of the bad receipt this fraud proof targeted
         bad_receipt_hash: ReceiptHash,
     },
+    InvalidBundles(InvalidBundlesFraudProof),
 }
 
 impl<Number, Hash> FraudProof<Number, Hash> {
@@ -211,6 +260,7 @@ impl<Number, Hash> FraudProof<Number, Hash> {
             #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
             Self::Dummy { domain_id, .. } => *domain_id,
             FraudProof::InvalidTotalRewards(proof) => proof.domain_id(),
+            FraudProof::InvalidBundles(proof) => proof.domain_id(),
         }
     }
 
@@ -228,6 +278,7 @@ impl<Number, Hash> FraudProof<Number, Hash> {
                 bad_receipt_hash, ..
             } => *bad_receipt_hash,
             FraudProof::InvalidTotalRewards(proof) => proof.bad_receipt_hash(),
+            FraudProof::InvalidBundles(_) => Default::default(),
         }
     }
 

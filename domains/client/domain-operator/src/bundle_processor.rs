@@ -12,11 +12,17 @@ use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::BlockOrigin;
 use sp_core::traits::CodeExecutor;
 use sp_domain_digests::AsPredigest;
+use sp_domains::fraud_proof::{
+    InvalidBundlesFraudProof, MissingInvalidBundleEntryFraudProof,
+    ValidAsInvalidBundleEntryFraudProof,
+};
 use sp_domains::{DomainId, DomainsApi, InvalidReceipt, ReceiptValidity};
 use sp_keystore::KeystorePtr;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, Zero};
 use sp_runtime::{Digest, DigestItem};
+use std::cmp::Ordering;
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 type DomainReceiptsChecker<Block, CBlock, Client, CClient, Backend, E> = ReceiptsChecker<
@@ -30,6 +36,15 @@ type DomainReceiptsChecker<Block, CBlock, Client, CClient, Backend, E> = Receipt
     CBlock,
 >;
 
+type DomainBlockPreProcessor<Block, CBlock, Client, CClient> = DomainBlockPreprocessor<
+    Block,
+    CBlock,
+    Client,
+    CClient,
+    RuntimeApiFull<Client>,
+    ReceiptValidator<Client, Block, CBlock>,
+>;
+
 pub(crate) struct BundleProcessor<Block, CBlock, Client, CClient, Backend, E, BI>
 where
     Block: BlockT,
@@ -41,14 +56,7 @@ where
     backend: Arc<Backend>,
     keystore: KeystorePtr,
     domain_receipts_checker: DomainReceiptsChecker<Block, CBlock, Client, CClient, Backend, E>,
-    domain_block_preprocessor: DomainBlockPreprocessor<
-        Block,
-        CBlock,
-        Client,
-        CClient,
-        RuntimeApiFull<Client>,
-        ReceiptValidator<Client>,
-    >,
+    domain_block_preprocessor: DomainBlockPreProcessor<Block, CBlock, Client, CClient>,
     domain_block_processor: DomainBlockProcessor<Block, CBlock, Client, CClient, Backend, BI>,
 }
 
@@ -72,30 +80,155 @@ where
     }
 }
 
-struct ReceiptValidator<Client> {
+// TODO: Remove PhantomData once fraud proof generator and parent chain are added
+struct ReceiptValidator<Client, Block, CBlock> {
+    domain_id: DomainId,
     client: Arc<Client>,
+    _phantom_block: PhantomData<Block>,
+    _phantom_cblock: PhantomData<CBlock>,
 }
 
-impl<Client> Clone for ReceiptValidator<Client> {
+impl<Client, Block, CBlock> Clone for ReceiptValidator<Client, Block, CBlock> {
     fn clone(&self) -> Self {
         Self {
+            domain_id: self.domain_id,
             client: self.client.clone(),
+            _phantom_block: self._phantom_block,
+            _phantom_cblock: self._phantom_cblock,
         }
     }
 }
 
-impl<Client> ReceiptValidator<Client> {
-    pub fn new(client: Arc<Client>) -> Self {
-        Self { client }
+impl<Client, Block, CBlock> ReceiptValidator<Client, Block, CBlock> {
+    pub fn new(domain_id: DomainId, client: Arc<Client>) -> Self {
+        Self {
+            domain_id,
+            client,
+            _phantom_block: PhantomData,
+            _phantom_cblock: PhantomData,
+        }
     }
 }
 
-impl<Block, CBlock, Client> domain_block_preprocessor::ValidateReceipt<Block, CBlock>
-    for ReceiptValidator<Client>
+/// Verifies invalid_bundle field in the ER and generates fraud proof in case the field
+/// is incorrect. Fraud proof refers to the first mismatch.
+/// CONTRACT: It will return None if the field is valid, otherwise it will return `Some` with fraud proof
+/// pointing to first mismatch in invalid bundles array.
+pub fn verify_and_generate_fraud_proof_for_invalid_bundles<Block, CBlock>(
+    domain_id: DomainId,
+    local_receipt: &ExecutionReceiptFor<Block, CBlock>,
+    external_receipt: &ExecutionReceiptFor<Block, CBlock>,
+) -> Option<InvalidBundlesFraudProof>
 where
     Block: BlockT,
     CBlock: BlockT,
-    Client: AuxStore,
+{
+    if local_receipt.invalid_bundles == external_receipt.invalid_bundles {
+        return None;
+    }
+    for (local_invalid_bundle, external_invalid_bundle) in local_receipt
+        .invalid_bundles
+        .iter()
+        .zip(external_receipt.invalid_bundles.iter())
+    {
+        if local_invalid_bundle != external_invalid_bundle {
+            if local_invalid_bundle.invalid_bundle_type
+                != external_invalid_bundle.invalid_bundle_type
+            {
+                // Missing invalid bundle entry fraud proof can work for invalid bundle type mismatch
+                // as the proof can prove that particular bundle is invalid as well as type of invalidation.
+                return Some(InvalidBundlesFraudProof::MissingInvalidBundleEntry(
+                    MissingInvalidBundleEntryFraudProof::new(
+                        domain_id,
+                        local_invalid_bundle.bundle_index,
+                    ),
+                ));
+            }
+            // FIXME: we need to add a check to the consensus chain runtime to ensure for all the ER included in the consensus block
+            // the `bundle_index` field of `ER.invalid_bundles` must be strictly increasing
+            match local_invalid_bundle
+                .bundle_index
+                .cmp(&external_invalid_bundle.bundle_index)
+            {
+                Ordering::Greater => {
+                    return Some(InvalidBundlesFraudProof::ValidAsInvalid(
+                        ValidAsInvalidBundleEntryFraudProof::new(
+                            domain_id,
+                            external_invalid_bundle.bundle_index,
+                        ),
+                    ));
+                }
+                Ordering::Less => {
+                    return Some(InvalidBundlesFraudProof::MissingInvalidBundleEntry(
+                        MissingInvalidBundleEntryFraudProof::new(
+                            domain_id,
+                            local_invalid_bundle.bundle_index,
+                        ),
+                    ));
+                }
+                Ordering::Equal => unreachable!("checked in this block's if condition; qed"),
+            }
+        }
+    }
+    match local_receipt
+        .invalid_bundles
+        .len()
+        .cmp(&external_receipt.invalid_bundles.len())
+    {
+        Ordering::Greater => {
+            let invalid_bundle =
+                &local_receipt.invalid_bundles[external_receipt.invalid_bundles.len()];
+            Some(InvalidBundlesFraudProof::MissingInvalidBundleEntry(
+                MissingInvalidBundleEntryFraudProof::new(domain_id, invalid_bundle.bundle_index),
+            ))
+        }
+        Ordering::Less => {
+            let valid_bundle =
+                &external_receipt.invalid_bundles[local_receipt.invalid_bundles.len()];
+            Some(InvalidBundlesFraudProof::ValidAsInvalid(
+                ValidAsInvalidBundleEntryFraudProof::new(domain_id, valid_bundle.bundle_index),
+            ))
+        }
+        Ordering::Equal => unreachable!("already checked for vector equality and since the zipped elements are equal, length cannot be equal; qed"),
+    }
+}
+
+impl<Client, Block, CBlock> ReceiptValidator<Client, Block, CBlock>
+where
+    Block: BlockT,
+    CBlock: BlockT,
+    Client:
+        HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
+    Client::Api: sp_block_builder::BlockBuilder<Block> + sp_api::ApiExt<Block>,
+{
+    pub fn check_receipt_validity(
+        &self,
+        local_receipt: &ExecutionReceiptFor<Block, CBlock>,
+        external_receipt: &ExecutionReceiptFor<Block, CBlock>,
+    ) -> bool {
+        let maybe_invalid_bundles_fraud_proof = verify_and_generate_fraud_proof_for_invalid_bundles::<
+            Block,
+            CBlock,
+        >(
+            self.domain_id, local_receipt, external_receipt
+        );
+        if let Some(_invalid_bundles_fraud_proof) = maybe_invalid_bundles_fraud_proof {
+            // TODO: Submit the fraud proof
+            return false;
+        }
+
+        true
+    }
+}
+
+impl<Client, Block, CBlock> domain_block_preprocessor::ValidateReceipt<Block, CBlock>
+    for ReceiptValidator<Client, Block, CBlock>
+where
+    Block: BlockT,
+    CBlock: BlockT,
+    Client:
+        HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
+    Client::Api: sp_block_builder::BlockBuilder<Block> + sp_api::ApiExt<Block>,
 {
     fn validate_receipt(
         &self,
@@ -117,8 +250,7 @@ where
             ))
         })?;
 
-        if local_receipt.invalid_bundles != receipt.invalid_bundles {
-            // TODO: Generate fraud proof
+        if !self.check_receipt_validity(&local_receipt, receipt) {
             return Ok(ReceiptValidity::Invalid(InvalidReceipt::InvalidBundles));
         }
 
@@ -171,7 +303,7 @@ where
             client.clone(),
             consensus_client.clone(),
             RuntimeApiFull::new(client.clone()),
-            ReceiptValidator::new(client.clone()),
+            ReceiptValidator::new(domain_id, client.clone()),
         );
         Self {
             domain_id,
@@ -325,5 +457,160 @@ where
             .submit_fraud_proof(consensus_block_hash)?;
 
         Ok(Some(built_block_info))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use domain_test_service::evm_domain_test_runtime::Block;
+    use sp_core::sp_std;
+    use sp_domains::fraud_proof::InvalidBundlesFraudProof::{
+        MissingInvalidBundleEntry, ValidAsInvalid,
+    };
+    use sp_domains::{ExecutionReceipt, InvalidBundle, InvalidBundleType};
+    use subspace_test_runtime::Block as CBlock;
+
+    fn create_test_execution_receipt(
+        invalid_bundles: Vec<InvalidBundle>,
+    ) -> ExecutionReceiptFor<Block, CBlock>
+    where
+        Block: BlockT,
+        CBlock: BlockT,
+    {
+        ExecutionReceipt {
+            domain_block_number: Zero::zero(),
+            domain_block_hash: Default::default(),
+            domain_block_extrinsic_root: Default::default(),
+            parent_domain_block_receipt_hash: Default::default(),
+            consensus_block_hash: Default::default(),
+            consensus_block_number: Zero::zero(),
+            invalid_bundles,
+            block_extrinsics_roots: sp_std::vec![],
+            final_state_root: Default::default(),
+            execution_trace: sp_std::vec![],
+            execution_trace_root: Default::default(),
+            total_rewards: Zero::zero(),
+            valid_bundles: vec![],
+        }
+    }
+
+    #[test]
+    fn invalid_bundles_fraud_proof_detection() {
+        // If empty invalid receipt field on both should result in no fraud proof
+        assert_eq!(
+            verify_and_generate_fraud_proof_for_invalid_bundles::<Block, CBlock>(
+                DomainId::new(1),
+                &create_test_execution_receipt(vec![]),
+                &create_test_execution_receipt(vec![]),
+            ),
+            None
+        );
+
+        assert_eq!(
+            verify_and_generate_fraud_proof_for_invalid_bundles::<Block, CBlock>(
+                DomainId::new(1),
+                &create_test_execution_receipt(vec![InvalidBundle {
+                    bundle_index: 3,
+                    invalid_bundle_type: InvalidBundleType::UndecodableTx
+                }]),
+                &create_test_execution_receipt(vec![InvalidBundle {
+                    bundle_index: 3,
+                    invalid_bundle_type: InvalidBundleType::UndecodableTx
+                }]),
+            ),
+            None
+        );
+
+        // Mismatch in invalid bundle type
+        assert_eq!(
+            verify_and_generate_fraud_proof_for_invalid_bundles::<Block, CBlock>(
+                DomainId::new(1),
+                &create_test_execution_receipt(vec![
+                    InvalidBundle {
+                        bundle_index: 3,
+                        invalid_bundle_type: InvalidBundleType::UndecodableTx
+                    },
+                    InvalidBundle {
+                        bundle_index: 4,
+                        invalid_bundle_type: InvalidBundleType::UndecodableTx
+                    }
+                ]),
+                &create_test_execution_receipt(vec![
+                    InvalidBundle {
+                        bundle_index: 3,
+                        invalid_bundle_type: InvalidBundleType::UndecodableTx
+                    },
+                    InvalidBundle {
+                        bundle_index: 4,
+                        invalid_bundle_type: InvalidBundleType::IllegalTx
+                    }
+                ]),
+            ),
+            Some(MissingInvalidBundleEntry(
+                MissingInvalidBundleEntryFraudProof::new(DomainId::new(1), 4)
+            ))
+        );
+
+        // Only first mismatch is detected
+        assert_eq!(
+            verify_and_generate_fraud_proof_for_invalid_bundles::<Block, CBlock>(
+                DomainId::new(2),
+                &create_test_execution_receipt(vec![
+                    InvalidBundle {
+                        bundle_index: 1,
+                        invalid_bundle_type: InvalidBundleType::UndecodableTx
+                    },
+                    InvalidBundle {
+                        bundle_index: 4,
+                        invalid_bundle_type: InvalidBundleType::UndecodableTx
+                    }
+                ]),
+                &create_test_execution_receipt(vec![
+                    InvalidBundle {
+                        bundle_index: 3,
+                        invalid_bundle_type: InvalidBundleType::UndecodableTx
+                    },
+                    InvalidBundle {
+                        bundle_index: 4,
+                        invalid_bundle_type: InvalidBundleType::IllegalTx
+                    }
+                ]),
+            ),
+            Some(MissingInvalidBundleEntry(
+                MissingInvalidBundleEntryFraudProof::new(DomainId::new(2), 1)
+            ))
+        );
+
+        // Valid bundle as invalid
+        assert_eq!(
+            verify_and_generate_fraud_proof_for_invalid_bundles::<Block, CBlock>(
+                DomainId::new(2),
+                &create_test_execution_receipt(vec![
+                    InvalidBundle {
+                        bundle_index: 5,
+                        invalid_bundle_type: InvalidBundleType::UndecodableTx
+                    },
+                    InvalidBundle {
+                        bundle_index: 6,
+                        invalid_bundle_type: InvalidBundleType::UndecodableTx
+                    }
+                ]),
+                &create_test_execution_receipt(vec![
+                    InvalidBundle {
+                        bundle_index: 3,
+                        invalid_bundle_type: InvalidBundleType::UndecodableTx
+                    },
+                    InvalidBundle {
+                        bundle_index: 4,
+                        invalid_bundle_type: InvalidBundleType::IllegalTx
+                    }
+                ]),
+            ),
+            Some(ValidAsInvalid(ValidAsInvalidBundleEntryFraudProof::new(
+                DomainId::new(2),
+                3
+            )))
+        );
     }
 }
