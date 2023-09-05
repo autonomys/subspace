@@ -62,9 +62,9 @@ const SPECIAL_CONNECTED_PEERS_PROTOCOL_LOG_TARGET: &str = "special-connected-pee
 // It must be set for large plots.
 const SWARM_MAX_NEGOTIATING_INBOUND_STREAMS: usize = 100000;
 /// The default maximum established incoming connection number for the swarm.
-const SWARM_MAX_ESTABLISHED_INCOMING_CONNECTIONS: u32 = 80;
+const SWARM_MAX_ESTABLISHED_INCOMING_CONNECTIONS: u32 = 100;
 /// The default maximum established incoming connection number for the swarm.
-const SWARM_MAX_ESTABLISHED_OUTGOING_CONNECTIONS: u32 = 80;
+const SWARM_MAX_ESTABLISHED_OUTGOING_CONNECTIONS: u32 = 100;
 /// The default maximum pending incoming connection number for the swarm.
 const SWARM_MAX_PENDING_INCOMING_CONNECTIONS: u32 = 80;
 /// The default maximum pending incoming connection number for the swarm.
