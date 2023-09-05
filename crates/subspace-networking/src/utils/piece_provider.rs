@@ -14,7 +14,7 @@ use subspace_core_primitives::{Piece, PieceIndex};
 use tracing::{debug, trace, warn};
 
 /// Defines initial duration between get_piece calls.
-const GET_PIECE_INITIAL_INTERVAL: Duration = Duration::from_secs(3);
+const GET_PIECE_INITIAL_INTERVAL: Duration = Duration::from_secs(5);
 /// Defines max duration between get_piece calls.
 const GET_PIECE_MAX_INTERVAL: Duration = Duration::from_secs(40);
 
@@ -132,6 +132,7 @@ where
             max_interval: GET_PIECE_MAX_INTERVAL,
             // Try until we get a valid piece
             max_elapsed_time: None,
+            multiplier: 1.75,
             ..ExponentialBackoff::default()
         };
 
