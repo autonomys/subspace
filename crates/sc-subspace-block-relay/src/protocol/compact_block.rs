@@ -2,13 +2,16 @@
 
 use crate::utils::NetworkPeerHandle;
 use crate::{
-    ClientBackend, ProtocolClient, ProtocolServer, ProtocolUnitInfo, RelayError, Resolved,
-    ServerBackend, LOG_TARGET,
+    ClientBackend, ProtocolClient, ProtocolServer, ProtocolUnitInfo, RelayError, RelayProtocol,
+    RelayVersion, Resolved, ServerBackend, LOG_TARGET,
 };
 use async_trait::async_trait;
 use codec::{Decode, Encode};
 use std::collections::BTreeMap;
 use tracing::{trace, warn};
+
+/// Current version.
+const COMPACT_BLOCK_VERSION: u64 = 1;
 
 /// Request messages
 #[derive(Encode, Decode)]
@@ -65,6 +68,7 @@ struct ResolveContext<ProtocolUnitId, ProtocolUnit> {
 }
 
 pub(crate) struct CompactBlockClient<DownloadUnitId, ProtocolUnitId, ProtocolUnit> {
+    protocol_id: RelayProtocol,
     _phantom_data: std::marker::PhantomData<(DownloadUnitId, ProtocolUnitId, ProtocolUnit)>,
 }
 
@@ -76,8 +80,9 @@ where
     ProtocolUnit: Send + Sync + Encode + Decode + Clone,
 {
     /// Creates the client.
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(protocol_id: RelayProtocol) -> Self {
         Self {
+            protocol_id,
             _phantom_data: Default::default(),
         }
     }
@@ -247,9 +252,14 @@ where
         );
         Ok((download_unit_id, resolved))
     }
+
+    fn version(&self) -> RelayVersion {
+        RelayVersion::new(self.protocol_id, COMPACT_BLOCK_VERSION)
+    }
 }
 
 pub(crate) struct CompactBlockServer<DownloadUnitId, ProtocolUnitId, ProtocolUnit> {
+    protocol_id: RelayProtocol,
     _phantom_data: std::marker::PhantomData<(DownloadUnitId, ProtocolUnitId, ProtocolUnit)>,
 }
 
@@ -257,8 +267,9 @@ impl<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
     CompactBlockServer<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
 {
     /// Creates the server.
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(protocol_id: RelayProtocol) -> Self {
         Self {
+            protocol_id,
             _phantom_data: Default::default(),
         }
     }
@@ -328,5 +339,9 @@ where
         Ok(CompactBlockResponse::MissingEntries(
             MissingEntriesResponse { protocol_units },
         ))
+    }
+
+    fn version(&self) -> RelayVersion {
+        RelayVersion::new(self.protocol_id, COMPACT_BLOCK_VERSION)
     }
 }

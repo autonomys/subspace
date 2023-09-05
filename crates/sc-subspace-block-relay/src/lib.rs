@@ -90,6 +90,9 @@ where
     ) -> Result<(DownloadUnitId, Vec<Resolved<ProtocolUnitId, ProtocolUnit>>), RelayError>
     where
         Request: From<Self::Request> + Encode + Send + Sync;
+
+    /// Returns the implemented version.
+    fn version(&self) -> RelayVersion;
 }
 
 /// The server side of the relay protocol
@@ -111,6 +114,9 @@ pub(crate) trait ProtocolServer<DownloadUnitId, ProtocolUnitId, ProtocolUnit> {
         request: Self::Request,
         backend: &dyn ServerBackend<DownloadUnitId, ProtocolUnitId, ProtocolUnit>,
     ) -> Result<Self::Response, RelayError>;
+
+    /// Returns the implemented version.
+    fn version(&self) -> RelayVersion;
 }
 
 /// The relay user specific backend for the client side
@@ -144,7 +150,7 @@ pub(crate) trait ServerBackend<DownloadUnitId, ProtocolUnitId, ProtocolUnit>:
 
 /// The protocol unit info carried in the initial response
 #[derive(Encode, Decode)]
-struct ProtocolUnitInfo<ProtocolUnitId, ProtocolUnit> {
+pub(crate) struct ProtocolUnitInfo<ProtocolUnitId, ProtocolUnit> {
     /// The protocol unit Id
     id: ProtocolUnitId,
 
@@ -152,4 +158,33 @@ struct ProtocolUnitInfo<ProtocolUnitId, ProtocolUnit> {
     /// as part of the initial response. No further
     /// action is needed on client side to resolve it
     unit: Option<ProtocolUnit>,
+}
+
+/// The relay protocol identifier.
+#[derive(Copy, Clone, Eq, PartialEq, Encode, Decode)]
+pub(crate) enum RelayProtocol {
+    #[codec(index = 0)]
+    CompactBlock,
+    // Next protocol goes here.
+    // #[codec(index = 1)]
+}
+
+/// The relay protocol version.
+#[derive(Copy, Clone, Eq, PartialEq, Encode, Decode)]
+pub(crate) struct RelayVersion {
+    /// The protocol identifier.
+    protocol: RelayProtocol,
+
+    /// The sub version within the protocol implementation.
+    protocol_version: u64,
+}
+
+impl RelayVersion {
+    /// Creates the version.
+    pub(crate) fn new(protocol: RelayProtocol, protocol_version: u64) -> Self {
+        Self {
+            protocol,
+            protocol_version,
+        }
+    }
 }

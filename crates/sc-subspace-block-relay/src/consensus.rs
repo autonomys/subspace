@@ -3,8 +3,8 @@
 use crate::protocol::compact_block::{CompactBlockClient, CompactBlockServer};
 use crate::utils::{NetworkPeerHandle, NetworkWrapper, RequestResponseErr};
 use crate::{
-    ClientBackend, ProtocolClient, ProtocolServer, ProtocolUnitInfo, RelayError, ServerBackend,
-    LOG_TARGET,
+    ClientBackend, ProtocolClient, ProtocolServer, ProtocolUnitInfo, RelayError, RelayProtocol,
+    RelayVersion, ServerBackend, LOG_TARGET,
 };
 use async_trait::async_trait;
 use codec::{Compact, CompactLen, Decode, Encode};
@@ -153,6 +153,7 @@ where
 {
     network: Arc<NetworkWrapper>,
     protocol_name: ProtocolName,
+    protocol_version: RelayVersion,
     protocol: Arc<ProtoClient>,
     backend: Arc<ConsensusClientBackend<Pool>>,
     _phantom_data: std::marker::PhantomData<(Block, Pool)>,
@@ -164,6 +165,23 @@ where
     Pool: TransactionPool<Block = Block> + 'static,
     ProtoClient: ProtocolClient<BlockHash<Block>, TxHash<Pool>, Extrinsic<Block>>,
 {
+    /// Creates the consensus relay client.
+    fn new(
+        network: Arc<NetworkWrapper>,
+        protocol_name: ProtocolName,
+        protocol: Arc<ProtoClient>,
+        backend: Arc<ConsensusClientBackend<Pool>>,
+    ) -> Self {
+        Self {
+            network,
+            protocol_name,
+            protocol_version: protocol.version(),
+            protocol,
+            backend,
+            _phantom_data: Default::default(),
+        }
+    }
+
     /// Downloads the requested block from the peer using the relay protocol.
     async fn download(
         &self,
@@ -351,6 +369,7 @@ where
 /// The server side of the consensus block relay
 struct ConsensusRelayServer<Block: BlockT, Client, Pool, ProtoServer> {
     client: Arc<Client>,
+    protocol_version: RelayVersion,
     protocol: Box<ProtoServer>,
     request_receiver: async_channel::Receiver<IncomingRequest>,
     backend: Arc<ConsensusServerBackend<Client, Pool>>,
@@ -365,6 +384,23 @@ where
     Pool: TransactionPool<Block = Block> + 'static,
     ProtoServer: ProtocolServer<BlockHash<Block>, TxHash<Pool>, Extrinsic<Block>> + Send,
 {
+    /// Creates the consensus relay server.
+    fn new(
+        client: Arc<Client>,
+        protocol: Box<ProtoServer>,
+        request_receiver: async_channel::Receiver<IncomingRequest>,
+        backend: Arc<ConsensusServerBackend<Client, Pool>>,
+    ) -> Self {
+        Self {
+            client,
+            protocol_version: protocol.version(),
+            protocol,
+            request_receiver,
+            backend,
+            _block: Default::default(),
+        }
+    }
+
     /// Handles the received request from the client side
     async fn on_request(&mut self, request: IncomingRequest) {
         // Drop the request in case of errors and let the client time out.
@@ -725,25 +761,23 @@ where
     let backend = Arc::new(ConsensusClientBackend {
         transaction_pool: pool.clone(),
     });
-    let relay_client: ConsensusRelayClient<Block, Pool, _> = ConsensusRelayClient {
+    let relay_client: ConsensusRelayClient<Block, Pool, _> = ConsensusRelayClient::new(
         network,
-        protocol_name: SYNC_PROTOCOL.into(),
-        protocol: Arc::new(CompactBlockClient::new()),
+        SYNC_PROTOCOL.into(),
+        Arc::new(CompactBlockClient::new(RelayProtocol::CompactBlock)),
         backend,
-        _phantom_data: Default::default(),
-    };
+    );
 
     let backend = Arc::new(ConsensusServerBackend {
         client: client.clone(),
         transaction_pool: pool.clone(),
     });
-    let relay_server = ConsensusRelayServer {
+    let relay_server = ConsensusRelayServer::new(
         client,
-        protocol: Box::new(CompactBlockServer::new()),
+        Box::new(CompactBlockServer::new(RelayProtocol::CompactBlock)),
         request_receiver,
         backend,
-        _block: Default::default(),
-    };
+    );
 
     let mut protocol_config = ProtocolConfig {
         name: SYNC_PROTOCOL.into(),
