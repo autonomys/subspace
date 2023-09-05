@@ -2,7 +2,6 @@
 
 pub mod multihash;
 pub mod piece_provider;
-pub(crate) mod prometheus;
 #[cfg(test)]
 mod tests;
 pub(crate) mod unique_record_binary_heap;

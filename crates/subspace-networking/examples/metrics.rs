@@ -5,17 +5,17 @@ use libp2p::metrics::Metrics;
 use libp2p::multiaddr::Protocol;
 use libp2p::PeerId;
 use parking_lot::Mutex;
-use prometheus_client::registry::Registry;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_networking::{start_prometheus_metrics_server, Config, Node};
+use subspace_metrics::{start_prometheus_metrics_server, Libp2pMetricsRegistry, RegistryAdapter};
+use subspace_networking::{Config, Node};
 use tokio::time::sleep;
 use tracing::{error, info};
 
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
-    let mut metric_registry = Registry::default();
+    let mut metric_registry = Libp2pMetricsRegistry::default();
     let metrics = Metrics::new(&mut metric_registry);
 
     let config_1 = Config {
@@ -29,8 +29,10 @@ async fn main() {
     // Init prometheus
     let prometheus_metrics_server_address = "127.0.0.1:63000".parse().unwrap();
 
-    match start_prometheus_metrics_server(vec![prometheus_metrics_server_address], metric_registry)
-    {
+    match start_prometheus_metrics_server(
+        vec![prometheus_metrics_server_address],
+        RegistryAdapter::Libp2p(metric_registry),
+    ) {
         Err(err) => {
             error!(
                 ?prometheus_metrics_server_address,
