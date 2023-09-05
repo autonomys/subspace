@@ -2,13 +2,12 @@
 
 use crate::utils::NetworkPeerHandle;
 use crate::{
-    ProtocolBackend, ProtocolClient, ProtocolServer, ProtocolUnitInfo, RelayError, Resolved,
-    LOG_TARGET,
+    ClientBackend, ProtocolClient, ProtocolServer, ProtocolUnitInfo, RelayError, Resolved,
+    ServerBackend, LOG_TARGET,
 };
 use async_trait::async_trait;
 use codec::{Decode, Encode};
 use std::collections::BTreeMap;
-use std::sync::Arc;
 use tracing::{trace, warn};
 
 /// Request messages
@@ -66,9 +65,7 @@ struct ResolveContext<ProtocolUnitId, ProtocolUnit> {
 }
 
 pub(crate) struct CompactBlockClient<DownloadUnitId, ProtocolUnitId, ProtocolUnit> {
-    pub(crate) backend: Arc<
-        dyn ProtocolBackend<DownloadUnitId, ProtocolUnitId, ProtocolUnit> + Send + Sync + 'static,
-    >,
+    _phantom_data: std::marker::PhantomData<(DownloadUnitId, ProtocolUnitId, ProtocolUnit)>,
 }
 
 impl<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
@@ -78,10 +75,18 @@ where
     ProtocolUnitId: Send + Sync + Encode + Decode + Clone,
     ProtocolUnit: Send + Sync + Encode + Decode + Clone,
 {
+    /// Creates the client.
+    pub(crate) fn new() -> Self {
+        Self {
+            _phantom_data: Default::default(),
+        }
+    }
+
     /// Tries to resolve the entries in InitialResponse locally
     fn resolve_local(
         &self,
         compact_response: &InitialResponse<DownloadUnitId, ProtocolUnitId, ProtocolUnit>,
+        backend: &dyn ClientBackend<ProtocolUnitId, ProtocolUnit>,
     ) -> Result<ResolveContext<ProtocolUnitId, ProtocolUnit>, RelayError> {
         let mut context = ResolveContext {
             resolved: BTreeMap::new(),
@@ -103,11 +108,8 @@ where
                 continue;
             }
 
-            match self
-                .backend
-                .protocol_unit(&compact_response.download_unit_id, id)
-            {
-                Ok(Some(ret)) => {
+            match backend.protocol_unit(id) {
+                Some(ret) => {
                     context.resolved.insert(
                         index as u64,
                         Resolved {
@@ -117,10 +119,9 @@ where
                         },
                     );
                 }
-                Ok(None) => {
+                None => {
                     context.local_miss.insert(index as u64, id.clone());
                 }
-                Err(err) => return Err(err),
             }
         }
 
@@ -195,7 +196,10 @@ where
     type Request = CompactBlockRequest<DownloadUnitId, ProtocolUnitId>;
     type Response = CompactBlockResponse<DownloadUnitId, ProtocolUnitId, ProtocolUnit>;
 
-    fn build_initial_request(&self) -> Self::Request {
+    fn build_initial_request(
+        &self,
+        _backend: &dyn ClientBackend<ProtocolUnitId, ProtocolUnit>,
+    ) -> Self::Request {
         CompactBlockRequest::Initial
     }
 
@@ -203,6 +207,7 @@ where
         &self,
         response: Self::Response,
         network_peer_handle: &NetworkPeerHandle,
+        backend: &dyn ClientBackend<ProtocolUnitId, ProtocolUnit>,
     ) -> Result<(DownloadUnitId, Vec<Resolved<ProtocolUnitId, ProtocolUnit>>), RelayError>
     where
         Request: From<Self::Request> + Encode + Send + Sync,
@@ -213,7 +218,7 @@ where
         };
 
         // Try to resolve the hashes locally first.
-        let context = self.resolve_local(&compact_response)?;
+        let context = self.resolve_local(&compact_response, backend)?;
         if context.resolved.len() == compact_response.protocol_units.len() {
             trace!(
                 target: LOG_TARGET,
@@ -245,13 +250,23 @@ where
 }
 
 pub(crate) struct CompactBlockServer<DownloadUnitId, ProtocolUnitId, ProtocolUnit> {
-    pub(crate) backend: Arc<
-        dyn ProtocolBackend<DownloadUnitId, ProtocolUnitId, ProtocolUnit> + Send + Sync + 'static,
-    >,
+    _phantom_data: std::marker::PhantomData<(DownloadUnitId, ProtocolUnitId, ProtocolUnit)>,
+}
+
+impl<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
+    CompactBlockServer<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
+{
+    /// Creates the server.
+    pub(crate) fn new() -> Self {
+        Self {
+            _phantom_data: Default::default(),
+        }
+    }
 }
 
 #[async_trait]
-impl<DownloadUnitId, ProtocolUnitId, ProtocolUnit> ProtocolServer<DownloadUnitId>
+impl<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
+    ProtocolServer<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
     for CompactBlockServer<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
 where
     DownloadUnitId: Encode + Decode + Clone,
@@ -265,6 +280,7 @@ where
         &self,
         download_unit_id: &DownloadUnitId,
         initial_request: Self::Request,
+        backend: &dyn ServerBackend<DownloadUnitId, ProtocolUnitId, ProtocolUnit>,
     ) -> Result<Self::Response, RelayError> {
         if !matches!(initial_request, CompactBlockRequest::Initial) {
             return Err(RelayError::UnexpectedInitialRequest);
@@ -273,12 +289,16 @@ where
         // Return the info of the members in the download unit.
         let response = InitialResponse {
             download_unit_id: download_unit_id.clone(),
-            protocol_units: self.backend.download_unit_members(download_unit_id)?,
+            protocol_units: backend.download_unit_members(download_unit_id)?,
         };
         Ok(CompactBlockResponse::Initial(response))
     }
 
-    fn on_request(&self, request: Self::Request) -> Result<Self::Response, RelayError> {
+    fn on_request(
+        &self,
+        request: Self::Request,
+        backend: &dyn ServerBackend<DownloadUnitId, ProtocolUnitId, ProtocolUnit>,
+    ) -> Result<Self::Response, RelayError> {
         let request = match request {
             CompactBlockRequest::MissingEntries(req) => req,
             _ => return Err(RelayError::UnexpectedProtocolRequest),
@@ -287,9 +307,8 @@ where
         let mut protocol_units = BTreeMap::new();
         let total_len = request.protocol_unit_ids.len();
         for (missing_id, protocol_unit_id) in request.protocol_unit_ids {
-            if let Some(protocol_unit) = self
-                .backend
-                .protocol_unit(&request.download_unit_id, &protocol_unit_id)?
+            if let Some(protocol_unit) =
+                backend.protocol_unit(&request.download_unit_id, &protocol_unit_id)
             {
                 protocol_units.insert(missing_id, protocol_unit);
             } else {
