@@ -14,6 +14,7 @@ use sc_network::PeerId;
 use sc_network_gossip::{Network as GossipNetwork, Syncing as GossipSyncing};
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
+use sp_consensus::SyncOracle;
 use sp_consensus_slots::Slot;
 #[cfg(feature = "pot")]
 use sp_consensus_subspace::digests::extract_pre_digest;
@@ -91,16 +92,18 @@ where
     Client: BlockchainEvents<Block> + HeaderBackend<Block> + ProvideRuntimeApi<Block>,
     Client::Api: SubspaceRuntimeApi<Block, FarmerPublicKey>,
 {
-    pub fn new<Network, GossipSync>(
+    pub fn new<Network, GossipSync, SO>(
         is_timekeeper: bool,
         client: Arc<Client>,
         pot_verifier: PotVerifier,
         network: Network,
         sync: Arc<GossipSync>,
+        sync_oracle: SO,
     ) -> Result<(Self, PotGossipWorker<Block>, PotSlotInfoStream), ApiError>
     where
         Network: GossipNetwork<Block> + Send + Sync + Clone + 'static,
         GossipSync: GossipSyncing<Block> + 'static,
+        SO: SyncOracle + Send + Sync + 'static,
     {
         #[cfg(feature = "pot")]
         let chain_constants;
@@ -194,6 +197,7 @@ where
             Arc::clone(&state),
             network,
             sync,
+            sync_oracle,
         );
 
         let source_worker = Self {

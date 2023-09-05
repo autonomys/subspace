@@ -947,6 +947,7 @@ where
             pot_verifier.clone(),
             network_service.clone(),
             sync_service.clone(),
+            sync_oracle.clone(),
         )
         .map_err(|error| Error::Other(error.into()))?;
         let spawn_essential_handle = task_manager.spawn_essential_handle();

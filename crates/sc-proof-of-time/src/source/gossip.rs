@@ -12,6 +12,7 @@ use sc_network_gossip::{
     GossipEngine, MessageIntent, Network as GossipNetwork, Syncing as GossipSyncing,
     ValidationResult, Validator, ValidatorContext,
 };
+use sp_consensus::SyncOracle;
 use sp_consensus_slots::Slot;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
 use std::future::poll_fn;
@@ -59,21 +60,28 @@ where
     Block: BlockT,
 {
     /// Instantiate gossip worker
-    pub(super) fn new<Network, GossipSync>(
+    pub(super) fn new<Network, GossipSync, SO>(
         outgoing_messages_receiver: mpsc::Receiver<GossipCheckpoints>,
         incoming_messages_sender: mpsc::Sender<(PeerId, GossipCheckpoints)>,
         pot_verifier: PotVerifier,
         state: Arc<PotState>,
         network: Network,
         sync: Arc<GossipSync>,
+        sync_oracle: SO,
     ) -> Self
     where
         Network: GossipNetwork<Block> + Send + Sync + Clone + 'static,
         GossipSync: GossipSyncing<Block> + 'static,
+        SO: SyncOracle + Send + Sync + 'static,
     {
         let topic = <<Block::Header as HeaderT>::Hashing as HashT>::hash(b"checkpoints");
 
-        let validator = Arc::new(PotGossipValidator::new(pot_verifier, state, topic));
+        let validator = Arc::new(PotGossipValidator::new(
+            pot_verifier,
+            state,
+            topic,
+            sync_oracle,
+        ));
         let engine = GossipEngine::new(network, sync, GOSSIP_PROTOCOL, validator, None);
 
         Self {
@@ -137,32 +145,41 @@ where
 }
 
 /// Validator for gossiped messages
-struct PotGossipValidator<Block>
+struct PotGossipValidator<Block, SO>
 where
     Block: BlockT,
 {
     pot_verifier: PotVerifier,
     state: Arc<PotState>,
     topic: Block::Hash,
+    sync_oracle: SO,
 }
 
-impl<Block> PotGossipValidator<Block>
+impl<Block, SO> PotGossipValidator<Block, SO>
 where
     Block: BlockT,
+    SO: SyncOracle,
 {
     /// Creates the validator.
-    fn new(pot_verifier: PotVerifier, state: Arc<PotState>, topic: Block::Hash) -> Self {
+    fn new(
+        pot_verifier: PotVerifier,
+        state: Arc<PotState>,
+        topic: Block::Hash,
+        sync_oracle: SO,
+    ) -> Self {
         Self {
             pot_verifier,
             state,
             topic,
+            sync_oracle,
         }
     }
 }
 
-impl<Block> Validator<Block> for PotGossipValidator<Block>
+impl<Block, SO> Validator<Block> for PotGossipValidator<Block, SO>
 where
     Block: BlockT,
+    SO: SyncOracle + Send + Sync,
 {
     fn validate(
         &self,
@@ -170,7 +187,10 @@ where
         sender: &PeerId,
         mut data: &[u8],
     ) -> ValidationResult<Block::Hash> {
-        // TODO: Skip validation if node is not synced right now
+        // Ignore gossip while major syncing
+        if self.sync_oracle.is_major_syncing() {
+            return ValidationResult::Discard;
+        }
 
         match GossipCheckpoints::decode(&mut data) {
             Ok(message) => {
