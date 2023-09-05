@@ -114,7 +114,8 @@ impl PotState {
 
     /// Extend state if it matches provided expected next slot input.
     ///
-    /// Returns `Some` if state was extended.
+    /// Returns `Ok(new_next_slot_input)` if state was extended successfully and
+    /// `Err(existing_next_slot_input)` in case state was changed in the meantime.
     pub(super) fn try_extend(
         &self,
         expected_next_slot_input: NextSlotInput,
@@ -123,10 +124,10 @@ impl PotState {
         #[cfg(feature = "pot")] maybe_updated_parameters_change: Option<
             Option<PotParametersChange>,
         >,
-    ) -> Option<NextSlotInput> {
+    ) -> Result<NextSlotInput, NextSlotInput> {
         let old_inner_state = self.inner_state.load(Ordering::Acquire);
         if expected_next_slot_input != old_inner_state.next_slot_input {
-            return None;
+            return Err(old_inner_state.next_slot_input);
         }
 
         let new_inner_state = old_inner_state.update(
@@ -145,10 +146,10 @@ impl PotState {
                 new_inner_state,
                 Ordering::AcqRel,
                 // We don't care about the value read in case of failure
-                Ordering::Relaxed,
+                Ordering::Acquire,
             )
-            .ok()
-            .map(|new_inner_state| new_inner_state.next_slot_input)
+            .map(|_old_inner_state| new_inner_state.next_slot_input)
+            .map_err(|existing_inner_state| existing_inner_state.next_slot_input)
     }
 
     /// Update state without caring about whether update succeeds.

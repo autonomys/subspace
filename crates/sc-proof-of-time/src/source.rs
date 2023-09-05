@@ -73,8 +73,6 @@ pub struct PotSource<Block, Client> {
     outgoing_messages_sender: mpsc::Sender<GossipCheckpoints>,
     incoming_messages_receiver: mpsc::Receiver<(PeerId, GossipCheckpoints)>,
     slot_sender: mpsc::Sender<PotSlotInfo>,
-    // TODO: Make this shared with Timekeeper so it can follow latest parameters automatically,
-    //  this will help implementing Timekeeper "reset"
     state: Arc<PotState>,
     _block: PhantomData<Block>,
 }
@@ -162,18 +160,15 @@ where
             mpsc::channel(LOCAL_PROOFS_CHANNEL_CAPACITY);
         let (slot_sender, slot_receiver) = mpsc::channel(SLOTS_CHANNEL_CAPACITY);
         if is_timekeeper {
+            let state = Arc::clone(&state);
             let pot_verifier = pot_verifier.clone();
 
             thread::Builder::new()
                 .name("timekeeper".to_string())
                 .spawn(move || {
-                    if let Err(error) = run_timekeeper(
-                        start_seed,
-                        start_slot,
-                        slot_iterations,
-                        pot_verifier,
-                        timekeeper_checkpoints_sender,
-                    ) {
+                    if let Err(error) =
+                        run_timekeeper(state, pot_verifier, timekeeper_checkpoints_sender)
+                    {
                         error!(%error, "Timekeeper exited with an error");
                     }
                 })
@@ -294,7 +289,7 @@ where
                 #[cfg(feature = "pot")]
                 None,
             )
-            .is_some()
+            .is_ok()
         {
             // We don't care if block production is too slow or block production is not enabled on
             // this node at all
