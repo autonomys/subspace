@@ -1,13 +1,14 @@
 pub mod gossip;
 mod state;
+mod timekeeper;
 
 use crate::source::gossip::{GossipCheckpoints, PotGossipWorker};
 use crate::source::state::{NextSlotInput, PotState};
+use crate::source::timekeeper::run_timekeeper;
 use crate::verifier::PotVerifier;
 use derive_more::{Deref, DerefMut, From};
 use futures::channel::mpsc;
-use futures::executor::block_on;
-use futures::{select, SinkExt, StreamExt};
+use futures::{select, StreamExt};
 use sc_client_api::{BlockImportNotification, BlockchainEvents};
 use sc_network::PeerId;
 use sc_network_gossip::{Network as GossipNetwork, Syncing as GossipSyncing};
@@ -26,8 +27,7 @@ use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::thread;
-use subspace_core_primitives::{PotCheckpoints, PotSeed, SlotNumber};
-use subspace_proof_of_time::PotError;
+use subspace_core_primitives::{PotCheckpoints, PotSeed};
 use tracing::{debug, error};
 
 const LOCAL_PROOFS_CHANNEL_CAPACITY: usize = 10;
@@ -354,39 +354,5 @@ where
             #[cfg(feature = "pot")]
             Some(pot_parameters.next_parameters_change()),
         );
-    }
-}
-
-/// Runs timekeeper, must be running on a fast dedicated CPU core
-fn run_timekeeper(
-    mut seed: PotSeed,
-    slot: Slot,
-    slot_iterations: NonZeroU32,
-    pot_verifier: PotVerifier,
-    mut proofs_sender: mpsc::Sender<TimekeeperCheckpoints>,
-) -> Result<(), PotError> {
-    let mut slot = SlotNumber::from(slot);
-    loop {
-        let checkpoints = subspace_proof_of_time::prove(seed, slot_iterations)?;
-
-        pot_verifier.inject_verified_checkpoints(seed, slot_iterations, checkpoints);
-
-        let slot_info = TimekeeperCheckpoints {
-            seed,
-            slot_iterations,
-            slot: Slot::from(slot),
-            checkpoints,
-        };
-
-        seed = checkpoints.output().seed();
-
-        if let Err(error) = proofs_sender.try_send(slot_info) {
-            if let Err(error) = block_on(proofs_sender.send(error.into_inner())) {
-                debug!(%error, "Couldn't send checkpoints, channel is closed");
-                return Ok(());
-            }
-        }
-
-        slot += 1;
     }
 }
