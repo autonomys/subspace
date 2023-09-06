@@ -2,8 +2,8 @@
 
 use crate::pallet::StateRoots;
 use crate::{
-    BalanceOf, BlockTree, Config, ConsensusBlockHash, DomainBlocks, ExecutionInbox,
-    ExecutionReceiptOf, HeadReceiptNumber, InboxedBundle,
+    BalanceOf, BlockTree, Config, ConsensusBlockHash, DomainBlockDescendants, DomainBlocks,
+    ExecutionInbox, ExecutionReceiptOf, HeadReceiptNumber, InboxedBundle,
 };
 use codec::{Decode, Encode};
 use frame_support::{ensure, PalletError};
@@ -257,18 +257,19 @@ pub(crate) fn process_execution_receipt<T: Config>(
                     return Err(Error::MultipleERsAfterChallengePeriod);
                 }
 
-                let receipt = receipts_at_number
+                let receipt_hash = receipts_at_number
                     .first()
                     .cloned()
                     .expect("should always have a value due to check above");
 
                 let domain_block =
-                    DomainBlocks::<T>::take(receipt).ok_or(Error::MissingDomainBlock)?;
+                    DomainBlocks::<T>::take(receipt_hash).ok_or(Error::MissingDomainBlock)?;
                 _ = StateRoots::<T>::take((
                     domain_id,
                     domain_block.execution_receipt.domain_block_number,
                     domain_block.execution_receipt.domain_block_hash,
                 ));
+                _ = DomainBlockDescendants::<T>::take(receipt_hash);
 
                 // Remove the block's `ExecutionInbox` and `InboxedBundle` as the block is pruned and
                 // does not need to verify its receipt's `extrinsics_root` anymore.
@@ -323,13 +324,19 @@ fn add_new_receipt_to_block_tree<T: Config>(
         execution_receipt.final_state_root,
     );
 
+    BlockTree::<T>::mutate(domain_id, domain_block_number, |er_hashes| {
+        er_hashes.insert(er_hash);
+    });
+    DomainBlockDescendants::<T>::mutate(
+        execution_receipt.parent_domain_block_receipt_hash,
+        |er_hashes| {
+            er_hashes.insert(er_hash);
+        },
+    );
     let domain_block = DomainBlock {
         execution_receipt,
         operator_ids: sp_std::vec![submitter],
     };
-    BlockTree::<T>::mutate(domain_id, domain_block_number, |er_hashes| {
-        er_hashes.insert(er_hash);
-    });
     DomainBlocks::<T>::insert(er_hash, domain_block);
 }
 
@@ -631,6 +638,7 @@ mod tests {
                 pruned_receipt.consensus_block_number,
             )
             .is_none());
+            assert!(DomainBlockDescendants::<Test>::get(pruned_receipt.hash()).is_empty());
         });
     }
 

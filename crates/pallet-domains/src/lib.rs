@@ -447,6 +447,13 @@ mod pallet {
         OptionQuery,
     >;
 
+    // Mapping of the parent ER to all its immediate descendants ER
+    // TODO: remove this mapping once https://github.com/subspace/subspace/issues/1731 is implemented
+    // by then every parent ER should only have one immediate descendants ER
+    #[pallet::storage]
+    pub(super) type DomainBlockDescendants<T: Config> =
+        StorageMap<_, Identity, ReceiptHash, BTreeSet<ReceiptHash>, ValueQuery>;
+
     /// The head receipt number of each domain
     #[pallet::storage]
     pub(super) type HeadReceiptNumber<T: Config> =
