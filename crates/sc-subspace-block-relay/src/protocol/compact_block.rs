@@ -11,6 +11,8 @@ use codec::{Decode, Encode};
 use std::collections::BTreeMap;
 use tracing::{trace, warn};
 
+/// Protocol Id.
+const COMPACT_BLOCK_PROTOCOL: RelayProtocol = 1;
 /// Current version.
 const COMPACT_BLOCK_VERSION: u64 = 1;
 
@@ -69,7 +71,6 @@ struct ResolveContext<ProtocolUnitId, ProtocolUnit> {
 }
 
 pub(crate) struct CompactBlockClient<DownloadUnitId, ProtocolUnitId, ProtocolUnit> {
-    protocol_id: RelayProtocol,
     _phantom_data: std::marker::PhantomData<(DownloadUnitId, ProtocolUnitId, ProtocolUnit)>,
 }
 
@@ -81,9 +82,8 @@ where
     ProtocolUnit: Send + Sync + Encode + Decode + Clone,
 {
     /// Creates the client.
-    pub(crate) fn new(protocol_id: RelayProtocol) -> Self {
+    pub(crate) fn new() -> Self {
         Self {
-            protocol_id,
             _phantom_data: Default::default(),
         }
     }
@@ -197,7 +197,7 @@ where
 
     /// Returns the supported version.
     fn relay_version(&self) -> RelayVersion {
-        RelayVersion::new(self.protocol_id, COMPACT_BLOCK_VERSION)
+        RelayVersion::new(COMPACT_BLOCK_PROTOCOL, COMPACT_BLOCK_VERSION)
     }
 }
 
@@ -271,7 +271,6 @@ where
 }
 
 pub(crate) struct CompactBlockServer<DownloadUnitId, ProtocolUnitId, ProtocolUnit> {
-    protocol_id: RelayProtocol,
     _phantom_data: std::marker::PhantomData<(DownloadUnitId, ProtocolUnitId, ProtocolUnit)>,
 }
 
@@ -279,9 +278,8 @@ impl<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
     CompactBlockServer<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
 {
     /// Creates the server.
-    pub(crate) fn new(protocol_id: RelayProtocol) -> Self {
+    pub(crate) fn new() -> Self {
         Self {
-            protocol_id,
             _phantom_data: Default::default(),
         }
     }
@@ -354,6 +352,6 @@ where
     }
 
     fn version(&self) -> RelayVersion {
-        RelayVersion::new(self.protocol_id, COMPACT_BLOCK_VERSION)
+        RelayVersion::new(COMPACT_BLOCK_PROTOCOL, COMPACT_BLOCK_VERSION)
     }
 }

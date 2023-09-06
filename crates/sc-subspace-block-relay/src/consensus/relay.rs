@@ -1,18 +1,18 @@
 //! Consensus block relay implementation.
 
 use crate::consensus::types::{
-    BlockHash, Extrinsic, FullDownloadRequest, FullDownloadResponse, InitialRequest,
-    InitialResponse, PartialBlock, ServerMessage,
+    BlockHash, BlockResponse, Extrinsic, FullDownloadRequest, FullDownloadResponse, InitialRequest,
+    InitialResponse, MessageBody, MessagePrefix, PartialBlock, ServerMessage, ServerMessageDecoder,
 };
 use crate::protocol::compact_block::{CompactBlockClient, CompactBlockServer};
 use crate::protocol::{
     ClientBackend, ProtocolClient, ProtocolServer, ProtocolUnitInfo, ServerBackend,
 };
-use crate::types::{RelayError, RelayProtocol, RelayVersion, RequestResponseErr, VersionEncodable};
+use crate::types::{RelayError, RelayVersion, RequestResponseErr, VersionEncodable};
 use crate::utils::{NetworkPeerHandle, NetworkWrapper};
 use crate::LOG_TARGET;
 use async_trait::async_trait;
-use codec::{Compact, CompactLen, Decode, Encode};
+use codec::{Compact, CompactLen, Decode, Encode, Input};
 use futures::channel::oneshot;
 use futures::stream::StreamExt;
 use sc_client_api::{BlockBackend, HeaderBackend};
@@ -115,22 +115,30 @@ where
             )
             .await?;
 
-        // Resolve the protocol response to get the extrinsics
-        let (body, local_miss) = if let Some(protocol_response) = initial_response.protocol_response
-        {
-            let (body, local_miss) = self
-                .resolve_extrinsics::<ServerMessage<Block, ProtoClient::Request>>(
-                    protocol_response,
-                    &network_peer_handle,
-                )
-                .await?;
-            (Some(body), local_miss)
-        } else {
-            (None, 0)
+        let (block_data, local_miss) = match initial_response.response {
+            BlockResponse::Partial(partial_block, protocol_response) => {
+                // Resolve the protocol response to get the extrinsics.
+                let (body, miss) = self
+                    .resolve_extrinsics::<ServerMessage<Block, ProtoClient::Request>>(
+                        protocol_response,
+                        &network_peer_handle,
+                    )
+                    .await?;
+                (partial_block.block_data(body), miss)
+            }
+            BlockResponse::Complete(block_data) => {
+                debug!(
+                    target: LOG_TARGET,
+                    version = ?self.protocol_version,
+                    block_hash = ?initial_response.block_hash,
+                    "download: received full block",
+                );
+                (block_data, 0)
+            }
         };
 
         // Assemble the final response
-        let downloaded = vec![initial_response.partial_block.block_data(body)];
+        let downloaded = vec![block_data];
         debug!(
             target: LOG_TARGET,
             block_hash = ?initial_response.block_hash,
@@ -174,12 +182,18 @@ where
     /// Resolves the extrinsics from the initial response
     async fn resolve_extrinsics<Request>(
         &self,
-        protocol_response: ProtoClient::Response,
+        protocol_response: Option<ProtoClient::Response>,
         network_peer_handle: &NetworkPeerHandle,
-    ) -> Result<(Vec<Extrinsic<Block>>, usize), RelayError>
+    ) -> Result<(Option<Vec<Extrinsic<Block>>>, usize), RelayError>
     where
         Request: From<ProtoClient::Request> + VersionEncodable + Send + Sync,
     {
+        let protocol_response = if let Some(protocol_response) = protocol_response {
+            protocol_response
+        } else {
+            return Ok((None, 0));
+        };
+
         let (block_hash, resolved) = self
             .protocol
             .resolve_initial_response::<Request>(
@@ -206,7 +220,7 @@ where
                 entry.protocol_unit
             })
             .collect();
-        Ok((extrinsics, local_miss))
+        Ok((Some(extrinsics), local_miss))
     }
 }
 
@@ -317,24 +331,28 @@ where
             payload,
             pending_response,
         } = request;
-        let server_msg: ServerMessage<Block, ProtoServer::Request> =
-            match Decode::decode(&mut payload.as_ref()) {
-                Ok(msg) => msg,
-                Err(err) => {
-                    warn!(
-                        target: LOG_TARGET,
-                        ?peer,
-                        ?err,
-                        "Decode failed"
-                    );
-                    return;
-                }
-            };
+        let mut decoder = ServerMessageDecoder::new(payload.as_slice());
+        let prefix: MessagePrefix<Block> = match decoder.prefix() {
+            Ok(prefix) => prefix,
+            Err(err) => {
+                warn!(
+                    target: LOG_TARGET,
+                    ?peer,
+                    ?err,
+                    "Prefix decode failed"
+                );
+                return;
+            }
+        };
 
-        let ret = match server_msg {
-            ServerMessage::InitialRequest(req) => self.on_initial_request(req),
-            ServerMessage::ProtocolRequest(req) => self.on_protocol_request(req),
-            ServerMessage::FullDownloadRequest(req) => self.on_full_download_request(req),
+        let ret = match prefix {
+            MessagePrefix::InitialRequest(version, from_block, block_attributes) => {
+                self.on_initial_request(version, from_block, block_attributes, &mut decoder)
+            }
+            MessagePrefix::ProtocolRequest(version) => {
+                self.on_protocol_request(version, &mut decoder)
+            }
+            MessagePrefix::FullDownloadRequest(req) => self.on_full_download_request(req),
         };
 
         match ret {
@@ -358,19 +376,39 @@ where
     }
 
     /// Handles the initial request from the client
-    fn on_initial_request(
+    fn on_initial_request<I: Input>(
         &mut self,
-        initial_request: InitialRequest<Block, ProtoServer::Request>,
+        version: RelayVersion,
+        from_block: BlockId<Block>,
+        block_attributes: BlockAttributes,
+        decoder: &mut ServerMessageDecoder<I>,
     ) -> Result<Vec<u8>, RelayError> {
-        let block_hash = self.block_hash(&initial_request.from_block)?;
-        let block_attributes = initial_request.block_attributes;
+        let block_hash = self.block_hash(&from_block)?;
+        if version != self.protocol_version {
+            debug!(
+                target: LOG_TARGET,
+                client_version = ?version,
+                server_version = ?self.protocol_version,
+                ?block_hash,
+                "initial request: version mismatch, sending full block",
+            );
+            return self.handle_version_mismatch(&block_hash, block_attributes);
+        }
+
+        // Same version, decode the body.
+        let body = decoder.body::<ProtoServer::Request>()?;
+        let protocol_request = if let MessageBody::InitialRequest(req) = body {
+            req
+        } else {
+            return Err(RelayError::UnexpectedProtocolRequest);
+        };
 
         // Build the generic and the protocol specific parts of the response
         let partial_block = self.get_partial_block(&block_hash, block_attributes)?;
         let protocol_response = if block_attributes.contains(BlockAttributes::BODY) {
             Some(self.protocol.build_initial_response(
                 &block_hash,
-                initial_request.protocol_request,
+                protocol_request,
                 self.backend.as_ref(),
             )?)
         } else {
@@ -379,17 +417,32 @@ where
 
         let initial_response: InitialResponse<Block, ProtoServer::Response> = InitialResponse {
             block_hash,
-            partial_block,
-            protocol_response,
+            response: BlockResponse::Partial(partial_block, protocol_response),
         };
         Ok(initial_response.encode())
     }
 
     /// Handles the protocol request from the client
-    fn on_protocol_request(
+    fn on_protocol_request<I: Input>(
         &mut self,
-        request: ProtoServer::Request,
+        version: RelayVersion,
+        decoder: &mut ServerMessageDecoder<I>,
     ) -> Result<Vec<u8>, RelayError> {
+        if version != self.protocol_version {
+            return Err(RelayError::UnsupportedVersion {
+                expected: self.protocol_version,
+                actual: version,
+            });
+        }
+
+        // Same version, decode the body.
+        let body = decoder.body::<ProtoServer::Request>()?;
+        let request = if let MessageBody::ProtocolRequest(req) = body {
+            req
+        } else {
+            return Err(RelayError::UnexpectedProtocolRequest);
+        };
+
         let response = self.protocol.on_request(request, self.backend.as_ref())?;
         Ok(response.encode())
     }
@@ -397,9 +450,8 @@ where
     /// Handles the full download request from the client
     fn on_full_download_request(
         &mut self,
-        full_download_request: FullDownloadRequest<Block>,
+        block_request: BlockRequest<Block>,
     ) -> Result<Vec<u8>, RelayError> {
-        let block_request = full_download_request.0;
         let mut blocks = Vec::new();
         let mut block_id = match block_request.from {
             FromBlock::Hash(h) => BlockId::<Block>::Hash(h),
@@ -494,6 +546,27 @@ where
             indexed_body,
             justifications,
         })
+    }
+
+    /// Handles version mismatch detected when the initial request
+    /// was received.
+    fn handle_version_mismatch(
+        &self,
+        block_hash: &BlockHash<Block>,
+        block_attributes: BlockAttributes,
+    ) -> Result<Vec<u8>, RelayError> {
+        // Return full block on version mismatch.
+        let partial_block = self.get_partial_block(block_hash, block_attributes)?;
+        let body = if block_attributes.contains(BlockAttributes::BODY) {
+            Some(block_transactions(block_hash, self.client.as_ref())?)
+        } else {
+            None
+        };
+        let initial_response: InitialResponse<Block, ProtoServer::Response> = InitialResponse {
+            block_hash: *block_hash,
+            response: BlockResponse::Complete(partial_block.block_data(body)),
+        };
+        Ok(initial_response.encode())
     }
 
     /// Converts the BlockId to block hash
@@ -671,7 +744,7 @@ where
     let relay_client: ConsensusRelayClient<Block, Pool, _> = ConsensusRelayClient::new(
         network,
         SYNC_PROTOCOL.into(),
-        Arc::new(CompactBlockClient::new(RelayProtocol::CompactBlock)),
+        Arc::new(CompactBlockClient::new()),
         backend,
     );
 
@@ -681,7 +754,7 @@ where
     });
     let relay_server = ConsensusRelayServer::new(
         client,
-        Box::new(CompactBlockServer::new(RelayProtocol::CompactBlock)),
+        Box::new(CompactBlockServer::new()),
         request_receiver,
         backend,
     );

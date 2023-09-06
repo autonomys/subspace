@@ -1,4 +1,4 @@
-//! Relay protocol defines.
+//! Relay protocol definitions.
 
 //!
 //! The components in the system:

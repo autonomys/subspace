@@ -1,29 +1,24 @@
-//! Common types.
+//! Common type definitions.
 
 use codec::{Decode, Encode};
 use sc_network::RequestFailure;
 
-/// The relay protocol identifier.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Encode, Decode)]
-pub(crate) enum RelayProtocol {
-    #[codec(index = 0)]
-    CompactBlock,
-    // Next protocol goes here.
-    // #[codec(index = 1)]
-}
+/// The protocol identifier.
+pub(crate) type RelayProtocol = u64;
 
-/// The relay protocol version.
+/// The overall protocol version, used in the exchanged
+/// messages.
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Encode, Decode)]
 pub(crate) struct RelayVersion {
     /// The protocol identifier.
     protocol: RelayProtocol,
 
-    /// The sub version within the protocol implementation.
+    /// The sub version specific to the protocol implementation.
     protocol_version: u64,
 }
 
 impl RelayVersion {
-    /// Creates the version.
+    /// Creates the protocol version.
     pub(crate) fn new(protocol: RelayProtocol, protocol_version: u64) -> Self {
         Self {
             protocol,
@@ -35,11 +30,10 @@ impl RelayVersion {
 /// Message type that can be encoded with version info.
 pub(crate) trait VersionEncodable {
     /// Type specific encoding.
-    fn encode(&self, version: &RelayVersion) -> Vec<u8> {
-        todo!()
-    }
+    fn encode(self, version: &RelayVersion) -> Vec<u8>;
 }
 
+/// Request/response error codes.
 #[derive(Debug, thiserror::Error)]
 pub(crate) enum RequestResponseErr {
     #[error("RequestResponseErr::DecodeFailed: {response_len}/{err:?}")]
@@ -99,4 +93,13 @@ pub(crate) enum RelayError {
 
     #[error("Request/response error: {0}")]
     RequestResponse(#[from] RequestResponseErr),
+
+    #[error("Decode failed: {0}")]
+    DecodeFailed(#[from] codec::Error),
+
+    #[error("Unsupported version: {expected:?}/{actual:?}")]
+    UnsupportedVersion {
+        expected: RelayVersion,
+        actual: RelayVersion,
+    },
 }

@@ -1,4 +1,4 @@
-//! Block relay implementation.
+//! Subspace block relay implementation.
 
 #![feature(const_option)]
 
