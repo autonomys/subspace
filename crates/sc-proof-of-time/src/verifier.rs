@@ -100,10 +100,6 @@ impl PotVerifier {
         let mut slots = u64::from(slots);
 
         loop {
-            if slots == 0 {
-                return proof.seed() == seed;
-            }
-
             // TODO: This "proxy" is a workaround for https://github.com/rust-lang/rust/issues/57478
             let (result_sender, result_receiver) = oneshot::channel();
             std::thread::spawn({
@@ -120,7 +116,7 @@ impl PotVerifier {
                 }
             });
 
-            let proof = match result_receiver.await {
+            let calculated_proof = match result_receiver.await {
                 Ok(Some(proof)) => proof,
                 _ => {
                     return false;
@@ -128,6 +124,11 @@ impl PotVerifier {
             };
 
             slots -= 1;
+
+            if slots == 0 {
+                return proof == calculated_proof;
+            }
+
             #[cfg(feature = "pot")]
             {
                 slot = slot + Slot::from(1);
@@ -138,14 +139,14 @@ impl PotVerifier {
                 && parameters_change.slot == slot
             {
                 slot_iterations = parameters_change.slot_iterations;
-                seed = proof.seed_with_entropy(&parameters_change.entropy);
+                seed = calculated_proof.seed_with_entropy(&parameters_change.entropy);
                 maybe_parameters_change.take();
             } else {
-                seed = proof.seed();
+                seed = calculated_proof.seed();
             }
             #[cfg(not(feature = "pot"))]
             {
-                seed = proof.seed();
+                seed = calculated_proof.seed();
             }
         }
     }

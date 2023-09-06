@@ -159,6 +159,19 @@ fn parameters_change() {
 
     let verifier = PotVerifier::new(genesis_seed, NonZeroUsize::new(1000).unwrap());
 
+    // Changing parameters after first slot
+    assert!(block_on(verifier.is_proof_valid(
+        Slot::from(1),
+        genesis_seed,
+        slot_iterations_1,
+        Slot::from(1),
+        checkpoints_1.output(),
+        Some(PotParametersChange {
+            slot: Slot::from(2),
+            slot_iterations: slot_iterations_2,
+            entropy,
+        })
+    )));
     // Changing parameters in the middle
     assert!(block_on(verifier.is_proof_valid(
         Slot::from(1),
@@ -166,6 +179,19 @@ fn parameters_change() {
         slot_iterations_1,
         Slot::from(3),
         checkpoints_3.output(),
+        Some(PotParametersChange {
+            slot: Slot::from(2),
+            slot_iterations: slot_iterations_2,
+            entropy,
+        })
+    )));
+    // Changing parameters on last slot
+    assert!(block_on(verifier.is_proof_valid(
+        Slot::from(1),
+        genesis_seed,
+        slot_iterations_1,
+        Slot::from(2),
+        checkpoints_2.output(),
         Some(PotParametersChange {
             slot: Slot::from(2),
             slot_iterations: slot_iterations_2,
