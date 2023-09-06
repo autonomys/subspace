@@ -116,11 +116,8 @@ impl PotVerifier {
                 }
             });
 
-            let calculated_proof = match result_receiver.await {
-                Ok(Some(proof)) => proof,
-                _ => {
-                    return false;
-                }
+            let Ok(Some(calculated_proof)) = result_receiver.await else {
+                return false;
             };
 
             slots -= 1;
