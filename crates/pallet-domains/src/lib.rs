@@ -552,6 +552,21 @@ mod pallet {
         DuplicatedBundle,
     }
 
+    #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
+    pub enum FraudProofError {
+        /// The targetted bad receipt not found which may already pruned by other
+        /// fraud proof or the fraud proof is submitted to the wrong fork.
+        BadReceiptNotFound,
+        /// The genesis receipt is unchallengeable.
+        ChallengingGenesisReceipt,
+    }
+
+    impl<T> From<FraudProofError> for Error<T> {
+        fn from(err: FraudProofError) -> Self {
+            Error::FraudProof(err)
+        }
+    }
+
     impl<T> From<RuntimeRegistryError> for Error<T> {
         fn from(err: RuntimeRegistryError) -> Self {
             Error::RuntimeRegistry(err)
@@ -585,7 +600,7 @@ mod pallet {
     #[pallet::error]
     pub enum Error<T> {
         /// Invalid fraud proof.
-        FraudProof,
+        FraudProof(FraudProofError),
         /// Runtime registry specific errors
         RuntimeRegistry(RuntimeRegistryError),
         /// Staking related errors.
@@ -1112,7 +1127,8 @@ mod pallet {
             match call {
                 Call::submit_bundle { opaque_bundle } => Self::validate_bundle(opaque_bundle)
                     .map_err(|_| InvalidTransaction::Call.into()),
-                Call::submit_fraud_proof { fraud_proof: _ } => Ok(()),
+                Call::submit_fraud_proof { fraud_proof } => Self::validate_fraud_proof(fraud_proof)
+                    .map_err(|_| InvalidTransaction::Call.into()),
                 _ => Err(InvalidTransaction::Call.into()),
             }
         }
@@ -1142,7 +1158,13 @@ mod pallet {
                         .build()
                 }
                 Call::submit_fraud_proof { fraud_proof } => {
-                    // TODO: Validate fraud proof
+                    if let Err(e) = Self::validate_fraud_proof(fraud_proof) {
+                        log::debug!(
+                            target: "runtime::domains",
+                            "Bad fraud proof {:?}, error: {e:?}", fraud_proof.domain_id(),
+                        );
+                        return InvalidTransactionCode::FraudProof.into();
+                    }
 
                     // TODO: proper tag value.
                     unsigned_validity("SubspaceSubmitFraudProof", fraud_proof)
@@ -1347,6 +1369,21 @@ impl<T: Config> Pallet<T> {
 
         let receipt = &sealed_header.header.receipt;
         verify_execution_receipt::<T>(domain_id, receipt).map_err(BundleError::Receipt)?;
+
+        Ok(())
+    }
+
+    fn validate_fraud_proof(
+        fraud_proof: &FraudProof<T::BlockNumber, T::Hash>,
+    ) -> Result<(), FraudProofError> {
+        let bad_receipt = DomainBlocks::<T>::get(fraud_proof.bad_receipt_hash())
+            .ok_or(FraudProofError::BadReceiptNotFound)?
+            .execution_receipt;
+
+        ensure!(
+            !bad_receipt.domain_block_number.is_zero(),
+            FraudProofError::ChallengingGenesisReceipt
+        );
 
         Ok(())
     }
