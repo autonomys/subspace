@@ -1,11 +1,12 @@
 //! Common utils.
 
-use codec::{Decode, Encode};
+use crate::types::{RelayVersion, RequestResponseErr, VersionEncodable};
+use codec::Decode;
 use futures::channel::oneshot;
 use parking_lot::Mutex;
 use sc_network::request_responses::IfDisconnected;
 use sc_network::types::ProtocolName;
-use sc_network::{NetworkRequest, PeerId, RequestFailure};
+use sc_network::{NetworkRequest, PeerId};
 use std::sync::Arc;
 
 type NetworkRequestService = Arc<dyn NetworkRequest + Send + Sync + 'static>;
@@ -65,16 +66,17 @@ impl NetworkPeerHandle {
     pub(crate) async fn request<Request, Response>(
         &self,
         request: Request,
+        client_version: RelayVersion,
     ) -> Result<Response, RequestResponseErr>
     where
-        Request: Encode,
+        Request: VersionEncodable,
         Response: Decode,
     {
         let (tx, rx) = oneshot::channel();
         self.network.start_request(
             self.who,
             self.protocol_name.clone(),
-            request.encode(),
+            request.encode(&client_version),
             tx,
             IfDisconnected::ImmediateError,
         );
@@ -88,64 +90,4 @@ impl NetworkPeerHandle {
         Response::decode(&mut response_bytes.as_ref())
             .map_err(|err| RequestResponseErr::DecodeFailed { response_len, err })
     }
-}
-
-#[derive(Debug, thiserror::Error)]
-pub(crate) enum RequestResponseErr {
-    #[error("RequestResponseErr::DecodeFailed: {response_len}/{err:?}")]
-    DecodeFailed {
-        response_len: usize,
-        err: codec::Error,
-    },
-
-    #[error("RequestResponseErr::RequestFailure {0:?}")]
-    RequestFailure(RequestFailure),
-
-    #[error("Network not initialized")]
-    NetworkUninitialized,
-
-    #[error("RequestResponseErr::Canceled")]
-    Canceled,
-}
-
-#[derive(Debug, thiserror::Error)]
-pub(crate) enum RelayError {
-    #[error("Block header: {0}")]
-    BlockHeader(String),
-
-    #[error("Block indexed body: {0}")]
-    BlockIndexedBody(String),
-
-    #[error("Block justifications: {0}")]
-    BlockJustifications(String),
-
-    #[error("Block hash: {0}")]
-    BlockHash(String),
-
-    #[error("Block body: {0}")]
-    BlockBody(String),
-
-    #[error("Block extrinsics not found: {0}")]
-    BlockExtrinsicsNotFound(String),
-
-    #[error("Unexpected number of resolved entries: {expected}, {actual}")]
-    ResolveMismatch { expected: usize, actual: usize },
-
-    #[error("Resolved entry not found: {0}")]
-    ResolvedNotFound(usize),
-
-    #[error("Unexpected initial request")]
-    UnexpectedInitialRequest,
-
-    #[error("Unexpected initial response")]
-    UnexpectedInitialResponse,
-
-    #[error("Unexpected protocol request")]
-    UnexpectedProtocolRequest,
-
-    #[error("Unexpected protocol response")]
-    UnexpectedProtocolRespone,
-
-    #[error("Request/response error: {0}")]
-    RequestResponse(#[from] RequestResponseErr),
 }

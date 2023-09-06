@@ -1,10 +1,11 @@
 //! Compact block implementation.
 
-use crate::utils::NetworkPeerHandle;
-use crate::{
-    ClientBackend, ProtocolClient, ProtocolServer, ProtocolUnitInfo, RelayError, RelayProtocol,
-    RelayVersion, Resolved, ServerBackend, LOG_TARGET,
+use crate::protocol::{
+    ClientBackend, ProtocolClient, ProtocolServer, ProtocolUnitInfo, Resolved, ServerBackend,
 };
+use crate::types::{RelayError, RelayProtocol, RelayVersion, VersionEncodable};
+use crate::utils::NetworkPeerHandle;
+use crate::LOG_TARGET;
 use async_trait::async_trait;
 use codec::{Decode, Encode};
 use std::collections::BTreeMap;
@@ -141,7 +142,10 @@ where
         network_peer_handle: &NetworkPeerHandle,
     ) -> Result<Vec<Resolved<ProtocolUnitId, ProtocolUnit>>, RelayError>
     where
-        Request: From<CompactBlockRequest<DownloadUnitId, ProtocolUnitId>> + Encode + Send + Sync,
+        Request: From<CompactBlockRequest<DownloadUnitId, ProtocolUnitId>>
+            + VersionEncodable
+            + Send
+            + Sync,
     {
         let ResolveContext {
             mut resolved,
@@ -153,8 +157,11 @@ where
             download_unit_id: compact_response.download_unit_id.clone(),
             protocol_unit_ids: local_miss.clone(),
         });
+        let version = self.relay_version();
         let response: CompactBlockResponse<DownloadUnitId, ProtocolUnitId, ProtocolUnit> =
-            network_peer_handle.request(Request::from(request)).await?;
+            network_peer_handle
+                .request(Request::from(request), version)
+                .await?;
         let missing_entries_response =
             if let CompactBlockResponse::MissingEntries(response) = response {
                 response
@@ -187,6 +194,11 @@ where
 
         Ok(resolved.into_values().collect())
     }
+
+    /// Returns the supported version.
+    fn relay_version(&self) -> RelayVersion {
+        RelayVersion::new(self.protocol_id, COMPACT_BLOCK_VERSION)
+    }
 }
 
 #[async_trait]
@@ -215,7 +227,7 @@ where
         backend: &dyn ClientBackend<ProtocolUnitId, ProtocolUnit>,
     ) -> Result<(DownloadUnitId, Vec<Resolved<ProtocolUnitId, ProtocolUnit>>), RelayError>
     where
-        Request: From<Self::Request> + Encode + Send + Sync,
+        Request: From<Self::Request> + VersionEncodable + Send + Sync,
     {
         let compact_response = match response {
             CompactBlockResponse::Initial(compact_response) => compact_response,
@@ -254,7 +266,7 @@ where
     }
 
     fn version(&self) -> RelayVersion {
-        RelayVersion::new(self.protocol_id, COMPACT_BLOCK_VERSION)
+        self.relay_version()
     }
 }
 
