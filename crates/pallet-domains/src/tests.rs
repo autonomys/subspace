@@ -710,3 +710,162 @@ fn test_bundle_fromat_verification() {
         );
     });
 }
+
+#[test]
+fn test_invalid_fraud_proof() {
+    let creator = 0u64;
+    let operator_id = 1u64;
+    let head_domain_number = 10;
+    let mut ext = new_test_ext_with_extensions();
+    ext.execute_with(|| {
+        let domain_id = register_genesis_domain(creator, vec![operator_id]);
+        extend_block_tree(domain_id, operator_id, head_domain_number + 1);
+        assert_eq!(
+            HeadReceiptNumber::<Test>::get(domain_id),
+            head_domain_number
+        );
+
+        // Fraud proof target the genesis ER is invalid
+        let bad_receipt_at = 0;
+        let bad_receipt_hash = get_block_tree_node_at::<Test>(domain_id, bad_receipt_at)
+            .unwrap()
+            .execution_receipt
+            .hash();
+        let fraud_proof = FraudProof::dummy_fraud_proof(domain_id, bad_receipt_hash);
+        assert_eq!(
+            Domains::validate_fraud_proof(&fraud_proof),
+            Err(FraudProofError::ChallengingGenesisReceipt)
+        );
+
+        // Fraud proof target unknown ER is invalid
+        let bad_receipt_hash = H256::random();
+        let fraud_proof = FraudProof::dummy_fraud_proof(domain_id, bad_receipt_hash);
+        assert_eq!(
+            Domains::validate_fraud_proof(&fraud_proof),
+            Err(FraudProofError::BadReceiptNotFound)
+        );
+    });
+}
+
+#[test]
+fn test_basic_fraud_proof_processing() {
+    let creator = 0u64;
+    let operator_id = 1u64;
+    let head_domain_number = 10;
+    let mut ext = new_test_ext_with_extensions();
+    ext.execute_with(|| {
+        let domain_id = register_genesis_domain(creator, vec![operator_id]);
+        extend_block_tree(domain_id, operator_id, head_domain_number + 1);
+        assert_eq!(
+            HeadReceiptNumber::<Test>::get(domain_id),
+            head_domain_number
+        );
+
+        // Construct and submit fraud proof that target ER at `head_domain_number / 2`
+        let bad_receipt_at = head_domain_number / 2;
+        let bad_receipt = get_block_tree_node_at::<Test>(domain_id, bad_receipt_at)
+            .unwrap()
+            .execution_receipt;
+        let bad_receipt_hash = bad_receipt.hash();
+        let fraud_proof = FraudProof::dummy_fraud_proof(domain_id, bad_receipt_hash);
+        assert_ok!(Domains::submit_fraud_proof(
+            RawOrigin::None.into(),
+            Box::new(fraud_proof)
+        ));
+
+        // The head receipt number should be reverted to `bad_receipt_at - 1`
+        assert_eq!(
+            HeadReceiptNumber::<Test>::get(domain_id),
+            bad_receipt_at - 1
+        );
+        for block_number in bad_receipt_at..=head_domain_number {
+            // The targetted ER and all its descendants should be removed from the block tree
+            assert!(BlockTree::<Test>::get(domain_id, block_number).is_empty());
+
+            // The other data that used to verify ER should not be removed, such that the honest
+            // operator can re-submit the valid ER
+            assert!(
+                !ExecutionInbox::<Test>::get((domain_id, block_number, block_number)).is_empty()
+            );
+            assert!(ConsensusBlockHash::<Test>::get(domain_id, block_number).is_some());
+        }
+
+        // Re-submit the valid ER
+        let resubmit_receipt = bad_receipt;
+        let bundle = create_dummy_bundle_with_receipts(
+            domain_id,
+            operator_id,
+            H256::random(),
+            resubmit_receipt,
+        );
+        assert_ok!(Domains::submit_bundle(RawOrigin::None.into(), bundle,));
+        assert_eq!(
+            HeadReceiptNumber::<Test>::get(domain_id),
+            head_domain_number / 2
+        );
+    });
+}
+
+#[test]
+fn test_fraud_proof_prune_fraudulent_branch_of_receipt() {
+    let creator = 0u64;
+    let operator_id = 1u64;
+    let head_domain_number = 10;
+    let mut ext = new_test_ext_with_extensions();
+    ext.execute_with(|| {
+        let domain_id = register_genesis_domain(creator, vec![operator_id]);
+        extend_block_tree(domain_id, operator_id, head_domain_number + 1);
+        assert_eq!(
+            HeadReceiptNumber::<Test>::get(domain_id),
+            head_domain_number
+        );
+
+        // Construct a fraudulent branch of ER in the block tree start at `head_domain_number / 2`
+        let bad_receipt_start_at = head_domain_number / 2;
+        let mut bad_receipts = vec![];
+        for i in 0..3 {
+            let bad_receipt_at = bad_receipt_start_at + i;
+            let bad_receipt = {
+                let mut er = get_block_tree_node_at::<Test>(domain_id, bad_receipt_at)
+                    .unwrap()
+                    .execution_receipt;
+                er.final_state_root = H256::random();
+                if let Some(h) = bad_receipts.last() {
+                    er.parent_domain_block_receipt_hash = *h;
+                }
+                er
+            };
+            let bad_receipt_hash = bad_receipt.hash();
+            let bundle = create_dummy_bundle_with_receipts(
+                domain_id,
+                operator_id,
+                H256::random(),
+                bad_receipt,
+            );
+            assert_ok!(Domains::submit_bundle(RawOrigin::None.into(), bundle));
+            bad_receipts.push(bad_receipt_hash);
+
+            assert_eq!(BlockTree::<Test>::get(domain_id, bad_receipt_at).len(), 2);
+            assert!(DomainBlocks::<Test>::get(bad_receipt_hash).is_some());
+        }
+
+        // Construct and submit a fraud proof for the fraudulent branch of ER
+        let fraud_proof = FraudProof::dummy_fraud_proof(domain_id, bad_receipts[0]);
+        assert_ok!(Domains::submit_fraud_proof(
+            RawOrigin::None.into(),
+            Box::new(fraud_proof)
+        ));
+
+        // The head receipt number should be unchanged since the best branch of ER is valid
+        // and only the fraudulent branch of ER should be removed from the block tree
+        assert_eq!(
+            HeadReceiptNumber::<Test>::get(domain_id),
+            head_domain_number
+        );
+        for i in 0..3 {
+            let bad_receipt_at = bad_receipt_start_at + i;
+            assert_eq!(BlockTree::<Test>::get(domain_id, bad_receipt_at).len(), 1);
+            assert!(DomainBlocks::<Test>::get(bad_receipts[i as usize]).is_none());
+        }
+    });
+}
