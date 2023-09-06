@@ -1,4 +1,3 @@
-#![feature(assert_matches, const_option)]
 // Copyright (C) 2019-2021 Parity Technologies (UK) Ltd.
 // Copyright (C) 2021 Subspace Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
@@ -16,6 +15,7 @@
 // limitations under the License.
 #![doc = include_str!("../README.md")]
 #![cfg_attr(not(feature = "std"), no_std)]
+#![feature(assert_matches, const_option, let_chains)]
 #![warn(unused_must_use, unsafe_code, unused_variables, unused_must_use)]
 
 extern crate alloc;
@@ -50,12 +50,14 @@ use sp_consensus_slots::Slot;
 use sp_consensus_subspace::consensus::verify_solution;
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::offence::{OffenceDetails, OffenceError, OnOffenceHandler};
-#[cfg(feature = "pot")]
-use sp_consensus_subspace::PotParameters;
 use sp_consensus_subspace::{
     ChainConstants, EquivocationProof, FarmerPublicKey, FarmerSignature, SignedVote, Vote,
 };
+#[cfg(feature = "pot")]
+use sp_consensus_subspace::{PotParameters, PotParametersChange};
 use sp_runtime::generic::DigestItem;
+#[cfg(feature = "pot")]
+use sp_runtime::traits::CheckedSub;
 use sp_runtime::traits::{BlockNumberProvider, Hash, One, Zero};
 #[cfg(not(feature = "pot"))]
 use sp_runtime::traits::{SaturatedConversion, Saturating};
@@ -71,9 +73,11 @@ use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::PotProof;
 use subspace_core_primitives::{
     ArchivedHistorySegment, HistorySize, PublicKey, Randomness, RewardSignature, SectorId,
-    SectorIndex, SegmentHeader, SegmentIndex, SolutionRange,
+    SectorIndex, SegmentHeader, SegmentIndex, SlotNumber, SolutionRange,
 };
 use subspace_solving::REWARD_SIGNING_CONTEXT;
+#[cfg(feature = "pot")]
+use subspace_verification::derive_pot_entropy;
 #[cfg(not(feature = "pot"))]
 use subspace_verification::derive_randomness;
 use subspace_verification::{
@@ -152,7 +156,8 @@ mod pallet {
     use sp_std::prelude::*;
     use subspace_core_primitives::crypto::Scalar;
     use subspace_core_primitives::{
-        HistorySize, Randomness, SectorIndex, SegmentHeader, SegmentIndex, SolutionRange,
+        Blake3Hash, HistorySize, Randomness, SectorIndex, SegmentHeader, SegmentIndex,
+        SolutionRange,
     };
 
     pub(super) struct InitialSolutionRanges<T: Config> {
@@ -200,9 +205,24 @@ mod pallet {
         // TODO: Remove when switching to PoT by default
         type GlobalRandomnessUpdateInterval: Get<Self::BlockNumber>;
 
-        /// The amount of time, in blocks, between updates of global randomness.
+        /// Number of slots between slot arrival and when corresponding block can be produced.
+        ///
+        /// Practically this means future proof of time proof needs to be revealed this many slots
+        /// ahead before block can be authored even though solution is available before that.
         #[pallet::constant]
         type BlockAuthoringDelay: Get<Slot>;
+
+        /// Interval, in blocks, between blockchain entropy injection into proof of time chain.
+        #[pallet::constant]
+        type PotEntropyInjectionInterval: Get<Self::BlockNumber>;
+
+        /// Interval, in entropy injection intervals, where to take entropy for injection from.
+        #[pallet::constant]
+        type PotEntropyInjectionLookbackDepth: Get<u8>;
+
+        /// Delay after block, in slots, when entropy injection takes effect.
+        #[pallet::constant]
+        type PotEntropyInjectionDelay: Get<Slot>;
 
         /// The amount of time, in blocks, that each era should last.
         /// NOTE: Currently it is not possible to change the era duration after
@@ -290,6 +310,13 @@ mod pallet {
         FirstFarmer,
         /// Specified root farmer is allowed to author blocks unless unlocked for everyone.
         RootFarmer(FarmerPublicKey),
+    }
+
+    #[derive(Debug, Copy, Clone, Encode, Decode, TypeInfo)]
+    pub(super) struct PotEntropyValue {
+        /// Target slot at which entropy should be injected (when known)
+        pub(super) target_slot: Option<Slot>,
+        pub(super) entropy: Blake3Hash,
     }
 
     #[pallet::genesis_config]
@@ -468,6 +495,12 @@ mod pallet {
             (T::AccountId, FarmerSignature),
         >,
     >;
+
+    /// Entropy that needs to be injected into proof of time chain at specific slot associated with
+    /// block number it came from.
+    #[pallet::storage]
+    pub(super) type PotEntropy<T: Config> =
+        StorageValue<_, BTreeMap<T::BlockNumber, PotEntropyValue>, ValueQuery>;
 
     /// The current block randomness, updated at block initialization. When the proof of time feature
     /// is enabled it derived from PoT otherwise PoR.
@@ -784,7 +817,7 @@ impl<T: Config> Pallet<T> {
     }
 
     fn do_initialize(block_number: T::BlockNumber) {
-        let pre_digest = <frame_system::Pallet<T>>::digest()
+        let pre_digest = frame_system::Pallet::<T>::digest()
             .logs
             .iter()
             .find_map(|s| s.as_subspace_pre_digest::<T::AccountId>())
@@ -891,7 +924,8 @@ impl<T: Config> Pallet<T> {
 
         // Extract PoR randomness from pre-digest.
         #[cfg(not(feature = "pot"))]
-        let block_randomness = derive_randomness(pre_digest.solution(), pre_digest.slot().into());
+        let block_randomness =
+            derive_randomness(pre_digest.solution(), SlotNumber::from(pre_digest.slot()));
 
         #[cfg(feature = "pot")]
         let block_randomness = pre_digest
@@ -926,11 +960,88 @@ impl<T: Config> Pallet<T> {
             ));
         }
 
-        // TODO: Take adjustment of iterations into account once we have it
         #[cfg(feature = "pot")]
-        frame_system::Pallet::<T>::deposit_log(DigestItem::pot_slot_iterations(
-            PotSlotIterations::<T>::get().expect("Always instantiated during genesis; qed"),
-        ));
+        {
+            let pot_slot_iterations =
+                PotSlotIterations::<T>::get().expect("Always initialized during genesis; qed");
+            let pot_entropy_injection_interval = T::PotEntropyInjectionInterval::get();
+            let pot_entropy_injection_delay = T::PotEntropyInjectionDelay::get();
+
+            // TODO: Take adjustment of iterations into account once we have it
+            frame_system::Pallet::<T>::deposit_log(DigestItem::pot_slot_iterations(
+                pot_slot_iterations,
+            ));
+
+            let mut entropy = PotEntropy::<T>::get();
+            let lookback_in_blocks = pot_entropy_injection_interval
+                * T::BlockNumber::from(T::PotEntropyInjectionLookbackDepth::get());
+            let last_entropy_injection_block =
+                block_number / pot_entropy_injection_interval * pot_entropy_injection_interval;
+            let maybe_entropy_source_block_number =
+                last_entropy_injection_block.checked_sub(&lookback_in_blocks);
+
+            if (block_number % pot_entropy_injection_interval).is_zero() {
+                let current_block_entropy =
+                    derive_pot_entropy(pre_digest.solution(), SlotNumber::from(pre_digest.slot()));
+                // Collect entropy every `T::PotEntropyInjectionInterval` blocks
+                entropy.insert(
+                    block_number,
+                    PotEntropyValue {
+                        target_slot: None,
+                        entropy: current_block_entropy,
+                    },
+                );
+
+                // Update target slot for entropy injection once we know it
+                if let Some(entropy_source_block_number) = maybe_entropy_source_block_number {
+                    if let Some(entropy_value) = entropy.get_mut(&entropy_source_block_number) {
+                        let target_slot = pre_digest
+                            .slot()
+                            .saturating_add(pot_entropy_injection_delay);
+                        debug!(
+                            target: "runtime::subspace",
+                            "Pot entropy injection will happen at slot {target_slot:?}",
+                        );
+                        entropy_value.target_slot.replace(target_slot);
+                    }
+                }
+
+                PotEntropy::<T>::put(entropy.clone());
+            }
+
+            // Deposit consensus log item with parameters change in case corresponding entropy is
+            // available
+            if let Some(entropy_source_block_number) = maybe_entropy_source_block_number {
+                let maybe_entropy_value = entropy.get(&entropy_source_block_number).copied();
+                if let Some(PotEntropyValue {
+                    target_slot,
+                    entropy,
+                }) = maybe_entropy_value
+                {
+                    let target_slot = target_slot
+                        .expect("Target slot is guaranteed to be present due to logic above; qed");
+
+                    frame_system::Pallet::<T>::deposit_log(DigestItem::pot_parameters_change(
+                        PotParametersChange {
+                            slot: target_slot,
+                            // TODO: Take adjustment of iterations into account once we have it
+                            slot_iterations: pot_slot_iterations,
+                            entropy,
+                        },
+                    ));
+                }
+            }
+
+            // Clean up old values we'll no longer need
+            if let Some(entry) = entropy.first_entry() {
+                if let Some(target_slot) = entry.get().target_slot
+                    && target_slot < pre_digest.slot()
+                {
+                    entry.remove();
+                    PotEntropy::<T>::put(entropy);
+                }
+            }
+        }
     }
 
     fn do_finalize(_block_number: T::BlockNumber) {
@@ -1084,12 +1195,44 @@ impl<T: Config> Pallet<T> {
     /// Proof of time parameters
     #[cfg(feature = "pot")]
     pub fn pot_parameters() -> PotParameters {
+        let block_number = frame_system::Pallet::<T>::block_number();
+        let pot_slot_iterations =
+            PotSlotIterations::<T>::get().expect("Always initialized during genesis; qed");
+        let pot_entropy_injection_interval = T::PotEntropyInjectionInterval::get();
+
+        let entropy = PotEntropy::<T>::get();
+        let lookback_in_blocks = pot_entropy_injection_interval
+            * T::BlockNumber::from(T::PotEntropyInjectionLookbackDepth::get());
+        let last_entropy_injection_block =
+            block_number / pot_entropy_injection_interval * pot_entropy_injection_interval;
+        let maybe_entropy_source_block_number =
+            last_entropy_injection_block.checked_sub(&lookback_in_blocks);
+
+        let mut next_change = None;
+
+        if let Some(entropy_source_block_number) = maybe_entropy_source_block_number {
+            let maybe_entropy_value = entropy.get(&entropy_source_block_number).copied();
+            if let Some(PotEntropyValue {
+                target_slot,
+                entropy,
+            }) = maybe_entropy_value
+            {
+                let target_slot = target_slot.expect(
+                    "Always present due to identical check present in block initialization; qed",
+                );
+
+                next_change.replace(PotParametersChange {
+                    slot: target_slot,
+                    // TODO: Take adjustment of iterations into account once we have it
+                    slot_iterations: pot_slot_iterations,
+                    entropy,
+                });
+            }
+        }
+
         PotParameters::V0 {
-            slot_iterations: PotSlotIterations::<T>::get()
-                .expect("Always instantiated during genesis; qed"),
-            // TODO: This is where adjustment for number of iterations and entropy injection will
-            //  happen for runtime API calls
-            next_change: None,
+            slot_iterations: pot_slot_iterations,
+            next_change,
         }
     }
 
