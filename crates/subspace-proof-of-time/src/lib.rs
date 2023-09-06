@@ -29,7 +29,6 @@ pub enum PotError {
 /// Run PoT proving and produce checkpoints.
 ///
 /// Returns error if `iterations` is not a multiple of checkpoints times two.
-#[inline]
 pub fn prove(seed: PotSeed, iterations: NonZeroU32) -> Result<PotCheckpoints, PotError> {
     if iterations.get() % u32::from(PotCheckpoints::NUM_CHECKPOINTS.get() * 2) != 0 {
         return Err(PotError::NotMultipleOfCheckpoints {
@@ -48,7 +47,6 @@ pub fn prove(seed: PotSeed, iterations: NonZeroU32) -> Result<PotCheckpoints, Po
 /// Verify checkpoint, number of iterations is set across uniformly distributed checkpoints.
 ///
 /// Returns error if `iterations` is not a multiple of checkpoints times two.
-#[inline]
 pub fn verify(
     seed: PotSeed,
     iterations: NonZeroU32,

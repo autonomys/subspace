@@ -57,6 +57,8 @@ use sc_consensus_subspace::{
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
 #[cfg(feature = "pot")]
+use sc_proof_of_time::gossip::pot_gossip_peers_set_config;
+#[cfg(feature = "pot")]
 use sc_proof_of_time::source::PotSource;
 #[cfg(feature = "pot")]
 use sc_proof_of_time::verifier::PotVerifier;
@@ -692,9 +694,8 @@ where
     };
     let mut net_config = sc_network::config::FullNetworkConfiguration::new(&config.network);
     net_config.add_notification_protocol(cdm_gossip_peers_set_config());
-    // TODO: Restore PoT gossip
-    // #[cfg(feature = "pot")]
-    // net_config.add_notification_protocol(pot_gossip_peers_set_config());
+    #[cfg(feature = "pot")]
+    net_config.add_notification_protocol(pot_gossip_peers_set_config());
     let sync_mode = Arc::clone(&net_config.network_config.sync_mode);
     let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
         sc_service::build_network(sc_service::BuildNetworkParams {
@@ -791,34 +792,25 @@ where
     let block_importing_notification_stream = subspace_link.block_importing_notification_stream();
     let archived_segment_notification_stream = subspace_link.archived_segment_notification_stream();
 
-    if config.role.is_authority() || config.force_new_slot_notifications {
-        #[cfg(feature = "pot")]
-        let (pot_source, pot_slot_info_stream) =
-            PotSource::new(config.is_timekeeper, client.clone(), pot_verifier)
-                .map_err(|error| Error::Other(error.into()))?;
-        #[cfg(feature = "pot")]
-        {
-            task_manager.spawn_essential_handle().spawn_blocking(
-                "pot-source",
-                Some("pot"),
-                pot_source.run(),
-            );
-            // TODO: Restore PoT gossip
-            // let pot_gossip_worker = PotGossipWorker::<Block>::new(
-            //     &pot_components,
-            //     network_service.clone(),
-            //     sync_service.clone(),
-            // );
-            // let gossip_sender = pot_gossip_worker.gossip_sender();
-            // task_manager.spawn_essential_handle().spawn_blocking(
-            //     "pot-gossip-worker",
-            //     Some("pot"),
-            //     async move {
-            //         pot_gossip_worker.run().await;
-            //     },
-            // );
-        }
+    #[cfg(feature = "pot")]
+    let pot_slot_info_stream = {
+        let (pot_source, pot_gossip_worker, pot_slot_info_stream) = PotSource::new(
+            config.is_timekeeper,
+            client.clone(),
+            pot_verifier,
+            network_service.clone(),
+            sync_service.clone(),
+        )
+        .map_err(|error| Error::Other(error.into()))?;
+        let spawn_essential_handle = task_manager.spawn_essential_handle();
 
+        spawn_essential_handle.spawn("pot-source", Some("pot"), pot_source.run());
+        spawn_essential_handle.spawn_blocking("pot-gossip", Some("pot"), pot_gossip_worker.run());
+
+        pot_slot_info_stream
+    };
+
+    if config.role.is_authority() || config.force_new_slot_notifications {
         let proposer_factory = ProposerFactory::new(
             task_manager.spawn_handle(),
             client.clone(),
