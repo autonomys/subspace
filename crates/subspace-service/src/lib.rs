@@ -38,6 +38,7 @@ use domain_runtime_primitives::{BlockNumber as DomainNumber, Hash as DomainHash}
 pub use dsn::DsnConfig;
 use frame_system_rpc_runtime_api::AccountNonceApi;
 use futures::channel::oneshot;
+use futures::FutureExt;
 use jsonrpsee::RpcModule;
 use pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi;
 use parking_lot::Mutex;
@@ -81,6 +82,7 @@ use sp_runtime::traits::{Block as BlockT, BlockIdTo, NumberFor};
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use static_assertions::const_assert;
+use std::cell::RefCell;
 use std::marker::PhantomData;
 #[cfg(feature = "pot")]
 use std::num::NonZeroUsize;
@@ -89,6 +91,7 @@ use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 #[cfg(feature = "pot")]
 use subspace_core_primitives::PotSeed;
 use subspace_fraud_proof::verifier_api::VerifierClient;
+use subspace_metrics::{start_prometheus_metrics_server, Libp2pMetricsRegistry, RegistryAdapter};
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::Node;
@@ -184,6 +187,8 @@ pub enum SubspaceNetworking {
         node: Node,
         /// Bootstrap nodes used (that can be also sent to the farmer over RPC)
         bootstrap_nodes: Vec<Multiaddr>,
+        /// DSN metrics registry (libp2p type).
+        metrics_registry: Arc<RefCell<Option<Libp2pMetricsRegistry>>>,
     },
     /// Networking must be instantiated internally
     Create {
@@ -541,7 +546,7 @@ type FullNode<RuntimeApi, ExecutorDispatch> = NewFull<
 
 /// Builds a new service for a full client.
 pub async fn new_full<PosTable, RuntimeApi, ExecutorDispatch>(
-    config: SubspaceConfiguration,
+    mut config: SubspaceConfiguration,
     partial_components: PartialComponents<RuntimeApi, ExecutorDispatch>,
     enable_rpc_extensions: bool,
     block_proposal_slot_portion: SlotProportion,
@@ -585,11 +590,12 @@ where
         mut telemetry,
     } = other;
 
-    let (node, bootstrap_nodes) = match config.subspace_networking.clone() {
+    let (node, bootstrap_nodes, dsn_metrics_registry) = match config.subspace_networking.clone() {
         SubspaceNetworking::Reuse {
             node,
             bootstrap_nodes,
-        } => (node, bootstrap_nodes),
+            metrics_registry,
+        } => (node, bootstrap_nodes, metrics_registry.take()),
         SubspaceNetworking::Create { config: dsn_config } => {
             let dsn_protocol_version = hex::encode(client.chain_info().genesis_hash);
 
@@ -599,10 +605,11 @@ where
                 "Setting DSN protocol version..."
             );
 
-            let (node, mut node_runner) = create_dsn_instance(
+            let (node, mut node_runner, dsn_metrics_registry) = create_dsn_instance(
                 dsn_protocol_version,
                 dsn_config.clone(),
                 segment_headers_store.clone(),
+                config.prometheus_config.is_some(),
             )?;
 
             info!("Subspace networking initialized: Node ID is {}", node.id());
@@ -632,7 +639,7 @@ where
                     ),
                 );
 
-            (node, dsn_config.bootstrap_nodes)
+            (node, dsn_config.bootstrap_nodes, dsn_metrics_registry)
         }
     };
 
@@ -887,6 +894,26 @@ where
             subspace,
         );
     }
+
+    // We replace the Substrate implementation of metrics server with our own.
+    if let Some(prometheus_config) = config.prometheus_config.take() {
+        let registry = if let Some(dsn_metrics_registry) = dsn_metrics_registry {
+            RegistryAdapter::Both(dsn_metrics_registry, prometheus_config.registry)
+        } else {
+            RegistryAdapter::Substrate(prometheus_config.registry)
+        };
+
+        let metrics_server =
+            start_prometheus_metrics_server(vec![prometheus_config.port], registry)?.map(|error| {
+                debug!(?error, "Metrics server error.");
+            });
+
+        task_manager.spawn_handle().spawn(
+            "node-metrics-server",
+            Some("node-metrics-server"),
+            metrics_server,
+        );
+    };
 
     let rpc_handlers = sc_service::spawn_tasks(SpawnTasksParams {
         network: network_service.clone(),

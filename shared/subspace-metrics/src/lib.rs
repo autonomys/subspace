@@ -6,7 +6,6 @@
 //! - Official Rust Prometheus client (registry aliased as Libp2pMetricsRegistry)
 //! - TiKV's Prometheus client (registry aliased as SubstrateMetricsRegistry)
 
-
 use actix_web::http::StatusCode;
 use actix_web::web::Data;
 use actix_web::{get, App, HttpResponse, HttpServer};
