@@ -28,6 +28,8 @@ use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::thread;
 use subspace_core_primitives::{PotCheckpoints, PotSeed};
+#[cfg(feature = "pot")]
+use tracing::warn;
 use tracing::{debug, error};
 
 const LOCAL_PROOFS_CHANNEL_CAPACITY: usize = 10;
@@ -182,7 +184,7 @@ where
         let gossip = PotGossipWorker::new(
             outgoing_messages_receiver,
             incoming_messages_sender,
-            pot_verifier.clone(),
+            pot_verifier,
             Arc::clone(&state),
             network,
             sync,
@@ -236,11 +238,19 @@ where
 
     fn handle_timekeeper_checkpoints(&mut self, timekeeper_checkpoints: TimekeeperCheckpoints) {
         let TimekeeperCheckpoints {
+            slot,
             seed,
             slot_iterations,
-            slot,
             checkpoints,
         } = timekeeper_checkpoints;
+
+        debug!(
+            ?slot,
+            %seed,
+            %slot_iterations,
+            output = %checkpoints.output(),
+            "Received timekeeper proof",
+        );
 
         if self
             .outgoing_messages_sender
@@ -258,13 +268,6 @@ where
         // We don't care if block production is too slow or block production is not enabled on this
         // node at all
         let _ = self.slot_sender.try_send(PotSlotInfo { slot, checkpoints });
-
-        self.state.update(
-            slot,
-            checkpoints.output(),
-            #[cfg(feature = "pot")]
-            None,
-        );
     }
 
     // TODO: Follow both verified and unverified checkpoints to start secondary timekeeper ASAP in
@@ -343,11 +346,17 @@ where
         // * if block import is on a different PoT chain, it will update next slot input to the
         //   correct fork
         // * if block import is on the same PoT chain this will essentially do nothing
-        self.state.update(
-            best_slot,
-            best_proof,
-            #[cfg(feature = "pot")]
-            Some(pot_parameters.next_parameters_change()),
-        );
+        if self
+            .state
+            .update(
+                best_slot,
+                best_proof,
+                #[cfg(feature = "pot")]
+                Some(pot_parameters.next_parameters_change()),
+            )
+            .is_some()
+        {
+            warn!("Proof of time chain reorg happened");
+        }
     }
 }

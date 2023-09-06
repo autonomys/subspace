@@ -118,7 +118,7 @@ impl PotState {
     /// `Err(existing_next_slot_input)` in case state was changed in the meantime.
     pub(super) fn try_extend(
         &self,
-        expected_next_slot_input: NextSlotInput,
+        expected_previous_next_slot_input: NextSlotInput,
         best_slot: Slot,
         best_proof: PotProof,
         #[cfg(feature = "pot")] maybe_updated_parameters_change: Option<
@@ -126,7 +126,7 @@ impl PotState {
         >,
     ) -> Result<NextSlotInput, NextSlotInput> {
         let old_inner_state = self.inner_state.load(Ordering::Acquire);
-        if expected_next_slot_input != old_inner_state.next_slot_input {
+        if expected_previous_next_slot_input != old_inner_state.next_slot_input {
             return Err(old_inner_state.next_slot_input);
         }
 
@@ -152,9 +152,10 @@ impl PotState {
             .map_err(|existing_inner_state| existing_inner_state.next_slot_input)
     }
 
-    /// Update state without caring about whether update succeeds.
+    /// Update state, overriding PoT chain if it doesn't match provided values.
     ///
-    /// Update succeeds if state was not modified by concurrent process.
+    /// Returns `Some(next_slot_input)` if reorg happened.
+    #[cfg(feature = "pot")]
     pub(super) fn update(
         &self,
         best_slot: Slot,
@@ -162,18 +163,25 @@ impl PotState {
         #[cfg(feature = "pot")] maybe_updated_parameters_change: Option<
             Option<PotParametersChange>,
         >,
-    ) {
+    ) -> Option<NextSlotInput> {
+        let mut best_state = None;
         // Use `fetch_update` such that we don't accidentally downgrade best slot to smaller value
-        self.inner_state
+        let previous_best_state = self
+            .inner_state
             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |inner_state| {
-                Some(inner_state.update(
+                best_state = Some(inner_state.update(
                     best_slot,
                     best_proof,
                     #[cfg(feature = "pot")]
                     maybe_updated_parameters_change,
                     &self.verifier,
-                ))
+                ));
+
+                best_state
             })
-            .expect("Callback always returns Some; qed");
+            .expect("Callback always returns `Some`; qed");
+        let best_state = best_state.expect("Replaced with `Some` above; qed");
+
+        (previous_best_state != best_state).then_some(best_state.next_slot_input)
     }
 }
