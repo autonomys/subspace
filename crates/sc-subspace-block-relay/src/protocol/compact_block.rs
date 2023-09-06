@@ -1,10 +1,11 @@
 //! Compact block implementation.
 
-use crate::utils::NetworkPeerHandle;
-use crate::{
-    ClientBackend, ProtocolClient, ProtocolServer, ProtocolUnitInfo, RelayError, Resolved,
-    ServerBackend, LOG_TARGET,
+use crate::protocol::{
+    ClientBackend, ProtocolClient, ProtocolServer, ProtocolUnitInfo, Resolved, ServerBackend,
 };
+use crate::types::RelayError;
+use crate::utils::NetworkPeerHandle;
+use crate::LOG_TARGET;
 use async_trait::async_trait;
 use codec::{Decode, Encode};
 use std::collections::BTreeMap;
