@@ -156,6 +156,7 @@ where
             domain_block_hash,
             invalid_extrinsic,
             storage_proof,
+            ..
         } = invalid_transaction_proof;
 
         // TODO: Validate bundle solution.
