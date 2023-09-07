@@ -8,8 +8,8 @@ on:
   workflow_dispatch:
   push:
     tags:
-      - 'runtime-snapshot-*'
-      - 'runtime-gemini-*'
+      - "runtime-snapshot-*"
+      - "runtime-gemini-*"
 
 jobs:
   runtime:

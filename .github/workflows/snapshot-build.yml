@@ -206,12 +206,9 @@ jobs:
         if: runner.os == 'macOS'
 
       - name: Sign Application (Windows)
-        uses: skymatic/code-sign-action@500ce4f8261ca9bd8f85978c1652b34fb511bdf4 # @v2.0.1
-        with:
-          certificate: "${{ secrets.WINDOWS_CERTIFICATE }}"
-          password: "${{ secrets.WINDOWS_CERTIFICATE_PW }}"
-          certificatesha1: "FCA030AC3840FAED48ADC5A8F734ACFCC857DF37"
-          folder: "${{ env.PRODUCTION_TARGET }}"
+        run: |
+          AzureSignTool sign --azure-key-vault-url "${{ secrets.AZURE_KEY_VAULT_URI }}" --azure-key-vault-client-id "${{ secrets.AZURE_CLIENT_ID }}" --azure-key-vault-client-secret "${{ secrets.AZURE_CLIENT_SECRET }}" --azure-key-vault-tenant-id "${{ secrets.AZURE_TENANT_ID }}" --azure-key-vault-certificate "${{ secrets.AZURE_CERT_NAME }}" --file-digest sha512 --timestamp-rfc3161 http://timestamp.digicert.com -v "${{ matrix.build.production_target }}/subspace-farmer.exe"
+          AzureSignTool sign --azure-key-vault-url "${{ secrets.AZURE_KEY_VAULT_URI }}" --azure-key-vault-client-id "${{ secrets.AZURE_CLIENT_ID }}" --azure-key-vault-client-secret "${{ secrets.AZURE_CLIENT_SECRET }}" --azure-key-vault-tenant-id "${{ secrets.AZURE_TENANT_ID }}" --azure-key-vault-certificate "${{ secrets.AZURE_CERT_NAME }}" --file-digest sha512 --timestamp-rfc3161 http://timestamp.digicert.com -v "${{ matrix.build.production_target }}/subspace-node.exe"
         # Allow code signing to fail on non-release builds and in non-subspace repos (forks)
         continue-on-error: ${{ github.repository_owner != 'subspace' || github.event_name != 'push' || github.ref_type != 'tag' }}
         if: runner.os == 'Windows'
