@@ -253,6 +253,20 @@ pub(crate) fn process_execution_receipt<T: Config>(
                 domain_block_number.checked_sub(&T::BlockTreePruningDepth::get())
             {
                 let receipts_at_number = BlockTree::<T>::take(domain_id, to_prune);
+
+                // The receipt at `to_prune` may already been pruned if there is fraud proof being
+                // processed and the `HeadReceiptNumber` is reverted.
+                if receipts_at_number.is_empty() {
+                    return Ok(None);
+                }
+
+                // FIXME: the following check is wrong because the ER at `to_prune` may not necessarily go through
+                // the whole challenge period since the malicious operator can submit `NewBranch` ER any time, thus
+                // the ER may just submitted a few blocks ago and `receipts_at_number` may contains more than one block.
+                //
+                // In current implementatiomn, the correct finalized ER should be the one that has `BlockTreePruningDepth`
+                // lenght of descendants which is non-trival to find, but once https://github.com/subspace/subspace/issues/1731
+                // is implemented this issue should be fixed automatically.
                 if receipts_at_number.len() != 1 {
                     return Err(Error::MultipleERsAfterChallengePeriod);
                 }
