@@ -80,7 +80,8 @@ impl PotVerifier {
             .and_then(|value| value.checkpoints.try_lock()?.as_ref().copied())
     }
 
-    /// Verify a single proof of time that is `slots` slots away from `seed`.
+    /// Verify sequence of proofs of time that covers `slots` slots starting at `slot` with provided
+    /// initial `seed`.
     ///
     /// In case `maybe_parameters_change` is present, it will not affect provided `seed` and
     /// `slot_iterations`, meaning if parameters change occurred at `slot`, provided `seed` and

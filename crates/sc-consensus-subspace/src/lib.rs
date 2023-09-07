@@ -830,7 +830,7 @@ where
         if !self
             .pot_verifier
             .is_proof_valid(
-                pre_digest.slot(),
+                parent_slot + Slot::from(1),
                 pot_seed,
                 slot_iterations,
                 slots_since_parent,
