@@ -6,10 +6,10 @@ use crate::source::gossip::{GossipCheckpoints, PotGossipWorker};
 use crate::source::state::{NextSlotInput, PotState};
 use crate::source::timekeeper::run_timekeeper;
 use crate::verifier::PotVerifier;
-use derive_more::{Deref, DerefMut, From};
+use derive_more::{Deref, DerefMut};
 use futures::channel::mpsc;
 use futures::{select, StreamExt};
-use sc_client_api::{BlockImportNotification, BlockchainEvents};
+use sc_client_api::BlockchainEvents;
 use sc_network::PeerId;
 use sc_network_gossip::{Network as GossipNetwork, Syncing as GossipSyncing};
 use sp_api::{ApiError, ProvideRuntimeApi};
@@ -18,11 +18,17 @@ use sp_consensus_slots::Slot;
 #[cfg(feature = "pot")]
 use sp_consensus_subspace::digests::extract_pre_digest;
 #[cfg(feature = "pot")]
+use sp_consensus_subspace::digests::extract_subspace_digest_items;
+#[cfg(feature = "pot")]
 use sp_consensus_subspace::ChainConstants;
+#[cfg(feature = "pot")]
+use sp_consensus_subspace::FarmerSignature;
 use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi as SubspaceRuntimeApi};
 use sp_runtime::traits::Block as BlockT;
 #[cfg(feature = "pot")]
-use sp_runtime::traits::{Header, Zero};
+use sp_runtime::traits::Header as HeaderT;
+#[cfg(feature = "pot")]
+use sp_runtime::traits::Zero;
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use std::sync::Arc;
@@ -58,16 +64,16 @@ struct TimekeeperCheckpoints {
 }
 
 /// Stream with proof of time slots
-#[derive(Debug, Deref, DerefMut, From)]
+#[derive(Debug, Deref, DerefMut)]
 pub struct PotSlotInfoStream(mpsc::Receiver<PotSlotInfo>);
 
-/// Source of proofs of time.
+/// Worker producing proofs of time.
 ///
 /// Depending on configuration may produce proofs of time locally, send/receive via gossip and keep
 /// up to day with blockchain reorgs.
 #[derive(Debug)]
 #[must_use = "Proof of time source doesn't do anything unless run() method is called"]
-pub struct PotSource<Block, Client> {
+pub struct PotSourceWorker<Block, Client> {
     client: Arc<Client>,
     #[cfg(feature = "pot")]
     chain_constants: ChainConstants,
@@ -79,7 +85,7 @@ pub struct PotSource<Block, Client> {
     _block: PhantomData<Block>,
 }
 
-impl<Block, Client> PotSource<Block, Client>
+impl<Block, Client> PotSourceWorker<Block, Client>
 where
     Block: BlockT,
     Client: BlockchainEvents<Block> + HeaderBackend<Block> + ProvideRuntimeApi<Block>,
@@ -181,7 +187,7 @@ where
             mpsc::channel(GOSSIP_OUTGOING_CHANNEL_CAPACITY);
         let (incoming_messages_sender, incoming_messages_receiver) =
             mpsc::channel(GOSSIP_INCOMING_CHANNEL_CAPACITY);
-        let gossip = PotGossipWorker::new(
+        let gossip_worker = PotGossipWorker::new(
             outgoing_messages_receiver,
             incoming_messages_sender,
             pot_verifier,
@@ -190,7 +196,7 @@ where
             sync,
         );
 
-        let source = Self {
+        let source_worker = Self {
             client,
             #[cfg(feature = "pot")]
             chain_constants,
@@ -202,7 +208,9 @@ where
             _block: PhantomData,
         };
 
-        Ok((source, gossip, PotSlotInfoStream(slot_receiver)))
+        let pot_slot_info_stream = PotSlotInfoStream(slot_receiver);
+
+        Ok((source_worker, gossip_worker, pot_slot_info_stream))
     }
 
     /// Run proof of time source
@@ -226,7 +234,10 @@ where
                 }
                 maybe_import_notification = import_notification_stream.next() => {
                     if let Some(import_notification) = maybe_import_notification {
-                        self.handle_import_notification(import_notification);
+                        self.handle_block_import_notification(
+                            import_notification.hash,
+                            &import_notification.header,
+                        );
                     } else {
                         debug!("Import notifications stream ended, exiting");
                         return;
@@ -304,42 +315,40 @@ where
     }
 
     #[cfg(not(feature = "pot"))]
-    fn handle_import_notification(&mut self, _import_notification: BlockImportNotification<Block>) {
+    fn handle_block_import_notification(
+        &mut self,
+        _block_hash: Block::Hash,
+        _header: &Block::Header,
+    ) {
     }
 
     #[cfg(feature = "pot")]
-    fn handle_import_notification(&self, import_notification: BlockImportNotification<Block>) {
-        let pre_digest = match extract_pre_digest(&import_notification.header) {
+    fn handle_block_import_notification(&self, block_hash: Block::Hash, header: &Block::Header) {
+        let subspace_digest_items = match extract_subspace_digest_items::<
+            Block::Header,
+            FarmerPublicKey,
+            FarmerPublicKey,
+            FarmerSignature,
+        >(header)
+        {
             Ok(pre_digest) => pre_digest,
             Err(error) => {
                 error!(
                     %error,
-                    block_number = %import_notification.header.number(),
-                    block_hash = %import_notification.hash,
-                    "Failed to extract pre-digest from header"
-                );
-                return;
-            }
-        };
-        let pot_parameters = match self
-            .client
-            .runtime_api()
-            .pot_parameters(import_notification.hash)
-        {
-            Ok(pot_parameters) => pot_parameters,
-            Err(error) => {
-                error!(
-                    %error,
-                    block_number = %import_notification.header.number(),
-                    block_hash = %import_notification.hash,
-                    "Failed to get proof of time parameters"
+                    block_number = %header.number(),
+                    %block_hash,
+                    "Failed to extract Subspace digest items from header"
                 );
                 return;
             }
         };
 
-        let best_slot = pre_digest.slot() + self.chain_constants.block_authoring_delay();
-        let best_proof = pre_digest.pot_info().future_proof_of_time();
+        let best_slot =
+            subspace_digest_items.pre_digest.slot() + self.chain_constants.block_authoring_delay();
+        let best_proof = subspace_digest_items
+            .pre_digest
+            .pot_info()
+            .future_proof_of_time();
 
         // This will do one of 3 things depending on circumstances:
         // * if block import is ahead of timekeeper and gossip, it will update next slot input
@@ -352,7 +361,7 @@ where
                 best_slot,
                 best_proof,
                 #[cfg(feature = "pot")]
-                Some(pot_parameters.next_parameters_change()),
+                Some(subspace_digest_items.pot_parameters_change),
             )
             .is_some()
         {
