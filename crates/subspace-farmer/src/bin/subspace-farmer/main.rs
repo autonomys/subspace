@@ -8,6 +8,7 @@ use bytesize::ByteSize;
 use clap::{Parser, ValueHint};
 use ss58::parse_ss58_reward_address;
 use std::fs;
+use std::net::SocketAddr;
 use std::num::NonZeroU8;
 use std::path::PathBuf;
 use std::str::FromStr;
@@ -127,6 +128,10 @@ struct DsnArgs {
     /// Known external addresses
     #[arg(long, alias = "external-address")]
     external_addresses: Vec<Multiaddr>,
+    /// Defines endpoints for the prometheus metrics server. It doesn't start without at least
+    /// one specified endpoint. Format: 127.0.0.1:8080
+    #[arg(long, alias = "metrics-endpoint")]
+    metrics_endpoints: Vec<SocketAddr>,
 }
 
 #[derive(Debug, Clone)]
@@ -195,6 +200,7 @@ impl FromStr for DiskFarm {
     }
 }
 
+#[allow(clippy::large_enum_variant)]
 #[derive(Debug, Parser)]
 #[clap(about, version)]
 enum Command {

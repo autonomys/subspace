@@ -11367,6 +11367,7 @@ dependencies = [
  "subspace-core-primitives",
  "subspace-erasure-coding",
  "subspace-farmer-components",
+ "subspace-metrics",
  "subspace-networking",
  "subspace-proof-of-space",
  "subspace-rpc-primitives",
