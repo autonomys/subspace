@@ -798,7 +798,7 @@ where
         let (pot_source_worker, pot_gossip_worker, pot_slot_info_stream) = PotSourceWorker::new(
             config.is_timekeeper,
             client.clone(),
-            pot_verifier,
+            pot_verifier.clone(),
             network_service.clone(),
             sync_service.clone(),
         )
@@ -862,6 +862,8 @@ where
             block_proposal_slot_portion,
             max_block_proposal_slot_portion: None,
             telemetry: None,
+            #[cfg(feature = "pot")]
+            pot_verifier,
             #[cfg(feature = "pot")]
             pot_slot_info_stream,
         };

@@ -401,6 +401,10 @@ where
     /// Handle use to report telemetries.
     pub telemetry: Option<TelemetryHandle>,
 
+    /// Proof of time verifier
+    #[cfg(feature = "pot")]
+    pub pot_verifier: PotVerifier,
+
     /// Stream with proof of time slots.
     #[cfg(feature = "pot")]
     pub pot_slot_info_stream: PotSlotInfoStream,
@@ -423,6 +427,8 @@ pub fn start_subspace<PosTable, Block, Client, SC, E, I, SO, CIDP, BS, L, AS, Er
         block_proposal_slot_portion,
         max_block_proposal_slot_portion,
         telemetry,
+        #[cfg(feature = "pot")]
+        pot_verifier,
         #[cfg(feature = "pot")]
         pot_slot_info_stream,
     }: SubspaceParams<Block, Client, SC, E, I, SO, L, CIDP, BS, AS>,
@@ -476,6 +482,8 @@ where
         pending_solutions: Default::default(),
         #[cfg(feature = "pot")]
         pot_checkpoints: Default::default(),
+        #[cfg(feature = "pot")]
+        pot_verifier,
         _pos_table: PhantomData::<PosTable>,
     };
 
