@@ -11451,6 +11451,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "subspace-metrics"
+version = "0.1.0"
+dependencies = [
+ "actix-web",
+ "async-mutex",
+ "libp2p 0.52.2",
+ "parking_lot 0.12.1",
+ "prometheus",
+ "prometheus-client 0.21.2",
+ "tracing",
+]
+
+[[package]]
 name = "subspace-networking"
 version = "0.1.0"
 dependencies = [
