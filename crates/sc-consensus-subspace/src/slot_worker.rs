@@ -153,7 +153,14 @@ where
     SO: SyncOracle + Send + Sync,
 {
     fn on_proof(&mut self, slot: Slot, checkpoints: PotCheckpoints) {
-        self.pot_checkpoints.lock().insert(slot, checkpoints);
+        {
+            let mut pot_checkpoints = self.pot_checkpoints.lock();
+
+            // Remove checkpoints from future slots, if present they are out of date anyway
+            pot_checkpoints.retain(|&stored_slot, _checkpoints| stored_slot < slot);
+
+            pot_checkpoints.insert(slot, checkpoints);
+        }
 
         if self.sync_oracle.is_major_syncing() {
             debug!(
