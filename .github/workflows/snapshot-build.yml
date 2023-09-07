@@ -9,8 +9,8 @@ on:
   workflow_dispatch:
   push:
     tags:
-      - 'snapshot-*'
-      - 'gemini-*'
+      - "snapshot-*"
+      - "gemini-*"
 
 # Incremental compilation here isn't helpful
 env:
@@ -30,15 +30,15 @@ jobs:
           - bootstrap-node
         platform:
           - arch: linux/amd64
-            dockerfile-suffix: ''
+            dockerfile-suffix: ""
             suffix: ubuntu-x86_64-${{ github.ref_name }}
-            image-suffix: ''
-            rustflags: '-C target-cpu=skylake'
+            image-suffix: ""
+            rustflags: "-C target-cpu=skylake"
           # We build AArch64
           - arch: linux/amd64
-            dockerfile-suffix: '.aarch64'
+            dockerfile-suffix: ".aarch64"
             suffix: ubuntu-aarch64-${{ github.ref_name }}
-            image-suffix: '-aarch64'
+            image-suffix: "-aarch64"
 
     steps:
       - name: Set up QEMU
@@ -87,35 +87,35 @@ jobs:
           - os: ubuntu-20.04
             target: x86_64-unknown-linux-gnu
             suffix: ubuntu-x86_64-v2-${{ github.ref_name }}
-            rustflags: '-C target-cpu=x86-64-v2'
+            rustflags: "-C target-cpu=x86-64-v2"
           - os: ubuntu-20.04
             target: x86_64-unknown-linux-gnu
             suffix: ubuntu-x86_64-skylake-${{ github.ref_name }}
-            rustflags: '-C target-cpu=skylake'
+            rustflags: "-C target-cpu=skylake"
           - os: ubuntu-20.04
             target: aarch64-unknown-linux-gnu
             suffix: ubuntu-aarch64-${{ github.ref_name }}
             # TODO: AES flag is such that we have decent performance on ARMv8, remove once `aes` crate bumps MSRV to
             #  at least 1.61: https://github.com/RustCrypto/block-ciphers/issues/373
-            rustflags: '-C linker=aarch64-linux-gnu-gcc --cfg aes_armv8'
+            rustflags: "-C linker=aarch64-linux-gnu-gcc --cfg aes_armv8"
           - os: macos-12
             target: x86_64-apple-darwin
             suffix: macos-x86_64-${{ github.ref_name }}
-            rustflags: ''
+            rustflags: ""
           - os: macos-12
             target: aarch64-apple-darwin
             suffix: macos-aarch64-${{ github.ref_name }}
             # TODO: AES flag is such that we have decent performance on ARMv8, remove once `aes` crate bumps MSRV to
             #  at least 1.61: https://github.com/RustCrypto/block-ciphers/issues/373
-            rustflags: '--cfg aes_armv8'
+            rustflags: "--cfg aes_armv8"
           - os: windows-2022
             target: x86_64-pc-windows-msvc
             suffix: windows-x86_64-v2-${{ github.ref_name }}
-            rustflags: '-C target-cpu=x86-64-v2'
+            rustflags: "-C target-cpu=x86-64-v2"
           - os: windows-2022
             target: x86_64-pc-windows-msvc
             suffix: windows-x86_64-skylake-${{ github.ref_name }}
-            rustflags: '-C target-cpu=skylake'
+            rustflags: "-C target-cpu=skylake"
     runs-on: ${{ matrix.build.os }}
     env:
       PRODUCTION_TARGET: target/${{ matrix.build.target }}/production
@@ -188,14 +188,10 @@ jobs:
         if: runner.os == 'macOS'
 
       - name: Sign Application (Windows)
-        uses: skymatic/code-sign-action@cfcc1c15b32938bab6dea25192045b6d2989e4d0 # @v1.1.0
-        with:
-          certificate: '${{ secrets.WINDOWS_CERTIFICATE }}'
-          password: '${{ secrets.WINDOWS_CERTIFICATE_PW }}'
-          certificatesha1: 'FCA030AC3840FAED48ADC5A8F734ACFCC857DF37'
-          folder: '${{ env.PRODUCTION_TARGET }}'
-        # Allow code signing to fail on non-release builds and in non-subspace repos (forks)
-        continue-on-error: ${{ github.github.repository_owner != 'subspace' || github.event_name != 'push' || github.ref_type != 'tag' }}
+        run: |
+          AzureSignTool sign --azure-key-vault-url "${{ secrets.AZURE_KEY_VAULT_URI }}" --azure-key-vault-client-id "${{ secrets.AZURE_CLIENT_ID }}" --azure-key-vault-client-secret "${{ secrets.AZURE_CLIENT_SECRET }}" --azure-key-vault-tenant-id "${{ secrets.AZURE_TENANT_ID }}" --azure-key-vault-certificate "${{ secrets.AZURE_CERT_NAME }}" --file-digest sha512 --timestamp-rfc3161 http://timestamp.digicert.com -v "${{ matrix.build.production_target }}/subspace-farmer.exe"
+          AzureSignTool sign --azure-key-vault-url "${{ secrets.AZURE_KEY_VAULT_URI }}" --azure-key-vault-client-id "${{ secrets.AZURE_CLIENT_ID }}" --azure-key-vault-client-secret "${{ secrets.AZURE_CLIENT_SECRET }}" --azure-key-vault-tenant-id "${{ secrets.AZURE_TENANT_ID }}" --azure-key-vault-certificate "${{ secrets.AZURE_CERT_NAME }}" --file-digest sha512 --timestamp-rfc3161 http://timestamp.digicert.com -v "${{ matrix.build.production_target }}/subspace-node.exe"
+        continue-on-error: ${{ github.repository_owner != 'subspace' || github.event_name != 'push' || github.ref_type != 'tag' }}
         if: runner.os == 'Windows'
 
       - name: Prepare executables for uploading (Ubuntu)
