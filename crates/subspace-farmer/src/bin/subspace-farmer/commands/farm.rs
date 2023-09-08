@@ -53,9 +53,9 @@ where
         dev,
         tmp,
         mut disk_farms,
+        metrics_endpoints,
     } = farming_args;
 
-    let dsn_metrics_endpoints = dsn.metrics_endpoints.clone();
     // Override the `--enable_private_ips` flag with `--dev`
     dsn.enable_private_ips = dsn.enable_private_ips || dev;
 
@@ -109,6 +109,8 @@ where
 
     let (piece_cache, piece_cache_worker) = PieceCache::new(node_client.clone(), peer_id);
 
+    let metrics_endpoints_are_specified = !metrics_endpoints.is_empty();
+
     let (node, mut node_runner, metrics_registry) = {
         if dsn.bootstrap_nodes.is_empty() {
             dsn.bootstrap_nodes = farmer_app_info.dsn_bootstrap_nodes.clone();
@@ -122,13 +124,13 @@ where
             Arc::downgrade(&readers_and_pieces),
             node_client.clone(),
             piece_cache.clone(),
+            metrics_endpoints_are_specified,
         )?
     };
 
-    let dsn_metrics_endpoints_are_specified = !dsn_metrics_endpoints.is_empty();
-    if dsn_metrics_endpoints_are_specified {
+    if metrics_endpoints_are_specified {
         let prometheus_task = start_prometheus_metrics_server(
-            dsn_metrics_endpoints,
+            metrics_endpoints,
             RegistryAdapter::Libp2p(metrics_registry),
         )?;
 

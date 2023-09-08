@@ -81,6 +81,10 @@ struct FarmingArgs {
     /// Do not print info about configured farms on startup.
     #[arg(long)]
     no_info: bool,
+    /// Defines endpoints for the prometheus metrics server. It doesn't start without at least
+    /// one specified endpoint. Format: 127.0.0.1:8080
+    #[arg(long, alias = "metrics-endpoint")]
+    metrics_endpoints: Vec<SocketAddr>,
 }
 
 fn cache_percentage_parser(s: &str) -> anyhow::Result<NonZeroU8> {
@@ -128,10 +132,6 @@ struct DsnArgs {
     /// Known external addresses
     #[arg(long, alias = "external-address")]
     external_addresses: Vec<Multiaddr>,
-    /// Defines endpoints for the prometheus metrics server. It doesn't start without at least
-    /// one specified endpoint. Format: 127.0.0.1:8080
-    #[arg(long, alias = "metrics-endpoint")]
-    metrics_endpoints: Vec<SocketAddr>,
 }
 
 #[derive(Debug, Clone)]

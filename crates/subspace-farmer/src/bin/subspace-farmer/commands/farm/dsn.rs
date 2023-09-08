@@ -42,11 +42,11 @@ pub(super) fn configure_dsn(
         pending_out_connections,
         target_connections,
         external_addresses,
-        metrics_endpoints,
     }: DsnArgs,
     weak_readers_and_pieces: Weak<Mutex<Option<ReadersAndPieces>>>,
     node_client: NodeRpcClient,
     piece_cache: PieceCache,
+    initialize_metrics: bool,
 ) -> Result<(Node, NodeRunner<PieceCache>, Libp2pMetricsRegistry), anyhow::Error> {
     let networking_parameters_registry = NetworkingParametersManager::new(
         &base_path.join("known_addresses.bin"),
@@ -59,8 +59,7 @@ pub(super) fn configure_dsn(
 
     // Metrics
     let mut metrics_registry = Libp2pMetricsRegistry::default();
-    let metrics_endpoints_are_specified = !metrics_endpoints.is_empty();
-    let metrics = metrics_endpoints_are_specified.then(|| Metrics::new(&mut metrics_registry));
+    let metrics = initialize_metrics.then(|| Metrics::new(&mut metrics_registry));
 
     let default_config = Config::new(
         protocol_prefix,
