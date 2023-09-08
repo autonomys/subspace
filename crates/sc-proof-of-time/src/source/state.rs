@@ -50,7 +50,6 @@ impl InnerState {
                 // Only if entropy injection happens on this exact slot we need to mix it in
                 if parameters_change.slot == next_slot {
                     next_seed = best_proof.seed_with_entropy(&parameters_change.entropy);
-                    self.parameters_change.take();
                 } else {
                     next_seed = best_proof.seed();
                 }
@@ -182,6 +181,7 @@ impl PotState {
             .expect("Callback always returns `Some`; qed");
         let best_state = best_state.expect("Replaced with `Some` above; qed");
 
-        (previous_best_state != best_state).then_some(best_state.next_slot_input)
+        (previous_best_state.next_slot_input != best_state.next_slot_input)
+            .then_some(best_state.next_slot_input)
     }
 }
