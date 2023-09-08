@@ -673,7 +673,7 @@ where
 
             node_listeners
         } else {
-            bootstrap_nodes.clone()
+            bootstrap_nodes
         }
     };
 
@@ -706,14 +706,13 @@ where
             block_relay,
         })?;
 
-    let subspace_sync_oracle =
-        SubspaceSyncOracle::new(config.base.force_authoring, sync_service.clone());
+    let sync_oracle = SubspaceSyncOracle::new(config.base.force_authoring, sync_service.clone());
 
     let subspace_archiver = create_subspace_archiver(
         segment_headers_store.clone(),
         &subspace_link,
         client.clone(),
-        subspace_sync_oracle.clone(),
+        sync_oracle.clone(),
         telemetry.as_ref().map(|telemetry| telemetry.handle()),
     );
 
@@ -819,7 +818,7 @@ where
             select_chain: select_chain.clone(),
             env: proposer_factory,
             block_import,
-            sync_oracle: subspace_sync_oracle.clone(),
+            sync_oracle: sync_oracle.clone(),
             justification_sync_link: sync_service.clone(),
             create_inherent_data_providers: {
                 let client = client.clone();
@@ -901,7 +900,7 @@ where
                         .clone(),
                     dsn_bootstrap_nodes: dsn_bootstrap_nodes.clone(),
                     segment_headers_store: segment_headers_store.clone(),
-                    sync_oracle: subspace_sync_oracle.clone(),
+                    sync_oracle: sync_oracle.clone(),
                     kzg: subspace_link.kzg().clone(),
                 };
 
