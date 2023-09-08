@@ -217,15 +217,15 @@ pub(crate) fn verify_execution_receipt<T: Config>(
     }
 }
 
-/// Details of the pruned domain block such as operators, rewards they would receive.
-pub(crate) struct PrunedDomainBlockInfo<DomainNumber, Balance> {
+/// Details of the confirmed domain block such as operators, rewards they would receive.
+pub(crate) struct ConfirmedDomainBlockInfo<DomainNumber, Balance> {
     pub domain_block_number: DomainNumber,
     pub operator_ids: Vec<OperatorId>,
     pub rewards: Balance,
 }
 
 pub(crate) type ProcessExecutionReceiptResult<T> =
-    Result<Option<PrunedDomainBlockInfo<<T as Config>::DomainNumber, BalanceOf<T>>>, Error>;
+    Result<Option<ConfirmedDomainBlockInfo<<T as Config>::DomainNumber, BalanceOf<T>>>, Error>;
 
 /// Process the execution receipt to add it to the block tree
 /// Returns the domain block number that was pruned, if any
@@ -235,7 +235,6 @@ pub(crate) fn process_execution_receipt<T: Config>(
     execution_receipt: ExecutionReceiptOf<T>,
     receipt_type: AcceptedReceiptType,
 ) -> ProcessExecutionReceiptResult<T> {
-    let mut pruned_domain_block_info = None;
     match receipt_type {
         AcceptedReceiptType::NewBranch => {
             add_new_receipt_to_block_tree::<T>(domain_id, submitter, execution_receipt);
@@ -257,17 +256,20 @@ pub(crate) fn process_execution_receipt<T: Config>(
                     return Err(Error::MultipleERsAfterChallengePeriod);
                 }
 
-                let receipt = receipts_at_number
+                let receipt_hash = receipts_at_number
                     .first()
                     .cloned()
                     .expect("should always have a value due to check above");
 
-                let domain_block =
-                    DomainBlocks::<T>::take(receipt).ok_or(Error::MissingDomainBlock)?;
+                let DomainBlock {
+                    execution_receipt,
+                    operator_ids,
+                } = DomainBlocks::<T>::take(receipt_hash).ok_or(Error::MissingDomainBlock)?;
+
                 _ = StateRoots::<T>::take((
                     domain_id,
-                    domain_block.execution_receipt.domain_block_number,
-                    domain_block.execution_receipt.domain_block_hash,
+                    to_prune,
+                    execution_receipt.domain_block_hash,
                 ));
 
                 // Remove the block's `ExecutionInbox` and `InboxedBundle` as the block is pruned and
@@ -282,14 +284,14 @@ pub(crate) fn process_execution_receipt<T: Config>(
 
                 ConsensusBlockHash::<T>::remove(
                     domain_id,
-                    domain_block.execution_receipt.consensus_block_number,
+                    execution_receipt.consensus_block_number,
                 );
 
-                pruned_domain_block_info = Some(PrunedDomainBlockInfo {
+                return Ok(Some(ConfirmedDomainBlockInfo {
                     domain_block_number: to_prune,
-                    operator_ids: domain_block.operator_ids,
-                    rewards: domain_block.execution_receipt.total_rewards,
-                })
+                    operator_ids,
+                    rewards: execution_receipt.total_rewards,
+                }));
             }
         }
         AcceptedReceiptType::CurrentHead => {
@@ -303,7 +305,7 @@ pub(crate) fn process_execution_receipt<T: Config>(
             });
         }
     }
-    Ok(pruned_domain_block_info)
+    Ok(None)
 }
 
 fn add_new_receipt_to_block_tree<T: Config>(

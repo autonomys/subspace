@@ -708,7 +708,7 @@ mod pallet {
                 }
                 // Add the exeuctione receipt to the block tree
                 ReceiptType::Accepted(accepted_receipt_type) => {
-                    let maybe_pruned_domain_block_info = process_execution_receipt::<T>(
+                    let maybe_confirmed_domain_block_info = process_execution_receipt::<T>(
                         domain_id,
                         operator_id,
                         receipt,
@@ -716,26 +716,26 @@ mod pallet {
                     )
                     .map_err(Error::<T>::from)?;
 
-                    // If any domain block is pruned, then we have a new head added
+                    // If any domain block is confirmed, then we have a new head added
                     // so distribute the operator rewards and, if required, do epoch transition as well.
                     //
                     // NOTE: Skip the following staking related operations when benchmarking the
                     // `submit_bundle` call, these operations will be benchmarked separately.
                     #[cfg(not(feature = "runtime-benchmarks"))]
-                    if let Some(pruned_block_info) = maybe_pruned_domain_block_info {
+                    if let Some(confirmed_block_info) = maybe_confirmed_domain_block_info {
                         do_reward_operators::<T>(
                             domain_id,
-                            pruned_block_info.operator_ids.into_iter(),
-                            pruned_block_info.rewards,
+                            confirmed_block_info.operator_ids.into_iter(),
+                            confirmed_block_info.rewards,
                         )
                         .map_err(Error::<T>::from)?;
 
-                        if pruned_block_info.domain_block_number % T::StakeEpochDuration::get()
+                        if confirmed_block_info.domain_block_number % T::StakeEpochDuration::get()
                             == Zero::zero()
                         {
                             let completed_epoch_index = do_finalize_domain_current_epoch::<T>(
                                 domain_id,
-                                pruned_block_info.domain_block_number,
+                                confirmed_block_info.domain_block_number,
                             )
                             .map_err(Error::<T>::from)?;
 
@@ -747,7 +747,7 @@ mod pallet {
 
                         do_unlock_pending_withdrawals::<T>(
                             domain_id,
-                            pruned_block_info.domain_block_number,
+                            confirmed_block_info.domain_block_number,
                         )
                         .map_err(Error::<T>::from)?;
                     }
