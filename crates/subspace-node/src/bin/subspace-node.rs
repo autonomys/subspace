@@ -494,7 +494,7 @@ fn main() -> Result<(), Error> {
                         };
                     let partial_components =
                         subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
-                            &consensus_chain_config,
+                            &consensus_chain_config.base,
                             Some(&construct_domain_genesis_block_builder),
                             #[cfg(feature = "pot")]
                             &pot_external_entropy,

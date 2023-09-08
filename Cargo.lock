@@ -11662,7 +11662,6 @@ dependencies = [
  "async-trait",
  "atomic",
  "cross-domain-message-gossip",
- "derive_more",
  "domain-block-preprocessor",
  "domain-runtime-primitives",
  "either",
