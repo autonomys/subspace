@@ -218,10 +218,12 @@ pub(crate) fn verify_execution_receipt<T: Config>(
 }
 
 /// Details of the confirmed domain block such as operators, rewards they would receive.
+#[derive(Debug, PartialEq)]
 pub(crate) struct ConfirmedDomainBlockInfo<DomainNumber, Balance> {
     pub domain_block_number: DomainNumber,
     pub operator_ids: Vec<OperatorId>,
     pub rewards: Balance,
+    pub invalid_bundle_authors: Vec<OperatorId>,
 }
 
 pub(crate) type ProcessExecutionReceiptResult<T> =
@@ -272,14 +274,27 @@ pub(crate) fn process_execution_receipt<T: Config>(
                     execution_receipt.domain_block_hash,
                 ));
 
-                // Remove the block's `ExecutionInbox` and `InboxedBundle` as the block is pruned and
-                // does not need to verify its receipt's `extrinsics_root` anymore.
-                for bundle_digests in ExecutionInbox::<T>::iter_prefix_values((domain_id, to_prune))
-                {
-                    for bd in bundle_digests {
-                        InboxedBundle::<T>::remove(bd.header_hash);
+                // Collect the invalid bundle author
+                let mut invalid_bundle_authors = Vec::new();
+                let bundle_digests = ExecutionInbox::<T>::get((
+                    domain_id,
+                    to_prune,
+                    execution_receipt.consensus_block_number,
+                ));
+                for (index, bd) in bundle_digests.into_iter().enumerate() {
+                    if let Some(bundle_author) = InboxedBundle::<T>::take(bd.header_hash) {
+                        if execution_receipt
+                            .invalid_bundles
+                            .iter()
+                            .any(|ib| ib.bundle_index == index as u32)
+                        {
+                            invalid_bundle_authors.push(bundle_author);
+                        }
                     }
                 }
+
+                // Remove the block's `ExecutionInbox` as the domain block is confirmed and no need to verify
+                // its receipt's `extrinsics_root` anymore.
                 let _ = ExecutionInbox::<T>::clear_prefix((domain_id, to_prune), u32::MAX, None);
 
                 ConsensusBlockHash::<T>::remove(
@@ -291,6 +306,7 @@ pub(crate) fn process_execution_receipt<T: Config>(
                     domain_block_number: to_prune,
                     operator_ids,
                     rewards: execution_receipt.total_rewards,
+                    invalid_bundle_authors,
                 }));
             }
         }
@@ -368,7 +384,8 @@ mod tests {
     use crate::pallet::Operators;
     use crate::staking::{Operator, OperatorStatus};
     use crate::tests::{
-        create_dummy_bundle_with_receipts, create_dummy_receipt, new_test_ext_with_extensions, Test,
+        create_dummy_bundle_with_receipts, create_dummy_receipt, new_test_ext_with_extensions,
+        BlockTreePruningDepth, Test,
     };
     use crate::{BalanceOf, NextDomainId};
     use frame_support::dispatch::RawOrigin;
@@ -377,7 +394,7 @@ mod tests {
     use frame_support::{assert_err, assert_ok};
     use frame_system::Pallet as System;
     use sp_core::{Pair, H256, U256};
-    use sp_domains::{BundleDigest, OperatorPair, RuntimeType};
+    use sp_domains::{BundleDigest, InvalidBundle, InvalidBundleType, OperatorPair, RuntimeType};
     use sp_runtime::traits::BlockNumberProvider;
     use subspace_runtime_primitives::SSC;
 
@@ -438,16 +455,16 @@ mod tests {
     }
 
     // Submit new head receipt to extend the block tree
-    fn extend_block_tree(domain_id: DomainId, operator_id: u64, to: u64) {
+    fn extend_block_tree(
+        domain_id: DomainId,
+        operator_id: u64,
+        to: u64,
+    ) -> ExecutionReceiptOf<Test> {
         let head_receipt_number = HeadReceiptNumber::<Test>::get(domain_id);
         assert!(head_receipt_number < to);
 
         let head_node = get_block_tree_node_at::<Test>(domain_id, head_receipt_number).unwrap();
         let mut receipt = head_node.execution_receipt;
-        assert_eq!(
-            receipt.consensus_block_number,
-            frame_system::Pallet::<Test>::current_block_number()
-        );
         for block_number in (head_receipt_number + 1)..=to {
             // Finilize parent block and initialize block at `block_number`
             run_to_block::<Test>(block_number, receipt.consensus_block_hash);
@@ -476,6 +493,8 @@ mod tests {
                 vec![bundle_extrinsics_root],
             );
         }
+
+        receipt
     }
 
     #[allow(clippy::type_complexity)]
@@ -919,6 +938,110 @@ mod tests {
             assert_err!(
                 verify_execution_receipt::<Test>(domain_id, &invalid_receipt),
                 Error::InvalidTraceRoot
+            );
+        });
+    }
+
+    #[test]
+    fn test_collect_invalid_bundle_author() {
+        let creator = 0u64;
+        let challenge_period = BlockTreePruningDepth::get() as u64;
+        let operator_set: Vec<_> = (1..15).collect();
+        let mut ext = new_test_ext_with_extensions();
+        ext.execute_with(|| {
+            let domain_id = register_genesis_domain(creator, operator_set.clone());
+            let mut target_receipt = extend_block_tree(domain_id, operator_set[0], 3);
+
+            // Submit bundle for every operator except operator 1 since it already submit one
+            let head_receipt_number = HeadReceiptNumber::<Test>::get(domain_id);
+            let current_head_receipt =
+                get_block_tree_node_at::<Test>(domain_id, head_receipt_number)
+                    .unwrap()
+                    .execution_receipt;
+            for operator_id in operator_set.iter().skip(1) {
+                let bundle = create_dummy_bundle_with_receipts(
+                    domain_id,
+                    *operator_id,
+                    H256::random(),
+                    current_head_receipt.clone(),
+                );
+                assert_ok!(crate::Pallet::<Test>::submit_bundle(
+                    RawOrigin::None.into(),
+                    bundle,
+                ));
+            }
+            let head_node = get_block_tree_node_at::<Test>(domain_id, head_receipt_number).unwrap();
+            assert_eq!(head_node.operator_ids, operator_set);
+
+            // Prepare the inbainvalid bundles and bundle authors
+            let invalid_bundle_authors: Vec<_> = operator_set
+                .clone()
+                .into_iter()
+                .filter(|i| i % 2 == 0)
+                .collect();
+            let invalid_bundles = invalid_bundle_authors
+                .iter()
+                .map(|i| InvalidBundle {
+                    // operator id start at 1 while bundle_index start at 0, thus minus 1 here
+                    bundle_index: *i as u32 - 1,
+                    invalid_bundle_type: InvalidBundleType::OutOfRangeTx,
+                })
+                .collect();
+
+            // Get the `bunde_extrinsics_roots` that contains all the submitted bundles
+            let current_block_number = frame_system::Pallet::<Test>::current_block_number();
+            let execution_inbox = ExecutionInbox::<Test>::get((
+                domain_id,
+                current_block_number,
+                current_block_number,
+            ));
+            let bunde_extrinsics_roots: Vec<_> = execution_inbox
+                .into_iter()
+                .map(|b| b.extrinsics_root)
+                .collect();
+            assert_eq!(bunde_extrinsics_roots.len(), operator_set.len());
+
+            target_receipt.invalid_bundles = invalid_bundles;
+            target_receipt.block_extrinsics_roots = bunde_extrinsics_roots;
+
+            // Run into next block
+            run_to_block::<Test>(
+                current_block_number + 1,
+                target_receipt.consensus_block_hash,
+            );
+            let current_block_number = current_block_number + 1;
+
+            // Submit `target_receipt`
+            assert_ok!(crate::Pallet::<Test>::submit_bundle(
+                RawOrigin::None.into(),
+                create_dummy_bundle_with_receipts(
+                    domain_id,
+                    operator_set[0],
+                    H256::random(),
+                    target_receipt,
+                ),
+            ));
+
+            // Extend the block tree by `challenge_period - 1` blocks
+            let next_receipt = extend_block_tree(
+                domain_id,
+                operator_set[0],
+                current_block_number + challenge_period - 1,
+            );
+            // Confirm `target_receipt`
+            let confirmed_domain_block = process_execution_receipt::<Test>(
+                domain_id,
+                operator_set[0],
+                next_receipt,
+                AcceptedReceiptType::NewHead,
+            )
+            .unwrap()
+            .unwrap();
+
+            // Invalid bundle authors should be collected correctly
+            assert_eq!(
+                confirmed_domain_block.invalid_bundle_authors,
+                invalid_bundle_authors
             );
         });
     }

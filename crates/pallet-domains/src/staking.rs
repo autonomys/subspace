@@ -501,8 +501,6 @@ pub(crate) fn do_auto_stake_block_rewards<T: Config>(
     Ok(())
 }
 
-#[allow(dead_code)]
-// TODO: remove once fraud proof is done
 /// Freezes the slashed operators and moves the operator to be removed once the domain they are
 /// operating finishes the epoch.
 pub(crate) fn do_slash_operators<T: Config>(

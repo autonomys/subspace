@@ -110,8 +110,9 @@ mod pallet {
     };
     use crate::staking::{
         do_auto_stake_block_rewards, do_deregister_operator, do_nominate_operator,
-        do_register_operator, do_reward_operators, do_switch_operator_domain, do_withdraw_stake,
-        Error as StakingError, Nominator, Operator, OperatorConfig, StakingSummary, Withdraw,
+        do_register_operator, do_reward_operators, do_slash_operators, do_switch_operator_domain,
+        do_withdraw_stake, Error as StakingError, Nominator, Operator, OperatorConfig,
+        StakingSummary, Withdraw,
     };
     use crate::staking_epoch::{
         do_finalize_domain_current_epoch, do_unlock_pending_withdrawals,
@@ -727,6 +728,11 @@ mod pallet {
                             domain_id,
                             confirmed_block_info.operator_ids.into_iter(),
                             confirmed_block_info.rewards,
+                        )
+                        .map_err(Error::<T>::from)?;
+
+                        do_slash_operators::<T>(
+                            confirmed_block_info.invalid_bundle_authors.into_iter(),
                         )
                         .map_err(Error::<T>::from)?;
 
