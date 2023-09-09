@@ -5,6 +5,8 @@ use futures::channel::mpsc;
 use futures::StreamExt;
 use memmap2::Mmap;
 use parking_lot::RwLock;
+use rayon::prelude::*;
+use rayon::{ThreadPoolBuildError, ThreadPoolBuilder};
 use std::io;
 use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::Kzg;
@@ -57,6 +59,9 @@ pub enum FarmingError {
     /// I/O error occurred
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),
+    /// Failed to create thread pool
+    #[error("Failed to create thread pool: {0}")]
+    FailedToCreateThreadPool(#[from] ThreadPoolBuildError),
 }
 
 /// Starts farming process.
@@ -67,6 +72,7 @@ pub enum FarmingError {
 #[allow(clippy::await_holding_lock)]
 #[allow(clippy::too_many_arguments)]
 pub(super) async fn farming<NC, PosTable>(
+    disk_farm_index: usize,
     public_key: PublicKey,
     reward_address: PublicKey,
     node_client: NC,
@@ -84,6 +90,9 @@ where
     PosTable: Table,
 {
     let mut table_generator = PosTable::generator();
+    let thread_pool = ThreadPoolBuilder::new()
+        .thread_name(move |thread_index| format!("farming-{disk_farm_index}.{thread_index}"))
+        .build()?;
 
     while let Some(slot_info) = slot_info_notifications.next().await {
         let slot = slot_info.slot_number;
@@ -96,28 +105,34 @@ where
         let maybe_sector_being_modified = modifying_sector_guard.as_ref().copied();
         let mut solutions = Vec::<Solution<PublicKey, PublicKey>>::new();
 
-        for ((sector_index, sector_metadata), sector) in (0..)
-            .zip(&*sectors_metadata)
-            .zip(plot_mmap.chunks_exact(sector_size))
-        {
-            if maybe_sector_being_modified == Some(sector_index) {
-                // Skip sector that is being modified right now
-                continue;
-            }
-            trace!(%slot, %sector_index, "Auditing sector");
+        let solution_candidates = thread_pool.install(|| {
+            sectors_metadata
+                .par_iter()
+                .zip(plot_mmap.par_chunks_exact(sector_size))
+                .enumerate()
+                .filter_map(|(sector_index, (sector_metadata, sector))| {
+                    let sector_index = sector_index as u16;
+                    if maybe_sector_being_modified == Some(sector_index) {
+                        // Skip sector that is being modified right now
+                        return None;
+                    }
+                    trace!(%slot, %sector_index, "Auditing sector");
 
-            let maybe_solution_candidates = audit_sector(
-                &public_key,
-                sector_index,
-                &slot_info.global_challenge,
-                slot_info.voting_solution_range,
-                sector,
-                sector_metadata,
-            );
-            let Some(solution_candidates) = maybe_solution_candidates else {
-                continue;
-            };
+                    let solution_candidates = audit_sector(
+                        &public_key,
+                        sector_index,
+                        &slot_info.global_challenge,
+                        slot_info.voting_solution_range,
+                        sector,
+                        sector_metadata,
+                    )?;
 
+                    Some((sector_index, solution_candidates))
+                })
+                .collect::<Vec<_>>()
+        });
+
+        for (sector_index, solution_candidates) in solution_candidates {
             for maybe_solution in solution_candidates.into_iter::<_, PosTable>(
                 &reward_address,
                 &kzg,
