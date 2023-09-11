@@ -33,7 +33,6 @@ use crate::dsn::{create_dsn_instance, DsnConfigurationError};
 use crate::metrics::NodeMetrics;
 use crate::tx_pre_validator::ConsensusChainTxPreValidator;
 use cross_domain_message_gossip::cdm_gossip_peers_set_config;
-use derive_more::{Deref, DerefMut, Into};
 use domain_runtime_primitives::{BlockNumber as DomainNumber, Hash as DomainHash};
 pub use dsn::DsnConfig;
 use frame_system_rpc_runtime_api::AccountNonceApi;
@@ -57,6 +56,8 @@ use sc_consensus_subspace::{
 };
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
+#[cfg(feature = "pot")]
+use sc_proof_of_time::gossip::pot_gossip_peers_set_config;
 #[cfg(feature = "pot")]
 use sc_proof_of_time::source::PotSource;
 #[cfg(feature = "pot")]
@@ -178,7 +179,7 @@ pub type FraudProofVerifier<RuntimeApi, ExecutorDispatch> = subspace_fraud_proof
 >;
 
 /// Subspace networking instantiation variant
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
 pub enum SubspaceNetworking {
     /// Use existing networking instance
@@ -198,12 +199,9 @@ pub enum SubspaceNetworking {
 }
 
 /// Subspace-specific service configuration.
-#[derive(Debug, Deref, DerefMut, Into)]
+#[derive(Debug)]
 pub struct SubspaceConfiguration {
     /// Base configuration.
-    #[deref]
-    #[deref_mut]
-    #[into]
     pub base: Configuration,
     /// Whether slot notifications need to be present even if node is not responsible for block
     /// authoring.
@@ -590,7 +588,7 @@ where
         mut telemetry,
     } = other;
 
-    let (node, bootstrap_nodes, dsn_metrics_registry) = match config.subspace_networking.clone() {
+    let (node, bootstrap_nodes, dsn_metrics_registry) = match config.subspace_networking {
         SubspaceNetworking::Reuse {
             node,
             bootstrap_nodes,
@@ -600,7 +598,7 @@ where
             let dsn_protocol_version = hex::encode(client.chain_info().genesis_hash);
 
             debug!(
-                chain_type=?config.chain_spec.chain_type(),
+                chain_type=?config.base.chain_spec.chain_type(),
                 genesis_hash=%hex::encode(client.chain_info().genesis_hash),
                 "Setting DSN protocol version..."
             );
@@ -682,7 +680,7 @@ where
 
             node_listeners
         } else {
-            bootstrap_nodes.clone()
+            bootstrap_nodes
         }
     };
 
@@ -693,20 +691,18 @@ where
             network_wrapper.clone(),
             client.clone(),
             transaction_pool.clone(),
-            task_manager.spawn_handle(),
         ))
     } else {
         None
     };
-    let mut net_config = sc_network::config::FullNetworkConfiguration::new(&config.network);
+    let mut net_config = sc_network::config::FullNetworkConfiguration::new(&config.base.network);
     net_config.add_notification_protocol(cdm_gossip_peers_set_config());
-    // TODO: Restore PoT gossip
-    // #[cfg(feature = "pot")]
-    // net_config.add_notification_protocol(pot_gossip_peers_set_config());
+    #[cfg(feature = "pot")]
+    net_config.add_notification_protocol(pot_gossip_peers_set_config());
     let sync_mode = Arc::clone(&net_config.network_config.sync_mode);
     let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
         sc_service::build_network(sc_service::BuildNetworkParams {
-            config: &config,
+            config: &config.base,
             net_config,
             client: client.clone(),
             transaction_pool: transaction_pool.clone(),
@@ -717,14 +713,13 @@ where
             block_relay,
         })?;
 
-    let subspace_sync_oracle =
-        SubspaceSyncOracle::new(config.force_authoring, sync_service.clone());
+    let sync_oracle = SubspaceSyncOracle::new(config.base.force_authoring, sync_service.clone());
 
     let subspace_archiver = create_subspace_archiver(
         segment_headers_store.clone(),
         &subspace_link,
         client.clone(),
-        subspace_sync_oracle.clone(),
+        sync_oracle.clone(),
         telemetry.as_ref().map(|telemetry| telemetry.handle()),
     );
 
@@ -761,7 +756,7 @@ where
             );
     }
 
-    if let Some(registry) = config.prometheus_registry().as_ref() {
+    if let Some(registry) = config.base.prometheus_registry() {
         match NodeMetrics::new(
             client.clone(),
             client.import_notification_stream(),
@@ -782,9 +777,9 @@ where
         }
     }
 
-    if config.offchain_worker.enabled {
+    if config.base.offchain_worker.enabled {
         sc_service::build_offchain_workers(
-            &config,
+            &config.base,
             task_manager.spawn_handle(),
             client.clone(),
             network_service.clone(),
@@ -792,46 +787,36 @@ where
     }
 
     let backoff_authoring_blocks: Option<()> = None;
-    let prometheus_registry = config.prometheus_registry().cloned();
 
     let new_slot_notification_stream = subspace_link.new_slot_notification_stream();
     let reward_signing_notification_stream = subspace_link.reward_signing_notification_stream();
     let block_importing_notification_stream = subspace_link.block_importing_notification_stream();
     let archived_segment_notification_stream = subspace_link.archived_segment_notification_stream();
 
-    if config.role.is_authority() || config.force_new_slot_notifications {
-        #[cfg(feature = "pot")]
-        let (pot_source, pot_slot_info_stream) =
-            PotSource::new(config.is_timekeeper, client.clone(), pot_verifier)
-                .map_err(|error| Error::Other(error.into()))?;
-        #[cfg(feature = "pot")]
-        {
-            task_manager.spawn_essential_handle().spawn_blocking(
-                "pot-source",
-                Some("pot"),
-                pot_source.run(),
-            );
-            // TODO: Restore PoT gossip
-            // let pot_gossip_worker = PotGossipWorker::<Block>::new(
-            //     &pot_components,
-            //     network_service.clone(),
-            //     sync_service.clone(),
-            // );
-            // let gossip_sender = pot_gossip_worker.gossip_sender();
-            // task_manager.spawn_essential_handle().spawn_blocking(
-            //     "pot-gossip-worker",
-            //     Some("pot"),
-            //     async move {
-            //         pot_gossip_worker.run().await;
-            //     },
-            // );
-        }
+    #[cfg(feature = "pot")]
+    let pot_slot_info_stream = {
+        let (pot_source, pot_gossip_worker, pot_slot_info_stream) = PotSource::new(
+            config.is_timekeeper,
+            client.clone(),
+            pot_verifier,
+            network_service.clone(),
+            sync_service.clone(),
+        )
+        .map_err(|error| Error::Other(error.into()))?;
+        let spawn_essential_handle = task_manager.spawn_essential_handle();
 
+        spawn_essential_handle.spawn("pot-source", Some("pot"), pot_source.run());
+        spawn_essential_handle.spawn_blocking("pot-gossip", Some("pot"), pot_gossip_worker.run());
+
+        pot_slot_info_stream
+    };
+
+    if config.base.role.is_authority() || config.force_new_slot_notifications {
         let proposer_factory = ProposerFactory::new(
             task_manager.spawn_handle(),
             client.clone(),
             transaction_pool.clone(),
-            prometheus_registry.as_ref(),
+            config.base.prometheus_registry(),
             telemetry.as_ref().map(|x| x.handle()),
         );
 
@@ -840,7 +825,7 @@ where
             select_chain: select_chain.clone(),
             env: proposer_factory,
             block_import,
-            sync_oracle: subspace_sync_oracle.clone(),
+            sync_oracle: sync_oracle.clone(),
             justification_sync_link: sync_service.clone(),
             create_inherent_data_providers: {
                 let client = client.clone();
@@ -870,7 +855,7 @@ where
                     }
                 }
             },
-            force_authoring: config.force_authoring,
+            force_authoring: config.base.force_authoring,
             backoff_authoring_blocks,
             subspace_link: subspace_link.clone(),
             segment_headers_store: segment_headers_store.clone(),
@@ -927,7 +912,7 @@ where
             let reward_signing_notification_stream = reward_signing_notification_stream.clone();
             let archived_segment_notification_stream = archived_segment_notification_stream.clone();
             let transaction_pool = transaction_pool.clone();
-            let chain_spec = config.chain_spec.cloned_box();
+            let chain_spec = config.base.chain_spec.cloned_box();
 
             Box::new(move |deny_unsafe, subscription_executor| {
                 let deps = rpc::FullDeps {
@@ -942,7 +927,7 @@ where
                         .clone(),
                     dsn_bootstrap_nodes: dsn_bootstrap_nodes.clone(),
                     segment_headers_store: segment_headers_store.clone(),
-                    sync_oracle: subspace_sync_oracle.clone(),
+                    sync_oracle: sync_oracle.clone(),
                     kzg: subspace_link.kzg().clone(),
                 };
 
@@ -953,7 +938,7 @@ where
         },
         backend: backend.clone(),
         system_rpc_tx,
-        config: config.into(),
+        config: config.base,
         telemetry: telemetry.as_mut(),
         tx_handler_controller,
         sync_service: sync_service.clone(),

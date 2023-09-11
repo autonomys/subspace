@@ -1,14 +1,9 @@
 //! Subspace proof of time implementation.
 
-#![feature(const_option)]
-
-// TODO: Adjust or remove unused modules in the future
-// pub mod gossip;
+pub mod gossip;
 mod slots;
 pub mod source;
 pub mod verifier;
-// mod state_manager;
-// mod time_keeper;
 
 use crate::slots::SlotInfoProducer;
 use crate::source::{PotSlotInfo, PotSlotInfoStream};

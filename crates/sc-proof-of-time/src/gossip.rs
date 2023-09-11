@@ -1,27 +1,46 @@
 //! PoT gossip functionality.
 
-use crate::state_manager::PotProtocolState;
-use crate::PotComponents;
+use crate::verifier::PotVerifier;
+use atomic::Atomic;
 use futures::channel::mpsc;
-use futures::{FutureExt, StreamExt};
+use futures::{FutureExt, SinkExt, StreamExt};
 use parity_scale_codec::{Decode, Encode};
-use parking_lot::{Mutex, RwLock};
+use parking_lot::Mutex;
 use sc_network::config::NonDefaultSetConfig;
 use sc_network::PeerId;
 use sc_network_gossip::{
-    GossipEngine, MessageIntent, Syncing as GossipSyncing, ValidationResult, Validator,
-    ValidatorContext,
+    GossipEngine, MessageIntent, Network as GossipNetwork, Syncing as GossipSyncing,
+    ValidationResult, Validator, ValidatorContext,
 };
+use sp_consensus_slots::Slot;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
-use std::collections::HashSet;
-use std::num::NonZeroU64;
+use std::future::poll_fn;
+use std::num::NonZeroU32;
+use std::sync::atomic::Ordering;
 use std::sync::Arc;
-use std::time::Instant;
-use subspace_core_primitives::crypto::blake2b_256_hash;
-use subspace_core_primitives::{Blake2b256Hash, PotProof};
-use tracing::{error, trace};
+use subspace_core_primitives::{PotCheckpoints, PotSeed};
+use tracing::{debug, error, trace, warn};
 
-pub(crate) const GOSSIP_PROTOCOL: &str = "/subspace/subspace-proof-of-time";
+const GOSSIP_PROTOCOL: &str = "/subspace/subspace-proof-of-time/1";
+
+/// Returns the network configuration for PoT gossip.
+pub fn pot_gossip_peers_set_config() -> NonDefaultSetConfig {
+    let mut cfg = NonDefaultSetConfig::new(GOSSIP_PROTOCOL.into(), 1024);
+    cfg.allow_non_reserved(25, 25);
+    cfg
+}
+
+#[derive(Debug, Copy, Clone, Encode, Decode)]
+pub(crate) struct GossipCheckpoints {
+    /// Slot number
+    pub(crate) slot: Slot,
+    /// Proof of time seed
+    pub(crate) seed: PotSeed,
+    /// Iterations per slot
+    pub(crate) slot_iterations: NonZeroU32,
+    /// Proof of time checkpoints
+    pub(crate) checkpoints: PotCheckpoints,
+}
 
 /// PoT gossip worker
 #[must_use = "Gossip worker doesn't do anything unless run() method is called"]
@@ -30,11 +49,9 @@ where
     Block: BlockT,
 {
     engine: Arc<Mutex<GossipEngine<Block>>>,
-    validator: Arc<PotGossipValidator<Block>>,
-    pot_state: Arc<dyn PotProtocolState>,
     topic: Block::Hash,
-    outgoing_messages_sender: mpsc::Sender<PotProof>,
-    outgoing_messages_receiver: mpsc::Receiver<PotProof>,
+    outgoing_messages_receiver: mpsc::Receiver<GossipCheckpoints>,
+    incoming_messages_sender: mpsc::Sender<(PeerId, GossipCheckpoints)>,
 }
 
 impl<Block> PotGossipWorker<Block>
@@ -42,46 +59,33 @@ where
     Block: BlockT,
 {
     /// Instantiate gossip worker
-    pub fn new<Network, GossipSync>(
-        components: &PotComponents,
+    pub(crate) fn new<Network, GossipSync>(
+        outgoing_messages_receiver: mpsc::Receiver<GossipCheckpoints>,
+        incoming_messages_sender: mpsc::Sender<(PeerId, GossipCheckpoints)>,
+        pot_verifier: PotVerifier,
+        current_slot_iterations: Arc<Atomic<NonZeroU32>>,
         network: Network,
         sync: Arc<GossipSync>,
     ) -> Self
     where
-        Network: sc_network_gossip::Network<Block> + Send + Sync + Clone + 'static,
+        Network: GossipNetwork<Block> + Send + Sync + Clone + 'static,
         GossipSync: GossipSyncing<Block> + 'static,
     {
-        let topic =
-            <<Block::Header as HeaderT>::Hashing as HashT>::hash(b"subspace-proof-of-time-gossip");
+        let topic = <<Block::Header as HeaderT>::Hashing as HashT>::hash(b"checkpoints");
 
         let validator = Arc::new(PotGossipValidator::new(
-            Arc::clone(&components.protocol_state),
-            NonZeroU64::from(components.iterations),
+            pot_verifier,
+            current_slot_iterations,
             topic,
         ));
-        let engine = Arc::new(Mutex::new(GossipEngine::new(
-            network,
-            sync,
-            GOSSIP_PROTOCOL,
-            validator.clone(),
-            None,
-        )));
-
-        let (outgoing_messages_sender, outgoing_messages_receiver) = mpsc::channel(0);
+        let engine = GossipEngine::new(network, sync, GOSSIP_PROTOCOL, validator, None);
 
         Self {
-            engine,
-            validator,
-            pot_state: Arc::clone(&components.protocol_state),
+            engine: Arc::new(Mutex::new(engine)),
             topic,
-            outgoing_messages_sender,
             outgoing_messages_receiver,
+            incoming_messages_sender,
         }
-    }
-
-    /// Sender that can be used to gossip PoT messages to the network
-    pub fn gossip_sender(&self) -> mpsc::Sender<PotProof> {
-        self.outgoing_messages_sender.clone()
     }
 
     /// Run gossip engine.
@@ -90,27 +94,25 @@ where
     /// should be running on a dedicated thread.
     pub async fn run(mut self) {
         let message_receiver = self.engine.lock().messages_for(self.topic);
-        let mut incoming_messages = Box::pin(message_receiver.filter_map(
-            // Filter out messages without sender or fail to decode.
-            // TODO: penalize nodes that send garbled messages.
-            |notification| async move {
-                let mut ret = None;
-                if let Some(sender) = notification.sender {
-                    if let Ok(msg) = PotProof::decode(&mut &notification.message[..]) {
-                        ret = Some((sender, msg))
-                    }
-                }
-                ret
-            },
-        ));
+        let mut incoming_messages = Box::pin(
+            message_receiver
+                .filter_map(|notification| async move {
+                    notification.sender.map(|sender| {
+                        let message = GossipCheckpoints::decode(&mut notification.message.as_ref())
+                            .expect("Only valid messages get here; qed");
+
+                        (sender, message)
+                    })
+                })
+                .fuse(),
+        );
 
         loop {
-            let gossip_engine_poll =
-                futures::future::poll_fn(|cx| self.engine.lock().poll_unpin(cx));
+            let gossip_engine_poll = poll_fn(|cx| self.engine.lock().poll_unpin(cx));
             futures::select! {
-                gossiped = incoming_messages.next().fuse() => {
-                    if let Some((sender, proof)) = gossiped {
-                        self.handle_incoming_message(sender, proof);
+                incoming_message = incoming_messages.next() => {
+                    if let Some((sender, message)) = incoming_message {
+                        self.handle_incoming_message(sender, message).await;
                     }
                 },
                 outgoing_message = self.outgoing_messages_receiver.select_next_some() => {
@@ -125,27 +127,16 @@ where
     }
 
     /// Handles the incoming gossip message.
-    fn handle_incoming_message(&self, sender: PeerId, proof: PotProof) {
-        let start_ts = Instant::now();
-        let ret = self.pot_state.on_proof_from_peer(sender, &proof);
-        let elapsed = start_ts.elapsed();
-
-        if let Err(error) = ret {
-            trace!(%error, %sender, "On gossip");
-        } else {
-            trace!(%proof, ?elapsed, %sender, "On gossip");
-            self.engine
-                .lock()
-                .gossip_message(self.topic, proof.encode(), false);
+    async fn handle_incoming_message(&mut self, sender: PeerId, message: GossipCheckpoints) {
+        if let Err(error) = self.incoming_messages_sender.send((sender, message)).await {
+            warn!(%error, "Failed to send incoming message");
         }
     }
 
-    fn handle_outgoing_message(&self, proof: PotProof) {
-        let message = proof.encode();
-        self.validator.on_broadcast(&message);
+    fn handle_outgoing_message(&self, message: GossipCheckpoints) {
         self.engine
             .lock()
-            .gossip_message(self.topic, message, false);
+            .gossip_message(self.topic, message.encode(), false);
     }
 }
 
@@ -154,9 +145,8 @@ struct PotGossipValidator<Block>
 where
     Block: BlockT,
 {
-    pot_state: Arc<dyn PotProtocolState>,
-    iterations: NonZeroU64,
-    pending: RwLock<HashSet<Blake2b256Hash>>,
+    pot_verifier: PotVerifier,
+    current_slot_iterations: Arc<Atomic<NonZeroU32>>,
     topic: Block::Hash,
 }
 
@@ -166,22 +156,15 @@ where
 {
     /// Creates the validator.
     fn new(
-        pot_state: Arc<dyn PotProtocolState>,
-        iterations: NonZeroU64,
+        pot_verifier: PotVerifier,
+        current_slot_iterations: Arc<Atomic<NonZeroU32>>,
         topic: Block::Hash,
     ) -> Self {
         Self {
-            pot_state,
-            iterations,
-            pending: RwLock::new(HashSet::new()),
+            pot_verifier,
+            current_slot_iterations,
             topic,
         }
-    }
-
-    /// Called when the message is broadcast.
-    fn on_broadcast(&self, msg: &[u8]) {
-        let hash = blake2b_256_hash(msg);
-        self.pending.write().insert(hash);
     }
 }
 
@@ -191,62 +174,76 @@ where
 {
     fn validate(
         &self,
-        _context: &mut dyn ValidatorContext<Block>,
+        context: &mut dyn ValidatorContext<Block>,
         sender: &PeerId,
         mut data: &[u8],
     ) -> ValidationResult<Block::Hash> {
-        match PotProof::decode(&mut data) {
-            Ok(proof) => {
-                // Perform AES verification only if the proof is a candidate.
-                if let Err(error) = self.pot_state.is_candidate(*sender, &proof) {
-                    trace!(%error, "Not a candidate");
+        // TODO: Skip validation if node is not synced right now
+
+        match GossipCheckpoints::decode(&mut data) {
+            Ok(message) => {
+                // TODO: Gossip validation should be non-blocking!
+                // TODO: Check that slot number is not too far in the past of future
+                let current_slot_iterations = self.current_slot_iterations.load(Ordering::Relaxed);
+
+                // Check that number of slot iterations is between 2/3 and 1.5 of current slot
+                // iterations, otherwise ignore
+                // TODO: Decrease reputation if slot iterations is within range, but doesn't match
+                //  exactly
+                if message.slot_iterations.get() < current_slot_iterations.get() * 2 / 3
+                    || message.slot_iterations.get() > current_slot_iterations.get() * 3 / 2
+                {
+                    debug!(
+                        %sender,
+                        slot = %message.slot,
+                        slot_iterations = %message.slot_iterations,
+                        current_slot_iterations = %current_slot_iterations,
+                        "Slot iterations outside of reasonable range"
+                    );
+
+                    // TODO: Reputation change
                     return ValidationResult::Discard;
                 }
 
-                match subspace_proof_of_time::verify(
-                    proof.seed,
-                    proof.key,
-                    self.iterations,
-                    &*proof.checkpoints,
-                ) {
-                    Ok(success) => {
-                        if success {
-                            ValidationResult::ProcessAndKeep(self.topic)
-                        } else {
-                            trace!("Verification failed");
-                            ValidationResult::Discard
-                        }
-                    }
-                    Err(error) => {
-                        error!(%error, "Verification error");
-                        ValidationResult::Discard
-                    }
+                if tokio::task::block_in_place(|| {
+                    tokio::runtime::Handle::current().block_on(
+                        self.pot_verifier.verify_checkpoints(
+                            message.seed,
+                            message.slot_iterations,
+                            &message.checkpoints,
+                        ),
+                    )
+                }) {
+                    trace!(%sender, slot = %message.slot, "Verification succeeded");
+                    context.broadcast_message(self.topic, data.to_vec(), false);
+                    ValidationResult::ProcessAndKeep(self.topic)
+                } else {
+                    debug!(%sender, slot = %message.slot, "Verification failed");
+                    // TODO: Reputation change
+                    ValidationResult::Discard
                 }
             }
-            Err(_) => ValidationResult::Discard,
+            Err(_) => {
+                // TODO: Reputation change
+                ValidationResult::Discard
+            }
         }
     }
 
     fn message_expired<'a>(&'a self) -> Box<dyn FnMut(Block::Hash, &[u8]) -> bool + 'a> {
-        Box::new(move |_topic, data| {
-            let hash = blake2b_256_hash(data);
-            !self.pending.read().contains(&hash)
+        Box::new(move |_topic, _data| {
+            // TODO: Check that slots are not too far in the past or future, there is no other
+            //  inherent expiration policy here
+            false
         })
     }
 
     fn message_allowed<'a>(
         &'a self,
     ) -> Box<dyn FnMut(&PeerId, MessageIntent, &Block::Hash, &[u8]) -> bool + 'a> {
-        Box::new(move |_who, _intent, _topic, data| {
-            let hash = blake2b_256_hash(data);
-            self.pending.write().remove(&hash)
+        Box::new(move |_who, intent, _topic, _data| {
+            // We do not need force broadcast or rebroadcasting
+            matches!(intent, MessageIntent::Broadcast)
         })
     }
-}
-
-/// Returns the network configuration for PoT gossip.
-pub fn pot_gossip_peers_set_config() -> NonDefaultSetConfig {
-    let mut cfg = NonDefaultSetConfig::new(GOSSIP_PROTOCOL.into(), 5 * 1024 * 1024);
-    cfg.allow_non_reserved(25, 25);
-    cfg
 }

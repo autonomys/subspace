@@ -1,6 +1,8 @@
 use clap::Parser;
 use futures::channel::oneshot;
 use futures::future::pending;
+use futures::stream::FuturesUnordered;
+use futures::StreamExt;
 use libp2p::identity::Keypair;
 use libp2p::kad::Mode;
 use libp2p::multiaddr::Protocol;
@@ -11,6 +13,7 @@ use std::time::{Duration, Instant};
 use subspace_core_primitives::PieceIndex;
 use subspace_networking::utils::piece_provider::{NoPieceValidator, PieceProvider, RetryPolicy};
 use subspace_networking::{Config, Node, PeerInfoProvider, PieceByIndexRequestHandler};
+use tokio::sync::Semaphore;
 use tracing::{error, info, warn, Level};
 use tracing_subscriber::fmt::Subscriber;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -28,6 +31,12 @@ struct Args {
     /// production use.
     #[arg(long, required = true)]
     protocol_version: String,
+    /// Defines max established outgoing connections limit for the peer.
+    #[arg(long, default_value_t = 100)]
+    out_peers: u32,
+    /// Defines max pending outgoing connections limit for the peer.
+    #[arg(long, default_value_t = 100)]
+    pending_out_peers: u32,
     #[clap(subcommand)]
     command: Command,
 }
@@ -41,6 +50,16 @@ enum Command {
         start_with: usize,
         #[arg(long, default_value_t = 0)]
         retries: u16,
+    },
+    Parallel {
+        #[arg(long, default_value_t = 100)]
+        max_pieces: usize,
+        #[arg(long, default_value_t = 0)]
+        start_with: usize,
+        #[arg(long, default_value_t = 0)]
+        retries: u16,
+        #[arg(long, default_value_t = 1)]
+        parallelism_level: u16,
     },
 }
 
@@ -56,6 +75,8 @@ async fn main() {
         args.bootstrap_nodes,
         args.protocol_version,
         args.enable_private_ips,
+        args.pending_out_peers,
+        args.out_peers,
     )
     .await;
 
@@ -66,6 +87,14 @@ async fn main() {
             retries,
         } => {
             simple_benchmark(node, max_pieces, start_with, retries).await;
+        }
+        Command::Parallel {
+            max_pieces,
+            start_with,
+            retries,
+            parallelism_level,
+        } => {
+            parallel_benchmark(node, max_pieces, start_with, retries, parallelism_level).await;
         }
     }
 
@@ -147,10 +176,95 @@ async fn simple_benchmark(node: Node, max_pieces: usize, start_with: usize, retr
     stats.display();
 }
 
+async fn parallel_benchmark(
+    node: Node,
+    max_pieces: usize,
+    start_with: usize,
+    retries: u16,
+    parallelism_level: u16,
+) {
+    let start = Instant::now();
+    let mut stats = PieceRequestStats::default();
+    if max_pieces == 0 {
+        error!("Incorrect max_pieces variable set:{max_pieces}");
+        return;
+    }
+
+    let semaphore = &Semaphore::new(parallelism_level.into());
+
+    let piece_provider = &PieceProvider::<NoPieceValidator>::new(node, None);
+    let mut total_duration = Duration::default();
+    let mut pure_total_duration = Duration::default();
+    let mut pending_pieces = (start_with..(start_with + max_pieces))
+        .map(|i| {
+            let piece_index = PieceIndex::from(i as u64);
+            async move {
+                let start = Instant::now();
+
+                let permit = semaphore
+                    .acquire()
+                    .await
+                    .expect("Semaphore cannot be closed.");
+                let semaphore_acquired = Instant::now();
+                let maybe_piece = piece_provider
+                    .get_piece(piece_index, RetryPolicy::Limited(retries))
+                    .await;
+
+                let end = Instant::now();
+                let pure_duration = end.duration_since(semaphore_acquired);
+                let full_duration = end.duration_since(start);
+
+                drop(permit);
+
+                (piece_index, maybe_piece, pure_duration, full_duration)
+            }
+        })
+        .collect::<FuturesUnordered<_>>();
+
+    while let Some((piece_index, maybe_piece, pure_duration, full_duration)) =
+        pending_pieces.next().await
+    {
+        total_duration += full_duration;
+        pure_total_duration += pure_duration;
+        match maybe_piece {
+            Ok(Some(_)) => {
+                info!(%piece_index, ?pure_duration, ?full_duration, "Piece found.");
+                stats.add_found();
+            }
+            Ok(None) => {
+                warn!(%piece_index, ?pure_duration, ?full_duration, "Piece not found.");
+                stats.add_not_found();
+            }
+            Err(error) => {
+                error!(%piece_index, ?pure_duration, ?full_duration, ?error, "Piece request failed.");
+                stats.add_error();
+            }
+        }
+    }
+
+    let average_duration = total_duration / max_pieces as u32;
+    let average_pure_duration = pure_total_duration / max_pieces as u32;
+    info!(
+        "Total time for {max_pieces} pieces: {:?}",
+        Instant::now().duration_since(start)
+    );
+    info!(
+        "Average time for {max_pieces} pieces: {:?}",
+        average_duration
+    );
+    info!(
+        "Average (no wait) time for {max_pieces} pieces: {:?}",
+        average_pure_duration
+    );
+    stats.display();
+}
+
 pub async fn configure_dsn(
     bootstrap_addresses: Vec<Multiaddr>,
     protocol_prefix: String,
     enable_private_ips: bool,
+    pending_out_peers: u32,
+    out_peers: u32,
 ) -> Node {
     let keypair = Keypair::generate_ed25519();
 
@@ -163,6 +277,8 @@ pub async fn configure_dsn(
         request_response_protocols: vec![PieceByIndexRequestHandler::create(|_, _| async { None })],
         bootstrap_addresses,
         enable_autonat: false,
+        max_pending_outgoing_connections: pending_out_peers,
+        max_established_outgoing_connections: out_peers,
         ..default_config
     };
     let (node, mut node_runner_1) = subspace_networking::construct(config).unwrap();

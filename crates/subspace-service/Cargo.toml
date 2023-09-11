@@ -19,7 +19,6 @@ targets = ["x86_64-unknown-linux-gnu"]
 async-trait = "0.1.68"
 atomic = "0.5.3"
 cross-domain-message-gossip = { version = "0.1.0", path = "../../domains/client/cross-domain-message-gossip" }
-derive_more = "0.99.17"
 domain-block-preprocessor = { version = "0.1.0", path = "../../domains/client/block-preprocessor" }
 domain-runtime-primitives = { version = "0.1.0", path = "../../domains/primitives/runtime" }
 either = "1.8.1"

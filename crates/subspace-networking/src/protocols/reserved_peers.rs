@@ -1,4 +1,6 @@
 mod handler;
+#[cfg(test)]
+mod tests;
 
 use handler::Handler;
 use libp2p::core::{Endpoint, Multiaddr};

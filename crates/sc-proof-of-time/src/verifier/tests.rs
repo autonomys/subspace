@@ -3,7 +3,6 @@ use futures::executor::block_on;
 use sp_consensus_slots::Slot;
 use std::num::{NonZeroU32, NonZeroUsize};
 use subspace_core_primitives::PotSeed;
-use subspace_proof_of_time::prove;
 
 const SEED: [u8; 16] = [
     0xd6, 0x66, 0xcc, 0xd8, 0xd5, 0x93, 0xc2, 0x3d, 0xa8, 0xdb, 0x6b, 0x5b, 0x14, 0x13, 0xb1, 0x3a,
@@ -13,7 +12,7 @@ const SEED: [u8; 16] = [
 fn test_basic() {
     let genesis_seed = PotSeed::from(SEED);
     let slot_iterations = NonZeroU32::new(512).unwrap();
-    let checkpoints_1 = prove(genesis_seed, slot_iterations).unwrap();
+    let checkpoints_1 = subspace_proof_of_time::prove(genesis_seed, slot_iterations).unwrap();
 
     let verifier = PotVerifier::new(genesis_seed, NonZeroUsize::new(1000).unwrap());
 
@@ -56,7 +55,7 @@ fn test_basic() {
     ));
 
     let seed_1 = checkpoints_1.output().seed();
-    let checkpoints_2 = prove(seed_1, slot_iterations).unwrap();
+    let checkpoints_2 = subspace_proof_of_time::prove(seed_1, slot_iterations).unwrap();
 
     // Expected to be valid
     assert!(block_on(verifier.is_proof_valid(

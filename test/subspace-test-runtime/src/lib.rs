@@ -1648,7 +1648,7 @@ impl_runtime_apis! {
             extract_successful_bundles(domain_id, extrinsics)
         }
 
-        fn extrinsics_shuffling_seed(header: <Block as BlockT>::Header) -> Randomness {
+        fn extrinsics_shuffling_seed() -> Randomness {
             Randomness::from(Domains::extrinsics_shuffling_seed().to_fixed_bytes())
         }
 

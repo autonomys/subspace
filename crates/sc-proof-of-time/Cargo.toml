@@ -13,6 +13,7 @@ include = [
 [dependencies]
 async-lock = "2.8.0"
 async-trait = "0.1.68"
+atomic = "0.5.3"
 derive_more = "0.99.17"
 futures = "0.3.28"
 lru = "0.11.0"
