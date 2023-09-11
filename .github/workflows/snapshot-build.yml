@@ -9,8 +9,8 @@ on:
   workflow_dispatch:
   push:
     tags:
-      - 'snapshot-*'
-      - 'gemini-*'
+      - "snapshot-*"
+      - "gemini-*"
 
 # Incremental compilation here isn't helpful
 env:
@@ -18,7 +18,7 @@ env:
 
 jobs:
   container-linux:
-    runs-on: ubuntu-22.04
+    runs-on: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "ubuntu-20.04-x86-64"]' || 'ubuntu-22.04') }}
     permissions:
       contents: write
       packages: write
@@ -30,25 +30,25 @@ jobs:
           - bootstrap-node
         platform:
           - arch: linux/amd64
-            dockerfile-suffix: ''
+            dockerfile-suffix: ""
             suffix: ubuntu-x86_64-${{ github.ref_name }}
-            image-suffix: ''
-            rustflags: '-C target-cpu=skylake'
+            image-suffix: ""
+            rustflags: "-C target-cpu=skylake"
           # We build AArch64
           - arch: linux/amd64
-            dockerfile-suffix: '.aarch64'
+            dockerfile-suffix: ".aarch64"
             suffix: ubuntu-aarch64-${{ github.ref_name }}
-            image-suffix: '-aarch64'
+            image-suffix: "-aarch64"
 
     steps:
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@e81a89b1732b9c48d79cd809d8d81d79c4647a18 # @v2.1.0
+        uses: docker/setup-qemu-action@2b82ce82d56a2a04d2637cd93a637ae1b359c0a7 # @v2.2.0
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@8c0edbc76e98fa90f69d9a2c020dcb50019dc325 # @v2.2.1
 
       - name: Log into registry
-        uses: docker/login-action@f4ef78c080cd8ba55a85445d5b36e214a81df20a # @v2.1.0
+        uses: docker/login-action@465a07811f14bebb1938fbed4728c6a1ff8901fc # @v2.2.0
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
@@ -84,38 +84,38 @@ jobs:
     strategy:
       matrix:
         build:
-          - os: ubuntu-20.04
+          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "ubuntu-20.04-x86-64"]' || 'ubuntu-20.04') }}
             target: x86_64-unknown-linux-gnu
             suffix: ubuntu-x86_64-v2-${{ github.ref_name }}
-            rustflags: '-C target-cpu=x86-64-v2'
-          - os: ubuntu-20.04
+            rustflags: "-C target-cpu=x86-64-v2"
+          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "ubuntu-20.04-x86-64"]' || 'ubuntu-20.04') }}
             target: x86_64-unknown-linux-gnu
             suffix: ubuntu-x86_64-skylake-${{ github.ref_name }}
-            rustflags: '-C target-cpu=skylake'
-          - os: ubuntu-20.04
+            rustflags: "-C target-cpu=skylake"
+          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "ubuntu-20.04-x86-64"]' || 'ubuntu-20.04') }}
             target: aarch64-unknown-linux-gnu
             suffix: ubuntu-aarch64-${{ github.ref_name }}
             # TODO: AES flag is such that we have decent performance on ARMv8, remove once `aes` crate bumps MSRV to
             #  at least 1.61: https://github.com/RustCrypto/block-ciphers/issues/373
-            rustflags: '-C linker=aarch64-linux-gnu-gcc --cfg aes_armv8'
-          - os: macos-12
+            rustflags: "-C linker=aarch64-linux-gnu-gcc --cfg aes_armv8"
+          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "macos-12-arm64"]' || 'macos-12') }}
             target: x86_64-apple-darwin
             suffix: macos-x86_64-${{ github.ref_name }}
-            rustflags: ''
-          - os: macos-12
+            rustflags: ""
+          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "macos-12-arm64"]' || 'macos-12') }}
             target: aarch64-apple-darwin
             suffix: macos-aarch64-${{ github.ref_name }}
             # TODO: AES flag is such that we have decent performance on ARMv8, remove once `aes` crate bumps MSRV to
             #  at least 1.61: https://github.com/RustCrypto/block-ciphers/issues/373
-            rustflags: '--cfg aes_armv8'
-          - os: windows-2022
+            rustflags: "--cfg aes_armv8"
+          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "windows-server-2022-x86-64"]' || 'windows-2022') }}
             target: x86_64-pc-windows-msvc
             suffix: windows-x86_64-v2-${{ github.ref_name }}
-            rustflags: '-C target-cpu=x86-64-v2'
-          - os: windows-2022
+            rustflags: "-C target-cpu=x86-64-v2"
+          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "windows-server-2022-x86-64"]' || 'windows-2022') }}
             target: x86_64-pc-windows-msvc
             suffix: windows-x86_64-skylake-${{ github.ref_name }}
-            rustflags: '-C target-cpu=skylake'
+            rustflags: "-C target-cpu=skylake"
     runs-on: ${{ matrix.build.os }}
     env:
       PRODUCTION_TARGET: target/${{ matrix.build.target }}/production
@@ -126,14 +126,25 @@ jobs:
         uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # @v3.1.0
 
       # On macOS, we need a proper Clang version, not Apple's custom version without wasm32 support
-      - name: Install LLVM and Clang
-        uses: KyleMayes/install-llvm-action@8852e4d5c58653ed05135c0a5d949d9c2febcb00 # v1.6.1
+      # TODO: on macOS, the consensus/domain runtime build is not compatible with LLVM 15.0.7 and
+      # LLVM 15.0.{3, 4, 5, 6} is not released for macOS thus install LLVM 15.0.2 explicitly as a
+      # temporary workaround, and remove once incompatible is fixed.
+      - name: Install LLVM and Clang for macOS
+        uses: KyleMayes/install-llvm-action@c135b3937686fd69c2651507aabc9925a8f9eee8 # v1.8.3
         with:
-          version: "15.0"
+          version: "15.0.2"
         if: runner.os == 'macOS'
 
+      # TODO: on Linux and Windows, the consensus/domain runtime build is not compatible with LLVM 16,
+      # thus install LLVM 15 explicitly as a temporary workaround, and remove once incompatible is fixed.
+      - name: Install LLVM and Clang for Linux and Windows
+        uses: KyleMayes/install-llvm-action@c135b3937686fd69c2651507aabc9925a8f9eee8 # v1.8.3
+        with:
+          version: "15.0"
+        if: runner.os != 'macOS'
+
       - name: Install Protoc
-        uses: arduino/setup-protoc@64c0c85d18e984422218383b81c52f8b077404d3 # @v1.1.2
+        uses: arduino/setup-protoc@9b1ee5b22b0a3f1feb8c2ff99b32c89b3c3191e9 # v2.0.0
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
@@ -141,6 +152,8 @@ jobs:
       - name: Remove msys64
         run: Remove-Item -LiteralPath "C:\msys64\" -Force -Recurse
         if: runner.os == 'Windows'
+        # Doesn't exist on self-hosted runners
+        continue-on-error: true
 
       - name: AArch64 cross-compile packages
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends g++-aarch64-linux-gnu gcc-aarch64-linux-gnu libc6-dev-arm64-cross
@@ -176,26 +189,39 @@ jobs:
           cp ${{ env.PRODUCTION_TARGET }}/subspace-farmer ${{ env.PRODUCTION_TARGET }}/subspace-node ${{ env.PRODUCTION_TARGET }}/macos-binaries
           ditto -c -k --rsrc ${{ env.PRODUCTION_TARGET }}/macos-binaries subspace-binaries.zip
           echo "Notarizing"
-          xcrun altool --notarize-app --primary-bundle-id binaries-${{ github.ref_name }} --username "${{ secrets.MACOS_APPLE_ID}}" --password "${{ secrets.MACOS_APP_PW }}" --file subspace-binaries.zip
-          # TODO: Wait for notarization before stapling
-          # echo "Stapling farmer"
-          # xcrun stapler staple ${{ env.PRODUCTION_TARGET }}/subspace-farmer
-          # echo "Stapling node"
-          # xcrun stapler staple ${{ env.PRODUCTION_TARGET }}/subspace-node
+          brew update
+          brew install mitchellh/gon/gon
+          cat << EOF > gon.hcl
+          source = ["subspace-binaries.zip"]
+          bundle_id = "${{ secrets.MACOS_BUNDLE_ID }}"
+          sign {
+            application_identity = "${{ secrets.MACOS_IDENTITY }}"
+          }
+          apple_id {
+              username = "${{ secrets.MACOS_APPLE_ID }}"
+              password = "${{ secrets.MACOS_APP_PW }}"
+          }
+          EOF
+          gon -log-level=info -log-json gon.hcl
+
+          # Notarize the ZIP using notarytool
+          xcrun notarytool submit subspace-binaries.zip --apple-id "${{ secrets.MACOS_APPLE_ID }}" --password "${{ secrets.MACOS_APP_PW }}" --team-id "${{ secrets.MACOS_TEAM_ID }}" --wait
+
+          # // todo stapling for macOS artifacts
+          # Staple the zip package
+          # xcrun stapler staple subspace-binaries.zip
+
           echo "Done!"
         # Allow code signing to fail on non-release builds and in non-subspace repos (forks)
-        continue-on-error: ${{ github.github.repository_owner != 'subspace' || github.event_name != 'push' || github.ref_type != 'tag' }}
+        continue-on-error: ${{ github.repository_owner != 'subspace' || github.event_name != 'push' || github.ref_type != 'tag' }}
         if: runner.os == 'macOS'
 
       - name: Sign Application (Windows)
-        uses: skymatic/code-sign-action@cfcc1c15b32938bab6dea25192045b6d2989e4d0 # @v1.1.0
-        with:
-          certificate: '${{ secrets.WINDOWS_CERTIFICATE }}'
-          password: '${{ secrets.WINDOWS_CERTIFICATE_PW }}'
-          certificatesha1: 'FCA030AC3840FAED48ADC5A8F734ACFCC857DF37'
-          folder: '${{ env.PRODUCTION_TARGET }}'
+        run: |
+          AzureSignTool sign --azure-key-vault-url "${{ secrets.AZURE_KEY_VAULT_URI }}" --azure-key-vault-client-id "${{ secrets.AZURE_CLIENT_ID }}" --azure-key-vault-client-secret "${{ secrets.AZURE_CLIENT_SECRET }}" --azure-key-vault-tenant-id "${{ secrets.AZURE_TENANT_ID }}" --azure-key-vault-certificate "${{ secrets.AZURE_CERT_NAME }}" --file-digest sha512 --timestamp-rfc3161 http://timestamp.digicert.com -v "${{ matrix.build.production_target }}/subspace-farmer.exe"
+          AzureSignTool sign --azure-key-vault-url "${{ secrets.AZURE_KEY_VAULT_URI }}" --azure-key-vault-client-id "${{ secrets.AZURE_CLIENT_ID }}" --azure-key-vault-client-secret "${{ secrets.AZURE_CLIENT_SECRET }}" --azure-key-vault-tenant-id "${{ secrets.AZURE_TENANT_ID }}" --azure-key-vault-certificate "${{ secrets.AZURE_CERT_NAME }}" --file-digest sha512 --timestamp-rfc3161 http://timestamp.digicert.com -v "${{ matrix.build.production_target }}/subspace-node.exe"
         # Allow code signing to fail on non-release builds and in non-subspace repos (forks)
-        continue-on-error: ${{ github.github.repository_owner != 'subspace' || github.event_name != 'push' || github.ref_type != 'tag' }}
+        continue-on-error: ${{ github.repository_owner != 'subspace' || github.event_name != 'push' || github.ref_type != 'tag' }}
         if: runner.os == 'Windows'
 
       - name: Prepare executables for uploading (Ubuntu)
