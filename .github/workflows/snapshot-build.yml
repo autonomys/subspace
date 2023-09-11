@@ -126,11 +126,22 @@ jobs:
         uses: actions/checkout@93ea575cb5d8a053eaa0ac8fa3b40d7e05a33cc8 # @v3.1.0
 
       # On macOS, we need a proper Clang version, not Apple's custom version without wasm32 support
-      - name: Install LLVM and Clang
-        uses: KyleMayes/install-llvm-action@8852e4d5c58653ed05135c0a5d949d9c2febcb00 # v1.6.1
+      # TODO: on macOS, the consensus/domain runtime build is not compatible with LLVM 15.0.7 and
+      # LLVM 15.0.{3, 4, 5, 6} is not released for macOS thus install LLVM 15.0.2 explicitly as a
+      # temporary workaround, and remove once incompatible is fixed.
+      - name: Install LLVM and Clang for macOS
+        uses: KyleMayes/install-llvm-action@c135b3937686fd69c2651507aabc9925a8f9eee8 # v1.8.3
+        with:
+          version: "15.0.2"
+        if: runner.os == 'macOS'
+
+      # TODO: on Linux and Windows, the consensus/domain runtime build is not compatible with LLVM 16,
+      # thus install LLVM 15 explicitly as a temporary workaround, and remove once incompatible is fixed.
+      - name: Install LLVM and Clang for Linux and Windows
+        uses: KyleMayes/install-llvm-action@c135b3937686fd69c2651507aabc9925a8f9eee8 # v1.8.3
         with:
           version: "15.0"
-        if: runner.os == 'macOS'
+        if: runner.os != 'macOS'
 
       - name: Install Protoc
         uses: arduino/setup-protoc@64c0c85d18e984422218383b81c52f8b077404d3 # @v1.1.2
