@@ -31,6 +31,8 @@ use sp_consensus_slots::Slot;
 #[cfg(feature = "pot")]
 use sp_consensus_subspace::digests::PreDigestPotInfo;
 use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
+#[cfg(feature = "pot")]
+use sp_consensus_subspace::PotExtension;
 use sp_consensus_subspace::{FarmerSignature, KzgExtension, PosExtension, SignedVote, Vote};
 use sp_core::crypto::UncheckedFrom;
 use sp_core::H256;
@@ -306,6 +308,10 @@ pub fn new_test_ext() -> TestExternalities {
 
     ext.register_extension(KzgExtension::new(Kzg::new(embedded_kzg_settings())));
     ext.register_extension(PosExtension::new::<PosTable>());
+    #[cfg(feature = "pot")]
+    ext.register_extension(PotExtension::new(Box::new(
+        |parent_hash, slot, proof_of_time| todo!(),
+    )));
 
     ext
 }

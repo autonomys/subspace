@@ -1594,6 +1594,8 @@ impl_runtime_apis! {
                 parent_hash,
                 slot,
                 solution,
+                proof_of_time,
+                future_proof_of_time,
             } = vote;
 
             Subspace::submit_vote(SignedVote {
@@ -1602,6 +1604,8 @@ impl_runtime_apis! {
                     parent_hash,
                     slot,
                     solution: solution.into_reward_address_format::<RewardAddress, AccountId32>(),
+                    proof_of_time,
+                    future_proof_of_time,
                 },
                 signature,
             })

@@ -46,12 +46,14 @@ use sp_std::vec::Vec;
 #[cfg(feature = "std")]
 use subspace_core_primitives::crypto::kzg::Kzg;
 #[cfg(feature = "pot")]
-use subspace_core_primitives::Blake3Hash;
+use subspace_core_primitives::BlockHash;
 #[cfg(not(feature = "pot"))]
 use subspace_core_primitives::Randomness;
+#[cfg(feature = "pot")]
+use subspace_core_primitives::{Blake3Hash, PotProof};
 use subspace_core_primitives::{
     BlockNumber, HistorySize, PotCheckpoints, PublicKey, RewardSignature, SegmentCommitment,
-    SegmentHeader, SegmentIndex, Solution, SolutionRange, PUBLIC_KEY_LENGTH,
+    SegmentHeader, SegmentIndex, SlotNumber, Solution, SolutionRange, PUBLIC_KEY_LENGTH,
     REWARD_SIGNATURE_LENGTH,
 };
 #[cfg(feature = "std")]
@@ -201,6 +203,12 @@ pub enum Vote<Number, Hash, RewardAddress> {
         slot: Slot,
         /// Solution (includes PoR).
         solution: Solution<FarmerPublicKey, RewardAddress>,
+        /// Proof of time for this slot
+        #[cfg(feature = "pot")]
+        proof_of_time: PotProof,
+        /// Future proof of time
+        #[cfg(feature = "pot")]
+        future_proof_of_time: PotProof,
     },
 }
 
@@ -503,6 +511,24 @@ impl<'a> PassBy for WrappedVerifySolutionParams<'a> {
     type PassBy = pass_by::Codec<Self>;
 }
 
+/// Wrapped solution verification parameters for the purposes of runtime interface.
+#[derive(Debug, Encode, Decode)]
+#[cfg(feature = "pot")]
+pub struct WrappedPotProof(PotProof);
+
+#[cfg(feature = "pot")]
+impl From<PotProof> for WrappedPotProof {
+    #[inline]
+    fn from(value: PotProof) -> Self {
+        Self(value)
+    }
+}
+
+#[cfg(feature = "pot")]
+impl PassBy for WrappedPotProof {
+    type PassBy = pass_by::Codec<Self>;
+}
+
 #[cfg(feature = "std")]
 sp_externalities::decl_extension! {
     /// A KZG extension.
@@ -534,6 +560,22 @@ impl PosExtension {
     }
 }
 
+#[cfg(all(feature = "std", feature = "pot"))]
+sp_externalities::decl_extension! {
+    /// A Poof of time extension.
+    pub struct PotExtension(Box<dyn (Fn(BlockHash, SlotNumber, PotProof) -> bool) + Send + Sync>);
+}
+
+#[cfg(all(feature = "std", feature = "pot"))]
+impl PotExtension {
+    /// Create new instance.
+    pub fn new(
+        verifier: Box<dyn (Fn(BlockHash, SlotNumber, PotProof) -> bool) + Send + Sync>,
+    ) -> Self {
+        Self(verifier)
+    }
+}
+
 /// Consensus-related runtime interface
 #[runtime_interface]
 pub trait Consensus {
@@ -541,7 +583,7 @@ pub trait Consensus {
     fn verify_solution(
         &mut self,
         solution: WrappedSolution,
-        slot: u64,
+        slot: SlotNumber,
         params: WrappedVerifySolutionParams<'_>,
     ) -> Result<(), String> {
         use sp_externalities::ExternalitiesExt;
@@ -579,6 +621,25 @@ pub trait Consensus {
         }
 
         Ok(())
+    }
+
+    /// Verify whether `proof_of_time` is valid at specified `slot` if built on top of `parent_hash`
+    /// fork of the chain.
+    #[cfg(feature = "pot")]
+    fn is_proof_of_time_valid(
+        &mut self,
+        parent_hash: BlockHash,
+        slot: SlotNumber,
+        proof_of_time: WrappedPotProof,
+    ) -> bool {
+        use sp_externalities::ExternalitiesExt;
+
+        let verifier = &self
+            .extension::<PotExtension>()
+            .expect("No `PotExtension` associated for the current context!")
+            .0;
+
+        verifier(parent_hash, slot, proof_of_time.0)
     }
 }
 
