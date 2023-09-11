@@ -2,8 +2,8 @@
 
 use crate::pallet::StateRoots;
 use crate::{
-    BalanceOf, BlockTree, Config, ConsensusBlockHash, DomainBlocks, ExecutionInbox,
-    ExecutionReceiptOf, HeadReceiptNumber, InboxedBundle,
+    BalanceOf, BlockTree, Config, ConsensusBlockHash, DomainBlockDescendants, DomainBlocks,
+    ExecutionInbox, ExecutionReceiptOf, HeadReceiptNumber, InboxedBundle,
 };
 use codec::{Decode, Encode};
 use frame_support::{ensure, PalletError};
@@ -254,6 +254,20 @@ pub(crate) fn process_execution_receipt<T: Config>(
                 domain_block_number.checked_sub(&T::BlockTreePruningDepth::get())
             {
                 let receipts_at_number = BlockTree::<T>::take(domain_id, to_prune);
+
+                // The receipt at `to_prune` may already been pruned if there is fraud proof being
+                // processed and the `HeadReceiptNumber` is reverted.
+                if receipts_at_number.is_empty() {
+                    return Ok(None);
+                }
+
+                // FIXME: the following check is wrong because the ER at `to_prune` may not necessarily go through
+                // the whole challenge period since the malicious operator can submit `NewBranch` ER any time, thus
+                // the ER may just submitted a few blocks ago and `receipts_at_number` may contains more than one block.
+                //
+                // In current implementatiomn, the correct finalized ER should be the one that has `BlockTreePruningDepth`
+                // length of descendants which is non-trival to find, but once https://github.com/subspace/subspace/issues/1731
+                // is implemented this issue should be fixed automatically.
                 if receipts_at_number.len() != 1 {
                     return Err(Error::MultipleERsAfterChallengePeriod);
                 }
@@ -273,6 +287,7 @@ pub(crate) fn process_execution_receipt<T: Config>(
                     to_prune,
                     execution_receipt.domain_block_hash,
                 ));
+                _ = DomainBlockDescendants::<T>::take(receipt_hash);
 
                 // Collect the invalid bundle author
                 let mut invalid_bundle_authors = Vec::new();
@@ -341,13 +356,19 @@ fn add_new_receipt_to_block_tree<T: Config>(
         execution_receipt.final_state_root,
     );
 
+    BlockTree::<T>::mutate(domain_id, domain_block_number, |er_hashes| {
+        er_hashes.insert(er_hash);
+    });
+    DomainBlockDescendants::<T>::mutate(
+        execution_receipt.parent_domain_block_receipt_hash,
+        |er_hashes| {
+            er_hashes.insert(er_hash);
+        },
+    );
     let domain_block = DomainBlock {
         execution_receipt,
         operator_ids: sp_std::vec![submitter],
     };
-    BlockTree::<T>::mutate(domain_id, domain_block_number, |er_hashes| {
-        er_hashes.insert(er_hash);
-    });
     DomainBlocks::<T>::insert(er_hash, domain_block);
 }
 
@@ -380,133 +401,16 @@ pub(crate) fn import_genesis_receipt<T: Config>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::domain_registry::DomainConfig;
-    use crate::pallet::Operators;
-    use crate::staking::{Operator, OperatorStatus};
     use crate::tests::{
-        create_dummy_bundle_with_receipts, create_dummy_receipt, new_test_ext_with_extensions,
-        BlockTreePruningDepth, Test,
+        create_dummy_bundle_with_receipts, create_dummy_receipt, extend_block_tree,
+        get_block_tree_node_at, new_test_ext_with_extensions, register_genesis_domain,
+        run_to_block, BlockTreePruningDepth, Test,
     };
-    use crate::{BalanceOf, NextDomainId};
     use frame_support::dispatch::RawOrigin;
-    use frame_support::traits::{Currency, Hooks};
-    use frame_support::weights::Weight;
     use frame_support::{assert_err, assert_ok};
-    use frame_system::Pallet as System;
-    use sp_core::{Pair, H256, U256};
-    use sp_domains::{BundleDigest, InvalidBundle, InvalidBundleType, OperatorPair, RuntimeType};
+    use sp_core::H256;
+    use sp_domains::{BundleDigest, InvalidBundle, InvalidBundleType};
     use sp_runtime::traits::BlockNumberProvider;
-    use subspace_runtime_primitives::SSC;
-
-    fn run_to_block<T: Config>(block_number: T::BlockNumber, parent_hash: T::Hash) {
-        System::<T>::set_block_number(block_number);
-        System::<T>::initialize(&block_number, &parent_hash, &Default::default());
-        <crate::Pallet<T> as Hooks<T::BlockNumber>>::on_initialize(block_number);
-        System::<T>::finalize();
-    }
-
-    fn register_genesis_domain(creator: u64, operator_ids: Vec<OperatorId>) -> DomainId {
-        assert_ok!(crate::Pallet::<Test>::register_domain_runtime(
-            RawOrigin::Root.into(),
-            b"evm".to_vec(),
-            RuntimeType::Evm,
-            vec![1, 2, 3, 4],
-        ));
-
-        let domain_id = NextDomainId::<Test>::get();
-        <Test as Config>::Currency::make_free_balance_be(
-            &creator,
-            <Test as Config>::DomainInstantiationDeposit::get()
-                + <Test as pallet_balances::Config>::ExistentialDeposit::get(),
-        );
-        crate::Pallet::<Test>::instantiate_domain(
-            RawOrigin::Signed(creator).into(),
-            DomainConfig {
-                domain_name: b"evm-domain".to_vec(),
-                runtime_id: 0,
-                max_block_size: 1u32,
-                max_block_weight: Weight::from_parts(1, 0),
-                bundle_slot_probability: (1, 1),
-                target_bundles_per_block: 1,
-            },
-            vec![],
-        )
-        .unwrap();
-
-        let pair = OperatorPair::from_seed(&U256::from(0u32).into());
-        for operator_id in operator_ids {
-            Operators::<Test>::insert(
-                operator_id,
-                Operator {
-                    signing_key: pair.public(),
-                    current_domain_id: domain_id,
-                    next_domain_id: domain_id,
-                    minimum_nominator_stake: SSC,
-                    nomination_tax: Default::default(),
-                    current_total_stake: Zero::zero(),
-                    current_epoch_rewards: Zero::zero(),
-                    total_shares: Zero::zero(),
-                    status: OperatorStatus::Registered,
-                },
-            );
-        }
-
-        domain_id
-    }
-
-    // Submit new head receipt to extend the block tree
-    fn extend_block_tree(
-        domain_id: DomainId,
-        operator_id: u64,
-        to: u64,
-    ) -> ExecutionReceiptOf<Test> {
-        let head_receipt_number = HeadReceiptNumber::<Test>::get(domain_id);
-        assert!(head_receipt_number < to);
-
-        let head_node = get_block_tree_node_at::<Test>(domain_id, head_receipt_number).unwrap();
-        let mut receipt = head_node.execution_receipt;
-        for block_number in (head_receipt_number + 1)..=to {
-            // Finilize parent block and initialize block at `block_number`
-            run_to_block::<Test>(block_number, receipt.consensus_block_hash);
-
-            // Submit a bundle with the receipt of the last block
-            let bundle_extrinsics_root = H256::random();
-            let bundle = create_dummy_bundle_with_receipts(
-                domain_id,
-                operator_id,
-                bundle_extrinsics_root,
-                receipt,
-            );
-            assert_ok!(crate::Pallet::<Test>::submit_bundle(
-                RawOrigin::None.into(),
-                bundle,
-            ));
-
-            // Construct a `NewHead` receipt of the just submitted bundle, which will be included in the next bundle
-            let head_receipt_number = HeadReceiptNumber::<Test>::get(domain_id);
-            let parent_block_tree_node =
-                get_block_tree_node_at::<Test>(domain_id, head_receipt_number).unwrap();
-            receipt = create_dummy_receipt(
-                block_number,
-                H256::random(),
-                parent_block_tree_node.execution_receipt.hash(),
-                vec![bundle_extrinsics_root],
-            );
-        }
-
-        receipt
-    }
-
-    #[allow(clippy::type_complexity)]
-    fn get_block_tree_node_at<T: Config>(
-        domain_id: DomainId,
-        block_number: T::DomainNumber,
-    ) -> Option<DomainBlock<T::BlockNumber, T::Hash, T::DomainNumber, T::DomainHash, BalanceOf<T>>>
-    {
-        BlockTree::<T>::get(domain_id, block_number)
-            .first()
-            .and_then(DomainBlocks::<T>::get)
-    }
 
     #[test]
     fn test_genesis_receipt() {
@@ -652,6 +556,7 @@ mod tests {
                 pruned_receipt.consensus_block_number,
             )
             .is_none());
+            assert!(DomainBlockDescendants::<Test>::get(pruned_receipt.hash()).is_empty());
         });
     }
 

@@ -1,4 +1,4 @@
-use crate::{DomainId, SealedBundleHeader};
+use crate::{DomainId, ReceiptHash, SealedBundleHeader};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
@@ -190,6 +190,14 @@ pub enum FraudProof<Number, Hash> {
     InvalidTransaction(InvalidTransactionProof),
     BundleEquivocation(BundleEquivocationProof<Number, Hash>),
     ImproperTransactionSortition(ImproperTransactionSortitionProof),
+    // Dummy fraud proof only used in test and benchmark
+    #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
+    Dummy {
+        /// Id of the domain this fraud proof targeted
+        domain_id: DomainId,
+        /// Hash of the bad receipt this fraud proof targeted
+        bad_receipt_hash: ReceiptHash,
+    },
 }
 
 impl<Number, Hash> FraudProof<Number, Hash> {
@@ -199,6 +207,35 @@ impl<Number, Hash> FraudProof<Number, Hash> {
             Self::InvalidTransaction(proof) => proof.domain_id,
             Self::BundleEquivocation(proof) => proof.domain_id,
             Self::ImproperTransactionSortition(proof) => proof.domain_id,
+            #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
+            Self::Dummy { domain_id, .. } => *domain_id,
+        }
+    }
+
+    pub fn bad_receipt_hash(&self) -> ReceiptHash {
+        match self {
+            Self::InvalidStateTransition(proof) => proof.bad_receipt_hash,
+            Self::InvalidTransaction(proof) => proof.bad_receipt_hash,
+            Self::ImproperTransactionSortition(proof) => proof.bad_receipt_hash,
+            // TODO: the `BundleEquivocation` fraud proof is different from other fraud proof,
+            // which target equivocate bundle instead of bad receipt, revisit this when fraud
+            // proof v2 is implemented.
+            Self::BundleEquivocation(_) => Default::default(),
+            #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
+            Self::Dummy {
+                bad_receipt_hash, ..
+            } => *bad_receipt_hash,
+        }
+    }
+
+    #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
+    pub fn dummy_fraud_proof(
+        domain_id: DomainId,
+        bad_receipt_hash: ReceiptHash,
+    ) -> FraudProof<Number, Hash> {
+        FraudProof::Dummy {
+            domain_id,
+            bad_receipt_hash,
         }
     }
 }
@@ -288,6 +325,8 @@ impl<Number: Clone + From<u32> + Encode, Hash: Clone + Default + Encode>
 pub struct InvalidTransactionProof {
     /// The id of the domain this fraud proof targeted
     pub domain_id: DomainId,
+    /// Hash of the bad receipt this fraud proof targeted
+    pub bad_receipt_hash: ReceiptHash,
     /// Number of the block at which the invalid transaction occurred.
     pub block_number: u32,
     /// Hash of the domain block corresponding to `block_number`.
@@ -303,4 +342,6 @@ pub struct InvalidTransactionProof {
 pub struct ImproperTransactionSortitionProof {
     /// The id of the domain this fraud proof targeted
     pub domain_id: DomainId,
+    /// Hash of the bad receipt this fraud proof targeted
+    pub bad_receipt_hash: ReceiptHash,
 }

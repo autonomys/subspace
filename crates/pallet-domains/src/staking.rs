@@ -19,6 +19,7 @@ use sp_runtime::traits::{CheckedAdd, CheckedSub, One, Zero};
 use sp_runtime::{Perbill, Percent};
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
+use sp_std::iter::Iterator;
 use sp_std::vec::{IntoIter, Vec};
 
 /// Type that represents an operator status.
@@ -503,8 +504,8 @@ pub(crate) fn do_auto_stake_block_rewards<T: Config>(
 
 /// Freezes the slashed operators and moves the operator to be removed once the domain they are
 /// operating finishes the epoch.
-pub(crate) fn do_slash_operators<T: Config>(
-    operator_ids: IntoIter<OperatorId>,
+pub(crate) fn do_slash_operators<T: Config, Iter: Iterator<Item = OperatorId>>(
+    operator_ids: Iter,
 ) -> Result<(), Error> {
     for operator_id in operator_ids {
         Operators::<T>::try_mutate(operator_id, |maybe_operator| {
@@ -1283,7 +1284,7 @@ pub(crate) mod tests {
                 do_nominate_operator::<Test>(operator_id, deposit.0, deposit.1).unwrap();
             }
 
-            do_slash_operators::<Test>(vec![operator_id].into_iter()).unwrap();
+            do_slash_operators::<Test, _>(vec![operator_id].into_iter()).unwrap();
 
             let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
             assert!(!domain_stake_summary.next_operators.contains(&operator_id));

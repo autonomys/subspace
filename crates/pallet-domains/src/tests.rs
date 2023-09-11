@@ -1,20 +1,27 @@
+use crate::block_tree::DomainBlock;
 use crate::domain_registry::{DomainConfig, DomainObject};
-use crate::{self as pallet_domains, BundleError, DomainRegistry, FungibleHoldId};
+use crate::{
+    self as pallet_domains, BalanceOf, BlockTree, BundleError, Config, ConsensusBlockHash,
+    DomainBlocks, DomainRegistry, ExecutionInbox, ExecutionReceiptOf, FraudProofError,
+    FungibleHoldId, HeadReceiptNumber, NextDomainId, Operator, OperatorStatus, Operators,
+};
 use codec::{Decode, Encode, MaxEncodedLen};
-use frame_support::traits::{ConstU16, ConstU32, ConstU64, Hooks};
+use frame_support::dispatch::RawOrigin;
+use frame_support::traits::{ConstU16, ConstU32, ConstU64, Currency, Hooks};
 use frame_support::weights::Weight;
 use frame_support::{assert_err, assert_ok, parameter_types, PalletId};
 use scale_info::TypeInfo;
 use sp_core::crypto::Pair;
 use sp_core::{Get, H256, U256};
+use sp_domains::fraud_proof::FraudProof;
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{
     BundleHeader, DomainId, DomainInstanceData, DomainsHoldIdentifier, ExecutionReceipt,
     GenerateGenesisStateRoot, GenesisReceiptExtension, OpaqueBundle, OperatorId, OperatorPair,
-    ProofOfElection, SealedBundleHeader, StakingHoldIdentifier,
+    ProofOfElection, RuntimeType, SealedBundleHeader, StakingHoldIdentifier,
 };
 use sp_runtime::testing::Header;
-use sp_runtime::traits::{AccountIdConversion, BlakeTwo256, Hash as HashT, IdentityLookup};
+use sp_runtime::traits::{AccountIdConversion, BlakeTwo256, Hash as HashT, IdentityLookup, Zero};
 use sp_runtime::OpaqueExtrinsic;
 use sp_version::RuntimeVersion;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -85,7 +92,7 @@ parameter_types! {
     pub const MaxDomainBlockWeight: Weight = Weight::from_parts(1024 * 1024, 0);
     pub const DomainInstantiationDeposit: Balance = 100;
     pub const MaxDomainNameLength: u32 = 16;
-    pub const BlockTreePruningDepth: u32 = 256;
+    pub const BlockTreePruningDepth: u32 = 16;
 }
 
 static CONFIRMATION_DEPTH_K: AtomicU64 = AtomicU64::new(10);
@@ -336,6 +343,115 @@ impl sp_core::traits::ReadRuntimeVersion for ReadRuntimeVersion {
     ) -> Result<Vec<u8>, String> {
         Ok(self.0.clone())
     }
+}
+
+pub(crate) fn run_to_block<T: Config>(block_number: T::BlockNumber, parent_hash: T::Hash) {
+    frame_system::Pallet::<T>::set_block_number(block_number);
+    frame_system::Pallet::<T>::initialize(&block_number, &parent_hash, &Default::default());
+    <crate::Pallet<T> as Hooks<T::BlockNumber>>::on_initialize(block_number);
+    frame_system::Pallet::<T>::finalize();
+}
+
+pub(crate) fn register_genesis_domain(creator: u64, operator_ids: Vec<OperatorId>) -> DomainId {
+    assert_ok!(crate::Pallet::<Test>::register_domain_runtime(
+        RawOrigin::Root.into(),
+        b"evm".to_vec(),
+        RuntimeType::Evm,
+        vec![1, 2, 3, 4],
+    ));
+
+    let domain_id = NextDomainId::<Test>::get();
+    <Test as Config>::Currency::make_free_balance_be(
+        &creator,
+        <Test as Config>::DomainInstantiationDeposit::get()
+            + <Test as pallet_balances::Config>::ExistentialDeposit::get(),
+    );
+    crate::Pallet::<Test>::instantiate_domain(
+        RawOrigin::Signed(creator).into(),
+        DomainConfig {
+            domain_name: b"evm-domain".to_vec(),
+            runtime_id: 0,
+            max_block_size: 1u32,
+            max_block_weight: Weight::from_parts(1, 0),
+            bundle_slot_probability: (1, 1),
+            target_bundles_per_block: 1,
+        },
+        vec![],
+    )
+    .unwrap();
+
+    let pair = OperatorPair::from_seed(&U256::from(0u32).into());
+    for operator_id in operator_ids {
+        Operators::<Test>::insert(
+            operator_id,
+            Operator {
+                signing_key: pair.public(),
+                current_domain_id: domain_id,
+                next_domain_id: domain_id,
+                minimum_nominator_stake: SSC,
+                nomination_tax: Default::default(),
+                current_total_stake: Zero::zero(),
+                current_epoch_rewards: Zero::zero(),
+                total_shares: Zero::zero(),
+                status: OperatorStatus::Registered,
+            },
+        );
+    }
+
+    domain_id
+}
+
+// Submit new head receipt to extend the block tree
+pub(crate) fn extend_block_tree(
+    domain_id: DomainId,
+    operator_id: u64,
+    to: u64,
+) -> ExecutionReceiptOf<Test> {
+    let head_receipt_number = HeadReceiptNumber::<Test>::get(domain_id);
+    assert!(head_receipt_number < to);
+
+    let head_node = get_block_tree_node_at::<Test>(domain_id, head_receipt_number).unwrap();
+    let mut receipt = head_node.execution_receipt;
+    for block_number in (head_receipt_number + 1)..=to {
+        // Finilize parent block and initialize block at `block_number`
+        run_to_block::<Test>(block_number, receipt.consensus_block_hash);
+
+        // Submit a bundle with the receipt of the last block
+        let bundle_extrinsics_root = H256::random();
+        let bundle = create_dummy_bundle_with_receipts(
+            domain_id,
+            operator_id,
+            bundle_extrinsics_root,
+            receipt,
+        );
+        assert_ok!(crate::Pallet::<Test>::submit_bundle(
+            RawOrigin::None.into(),
+            bundle,
+        ));
+
+        // Construct a `NewHead` receipt of the just submitted bundle, which will be included in the next bundle
+        let head_receipt_number = HeadReceiptNumber::<Test>::get(domain_id);
+        let parent_block_tree_node =
+            get_block_tree_node_at::<Test>(domain_id, head_receipt_number).unwrap();
+        receipt = create_dummy_receipt(
+            block_number,
+            H256::random(),
+            parent_block_tree_node.execution_receipt.hash(),
+            vec![bundle_extrinsics_root],
+        );
+    }
+
+    receipt
+}
+
+#[allow(clippy::type_complexity)]
+pub(crate) fn get_block_tree_node_at<T: Config>(
+    domain_id: DomainId,
+    block_number: T::DomainNumber,
+) -> Option<DomainBlock<T::BlockNumber, T::Hash, T::DomainNumber, T::DomainHash, BalanceOf<T>>> {
+    BlockTree::<T>::get(domain_id, block_number)
+        .first()
+        .and_then(DomainBlocks::<T>::get)
 }
 
 // TODO: Unblock once bundle producer election v2 is finished.
@@ -592,5 +708,163 @@ fn test_bundle_fromat_verification() {
             pallet_domains::Pallet::<Test>::check_extrinsics_root(&invalid_extrinsic_root_bundle),
             BundleError::InvalidExtrinsicRoot
         );
+    });
+}
+
+#[test]
+fn test_invalid_fraud_proof() {
+    let creator = 0u64;
+    let operator_id = 1u64;
+    let head_domain_number = 10;
+    let mut ext = new_test_ext_with_extensions();
+    ext.execute_with(|| {
+        let domain_id = register_genesis_domain(creator, vec![operator_id]);
+        extend_block_tree(domain_id, operator_id, head_domain_number + 1);
+        assert_eq!(
+            HeadReceiptNumber::<Test>::get(domain_id),
+            head_domain_number
+        );
+
+        // Fraud proof target the genesis ER is invalid
+        let bad_receipt_at = 0;
+        let bad_receipt_hash = get_block_tree_node_at::<Test>(domain_id, bad_receipt_at)
+            .unwrap()
+            .execution_receipt
+            .hash();
+        let fraud_proof = FraudProof::dummy_fraud_proof(domain_id, bad_receipt_hash);
+        assert_eq!(
+            Domains::validate_fraud_proof(&fraud_proof),
+            Err(FraudProofError::ChallengingGenesisReceipt)
+        );
+
+        // Fraud proof target unknown ER is invalid
+        let bad_receipt_hash = H256::random();
+        let fraud_proof = FraudProof::dummy_fraud_proof(domain_id, bad_receipt_hash);
+        assert_eq!(
+            Domains::validate_fraud_proof(&fraud_proof),
+            Err(FraudProofError::BadReceiptNotFound)
+        );
+    });
+}
+
+#[test]
+fn test_basic_fraud_proof_processing() {
+    let creator = 0u64;
+    let operator_id = 1u64;
+    let head_domain_number = BlockTreePruningDepth::get() as u64 * 2;
+    let bad_receipt_at = head_domain_number - BlockTreePruningDepth::get() as u64 / 2;
+    let mut ext = new_test_ext_with_extensions();
+    ext.execute_with(|| {
+        let domain_id = register_genesis_domain(creator, vec![operator_id]);
+        extend_block_tree(domain_id, operator_id, head_domain_number + 1);
+        assert_eq!(
+            HeadReceiptNumber::<Test>::get(domain_id),
+            head_domain_number
+        );
+
+        // Construct and submit fraud proof that target ER at `head_domain_number - BlockTreePruningDepth::get() / 2`
+        let bad_receipt = get_block_tree_node_at::<Test>(domain_id, bad_receipt_at)
+            .unwrap()
+            .execution_receipt;
+        let bad_receipt_hash = bad_receipt.hash();
+        let fraud_proof = FraudProof::dummy_fraud_proof(domain_id, bad_receipt_hash);
+        assert_ok!(Domains::submit_fraud_proof(
+            RawOrigin::None.into(),
+            Box::new(fraud_proof)
+        ));
+
+        // The head receipt number should be reverted to `bad_receipt_at - 1`
+        let head_receipt_number_after_fraud_proof = HeadReceiptNumber::<Test>::get(domain_id);
+        assert_eq!(head_receipt_number_after_fraud_proof, bad_receipt_at - 1);
+
+        for block_number in bad_receipt_at..=head_domain_number {
+            // The targetted ER and all its descendants should be removed from the block tree
+            assert!(BlockTree::<Test>::get(domain_id, block_number).is_empty());
+
+            // The other data that used to verify ER should not be removed, such that the honest
+            // operator can re-submit the valid ER
+            assert!(
+                !ExecutionInbox::<Test>::get((domain_id, block_number, block_number)).is_empty()
+            );
+            assert!(ConsensusBlockHash::<Test>::get(domain_id, block_number).is_some());
+        }
+
+        // Re-submit the valid ER
+        let resubmit_receipt = bad_receipt;
+        let bundle = create_dummy_bundle_with_receipts(
+            domain_id,
+            operator_id,
+            H256::random(),
+            resubmit_receipt,
+        );
+        assert_ok!(Domains::submit_bundle(RawOrigin::None.into(), bundle,));
+        assert_eq!(
+            HeadReceiptNumber::<Test>::get(domain_id),
+            head_receipt_number_after_fraud_proof + 1
+        );
+    });
+}
+
+#[test]
+fn test_fraud_proof_prune_fraudulent_branch_of_receipt() {
+    let creator = 0u64;
+    let operator_id = 1u64;
+    let head_domain_number = BlockTreePruningDepth::get() as u64 * 2;
+    let bad_receipt_start_at = head_domain_number - BlockTreePruningDepth::get() as u64 / 2;
+    let mut ext = new_test_ext_with_extensions();
+    ext.execute_with(|| {
+        let domain_id = register_genesis_domain(creator, vec![operator_id]);
+        extend_block_tree(domain_id, operator_id, head_domain_number + 1);
+        assert_eq!(
+            HeadReceiptNumber::<Test>::get(domain_id),
+            head_domain_number
+        );
+
+        // Construct a fraudulent branch of ER in the block tree start at `head_domain_number - BlockTreePruningDepth::get() / 2`
+        let mut bad_receipts = vec![];
+        for i in 0..3 {
+            let bad_receipt_at = bad_receipt_start_at + i;
+            let bad_receipt = {
+                let mut er = get_block_tree_node_at::<Test>(domain_id, bad_receipt_at)
+                    .unwrap()
+                    .execution_receipt;
+                er.final_state_root = H256::random();
+                if let Some(h) = bad_receipts.last() {
+                    er.parent_domain_block_receipt_hash = *h;
+                }
+                er
+            };
+            let bad_receipt_hash = bad_receipt.hash();
+            let bundle = create_dummy_bundle_with_receipts(
+                domain_id,
+                operator_id,
+                H256::random(),
+                bad_receipt,
+            );
+            assert_ok!(Domains::submit_bundle(RawOrigin::None.into(), bundle));
+            bad_receipts.push(bad_receipt_hash);
+
+            assert_eq!(BlockTree::<Test>::get(domain_id, bad_receipt_at).len(), 2);
+            assert!(DomainBlocks::<Test>::get(bad_receipt_hash).is_some());
+        }
+
+        // Construct and submit a fraud proof for the fraudulent branch of ER
+        let fraud_proof = FraudProof::dummy_fraud_proof(domain_id, bad_receipts[0]);
+        assert_ok!(Domains::submit_fraud_proof(
+            RawOrigin::None.into(),
+            Box::new(fraud_proof)
+        ));
+
+        // The head receipt number should be unchanged since the best branch of ER is valid
+        // and only the fraudulent branch of ER should be removed from the block tree
+        assert_eq!(
+            HeadReceiptNumber::<Test>::get(domain_id),
+            head_domain_number
+        );
+        for i in 0..3 {
+            let bad_receipt_at = bad_receipt_start_at + i;
+            assert_eq!(BlockTree::<Test>::get(domain_id, bad_receipt_at).len(), 1);
+            assert!(DomainBlocks::<Test>::get(bad_receipts[i as usize]).is_none());
+        }
     });
 }

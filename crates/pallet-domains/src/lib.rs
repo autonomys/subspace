@@ -448,6 +448,13 @@ mod pallet {
         OptionQuery,
     >;
 
+    // Mapping of the parent ER to all its immediate descendants ER
+    // TODO: remove this mapping once https://github.com/subspace/subspace/issues/1731 is implemented
+    // by then every parent ER should only have one immediate descendants ER
+    #[pallet::storage]
+    pub(super) type DomainBlockDescendants<T: Config> =
+        StorageMap<_, Identity, ReceiptHash, BTreeSet<ReceiptHash>, ValueQuery>;
+
     /// The head receipt number of each domain
     #[pallet::storage]
     pub(super) type HeadReceiptNumber<T: Config> =
@@ -553,6 +560,23 @@ mod pallet {
         DuplicatedBundle,
     }
 
+    #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
+    pub enum FraudProofError {
+        /// The targetted bad receipt not found which may already pruned by other
+        /// fraud proof or the fraud proof is submitted to the wrong fork.
+        BadReceiptNotFound,
+        /// The genesis receipt is unchallengeable.
+        ChallengingGenesisReceipt,
+        /// The descendants of the fraudulent ER is not pruned
+        DescendantsOfFraudulentERNotPruned,
+    }
+
+    impl<T> From<FraudProofError> for Error<T> {
+        fn from(err: FraudProofError) -> Self {
+            Error::FraudProof(err)
+        }
+    }
+
     impl<T> From<RuntimeRegistryError> for Error<T> {
         fn from(err: RuntimeRegistryError) -> Self {
             Error::RuntimeRegistry(err)
@@ -586,7 +610,7 @@ mod pallet {
     #[pallet::error]
     pub enum Error<T> {
         /// Invalid fraud proof.
-        FraudProof,
+        FraudProof(FraudProofError),
         /// Runtime registry specific errors
         RuntimeRegistry(RuntimeRegistryError),
         /// Staking related errors.
@@ -652,6 +676,10 @@ mod pallet {
         DomainEpochCompleted {
             domain_id: DomainId,
             completed_epoch_index: EpochIndex,
+        },
+        FraudProofProcessed {
+            domain_id: DomainId,
+            new_head_receipt_number: Option<T::DomainNumber>,
         },
     }
 
@@ -731,7 +759,7 @@ mod pallet {
                         )
                         .map_err(Error::<T>::from)?;
 
-                        do_slash_operators::<T>(
+                        do_slash_operators::<T, _>(
                             confirmed_block_info.invalid_bundle_authors.into_iter(),
                         )
                         .map_err(Error::<T>::from)?;
@@ -805,7 +833,79 @@ mod pallet {
 
             log::trace!(target: "runtime::domains", "Processing fraud proof: {fraud_proof:?}");
 
-            // TODO: Implement fraud proof processing.
+            let domain_id = fraud_proof.domain_id();
+            let mut receipt_to_remove = vec![fraud_proof.bad_receipt_hash()];
+            let mut operator_to_slash = BTreeSet::new();
+            let mut next_head_receipt_number = None;
+
+            // Prune the bad ER and all of its descendants from the block tree. ER are pruning
+            // with BFS order from lower height to higher height.
+            while let Some(receipt_hash) = receipt_to_remove.pop() {
+                let DomainBlock {
+                    execution_receipt,
+                    operator_ids,
+                } = DomainBlocks::<T>::take(receipt_hash)
+                    .ok_or::<Error<T>>(FraudProofError::BadReceiptNotFound.into())?;
+
+                BlockTree::<T>::mutate_exists(
+                    domain_id,
+                    execution_receipt.domain_block_number,
+                    |maybe_er_hashes| {
+                        if let Some(er_hashes) = maybe_er_hashes {
+                            // Remove ER hash from the set, remove the whole set if it is empty.
+                            er_hashes.remove(&receipt_hash);
+                            if er_hashes.is_empty() {
+                                maybe_er_hashes.take();
+                            }
+                            // If all the ER at `domain_block_number` are pruned then any ER that derive from domain
+                            // block with height > `domain_block_number` must also be pruned since their parent ER
+                            // are pruned thus we can reset the new head receipt number to `domain_block_number - 1`.
+                            if maybe_er_hashes.is_none() && next_head_receipt_number.is_none() {
+                                next_head_receipt_number
+                                    .replace(execution_receipt.domain_block_number - One::one());
+                            } else if maybe_er_hashes.is_some()
+                                && next_head_receipt_number.is_some()
+                            {
+                                // `next_head_receipt_number` is `Some` means all the ER at prior height are pruned
+                                // thus the descendants must also be pruned
+                                return Err::<(), Error<T>>(
+                                    FraudProofError::DescendantsOfFraudulentERNotPruned.into(),
+                                );
+                            }
+                        }
+                        Ok(())
+                    },
+                )?;
+
+                _ = StateRoots::<T>::take((
+                    domain_id,
+                    execution_receipt.domain_block_number,
+                    execution_receipt.domain_block_hash,
+                ));
+
+                // Add all the immediate descendants of the pruned ER to the `receipt_to_remove` list
+                DomainBlockDescendants::<T>::take(receipt_hash)
+                    .into_iter()
+                    .for_each(|descendant| receipt_to_remove.push(descendant));
+
+                // NOTE: the operator id will be deduplicated since we are using `BTreeSet`
+                operator_ids.into_iter().for_each(|id| {
+                    operator_to_slash.insert(id);
+                });
+            }
+
+            // Update the head receipt number
+            if let Some(next_head_receipt_number) = next_head_receipt_number {
+                HeadReceiptNumber::<T>::insert(domain_id, next_head_receipt_number);
+            }
+
+            // Slash operator who have submitted the pruned fraudulent ER
+            do_slash_operators::<T, _>(operator_to_slash.into_iter()).map_err(Error::<T>::from)?;
+
+            Self::deposit_event(Event::FraudProofProcessed {
+                domain_id,
+                new_head_receipt_number: next_head_receipt_number,
+            });
 
             Ok(())
         }
@@ -1118,7 +1218,8 @@ mod pallet {
             match call {
                 Call::submit_bundle { opaque_bundle } => Self::validate_bundle(opaque_bundle)
                     .map_err(|_| InvalidTransaction::Call.into()),
-                Call::submit_fraud_proof { fraud_proof: _ } => Ok(()),
+                Call::submit_fraud_proof { fraud_proof } => Self::validate_fraud_proof(fraud_proof)
+                    .map_err(|_| InvalidTransaction::Call.into()),
                 _ => Err(InvalidTransaction::Call.into()),
             }
         }
@@ -1148,7 +1249,13 @@ mod pallet {
                         .build()
                 }
                 Call::submit_fraud_proof { fraud_proof } => {
-                    // TODO: Validate fraud proof
+                    if let Err(e) = Self::validate_fraud_proof(fraud_proof) {
+                        log::debug!(
+                            target: "runtime::domains",
+                            "Bad fraud proof {:?}, error: {e:?}", fraud_proof.domain_id(),
+                        );
+                        return InvalidTransactionCode::FraudProof.into();
+                    }
 
                     // TODO: proper tag value.
                     unsigned_validity("SubspaceSubmitFraudProof", fraud_proof)
@@ -1353,6 +1460,21 @@ impl<T: Config> Pallet<T> {
 
         let receipt = &sealed_header.header.receipt;
         verify_execution_receipt::<T>(domain_id, receipt).map_err(BundleError::Receipt)?;
+
+        Ok(())
+    }
+
+    fn validate_fraud_proof(
+        fraud_proof: &FraudProof<T::BlockNumber, T::Hash>,
+    ) -> Result<(), FraudProofError> {
+        let bad_receipt = DomainBlocks::<T>::get(fraud_proof.bad_receipt_hash())
+            .ok_or(FraudProofError::BadReceiptNotFound)?
+            .execution_receipt;
+
+        ensure!(
+            !bad_receipt.domain_block_number.is_zero(),
+            FraudProofError::ChallengingGenesisReceipt
+        );
 
         Ok(())
     }
