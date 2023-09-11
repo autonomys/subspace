@@ -266,7 +266,7 @@ pub(crate) fn process_execution_receipt<T: Config>(
                 // the ER may just submitted a few blocks ago and `receipts_at_number` may contains more than one block.
                 //
                 // In current implementatiomn, the correct finalized ER should be the one that has `BlockTreePruningDepth`
-                // lenght of descendants which is non-trival to find, but once https://github.com/subspace/subspace/issues/1731
+                // length of descendants which is non-trival to find, but once https://github.com/subspace/subspace/issues/1731
                 // is implemented this issue should be fixed automatically.
                 if receipts_at_number.len() != 1 {
                     return Err(Error::MultipleERsAfterChallengePeriod);

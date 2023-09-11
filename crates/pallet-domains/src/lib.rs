@@ -567,6 +567,8 @@ mod pallet {
         BadReceiptNotFound,
         /// The genesis receipt is unchallengeable.
         ChallengingGenesisReceipt,
+        /// The descendants of the fraudulent ER is not pruned
+        DescendantsOfFraudulentERNotPruned,
     }
 
     impl<T> From<FraudProofError> for Error<T> {
@@ -866,11 +868,14 @@ mod pallet {
                             {
                                 // `next_head_receipt_number` is `Some` means all the ER at prior height are pruned
                                 // thus the descendants must also be pruned
-                                panic!("The descendants of pruned ER must also be pruned; qed");
+                                return Err::<(), Error<T>>(
+                                    FraudProofError::DescendantsOfFraudulentERNotPruned.into(),
+                                );
                             }
                         }
+                        Ok(())
                     },
-                );
+                )?;
 
                 _ = StateRoots::<T>::take((
                     domain_id,
