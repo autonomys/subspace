@@ -990,6 +990,7 @@ impl SingleDiskFarm {
                         }
 
                         farming::<_, PosTable>(
+                            disk_farm_index,
                             public_key,
                             reward_address,
                             node_client,
