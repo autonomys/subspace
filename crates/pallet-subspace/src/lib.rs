@@ -1512,7 +1512,7 @@ fn check_vote<T: Config>(
 
     let current_vote_verification_data = current_vote_verification_data::<T>(pre_dispatch);
     let parent_vote_verification_data = ParentVoteVerificationData::<T>::get()
-        .expect("Above check for block number ensures that this value is always present");
+        .expect("Above check for block number ensures that this value is always present; qed");
 
     if pre_dispatch {
         // New time slot is already set, whatever time slot is in the vote it must be smaller or the
@@ -1528,7 +1528,7 @@ fn check_vote<T: Config>(
     }
 
     let parent_slot = if pre_dispatch {
-        // For pre-dispatch parent slot is `current_slot` if the parent vote verification data (it
+        // For pre-dispatch parent slot is `current_slot` in the parent vote verification data (it
         // was updated in current block because initialization hook was already called) if vote is
         // at the same height as the current block, otherwise it is one level older and
         // `parent_slot` from parent vote verification data needs to be taken instead
@@ -1538,8 +1538,8 @@ fn check_vote<T: Config>(
             parent_vote_verification_data.parent_slot
         }
     } else {
-        // Otherwise parent slot is `current_slot` if the current vote verification data (that
-        // wan't updated from parent block because initialization hook wasn't called yet) if vote
+        // Otherwise parent slot is `current_slot` in the current vote verification data (that
+        // wasn't updated from parent block because initialization hook wasn't called yet) if vote
         // is at the same height as the current block, otherwise it is one level older and
         // `parent_slot` from current vote verification data needs to be taken instead
         if height == current_block_number {
