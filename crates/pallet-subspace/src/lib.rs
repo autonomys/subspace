@@ -71,9 +71,11 @@ use sp_std::prelude::*;
 use subspace_core_primitives::crypto::Scalar;
 #[cfg(feature = "pot")]
 use subspace_core_primitives::PotProof;
+#[cfg(not(feature = "pot"))]
+use subspace_core_primitives::SlotNumber;
 use subspace_core_primitives::{
     ArchivedHistorySegment, HistorySize, PublicKey, Randomness, RewardSignature, SectorId,
-    SectorIndex, SegmentHeader, SegmentIndex, SlotNumber, SolutionRange,
+    SectorIndex, SegmentHeader, SegmentIndex, SolutionRange,
 };
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 #[cfg(feature = "pot")]
@@ -981,8 +983,10 @@ impl<T: Config> Pallet<T> {
                 last_entropy_injection_block.checked_sub(&lookback_in_blocks);
 
             if (block_number % pot_entropy_injection_interval).is_zero() {
-                let current_block_entropy =
-                    derive_pot_entropy(pre_digest.solution(), SlotNumber::from(pre_digest.slot()));
+                let current_block_entropy = derive_pot_entropy(
+                    pre_digest.solution().chunk,
+                    pre_digest.pot_info().proof_of_time(),
+                );
                 // Collect entropy every `T::PotEntropyInjectionInterval` blocks
                 entropy.insert(
                     block_number,
