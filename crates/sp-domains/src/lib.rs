@@ -31,7 +31,9 @@ use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
 use sp_api::RuntimeVersion;
 use sp_core::crypto::KeyTypeId;
-use sp_core::sr25519::vrf::{VrfOutput, VrfProof, VrfSignature};
+use sp_core::sr25519::vrf::VrfSignature;
+#[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
+use sp_core::sr25519::vrf::{VrfOutput, VrfProof};
 use sp_core::H256;
 use sp_runtime::generic::OpaqueDigestItemId;
 use sp_runtime::traits::{
@@ -347,6 +349,8 @@ pub struct ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance> {
     pub domain_block_number: DomainNumber,
     /// The block hash corresponding to `domain_block_number`.
     pub domain_block_hash: DomainHash,
+    /// Extrinsic root field of the header of domain block referenced by this ER.
+    pub domain_block_extrinsic_root: DomainHash,
     /// The hash of the ER for the last domain block.
     pub parent_domain_block_receipt_hash: ReceiptHash,
     /// A pointer to the consensus block index which contains all of the bundles that were used to derive and
@@ -391,6 +395,7 @@ impl<
         ExecutionReceipt {
             domain_block_number: Zero::zero(),
             domain_block_hash: Default::default(),
+            domain_block_extrinsic_root: Default::default(),
             parent_domain_block_receipt_hash: Default::default(),
             consensus_block_hash: consensus_genesis_hash,
             consensus_block_number: Zero::zero(),
@@ -424,6 +429,7 @@ impl<
         ExecutionReceipt {
             domain_block_number,
             domain_block_hash: Default::default(),
+            domain_block_extrinsic_root: Default::default(),
             parent_domain_block_receipt_hash,
             consensus_block_number,
             consensus_block_hash,
@@ -733,7 +739,7 @@ sp_api::decl_runtime_apis! {
         ) -> OpaqueBundles<Block, DomainNumber, DomainHash, Balance>;
 
         /// Generates a randomness seed for extrinsics shuffling.
-        fn extrinsics_shuffling_seed(header: Block::Header) -> Randomness;
+        fn extrinsics_shuffling_seed() -> Randomness;
 
         /// Returns the WASM bundle for given `domain_id`.
         fn domain_runtime_code(domain_id: DomainId) -> Option<Vec<u8>>;
@@ -766,7 +772,13 @@ sp_api::decl_runtime_apis! {
         fn domain_block_limit(domain_id: DomainId) -> Option<DomainBlockLimit>;
 
         /// Returns true if there are any ERs in the challenge period with non empty extrinsics.
-        fn non_empty_bundle_exists(domain_id: DomainId) -> bool;
+        fn non_empty_er_exists(domain_id: DomainId) -> bool;
+
+        /// Returns the current best number of the domain.
+        fn domain_best_number(domain_id: DomainId) -> Option<DomainNumber>;
+
+        /// Returns the chain state root at the given block.
+        fn domain_state_root(domain_id: DomainId, number: DomainNumber, hash: DomainHash) -> Option<DomainHash>;
     }
 
     pub trait BundleProducerElectionApi<Balance: Encode + Decode> {

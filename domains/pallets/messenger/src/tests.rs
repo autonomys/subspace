@@ -1,24 +1,21 @@
 use crate::mock::chain_a::{
-    new_test_ext as new_chain_a_ext, Messenger, RelayerDeposit, Runtime, RuntimeEvent,
-    RuntimeOrigin, System, RELAYER_ID,
+    new_test_ext as new_chain_a_ext, Messenger, Runtime, RuntimeEvent, RuntimeOrigin, System,
 };
 use crate::mock::{
     chain_a, chain_b, storage_proof_of_inbox_message_responses, storage_proof_of_outbox_messages,
     AccountId, Balance, TestExternalities,
 };
-use crate::relayer::RelayerInfo;
 use crate::{
     Channel, ChannelId, ChannelState, Channels, Error, FeeModel, Inbox, InboxResponses, Nonce,
     Outbox, OutboxMessageResult, OutboxResponses, U256,
 };
-use frame_support::traits::Currency;
 use frame_support::{assert_err, assert_ok};
 use pallet_transporter::Location;
 use sp_core::storage::StorageKey;
 use sp_core::{Blake2Hasher, H256};
 use sp_messenger::endpoint::{Endpoint, EndpointPayload, EndpointRequest, Sender};
 use sp_messenger::messages::{
-    BlockInfo, ChainId, CrossDomainMessage, ExecutionFee, InitiateChannelParams, Payload, Proof,
+    BlockInfo, ChainId, CrossDomainMessage, InitiateChannelParams, Payload, Proof,
     ProtocolMessageRequest, RequestResponse, VersionedPayload,
 };
 use sp_messenger::verification::{StorageProofVerifier, VerificationError};
@@ -67,12 +64,11 @@ fn create_channel(chain_id: ChainId, channel_id: ChannelId, fee_model: FeeModel<
             chain_id,
             channel_id,
             nonce: Nonce::zero(),
-            relayer_id: RELAYER_ID,
         },
     ));
 
     // check outbox relayer storage key generation
-    let messages_with_keys = chain_a::Messenger::relayer_assigned_messages(chain_a::RELAYER_ID);
+    let messages_with_keys = chain_a::Messenger::get_block_messages();
     assert_eq!(messages_with_keys.outbox.len(), 1);
     assert_eq!(messages_with_keys.inbox_responses.len(), 0);
     let expected_key =
@@ -115,7 +111,6 @@ fn close_channel(chain_id: ChainId, channel_id: ChannelId, last_delivered_nonce:
             chain_id,
             channel_id,
             nonce: Nonce::one(),
-            relayer_id: RELAYER_ID,
         },
     ));
 }
@@ -302,7 +297,7 @@ fn open_channel_between_chains(
         }));
 
         // check inbox response storage key generation
-        let messages_with_keys = chain_b::Messenger::relayer_assigned_messages(chain_b::RELAYER_ID);
+        let messages_with_keys = chain_b::Messenger::get_block_messages();
         assert_eq!(messages_with_keys.outbox.len(), 0);
         assert_eq!(messages_with_keys.inbox_responses.len(), 1);
         let expected_key = InboxResponses::<chain_b::Runtime>::hashed_key_for((
@@ -363,7 +358,6 @@ fn send_message_between_chains(
                 chain_id: chain_b_id,
                 channel_id,
                 nonce: Nonce::one(),
-                relayer_id: RELAYER_ID,
             },
         ));
     });
@@ -533,7 +527,6 @@ fn channel_relay_request_and_response(
             chain_id: chain_a_id,
             channel_id,
             nonce,
-            relayer_id: chain_b::RELAYER_ID,
         }));
 
         let response =
@@ -677,22 +670,12 @@ fn initiate_transfer_on_chain(chain_a_ext: &mut TestExternalities) {
             chain_id: chain_b::SelfChainId::get(),
             channel_id: U256::zero(),
             nonce: U256::one(),
-            relayer_id: RELAYER_ID,
         }));
         let fee_model = chain_b::Messenger::channels(chain_b::SelfChainId::get(), U256::zero())
             .unwrap_or_default()
             .fee;
-        let fees = fee_model.inbox_fee.relayer_pool_fee
-            + fee_model.inbox_fee.compute_fee
-            + fee_model.outbox_fee.compute_fee
-            + fee_model.outbox_fee.relayer_pool_fee;
-
+        let fees = fee_model.relay_fee;
         assert_eq!(chain_a::Balances::free_balance(account_id), 500 - fees);
-        // source chain take 2 fees and dst_chain takes 2
-        assert_eq!(
-            chain_a::Balances::free_balance(chain_a::Messenger::messenger_account_id()),
-            fee_model.outbox_fee.compute_fee + fee_model.outbox_fee.relayer_pool_fee
-        );
         assert!(chain_a::Transporter::outgoing_transfers(
             chain_b::SelfChainId::get(),
             (U256::zero(), U256::one()),
@@ -726,12 +709,6 @@ fn verify_transfer_on_chain(
             },
         ));
         assert_eq!(chain_a::Balances::free_balance(account_id), 496);
-        assert_eq!(
-            chain_a::Balances::free_balance(chain_a::Messenger::messenger_account_id()),
-            1
-        );
-        let relayer_a_balance = chain_a::Balances::free_balance(chain_a::RELAYER_ID);
-        assert_eq!(relayer_a_balance, 1);
         assert!(chain_a::Transporter::outgoing_transfers(
             chain_b::SelfChainId::get(),
             (U256::zero(), U256::one()),
@@ -755,15 +732,8 @@ fn verify_transfer_on_chain(
             chain_id: chain_a::SelfChainId::get(),
             channel_id: U256::zero(),
             nonce: U256::one(),
-            relayer_id: chain_b::RELAYER_ID,
         }));
         assert_eq!(chain_b::Balances::free_balance(account_id), 1500);
-        assert_eq!(
-            chain_b::Balances::free_balance(chain_b::Messenger::messenger_account_id()),
-            1
-        );
-        let relayer_b_balance = chain_b::Balances::free_balance(chain_b::RELAYER_ID);
-        assert_eq!(relayer_b_balance, 1);
     })
 }
 
@@ -772,29 +742,13 @@ fn verify_transfer_on_chain(
 fn test_transport_funds_between_chains() {
     let mut chain_a_test_ext = chain_a::new_test_ext();
     let mut chain_b_test_ext = chain_b::new_test_ext();
-    // pre check
-    let relayer_a_balance = chain_a_test_ext
-        .execute_with(|| -> Balance { chain_a::Balances::free_balance(chain_a::RELAYER_ID) });
-    let relayer_b_balance = chain_b_test_ext
-        .execute_with(|| -> Balance { chain_b::Balances::free_balance(chain_b::RELAYER_ID) });
-    assert_eq!(relayer_a_balance, 0);
-    assert_eq!(relayer_b_balance, 0);
 
     // open channel between chain_a and chain_b
     // chain_a initiates the channel open
     let channel_id = open_channel_between_chains(
         &mut chain_a_test_ext,
         &mut chain_b_test_ext,
-        FeeModel {
-            outbox_fee: ExecutionFee {
-                relayer_pool_fee: 1,
-                compute_fee: 1,
-            },
-            inbox_fee: ExecutionFee {
-                relayer_pool_fee: 1,
-                compute_fee: 1,
-            },
-        },
+        FeeModel { relay_fee: 1 },
     );
 
     // initiate transfer
@@ -859,127 +813,5 @@ fn test_transport_funds_between_chains_failed_no_open_channel() {
             500,
         );
         assert_err!(res, crate::Error::<chain_a::Runtime>::NoOpenChannel);
-    });
-}
-
-#[test]
-fn test_join_relayer_low_balance() {
-    let mut chain_a_test_ext = chain_a::new_test_ext();
-    // account with no balance
-    let account_id = 2;
-    let relayer_id = 100;
-
-    chain_a_test_ext.execute_with(|| {
-        let res = chain_a::Messenger::join_relayer_set(
-            chain_a::RuntimeOrigin::signed(account_id),
-            relayer_id,
-        );
-        assert_err!(
-            res,
-            pallet_balances::Error::<chain_a::Runtime>::InsufficientBalance
-        );
-    });
-}
-
-#[test]
-fn test_join_relayer_set() {
-    let mut chain_a_test_ext = chain_a::new_test_ext();
-    // account with balance
-    let account_id = 1;
-    let relayer_id = 100;
-
-    chain_a_test_ext.execute_with(|| {
-        assert_eq!(chain_a::Balances::free_balance(account_id), 1000);
-        let res = chain_a::Messenger::join_relayer_set(
-            chain_a::RuntimeOrigin::signed(account_id),
-            relayer_id,
-        );
-        assert_ok!(res);
-        assert_eq!(
-            chain_a::Messenger::relayers_info(relayer_id).unwrap(),
-            RelayerInfo {
-                owner: account_id,
-                deposit_reserved: RelayerDeposit::get(),
-            }
-        );
-        assert_eq!(chain_a::Balances::free_balance(account_id), 500);
-
-        // cannot rejoin again
-        let res = chain_a::Messenger::join_relayer_set(
-            chain_a::RuntimeOrigin::signed(account_id),
-            relayer_id,
-        );
-        assert_err!(res, crate::Error::<chain_a::Runtime>::AlreadyRelayer);
-
-        // get relayer, idx should increment
-        let assigned_relayer_id = chain_a::Messenger::next_relayer().unwrap();
-        assert_eq!(assigned_relayer_id, RELAYER_ID);
-        assert_eq!(chain_a::Messenger::next_relayer_idx(), 1);
-
-        // get next relayer, idx should go beyond bound
-        let assigned_relayer_id = chain_a::Messenger::next_relayer().unwrap();
-        assert_eq!(assigned_relayer_id, relayer_id);
-        assert_eq!(chain_a::Messenger::next_relayer_idx(), 2);
-
-        // get relayer should be back within bound and not skipped
-        let assigned_relayer_id = chain_a::Messenger::next_relayer().unwrap();
-        assert_eq!(assigned_relayer_id, RELAYER_ID);
-        assert_eq!(chain_a::Messenger::next_relayer_idx(), 1);
-    });
-}
-
-#[test]
-fn test_exit_relayer_set() {
-    let mut chain_a_test_ext = chain_a::new_test_ext();
-    // account with balance
-    let account_id = 1;
-    let relayer_id_1 = 100;
-    let relayer_id_2 = 101;
-    let relayer_id_3 = 102;
-
-    chain_a_test_ext.execute_with(|| {
-        chain_a::Balances::make_free_balance_be(&account_id, 2000);
-        assert_eq!(chain_a::Balances::free_balance(account_id), 2000);
-        for relayer in [relayer_id_1, relayer_id_2, relayer_id_3] {
-            let res = chain_a::Messenger::join_relayer_set(
-                chain_a::RuntimeOrigin::signed(account_id),
-                relayer,
-            );
-            assert_ok!(res);
-            assert_eq!(
-                chain_a::Messenger::relayers_info(relayer).unwrap(),
-                RelayerInfo {
-                    owner: account_id,
-                    deposit_reserved: RelayerDeposit::get(),
-                }
-            );
-        }
-        assert_eq!(chain_a::Balances::free_balance(account_id), 500);
-
-        let assigned_relayer_id = chain_a::Messenger::next_relayer().unwrap();
-        assert_eq!(assigned_relayer_id, RELAYER_ID);
-        assert_eq!(chain_a::Messenger::next_relayer_idx(), 1);
-
-        let assigned_relayer_id = chain_a::Messenger::next_relayer().unwrap();
-        assert_eq!(assigned_relayer_id, relayer_id_1);
-        assert_eq!(chain_a::Messenger::next_relayer_idx(), 2);
-
-        // relayer_1 exits
-        let res = chain_a::Messenger::exit_relayer_set(
-            chain_a::RuntimeOrigin::signed(account_id),
-            relayer_id_1,
-        );
-        assert_ok!(res);
-        assert_eq!(chain_a::Messenger::next_relayer_idx(), 1);
-
-        // relayer_3 exits
-        let res = chain_a::Messenger::exit_relayer_set(
-            chain_a::RuntimeOrigin::signed(account_id),
-            relayer_id_3,
-        );
-        assert_ok!(res);
-        assert_eq!(chain_a::Messenger::next_relayer_idx(), 1);
-        let assigned_relayer_id = chain_a::Messenger::next_relayer().unwrap();
-        assert_eq!(assigned_relayer_id, relayer_id_2);
     });
 }

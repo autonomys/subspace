@@ -149,11 +149,11 @@ where
             global_randomness,
         } = slot_info;
 
-        let best_receipt_is_written = crate::aux_schema::consensus_block_hash_for::<
+        let best_receipt_is_written = crate::aux_schema::latest_consensus_block_hash_for::<
             _,
             _,
             CBlock::Hash,
-        >(&*self.client, self.client.info().best_hash)?
+        >(&*self.client, &self.client.info().best_hash)?
         .is_some();
 
         // TODO: remove once the receipt generation can be done before the domain block is
@@ -218,7 +218,7 @@ where
             if extrinsics.is_empty()
                 && !self
                     .parent_chain
-                    .non_empty_bundle_exists(parent_chain_best_hash, self.domain_id)?
+                    .non_empty_er_exists(parent_chain_best_hash, self.domain_id)?
             {
                 tracing::warn!(
                     ?domain_best_number,

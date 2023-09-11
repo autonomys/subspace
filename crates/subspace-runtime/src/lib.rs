@@ -41,8 +41,11 @@ use crate::signed_extensions::{CheckStorageAccess, DisablePallets};
 use codec::{Decode, Encode, MaxEncodedLen};
 use core::mem;
 use core::num::NonZeroU64;
-use domain_runtime_primitives::{BlockNumber as DomainNumber, Hash as DomainHash};
-use frame_support::traits::{ConstU16, ConstU32, ConstU64, ConstU8, Everything, Get};
+use domain_runtime_primitives::{
+    BlockNumber as DomainNumber, Hash as DomainHash, MultiAccountId, TryConvertBack,
+};
+use frame_support::inherent::ProvideInherent;
+use frame_support::traits::{ConstU16, ConstU32, ConstU64, ConstU8, Currency, Everything, Get};
 use frame_support::weights::constants::{RocksDbWeight, WEIGHT_REF_TIME_PER_SECOND};
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
 use frame_support::{construct_runtime, parameter_types, PalletId};
@@ -50,12 +53,16 @@ use frame_system::limits::{BlockLength, BlockWeights};
 use frame_system::EnsureNever;
 use pallet_feeds::feed_processor::FeedProcessor;
 pub use pallet_subspace::AllowAuthoringBy;
+use pallet_transporter::EndpointHandler;
 use scale_info::TypeInfo;
 use sp_api::{impl_runtime_apis, BlockT};
 use sp_consensus_slots::SlotDuration;
+#[cfg(not(feature = "pot"))]
+use sp_consensus_subspace::GlobalRandomnesses;
+#[cfg(feature = "pot")]
+use sp_consensus_subspace::PotParameters;
 use sp_consensus_subspace::{
-    ChainConstants, EquivocationProof, FarmerPublicKey, GlobalRandomnesses, SignedVote,
-    SolutionRanges, Vote,
+    ChainConstants, EquivocationProof, FarmerPublicKey, SignedVote, SolutionRanges, Vote,
 };
 use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::{OpaqueMetadata, H256};
@@ -64,25 +71,30 @@ use sp_domains::{
     DomainId, DomainInstanceData, DomainsHoldIdentifier, OperatorId, OperatorPublicKey,
     StakingHoldIdentifier,
 };
-use sp_runtime::traits::{AccountIdConversion, AccountIdLookup, BlakeTwo256, NumberFor};
+use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
+use sp_messenger::messages::{
+    BlockInfo, BlockMessagesWithStorageKey, ChainId, CrossDomainMessage,
+    ExtractedStateRootsFromProof, MessageId,
+};
+use sp_runtime::traits::{AccountIdConversion, AccountIdLookup, BlakeTwo256, Convert, NumberFor};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
 use sp_runtime::{
     create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, Perbill, SaturatedConversion,
 };
+use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
-use static_assertions::const_assert;
 use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
     HistorySize, Piece, Randomness, Record, SegmentCommitment, SegmentHeader, SegmentIndex,
-    SolutionRange, U256,
+    SlotNumber, SolutionRange, U256,
 };
 use subspace_runtime_primitives::{
-    opaque, AccountId, Balance, BlockNumber, Hash, Index, Moment, Signature,
-    MIN_REPLICATION_FACTOR, SHANNON, SSC, STORAGE_FEES_ESCROW_BLOCK_REWARD,
+    opaque, AccountId, Balance, BlockNumber, FindBlockRewardAddress, Hash, Index, Moment,
+    Signature, MIN_REPLICATION_FACTOR, SHANNON, SSC, STORAGE_FEES_ESCROW_BLOCK_REWARD,
     STORAGE_FEES_ESCROW_BLOCK_TAX,
 };
 
@@ -146,13 +158,16 @@ const SLOT_PROBABILITY: (u64, u64) = (1, 6);
 /// The amount of time, in blocks, between updates of global randomness.
 const GLOBAL_RANDOMNESS_UPDATE_INTERVAL: BlockNumber = 256;
 
+/// Number of slots between slot arrival and when corresponding block can be produced.
+const BLOCK_AUTHORING_DELAY: SlotNumber = 6;
+
 /// Era duration in blocks.
 const ERA_DURATION_IN_BLOCKS: BlockNumber = 2016;
 
 const EQUIVOCATION_REPORT_LONGEVITY: BlockNumber = 256;
 
 /// Initial tx range = U256::MAX / INITIAL_DOMAIN_TX_RANGE.
-const INITIAL_DOMAIN_TX_RANGE: u64 = 10;
+const INITIAL_DOMAIN_TX_RANGE: u64 = 3;
 
 /// Tx range is adjusted every DOMAIN_TX_RANGE_ADJUSTMENT_INTERVAL blocks.
 const TX_RANGE_ADJUSTMENT_INTERVAL_BLOCKS: u64 = 100;
@@ -265,6 +280,7 @@ impl frame_system::Config for Runtime {
 }
 
 parameter_types! {
+    pub const BlockAuthoringDelay: SlotNumber = BLOCK_AUTHORING_DELAY;
     pub const SlotProbability: (u64, u64) = SLOT_PROBABILITY;
     pub const ExpectedBlockTime: Moment = MILLISECS_PER_BLOCK;
     pub const ExpectedVotesPerBlock: u32 = EXPECTED_VOTES_PER_BLOCK;
@@ -287,6 +303,7 @@ impl Get<BlockNumber> for ConfirmationDepthK {
 impl pallet_subspace::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type GlobalRandomnessUpdateInterval = ConstU32<GLOBAL_RANDOMNESS_UPDATE_INTERVAL>;
+    type BlockAuthoringDelay = BlockAuthoringDelay;
     type EraDuration = ConstU32<ERA_DURATION_IN_BLOCKS>;
     type InitialSolutionRange = ConstU64<INITIAL_SOLUTION_RANGE>;
     type SlotProbability = SlotProbability;
@@ -312,7 +329,10 @@ impl pallet_subspace::Config for Runtime {
 impl pallet_timestamp::Config for Runtime {
     /// A timestamp: milliseconds since the unix epoch.
     type Moment = Moment;
+    #[cfg(not(feature = "pot"))]
     type OnTimestampSet = Subspace;
+    #[cfg(feature = "pot")]
+    type OnTimestampSet = ();
     type MinimumPeriod = ConstU64<{ SLOT_DURATION / 2 }>;
     type WeightInfo = ();
 }
@@ -453,12 +473,90 @@ impl pallet_sudo::Config for Runtime {
     type WeightInfo = pallet_sudo::weights::SubstrateWeight<Runtime>;
 }
 
+parameter_types! {
+    pub const RelayConfirmationDepth: BlockNumber = 18;
+    pub SelfChainId: ChainId = ChainId::Consensus;
+}
+
+pub struct DomainInfo;
+
+impl sp_messenger::endpoint::DomainInfo<BlockNumber, Hash, Hash> for DomainInfo {
+    fn domain_best_number(domain_id: DomainId) -> Option<BlockNumber> {
+        Domains::domain_best_number(domain_id)
+    }
+
+    fn domain_state_root(domain_id: DomainId, number: BlockNumber, hash: Hash) -> Option<Hash> {
+        Domains::domain_state_root(domain_id, number, hash)
+    }
+}
+
+pub struct OnXDMRewards;
+
+impl sp_messenger::OnXDMRewards<Balance> for OnXDMRewards {
+    fn on_xdm_rewards(reward: Balance) {
+        if let Some(block_author) = Subspace::find_block_reward_address() {
+            let _ = Balances::deposit_creating(&block_author, reward);
+        }
+    }
+}
+
+impl pallet_messenger::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type SelfChainId = SelfChainId;
+
+    fn get_endpoint_handler(endpoint: &Endpoint) -> Option<Box<dyn EndpointHandlerT<MessageId>>> {
+        if endpoint == &Endpoint::Id(TransporterEndpointId::get()) {
+            Some(Box::new(EndpointHandler(PhantomData::<Runtime>)))
+        } else {
+            None
+        }
+    }
+
+    type Currency = Balances;
+    type DomainInfo = DomainInfo;
+    type ConfirmationDepth = RelayConfirmationDepth;
+    type WeightInfo = pallet_messenger::weights::SubstrateWeight<Runtime>;
+    type WeightToFee = IdentityFee<domain_runtime_primitives::Balance>;
+    type OnXDMRewards = OnXDMRewards;
+}
+
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime
 where
     RuntimeCall: From<C>,
 {
     type Extrinsic = UncheckedExtrinsic;
     type OverarchingCall = RuntimeCall;
+}
+
+parameter_types! {
+    pub const TransporterEndpointId: EndpointId = 1;
+}
+
+pub struct AccountIdConverter;
+
+impl Convert<AccountId, MultiAccountId> for AccountIdConverter {
+    fn convert(account_id: AccountId) -> MultiAccountId {
+        MultiAccountId::AccountId32(account_id.into())
+    }
+}
+
+impl TryConvertBack<AccountId, MultiAccountId> for AccountIdConverter {
+    fn try_convert_back(multi_account_id: MultiAccountId) -> Option<AccountId> {
+        match multi_account_id {
+            MultiAccountId::AccountId32(acc) => Some(AccountId::from(acc)),
+            _ => None,
+        }
+    }
+}
+
+impl pallet_transporter::Config for Runtime {
+    type RuntimeEvent = RuntimeEvent;
+    type SelfChainId = SelfChainId;
+    type SelfEndpointId = TransporterEndpointId;
+    type Currency = Balances;
+    type Sender = Messenger;
+    type AccountIdConverter = AccountIdConverter;
+    type WeightInfo = pallet_transporter::weights::SubstrateWeight<Runtime>;
 }
 
 impl pallet_offences_subspace::Config for Runtime {
@@ -489,11 +587,8 @@ parameter_types! {
     pub const StakeEpochDuration: DomainNumber = 100;
     pub TreasuryAccount: AccountId = PalletId(*b"treasury").into_account_truncating();
     pub const MaxPendingStakingOperation: u32 = 100;
+    pub SudoId: AccountId = Sudo::key().expect("Sudo account must exist");
 }
-
-// `BlockTreePruningDepth` should <= `BlockHashCount` because we need the consensus block hash to verify
-// execution receipt, which is used to construct the node of the block tree.
-const_assert!(BlockTreePruningDepth::get() <= BlockHashCount::get());
 
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
@@ -517,8 +612,9 @@ impl pallet_domains::Config for Runtime {
     type StakeWithdrawalLockingPeriod = StakeWithdrawalLockingPeriod;
     type StakeEpochDuration = StakeEpochDuration;
     type TreasuryAccount = TreasuryAccount;
-    type DomainBlockReward = BlockReward;
     type MaxPendingStakingOperation = MaxPendingStakingOperation;
+    type SudoId = SudoId;
+    type Randomness = Subspace;
 }
 
 pub struct StakingOnReward;
@@ -616,6 +712,11 @@ construct_runtime!(
 
         Vesting: orml_vesting = 13,
 
+        // messenger stuff
+        // Note: Indexes should match with indexes on other chains and domains
+        Messenger: pallet_messenger = 60,
+        Transporter: pallet_transporter = 61,
+
         // Reserve some room for other pallets as we'll remove sudo pallet eventually.
         Sudo: pallet_sudo = 100,
     }
@@ -662,6 +763,30 @@ fn extract_segment_headers(ext: &UncheckedExtrinsic) -> Option<Vec<SegmentHeader
     }
 }
 
+fn extract_xdm_proof_state_roots(
+    encoded_ext: Vec<u8>,
+) -> Option<
+    ExtractedStateRootsFromProof<
+        domain_runtime_primitives::BlockNumber,
+        domain_runtime_primitives::Hash,
+        domain_runtime_primitives::Hash,
+    >,
+> {
+    if let Ok(ext) = UncheckedExtrinsic::decode(&mut encoded_ext.as_slice()) {
+        match &ext.function {
+            RuntimeCall::Messenger(pallet_messenger::Call::relay_message { msg }) => {
+                msg.extract_state_roots_from_proof::<BlakeTwo256>()
+            }
+            RuntimeCall::Messenger(pallet_messenger::Call::relay_message_response { msg }) => {
+                msg.extract_state_roots_from_proof::<BlakeTwo256>()
+            }
+            _ => None,
+        }
+    } else {
+        None
+    }
+}
+
 struct RewardAddress([u8; 32]);
 
 impl From<FarmerPublicKey> for RewardAddress {
@@ -695,6 +820,7 @@ mod benches {
     );
 }
 
+#[cfg(not(feature = "pot"))]
 impl_runtime_apis! {
     impl sp_api::Core<Block> for Runtime {
         fn version() -> RuntimeVersion {
@@ -781,7 +907,7 @@ impl_runtime_apis! {
         }
 
         fn slot_duration() -> SlotDuration {
-            SlotDuration::from_millis(Subspace::slot_duration())
+            SlotDuration::from_millis(SLOT_DURATION)
         }
 
         fn global_randomnesses() -> GlobalRandomnesses {
@@ -834,6 +960,14 @@ impl_runtime_apis! {
             extract_segment_headers(ext)
         }
 
+        fn is_inherent(ext: &<Block as BlockT>::Extrinsic) -> bool {
+            match &ext.function {
+                RuntimeCall::Subspace(call) => Subspace::is_inherent(call),
+                RuntimeCall::Timestamp(call) => Timestamp::is_inherent(call),
+                _ => false,
+            }
+        }
+
         fn root_plot_public_key() -> Option<FarmerPublicKey> {
             Subspace::root_plot_public_key()
         }
@@ -869,8 +1003,8 @@ impl_runtime_apis! {
             crate::domains::extract_successful_bundles(domain_id, extrinsics)
         }
 
-        fn extrinsics_shuffling_seed(header: <Block as BlockT>::Header) -> Randomness {
-            crate::domains::extrinsics_shuffling_seed::<Block>(header)
+        fn extrinsics_shuffling_seed() -> Randomness {
+            Randomness::from(Domains::extrinsics_shuffling_seed().to_fixed_bytes())
         }
 
         fn domain_runtime_code(domain_id: DomainId) -> Option<Vec<u8>> {
@@ -913,8 +1047,16 @@ impl_runtime_apis! {
             Domains::domain_block_limit(domain_id)
         }
 
-        fn non_empty_bundle_exists(domain_id: DomainId) -> bool {
-            Domains::non_empty_bundle_exists(domain_id)
+        fn non_empty_er_exists(domain_id: DomainId) -> bool {
+            Domains::non_empty_er_exists(domain_id)
+        }
+
+        fn domain_best_number(domain_id: DomainId) -> Option<DomainNumber> {
+            Domains::domain_best_number(domain_id)
+        }
+
+        fn domain_state_root(domain_id: DomainId, number: DomainNumber, hash: DomainHash) -> Option<DomainHash>{
+            Domains::domain_state_root(domain_id, number, hash)
         }
     }
 
@@ -964,6 +1106,428 @@ impl_runtime_apis! {
         }
         fn query_length_to_fee(length: u32) -> Balance {
             TransactionPayment::length_to_fee(length)
+        }
+    }
+
+    impl sp_messenger::MessengerApi<Block, BlockNumber> for Runtime {
+        fn extract_xdm_proof_state_roots(
+            extrinsic: Vec<u8>,
+        ) -> Option<ExtractedStateRootsFromProof<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>> {
+            extract_xdm_proof_state_roots(extrinsic)
+        }
+
+        fn is_domain_info_confirmed(
+            domain_id: DomainId,
+            domain_block_info: BlockInfo<BlockNumber, <Block as BlockT>::Hash>,
+            domain_state_root: <Block as BlockT>::Hash,
+        ) -> bool{
+            Messenger::is_domain_info_confirmed(domain_id, domain_block_info, domain_state_root)
+        }
+    }
+
+    impl sp_messenger::RelayerApi<Block, BlockNumber> for Runtime {
+        fn chain_id() -> ChainId {
+            SelfChainId::get()
+        }
+
+        fn relay_confirmation_depth() -> BlockNumber {
+            RelayConfirmationDepth::get()
+        }
+
+        fn block_messages() -> BlockMessagesWithStorageKey {
+            Messenger::get_block_messages()
+        }
+
+        fn outbox_message_unsigned(msg: CrossDomainMessage<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
+            Messenger::outbox_message_unsigned(msg)
+        }
+
+        fn inbox_response_message_unsigned(msg: CrossDomainMessage<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
+            Messenger::inbox_response_message_unsigned(msg)
+        }
+
+        fn should_relay_outbox_message(dst_chain_id: ChainId, msg_id: MessageId) -> bool {
+            Messenger::should_relay_outbox_message(dst_chain_id, msg_id)
+        }
+
+        fn should_relay_inbox_message_response(dst_chain_id: ChainId, msg_id: MessageId) -> bool {
+            Messenger::should_relay_inbox_message_response(dst_chain_id, msg_id)
+        }
+    }
+
+    #[cfg(feature = "runtime-benchmarks")]
+    impl frame_benchmarking::Benchmark<Block> for Runtime {
+        fn benchmark_metadata(extra: bool) -> (
+            Vec<frame_benchmarking::BenchmarkList>,
+            Vec<frame_support::traits::StorageInfo>,
+        ) {
+            use frame_benchmarking::{baseline, Benchmarking, BenchmarkList};
+            use frame_support::traits::StorageInfoTrait;
+            use frame_system_benchmarking::Pallet as SystemBench;
+            use baseline::Pallet as BaselineBench;
+
+            let mut list = Vec::<BenchmarkList>::new();
+            list_benchmarks!(list, extra);
+
+            let storage_info = AllPalletsWithSystem::storage_info();
+
+            (list, storage_info)
+        }
+
+        fn dispatch_benchmark(
+            config: frame_benchmarking::BenchmarkConfig
+        ) -> Result<Vec<frame_benchmarking::BenchmarkBatch>, sp_runtime::RuntimeString> {
+            use frame_benchmarking::{baseline, Benchmarking, BenchmarkBatch, TrackedStorageKey};
+
+            use frame_system_benchmarking::Pallet as SystemBench;
+            use baseline::Pallet as BaselineBench;
+
+            impl frame_system_benchmarking::Config for Runtime {}
+            impl baseline::Config for Runtime {}
+
+            use frame_support::traits::WhitelistedStorageKeys;
+            let whitelist: Vec<TrackedStorageKey> = AllPalletsWithSystem::whitelisted_storage_keys();
+
+            let mut batches = Vec::<BenchmarkBatch>::new();
+            let params = (&config, &whitelist);
+            add_benchmarks!(params, batches);
+
+            Ok(batches)
+        }
+    }
+}
+#[cfg(feature = "pot")]
+impl_runtime_apis! {
+    impl sp_api::Core<Block> for Runtime {
+        fn version() -> RuntimeVersion {
+            VERSION
+        }
+
+        fn execute_block(block: Block) {
+            Executive::execute_block(block);
+        }
+
+        fn initialize_block(header: &<Block as BlockT>::Header) {
+            Executive::initialize_block(header)
+        }
+    }
+
+    impl sp_api::Metadata<Block> for Runtime {
+        fn metadata() -> OpaqueMetadata {
+            OpaqueMetadata::new(Runtime::metadata().into())
+        }
+
+        fn metadata_at_version(version: u32) -> Option<OpaqueMetadata> {
+            Runtime::metadata_at_version(version)
+        }
+
+        fn metadata_versions() -> sp_std::vec::Vec<u32> {
+            Runtime::metadata_versions()
+        }
+    }
+
+    impl sp_block_builder::BlockBuilder<Block> for Runtime {
+        fn apply_extrinsic(extrinsic: <Block as BlockT>::Extrinsic) -> ApplyExtrinsicResult {
+            Executive::apply_extrinsic(extrinsic)
+        }
+
+        fn finalize_block() -> <Block as BlockT>::Header {
+            Executive::finalize_block()
+        }
+
+        fn inherent_extrinsics(data: sp_inherents::InherentData) -> Vec<<Block as BlockT>::Extrinsic> {
+            data.create_extrinsics()
+        }
+
+        fn check_inherents(
+            block: Block,
+            data: sp_inherents::InherentData,
+        ) -> sp_inherents::CheckInherentsResult {
+            data.check_extrinsics(&block)
+        }
+    }
+
+    impl sp_transaction_pool::runtime_api::TaggedTransactionQueue<Block> for Runtime {
+        fn validate_transaction(
+            source: TransactionSource,
+            tx: <Block as BlockT>::Extrinsic,
+            block_hash: <Block as BlockT>::Hash,
+        ) -> TransactionValidity {
+            Executive::validate_transaction(source, tx, block_hash)
+        }
+    }
+
+    impl sp_offchain::OffchainWorkerApi<Block> for Runtime {
+        fn offchain_worker(header: &<Block as BlockT>::Header) {
+            Executive::offchain_worker(header)
+        }
+    }
+
+    impl sp_objects::ObjectsApi<Block> for Runtime {
+        fn extract_block_object_mapping(block: Block, successful_calls: Vec<Hash>) -> BlockObjectMapping {
+            extract_block_object_mapping(block, successful_calls)
+        }
+
+        fn validated_object_call_hashes() -> Vec<Hash> {
+            Feeds::successful_puts()
+        }
+    }
+
+    impl sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey> for Runtime {
+        fn slot_duration() -> SlotDuration {
+            SlotDuration::from_millis(SLOT_DURATION)
+        }
+
+        fn pot_parameters() -> PotParameters {
+            Subspace::pot_parameters()
+        }
+
+        fn solution_ranges() -> SolutionRanges {
+            Subspace::solution_ranges()
+        }
+
+        fn submit_report_equivocation_extrinsic(
+            equivocation_proof: EquivocationProof<<Block as BlockT>::Header>,
+        ) -> Option<()> {
+            Subspace::submit_equivocation_report(equivocation_proof)
+        }
+
+        fn submit_vote_extrinsic(
+            signed_vote: SignedVote<NumberFor<Block>, <Block as BlockT>::Hash, FarmerPublicKey>,
+        ) {
+            let SignedVote { vote, signature } = signed_vote;
+            let Vote::V0 {
+                height,
+                parent_hash,
+                slot,
+                solution,
+            } = vote;
+
+            Subspace::submit_vote(SignedVote {
+                vote: Vote::V0 {
+                    height,
+                    parent_hash,
+                    slot,
+                    solution: solution.into_reward_address_format::<RewardAddress, AccountId32>(),
+                },
+                signature,
+            })
+        }
+
+        fn is_in_block_list(farmer_public_key: &FarmerPublicKey) -> bool {
+            // TODO: Either check tx pool too for pending equivocations or replace equivocation
+            //  mechanism with an alternative one, so that blocking happens faster
+            Subspace::is_in_block_list(farmer_public_key)
+        }
+
+        fn history_size() -> HistorySize {
+            <pallet_subspace::Pallet<Runtime>>::history_size()
+        }
+
+        fn max_pieces_in_sector() -> u16 {
+            MAX_PIECES_IN_SECTOR
+        }
+
+        fn segment_commitment(segment_index: SegmentIndex) -> Option<SegmentCommitment> {
+            Subspace::segment_commitment(segment_index)
+        }
+
+        fn extract_segment_headers(ext: &<Block as BlockT>::Extrinsic) -> Option<Vec<SegmentHeader >> {
+            extract_segment_headers(ext)
+        }
+
+        fn is_inherent(ext: &<Block as BlockT>::Extrinsic) -> bool {
+            match &ext.function {
+                RuntimeCall::Subspace(call) => Subspace::is_inherent(call),
+                RuntimeCall::Timestamp(call) => Timestamp::is_inherent(call),
+                _ => false,
+            }
+        }
+
+        fn root_plot_public_key() -> Option<FarmerPublicKey> {
+            Subspace::root_plot_public_key()
+        }
+
+        fn should_adjust_solution_range() -> bool {
+            Subspace::should_adjust_solution_range()
+        }
+
+        fn chain_constants() -> ChainConstants {
+            Subspace::chain_constants()
+        }
+    }
+
+    impl sp_domains::transaction::PreValidationObjectApi<Block, DomainNumber, DomainHash, > for Runtime {
+        fn extract_pre_validation_object(
+            extrinsic: <Block as BlockT>::Extrinsic,
+        ) -> sp_domains::transaction::PreValidationObject<Block, DomainNumber, DomainHash> {
+            crate::domains::extract_pre_validation_object(extrinsic)
+        }
+    }
+
+    impl sp_domains::DomainsApi<Block, DomainNumber, DomainHash> for Runtime {
+        fn submit_bundle_unsigned(
+            opaque_bundle: sp_domains::OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainNumber, DomainHash, Balance>,
+        ) {
+            Domains::submit_bundle_unsigned(opaque_bundle)
+        }
+
+        fn extract_successful_bundles(
+            domain_id: DomainId,
+            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
+        ) -> sp_domains::OpaqueBundles<Block, DomainNumber, DomainHash, Balance> {
+            crate::domains::extract_successful_bundles(domain_id, extrinsics)
+        }
+
+        fn extrinsics_shuffling_seed() -> Randomness {
+            Randomness::from(Domains::extrinsics_shuffling_seed().to_fixed_bytes())
+        }
+
+        fn domain_runtime_code(domain_id: DomainId) -> Option<Vec<u8>> {
+            Domains::domain_runtime_code(domain_id)
+        }
+
+        fn runtime_id(domain_id: DomainId) -> Option<sp_domains::RuntimeId> {
+            Domains::runtime_id(domain_id)
+        }
+
+        fn domain_instance_data(domain_id: DomainId) -> Option<(DomainInstanceData, NumberFor<Block>)> {
+            Domains::domain_instance_data(domain_id)
+        }
+
+        fn timestamp() -> Moment{
+            Timestamp::now()
+        }
+
+        fn domain_tx_range(domain_id: DomainId) -> U256 {
+            Domains::domain_tx_range(domain_id)
+        }
+
+        fn genesis_state_root(domain_id: DomainId) -> Option<H256> {
+            Domains::genesis_state_root(domain_id)
+        }
+
+        fn head_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
+            Domains::head_receipt_number(domain_id)
+        }
+
+        fn oldest_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
+            Domains::oldest_receipt_number(domain_id)
+        }
+
+        fn block_tree_pruning_depth() -> NumberFor<Block> {
+            Domains::block_tree_pruning_depth()
+        }
+
+        fn domain_block_limit(domain_id: DomainId) -> Option<sp_domains::DomainBlockLimit> {
+            Domains::domain_block_limit(domain_id)
+        }
+
+        fn non_empty_er_exists(domain_id: DomainId) -> bool {
+            Domains::non_empty_er_exists(domain_id)
+        }
+
+        fn domain_best_number(domain_id: DomainId) -> Option<DomainNumber> {
+            Domains::domain_best_number(domain_id)
+        }
+
+        fn domain_state_root(domain_id: DomainId, number: DomainNumber, hash: DomainHash) -> Option<DomainHash>{
+            Domains::domain_state_root(domain_id, number, hash)
+        }
+    }
+
+    impl sp_domains::BundleProducerElectionApi<Block, Balance> for Runtime {
+        fn bundle_producer_election_params(domain_id: DomainId) -> Option<BundleProducerElectionParams<Balance>> {
+            Domains::bundle_producer_election_params(domain_id)
+        }
+
+        fn operator(operator_id: OperatorId) -> Option<(OperatorPublicKey, Balance)> {
+            Domains::operator(operator_id)
+        }
+    }
+
+    impl sp_session::SessionKeys<Block> for Runtime {
+        fn generate_session_keys(seed: Option<Vec<u8>>) -> Vec<u8> {
+            SessionKeys::generate(seed)
+        }
+
+        fn decode_session_keys(
+            encoded: Vec<u8>,
+        ) -> Option<Vec<(Vec<u8>, KeyTypeId)>> {
+            SessionKeys::decode_into_raw_public_keys(&encoded)
+        }
+    }
+
+    impl frame_system_rpc_runtime_api::AccountNonceApi<Block, AccountId, Index> for Runtime {
+        fn account_nonce(account: AccountId) -> Index {
+            System::account_nonce(account)
+        }
+    }
+
+    impl pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi<Block, Balance> for Runtime {
+        fn query_info(
+            uxt: <Block as BlockT>::Extrinsic,
+            len: u32,
+        ) -> pallet_transaction_payment_rpc_runtime_api::RuntimeDispatchInfo<Balance> {
+            TransactionPayment::query_info(uxt, len)
+        }
+        fn query_fee_details(
+            uxt: <Block as BlockT>::Extrinsic,
+            len: u32,
+        ) -> pallet_transaction_payment::FeeDetails<Balance> {
+            TransactionPayment::query_fee_details(uxt, len)
+        }
+        fn query_weight_to_fee(weight: Weight) -> Balance {
+            TransactionPayment::weight_to_fee(weight)
+        }
+        fn query_length_to_fee(length: u32) -> Balance {
+            TransactionPayment::length_to_fee(length)
+        }
+    }
+
+    impl sp_messenger::MessengerApi<Block, BlockNumber> for Runtime {
+        fn extract_xdm_proof_state_roots(
+            extrinsic: Vec<u8>,
+        ) -> Option<ExtractedStateRootsFromProof<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>> {
+            extract_xdm_proof_state_roots(extrinsic)
+        }
+
+        fn is_domain_info_confirmed(
+            domain_id: DomainId,
+            domain_block_info: BlockInfo<BlockNumber, <Block as BlockT>::Hash>,
+            domain_state_root: <Block as BlockT>::Hash,
+        ) -> bool{
+            Messenger::is_domain_info_confirmed(domain_id, domain_block_info, domain_state_root)
+        }
+    }
+
+    impl sp_messenger::RelayerApi<Block, BlockNumber> for Runtime {
+        fn chain_id() -> ChainId {
+            SelfChainId::get()
+        }
+
+        fn relay_confirmation_depth() -> BlockNumber {
+            RelayConfirmationDepth::get()
+        }
+
+        fn block_messages() -> BlockMessagesWithStorageKey {
+            Messenger::get_block_messages()
+        }
+
+        fn outbox_message_unsigned(msg: CrossDomainMessage<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
+            Messenger::outbox_message_unsigned(msg)
+        }
+
+        fn inbox_response_message_unsigned(msg: CrossDomainMessage<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
+            Messenger::inbox_response_message_unsigned(msg)
+        }
+
+        fn should_relay_outbox_message(dst_chain_id: ChainId, msg_id: MessageId) -> bool {
+            Messenger::should_relay_outbox_message(dst_chain_id, msg_id)
+        }
+
+        fn should_relay_inbox_message_response(dst_chain_id: ChainId, msg_id: MessageId) -> bool {
+            Messenger::should_relay_inbox_message_response(dst_chain_id, msg_id)
         }
     }
 

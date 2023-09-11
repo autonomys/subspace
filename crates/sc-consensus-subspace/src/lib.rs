@@ -22,37 +22,35 @@
 
 pub mod archiver;
 pub mod aux_schema;
+pub mod import_queue;
 pub mod notification;
 mod slot_worker;
 #[cfg(test)]
 mod tests;
 
 use crate::archiver::{SegmentHeadersStore, FINALIZATION_DEPTH_IN_SEGMENTS};
+use crate::import_queue::VerificationError;
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use crate::slot_worker::SubspaceSlotWorker;
 pub use crate::slot_worker::SubspaceSyncOracle;
 use futures::channel::mpsc;
 use futures::StreamExt;
-use log::{debug, info, trace, warn};
+use log::{debug, info, warn};
 use lru::LruCache;
 use parking_lot::Mutex;
-use prometheus_endpoint::Registry;
 use sc_client_api::backend::AuxStore;
 use sc_client_api::{BlockBackend, BlockchainEvents, ProvideUncles, UsageProvider};
 use sc_consensus::block_import::{
     BlockCheckParams, BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult,
 };
-use sc_consensus::import_queue::{
-    BasicQueue, BoxJustificationImport, DefaultImportQueue, Verifier,
-};
 use sc_consensus::JustificationSyncLink;
-use sc_consensus_slots::{
-    check_equivocation, BackoffAuthoringBlocksStrategy, InherentDataProviderExt, SlotProportion,
-};
-use sc_proof_of_time::{PotConsensusState, PotVerifyBlockProofsError};
-use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_DEBUG, CONSENSUS_TRACE};
+use sc_consensus_slots::{BackoffAuthoringBlocksStrategy, InherentDataProviderExt, SlotProportion};
+#[cfg(feature = "pot")]
+use sc_proof_of_time::source::PotSlotInfoStream;
+#[cfg(feature = "pot")]
+use sc_proof_of_time::verifier::PotVerifier;
+use sc_telemetry::TelemetryHandle;
 use sc_utils::mpsc::TracingUnboundedSender;
-use schnorrkel::context::SigningContext;
 use sp_api::{ApiError, ApiExt, BlockT, HeaderT, NumberFor, ProvideRuntimeApi, TransactionFor};
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
 use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata, Result as ClientResult};
@@ -60,15 +58,10 @@ use sp_consensus::{
     BlockOrigin, Environment, Error as ConsensusError, Proposer, SelectChain, SyncOracle,
 };
 use sp_consensus_slots::{Slot, SlotDuration};
-#[cfg(feature = "pot")]
-use sp_consensus_subspace::digests::PreDigest;
 use sp_consensus_subspace::digests::{
     extract_pre_digest, extract_subspace_digest_items, Error as DigestError, SubspaceDigestItems,
 };
-use sp_consensus_subspace::{
-    check_header, ChainConstants, CheckedHeader, FarmerPublicKey, FarmerSignature, SubspaceApi,
-    VerificationError, VerificationParams,
-};
+use sp_consensus_subspace::{ChainConstants, FarmerPublicKey, FarmerSignature, SubspaceApi};
 use sp_core::H256;
 use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
 use sp_runtime::traits::One;
@@ -81,7 +74,7 @@ use subspace_archiving::archiver::NewArchivedSegment;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
     BlockNumber, HistorySize, PublicKey, Randomness, SectorId, SegmentHeader, SegmentIndex,
-    SlotNumber, Solution, SolutionRange,
+    Solution, SolutionRange,
 };
 use subspace_proof_of_space::Table;
 use subspace_solving::REWARD_SIGNING_CONTEXT;
@@ -89,33 +82,6 @@ use subspace_verification::{
     calculate_block_weight, Error as VerificationPrimitiveError, PieceCheckParams,
     VerifySolutionParams,
 };
-
-/// Errors while verifying the block proof of time.
-#[derive(Debug, thiserror::Error)]
-#[allow(missing_docs)]
-pub enum PotVerifyError {
-    /// Block has no proof of time digest.
-    #[error("Block missing proof of time : {block_number}/{parent_slot_number:?}/{slot_number}")]
-    MissingPotDigest {
-        block_number: BlockNumber,
-        parent_slot_number: Option<SlotNumber>,
-        slot_number: SlotNumber,
-    },
-
-    /// Parent block has no proof of time digest.
-    #[error(
-        "Parent block missing proof of time : {block_number}/{parent_slot_number}/{slot_number}"
-    )]
-    ParentMissingPotDigest {
-        block_number: BlockNumber,
-        parent_slot_number: SlotNumber,
-        slot_number: SlotNumber,
-    },
-
-    /// Verification failed.
-    #[error("Proof of time error: {0}")]
-    PotVerifyBlockProofsError(#[from] PotVerifyBlockProofsError),
-}
 
 /// Information about new slot that just arrived
 #[derive(Debug, Copy, Clone)]
@@ -136,7 +102,7 @@ pub struct NewSlotNotification {
     /// New slot information.
     pub new_slot_info: NewSlotInfo,
     /// Sender that can be used to send solutions for the slot.
-    pub solution_sender: TracingUnboundedSender<Solution<FarmerPublicKey, FarmerPublicKey>>,
+    pub solution_sender: mpsc::Sender<Solution<FarmerPublicKey, FarmerPublicKey>>,
 }
 
 /// Notification with a hash that needs to be signed to receive reward and sender for signature.
@@ -183,11 +149,9 @@ pub enum Error<Header: HeaderT> {
     /// Error during digest item extraction
     #[error("Digest item error: {0}")]
     DigestItemError(#[from] DigestError),
-    /// No Subspace pre-runtime digest found
-    #[error("No Subspace pre-runtime digest found")]
-    NoPreRuntimeDigest,
     /// Header rejected: too far in the future
     #[error("Header {0:?} rejected: too far in the future")]
+    #[cfg(not(feature = "pot"))]
     TooFarInFuture(Header::Hash),
     /// Parent unavailable. Cannot import
     #[error("Parent ({0}) of {1} unavailable. Cannot import")]
@@ -207,6 +171,10 @@ pub enum Error<Header: HeaderT> {
     /// Bad reward signature
     #[error("Bad reward signature on {0:?}")]
     BadRewardSignature(Header::Hash),
+    /// Invalid proof of time
+    #[cfg(feature = "pot")]
+    #[error("Invalid proof of time")]
+    InvalidProofOfTime,
     /// Solution is outside of solution range
     #[error(
         "Solution distance {solution_distance} is outside of solution range \
@@ -246,6 +214,7 @@ pub enum Error<Header: HeaderT> {
     #[error("Parent block of {0} has no associated weight")]
     ParentBlockNoAssociatedWeight(Header::Hash),
     /// Block has invalid associated global randomness
+    #[cfg(not(feature = "pot"))]
     #[error("Invalid global randomness for block {0}")]
     InvalidGlobalRandomness(Header::Hash),
     /// Block has invalid associated solution range
@@ -298,9 +267,6 @@ pub enum Error<Header: HeaderT> {
     /// Runtime Api error.
     #[error(transparent)]
     RuntimeApi(#[from] ApiError),
-    /// Proof of time verification failed.
-    #[error("PoT verification failed: {0}")]
-    PotVerifyError(#[from] PotVerifyError),
 }
 
 impl<Header> From<VerificationError<Header>> for Error<Header>
@@ -310,12 +276,13 @@ where
     #[inline]
     fn from(error: VerificationError<Header>) -> Self {
         match error {
-            VerificationError::NoPreRuntimeDigest => Error::NoPreRuntimeDigest,
             VerificationError::HeaderBadSeal(block_hash) => Error::HeaderBadSeal(block_hash),
             VerificationError::HeaderUnsealed(block_hash) => Error::HeaderUnsealed(block_hash),
             VerificationError::BadRewardSignature(block_hash) => {
                 Error::BadRewardSignature(block_hash)
             }
+            #[cfg(feature = "pot")]
+            VerificationError::InvalidProofOfTime => Error::InvalidProofOfTime,
             VerificationError::VerificationError(slot, error) => match error {
                 VerificationPrimitiveError::InvalidPieceOffset {
                     piece_offset,
@@ -380,12 +347,13 @@ where
 }
 
 /// Parameters for Subspace.
-pub struct SubspaceParams<B: BlockT, C, SC, E, I, SO, L, CIDP, BS, AS>
+pub struct SubspaceParams<Block, Client, SC, E, I, SO, L, CIDP, BS, AS>
 where
+    Block: BlockT,
     SO: SyncOracle + Send + Sync,
 {
     /// The client to use
-    pub client: Arc<C>,
+    pub client: Arc<Client>,
 
     /// The SelectChain Strategy
     pub select_chain: SC,
@@ -414,7 +382,7 @@ where
     pub backoff_authoring_blocks: Option<BS>,
 
     /// The source of timestamps for relative slots
-    pub subspace_link: SubspaceLink<B>,
+    pub subspace_link: SubspaceLink<Block>,
 
     /// Persistent storage of segment headers
     pub segment_headers_store: SegmentHeadersStore<AS>,
@@ -433,8 +401,9 @@ where
     /// Handle use to report telemetries.
     pub telemetry: Option<TelemetryHandle>,
 
-    /// Proof of time interface.
-    pub proof_of_time: Option<Arc<dyn PotConsensusState>>,
+    /// Stream with proof of time slots.
+    #[cfg(feature = "pot")]
+    pub pot_slot_info_stream: PotSlotInfoStream,
 }
 
 /// Start the Subspace worker.
@@ -454,7 +423,8 @@ pub fn start_subspace<PosTable, Block, Client, SC, E, I, SO, CIDP, BS, L, AS, Er
         block_proposal_slot_portion,
         max_block_proposal_slot_portion,
         telemetry,
-        proof_of_time,
+        #[cfg(feature = "pot")]
+        pot_slot_info_stream,
     }: SubspaceParams<Block, Client, SC, E, I, SO, L, CIDP, BS, AS>,
 ) -> Result<SubspaceWorker, sp_consensus::Error>
 where
@@ -487,7 +457,7 @@ where
     BlockNumber: From<<<Block as BlockT>::Header as HeaderT>::Number>,
 {
     let worker = SubspaceSlotWorker {
-        client,
+        client: client.clone(),
         block_import,
         env,
         sync_oracle: sync_oracle.clone(),
@@ -499,18 +469,34 @@ where
         block_proposal_slot_portion,
         max_block_proposal_slot_portion,
         telemetry,
+        chain_constants: get_chain_constants(client.as_ref())
+            .map_err(|error| sp_consensus::Error::Other(error.into()))?,
         segment_headers_store,
-        proof_of_time,
+        #[cfg(feature = "pot")]
+        pending_solutions: Default::default(),
+        #[cfg(feature = "pot")]
+        pot_checkpoints: Default::default(),
         _pos_table: PhantomData::<PosTable>,
     };
 
     info!(target: "subspace", "🧑‍🌾 Starting Subspace Authorship worker");
+    #[cfg(not(feature = "pot"))]
     let inner = sc_consensus_slots::start_slot_worker(
         subspace_link.slot_duration(),
         select_chain,
         sc_consensus_slots::SimpleSlotWorkerToSlotWorker(worker),
         sync_oracle,
         create_inherent_data_providers,
+    );
+    #[cfg(feature = "pot")]
+    let inner = sc_proof_of_time::start_slot_worker(
+        subspace_link.slot_duration(),
+        client,
+        select_chain,
+        worker,
+        sync_oracle,
+        create_inherent_data_providers,
+        pot_slot_info_stream,
     );
 
     Ok(SubspaceWorker {
@@ -603,230 +589,6 @@ impl<Block: BlockT> SubspaceLink<Block> {
     }
 }
 
-/// A verifier for Subspace blocks.
-pub struct SubspaceVerifier<PosTable, Block: BlockT, Client, SelectChain, SN> {
-    client: Arc<Client>,
-    kzg: Kzg,
-    select_chain: SelectChain,
-    slot_now: SN,
-    telemetry: Option<TelemetryHandle>,
-    reward_signing_context: SigningContext,
-    is_authoring_blocks: bool,
-    _pos_table: PhantomData<PosTable>,
-    _block: PhantomData<Block>,
-}
-
-impl<PosTable, Block, Client, SelectChain, SN>
-    SubspaceVerifier<PosTable, Block, Client, SelectChain, SN>
-where
-    Block: BlockT,
-    Client: AuxStore + HeaderBackend<Block> + ProvideRuntimeApi<Block>,
-    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey>,
-    SelectChain: sp_consensus::SelectChain<Block>,
-{
-    async fn check_and_report_equivocation(
-        &self,
-        slot_now: Slot,
-        slot: Slot,
-        header: &Block::Header,
-        author: &FarmerPublicKey,
-        origin: &BlockOrigin,
-    ) -> Result<(), Error<Block::Header>> {
-        // don't report any equivocations during initial sync
-        // as they are most likely stale.
-        if *origin == BlockOrigin::NetworkInitialSync {
-            return Ok(());
-        }
-
-        // check if authorship of this header is an equivocation and return a proof if so.
-        let equivocation_proof =
-            match check_equivocation(&*self.client, slot_now, slot, header, author)
-                .map_err(Error::Client)?
-            {
-                Some(proof) => proof,
-                None => return Ok(()),
-            };
-
-        info!(
-            "Slot author {:?} is equivocating at slot {} with headers {:?} and {:?}",
-            author,
-            slot,
-            equivocation_proof.first_header.hash(),
-            equivocation_proof.second_header.hash(),
-        );
-
-        if self.is_authoring_blocks {
-            // get the best block on which we will build and send the equivocation report.
-            let best_hash = self
-                .select_chain
-                .best_chain()
-                .await
-                .map(|h| h.hash())
-                .map_err(|e| Error::Client(e.into()))?;
-
-            // submit equivocation report at best block.
-            self.client
-                .runtime_api()
-                .submit_report_equivocation_extrinsic(best_hash, equivocation_proof)
-                .map_err(Error::RuntimeApi)?;
-
-            info!(target: "subspace", "Submitted equivocation report for author {:?}", author);
-        } else {
-            info!(
-                target: "subspace",
-                "Not submitting equivocation report because node is not authoring blocks"
-            );
-        }
-
-        Ok(())
-    }
-}
-
-#[async_trait::async_trait]
-impl<PosTable, Block, Client, SelectChain, SN> Verifier<Block>
-    for SubspaceVerifier<PosTable, Block, Client, SelectChain, SN>
-where
-    PosTable: Table,
-    Block: BlockT,
-    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + AuxStore,
-    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey>,
-    SelectChain: sp_consensus::SelectChain<Block>,
-    SN: Fn() -> Slot + Send + Sync + 'static,
-{
-    async fn verify(
-        &mut self,
-        mut block: BlockImportParams<Block, ()>,
-    ) -> Result<BlockImportParams<Block, ()>, String> {
-        trace!(
-            target: "subspace",
-            "Verifying origin: {:?} header: {:?} justification(s): {:?} body: {:?}",
-            block.origin,
-            block.header,
-            block.justifications,
-            block.body,
-        );
-
-        let hash = block.header.hash();
-
-        debug!(target: "subspace", "We have {:?} logs in this header", block.header.digest().logs().len());
-
-        let subspace_digest_items = extract_subspace_digest_items::<
-            Block::Header,
-            FarmerPublicKey,
-            FarmerPublicKey,
-            FarmerSignature,
-        >(&block.header)
-        .map_err(Error::<Block::Header>::from)?;
-        let pre_digest = subspace_digest_items.pre_digest;
-
-        // Check if farmer's plot is burned.
-        // TODO: Add to header and store in aux storage?
-        if self
-            .client
-            .runtime_api()
-            .is_in_block_list(*block.header.parent_hash(), &pre_digest.solution.public_key)
-            .or_else(|error| {
-                if block.state_action.skip_execution_checks() {
-                    Ok(false)
-                } else {
-                    Err(Error::<Block::Header>::RuntimeApi(error))
-                }
-            })?
-        {
-            warn!(
-                target: "subspace",
-                "Verifying block with solution provided by farmer in block list: {}",
-                pre_digest.solution.public_key
-            );
-
-            return Err(Error::<Block::Header>::FarmerInBlockList(
-                pre_digest.solution.public_key.clone(),
-            )
-            .into());
-        }
-
-        let slot_now = (self.slot_now)();
-
-        // Stateless header verification only. This means only check that header contains required
-        // contents, correct signature and valid Proof-of-Space, but because previous block is not
-        // guaranteed to be imported at this point, it is not possible to verify
-        // Proof-of-Archival-Storage. In order to verify PoAS randomness and solution range
-        // from the header are checked against expected correct values during block import as well
-        // as whether piece in the header corresponds to the actual archival history of the
-        // blockchain.
-        let checked_header = {
-            // We add one to the current slot to allow for some small drift.
-            // FIXME https://github.com/paritytech/substrate/issues/1019 in the future, alter this
-            //  queue to allow deferring of headers
-            check_header::<PosTable, _, FarmerPublicKey>(
-                VerificationParams {
-                    header: block.header.clone(),
-                    slot_now: slot_now + 1,
-                    verify_solution_params: &VerifySolutionParams {
-                        global_randomness: subspace_digest_items.global_randomness,
-                        solution_range: subspace_digest_items.solution_range,
-                        piece_check_params: None,
-                    },
-                    reward_signing_context: &self.reward_signing_context,
-                },
-                Some(pre_digest),
-                &self.kzg,
-            )
-            .map_err(Error::<Block::Header>::from)?
-        };
-
-        match checked_header {
-            CheckedHeader::Checked(pre_header, verified_info) => {
-                let slot = verified_info.pre_digest.slot;
-
-                // the header is valid but let's check if there was something else already
-                // proposed at the same slot by the given author. if there was, we will
-                // report the equivocation to the runtime.
-                if let Err(err) = self
-                    .check_and_report_equivocation(
-                        slot_now,
-                        slot,
-                        &block.header,
-                        &verified_info.pre_digest.solution.public_key,
-                        &block.origin,
-                    )
-                    .await
-                {
-                    warn!(
-                        target: "subspace",
-                        "Error checking/reporting Subspace equivocation: {}",
-                        err
-                    );
-                }
-
-                trace!(target: "subspace", "Checked {:?}; importing.", pre_header);
-                telemetry!(
-                    self.telemetry;
-                    CONSENSUS_TRACE;
-                    "subspace.checked_and_importing";
-                    "pre_header" => ?pre_header,
-                );
-
-                block.header = pre_header;
-                block.post_digests.push(verified_info.seal);
-                block.post_hash = Some(hash);
-
-                Ok(block)
-            }
-            CheckedHeader::Deferred(a, b) => {
-                debug!(target: "subspace", "Checking {:?} failed; {:?}, {:?}.", hash, a, b);
-                telemetry!(
-                    self.telemetry;
-                    CONSENSUS_DEBUG;
-                    "subspace.header_too_far_in_future";
-                    "hash" => ?hash, "a" => ?a, "b" => ?b
-                );
-                Err(Error::<Block::Header>::TooFarInFuture(hash).into())
-            }
-        }
-    }
-}
-
 /// A block-import handler for Subspace.
 pub struct SubspaceBlockImport<PosTable, Block, Client, I, CIDP, AS>
 where
@@ -838,8 +600,10 @@ where
         SubspaceNotificationSender<BlockImportingNotification<Block>>,
     subspace_link: SubspaceLink<Block>,
     create_inherent_data_providers: CIDP,
+    chain_constants: ChainConstants,
     segment_headers_store: SegmentHeadersStore<AS>,
-    proof_of_time: Option<Arc<dyn PotConsensusState>>,
+    #[cfg(feature = "pot")]
+    pot_verifier: PotVerifier,
     _pos_table: PhantomData<PosTable>,
 }
 
@@ -857,8 +621,10 @@ where
             block_importing_notification_sender: self.block_importing_notification_sender.clone(),
             subspace_link: self.subspace_link.clone(),
             create_inherent_data_providers: self.create_inherent_data_providers.clone(),
+            chain_constants: self.chain_constants,
             segment_headers_store: self.segment_headers_store.clone(),
-            proof_of_time: self.proof_of_time.clone(),
+            #[cfg(feature = "pot")]
+            pot_verifier: self.pot_verifier.clone(),
             _pos_table: PhantomData,
         }
     }
@@ -874,6 +640,8 @@ where
     AS: AuxStore + Send + Sync + 'static,
     BlockNumber: From<<<Block as BlockT>::Header as HeaderT>::Number>,
 {
+    // TODO: Create a struct for these parameters
+    #[allow(clippy::too_many_arguments)]
     fn new(
         client: Arc<Client>,
         block_import: I,
@@ -882,17 +650,20 @@ where
         >,
         subspace_link: SubspaceLink<Block>,
         create_inherent_data_providers: CIDP,
+        chain_constants: ChainConstants,
         segment_headers_store: SegmentHeadersStore<AS>,
-        proof_of_time: Option<Arc<dyn PotConsensusState>>,
+        #[cfg(feature = "pot")] pot_verifier: PotVerifier,
     ) -> Self {
-        SubspaceBlockImport {
+        Self {
             client,
             inner: block_import,
             block_importing_notification_sender,
             subspace_link,
             create_inherent_data_providers,
+            chain_constants,
             segment_headers_store,
-            proof_of_time,
+            #[cfg(feature = "pot")]
+            pot_verifier,
             _pos_table: PhantomData,
         }
     }
@@ -917,7 +688,7 @@ where
 
         let pre_digest = &subspace_digest_items.pre_digest;
         if let Some(root_plot_public_key) = root_plot_public_key {
-            if &pre_digest.solution.public_key != root_plot_public_key {
+            if &pre_digest.solution().public_key != root_plot_public_key {
                 // Only root plot public key is allowed.
                 return Err(Error::OnlyRootPlotPublicKeyAllowed);
             }
@@ -928,7 +699,7 @@ where
         if self
             .client
             .runtime_api()
-            .is_in_block_list(parent_hash, &pre_digest.solution.public_key)
+            .is_in_block_list(parent_hash, &pre_digest.solution().public_key)
             .or_else(|error| {
                 if skip_runtime_access {
                     Ok(false)
@@ -940,11 +711,11 @@ where
             warn!(
                 target: "subspace",
                 "Ignoring block with solution provided by farmer in block list: {}",
-                pre_digest.solution.public_key
+                pre_digest.solution().public_key
             );
 
             return Err(Error::FarmerInBlockList(
-                pre_digest.solution.public_key.clone(),
+                pre_digest.solution().public_key.clone(),
             ));
         }
 
@@ -953,19 +724,47 @@ where
             .header(parent_hash)?
             .ok_or(Error::ParentUnavailable(parent_hash, block_hash))?;
 
+        let parent_slot = extract_pre_digest(&parent_header).map(|d| d.slot())?;
+
+        // Make sure that slot number is strictly increasing
+        #[cfg_attr(not(feature = "pot"), allow(unused_variables))]
+        let slots_since_parent = match pre_digest.slot().checked_sub(*parent_slot) {
+            Some(slots_since_parent) => {
+                if slots_since_parent > 0 {
+                    Slot::from(slots_since_parent)
+                } else {
+                    return Err(Error::SlotMustIncrease(parent_slot, pre_digest.slot()));
+                }
+            }
+            None => {
+                return Err(Error::SlotMustIncrease(parent_slot, pre_digest.slot()));
+            }
+        };
+
+        #[cfg(not(feature = "pot"))]
+        let correct_global_randomness;
         #[cfg(feature = "pot")]
-        let mut parent_pre_digest = None;
-        let (correct_global_randomness, correct_solution_range) = if block_number.is_one() {
+        let pot_seed;
+        let correct_solution_range;
+
+        if block_number.is_one() {
             // Genesis block doesn't contain usual digest items, we need to query runtime API
             // instead
-            let correct_global_randomness = slot_worker::extract_global_randomness_for_block(
-                self.client.as_ref(),
-                parent_hash,
-            )?;
-            let (correct_solution_range, _) =
-                slot_worker::extract_solution_ranges_for_block(self.client.as_ref(), parent_hash)?;
+            #[cfg(not(feature = "pot"))]
+            {
+                correct_global_randomness = slot_worker::extract_global_randomness_for_block(
+                    self.client.as_ref(),
+                    parent_hash,
+                )?;
+            }
+            #[cfg(feature = "pot")]
+            {
+                pot_seed = self.pot_verifier.genesis_seed();
+            }
 
-            (correct_global_randomness, correct_solution_range)
+            correct_solution_range =
+                slot_worker::extract_solution_ranges_for_block(self.client.as_ref(), parent_hash)?
+                    .0;
         } else {
             let parent_subspace_digest_items = extract_subspace_digest_items::<
                 _,
@@ -974,44 +773,46 @@ where
                 FarmerSignature,
             >(&parent_header)?;
 
-            let correct_global_randomness =
-                match parent_subspace_digest_items.next_global_randomness {
-                    Some(global_randomness) => global_randomness,
-                    None => parent_subspace_digest_items.global_randomness,
-                };
+            #[cfg(not(feature = "pot"))]
+            {
+                correct_global_randomness =
+                    match parent_subspace_digest_items.next_global_randomness {
+                        Some(global_randomness) => global_randomness,
+                        None => parent_subspace_digest_items.global_randomness,
+                    };
+            }
+            #[cfg(feature = "pot")]
+            {
+                pot_seed = parent_subspace_digest_items
+                    .pre_digest
+                    .pot_info()
+                    .proof_of_time()
+                    .seed();
+            }
 
-            let correct_solution_range = match parent_subspace_digest_items.next_solution_range {
+            correct_solution_range = match parent_subspace_digest_items.next_solution_range {
                 Some(solution_range) => solution_range,
                 None => parent_subspace_digest_items.solution_range,
             };
+        }
 
-            #[cfg(feature = "pot")]
-            {
-                parent_pre_digest = Some(parent_subspace_digest_items.pre_digest);
-            }
-            (correct_global_randomness, correct_solution_range)
-        };
-
-        #[cfg(feature = "pot")]
-        let correct_global_randomness = if let Some(proof_of_time) = self.proof_of_time.as_ref() {
-            let ret = self.proof_of_time_verification(
-                proof_of_time.as_ref(),
-                block_number,
-                pre_digest,
-                parent_pre_digest.as_ref(),
-            );
-            debug!(
-                target: "subspace",
-                "block_import_verification: {block_number}/{}/{:?}/{origin:?}, ret={ret:?}",
-                pre_digest.slot, parent_pre_digest.as_ref().map(|p| p.slot)
-            );
-            ret.map_err(Error::PotVerifyError)?
-        } else {
-            correct_global_randomness
-        };
-
+        #[cfg(not(feature = "pot"))]
         if subspace_digest_items.global_randomness != correct_global_randomness {
             return Err(Error::InvalidGlobalRandomness(block_hash));
+        }
+        #[cfg(feature = "pot")]
+        // TODO: Extend/optimize this check once we have checkpoints in justifications
+        if !self
+            .pot_verifier
+            .is_proof_valid(
+                pot_seed,
+                subspace_digest_items.pot_slot_iterations,
+                slots_since_parent,
+                subspace_digest_items.pre_digest.pot_info().proof_of_time(),
+            )
+            .await
+        {
+            return Err(Error::InvalidProofOfTime);
         }
 
         if subspace_digest_items.solution_range != correct_solution_range {
@@ -1019,11 +820,10 @@ where
         }
 
         let sector_id = SectorId::new(
-            PublicKey::from(&pre_digest.solution.public_key).hash(),
-            pre_digest.solution.sector_index,
+            PublicKey::from(&pre_digest.solution().public_key).hash(),
+            pre_digest.solution().sector_index,
         );
 
-        let chain_constants = get_chain_constants(self.client.as_ref())?;
         // TODO: Below `skip_runtime_access` has no impact on this, but ideally it
         //  should (though we don't support fast sync yet, so doesn't matter in
         //  practice)
@@ -1032,11 +832,11 @@ where
             .runtime_api()
             .max_pieces_in_sector(parent_hash)?;
         let piece_index = sector_id.derive_piece_index(
-            pre_digest.solution.piece_offset,
-            pre_digest.solution.history_size,
+            pre_digest.solution().piece_offset,
+            pre_digest.solution().history_size,
             max_pieces_in_sector,
-            chain_constants.recent_segments(),
-            chain_constants.recent_history_fraction(),
+            self.chain_constants.recent_segments(),
+            self.chain_constants.recent_history_fraction(),
         );
         let segment_index = piece_index.segment_index();
 
@@ -1051,9 +851,9 @@ where
             .get_segment_header(
                 subspace_digest_items
                     .pre_digest
-                    .solution
+                    .solution()
                     .history_size
-                    .sector_expiration_check(chain_constants.min_sector_lifetime())
+                    .sector_expiration_check(self.chain_constants.min_sector_lifetime())
                     .ok_or(Error::InvalidHistorySize)?
                     .segment_index(),
             )
@@ -1062,18 +862,21 @@ where
         // Piece is not checked during initial block verification because it requires access to
         // segment header and runtime, check it now.
         subspace_verification::verify_solution::<PosTable, _, _>(
-            &pre_digest.solution,
+            pre_digest.solution(),
             // Slot was already checked during initial block verification
-            pre_digest.slot.into(),
+            pre_digest.slot().into(),
             &VerifySolutionParams {
+                #[cfg(not(feature = "pot"))]
                 global_randomness: subspace_digest_items.global_randomness,
+                #[cfg(feature = "pot")]
+                proof_of_time: subspace_digest_items.pre_digest.pot_info().proof_of_time(),
                 solution_range: subspace_digest_items.solution_range,
                 piece_check_params: Some(PieceCheckParams {
                     max_pieces_in_sector,
                     segment_commitment,
-                    recent_segments: chain_constants.recent_segments(),
-                    recent_history_fraction: chain_constants.recent_history_fraction(),
-                    min_sector_lifetime: chain_constants.min_sector_lifetime(),
+                    recent_segments: self.chain_constants.recent_segments(),
+                    recent_history_fraction: self.chain_constants.recent_history_fraction(),
+                    min_sector_lifetime: self.chain_constants.min_sector_lifetime(),
                     // TODO: Below `skip_runtime_access` has no impact on this, but ideally it
                     //  should (though we don't support fast sync yet, so doesn't matter in
                     //  practice)
@@ -1083,14 +886,7 @@ where
             },
             &self.subspace_link.kzg,
         )
-        .map_err(|error| VerificationError::VerificationError(pre_digest.slot, error))?;
-
-        let parent_slot = extract_pre_digest(&parent_header).map(|d| d.slot)?;
-
-        // Make sure that slot number is strictly increasing
-        if pre_digest.slot <= parent_slot {
-            return Err(Error::SlotMustIncrease(parent_slot, pre_digest.slot));
-        }
+        .map_err(|error| VerificationError::VerificationError(pre_digest.slot(), error))?;
 
         if !skip_runtime_access {
             // If the body is passed through, we need to use the runtime to check that the
@@ -1130,53 +926,6 @@ where
         }
 
         Ok(())
-    }
-
-    /// Verifies the proof of time in the received block,
-    /// returns the randomness from the PoT pre digest if successful.
-    #[allow(clippy::too_many_arguments)]
-    #[cfg(feature = "pot")]
-    fn proof_of_time_verification(
-        &self,
-        proof_of_time: &dyn PotConsensusState,
-        block_number: NumberFor<Block>,
-        pre_digest: &PreDigest<FarmerPublicKey, FarmerPublicKey>,
-        parent_pre_digest: Option<&PreDigest<FarmerPublicKey, FarmerPublicKey>>,
-    ) -> Result<Randomness, PotVerifyError> {
-        let pot_digest =
-            pre_digest
-                .proof_of_time
-                .as_ref()
-                .ok_or_else(|| PotVerifyError::MissingPotDigest {
-                    block_number: block_number.into(),
-                    parent_slot_number: parent_pre_digest.map(|p| p.slot.into()),
-                    slot_number: pre_digest.slot.into(),
-                })?;
-        let randomness = pot_digest.derive_global_randomness();
-        let parent_pre_digest = match parent_pre_digest {
-            Some(parent_pre_digest) => parent_pre_digest,
-            None => return Ok(randomness),
-        };
-
-        let parent_pot_digest = parent_pre_digest.proof_of_time.as_ref().ok_or_else(|| {
-            PotVerifyError::ParentMissingPotDigest {
-                block_number: block_number.into(),
-                parent_slot_number: parent_pre_digest.slot.into(),
-                slot_number: pre_digest.slot.into(),
-            }
-        })?;
-
-        proof_of_time
-            .verify_block_proofs(
-                block_number.into(),
-                pre_digest.slot.into(),
-                pot_digest,
-                parent_pre_digest.slot.into(),
-                parent_pot_digest,
-            )
-            .map_err(PotVerifyError::PotVerifyBlockProofsError)?;
-
-        Ok(randomness)
     }
 }
 
@@ -1385,11 +1134,14 @@ pub fn block_import<PosTable, Client, Block, I, CIDP, AS>(
     kzg: Kzg,
     create_inherent_data_providers: CIDP,
     segment_headers_store: SegmentHeadersStore<AS>,
-    proof_of_time: Option<Arc<dyn PotConsensusState>>,
-) -> ClientResult<(
-    SubspaceBlockImport<PosTable, Block, Client, I, CIDP, AS>,
-    SubspaceLink<Block>,
-)>
+    #[cfg(feature = "pot")] pot_verifier: PotVerifier,
+) -> Result<
+    (
+        SubspaceBlockImport<PosTable, Block, Client, I, CIDP, AS>,
+        SubspaceLink<Block>,
+    ),
+    sp_blockchain::Error,
+>
 where
     PosTable: Table,
     Block: BlockT,
@@ -1408,9 +1160,8 @@ where
     let (block_importing_notification_sender, block_importing_notification_stream) =
         notification::channel("subspace_block_importing_notification_stream");
 
-    let confirmation_depth_k = get_chain_constants(client.as_ref())
-        .expect("Must always be able to get chain constants")
-        .confirmation_depth_k();
+    let chain_constants = get_chain_constants(client.as_ref())
+        .map_err(|error| sp_blockchain::Error::Application(error.into()))?;
 
     let link = SubspaceLink {
         slot_duration,
@@ -1425,7 +1176,8 @@ where
         // TODO: Consider making `confirmation_depth_k` non-zero
         segment_headers: Arc::new(Mutex::new(LruCache::new(
             NonZeroUsize::new(
-                (FINALIZATION_DEPTH_IN_SEGMENTS + 1).max(confirmation_depth_k as usize),
+                (FINALIZATION_DEPTH_IN_SEGMENTS + 1)
+                    .max(chain_constants.confirmation_depth_k() as usize),
             )
             .expect("Confirmation depth of zero is not supported"),
         ))),
@@ -1438,64 +1190,11 @@ where
         block_importing_notification_sender,
         link.clone(),
         create_inherent_data_providers,
+        chain_constants,
         segment_headers_store,
-        proof_of_time,
+        #[cfg(feature = "pot")]
+        pot_verifier,
     );
 
     Ok((import, link))
-}
-
-/// Start an import queue for the Subspace consensus algorithm.
-///
-/// This method returns the import queue, some data that needs to be passed to the block authoring
-/// logic (`SubspaceLink`), and a future that must be run to
-/// completion and is responsible for listening to finality notifications and
-/// pruning the epoch changes tree.
-///
-/// The block import object provided must be the `SubspaceBlockImport` or a wrapper
-/// of it, otherwise crucial import logic will be omitted.
-// TODO: Create a struct for these parameters
-#[allow(clippy::too_many_arguments)]
-pub fn import_queue<PosTable, Block: BlockT, Client, SelectChain, Inner, SN>(
-    block_import: Inner,
-    justification_import: Option<BoxJustificationImport<Block>>,
-    client: Arc<Client>,
-    kzg: Kzg,
-    select_chain: SelectChain,
-    slot_now: SN,
-    spawner: &impl sp_core::traits::SpawnEssentialNamed,
-    registry: Option<&Registry>,
-    telemetry: Option<TelemetryHandle>,
-    is_authoring_blocks: bool,
-) -> ClientResult<DefaultImportQueue<Block, Client>>
-where
-    PosTable: Table,
-    Inner: BlockImport<Block, Error = ConsensusError, Transaction = TransactionFor<Client, Block>>
-        + Send
-        + Sync
-        + 'static,
-    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + AuxStore + Send + Sync + 'static,
-    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey> + ApiExt<Block>,
-    SelectChain: sp_consensus::SelectChain<Block> + 'static,
-    SN: Fn() -> Slot + Send + Sync + 'static,
-{
-    let verifier = SubspaceVerifier {
-        client,
-        kzg,
-        select_chain,
-        slot_now,
-        telemetry,
-        reward_signing_context: schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT),
-        is_authoring_blocks,
-        _pos_table: PhantomData::<PosTable>,
-        _block: PhantomData,
-    };
-
-    Ok(BasicQueue::new(
-        verifier,
-        Box::new(block_import),
-        justification_import,
-        spawner,
-        registry,
-    ))
 }

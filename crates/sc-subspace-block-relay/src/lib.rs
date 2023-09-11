@@ -43,7 +43,6 @@
 use crate::utils::{NetworkPeerHandle, RelayError};
 use async_trait::async_trait;
 use codec::{Decode, Encode};
-use std::time::Duration;
 
 mod consensus;
 mod protocol;
@@ -53,22 +52,6 @@ pub use crate::consensus::build_consensus_relay;
 pub use crate::utils::NetworkWrapper;
 
 pub(crate) const LOG_TARGET: &str = "block_relay";
-
-/// The downloaded entry and meta info
-pub(crate) struct DownloadResult<DownloadUnitId, DownloadUnit: Encode> {
-    /// Downloaded unit Id
-    download_unit_id: DownloadUnitId,
-
-    /// Downloaded entry
-    downloaded: DownloadUnit,
-
-    /// Total transactions (in bytes) that could not be resolved
-    /// locally, and had to be fetched from the server
-    local_miss: usize,
-
-    /// Download latency
-    latency: Duration,
-}
 
 /// The resolved protocol unit related info
 pub(crate) struct Resolved<ProtocolUnitId, ProtocolUnit> {
@@ -93,20 +76,24 @@ where
     type Response: Send + Sync + Encode + Decode + 'static;
 
     /// Builds the protocol portion of the initial request
-    fn build_initial_request(&self) -> Self::Request;
+    fn build_initial_request(
+        &self,
+        backend: &dyn ClientBackend<ProtocolUnitId, ProtocolUnit>,
+    ) -> Self::Request;
 
     /// Resolves the initial response to produce the protocol units.
     async fn resolve_initial_response<Request>(
         &self,
         response: Self::Response,
         network_peer_handle: &NetworkPeerHandle,
+        backend: &dyn ClientBackend<ProtocolUnitId, ProtocolUnit>,
     ) -> Result<(DownloadUnitId, Vec<Resolved<ProtocolUnitId, ProtocolUnit>>), RelayError>
     where
         Request: From<Self::Request> + Encode + Send + Sync;
 }
 
 /// The server side of the relay protocol
-pub(crate) trait ProtocolServer<DownloadUnitId> {
+pub(crate) trait ProtocolServer<DownloadUnitId, ProtocolUnitId, ProtocolUnit> {
     type Request: Encode + Decode;
     type Response: Encode + Decode;
 
@@ -115,24 +102,54 @@ pub(crate) trait ProtocolServer<DownloadUnitId> {
         &self,
         download_unit_id: &DownloadUnitId,
         initial_request: Self::Request,
+        backend: &dyn ServerBackend<DownloadUnitId, ProtocolUnitId, ProtocolUnit>,
     ) -> Result<Self::Response, RelayError>;
 
     /// Handles the additional client messages during the reconcile phase
-    fn on_request(&self, request: Self::Request) -> Result<Self::Response, RelayError>;
+    fn on_request(
+        &self,
+        request: Self::Request,
+        backend: &dyn ServerBackend<DownloadUnitId, ProtocolUnitId, ProtocolUnit>,
+    ) -> Result<Self::Response, RelayError>;
 }
 
-/// The relay user specific backend interface
-pub(crate) trait ProtocolBackend<DownloadUnitId, ProtocolUnitId, ProtocolUnit> {
-    /// Returns all the protocol units for the given download unit
+/// The relay user specific backend for the client side
+pub(crate) trait ClientBackend<ProtocolUnitId, ProtocolUnit>: Send + Sync {
+    /// Returns the protocol unit for the protocol unit id.
+    fn protocol_unit(&self, protocol_unit_id: &ProtocolUnitId) -> Option<ProtocolUnit>;
+}
+
+/// The relay user specific backend for the server side
+pub(crate) trait ServerBackend<DownloadUnitId, ProtocolUnitId, ProtocolUnit>:
+    Send + Sync
+{
+    /// Returns the protocol units for the given download unit, to be returned
+    /// with the initial response. Some of the items may have the full entry
+    /// along with the Id (e.g) consensus may choose to return the full
+    /// transaction for inherents/small transactions in the block. And return
+    /// only the Tx hash for the remaining extrinsics. Further protocol
+    /// handshake would be used only for resolving these remaining items.
     fn download_unit_members(
         &self,
         id: &DownloadUnitId,
-    ) -> Result<Vec<(ProtocolUnitId, ProtocolUnit)>, RelayError>;
+    ) -> Result<Vec<ProtocolUnitInfo<ProtocolUnitId, ProtocolUnit>>, RelayError>;
 
-    /// Returns the protocol unit for the given download/protocol unit
+    /// Returns the protocol unit for the given download/protocol unit.
     fn protocol_unit(
         &self,
         download_unit_id: &DownloadUnitId,
         protocol_unit_id: &ProtocolUnitId,
-    ) -> Result<Option<ProtocolUnit>, RelayError>;
+    ) -> Option<ProtocolUnit>;
+}
+
+/// The protocol unit info carried in the initial response
+#[derive(Encode, Decode)]
+struct ProtocolUnitInfo<ProtocolUnitId, ProtocolUnit> {
+    /// The protocol unit Id
+    id: ProtocolUnitId,
+
+    /// The server can optionally return the protocol unit
+    /// as part of the initial response. No further
+    /// action is needed on client side to resolve it
+    unit: Option<ProtocolUnit>,
 }

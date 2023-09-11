@@ -36,7 +36,7 @@ use crate::staking::{do_nominate_operator, Operator, OperatorStatus};
 use codec::{Decode, Encode};
 use frame_support::ensure;
 use frame_support::traits::fungible::{Inspect, InspectHold};
-use frame_support::traits::Get;
+use frame_support::traits::{Get, Randomness as RandomnessT};
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use scale_info::TypeInfo;
@@ -124,6 +124,7 @@ mod pallet {
     use codec::FullCodec;
     use frame_support::pallet_prelude::{StorageMap, *};
     use frame_support::traits::fungible::{InspectHold, Mutate, MutateHold};
+    use frame_support::traits::Randomness as RandomnessT;
     use frame_support::weights::Weight;
     use frame_support::{Identity, PalletError};
     use frame_system::pallet_prelude::*;
@@ -213,14 +214,7 @@ mod pallet {
         /// A variation of the Identifier used for holding the funds used for staking and domains.
         type HoldIdentifier: HoldIdentifier<Self>;
 
-        /// The block tree pruning depth, its value should <= `BlockHashCount` because we
-        /// need the consensus block hash to verify execution receipt, which is used to
-        /// construct the node of the block tree.
-        ///
-        /// TODO: `BlockTreePruningDepth` <= `BlockHashCount` is not enough to guarantee the consensus block
-        /// hash must exists while verifying receipt because the domain block is not mapping to the consensus
-        /// block one by one, we need to either store the consensus block hash in runtime manually or store
-        /// the consensus block hash in the client side and use host function to get them in runtime.
+        /// The block tree pruning depth.
         #[pallet::constant]
         type BlockTreePruningDepth: Get<Self::DomainNumber>;
 
@@ -271,14 +265,15 @@ mod pallet {
         #[pallet::constant]
         type TreasuryAccount: Get<Self::AccountId>;
 
-        /// A fixed domain block reward.
-        // TODO: remove once we have operator rewards on client side is available
-        #[pallet::constant]
-        type DomainBlockReward: Get<BalanceOf<Self>>;
-
         /// The maximum number of pending staking operation that can perform upon epoch transition.
         #[pallet::constant]
         type MaxPendingStakingOperation: Get<u32>;
+
+        #[pallet::constant]
+        type SudoId: Get<Self::AccountId>;
+
+        /// Randomness source.
+        type Randomness: RandomnessT<Self::Hash, Self::BlockNumber>;
     }
 
     #[pallet::pallet]
@@ -467,6 +462,17 @@ mod pallet {
         T::DomainHash,
         OptionQuery,
     >;
+
+    /// The consensus block hash used to verify ER, only store the consensus block hash for a domain
+    /// if that consensus block contains bundle of the domain, the hash will be pruned when the ER
+    /// that point to the consensus block is pruned.
+    ///
+    /// TODO: this storage is unbounded in some cases, see https://github.com/subspace/subspace/issues/1673
+    /// for more details, this will be fixed once https://github.com/subspace/subspace/issues/1731 is implemented.
+    #[pallet::storage]
+    #[pallet::getter(fn consensus_hash)]
+    pub type ConsensusBlockHash<T: Config> =
+        StorageDoubleMap<_, Identity, DomainId, Identity, T::BlockNumber, T::Hash, OptionQuery>;
 
     /// A set of `BundleDigest` from all bundles that successfully submitted to the consensus block,
     /// these bundles will be used to construct the domain block and `ExecutionInbox` is used to:
@@ -695,7 +701,6 @@ mod pallet {
                 // The stale receipt should not be further processed, but we still track them for purposes
                 // of measuring the bundle production rate.
                 ReceiptType::Stale => {
-                    Self::note_domain_bundle(domain_id);
                     return Ok(());
                 }
                 ReceiptType::Rejected(rejected_receipt_type) => {
@@ -721,7 +726,7 @@ mod pallet {
                         do_reward_operators::<T>(
                             domain_id,
                             pruned_block_info.operator_ids.into_iter(),
-                            T::DomainBlockReward::get(),
+                            pruned_block_info.rewards,
                         )
                         .map_err(Error::<T>::from)?;
 
@@ -773,8 +778,6 @@ mod pallet {
             InboxedBundle::<T>::insert(bundle_header_hash, operator_id);
 
             SuccessfulBundles::<T>::append(domain_id, bundle_hash);
-
-            Self::note_domain_bundle(domain_id);
 
             Self::deposit_event(Event::BundleStored {
                 domain_id,
@@ -855,12 +858,21 @@ mod pallet {
         ) -> DispatchResult {
             let owner = ensure_signed(origin)?;
 
-            let operator_id = do_register_operator::<T>(owner, domain_id, amount, config)
-                .map_err(Error::<T>::from)?;
+            let (operator_id, current_epoch_index) =
+                do_register_operator::<T>(owner, domain_id, amount, config)
+                    .map_err(Error::<T>::from)?;
+
             Self::deposit_event(Event::OperatorRegistered {
                 operator_id,
                 domain_id,
             });
+
+            // if the domain's current epoch is 0,
+            // then do an epoch transition so that operator can start producing bundles
+            if current_epoch_index.is_zero() {
+                do_finalize_domain_current_epoch::<T>(domain_id, One::one())
+                    .map_err(Error::<T>::from)?;
+            }
 
             Ok(())
         }
@@ -890,11 +902,19 @@ mod pallet {
         pub fn instantiate_domain(
             origin: OriginFor<T>,
             domain_config: DomainConfig,
+            raw_genesis: Vec<u8>,
         ) -> DispatchResult {
-            let who = ensure_signed(origin)?;
+            let (who, raw_genesis) = if raw_genesis.is_empty() {
+                (ensure_signed(origin)?, None)
+            } else {
+                // TODO: remove once XDM is finished
+                ensure_root(origin)?;
+                (T::SudoId::get(), Some(raw_genesis))
+            };
+
             let created_at = frame_system::Pallet::<T>::current_block_number();
 
-            let domain_id = do_instantiate_domain::<T>(domain_config, who, created_at, None)
+            let domain_id = do_instantiate_domain::<T>(domain_config, who, created_at, raw_genesis)
                 .map_err(Error::<T>::from)?;
 
             Self::deposit_event(Event::DomainInstantiated { domain_id });
@@ -1058,14 +1078,19 @@ mod pallet {
 
             do_upgrade_runtimes::<T>(block_number);
 
-            let _ = SuccessfulBundles::<T>::clear(u32::MAX, None);
+            // Store the hash of the parent consensus block for domain that have bundles submitted
+            // in that consensus block
+            let parent_number = block_number - One::one();
+            let parent_hash = frame_system::Pallet::<T>::block_hash(parent_number);
+            for (domain_id, _) in SuccessfulBundles::<T>::drain() {
+                ConsensusBlockHash::<T>::insert(domain_id, parent_number, parent_hash);
+            }
 
             Weight::zero()
         }
 
         fn on_finalize(_: T::BlockNumber) {
             let _ = LastEpochStakingDistribution::<T>::clear(u32::MAX, None);
-            Self::update_domain_tx_range();
         }
     }
 
@@ -1358,6 +1383,8 @@ impl<T: Config> Pallet<T> {
 
     /// Called when a bundle is added to update the bundle state for tx range
     /// calculation.
+    #[allow(dead_code)]
+    // TODO: use once we support tx-range dynamic adjustment properly
     fn note_domain_bundle(domain_id: DomainId) {
         DomainTxRangeState::<T>::mutate(domain_id, |maybe_state| match maybe_state {
             Some(state) => {
@@ -1375,6 +1402,8 @@ impl<T: Config> Pallet<T> {
 
     /// Called when the block is finalized to update the tx range for all the
     /// domains with bundles in the block.
+    #[allow(dead_code)]
+    // TODO: use once we support tx-range dynamic adjustment properly
     fn update_domain_tx_range() {
         for domain_id in DomainTxRangeState::<T>::iter_keys() {
             if let Some(domain_config) =
@@ -1468,7 +1497,12 @@ impl<T: Config> Pallet<T> {
     }
 
     /// Returns if there are any ERs in the challenge period that have non empty extrinsics.
-    pub fn non_empty_bundle_exists(domain_id: DomainId) -> bool {
+    /// Note that Genesis ER is also considered special and hence non empty
+    pub fn non_empty_er_exists(domain_id: DomainId) -> bool {
+        if BlockTree::<T>::contains_key(domain_id, T::DomainNumber::zero()) {
+            return true;
+        }
+
         let head_number = HeadDomainNumber::<T>::get(domain_id);
         let mut to_check = head_number
             .checked_sub(&T::BlockTreePruningDepth::get())
@@ -1487,6 +1521,12 @@ impl<T: Config> Pallet<T> {
         }
 
         false
+    }
+
+    pub fn extrinsics_shuffling_seed() -> T::Hash {
+        let seed: &[u8] = b"extrinsics-shuffling-seed";
+        let (randomness, _) = T::Randomness::random(seed);
+        randomness
     }
 }
 

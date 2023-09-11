@@ -899,6 +899,7 @@ impl SingleDiskFarm {
                             erasure_coding,
                             handlers,
                             modifying_sector_index,
+                            target_sector_count,
                             sectors_to_plot_receiver,
                         )
                         .await
@@ -1233,6 +1234,8 @@ impl SingleDiskFarm {
     /// Check the farm for corruption and repair errors (caused by disk errors or something else),
     /// returns an error when irrecoverable errors occur.
     pub fn scrub(directory: &Path) -> Result<(), SingleDiskFarmScrubError> {
+        let span = Span::current();
+
         let info = {
             let file = directory.join(SingleDiskFarmInfo::FILE_NAME);
             info!(path = %file.display(), "Checking info file");
@@ -1445,6 +1448,8 @@ impl SingleDiskFarm {
                     (sector_metadata_bytes, piece)
                 },
                 |(sector_metadata_bytes, piece), sector_index| {
+                    let _span_guard = span.enter();
+
                     let offset = RESERVED_PLOT_METADATA
                         + u64::from(sector_index) * sector_metadata_size as u64;
                     if let Err(error) = metadata_file.read_exact_at(sector_metadata_bytes, offset) {
@@ -1628,9 +1633,12 @@ impl SingleDiskFarm {
                 },
             )
             .try_for_each({
+                let span = &span;
                 let checked_sectors = AtomicUsize::new(0);
 
                 move |result| {
+                    let _span_guard = span.enter();
+
                     let checked_sectors = checked_sectors.fetch_add(1, Ordering::Relaxed);
                     if checked_sectors > 1 && checked_sectors % 10 == 0 {
                         info!(
@@ -1677,6 +1685,8 @@ impl SingleDiskFarm {
             (0..number_of_cached_elements)
                 .into_par_iter()
                 .map_with(vec![0; element_size], |element, cache_offset| {
+                    let _span_guard = span.enter();
+
                     let offset = cache_offset * element_size as u64;
                     if let Err(error) = cache_file.read_exact_at(element, offset) {
                         warn!(
@@ -1726,9 +1736,12 @@ impl SingleDiskFarm {
                     Ok(())
                 })
                 .try_for_each({
+                    let span = &span;
                     let checked_elements = AtomicUsize::new(0);
 
                     move |result| {
+                        let _span_guard = span.enter();
+
                         let checked_elements = checked_elements.fetch_add(1, Ordering::Relaxed);
                         if checked_elements > 1 && checked_elements % 1000 == 0 {
                             info!(

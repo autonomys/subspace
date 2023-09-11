@@ -24,6 +24,7 @@ use jsonrpsee::core::{async_trait, Error as JsonRpseeError, RpcResult};
 use jsonrpsee::proc_macros::rpc;
 use jsonrpsee::types::{SubscriptionEmptyError, SubscriptionResult};
 use jsonrpsee::SubscriptionSink;
+use lru::LruCache;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use sc_client_api::{AuxStore, BlockBackend};
@@ -37,7 +38,6 @@ use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus::SyncOracle;
-use sp_consensus_slots::Slot;
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi as SubspaceRuntimeApi};
 use sp_core::crypto::ByteArray;
 use sp_core::H256;
@@ -46,12 +46,13 @@ use sp_runtime::traits::Block as BlockT;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::marker::PhantomData;
+use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
 use std::time::Duration;
 use subspace_archiving::archiver::NewArchivedSegment;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::{PieceIndex, SegmentHeader, SegmentIndex, Solution};
+use subspace_core_primitives::{PieceIndex, SegmentHeader, SegmentIndex, SlotNumber, Solution};
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_rpc_primitives::{
@@ -123,18 +124,15 @@ pub trait SubspaceRpcApi {
         &self,
         segment_index: SegmentIndex,
     ) -> RpcResult<()>;
+
+    #[method(name = "subspace_lastSegmentHeaders")]
+    async fn last_segment_headers(&self, limit: u64) -> RpcResult<Vec<Option<SegmentHeader>>>;
 }
 
 #[derive(Default)]
 struct ArchivedSegmentHeaderAcknowledgementSenders {
     segment_index: SegmentIndex,
     senders: HashMap<u64, TracingUnboundedSender<()>>,
-}
-
-#[derive(Default)]
-struct SolutionResponseSenders {
-    current_slot: Slot,
-    senders: Vec<async_oneshot::Sender<SolutionResponse>>,
 }
 
 #[derive(Default)]
@@ -203,7 +201,8 @@ where
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
     reward_signing_notification_stream: SubspaceNotificationStream<RewardSigningNotification>,
     archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegmentNotification>,
-    solution_response_senders: Arc<Mutex<SolutionResponseSenders>>,
+    solution_response_senders:
+        Arc<Mutex<LruCache<SlotNumber, Vec<async_oneshot::Sender<SolutionResponse>>>>>,
     reward_signature_senders: Arc<Mutex<BlockSignatureSenders>>,
     dsn_bootstrap_nodes: Vec<Multiaddr>,
     segment_headers_store: SegmentHeadersStore<AS>,
@@ -227,18 +226,32 @@ where
 impl<Block, Client, SO, AS> SubspaceRpc<Block, Client, SO, AS>
 where
     Block: BlockT,
+    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block>,
+    Client::Api: SubspaceRuntimeApi<Block, FarmerPublicKey>,
     SO: SyncOracle + Send + Sync + Clone + 'static,
     AS: AuxStore + Send + Sync + 'static,
 {
     /// Creates a new instance of the `SubspaceRpc` handler.
-    pub fn new(config: SubspaceRpcConfig<Client, SO, AS>) -> Self {
-        Self {
+    #[cfg(feature = "pot")]
+    pub fn new(config: SubspaceRpcConfig<Client, SO, AS>) -> Result<Self, ApiError> {
+        let best_hash = config.client.info().best_hash;
+        let runtime_api = config.client.runtime_api();
+        let chain_constants = runtime_api.chain_constants(best_hash)?;
+        let block_authoring_delay = u64::from(chain_constants.block_authoring_delay());
+        let block_authoring_delay = usize::try_from(block_authoring_delay)
+            .expect("Block authoring delay will never exceed usize on any platform; qed");
+        let solution_response_senders_capacity =
+            NonZeroUsize::try_from(block_authoring_delay).unwrap_or(NonZeroUsize::MIN);
+
+        Ok(Self {
             client: config.client,
             subscription_executor: config.subscription_executor,
             new_slot_notification_stream: config.new_slot_notification_stream,
             reward_signing_notification_stream: config.reward_signing_notification_stream,
             archived_segment_notification_stream: config.archived_segment_notification_stream,
-            solution_response_senders: Arc::default(),
+            solution_response_senders: Arc::new(Mutex::new(LruCache::new(
+                solution_response_senders_capacity,
+            ))),
             reward_signature_senders: Arc::default(),
             dsn_bootstrap_nodes: config.dsn_bootstrap_nodes,
             segment_headers_store: config.segment_headers_store,
@@ -249,7 +262,34 @@ where
             kzg: config.kzg,
             deny_unsafe: config.deny_unsafe,
             _block: PhantomData,
-        }
+        })
+    }
+
+    /// Creates a new instance of the `SubspaceRpc` handler.
+    #[cfg(not(feature = "pot"))]
+    pub fn new(config: SubspaceRpcConfig<Client, SO, AS>) -> Result<Self, ApiError> {
+        let solution_response_senders_capacity = NonZeroUsize::MIN;
+
+        Ok(Self {
+            client: config.client,
+            subscription_executor: config.subscription_executor,
+            new_slot_notification_stream: config.new_slot_notification_stream,
+            reward_signing_notification_stream: config.reward_signing_notification_stream,
+            archived_segment_notification_stream: config.archived_segment_notification_stream,
+            solution_response_senders: Arc::new(Mutex::new(LruCache::new(
+                solution_response_senders_capacity,
+            ))),
+            reward_signature_senders: Arc::default(),
+            dsn_bootstrap_nodes: config.dsn_bootstrap_nodes,
+            segment_headers_store: config.segment_headers_store,
+            cached_archived_segment: Arc::default(),
+            archived_segment_acknowledgement_senders: Arc::default(),
+            next_subscription_id: AtomicU64::default(),
+            sync_oracle: config.sync_oracle,
+            kzg: config.kzg,
+            deny_unsafe: config.deny_unsafe,
+            _block: PhantomData,
+        })
     }
 }
 
@@ -258,8 +298,8 @@ impl<Block, Client, SO, AS> SubspaceRpcApiServer for SubspaceRpc<Block, Client, 
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
-        + BlockBackend<Block>
         + HeaderBackend<Block>
+        + BlockBackend<Block>
         + Send
         + Sync
         + 'static,
@@ -315,10 +355,19 @@ where
 
         let mut solution_response_senders = solution_response_senders.lock();
 
-        if *solution_response_senders.current_slot == solution_response.slot_number {
-            if let Some(mut sender) = solution_response_senders.senders.pop() {
-                let _ = sender.send(solution_response);
-            }
+        let slot = solution_response.slot_number;
+
+        let success = solution_response_senders
+            .peek_mut(&slot)
+            .and_then(|senders| senders.pop())
+            .and_then(|mut sender| sender.send(solution_response).ok())
+            .is_some();
+
+        if !success {
+            warn!(
+                %slot,
+                "Solution was ignored, likely because farmer was too slow"
+            );
         }
 
         Ok(())
@@ -335,7 +384,7 @@ where
                 .map(move |new_slot_notification| {
                     let NewSlotNotification {
                         new_slot_info,
-                        solution_sender,
+                        mut solution_sender,
                     } = new_slot_notification;
 
                     // Only handle solution responses in case unsafe APIs are allowed
@@ -347,12 +396,9 @@ where
                         {
                             let mut solution_response_senders = solution_response_senders.lock();
 
-                            if solution_response_senders.current_slot != new_slot_info.slot {
-                                solution_response_senders.current_slot = new_slot_info.slot;
-                                solution_response_senders.senders.clear();
-                            }
-
-                            solution_response_senders.senders.push(response_sender);
+                            solution_response_senders
+                                .get_or_insert_mut(SlotNumber::from(new_slot_info.slot), Vec::new)
+                                .push(response_sender);
                         }
 
                         // Wait for solutions and transform proposed proof of space solutions into
@@ -368,10 +414,12 @@ where
                                     )
                                     .expect("Always correct length; qed");
 
+                                    let sector_index = solution.sector_index;
+
                                     let solution = Solution {
-                                        public_key,
+                                        public_key: public_key.clone(),
                                         reward_address,
-                                        sector_index: solution.sector_index,
+                                        sector_index,
                                         history_size: solution.history_size,
                                         piece_offset: solution.piece_offset,
                                         record_commitment: solution.record_commitment,
@@ -382,7 +430,15 @@ where
                                         proof_of_space: solution.proof_of_space,
                                     };
 
-                                    let _ = solution_sender.unbounded_send(solution);
+                                    if solution_sender.try_send(solution).is_err() {
+                                        warn!(
+                                            slot = %solution_response.slot_number,
+                                            %sector_index,
+                                            %public_key,
+                                            "Solution receiver is closed, likely because farmer \
+                                            was too slow"
+                                        );
+                                    }
                                 }
                             }
                         };
@@ -701,27 +757,6 @@ where
         Ok(())
     }
 
-    async fn segment_headers(
-        &self,
-        segment_indexes: Vec<SegmentIndex>,
-    ) -> RpcResult<Vec<Option<SegmentHeader>>> {
-        if segment_indexes.len() > MAX_SEGMENT_HEADERS_PER_REQUEST {
-            error!(
-                "segment_indexes length exceed the limit: {} ",
-                segment_indexes.len()
-            );
-
-            return Err(JsonRpseeError::Custom(format!(
-                "segment_indexes length exceed the limit {MAX_SEGMENT_HEADERS_PER_REQUEST}"
-            )));
-        };
-
-        Ok(segment_indexes
-            .into_iter()
-            .map(|segment_index| self.segment_headers_store.get_segment_header(segment_index))
-            .collect())
-    }
-
     fn piece(&self, requested_piece_index: PieceIndex) -> RpcResult<Option<Vec<u8>>> {
         self.deny_unsafe.check_if_safe()?;
 
@@ -776,5 +811,60 @@ where
         }
 
         Ok(None)
+    }
+
+    async fn segment_headers(
+        &self,
+        segment_indexes: Vec<SegmentIndex>,
+    ) -> RpcResult<Vec<Option<SegmentHeader>>> {
+        if segment_indexes.len() > MAX_SEGMENT_HEADERS_PER_REQUEST {
+            error!(
+                "segment_indexes length exceed the limit: {} ",
+                segment_indexes.len()
+            );
+
+            return Err(JsonRpseeError::Custom(format!(
+                "segment_indexes length exceed the limit {MAX_SEGMENT_HEADERS_PER_REQUEST}"
+            )));
+        };
+
+        Ok(segment_indexes
+            .into_iter()
+            .map(|segment_index| self.segment_headers_store.get_segment_header(segment_index))
+            .collect())
+    }
+
+    async fn last_segment_headers(&self, limit: u64) -> RpcResult<Vec<Option<SegmentHeader>>> {
+        if limit as usize > MAX_SEGMENT_HEADERS_PER_REQUEST {
+            error!(
+                "Request limit ({}) exceed the server limit: {} ",
+                limit, MAX_SEGMENT_HEADERS_PER_REQUEST
+            );
+
+            return Err(JsonRpseeError::Custom(format!(
+                "Request limit ({}) exceed the server limit: {} ",
+                limit, MAX_SEGMENT_HEADERS_PER_REQUEST
+            )));
+        };
+
+        let runtime_api = self.client.runtime_api();
+        let best_hash = self.client.info().best_hash;
+
+        let last_segment_index = match runtime_api.history_size(best_hash) {
+            Ok(history_size) => history_size.segment_index(),
+            Err(error) => {
+                error!(?best_hash, "Failed to get history size: {}", error);
+
+                SegmentIndex::ZERO
+            }
+        };
+
+        let last_segment_headers = (SegmentIndex::ZERO..=last_segment_index)
+            .rev()
+            .take(limit as usize)
+            .map(|segment_index| self.segment_headers_store.get_segment_header(segment_index))
+            .collect::<Vec<_>>();
+
+        Ok(last_segment_headers)
     }
 }

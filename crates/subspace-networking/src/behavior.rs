@@ -2,22 +2,23 @@ pub(crate) mod persistent_parameters;
 #[cfg(test)]
 mod tests;
 
-use crate::connected_peers::{
+use crate::protocols::connected_peers::{
     Behaviour as ConnectedPeersBehaviour, Config as ConnectedPeersConfig,
     Event as ConnectedPeersEvent,
 };
-use crate::peer_info::{
+use crate::protocols::peer_info::{
     Behaviour as PeerInfoBehaviour, Config as PeerInfoConfig, Event as PeerInfoEvent,
 };
-use crate::request_responses::{
-    Event as RequestResponseEvent, RequestHandler, RequestResponsesBehaviour,
+use crate::protocols::request_response::request_response_factory::{
+    Event as RequestResponseEvent, RequestHandler, RequestResponseFactoryBehaviour,
 };
-use crate::reserved_peers::{
+use crate::protocols::reserved_peers::{
     Behaviour as ReservedPeersBehaviour, Config as ReservedPeersConfig, Event as ReservedPeersEvent,
 };
 use crate::PeerInfoProvider;
 use derive_more::From;
 use libp2p::allow_block_list::{Behaviour as AllowBlockListBehaviour, BlockedPeers};
+use libp2p::autonat::{Behaviour as Autonat, Config as AutonatConfig, Event as AutonatEvent};
 use libp2p::connection_limits::{Behaviour as ConnectionLimitsBehaviour, ConnectionLimits};
 use libp2p::gossipsub::{
     Behaviour as Gossipsub, Config as GossipsubConfig, Event as GossipsubEvent, MessageAuthenticity,
@@ -57,6 +58,8 @@ pub(crate) struct BehaviorConfig<RecordStore> {
     pub(crate) general_connected_peers_config: Option<ConnectedPeersConfig>,
     /// The configuration for the [`ConnectedPeers`] protocol (special instance).
     pub(crate) special_connected_peers_config: Option<ConnectedPeersConfig>,
+    /// Autonat configuration (optional).
+    pub(crate) autonat: Option<AutonatConfig>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -72,7 +75,7 @@ pub(crate) struct Behavior<RecordStore> {
     pub(crate) kademlia: Kademlia<RecordStore>,
     pub(crate) gossipsub: Toggle<Gossipsub>,
     pub(crate) ping: Ping,
-    pub(crate) request_response: RequestResponsesBehaviour,
+    pub(crate) request_response: RequestResponseFactoryBehaviour,
     pub(crate) connection_limits: ConnectionLimitsBehaviour,
     pub(crate) block_list: BlockListBehaviour,
     pub(crate) reserved_peers: ReservedPeersBehaviour,
@@ -81,6 +84,7 @@ pub(crate) struct Behavior<RecordStore> {
         Toggle<ConnectedPeersBehaviour<GeneralConnectedPeersInstance>>,
     pub(crate) special_connected_peers:
         Toggle<ConnectedPeersBehaviour<SpecialConnectedPeersInstance>>,
+    pub(crate) autonat: Toggle<Autonat>,
 }
 
 impl<RecordStore> Behavior<RecordStore>
@@ -115,9 +119,11 @@ where
             kademlia,
             gossipsub,
             ping: Ping::default(),
-            request_response: RequestResponsesBehaviour::new(config.request_response_protocols)
-                //TODO: Convert to an error.
-                .expect("RequestResponse protocols registration failed."),
+            request_response: RequestResponseFactoryBehaviour::new(
+                config.request_response_protocols,
+            )
+            //TODO: Convert to an error.
+            .expect("RequestResponse protocols registration failed."),
             connection_limits: ConnectionLimitsBehaviour::new(config.connection_limits),
             block_list: BlockListBehaviour::default(),
             reserved_peers: ReservedPeersBehaviour::new(config.reserved_peers),
@@ -129,6 +135,10 @@ where
             special_connected_peers: config
                 .special_connected_peers_config
                 .map(ConnectedPeersBehaviour::new)
+                .into(),
+            autonat: config
+                .autonat
+                .map(|autonat_config| Autonat::new(config.peer_id, autonat_config))
                 .into(),
         }
     }
@@ -147,4 +157,5 @@ pub(crate) enum Event {
     PeerInfo(PeerInfoEvent),
     GeneralConnectedPeers(ConnectedPeersEvent<GeneralConnectedPeersInstance>),
     SpecialConnectedPeers(ConnectedPeersEvent<SpecialConnectedPeersInstance>),
+    Autonat(AutonatEvent),
 }

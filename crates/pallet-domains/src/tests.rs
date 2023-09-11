@@ -77,7 +77,7 @@ impl frame_system::Config for Test {
 
 parameter_types! {
     pub const MaximumReceiptDrift: BlockNumber = 128;
-    pub const InitialDomainTxRange: u64 = 10;
+    pub const InitialDomainTxRange: u64 = 3;
     pub const DomainTxRangeAdjustmentInterval: u64 = 100;
     pub const DomainRuntimeUpgradeDelay: BlockNumber = 100;
     pub const MaxBundlesPerBlock: u32 = 10;
@@ -169,6 +169,14 @@ parameter_types! {
     pub const MaxPendingStakingOperation: u32 = 100;
 }
 
+pub struct MockRandomness;
+
+impl frame_support::traits::Randomness<Hash, BlockNumber> for MockRandomness {
+    fn random(_: &[u8]) -> (Hash, BlockNumber) {
+        (Default::default(), Default::default())
+    }
+}
+
 impl pallet_domains::Config for Test {
     type RuntimeEvent = RuntimeEvent;
     type DomainNumber = BlockNumber;
@@ -191,8 +199,9 @@ impl pallet_domains::Config for Test {
     type StakeWithdrawalLockingPeriod = StakeWithdrawalLockingPeriod;
     type StakeEpochDuration = StakeEpochDuration;
     type TreasuryAccount = TreasuryAccount;
-    type DomainBlockReward = BlockReward;
     type MaxPendingStakingOperation = MaxPendingStakingOperation;
+    type SudoId = ();
+    type Randomness = MockRandomness;
 }
 
 pub(crate) fn new_test_ext() -> sp_io::TestExternalities {
@@ -249,6 +258,7 @@ pub(crate) fn create_dummy_receipt(
     ExecutionReceipt {
         domain_block_number: block_number,
         domain_block_hash: H256::random(),
+        domain_block_extrinsic_root: Default::default(),
         parent_domain_block_receipt_hash,
         consensus_block_number: block_number,
         consensus_block_hash,

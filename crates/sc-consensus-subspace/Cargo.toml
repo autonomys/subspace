@@ -15,12 +15,12 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 async-trait = "0.1.68"
-codec = { package = "parity-scale-codec", version = "3.6.3", features = ["derive"] }
+codec = { package = "parity-scale-codec", version = "3.6.5", features = ["derive"] }
 fork-tree = { version = "3.0.0", git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71" }
 futures = "0.3.28"
 futures-timer = "3.0.2"
 log = "0.4.19"
-lru = "0.10.0"
+lru = "0.11.0"
 parking_lot = "0.12.1"
 prometheus-endpoint = { package = "substrate-prometheus-endpoint", git = "https://github.com/subspace/substrate", rev = "55c157cff49b638a59d81a9f971f0f9a66829c71", version = "0.10.0-dev" }
 rand = "0.8.5"
@@ -70,4 +70,5 @@ thiserror = "1.0.38"
 pot = [
     "sc-proof-of-time/pot",
     "sp-consensus-subspace/pot",
+    "subspace-verification/pot",
 ]

@@ -4,15 +4,13 @@ use super::*;
 use crate::Pallet as Messenger;
 use frame_benchmarking::v2::*;
 use frame_support::assert_ok;
-use frame_support::traits::{Get, ReservableCurrency};
+use frame_support::traits::Get;
 use frame_system::RawOrigin;
 use sp_messenger::endpoint::{Endpoint, EndpointRequest};
 use sp_messenger::messages::{
-    CrossDomainMessage, ExecutionFee, InitiateChannelParams, Message, MessageWeightTag, Payload,
-    Proof, RequestResponse, VersionedPayload,
+    CrossDomainMessage, InitiateChannelParams, Message, MessageWeightTag, Payload, Proof,
+    RequestResponse, VersionedPayload,
 };
-
-const SEED: u32 = 0;
 
 #[benchmarks]
 mod benchmarks {
@@ -20,12 +18,6 @@ mod benchmarks {
 
     #[benchmark]
     fn initiate_channel() {
-        let relayer = account("relayer", 1, SEED);
-        T::Currency::make_free_balance_be(
-            &relayer,
-            T::RelayerDeposit::get() + T::Currency::minimum_balance(),
-        );
-        unchecked_join_relayer_set::<T>(relayer);
         let dst_chain_id: ChainId = u32::MAX.into();
         assert_ne!(T::SelfChainId::get(), dst_chain_id);
         let channel_params = dummy_channel_params::<T>();
@@ -43,13 +35,6 @@ mod benchmarks {
 
     #[benchmark]
     fn close_channel() {
-        let relayer = account("relayer", 1, SEED);
-        T::Currency::make_free_balance_be(
-            &relayer,
-            T::RelayerDeposit::get() + T::Currency::minimum_balance(),
-        );
-        unchecked_join_relayer_set::<T>(relayer);
-
         let dst_chain_id: ChainId = u32::MAX.into();
         assert_ne!(T::SelfChainId::get(), dst_chain_id);
         let channel_id = open_channel::<T>(dst_chain_id, dummy_channel_params::<T>());
@@ -66,13 +51,6 @@ mod benchmarks {
 
     #[benchmark]
     fn do_open_channel() {
-        let relayer = account("relayer", 1, SEED);
-        T::Currency::make_free_balance_be(
-            &relayer,
-            T::RelayerDeposit::get() + T::Currency::minimum_balance(),
-        );
-        unchecked_join_relayer_set::<T>(relayer);
-
         let dst_chain_id: ChainId = u32::MAX.into();
         assert_ne!(T::SelfChainId::get(), dst_chain_id);
         let channel_id = NextChannelId::<T>::get(dst_chain_id);
@@ -94,13 +72,6 @@ mod benchmarks {
 
     #[benchmark]
     fn do_close_channel() {
-        let relayer = account("relayer", 1, SEED);
-        T::Currency::make_free_balance_be(
-            &relayer,
-            T::RelayerDeposit::get() + T::Currency::minimum_balance(),
-        );
-        unchecked_join_relayer_set::<T>(relayer);
-
         let dst_chain_id: ChainId = u32::MAX.into();
         assert_ne!(T::SelfChainId::get(), dst_chain_id);
         let channel_id = open_channel::<T>(dst_chain_id, dummy_channel_params::<T>());
@@ -119,13 +90,6 @@ mod benchmarks {
     // a dummy handler that consume zero weight
     #[benchmark]
     fn relay_message<T: Config>() {
-        let relayer = account("relayer", 1, SEED);
-        T::Currency::make_free_balance_be(
-            &relayer,
-            T::RelayerDeposit::get() + T::Currency::minimum_balance(),
-        );
-        unchecked_join_relayer_set::<T>(relayer);
-
         let endpoint = Endpoint::Id(100);
         let dst_chain_id: ChainId = u32::MAX.into();
         assert_ne!(T::SelfChainId::get(), dst_chain_id);
@@ -174,13 +138,6 @@ mod benchmarks {
     // by a dummy handler that consume zero weight
     #[benchmark]
     fn relay_message_response() {
-        let relayer = account("relayer", 1, SEED);
-        T::Currency::make_free_balance_be(
-            &relayer,
-            T::RelayerDeposit::get() + T::Currency::minimum_balance(),
-        );
-        unchecked_join_relayer_set::<T>(relayer);
-
         let endpoint = Endpoint::Id(100);
         let dst_chain_id: ChainId = u32::MAX.into();
         assert_ne!(T::SelfChainId::get(), dst_chain_id);
@@ -197,7 +154,7 @@ mod benchmarks {
         // Insert a dummy outbox request message which will be handled during the `relay_message_response` call
         let req_msg: Message<BalanceOf<T>> = Message {
             src_chain_id: T::SelfChainId::get(),
-            dst_chain_id: dst_chain_id,
+            dst_chain_id,
             channel_id,
             nonce: next_outbox_nonce,
             payload: VersionedPayload::V0(Payload::Endpoint(RequestResponse::Request(
@@ -212,7 +169,7 @@ mod benchmarks {
         Outbox::<T>::insert((dst_chain_id, channel_id, next_outbox_nonce), req_msg);
         // Insert a dummy response message which will be handled during the `relay_message_response` call
         let resp_msg: Message<BalanceOf<T>> = Message {
-            src_chain_id: T::SelfChainId::get() + 1,
+            src_chain_id: dst_chain_id,
             dst_chain_id: T::SelfChainId::get(),
             channel_id,
             nonce: resp_nonce,
@@ -243,66 +200,9 @@ mod benchmarks {
         );
     }
 
-    #[benchmark]
-    fn join_relayer_set() {
-        let relayer = account("relayer", 1, SEED);
-        T::Currency::make_free_balance_be(
-            &relayer,
-            T::RelayerDeposit::get() + T::Currency::minimum_balance(),
-        );
-
-        #[extrinsic_call]
-        _(RawOrigin::Signed(relayer.clone()), relayer.clone());
-
-        assert!(RelayersInfo::<T>::contains_key(&relayer));
-    }
-
-    /// Benchmark `exit_relayer_set` extrinsic with the worst possible conditions:
-    /// - The existed relayer index is < next_relayer_idx (i.e. next_index need to be shifted)
-    #[benchmark]
-    fn exit_relayer_set() {
-        let mut relayers = Vec::new();
-        for i in 0..10 {
-            let relayer = account("relayer", i, SEED);
-            T::Currency::make_free_balance_be(
-                &relayer,
-                T::RelayerDeposit::get() + T::Currency::minimum_balance(),
-            );
-            unchecked_join_relayer_set::<T>(relayer.clone());
-            relayers.push(relayer);
-
-            // Move next_relayer_idx
-            assert_ok!(Messenger::<T>::next_relayer());
-        }
-
-        let next_relayer_idx = NextRelayerIdx::<T>::get();
-
-        #[extrinsic_call]
-        _(RawOrigin::Signed(relayers[0].clone()), relayers[0].clone());
-
-        assert!(!RelayersInfo::<T>::contains_key(&relayers[0]));
-        assert_eq!(T::Currency::reserved_balance(&relayers[0]), 0u32.into());
-        assert_eq!(NextRelayerIdx::<T>::get(), next_relayer_idx - 1);
-    }
-
-    fn unchecked_join_relayer_set<T: Config>(relayer: T::AccountId) {
-        assert_ok!(Messenger::<T>::do_join_relayer_set(
-            relayer.clone(),
-            relayer.clone()
-        ));
-        assert!(RelayersInfo::<T>::contains_key(&relayer));
-    }
-
     fn dummy_channel_params<T: Config>() -> InitiateChannelParams<BalanceOf<T>> {
         let fee_model = FeeModel {
-            outbox_fee: ExecutionFee {
-                relayer_pool_fee: 1u32.into(),
-                compute_fee: 2u32.into(),
-            },
-            inbox_fee: ExecutionFee {
-                relayer_pool_fee: 3u32.into(),
-                compute_fee: 4u32.into(),
-            },
+            relay_fee: 1u32.into(),
         };
         InitiateChannelParams {
             max_outgoing_messages: 100,

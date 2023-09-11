@@ -22,9 +22,10 @@ extern crate alloc;
 
 pub mod equivocation;
 
-#[cfg(test)]
+// TODO: Unlock tests for PoT as well once PoT implementation settled
+#[cfg(all(test, not(feature = "pot")))]
 mod mock;
-#[cfg(test)]
+#[cfg(all(test, not(feature = "pot")))]
 mod tests;
 
 #[cfg(feature = "runtime-benchmarks")]
@@ -37,7 +38,9 @@ use codec::{Decode, Encode, MaxEncodedLen};
 use core::num::NonZeroU64;
 use equivocation::{HandleEquivocation, SubspaceEquivocationOffence};
 use frame_support::dispatch::{DispatchResult, DispatchResultWithPostInfo, Pays};
-use frame_support::traits::{Get, OnTimestampSet};
+use frame_support::traits::Get;
+#[cfg(not(feature = "pot"))]
+use frame_support::traits::OnTimestampSet;
 use frame_system::offchain::{SendTransactionTypes, SubmitTransaction};
 use log::{debug, error, warn};
 pub use pallet::*;
@@ -47,11 +50,15 @@ use sp_consensus_slots::Slot;
 use sp_consensus_subspace::consensus::verify_solution;
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::offence::{OffenceDetails, OffenceError, OnOffenceHandler};
+#[cfg(feature = "pot")]
+use sp_consensus_subspace::PotParameters;
 use sp_consensus_subspace::{
     ChainConstants, EquivocationProof, FarmerPublicKey, FarmerSignature, SignedVote, Vote,
 };
 use sp_runtime::generic::DigestItem;
-use sp_runtime::traits::{BlockNumberProvider, Hash, One, SaturatedConversion, Saturating, Zero};
+use sp_runtime::traits::{BlockNumberProvider, Hash, One, Zero};
+#[cfg(not(feature = "pot"))]
+use sp_runtime::traits::{SaturatedConversion, Saturating};
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
     TransactionValidityError, ValidTransaction,
@@ -60,31 +67,36 @@ use sp_runtime::DispatchError;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 use subspace_core_primitives::crypto::Scalar;
+#[cfg(feature = "pot")]
+use subspace_core_primitives::PotProof;
 use subspace_core_primitives::{
     ArchivedHistorySegment, HistorySize, PublicKey, Randomness, RewardSignature, SectorId,
     SectorIndex, SegmentHeader, SegmentIndex, SolutionRange,
 };
 use subspace_solving::REWARD_SIGNING_CONTEXT;
+#[cfg(not(feature = "pot"))]
+use subspace_verification::derive_randomness;
 use subspace_verification::{
-    check_reward_signature, derive_next_solution_range, derive_randomness, PieceCheckParams,
-    VerifySolutionParams,
+    check_reward_signature, derive_next_solution_range, PieceCheckParams, VerifySolutionParams,
 };
 
 /// Trigger global randomness every interval.
 pub trait GlobalRandomnessIntervalTrigger {
     /// Trigger a global randomness update. This should be called during every block, after
     /// initialization is done.
-    fn trigger<T: Config>(block_number: T::BlockNumber, por_randomness: Randomness);
+    fn trigger<T: Config>(block_number: T::BlockNumber, block_randomness: Randomness);
 }
 
 /// A type signifying to Subspace that it should perform a global randomness update with an internal
 /// trigger.
+// TODO: Remove when switching to PoT by default
 pub struct NormalGlobalRandomnessInterval;
 
+// TODO: Remove when switching to PoT by default
 impl GlobalRandomnessIntervalTrigger for NormalGlobalRandomnessInterval {
-    fn trigger<T: Config>(block_number: T::BlockNumber, por_randomness: Randomness) {
+    fn trigger<T: Config>(block_number: T::BlockNumber, block_randomness: Randomness) {
         if <Pallet<T>>::should_update_global_randomness(block_number) {
-            <Pallet<T>>::enact_update_global_randomness(block_number, por_randomness);
+            <Pallet<T>>::enact_update_global_randomness(block_number, block_randomness);
         }
     }
 }
@@ -136,6 +148,7 @@ mod pallet {
     use sp_consensus_subspace::{EquivocationProof, FarmerPublicKey, FarmerSignature, SignedVote};
     use sp_runtime::DigestItem;
     use sp_std::collections::btree_map::BTreeMap;
+    use sp_std::num::NonZeroU32;
     use sp_std::prelude::*;
     use subspace_core_primitives::crypto::Scalar;
     use subspace_core_primitives::{
@@ -184,7 +197,12 @@ mod pallet {
 
         /// The amount of time, in blocks, between updates of global randomness.
         #[pallet::constant]
+        // TODO: Remove when switching to PoT by default
         type GlobalRandomnessUpdateInterval: Get<Self::BlockNumber>;
+
+        /// The amount of time, in blocks, between updates of global randomness.
+        #[pallet::constant]
+        type BlockAuthoringDelay: Get<Slot>;
 
         /// The amount of time, in blocks, that each era should last.
         /// NOTE: Currently it is not possible to change the era duration after
@@ -282,16 +300,16 @@ mod pallet {
         pub enable_storage_access: bool,
         /// Who can author blocks at genesis.
         pub allow_authoring_by: AllowAuthoringBy,
+        /// Number of iterations for proof of time per slot
+        pub pot_slot_iterations: NonZeroU32,
     }
 
     impl Default for GenesisConfig {
         #[inline]
         fn default() -> Self {
-            Self {
-                enable_rewards: true,
-                enable_storage_access: true,
-                allow_authoring_by: AllowAuthoringBy::Anyone,
-            }
+            // TODO: Remove once https://github.com/paritytech/polkadot-sdk/pull/1221 is in our
+            //  fork
+            unreachable!("Config must be initialized explicitly");
         }
     }
 
@@ -314,6 +332,7 @@ mod pallet {
                     RootPlotPublicKey::<T>::put(root_farmer.clone());
                 }
             }
+            PotSlotIterations::<T>::put(self.pot_slot_iterations);
         }
     }
 
@@ -355,8 +374,13 @@ mod pallet {
     /// Global randomnesses derived from from PoR signature and used for deriving global challenges.
     #[pallet::storage]
     #[pallet::getter(fn global_randomnesses)]
+    #[cfg(not(feature = "pot"))]
     pub(super) type GlobalRandomnesses<T> =
         StorageValue<_, sp_consensus_subspace::GlobalRandomnesses, ValueQuery>;
+
+    /// Number of iterations for proof of time per slot
+    #[pallet::storage]
+    pub(super) type PotSlotIterations<T> = StorageValue<_, NonZeroU32>;
 
     /// Solution ranges used for challenges.
     #[pallet::storage]
@@ -444,9 +468,10 @@ mod pallet {
         >,
     >;
 
-    /// Temporary value (cleared at block finalization) which contains current block PoR randomness.
+    /// The current block randomness, updated at block initialization. When the proof of time feature
+    /// is enabled it derived from PoT otherwise PoR.
     #[pallet::storage]
-    pub(super) type PorRandomness<T> = StorageValue<_, Randomness>;
+    pub(super) type BlockRandomness<T> = StorageValue<_, Randomness>;
 
     /// Enable storage access for all users.
     #[pallet::storage]
@@ -676,6 +701,7 @@ mod pallet {
 
 impl<T: Config> Pallet<T> {
     /// Determine the Subspace slot duration based on the Timestamp module configuration.
+    #[cfg(not(feature = "pot"))]
     pub fn slot_duration() -> T::Moment {
         // we double the minimum block-period so each author can always propose within
         // the majority of their slot.
@@ -691,6 +717,7 @@ impl<T: Config> Pallet<T> {
 
     /// Determine whether a randomness update should take place at this block.
     /// Assumes that initialization has already taken place.
+    // TODO: Remove when switching to PoT by default
     fn should_update_global_randomness(block_number: T::BlockNumber) -> bool {
         block_number % T::GlobalRandomnessUpdateInterval::get() == Zero::zero()
     }
@@ -703,9 +730,12 @@ impl<T: Config> Pallet<T> {
 
     /// DANGEROUS: Enact update of global randomness. Should be done on every block where `should_update_global_randomness`
     /// has returned `true`, and the caller is the only caller of this function.
-    fn enact_update_global_randomness(_block_number: T::BlockNumber, por_randomness: Randomness) {
+    // TODO: Remove when switching to PoT by default
+    #[cfg_attr(feature = "pot", allow(unused_variables))]
+    fn enact_update_global_randomness(_block_number: T::BlockNumber, block_randomness: Randomness) {
+        #[cfg(not(feature = "pot"))]
         GlobalRandomnesses::<T>::mutate(|global_randomnesses| {
-            global_randomnesses.next = Some(por_randomness);
+            global_randomnesses.next = Some(block_randomness);
         });
     }
 
@@ -762,15 +792,15 @@ impl<T: Config> Pallet<T> {
         // On the first non-zero block (i.e. block #1) we need to adjust internal storage
         // accordingly.
         if *GenesisSlot::<T>::get() == 0 {
-            GenesisSlot::<T>::put(pre_digest.slot);
+            GenesisSlot::<T>::put(pre_digest.slot());
             debug_assert_ne!(*GenesisSlot::<T>::get(), 0);
         }
 
         // The slot number of the current block being initialized.
-        CurrentSlot::<T>::put(pre_digest.slot);
+        CurrentSlot::<T>::put(pre_digest.slot());
 
         {
-            let farmer_public_key = pre_digest.solution.public_key.clone();
+            let farmer_public_key = pre_digest.solution().public_key.clone();
 
             // Optional restriction for block authoring to the root user
             if !AllowAuthoringByAnyone::<T>::get() {
@@ -794,10 +824,10 @@ impl<T: Config> Pallet<T> {
 
             let key = (
                 farmer_public_key,
-                pre_digest.solution.sector_index,
-                pre_digest.solution.chunk,
-                AuditChunkOffset(pre_digest.solution.audit_chunk_offset),
-                pre_digest.slot,
+                pre_digest.solution().sector_index,
+                pre_digest.solution().chunk,
+                AuditChunkOffset(pre_digest.solution().audit_chunk_offset),
+                pre_digest.slot(),
             );
             if ParentBlockVoters::<T>::get().contains_key(&key) {
                 let (public_key, _sector_index, _chunk, _audit_chunk_offset, slot) = key;
@@ -825,7 +855,7 @@ impl<T: Config> Pallet<T> {
                     chunk,
                     audit_chunk_offset,
                     slot,
-                    pre_digest.solution.reward_address.clone(),
+                    pre_digest.solution().reward_address.clone(),
                 ));
             }
         }
@@ -859,9 +889,17 @@ impl<T: Config> Pallet<T> {
         }
 
         // Extract PoR randomness from pre-digest.
-        let por_randomness = derive_randomness(&pre_digest.solution, pre_digest.slot.into());
-        // Store PoR randomness for block duration as it might be useful.
-        PorRandomness::<T>::put(por_randomness);
+        #[cfg(not(feature = "pot"))]
+        let block_randomness = derive_randomness(pre_digest.solution(), pre_digest.slot().into());
+
+        #[cfg(feature = "pot")]
+        let block_randomness = pre_digest
+            .pot_info()
+            .proof_of_time()
+            .derive_global_randomness();
+
+        // Update the block randomness.
+        BlockRandomness::<T>::put(block_randomness);
 
         // Deposit global randomness data such that light client can validate blocks later.
         #[cfg(not(feature = "pot"))]
@@ -875,7 +913,7 @@ impl<T: Config> Pallet<T> {
 
         // Enact global randomness update, if necessary.
         #[cfg(not(feature = "pot"))]
-        T::GlobalRandomnessIntervalTrigger::trigger::<T>(block_number, por_randomness);
+        T::GlobalRandomnessIntervalTrigger::trigger::<T>(block_number, block_randomness);
         // Enact era change, if necessary.
         T::EraChangeTrigger::trigger::<T>(block_number);
 
@@ -886,6 +924,12 @@ impl<T: Config> Pallet<T> {
                 next_global_randomness,
             ));
         }
+
+        // TODO: Take adjustment of iterations into account once we have it
+        #[cfg(feature = "pot")]
+        frame_system::Pallet::<T>::deposit_log(DigestItem::pot_slot_iterations(
+            PotSlotIterations::<T>::get().expect("Always instantiated during genesis; qed"),
+        ));
     }
 
     fn do_finalize(_block_number: T::BlockNumber) {
@@ -897,8 +941,6 @@ impl<T: Config> Pallet<T> {
                 next_solution_range,
             ));
         }
-
-        PorRandomness::<T>::take();
 
         if let Some((public_key, sector_index, scalar, audit_chunk_offset, slot, _reward_address)) =
             CurrentBlockAuthorInfo::<T>::take()
@@ -1038,6 +1080,18 @@ impl<T: Config> Pallet<T> {
         Some(())
     }
 
+    /// Proof of time parameters
+    #[cfg(feature = "pot")]
+    pub fn pot_parameters() -> PotParameters {
+        PotParameters::V0 {
+            slot_iterations: PotSlotIterations::<T>::get()
+                .expect("Always instantiated during genesis; qed"),
+            // TODO: This is where adjustment for number of iterations and entropy injection will
+            //  happen for runtime API calls
+            next_change: None,
+        }
+    }
+
     /// Check if `farmer_public_key` is in block list (due to equivocation)
     pub fn is_in_block_list(farmer_public_key: &FarmerPublicKey) -> bool {
         BlockList::<T>::contains_key(farmer_public_key)
@@ -1055,9 +1109,12 @@ impl<T: Config> Pallet<T> {
             confirmation_depth_k: T::ConfirmationDepthK::get()
                 .try_into()
                 .unwrap_or_else(|_| panic!("Block number always fits in BlockNumber; qed")),
+            #[cfg(not(feature = "pot"))]
             global_randomness_interval: T::GlobalRandomnessUpdateInterval::get()
                 .try_into()
                 .unwrap_or_else(|_| panic!("Block number always fits in BlockNumber; qed")),
+            #[cfg(feature = "pot")]
+            block_authoring_delay: T::BlockAuthoringDelay::get(),
             era_duration: T::EraDuration::get()
                 .try_into()
                 .unwrap_or_else(|_| panic!("Block number always fits in BlockNumber; qed")),
@@ -1177,10 +1234,11 @@ impl<T: Config> Pallet<T> {
 /// initialization has already happened) or from `validate_unsigned` by transaction pool (meaning
 /// block initialization didn't happen yet).
 fn current_vote_verification_data<T: Config>(is_block_initialized: bool) -> VoteVerificationData {
-    // TODO: factor PoT in the vote process.
+    #[cfg(not(feature = "pot"))]
     let global_randomnesses = GlobalRandomnesses::<T>::get();
     let solution_ranges = SolutionRanges::<T>::get();
     VoteVerificationData {
+        #[cfg(not(feature = "pot"))]
         global_randomness: if is_block_initialized {
             global_randomnesses.current
         } else {
@@ -1188,6 +1246,9 @@ fn current_vote_verification_data<T: Config>(is_block_initialized: bool) -> Vote
                 .next
                 .unwrap_or(global_randomnesses.current)
         },
+        // TODO: This is invalid and must be fixed for PoT
+        #[cfg(feature = "pot")]
+        global_randomness: Default::default(),
         solution_range: if is_block_initialized {
             solution_ranges.voting_current
         } else {
@@ -1410,7 +1471,11 @@ fn check_vote<T: Config>(
         solution.into(),
         slot.into(),
         (&VerifySolutionParams {
+            #[cfg(not(feature = "pot"))]
             global_randomness: vote_verification_data.global_randomness,
+            // TODO: This is incorrect, find a way to verify votes
+            #[cfg(feature = "pot")]
+            proof_of_time: PotProof::default(),
             solution_range: vote_verification_data.solution_range,
             piece_check_params: Some(PieceCheckParams {
                 max_pieces_in_sector: T::MaxPiecesInSector::get(),
@@ -1560,6 +1625,7 @@ fn check_segment_headers<T: Config>(
     Ok(())
 }
 
+#[cfg(not(feature = "pot"))]
 impl<T: Config> OnTimestampSet<T::Moment> for Pallet<T> {
     fn on_timestamp_set(moment: T::Moment) {
         let slot_duration = Self::slot_duration();
@@ -1623,8 +1689,8 @@ impl<T: Config> frame_support::traits::Randomness<T::Hash, T::BlockNumber> for P
     fn random(subject: &[u8]) -> (T::Hash, T::BlockNumber) {
         let mut subject = subject.to_vec();
         subject.extend_from_slice(
-            PorRandomness::<T>::get()
-                .expect("PoR randomness is always set in block initialization; qed")
+            BlockRandomness::<T>::get()
+                .expect("Block randomness is always set in block initialization; qed")
                 .as_ref(),
         );
 
@@ -1637,8 +1703,8 @@ impl<T: Config> frame_support::traits::Randomness<T::Hash, T::BlockNumber> for P
     fn random_seed() -> (T::Hash, T::BlockNumber) {
         (
             T::Hashing::hash(
-                PorRandomness::<T>::get()
-                    .expect("PoR randomness is always set in block initialization; qed")
+                BlockRandomness::<T>::get()
+                    .expect("Block randomness is always set in block initialization; qed")
                     .as_ref(),
             ),
             frame_system::Pallet::<T>::current_block_number(),

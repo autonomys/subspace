@@ -5,15 +5,17 @@ use crate::behavior::persistent_parameters::{
 use crate::behavior::{
     Behavior, Event, GeneralConnectedPeersInstance, SpecialConnectedPeersInstance,
 };
-use crate::connected_peers::Event as ConnectedPeersEvent;
-use crate::create;
-use crate::create::temporary_bans::TemporaryBans;
-use crate::create::{
+use crate::constructor;
+use crate::constructor::temporary_bans::TemporaryBans;
+use crate::constructor::{
     ConnectedPeersHandler, LocalOnlyRecordStore, KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER,
     REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER,
 };
-use crate::peer_info::{Event as PeerInfoEvent, PeerInfoSuccess};
-use crate::request_responses::{Event as RequestResponseEvent, IfDisconnected};
+use crate::protocols::connected_peers::Event as ConnectedPeersEvent;
+use crate::protocols::peer_info::{Event as PeerInfoEvent, PeerInfoSuccess};
+use crate::protocols::request_response::request_response_factory::{
+    Event as RequestResponseEvent, IfDisconnected,
+};
 use crate::shared::{Command, CreatedSubscription, NewPeerInfo, Shared};
 use crate::utils::{
     is_global_address_or_dns, strip_peer_id, PeerAddress, ResizableSemaphorePermit,
@@ -24,6 +26,7 @@ use event_listener_primitives::HandlerId;
 use futures::channel::mpsc;
 use futures::future::Fuse;
 use futures::{FutureExt, StreamExt};
+use libp2p::autonat::Event as AutonatEvent;
 use libp2p::core::{address_translation, ConnectedPoint};
 use libp2p::gossipsub::{Event as GossipsubEvent, TopicHash};
 use libp2p::identify::Event as IdentifyEvent;
@@ -97,7 +100,7 @@ enum BootstrapCommandState {
 #[must_use = "Node does not function properly unless its runner is driven forward"]
 pub struct NodeRunner<LocalRecordProvider>
 where
-    LocalRecordProvider: create::LocalRecordProvider + Send + Sync + 'static,
+    LocalRecordProvider: constructor::LocalRecordProvider + Send + Sync + 'static,
 {
     /// Should non-global addresses be added to the DHT?
     allow_non_global_addresses_in_dht: bool,
@@ -153,7 +156,7 @@ where
 // Helper struct for NodeRunner configuration (clippy requirement).
 pub(crate) struct NodeRunnerConfig<LocalRecordProvider>
 where
-    LocalRecordProvider: create::LocalRecordProvider + Send + Sync + 'static,
+    LocalRecordProvider: constructor::LocalRecordProvider + Send + Sync + 'static,
 {
     pub(crate) allow_non_global_addresses_in_dht: bool,
     pub(crate) command_receiver: mpsc::Receiver<Command>,
@@ -174,7 +177,7 @@ where
 
 impl<LocalRecordProvider> NodeRunner<LocalRecordProvider>
 where
-    LocalRecordProvider: create::LocalRecordProvider + Send + Sync + 'static,
+    LocalRecordProvider: constructor::LocalRecordProvider + Send + Sync + 'static,
 {
     pub(crate) fn new(
         NodeRunnerConfig {
@@ -419,6 +422,9 @@ where
             SwarmEvent::Behaviour(Event::SpecialConnectedPeers(event)) => {
                 self.handle_special_connected_peers_event(event).await;
             }
+            SwarmEvent::Behaviour(Event::Autonat(event)) => {
+                self.handle_autonat_event(event).await;
+            }
             SwarmEvent::NewListenAddr { address, .. } => {
                 let shared = match self.shared_weak.upgrade() {
                     Some(shared) => shared,
@@ -572,34 +578,27 @@ where
                     if let Some(shared) = self.shared_weak.upgrade() {
                         // One peer is possibly a node peer is connected to, hence expecting more
                         // than one for online status
-                        if shared
+                        let other_connections_exist = shared
                             .num_established_peer_connections
                             .load(Ordering::Relaxed)
-                            > 1
-                        {
-                            // Ban temporarily only peers without active connections.
-                            if !self.swarm.is_connected(peer_id) {
-                                let should_temporary_ban = match &error {
-                                    DialError::Transport(addresses) => {
-                                        // Ignoring other errors, those are likely temporary ban errors
-                                        !matches!(
-                                            addresses.first(),
-                                            Some((_multiaddr, TransportError::Other(_error)))
-                                        )
-                                    }
-                                    _ => true,
-                                };
+                            > 1;
+                        let should_ban_temporarily =
+                            self.should_temporary_ban_on_dial_error(peer_id, &error);
 
-                                if should_temporary_ban {
-                                    self.temporary_bans.lock().create_or_extend(peer_id);
-                                    debug!(%peer_id, ?error, "Peer was temporarily banned.");
-                                }
-                            }
+                        trace!(%should_ban_temporarily, %other_connections_exist, "Temporary bans conditions.");
+
+                        if other_connections_exist && should_ban_temporarily {
+                            self.temporary_bans.lock().create_or_extend(peer_id);
+                            debug!(%peer_id, ?error, "Peer was temporarily banned.");
                         }
                     };
                 }
 
-                debug!(?peer_id, "SwarmEvent::OutgoingConnectionError for peer.");
+                debug!(
+                    ?peer_id,
+                    ?error,
+                    "SwarmEvent::OutgoingConnectionError for peer."
+                );
 
                 match error {
                     DialError::Transport(ref addresses) => {
@@ -627,6 +626,59 @@ where
             }
             other => {
                 trace!("Other swarm event: {:?}", other);
+            }
+        }
+    }
+
+    fn should_temporary_ban_on_dial_error(&self, peer_id: &PeerId, error: &DialError) -> bool {
+        // Ban temporarily only peers without active connections.
+        if !self.swarm.is_connected(peer_id) {
+            return false;
+        }
+
+        match &error {
+            DialError::Transport(addresses) => {
+                for (_, error) in addresses {
+                    match error {
+                        TransportError::MultiaddrNotSupported(_) => {
+                            return true;
+                        }
+                        TransportError::Other(_) => {
+                            // Ignore "temporary ban" errors
+                            if self.temporary_bans.lock().is_banned(peer_id) {
+                                return false;
+                            }
+                        }
+                    }
+                }
+                // Other errors that are not related to temporary bans
+                true
+            }
+            DialError::LocalPeerId { .. } => {
+                // We don't ban ourselves
+                debug!("Local peer dial attempt detected.");
+
+                false
+            }
+            DialError::NoAddresses => {
+                // Let's wait until we get addresses
+                true
+            }
+            DialError::DialPeerConditionFalse(_) => {
+                // These are local conditions, we don't need to ban remote peers
+                false
+            }
+            DialError::Aborted => {
+                // Seems like a transient event
+                false
+            }
+            DialError::WrongPeerId { .. } => {
+                // It's likely that peer was restarted with different identity
+                false
+            }
+            DialError::Denied { .. } => {
+                // We exceeded the connection limits or we hit a black listed peer
+                false
             }
         }
     }
@@ -1103,6 +1155,21 @@ where
             self.swarm.behaviour_mut().special_connected_peers.as_mut()
         {
             special_connected_peers.add_peers_to_dial(&peers);
+        }
+    }
+
+    async fn handle_autonat_event(&mut self, event: AutonatEvent) {
+        trace!(?event, "Autonat event received.");
+        if let Some(autonat) = self.swarm.behaviour().autonat.as_ref() {
+            debug!(
+                public_address=?autonat.public_address(),
+                confidence=%autonat.confidence(),
+                "Current public address confidence."
+            );
+        }
+
+        if let AutonatEvent::StatusChanged { old, new } = event {
+            info!(?old, ?new, "Public address status changed.")
         }
     }
 

@@ -15,7 +15,9 @@ use domain_runtime_primitives::{MultiAccountId, TryConvertBack, SLOT_DURATION};
 use fp_account::EthereumSignature;
 use fp_self_contained::SelfContainedCall;
 use frame_support::dispatch::{DispatchClass, GetDispatchInfo};
-use frame_support::traits::{ConstU16, ConstU32, ConstU64, Everything, FindAuthor};
+use frame_support::traits::{
+    ConstU16, ConstU32, ConstU64, Currency, Everything, FindAuthor, Imbalance, OnUnbalanced,
+};
 use frame_support::weights::constants::{
     BlockExecutionWeight, ExtrinsicBaseWeight, ParityDbWeight, WEIGHT_REF_TIME_PER_MILLIS,
     WEIGHT_REF_TIME_PER_SECOND,
@@ -33,10 +35,11 @@ use pallet_transporter::EndpointHandler;
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
 use sp_core::{Get, OpaqueMetadata, H160, H256, U256};
+use sp_domains::DomainId;
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
-    ChainId, ChannelId, CrossDomainMessage, ExtractedStateRootsFromProof, MessageId,
-    RelayerMessagesWithStorageKey,
+    BlockInfo, BlockMessagesWithStorageKey, ChainId, ChannelId, CrossDomainMessage,
+    ExtractedStateRootsFromProof, MessageId,
 };
 use sp_runtime::traits::{
     BlakeTwo256, Block as BlockT, Convert, DispatchInfoOf, Dispatchable, IdentifyAccount,
@@ -54,7 +57,7 @@ use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
-use subspace_runtime_primitives::{Moment, SHANNON, SSC};
+use subspace_runtime_primitives::{Moment, SHANNON};
 
 /// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
 pub type Signature = EthereumSignature;
@@ -323,6 +326,22 @@ impl pallet_balances::Config for Runtime {
     type MaxHolds = ();
 }
 
+impl pallet_operator_rewards::Config for Runtime {
+    type Balance = Balance;
+}
+
+/// `ActualPaidFeesHandler` used to collect all the fee in `pallet_operator_rewards`
+pub struct ActualPaidFeesHandler;
+
+impl OnUnbalanced<NegativeImbalance> for ActualPaidFeesHandler {
+    fn on_unbalanceds<B>(fees_then_tips: impl Iterator<Item = NegativeImbalance>) {
+        // Record both actual paid transaction fee and tip in `pallet_operator_rewards`
+        for fee in fees_then_tips {
+            OperatorRewards::note_operator_rewards(fee.peek());
+        }
+    }
+}
+
 parameter_types! {
     pub const TransactionByteFee: Balance = 1;
     pub const OperationalFeeMultiplier: u8 = 5;
@@ -330,7 +349,8 @@ parameter_types! {
 
 impl pallet_transaction_payment::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type OnChargeTransaction = pallet_transaction_payment::CurrencyAdapter<Balances, ()>;
+    type OnChargeTransaction =
+        pallet_transaction_payment::CurrencyAdapter<Balances, ActualPaidFeesHandler>;
     type WeightToFee = IdentityFee<Balance>;
     type LengthToFee = ConstantMultiplier<Balance, TransactionByteFee>;
     type FeeMultiplierUpdate = ();
@@ -351,22 +371,22 @@ impl pallet_sudo::Config for Runtime {
 parameter_types! {
     pub const StateRootsBound: u32 = 50;
     pub const RelayConfirmationDepth: BlockNumber = 1;
+    pub SelfChainId: ChainId = SelfDomainId::self_domain_id().into();
 }
 
-parameter_types! {
-    pub const MaximumRelayers: u32 = 100;
-    pub const RelayerDeposit: Balance = 100 * SSC;
-    // TODO: Proper value
-    pub SelfChainId: ChainId = 3u32.into();
+pub struct OnXDMRewards;
+
+impl sp_messenger::OnXDMRewards<Balance> for OnXDMRewards {
+    fn on_xdm_rewards(rewards: Balance) {
+        OperatorRewards::note_operator_rewards(rewards)
+    }
 }
 
 impl pallet_messenger::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type SelfChainId = SelfChainId;
 
-    fn get_endpoint_response_handler(
-        endpoint: &Endpoint,
-    ) -> Option<Box<dyn EndpointHandlerT<MessageId>>> {
+    fn get_endpoint_handler(endpoint: &Endpoint) -> Option<Box<dyn EndpointHandlerT<MessageId>>> {
         if endpoint == &Endpoint::Id(TransporterEndpointId::get()) {
             Some(Box::new(EndpointHandler(PhantomData::<Runtime>)))
         } else {
@@ -375,11 +395,11 @@ impl pallet_messenger::Config for Runtime {
     }
 
     type Currency = Balances;
-    type MaximumRelayers = MaximumRelayers;
-    type RelayerDeposit = RelayerDeposit;
     type DomainInfo = ();
     type ConfirmationDepth = RelayConfirmationDepth;
     type WeightInfo = pallet_messenger::weights::SubstrateWeight<Runtime>;
+    type WeightToFee = IdentityFee<Balance>;
+    type OnXDMRewards = OnXDMRewards;
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Runtime
@@ -454,6 +474,60 @@ parameter_types! {
     pub WeightPerGas: Weight = Weight::from_parts(WEIGHT_PER_GAS, 0);
 }
 
+type NegativeImbalance = <Balances as Currency<AccountId>>::NegativeImbalance;
+
+// `BaseFeeHandler` is used to handle the base fee of the evm extrinsic separately, this is necessary
+// because `InnerEVMCurrencyAdapter::pallet_operator_rewards` only return the tip of the evm extrinsic.
+struct BaseFeeHandler;
+
+impl OnUnbalanced<NegativeImbalance> for BaseFeeHandler {
+    fn on_nonzero_unbalanced(base_fee: NegativeImbalance) {
+        // Record the evm transaction base fee
+        OperatorRewards::note_operator_rewards(base_fee.peek())
+    }
+}
+
+type InnerEVMCurrencyAdapter = pallet_evm::EVMCurrencyAdapter<Balances, BaseFeeHandler>;
+
+// Implementation of [`pallet_transaction_payment::OnChargeTransaction`] that charges evm transaction
+// fees from the transaction sender and collect all the fees (including both the base fee and tip) in
+// `pallet_operator_rewards`
+pub struct EVMCurrencyAdapter;
+
+impl pallet_evm::OnChargeEVMTransaction<Runtime> for EVMCurrencyAdapter {
+    type LiquidityInfo = Option<NegativeImbalance>;
+
+    fn withdraw_fee(
+        who: &H160,
+        fee: U256,
+    ) -> Result<Self::LiquidityInfo, pallet_evm::Error<Runtime>> {
+        InnerEVMCurrencyAdapter::withdraw_fee(who, fee)
+    }
+
+    fn correct_and_deposit_fee(
+        who: &H160,
+        corrected_fee: U256,
+        base_fee: U256,
+        already_withdrawn: Self::LiquidityInfo,
+    ) -> Self::LiquidityInfo {
+        let tip =
+            <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<
+                Runtime,
+            >>::correct_and_deposit_fee(who, corrected_fee, base_fee, already_withdrawn);
+        if let Some(t) = tip.as_ref() {
+            // Record the evm transaction tip
+            OperatorRewards::note_operator_rewards(t.peek())
+        }
+        tip
+    }
+
+    fn pay_priority_fee(tip: Self::LiquidityInfo) {
+        <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<Runtime>>::pay_priority_fee(
+            tip,
+        );
+    }
+}
+
 impl pallet_evm::Config for Runtime {
     type FeeCalculator = BaseFee;
     type GasWeightMapping = pallet_evm::FixedGasWeightMapping<Self>;
@@ -469,7 +543,7 @@ impl pallet_evm::Config for Runtime {
     type ChainId = EVMChainId;
     type BlockGasLimit = BlockGasLimit;
     type Runner = pallet_evm::runner::stack::Runner<Self>;
-    type OnChargeTransaction = ();
+    type OnChargeTransaction = EVMCurrencyAdapter;
     type OnCreate = ();
     type FindAuthor = FindAuthorTruncated;
     type Timestamp = Timestamp;
@@ -551,6 +625,7 @@ construct_runtime!(
 
         // domain instance stuff
         SelfDomainId: pallet_domain_id = 90,
+        OperatorRewards: pallet_operator_rewards = 91,
 
         // Sudo account
         Sudo: pallet_sudo = 100,
@@ -812,6 +887,10 @@ impl_runtime_apis! {
         fn extrinsic_weight(ext: &<Block as BlockT>::Extrinsic) -> Weight {
             ext.get_dispatch_info().weight
         }
+
+        fn block_transaction_fee() -> Balance {
+            OperatorRewards::block_transaction_fee()
+        }
     }
 
     impl domain_runtime_primitives::InherentExtrinsicApi<Block> for Runtime {
@@ -831,12 +910,17 @@ impl_runtime_apis! {
             extract_xdm_proof_state_roots(extrinsic)
         }
 
-        fn confirmation_depth() -> BlockNumber {
-            RelayConfirmationDepth::get()
+        fn is_domain_info_confirmed(
+            _domain_id: DomainId,
+            _domain_block_info: BlockInfo<BlockNumber, <Block as BlockT>::Hash>,
+            _domain_state_root: <Block as BlockT>::Hash,
+        ) -> bool{
+            // this is always invalid on domains since we do not have info other domains.
+            false
         }
     }
 
-    impl sp_messenger::RelayerApi<Block, AccountId, BlockNumber> for Runtime {
+    impl sp_messenger::RelayerApi<Block, BlockNumber> for Runtime {
         fn chain_id() -> ChainId {
             SelfChainId::get()
         }
@@ -845,16 +929,8 @@ impl_runtime_apis! {
             RelayConfirmationDepth::get()
         }
 
-        fn chain_best_number(_chain_id: ChainId) -> Option<BlockNumber> {
-            None
-        }
-
-        fn chain_state_root(_chain_id: ChainId, _number: BlockNumber, _hash: Hash) -> Option<Hash>{
-            None
-        }
-
-        fn relayer_assigned_messages(relayer_id: AccountId) -> RelayerMessagesWithStorageKey {
-            Messenger::relayer_assigned_messages(relayer_id)
+        fn block_messages() -> BlockMessagesWithStorageKey {
+            Messenger::get_block_messages()
         }
 
         fn outbox_message_unsigned(msg: CrossDomainMessage<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {

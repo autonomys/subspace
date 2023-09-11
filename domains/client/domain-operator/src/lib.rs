@@ -84,17 +84,19 @@ pub use self::utils::{DomainBlockImportNotification, DomainImportNotifications};
 use crate::utils::BlockInfo;
 use futures::channel::mpsc;
 use futures::Stream;
-use sc_client_api::BlockImportNotification;
+use sc_client_api::{AuxStore, BlockImportNotification};
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::{SelectChain, SyncOracle};
 use sp_consensus_slots::Slot;
+use sp_domain_digests::AsPredigest;
 use sp_domains::{Bundle, DomainId, ExecutionReceipt};
 use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{
     Block as BlockT, HashFor, Header as HeaderT, NumberFor, One, Saturating, Zero,
 };
+use sp_runtime::DigestItem;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::Randomness;
@@ -238,4 +240,42 @@ where
     const MAX_ACTIVE_LEAVES: usize = 4;
 
     Ok(leaves.into_iter().rev().take(MAX_ACTIVE_LEAVES).collect())
+}
+
+pub(crate) fn load_execution_receipt_by_domain_hash<Block, CBlock, Client>(
+    domain_client: &Client,
+    domain_hash: Block::Hash,
+    domain_number: NumberFor<Block>,
+) -> Result<ExecutionReceiptFor<Block, CBlock>, sp_blockchain::Error>
+where
+    Block: BlockT,
+    CBlock: BlockT,
+    Client: AuxStore + HeaderBackend<Block>,
+{
+    let domain_header = domain_client.header(domain_hash)?.ok_or_else(|| {
+        sp_blockchain::Error::Backend(format!(
+            "Header for domain block {domain_hash}#{domain_number} not found"
+        ))
+    })?;
+
+    let consensus_block_hash = domain_header
+        .digest()
+        .convert_first(DigestItem::as_consensus_block_info)
+        .ok_or_else(|| {
+            sp_blockchain::Error::Application(Box::from(
+                "Domain block header {domain_hash}#{domain_number} must have consensus block info predigest"
+            ))
+        })?;
+
+    // Get receipt by consensus block hash
+    crate::aux_schema::load_execution_receipt::<_, Block, CBlock>(
+        domain_client,
+        consensus_block_hash,
+    )?
+    .ok_or_else(|| {
+        sp_blockchain::Error::Backend(format!(
+            "Receipt for consensus block {consensus_block_hash} and domain block \
+                {domain_hash}#{domain_number} not found"
+        ))
+    })
 }

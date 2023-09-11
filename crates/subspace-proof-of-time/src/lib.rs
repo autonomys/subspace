@@ -1,107 +1,69 @@
 //! Proof of time implementation.
 
 #![cfg_attr(not(feature = "std"), no_std)]
-mod pot_aes;
+mod aes;
 
-use core::num::{NonZeroU32, NonZeroU8};
-use subspace_core_primitives::{BlockHash, NonEmptyVec, PotKey, PotProof, PotSeed, SlotNumber};
+use core::num::NonZeroU32;
+use subspace_core_primitives::{PotCheckpoints, PotProof, PotSeed};
 
+/// Proof of time error
 #[derive(Debug)]
 #[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
-pub enum PotInitError {
+pub enum PotError {
+    /// Iterations is not multiple of number of checkpoints times two
     #[cfg_attr(
         feature = "thiserror",
         error(
-            "pot_iterations not multiple of num_checkpoints: {pot_iterations}, {num_checkpoints}"
+            "Iterations {iterations} is not multiple of number of checkpoints {num_checkpoints} \
+            times two"
         )
     )]
-    NotMultiple {
-        pot_iterations: u32,
-        num_checkpoints: u8,
+    NotMultipleOfCheckpoints {
+        /// Slot iterations provided
+        iterations: NonZeroU32,
+        /// Number of checkpoints
+        num_checkpoints: u32,
     },
 }
 
-#[derive(Debug)]
-#[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
-pub enum PotVerificationError {
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Unexpected number of checkpoints: {expected}, {actual}")
-    )]
-    CheckpointCountMismatch { expected: u8, actual: u64 },
+/// Run PoT proving and produce checkpoints.
+///
+/// Returns error if `iterations` is not a multiple of checkpoints times two.
+pub fn prove(seed: PotSeed, iterations: NonZeroU32) -> Result<PotCheckpoints, PotError> {
+    if iterations.get() % u32::from(PotCheckpoints::NUM_CHECKPOINTS.get() * 2) != 0 {
+        return Err(PotError::NotMultipleOfCheckpoints {
+            iterations,
+            num_checkpoints: u32::from(PotCheckpoints::NUM_CHECKPOINTS.get()),
+        });
+    }
 
-    #[cfg_attr(feature = "thiserror", error("Checkpoint verification failed"))]
-    VerificationFailed,
+    Ok(aes::create(
+        seed,
+        seed.key(),
+        iterations.get() / u32::from(PotCheckpoints::NUM_CHECKPOINTS.get()),
+    ))
 }
 
-/// Wrapper for the low level AES primitives
-#[derive(Clone)]
-pub struct ProofOfTime {
-    /// Number of checkpoints per PoT.
-    num_checkpoints: u8,
-
-    /// Number of chained AES operations per checkpoint.
-    checkpoint_iterations: u32,
-}
-
-impl ProofOfTime {
-    /// Creates the AES wrapper.
-    pub fn new(
-        pot_iterations: NonZeroU32,
-        num_checkpoints: NonZeroU8,
-    ) -> Result<Self, PotInitError> {
-        let pot_iterations = pot_iterations.get();
-        let num_checkpoints = num_checkpoints.get();
-        if pot_iterations % (num_checkpoints as u32) != 0 {
-            return Err(PotInitError::NotMultiple {
-                pot_iterations,
-                num_checkpoints,
-            });
-        }
-
-        Ok(Self {
+/// Verify checkpoint, number of iterations is set across uniformly distributed checkpoints.
+///
+/// Returns error if `iterations` is not a multiple of checkpoints times two.
+pub fn verify(
+    seed: PotSeed,
+    iterations: NonZeroU32,
+    checkpoints: &[PotProof],
+) -> Result<bool, PotError> {
+    let num_checkpoints = checkpoints.len() as u32;
+    if iterations.get() % (num_checkpoints * 2) != 0 {
+        return Err(PotError::NotMultipleOfCheckpoints {
+            iterations,
             num_checkpoints,
-            checkpoint_iterations: pot_iterations / (num_checkpoints as u32),
-        })
+        });
     }
 
-    /// Builds the proof.
-    pub fn create(
-        &self,
-        seed: PotSeed,
-        key: PotKey,
-        slot_number: SlotNumber,
-        injected_block_hash: BlockHash,
-    ) -> PotProof {
-        let checkpoints = NonEmptyVec::new(pot_aes::create(
-            &seed,
-            &key,
-            self.num_checkpoints,
-            self.checkpoint_iterations,
-        ))
-        .expect("List of checkpoints is never empty; qed");
-        PotProof::new(slot_number, seed, key, checkpoints, injected_block_hash)
-    }
-
-    /// Verifies the proof.
-    pub fn verify(&self, proof: &PotProof) -> Result<(), PotVerificationError> {
-        // TODO: this check may break upgrades, revisit.
-        if proof.checkpoints.len() != self.num_checkpoints as usize {
-            return Err(PotVerificationError::CheckpointCountMismatch {
-                expected: self.num_checkpoints,
-                actual: proof.checkpoints.len() as u64,
-            });
-        }
-
-        if pot_aes::verify_sequential(
-            &proof.seed,
-            &proof.key,
-            proof.checkpoints.as_slice(),
-            self.checkpoint_iterations,
-        ) {
-            Ok(())
-        } else {
-            Err(PotVerificationError::VerificationFailed)
-        }
-    }
+    Ok(aes::verify_sequential(
+        seed,
+        seed.key(),
+        checkpoints,
+        iterations.get() / num_checkpoints,
+    ))
 }

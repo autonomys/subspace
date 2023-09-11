@@ -1,14 +1,9 @@
 use crate::DsnArgs;
-use futures::StreamExt;
 use parking_lot::Mutex;
 use std::collections::HashSet;
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Weak};
-use subspace_core_primitives::SegmentIndex;
 use subspace_farmer::piece_cache::PieceCache;
-use subspace_farmer::utils::archival_storage_info::ArchivalStorageInfo;
-use subspace_farmer::utils::archival_storage_pieces::ArchivalStoragePieces;
 use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
 use subspace_farmer::{NodeClient, NodeRpcClient};
 use subspace_networking::libp2p::identity::Keypair;
@@ -17,7 +12,7 @@ use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::utils::strip_peer_id;
 use subspace_networking::{
-    create, Config, NetworkingParametersManager, Node, NodeRunner, PeerInfo, PeerInfoProvider,
+    construct, Config, NetworkingParametersManager, Node, NodeRunner, PeerInfo, PeerInfoProvider,
     PieceByIndexRequest, PieceByIndexRequestHandler, PieceByIndexResponse,
     SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
 };
@@ -48,8 +43,6 @@ pub(super) fn configure_dsn(
     }: DsnArgs,
     weak_readers_and_pieces: Weak<Mutex<Option<ReadersAndPieces>>>,
     node_client: NodeRpcClient,
-    archival_storage_pieces: ArchivalStoragePieces,
-    archival_storage_info: ArchivalStorageInfo,
     piece_cache: PieceCache,
 ) -> Result<(Node, NodeRunner<PieceCache>), anyhow::Error> {
     let networking_parameters_registry = NetworkingParametersManager::new(
@@ -61,47 +54,11 @@ pub(super) fn configure_dsn(
     )
     .map(Box::new)?;
 
-    // TODO: Consider introducing and using global in-memory segment header cache (this comment is
-    //  in multiple files)
-    let last_archived_segment_index = Arc::new(AtomicU64::default());
-    tokio::spawn({
-        let last_archived_segment_index = last_archived_segment_index.clone();
-        let node_client = node_client.clone();
-
-        async move {
-            let segment_headers_notifications =
-                node_client.subscribe_archived_segment_headers().await;
-
-            match segment_headers_notifications {
-                Ok(mut segment_headers_notifications) => {
-                    while let Some(segment_header) = segment_headers_notifications.next().await {
-                        let segment_index = segment_header.segment_index();
-
-                        last_archived_segment_index
-                            .store(u64::from(segment_index), Ordering::Relaxed);
-
-                        if let Err(error) = node_client
-                            .acknowledge_archived_segment_header(segment_index)
-                            .await
-                        {
-                            error!(?error, %segment_index, "Failed to acknowledge archived segments notifications")
-                        }
-                    }
-                }
-                Err(error) => {
-                    error!(?error, "Failed to get archived segments notifications.")
-                }
-            }
-        }
-    });
-
     let default_config = Config::new(
         protocol_prefix,
         keypair,
         piece_cache.clone(),
-        Some(PeerInfoProvider::new_farmer(Box::new(
-            archival_storage_pieces,
-        ))),
+        Some(PeerInfoProvider::new_farmer()),
     );
     let config = Config {
         reserved_peers,
@@ -163,13 +120,17 @@ pub(super) fn configure_dsn(
                 debug!(?req, "Segment headers request received.");
 
                 let node_client = node_client.clone();
-                let last_archived_segment_index = last_archived_segment_index.clone();
                 let req = req.clone();
 
                 async move {
-                    let segment_indexes = match req {
+                    let internal_result = match req {
                         SegmentHeaderRequest::SegmentIndexes { segment_indexes } => {
-                            segment_indexes.clone()
+                            debug!(
+                                segment_indexes_count = ?segment_indexes.len(),
+                                "Segment headers request received."
+                            );
+
+                            node_client.segment_headers(segment_indexes).await
                         }
                         SegmentHeaderRequest::LastSegmentHeaders {
                             mut segment_header_number,
@@ -182,25 +143,11 @@ pub(super) fn configure_dsn(
 
                                 segment_header_number = SEGMENT_HEADER_NUMBER_LIMIT;
                             }
-
-                            let last_segment_index = SegmentIndex::from(
-                                last_archived_segment_index.load(Ordering::Relaxed),
-                            );
-
-                            // several last segment indexes available on the node
-                            (SegmentIndex::ZERO..=last_segment_index)
-                                .rev()
-                                .take(segment_header_number as usize)
-                                .collect::<Vec<_>>()
+                            node_client
+                                .last_segment_headers(segment_header_number)
+                                .await
                         }
                     };
-
-                    debug!(
-                        segment_indexes_count = ?segment_indexes.len(),
-                        "Segment headers request received."
-                    );
-
-                    let internal_result = node_client.segment_headers(segment_indexes).await;
 
                     match internal_result {
                         Ok(segment_headers) => segment_headers
@@ -239,7 +186,7 @@ pub(super) fn configure_dsn(
         ..default_config
     };
 
-    create(config)
+    construct(config)
         .map(|(node, node_runner)| {
             node.on_new_listener(Arc::new({
                 let node = node.clone();
@@ -249,33 +196,6 @@ pub(super) fn configure_dsn(
                         "DSN listening on {}",
                         address.clone().with(Protocol::P2p(node.id()))
                     );
-                }
-            }))
-            .detach();
-
-            node.on_peer_info(Arc::new({
-                let archival_storage_info = archival_storage_info.clone();
-
-                move |new_peer_info| {
-                    let peer_id = new_peer_info.peer_id;
-                    let peer_info = &new_peer_info.peer_info;
-
-                    if let PeerInfo::Farmer { cuckoo_filter } = peer_info {
-                        archival_storage_info.update_cuckoo_filter(peer_id, cuckoo_filter.clone());
-
-                        debug!(%peer_id, ?peer_info, "Peer info cached",);
-                    }
-                }
-            }))
-            .detach();
-
-            node.on_disconnected_peer(Arc::new({
-                let archival_storage_info = archival_storage_info.clone();
-
-                move |peer_id| {
-                    if archival_storage_info.remove_peer_filter(peer_id) {
-                        debug!(%peer_id, "Peer filter removed.",);
-                    }
                 }
             }))
             .detach();

@@ -32,19 +32,24 @@ use alloc::borrow::Cow;
 use alloc::string::String;
 use codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
-use schnorrkel::context::SigningContext;
 use sp_api::{BlockT, HeaderT};
 use sp_consensus_slots::{Slot, SlotDuration};
 use sp_core::crypto::KeyTypeId;
 use sp_core::H256;
 use sp_io::hashing;
-use sp_runtime::{ConsensusEngineId, DigestItem};
+use sp_runtime::{ConsensusEngineId, Justification};
 use sp_runtime_interface::pass_by::PassBy;
 use sp_runtime_interface::{pass_by, runtime_interface};
+#[cfg(feature = "pot")]
+use sp_std::num::NonZeroU32;
 use sp_std::vec::Vec;
 use subspace_core_primitives::crypto::kzg::Kzg;
+#[cfg(feature = "pot")]
+use subspace_core_primitives::Blake2b256Hash;
+#[cfg(not(feature = "pot"))]
+use subspace_core_primitives::Randomness;
 use subspace_core_primitives::{
-    BlockNumber, HistorySize, PublicKey, Randomness, RewardSignature, SegmentCommitment,
+    BlockNumber, HistorySize, PotCheckpoints, PublicKey, RewardSignature, SegmentCommitment,
     SegmentHeader, SegmentIndex, Solution, SolutionRange, PUBLIC_KEY_LENGTH,
     REWARD_SIGNATURE_LENGTH,
 };
@@ -56,7 +61,7 @@ use subspace_proof_of_space::shim::ShimTable;
 use subspace_proof_of_space::PosTableType;
 use subspace_proof_of_space::Table;
 use subspace_solving::REWARD_SIGNING_CONTEXT;
-use subspace_verification::{check_reward_signature, verify_solution, Error, VerifySolutionParams};
+use subspace_verification::{check_reward_signature, VerifySolutionParams};
 
 /// Key type for Subspace pallet.
 const KEY_TYPE: KeyTypeId = KeyTypeId(*b"sub_");
@@ -99,20 +104,70 @@ impl From<&FarmerPublicKey> for PublicKey {
 /// The `ConsensusEngineId` of Subspace.
 const SUBSPACE_ENGINE_ID: ConsensusEngineId = *b"SUB_";
 
+/// Subspace justification
+#[derive(Debug, Clone, Encode, Decode, TypeInfo)]
+pub enum SubspaceJustification {
+    /// Proof of time checkpoints that were not seen before
+    #[codec(index = 0)]
+    Checkpoints(Vec<PotCheckpoints>),
+}
+
+impl From<SubspaceJustification> for Justification {
+    #[inline]
+    fn from(justification: SubspaceJustification) -> Self {
+        (SUBSPACE_ENGINE_ID, justification.encode())
+    }
+}
+
+impl SubspaceJustification {
+    /// Try to decode Subspace justification from generic justification.
+    ///
+    /// `None` means this is not a Subspace justification.
+    pub fn try_from_justification(
+        (consensus_engine_id, encoded_justification): &Justification,
+    ) -> Option<Result<Self, codec::Error>> {
+        (*consensus_engine_id == SUBSPACE_ENGINE_ID)
+            .then(|| Self::decode(&mut encoded_justification.as_slice()))
+    }
+}
+
 /// An equivocation proof for multiple block authorships on the same slot (i.e. double vote).
 pub type EquivocationProof<Header> = sp_consensus_slots::EquivocationProof<Header, FarmerPublicKey>;
+
+/// Change of parameters to apply to PoT chain
+#[cfg(feature = "pot")]
+#[derive(Debug, Clone, PartialEq, Eq, Decode, Encode, TypeInfo, MaxEncodedLen)]
+pub struct PotParametersChange {
+    /// At which slot change of parameters takes effect
+    pub slot: Slot,
+    /// New number of iterations
+    pub iterations: NonZeroU32,
+    /// Entropy that should be injected at this time
+    // TODO: Reconsider if the type is correct here
+    pub entropy: Blake2b256Hash,
+}
 
 /// An consensus log item for Subspace.
 #[derive(Debug, Decode, Encode, Clone, PartialEq, Eq)]
 enum ConsensusLog {
+    /// Number of iterations for proof of time per slot.
+    #[codec(index = 0)]
+    #[cfg(feature = "pot")]
+    PotSlotIterations(NonZeroU32),
     /// Global randomness for this block/interval.
     #[codec(index = 0)]
+    #[cfg(not(feature = "pot"))]
     GlobalRandomness(Randomness),
     /// Solution range for this block/era.
     #[codec(index = 1)]
     SolutionRange(SolutionRange),
+    /// Change of parameters to apply to PoT chain.
+    #[codec(index = 2)]
+    #[cfg(feature = "pot")]
+    PotParametersChange(PotParametersChange),
     /// Global randomness for next block/interval.
     #[codec(index = 2)]
+    #[cfg(not(feature = "pot"))]
     NextGlobalRandomness(Randomness),
     /// Solution range for next block/era.
     #[codec(index = 3)]
@@ -248,17 +303,17 @@ where
 
     // both headers must be targeting the same slot and it must
     // be the same as the one in the proof.
-    if !(proof.slot == first_pre_digest.slot && proof.slot == second_pre_digest.slot) {
+    if !(proof.slot == first_pre_digest.slot() && proof.slot == second_pre_digest.slot()) {
         return false;
     }
 
     // both headers must have the same sector index
-    if first_pre_digest.solution.sector_index != second_pre_digest.solution.sector_index {
+    if first_pre_digest.solution().sector_index != second_pre_digest.solution().sector_index {
         return false;
     }
 
     // both headers must have been authored by the same farmer
-    if first_pre_digest.solution.public_key != second_pre_digest.solution.public_key {
+    if first_pre_digest.solution().public_key != second_pre_digest.solution().public_key {
         return false;
     }
 
@@ -270,6 +325,7 @@ where
 
 /// Subspace global randomnesses used for deriving global challenges.
 #[derive(Default, Decode, Encode, MaxEncodedLen, PartialEq, Eq, Clone, Copy, Debug, TypeInfo)]
+#[cfg(not(feature = "pot"))]
 pub struct GlobalRandomnesses {
     /// Global randomness used for deriving global challenge in current block/interval.
     pub current: Randomness,
@@ -308,11 +364,16 @@ impl Default for SolutionRanges {
 #[derive(Debug, Encode, Decode, MaxEncodedLen, PartialEq, Eq, Clone, Copy, TypeInfo)]
 pub enum ChainConstants {
     /// V0 of the chain constants.
+    #[codec(index = 0)]
     V0 {
         /// Depth `K` after which a block enters the recorded history.
         confirmation_depth_k: BlockNumber,
         /// Number of blocks between global randomness updates.
+        #[cfg(not(feature = "pot"))]
         global_randomness_interval: BlockNumber,
+        /// Number of slots between slot arrival and when corresponding block can be produced.
+        #[cfg(feature = "pot")]
+        block_authoring_delay: Slot,
         /// Era duration in blocks.
         era_duration: BlockNumber,
         /// Slot probability.
@@ -337,6 +398,7 @@ impl ChainConstants {
     }
 
     /// Number of blocks between global randomness updates.
+    #[cfg(not(feature = "pot"))]
     pub fn global_randomness_interval(&self) -> BlockNumber {
         let Self::V0 {
             global_randomness_interval,
@@ -349,6 +411,16 @@ impl ChainConstants {
     pub fn era_duration(&self) -> BlockNumber {
         let Self::V0 { era_duration, .. } = self;
         *era_duration
+    }
+
+    /// Number of slots between slot arrival and when corresponding block can be produced.
+    #[cfg(feature = "pot")]
+    pub fn block_authoring_delay(&self) -> Slot {
+        let Self::V0 {
+            block_authoring_delay,
+            ..
+        } = self;
+        *block_authoring_delay
     }
 
     /// Slot probability.
@@ -507,6 +579,7 @@ pub trait Consensus {
     }
 }
 
+#[cfg(not(feature = "pot"))]
 sp_api::decl_runtime_apis! {
     /// API necessary for block authorship with Subspace.
     pub trait SubspaceApi<RewardAddress: Encode + Decode> {
@@ -554,6 +627,9 @@ sp_api::decl_runtime_apis! {
         /// Returns `Vec<SegmentHeader>` if a given extrinsic has them.
         fn extract_segment_headers(ext: &Block::Extrinsic) -> Option<Vec<SegmentHeader >>;
 
+        /// Checks if the extrinsic is an inherent.
+        fn is_inherent(ext: &Block::Extrinsic) -> bool;
+
         /// Returns root plot public key in case block authoring is restricted.
         fn root_plot_public_key() -> Option<FarmerPublicKey>;
 
@@ -565,140 +641,96 @@ sp_api::decl_runtime_apis! {
     }
 }
 
-/// Errors encountered by the Subspace authorship task.
-#[derive(Debug, Eq, PartialEq)]
-#[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
-pub enum VerificationError<Header: HeaderT> {
-    /// No Subspace pre-runtime digest found
-    #[cfg_attr(feature = "thiserror", error("No Subspace pre-runtime digest found"))]
-    NoPreRuntimeDigest,
-    /// Header has a bad seal
-    #[cfg_attr(feature = "thiserror", error("Header {0:?} has a bad seal"))]
-    HeaderBadSeal(Header::Hash),
-    /// Header is unsealed
-    #[cfg_attr(feature = "thiserror", error("Header {0:?} is unsealed"))]
-    HeaderUnsealed(Header::Hash),
-    /// Bad reward signature
-    #[cfg_attr(feature = "thiserror", error("Bad reward signature on {0:?}"))]
-    BadRewardSignature(Header::Hash),
-    /// Verification error
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Verification error on slot {0:?}: {1:?}")
-    )]
-    VerificationError(Slot, Error),
+/// Proof of time parameters
+#[cfg(feature = "pot")]
+#[derive(Debug, Clone, Encode, Decode, TypeInfo, MaxEncodedLen)]
+pub enum PotParameters {
+    /// Initial version of the parameters
+    V0 {
+        /// Base number of iterations per slot
+        slot_iterations: NonZeroU32,
+        /// Optional next scheduled change of parameters
+        next_change: Option<PotParametersChange>,
+    },
 }
 
-/// A header which has been checked
-pub enum CheckedHeader<H, S> {
-    /// A header which has slot in the future. this is the full header (not stripped)
-    /// and the slot in which it should be processed.
-    Deferred(H, Slot),
-    /// A header which is fully checked, including signature. This is the pre-header
-    /// accompanied by the seal components.
-    ///
-    /// Includes the digest item that encoded the seal.
-    Checked(H, S),
-}
+#[cfg(feature = "pot")]
+impl PotParameters {
+    /// Number of iterations for proof of time per slot, taking into account potential future change
+    pub fn slot_iterations(&self, slot: Slot) -> NonZeroU32 {
+        let Self::V0 {
+            slot_iterations,
+            next_change,
+        } = self;
 
-/// Subspace verification parameters
-pub struct VerificationParams<'a, Header>
-where
-    Header: HeaderT + 'a,
-{
-    /// The header being verified.
-    pub header: Header,
-    /// The slot number of the current time.
-    pub slot_now: Slot,
-    /// Parameters for solution verification
-    pub verify_solution_params: &'a VerifySolutionParams,
-    /// Signing context for reward signature
-    pub reward_signing_context: &'a SigningContext,
-}
+        if let Some(next_change) = next_change {
+            if next_change.slot >= slot {
+                return next_change.iterations;
+            }
+        }
 
-/// Information from verified header
-pub struct VerifiedHeaderInfo<RewardAddress> {
-    /// Pre-digest
-    pub pre_digest: PreDigest<FarmerPublicKey, RewardAddress>,
-    /// Seal (signature)
-    pub seal: DigestItem,
-}
-
-/// Check a header has been signed correctly and whether solution is correct. If the slot is too far
-/// in the future, an error will be returned. If successful, returns the pre-header and the digest
-/// item containing the seal.
-///
-/// The seal must be the last digest. Otherwise, the whole header is considered unsigned. This is
-/// required for security and must not be changed.
-///
-/// This digest item will always return `Some` when used with `as_subspace_pre_digest`.
-///
-/// `pre_digest` argument is optional in case it is available to avoid doing the work of extracting
-/// it from the header twice.
-pub fn check_header<PosTable, Header, RewardAddress>(
-    params: VerificationParams<Header>,
-    pre_digest: Option<PreDigest<FarmerPublicKey, RewardAddress>>,
-    kzg: &Kzg,
-) -> Result<CheckedHeader<Header, VerifiedHeaderInfo<RewardAddress>>, VerificationError<Header>>
-where
-    PosTable: Table,
-    Header: HeaderT,
-    RewardAddress: Decode,
-{
-    let VerificationParams {
-        mut header,
-        slot_now,
-        verify_solution_params,
-        reward_signing_context,
-    } = params;
-
-    let pre_digest = match pre_digest {
-        Some(pre_digest) => pre_digest,
-        None => find_pre_digest::<Header, RewardAddress>(&header)
-            .ok_or(VerificationError::NoPreRuntimeDigest)?,
-    };
-    let slot = pre_digest.slot;
-
-    let seal = header
-        .digest_mut()
-        .pop()
-        .ok_or_else(|| VerificationError::HeaderUnsealed(header.hash()))?;
-
-    let signature = seal
-        .as_subspace_seal()
-        .ok_or_else(|| VerificationError::HeaderBadSeal(header.hash()))?;
-
-    // The pre-hash of the header doesn't include the seal and that's what we sign
-    let pre_hash = header.hash();
-
-    if pre_digest.slot > slot_now {
-        header.digest_mut().push(seal);
-        return Ok(CheckedHeader::Deferred(header, pre_digest.slot));
+        *slot_iterations
     }
+}
 
-    // Verify that block is signed properly
-    if check_reward_signature(
-        pre_hash.as_ref(),
-        &RewardSignature::from(&signature),
-        &PublicKey::from(&pre_digest.solution.public_key),
-        reward_signing_context,
-    )
-    .is_err()
-    {
-        return Err(VerificationError::BadRewardSignature(pre_hash));
+#[cfg(feature = "pot")]
+sp_api::decl_runtime_apis! {
+    /// API necessary for block authorship with Subspace.
+    pub trait SubspaceApi<RewardAddress: Encode + Decode> {
+        /// The slot duration in milliseconds for Subspace.
+        fn slot_duration() -> SlotDuration;
+
+        /// Proof of time parameters
+        fn pot_parameters() -> PotParameters;
+
+        /// Solution ranges.
+        fn solution_ranges() -> SolutionRanges;
+
+        /// Submits an unsigned extrinsic to report an equivocation. The caller must provide the
+        /// equivocation proof. The extrinsic will be unsigned and should only be accepted for local
+        /// authorship (not to be broadcast to the network). This method returns `None` when
+        /// creation of the extrinsic fails, e.g. if equivocation reporting is disabled for the
+        /// given runtime (i.e. this method is hardcoded to return `None`). Only useful in an
+        /// offchain context.
+        fn submit_report_equivocation_extrinsic(
+            equivocation_proof: EquivocationProof<Block::Header>,
+        ) -> Option<()>;
+
+        /// Submit farmer vote vote that is essentially a header with bigger solution range than
+        /// acceptable for block authoring. Only useful in an offchain context.
+        fn submit_vote_extrinsic(
+            signed_vote: SignedVote<
+                <<Block as BlockT>::Header as HeaderT>::Number,
+                Block::Hash,
+                RewardAddress,
+            >,
+        );
+
+        /// Check if `farmer_public_key` is in block list (due to equivocation)
+        fn is_in_block_list(farmer_public_key: &FarmerPublicKey) -> bool;
+
+        /// Size of the blockchain history
+        fn history_size() -> HistorySize;
+
+        /// How many pieces one sector is supposed to contain (max)
+        fn max_pieces_in_sector() -> u16;
+
+        /// Get the segment commitment of records for specified segment index
+        fn segment_commitment(segment_index: SegmentIndex) -> Option<SegmentCommitment>;
+
+        /// Returns `Vec<SegmentHeader>` if a given extrinsic has them.
+        fn extract_segment_headers(ext: &Block::Extrinsic) -> Option<Vec<SegmentHeader >>;
+
+        /// Checks if the extrinsic is an inherent.
+        fn is_inherent(ext: &Block::Extrinsic) -> bool;
+
+        /// Returns root plot public key in case block authoring is restricted.
+        fn root_plot_public_key() -> Option<FarmerPublicKey>;
+
+        /// Whether solution range adjustment is enabled.
+        fn should_adjust_solution_range() -> bool;
+
+        /// Get Subspace blockchain constants
+        fn chain_constants() -> ChainConstants;
     }
-
-    // Verify that solution is valid
-    verify_solution::<PosTable, _, _>(
-        &pre_digest.solution,
-        slot.into(),
-        verify_solution_params,
-        kzg,
-    )
-    .map_err(|error| VerificationError::VerificationError(slot, error))?;
-
-    Ok(CheckedHeader::Checked(
-        header,
-        VerifiedHeaderInfo { pre_digest, seal },
-    ))
 }

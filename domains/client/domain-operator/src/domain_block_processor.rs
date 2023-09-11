@@ -16,10 +16,20 @@ use sp_core::traits::CodeExecutor;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{DomainId, DomainsApi, ExecutionReceipt, ExtrinsicsRoot, InvalidBundle};
-use sp_runtime::traits::{Block as BlockT, CheckedSub, HashFor, Header as HeaderT, One, Zero};
+use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, One, Zero};
 use sp_runtime::Digest;
 use std::cmp::Ordering;
 use std::sync::Arc;
+
+struct DomainBlockBuildResult<Block>
+where
+    Block: BlockT,
+{
+    header_number: NumberFor<Block>,
+    header_hash: Block::Hash,
+    state_root: Block::Hash,
+    extrinsics_root: Block::Hash,
+}
 
 pub(crate) struct DomainBlockResult<Block, CBlock>
 where
@@ -277,7 +287,12 @@ where
         // new best domain block after processing each imported consensus block.
         let fork_choice = ForkChoiceStrategy::LongestChain;
 
-        let (header_hash, header_number, state_root) = self
+        let DomainBlockBuildResult {
+            extrinsics_root,
+            state_root,
+            header_number,
+            header_hash,
+        } = self
             .build_and_import_block(parent_hash, parent_number, extrinsics, fork_choice, digests)
             .await?;
 
@@ -287,22 +302,21 @@ where
             on top of parent domain block #{parent_number},{parent_hash}"
         );
 
-        if let Some(to_finalize_block_number) = consensus_block_number
-            .into()
-            .checked_sub(&self.domain_confirmation_depth)
-        {
-            if to_finalize_block_number > self.client.info().finalized_number {
-                let to_finalize_block_hash =
-                    self.client.hash(to_finalize_block_number)?.ok_or_else(|| {
-                        sp_blockchain::Error::Backend(format!(
-                            "Header for #{to_finalize_block_number} not found"
-                        ))
-                    })?;
-                self.client
-                    .finalize_block(to_finalize_block_hash, None, true)?;
-                tracing::debug!("Successfully finalized block: #{to_finalize_block_number},{to_finalize_block_hash}");
-            }
-        }
+        // if let Some(to_finalize_block_number) =
+        //     header_number.checked_sub(&self.domain_confirmation_depth)
+        // {
+        //     if to_finalize_block_number > self.client.info().finalized_number {
+        //         let to_finalize_block_hash =
+        //             self.client.hash(to_finalize_block_number)?.ok_or_else(|| {
+        //                 sp_blockchain::Error::Backend(format!(
+        //                     "Header for #{to_finalize_block_number} not found"
+        //                 ))
+        //             })?;
+        //         self.client
+        //             .finalize_block(to_finalize_block_hash, None, true)?;
+        //         tracing::debug!("Successfully finalized block: #{to_finalize_block_number},{to_finalize_block_hash}");
+        //     }
+        // }
 
         let mut roots = self.client.runtime_api().intermediate_roots(header_hash)?;
 
@@ -342,20 +356,24 @@ where
                 *genesis_header.state_root(),
             )
         } else {
-            crate::aux_schema::load_execution_receipt_by_domain_hash::<_, Block, CBlock>(
+            crate::load_execution_receipt_by_domain_hash::<Block, CBlock, _>(
                 &*self.client,
                 parent_hash,
+                parent_number,
             )?
-            .ok_or_else(|| {
-                sp_blockchain::Error::Backend(format!(
-                    "Receipt of domain block #{parent_number},{parent_hash} not found"
-                ))
-            })?
         };
+
+        // Get the accumulated transaction fee of all transactions included in the block
+        // and used as the operator reward
+        let total_rewards = self
+            .client
+            .runtime_api()
+            .block_transaction_fee(header_hash)?;
 
         let execution_receipt = ExecutionReceipt {
             domain_block_number: header_number,
             domain_block_hash: header_hash,
+            domain_block_extrinsic_root: extrinsics_root,
             parent_domain_block_receipt_hash: parent_receipt.hash(),
             consensus_block_number,
             consensus_block_hash,
@@ -364,8 +382,7 @@ where
             final_state_root: state_root,
             execution_trace: trace,
             execution_trace_root: sp_core::H256(trace_root),
-            // TODO: set proper value
-            total_rewards: Default::default(),
+            total_rewards,
         };
 
         Ok(DomainBlockResult {
@@ -382,7 +399,7 @@ where
         extrinsics: Vec<Block::Extrinsic>,
         fork_choice: ForkChoiceStrategy,
         digests: Digest,
-    ) -> Result<(Block::Hash, NumberFor<Block>, Block::Hash), sp_blockchain::Error> {
+    ) -> Result<DomainBlockBuildResult<Block>, sp_blockchain::Error> {
         let block_builder = BlockBuilder::new(
             &*self.client,
             parent_hash,
@@ -401,6 +418,7 @@ where
 
         let (header, body) = block.deconstruct();
         let state_root = *header.state_root();
+        let extrinsics_root = *header.extrinsics_root();
         let header_hash = header.hash();
         let header_number = *header.number();
 
@@ -414,7 +432,12 @@ where
         };
         self.import_domain_block(block_import_params).await?;
 
-        Ok((header_hash, header_number, state_root))
+        Ok(DomainBlockBuildResult {
+            header_hash,
+            header_number,
+            state_root,
+            extrinsics_root,
+        })
     }
 
     pub(crate) async fn import_domain_block(

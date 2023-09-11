@@ -52,6 +52,8 @@ use sp_application_crypto::UncheckedFrom;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::{BlockOrigin, Error as ConsensusError};
 use sp_consensus_slots::Slot;
+#[cfg(feature = "pot")]
+use sp_consensus_subspace::digests::PreDigestPotInfo;
 use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
 use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::traits::SpawnEssentialNamed;
@@ -596,11 +598,14 @@ impl MockConsensusNode {
     }
 
     fn mock_subspace_digest(&self, slot: Slot) -> Digest {
-        let pre_digest: PreDigest<FarmerPublicKey, AccountId> = PreDigest {
+        let pre_digest: PreDigest<FarmerPublicKey, AccountId> = PreDigest::V0 {
             slot,
             solution: self.mock_solution.clone(),
             #[cfg(feature = "pot")]
-            proof_of_time: Default::default(),
+            pot_info: PreDigestPotInfo::V0 {
+                proof_of_time: Default::default(),
+                future_proof_of_time: Default::default(),
+            },
         };
         let mut digest = Digest::default();
         digest.push(DigestItem::subspace_pre_digest(&pre_digest));
@@ -908,7 +913,7 @@ where
 macro_rules! produce_blocks {
     ($primary_node:ident, $operator_node:ident, $count: literal $(, $domain_node:ident)*) => {
         {
-            let _ = $operator_node.send_remark_extrinsic().await;
+            $operator_node.send_system_remark().await;
             async {
                 let domain_fut = {
                     let mut futs: Vec<std::pin::Pin<Box<dyn futures::Future<Output = ()>>>> = Vec::new();
@@ -930,7 +935,7 @@ macro_rules! produce_blocks {
 macro_rules! produce_block_with {
     ($primary_node_produce_block:expr, $operator_node:ident $(, $domain_node:ident)*) => {
         {
-            let _ = $operator_node.send_remark_extrinsic().await;
+            $operator_node.send_system_remark().await;
             async {
                 let domain_fut = {
                     let mut futs: Vec<std::pin::Pin<Box<dyn futures::Future<Output = ()>>>> = Vec::new();

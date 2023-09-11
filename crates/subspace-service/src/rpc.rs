@@ -137,7 +137,7 @@ where
             sync_oracle,
             kzg,
             deny_unsafe,
-        })
+        })?
         .into_rpc(),
     )?;
 

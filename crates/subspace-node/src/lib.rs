@@ -20,7 +20,6 @@ mod chain_spec;
 mod chain_spec_utils;
 pub mod domain;
 
-use clap::builder::EnumValueParser;
 use clap::Parser;
 use sc_cli::{RunCmd, SubstrateCli};
 use sc_executor::{NativeExecutionDispatch, RuntimeVersion};
@@ -67,6 +66,15 @@ pub struct PurgeChainCmd {
     /// The base struct of the purge-chain command.
     #[clap(flatten)]
     pub base: sc_cli::PurgeChainCmd,
+
+    /// Domain arguments
+    ///
+    /// The command-line arguments provided first will be passed to the embedded consensus node,
+    /// while the arguments provided after `--` will be passed to the domain node.
+    ///
+    /// subspace-node purge-chain [consensus-chain-args] -- [domain-args]
+    #[arg(raw = true)]
+    pub domain_args: Vec<String>,
 }
 
 impl PurgeChainCmd {
@@ -74,18 +82,24 @@ impl PurgeChainCmd {
     pub fn run(
         &self,
         consensus_chain_config: sc_service::Configuration,
-        domain_config: sc_service::Configuration,
+        domain_config: Option<sc_service::Configuration>,
     ) -> sc_cli::Result<()> {
-        let db_paths = vec![
-            domain_config
+        let mut db_paths = domain_config.map_or(vec![], |dc| {
+            vec![dc
                 .database
                 .path()
-                .expect("No custom database used here; qed"),
+                .expect("No custom database used here; qed")
+                .to_path_buf()
+                .clone()]
+        });
+
+        db_paths.push(
             consensus_chain_config
                 .database
                 .path()
-                .expect("No custom database used here; qed"),
-        ];
+                .expect("No custom database used here; qed")
+                .to_path_buf(),
+        );
 
         if !self.base.yes {
             for db_path in &db_paths {
@@ -164,29 +178,9 @@ pub enum Subcommand {
     Benchmark(frame_benchmarking_cli::BenchmarkCmd),
 }
 
-/// Assigned proof of time role.
-#[derive(Debug, Clone, Eq, PartialEq, clap::ValueEnum)]
-pub enum CliPotRole {
-    /// Time keeper role of producing proofs.
-    TimeKeeper,
-
-    /// Listens to proofs from time keepers.
-    NodeClient,
-
-    /// Proof of time is disabled.
-    None,
-}
-
-impl CliPotRole {
-    /// Checks if PoT is enabled.
-    pub fn is_pot_enabled(&self) -> bool {
-        *self == Self::TimeKeeper || *self == Self::NodeClient
-    }
-
-    /// Checks if PoT role is time keeper.
-    pub fn is_time_keeper(&self) -> bool {
-        *self == Self::TimeKeeper
-    }
+#[cfg(feature = "pot")]
+fn parse_pot_external_entropy(s: &str) -> Result<Vec<u8>, hex::FromHexError> {
+    hex::decode(s)
 }
 
 /// Subspace Cli.
@@ -266,12 +260,18 @@ pub struct Cli {
 
     /// Use the block request handler implementation from subspace
     /// instead of the default substrate handler.
-    #[arg(long)]
+    #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
     pub enable_subspace_block_relay: bool,
 
     /// Assigned PoT role for this node.
-    #[arg(long, default_value = "none", value_parser(EnumValueParser::< CliPotRole >::new()))]
-    pub pot_role: CliPotRole,
+    #[arg(long)]
+    #[cfg(feature = "pot")]
+    pub timekeeper: bool,
+
+    /// External entropy, used initially when PoT chain starts to derive the first seed
+    #[arg(long, value_parser = parse_pot_external_entropy)]
+    #[cfg(feature = "pot")]
+    pub pot_external_entropy: Option<Vec<u8>>,
 }
 
 impl SubstrateCli for Cli {

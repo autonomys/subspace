@@ -1,5 +1,4 @@
 use crate::single_disk_farm::piece_reader::PieceReader;
-use crate::utils::archival_storage_pieces::ArchivalStoragePieces;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::future::Future;
@@ -14,21 +13,18 @@ struct PieceDetails {
     piece_offset: PieceOffset,
 }
 
-/// Wrapper data structure for pieces plotted under multiple plots and corresponding piece readers,
-/// it also maintains filter in given [`ArchivalStoragePieces`].
+/// Wrapper data structure for pieces plotted under multiple plots and corresponding piece readers.
 #[derive(Debug)]
 pub struct ReadersAndPieces {
     readers: Vec<PieceReader>,
     pieces: HashMap<PieceIndex, Vec<PieceDetails>>,
-    archival_storage_pieces: ArchivalStoragePieces,
 }
 
 impl ReadersAndPieces {
-    pub fn new(readers: Vec<PieceReader>, archival_storage_pieces: ArchivalStoragePieces) -> Self {
+    pub fn new(readers: Vec<PieceReader>) -> Self {
         Self {
             readers,
             pieces: HashMap::new(),
-            archival_storage_pieces,
         }
     }
 
@@ -74,8 +70,6 @@ impl ReadersAndPieces {
     }
 
     pub fn add_sector(&mut self, disk_farm_index: u8, plotted_sector: &PlottedSector) {
-        let mut new_piece_indices = Vec::new();
-
         for (piece_offset, &piece_index) in
             (PieceOffset::ZERO..).zip(plotted_sector.piece_indexes.iter())
         {
@@ -91,19 +85,12 @@ impl ReadersAndPieces {
                 }
                 Entry::Vacant(entry) => {
                     entry.insert(vec![piece_details]);
-                    new_piece_indices.push(piece_index);
                 }
             }
-        }
-
-        if !new_piece_indices.is_empty() {
-            self.archival_storage_pieces.add_pieces(&new_piece_indices);
         }
     }
 
     pub fn delete_sector(&mut self, disk_farm_index: u8, plotted_sector: &PlottedSector) {
-        let mut deleted_piece_indices = Vec::new();
-
         for (piece_offset, &piece_index) in
             (PieceOffset::ZERO..).zip(plotted_sector.piece_indexes.iter())
         {
@@ -129,14 +116,8 @@ impl ReadersAndPieces {
                 // We do not store empty lists
                 if piece_details.is_empty() {
                     entry.remove_entry();
-                    deleted_piece_indices.push(piece_index);
                 }
             }
-        }
-
-        if !deleted_piece_indices.is_empty() {
-            self.archival_storage_pieces
-                .delete_pieces(&deleted_piece_indices);
         }
     }
 

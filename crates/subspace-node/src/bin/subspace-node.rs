@@ -16,22 +16,28 @@
 
 //! Subspace node implementation.
 
+use cross_domain_message_gossip::GossipWorkerBuilder;
 use domain_client_operator::Bootstrapper;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
+#[cfg(feature = "pot")]
+use log::warn;
 use sc_cli::{ChainSpec, CliConfiguration, SubstrateCli};
 use sc_consensus_slots::SlotProportion;
-use sc_proof_of_time::PotComponents;
+#[cfg(feature = "pot")]
+use sc_service::Configuration;
 use sc_service::PartialComponents;
 use sc_storage_monitor::StorageMonitorService;
+use sc_utils::mpsc::tracing_unbounded;
 use sp_core::crypto::Ss58AddressFormat;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::GenerateGenesisStateRoot;
+use sp_messenger::messages::ChainId;
 use std::sync::Arc;
 use subspace_node::domain::{
-    AccountId32ToAccountId20Converter, DomainCli, DomainGenesisBlockBuilder, DomainInstanceStarter,
-    DomainSubcommand, EVMDomainExecutorDispatch,
+    DomainCli, DomainGenesisBlockBuilder, DomainInstanceStarter, DomainSubcommand,
+    EVMDomainExecutorDispatch,
 };
 use subspace_node::{Cli, ExecutorDispatch, Subcommand};
 use subspace_proof_of_space::chia::ChiaTable;
@@ -87,6 +93,35 @@ fn set_default_ss58_version<C: AsRef<dyn ChainSpec>>(chain_spec: C) {
     }
 }
 
+#[cfg(feature = "pot")]
+fn pot_external_entropy(
+    consensus_chain_config: &Configuration,
+    cli: &Cli,
+) -> Result<Vec<u8>, sc_service::Error> {
+    let maybe_chain_spec_pot_external_entropy = consensus_chain_config
+        .chain_spec
+        .properties()
+        .get("potExternalEntropy")
+        .map(|d| serde_json::from_value(d.clone()))
+        .transpose()
+        .map_err(|error| {
+            sc_service::Error::Other(format!("Failed to decode PoT initial key: {error:?}"))
+        })?
+        .flatten();
+    if maybe_chain_spec_pot_external_entropy.is_some()
+        && cli.pot_external_entropy.is_some()
+        && maybe_chain_spec_pot_external_entropy != cli.pot_external_entropy
+    {
+        warn!(
+            "--pot-external-entropy CLI argument was ignored due to chain spec having a different \
+            explicit value"
+        );
+    }
+    Ok(maybe_chain_spec_pot_external_entropy
+        .or(cli.pot_external_entropy.clone())
+        .unwrap_or_default())
+}
+
 fn main() -> Result<(), Error> {
     let cli = Cli::from_args();
 
@@ -106,7 +141,10 @@ fn main() -> Result<(), Error> {
                     task_manager,
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
-                    &config, None, None,
+                    &config,
+                    None,
+                    #[cfg(feature = "pot")]
+                    &pot_external_entropy(&config, &cli)?,
                 )?;
                 Ok((
                     cmd.run(client, import_queue).map_err(Error::SubstrateCli),
@@ -123,7 +161,10 @@ fn main() -> Result<(), Error> {
                     task_manager,
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
-                    &config, None, None,
+                    &config,
+                    None,
+                    #[cfg(feature = "pot")]
+                    &pot_external_entropy(&config, &cli)?,
                 )?;
                 Ok((
                     cmd.run(client, config.database)
@@ -141,7 +182,10 @@ fn main() -> Result<(), Error> {
                     task_manager,
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
-                    &config, None, None,
+                    &config,
+                    None,
+                    #[cfg(feature = "pot")]
+                    &pot_external_entropy(&config, &cli)?,
                 )?;
                 Ok((
                     cmd.run(client, config.chain_spec)
@@ -160,7 +204,10 @@ fn main() -> Result<(), Error> {
                     task_manager,
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
-                    &config, None, None,
+                    &config,
+                    None,
+                    #[cfg(feature = "pot")]
+                    &pot_external_entropy(&config, &cli)?,
                 )?;
                 Ok((
                     cmd.run(client, import_queue).map_err(Error::SubstrateCli),
@@ -187,23 +234,29 @@ fn main() -> Result<(), Error> {
             let runner = cli.create_runner(&cmd.base)?;
 
             runner.sync_run(|consensus_chain_config| {
-                let domain_cli = DomainCli::new(
-                    cmd.base
-                        .base_path()?
-                        .map(|base_path| base_path.path().to_path_buf()),
-                    cli.domain_args.into_iter(),
-                );
+                let domain_config = if cmd.domain_args.is_empty() {
+                    None
+                } else {
+                    let domain_cli = DomainCli::new(
+                        cmd.base
+                            .base_path()?
+                            .map(|base_path| base_path.path().to_path_buf()),
+                        cmd.domain_args.clone().into_iter(),
+                    );
 
-                let domain_config = SubstrateCli::create_configuration(
-                    &domain_cli,
-                    &domain_cli,
-                    consensus_chain_config.tokio_handle.clone(),
-                )
-                .map_err(|error| {
-                    sc_service::Error::Other(format!(
-                        "Failed to create domain configuration: {error:?}"
-                    ))
-                })?;
+                    let domain_config = SubstrateCli::create_configuration(
+                        &domain_cli,
+                        &domain_cli,
+                        consensus_chain_config.tokio_handle.clone(),
+                    )
+                    .map_err(|error| {
+                        sc_service::Error::Other(format!(
+                            "Failed to create domain configuration: {error:?}"
+                        ))
+                    })?;
+
+                    Some(domain_config)
+                };
 
                 cmd.run(consensus_chain_config, domain_config)
             })?;
@@ -218,7 +271,10 @@ fn main() -> Result<(), Error> {
                     task_manager,
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
-                    &config, None, None,
+                    &config,
+                    None,
+                    #[cfg(feature = "pot")]
+                    &pot_external_entropy(&config, &cli)?,
                 )?;
                 Ok((
                     cmd.run(client, backend, None).map_err(Error::SubstrateCli),
@@ -254,7 +310,10 @@ fn main() -> Result<(), Error> {
                             RuntimeApi,
                             ExecutorDispatch,
                         >(
-                            &config, None, None
+                            &config,
+                            None,
+                            #[cfg(feature = "pot")]
+                            &pot_external_entropy(&config, &cli)?,
                         )?;
 
                         cmd.run(client)
@@ -263,7 +322,10 @@ fn main() -> Result<(), Error> {
                         let PartialComponents {
                             client, backend, ..
                         } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
-                            &config, None, None,
+                            &config,
+                            None,
+                            #[cfg(feature = "pot")]
+                            &pot_external_entropy(&config, &cli)?,
                         )?;
                         let db = backend.expose_db();
                         let storage = backend.expose_storage();
@@ -315,9 +377,7 @@ fn main() -> Result<(), Error> {
                         cli.domain_args.into_iter(),
                     );
                     let domain_config = domain_cli
-                        .create_domain_configuration::<_, AccountId32ToAccountId20Converter>(
-                            consensus_chain_config.tokio_handle,
-                        )
+                        .create_domain_configuration(consensus_chain_config.tokio_handle)
                         .map_err(|error| {
                             sc_service::Error::Other(format!(
                                 "Failed to create domain configuration: {error:?}"
@@ -332,14 +392,13 @@ fn main() -> Result<(), Error> {
                                         .into(),
                                 );
                             }
-                            cmd.run::<DomainBlock, EVMDomainExecutorDispatch>(
-                                domain_config.service_config,
-                            )
+                            cmd.run::<DomainBlock, EVMDomainExecutorDispatch>(domain_config)
                         }
                         _ => todo!("Not implemented"),
                     }
                 })?;
             }
+            DomainSubcommand::BuildGenesisConfig(cmd) => cmd.run()?,
             _ => unimplemented!("Domain subcommand"),
         },
         None => {
@@ -348,18 +407,15 @@ fn main() -> Result<(), Error> {
             runner.run_node_until_exit(|consensus_chain_config| async move {
                 let tokio_handle = consensus_chain_config.tokio_handle.clone();
                 let database_source = consensus_chain_config.database.clone();
-                let pot_components = if cli.pot_role.is_pot_enabled() {
-                    Some(PotComponents::new(cli.pot_role.is_time_keeper()))
-                } else {
-                    None
-                };
-
                 let consensus_chain_node = {
                     let span = sc_tracing::tracing::info_span!(
                         sc_tracing::logging::PREFIX_LOG_SPAN,
                         name = "Consensus"
                     );
                     let _enter = span.enter();
+
+                    #[cfg(feature = "pot")]
+                    let pot_external_entropy = pot_external_entropy(&consensus_chain_config, &cli)?;
 
                     let dsn_config = {
                         let network_keypair = consensus_chain_config
@@ -382,7 +438,7 @@ fn main() -> Result<(), Error> {
                                 .transpose()
                                 .map_err(|error| {
                                     sc_service::Error::Other(format!(
-                                        "Failed to decode DSN bootsrap nodes: {error:?}"
+                                        "Failed to decode DSN bootstrap nodes: {error:?}"
                                     ))
                                 })?
                                 .unwrap_or_default()
@@ -427,8 +483,9 @@ fn main() -> Result<(), Error> {
                         force_new_slot_notifications: !cli.domain_args.is_empty(),
                         subspace_networking: SubspaceNetworking::Create { config: dsn_config },
                         sync_from_dsn: cli.sync_from_dsn,
-                        enable_subspace_block_relay: cli.enable_subspace_block_relay
-                            || cli.run.is_dev().unwrap_or(false),
+                        enable_subspace_block_relay: cli.enable_subspace_block_relay,
+                        #[cfg(feature = "pot")]
+                        is_timekeeper: cli.timekeeper,
                     };
 
                     let construct_domain_genesis_block_builder =
@@ -437,9 +494,10 @@ fn main() -> Result<(), Error> {
                         };
                     let partial_components =
                         subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
-                            &consensus_chain_config,
+                            &consensus_chain_config.base,
                             Some(&construct_domain_genesis_block_builder),
-                            pot_components,
+                            #[cfg(feature = "pot")]
+                            &pot_external_entropy,
                         )
                         .map_err(|error| {
                             sc_service::Error::Other(format!(
@@ -447,7 +505,7 @@ fn main() -> Result<(), Error> {
                             ))
                         })?;
 
-                    subspace_service::new_full::<PosTable, _, _, _>(
+                    subspace_service::new_full::<PosTable, _, _>(
                         consensus_chain_config,
                         partial_components,
                         true,
@@ -486,8 +544,64 @@ fn main() -> Result<(), Error> {
                     );
                     let domain_id = domain_cli.domain_id;
 
+                    // start relayer for consensus chain
+                    let mut xdm_gossip_worker_builder = GossipWorkerBuilder::new();
+                    {
+                        let span = sc_tracing::tracing::info_span!(
+                            sc_tracing::logging::PREFIX_LOG_SPAN,
+                            name = "Consensus"
+                        );
+                        let _enter = span.enter();
+
+                        let relayer_worker =
+                            domain_client_message_relayer::worker::relay_consensus_chain_messages(
+                                consensus_chain_node.client.clone(),
+                                consensus_chain_node.sync_service.clone(),
+                                xdm_gossip_worker_builder.gossip_msg_sink(),
+                            );
+
+                        consensus_chain_node
+                            .task_manager
+                            .spawn_essential_handle()
+                            .spawn_essential_blocking(
+                                "consensus-chain-relayer",
+                                None,
+                                Box::pin(relayer_worker),
+                            );
+
+                        let (consensus_msg_sink, consensus_msg_receiver) =
+                            tracing_unbounded("consensus_message_channel", 100);
+
+                        // Start cross domain message listener for Consensus chain to receive messages from domains in the network
+                        let consensus_listener =
+                            cross_domain_message_gossip::start_cross_chain_message_listener(
+                                ChainId::Consensus,
+                                consensus_chain_node.client.clone(),
+                                consensus_chain_node.transaction_pool.clone(),
+                                consensus_msg_receiver,
+                            );
+
+                        consensus_chain_node
+                            .task_manager
+                            .spawn_essential_handle()
+                            .spawn_essential_blocking(
+                                "consensus-message-listener",
+                                None,
+                                Box::pin(consensus_listener),
+                            );
+
+                        xdm_gossip_worker_builder
+                            .push_chain_tx_pool_sink(ChainId::Consensus, consensus_msg_sink);
+                    }
+
                     let bootstrapper =
                         Bootstrapper::<DomainBlock, _, _>::new(consensus_chain_node.client.clone());
+
+                    let (domain_message_sink, domain_message_receiver) =
+                        tracing_unbounded("domain_message_channel", 100);
+
+                    xdm_gossip_worker_builder
+                        .push_chain_tx_pool_sink(ChainId::Domain(domain_id), domain_message_sink);
 
                     let domain_starter = DomainInstanceStarter {
                         domain_cli,
@@ -499,9 +613,10 @@ fn main() -> Result<(), Error> {
                         new_slot_notification_stream: consensus_chain_node
                             .new_slot_notification_stream
                             .clone(),
-                        consensus_network_service: consensus_chain_node.network_service.clone(),
                         consensus_sync_service: consensus_chain_node.sync_service.clone(),
                         select_chain: consensus_chain_node.select_chain.clone(),
+                        domain_message_receiver,
+                        gossip_message_sink: xdm_gossip_worker_builder.gossip_msg_sink(),
                     };
 
                     consensus_chain_node
@@ -516,7 +631,7 @@ fn main() -> Result<(), Error> {
                                     {
                                         Err(err) => {
                                             log::error!(
-                                                "Domain bootsrapper exited with an error {err:?}"
+                                                "Domain bootstrapper exited with an error {err:?}"
                                             );
                                             return;
                                         }
@@ -527,7 +642,22 @@ fn main() -> Result<(), Error> {
                                 }
                             }),
                         );
-                }
+
+                    let cross_domain_message_gossip_worker = xdm_gossip_worker_builder
+                        .build::<Block, _, _>(
+                            consensus_chain_node.network_service.clone(),
+                            consensus_chain_node.sync_service.clone(),
+                        );
+
+                    consensus_chain_node
+                        .task_manager
+                        .spawn_essential_handle()
+                        .spawn_essential_blocking(
+                            "cross-domain-gossip-message-worker",
+                            None,
+                            Box::pin(cross_domain_message_gossip_worker.run()),
+                        );
+                };
 
                 consensus_chain_node.network_starter.start_network();
                 Ok::<_, Error>(consensus_chain_node.task_manager)

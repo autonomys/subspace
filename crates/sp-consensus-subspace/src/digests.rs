@@ -16,6 +16,8 @@
 
 //! Private implementation details of Subspace consensus digests.
 
+#[cfg(feature = "pot")]
+use crate::PotParametersChange;
 use crate::{ConsensusLog, FarmerPublicKey, FarmerSignature, SUBSPACE_ENGINE_ID};
 use codec::{Decode, Encode};
 use log::trace;
@@ -26,120 +28,90 @@ use sp_runtime::traits::{One, Zero};
 use sp_runtime::DigestItem;
 use sp_std::collections::btree_map::{BTreeMap, Entry};
 use sp_std::fmt;
-use subspace_core_primitives::{
-    NonEmptyVec, PotProof, Randomness, SegmentCommitment, SegmentIndex, SlotNumber, Solution,
-    SolutionRange,
-};
+#[cfg(feature = "pot")]
+use sp_std::num::NonZeroU32;
+#[cfg(feature = "pot")]
+use subspace_core_primitives::PotProof;
+#[cfg(not(feature = "pot"))]
+use subspace_core_primitives::Randomness;
+use subspace_core_primitives::{SegmentCommitment, SegmentIndex, Solution, SolutionRange};
+#[cfg(not(feature = "pot"))]
 use subspace_verification::derive_randomness;
 
 /// A Subspace pre-runtime digest. This contains all data required to validate a block and for the
 /// Subspace runtime module.
 #[derive(Debug, Clone, Encode, Decode)]
-pub struct PreDigest<PublicKey, RewardAddress> {
-    /// Slot
-    pub slot: Slot,
-    /// Solution (includes PoR)
-    pub solution: Solution<PublicKey, RewardAddress>,
-    #[cfg(feature = "pot")]
-    /// Proof of time included in the block
-    /// TODO: It is Option<> for now for testing, to be removed
-    /// when PoT feature is permanently enabled.
-    pub proof_of_time: Option<PotPreDigest>,
+pub enum PreDigest<PublicKey, RewardAddress> {
+    /// Initial version of the pre-digest
+    #[codec(index = 0)]
+    V0 {
+        /// Slot
+        slot: Slot,
+        /// Solution (includes PoR)
+        solution: Solution<PublicKey, RewardAddress>,
+        /// Proof of time information
+        #[cfg(feature = "pot")]
+        pot_info: PreDigestPotInfo,
+    },
 }
 
-/// TODO: remove after conditional compilation is removed.
 impl<PublicKey, RewardAddress> PreDigest<PublicKey, RewardAddress> {
-    /// Accessor for the poT pre digest.
-    #[cfg(not(feature = "pot"))]
-    pub fn pot_pre_digest(&self) -> Option<&PotPreDigest> {
-        None
+    /// Slot
+    #[inline]
+    pub fn slot(&self) -> Slot {
+        let Self::V0 { slot, .. } = self;
+        *slot
     }
 
-    /// Accessor for the poT pre digest.
+    /// Solution (includes PoR)
+    #[inline]
+    pub fn solution(&self) -> &Solution<PublicKey, RewardAddress> {
+        let Self::V0 { solution, .. } = self;
+        solution
+    }
+
+    /// Proof of time information
     #[cfg(feature = "pot")]
-    pub fn pot_pre_digest(&self) -> Option<&PotPreDigest> {
-        self.proof_of_time.as_ref()
+    #[inline]
+    pub fn pot_info(&self) -> &PreDigestPotInfo {
+        let Self::V0 { pot_info, .. } = self;
+        pot_info
     }
 }
 
-/// The proof of time included in the pre digest.
-/// TODO: versioning needs to match PotProof version,
-/// versioning added on the proof side
-#[derive(Clone, Encode, Decode)]
-pub enum PotPreDigest {
-    /// The block was produced in the bootstrapping phase, where
-    /// the genesis slot has not yet been determined and the proof
-    /// production has not started.
-    Bootstrapping,
-
-    /// Genesis slot determined by the bootstrap node.
-    FirstBlock(SlotNumber),
-
-    /// V0 proof.
-    V0(NonEmptyVec<PotProof>),
+/// Proof of time information in pre-digest
+#[cfg(feature = "pot")]
+#[derive(Debug, Clone, Encode, Decode)]
+pub enum PreDigestPotInfo {
+    /// Initial version of proof of time information
+    #[codec(index = 0)]
+    V0 {
+        /// Proof of time for this slot
+        proof_of_time: PotProof,
+        /// Future proof of time
+        future_proof_of_time: PotProof,
+    },
 }
 
-impl PotPreDigest {
-    /// Constructs the PoT for the pre digest.
-    pub fn new(proofs: NonEmptyVec<PotProof>) -> Self {
-        Self::V0(proofs)
+#[cfg(feature = "pot")]
+impl PreDigestPotInfo {
+    /// Proof of time for this slot
+    #[cfg(feature = "pot")]
+    #[inline]
+    pub fn proof_of_time(&self) -> PotProof {
+        let Self::V0 { proof_of_time, .. } = self;
+        *proof_of_time
     }
 
-    /// Returns a reference to the proofs.
-    pub fn proofs(&self) -> Option<&NonEmptyVec<PotProof>> {
-        match self {
-            Self::Bootstrapping | Self::FirstBlock(_) => None,
-            Self::V0(proofs) => Some(proofs),
-        }
-    }
-
-    /// Returns the starting slot number for the proofs in the next
-    /// block.
-    pub fn next_block_initial_slot(&self) -> Option<SlotNumber> {
-        match self {
-            Self::Bootstrapping => None,
-            Self::FirstBlock(slot_number) => Some(slot_number + 1),
-            Self::V0(proofs) => Some(proofs.last().slot_number + 1),
-        }
-    }
-
-    /// Returns the global randomness from the proofs in the block pre digest.
-    pub fn derive_global_randomness(&self) -> Randomness {
-        match self {
-            Self::Bootstrapping | Self::FirstBlock(_) => Randomness::default(),
-            Self::V0(proofs) => proofs.last().derive_global_randomness().into(),
-        }
-    }
-}
-
-impl Default for PotPreDigest {
-    fn default() -> Self {
-        Self::Bootstrapping
-    }
-}
-
-impl fmt::Debug for PotPreDigest {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Bootstrapping => {
-                write!(f, "PotPreDigest::Bootstrapping")
-            }
-            Self::FirstBlock(slot_number) => {
-                write!(
-                    f,
-                    "PotPreDigest::FirstBlock => genesis_slot = {slot_number}"
-                )
-            }
-            Self::V0(proofs) => {
-                write!(
-                    f,
-                    "PotPreDigest::V0 => num_proofs: {}, proofs: [{} - {}]",
-                    proofs.len(),
-                    proofs.first(),
-                    proofs.last(),
-                )
-            }
-        }
+    /// Future proof of time
+    #[cfg(feature = "pot")]
+    #[inline]
+    pub fn future_proof_of_time(&self) -> PotProof {
+        let Self::V0 {
+            future_proof_of_time,
+            ..
+        } = self;
+        *future_proof_of_time
     }
 }
 
@@ -161,10 +133,20 @@ pub trait CompatibleDigestItem: Sized {
     /// If this item is a Subspace signature, return the signature.
     fn as_subspace_seal(&self) -> Option<FarmerSignature>;
 
+    /// Number of iterations for proof of time per slot
+    #[cfg(feature = "pot")]
+    fn pot_slot_iterations(pot_slot_iterations: NonZeroU32) -> Self;
+
+    /// If this item is a Subspace proof of time slot iterations, return it.
+    #[cfg(feature = "pot")]
+    fn as_pot_slot_iterations(&self) -> Option<NonZeroU32>;
+
     /// Construct a digest item which contains a global randomness.
+    #[cfg(not(feature = "pot"))]
     fn global_randomness(global_randomness: Randomness) -> Self;
 
     /// If this item is a Subspace global randomness, return it.
+    #[cfg(not(feature = "pot"))]
     fn as_global_randomness(&self) -> Option<Randomness>;
 
     /// Construct a digest item which contains a solution range.
@@ -173,10 +155,20 @@ pub trait CompatibleDigestItem: Sized {
     /// If this item is a Subspace solution range, return it.
     fn as_solution_range(&self) -> Option<SolutionRange>;
 
+    /// Change of parameters to apply to PoT chain
+    #[cfg(feature = "pot")]
+    fn pot_parameters_change(pot_parameters_change: PotParametersChange) -> Self;
+
+    /// If this item is a Subspace proof of time change of parameters, return it.
+    #[cfg(feature = "pot")]
+    fn as_pot_parameters_change(&self) -> Option<PotParametersChange>;
+
     /// Construct a digest item which contains next global randomness.
+    #[cfg(not(feature = "pot"))]
     fn next_global_randomness(global_randomness: Randomness) -> Self;
 
     /// If this item is a Subspace next global randomness, return it.
+    #[cfg(not(feature = "pot"))]
     fn as_next_global_randomness(&self) -> Option<Randomness>;
 
     /// Construct a digest item which contains next solution range.
@@ -204,7 +196,7 @@ pub trait CompatibleDigestItem: Sized {
     /// range, return it.
     fn as_enable_solution_range_adjustment_and_override(&self) -> Option<Option<SolutionRange>>;
 
-    /// Construct digest item than indicates update of root plot public key.
+    /// Construct digest item that indicates update of root plot public key.
     fn root_plot_public_key_update(root_plot_public_key: Option<FarmerPublicKey>) -> Self;
 
     /// If this item is a Subspace update of root plot public key, return it.
@@ -232,6 +224,26 @@ impl CompatibleDigestItem for DigestItem {
         self.seal_try_to(&SUBSPACE_ENGINE_ID)
     }
 
+    #[cfg(feature = "pot")]
+    fn pot_slot_iterations(pot_slot_iterations: NonZeroU32) -> Self {
+        Self::Consensus(
+            SUBSPACE_ENGINE_ID,
+            ConsensusLog::PotSlotIterations(pot_slot_iterations).encode(),
+        )
+    }
+
+    #[cfg(feature = "pot")]
+    fn as_pot_slot_iterations(&self) -> Option<NonZeroU32> {
+        self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
+            if let ConsensusLog::PotSlotIterations(pot_slot_iterations) = c {
+                Some(pot_slot_iterations)
+            } else {
+                None
+            }
+        })
+    }
+
+    #[cfg(not(feature = "pot"))]
     fn global_randomness(global_randomness: Randomness) -> Self {
         Self::Consensus(
             SUBSPACE_ENGINE_ID,
@@ -239,6 +251,7 @@ impl CompatibleDigestItem for DigestItem {
         )
     }
 
+    #[cfg(not(feature = "pot"))]
     fn as_global_randomness(&self) -> Option<Randomness> {
         self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
             if let ConsensusLog::GlobalRandomness(global_randomness) = c {
@@ -266,6 +279,26 @@ impl CompatibleDigestItem for DigestItem {
         })
     }
 
+    #[cfg(feature = "pot")]
+    fn pot_parameters_change(pot_parameters_change: PotParametersChange) -> Self {
+        Self::Consensus(
+            SUBSPACE_ENGINE_ID,
+            ConsensusLog::PotParametersChange(pot_parameters_change).encode(),
+        )
+    }
+
+    #[cfg(feature = "pot")]
+    fn as_pot_parameters_change(&self) -> Option<PotParametersChange> {
+        self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
+            if let ConsensusLog::PotParametersChange(pot_parameters_change) = c {
+                Some(pot_parameters_change)
+            } else {
+                None
+            }
+        })
+    }
+
+    #[cfg(not(feature = "pot"))]
     fn next_global_randomness(global_randomness: Randomness) -> Self {
         Self::Consensus(
             SUBSPACE_ENGINE_ID,
@@ -273,6 +306,7 @@ impl CompatibleDigestItem for DigestItem {
         )
     }
 
+    #[cfg(not(feature = "pot"))]
     fn as_next_global_randomness(&self) -> Option<Randomness> {
         self.consensus_try_to(&SUBSPACE_ENGINE_ID).and_then(|c| {
             if let ConsensusLog::NextGlobalRandomness(global_randomness) = c {
@@ -368,11 +402,19 @@ pub enum ErrorDigestType {
     PreDigest,
     /// Seal (signature)
     Seal,
+    /// Number of iterations for proof of time per slot
+    #[cfg(feature = "pot")]
+    PotSlotIterations,
     /// Global randomness
+    #[cfg(not(feature = "pot"))]
     GlobalRandomness,
     /// Solution range
     SolutionRange,
+    /// Change of parameters to apply to PoT chain
+    #[cfg(feature = "pot")]
+    PotParametersChange,
     /// Next global randomness
+    #[cfg(not(feature = "pot"))]
     NextGlobalRandomness,
     /// Next solution range
     NextSolutionRange,
@@ -395,12 +437,22 @@ impl fmt::Display for ErrorDigestType {
             ErrorDigestType::Seal => {
                 write!(f, "Seal")
             }
+            #[cfg(feature = "pot")]
+            ErrorDigestType::PotSlotIterations => {
+                write!(f, "PotSlotIterations")
+            }
+            #[cfg(not(feature = "pot"))]
             ErrorDigestType::GlobalRandomness => {
                 write!(f, "GlobalRandomness")
             }
             ErrorDigestType::SolutionRange => {
                 write!(f, "SolutionRange")
             }
+            #[cfg(feature = "pot")]
+            ErrorDigestType::PotParametersChange => {
+                write!(f, "PotParametersChange")
+            }
+            #[cfg(not(feature = "pot"))]
             ErrorDigestType::NextGlobalRandomness => {
                 write!(f, "NextGlobalRandomness")
             }
@@ -473,11 +525,19 @@ pub struct SubspaceDigestItems<PublicKey, RewardAddress, Signature> {
     pub pre_digest: PreDigest<PublicKey, RewardAddress>,
     /// Signature (seal) if present
     pub signature: Option<Signature>,
+    /// Number of iterations for proof of time per slot
+    #[cfg(feature = "pot")]
+    pub pot_slot_iterations: NonZeroU32,
     /// Global randomness
+    #[cfg(not(feature = "pot"))]
     pub global_randomness: Randomness,
     /// Solution range
     pub solution_range: SolutionRange,
+    /// Change of parameters to apply to PoT chain
+    #[cfg(feature = "pot")]
+    pub pot_parameters_change: Option<PotParametersChange>,
     /// Next global randomness
+    #[cfg(not(feature = "pot"))]
     pub next_global_randomness: Option<Randomness>,
     /// Next solution range
     pub next_solution_range: Option<SolutionRange>,
@@ -501,8 +561,14 @@ where
 {
     let mut maybe_pre_digest = None;
     let mut maybe_seal = None;
+    #[cfg(feature = "pot")]
+    let mut maybe_pot_slot_iterations = None;
+    #[cfg(not(feature = "pot"))]
     let mut maybe_global_randomness = None;
     let mut maybe_solution_range = None;
+    #[cfg(feature = "pot")]
+    let mut maybe_pot_parameters_change = None;
+    #[cfg(not(feature = "pot"))]
     let mut maybe_next_global_randomness = None;
     let mut maybe_next_solution_range = None;
     let mut segment_commitments = BTreeMap::new();
@@ -539,6 +605,18 @@ where
                     .map_err(|error| Error::FailedToDecode(ErrorDigestType::Consensus, error))?;
 
                 match consensus {
+                    #[cfg(feature = "pot")]
+                    ConsensusLog::PotSlotIterations(pot_slot_iterations) => {
+                        match maybe_pot_slot_iterations {
+                            Some(_) => {
+                                return Err(Error::Duplicate(ErrorDigestType::PotSlotIterations));
+                            }
+                            None => {
+                                maybe_pot_slot_iterations.replace(pot_slot_iterations);
+                            }
+                        }
+                    }
+                    #[cfg(not(feature = "pot"))]
                     ConsensusLog::GlobalRandomness(global_randomness) => {
                         match maybe_global_randomness {
                             Some(_) => {
@@ -557,6 +635,18 @@ where
                             maybe_solution_range.replace(solution_range);
                         }
                     },
+                    #[cfg(feature = "pot")]
+                    ConsensusLog::PotParametersChange(pot_parameters_change) => {
+                        match maybe_pot_parameters_change {
+                            Some(_) => {
+                                return Err(Error::Duplicate(ErrorDigestType::PotParametersChange));
+                            }
+                            None => {
+                                maybe_pot_parameters_change.replace(pot_parameters_change);
+                            }
+                        }
+                    }
+                    #[cfg(not(feature = "pot"))]
                     ConsensusLog::NextGlobalRandomness(global_randomness) => {
                         match maybe_next_global_randomness {
                             Some(_) => {
@@ -589,26 +679,26 @@ where
                     ConsensusLog::EnableSolutionRangeAdjustmentAndOverride(
                         override_solution_range,
                     ) => match maybe_enable_and_override_solution_range {
-                        None => {
-                            maybe_enable_and_override_solution_range
-                                .replace(override_solution_range);
-                        }
                         Some(_) => {
                             return Err(Error::Duplicate(
                                 ErrorDigestType::EnableSolutionRangeAdjustmentAndOverride,
                             ));
                         }
+                        None => {
+                            maybe_enable_and_override_solution_range
+                                .replace(override_solution_range);
+                        }
                     },
                     ConsensusLog::RootPlotPublicKeyUpdate(root_plot_public_key_update) => {
-                        match maybe_enable_and_override_solution_range {
-                            None => {
-                                maybe_root_plot_public_key_update
-                                    .replace(root_plot_public_key_update);
-                            }
+                        match maybe_root_plot_public_key_update {
                             Some(_) => {
                                 return Err(Error::Duplicate(
                                     ErrorDigestType::EnableSolutionRangeAdjustmentAndOverride,
                                 ));
+                            }
+                            None => {
+                                maybe_root_plot_public_key_update
+                                    .replace(root_plot_public_key_update);
                             }
                         }
                     }
@@ -640,24 +730,20 @@ where
         }
     }
 
-    // If global randomness was not in the logs, try to get it from the POT
-    #[cfg(feature = "pot")]
-    if maybe_global_randomness.is_none() {
-        maybe_global_randomness = maybe_pre_digest.as_ref().and_then(|pre_digest| {
-            pre_digest
-                .proof_of_time
-                .as_ref()
-                .map(|pot| pot.derive_global_randomness())
-        });
-    }
-
     Ok(SubspaceDigestItems {
         pre_digest: maybe_pre_digest.ok_or(Error::Missing(ErrorDigestType::PreDigest))?,
         signature: maybe_seal,
+        #[cfg(feature = "pot")]
+        pot_slot_iterations: maybe_pot_slot_iterations
+            .ok_or(Error::Missing(ErrorDigestType::PotSlotIterations))?,
+        #[cfg(not(feature = "pot"))]
         global_randomness: maybe_global_randomness
             .ok_or(Error::Missing(ErrorDigestType::GlobalRandomness))?,
         solution_range: maybe_solution_range
             .ok_or(Error::Missing(ErrorDigestType::SolutionRange))?,
+        #[cfg(feature = "pot")]
+        pot_parameters_change: maybe_pot_parameters_change,
+        #[cfg(not(feature = "pot"))]
         next_global_randomness: maybe_next_global_randomness,
         next_solution_range: maybe_next_solution_range,
         segment_commitments,
@@ -677,14 +763,17 @@ where
     // genesis block doesn't contain a pre digest so let's generate a
     // dummy one to not break any invariants in the rest of the code
     if header.number().is_zero() {
-        return Ok(PreDigest {
+        return Ok(PreDigest::V0 {
             slot: Slot::from(0),
             solution: Solution::genesis_solution(
                 FarmerPublicKey::unchecked_from([0u8; 32]),
                 FarmerPublicKey::unchecked_from([0u8; 32]),
             ),
             #[cfg(feature = "pot")]
-            proof_of_time: Default::default(),
+            pot_info: PreDigestPotInfo::V0 {
+                proof_of_time: Default::default(),
+                future_proof_of_time: Default::default(),
+            },
         });
     }
 
@@ -703,6 +792,7 @@ where
 type NumberOf<T> = <T as HeaderT>::Number;
 
 /// Returns the next global randomness if interval is met.
+#[cfg(not(feature = "pot"))]
 pub fn derive_next_global_randomness<Header: HeaderT>(
     number: NumberOf<Header>,
     global_randomness_interval: NumberOf<Header>,
@@ -713,8 +803,8 @@ pub fn derive_next_global_randomness<Header: HeaderT>(
     }
 
     Some(derive_randomness(
-        &pre_digest.solution,
-        pre_digest.slot.into(),
+        pre_digest.solution(),
+        pre_digest.slot().into(),
     ))
 }
 
@@ -785,6 +875,7 @@ pub struct NextDigestsVerificationParams<'a, Header: HeaderT> {
     /// Digests present in the header that corresponds to number above.
     pub header_digests: &'a SubspaceDigestItems<FarmerPublicKey, FarmerPublicKey, FarmerSignature>,
     /// Randomness interval at which next randomness is derived.
+    #[cfg(not(feature = "pot"))]
     pub global_randomness_interval: NumberOf<Header>,
     /// Era duration at which solution range is updated.
     pub era_duration: NumberOf<Header>,
@@ -810,6 +901,7 @@ pub fn verify_next_digests<Header: HeaderT>(
     let NextDigestsVerificationParams {
         number,
         header_digests,
+        #[cfg(not(feature = "pot"))]
         global_randomness_interval,
         era_duration,
         slot_probability,
@@ -820,11 +912,13 @@ pub fn verify_next_digests<Header: HeaderT>(
     } = params;
 
     // verify if the randomness is supposed to derived at this block header
+    #[cfg(not(feature = "pot"))]
     let expected_next_randomness = derive_next_global_randomness::<Header>(
         number,
         global_randomness_interval,
         &header_digests.pre_digest,
     );
+    #[cfg(not(feature = "pot"))]
     if expected_next_randomness != header_digests.next_global_randomness {
         return Err(Error::NextDigestVerificationError(
             ErrorDigestType::NextGlobalRandomness,
@@ -856,7 +950,7 @@ pub fn verify_next_digests<Header: HeaderT>(
             number,
             era_duration,
             slot_probability,
-            current_slot: header_digests.pre_digest.slot,
+            current_slot: header_digests.pre_digest.slot(),
             current_solution_range: header_digests.solution_range,
             era_start_slot,
             should_adjust_solution_range: *should_adjust_solution_range,
@@ -878,7 +972,7 @@ pub fn verify_next_digests<Header: HeaderT>(
             Some(updated_root_plot_public_key) => {
                 if number.is_one()
                     && root_plot_public_key.is_none()
-                    && &header_digests.pre_digest.solution.public_key
+                    && &header_digests.pre_digest.solution().public_key
                         == updated_root_plot_public_key
                 {
                     root_plot_public_key.replace(updated_root_plot_public_key.clone());

@@ -31,10 +31,9 @@ pub mod weights;
 
 mod fees;
 mod messages;
-mod relayer;
 
 use codec::{Decode, Encode};
-use frame_support::traits::Currency;
+use frame_support::traits::fungible::Inspect;
 pub use pallet::*;
 use scale_info::TypeInfo;
 use sp_core::U256;
@@ -85,7 +84,7 @@ pub enum OutboxMessageResult {
 
 pub(crate) type StateRootOf<T> = <<T as frame_system::Config>::Hashing as Hash>::Output;
 pub(crate) type BalanceOf<T> =
-    <<T as Config>::Currency as Currency<<T as frame_system::Config>::AccountId>>::Balance;
+    <<T as Config>::Currency as Inspect<<T as frame_system::Config>::AccountId>>::Balance;
 
 pub(crate) struct ValidatedRelayMessage<Balance> {
     msg: Message<Balance>,
@@ -95,26 +94,27 @@ pub(crate) struct ValidatedRelayMessage<Balance> {
 
 #[frame_support::pallet]
 mod pallet {
-    use crate::relayer::{RelayerId, RelayerInfo};
     use crate::weights::WeightInfo;
     use crate::{
-        relayer, BalanceOf, Channel, ChannelId, ChannelState, FeeModel, Nonce, OutboxMessageResult,
+        BalanceOf, Channel, ChannelId, ChannelState, FeeModel, Nonce, OutboxMessageResult,
         StateRootOf, ValidatedRelayMessage, U256,
     };
     use frame_support::pallet_prelude::*;
-    use frame_support::traits::ReservableCurrency;
+    use frame_support::traits::fungible::Mutate;
+    use frame_support::weights::WeightToFee;
     use frame_system::pallet_prelude::*;
     use sp_core::storage::StorageKey;
+    use sp_domains::DomainId;
     use sp_messenger::endpoint::{DomainInfo, Endpoint, EndpointHandler, EndpointRequest, Sender};
     use sp_messenger::messages::{
-        ChainId, CrossDomainMessage, InitiateChannelParams, Message, MessageId, MessageWeightTag,
-        Payload, ProtocolMessageRequest, RequestResponse, VersionedPayload,
+        BlockInfo, ChainId, CrossDomainMessage, InitiateChannelParams, Message, MessageId,
+        MessageWeightTag, Payload, ProtocolMessageRequest, RequestResponse, VersionedPayload,
     };
     use sp_messenger::verification::{StorageProofVerifier, VerificationError};
+    use sp_messenger::OnXDMRewards;
     use sp_runtime::traits::CheckedSub;
     use sp_runtime::ArithmeticError;
     use sp_std::boxed::Box;
-    use sp_std::vec::Vec;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -122,21 +122,20 @@ mod pallet {
         /// Gets the chain_id that is treated as src_chain_id for outgoing messages.
         type SelfChainId: Get<ChainId>;
         /// function to fetch endpoint response handler by Endpoint.
-        fn get_endpoint_response_handler(
-            endpoint: &Endpoint,
-        ) -> Option<Box<dyn EndpointHandler<MessageId>>>;
+        fn get_endpoint_handler(endpoint: &Endpoint)
+            -> Option<Box<dyn EndpointHandler<MessageId>>>;
         /// Currency type pallet uses for fees and deposits.
-        type Currency: ReservableCurrency<Self::AccountId>;
-        /// Maximum number of relayers that can join this chain.
-        type MaximumRelayers: Get<u32>;
-        /// Relayer deposit to become a relayer for this chain.
-        type RelayerDeposit: Get<BalanceOf<Self>>;
+        type Currency: Mutate<Self::AccountId>;
         /// Chain info to verify chain state roots at a confirmation depth.
         type DomainInfo: DomainInfo<Self::BlockNumber, Self::Hash, StateRootOf<Self>>;
         /// Confirmation depth for XDM coming from chains.
         type ConfirmationDepth: Get<Self::BlockNumber>;
         /// Weight information for extrinsics in this pallet.
         type WeightInfo: WeightInfo;
+        /// Weight to fee conversion.
+        type WeightToFee: WeightToFee<Balance = BalanceOf<Self>>;
+        /// Handle XDM rewards.
+        type OnXDMRewards: OnXDMRewards<BalanceOf<Self>>;
     }
 
     /// Pallet messenger used to communicate between chains and other blockchains.
@@ -170,6 +169,21 @@ mod pallet {
     #[pallet::getter(fn inbox)]
     pub(super) type Inbox<T: Config> = StorageValue<_, Message<BalanceOf<T>>, OptionQuery>;
 
+    /// A temporary storage of fees for executing an inbox message.
+    /// The storage is cleared when the acknowledgement of inbox response is received
+    /// from the src_chain.
+    #[pallet::storage]
+    #[pallet::getter(fn inbox_fees)]
+    pub(super) type InboxFee<T: Config> =
+        StorageMap<_, Identity, (ChainId, MessageId), BalanceOf<T>, OptionQuery>;
+
+    /// A temporary storage of fees for executing an outbox message and its response from dst_chain.
+    /// The storage is cleared when src_chain receives the response from dst_chain.
+    #[pallet::storage]
+    #[pallet::getter(fn outbox_fees)]
+    pub(super) type OutboxFee<T: Config> =
+        StorageMap<_, Identity, (ChainId, MessageId), BalanceOf<T>, OptionQuery>;
+
     /// Stores the message responses of the incoming processed responses.
     /// Used by the dst_chains to verify the message response.
     #[pallet::storage]
@@ -201,24 +215,12 @@ mod pallet {
     pub(super) type OutboxResponses<T: Config> =
         StorageValue<_, Message<BalanceOf<T>>, OptionQuery>;
 
+    /// A temporary storage to store all the messages to be relayed in this block.
+    /// Will be cleared on the initialization on next block.
     #[pallet::storage]
-    #[pallet::getter(fn relayers_info)]
-    pub(super) type RelayersInfo<T: Config> =
-        StorageMap<_, Identity, RelayerId<T>, RelayerInfo<T::AccountId, BalanceOf<T>>, OptionQuery>;
-
-    #[pallet::storage]
-    #[pallet::getter(fn relayers)]
-    pub(super) type Relayers<T: Config> =
-        StorageValue<_, BoundedVec<RelayerId<T>, T::MaximumRelayers>, ValueQuery>;
-
-    #[pallet::storage]
-    #[pallet::getter(fn next_relayer_idx)]
-    pub(super) type NextRelayerIdx<T: Config> = StorageValue<_, u32, ValueQuery>;
-
-    #[pallet::storage]
-    #[pallet::getter(fn relayer_messages)]
-    pub(super) type RelayerMessages<T: Config> =
-        StorageMap<_, Identity, RelayerId<T>, relayer::RelayerMessages, OptionQuery>;
+    #[pallet::getter(fn block_messages)]
+    pub(super) type BlockMessages<T: Config> =
+        StorageValue<_, crate::messages::BlockMessages, OptionQuery>;
 
     /// `pallet-messenger` events
     #[pallet::event]
@@ -253,7 +255,6 @@ mod pallet {
             chain_id: ChainId,
             channel_id: ChannelId,
             nonce: Nonce,
-            relayer_id: RelayerId<T>,
         },
 
         /// Emits when a message response is available for Outbox message.
@@ -287,48 +288,7 @@ mod pallet {
             /// Channel Is
             channel_id: ChannelId,
             nonce: Nonce,
-            relayer_id: RelayerId<T>,
         },
-
-        /// Emits when a relayer successfully joins the relayer set.
-        RelayerJoined {
-            /// Owner who controls the relayer.
-            owner: T::AccountId,
-            /// Relayer address to which rewards are paid.
-            relayer_id: RelayerId<T>,
-        },
-
-        /// Emits when a relayer exists the relayer set.
-        RelayerExited {
-            /// Owner who controls the relayer.
-            owner: T::AccountId,
-            /// Relayer address which exited the set.
-            relayer_id: RelayerId<T>,
-        },
-    }
-
-    #[pallet::genesis_config]
-    #[derive(Debug, frame_support::DefaultNoBound)]
-    pub struct GenesisConfig<T: Config> {
-        /// Genesis relayers that join the relayer pool.
-        pub relayers: Vec<(T::AccountId, RelayerId<T>)>,
-    }
-
-    #[pallet::genesis_build]
-    impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
-        fn build(&self) {
-            for (owner, relayer_id) in self.relayers.iter() {
-                if let Err(err) =
-                    Pallet::<T>::do_join_relayer_set(owner.clone(), relayer_id.clone())
-                {
-                    log::error!(
-                        "Failed to add relayer: {:?} to the pool: {:?}",
-                        relayer_id,
-                        err
-                    )
-                }
-            }
-        }
     }
 
     #[pallet::validate_unsigned]
@@ -463,34 +423,19 @@ mod pallet {
         /// Emits when there is no message available for the given nonce.
         MissingMessage,
 
-        /// Emits when relayer tries to re-join the relayers.
-        AlreadyRelayer,
-
-        /// Emits when a non relayer tries to do relayers specific actions.
-        NotRelayer,
-
-        /// Emits when there is mismatch between caller and relayer owner.
-        NotOwner,
-
-        /// Emits when a relayer tries to join when total relayers already reached maximum count.
-        MaximumRelayerCount,
-
-        /// Emits when there are no relayers to relay messages between chains.
-        NoRelayersToAssign,
-
         /// Emits when there is mismatch between the message's weight tag and the message's
         /// actual processing path
         WeightTagNotMatch,
+
+        /// Emite when the there is balance overflow
+        BalanceOverflow,
     }
 
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
         fn on_initialize(_now: BlockNumberFor<T>) -> Weight {
-            let results = RelayerMessages::<T>::clear(u32::MAX, None);
-            let db_weight = T::DbWeight::get();
-            db_weight
-                .reads(results.loops as u64)
-                .saturating_add(db_weight.writes(1))
+            BlockMessages::<T>::kill();
+            T::DbWeight::get().writes(1)
         }
     }
 
@@ -575,24 +520,6 @@ mod pallet {
             Self::process_outbox_message_responses(outbox_resp_msg, msg.weight_tag)?;
             Ok(())
         }
-
-        /// Declare the desire to become a relayer for this chain by reserving the relayer deposit.
-        #[pallet::call_index(4)]
-        #[pallet::weight(T::WeightInfo::join_relayer_set())]
-        pub fn join_relayer_set(origin: OriginFor<T>, relayer_id: RelayerId<T>) -> DispatchResult {
-            let who = ensure_signed(origin)?;
-            Self::do_join_relayer_set(who, relayer_id)?;
-            Ok(())
-        }
-
-        /// Declare the desire to exit relaying for this chain.
-        #[pallet::call_index(5)]
-        #[pallet::weight(T::WeightInfo::exit_relayer_set())]
-        pub fn exit_relayer_set(origin: OriginFor<T>, relayer_id: RelayerId<T>) -> DispatchResult {
-            let who = ensure_signed(origin)?;
-            Self::do_exit_relayer_set(who, relayer_id)?;
-            Ok(())
-        }
     }
 
     impl<T: Config> Sender<T::AccountId> for Pallet<T> {
@@ -606,15 +533,22 @@ mod pallet {
             let (channel_id, fee_model) =
                 Self::get_open_channel_for_chain(dst_chain_id).ok_or(Error::<T>::NoOpenChannel)?;
 
-            // ensure fees are paid by the sender
-            Self::ensure_fees_for_outbox_message(sender, &fee_model)?;
-
+            let src_endpoint = req.src_endpoint.clone();
             let nonce = Self::new_outbox_message(
                 T::SelfChainId::get(),
                 dst_chain_id,
                 channel_id,
                 VersionedPayload::V0(Payload::Endpoint(RequestResponse::Request(req))),
             )?;
+
+            // ensure fees are paid by the sender
+            Self::collect_fees_for_message(
+                sender,
+                (dst_chain_id, (channel_id, nonce)),
+                &fee_model,
+                &src_endpoint,
+            )?;
+
             Ok((channel_id, nonce))
         }
 
@@ -623,8 +557,7 @@ mod pallet {
         #[cfg(feature = "runtime-benchmarks")]
         fn unchecked_open_channel(dst_chain_id: ChainId) -> Result<(), DispatchError> {
             let fee_model = FeeModel {
-                outbox_fee: Default::default(),
-                inbox_fee: Default::default(),
+                relay_fee: Default::default(),
             };
             let init_params = InitiateChannelParams {
                 max_outgoing_messages: 100,
@@ -643,13 +576,13 @@ mod pallet {
                 MessageWeightTag::ProtocolChannelOpen => T::WeightInfo::do_open_channel(),
                 MessageWeightTag::ProtocolChannelClose => T::WeightInfo::do_close_channel(),
                 MessageWeightTag::EndpointRequest(endpoint) => {
-                    T::get_endpoint_response_handler(endpoint)
+                    T::get_endpoint_handler(endpoint)
                         .map(|endpoint_handler| endpoint_handler.message_weight())
                         // If there is no endpoint handler the request won't be handled thus reture zero weight
                         .unwrap_or(Weight::zero())
                 }
                 MessageWeightTag::EndpointResponse(endpoint) => {
-                    T::get_endpoint_response_handler(endpoint)
+                    T::get_endpoint_handler(endpoint)
                         .map(|endpoint_handler| endpoint_handler.message_response_weight())
                         // If there is no endpoint handler the request won't be handled thus reture zero weight
                         .unwrap_or(Weight::zero())
@@ -844,14 +777,6 @@ mod pallet {
                 }
             }
 
-            let channel = Channels::<T>::get(msg.src_chain_id, msg.channel_id)
-                .ok_or(InvalidTransaction::Call)?;
-
-            // ensure the fees are deposited to the messenger account to pay
-            // for relayer set.
-            Self::ensure_fees_for_inbox_message(&channel.fee)
-                .map_err(|_| TransactionValidityError::Invalid(InvalidTransaction::Payment))?;
-
             Self::deposit_event(Event::InboxMessage {
                 chain_id: msg.src_chain_id,
                 channel_id: msg.channel_id,
@@ -926,25 +851,10 @@ mod pallet {
                 if let Some((domain_id, block_info, state_root)) =
                     extracted_state_roots.domain_info.clone()
                 {
-                    // ensure the block is at-least k-deep
-                    let confirmed = T::DomainInfo::domain_best_number(domain_id)
-                        .and_then(|best_number| {
-                            best_number
-                                .checked_sub(&T::ConfirmationDepth::get())
-                                .map(|confirmed_number| confirmed_number >= block_info.block_number)
-                        })
-                        .unwrap_or(false);
-                    ensure!(confirmed, InvalidTransaction::BadMandatory);
-
-                    // verify state root of the block
-                    let valid_state_root = T::DomainInfo::domain_state_root(
-                        domain_id,
-                        block_info.block_number,
-                        block_info.block_hash,
+                    ensure!(
+                        Self::is_domain_info_confirmed(domain_id, block_info, state_root),
+                        InvalidTransaction::BadProof
                     )
-                    .map(|got_state_root| got_state_root == state_root)
-                    .unwrap_or(false);
-                    ensure!(valid_state_root, InvalidTransaction::BadMandatory)
                 }
             }
 
@@ -967,6 +877,32 @@ mod pallet {
             })?;
 
             Ok(msg)
+        }
+
+        pub fn is_domain_info_confirmed(
+            domain_id: DomainId,
+            domain_block_info: BlockInfo<T::BlockNumber, T::Hash>,
+            domain_state_root: T::Hash,
+        ) -> bool {
+            // ensure the block is at-least k-deep
+            let confirmed = T::DomainInfo::domain_best_number(domain_id)
+                .and_then(|best_number| {
+                    best_number
+                        .checked_sub(&T::ConfirmationDepth::get())
+                        .map(|confirmed_number| confirmed_number >= domain_block_info.block_number)
+                })
+                .unwrap_or(false);
+
+            // verify state root of the block
+            let valid_state_root = T::DomainInfo::domain_state_root(
+                domain_id,
+                domain_block_info.block_number,
+                domain_block_info.block_hash,
+            )
+            .map(|got_state_root| got_state_root == domain_state_root)
+            .unwrap_or(false);
+
+            confirmed && valid_state_root
         }
     }
 }

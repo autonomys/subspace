@@ -40,3 +40,10 @@ subspace-service = { path = "../../crates/subspace-service" }
 subspace-solving = { path = "../../crates/subspace-solving" }
 subspace-test-runtime = { version = "0.1.0", features = ["do-not-enforce-cost-of-storage"], path = "../subspace-test-runtime" }
 zeroize = "1.6.0"
+
+[features]
+pot = [
+	"sc-consensus-subspace/pot",
+	"sp-consensus-subspace/pot",
+	"subspace-test-runtime/pot"
+]

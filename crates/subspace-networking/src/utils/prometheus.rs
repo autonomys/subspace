@@ -5,10 +5,10 @@ use parking_lot::Mutex;
 use prometheus_client::encoding::text::encode;
 use prometheus_client::registry::Registry;
 use std::error::Error;
+use std::future::Future;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use std::thread;
-use tracing::{error, info};
+use tracing::info;
 
 type SharedRegistry = Arc<Mutex<Registry>>;
 
@@ -23,32 +23,18 @@ async fn metrics(registry: Data<SharedRegistry>) -> Result<HttpResponse, Box<dyn
 }
 
 /// Start prometheus metrics server on the provided address.
-pub async fn start_prometheus_metrics_server(
-    address: SocketAddr,
+pub fn start_prometheus_metrics_server(
+    endpoints: Vec<SocketAddr>,
     registry: Registry,
-) -> std::io::Result<()> {
+) -> std::io::Result<impl Future<Output = std::io::Result<()>>> {
     let shared_registry = Arc::new(Mutex::new(registry));
     let data = Data::new(shared_registry);
 
-    info!("Starting metrics server on {} ...", address);
+    info!(?endpoints, "Starting metrics server...",);
 
-    let server = HttpServer::new(move || App::new().app_data(data.clone()).service(metrics))
-        .bind(address)?
-        .run();
-
-    // Actix-web will reuse existing tokio runtime.
-    let runtime = tokio::runtime::Runtime::new()?;
-
-    // We need a dedicated thread because actix-web App is !Send and won't work with tokio.
-    // TODO: This is not cancellable, it should be though
-    thread::spawn(move || {
-        if let Err(err) = runtime.block_on(server) {
-            error!(
-                ?err,
-                "block_on returns an error for prometheus metrics server"
-            )
-        }
-    });
-
-    Ok(())
+    Ok(
+        HttpServer::new(move || App::new().app_data(data.clone()).service(metrics))
+            .bind(endpoints.as_slice())?
+            .run(),
+    )
 }

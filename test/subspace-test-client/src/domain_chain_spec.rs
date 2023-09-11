@@ -62,9 +62,6 @@ pub fn testnet_evm_genesis() -> GenesisConfig {
                 .map(|k| (k, 2_000_000 * SSC))
                 .collect(),
         },
-        messenger: evm_domain_test_runtime::MessengerConfig {
-            relayers: vec![(alice, alice)],
-        },
         sudo: evm_domain_test_runtime::SudoConfig { key: Some(alice) },
         evm_chain_id: evm_domain_test_runtime::EVMChainIdConfig { chain_id: 100 },
         evm: evm_domain_test_runtime::EVMConfig {

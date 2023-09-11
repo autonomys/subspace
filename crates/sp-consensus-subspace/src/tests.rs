@@ -1,3 +1,5 @@
+#[cfg(feature = "pot")]
+use crate::digests::PreDigestPotInfo;
 use crate::{
     is_equivocation_proof_valid, CompatibleDigestItem, EquivocationProof, FarmerPublicKey,
     FarmerSignature,
@@ -39,11 +41,14 @@ fn test_is_equivocation_proof_valid() {
         state_root: Default::default(),
         extrinsics_root: Default::default(),
         digest: Digest {
-            logs: vec![DigestItem::subspace_pre_digest(&PreDigest {
+            logs: vec![DigestItem::subspace_pre_digest(&PreDigest::V0 {
                 slot,
                 solution: solution.clone(),
                 #[cfg(feature = "pot")]
-                proof_of_time: Default::default(),
+                pot_info: PreDigestPotInfo::V0 {
+                    proof_of_time: Default::default(),
+                    future_proof_of_time: Default::default(),
+                },
             })],
         },
     };
@@ -65,11 +70,14 @@ fn test_is_equivocation_proof_valid() {
         state_root: Default::default(),
         extrinsics_root: Default::default(),
         digest: Digest {
-            logs: vec![DigestItem::subspace_pre_digest(&PreDigest {
+            logs: vec![DigestItem::subspace_pre_digest(&PreDigest::V0 {
                 slot,
                 solution,
                 #[cfg(feature = "pot")]
-                proof_of_time: Default::default(),
+                pot_info: PreDigestPotInfo::V0 {
+                    proof_of_time: Default::default(),
+                    future_proof_of_time: Default::default(),
+                },
             })],
         },
     };

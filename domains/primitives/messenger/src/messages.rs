@@ -8,7 +8,6 @@ use serde::{Deserialize, Serialize};
 use sp_core::storage::StorageKey;
 use sp_domains::DomainId;
 use sp_runtime::app_crypto::sp_core::U256;
-use sp_runtime::traits::CheckedAdd;
 use sp_runtime::{sp_std, DispatchError};
 use sp_std::marker::PhantomData;
 use sp_std::vec::Vec;
@@ -24,45 +23,11 @@ pub type Nonce = U256;
 /// Unique Id of a message between two chains.
 pub type MessageId = (ChannelId, Nonce);
 
-/// Execution Fee to execute a send or receive request.
-#[derive(Default, Debug, Encode, Decode, Clone, Copy, Eq, PartialEq, TypeInfo)]
-pub struct ExecutionFee<Balance> {
-    /// Fee paid to the relayer pool for the execution.
-    pub relayer_pool_fee: Balance,
-    /// Fee paid to the network for computation.
-    pub compute_fee: Balance,
-}
-
 /// Fee model to send a request and receive a response from another chain.
-/// A user of the endpoint will pay
-///     - outbox_fee on src_chain
-///     - inbox_fee on dst_chain
-/// The reward is distributed to
-///     - src_chain relayer pool when the response is received
-///     - dst_chain relayer pool when the response acknowledgement from src_chain.
 #[derive(Default, Debug, Encode, Decode, Clone, Copy, Eq, PartialEq, TypeInfo)]
 pub struct FeeModel<Balance> {
-    /// Fee paid by the endpoint user for any outgoing message.
-    pub outbox_fee: ExecutionFee<Balance>,
-    /// Fee paid by the endpoint user any incoming message.
-    pub inbox_fee: ExecutionFee<Balance>,
-}
-
-// TODO: `compute_fee` and `relayer_pool_fee` should be distributed separately, where
-// `compute_fee` should be distributed to executor and `relayer_pool_fee` should be
-// distributed to relayer.
-impl<Balance: CheckedAdd> FeeModel<Balance> {
-    pub fn outbox_fee(&self) -> Option<Balance> {
-        self.outbox_fee
-            .compute_fee
-            .checked_add(&self.outbox_fee.relayer_pool_fee)
-    }
-
-    pub fn inbox_fee(&self) -> Option<Balance> {
-        self.inbox_fee
-            .compute_fee
-            .checked_add(&self.inbox_fee.relayer_pool_fee)
-    }
+    /// Fee to relay message from one chain to another
+    pub relay_fee: Balance,
 }
 
 /// Parameters for a new channel between two chains.
@@ -137,10 +102,10 @@ impl MessageWeightTag {
     // Construct the weight tag for inbox response based on the weight tag of the request
     // message and the response payload
     pub fn inbox_response<Balance>(
-        req_tyep: MessageWeightTag,
+        req_type: MessageWeightTag,
         resp_payload: &VersionedPayload<Balance>,
     ) -> Self {
-        match (req_tyep, resp_payload) {
+        match (req_type, resp_payload) {
             (
                 MessageWeightTag::ProtocolChannelOpen,
                 VersionedPayload::V0(Payload::Protocol(RequestResponse::Response(Ok(_)))),
@@ -356,9 +321,9 @@ impl<BlockNumber, BlockHash, StateRoot> CrossDomainMessage<BlockNumber, BlockHas
     }
 }
 
-/// Relayer message with storage key to generate storage proof using the backend.
+/// Message with storage key to generate storage proof using the backend.
 #[derive(Debug, Encode, Decode, TypeInfo, Clone, Eq, PartialEq)]
-pub struct RelayerMessageWithStorageKey {
+pub struct BlockMessageWithStorageKey {
     /// Chain which initiated this message.
     pub src_chain_id: ChainId,
     /// Chain this message is intended for.
@@ -373,16 +338,16 @@ pub struct RelayerMessageWithStorageKey {
     pub weight_tag: MessageWeightTag,
 }
 
-/// Set of messages with storage keys to be relayed by a given relayer.
+/// Set of messages with storage keys to be relayed in a given block..
 #[derive(Default, Debug, Encode, Decode, TypeInfo, Clone, Eq, PartialEq)]
-pub struct RelayerMessagesWithStorageKey {
-    pub outbox: Vec<RelayerMessageWithStorageKey>,
-    pub inbox_responses: Vec<RelayerMessageWithStorageKey>,
+pub struct BlockMessagesWithStorageKey {
+    pub outbox: Vec<BlockMessageWithStorageKey>,
+    pub inbox_responses: Vec<BlockMessageWithStorageKey>,
 }
 
 impl<BlockNumber, BlockHash, StateRoot> CrossDomainMessage<BlockNumber, BlockHash, StateRoot> {
     pub fn from_relayer_msg_with_proof(
-        r_msg: RelayerMessageWithStorageKey,
+        r_msg: BlockMessageWithStorageKey,
         proof: Proof<BlockNumber, BlockHash, StateRoot>,
     ) -> Self {
         CrossDomainMessage {

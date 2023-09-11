@@ -14,23 +14,20 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use crate::domain::evm_chain_spec;
+use crate::domain::evm_chain_spec::{self, SpecId};
 use clap::Parser;
-use domain_service::DomainConfiguration;
 use sc_cli::{
     ChainSpec, CliConfiguration, DefaultConfigurationValues, ImportParams, KeystoreParams,
     NetworkParams, Result, Role, RunCmd as SubstrateRunCmd, RuntimeVersion, SharedParams,
     SubstrateCli,
 };
 use sc_service::config::PrometheusConfig;
-use sc_service::BasePath;
-use sp_core::crypto::AccountId32;
+use sc_service::{BasePath, Configuration};
 use sp_domains::DomainId;
-use sp_runtime::traits::Convert;
+use std::io::Write;
 use std::net::SocketAddr;
 use std::num::ParseIntError;
 use std::path::PathBuf;
-use std::str::FromStr;
 
 /// Sub-commands supported by the executor.
 #[derive(Debug, clap::Subcommand)]
@@ -45,6 +42,9 @@ pub enum Subcommand {
     /// Sub-commands concerned with benchmarking.
     #[clap(subcommand)]
     Benchmark(frame_benchmarking_cli::BenchmarkCmd),
+
+    /// Build the genesis config of the evm domain chain in json format
+    BuildGenesisConfig(BuildGenesisConfigCmd),
 }
 
 fn parse_domain_id(s: &str) -> std::result::Result<DomainId, ParseIntError> {
@@ -59,10 +59,6 @@ pub struct DomainCli {
 
     #[clap(long, value_parser = parse_domain_id)]
     pub domain_id: DomainId,
-
-    /// Optional relayer address to relay messages on behalf.
-    #[clap(long)]
-    pub relayer_id: Option<String>,
 
     /// Run the node as an Operator
     #[arg(long, conflicts_with = "validator")]
@@ -103,53 +99,13 @@ impl DomainCli {
             .chain(self.additional_args.clone())
     }
 
-    pub fn maybe_relayer_id<AccountId, CA>(&self) -> sc_cli::Result<Option<AccountId>>
-    where
-        CA: Convert<AccountId32, AccountId>,
-        AccountId: FromStr,
-    {
-        // if is dev, use the known key ring to start relayer
-        let res = if self.shared_params().is_dev() && self.relayer_id.is_none() {
-            self.run
-                .get_keyring()
-                .map(|kr| CA::convert(kr.to_account_id()))
-        } else if let Some(relayer_id) = self.relayer_id.clone() {
-            Some(AccountId::from_str(&relayer_id).map_err(|_err| {
-                sc_cli::Error::Input(format!("Invalid Relayer Id: {relayer_id}"))
-            })?)
-        } else {
-            None
-        };
-        Ok(res)
-    }
-
     /// Creates domain configuration from domain cli.
-    pub fn create_domain_configuration<AccountId, CA>(
+    pub fn create_domain_configuration(
         &self,
         tokio_handle: tokio::runtime::Handle,
-    ) -> sc_cli::Result<DomainConfiguration<AccountId>>
-    where
-        CA: Convert<AccountId32, AccountId>,
-        AccountId: FromStr,
-    {
-        // if is dev, use the known key ring to start relayer
-        let maybe_relayer_id = if self.shared_params().is_dev() && self.relayer_id.is_none() {
-            self.run
-                .get_keyring()
-                .map(|kr| CA::convert(kr.to_account_id()))
-        } else if let Some(relayer_id) = self.relayer_id.clone() {
-            Some(AccountId::from_str(&relayer_id).map_err(|_err| {
-                sc_cli::Error::Input(format!("Invalid Relayer Id: {relayer_id}"))
-            })?)
-        } else {
-            None
-        };
-
+    ) -> sc_cli::Result<Configuration> {
         let service_config = SubstrateCli::create_configuration(self, self, tokio_handle)?;
-        Ok(DomainConfiguration {
-            service_config,
-            maybe_relayer_id,
-        })
+        Ok(service_config)
     }
 }
 
@@ -314,5 +270,53 @@ impl CliConfiguration<Self> for DomainCli {
         chain_spec: &Box<dyn ChainSpec>,
     ) -> Result<Option<sc_telemetry::TelemetryEndpoints>> {
         self.run.telemetry_endpoints(chain_spec)
+    }
+}
+
+// TODO: make the command generic over different runtime type instead of just the evm domain runtime
+/// The `build-genesis-config` command used to build the genesis config of the evm domain chain.
+#[derive(Debug, Clone, Parser)]
+pub struct BuildGenesisConfigCmd {
+    /// Whether output the WASM runtime code
+    #[arg(long, default_value_t = false)]
+    pub with_wasm_code: bool,
+
+    /// The base struct of the build-genesis-config command.
+    #[clap(flatten)]
+    pub shared_params: SharedParams,
+}
+
+impl BuildGenesisConfigCmd {
+    /// Run the build-genesis-config command
+    pub fn run(&self) -> sc_cli::Result<()> {
+        let is_dev = self.shared_params.is_dev();
+        let chain_id = self.shared_params.chain_id(is_dev);
+        let mut domain_genesis_config = match chain_id.as_str() {
+            "gemini-3f" => evm_chain_spec::get_testnet_genesis_by_spec_id(SpecId::Gemini).0,
+            "devnet" => evm_chain_spec::get_testnet_genesis_by_spec_id(SpecId::DevNet).0,
+            "dev" => evm_chain_spec::get_testnet_genesis_by_spec_id(SpecId::Dev).0,
+            "" | "local" => evm_chain_spec::get_testnet_genesis_by_spec_id(SpecId::Local).0,
+            unknown_id => {
+                eprintln!(
+                    "unknown chain {unknown_id:?}, expected gemini-3f, devnet, dev, or local",
+                );
+                return Ok(());
+            }
+        };
+
+        if !self.with_wasm_code {
+            // Clear the WASM code of the genesis config
+            domain_genesis_config.system.code = Default::default();
+        }
+        let raw_domain_genesis_config = serde_json::to_vec(&domain_genesis_config)
+            .expect("Genesis config serialization never fails; qed");
+
+        if std::io::stdout()
+            .write_all(raw_domain_genesis_config.as_ref())
+            .is_err()
+        {
+            let _ = std::io::stderr().write_all(b"Error writing to stdout\n");
+        }
+        Ok(())
     }
 }
