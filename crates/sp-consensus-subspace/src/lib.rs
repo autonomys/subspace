@@ -43,6 +43,7 @@ use sp_runtime_interface::{pass_by, runtime_interface};
 #[cfg(feature = "pot")]
 use sp_std::num::NonZeroU32;
 use sp_std::vec::Vec;
+#[cfg(feature = "std")]
 use subspace_core_primitives::crypto::kzg::Kzg;
 #[cfg(feature = "pot")]
 use subspace_core_primitives::Blake3Hash;
@@ -59,6 +60,7 @@ use subspace_proof_of_space::chia::ChiaTable;
 use subspace_proof_of_space::shim::ShimTable;
 #[cfg(feature = "std")]
 use subspace_proof_of_space::PosTableType;
+#[cfg(feature = "std")]
 use subspace_proof_of_space::Table;
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{check_reward_signature, VerifySolutionParams};
