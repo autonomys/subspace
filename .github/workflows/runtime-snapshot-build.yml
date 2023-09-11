@@ -8,12 +8,12 @@ on:
   workflow_dispatch:
   push:
     tags:
-      - 'runtime-snapshot-*'
-      - 'runtime-gemini-*'
+      - "runtime-snapshot-*"
+      - "runtime-gemini-*"
 
 jobs:
   runtime:
-    runs-on: ubuntu-22.04
+    runs-on: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "ubuntu-20.04-x86-64"]' || 'ubuntu-22.04') }}
     permissions:
       contents: write
       packages: write

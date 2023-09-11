@@ -2,8 +2,8 @@ use crate::block_tree::DomainBlock;
 use crate::domain_registry::{DomainConfig, DomainObject};
 use crate::{
     self as pallet_domains, BalanceOf, BlockTree, BundleError, Config, ConsensusBlockHash,
-    DomainBlocks, DomainRegistry, ExecutionInbox, FraudProofError, FungibleHoldId,
-    HeadReceiptNumber, NextDomainId, Operator, OperatorStatus, Operators,
+    DomainBlocks, DomainRegistry, ExecutionInbox, ExecutionReceiptOf, FraudProofError,
+    FungibleHoldId, HeadReceiptNumber, NextDomainId, Operator, OperatorStatus, Operators,
 };
 use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::dispatch::RawOrigin;
@@ -21,9 +21,7 @@ use sp_domains::{
     ProofOfElection, RuntimeType, SealedBundleHeader, StakingHoldIdentifier,
 };
 use sp_runtime::testing::Header;
-use sp_runtime::traits::{
-    AccountIdConversion, BlakeTwo256, BlockNumberProvider, Hash as HashT, IdentityLookup, Zero,
-};
+use sp_runtime::traits::{AccountIdConversion, BlakeTwo256, Hash as HashT, IdentityLookup, Zero};
 use sp_runtime::OpaqueExtrinsic;
 use sp_version::RuntimeVersion;
 use std::sync::atomic::{AtomicU64, Ordering};
@@ -404,16 +402,16 @@ pub(crate) fn register_genesis_domain(creator: u64, operator_ids: Vec<OperatorId
 }
 
 // Submit new head receipt to extend the block tree
-pub(crate) fn extend_block_tree(domain_id: DomainId, operator_id: u64, to: u64) {
+pub(crate) fn extend_block_tree(
+    domain_id: DomainId,
+    operator_id: u64,
+    to: u64,
+) -> ExecutionReceiptOf<Test> {
     let head_receipt_number = HeadReceiptNumber::<Test>::get(domain_id);
     assert!(head_receipt_number < to);
 
     let head_node = get_block_tree_node_at::<Test>(domain_id, head_receipt_number).unwrap();
     let mut receipt = head_node.execution_receipt;
-    assert_eq!(
-        receipt.consensus_block_number,
-        frame_system::Pallet::<Test>::current_block_number()
-    );
     for block_number in (head_receipt_number + 1)..=to {
         // Finilize parent block and initialize block at `block_number`
         run_to_block::<Test>(block_number, receipt.consensus_block_hash);
@@ -442,6 +440,8 @@ pub(crate) fn extend_block_tree(domain_id: DomainId, operator_id: u64, to: u64) 
             vec![bundle_extrinsics_root],
         );
     }
+
+    receipt
 }
 
 #[allow(clippy::type_complexity)]
