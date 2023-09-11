@@ -166,7 +166,7 @@ const BLOCK_AUTHORING_DELAY: SlotNumber = 4;
 const POT_ENTROPY_INJECTION_INTERVAL: BlockNumber = 20;
 
 /// Interval, in entropy injection intervals, where to take entropy for injection from.
-const POT_ENTROPY_INJECTION_LOOKBACK_DEPTH: u8 = 20;
+const POT_ENTROPY_INJECTION_LOOKBACK_DEPTH: u8 = 5;
 
 /// Delay after block, in slots, when entropy injection takes effect.
 const POT_ENTROPY_INJECTION_DELAY: SlotNumber = 15;
