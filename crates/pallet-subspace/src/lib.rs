@@ -378,6 +378,7 @@ mod pallet {
     pub(super) type GlobalRandomnesses<T> =
         StorageValue<_, sp_consensus_subspace::GlobalRandomnesses, ValueQuery>;
 
+    // TODO: Clarify when this value is updated (when it is updated, right now it is not)
     /// Number of iterations for proof of time per slot
     #[pallet::storage]
     pub(super) type PotSlotIterations<T> = StorageValue<_, NonZeroU32>;

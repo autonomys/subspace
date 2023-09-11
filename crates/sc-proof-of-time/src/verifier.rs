@@ -8,6 +8,8 @@ use futures::channel::oneshot;
 use lru::LruCache;
 use parking_lot::Mutex;
 use sp_consensus_slots::Slot;
+#[cfg(feature = "pot")]
+use sp_consensus_subspace::PotParametersChange;
 use std::num::{NonZeroU32, NonZeroUsize};
 use std::sync::Arc;
 use subspace_core_primitives::{PotCheckpoints, PotProof, PotSeed};
@@ -62,24 +64,43 @@ impl PotVerifier {
         self.genesis_seed
     }
 
-    /// Verify a single proof of time that is `slots` slots away from `seed`.
+    pub fn get_checkpoints(
+        &self,
+        seed: PotSeed,
+        slot_iterations: NonZeroU32,
+    ) -> Option<PotCheckpoints> {
+        let cache_key = CacheKey {
+            seed,
+            slot_iterations,
+        };
+
+        self.cache
+            .lock()
+            .peek(&cache_key)
+            .and_then(|value| value.checkpoints.try_lock()?.as_ref().copied())
+    }
+
+    /// Verify sequence of proofs of time that covers `slots` slots starting at `slot` with provided
+    /// initial `seed`.
+    ///
+    /// In case `maybe_parameters_change` is present, it will not affect provided `seed` and
+    /// `slot_iterations`, meaning if parameters change occurred at `slot`, provided `seed` and
+    /// `slot_iterations` must already account for that.
     ///
     /// NOTE: Potentially much slower than checkpoints, prefer [`Self::verify_checkpoints()`]
     /// whenever possible.
     pub async fn is_proof_valid(
         &self,
+        #[cfg(feature = "pot")] mut slot: Slot,
         mut seed: PotSeed,
-        slot_iterations: NonZeroU32,
+        #[cfg_attr(not(feature = "pot"), allow(unused_mut))] mut slot_iterations: NonZeroU32,
         slots: Slot,
         proof: PotProof,
+        #[cfg(feature = "pot")] mut maybe_parameters_change: Option<PotParametersChange>,
     ) -> bool {
         let mut slots = u64::from(slots);
 
         loop {
-            if slots == 0 {
-                return proof.seed() == seed;
-            }
-
             // TODO: This "proxy" is a workaround for https://github.com/rust-lang/rust/issues/57478
             let (result_sender, result_receiver) = oneshot::channel();
             std::thread::spawn({
@@ -90,20 +111,41 @@ impl PotVerifier {
                         async move {
                             // Result doesn't matter here
                             let _ = result_sender
-                                .send(verifier.derive_next_seed(seed, slot_iterations).await);
+                                .send(verifier.calculate_proof(seed, slot_iterations).await);
                         }
                     });
                 }
             });
 
-            seed = match result_receiver.await {
-                Ok(Some(seed)) => seed,
-                _ => {
-                    return false;
-                }
+            let Ok(Some(calculated_proof)) = result_receiver.await else {
+                return false;
             };
 
             slots -= 1;
+
+            if slots == 0 {
+                return proof == calculated_proof;
+            }
+
+            #[cfg(feature = "pot")]
+            {
+                slot = slot + Slot::from(1);
+            }
+
+            #[cfg(feature = "pot")]
+            if let Some(parameters_change) = maybe_parameters_change
+                && parameters_change.slot == slot
+            {
+                slot_iterations = parameters_change.slot_iterations;
+                seed = calculated_proof.seed_with_entropy(&parameters_change.entropy);
+                maybe_parameters_change.take();
+            } else {
+                seed = calculated_proof.seed();
+            }
+            #[cfg(not(feature = "pot"))]
+            {
+                seed = calculated_proof.seed();
+            }
         }
     }
 
@@ -111,11 +153,11 @@ impl PotVerifier {
     // TODO: False-positive, lock is not actually held over await point, remove suppression once
     //  fixed upstream
     #[allow(clippy::await_holding_lock)]
-    async fn derive_next_seed(
+    async fn calculate_proof(
         &self,
         seed: PotSeed,
         slot_iterations: NonZeroU32,
-    ) -> Option<PotSeed> {
+    ) -> Option<PotProof> {
         let cache_key = CacheKey {
             seed,
             slot_iterations,
@@ -128,7 +170,7 @@ impl PotVerifier {
                 drop(cache);
                 let correct_checkpoints = cache_value.checkpoints.lock().await;
                 if let Some(correct_checkpoints) = correct_checkpoints.as_ref() {
-                    return Some(correct_checkpoints.output().seed());
+                    return Some(correct_checkpoints.output());
                 }
 
                 // There was another verification for these inputs and it wasn't successful,
@@ -178,9 +220,9 @@ impl PotVerifier {
                 return None;
             };
 
-            let seed = generated_checkpoints.output().seed();
+            let proof = generated_checkpoints.output();
             checkpoints.replace(generated_checkpoints);
-            return Some(seed);
+            return Some(proof);
         }
     }
 

@@ -45,7 +45,7 @@ use sp_std::num::NonZeroU32;
 use sp_std::vec::Vec;
 use subspace_core_primitives::crypto::kzg::Kzg;
 #[cfg(feature = "pot")]
-use subspace_core_primitives::Blake2b256Hash;
+use subspace_core_primitives::Blake3Hash;
 #[cfg(not(feature = "pot"))]
 use subspace_core_primitives::Randomness;
 use subspace_core_primitives::{
@@ -136,21 +136,22 @@ pub type EquivocationProof<Header> = sp_consensus_slots::EquivocationProof<Heade
 
 /// Change of parameters to apply to PoT chain
 #[cfg(feature = "pot")]
-#[derive(Debug, Clone, PartialEq, Eq, Decode, Encode, TypeInfo, MaxEncodedLen)]
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Decode, Encode, TypeInfo, MaxEncodedLen)]
 pub struct PotParametersChange {
     /// At which slot change of parameters takes effect
     pub slot: Slot,
-    /// New number of iterations
-    pub iterations: NonZeroU32,
+    /// New number of slot iterations
+    pub slot_iterations: NonZeroU32,
     /// Entropy that should be injected at this time
     // TODO: Reconsider if the type is correct here
-    pub entropy: Blake2b256Hash,
+    pub entropy: Blake3Hash,
 }
 
 /// An consensus log item for Subspace.
 #[derive(Debug, Decode, Encode, Clone, PartialEq, Eq)]
 enum ConsensusLog {
-    /// Number of iterations for proof of time per slot.
+    /// Number of iterations for proof of time per slot, corresponds to slot that directly follows
+    /// parent block's slot and can change before slot for which block is produced.
     #[codec(index = 0)]
     #[cfg(feature = "pot")]
     PotSlotIterations(NonZeroU32),
@@ -647,7 +648,8 @@ sp_api::decl_runtime_apis! {
 pub enum PotParameters {
     /// Initial version of the parameters
     V0 {
-        /// Base number of iterations per slot
+        /// Number of iterations for proof of time per slot, corresponds to slot that directly
+        /// follows parent block's slot and can change before slot for which block is produced
         slot_iterations: NonZeroU32,
         /// Optional next scheduled change of parameters
         next_change: Option<PotParametersChange>,
@@ -656,20 +658,21 @@ pub enum PotParameters {
 
 #[cfg(feature = "pot")]
 impl PotParameters {
-    /// Number of iterations for proof of time per slot, taking into account potential future change
-    pub fn slot_iterations(&self, slot: Slot) -> NonZeroU32 {
+    /// Number of iterations for proof of time per slot, corresponds to slot that directly follows
+    /// parent block's slot and can change before slot for which block is produced
+    pub fn slot_iterations(&self) -> NonZeroU32 {
         let Self::V0 {
-            slot_iterations,
-            next_change,
+            slot_iterations, ..
         } = self;
 
-        if let Some(next_change) = next_change {
-            if next_change.slot >= slot {
-                return next_change.iterations;
-            }
-        }
-
         *slot_iterations
+    }
+
+    /// Get next proof of time parameters change if any
+    pub fn next_parameters_change(&self) -> Option<PotParametersChange> {
+        let Self::V0 { next_change, .. } = self;
+
+        *next_change
     }
 }
 

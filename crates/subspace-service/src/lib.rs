@@ -56,9 +56,9 @@ use sc_consensus_subspace::{
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
 #[cfg(feature = "pot")]
-use sc_proof_of_time::gossip::pot_gossip_peers_set_config;
+use sc_proof_of_time::source::gossip::pot_gossip_peers_set_config;
 #[cfg(feature = "pot")]
-use sc_proof_of_time::source::PotSource;
+use sc_proof_of_time::source::PotSourceWorker;
 #[cfg(feature = "pot")]
 use sc_proof_of_time::verifier::PotVerifier;
 use sc_service::error::Error as ServiceError;
@@ -788,17 +788,17 @@ where
 
     #[cfg(feature = "pot")]
     let pot_slot_info_stream = {
-        let (pot_source, pot_gossip_worker, pot_slot_info_stream) = PotSource::new(
+        let (pot_source_worker, pot_gossip_worker, pot_slot_info_stream) = PotSourceWorker::new(
             config.is_timekeeper,
             client.clone(),
-            pot_verifier,
+            pot_verifier.clone(),
             network_service.clone(),
             sync_service.clone(),
         )
         .map_err(|error| Error::Other(error.into()))?;
         let spawn_essential_handle = task_manager.spawn_essential_handle();
 
-        spawn_essential_handle.spawn("pot-source", Some("pot"), pot_source.run());
+        spawn_essential_handle.spawn("pot-source", Some("pot"), pot_source_worker.run());
         spawn_essential_handle.spawn_blocking("pot-gossip", Some("pot"), pot_gossip_worker.run());
 
         pot_slot_info_stream
@@ -855,6 +855,8 @@ where
             block_proposal_slot_portion,
             max_block_proposal_slot_portion: None,
             telemetry: None,
+            #[cfg(feature = "pot")]
+            pot_verifier,
             #[cfg(feature = "pot")]
             pot_slot_info_stream,
         };
