@@ -5,9 +5,10 @@ use libp2p::metrics::Metrics;
 use libp2p::multiaddr::Protocol;
 use libp2p::PeerId;
 use parking_lot::Mutex;
+use prometheus_client::registry::Registry;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_metrics::{start_prometheus_metrics_server, Libp2pMetricsRegistry, RegistryAdapter};
+use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::{Config, Node};
 use tokio::time::sleep;
 use tracing::{error, info};
@@ -15,7 +16,7 @@ use tracing::{error, info};
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt::init();
-    let mut metric_registry = Libp2pMetricsRegistry::default();
+    let mut metric_registry = Registry::default();
     let metrics = Metrics::new(&mut metric_registry);
 
     let config_1 = Config {

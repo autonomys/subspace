@@ -7,12 +7,13 @@ use futures::{select, FutureExt};
 use libp2p::identity::ed25519::Keypair;
 use libp2p::metrics::Metrics;
 use libp2p::{identity, Multiaddr, PeerId};
+use prometheus_client::registry::Registry;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
 use std::sync::Arc;
-use subspace_metrics::{start_prometheus_metrics_server, Libp2pMetricsRegistry, RegistryAdapter};
+use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::{peer_id, Config};
 use tracing::{debug, info, Level};
@@ -136,7 +137,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let keypair = identity::Keypair::from(decoded_keypair);
 
             // Metrics
-            let mut metric_registry = Libp2pMetricsRegistry::default();
+            let mut metric_registry = Registry::default();
             let metrics_endpoints_are_specified = !metrics_endpoints.is_empty();
             let metrics =
                 metrics_endpoints_are_specified.then(|| Metrics::new(&mut metric_registry));

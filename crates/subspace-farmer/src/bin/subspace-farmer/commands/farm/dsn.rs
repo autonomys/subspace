@@ -1,12 +1,12 @@
 use crate::DsnArgs;
 use parking_lot::Mutex;
+use prometheus_client::registry::Registry;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Arc, Weak};
 use subspace_farmer::piece_cache::PieceCache;
 use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
 use subspace_farmer::{NodeClient, NodeRpcClient};
-use subspace_metrics::Libp2pMetricsRegistry;
 use subspace_networking::libp2p::identity::Keypair;
 use subspace_networking::libp2p::kad::RecordKey;
 use subspace_networking::libp2p::metrics::Metrics;
@@ -47,7 +47,7 @@ pub(super) fn configure_dsn(
     node_client: NodeRpcClient,
     piece_cache: PieceCache,
     initialize_metrics: bool,
-) -> Result<(Node, NodeRunner<PieceCache>, Libp2pMetricsRegistry), anyhow::Error> {
+) -> Result<(Node, NodeRunner<PieceCache>, Registry), anyhow::Error> {
     let networking_parameters_registry = NetworkingParametersManager::new(
         &base_path.join("known_addresses.bin"),
         strip_peer_id(bootstrap_nodes.clone())
@@ -58,7 +58,7 @@ pub(super) fn configure_dsn(
     .map(Box::new)?;
 
     // Metrics
-    let mut metrics_registry = Libp2pMetricsRegistry::default();
+    let mut metrics_registry = Registry::default();
     let metrics = initialize_metrics.then(|| Metrics::new(&mut metrics_registry));
 
     let default_config = Config::new(
