@@ -60,11 +60,11 @@ use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
-#[cfg(feature = "pot")]
-use subspace_core_primitives::PotCheckpoints;
 #[cfg(not(feature = "pot"))]
 use subspace_core_primitives::Randomness;
 use subspace_core_primitives::{BlockNumber, PublicKey, RewardSignature, SectorId, Solution};
+#[cfg(feature = "pot")]
+use subspace_core_primitives::{PotCheckpoints, PotProof};
 use subspace_proof_of_space::Table;
 use subspace_verification::{
     check_reward_signature, verify_solution, PieceCheckParams, VerifySolutionParams,
@@ -555,8 +555,16 @@ where
                         // verification wouldn't be possible due to missing (for now) segment commitment
                         info!(target: "subspace", "🗳️ Claimed vote at slot {slot}");
 
-                        self.create_vote(solution, slot, parent_header, parent_hash)
-                            .await;
+                        self.create_vote(
+                            parent_header,
+                            slot,
+                            solution,
+                            #[cfg(feature = "pot")]
+                            proof_of_time,
+                            #[cfg(feature = "pot")]
+                            future_proof_of_time,
+                        )
+                        .await;
                     }
                 }
                 Err(error) => {
@@ -719,11 +727,13 @@ where
 {
     async fn create_vote(
         &self,
-        solution: Solution<FarmerPublicKey, FarmerPublicKey>,
-        slot: Slot,
         parent_header: &Block::Header,
-        parent_hash: Block::Hash,
+        slot: Slot,
+        solution: Solution<FarmerPublicKey, FarmerPublicKey>,
+        #[cfg(feature = "pot")] proof_of_time: PotProof,
+        #[cfg(feature = "pot")] future_proof_of_time: PotProof,
     ) {
+        let parent_hash = parent_header.hash();
         let runtime_api = self.client.runtime_api();
 
         if self.should_backoff(slot, parent_header) {
@@ -736,6 +746,10 @@ where
             parent_hash: parent_header.hash(),
             slot,
             solution: solution.clone(),
+            #[cfg(feature = "pot")]
+            proof_of_time,
+            #[cfg(feature = "pot")]
+            future_proof_of_time,
         };
 
         let signature = match self.sign_reward(vote.hash(), &solution.public_key).await {

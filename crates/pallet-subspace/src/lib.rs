@@ -47,6 +47,8 @@ pub use pallet::*;
 use scale_info::TypeInfo;
 use schnorrkel::SignatureError;
 use sp_consensus_slots::Slot;
+#[cfg(feature = "pot")]
+use sp_consensus_subspace::consensus::is_proof_of_time_valid;
 use sp_consensus_subspace::consensus::verify_solution;
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::offence::{OffenceDetails, OffenceError, OnOffenceHandler};
@@ -54,7 +56,7 @@ use sp_consensus_subspace::{
     ChainConstants, EquivocationProof, FarmerPublicKey, FarmerSignature, SignedVote, Vote,
 };
 #[cfg(feature = "pot")]
-use sp_consensus_subspace::{PotParameters, PotParametersChange};
+use sp_consensus_subspace::{PotParameters, PotParametersChange, WrappedPotProof};
 use sp_runtime::generic::DigestItem;
 #[cfg(feature = "pot")]
 use sp_runtime::traits::CheckedSub;
@@ -70,12 +72,10 @@ use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 use subspace_core_primitives::crypto::Scalar;
 #[cfg(feature = "pot")]
-use subspace_core_primitives::PotProof;
-#[cfg(not(feature = "pot"))]
-use subspace_core_primitives::SlotNumber;
+use subspace_core_primitives::BlockHash;
 use subspace_core_primitives::{
     ArchivedHistorySegment, HistorySize, PublicKey, Randomness, RewardSignature, SectorId,
-    SectorIndex, SegmentHeader, SegmentIndex, SolutionRange,
+    SectorIndex, SegmentHeader, SegmentIndex, SlotNumber, SolutionRange,
 };
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 #[cfg(feature = "pot")]
@@ -127,6 +127,7 @@ impl EraChangeTrigger for NormalEraChange {
 
 #[derive(Copy, Clone, Eq, PartialEq, Encode, Decode, MaxEncodedLen, TypeInfo)]
 struct VoteVerificationData {
+    #[cfg(not(feature = "pot"))]
     global_randomness: Randomness,
     solution_range: SolutionRange,
     current_slot: Slot,
@@ -595,7 +596,6 @@ mod pallet {
         }
 
         /// Farmer vote, currently only used for extra rewards to farmers.
-        // TODO: Proper weight
         #[pallet::call_index(3)]
         #[pallet::weight((<T as Config>::WeightInfo::vote(), DispatchClass::Operational, Pays::No))]
         // Suppression because the custom syntax will also generate an enum and we need enum to have
@@ -1394,9 +1394,6 @@ fn current_vote_verification_data<T: Config>(is_block_initialized: bool) -> Vote
                 .next
                 .unwrap_or(global_randomnesses.current)
         },
-        // TODO: This is invalid and must be fixed for PoT
-        #[cfg(feature = "pot")]
-        global_randomness: Default::default(),
         solution_range: if is_block_initialized {
             solution_ranges.voting_current
         } else {
@@ -1430,6 +1427,10 @@ enum CheckVoteError {
     UnknownSegmentCommitment,
     InvalidHistorySize,
     InvalidSolution(String),
+    #[cfg(feature = "pot")]
+    InvalidProofOfTime,
+    #[cfg(feature = "pot")]
+    InvalidFutureProofOfTime,
     DuplicateVote,
     Equivocated(SubspaceEquivocationOffence<FarmerPublicKey>),
 }
@@ -1449,6 +1450,10 @@ impl From<CheckVoteError> for TransactionValidityError {
             CheckVoteError::UnknownSegmentCommitment => InvalidTransaction::Call,
             CheckVoteError::InvalidHistorySize => InvalidTransaction::Call,
             CheckVoteError::InvalidSolution(_) => InvalidTransaction::Call,
+            #[cfg(feature = "pot")]
+            CheckVoteError::InvalidProofOfTime => InvalidTransaction::Future,
+            #[cfg(feature = "pot")]
+            CheckVoteError::InvalidFutureProofOfTime => InvalidTransaction::Call,
             CheckVoteError::DuplicateVote => InvalidTransaction::Call,
             CheckVoteError::Equivocated(_) => InvalidTransaction::BadSigner,
         })
@@ -1464,6 +1469,10 @@ fn check_vote<T: Config>(
         parent_hash,
         slot,
         solution,
+        #[cfg(feature = "pot")]
+        proof_of_time,
+        #[cfg(feature = "pot")]
+        future_proof_of_time,
     } = &signed_vote.vote;
     let height = *height;
     let slot = *slot;
@@ -1621,9 +1630,8 @@ fn check_vote<T: Config>(
         (&VerifySolutionParams {
             #[cfg(not(feature = "pot"))]
             global_randomness: vote_verification_data.global_randomness,
-            // TODO: This is incorrect, find a way to verify votes
             #[cfg(feature = "pot")]
-            proof_of_time: PotProof::default(),
+            proof_of_time: *proof_of_time,
             solution_range: vote_verification_data.solution_range,
             piece_check_params: Some(PieceCheckParams {
                 max_pieces_in_sector: T::MaxPiecesInSector::get(),
@@ -1642,6 +1650,36 @@ fn check_vote<T: Config>(
             "Vote verification error: {error:?}"
         );
         return Err(CheckVoteError::InvalidSolution(error));
+    }
+
+    // Cheap proof of time verification is possible here because proof of time must have already
+    // been seen by this node due to votes requiring the same authoring delay as blocks
+    #[cfg(feature = "pot")]
+    if !is_proof_of_time_valid(
+        BlockHash::try_from(parent_hash.as_ref())
+            .expect("Must be able to convert to block hash type"),
+        SlotNumber::from(slot),
+        WrappedPotProof::from(*proof_of_time),
+    ) {
+        debug!(target: "runtime::subspace", "Invalid proof of time");
+
+        return Err(CheckVoteError::InvalidProofOfTime);
+    }
+
+    // During pre-dispatch we have already verified proofs of time up to future proof of time of
+    // current block, which vote can't exceed, this must be possible to verify cheaply
+    #[cfg(feature = "pot")]
+    if pre_dispatch
+        && !is_proof_of_time_valid(
+            BlockHash::try_from(parent_hash.as_ref())
+                .expect("Must be able to convert to block hash type"),
+            SlotNumber::from(slot + T::BlockAuthoringDelay::get()),
+            WrappedPotProof::from(*future_proof_of_time),
+        )
+    {
+        debug!(target: "runtime::subspace", "Invalid future proof of time");
+
+        return Err(CheckVoteError::InvalidFutureProofOfTime);
     }
 
     let key = (

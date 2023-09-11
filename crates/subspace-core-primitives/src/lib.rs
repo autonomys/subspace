@@ -131,6 +131,9 @@ impl Randomness {
 /// Block number in Subspace network.
 pub type BlockNumber = u32;
 
+/// Block hash in Subspace network.
+pub type BlockHash = [u8; 32];
+
 /// Slot number in Subspace network.
 pub type SlotNumber = u64;
 

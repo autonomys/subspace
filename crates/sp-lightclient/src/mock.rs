@@ -3,6 +3,8 @@ use codec::{Decode, Encode};
 use frame_support::sp_io::TestExternalities;
 use scale_info::TypeInfo;
 use sp_arithmetic::traits::Zero;
+#[cfg(feature = "pot")]
+use sp_consensus_subspace::PotExtension;
 use sp_consensus_subspace::{KzgExtension, PosExtension};
 use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
 use std::collections::{BTreeMap, HashMap};
@@ -203,6 +205,10 @@ pub fn new_test_ext() -> TestExternalities {
 
     ext.register_extension(KzgExtension::new(Kzg::new(embedded_kzg_settings())));
     ext.register_extension(PosExtension::new::<PosTable>());
+    #[cfg(feature = "pot")]
+    ext.register_extension(PotExtension::new(Box::new(
+        |parent_hash, slot, proof_of_time| todo!(),
+    )));
 
     ext
 }

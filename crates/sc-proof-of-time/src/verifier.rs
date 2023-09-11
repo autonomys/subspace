@@ -89,6 +89,7 @@ impl PotVerifier {
     ///
     /// NOTE: Potentially much slower than checkpoints, prefer [`Self::verify_checkpoints()`]
     /// whenever possible.
+    // TODO: Version of this API that never invokes proving, just checks
     pub async fn is_proof_valid(
         &self,
         #[cfg(feature = "pot")] mut slot: Slot,
