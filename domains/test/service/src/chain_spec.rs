@@ -1,9 +1,9 @@
 //! Chain specification for the domain test runtime.
 
 use evm_domain_test_runtime::GenesisConfig;
-use once_cell::sync::OnceCell;
 use sc_service::{ChainSpec, ChainType, GenericChainSpec};
 use sp_domains::{DomainId, DomainInstanceData, RuntimeType};
+use std::sync::OnceLock;
 
 macro_rules! chain_spec_from_genesis {
     ( $constructor:expr ) => {{
@@ -28,7 +28,7 @@ macro_rules! chain_spec_from_genesis {
 // TODO: find a better solution, tests will run parallelly thus `load_chain_spec_with` multiple
 // time, when we support more domain in the future the genesis domain of different domain will
 // mixup in the current workaround.
-static GENESIS_CONFIG: OnceCell<Vec<u8>> = OnceCell::new();
+static GENESIS_CONFIG: OnceLock<Vec<u8>> = OnceLock::new();
 
 /// Load chain spec that contains the given `GenesisConfig`
 fn load_chain_spec_with(genesis_config: GenesisConfig) -> Box<dyn ChainSpec> {

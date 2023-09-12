@@ -22,12 +22,12 @@ use evm_domain_runtime::{
     SelfDomainIdConfig, SudoConfig, SystemConfig, WASM_BINARY,
 };
 use hex_literal::hex;
-use once_cell::sync::OnceCell;
 use sc_service::ChainType;
 use sc_subspace_chain_specs::ExecutionChainSpec;
 use sp_core::crypto::UncheckedFrom;
 use sp_domains::{DomainId, DomainInstanceData, OperatorPublicKey, RuntimeType};
 use std::str::FromStr;
+use std::sync::OnceLock;
 use subspace_runtime_primitives::SSC;
 
 pub type ChainSpec = ExecutionChainSpec<GenesisConfig>;
@@ -236,7 +236,7 @@ pub fn get_testnet_genesis_by_spec_id(spec_id: SpecId) -> (GenesisConfig, Genesi
 // HACK: `ChainSpec::from_genesis` is only allow to create hardcoded spec and `GenesisConfig`
 // dosen't derive `Clone`, using global variable and serialization/deserialization to workaround
 // these limits.
-static GENESIS_CONFIG: OnceCell<Vec<u8>> = OnceCell::new();
+static GENESIS_CONFIG: OnceLock<Vec<u8>> = OnceLock::new();
 
 // Load chain spec that contains the given `GenesisConfig`
 fn load_chain_spec_with(
