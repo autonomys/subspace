@@ -56,7 +56,7 @@ use sp_consensus_subspace::{
     ChainConstants, EquivocationProof, FarmerPublicKey, FarmerSignature, SignedVote, Vote,
 };
 #[cfg(feature = "pot")]
-use sp_consensus_subspace::{PotParameters, PotParametersChange, WrappedPotProof};
+use sp_consensus_subspace::{PotParameters, PotParametersChange, WrappedPotOutput};
 use sp_runtime::generic::DigestItem;
 #[cfg(feature = "pot")]
 use sp_runtime::traits::CheckedSub;
@@ -1659,7 +1659,7 @@ fn check_vote<T: Config>(
         BlockHash::try_from(parent_hash.as_ref())
             .expect("Must be able to convert to block hash type"),
         SlotNumber::from(slot),
-        WrappedPotProof::from(*proof_of_time),
+        WrappedPotOutput::from(*proof_of_time),
     ) {
         debug!(target: "runtime::subspace", "Invalid proof of time");
 
@@ -1674,7 +1674,7 @@ fn check_vote<T: Config>(
             BlockHash::try_from(parent_hash.as_ref())
                 .expect("Must be able to convert to block hash type"),
             SlotNumber::from(slot + T::BlockAuthoringDelay::get()),
-            WrappedPotProof::from(*future_proof_of_time),
+            WrappedPotOutput::from(*future_proof_of_time),
         )
     {
         debug!(target: "runtime::subspace", "Invalid future proof of time");

@@ -511,13 +511,13 @@ impl<'a> PassBy for WrappedVerifySolutionParams<'a> {
     type PassBy = pass_by::Codec<Self>;
 }
 
-/// Wrapped solution verification parameters for the purposes of runtime interface.
+/// Wrapped proof of time output for the purposes of runtime interface.
 #[derive(Debug, Encode, Decode)]
 #[cfg(feature = "pot")]
-pub struct WrappedPotProof(PotOutput);
+pub struct WrappedPotOutput(PotOutput);
 
 #[cfg(feature = "pot")]
-impl From<PotOutput> for WrappedPotProof {
+impl From<PotOutput> for WrappedPotOutput {
     #[inline]
     fn from(value: PotOutput) -> Self {
         Self(value)
@@ -525,7 +525,7 @@ impl From<PotOutput> for WrappedPotProof {
 }
 
 #[cfg(feature = "pot")]
-impl PassBy for WrappedPotProof {
+impl PassBy for WrappedPotOutput {
     type PassBy = pass_by::Codec<Self>;
 }
 
@@ -630,7 +630,7 @@ pub trait Consensus {
         &mut self,
         parent_hash: BlockHash,
         slot: SlotNumber,
-        proof_of_time: WrappedPotProof,
+        proof_of_time: WrappedPotOutput,
     ) -> bool {
         use sp_externalities::ExternalitiesExt;
 
