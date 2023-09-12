@@ -5,7 +5,7 @@ use crate::{DomainParentChain, ExecutionReceiptFor, TransactionFor};
 use domain_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_block_preprocessor::{DomainBlockPreprocessor, PreprocessResult};
 use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
-use sc_client_api::{AuxStore, BlockBackend, Finalizer, StateBackendFor};
+use sc_client_api::{AuxStore, BlockBackend, Finalizer, ProofProvider, StateBackendFor};
 use sc_consensus::{BlockImport, BlockImportParams, ForkChoiceStrategy, StateAction};
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
@@ -100,7 +100,7 @@ where
     fn validate_receipt(
         &self,
         receipt: &ExecutionReceiptFor<Block, CBlock>,
-    ) -> sp_blockchain::Result<ReceiptValidity> {
+    ) -> sp_blockchain::Result<ReceiptValidity<CBlock::Hash>> {
         // Skip genesis receipt as it has been already verified by the consensus chain.
         if receipt.domain_block_number.is_zero() {
             return Ok(ReceiptValidity::Valid);
@@ -123,9 +123,11 @@ where
         }
 
         if local_receipt.total_rewards != receipt.total_rewards {
-            // TODO: Generate fraud proof
             return Ok(ReceiptValidity::Invalid(
-                InvalidReceipt::InvalidTotalRewards,
+                InvalidReceipt::InvalidTotalRewards {
+                    consensus_block_hash,
+                    bad_receipt_hash: receipt.hash(),
+                },
             ));
         }
 
@@ -144,6 +146,7 @@ where
         + BlockBackend<Block>
         + AuxStore
         + ProvideRuntimeApi<Block>
+        + ProofProvider<Block>
         + Finalizer<Block, Backend>
         + 'static,
     Client::Api: DomainCoreApi<Block>

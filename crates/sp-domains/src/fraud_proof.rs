@@ -1,5 +1,6 @@
 use crate::{DomainId, ReceiptHash, SealedBundleHeader};
-use parity_scale_codec::{Decode, Encode};
+use frame_support::storage::generator::StorageValue;
+use parity_scale_codec::{Decode, Encode, FullCodec};
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
 use sp_core::H256;
@@ -190,6 +191,7 @@ pub enum FraudProof<Number, Hash> {
     InvalidTransaction(InvalidTransactionProof),
     BundleEquivocation(BundleEquivocationProof<Number, Hash>),
     ImproperTransactionSortition(ImproperTransactionSortitionProof),
+    InvalidBundle(InvalidBundleProof<Number, Hash>),
     // Dummy fraud proof only used in test and benchmark
     #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
     Dummy {
@@ -209,6 +211,7 @@ impl<Number, Hash> FraudProof<Number, Hash> {
             Self::ImproperTransactionSortition(proof) => proof.domain_id,
             #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
             Self::Dummy { domain_id, .. } => *domain_id,
+            FraudProof::InvalidBundle(proof) => proof.domain_id(),
         }
     }
 
@@ -225,6 +228,7 @@ impl<Number, Hash> FraudProof<Number, Hash> {
             Self::Dummy {
                 bad_receipt_hash, ..
             } => *bad_receipt_hash,
+            FraudProof::InvalidBundle(proof) => proof.bad_receipt_hash(),
         }
     }
 
@@ -344,4 +348,65 @@ pub struct ImproperTransactionSortitionProof {
     pub domain_id: DomainId,
     /// Hash of the bad receipt this fraud proof targeted
     pub bad_receipt_hash: ReceiptHash,
+}
+
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+pub struct TotalRewardsProof<BlockNumber, BlockHash> {
+    /// The id of the domain this fraud proof targeted
+    pub domain_id: DomainId,
+    /// Hash of the bad receipt this fraud proof targeted
+    pub bad_receipt_hash: ReceiptHash,
+    /// Number of the block
+    pub block_number: BlockNumber,
+    /// Hash of the domain block corresponding to `block_number`.
+    pub domain_block_hash: BlockHash,
+    /// Storage witness needed for verifying this proof.
+    pub storage_proof: StorageProof,
+}
+
+/// Represents an invalid bundle fraud proof.
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+pub enum InvalidBundleProof<BlockNumber, BlockHash> {
+    TotalRewards(TotalRewardsProof<BlockNumber, BlockHash>),
+}
+
+impl<BlockNumber, BlockHash> InvalidBundleProof<BlockNumber, BlockHash> {
+    pub(crate) fn domain_id(&self) -> DomainId {
+        match self {
+            InvalidBundleProof::TotalRewards(proof) => proof.domain_id,
+        }
+    }
+
+    pub(crate) fn bad_receipt_hash(&self) -> ReceiptHash {
+        match self {
+            InvalidBundleProof::TotalRewards(proof) => proof.bad_receipt_hash,
+        }
+    }
+}
+
+/// This is a representation of actual Block Rewards storage in pallet-operator-rewards.
+/// Any change in key or value there should be changed here accordingly.
+pub struct OperatorBlockRewards;
+
+impl StorageValue<Balance> for OperatorBlockRewards
+where
+    Balance: FullCodec + TypeInfo + Default + 'static,
+{
+    type Query = Balance;
+
+    fn module_prefix() -> &'static [u8] {
+        "OperatorRewards".as_ref()
+    }
+
+    fn storage_prefix() -> &'static [u8] {
+        "BlockRewards".as_ref()
+    }
+
+    fn from_optional_value_to_query(v: Option<Balance>) -> Self::Query {
+        v.unwrap_or_default()
+    }
+
+    fn from_query_to_optional_value(v: Self::Query) -> Option<Balance> {
+        Some(v)
+    }
 }

@@ -2320,6 +2320,7 @@ dependencies = [
  "domain-test-primitives",
  "domain-test-service",
  "evm-domain-test-runtime",
+ "frame-support",
  "frame-system",
  "futures",
  "futures-timer",
@@ -10638,6 +10639,7 @@ name = "sp-domains"
 version = "0.1.0"
 dependencies = [
  "blake2",
+ "frame-support",
  "hexlit",
  "num-traits",
  "parity-scale-codec",

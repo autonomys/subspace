@@ -2,12 +2,16 @@ use crate::utils::to_number_primitive;
 use crate::{ExecutionReceiptFor, TransactionFor};
 use codec::{Decode, Encode};
 use domain_block_builder::{BlockBuilder, RecordProof};
-use sc_client_api::{AuxStore, BlockBackend, StateBackendFor};
+use frame_support::storage::generator::StorageValue;
+use sc_client_api::{AuxStore, BlockBackend, ProofProvider, StateBackendFor};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::CodeExecutor;
 use sp_core::H256;
-use sp_domains::fraud_proof::{ExecutionPhase, FraudProof, InvalidStateTransitionProof};
+use sp_domains::fraud_proof::{
+    ExecutionPhase, FraudProof, InvalidBundleProof, InvalidStateTransitionProof, TotalRewardsProof,
+};
+
 use sp_domains::DomainId;
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, NumberFor};
 use sp_runtime::Digest;
@@ -58,8 +62,14 @@ impl<Block, CBlock, Client, CClient, Backend, E>
 where
     Block: BlockT,
     CBlock: BlockT,
-    Client:
-        HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
+    NumberFor<Block>: Into<NumberFor<CBlock>>,
+    Block::Hash: Into<CBlock::Hash>,
+    Client: HeaderBackend<Block>
+        + BlockBackend<Block>
+        + AuxStore
+        + ProvideRuntimeApi<Block>
+        + ProofProvider<Block>
+        + 'static,
     Client::Api: sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
     CClient: HeaderBackend<CBlock> + 'static,
@@ -80,6 +90,31 @@ where
             code_executor,
             _phantom: Default::default(),
         }
+    }
+
+    // TODO: remove once connected
+    #[allow(dead_code)]
+    pub(crate) fn generate_invalid_total_rewards_proof(
+        &self,
+        domain_id: DomainId,
+        local_receipt: &ExecutionReceiptFor<Block, CBlock>,
+        bad_receipt_hash: H256,
+    ) -> Result<FraudProof<NumberFor<CBlock>, CBlock::Hash>, FraudProofError> {
+        let block_hash = local_receipt.domain_block_hash;
+        let block_number = local_receipt.domain_block_number;
+        let key = sp_domains::fraud_proof::OperatorBlockRewards::storage_value_final_key();
+        let proof = self
+            .client
+            .read_proof(block_hash, &mut [key.as_slice()].into_iter())?;
+        Ok(FraudProof::InvalidBundle(InvalidBundleProof::TotalRewards(
+            TotalRewardsProof {
+                domain_id,
+                bad_receipt_hash,
+                block_number: block_number.into(),
+                domain_block_hash: block_hash.into(),
+                storage_proof: proof,
+            },
+        )))
     }
 
     pub(crate) fn generate_invalid_state_transition_proof<PCB>(

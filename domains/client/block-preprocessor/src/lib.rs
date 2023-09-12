@@ -194,10 +194,10 @@ fn shuffle_extrinsics<Extrinsic: Debug, AccountId: Ord + Clone>(
     shuffled_extrinsics
 }
 
-pub struct PreprocessResult<Block: BlockT> {
+pub struct PreprocessResult<Block: BlockT, CHash> {
     pub extrinsics: Vec<Block::Extrinsic>,
     pub extrinsics_roots: Vec<ExtrinsicsRoot>,
-    pub invalid_bundles: Vec<InvalidBundle>,
+    pub invalid_bundles: Vec<InvalidBundle<CHash>>,
 }
 
 pub struct DomainBlockPreprocessor<Block, CBlock, Client, CClient, RuntimeApi, ReceiptValidator> {
@@ -238,7 +238,7 @@ where
             Block::Hash,
             Balance,
         >,
-    ) -> sp_blockchain::Result<ReceiptValidity>;
+    ) -> sp_blockchain::Result<ReceiptValidity<CBlock::Hash>>;
 }
 
 impl<Block, CBlock, Client, CClient, RuntimeApi, ReceiptValidator>
@@ -285,7 +285,7 @@ where
         &self,
         consensus_block_hash: CBlock::Hash,
         domain_hash: Block::Hash,
-    ) -> sp_blockchain::Result<Option<PreprocessResult<Block>>> {
+    ) -> sp_blockchain::Result<Option<PreprocessResult<Block, CBlock::Hash>>> {
         let (primary_extrinsics, shuffling_seed, maybe_new_runtime) =
             prepare_domain_block_elements::<Block, CBlock, _>(
                 self.domain_id,
@@ -354,12 +354,13 @@ where
 
     /// Filter out the invalid bundles first and then convert the remaining valid ones to
     /// a list of extrinsics.
+    #[allow(clippy::type_complexity)]
     fn compile_bundles_to_extrinsics(
         &self,
         bundles: OpaqueBundles<CBlock, NumberFor<Block>, Block::Hash, Balance>,
         tx_range: U256,
         at: Block::Hash,
-    ) -> sp_blockchain::Result<(Vec<InvalidBundle>, Vec<Block::Extrinsic>)> {
+    ) -> sp_blockchain::Result<(Vec<InvalidBundle<CBlock::Hash>>, Vec<Block::Extrinsic>)> {
         let mut invalid_bundles = Vec::with_capacity(bundles.len());
         let mut valid_extrinsics = Vec::new();
 
@@ -389,7 +390,7 @@ where
         >,
         tx_range: &U256,
         at: Block::Hash,
-    ) -> sp_blockchain::Result<BundleValidity<Block::Extrinsic>> {
+    ) -> sp_blockchain::Result<BundleValidity<Block::Extrinsic, CBlock::Hash>> {
         // Bundles with incorrect ER are considered invalid.
         if let ReceiptValidity::Invalid(invalid_receipt) =
             self.receipt_validator.validate_receipt(bundle.receipt())?
