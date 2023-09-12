@@ -12,7 +12,7 @@ use sp_consensus_slots::Slot;
 use sp_consensus_subspace::PotParametersChange;
 use std::num::{NonZeroU32, NonZeroUsize};
 use std::sync::Arc;
-use subspace_core_primitives::{PotCheckpoints, PotProof, PotSeed};
+use subspace_core_primitives::{PotCheckpoints, PotOutput, PotSeed};
 use tracing::trace;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
@@ -90,13 +90,13 @@ impl PotVerifier {
     /// NOTE: Potentially much slower than checkpoints, prefer [`Self::verify_checkpoints()`]
     /// whenever possible.
     // TODO: Version of this API that never invokes proving, just checks
-    pub async fn is_proof_valid(
+    pub async fn is_output_valid(
         &self,
         #[cfg(feature = "pot")] mut slot: Slot,
         mut seed: PotSeed,
         #[cfg_attr(not(feature = "pot"), allow(unused_mut))] mut slot_iterations: NonZeroU32,
         slots: Slot,
-        proof: PotProof,
+        output: PotOutput,
         #[cfg(feature = "pot")] mut maybe_parameters_change: Option<PotParametersChange>,
     ) -> bool {
         let mut slots = u64::from(slots);
@@ -112,7 +112,7 @@ impl PotVerifier {
                         async move {
                             // Result doesn't matter here
                             let _ = result_sender
-                                .send(verifier.calculate_proof(seed, slot_iterations).await);
+                                .send(verifier.calculate_output(seed, slot_iterations).await);
                         }
                     });
                 }
@@ -125,7 +125,7 @@ impl PotVerifier {
             slots -= 1;
 
             if slots == 0 {
-                return proof == calculated_proof;
+                return output == calculated_proof;
             }
 
             #[cfg(feature = "pot")]
@@ -154,11 +154,11 @@ impl PotVerifier {
     // TODO: False-positive, lock is not actually held over await point, remove suppression once
     //  fixed upstream
     #[allow(clippy::await_holding_lock)]
-    async fn calculate_proof(
+    async fn calculate_output(
         &self,
         seed: PotSeed,
         slot_iterations: NonZeroU32,
-    ) -> Option<PotProof> {
+    ) -> Option<PotOutput> {
         let cache_key = CacheKey {
             seed,
             slot_iterations,

@@ -5,7 +5,7 @@ use sp_consensus_slots::Slot;
 use sp_consensus_subspace::PotParametersChange;
 use std::num::NonZeroU32;
 use std::sync::atomic::Ordering;
-use subspace_core_primitives::{PotProof, PotSeed};
+use subspace_core_primitives::{PotOutput, PotSeed};
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub(super) struct NextSlotInput {
@@ -25,7 +25,7 @@ impl InnerState {
     pub(super) fn update(
         mut self,
         mut best_slot: Slot,
-        mut best_proof: PotProof,
+        mut best_output: PotOutput,
         #[cfg(feature = "pot")] maybe_updated_parameters_change: Option<
             Option<PotParametersChange>,
         >,
@@ -49,18 +49,18 @@ impl InnerState {
                 next_slot_iterations = parameters_change.slot_iterations;
                 // Only if entropy injection happens on this exact slot we need to mix it in
                 if parameters_change.slot == next_slot {
-                    next_seed = best_proof.seed_with_entropy(&parameters_change.entropy);
+                    next_seed = best_output.seed_with_entropy(&parameters_change.entropy);
                 } else {
-                    next_seed = best_proof.seed();
+                    next_seed = best_output.seed();
                 }
             } else {
                 next_slot_iterations = self.next_slot_input.slot_iterations;
-                next_seed = best_proof.seed();
+                next_seed = best_output.seed();
             }
             #[cfg(not(feature = "pot"))]
             {
                 next_slot_iterations = self.next_slot_input.slot_iterations;
-                next_seed = best_proof.seed();
+                next_seed = best_output.seed();
             }
 
             self.next_slot_input = NextSlotInput {
@@ -73,7 +73,7 @@ impl InnerState {
             if let Some(checkpoints) = pot_verifier.get_checkpoints(next_seed, next_slot_iterations)
             {
                 best_slot = best_slot + Slot::from(1);
-                best_proof = checkpoints.output();
+                best_output = checkpoints.output();
             } else {
                 break;
             }
@@ -119,7 +119,7 @@ impl PotState {
         &self,
         expected_previous_next_slot_input: NextSlotInput,
         best_slot: Slot,
-        best_proof: PotProof,
+        best_output: PotOutput,
         #[cfg(feature = "pot")] maybe_updated_parameters_change: Option<
             Option<PotParametersChange>,
         >,
@@ -131,7 +131,7 @@ impl PotState {
 
         let new_inner_state = old_inner_state.update(
             best_slot,
-            best_proof,
+            best_output,
             #[cfg(feature = "pot")]
             maybe_updated_parameters_change,
             &self.verifier,
@@ -158,7 +158,7 @@ impl PotState {
     pub(super) fn update(
         &self,
         best_slot: Slot,
-        best_proof: PotProof,
+        best_output: PotOutput,
         #[cfg(feature = "pot")] maybe_updated_parameters_change: Option<
             Option<PotParametersChange>,
         >,
@@ -170,7 +170,7 @@ impl PotState {
             .fetch_update(Ordering::AcqRel, Ordering::Acquire, |inner_state| {
                 best_state = Some(inner_state.update(
                     best_slot,
-                    best_proof,
+                    best_output,
                     #[cfg(feature = "pot")]
                     maybe_updated_parameters_change,
                     &self.verifier,

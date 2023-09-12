@@ -268,7 +268,7 @@ where
         #[cfg(feature = "pot")]
         if !self
             .pot_verifier
-            .is_proof_valid(
+            .is_output_valid(
                 next_slot,
                 pot_seed,
                 slot_iterations,

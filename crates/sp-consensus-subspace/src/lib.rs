@@ -50,7 +50,7 @@ use subspace_core_primitives::BlockHash;
 #[cfg(not(feature = "pot"))]
 use subspace_core_primitives::Randomness;
 #[cfg(feature = "pot")]
-use subspace_core_primitives::{Blake3Hash, PotProof};
+use subspace_core_primitives::{Blake3Hash, PotOutput};
 use subspace_core_primitives::{
     BlockNumber, HistorySize, PotCheckpoints, PublicKey, RewardSignature, SegmentCommitment,
     SegmentHeader, SegmentIndex, SlotNumber, Solution, SolutionRange, PUBLIC_KEY_LENGTH,
@@ -205,10 +205,10 @@ pub enum Vote<Number, Hash, RewardAddress> {
         solution: Solution<FarmerPublicKey, RewardAddress>,
         /// Proof of time for this slot
         #[cfg(feature = "pot")]
-        proof_of_time: PotProof,
+        proof_of_time: PotOutput,
         /// Future proof of time
         #[cfg(feature = "pot")]
-        future_proof_of_time: PotProof,
+        future_proof_of_time: PotOutput,
     },
 }
 
@@ -514,12 +514,12 @@ impl<'a> PassBy for WrappedVerifySolutionParams<'a> {
 /// Wrapped solution verification parameters for the purposes of runtime interface.
 #[derive(Debug, Encode, Decode)]
 #[cfg(feature = "pot")]
-pub struct WrappedPotProof(PotProof);
+pub struct WrappedPotProof(PotOutput);
 
 #[cfg(feature = "pot")]
-impl From<PotProof> for WrappedPotProof {
+impl From<PotOutput> for WrappedPotProof {
     #[inline]
-    fn from(value: PotProof) -> Self {
+    fn from(value: PotOutput) -> Self {
         Self(value)
     }
 }
@@ -563,14 +563,14 @@ impl PosExtension {
 #[cfg(all(feature = "std", feature = "pot"))]
 sp_externalities::decl_extension! {
     /// A Poof of time extension.
-    pub struct PotExtension(Box<dyn (Fn(BlockHash, SlotNumber, PotProof) -> bool) + Send + Sync>);
+    pub struct PotExtension(Box<dyn (Fn(BlockHash, SlotNumber, PotOutput) -> bool) + Send + Sync>);
 }
 
 #[cfg(all(feature = "std", feature = "pot"))]
 impl PotExtension {
     /// Create new instance.
     pub fn new(
-        verifier: Box<dyn (Fn(BlockHash, SlotNumber, PotProof) -> bool) + Send + Sync>,
+        verifier: Box<dyn (Fn(BlockHash, SlotNumber, PotOutput) -> bool) + Send + Sync>,
     ) -> Self {
         Self(verifier)
     }

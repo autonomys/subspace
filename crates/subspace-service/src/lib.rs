@@ -351,7 +351,7 @@ where
 
                 // Ensure proof of time and future proof of time included in upcoming block are
                 // valid
-                block_on(pot_verifier.is_proof_valid(
+                block_on(pot_verifier.is_output_valid(
                     after_parent_slot,
                     pot_seed,
                     slot_iterations,

@@ -64,7 +64,7 @@ use std::sync::Arc;
 use subspace_core_primitives::Randomness;
 use subspace_core_primitives::{BlockNumber, PublicKey, RewardSignature, SectorId, Solution};
 #[cfg(feature = "pot")]
-use subspace_core_primitives::{PotCheckpoints, PotProof};
+use subspace_core_primitives::{PotCheckpoints, PotOutput};
 use subspace_proof_of_space::Table;
 use subspace_verification::{
     check_reward_signature, verify_solution, PieceCheckParams, VerifySolutionParams,
@@ -381,7 +381,7 @@ where
             // Ensure proof of time and future proof of time included in upcoming block are valid
             if !self
                 .pot_verifier
-                .is_proof_valid(
+                .is_output_valid(
                     after_parent_slot,
                     pot_seed,
                     slot_iterations,
@@ -730,8 +730,8 @@ where
         parent_header: &Block::Header,
         slot: Slot,
         solution: Solution<FarmerPublicKey, FarmerPublicKey>,
-        #[cfg(feature = "pot")] proof_of_time: PotProof,
-        #[cfg(feature = "pot")] future_proof_of_time: PotProof,
+        #[cfg(feature = "pot")] proof_of_time: PotOutput,
+        #[cfg(feature = "pot")] future_proof_of_time: PotOutput,
     ) {
         let parent_hash = parent_header.hash();
         let runtime_api = self.client.runtime_api();
