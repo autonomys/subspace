@@ -47,6 +47,7 @@ const WAIT_FOR_BLOCKS_TO_IMPORT: Duration = Duration::from_secs(1);
 /// Starts the process of importing blocks.
 ///
 /// Returns number of downloaded blocks.
+#[allow(clippy::too_many_arguments)] // we don't follow this convention
 pub async fn import_blocks_from_dsn<Block, AS, Client, PV, IQS>(
     segment_headers_store: &SegmentHeadersStore<AS>,
     segment_header_downloader: &SegmentHeaderDownloader<'_>,
@@ -55,6 +56,7 @@ pub async fn import_blocks_from_dsn<Block, AS, Client, PV, IQS>(
     import_queue_service: &mut IQS,
     last_processed_segment_index: &mut SegmentIndex,
     last_processed_block_number: &mut <Block::Header as Header>::Number,
+    dsn_sync_parallelism_level: usize,
 ) -> Result<u64, sc_service::Error>
 where
     Block: BlockT,
@@ -134,9 +136,13 @@ where
             continue;
         }
 
-        let blocks =
-            download_and_reconstruct_blocks(segment_index, piece_provider, &mut reconstructor)
-                .await?;
+        let blocks = download_and_reconstruct_blocks(
+            segment_index,
+            piece_provider,
+            &mut reconstructor,
+            dsn_sync_parallelism_level,
+        )
+        .await?;
 
         let mut blocks_to_import = Vec::with_capacity(QUEUED_BLOCKS_LIMIT as usize);
 
@@ -239,69 +245,56 @@ async fn download_and_reconstruct_blocks<PV>(
     segment_index: SegmentIndex,
     piece_provider: &PieceProvider<PV>,
     reconstructor: &mut Reconstructor,
+    dsn_sync_parallelism_level: usize,
 ) -> Result<Vec<(BlockNumber, Vec<u8>)>, sc_service::Error>
 where
     PV: PieceValidator,
 {
-    debug!(%segment_index, "Retrieving pieces of the segment");
+    debug!(%segment_index, %dsn_sync_parallelism_level, "Retrieving pieces of the segment");
 
-    let semaphore = &Semaphore::new(RecordedHistorySegment::NUM_RAW_RECORDS);
+    let semaphore = &Semaphore::new(dsn_sync_parallelism_level);
 
     let mut received_segment_pieces = segment_index
         .segment_piece_indexes_source_first()
         .into_iter()
-        .map(|piece_index| {
-            // Source pieces will acquire permit here right away
-            let maybe_permit = semaphore.try_acquire().ok();
+        .map(|piece_index| async move {
+            let _permit = match semaphore.acquire().await {
+                Ok(permit) => permit,
+                Err(error) => {
+                    warn!(
+                        %piece_index,
+                        %error,
+                        "Semaphore was closed, interrupting piece retrieval"
+                    );
+                    return None;
+                }
+            };
 
-            async move {
-                let permit = match maybe_permit {
-                    Some(permit) => permit,
-                    None => {
-                        // Other pieces will acquire permit here instead
-                        match semaphore.acquire().await {
-                            Ok(permit) => permit,
-                            Err(error) => {
-                                warn!(
-                                    %piece_index,
-                                    %error,
-                                    "Semaphore was closed, interrupting piece retrieval"
-                                );
-                                return None;
-                            }
-                        }
-                    }
-                };
-                let maybe_piece = match piece_provider
-                    .get_piece(
-                        piece_index,
-                        RetryPolicy::Limited(PIECE_GETTER_RETRY_NUMBER.get()),
-                    )
-                    .await
-                {
-                    Ok(maybe_piece) => maybe_piece,
-                    Err(error) => {
-                        trace!(
-                            %error,
-                            ?piece_index,
-                            "Piece request failed",
-                        );
-                        return None;
-                    }
-                };
+            let maybe_piece = match piece_provider
+                .get_piece(
+                    piece_index,
+                    RetryPolicy::Limited(PIECE_GETTER_RETRY_NUMBER.get()),
+                )
+                .await
+            {
+                Ok(maybe_piece) => maybe_piece,
+                Err(error) => {
+                    trace!(
+                        %error,
+                        ?piece_index,
+                        "Piece request failed",
+                    );
+                    return None;
+                }
+            };
 
-                trace!(
-                    ?piece_index,
-                    piece_found = maybe_piece.is_some(),
-                    "Piece request succeeded",
-                );
+            trace!(
+                ?piece_index,
+                piece_found = maybe_piece.is_some(),
+                "Piece request succeeded",
+            );
 
-                maybe_piece.map(|received_piece| {
-                    // Piece was received successfully, "remove" this slot from semaphore
-                    permit.forget();
-                    (piece_index, received_piece)
-                })
-            }
+            maybe_piece.map(|received_piece| (piece_index, received_piece))
         })
         .collect::<FuturesUnordered<_>>();
 
