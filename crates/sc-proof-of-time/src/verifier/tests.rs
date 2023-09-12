@@ -23,7 +23,7 @@ fn test_basic() {
     let verifier = PotVerifier::new(genesis_seed, NonZeroUsize::new(1000).unwrap());
 
     // Expected to be valid
-    assert!(block_on(verifier.is_proof_valid(
+    assert!(block_on(verifier.is_output_valid(
         #[cfg(feature = "pot")]
         Slot::from(1),
         genesis_seed,
@@ -40,7 +40,7 @@ fn test_basic() {
     )));
 
     // Invalid number of slots
-    assert!(!block_on(verifier.is_proof_valid(
+    assert!(!block_on(verifier.is_output_valid(
         #[cfg(feature = "pot")]
         Slot::from(1),
         genesis_seed,
@@ -51,7 +51,7 @@ fn test_basic() {
         None
     )));
     // Invalid seed
-    assert!(!block_on(verifier.is_proof_valid(
+    assert!(!block_on(verifier.is_output_valid(
         #[cfg(feature = "pot")]
         Slot::from(1),
         checkpoints_1.output().seed(),
@@ -76,7 +76,7 @@ fn test_basic() {
     let checkpoints_2 = subspace_proof_of_time::prove(seed_1, slot_iterations).unwrap();
 
     // Expected to be valid
-    assert!(block_on(verifier.is_proof_valid(
+    assert!(block_on(verifier.is_output_valid(
         #[cfg(feature = "pot")]
         Slot::from(2),
         seed_1,
@@ -86,7 +86,7 @@ fn test_basic() {
         #[cfg(feature = "pot")]
         None
     )));
-    assert!(block_on(verifier.is_proof_valid(
+    assert!(block_on(verifier.is_output_valid(
         #[cfg(feature = "pot")]
         Slot::from(1),
         genesis_seed,
@@ -103,7 +103,7 @@ fn test_basic() {
     )));
 
     // Invalid number of slots
-    assert!(!block_on(verifier.is_proof_valid(
+    assert!(!block_on(verifier.is_output_valid(
         #[cfg(feature = "pot")]
         Slot::from(1),
         seed_1,
@@ -114,7 +114,7 @@ fn test_basic() {
         None
     )));
     // Invalid seed
-    assert!(!block_on(verifier.is_proof_valid(
+    assert!(!block_on(verifier.is_output_valid(
         #[cfg(feature = "pot")]
         Slot::from(1),
         seed_1,
@@ -126,7 +126,7 @@ fn test_basic() {
     )));
     // Invalid number of iterations
     assert!(!block_on(
-        verifier.is_proof_valid(
+        verifier.is_output_valid(
             #[cfg(feature = "pot")]
             Slot::from(1),
             genesis_seed,
@@ -160,7 +160,7 @@ fn parameters_change() {
     let verifier = PotVerifier::new(genesis_seed, NonZeroUsize::new(1000).unwrap());
 
     // Changing parameters after first slot
-    assert!(block_on(verifier.is_proof_valid(
+    assert!(block_on(verifier.is_output_valid(
         Slot::from(1),
         genesis_seed,
         slot_iterations_1,
@@ -173,7 +173,7 @@ fn parameters_change() {
         })
     )));
     // Changing parameters in the middle
-    assert!(block_on(verifier.is_proof_valid(
+    assert!(block_on(verifier.is_output_valid(
         Slot::from(1),
         genesis_seed,
         slot_iterations_1,
@@ -186,7 +186,7 @@ fn parameters_change() {
         })
     )));
     // Changing parameters on last slot
-    assert!(block_on(verifier.is_proof_valid(
+    assert!(block_on(verifier.is_output_valid(
         Slot::from(1),
         genesis_seed,
         slot_iterations_1,
@@ -199,7 +199,7 @@ fn parameters_change() {
         })
     )));
     // Not changing parameters because changes apply to the very first slot that is verified
-    assert!(block_on(verifier.is_proof_valid(
+    assert!(block_on(verifier.is_output_valid(
         Slot::from(2),
         checkpoints_1.output().seed_with_entropy(&entropy),
         slot_iterations_2,
@@ -213,7 +213,7 @@ fn parameters_change() {
     )));
 
     // Missing parameters change
-    assert!(!block_on(verifier.is_proof_valid(
+    assert!(!block_on(verifier.is_output_valid(
         Slot::from(1),
         genesis_seed,
         slot_iterations_1,
@@ -222,7 +222,7 @@ fn parameters_change() {
         None
     )));
     // Invalid slot
-    assert!(!block_on(verifier.is_proof_valid(
+    assert!(!block_on(verifier.is_output_valid(
         Slot::from(2),
         genesis_seed,
         slot_iterations_1,

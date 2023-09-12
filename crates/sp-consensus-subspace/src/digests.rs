@@ -31,7 +31,7 @@ use sp_std::fmt;
 #[cfg(feature = "pot")]
 use sp_std::num::NonZeroU32;
 #[cfg(feature = "pot")]
-use subspace_core_primitives::PotProof;
+use subspace_core_primitives::PotOutput;
 #[cfg(not(feature = "pot"))]
 use subspace_core_primitives::Randomness;
 use subspace_core_primitives::{SegmentCommitment, SegmentIndex, Solution, SolutionRange};
@@ -87,9 +87,9 @@ pub enum PreDigestPotInfo {
     #[codec(index = 0)]
     V0 {
         /// Proof of time for this slot
-        proof_of_time: PotProof,
+        proof_of_time: PotOutput,
         /// Future proof of time
-        future_proof_of_time: PotProof,
+        future_proof_of_time: PotOutput,
     },
 }
 
@@ -98,7 +98,7 @@ impl PreDigestPotInfo {
     /// Proof of time for this slot
     #[cfg(feature = "pot")]
     #[inline]
-    pub fn proof_of_time(&self) -> PotProof {
+    pub fn proof_of_time(&self) -> PotOutput {
         let Self::V0 { proof_of_time, .. } = self;
         *proof_of_time
     }
@@ -106,7 +106,7 @@ impl PreDigestPotInfo {
     /// Future proof of time
     #[cfg(feature = "pot")]
     #[inline]
-    pub fn future_proof_of_time(&self) -> PotProof {
+    pub fn future_proof_of_time(&self) -> PotOutput {
         let Self::V0 {
             future_proof_of_time,
             ..

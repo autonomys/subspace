@@ -9,7 +9,7 @@ extern crate alloc;
 use aes::cipher::generic_array::GenericArray;
 use aes::cipher::{BlockDecrypt, BlockEncrypt, KeyInit};
 use aes::Aes128;
-use subspace_core_primitives::{PotCheckpoints, PotKey, PotProof, PotSeed};
+use subspace_core_primitives::{PotCheckpoints, PotKey, PotOutput, PotSeed};
 
 /// Creates the AES based proof.
 #[inline(always)]
@@ -48,7 +48,7 @@ fn create_generic(seed: PotSeed, key: PotKey, checkpoint_iterations: u32) -> Pot
 pub(crate) fn verify_sequential(
     seed: PotSeed,
     key: PotKey,
-    checkpoints: &[PotProof],
+    checkpoints: &[PotOutput],
     checkpoint_iterations: u32,
 ) -> bool {
     assert_eq!(checkpoint_iterations % 2, 0);
@@ -77,7 +77,7 @@ pub(crate) fn verify_sequential(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use subspace_core_primitives::{PotKey, PotProof, PotSeed};
+    use subspace_core_primitives::{PotKey, PotOutput, PotSeed};
 
     const SEED: [u8; 16] = [
         0xd6, 0x66, 0xcc, 0xd8, 0xd5, 0x93, 0xc2, 0x3d, 0xa8, 0xdb, 0x6b, 0x5b, 0x14, 0x13, 0xb1,
@@ -120,7 +120,7 @@ mod tests {
 
         // Decryption of invalid cipher text fails.
         let mut checkpoints_1 = checkpoints;
-        checkpoints_1[0] = PotProof::from(BAD_CIPHER);
+        checkpoints_1[0] = PotOutput::from(BAD_CIPHER);
         assert!(!verify_sequential(
             seed,
             key,

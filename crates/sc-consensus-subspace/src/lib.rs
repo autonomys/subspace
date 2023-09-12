@@ -837,7 +837,7 @@ where
         // verify the rest.
         if !self
             .pot_verifier
-            .is_proof_valid(
+            .is_output_valid(
                 parent_slot + Slot::from(1),
                 pot_seed,
                 slot_iterations,
