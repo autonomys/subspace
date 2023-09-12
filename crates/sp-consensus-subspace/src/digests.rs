@@ -133,7 +133,8 @@ pub trait CompatibleDigestItem: Sized {
     /// If this item is a Subspace signature, return the signature.
     fn as_subspace_seal(&self) -> Option<FarmerSignature>;
 
-    /// Number of iterations for proof of time per slot
+    /// Number of iterations for proof of time per slot, corresponds to slot that directly follows
+    /// parent block's slot and can change before slot for which block is produced
     #[cfg(feature = "pot")]
     fn pot_slot_iterations(pot_slot_iterations: NonZeroU32) -> Self;
 
@@ -525,7 +526,8 @@ pub struct SubspaceDigestItems<PublicKey, RewardAddress, Signature> {
     pub pre_digest: PreDigest<PublicKey, RewardAddress>,
     /// Signature (seal) if present
     pub signature: Option<Signature>,
-    /// Number of iterations for proof of time per slot
+    /// Number of iterations for proof of time per slot, corresponds to slot that directly follows
+    /// parent block's slot and can change before slot for which block is produced
     #[cfg(feature = "pot")]
     pub pot_slot_iterations: NonZeroU32,
     /// Global randomness

@@ -83,6 +83,7 @@ use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
+use static_assertions::const_assert;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping};
 use subspace_core_primitives::{
     HistorySize, Piece, Randomness, SegmentCommitment, SegmentHeader, SegmentIndex, SlotNumber,
@@ -167,6 +168,23 @@ const GLOBAL_RANDOMNESS_UPDATE_INTERVAL: BlockNumber = 256;
 
 /// Number of slots between slot arrival and when corresponding block can be produced.
 const BLOCK_AUTHORING_DELAY: SlotNumber = 2;
+
+/// Interval, in blocks, between blockchain entropy injection into proof of time chain.
+const POT_ENTROPY_INJECTION_INTERVAL: BlockNumber = 5;
+
+/// Interval, in entropy injection intervals, where to take entropy for injection from.
+const POT_ENTROPY_INJECTION_LOOKBACK_DEPTH: u8 = 2;
+
+/// Delay after block, in slots, when entropy injection takes effect.
+const POT_ENTROPY_INJECTION_DELAY: SlotNumber = 4;
+
+// Entropy injection interval must be bigger than injection delay or else we may end up in a
+// situation where we'll need to do more than one injection at the same slot
+const_assert!(POT_ENTROPY_INJECTION_INTERVAL as u64 > POT_ENTROPY_INJECTION_DELAY);
+// Entropy injection delay must be bigger than block authoring delay or else we may include
+// invalid future proofs in parent block, +1 ensures we do not have unnecessary reorgs that will
+// inevitably happen otherwise
+const_assert!(POT_ENTROPY_INJECTION_DELAY > BLOCK_AUTHORING_DELAY + 1);
 
 /// Era duration in blocks.
 const ERA_DURATION_IN_BLOCKS: BlockNumber = 2016;
@@ -255,6 +273,9 @@ impl frame_system::Config for Runtime {
 
 parameter_types! {
     pub const BlockAuthoringDelay: SlotNumber = BLOCK_AUTHORING_DELAY;
+    pub const PotEntropyInjectionInterval: BlockNumber = POT_ENTROPY_INJECTION_INTERVAL;
+    pub const PotEntropyInjectionLookbackDepth: u8 = POT_ENTROPY_INJECTION_LOOKBACK_DEPTH;
+    pub const PotEntropyInjectionDelay: SlotNumber = POT_ENTROPY_INJECTION_DELAY;
     pub const SlotProbability: (u64, u64) = SLOT_PROBABILITY;
     pub const ExpectedBlockTime: Moment = MILLISECS_PER_BLOCK;
     pub const ShouldAdjustSolutionRange: bool = false;
@@ -272,6 +293,9 @@ impl pallet_subspace::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type GlobalRandomnessUpdateInterval = ConstU32<GLOBAL_RANDOMNESS_UPDATE_INTERVAL>;
     type BlockAuthoringDelay = BlockAuthoringDelay;
+    type PotEntropyInjectionInterval = PotEntropyInjectionInterval;
+    type PotEntropyInjectionLookbackDepth = PotEntropyInjectionLookbackDepth;
+    type PotEntropyInjectionDelay = PotEntropyInjectionDelay;
     type EraDuration = ConstU32<ERA_DURATION_IN_BLOCKS>;
     type InitialSolutionRange = ConstU64<INITIAL_SOLUTION_RANGE>;
     type SlotProbability = SlotProbability;
@@ -1570,6 +1594,8 @@ impl_runtime_apis! {
                 parent_hash,
                 slot,
                 solution,
+                proof_of_time,
+                future_proof_of_time,
             } = vote;
 
             Subspace::submit_vote(SignedVote {
@@ -1578,6 +1604,8 @@ impl_runtime_apis! {
                     parent_hash,
                     slot,
                     solution: solution.into_reward_address_format::<RewardAddress, AccountId32>(),
+                    proof_of_time,
+                    future_proof_of_time,
                 },
                 signature,
             })

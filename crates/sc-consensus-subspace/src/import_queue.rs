@@ -234,16 +234,47 @@ where
             return Ok(CheckedHeader::Deferred(header, slot));
         }
 
+        #[cfg(feature = "pot")]
+        let slot_iterations;
+        #[cfg(feature = "pot")]
+        let pot_seed;
+        #[cfg(feature = "pot")]
+        let next_slot = slot + Slot::from(1);
+        #[cfg(feature = "pot")]
+        // The change to number of iterations might have happened before `next_slot`
+        if let Some(parameters_change) = subspace_digest_items.pot_parameters_change
+            && parameters_change.slot <= next_slot
+        {
+            slot_iterations = parameters_change.slot_iterations;
+            // Only if entropy injection happens exactly on next slot we need to mix it in
+            if parameters_change.slot == next_slot {
+                pot_seed = pre_digest
+                    .pot_info()
+                    .proof_of_time()
+                    .seed_with_entropy(&parameters_change.entropy);
+            } else {
+                pot_seed = pre_digest.pot_info().proof_of_time().seed();
+            }
+        } else {
+            slot_iterations = subspace_digest_items.pot_slot_iterations;
+            pot_seed = pre_digest.pot_info().proof_of_time().seed();
+        }
+
         // TODO: Extend/optimize this check once we have checkpoints in justifications
         // Check proof of time between slot of the block and future proof of time
+        // Here during stateless verification we do not have access to parent block, thus only
+        // verify proofs after proof of time of at current slot up until future proof of time
+        // (inclusive), during block import we verify the rest.
         #[cfg(feature = "pot")]
         if !self
             .pot_verifier
             .is_proof_valid(
-                pre_digest.pot_info().proof_of_time().seed(),
-                subspace_digest_items.pot_slot_iterations,
+                next_slot,
+                pot_seed,
+                slot_iterations,
                 self.chain_constants.block_authoring_delay(),
                 pre_digest.pot_info().future_proof_of_time(),
+                subspace_digest_items.pot_parameters_change,
             )
             .await
         {

@@ -32,6 +32,8 @@ use sc_consensus_slots::{
     BackoffAuthoringBlocksStrategy, SimpleSlotWorker, SlotInfo, SlotLenienceType, SlotProportion,
 };
 #[cfg(feature = "pot")]
+use sc_proof_of_time::verifier::PotVerifier;
+#[cfg(feature = "pot")]
 use sc_proof_of_time::PotSlotWorker;
 use sc_telemetry::TelemetryHandle;
 use sc_utils::mpsc::tracing_unbounded;
@@ -58,11 +60,11 @@ use std::future::Future;
 use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
-#[cfg(feature = "pot")]
-use subspace_core_primitives::PotCheckpoints;
 #[cfg(not(feature = "pot"))]
 use subspace_core_primitives::Randomness;
 use subspace_core_primitives::{BlockNumber, PublicKey, RewardSignature, SectorId, Solution};
+#[cfg(feature = "pot")]
+use subspace_core_primitives::{PotCheckpoints, PotProof};
 use subspace_proof_of_space::Table;
 use subspace_verification::{
     check_reward_signature, verify_solution, PieceCheckParams, VerifySolutionParams,
@@ -140,6 +142,8 @@ where
     #[cfg(feature = "pot")]
     // TODO: Substrate should make `fn claim_slot` take `&mut self`, the  we'll not need `Mutex`
     pub(super) pot_checkpoints: Mutex<BTreeMap<Slot, PotCheckpoints>>,
+    #[cfg(feature = "pot")]
+    pub(super) pot_verifier: PotVerifier,
     pub(super) _pos_table: PhantomData<PosTable>,
 }
 
@@ -153,7 +157,14 @@ where
     SO: SyncOracle + Send + Sync,
 {
     fn on_proof(&mut self, slot: Slot, checkpoints: PotCheckpoints) {
-        self.pot_checkpoints.lock().insert(slot, checkpoints);
+        {
+            let mut pot_checkpoints = self.pot_checkpoints.lock();
+
+            // Remove checkpoints from future slots, if present they are out of date anyway
+            pot_checkpoints.retain(|&stored_slot, _checkpoints| stored_slot < slot);
+
+            pot_checkpoints.insert(slot, checkpoints);
+        }
 
         if self.sync_oracle.is_major_syncing() {
             debug!(
@@ -303,27 +314,90 @@ where
 
         #[cfg(feature = "pot")]
         let (proof_of_time, future_proof_of_time, new_checkpoints) = {
-            let mut pot_checkpoints = self.pot_checkpoints.lock();
+            // TODO: These variables and code block below are only necessary to work around
+            //  https://github.com/rust-lang/rust/issues/57478
+            let proof_of_time;
+            let future_slot;
+            let future_proof_of_time;
+            let new_checkpoints;
+            {
+                let mut pot_checkpoints = self.pot_checkpoints.lock();
 
-            // Remove checkpoints from old slots we will not need anymore
-            pot_checkpoints.retain(|&stored_slot, _checkpoints| stored_slot > parent_slot);
+                // Remove checkpoints from old slots we will not need anymore
+                pot_checkpoints.retain(|&stored_slot, _checkpoints| stored_slot > parent_slot);
 
-            let proof_of_time = pot_checkpoints.get(&slot)?.output();
+                proof_of_time = pot_checkpoints.get(&slot)?.output();
 
-            // Future slot for which proof must be available before authoring block at this slot
-            let future_slot = slot + self.chain_constants.block_authoring_delay();
-            let parent_future_slot = parent_slot + self.chain_constants.block_authoring_delay();
-            let future_proof_of_time = pot_checkpoints.get(&future_slot)?.output();
+                // Future slot for which proof must be available before authoring block at this slot
+                future_slot = slot + self.chain_constants.block_authoring_delay();
+                let parent_future_slot = parent_slot + self.chain_constants.block_authoring_delay();
+                future_proof_of_time = pot_checkpoints.get(&future_slot)?.output();
 
-            // New checkpoints that were produced since parent block's future slot up to current
-            // future slot (inclusive)
-            let new_checkpoints = pot_checkpoints
-                .iter()
-                .filter_map(|(&stored_slot, &checkpoints)| {
-                    (stored_slot > parent_future_slot && stored_slot <= future_slot)
-                        .then_some(checkpoints)
-                })
-                .collect::<Vec<_>>();
+                // New checkpoints that were produced since parent block's future slot up to current
+                // future slot (inclusive)
+                new_checkpoints = pot_checkpoints
+                    .iter()
+                    .filter_map(|(&stored_slot, &checkpoints)| {
+                        (stored_slot > parent_future_slot && stored_slot <= future_slot)
+                            .then_some(checkpoints)
+                    })
+                    .collect::<Vec<_>>();
+            }
+
+            let pot_parameters = runtime_api.pot_parameters(parent_hash).ok()?;
+            let slot_iterations;
+            let pot_seed;
+            let after_parent_slot = parent_slot + Slot::from(1);
+
+            if parent_header.number().is_zero() {
+                slot_iterations = pot_parameters.slot_iterations();
+                pot_seed = self.pot_verifier.genesis_seed();
+            } else {
+                let pot_info = parent_pre_digest.pot_info();
+                // The change to number of iterations might have happened before
+                // `after_parent_slot`
+                if let Some(parameters_change) = pot_parameters.next_parameters_change()
+                    && parameters_change.slot <= after_parent_slot
+                {
+                    slot_iterations = parameters_change.slot_iterations;
+                    // Only if entropy injection happens exactly after parent slot we need to \
+                    // mix it in
+                    if parameters_change.slot == after_parent_slot {
+                        pot_seed = pot_info
+                            .proof_of_time()
+                            .seed_with_entropy(&parameters_change.entropy);
+                    } else {
+                        pot_seed = pot_info
+                            .proof_of_time().seed();
+                    }
+                } else {
+                    slot_iterations = pot_parameters.slot_iterations();
+                    pot_seed = pot_info
+                        .proof_of_time()
+                        .seed();
+                }
+            };
+
+            // Ensure proof of time and future proof of time included in upcoming block are valid
+            if !self
+                .pot_verifier
+                .is_proof_valid(
+                    after_parent_slot,
+                    pot_seed,
+                    slot_iterations,
+                    Slot::from(u64::from(future_slot) - u64::from(parent_slot)),
+                    future_proof_of_time,
+                    pot_parameters.next_parameters_change(),
+                )
+                .await
+            {
+                warn!(
+                    target: "subspace",
+                    "Proof of time or future proof of time is invalid, skipping block \
+                    production at slot {slot:?}"
+                );
+                return None;
+            }
 
             (proof_of_time, future_proof_of_time, new_checkpoints)
         };
@@ -481,8 +555,16 @@ where
                         // verification wouldn't be possible due to missing (for now) segment commitment
                         info!(target: "subspace", "🗳️ Claimed vote at slot {slot}");
 
-                        self.create_vote(solution, slot, parent_header, parent_hash)
-                            .await;
+                        self.create_vote(
+                            parent_header,
+                            slot,
+                            solution,
+                            #[cfg(feature = "pot")]
+                            proof_of_time,
+                            #[cfg(feature = "pot")]
+                            future_proof_of_time,
+                        )
+                        .await;
                     }
                 }
                 Err(error) => {
@@ -645,11 +727,13 @@ where
 {
     async fn create_vote(
         &self,
-        solution: Solution<FarmerPublicKey, FarmerPublicKey>,
-        slot: Slot,
         parent_header: &Block::Header,
-        parent_hash: Block::Hash,
+        slot: Slot,
+        solution: Solution<FarmerPublicKey, FarmerPublicKey>,
+        #[cfg(feature = "pot")] proof_of_time: PotProof,
+        #[cfg(feature = "pot")] future_proof_of_time: PotProof,
     ) {
+        let parent_hash = parent_header.hash();
         let runtime_api = self.client.runtime_api();
 
         if self.should_backoff(slot, parent_header) {
@@ -662,6 +746,10 @@ where
             parent_hash: parent_header.hash(),
             slot,
             solution: solution.clone(),
+            #[cfg(feature = "pot")]
+            proof_of_time,
+            #[cfg(feature = "pot")]
+            future_proof_of_time,
         };
 
         let signature = match self.sign_reward(vote.hash(), &solution.public_key).await {

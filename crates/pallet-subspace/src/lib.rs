@@ -1,4 +1,3 @@
-#![feature(assert_matches, const_option)]
 // Copyright (C) 2019-2021 Parity Technologies (UK) Ltd.
 // Copyright (C) 2021 Subspace Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
@@ -16,6 +15,7 @@
 // limitations under the License.
 #![doc = include_str!("../README.md")]
 #![cfg_attr(not(feature = "std"), no_std)]
+#![feature(assert_matches, const_option, let_chains)]
 #![warn(unused_must_use, unsafe_code, unused_variables, unused_must_use)]
 
 extern crate alloc;
@@ -47,15 +47,19 @@ pub use pallet::*;
 use scale_info::TypeInfo;
 use schnorrkel::SignatureError;
 use sp_consensus_slots::Slot;
+#[cfg(feature = "pot")]
+use sp_consensus_subspace::consensus::is_proof_of_time_valid;
 use sp_consensus_subspace::consensus::verify_solution;
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::offence::{OffenceDetails, OffenceError, OnOffenceHandler};
-#[cfg(feature = "pot")]
-use sp_consensus_subspace::PotParameters;
 use sp_consensus_subspace::{
     ChainConstants, EquivocationProof, FarmerPublicKey, FarmerSignature, SignedVote, Vote,
 };
+#[cfg(feature = "pot")]
+use sp_consensus_subspace::{PotParameters, PotParametersChange, WrappedPotProof};
 use sp_runtime::generic::DigestItem;
+#[cfg(feature = "pot")]
+use sp_runtime::traits::CheckedSub;
 use sp_runtime::traits::{BlockNumberProvider, Hash, One, Zero};
 #[cfg(not(feature = "pot"))]
 use sp_runtime::traits::{SaturatedConversion, Saturating};
@@ -68,12 +72,14 @@ use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 use subspace_core_primitives::crypto::Scalar;
 #[cfg(feature = "pot")]
-use subspace_core_primitives::PotProof;
+use subspace_core_primitives::BlockHash;
 use subspace_core_primitives::{
     ArchivedHistorySegment, HistorySize, PublicKey, Randomness, RewardSignature, SectorId,
-    SectorIndex, SegmentHeader, SegmentIndex, SolutionRange,
+    SectorIndex, SegmentHeader, SegmentIndex, SlotNumber, SolutionRange,
 };
 use subspace_solving::REWARD_SIGNING_CONTEXT;
+#[cfg(feature = "pot")]
+use subspace_verification::derive_pot_entropy;
 #[cfg(not(feature = "pot"))]
 use subspace_verification::derive_randomness;
 use subspace_verification::{
@@ -121,6 +127,7 @@ impl EraChangeTrigger for NormalEraChange {
 
 #[derive(Copy, Clone, Eq, PartialEq, Encode, Decode, MaxEncodedLen, TypeInfo)]
 struct VoteVerificationData {
+    #[cfg(not(feature = "pot"))]
     global_randomness: Randomness,
     solution_range: SolutionRange,
     current_slot: Slot,
@@ -152,7 +159,8 @@ mod pallet {
     use sp_std::prelude::*;
     use subspace_core_primitives::crypto::Scalar;
     use subspace_core_primitives::{
-        HistorySize, Randomness, SectorIndex, SegmentHeader, SegmentIndex, SolutionRange,
+        Blake3Hash, HistorySize, Randomness, SectorIndex, SegmentHeader, SegmentIndex,
+        SolutionRange,
     };
 
     pub(super) struct InitialSolutionRanges<T: Config> {
@@ -200,9 +208,24 @@ mod pallet {
         // TODO: Remove when switching to PoT by default
         type GlobalRandomnessUpdateInterval: Get<Self::BlockNumber>;
 
-        /// The amount of time, in blocks, between updates of global randomness.
+        /// Number of slots between slot arrival and when corresponding block can be produced.
+        ///
+        /// Practically this means future proof of time proof needs to be revealed this many slots
+        /// ahead before block can be authored even though solution is available before that.
         #[pallet::constant]
         type BlockAuthoringDelay: Get<Slot>;
+
+        /// Interval, in blocks, between blockchain entropy injection into proof of time chain.
+        #[pallet::constant]
+        type PotEntropyInjectionInterval: Get<Self::BlockNumber>;
+
+        /// Interval, in entropy injection intervals, where to take entropy for injection from.
+        #[pallet::constant]
+        type PotEntropyInjectionLookbackDepth: Get<u8>;
+
+        /// Delay after block, in slots, when entropy injection takes effect.
+        #[pallet::constant]
+        type PotEntropyInjectionDelay: Get<Slot>;
 
         /// The amount of time, in blocks, that each era should last.
         /// NOTE: Currently it is not possible to change the era duration after
@@ -292,6 +315,13 @@ mod pallet {
         RootFarmer(FarmerPublicKey),
     }
 
+    #[derive(Debug, Copy, Clone, Encode, Decode, TypeInfo)]
+    pub(super) struct PotEntropyValue {
+        /// Target slot at which entropy should be injected (when known)
+        pub(super) target_slot: Option<Slot>,
+        pub(super) entropy: Blake3Hash,
+    }
+
     #[pallet::genesis_config]
     pub struct GenesisConfig {
         /// Whether rewards should be enabled.
@@ -378,6 +408,7 @@ mod pallet {
     pub(super) type GlobalRandomnesses<T> =
         StorageValue<_, sp_consensus_subspace::GlobalRandomnesses, ValueQuery>;
 
+    // TODO: Clarify when this value is updated (when it is updated, right now it is not)
     /// Number of iterations for proof of time per slot
     #[pallet::storage]
     pub(super) type PotSlotIterations<T> = StorageValue<_, NonZeroU32>;
@@ -467,6 +498,12 @@ mod pallet {
             (T::AccountId, FarmerSignature),
         >,
     >;
+
+    /// Entropy that needs to be injected into proof of time chain at specific slot associated with
+    /// block number it came from.
+    #[pallet::storage]
+    pub(super) type PotEntropy<T: Config> =
+        StorageValue<_, BTreeMap<T::BlockNumber, PotEntropyValue>, ValueQuery>;
 
     /// The current block randomness, updated at block initialization. When the proof of time feature
     /// is enabled it derived from PoT otherwise PoR.
@@ -559,7 +596,6 @@ mod pallet {
         }
 
         /// Farmer vote, currently only used for extra rewards to farmers.
-        // TODO: Proper weight
         #[pallet::call_index(3)]
         #[pallet::weight((<T as Config>::WeightInfo::vote(), DispatchClass::Operational, Pays::No))]
         // Suppression because the custom syntax will also generate an enum and we need enum to have
@@ -783,7 +819,7 @@ impl<T: Config> Pallet<T> {
     }
 
     fn do_initialize(block_number: T::BlockNumber) {
-        let pre_digest = <frame_system::Pallet<T>>::digest()
+        let pre_digest = frame_system::Pallet::<T>::digest()
             .logs
             .iter()
             .find_map(|s| s.as_subspace_pre_digest::<T::AccountId>())
@@ -890,7 +926,8 @@ impl<T: Config> Pallet<T> {
 
         // Extract PoR randomness from pre-digest.
         #[cfg(not(feature = "pot"))]
-        let block_randomness = derive_randomness(pre_digest.solution(), pre_digest.slot().into());
+        let block_randomness =
+            derive_randomness(pre_digest.solution(), SlotNumber::from(pre_digest.slot()));
 
         #[cfg(feature = "pot")]
         let block_randomness = pre_digest
@@ -925,11 +962,90 @@ impl<T: Config> Pallet<T> {
             ));
         }
 
-        // TODO: Take adjustment of iterations into account once we have it
         #[cfg(feature = "pot")]
-        frame_system::Pallet::<T>::deposit_log(DigestItem::pot_slot_iterations(
-            PotSlotIterations::<T>::get().expect("Always instantiated during genesis; qed"),
-        ));
+        {
+            let pot_slot_iterations =
+                PotSlotIterations::<T>::get().expect("Always initialized during genesis; qed");
+            let pot_entropy_injection_interval = T::PotEntropyInjectionInterval::get();
+            let pot_entropy_injection_delay = T::PotEntropyInjectionDelay::get();
+
+            // TODO: Take adjustment of iterations into account once we have it
+            frame_system::Pallet::<T>::deposit_log(DigestItem::pot_slot_iterations(
+                pot_slot_iterations,
+            ));
+
+            let mut entropy = PotEntropy::<T>::get();
+            let lookback_in_blocks = pot_entropy_injection_interval
+                * T::BlockNumber::from(T::PotEntropyInjectionLookbackDepth::get());
+            let last_entropy_injection_block =
+                block_number / pot_entropy_injection_interval * pot_entropy_injection_interval;
+            let maybe_entropy_source_block_number =
+                last_entropy_injection_block.checked_sub(&lookback_in_blocks);
+
+            if (block_number % pot_entropy_injection_interval).is_zero() {
+                let current_block_entropy = derive_pot_entropy(
+                    pre_digest.solution().chunk,
+                    pre_digest.pot_info().proof_of_time(),
+                );
+                // Collect entropy every `T::PotEntropyInjectionInterval` blocks
+                entropy.insert(
+                    block_number,
+                    PotEntropyValue {
+                        target_slot: None,
+                        entropy: current_block_entropy,
+                    },
+                );
+
+                // Update target slot for entropy injection once we know it
+                if let Some(entropy_source_block_number) = maybe_entropy_source_block_number {
+                    if let Some(entropy_value) = entropy.get_mut(&entropy_source_block_number) {
+                        let target_slot = pre_digest
+                            .slot()
+                            .saturating_add(pot_entropy_injection_delay);
+                        debug!(
+                            target: "runtime::subspace",
+                            "Pot entropy injection will happen at slot {target_slot:?}",
+                        );
+                        entropy_value.target_slot.replace(target_slot);
+                    }
+                }
+
+                PotEntropy::<T>::put(entropy.clone());
+            }
+
+            // Deposit consensus log item with parameters change in case corresponding entropy is
+            // available
+            if let Some(entropy_source_block_number) = maybe_entropy_source_block_number {
+                let maybe_entropy_value = entropy.get(&entropy_source_block_number).copied();
+                if let Some(PotEntropyValue {
+                    target_slot,
+                    entropy,
+                }) = maybe_entropy_value
+                {
+                    let target_slot = target_slot
+                        .expect("Target slot is guaranteed to be present due to logic above; qed");
+
+                    frame_system::Pallet::<T>::deposit_log(DigestItem::pot_parameters_change(
+                        PotParametersChange {
+                            slot: target_slot,
+                            // TODO: Take adjustment of iterations into account once we have it
+                            slot_iterations: pot_slot_iterations,
+                            entropy,
+                        },
+                    ));
+                }
+            }
+
+            // Clean up old values we'll no longer need
+            if let Some(entry) = entropy.first_entry() {
+                if let Some(target_slot) = entry.get().target_slot
+                    && target_slot < pre_digest.slot()
+                {
+                    entry.remove();
+                    PotEntropy::<T>::put(entropy);
+                }
+            }
+        }
     }
 
     fn do_finalize(_block_number: T::BlockNumber) {
@@ -1083,12 +1199,44 @@ impl<T: Config> Pallet<T> {
     /// Proof of time parameters
     #[cfg(feature = "pot")]
     pub fn pot_parameters() -> PotParameters {
+        let block_number = frame_system::Pallet::<T>::block_number();
+        let pot_slot_iterations =
+            PotSlotIterations::<T>::get().expect("Always initialized during genesis; qed");
+        let pot_entropy_injection_interval = T::PotEntropyInjectionInterval::get();
+
+        let entropy = PotEntropy::<T>::get();
+        let lookback_in_blocks = pot_entropy_injection_interval
+            * T::BlockNumber::from(T::PotEntropyInjectionLookbackDepth::get());
+        let last_entropy_injection_block =
+            block_number / pot_entropy_injection_interval * pot_entropy_injection_interval;
+        let maybe_entropy_source_block_number =
+            last_entropy_injection_block.checked_sub(&lookback_in_blocks);
+
+        let mut next_change = None;
+
+        if let Some(entropy_source_block_number) = maybe_entropy_source_block_number {
+            let maybe_entropy_value = entropy.get(&entropy_source_block_number).copied();
+            if let Some(PotEntropyValue {
+                target_slot,
+                entropy,
+            }) = maybe_entropy_value
+            {
+                let target_slot = target_slot.expect(
+                    "Always present due to identical check present in block initialization; qed",
+                );
+
+                next_change.replace(PotParametersChange {
+                    slot: target_slot,
+                    // TODO: Take adjustment of iterations into account once we have it
+                    slot_iterations: pot_slot_iterations,
+                    entropy,
+                });
+            }
+        }
+
         PotParameters::V0 {
-            slot_iterations: PotSlotIterations::<T>::get()
-                .expect("Always instantiated during genesis; qed"),
-            // TODO: This is where adjustment for number of iterations and entropy injection will
-            //  happen for runtime API calls
-            next_change: None,
+            slot_iterations: pot_slot_iterations,
+            next_change,
         }
     }
 
@@ -1246,9 +1394,6 @@ fn current_vote_verification_data<T: Config>(is_block_initialized: bool) -> Vote
                 .next
                 .unwrap_or(global_randomnesses.current)
         },
-        // TODO: This is invalid and must be fixed for PoT
-        #[cfg(feature = "pot")]
-        global_randomness: Default::default(),
         solution_range: if is_block_initialized {
             solution_ranges.voting_current
         } else {
@@ -1282,6 +1427,10 @@ enum CheckVoteError {
     UnknownSegmentCommitment,
     InvalidHistorySize,
     InvalidSolution(String),
+    #[cfg(feature = "pot")]
+    InvalidProofOfTime,
+    #[cfg(feature = "pot")]
+    InvalidFutureProofOfTime,
     DuplicateVote,
     Equivocated(SubspaceEquivocationOffence<FarmerPublicKey>),
 }
@@ -1301,6 +1450,10 @@ impl From<CheckVoteError> for TransactionValidityError {
             CheckVoteError::UnknownSegmentCommitment => InvalidTransaction::Call,
             CheckVoteError::InvalidHistorySize => InvalidTransaction::Call,
             CheckVoteError::InvalidSolution(_) => InvalidTransaction::Call,
+            #[cfg(feature = "pot")]
+            CheckVoteError::InvalidProofOfTime => InvalidTransaction::Future,
+            #[cfg(feature = "pot")]
+            CheckVoteError::InvalidFutureProofOfTime => InvalidTransaction::Call,
             CheckVoteError::DuplicateVote => InvalidTransaction::Call,
             CheckVoteError::Equivocated(_) => InvalidTransaction::BadSigner,
         })
@@ -1316,6 +1469,10 @@ fn check_vote<T: Config>(
         parent_hash,
         slot,
         solution,
+        #[cfg(feature = "pot")]
+        proof_of_time,
+        #[cfg(feature = "pot")]
+        future_proof_of_time,
     } = &signed_vote.vote;
     let height = *height;
     let slot = *slot;
@@ -1364,7 +1521,7 @@ fn check_vote<T: Config>(
 
     let current_vote_verification_data = current_vote_verification_data::<T>(pre_dispatch);
     let parent_vote_verification_data = ParentVoteVerificationData::<T>::get()
-        .expect("Above check for block number ensures that this value is always present");
+        .expect("Above check for block number ensures that this value is always present; qed");
 
     if pre_dispatch {
         // New time slot is already set, whatever time slot is in the vote it must be smaller or the
@@ -1380,7 +1537,7 @@ fn check_vote<T: Config>(
     }
 
     let parent_slot = if pre_dispatch {
-        // For pre-dispatch parent slot is `current_slot` if the parent vote verification data (it
+        // For pre-dispatch parent slot is `current_slot` in the parent vote verification data (it
         // was updated in current block because initialization hook was already called) if vote is
         // at the same height as the current block, otherwise it is one level older and
         // `parent_slot` from parent vote verification data needs to be taken instead
@@ -1390,8 +1547,8 @@ fn check_vote<T: Config>(
             parent_vote_verification_data.parent_slot
         }
     } else {
-        // Otherwise parent slot is `current_slot` if the current vote verification data (that
-        // wan't updated from parent block because initialization hook wasn't called yet) if vote
+        // Otherwise parent slot is `current_slot` in the current vote verification data (that
+        // wasn't updated from parent block because initialization hook wasn't called yet) if vote
         // is at the same height as the current block, otherwise it is one level older and
         // `parent_slot` from current vote verification data needs to be taken instead
         if height == current_block_number {
@@ -1473,9 +1630,8 @@ fn check_vote<T: Config>(
         (&VerifySolutionParams {
             #[cfg(not(feature = "pot"))]
             global_randomness: vote_verification_data.global_randomness,
-            // TODO: This is incorrect, find a way to verify votes
             #[cfg(feature = "pot")]
-            proof_of_time: PotProof::default(),
+            proof_of_time: *proof_of_time,
             solution_range: vote_verification_data.solution_range,
             piece_check_params: Some(PieceCheckParams {
                 max_pieces_in_sector: T::MaxPiecesInSector::get(),
@@ -1494,6 +1650,36 @@ fn check_vote<T: Config>(
             "Vote verification error: {error:?}"
         );
         return Err(CheckVoteError::InvalidSolution(error));
+    }
+
+    // Cheap proof of time verification is possible here because proof of time must have already
+    // been seen by this node due to votes requiring the same authoring delay as blocks
+    #[cfg(feature = "pot")]
+    if !is_proof_of_time_valid(
+        BlockHash::try_from(parent_hash.as_ref())
+            .expect("Must be able to convert to block hash type"),
+        SlotNumber::from(slot),
+        WrappedPotProof::from(*proof_of_time),
+    ) {
+        debug!(target: "runtime::subspace", "Invalid proof of time");
+
+        return Err(CheckVoteError::InvalidProofOfTime);
+    }
+
+    // During pre-dispatch we have already verified proofs of time up to future proof of time of
+    // current block, which vote can't exceed, this must be possible to verify cheaply
+    #[cfg(feature = "pot")]
+    if pre_dispatch
+        && !is_proof_of_time_valid(
+            BlockHash::try_from(parent_hash.as_ref())
+                .expect("Must be able to convert to block hash type"),
+            SlotNumber::from(slot + T::BlockAuthoringDelay::get()),
+            WrappedPotProof::from(*future_proof_of_time),
+        )
+    {
+        debug!(target: "runtime::subspace", "Invalid future proof of time");
+
+        return Err(CheckVoteError::InvalidFutureProofOfTime);
     }
 
     let key = (

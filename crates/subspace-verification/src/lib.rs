@@ -30,13 +30,12 @@ use subspace_archiving::archiver;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::crypto::{
     blake2b_256_254_hash_to_scalar, blake2b_256_hash_list, blake2b_256_hash_with_key,
+    blake3_hash_list, Scalar,
 };
-#[cfg(feature = "pot")]
-use subspace_core_primitives::PotProof;
 use subspace_core_primitives::{
-    Blake2b256Hash, BlockNumber, BlockWeight, HistorySize, PublicKey, Randomness, Record,
-    RewardSignature, SectorId, SectorSlotChallenge, SegmentCommitment, SlotNumber, Solution,
-    SolutionRange,
+    Blake2b256Hash, Blake3Hash, BlockNumber, BlockWeight, HistorySize, PotProof, PublicKey,
+    Randomness, Record, RewardSignature, SectorId, SectorSlotChallenge, SegmentCommitment,
+    SlotNumber, Solution, SolutionRange,
 };
 use subspace_proof_of_space::Table;
 
@@ -337,6 +336,11 @@ pub fn derive_randomness<PublicKey, RewardAddress>(
         &solution.chunk.to_bytes(),
         &slot.to_le_bytes(),
     ]))
+}
+
+/// Derive proof of time entropy from chunk and proof of time for injection purposes.
+pub fn derive_pot_entropy(chunk: Scalar, proof_of_time: PotProof) -> Blake3Hash {
+    blake3_hash_list(&[&chunk.to_bytes(), proof_of_time.as_ref()])
 }
 
 /// Derives next solution range based on the total era slots and slot probability
