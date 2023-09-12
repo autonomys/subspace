@@ -13,8 +13,9 @@ use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
 use std::sync::Arc;
+use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::libp2p::multiaddr::Protocol;
-use subspace_networking::{peer_id, start_prometheus_metrics_server, Config};
+use subspace_networking::{peer_id, Config};
 use tracing::{debug, info, Level};
 use tracing_subscriber::fmt::Subscriber;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -142,7 +143,12 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 metrics_endpoints_are_specified.then(|| Metrics::new(&mut metric_registry));
 
             let prometheus_task = metrics_endpoints_are_specified
-                .then(|| start_prometheus_metrics_server(metrics_endpoints, metric_registry))
+                .then(|| {
+                    start_prometheus_metrics_server(
+                        metrics_endpoints,
+                        RegistryAdapter::Libp2p(metric_registry),
+                    )
+                })
                 .transpose()?;
 
             let config = Config {

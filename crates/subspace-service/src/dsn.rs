@@ -1,3 +1,4 @@
+use prometheus_client::registry::Registry;
 use sc_client_api::AuxStore;
 use sc_consensus_subspace::archiver::SegmentHeadersStore;
 use std::collections::HashSet;
@@ -6,6 +7,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::{SegmentHeader, SegmentIndex};
 use subspace_networking::libp2p::kad::Mode as KademliaMode;
+use subspace_networking::libp2p::metrics::Metrics;
 use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::utils::strip_peer_id;
 use subspace_networking::{
@@ -73,11 +75,15 @@ pub(crate) fn create_dsn_instance<AS>(
     dsn_protocol_version: String,
     dsn_config: DsnConfig,
     segment_headers_store: SegmentHeadersStore<AS>,
-) -> Result<(Node, NodeRunner<()>), DsnConfigurationError>
+    enable_metrics: bool,
+) -> Result<(Node, NodeRunner<()>, Option<Registry>), DsnConfigurationError>
 where
     AS: AuxStore + Sync + Send + 'static,
 {
     trace!("Subspace networking starting.");
+
+    let mut metric_registry = Registry::default();
+    let metrics = enable_metrics.then(|| Metrics::new(&mut metric_registry));
 
     let networking_parameters_registry = dsn_config
         .base_path
@@ -176,9 +182,12 @@ where
         bootstrap_addresses: dsn_config.bootstrap_nodes,
         external_addresses: dsn_config.external_addresses,
         kademlia_mode: Some(KademliaMode::Client),
+        metrics,
 
         ..default_networking_config
     };
 
-    subspace_networking::construct(networking_config).map_err(Into::into)
+    subspace_networking::construct(networking_config)
+        .map(|(node, node_runner)| (node, node_runner, enable_metrics.then_some(metric_registry)))
+        .map_err(Into::into)
 }

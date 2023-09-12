@@ -11354,6 +11354,7 @@ dependencies = [
  "parity-db",
  "parity-scale-codec",
  "parking_lot 0.12.1",
+ "prometheus-client 0.21.2",
  "rand 0.8.5",
  "rayon",
  "schnorrkel",
@@ -11366,6 +11367,7 @@ dependencies = [
  "subspace-core-primitives",
  "subspace-erasure-coding",
  "subspace-farmer-components",
+ "subspace-metrics",
  "subspace-networking",
  "subspace-proof-of-space",
  "subspace-rpc-primitives",
@@ -11450,6 +11452,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "subspace-metrics"
+version = "0.1.0"
+dependencies = [
+ "actix-web",
+ "async-mutex",
+ "libp2p 0.52.2",
+ "parking_lot 0.12.1",
+ "prometheus",
+ "prometheus-client 0.21.2",
+ "tracing",
+]
+
+[[package]]
 name = "subspace-networking"
 version = "0.1.0"
 dependencies = [
@@ -11482,6 +11497,7 @@ dependencies = [
  "serde",
  "serde_json",
  "subspace-core-primitives",
+ "subspace-metrics",
  "tempfile",
  "thiserror",
  "tokio",
@@ -11675,6 +11691,7 @@ dependencies = [
  "pallet-transaction-payment-rpc-runtime-api",
  "parity-scale-codec",
  "parking_lot 0.12.1",
+ "prometheus-client 0.21.2",
  "sc-basic-authorship",
  "sc-chain-spec",
  "sc-client-api",
@@ -11716,6 +11733,7 @@ dependencies = [
  "subspace-archiving",
  "subspace-core-primitives",
  "subspace-fraud-proof",
+ "subspace-metrics",
  "subspace-networking",
  "subspace-proof-of-space",
  "subspace-runtime-primitives",
