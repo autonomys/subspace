@@ -365,10 +365,7 @@ where
 
         // Get the accumulated transaction fee of all transactions included in the block
         // and used as the operator reward
-        let total_rewards = self
-            .client
-            .runtime_api()
-            .block_transaction_fee(header_hash)?;
+        let total_rewards = self.client.runtime_api().block_rewards(header_hash)?;
 
         let execution_receipt = ExecutionReceipt {
             domain_block_number: header_number,

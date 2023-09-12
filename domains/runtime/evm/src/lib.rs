@@ -888,8 +888,8 @@ impl_runtime_apis! {
             ext.get_dispatch_info().weight
         }
 
-        fn block_transaction_fee() -> Balance {
-            OperatorRewards::block_transaction_fee()
+        fn block_rewards() -> Balance {
+            OperatorRewards::block_rewards()
         }
     }
 
