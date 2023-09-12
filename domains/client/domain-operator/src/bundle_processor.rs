@@ -341,6 +341,9 @@ where
         self.domain_receipts_checker
             .check_state_transition(consensus_block_hash)?;
 
+        self.domain_receipts_checker
+            .submit_fraud_proof(consensus_block_hash)?;
+
         Ok(Some(built_block_info))
     }
 }

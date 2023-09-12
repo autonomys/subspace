@@ -1,3 +1,4 @@
+use crate::aux_schema::ReceiptMismatchInfo;
 use crate::fraud_proof::{find_trace_mismatch, FraudProofGenerator};
 use crate::parent_chain::ParentChainInterface;
 use crate::utils::{DomainBlockImportNotification, DomainImportNotificationSinks};
@@ -627,6 +628,13 @@ where
 
         self.check_receipts(receipts, fraud_proofs)?;
 
+        Ok(())
+    }
+
+    pub(crate) fn submit_fraud_proof(
+        &self,
+        parent_chain_block_hash: ParentChainBlock::Hash,
+    ) -> sp_blockchain::Result<()> {
         if self.consensus_network_sync_oracle.is_major_syncing() {
             tracing::debug!(
                 "Skip reporting unconfirmed bad receipt as the consensus node is still major syncing..."
@@ -634,7 +642,7 @@ where
             return Ok(());
         }
 
-        // Submit fraud proof for the first unconfirmed incorrent ER.
+        // Submit fraud proof for the first unconfirmed incorrect ER.
         let oldest_receipt_number = self
             .parent_chain
             .oldest_receipt_number(parent_chain_block_hash)?;
@@ -716,7 +724,7 @@ where
                 &*self.client,
                 bad_receipt_number,
                 bad_receipt_hash,
-                mismatch_info,
+                mismatch_info.into(),
             )?;
         }
 
@@ -743,7 +751,7 @@ where
     ) -> sp_blockchain::Result<
         Option<FraudProof<NumberFor<ParentChainBlock>, ParentChainBlock::Hash>>,
     > {
-        if let Some((bad_receipt_hash, trace_mismatch_index, consensus_block_hash)) =
+        if let Some((bad_receipt_hash, mismatch_info)) =
             crate::aux_schema::find_first_unconfirmed_bad_receipt_info::<_, Block, CBlock, _>(
                 &*self.client,
                 |height| {
@@ -755,6 +763,7 @@ where
                 },
             )?
         {
+            let consensus_block_hash = mismatch_info.consensus_hash();
             let local_receipt = crate::aux_schema::load_execution_receipt::<_, Block, CBlock>(
                 &*self.client,
                 consensus_block_hash,
@@ -765,19 +774,22 @@ where
                 ))
             })?;
 
-            let fraud_proof = self
-                .fraud_proof_generator
-                .generate_invalid_state_transition_proof::<ParentChainBlock>(
-                    self.domain_id,
-                    trace_mismatch_index,
-                    &local_receipt,
-                    bad_receipt_hash,
-                )
-                .map_err(|err| {
-                    sp_blockchain::Error::Application(Box::from(format!(
-                        "Failed to generate fraud proof: {err}"
-                    )))
-                })?;
+            let fraud_proof = match mismatch_info {
+                ReceiptMismatchInfo::TraceMismatch { trace_index, .. } => self
+                    .fraud_proof_generator
+                    .generate_invalid_state_transition_proof::<ParentChainBlock>(
+                        self.domain_id,
+                        trace_index,
+                        &local_receipt,
+                        bad_receipt_hash,
+                    )
+                    .map_err(|err| {
+                        sp_blockchain::Error::Application(Box::from(format!(
+                            "Failed to generate fraud proof: {err}"
+                        )))
+                    })?,
+                _ => unimplemented!("fraud proof not implemented for the invariants"),
+            };
 
             return Ok(Some(fraud_proof));
         }
