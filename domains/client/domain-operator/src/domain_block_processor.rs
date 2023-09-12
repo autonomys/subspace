@@ -686,7 +686,7 @@ where
                         let bad_receipt_hash = fraud_proof.bad_receipt_hash;
 
                         // In order to not delete a receipt which was just inserted, accumulate the write&delete operations
-                        // in case the bad receipt and corresponding farud proof are included in the same block.
+                        // in case the bad receipt and corresponding fraud proof are included in the same block.
                         if let Some(index) = bad_receipts_to_write
                             .iter()
                             .map(|(_, receipt_hash, _)| receipt_hash)

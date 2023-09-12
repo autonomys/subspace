@@ -683,6 +683,7 @@ pub fn signer_in_tx_range(bundle_vrf_hash: &U256, signer_id_hash: &U256, tx_rang
 pub enum InvalidReceipt {
     /// The field `invalid_bundles` in [`ExecutionReceipt`] is invalid.
     InvalidBundles,
+    InvalidTotalRewards,
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, Clone, PartialEq, Eq)]

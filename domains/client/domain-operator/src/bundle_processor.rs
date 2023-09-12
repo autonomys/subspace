@@ -122,6 +122,13 @@ where
             return Ok(ReceiptValidity::Invalid(InvalidReceipt::InvalidBundles));
         }
 
+        if local_receipt.total_rewards != receipt.total_rewards {
+            // TODO: Generate fraud proof
+            return Ok(ReceiptValidity::Invalid(
+                InvalidReceipt::InvalidTotalRewards,
+            ));
+        }
+
         Ok(ReceiptValidity::Valid)
     }
 }
