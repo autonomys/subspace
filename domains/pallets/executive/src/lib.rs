@@ -30,6 +30,7 @@ use frame_support::traits::{
     OnRuntimeUpgrade,
 };
 use frame_support::weights::Weight;
+use frame_system::pallet_prelude::*;
 pub use pallet::*;
 use sp_runtime::traits::{
     self, Applyable, CheckEqual, Checkable, Dispatchable, Header, NumberFor, One, ValidateUnsigned,
@@ -97,7 +98,7 @@ mod pallet {
 
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
-        fn on_initialize(_block_number: T::BlockNumber) -> Weight {
+        fn on_initialize(_block_number: BlockNumberFor<T>) -> Weight {
             // Reset the intermediate storage roots from last block.
             IntermediateRoots::<T>::kill();
             // TODO: Probably needs a different value
@@ -146,14 +147,14 @@ pub struct Executive<
 
 impl<
         System: frame_system::Config + EnsureInherentsAreFirst<Block>,
-        Block: traits::Block<Header = System::Header, Hash = System::Hash>,
+        Block: traits::Block<Header = HeaderFor<System>, Hash = System::Hash>,
         Context: Default,
         UnsignedValidator,
         AllPalletsWithSystem: OnRuntimeUpgrade
-            + OnInitialize<System::BlockNumber>
-            + OnIdle<System::BlockNumber>
-            + OnFinalize<System::BlockNumber>
-            + OffchainWorker<System::BlockNumber>,
+            + OnInitialize<BlockNumberFor<System>>
+            + OnIdle<BlockNumberFor<System>>
+            + OnFinalize<BlockNumberFor<System>>
+            + OffchainWorker<BlockNumberFor<System>>,
         ExecutiveConfig: Config,
         COnRuntimeUpgrade: OnRuntimeUpgrade,
     > ExecuteBlock<Block>
@@ -189,14 +190,14 @@ where
 
 impl<
         System: frame_system::Config + EnsureInherentsAreFirst<Block>,
-        Block: traits::Block<Header = System::Header, Hash = System::Hash>,
+        Block: traits::Block<Header = HeaderFor<System>, Hash = System::Hash>,
         Context: Default,
         UnsignedValidator,
         AllPalletsWithSystem: OnRuntimeUpgrade
-            + OnInitialize<System::BlockNumber>
-            + OnIdle<System::BlockNumber>
-            + OnFinalize<System::BlockNumber>
-            + OffchainWorker<System::BlockNumber>,
+            + OnInitialize<BlockNumberFor<System>>
+            + OnIdle<BlockNumberFor<System>>
+            + OnFinalize<BlockNumberFor<System>>
+            + OffchainWorker<BlockNumberFor<System>>,
         ExecutiveConfig: Config,
         COnRuntimeUpgrade: OnRuntimeUpgrade,
     >
@@ -264,7 +265,7 @@ where
     /// Wrapped `frame_executive::Executive::initialize_block`.
     ///
     /// Note the storage root in the end.
-    pub fn initialize_block(header: &System::Header) {
+    pub fn initialize_block(header: &HeaderFor<System>) {
         frame_executive::Executive::<
             System,
             Block,
@@ -283,8 +284,8 @@ where
         // Check that `parent_hash` is correct.
         let n = *header.number();
         assert!(
-            n > System::BlockNumber::zero()
-                && <frame_system::Pallet<System>>::block_hash(n - System::BlockNumber::one())
+            n > BlockNumberFor::<System>::zero()
+                && <frame_system::Pallet<System>>::block_hash(n - BlockNumberFor::<System>::one())
                     == *header.parent_hash(),
             "Parent hash should be valid.",
         );
@@ -339,7 +340,7 @@ where
     }
 
     /// Wrapped `frame_executive::Executive::finalize_block`.
-    pub fn finalize_block() -> System::Header {
+    pub fn finalize_block() -> HeaderFor<System> {
         Pallet::<ExecutiveConfig>::push_root(Self::storage_root());
         frame_executive::Executive::<
             System,
@@ -358,7 +359,7 @@ where
         let remaining_weight = max_weight.saturating_sub(weight.total());
 
         if remaining_weight.all_gt(Weight::zero()) {
-            let used_weight = <AllPalletsWithSystem as OnIdle<System::BlockNumber>>::on_idle(
+            let used_weight = <AllPalletsWithSystem as OnIdle<BlockNumberFor<System>>>::on_idle(
                 block_number,
                 remaining_weight,
             );
@@ -368,7 +369,7 @@ where
             );
         }
 
-        <AllPalletsWithSystem as OnFinalize<System::BlockNumber>>::on_finalize(block_number);
+        <AllPalletsWithSystem as OnFinalize<BlockNumberFor<System>>>::on_finalize(block_number);
     }
 
     /// Wrapped `frame_executive::Executive::apply_extrinsic`.
@@ -385,7 +386,7 @@ where
             COnRuntimeUpgrade,
         >::apply_extrinsic(uxt);
         // TODO: Critical!!! https://github.com/paritytech/substrate/pull/10922#issuecomment-1068997467
-        frame_support::log::info!(
+        log::info!(
             target: "domain::runtime::executive",
             "[apply_extrinsic] after: {:?}",
             {
@@ -397,7 +398,7 @@ where
     }
 
     // TODO: https://github.com/paritytech/substrate/issues/10711
-    fn final_checks(header: &System::Header) {
+    fn final_checks(header: &HeaderFor<System>) {
         sp_tracing::enter_span!(sp_tracing::Level::TRACE, "final_checks");
         // remove temporaries
         let new_header = <frame_system::Pallet<System>>::finalize();
@@ -452,7 +453,7 @@ where
     }
 
     /// Wrapped `frame_executive::Executive::offchain_worker`.
-    pub fn offchain_worker(header: &System::Header) {
+    pub fn offchain_worker(header: &HeaderFor<System>) {
         frame_executive::Executive::<
             System,
             Block,

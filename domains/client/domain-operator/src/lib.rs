@@ -93,9 +93,7 @@ use sp_consensus_slots::Slot;
 use sp_domain_digests::AsPredigest;
 use sp_domains::{Bundle, DomainId, ExecutionReceipt};
 use sp_keystore::KeystorePtr;
-use sp_runtime::traits::{
-    Block as BlockT, HashFor, Header as HeaderT, NumberFor, One, Saturating, Zero,
-};
+use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor, One, Saturating, Zero};
 use sp_runtime::DigestItem;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -109,11 +107,6 @@ type ExecutionReceiptFor<Block, CBlock> = ExecutionReceipt<
     <Block as BlockT>::Hash,
     Balance,
 >;
-
-type TransactionFor<Backend, Block> =
-    <<Backend as sc_client_api::Backend<Block>>::State as sc_client_api::backend::StateBackend<
-        HashFor<Block>,
-    >>::Transaction;
 
 type BundleSender<Block, CBlock> = TracingUnboundedSender<
     Bundle<

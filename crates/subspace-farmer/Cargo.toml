@@ -53,7 +53,7 @@ substrate-bip39 = "0.4.4"
 supports-color = "2.0.0"
 tempfile = "3.4.0"
 thiserror = "1.0.38"
-tokio = { version = "1.28.2", features = ["macros", "parking_lot", "rt-multi-thread", "signal"] }
+tokio = { version = "1.32.0", features = ["macros", "parking_lot", "rt-multi-thread", "signal"] }
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
 ulid = { version = "1.0.0", features = ["serde"] }

@@ -3,7 +3,7 @@ use crate::service::{
     new_frontier_partial, spawn_frontier_tasks, EthConfiguration, FrontierPartialComponents,
 };
 use clap::Parser;
-use domain_runtime_primitives::{Balance, Index};
+use domain_runtime_primitives::{Balance, Nonce};
 use domain_service::providers::{BlockImportProvider, DefaultProvider, RpcProvider};
 use domain_service::rpc::FullDeps;
 use domain_service::FullClient;
@@ -12,12 +12,10 @@ use fc_rpc::EthConfig;
 use fc_storage::overrides_handle;
 use fp_rpc::{ConvertTransaction, ConvertTransactionRuntimeApi, EthereumRuntimeRPCApi};
 use jsonrpsee::RpcModule;
-use sc_client_api::{
-    AuxStore, Backend, BlockBackend, BlockchainEvents, StateBackendFor, StorageProvider,
-};
+use sc_client_api::{AuxStore, Backend, BlockBackend, BlockchainEvents, StorageProvider};
 use sc_executor::NativeExecutionDispatch;
 use sc_rpc::{RpcSubscriptionIdProvider, SubscriptionTaskExecutor};
-use sc_service::{BasePath, TFullBackend};
+use sc_service::BasePath;
 use sc_transaction_pool::ChainApi;
 use sc_transaction_pool_api::TransactionPool;
 use serde::de::DeserializeOwned;
@@ -64,10 +62,8 @@ where
         + Send
         + Sync
         + 'static,
-    RuntimeApi::RuntimeApi: ApiExt<Block, StateBackend = StateBackendFor<TFullBackend<Block>, Block>>
-        + Core<Block>
-        + BlockBuilder<Block>
-        + EthereumRuntimeRPCApi<Block>,
+    RuntimeApi::RuntimeApi:
+        ApiExt<Block> + Core<Block> + BlockBuilder<Block> + EthereumRuntimeRPCApi<Block>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
     type BI = FrontierBlockImport<
@@ -102,7 +98,7 @@ where
         + 'static,
     Client::Api: pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi<Block, Balance>
         + EthereumRuntimeRPCApi<Block>
-        + AccountNonceApi<Block, AccountId, Index>
+        + AccountNonceApi<Block, AccountId, Nonce>
         + ConvertTransactionRuntimeApi<Block>,
     Client::Api: BlockBuilder<Block>,
     Client::Api: EthereumRuntimeRPCApi<Block>,

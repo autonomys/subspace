@@ -10,6 +10,7 @@ use frame_support::dispatch::RawOrigin;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, Currency, Hooks};
 use frame_support::weights::Weight;
 use frame_support::{assert_err, assert_ok, parameter_types, PalletId};
+use frame_system::pallet_prelude::*;
 use scale_info::TypeInfo;
 use sp_core::crypto::Pair;
 use sp_core::{Get, H256, U256};
@@ -20,9 +21,8 @@ use sp_domains::{
     GenerateGenesisStateRoot, GenesisReceiptExtension, OpaqueBundle, OperatorId, OperatorPair,
     ProofOfElection, RuntimeType, SealedBundleHeader, StakingHoldIdentifier,
 };
-use sp_runtime::testing::Header;
 use sp_runtime::traits::{AccountIdConversion, BlakeTwo256, Hash as HashT, IdentityLookup, Zero};
-use sp_runtime::OpaqueExtrinsic;
+use sp_runtime::{BuildStorage, OpaqueExtrinsic};
 use sp_version::RuntimeVersion;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
@@ -40,12 +40,7 @@ const DOMAIN_ID: DomainId = DomainId::new(0);
 const OPERATOR_ID: OperatorId = 0u64;
 
 frame_support::construct_runtime!(
-    pub struct Test
-    where
-        Block = Block,
-        NodeBlock = Block,
-        UncheckedExtrinsic = UncheckedExtrinsic,
-    {
+    pub struct Test {
         System: frame_system,
         Balances: pallet_balances,
         Domains: pallet_domains,
@@ -62,13 +57,12 @@ impl frame_system::Config for Test {
     type DbWeight = ();
     type RuntimeOrigin = RuntimeOrigin;
     type RuntimeCall = RuntimeCall;
-    type Index = u64;
-    type BlockNumber = BlockNumber;
+    type Nonce = u64;
     type Hash = Hash;
     type Hashing = BlakeTwo256;
     type AccountId = u64;
     type Lookup = IdentityLookup<Self::AccountId>;
-    type Header = Header;
+    type Block = Block;
     type RuntimeEvent = RuntimeEvent;
     type BlockHashCount = ConstU64<2>;
     type Version = ();
@@ -212,8 +206,8 @@ impl pallet_domains::Config for Test {
 }
 
 pub(crate) fn new_test_ext() -> sp_io::TestExternalities {
-    let t = frame_system::GenesisConfig::default()
-        .build_storage::<Test>()
+    let t = frame_system::GenesisConfig::<Test>::default()
+        .build_storage()
         .unwrap();
 
     t.into()
@@ -345,10 +339,10 @@ impl sp_core::traits::ReadRuntimeVersion for ReadRuntimeVersion {
     }
 }
 
-pub(crate) fn run_to_block<T: Config>(block_number: T::BlockNumber, parent_hash: T::Hash) {
+pub(crate) fn run_to_block<T: Config>(block_number: BlockNumberFor<T>, parent_hash: T::Hash) {
     frame_system::Pallet::<T>::set_block_number(block_number);
     frame_system::Pallet::<T>::initialize(&block_number, &parent_hash, &Default::default());
-    <crate::Pallet<T> as Hooks<T::BlockNumber>>::on_initialize(block_number);
+    <crate::Pallet<T> as Hooks<BlockNumberFor<T>>>::on_initialize(block_number);
     frame_system::Pallet::<T>::finalize();
 }
 
@@ -448,7 +442,7 @@ pub(crate) fn extend_block_tree(
 pub(crate) fn get_block_tree_node_at<T: Config>(
     domain_id: DomainId,
     block_number: T::DomainNumber,
-) -> Option<DomainBlock<T::BlockNumber, T::Hash, T::DomainNumber, T::DomainHash, BalanceOf<T>>> {
+) -> Option<DomainBlock<BlockNumberFor<T>, T::Hash, T::DomainNumber, T::DomainHash, BalanceOf<T>>> {
     BlockTree::<T>::get(domain_id, block_number)
         .first()
         .and_then(DomainBlocks::<T>::get)

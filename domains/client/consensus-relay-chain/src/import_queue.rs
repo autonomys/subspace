@@ -46,7 +46,6 @@ where
     I: BlockImport<Block> + Send,
 {
     type Error = I::Error;
-    type Transaction = I::Transaction;
 
     async fn check_block(
         &mut self,
@@ -58,7 +57,7 @@ where
 
     async fn import_block(
         &mut self,
-        block_import_params: BlockImportParams<Block, Self::Transaction>,
+        block_import_params: BlockImportParams<Block>,
     ) -> Result<ImportResult, Self::Error> {
         let mut inner = self.inner.lock().await;
         inner.import_block(block_import_params).await
@@ -87,8 +86,8 @@ where
 {
     async fn verify(
         &mut self,
-        mut block_params: BlockImportParams<Block, ()>,
-    ) -> Result<BlockImportParams<Block, ()>, String> {
+        mut block_params: BlockImportParams<Block>,
+    ) -> Result<BlockImportParams<Block>, String> {
         block_params.post_hash = Some(block_params.header.hash());
 
         Ok(block_params)
@@ -101,10 +100,9 @@ pub fn import_queue<Block: BlockT, I>(
     block_import: I,
     spawner: &impl SpawnEssentialNamed,
     registry: Option<&Registry>,
-) -> ClientResult<BasicQueue<Block, I::Transaction>>
+) -> ClientResult<BasicQueue<Block>>
 where
     I: BlockImport<Block, Error = ConsensusError> + Send + Sync + 'static,
-    I::Transaction: Send,
 {
     Ok(BasicQueue::new(
         Verifier::default(),

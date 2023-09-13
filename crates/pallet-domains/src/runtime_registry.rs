@@ -4,6 +4,7 @@ use crate::pallet::{NextRuntimeId, RuntimeRegistry, ScheduledRuntimeUpgrades};
 use crate::{Config, Event};
 use codec::{Decode, Encode};
 use frame_support::PalletError;
+use frame_system::pallet_prelude::*;
 use scale_info::TypeInfo;
 use sp_core::Hasher;
 use sp_domains::{DomainsDigestItem, RuntimeId, RuntimeType};
@@ -73,7 +74,7 @@ pub(crate) fn do_register_runtime<T: Config>(
     runtime_name: Vec<u8>,
     runtime_type: RuntimeType,
     code: Vec<u8>,
-    at: T::BlockNumber,
+    at: BlockNumberFor<T>,
 ) -> Result<RuntimeId, Error> {
     let runtime_version = runtime_version(&code)?;
     let runtime_hash = T::Hashing::hash(&code);
@@ -106,7 +107,7 @@ pub(crate) fn register_runtime_at_genesis<T: Config>(
     runtime_type: RuntimeType,
     runtime_version: RuntimeVersion,
     code: Vec<u8>,
-    at: T::BlockNumber,
+    at: BlockNumberFor<T>,
 ) -> Result<RuntimeId, Error> {
     let runtime_hash = T::Hashing::hash(&code);
     let runtime_id = NextRuntimeId::<T>::get();
@@ -135,8 +136,8 @@ pub(crate) fn register_runtime_at_genesis<T: Config>(
 pub(crate) fn do_schedule_runtime_upgrade<T: Config>(
     runtime_id: RuntimeId,
     code: Vec<u8>,
-    current_block_number: T::BlockNumber,
-) -> Result<T::BlockNumber, Error> {
+    current_block_number: BlockNumberFor<T>,
+) -> Result<BlockNumberFor<T>, Error> {
     let runtime_obj = RuntimeRegistry::<T>::get(runtime_id).ok_or(Error::MissingRuntimeObject)?;
     let new_runtime_version = can_upgrade_code(&runtime_obj.version, &code)?;
     let scheduled_at = current_block_number
@@ -150,7 +151,7 @@ pub(crate) fn do_schedule_runtime_upgrade<T: Config>(
     Ok(scheduled_at)
 }
 
-pub(crate) fn do_upgrade_runtimes<T: Config>(at: T::BlockNumber) {
+pub(crate) fn do_upgrade_runtimes<T: Config>(at: BlockNumberFor<T>) {
     for (runtime_id, scheduled_update) in ScheduledRuntimeUpgrades::<T>::drain_prefix(at) {
         RuntimeRegistry::<T>::mutate(runtime_id, |maybe_runtime_object| {
             let runtime_obj = maybe_runtime_object

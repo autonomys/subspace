@@ -28,7 +28,7 @@ pub use sp_keyring::Sr25519Keyring;
 use domain_runtime_primitives::opaque::Block;
 use evm_domain_test_runtime::{Address, Signature};
 use frame_support::dispatch::{DispatchInfo, PostDispatchInfo};
-use sc_client_api::execution_extensions::ExecutionStrategies;
+use frame_system::pallet_prelude::BlockNumberFor;
 use sc_network::config::{NonReservedPeerMode, TransportConfig};
 use sc_network::multiaddr;
 use sc_service::config::{
@@ -119,14 +119,6 @@ pub fn node_config(
         wasm_method: WasmExecutionMethod::Compiled {
             instantiation_strategy: WasmtimeInstantiationStrategy::PoolingCopyOnWrite,
         },
-        // NOTE: we enforce the use of the native runtime to make the errors more debuggable
-        execution_strategies: ExecutionStrategies {
-            syncing: sc_client_api::ExecutionStrategy::NativeWhenPossible,
-            importing: sc_client_api::ExecutionStrategy::NativeWhenPossible,
-            block_construction: sc_client_api::ExecutionStrategy::NativeWhenPossible,
-            offchain_worker: sc_client_api::ExecutionStrategy::NativeWhenPossible,
-            other: sc_client_api::ExecutionStrategy::NativeWhenPossible,
-        },
         rpc_addr: None,
         rpc_max_request_size: 0,
         rpc_max_response_size: 0,
@@ -188,23 +180,21 @@ pub fn construct_extrinsic_generic<Runtime, Client>(
     tip: u32,
 ) -> UncheckedExtrinsicFor<Runtime>
 where
-    Runtime: frame_system::Config<Hash = H256, BlockNumber = u32>
-        + pallet_transaction_payment::Config
-        + Send
-        + Sync,
+    Runtime: frame_system::Config<Hash = H256> + pallet_transaction_payment::Config + Send + Sync,
     Runtime::RuntimeCall:
         Dispatchable<Info = DispatchInfo, PostInfo = PostDispatchInfo> + Send + Sync,
     BalanceOf<Runtime>: Send + Sync + From<u64> + sp_runtime::FixedPointOperand,
+    u64: From<BlockNumberFor<Runtime>>,
     Client: HeaderBackend<Block>,
 {
     let function = function.into();
     let current_block_hash = client.as_ref().info().best_hash;
     let current_block = client.as_ref().info().best_number.saturated_into();
     let genesis_block = client.as_ref().hash(0).unwrap().unwrap();
-    let period = <Runtime as frame_system::Config>::BlockHashCount::get()
+    let period = u64::from(<Runtime as frame_system::Config>::BlockHashCount::get())
         .checked_next_power_of_two()
         .map(|c| c / 2)
-        .unwrap_or(2) as u64;
+        .unwrap_or(2);
     let extra: SignedExtraFor<Runtime> = (
         frame_system::CheckNonZeroSender::<Runtime>::new(),
         frame_system::CheckSpecVersion::<Runtime>::new(),
@@ -241,10 +231,7 @@ pub fn construct_unsigned_extrinsic<Runtime>(
     function: impl Into<<Runtime as frame_system::Config>::RuntimeCall>,
 ) -> UncheckedExtrinsicFor<Runtime>
 where
-    Runtime: frame_system::Config<Hash = H256, BlockNumber = u32>
-        + pallet_transaction_payment::Config
-        + Send
-        + Sync,
+    Runtime: frame_system::Config<Hash = H256> + pallet_transaction_payment::Config + Send + Sync,
     Runtime::RuntimeCall:
         Dispatchable<Info = DispatchInfo, PostInfo = PostDispatchInfo> + Send + Sync,
     BalanceOf<Runtime>: Send + Sync + From<u64> + sp_runtime::FixedPointOperand,

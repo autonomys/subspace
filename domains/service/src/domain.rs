@@ -9,9 +9,7 @@ use domain_runtime_primitives::{Balance, BlockNumber, DomainCoreApi, Hash, Inher
 use futures::channel::mpsc;
 use futures::Stream;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
-use sc_client_api::{
-    BlockBackend, BlockImportNotification, BlockchainEvents, ProofProvider, StateBackendFor,
-};
+use sc_client_api::{BlockBackend, BlockImportNotification, BlockchainEvents, ProofProvider};
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_rpc_api::DenyUnsafe;
 use sc_service::{
@@ -39,7 +37,7 @@ use std::marker::PhantomData;
 use std::str::FromStr;
 use std::sync::Arc;
 use subspace_core_primitives::Randomness;
-use subspace_runtime_primitives::Index as Nonce;
+use subspace_runtime_primitives::Nonce;
 use subspace_transaction_pool::FullChainApiWrapper;
 use substrate_frame_rpc_system::AccountNonceApi;
 
@@ -74,7 +72,7 @@ where
         + Send
         + Sync
         + 'static,
-    RuntimeApi::RuntimeApi: ApiExt<Block, StateBackend = StateBackendFor<TFullBackend<Block>, Block>>
+    RuntimeApi::RuntimeApi: ApiExt<Block>
         + Metadata<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + BlockBuilder<Block>
@@ -137,7 +135,7 @@ fn new_partial<RuntimeApi, ExecutorDispatch, CBlock, CClient, BIMP>(
         FullClient<Block, RuntimeApi, ExecutorDispatch>,
         FullBackend<Block>,
         (),
-        sc_consensus::DefaultImportQueue<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>,
+        sc_consensus::DefaultImportQueue<Block>,
         FullPool<CBlock, CClient, RuntimeApi, ExecutorDispatch>,
         (
             Option<Telemetry>,
@@ -163,9 +161,8 @@ where
         + Send
         + Sync
         + 'static,
-    RuntimeApi::RuntimeApi: TaggedTransactionQueue<Block>
-        + MessengerApi<Block, NumberFor<Block>>
-        + ApiExt<Block, StateBackend = StateBackendFor<TFullBackend<Block>, Block>>,
+    RuntimeApi::RuntimeApi:
+        TaggedTransactionQueue<Block> + MessengerApi<Block, NumberFor<Block>> + ApiExt<Block>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
     BIMP: BlockImportProvider<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>,
 {
@@ -305,7 +302,7 @@ where
         + Send
         + Sync
         + 'static,
-    RuntimeApi::RuntimeApi: ApiExt<Block, StateBackend = StateBackendFor<TFullBackend<Block>, Block>>
+    RuntimeApi::RuntimeApi: ApiExt<Block>
         + Metadata<Block>
         + BlockBuilder<Block>
         + OffchainWorkerApi<Block>

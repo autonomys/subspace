@@ -51,12 +51,10 @@ use sc_proof_of_time::source::PotSlotInfoStream;
 use sc_proof_of_time::verifier::PotVerifier;
 use sc_telemetry::TelemetryHandle;
 use sc_utils::mpsc::TracingUnboundedSender;
-use sp_api::{ApiError, ApiExt, BlockT, HeaderT, NumberFor, ProvideRuntimeApi, TransactionFor};
+use sp_api::{ApiError, ApiExt, BlockT, HeaderT, NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
 use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata, Result as ClientResult};
-use sp_consensus::{
-    BlockOrigin, Environment, Error as ConsensusError, Proposer, SelectChain, SyncOracle,
-};
+use sp_consensus::{Environment, Error as ConsensusError, Proposer, SelectChain, SyncOracle};
 use sp_consensus_slots::{Slot, SlotDuration};
 use sp_consensus_subspace::digests::{
     extract_pre_digest, extract_subspace_digest_items, Error as DigestError, SubspaceDigestItems,
@@ -448,11 +446,8 @@ where
     Client::Api: SubspaceApi<Block, FarmerPublicKey>,
     SC: SelectChain<Block> + 'static,
     E: Environment<Block, Error = Error> + Send + Sync + 'static,
-    E::Proposer: Proposer<Block, Error = Error, Transaction = TransactionFor<Client, Block>>,
-    I: BlockImport<Block, Error = ConsensusError, Transaction = TransactionFor<Client, Block>>
-        + Send
-        + Sync
-        + 'static,
+    E::Proposer: Proposer<Block, Error = Error>,
+    I: BlockImport<Block, Error = ConsensusError> + Send + Sync + 'static,
     SO: SyncOracle + Send + Sync + Clone + 'static,
     L: JustificationSyncLink<Block> + 'static,
     CIDP: CreateInherentDataProviders<Block, ()> + Send + Sync + 'static,
@@ -680,7 +675,6 @@ where
     async fn block_import_verification(
         &self,
         block_hash: Block::Hash,
-        origin: BlockOrigin,
         header: Block::Header,
         extrinsics: Option<Vec<Block::Extrinsic>>,
         root_plot_public_key: &Option<FarmerPublicKey>,
@@ -939,9 +933,8 @@ where
                     .await
                     .map_err(Error::CreateInherents)?;
 
-                let inherent_res = self.client.runtime_api().check_inherents_with_context(
+                let inherent_res = self.client.runtime_api().check_inherents(
                     parent_hash,
-                    origin.into(),
                     Block::new(header, extrinsics),
                     inherent_data,
                 )?;
@@ -970,9 +963,7 @@ impl<PosTable, Block, Client, Inner, CIDP, AS> BlockImport<Block>
 where
     PosTable: Table,
     Block: BlockT,
-    Inner: BlockImport<Block, Transaction = TransactionFor<Client, Block>, Error = ConsensusError>
-        + Send
-        + Sync,
+    Inner: BlockImport<Block, Error = ConsensusError> + Send + Sync,
     Inner::Error: Into<ConsensusError>,
     Client: ProvideRuntimeApi<Block>
         + BlockBackend<Block>
@@ -986,11 +977,10 @@ where
     BlockNumber: From<<<Block as BlockT>::Header as HeaderT>::Number>,
 {
     type Error = ConsensusError;
-    type Transaction = TransactionFor<Client, Block>;
 
     async fn import_block(
         &mut self,
-        mut block: BlockImportParams<Block, Self::Transaction>,
+        mut block: BlockImportParams<Block>,
     ) -> Result<ImportResult, Self::Error> {
         let block_hash = block.post_hash();
         let block_number = *block.header.number();
@@ -1018,7 +1008,6 @@ where
 
         self.block_import_verification(
             block_hash,
-            block.origin,
             block.header.clone(),
             block.body.clone(),
             &root_plot_public_key,

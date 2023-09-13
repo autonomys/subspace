@@ -4,15 +4,12 @@ use crate::domain_bundle_producer::DomainBundleProducer;
 use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::fraud_proof::FraudProofGenerator;
 use crate::parent_chain::DomainParentChain;
-use crate::{
-    active_leaves, DomainImportNotifications, NewSlotNotification, OperatorParams, TransactionFor,
-};
+use crate::{active_leaves, DomainImportNotifications, NewSlotNotification, OperatorParams};
 use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
 use futures::channel::mpsc;
 use futures::{FutureExt, Stream};
 use sc_client_api::{
     AuxStore, BlockBackend, BlockImportNotification, BlockchainEvents, Finalizer, ProofProvider,
-    StateBackendFor,
 };
 use sc_utils::mpsc::tracing_unbounded;
 use sp_api::ProvideRuntimeApi;
@@ -21,7 +18,7 @@ use sp_consensus::SelectChain;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
 use sp_domains::{BundleProducerElectionApi, DomainsApi};
 use sp_messenger::MessengerApi;
-use sp_runtime::traits::{Block as BlockT, HashFor, NumberFor};
+use sp_runtime::traits::{Block as BlockT, NumberFor};
 use std::sync::Arc;
 use subspace_runtime_primitives::Balance;
 
@@ -77,7 +74,7 @@ where
         + InherentExtrinsicApi<Block>
         + MessengerApi<Block, NumberFor<Block>>
         + sp_block_builder::BlockBuilder<Block>
-        + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
+        + sp_api::ApiExt<Block>,
     CClient: HeaderBackend<CBlock>
         + HeaderMetadata<CBlock, Error = sp_blockchain::Error>
         + BlockBackend<CBlock>
@@ -92,12 +89,7 @@ where
     Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
     E: CodeExecutor,
-    TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
-    for<'b> &'b BI: sc_consensus::BlockImport<
-        Block,
-        Transaction = sp_api::TransactionFor<Client, Block>,
-        Error = sp_consensus::Error,
-    >,
+    for<'b> &'b BI: sc_consensus::BlockImport<Block, Error = sp_consensus::Error>,
     BI: Send + Sync + 'static,
 {
     /// Create a new instance.

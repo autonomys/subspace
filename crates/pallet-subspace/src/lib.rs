@@ -42,6 +42,7 @@ use frame_support::traits::Get;
 #[cfg(not(feature = "pot"))]
 use frame_support::traits::OnTimestampSet;
 use frame_system::offchain::{SendTransactionTypes, SubmitTransaction};
+use frame_system::pallet_prelude::*;
 use log::{debug, error, warn};
 pub use pallet::*;
 use scale_info::TypeInfo;
@@ -90,7 +91,7 @@ use subspace_verification::{
 pub trait GlobalRandomnessIntervalTrigger {
     /// Trigger a global randomness update. This should be called during every block, after
     /// initialization is done.
-    fn trigger<T: Config>(block_number: T::BlockNumber, block_randomness: Randomness);
+    fn trigger<T: Config>(block_number: BlockNumberFor<T>, block_randomness: Randomness);
 }
 
 /// A type signifying to Subspace that it should perform a global randomness update with an internal
@@ -100,7 +101,7 @@ pub struct NormalGlobalRandomnessInterval;
 
 // TODO: Remove when switching to PoT by default
 impl GlobalRandomnessIntervalTrigger for NormalGlobalRandomnessInterval {
-    fn trigger<T: Config>(block_number: T::BlockNumber, block_randomness: Randomness) {
+    fn trigger<T: Config>(block_number: BlockNumberFor<T>, block_randomness: Randomness) {
         if <Pallet<T>>::should_update_global_randomness(block_number) {
             <Pallet<T>>::enact_update_global_randomness(block_number, block_randomness);
         }
@@ -111,14 +112,14 @@ impl GlobalRandomnessIntervalTrigger for NormalGlobalRandomnessInterval {
 pub trait EraChangeTrigger {
     /// Trigger an era change, if any should take place. This should be called
     /// during every block, after initialization is done.
-    fn trigger<T: Config>(block_number: T::BlockNumber);
+    fn trigger<T: Config>(block_number: BlockNumberFor<T>);
 }
 
 /// A type signifying to Subspace that it should perform era changes with an internal trigger.
 pub struct NormalEraChange;
 
 impl EraChangeTrigger for NormalEraChange {
-    fn trigger<T: Config>(block_number: T::BlockNumber) {
+    fn trigger<T: Config>(block_number: BlockNumberFor<T>) {
         if <Pallet<T>>::should_era_change(block_number) {
             <Pallet<T>>::enact_era_change();
         }
@@ -206,7 +207,7 @@ mod pallet {
         /// The amount of time, in blocks, between updates of global randomness.
         #[pallet::constant]
         // TODO: Remove when switching to PoT by default
-        type GlobalRandomnessUpdateInterval: Get<Self::BlockNumber>;
+        type GlobalRandomnessUpdateInterval: Get<BlockNumberFor<Self>>;
 
         /// Number of slots between slot arrival and when corresponding block can be produced.
         ///
@@ -217,7 +218,7 @@ mod pallet {
 
         /// Interval, in blocks, between blockchain entropy injection into proof of time chain.
         #[pallet::constant]
-        type PotEntropyInjectionInterval: Get<Self::BlockNumber>;
+        type PotEntropyInjectionInterval: Get<BlockNumberFor<Self>>;
 
         /// Interval, in entropy injection intervals, where to take entropy for injection from.
         #[pallet::constant]
@@ -231,7 +232,7 @@ mod pallet {
         /// NOTE: Currently it is not possible to change the era duration after
         /// the chain has started. Attempting to do so will brick block production.
         #[pallet::constant]
-        type EraDuration: Get<Self::BlockNumber>;
+        type EraDuration: Get<BlockNumberFor<Self>>;
 
         /// Initial solution range used for challenges during the very first era.
         #[pallet::constant]
@@ -255,7 +256,7 @@ mod pallet {
         /// Depth `K` after which a block enters the recorded history (a global constant, as opposed
         /// to the client-dependent transaction confirmation depth `k`).
         #[pallet::constant]
-        type ConfirmationDepthK: Get<Self::BlockNumber>;
+        type ConfirmationDepthK: Get<BlockNumberFor<Self>>;
 
         /// Number of latest archived segments that are considered "recent history".
         #[pallet::constant]
@@ -323,7 +324,7 @@ mod pallet {
     }
 
     #[pallet::genesis_config]
-    pub struct GenesisConfig {
+    pub struct GenesisConfig<T> {
         /// Whether rewards should be enabled.
         pub enable_rewards: bool,
         /// Whether storage access should be enabled.
@@ -332,10 +333,13 @@ mod pallet {
         pub allow_authoring_by: AllowAuthoringBy,
         /// Number of iterations for proof of time per slot
         pub pot_slot_iterations: NonZeroU32,
+        #[serde(skip)]
+        pub phantom: PhantomData<T>,
     }
 
-    impl Default for GenesisConfig {
+    impl<T> Default for GenesisConfig<T> {
         #[inline]
+        #[track_caller]
         fn default() -> Self {
             // TODO: Remove once https://github.com/paritytech/polkadot-sdk/pull/1221 is in our
             //  fork
@@ -344,10 +348,10 @@ mod pallet {
     }
 
     #[pallet::genesis_build]
-    impl<T: Config> GenesisBuild<T> for GenesisConfig {
+    impl<T: Config> BuildGenesisConfig for GenesisConfig<T> {
         fn build(&self) {
             if self.enable_rewards {
-                EnableRewards::<T>::put::<T::BlockNumber>(sp_runtime::traits::One::one());
+                EnableRewards::<T>::put::<BlockNumberFor<T>>(sp_runtime::traits::One::one());
             }
             IsStorageAccessEnabled::<T>::put(self.enable_storage_access);
             match &self.allow_authoring_by {
@@ -376,7 +380,7 @@ mod pallet {
         FarmerVote {
             public_key: FarmerPublicKey,
             reward_address: T::AccountId,
-            height: T::BlockNumber,
+            height: BlockNumberFor<T>,
             parent_hash: T::Hash,
         },
     }
@@ -462,7 +466,7 @@ mod pallet {
 
     /// Enable rewards since specified block number.
     #[pallet::storage]
-    pub(super) type EnableRewards<T: Config> = StorageValue<_, T::BlockNumber>;
+    pub(super) type EnableRewards<T: Config> = StorageValue<_, BlockNumberFor<T>>;
 
     /// Temporary value (cleared at block finalization) with block author information.
     #[pallet::storage]
@@ -503,7 +507,7 @@ mod pallet {
     /// block number it came from.
     #[pallet::storage]
     pub(super) type PotEntropy<T: Config> =
-        StorageValue<_, BTreeMap<T::BlockNumber, PotEntropyValue>, ValueQuery>;
+        StorageValue<_, BTreeMap<BlockNumberFor<T>, PotEntropyValue>, ValueQuery>;
 
     /// The current block randomness, updated at block initialization. When the proof of time feature
     /// is enabled it derived from PoT otherwise PoR.
@@ -527,13 +531,13 @@ mod pallet {
     pub(super) type RootPlotPublicKey<T> = StorageValue<_, FarmerPublicKey>;
 
     #[pallet::hooks]
-    impl<T: Config> Hooks<T::BlockNumber> for Pallet<T> {
-        fn on_initialize(block_number: T::BlockNumber) -> Weight {
+    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
+        fn on_initialize(block_number: BlockNumberFor<T>) -> Weight {
             Self::do_initialize(block_number);
             Weight::zero()
         }
 
-        fn on_finalize(block_number: T::BlockNumber) {
+        fn on_finalize(block_number: BlockNumberFor<T>) {
             Self::do_finalize(block_number)
         }
     }
@@ -553,7 +557,7 @@ mod pallet {
         #[allow(clippy::boxed_local)]
         pub fn report_equivocation(
             origin: OriginFor<T>,
-            equivocation_proof: Box<EquivocationProof<T::Header>>,
+            equivocation_proof: Box<EquivocationProof<HeaderFor<T>>>,
         ) -> DispatchResultWithPostInfo {
             ensure_none(origin)?;
 
@@ -603,7 +607,7 @@ mod pallet {
         #[allow(clippy::boxed_local)]
         pub fn vote(
             origin: OriginFor<T>,
-            signed_vote: Box<SignedVote<T::BlockNumber, T::Hash, T::AccountId>>,
+            signed_vote: Box<SignedVote<BlockNumberFor<T>, T::Hash, T::AccountId>>,
         ) -> DispatchResult {
             ensure_none(origin)?;
 
@@ -615,7 +619,7 @@ mod pallet {
         #[pallet::weight(<T as Config>::WeightInfo::enable_rewards())]
         pub fn enable_rewards(
             origin: OriginFor<T>,
-            height: Option<T::BlockNumber>,
+            height: Option<BlockNumberFor<T>>,
         ) -> DispatchResult {
             ensure_root(origin)?;
 
@@ -754,13 +758,13 @@ impl<T: Config> Pallet<T> {
     /// Determine whether a randomness update should take place at this block.
     /// Assumes that initialization has already taken place.
     // TODO: Remove when switching to PoT by default
-    fn should_update_global_randomness(block_number: T::BlockNumber) -> bool {
+    fn should_update_global_randomness(block_number: BlockNumberFor<T>) -> bool {
         block_number % T::GlobalRandomnessUpdateInterval::get() == Zero::zero()
     }
 
     /// Determine whether an era change should take place at this block.
     /// Assumes that initialization has already taken place.
-    fn should_era_change(block_number: T::BlockNumber) -> bool {
+    fn should_era_change(block_number: BlockNumberFor<T>) -> bool {
         block_number % T::EraDuration::get() == Zero::zero()
     }
 
@@ -768,7 +772,10 @@ impl<T: Config> Pallet<T> {
     /// has returned `true`, and the caller is the only caller of this function.
     // TODO: Remove when switching to PoT by default
     #[cfg_attr(feature = "pot", allow(unused_variables))]
-    fn enact_update_global_randomness(_block_number: T::BlockNumber, block_randomness: Randomness) {
+    fn enact_update_global_randomness(
+        _block_number: BlockNumberFor<T>,
+        block_randomness: Randomness,
+    ) {
         #[cfg(not(feature = "pot"))]
         GlobalRandomnesses::<T>::mutate(|global_randomnesses| {
             global_randomnesses.next = Some(block_randomness);
@@ -818,7 +825,7 @@ impl<T: Config> Pallet<T> {
         EraStartSlot::<T>::put(current_slot);
     }
 
-    fn do_initialize(block_number: T::BlockNumber) {
+    fn do_initialize(block_number: BlockNumberFor<T>) {
         let pre_digest = frame_system::Pallet::<T>::digest()
             .logs
             .iter()
@@ -976,7 +983,7 @@ impl<T: Config> Pallet<T> {
 
             let mut entropy = PotEntropy::<T>::get();
             let lookback_in_blocks = pot_entropy_injection_interval
-                * T::BlockNumber::from(T::PotEntropyInjectionLookbackDepth::get());
+                * BlockNumberFor::<T>::from(T::PotEntropyInjectionLookbackDepth::get());
             let last_entropy_injection_block =
                 block_number / pot_entropy_injection_interval * pot_entropy_injection_interval;
             let maybe_entropy_source_block_number =
@@ -1048,7 +1055,7 @@ impl<T: Config> Pallet<T> {
         }
     }
 
-    fn do_finalize(_block_number: T::BlockNumber) {
+    fn do_finalize(_block_number: BlockNumberFor<T>) {
         // Deposit the next solution range in the block finalization to account for solution range override extrinsic and
         // era change happens in the same block.
         if let Some(next_solution_range) = SolutionRanges::<T>::get().next {
@@ -1076,7 +1083,7 @@ impl<T: Config> Pallet<T> {
     }
 
     fn do_report_equivocation(
-        equivocation_proof: EquivocationProof<T::Header>,
+        equivocation_proof: EquivocationProof<HeaderFor<T>>,
     ) -> DispatchResultWithPostInfo {
         let offender = equivocation_proof.offender.clone();
         let slot = equivocation_proof.slot;
@@ -1145,7 +1152,9 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    fn do_vote(signed_vote: SignedVote<T::BlockNumber, T::Hash, T::AccountId>) -> DispatchResult {
+    fn do_vote(
+        signed_vote: SignedVote<BlockNumberFor<T>, T::Hash, T::AccountId>,
+    ) -> DispatchResult {
         let Vote::V0 {
             height,
             parent_hash,
@@ -1167,7 +1176,7 @@ impl<T: Config> Pallet<T> {
         }
     }
 
-    fn do_enable_rewards(height: Option<T::BlockNumber>) -> DispatchResult {
+    fn do_enable_rewards(height: Option<BlockNumberFor<T>>) -> DispatchResult {
         if EnableRewards::<T>::get().is_some() {
             return Err(Error::<T>::RewardsAlreadyEnabled.into());
         }
@@ -1183,14 +1192,14 @@ impl<T: Config> Pallet<T> {
     /// extrinsic with a call to `report_equivocation` and will push the transaction to the pool.
     /// Only useful in an offchain context.
     pub fn submit_equivocation_report(
-        equivocation_proof: EquivocationProof<T::Header>,
+        equivocation_proof: EquivocationProof<HeaderFor<T>>,
     ) -> Option<()> {
         T::HandleEquivocation::submit_equivocation_report(equivocation_proof).ok()
     }
 
     /// Just stores offender from equivocation report in block list, only used for tests.
     pub fn submit_test_equivocation_report(
-        equivocation_proof: EquivocationProof<T::Header>,
+        equivocation_proof: EquivocationProof<HeaderFor<T>>,
     ) -> Option<()> {
         BlockList::<T>::insert(equivocation_proof.offender, ());
         Some(())
@@ -1206,7 +1215,7 @@ impl<T: Config> Pallet<T> {
 
         let entropy = PotEntropy::<T>::get();
         let lookback_in_blocks = pot_entropy_injection_interval
-            * T::BlockNumber::from(T::PotEntropyInjectionLookbackDepth::get());
+            * BlockNumberFor::<T>::from(T::PotEntropyInjectionLookbackDepth::get());
         let last_entropy_injection_block =
             block_number / pot_entropy_injection_interval * pot_entropy_injection_interval;
         let maybe_entropy_source_block_number =
@@ -1283,7 +1292,7 @@ where
 {
     /// Submit farmer vote vote that is essentially a header with bigger solution range than
     /// acceptable for block authoring.
-    pub fn submit_vote(signed_vote: SignedVote<T::BlockNumber, T::Hash, T::AccountId>) {
+    pub fn submit_vote(signed_vote: SignedVote<BlockNumberFor<T>, T::Hash, T::AccountId>) {
         let call = Call::vote {
             signed_vote: Box::new(signed_vote),
         };
@@ -1341,7 +1350,7 @@ impl<T: Config> Pallet<T> {
     }
 
     fn validate_vote(
-        signed_vote: &SignedVote<T::BlockNumber, T::Hash, T::AccountId>,
+        signed_vote: &SignedVote<BlockNumberFor<T>, T::Hash, T::AccountId>,
     ) -> TransactionValidity {
         check_vote::<T>(signed_vote, false)?;
 
@@ -1355,7 +1364,7 @@ impl<T: Config> Pallet<T> {
     }
 
     fn pre_dispatch_vote(
-        signed_vote: &SignedVote<T::BlockNumber, T::Hash, T::AccountId>,
+        signed_vote: &SignedVote<BlockNumberFor<T>, T::Hash, T::AccountId>,
     ) -> Result<(), TransactionValidityError> {
         match check_vote::<T>(signed_vote, true) {
             Ok(()) => Ok(()),
@@ -1461,7 +1470,7 @@ impl From<CheckVoteError> for TransactionValidityError {
 }
 
 fn check_vote<T: Config>(
-    signed_vote: &SignedVote<T::BlockNumber, T::Hash, T::AccountId>,
+    signed_vote: &SignedVote<BlockNumberFor<T>, T::Hash, T::AccountId>,
     pre_dispatch: bool,
 ) -> Result<(), CheckVoteError> {
     let Vote::V0 {
@@ -1871,8 +1880,8 @@ impl<T: Config> subspace_runtime_primitives::FindVotingRewardAddresses<T::Accoun
     }
 }
 
-impl<T: Config> frame_support::traits::Randomness<T::Hash, T::BlockNumber> for Pallet<T> {
-    fn random(subject: &[u8]) -> (T::Hash, T::BlockNumber) {
+impl<T: Config> frame_support::traits::Randomness<T::Hash, BlockNumberFor<T>> for Pallet<T> {
+    fn random(subject: &[u8]) -> (T::Hash, BlockNumberFor<T>) {
         let mut subject = subject.to_vec();
         subject.extend_from_slice(
             BlockRandomness::<T>::get()
@@ -1886,7 +1895,7 @@ impl<T: Config> frame_support::traits::Randomness<T::Hash, T::BlockNumber> for P
         )
     }
 
-    fn random_seed() -> (T::Hash, T::BlockNumber) {
+    fn random_seed() -> (T::Hash, BlockNumberFor<T>) {
         (
             T::Hashing::hash(
                 BlockRandomness::<T>::get()

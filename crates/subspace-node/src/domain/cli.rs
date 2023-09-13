@@ -18,8 +18,7 @@ use crate::domain::evm_chain_spec::{self, SpecId};
 use clap::Parser;
 use sc_cli::{
     ChainSpec, CliConfiguration, DefaultConfigurationValues, ImportParams, KeystoreParams,
-    NetworkParams, Result, Role, RunCmd as SubstrateRunCmd, RuntimeVersion, SharedParams,
-    SubstrateCli,
+    NetworkParams, Result, Role, RunCmd as SubstrateRunCmd, SharedParams, SubstrateCli,
 };
 use sc_service::config::PrometheusConfig;
 use sc_service::{BasePath, Configuration};
@@ -146,15 +145,6 @@ impl SubstrateCli for DomainCli {
         match runtime_name {
             "evm" => evm_chain_spec::load_chain_spec(id),
             unknown_name => Err(format!("Unknown runtime: {unknown_name}")),
-        }
-    }
-
-    fn native_runtime_version(_chain_spec: &Box<dyn ChainSpec>) -> &'static RuntimeVersion {
-        // TODO: Fetch the runtime name of `self.domain_id` properly.
-        let runtime_name = "evm";
-        match runtime_name {
-            "evm" => &evm_domain_runtime::VERSION,
-            unknown_name => unreachable!("Unknown runtime: {unknown_name}"),
         }
     }
 }

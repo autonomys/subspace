@@ -47,9 +47,7 @@ use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
 use sc_basic_authorship::ProposerFactory;
 use sc_client_api::execution_extensions::ExtensionsFactory;
-use sc_client_api::{
-    BlockBackend, BlockchainEvents, ExecutorProvider, HeaderBackend, StateBackendFor,
-};
+use sc_client_api::{Backend, BlockBackend, BlockchainEvents, ExecutorProvider, HeaderBackend};
 use sc_consensus::{BlockImport, DefaultImportQueue, ImportQueue};
 use sc_consensus_slots::SlotProportion;
 use sc_consensus_subspace::archiver::{create_subspace_archiver, SegmentHeadersStore};
@@ -70,7 +68,8 @@ use sc_service::error::Error as ServiceError;
 use sc_service::{Configuration, NetworkStarter, SpawnTasksParams, TaskManager};
 use sc_subspace_block_relay::{build_consensus_relay, NetworkWrapper};
 use sc_telemetry::{Telemetry, TelemetryWorker};
-use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi, TransactionFor};
+use sc_transaction_pool_api::OffchainTransactionPoolFactory;
+use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderMetadata;
 use sp_consensus::Error as ConsensusError;
@@ -80,7 +79,6 @@ use sp_consensus_subspace::digests::extract_pre_digest;
 #[cfg(feature = "pot")]
 use sp_consensus_subspace::PotExtension;
 use sp_consensus_subspace::{FarmerPublicKey, KzgExtension, PosExtension, SubspaceApi};
-use sp_core::offchain;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::transaction::PreValidationObjectApi;
 use sp_domains::{DomainsApi, GenerateGenesisStateRoot, GenesisReceiptExtension};
@@ -107,7 +105,7 @@ use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::Node;
 use subspace_proof_of_space::Table;
 use subspace_runtime_primitives::opaque::Block;
-use subspace_runtime_primitives::{AccountId, Balance, Hash, Index as Nonce};
+use subspace_runtime_primitives::{AccountId, Balance, Hash, Nonce};
 use subspace_transaction_pool::{FullPool, PreValidateTransaction};
 use tracing::{debug, error, info, Instrument};
 
@@ -249,7 +247,6 @@ where
         &self,
         _block_hash: Block::Hash,
         _block_number: NumberFor<Block>,
-        _capabilities: offchain::Capabilities,
     ) -> Extensions {
         let mut exts = Extensions::new();
         exts.register(KzgExtension::new(self.kzg.clone()));
@@ -383,14 +380,7 @@ where
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
     /// Subspace block import
-    pub block_import: Box<
-        dyn BlockImport<
-                Block,
-                Error = ConsensusError,
-                Transaction = TransactionFor<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
-            > + Send
-            + Sync,
-    >,
+    pub block_import: Box<dyn BlockImport<Block, Error = ConsensusError> + Send + Sync>,
     /// Subspace link
     pub subspace_link: SubspaceLink<Block>,
     /// Segment headers store
@@ -406,7 +396,7 @@ type PartialComponents<RuntimeApi, ExecutorDispatch> = sc_service::PartialCompon
     FullClient<RuntimeApi, ExecutorDispatch>,
     FullBackend,
     FullSelectChain,
-    DefaultImportQueue<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
+    DefaultImportQueue<Block>,
     FullPool<
         Block,
         FullClient<RuntimeApi, ExecutorDispatch>,
@@ -437,7 +427,7 @@ where
         + Send
         + Sync
         + 'static,
-    RuntimeApi::RuntimeApi: ApiExt<Block, StateBackend = StateBackendFor<FullBackend, Block>>
+    RuntimeApi::RuntimeApi: ApiExt<Block>
         + Metadata<Block>
         + BlockBuilder<Block>
         + OffchainWorkerApi<Block>
@@ -686,7 +676,7 @@ where
         + Send
         + Sync
         + 'static,
-    RuntimeApi::RuntimeApi: ApiExt<Block, StateBackend = StateBackendFor<FullBackend, Block>>
+    RuntimeApi::RuntimeApi: ApiExt<Block>
         + Metadata<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + BlockBuilder<Block>
@@ -909,11 +899,23 @@ where
     }
 
     if config.base.offchain_worker.enabled {
-        sc_service::build_offchain_workers(
-            &config.base,
-            task_manager.spawn_handle(),
-            client.clone(),
-            network_service.clone(),
+        task_manager.spawn_handle().spawn(
+            "offchain-workers-runner",
+            "offchain-worker",
+            sc_offchain::OffchainWorkers::new(sc_offchain::OffchainWorkerOptions {
+                runtime_api_provider: client.clone(),
+                is_validator: config.base.role.is_authority(),
+                keystore: Some(keystore_container.keystore()),
+                offchain_db: backend.offchain_storage(),
+                transaction_pool: Some(OffchainTransactionPoolFactory::new(
+                    transaction_pool.clone(),
+                )),
+                network_provider: network_service.clone(),
+                enable_http_requests: true,
+                custom_extensions: |_| vec![],
+            })
+            .run(client.clone(), task_manager.spawn_handle())
+            .boxed(),
         );
     }
 

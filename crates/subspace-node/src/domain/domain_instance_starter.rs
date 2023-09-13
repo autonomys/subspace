@@ -225,7 +225,6 @@ fn create_configuration<
         blocks_pruning: cli_config.blocks_pruning()?,
         wasm_method: cli_config.wasm_method()?,
         wasm_runtime_overrides: cli_config.wasm_runtime_overrides(),
-        execution_strategies: cli_config.execution_strategies(is_dev, is_validator)?,
         rpc_addr: cli_config.rpc_addr(DCV::rpc_listen_port())?,
         rpc_methods: cli_config.rpc_methods()?,
         rpc_max_connections: cli_config.rpc_max_connections()?,

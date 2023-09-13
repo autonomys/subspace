@@ -145,10 +145,10 @@ where
     }
 
     io.merge(
-        Eth::new(
+        Eth::<Block, Client, TxPool, CT, BE, CA, EC>::new(
             client.clone(),
             pool.clone(),
-            graph,
+            graph.clone(),
             converter,
             sync.clone(),
             vec![],
@@ -170,6 +170,7 @@ where
             EthFilter::new(
                 client.clone(),
                 frontier_backend,
+                graph.clone(),
                 filter_pool,
                 500_usize, // max stored filters
                 max_past_logs,

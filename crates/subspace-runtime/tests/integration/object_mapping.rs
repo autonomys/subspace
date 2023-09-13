@@ -1,8 +1,8 @@
 use codec::Encode;
-use frame_support::sp_io;
 use hex_literal::hex;
 use sp_objects::runtime_decl_for_objects_api::ObjectsApiV1;
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT};
+use sp_runtime::BuildStorage;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{crypto, Blake2b256Hash};
 use subspace_runtime::{
@@ -239,8 +239,8 @@ fn grandpa_object_mapping() {
 }
 
 fn new_test_ext() -> sp_io::TestExternalities {
-    let t = frame_system::GenesisConfig::default()
-        .build_storage::<Runtime>()
+    let t = frame_system::GenesisConfig::<Runtime>::default()
+        .build_storage()
         .unwrap();
 
     let mut t: sp_io::TestExternalities = t.into();

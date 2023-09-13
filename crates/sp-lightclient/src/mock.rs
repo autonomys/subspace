@@ -1,11 +1,11 @@
 use crate::{ChainConstants, HashOf, HeaderExt, NumberOf, Storage};
 use codec::{Decode, Encode};
-use frame_support::sp_io::TestExternalities;
 use scale_info::TypeInfo;
 use sp_arithmetic::traits::Zero;
 #[cfg(feature = "pot")]
 use sp_consensus_subspace::PotExtension;
 use sp_consensus_subspace::{KzgExtension, PosExtension};
+use sp_io::TestExternalities;
 use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
 use std::collections::{BTreeMap, HashMap};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};

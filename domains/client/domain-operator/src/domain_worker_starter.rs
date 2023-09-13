@@ -19,13 +19,12 @@ use crate::domain_bundle_producer::DomainBundleProducer;
 use crate::domain_worker::{handle_block_import_notifications, handle_slot_notifications};
 use crate::parent_chain::DomainParentChain;
 use crate::utils::{BlockInfo, OperatorSlotInfo};
-use crate::{NewSlotNotification, OperatorStreams, TransactionFor};
+use crate::{NewSlotNotification, OperatorStreams};
 use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
 use futures::channel::mpsc;
 use futures::{future, FutureExt, Stream, StreamExt, TryFutureExt};
 use sc_client_api::{
     AuxStore, BlockBackend, BlockImportNotification, BlockchainEvents, Finalizer, ProofProvider,
-    StateBackendFor,
 };
 use sc_consensus::BlockImport;
 use sp_api::{BlockT, ProvideRuntimeApi};
@@ -34,7 +33,7 @@ use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
 use sp_domains::{BundleProducerElectionApi, DomainsApi};
 use sp_messenger::MessengerApi;
-use sp_runtime::traits::{HashFor, NumberFor};
+use sp_runtime::traits::NumberFor;
 use std::sync::Arc;
 use subspace_runtime_primitives::Balance;
 use tracing::{info, Instrument};
@@ -85,7 +84,7 @@ pub(super) async fn start_worker<
         + MessengerApi<Block, NumberFor<Block>>
         + InherentExtrinsicApi<Block>
         + BlockBuilder<Block>
-        + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
+        + sp_api::ApiExt<Block>,
     CClient: HeaderBackend<CBlock>
         + HeaderMetadata<CBlock, Error = sp_blockchain::Error>
         + BlockBackend<CBlock>
@@ -101,12 +100,7 @@ pub(super) async fn start_worker<
     CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + 'static,
     NSNS: Stream<Item = NewSlotNotification> + Send + 'static,
     E: CodeExecutor,
-    TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
-    for<'b> &'b BI: BlockImport<
-        Block,
-        Transaction = sp_api::TransactionFor<Client, Block>,
-        Error = sp_consensus::Error,
-    >,
+    for<'b> &'b BI: BlockImport<Block, Error = sp_consensus::Error>,
     BI: Send + Sync + 'static,
 {
     let span = tracing::Span::current();

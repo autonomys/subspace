@@ -17,7 +17,7 @@ use sc_proof_of_time::verifier::PotVerifier;
 use sc_telemetry::CONSENSUS_DEBUG;
 use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_TRACE};
 use schnorrkel::context::SigningContext;
-use sp_api::{ApiExt, BlockT, HeaderT, ProvideRuntimeApi, TransactionFor};
+use sp_api::{ApiExt, BlockT, HeaderT, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::{BlockOrigin, Error as ConsensusError};
@@ -60,13 +60,10 @@ pub fn import_queue<PosTable, Block: BlockT, Client, SelectChain, Inner, SN>(
     telemetry: Option<TelemetryHandle>,
     is_authoring_blocks: bool,
     #[cfg(feature = "pot")] pot_verifier: PotVerifier,
-) -> Result<DefaultImportQueue<Block, Client>, sp_blockchain::Error>
+) -> Result<DefaultImportQueue<Block>, sp_blockchain::Error>
 where
     PosTable: Table,
-    Inner: BlockImport<Block, Error = ConsensusError, Transaction = TransactionFor<Client, Block>>
-        + Send
-        + Sync
-        + 'static,
+    Inner: BlockImport<Block, Error = ConsensusError> + Send + Sync + 'static,
     Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + AuxStore + Send + Sync + 'static,
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey> + ApiExt<Block>,
     SelectChain: sp_consensus::SelectChain<Block> + 'static,
@@ -379,8 +376,8 @@ where
 {
     async fn verify(
         &mut self,
-        mut block: BlockImportParams<Block, ()>,
-    ) -> Result<BlockImportParams<Block, ()>, String> {
+        mut block: BlockImportParams<Block>,
+    ) -> Result<BlockImportParams<Block>, String> {
         trace!(
             target: "subspace",
             "Verifying origin: {:?} header: {:?} justification(s): {:?} body: {:?}",

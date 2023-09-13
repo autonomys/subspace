@@ -15,7 +15,7 @@ use sp_core::traits::{CodeExecutor, RuntimeCode};
 use sp_core::H256;
 use sp_domains::fraud_proof::{ExecutionPhase, InvalidStateTransitionProof, VerificationError};
 use sp_domains::DomainsApi;
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashFor, Header as HeaderT, NumberFor};
+use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashingFor, Header as HeaderT, NumberFor};
 use sp_runtime::Digest;
 use sp_state_machine::backend::AsTrieBackend;
 use sp_state_machine::{TrieBackend, TrieBackendBuilder, TrieBackendStorage};
@@ -47,7 +47,7 @@ where
 
     /// Returns a storage proof which can be used to reconstruct a partial state trie to re-run
     /// the execution by someone who does not own the whole state.
-    pub fn prove_execution<DB: HashDB<HashFor<Block>, DBValue>>(
+    pub fn prove_execution<DB: HashDB<HashingFor<Block>, DBValue>>(
         &self,
         at: Block::Hash,
         execution_phase: &ExecutionPhase,
@@ -74,7 +74,7 @@ where
                 execution_phase.proving_method(),
                 call_data,
                 &runtime_code,
-                Default::default(),
+                &mut Default::default(),
             )
             .map(|(_ret, proof)| proof)
             .map_err(Into::into)
@@ -86,7 +86,7 @@ where
                 execution_phase.proving_method(),
                 call_data,
                 &runtime_code,
-                Default::default(),
+                &mut Default::default(),
             )
             .map(|(_ret, proof)| proof)
             .map_err(Into::into)
@@ -169,8 +169,6 @@ where
     H: 'a + Hasher,
     DB: HashDB<H, DBValue>,
 {
-    type Overlay = S::Overlay;
-
     fn get(&self, key: &H::Out, prefix: Prefix) -> Result<Option<DBValue>, String> {
         match HashDB::get(&self.delta, key, prefix) {
             Some(v) => Ok(Some(v)),

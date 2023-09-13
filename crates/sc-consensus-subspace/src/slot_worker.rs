@@ -38,7 +38,7 @@ use sc_proof_of_time::PotSlotWorker;
 use sc_telemetry::TelemetryHandle;
 use sc_utils::mpsc::tracing_unbounded;
 use schnorrkel::context::SigningContext;
-use sp_api::{ApiError, NumberFor, ProvideRuntimeApi, TransactionFor};
+use sp_api::{ApiError, NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata};
 use sp_consensus::{BlockOrigin, Environment, Error as ConsensusError, Proposer, SyncOracle};
 use sp_consensus_slots::Slot;
@@ -227,8 +227,8 @@ where
         + 'static,
     Client::Api: SubspaceApi<Block, FarmerPublicKey>,
     E: Environment<Block, Error = Error> + Send + Sync,
-    E::Proposer: Proposer<Block, Error = Error, Transaction = TransactionFor<Client, Block>>,
-    I: BlockImport<Block, Transaction = TransactionFor<Client, Block>> + Send + Sync + 'static,
+    E::Proposer: Proposer<Block, Error = Error>,
+    I: BlockImport<Block> + Send + Sync + 'static,
     SO: SyncOracle + Send + Sync,
     L: JustificationSyncLink<Block>,
     BS: BackoffAuthoringBlocksStrategy<NumberFor<Block>> + Send + Sync,
@@ -619,11 +619,11 @@ where
         header: Block::Header,
         header_hash: &Block::Hash,
         body: Vec<Block::Extrinsic>,
-        storage_changes: sc_consensus_slots::StorageChanges<I::Transaction, Block>,
+        storage_changes: sc_consensus_slots::StorageChanges<Block>,
         #[cfg(feature = "pot")] (pre_digest, _justification): Self::Claim,
         #[cfg(not(feature = "pot"))] pre_digest: Self::Claim,
         _aux_data: Self::AuxData,
-    ) -> Result<BlockImportParams<Block, I::Transaction>, ConsensusError> {
+    ) -> Result<BlockImportParams<Block>, ConsensusError> {
         let signature = self
             .sign_reward(
                 H256::from_slice(header_hash.as_ref()),
@@ -716,8 +716,8 @@ where
         + 'static,
     Client::Api: SubspaceApi<Block, FarmerPublicKey>,
     E: Environment<Block, Error = Error> + Send + Sync,
-    E::Proposer: Proposer<Block, Error = Error, Transaction = TransactionFor<Client, Block>>,
-    I: BlockImport<Block, Transaction = TransactionFor<Client, Block>> + Send + Sync + 'static,
+    E::Proposer: Proposer<Block, Error = Error>,
+    I: BlockImport<Block> + Send + Sync + 'static,
     SO: SyncOracle + Send + Sync,
     L: JustificationSyncLink<Block>,
     BS: BackoffAuthoringBlocksStrategy<NumberFor<Block>> + Send + Sync,

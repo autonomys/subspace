@@ -11,6 +11,7 @@ use frame_support::traits::fungible::{Inspect, MutateHold};
 use frame_support::traits::tokens::{Fortitude, Preservation};
 use frame_support::weights::Weight;
 use frame_support::{ensure, PalletError};
+use frame_system::pallet_prelude::*;
 use scale_info::TypeInfo;
 use sp_core::Get;
 use sp_domains::domain::generate_genesis_state_root;
@@ -118,7 +119,7 @@ pub(crate) fn can_instantiate_domain<T: Config>(
 pub(crate) fn do_instantiate_domain<T: Config>(
     domain_config: DomainConfig,
     owner_account_id: T::AccountId,
-    created_at: T::BlockNumber,
+    created_at: BlockNumberFor<T>,
     raw_genesis_config: Option<Vec<u8>>,
 ) -> Result<DomainId, Error> {
     can_instantiate_domain::<T>(&owner_account_id, &domain_config)?;
@@ -181,7 +182,7 @@ fn initialize_genesis_receipt<T: Config>(
     runtime_code: Vec<u8>,
     raw_genesis_config: Option<Vec<u8>>,
 ) -> Result<ExecutionReceiptOf<T>, Error> {
-    let consensus_genesis_hash = frame_system::Pallet::<T>::block_hash(T::BlockNumber::zero());
+    let consensus_genesis_hash = frame_system::Pallet::<T>::block_hash(BlockNumberFor::<T>::zero());
     // The `GenesisReceiptExtension` is unavailable during runtime benchmarking, remove once
     // https://github.com/paritytech/substrate/issues/14733 is resolved.
     let genesis_state_root = if cfg!(feature = "runtime-benchmarks") {

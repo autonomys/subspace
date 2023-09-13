@@ -5,7 +5,7 @@
 
 #![warn(missing_docs)]
 
-use domain_runtime_primitives::{Balance, Index as Nonce};
+use domain_runtime_primitives::{Balance, Nonce};
 use jsonrpsee::RpcModule;
 use pallet_transaction_payment_rpc::{TransactionPayment, TransactionPaymentApiServer};
 use sc_client_api::{AuxStore, BlockBackend};

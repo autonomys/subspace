@@ -18,7 +18,7 @@
 
 use codec::{Decode, Encode};
 use sc_consensus::block_import::{BlockCheckParams, BlockImport, BlockImportParams, ImportResult};
-use sp_api::{ProvideRuntimeApi, TransactionFor};
+use sp_api::ProvideRuntimeApi;
 use sp_consensus::Error as ConsensusError;
 use sp_domains::DomainsApi;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT};
@@ -63,14 +63,12 @@ where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + Send + Sync + 'static,
     Client::Api: DomainsApi<Block, DomainNumber, DomainHash>,
-    Inner: BlockImport<Block, Transaction = TransactionFor<Client, Block>, Error = ConsensusError>
-        + Send,
+    Inner: BlockImport<Block, Error = ConsensusError> + Send,
     Verifier: VerifyFraudProof<Block> + Send,
     DomainNumber: Encode + Decode + Send,
     DomainHash: Encode + Decode + Send,
 {
     type Error = ConsensusError;
-    type Transaction = TransactionFor<Client, Block>;
 
     async fn check_block(
         &mut self,
@@ -81,7 +79,7 @@ where
 
     async fn import_block(
         &mut self,
-        block: BlockImportParams<Block, Self::Transaction>,
+        block: BlockImportParams<Block>,
     ) -> Result<ImportResult, Self::Error> {
         let _parent_hash = *block.header.parent_hash();
 

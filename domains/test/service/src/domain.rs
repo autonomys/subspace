@@ -13,8 +13,9 @@ use evm_domain_test_runtime;
 use evm_domain_test_runtime::AccountId as AccountId20;
 use fp_rpc::EthereumRuntimeRPCApi;
 use frame_support::dispatch::{DispatchInfo, PostDispatchInfo};
+use frame_system::pallet_prelude::BlockNumberFor;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
-use sc_client_api::{HeaderBackend, StateBackendFor};
+use sc_client_api::HeaderBackend;
 use sc_executor::NativeExecutionDispatch;
 use sc_network::{NetworkService, NetworkStateInfo};
 use sc_network_sync::SyncingService;
@@ -39,7 +40,7 @@ use std::marker::PhantomData;
 use std::str::FromStr;
 use std::sync::Arc;
 use subspace_runtime_primitives::opaque::Block as CBlock;
-use subspace_runtime_primitives::Index as Nonce;
+use subspace_runtime_primitives::Nonce;
 use subspace_test_service::MockConsensusNode;
 use substrate_frame_rpc_system::AccountNonceApi;
 use substrate_test_client::{
@@ -78,7 +79,7 @@ pub struct DomainNode<Runtime, RuntimeApi, ExecutorDispatch, AccountId>
 where
     RuntimeApi:
         ConstructRuntimeApi<Block, Client<RuntimeApi, ExecutorDispatch>> + Send + Sync + 'static,
-    RuntimeApi::RuntimeApi: ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>
+    RuntimeApi::RuntimeApi: ApiExt<Block>
         + Metadata<Block>
         + BlockBuilder<Block>
         + OffchainWorkerApi<Block>
@@ -125,16 +126,14 @@ where
 impl<Runtime, RuntimeApi, ExecutorDispatch, AccountId>
     DomainNode<Runtime, RuntimeApi, ExecutorDispatch, AccountId>
 where
-    Runtime: frame_system::Config<Hash = H256, BlockNumber = u32>
-        + pallet_transaction_payment::Config
-        + Send
-        + Sync,
+    Runtime: frame_system::Config<Hash = H256> + pallet_transaction_payment::Config + Send + Sync,
     Runtime::RuntimeCall:
         Dispatchable<Info = DispatchInfo, PostInfo = PostDispatchInfo> + Send + Sync,
     crate::BalanceOf<Runtime>: Send + Sync + From<u64> + sp_runtime::FixedPointOperand,
+    u64: From<BlockNumberFor<Runtime>>,
     RuntimeApi:
         ConstructRuntimeApi<Block, Client<RuntimeApi, ExecutorDispatch>> + Send + Sync + 'static,
-    RuntimeApi::RuntimeApi: ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>
+    RuntimeApi::RuntimeApi: ApiExt<Block>
         + Metadata<Block>
         + BlockBuilder<Block>
         + OffchainWorkerApi<Block>
