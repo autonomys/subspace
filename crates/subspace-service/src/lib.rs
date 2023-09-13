@@ -19,6 +19,7 @@
     const_option,
     impl_trait_in_assoc_type,
     int_roundings,
+    let_chains,
     type_alias_impl_trait,
     type_changing_struct_update
 )]
@@ -37,9 +38,13 @@ use domain_runtime_primitives::{BlockNumber as DomainNumber, Hash as DomainHash}
 pub use dsn::DsnConfig;
 use frame_system_rpc_runtime_api::AccountNonceApi;
 use futures::channel::oneshot;
+#[cfg(feature = "pot")]
+use futures::executor::block_on;
+use futures::FutureExt;
 use jsonrpsee::RpcModule;
 use pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi;
 use parking_lot::Mutex;
+use prometheus_client::registry::Registry;
 use sc_basic_authorship::ProposerFactory;
 use sc_client_api::execution_extensions::ExtensionsFactory;
 use sc_client_api::{
@@ -56,9 +61,9 @@ use sc_consensus_subspace::{
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
 #[cfg(feature = "pot")]
-use sc_proof_of_time::gossip::pot_gossip_peers_set_config;
+use sc_proof_of_time::source::gossip::pot_gossip_peers_set_config;
 #[cfg(feature = "pot")]
-use sc_proof_of_time::source::PotSource;
+use sc_proof_of_time::source::PotSourceWorker;
 #[cfg(feature = "pot")]
 use sc_proof_of_time::verifier::PotVerifier;
 use sc_service::error::Error as ServiceError;
@@ -70,6 +75,10 @@ use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderMetadata;
 use sp_consensus::Error as ConsensusError;
 use sp_consensus_slots::Slot;
+#[cfg(feature = "pot")]
+use sp_consensus_subspace::digests::extract_pre_digest;
+#[cfg(feature = "pot")]
+use sp_consensus_subspace::PotExtension;
 use sp_consensus_subspace::{FarmerPublicKey, KzgExtension, PosExtension, SubspaceApi};
 use sp_core::offchain;
 use sp_core::traits::SpawnEssentialNamed;
@@ -79,6 +88,8 @@ use sp_externalities::Extensions;
 use sp_objects::ObjectsApi;
 use sp_offchain::OffchainWorkerApi;
 use sp_runtime::traits::{Block as BlockT, BlockIdTo, NumberFor};
+#[cfg(feature = "pot")]
+use sp_runtime::traits::{Header, Zero};
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use static_assertions::const_assert;
@@ -90,6 +101,7 @@ use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 #[cfg(feature = "pot")]
 use subspace_core_primitives::PotSeed;
 use subspace_fraud_proof::verifier_api::VerifierClient;
+use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::Node;
@@ -185,6 +197,8 @@ pub enum SubspaceNetworking {
         node: Node,
         /// Bootstrap nodes used (that can be also sent to the farmer over RPC)
         bootstrap_nodes: Vec<Multiaddr>,
+        /// DSN metrics registry (libp2p type).
+        metrics_registry: Option<Registry>,
     },
     /// Networking must be instantiated internally
     Create {
@@ -213,16 +227,23 @@ pub struct SubspaceConfiguration {
     pub is_timekeeper: bool,
 }
 
-struct SubspaceExtensionsFactory<PosTable> {
+struct SubspaceExtensionsFactory<PosTable, Client> {
     kzg: Kzg,
+    #[cfg_attr(not(feature = "pot"), allow(dead_code))]
+    client: Arc<Client>,
+    #[cfg(feature = "pot")]
+    pot_verifier: PotVerifier,
     domain_genesis_receipt_ext: Option<Arc<dyn GenerateGenesisStateRoot>>,
     _pos_table: PhantomData<PosTable>,
 }
 
-impl<PosTable, Block> ExtensionsFactory<Block> for SubspaceExtensionsFactory<PosTable>
+impl<PosTable, Block, Client> ExtensionsFactory<Block>
+    for SubspaceExtensionsFactory<PosTable, Client>
 where
     PosTable: Table,
     Block: BlockT,
+    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + 'static,
+    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
 {
     fn extensions_for(
         &self,
@@ -233,6 +254,118 @@ where
         let mut exts = Extensions::new();
         exts.register(KzgExtension::new(self.kzg.clone()));
         exts.register(PosExtension::new::<PosTable>());
+        #[cfg(feature = "pot")]
+        exts.register(PotExtension::new({
+            let client = Arc::clone(&self.client);
+            let pot_verifier = self.pot_verifier.clone();
+
+            Box::new(move |parent_hash, slot, proof_of_time| {
+                let parent_hash = {
+                    let mut converted_parent_hash = Block::Hash::default();
+                    converted_parent_hash.as_mut().copy_from_slice(&parent_hash);
+                    converted_parent_hash
+                };
+
+                let parent_header = match client.header(parent_hash) {
+                    Ok(Some(parent_header)) => parent_header,
+                    Ok(None) => {
+                        error!(
+                            %parent_hash,
+                            "Header not found during proof of time verification"
+                        );
+
+                        return false;
+                    }
+                    Err(error) => {
+                        error!(
+                            %error,
+                            %parent_hash,
+                            "Failed to retrieve header during proof of time verification"
+                        );
+
+                        return false;
+                    }
+                };
+                let parent_pre_digest = match extract_pre_digest(&parent_header) {
+                    Ok(parent_pre_digest) => parent_pre_digest,
+                    Err(error) => {
+                        error!(
+                            %error,
+                            %parent_hash,
+                            parent_number = %parent_header.number(),
+                            "Failed to extract pre-digest from parent header during proof of time \
+                            verification, this must never happen"
+                        );
+
+                        return false;
+                    }
+                };
+
+                let parent_slot = parent_pre_digest.slot();
+                if slot <= *parent_slot {
+                    return false;
+                }
+
+                let pot_parameters = match client.runtime_api().pot_parameters(parent_hash) {
+                    Ok(pot_parameters) => pot_parameters,
+                    Err(error) => {
+                        debug!(
+                            %error,
+                            %parent_hash,
+                            parent_number = %parent_header.number(),
+                            "Failed to retieve proof of time parameters during proof of time \
+                            verification"
+                        );
+
+                        return false;
+                    }
+                };
+
+                let slot_iterations;
+                let pot_seed;
+                let after_parent_slot = parent_slot + Slot::from(1);
+
+                if parent_header.number().is_zero() {
+                    slot_iterations = pot_parameters.slot_iterations();
+                    pot_seed = pot_verifier.genesis_seed();
+                } else {
+                    let pot_info = parent_pre_digest.pot_info();
+                    // The change to number of iterations might have happened before
+                    // `after_parent_slot`
+                    if let Some(parameters_change) = pot_parameters.next_parameters_change()
+                        && parameters_change.slot <= after_parent_slot
+                    {
+                        slot_iterations = parameters_change.slot_iterations;
+                        // Only if entropy injection happens exactly after parent slot we need to \
+                        // mix it in
+                        if parameters_change.slot == after_parent_slot {
+                            pot_seed = pot_info
+                                .proof_of_time()
+                                .seed_with_entropy(&parameters_change.entropy);
+                        } else {
+                            pot_seed = pot_info
+                                .proof_of_time().seed();
+                        }
+                    } else {
+                        slot_iterations = pot_parameters.slot_iterations();
+                        pot_seed = pot_info
+                            .proof_of_time()
+                            .seed();
+                    }
+                };
+
+                // Ensure proof of time and future proof of time included in upcoming block are
+                // valid
+                block_on(pot_verifier.is_output_valid(
+                    after_parent_slot,
+                    pot_seed,
+                    slot_iterations,
+                    Slot::from(slot - u64::from(parent_slot)),
+                    proof_of_time,
+                    pot_parameters.next_parameters_change(),
+                ))
+            })
+        }));
         if let Some(ext) = self.domain_genesis_receipt_ext.clone() {
             exts.register(GenesisReceiptExtension::new(ext));
         }
@@ -341,15 +474,23 @@ where
     let domain_genesis_receipt_ext =
         construct_domain_genesis_block_builder.map(|f| f(backend.clone(), executor.clone()));
 
-    client
-        .execution_extensions()
-        .set_extensions_factory(SubspaceExtensionsFactory::<PosTable> {
+    let client = Arc::new(client);
+
+    #[cfg(feature = "pot")]
+    let pot_verifier = PotVerifier::new(
+        PotSeed::from_genesis(client.info().genesis_hash.as_ref(), pot_external_entropy),
+        POT_VERIFIER_CACHE_SIZE,
+    );
+    client.execution_extensions().set_extensions_factory(
+        SubspaceExtensionsFactory::<PosTable, _> {
             kzg: kzg.clone(),
+            client: Arc::clone(&client),
+            #[cfg(feature = "pot")]
+            pot_verifier: pot_verifier.clone(),
             domain_genesis_receipt_ext,
             _pos_table: PhantomData,
-        });
-
-    let client = Arc::new(client);
+        },
+    );
 
     let telemetry = telemetry.map(|(worker, telemetry)| {
         task_manager
@@ -394,11 +535,6 @@ where
     let fraud_proof_block_import =
         sc_consensus_fraud_proof::block_import(client.clone(), client.clone(), proof_verifier);
 
-    #[cfg(feature = "pot")]
-    let pot_verifier = PotVerifier::new(
-        PotSeed::from_genesis(client.info().genesis_hash.as_ref(), pot_external_entropy),
-        POT_VERIFIER_CACHE_SIZE,
-    );
     let (block_import, subspace_link) = sc_consensus_subspace::block_import::<
         PosTable,
         _,
@@ -539,7 +675,7 @@ type FullNode<RuntimeApi, ExecutorDispatch> = NewFull<
 
 /// Builds a new service for a full client.
 pub async fn new_full<PosTable, RuntimeApi, ExecutorDispatch>(
-    config: SubspaceConfiguration,
+    mut config: SubspaceConfiguration,
     partial_components: PartialComponents<RuntimeApi, ExecutorDispatch>,
     enable_rpc_extensions: bool,
     block_proposal_slot_portion: SlotProportion,
@@ -583,11 +719,12 @@ where
         mut telemetry,
     } = other;
 
-    let (node, bootstrap_nodes) = match config.subspace_networking {
+    let (node, bootstrap_nodes, dsn_metrics_registry) = match config.subspace_networking {
         SubspaceNetworking::Reuse {
             node,
             bootstrap_nodes,
-        } => (node, bootstrap_nodes),
+            metrics_registry,
+        } => (node, bootstrap_nodes, metrics_registry),
         SubspaceNetworking::Create { config: dsn_config } => {
             let dsn_protocol_version = hex::encode(client.chain_info().genesis_hash);
 
@@ -597,10 +734,11 @@ where
                 "Setting DSN protocol version..."
             );
 
-            let (node, mut node_runner) = create_dsn_instance(
+            let (node, mut node_runner, dsn_metrics_registry) = create_dsn_instance(
                 dsn_protocol_version,
                 dsn_config.clone(),
                 segment_headers_store.clone(),
+                config.base.prometheus_config.is_some(),
             )?;
 
             info!("Subspace networking initialized: Node ID is {}", node.id());
@@ -630,7 +768,7 @@ where
                     ),
                 );
 
-            (node, dsn_config.bootstrap_nodes)
+            (node, dsn_config.bootstrap_nodes, dsn_metrics_registry)
         }
     };
 
@@ -788,17 +926,17 @@ where
 
     #[cfg(feature = "pot")]
     let pot_slot_info_stream = {
-        let (pot_source, pot_gossip_worker, pot_slot_info_stream) = PotSource::new(
+        let (pot_source_worker, pot_gossip_worker, pot_slot_info_stream) = PotSourceWorker::new(
             config.is_timekeeper,
             client.clone(),
-            pot_verifier,
+            pot_verifier.clone(),
             network_service.clone(),
             sync_service.clone(),
         )
         .map_err(|error| Error::Other(error.into()))?;
         let spawn_essential_handle = task_manager.spawn_essential_handle();
 
-        spawn_essential_handle.spawn("pot-source", Some("pot"), pot_source.run());
+        spawn_essential_handle.spawn("pot-source", Some("pot"), pot_source_worker.run());
         spawn_essential_handle.spawn_blocking("pot-gossip", Some("pot"), pot_gossip_worker.run());
 
         pot_slot_info_stream
@@ -856,6 +994,8 @@ where
             max_block_proposal_slot_portion: None,
             telemetry: None,
             #[cfg(feature = "pot")]
+            pot_verifier,
+            #[cfg(feature = "pot")]
             pot_slot_info_stream,
         };
 
@@ -872,6 +1012,26 @@ where
             subspace,
         );
     }
+
+    // We replace the Substrate implementation of metrics server with our own.
+    if let Some(prometheus_config) = config.base.prometheus_config.take() {
+        let registry = if let Some(dsn_metrics_registry) = dsn_metrics_registry {
+            RegistryAdapter::Both(dsn_metrics_registry, prometheus_config.registry)
+        } else {
+            RegistryAdapter::Substrate(prometheus_config.registry)
+        };
+
+        let metrics_server =
+            start_prometheus_metrics_server(vec![prometheus_config.port], registry)?.map(|error| {
+                debug!(?error, "Metrics server error.");
+            });
+
+        task_manager.spawn_handle().spawn(
+            "node-metrics-server",
+            Some("node-metrics-server"),
+            metrics_server,
+        );
+    };
 
     let rpc_handlers = sc_service::spawn_tasks(SpawnTasksParams {
         network: network_service.clone(),

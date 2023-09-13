@@ -32,6 +32,7 @@ memmap2 = "0.7.1"
 parity-db = "0.4.6"
 parity-scale-codec = "3.6.5"
 parking_lot = "0.12.1"
+prometheus-client = "0.21.2"
 rand = "0.8.5"
 rayon = "1.7.0"
 schnorrkel = "0.9.1"
@@ -45,6 +46,7 @@ subspace-erasure-coding = { version = "0.1.0", path = "../subspace-erasure-codin
 subspace-farmer-components = { version = "0.1.0", path = "../subspace-farmer-components" }
 subspace-solving = { version = "0.1.0", path = "../subspace-solving" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
+subspace-metrics = { version = "0.1.0", path = "../../shared/subspace-metrics" }
 subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
 subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space", features = ["chia"] }
 subspace-rpc-primitives = { version = "0.1.0", path = "../subspace-rpc-primitives" }

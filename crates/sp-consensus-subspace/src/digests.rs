@@ -31,7 +31,7 @@ use sp_std::fmt;
 #[cfg(feature = "pot")]
 use sp_std::num::NonZeroU32;
 #[cfg(feature = "pot")]
-use subspace_core_primitives::PotProof;
+use subspace_core_primitives::PotOutput;
 #[cfg(not(feature = "pot"))]
 use subspace_core_primitives::Randomness;
 use subspace_core_primitives::{SegmentCommitment, SegmentIndex, Solution, SolutionRange};
@@ -87,9 +87,9 @@ pub enum PreDigestPotInfo {
     #[codec(index = 0)]
     V0 {
         /// Proof of time for this slot
-        proof_of_time: PotProof,
+        proof_of_time: PotOutput,
         /// Future proof of time
-        future_proof_of_time: PotProof,
+        future_proof_of_time: PotOutput,
     },
 }
 
@@ -98,7 +98,7 @@ impl PreDigestPotInfo {
     /// Proof of time for this slot
     #[cfg(feature = "pot")]
     #[inline]
-    pub fn proof_of_time(&self) -> PotProof {
+    pub fn proof_of_time(&self) -> PotOutput {
         let Self::V0 { proof_of_time, .. } = self;
         *proof_of_time
     }
@@ -106,7 +106,7 @@ impl PreDigestPotInfo {
     /// Future proof of time
     #[cfg(feature = "pot")]
     #[inline]
-    pub fn future_proof_of_time(&self) -> PotProof {
+    pub fn future_proof_of_time(&self) -> PotOutput {
         let Self::V0 {
             future_proof_of_time,
             ..
@@ -133,7 +133,8 @@ pub trait CompatibleDigestItem: Sized {
     /// If this item is a Subspace signature, return the signature.
     fn as_subspace_seal(&self) -> Option<FarmerSignature>;
 
-    /// Number of iterations for proof of time per slot
+    /// Number of iterations for proof of time per slot, corresponds to slot that directly follows
+    /// parent block's slot and can change before slot for which block is produced
     #[cfg(feature = "pot")]
     fn pot_slot_iterations(pot_slot_iterations: NonZeroU32) -> Self;
 
@@ -525,7 +526,8 @@ pub struct SubspaceDigestItems<PublicKey, RewardAddress, Signature> {
     pub pre_digest: PreDigest<PublicKey, RewardAddress>,
     /// Signature (seal) if present
     pub signature: Option<Signature>,
-    /// Number of iterations for proof of time per slot
+    /// Number of iterations for proof of time per slot, corresponds to slot that directly follows
+    /// parent block's slot and can change before slot for which block is produced
     #[cfg(feature = "pot")]
     pub pot_slot_iterations: NonZeroU32,
     /// Global randomness

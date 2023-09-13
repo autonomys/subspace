@@ -131,6 +131,9 @@ impl Randomness {
 /// Block number in Subspace network.
 pub type BlockNumber = u32;
 
+/// Block hash in Subspace network.
+pub type BlockHash = [u8; 32];
+
 /// Slot number in Subspace network.
 pub type SlotNumber = u64;
 
@@ -329,7 +332,7 @@ impl PotSeed {
     }
 }
 
-/// Proof of time checkpoint
+/// Proof of time output, can be intermediate checkpoint or final slot output
 #[derive(
     Debug,
     Default,
@@ -348,15 +351,15 @@ impl PotSeed {
     MaxEncodedLen,
 )]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct PotProof(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] [u8; Self::SIZE]);
+pub struct PotOutput(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] [u8; Self::SIZE]);
 
-impl fmt::Display for PotProof {
+impl fmt::Display for PotOutput {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{}", hex::encode(self.0))
     }
 }
 
-impl PotProof {
+impl PotOutput {
     /// Size of proof of time proof in bytes
     pub const SIZE: usize = 16;
 
@@ -370,6 +373,15 @@ impl PotProof {
     #[inline]
     pub fn seed(&self) -> PotSeed {
         PotSeed(self.0)
+    }
+
+    /// Derive seed from proof of time with entropy injection
+    #[inline]
+    pub fn seed_with_entropy(&self, entropy: &Blake3Hash) -> PotSeed {
+        let hash = blake3_hash_list(&[entropy, &self.0]);
+        let mut seed = PotSeed::default();
+        seed.copy_from_slice(&hash[..Self::SIZE]);
+        seed
     }
 }
 
@@ -388,7 +400,7 @@ impl PotProof {
     TypeInfo,
     MaxEncodedLen,
 )]
-pub struct PotCheckpoints([PotProof; Self::NUM_CHECKPOINTS.get() as usize]);
+pub struct PotCheckpoints([PotOutput; Self::NUM_CHECKPOINTS.get() as usize]);
 
 impl PotCheckpoints {
     /// Number of PoT checkpoints produced (used to optimize verification)
@@ -396,7 +408,7 @@ impl PotCheckpoints {
 
     /// Get proof of time output out of checkpoints (last checkpoint)
     #[inline]
-    pub fn output(&self) -> PotProof {
+    pub fn output(&self) -> PotOutput {
         self.0[Self::NUM_CHECKPOINTS.get() as usize - 1]
     }
 }
