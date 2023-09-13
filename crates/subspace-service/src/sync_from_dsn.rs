@@ -41,6 +41,7 @@ enum NotificationReason {
 
 /// Create node observer that will track node state and send notifications to worker to start sync
 /// from DSN.
+#[allow(clippy::too_many_arguments)] // we don't follow this convention
 pub(super) fn create_observer_and_worker<Block, AS, Client>(
     segment_headers_store: SegmentHeadersStore<AS>,
     network_service: Arc<NetworkService<Block, <Block as BlockT>::Hash>>,
@@ -49,6 +50,7 @@ pub(super) fn create_observer_and_worker<Block, AS, Client>(
     mut import_queue_service: Box<dyn ImportQueueService<Block>>,
     sync_mode: Arc<Atomic<SyncMode>>,
     kzg: Kzg,
+    dsn_sync_parallelism_level: usize,
 ) -> (
     impl Future<Output = ()> + Send + 'static,
     impl Future<Output = Result<(), sc_service::Error>> + Send + 'static,
@@ -79,6 +81,7 @@ where
             sync_mode,
             rx,
             &kzg,
+            dsn_sync_parallelism_level,
         )
         .await
     };
@@ -200,6 +203,7 @@ async fn create_substrate_network_observer<Block>(
     }
 }
 
+#[allow(clippy::too_many_arguments)] // we don't follow this convention
 async fn create_worker<Block, AS, IQS, Client>(
     segment_headers_store: SegmentHeadersStore<AS>,
     node: &Node,
@@ -208,6 +212,7 @@ async fn create_worker<Block, AS, IQS, Client>(
     sync_mode: Arc<Atomic<SyncMode>>,
     mut notifications: mpsc::Receiver<NotificationReason>,
     kzg: &Kzg,
+    dsn_sync_parallelism_level: usize,
 ) -> Result<(), sc_service::Error>
 where
     Block: BlockT,
@@ -248,6 +253,7 @@ where
             import_queue_service,
             &mut last_processed_segment_index,
             &mut last_processed_block_number,
+            dsn_sync_parallelism_level,
         )
         .await
         {

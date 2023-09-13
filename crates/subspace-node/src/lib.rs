@@ -30,6 +30,7 @@ use sc_subspace_chain_specs::ConsensusChainSpec;
 use sc_telemetry::serde_json;
 use serde_json::Value;
 use std::io::Write;
+use std::num::NonZeroUsize;
 use std::{fs, io};
 use subspace_networking::libp2p::Multiaddr;
 
@@ -238,7 +239,7 @@ pub struct Cli {
     pub dsn_in_connections: u32,
 
     /// Defines max established outgoing swarm connection limit for DSN.
-    #[arg(long, default_value_t = 100)]
+    #[arg(long, default_value_t = 150)]
     pub dsn_out_connections: u32,
 
     /// Defines max pending incoming connection limit for DSN.
@@ -246,11 +247,11 @@ pub struct Cli {
     pub dsn_pending_in_connections: u32,
 
     /// Defines max pending outgoing swarm connection limit for DSN.
-    #[arg(long, default_value_t = 100)]
+    #[arg(long, default_value_t = 150)]
     pub dsn_pending_out_connections: u32,
 
     /// Defines target total (in and out) connection number for DSN that should be maintained.
-    #[arg(long, default_value_t = 50)]
+    #[arg(long, default_value_t = 30)]
     pub dsn_target_connections: u32,
 
     /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses
@@ -287,6 +288,12 @@ pub struct Cli {
     /// Assigned PoT role for this node.
     #[arg(long, default_value = "none", value_parser(EnumValueParser::< CliPotRole >::new()))]
     pub pot_role: CliPotRole,
+
+    /// Defines the parallelism level (number of simultaneous requests) for DSN synchronization.
+    /// It should be changed along with outgoing connection limits. Affects the sync performance,
+    /// error rate, and overall machine responsiveness.
+    #[arg(long, default_value_t = NonZeroUsize::new(5).expect("Manual setting"))]
+    pub dsn_sync_parallelism_level: NonZeroUsize,
 }
 
 impl SubstrateCli for Cli {
