@@ -7002,6 +7002,7 @@ dependencies = [
  "sp-externalities",
  "sp-io",
  "sp-runtime",
+ "sp-state-machine",
  "sp-std",
  "sp-trie",
  "sp-version",
