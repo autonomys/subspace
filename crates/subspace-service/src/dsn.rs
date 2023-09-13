@@ -12,8 +12,8 @@ use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::utils::strip_peer_id;
 use subspace_networking::{
     CreationError, NetworkParametersPersistenceError, NetworkingParametersManager, Node,
-    NodeRunner, PeerInfoProvider, SegmentHeaderBySegmentIndexesRequestHandler,
-    SegmentHeaderRequest, SegmentHeaderResponse,
+    NodeRunner, PeerInfoProvider, PieceByIndexRequestHandler,
+    SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
 };
 use thiserror::Error;
 use tracing::{debug, error, trace};
@@ -118,8 +118,10 @@ where
         listen_on: dsn_config.listen_on,
         allow_non_global_addresses_in_dht: dsn_config.allow_non_global_addresses_in_dht,
         networking_parameters_registry,
-        request_response_protocols: vec![SegmentHeaderBySegmentIndexesRequestHandler::create(
-            move |_, req| {
+        request_response_protocols: vec![
+            // We need to enable protocol to request pieces
+            PieceByIndexRequestHandler::create(|_, _| async { None }),
+            SegmentHeaderBySegmentIndexesRequestHandler::create(move |_, req| {
                 let segment_indexes = match req {
                     SegmentHeaderRequest::SegmentIndexes { segment_indexes } => {
                         segment_indexes.clone()
@@ -168,8 +170,8 @@ where
                 };
 
                 async move { result }
-            },
-        )],
+            }),
+        ],
         max_established_incoming_connections: dsn_config.max_in_connections,
         max_established_outgoing_connections: dsn_config.max_out_connections,
         max_pending_incoming_connections: dsn_config.max_pending_in_connections,
