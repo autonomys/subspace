@@ -20,10 +20,12 @@
 pub mod bundle_producer_election;
 pub mod fraud_proof;
 pub mod merkle_tree;
+pub mod storage;
 #[cfg(test)]
 mod tests;
 pub mod transaction;
 
+use crate::storage::{RawGenesis, StorageKey};
 use bundle_producer_election::{BundleProducerElectionParams, VrfProofError};
 use hexlit::hex;
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
@@ -611,8 +613,8 @@ impl DomainsDigestItem for DigestItem {
 ///
 /// Any change to the storage item name or the `pallet-domain-id` name used in the `construct_runtime`
 /// macro must be reflected here.
-pub fn self_domain_id_storage_key() -> sp_core::storage::StorageKey {
-    sp_core::storage::StorageKey(
+pub fn self_domain_id_storage_key() -> StorageKey {
+    StorageKey(
         frame_support::storage::storage_prefix(
             // This is the name used for the `pallet-domain-id` in the `construct_runtime` macro
             // i.e. `SelfDomainId: pallet_domain_id = 90`
