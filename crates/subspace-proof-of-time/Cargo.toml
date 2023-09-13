@@ -17,7 +17,7 @@ bench = false
 [dependencies]
 aes = "0.8.3"
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
-thiserror = { version = "1.0.38", optional = true }
+thiserror = { version = "1.0.48", optional = true }
 
 [dev-dependencies]
 criterion = "0.5.1"

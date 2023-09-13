@@ -18,19 +18,19 @@
 
 use crate::chain_spec_utils::{chain_spec_properties, get_public_key_from_seed};
 use evm_domain_runtime::{
-    AccountId, BalancesConfig, EVMChainIdConfig, EVMConfig, GenesisConfig, Precompiles,
+    AccountId, BalancesConfig, EVMChainIdConfig, EVMConfig, Precompiles, RuntimeGenesisConfig,
     SelfDomainIdConfig, SudoConfig, SystemConfig, WASM_BINARY,
 };
 use hex_literal::hex;
-use once_cell::sync::OnceCell;
 use sc_service::ChainType;
 use sc_subspace_chain_specs::ExecutionChainSpec;
 use sp_core::crypto::UncheckedFrom;
 use sp_domains::{DomainId, DomainInstanceData, OperatorPublicKey, RuntimeType};
 use std::str::FromStr;
+use std::sync::OnceLock;
 use subspace_runtime_primitives::SSC;
 
-pub type ChainSpec = ExecutionChainSpec<GenesisConfig>;
+pub type ChainSpec = ExecutionChainSpec<RuntimeGenesisConfig>;
 
 /// Development keys that will be injected automatically on polkadotjs apps
 fn get_dev_accounts() -> Vec<AccountId> {
@@ -46,9 +46,9 @@ fn get_dev_accounts() -> Vec<AccountId> {
     ]
 }
 
-pub fn development_config<F: Fn() -> GenesisConfig + 'static + Send + Sync>(
+pub fn development_config<F: Fn() -> RuntimeGenesisConfig + 'static + Send + Sync>(
     constructor: F,
-) -> ExecutionChainSpec<GenesisConfig> {
+) -> ExecutionChainSpec<RuntimeGenesisConfig> {
     ExecutionChainSpec::from_genesis(
         // Name
         "Development",
@@ -65,9 +65,9 @@ pub fn development_config<F: Fn() -> GenesisConfig + 'static + Send + Sync>(
     )
 }
 
-pub fn local_testnet_config<F: Fn() -> GenesisConfig + 'static + Send + Sync>(
+pub fn local_testnet_config<F: Fn() -> RuntimeGenesisConfig + 'static + Send + Sync>(
     constructor: F,
-) -> ExecutionChainSpec<GenesisConfig> {
+) -> ExecutionChainSpec<RuntimeGenesisConfig> {
     ExecutionChainSpec::from_genesis(
         // Name
         "Local Testnet",
@@ -89,9 +89,9 @@ pub fn local_testnet_config<F: Fn() -> GenesisConfig + 'static + Send + Sync>(
     )
 }
 
-pub fn gemini_3f_config<F: Fn() -> GenesisConfig + 'static + Send + Sync>(
+pub fn gemini_3f_config<F: Fn() -> RuntimeGenesisConfig + 'static + Send + Sync>(
     constructor: F,
-) -> ExecutionChainSpec<GenesisConfig> {
+) -> ExecutionChainSpec<RuntimeGenesisConfig> {
     ExecutionChainSpec::from_genesis(
         // Name
         "Subspace Gemini 3f EVM Domain",
@@ -113,9 +113,9 @@ pub fn gemini_3f_config<F: Fn() -> GenesisConfig + 'static + Send + Sync>(
     )
 }
 
-pub fn devnet_config<F: Fn() -> GenesisConfig + 'static + Send + Sync>(
+pub fn devnet_config<F: Fn() -> RuntimeGenesisConfig + 'static + Send + Sync>(
     constructor: F,
-) -> ExecutionChainSpec<GenesisConfig> {
+) -> ExecutionChainSpec<RuntimeGenesisConfig> {
     ExecutionChainSpec::from_genesis(
         // Name
         "Subspace Devnet EVM Domain",
@@ -139,7 +139,7 @@ pub fn devnet_config<F: Fn() -> GenesisConfig + 'static + Send + Sync>(
 
 pub fn load_chain_spec(spec_id: &str) -> Result<Box<dyn sc_cli::ChainSpec>, String> {
     let constructor =
-        |spec_id: SpecId| -> GenesisConfig { get_testnet_genesis_by_spec_id(spec_id).0 };
+        |spec_id: SpecId| -> RuntimeGenesisConfig { get_testnet_genesis_by_spec_id(spec_id).0 };
 
     let chain_spec = match spec_id {
         "dev" => development_config(move || constructor(SpecId::Dev)),
@@ -162,7 +162,9 @@ pub struct GenesisDomainParams {
     pub operator_signing_key: OperatorPublicKey,
 }
 
-pub fn get_testnet_genesis_by_spec_id(spec_id: SpecId) -> (GenesisConfig, GenesisDomainParams) {
+pub fn get_testnet_genesis_by_spec_id(
+    spec_id: SpecId,
+) -> (RuntimeGenesisConfig, GenesisDomainParams) {
     match spec_id {
         SpecId::Dev => {
             let accounts = get_dev_accounts();
@@ -233,15 +235,15 @@ pub fn get_testnet_genesis_by_spec_id(spec_id: SpecId) -> (GenesisConfig, Genesi
     }
 }
 
-// HACK: `ChainSpec::from_genesis` is only allow to create hardcoded spec and `GenesisConfig`
+// HACK: `ChainSpec::from_genesis` is only allow to create hardcoded spec and `RuntimeGenesisConfig`
 // dosen't derive `Clone`, using global variable and serialization/deserialization to workaround
 // these limits.
-static GENESIS_CONFIG: OnceCell<Vec<u8>> = OnceCell::new();
+static GENESIS_CONFIG: OnceLock<Vec<u8>> = OnceLock::new();
 
-// Load chain spec that contains the given `GenesisConfig`
+// Load chain spec that contains the given `RuntimeGenesisConfig`
 fn load_chain_spec_with(
     spec_id: &str,
-    genesis_config: GenesisConfig,
+    genesis_config: RuntimeGenesisConfig,
 ) -> Result<Box<dyn sc_cli::ChainSpec>, String> {
     GENESIS_CONFIG
         .set(
@@ -285,7 +287,7 @@ pub fn create_domain_spec(
                         "Failed to deserialize genesis config of the evm domain".to_string()
                     })?
                 }
-                None => GenesisConfig::default(),
+                None => RuntimeGenesisConfig::default(),
             };
             genesis_config.system.code = runtime_code;
             genesis_config.self_domain_id.domain_id = Some(domain_id);
@@ -299,18 +301,19 @@ fn testnet_genesis(
     endowed_accounts: Vec<AccountId>,
     maybe_sudo_account: Option<AccountId>,
     chain_id: u64,
-) -> GenesisConfig {
+) -> RuntimeGenesisConfig {
     // This is the simplest bytecode to revert without returning any data.
     // We will pre-deploy it under all of our precompiles to ensure they can be called from
     // within contracts.
     // (PUSH1 0x00 PUSH1 0x00 REVERT)
     let revert_bytecode = vec![0x60, 0x00, 0x60, 0x00, 0xFD];
 
-    GenesisConfig {
+    RuntimeGenesisConfig {
         system: SystemConfig {
             code: WASM_BINARY
                 .expect("WASM binary was not build, please build it!")
                 .to_vec(),
+            ..Default::default()
         },
         sudo: SudoConfig {
             key: maybe_sudo_account,
@@ -323,7 +326,10 @@ fn testnet_genesis(
                 .map(|k| (k, 1_000_000 * SSC))
                 .collect(),
         },
-        evm_chain_id: EVMChainIdConfig { chain_id },
+        evm_chain_id: EVMChainIdConfig {
+            chain_id,
+            ..Default::default()
+        },
         evm: EVMConfig {
             // We need _some_ code inserted at the precompile address so that
             // the evm will actually call the address.
@@ -341,12 +347,14 @@ fn testnet_genesis(
                     )
                 })
                 .collect(),
+            ..Default::default()
         },
         ethereum: Default::default(),
         base_fee: Default::default(),
         self_domain_id: SelfDomainIdConfig {
             // Id of the genesis domain
             domain_id: Some(DomainId::new(0)),
+            ..Default::default()
         },
     }
 }

@@ -9,9 +9,9 @@ use sc_transaction_pool::{
 };
 use sc_transaction_pool_api::error::Error as TxPoolError;
 use sc_transaction_pool_api::{
-    ChainEvent, ImportNotificationStream, MaintainedTransactionPool,
-    OffchainTransactionPoolFactory, PoolFuture, PoolStatus, ReadyTransactions, TransactionFor,
-    TransactionPool, TransactionSource, TransactionStatusStreamFor, TxHash,
+    ChainEvent, ImportNotificationStream, MaintainedTransactionPool, PoolFuture, PoolStatus,
+    ReadyTransactions, TransactionFor, TransactionPool, TransactionSource,
+    TransactionStatusStreamFor, TxHash,
 };
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{HeaderMetadata, TreeRoute};
@@ -417,18 +417,12 @@ where
         task_manager,
         tx_pre_validator,
     ));
-    let pool = Arc::new(BasicPoolWrapper::with_revalidation_type(
+
+    Arc::new(BasicPoolWrapper::with_revalidation_type(
         config,
         pool_api,
         prometheus,
         task_manager.spawn_essential_handle(),
         client.clone(),
-    ));
-
-    // make transaction pool available for off-chain runtime calls.
-    client
-        .execution_extensions()
-        .register_transaction_pool_factory(OffchainTransactionPoolFactory::new(&pool));
-
-    pool
+    ))
 }

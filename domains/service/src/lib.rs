@@ -12,6 +12,7 @@ use sc_client_api::{BlockBackend, BlockchainEvents, HeaderBackend, ProofProvider
 use sc_consensus::ImportQueue;
 use sc_executor::NativeElseWasmExecutor;
 use sc_network::config::Roles;
+use sc_network::peer_store::PeerStore;
 use sc_network::NetworkService;
 use sc_network_sync::block_request_handler::BlockRequestHandler;
 use sc_network_sync::engine::SyncingEngine;
@@ -179,6 +180,18 @@ where
     net_config.add_request_response_protocol(block_request_protocol_config);
     net_config.add_request_response_protocol(state_request_protocol_config);
 
+    // Create `PeerStore` and initialize it with bootnode peer ids.
+    let peer_store = PeerStore::new(
+        net_config
+            .network_config
+            .boot_nodes
+            .iter()
+            .map(|bootnode| bootnode.peer_id)
+            .collect(),
+    );
+    let peer_store_handle = peer_store.handle();
+    spawn_handle.spawn("peer-store", Some("networking"), peer_store.run());
+
     let network_params = sc_network::config::Params::<TBl> {
         role: config.role.clone(),
         executor: {
@@ -188,6 +201,7 @@ where
             })
         },
         network_config: net_config,
+        peer_store: peer_store_handle,
         genesis_hash,
         protocol_id,
         fork_id: config.chain_spec.fork_id().map(ToOwned::to_owned),

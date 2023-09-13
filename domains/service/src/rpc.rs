@@ -5,7 +5,7 @@
 
 #![warn(missing_docs)]
 
-use domain_runtime_primitives::{Balance, Index as Nonce};
+use domain_runtime_primitives::{Balance, Nonce};
 use jsonrpsee::RpcModule;
 use pallet_transaction_payment_rpc::{TransactionPayment, TransactionPaymentApiServer};
 use sc_client_api::{AuxStore, BlockBackend};
@@ -28,7 +28,7 @@ use substrate_frame_rpc_system::{System, SystemApiServer};
 use substrate_prometheus_endpoint::Registry;
 
 /// Full RPC dependencies.
-pub struct FullDeps<Block: BlockT, Client, TP, CA: ChainApi, BE> {
+pub struct FullDeps<Block: BlockT, Client, TP, CA: ChainApi, BE, CIDP> {
     /// The client instance to use.
     pub client: Arc<Client>,
     /// The chain backend.
@@ -53,9 +53,13 @@ pub struct FullDeps<Block: BlockT, Client, TP, CA: ChainApi, BE> {
     pub database_source: DatabaseSource,
     /// Task Spawner.
     pub task_spawner: SpawnTaskHandle,
+    /// Create inherent data provider
+    pub create_inherent_data_provider: CIDP,
 }
 
-impl<Block: BlockT, Client, TP, CA: ChainApi, BE> Clone for FullDeps<Block, Client, TP, CA, BE> {
+impl<Block: BlockT, Client, TP, CA: ChainApi, BE, CIDP: Clone> Clone
+    for FullDeps<Block, Client, TP, CA, BE, CIDP>
+{
     fn clone(&self) -> Self {
         Self {
             client: self.client.clone(),
@@ -70,13 +74,14 @@ impl<Block: BlockT, Client, TP, CA: ChainApi, BE> Clone for FullDeps<Block, Clie
             task_spawner: self.task_spawner.clone(),
             prometheus_registry: self.prometheus_registry.clone(),
             database_source: self.database_source.clone(),
+            create_inherent_data_provider: self.create_inherent_data_provider.clone(),
         }
     }
 }
 
 /// Instantiate all RPC extensions.
-pub fn create_full<Block, Client, P, CA, AccountId, BE>(
-    deps: FullDeps<Block, Client, P, CA, BE>,
+pub fn create_full<Block, Client, P, CA, AccountId, BE, CIDP>(
+    deps: FullDeps<Block, Client, P, CA, BE, CIDP>,
 ) -> Result<RpcModule<()>, Box<dyn std::error::Error + Send + Sync>>
 where
     Block: BlockT,

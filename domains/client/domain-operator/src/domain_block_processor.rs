@@ -5,7 +5,7 @@ use crate::ExecutionReceiptFor;
 use codec::{Decode, Encode};
 use domain_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
 use domain_runtime_primitives::DomainCoreApi;
-use sc_client_api::{AuxStore, BlockBackend, Finalizer, StateBackendFor, TransactionFor};
+use sc_client_api::{AuxStore, BlockBackend, Finalizer};
 use sc_consensus::{
     BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult, StateAction, StorageChanges,
 };
@@ -16,7 +16,7 @@ use sp_core::traits::CodeExecutor;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{DomainId, DomainsApi, ExecutionReceipt, ExtrinsicsRoot, InvalidBundle};
-use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, One, Zero};
+use sp_runtime::traits::{Block as BlockT, Header as HeaderT, One, Zero};
 use sp_runtime::Digest;
 use std::cmp::Ordering;
 use std::sync::Arc;
@@ -103,14 +103,9 @@ where
         + ProvideRuntimeApi<Block>
         + Finalizer<Block, Backend>
         + 'static,
-    Client::Api: DomainCoreApi<Block>
-        + sp_block_builder::BlockBuilder<Block>
-        + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
-    for<'b> &'b BI: BlockImport<
-        Block,
-        Transaction = sp_api::TransactionFor<Client, Block>,
-        Error = sp_consensus::Error,
-    >,
+    Client::Api:
+        DomainCoreApi<Block> + sp_block_builder::BlockBuilder<Block> + sp_api::ApiExt<Block>,
+    for<'b> &'b BI: BlockImport<Block, Error = sp_consensus::Error>,
     CClient: HeaderBackend<CBlock>
         + HeaderMetadata<CBlock, Error = sp_blockchain::Error>
         + BlockBackend<CBlock>
@@ -118,7 +113,6 @@ where
         + 'static,
     CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash> + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
-    TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
 {
     /// Returns a list of consensus blocks waiting to be processed if any.
     ///
@@ -442,7 +436,7 @@ where
 
     pub(crate) async fn import_domain_block(
         &self,
-        block_import_params: BlockImportParams<Block, sp_api::TransactionFor<Client, Block>>,
+        block_import_params: BlockImportParams<Block>,
     ) -> Result<(), sp_blockchain::Error> {
         let (header_number, header_hash, parent_hash) = (
             *block_import_params.header.number(),
@@ -596,13 +590,11 @@ where
     NumberFor<CBlock>: Into<NumberFor<Block>>,
     Client:
         HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
-    Client::Api: DomainCoreApi<Block>
-        + sp_block_builder::BlockBuilder<Block>
-        + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
+    Client::Api:
+        DomainCoreApi<Block> + sp_block_builder::BlockBuilder<Block> + sp_api::ApiExt<Block>,
     CClient: HeaderBackend<CBlock> + BlockBackend<CBlock> + ProvideRuntimeApi<CBlock> + 'static,
     CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
     Backend: sc_client_api::Backend<Block> + 'static,
-    TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     E: CodeExecutor,
     ParentChain: ParentChainInterface<Block, ParentChainBlock>,
 {

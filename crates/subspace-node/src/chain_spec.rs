@@ -25,11 +25,12 @@ use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::crypto::{Ss58Codec, UncheckedFrom};
 use sp_domains::RuntimeType;
 use sp_runtime::Percent;
+use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use subspace_core_primitives::PotKey;
 use subspace_runtime::{
-    AllowAuthoringBy, BalancesConfig, DomainsConfig, GenesisConfig, MaxDomainBlockSize,
-    MaxDomainBlockWeight, RuntimeConfigsConfig, SubspaceConfig, SudoConfig, SystemConfig,
+    AllowAuthoringBy, BalancesConfig, DomainsConfig, MaxDomainBlockSize, MaxDomainBlockWeight,
+    RuntimeConfigsConfig, RuntimeGenesisConfig, SubspaceConfig, SudoConfig, SystemConfig,
     VestingConfig, MILLISECS_PER_BLOCK, WASM_BINARY,
 };
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, SSC};
@@ -88,7 +89,7 @@ struct GenesisParams {
     confirmation_depth_k: u32,
 }
 
-pub fn gemini_3f_compiled() -> Result<ConsensusChainSpec<GenesisConfig>, String> {
+pub fn gemini_3f_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String> {
     Ok(ConsensusChainSpec::from_genesis(
         // Name
         "Subspace Gemini 3f",
@@ -183,15 +184,15 @@ pub fn gemini_3f_compiled() -> Result<ConsensusChainSpec<GenesisConfig>, String>
     ))
 }
 
-pub fn gemini_3f_config() -> Result<ConsensusChainSpec<GenesisConfig>, String> {
+pub fn gemini_3f_config() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String> {
     unimplemented!("Please use release prefixed with Gemini-3f.")
 }
 
-pub fn devnet_config() -> Result<ConsensusChainSpec<GenesisConfig>, String> {
+pub fn devnet_config() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String> {
     ConsensusChainSpec::from_json_bytes(DEVNET_CHAIN_SPEC)
 }
 
-pub fn devnet_config_compiled() -> Result<ConsensusChainSpec<GenesisConfig>, String> {
+pub fn devnet_config_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String> {
     Ok(ConsensusChainSpec::from_genesis(
         // Name
         "Subspace Dev network",
@@ -281,7 +282,7 @@ pub fn devnet_config_compiled() -> Result<ConsensusChainSpec<GenesisConfig>, Str
     ))
 }
 
-pub fn dev_config() -> Result<ConsensusChainSpec<GenesisConfig>, String> {
+pub fn dev_config() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String> {
     let wasm_binary = WASM_BINARY.ok_or_else(|| "Development wasm not available".to_string())?;
 
     Ok(ConsensusChainSpec::from_genesis(
@@ -336,7 +337,7 @@ pub fn dev_config() -> Result<ConsensusChainSpec<GenesisConfig>, String> {
     ))
 }
 
-pub fn local_config() -> Result<ConsensusChainSpec<GenesisConfig>, String> {
+pub fn local_config() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String> {
     let wasm_binary = WASM_BINARY.ok_or_else(|| "Development wasm not available".to_string())?;
 
     Ok(ConsensusChainSpec::from_genesis(
@@ -408,7 +409,7 @@ fn subspace_genesis_config(
     // who, start, period, period_count, per_period
     vesting: Vec<(AccountId, BlockNumber, BlockNumber, u32, Balance)>,
     genesis_params: GenesisParams,
-) -> GenesisConfig {
+) -> RuntimeGenesisConfig {
     let GenesisParams {
         enable_rewards,
         enable_storage_access,
@@ -426,10 +427,11 @@ fn subspace_genesis_config(
     let raw_domain_genesis_config = serde_json::to_vec(&domain_genesis_config)
         .expect("Genesis config serialization never fails; qed");
 
-    GenesisConfig {
+    RuntimeGenesisConfig {
         system: SystemConfig {
             // Add Wasm runtime to storage.
             code: wasm_binary.to_vec(),
+            ..Default::default()
         },
         balances: BalancesConfig { balances },
         transaction_payment: Default::default(),
@@ -442,6 +444,7 @@ fn subspace_genesis_config(
             enable_storage_access,
             allow_authoring_by,
             pot_slot_iterations,
+            phantom: PhantomData,
         },
         vesting: VestingConfig { vesting },
         runtime_configs: RuntimeConfigsConfig {

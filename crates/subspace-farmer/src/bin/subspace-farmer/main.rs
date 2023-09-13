@@ -23,15 +23,6 @@ use tracing_subscriber::{fmt, EnvFilter};
 
 type PosTable = ChiaTable;
 
-#[cfg(all(
-    target_arch = "x86_64",
-    target_vendor = "unknown",
-    target_os = "linux",
-    target_env = "gnu"
-))]
-#[global_allocator]
-static GLOBAL: jemallocator::Jemalloc = jemallocator::Jemalloc;
-
 /// Arguments for farmer
 #[derive(Debug, Parser)]
 struct FarmingArgs {

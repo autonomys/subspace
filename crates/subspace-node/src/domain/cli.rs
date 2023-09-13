@@ -19,8 +19,8 @@ use clap::Parser;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
 use sc_cli::{
     BlockNumberOrHash, ChainSpec, CliConfiguration, DefaultConfigurationValues, ImportParams,
-    KeystoreParams, NetworkParams, Result, Role, RunCmd as SubstrateRunCmd, RuntimeVersion,
-    SharedParams, SubstrateCli,
+    KeystoreParams, NetworkParams, Result, Role, RunCmd as SubstrateRunCmd, SharedParams,
+    SubstrateCli,
 };
 use sc_client_api::backend::AuxStore;
 use sc_service::config::PrometheusConfig;
@@ -157,15 +157,6 @@ impl SubstrateCli for DomainCli {
         match runtime_name {
             "evm" => evm_chain_spec::load_chain_spec(id),
             unknown_name => Err(format!("Unknown runtime: {unknown_name}")),
-        }
-    }
-
-    fn native_runtime_version(_chain_spec: &Box<dyn ChainSpec>) -> &'static RuntimeVersion {
-        // TODO: Fetch the runtime name of `self.domain_id` properly.
-        let runtime_name = "evm";
-        match runtime_name {
-            "evm" => &evm_domain_runtime::VERSION,
-            unknown_name => unreachable!("Unknown runtime: {unknown_name}"),
         }
     }
 }

@@ -1,11 +1,11 @@
 use crate::domain_block_processor::{
     DomainBlockProcessor, PendingConsensusBlocks, ReceiptsChecker,
 };
-use crate::{DomainParentChain, ExecutionReceiptFor, TransactionFor};
+use crate::{DomainParentChain, ExecutionReceiptFor};
 use domain_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_block_preprocessor::{DomainBlockPreprocessor, PreprocessResult};
 use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
-use sc_client_api::{AuxStore, BlockBackend, Finalizer, StateBackendFor};
+use sc_client_api::{AuxStore, BlockBackend, Finalizer};
 use sc_consensus::{BlockImport, BlockImportParams, ForkChoiceStrategy, StateAction};
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
@@ -15,7 +15,7 @@ use sp_domain_digests::AsPredigest;
 use sp_domains::{DomainId, DomainsApi, InvalidReceipt, ReceiptValidity};
 use sp_keystore::KeystorePtr;
 use sp_messenger::MessengerApi;
-use sp_runtime::traits::{Block as BlockT, HashFor, Zero};
+use sp_runtime::traits::{Block as BlockT, Zero};
 use sp_runtime::{Digest, DigestItem};
 use std::sync::Arc;
 
@@ -143,12 +143,8 @@ where
         + MessengerApi<Block, NumberFor<Block>>
         + InherentExtrinsicApi<Block>
         + sp_block_builder::BlockBuilder<Block>
-        + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
-    for<'b> &'b BI: BlockImport<
-        Block,
-        Transaction = sp_api::TransactionFor<Client, Block>,
-        Error = sp_consensus::Error,
-    >,
+        + sp_api::ApiExt<Block>,
+    for<'b> &'b BI: BlockImport<Block, Error = sp_consensus::Error>,
     CClient: HeaderBackend<CBlock>
         + HeaderMetadata<CBlock, Error = sp_blockchain::Error>
         + BlockBackend<CBlock>
@@ -158,7 +154,6 @@ where
         + MessengerApi<CBlock, NumberFor<CBlock>>
         + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
-    TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     E: CodeExecutor,
 {
     pub(crate) fn new(

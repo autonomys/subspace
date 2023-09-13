@@ -22,7 +22,7 @@ pub mod domain;
 
 use clap::Parser;
 use sc_cli::{RunCmd, SubstrateCli};
-use sc_executor::{NativeExecutionDispatch, RuntimeVersion};
+use sc_executor::NativeExecutionDispatch;
 use sc_service::ChainSpec;
 use sc_storage_monitor::StorageMonitorParams;
 use sc_subspace_chain_specs::ConsensusChainSpec;
@@ -174,6 +174,7 @@ pub enum Subcommand {
     Domain(domain::cli::Subcommand),
 
     /// Sub-commands concerned with benchmarking.
+    #[cfg(feature = "runtime-benchmarks")]
     #[clap(subcommand)]
     Benchmark(frame_benchmarking_cli::BenchmarkCmd),
 }
@@ -333,9 +334,5 @@ impl SubstrateCli for Cli {
                 .map_err(|error| error.to_string())?;
         }
         Ok(Box::new(chain_spec))
-    }
-
-    fn native_runtime_version(_: &Box<dyn ChainSpec>) -> &'static RuntimeVersion {
-        &subspace_runtime::VERSION
     }
 }

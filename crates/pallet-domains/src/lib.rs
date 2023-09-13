@@ -38,6 +38,7 @@ use frame_support::ensure;
 use frame_support::traits::fungible::{Inspect, InspectHold};
 use frame_support::traits::{Get, Randomness as RandomnessT};
 use frame_system::offchain::SubmitTransaction;
+use frame_system::pallet_prelude::*;
 pub use pallet::*;
 use scale_info::TypeInfo;
 use sp_core::H256;
@@ -70,7 +71,7 @@ pub trait HoldIdentifier<T: Config> {
 }
 
 pub type ExecutionReceiptOf<T> = ExecutionReceipt<
-    <T as frame_system::Config>::BlockNumber,
+    BlockNumberFor<T>,
     <T as frame_system::Config>::Hash,
     <T as Config>::DomainNumber,
     <T as Config>::DomainHash,
@@ -78,7 +79,7 @@ pub type ExecutionReceiptOf<T> = ExecutionReceipt<
 >;
 
 pub type OpaqueBundleOf<T> = OpaqueBundle<
-    <T as frame_system::Config>::BlockNumber,
+    BlockNumberFor<T>,
     <T as frame_system::Config>::Hash,
     <T as Config>::DomainNumber,
     <T as Config>::DomainHash,
@@ -123,7 +124,7 @@ mod pallet {
         BalanceOf, ElectionVerificationParams, HoldIdentifier, NominatorId, OpaqueBundleOf,
     };
     use codec::FullCodec;
-    use frame_support::pallet_prelude::{StorageMap, *};
+    use frame_support::pallet_prelude::*;
     use frame_support::traits::fungible::{InspectHold, Mutate, MutateHold};
     use frame_support::traits::Randomness as RandomnessT;
     use frame_support::weights::Weight;
@@ -188,11 +189,11 @@ mod pallet {
 
         /// Same with `pallet_subspace::Config::ConfirmationDepthK`.
         #[pallet::constant]
-        type ConfirmationDepthK: Get<Self::BlockNumber>;
+        type ConfirmationDepthK: Get<BlockNumberFor<Self>>;
 
         /// Delay before a domain runtime is upgraded.
         #[pallet::constant]
-        type DomainRuntimeUpgradeDelay: Get<Self::BlockNumber>;
+        type DomainRuntimeUpgradeDelay: Get<BlockNumberFor<Self>>;
 
         /// Currency type used by the domains for staking and other currency related stuff.
         type Currency: Mutate<Self::AccountId>
@@ -274,7 +275,7 @@ mod pallet {
         type SudoId: Get<Self::AccountId>;
 
         /// Randomness source.
-        type Randomness: RandomnessT<Self::Hash, Self::BlockNumber>;
+        type Randomness: RandomnessT<Self::Hash, BlockNumberFor<Self>>;
     }
 
     #[pallet::pallet]
@@ -291,13 +292,13 @@ mod pallet {
 
     #[pallet::storage]
     pub(super) type RuntimeRegistry<T: Config> =
-        StorageMap<_, Identity, RuntimeId, RuntimeObject<T::BlockNumber, T::Hash>, OptionQuery>;
+        StorageMap<_, Identity, RuntimeId, RuntimeObject<BlockNumberFor<T>, T::Hash>, OptionQuery>;
 
     #[pallet::storage]
     pub(super) type ScheduledRuntimeUpgrades<T: Config> = StorageDoubleMap<
         _,
         Identity,
-        T::BlockNumber,
+        BlockNumberFor<T>,
         Identity,
         RuntimeId,
         ScheduledRuntimeUpgrade,
@@ -422,8 +423,13 @@ mod pallet {
 
     /// The domain registry
     #[pallet::storage]
-    pub(super) type DomainRegistry<T: Config> =
-        StorageMap<_, Identity, DomainId, DomainObject<T::BlockNumber, T::AccountId>, OptionQuery>;
+    pub(super) type DomainRegistry<T: Config> = StorageMap<
+        _,
+        Identity,
+        DomainId,
+        DomainObject<BlockNumberFor<T>, T::AccountId>,
+        OptionQuery,
+    >;
 
     /// The domain block tree, map (`domain_id`, `domain_block_number`) to the hash of a domain blocks,
     /// which can be used get the domain block in `DomainBlocks`
@@ -444,7 +450,7 @@ mod pallet {
         _,
         Identity,
         ReceiptHash,
-        DomainBlock<T::BlockNumber, T::Hash, T::DomainNumber, T::DomainHash, BalanceOf<T>>,
+        DomainBlock<BlockNumberFor<T>, T::Hash, T::DomainNumber, T::DomainHash, BalanceOf<T>>,
         OptionQuery,
     >;
 
@@ -480,7 +486,7 @@ mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn consensus_hash)]
     pub type ConsensusBlockHash<T: Config> =
-        StorageDoubleMap<_, Identity, DomainId, Identity, T::BlockNumber, T::Hash, OptionQuery>;
+        StorageDoubleMap<_, Identity, DomainId, Identity, BlockNumberFor<T>, T::Hash, OptionQuery>;
 
     /// A set of `BundleDigest` from all bundles that successfully submitted to the consensus block,
     /// these bundles will be used to construct the domain block and `ExecutionInbox` is used to:
@@ -493,7 +499,7 @@ mod pallet {
         (
             NMapKey<Identity, DomainId>,
             NMapKey<Identity, T::DomainNumber>,
-            NMapKey<Identity, T::BlockNumber>,
+            NMapKey<Identity, BlockNumberFor<T>>,
         ),
         Vec<BundleDigest>,
         ValueQuery,
@@ -638,7 +644,7 @@ mod pallet {
         },
         DomainRuntimeUpgradeScheduled {
             runtime_id: RuntimeId,
-            scheduled_at: T::BlockNumber,
+            scheduled_at: BlockNumberFor<T>,
         },
         DomainRuntimeUpgraded {
             runtime_id: RuntimeId,
@@ -827,7 +833,7 @@ mod pallet {
         #[pallet::weight((Weight::from_all(10_000), Pays::No))]
         pub fn submit_fraud_proof(
             origin: OriginFor<T>,
-            fraud_proof: Box<FraudProof<T::BlockNumber, T::Hash>>,
+            fraud_proof: Box<FraudProof<BlockNumberFor<T>, T::Hash>>,
         ) -> DispatchResult {
             ensure_none(origin)?;
 
@@ -1115,7 +1121,7 @@ mod pallet {
     }
 
     #[pallet::genesis_build]
-    impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
+    impl<T: Config> BuildGenesisConfig for GenesisConfig<T> {
         fn build(&self) {
             // Delay the genesis domain register to block #1 due to the required `GenesisReceiptExtension` is not
             // registered during genesis storage build, remove once https://github.com/paritytech/substrate/issues/14541
@@ -1128,8 +1134,8 @@ mod pallet {
 
     #[pallet::hooks]
     // TODO: proper benchmark
-    impl<T: Config> Hooks<T::BlockNumber> for Pallet<T> {
-        fn on_initialize(block_number: T::BlockNumber) -> Weight {
+    impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
+        fn on_initialize(block_number: BlockNumberFor<T>) -> Weight {
             if block_number.is_one() {
                 if let Some(genesis_domain) = PendingGenesisDomain::<T>::take() {
                     // Register the genesis domain runtime
@@ -1195,7 +1201,7 @@ mod pallet {
             Weight::zero()
         }
 
-        fn on_finalize(_: T::BlockNumber) {
+        fn on_finalize(_: BlockNumberFor<T>) {
             let _ = LastEpochStakingDistribution::<T>::clear(u32::MAX, None);
         }
     }
@@ -1296,7 +1302,7 @@ impl<T: Config> Pallet<T> {
 
     pub fn domain_instance_data(
         domain_id: DomainId,
-    ) -> Option<(DomainInstanceData, T::BlockNumber)> {
+    ) -> Option<(DomainInstanceData, BlockNumberFor<T>)> {
         let domain_obj = DomainRegistry::<T>::get(domain_id)?;
         let (runtime_type, runtime_code) =
             RuntimeRegistry::<T>::get(domain_obj.domain_config.runtime_id)
@@ -1465,7 +1471,7 @@ impl<T: Config> Pallet<T> {
     }
 
     fn validate_fraud_proof(
-        fraud_proof: &FraudProof<T::BlockNumber, T::Hash>,
+        fraud_proof: &FraudProof<BlockNumberFor<T>, T::Hash>,
     ) -> Result<(), FraudProofError> {
         let bad_receipt = DomainBlocks::<T>::get(fraud_proof.bad_receipt_hash())
             .ok_or(FraudProofError::BadReceiptNotFound)?
@@ -1683,7 +1689,7 @@ where
     }
 
     /// Submits an unsigned extrinsic [`Call::submit_fraud_proof`].
-    pub fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<T::BlockNumber, T::Hash>) {
+    pub fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<BlockNumberFor<T>, T::Hash>) {
         let call = Call::submit_fraud_proof {
             fraud_proof: Box::new(fraud_proof),
         };

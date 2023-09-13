@@ -86,6 +86,7 @@ use crate::utils::BlockInfo;
 use futures::channel::mpsc;
 use futures::Stream;
 use sc_client_api::{AuxStore, BlockImportNotification};
+use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
@@ -94,9 +95,7 @@ use sp_consensus_slots::Slot;
 use sp_domain_digests::AsPredigest;
 use sp_domains::{Bundle, DomainId, ExecutionReceipt};
 use sp_keystore::KeystorePtr;
-use sp_runtime::traits::{
-    Block as BlockT, HashFor, Header as HeaderT, NumberFor, One, Saturating, Zero,
-};
+use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor, One, Saturating, Zero};
 use sp_runtime::DigestItem;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -110,11 +109,6 @@ type ExecutionReceiptFor<Block, CBlock> = ExecutionReceipt<
     <Block as BlockT>::Hash,
     Balance,
 >;
-
-type TransactionFor<Backend, Block> =
-    <<Backend as sc_client_api::Backend<Block>>::State as sc_client_api::backend::StateBackend<
-        HashFor<Block>,
-    >>::Transaction;
 
 type BundleSender<Block, CBlock> = TracingUnboundedSender<
     Bundle<
@@ -169,6 +163,7 @@ pub struct OperatorParams<
     pub domain_id: DomainId,
     pub domain_created_at: NumberFor<CBlock>,
     pub consensus_client: Arc<CClient>,
+    pub consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory<CBlock>,
     pub consensus_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
     pub client: Arc<Client>,
     pub transaction_pool: Arc<TransactionPool>,

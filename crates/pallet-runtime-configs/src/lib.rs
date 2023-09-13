@@ -22,6 +22,7 @@ pub use pallet::*;
 #[frame_support::pallet]
 mod pallet {
     use frame_support::pallet_prelude::*;
+    use frame_system::pallet_prelude::*;
     use sp_runtime::traits::Zero;
 
     #[pallet::pallet]
@@ -38,7 +39,7 @@ mod pallet {
     pub type EnableTransfer<T> = StorageValue<_, bool, ValueQuery>;
 
     #[pallet::storage]
-    pub type ConfirmationDepthK<T: Config> = StorageValue<_, T::BlockNumber, ValueQuery>;
+    pub type ConfirmationDepthK<T: Config> = StorageValue<_, BlockNumberFor<T>, ValueQuery>;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {}
@@ -47,7 +48,7 @@ mod pallet {
     pub struct GenesisConfig<T: Config> {
         pub enable_domains: bool,
         pub enable_transfer: bool,
-        pub confirmation_depth_k: T::BlockNumber,
+        pub confirmation_depth_k: BlockNumberFor<T>,
     }
 
     impl<T: Config> Default for GenesisConfig<T> {
@@ -56,13 +57,13 @@ mod pallet {
             Self {
                 enable_domains: false,
                 enable_transfer: false,
-                confirmation_depth_k: T::BlockNumber::from(100u32),
+                confirmation_depth_k: BlockNumberFor::<T>::from(100u32),
             }
         }
     }
 
     #[pallet::genesis_build]
-    impl<T: Config> GenesisBuild<T> for GenesisConfig<T> {
+    impl<T: Config> BuildGenesisConfig for GenesisConfig<T> {
         fn build(&self) {
             let Self {
                 enable_domains,

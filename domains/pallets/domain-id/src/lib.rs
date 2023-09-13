@@ -35,14 +35,17 @@ mod pallet {
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
 
-    #[derive(Default)]
+    // TODO: Remove default once https://github.com/paritytech/polkadot-sdk/pull/1221 is in our fork
+    #[derive(frame_support::DefaultNoBound)]
     #[pallet::genesis_config]
-    pub struct GenesisConfig {
+    pub struct GenesisConfig<T> {
         pub domain_id: Option<DomainId>,
+        #[serde(skip)]
+        pub phantom: PhantomData<T>,
     }
 
     #[pallet::genesis_build]
-    impl<T: Config> GenesisBuild<T> for GenesisConfig {
+    impl<T: Config> BuildGenesisConfig for GenesisConfig<T> {
         fn build(&self) {
             SelfDomainId::<T>::set(
                 self.domain_id

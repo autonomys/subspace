@@ -1,21 +1,20 @@
 use crate::rpc::FullDeps;
 use crate::FullClient;
-use domain_runtime_primitives::{Balance, Index};
-use frame_benchmarking::frame_support::codec::{Decode, Encode};
-use frame_benchmarking::frame_support::inherent::BlockT;
+use domain_runtime_primitives::{Balance, Nonce};
 use jsonrpsee::RpcModule;
-use sc_client_api::{AuxStore, Backend, BlockBackend, StateBackendFor, StorageProvider};
+use parity_scale_codec::{Decode, Encode};
+use sc_client_api::{AuxStore, Backend, BlockBackend, StorageProvider};
 use sc_consensus::BlockImport;
 use sc_executor::NativeExecutionDispatch;
 use sc_rpc::{RpcSubscriptionIdProvider, SubscriptionTaskExecutor};
-use sc_service::TFullBackend;
 use sc_transaction_pool::ChainApi;
 use sc_transaction_pool_api::TransactionPool;
 use serde::de::DeserializeOwned;
-use sp_api::{ApiExt, ConstructRuntimeApi, Core, ProvideRuntimeApi, TransactionFor};
+use sp_api::{ApiExt, ConstructRuntimeApi, Core, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{Error as BlockChainError, HeaderBackend, HeaderMetadata};
 use sp_core::traits::SpawnEssentialNamed;
+use sp_runtime::traits::Block as BlockT;
 use std::error::Error;
 use std::fmt::{Debug, Display};
 use std::sync::Arc;
@@ -25,10 +24,7 @@ pub trait BlockImportProvider<Block: BlockT, Client>
 where
     Client: ProvideRuntimeApi<Block>,
 {
-    type BI: BlockImport<Block, Error = sp_consensus::Error, Transaction = TransactionFor<Client, Block>>
-        + Send
-        + Sync
-        + 'static;
+    type BI: BlockImport<Block, Error = sp_consensus::Error> + Send + Sync + 'static;
     fn block_import(&self, client: Arc<Client>) -> Self::BI;
 }
 
@@ -43,8 +39,7 @@ where
         + Send
         + Sync
         + 'static,
-    RuntimeApi::RuntimeApi:
-        ApiExt<Block, StateBackend = StateBackendFor<TFullBackend<Block>, Block>> + Core<Block>,
+    RuntimeApi::RuntimeApi: ApiExt<Block> + Core<Block>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
     type BI = Arc<FullClient<Block, RuntimeApi, ExecutorDispatch>>;
@@ -58,11 +53,11 @@ where
 }
 
 /// Provides adding custom ID to the RPC module.
-pub trait RpcProvider<Block, Client, TxPool, CA, BE, AccountId>
+pub trait RpcProvider<Block, Client, TxPool, CA, BE, AccountId, CIDP>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + StorageProvider<Block, BE>,
-    Client::Api: AccountNonceApi<Block, AccountId, Index>,
+    Client::Api: AccountNonceApi<Block, AccountId, Nonce>,
     TxPool: TransactionPool<Block = Block> + Sync + Send + 'static,
     CA: ChainApi<Block = Block> + 'static,
     BE: Backend<Block> + 'static,
@@ -72,7 +67,7 @@ where
 
     fn deps(
         &self,
-        full_deps: FullDeps<Block, Client, TxPool, CA, BE>,
+        full_deps: FullDeps<Block, Client, TxPool, CA, BE, CIDP>,
     ) -> Result<Self::Deps, sc_service::Error>;
 
     fn rpc_id(&self) -> Option<Box<dyn RpcSubscriptionIdProvider>>;
@@ -87,8 +82,8 @@ where
         SE: SpawnEssentialNamed + Clone;
 }
 
-impl<Block, Client, BE, TxPool, CA, AccountId> RpcProvider<Block, Client, TxPool, CA, BE, AccountId>
-    for DefaultProvider
+impl<Block, Client, BE, TxPool, CA, AccountId, CIDP>
+    RpcProvider<Block, Client, TxPool, CA, BE, AccountId, CIDP> for DefaultProvider
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
@@ -101,18 +96,19 @@ where
         + Sync
         + 'static,
     Client::Api: pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi<Block, Balance>
-        + AccountNonceApi<Block, AccountId, Index>
+        + AccountNonceApi<Block, AccountId, Nonce>
         + BlockBuilder<Block>,
     TxPool: TransactionPool<Block = Block> + Sync + Send + 'static,
     CA: ChainApi<Block = Block> + 'static,
     BE: Backend<Block> + 'static,
     AccountId: DeserializeOwned + Encode + Debug + Decode + Display + Clone + Sync + Send + 'static,
+    CIDP: Clone,
 {
-    type Deps = FullDeps<Block, Client, TxPool, CA, BE>;
+    type Deps = FullDeps<Block, Client, TxPool, CA, BE, CIDP>;
 
     fn deps(
         &self,
-        full_deps: FullDeps<Block, Client, TxPool, CA, BE>,
+        full_deps: FullDeps<Block, Client, TxPool, CA, BE, CIDP>,
     ) -> Result<Self::Deps, sc_service::Error> {
         Ok(full_deps)
     }
@@ -130,6 +126,6 @@ where
     where
         SE: SpawnEssentialNamed + Clone,
     {
-        crate::rpc::create_full::<_, _, _, _, AccountId, BE>(deps).map_err(Into::into)
+        crate::rpc::create_full::<_, _, _, _, AccountId, BE, CIDP>(deps).map_err(Into::into)
     }
 }
