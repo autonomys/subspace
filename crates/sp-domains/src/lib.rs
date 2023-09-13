@@ -607,6 +607,23 @@ impl DomainsDigestItem for DigestItem {
     }
 }
 
+/// The storage key of the `SelfDomainId` storage item in the `pallet-domain-id`
+///
+/// Any change to the storage item name or the `pallet-domain-id` name used in the `construct_runtime`
+/// macro must be reflected here.
+pub fn self_domain_id_storage_key() -> sp_core::storage::StorageKey {
+    sp_core::storage::StorageKey(
+        frame_support::storage::storage_prefix(
+            // This is the name used for the `pallet-domain-id` in the `construct_runtime` macro
+            // i.e. `SelfDomainId: pallet_domain_id = 90`
+            "SelfDomainId".as_bytes(),
+            // This is the storage item name used inside the `pallet-domain-id`
+            "SelfDomainId".as_bytes(),
+        )
+        .to_vec(),
+    )
+}
+
 /// `DomainInstanceData` is used to construct `RuntimeGenesisConfig` which will be further used
 /// to construct the genesis block
 #[derive(PartialEq, Eq, Clone, Encode, Decode, TypeInfo)]
