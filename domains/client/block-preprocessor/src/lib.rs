@@ -10,7 +10,7 @@
 
 #![warn(rust_2018_idioms)]
 
-mod inherents;
+pub mod inherents;
 pub mod runtime_api;
 pub mod runtime_api_full;
 pub mod runtime_api_light;

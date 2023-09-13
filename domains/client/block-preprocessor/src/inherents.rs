@@ -14,13 +14,18 @@
 
 use crate::runtime_api::InherentExtrinsicConstructor;
 use sp_api::ProvideRuntimeApi;
+use sp_blockchain::HeaderBackend;
 use sp_domains::DomainsApi;
+use sp_inherents::CreateInherentDataProviders;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
+use sp_timestamp::InherentType;
+use std::error::Error;
+use std::marker::PhantomData;
 use std::sync::Arc;
 
 /// Returns required inherent extrinsics for the domain block based on the primary block.
 /// Note: consensus block hash must be used to construct domain block.
-pub fn construct_inherent_extrinsics<Block, DomainRuntimeApi, CBlock, CClient>(
+pub(crate) fn construct_inherent_extrinsics<Block, DomainRuntimeApi, CBlock, CClient>(
     consensus_client: &Arc<CClient>,
     domain_runtime_api: &DomainRuntimeApi,
     consensus_block_hash: CBlock::Hash,
@@ -45,4 +50,55 @@ where
     }
 
     Ok(inherent_exts)
+}
+
+#[derive(Debug)]
+#[allow(dead_code)]
+pub struct CreateInherentDataProvider<CClient, CBlock> {
+    consensus_client: Arc<CClient>,
+    _marker: PhantomData<CBlock>,
+}
+
+impl<CClient, CBlock: Clone> Clone for CreateInherentDataProvider<CClient, CBlock> {
+    fn clone(&self) -> Self {
+        Self {
+            consensus_client: self.consensus_client.clone(),
+            _marker: Default::default(),
+        }
+    }
+}
+
+impl<CClient, CBlock> CreateInherentDataProvider<CClient, CBlock> {
+    pub fn new(consensus_client: Arc<CClient>) -> Self {
+        Self {
+            consensus_client,
+            _marker: Default::default(),
+        }
+    }
+}
+
+#[async_trait::async_trait]
+impl<CClient, CBlock, Block> CreateInherentDataProviders<Block, ()>
+    for CreateInherentDataProvider<CClient, CBlock>
+where
+    Block: BlockT,
+    CBlock: BlockT,
+    CClient: ProvideRuntimeApi<CBlock> + HeaderBackend<CBlock>,
+    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
+{
+    // TODO: we need to include the runtime upgrade
+    type InherentDataProviders = sp_timestamp::InherentDataProvider;
+
+    async fn create_inherent_data_providers(
+        &self,
+        _parent: Block::Hash,
+        _extra_args: (),
+    ) -> Result<Self::InherentDataProviders, Box<dyn Error + Send + Sync>> {
+        let best_consensus_hash = self.consensus_client.info().best_hash;
+        let runtime_api = self.consensus_client.runtime_api();
+        let timestamp = runtime_api.timestamp(best_consensus_hash)?;
+        Ok(sp_timestamp::InherentDataProvider::new(InherentType::new(
+            timestamp,
+        )))
+    }
 }

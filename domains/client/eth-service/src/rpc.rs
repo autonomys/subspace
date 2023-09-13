@@ -20,6 +20,7 @@ use sp_api::{CallApiAt, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
 use sp_blockchain::{Error as BlockChainError, HeaderBackend, HeaderMetadata};
 use sp_core::H256;
+use sp_inherents::CreateInherentDataProviders;
 use sp_runtime::traits::Block as BlockT;
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -38,9 +39,9 @@ where
 }
 
 /// Extra dependencies for Ethereum compatibility.
-pub struct EthDeps<Client, TxPool, CA: ChainApi, CT, Block: BlockT, BE> {
+pub struct EthDeps<Client, TxPool, CA: ChainApi, CT, Block: BlockT, BE, CIDP> {
     /// Full Rpc deps
-    pub full_deps: FullDeps<Block, Client, TxPool, CA, BE>,
+    pub full_deps: FullDeps<Block, Client, TxPool, CA, BE, CIDP>,
     /// Ethereum transaction converter.
     pub converter: Option<CT>,
     /// Whether to enable dev signer
@@ -66,10 +67,12 @@ pub struct EthDeps<Client, TxPool, CA: ChainApi, CT, Block: BlockT, BE> {
     pub execute_gas_limit_multiplier: u64,
     /// Mandated parent hashes for a given block hash.
     pub forced_parent_hashes: Option<BTreeMap<H256, H256>>,
+    /// Pending inherent data provider
+    pub pending_inherent_data_provider: CIDP,
 }
 
-impl<Client, TxPool, CA: ChainApi, CT: Clone, Block: BlockT, BE> Clone
-    for EthDeps<Client, TxPool, CA, CT, Block, BE>
+impl<Client, TxPool, CA: ChainApi, CT: Clone, Block: BlockT, BE, CIDP: Clone> Clone
+    for EthDeps<Client, TxPool, CA, CT, Block, BE, CIDP>
 {
     fn clone(&self) -> Self {
         Self {
@@ -86,14 +89,15 @@ impl<Client, TxPool, CA: ChainApi, CT: Clone, Block: BlockT, BE> Clone
             fee_history_cache_limit: self.fee_history_cache_limit,
             execute_gas_limit_multiplier: self.execute_gas_limit_multiplier,
             forced_parent_hashes: self.forced_parent_hashes.clone(),
+            pending_inherent_data_provider: self.pending_inherent_data_provider.clone(),
         }
     }
 }
 
 /// Instantiate Ethereum-compatible RPC extensions.
-pub(crate) fn create_eth_rpc<Client, BE, TxPool, CA, CT, Block, EC: EthConfig<Block, Client>>(
+pub(crate) fn create_eth_rpc<Client, BE, TxPool, CA, CT, Block, EC, CIDP>(
     mut io: RpcModule<()>,
-    deps: EthDeps<Client, TxPool, CA, CT, Block, BE>,
+    deps: EthDeps<Client, TxPool, CA, CT, Block, BE, CIDP>,
     subscription_task_executor: SubscriptionTaskExecutor,
     pubsub_notification_sinks: Arc<
         EthereumBlockNotificationSinks<EthereumBlockNotification<Block>>,
@@ -112,11 +116,14 @@ where
     TxPool: TransactionPool<Block = Block> + 'static,
     CA: ChainApi<Block = Block> + 'static,
     CT: ConvertTransaction<<Block as BlockT>::Extrinsic> + Send + Sync + 'static,
+    EC: EthConfig<Block, Client>,
+    CIDP: CreateInherentDataProviders<Block, ()> + Send + 'static,
 {
     let EthDeps {
         full_deps,
         converter,
         enable_dev_signer,
+        sync: _,
         frontier_backend,
         overrides,
         block_data_cache,
@@ -126,7 +133,7 @@ where
         fee_history_cache_limit,
         execute_gas_limit_multiplier,
         forced_parent_hashes,
-        ..
+        pending_inherent_data_provider,
     } = deps;
 
     let FullDeps {
@@ -145,7 +152,7 @@ where
     }
 
     io.merge(
-        Eth::<Block, Client, TxPool, CT, BE, CA, EC>::new(
+        Eth::<Block, Client, TxPool, CT, BE, CA, CIDP, EC>::new(
             client.clone(),
             pool.clone(),
             graph.clone(),
@@ -160,6 +167,8 @@ where
             fee_history_cache_limit,
             execute_gas_limit_multiplier,
             forced_parent_hashes,
+            pending_inherent_data_provider,
+            None,
         )
         .replace_config::<EC>()
         .into_rpc(),

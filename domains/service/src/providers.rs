@@ -53,7 +53,7 @@ where
 }
 
 /// Provides adding custom ID to the RPC module.
-pub trait RpcProvider<Block, Client, TxPool, CA, BE, AccountId>
+pub trait RpcProvider<Block, Client, TxPool, CA, BE, AccountId, CIDP>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + StorageProvider<Block, BE>,
@@ -67,7 +67,7 @@ where
 
     fn deps(
         &self,
-        full_deps: FullDeps<Block, Client, TxPool, CA, BE>,
+        full_deps: FullDeps<Block, Client, TxPool, CA, BE, CIDP>,
     ) -> Result<Self::Deps, sc_service::Error>;
 
     fn rpc_id(&self) -> Option<Box<dyn RpcSubscriptionIdProvider>>;
@@ -82,8 +82,8 @@ where
         SE: SpawnEssentialNamed + Clone;
 }
 
-impl<Block, Client, BE, TxPool, CA, AccountId> RpcProvider<Block, Client, TxPool, CA, BE, AccountId>
-    for DefaultProvider
+impl<Block, Client, BE, TxPool, CA, AccountId, CIDP>
+    RpcProvider<Block, Client, TxPool, CA, BE, AccountId, CIDP> for DefaultProvider
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>
@@ -102,12 +102,13 @@ where
     CA: ChainApi<Block = Block> + 'static,
     BE: Backend<Block> + 'static,
     AccountId: DeserializeOwned + Encode + Debug + Decode + Display + Clone + Sync + Send + 'static,
+    CIDP: Clone,
 {
-    type Deps = FullDeps<Block, Client, TxPool, CA, BE>;
+    type Deps = FullDeps<Block, Client, TxPool, CA, BE, CIDP>;
 
     fn deps(
         &self,
-        full_deps: FullDeps<Block, Client, TxPool, CA, BE>,
+        full_deps: FullDeps<Block, Client, TxPool, CA, BE, CIDP>,
     ) -> Result<Self::Deps, sc_service::Error> {
         Ok(full_deps)
     }
@@ -125,6 +126,6 @@ where
     where
         SE: SpawnEssentialNamed + Clone,
     {
-        crate::rpc::create_full::<_, _, _, _, AccountId, BE>(deps).map_err(Into::into)
+        crate::rpc::create_full::<_, _, _, _, AccountId, BE, CIDP>(deps).map_err(Into::into)
     }
 }

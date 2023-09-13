@@ -1,5 +1,6 @@
 use crate::providers::{BlockImportProvider, RpcProvider};
 use crate::{FullBackend, FullClient};
+use domain_client_block_preprocessor::inherents::CreateInherentDataProvider;
 use domain_client_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_client_consensus_relay_chain::DomainBlockImport;
 use domain_client_message_relayer::GossipMessageSink;
@@ -338,6 +339,7 @@ where
             >,
             TFullBackend<Block>,
             AccountId,
+            CreateInherentDataProvider<CClient, CBlock>,
         > + BlockImportProvider<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>
         + 'static,
 {
@@ -408,6 +410,9 @@ where
             database_source: domain_config.database.clone(),
             task_spawner: task_manager.spawn_handle(),
             backend: backend.clone(),
+            create_inherent_data_provider: CreateInherentDataProvider::new(
+                consensus_client.clone(),
+            ),
         };
 
         let spawn_essential = task_manager.spawn_essential_handle();
