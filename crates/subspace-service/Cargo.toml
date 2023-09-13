@@ -16,7 +16,7 @@ include = [
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-async-trait = "0.1.68"
+async-trait = "0.1.73"
 atomic = "0.5.3"
 cross-domain-message-gossip = { version = "0.1.0", path = "../../domains/client/cross-domain-message-gossip" }
 domain-block-preprocessor = { version = "0.1.0", path = "../../domains/client/block-preprocessor" }
@@ -25,7 +25,7 @@ either = "1.8.1"
 frame-support = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "48c5ebae44b90d45863195b91e0e489eca670898" }
 futures = "0.3.28"
 hex = "0.4.3"
-jsonrpsee = { version = "0.16.2", features = ["server"] }
+jsonrpsee = { version = "0.16.3", features = ["server"] }
 pallet-transaction-payment-rpc = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "48c5ebae44b90d45863195b91e0e489eca670898" }
 parity-scale-codec = "3.6.5"
 parking_lot = "0.12.1"
@@ -78,7 +78,7 @@ subspace-runtime-primitives = { version = "0.1.0", path = "../subspace-runtime-p
 subspace-transaction-pool = { version = "0.1.0", path = "../subspace-transaction-pool" }
 substrate-frame-rpc-system = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "48c5ebae44b90d45863195b91e0e489eca670898" }
 substrate-prometheus-endpoint = { git = "https://github.com/subspace/substrate", rev = "48c5ebae44b90d45863195b91e0e489eca670898" }
-thiserror = "1.0.38"
+thiserror = "1.0.48"
 tokio = { version = "1.32.0", features = ["sync"] }
 tracing = "0.1.37"
 

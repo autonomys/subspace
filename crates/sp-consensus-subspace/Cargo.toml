@@ -13,7 +13,7 @@ readme = "README.md"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-async-trait = { version = "0.1.68", optional = true }
+async-trait = { version = "0.1.73", optional = true }
 codec = { package = "parity-scale-codec", version = "3.6.5", default-features = false }
 log = { version = "0.4.20", default-features = false }
 scale-info = { version = "2.7.0", default-features = false, features = ["derive"] }
@@ -34,7 +34,7 @@ subspace-solving = { version = "0.1.0", path = "../subspace-solving", default-fe
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
 subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space", default-features = false }
 subspace-verification = { version = "0.1.0", path = "../subspace-verification", default-features = false }
-thiserror = { version = "1.0.38", optional = true }
+thiserror = { version = "1.0.48", optional = true }
 
 [features]
 default = ["std"]

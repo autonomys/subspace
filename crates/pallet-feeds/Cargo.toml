@@ -24,7 +24,7 @@ sp-runtime = { version = "24.0.0", default-features = false, git = "https://gith
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
 
 [dev-dependencies]
-serde = "1.0.159"
+serde = "1.0.183"
 sp-io = { version = "23.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "48c5ebae44b90d45863195b91e0e489eca670898" }
 
 [features]

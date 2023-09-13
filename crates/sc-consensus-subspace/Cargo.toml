@@ -14,7 +14,7 @@ readme = "README.md"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
-async-trait = "0.1.68"
+async-trait = "0.1.73"
 codec = { package = "parity-scale-codec", version = "3.6.5", features = ["derive"] }
 fork-tree = { version = "3.0.0", git = "https://github.com/subspace/substrate", rev = "48c5ebae44b90d45863195b91e0e489eca670898" }
 futures = "0.3.28"
@@ -32,7 +32,7 @@ sc-consensus-slots = { version = "0.10.0-dev", git = "https://github.com/subspac
 sc-proof-of-time = { version = "0.1.0", path = "../sc-proof-of-time" }
 sc-telemetry = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "48c5ebae44b90d45863195b91e0e489eca670898" }
 sc-utils = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "48c5ebae44b90d45863195b91e0e489eca670898" }
-serde = { version = "1.0.159", features = ["derive"] }
+serde = { version = "1.0.183", features = ["derive"] }
 sp-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "48c5ebae44b90d45863195b91e0e489eca670898" }
 sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "48c5ebae44b90d45863195b91e0e489eca670898" }
 sp-block-builder = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "48c5ebae44b90d45863195b91e0e489eca670898" }
@@ -50,7 +50,7 @@ subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primiti
 subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space" }
 subspace-solving = { version = "0.1.0", path = "../subspace-solving" }
 subspace-verification = { version = "0.1.0", path = "../subspace-verification" }
-thiserror = "1.0.38"
+thiserror = "1.0.48"
 
 [dev-dependencies]
 # TODO: Restore in the future, currently tests are mostly broken and useless

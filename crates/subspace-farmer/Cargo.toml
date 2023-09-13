@@ -12,21 +12,21 @@ include = [
 ]
 
 [dependencies]
-anyhow = "1.0.71"
-async-trait = "0.1.68"
+anyhow = "1.0.75"
+async-trait = "0.1.73"
 atomic = "0.5.3"
 backoff = { version = "0.4.0", features = ["futures", "tokio"] }
 base58 = "0.2.0"
 blake2 = "0.10.6"
 blake3 = { version = "1.4.1", default-features = false }
-bytesize = "1.2.0"
-clap = { version = "4.2.1", features = ["color", "derive"] }
+bytesize = "1.3.0"
+clap = { version = "4.4.3", features = ["color", "derive"] }
 derive_more = "0.99.17"
 event-listener-primitives = "2.0.1"
 fdlimit = "0.2"
 futures = "0.3.28"
 hex = { version = "0.4.3", features = ["serde"] }
-jsonrpsee = { version = "0.16.2", features = ["client"] }
+jsonrpsee = { version = "0.16.3", features = ["client"] }
 lru = "0.11.0"
 memmap2 = "0.7.1"
 parity-scale-codec = "3.6.5"
@@ -35,11 +35,11 @@ prometheus-client = "0.21.2"
 rand = "0.8.5"
 rayon = "1.7.0"
 schnorrkel = "0.9.1"
-serde = { version = "1.0.159", features = ["derive"] }
-serde_json = "1.0.95"
+serde = { version = "1.0.183", features = ["derive"] }
+serde_json = "1.0.106"
 static_assertions = "1.1.0"
 std-semaphore = "0.1.0"
-ss58-registry = "1.40.0"
+ss58-registry = "1.43.0"
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
 subspace-erasure-coding = { version = "0.1.0", path = "../subspace-erasure-coding" }
 subspace-farmer-components = { version = "0.1.0", path = "../subspace-farmer-components" }
@@ -51,8 +51,8 @@ subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-spac
 subspace-rpc-primitives = { version = "0.1.0", path = "../subspace-rpc-primitives" }
 substrate-bip39 = "0.4.4"
 supports-color = "2.0.0"
-tempfile = "3.4.0"
-thiserror = "1.0.38"
+tempfile = "3.8.0"
+thiserror = "1.0.48"
 tokio = { version = "1.32.0", features = ["macros", "parking_lot", "rt-multi-thread", "signal"] }
 tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }

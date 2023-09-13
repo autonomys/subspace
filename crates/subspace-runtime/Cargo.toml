@@ -67,7 +67,7 @@ subspace-verification = { version = "0.1.0", default-features = false, path = ".
 substrate-wasm-builder = { version = "5.0.0-dev", git = "https://github.com/subspace/substrate", rev = "48c5ebae44b90d45863195b91e0e489eca670898", optional = true }
 
 [dev-dependencies]
-hex-literal = "0.4.0"
+hex-literal = "0.4.1"
 sp-io = { version = "23.0.0", git = "https://github.com/subspace/substrate", rev = "48c5ebae44b90d45863195b91e0e489eca670898" }
 
 [features]
