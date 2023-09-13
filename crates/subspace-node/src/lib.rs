@@ -239,7 +239,7 @@ pub struct Cli {
     pub dsn_in_connections: u32,
 
     /// Defines max established outgoing swarm connection limit for DSN.
-    #[arg(long, default_value_t = 100)]
+    #[arg(long, default_value_t = 150)]
     pub dsn_out_connections: u32,
 
     /// Defines max pending incoming connection limit for DSN.
@@ -247,11 +247,11 @@ pub struct Cli {
     pub dsn_pending_in_connections: u32,
 
     /// Defines max pending outgoing swarm connection limit for DSN.
-    #[arg(long, default_value_t = 100)]
+    #[arg(long, default_value_t = 150)]
     pub dsn_pending_out_connections: u32,
 
     /// Defines target total (in and out) connection number for DSN that should be maintained.
-    #[arg(long, default_value_t = 50)]
+    #[arg(long, default_value_t = 30)]
     pub dsn_target_connections: u32,
 
     /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses
