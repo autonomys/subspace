@@ -277,7 +277,7 @@ where
     }
 
     async fn claim_slot(
-        &self,
+        &mut self,
         parent_header: &Block::Header,
         slot: Slot,
         _aux_data: &Self::AuxData,
