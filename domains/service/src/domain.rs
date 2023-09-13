@@ -17,6 +17,7 @@ use sc_service::{
     SpawnTasksParams, TFullBackend, TaskManager,
 };
 use sc_telemetry::{Telemetry, TelemetryWorker, TelemetryWorkerHandle};
+use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver};
 use serde::de::DeserializeOwned;
 use sp_api::{ApiExt, BlockT, ConstructRuntimeApi, Metadata, NumberFor, ProvideRuntimeApi};
@@ -242,6 +243,7 @@ where
     pub domain_config: ServiceConfiguration,
     pub domain_created_at: NumberFor<CBlock>,
     pub consensus_client: Arc<CClient>,
+    pub consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory<CBlock>,
     pub consensus_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
     pub select_chain: SC,
     pub operator_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS>,
@@ -344,6 +346,7 @@ where
         mut domain_config,
         domain_created_at,
         consensus_client,
+        consensus_offchain_tx_pool_factory,
         consensus_network_sync_oracle,
         select_chain,
         operator_streams,
@@ -456,6 +459,7 @@ where
             domain_id,
             domain_created_at,
             consensus_client: consensus_client.clone(),
+            consensus_offchain_tx_pool_factory,
             consensus_network_sync_oracle,
             client: client.clone(),
             transaction_pool: transaction_pool.clone(),

@@ -51,6 +51,7 @@ sc-service = { version = "0.10.0-dev", git = "https://github.com/subspace/substr
 sc-storage-monitor = { version = "0.1.0", git = "https://github.com/subspace/substrate", rev = "48c5ebae44b90d45863195b91e0e489eca670898", default-features = false }
 sc-telemetry = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "48c5ebae44b90d45863195b91e0e489eca670898" }
 sc-tracing = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "48c5ebae44b90d45863195b91e0e489eca670898" }
+sc-transaction-pool-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "48c5ebae44b90d45863195b91e0e489eca670898" }
 sc-network = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "48c5ebae44b90d45863195b91e0e489eca670898" }
 sc-network-sync = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "48c5ebae44b90d45863195b91e0e489eca670898" }
 sc-utils = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "48c5ebae44b90d45863195b91e0e489eca670898" }

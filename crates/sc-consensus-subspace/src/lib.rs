@@ -50,6 +50,7 @@ use sc_proof_of_time::source::PotSlotInfoStream;
 #[cfg(feature = "pot")]
 use sc_proof_of_time::verifier::PotVerifier;
 use sc_telemetry::TelemetryHandle;
+use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::{ApiError, ApiExt, BlockT, HeaderT, NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
@@ -399,6 +400,11 @@ where
     /// Handle use to report telemetries.
     pub telemetry: Option<TelemetryHandle>,
 
+    /// The offchain transaction pool factory.
+    ///
+    /// Will be used when sending equivocation reports and votes.
+    pub offchain_tx_pool_factory: OffchainTransactionPoolFactory<Block>,
+
     /// Proof of time verifier
     #[cfg(feature = "pot")]
     pub pot_verifier: PotVerifier,
@@ -425,6 +431,7 @@ pub fn start_subspace<PosTable, Block, Client, SC, E, I, SO, CIDP, BS, L, AS, Er
         block_proposal_slot_portion,
         max_block_proposal_slot_portion,
         telemetry,
+        offchain_tx_pool_factory,
         #[cfg(feature = "pot")]
         pot_verifier,
         #[cfg(feature = "pot")]
@@ -470,6 +477,7 @@ where
         block_proposal_slot_portion,
         max_block_proposal_slot_portion,
         telemetry,
+        offchain_tx_pool_factory,
         chain_constants: get_chain_constants(client.as_ref())
             .map_err(|error| sp_consensus::Error::Other(error.into()))?,
         segment_headers_store,

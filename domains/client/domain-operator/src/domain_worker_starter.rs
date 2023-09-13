@@ -27,6 +27,7 @@ use sc_client_api::{
     AuxStore, BlockBackend, BlockImportNotification, BlockchainEvents, Finalizer, ProofProvider,
 };
 use sc_consensus::BlockImport;
+use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sp_api::{BlockT, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
@@ -54,6 +55,7 @@ pub(super) async fn start_worker<
 >(
     spawn_essential: Box<dyn SpawnEssentialNamed>,
     consensus_client: Arc<CClient>,
+    consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory<CBlock>,
     client: Arc<Client>,
     is_authority: bool,
     bundle_producer: DomainBundleProducer<
@@ -146,6 +148,7 @@ pub(super) async fn start_worker<
         );
     let handle_slot_notifications_fut = handle_slot_notifications::<Block, CBlock, _, _>(
         consensus_client.as_ref(),
+        &consensus_offchain_tx_pool_factory,
         move |consensus_block_info, slot_info| {
             bundle_producer
                 .clone()

@@ -4,7 +4,8 @@ use crate::utils::{to_number_primitive, BlockInfo, OperatorSlotInfo};
 use futures::channel::mpsc;
 use futures::{SinkExt, Stream, StreamExt};
 use sc_client_api::{BlockBackend, BlockImportNotification, BlockchainEvents};
-use sp_api::{ApiError, BlockT, ProvideRuntimeApi};
+use sc_transaction_pool_api::OffchainTransactionPoolFactory;
+use sp_api::{ApiError, ApiExt, BlockT, ProvideRuntimeApi};
 use sp_blockchain::{HashAndNumber, HeaderBackend};
 use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::{DomainsApi, OpaqueBundle};
@@ -25,6 +26,7 @@ type OpaqueBundleFor<Block, CBlock> = OpaqueBundle<
 
 pub(crate) async fn handle_slot_notifications<Block, CBlock, CClient, BundlerFn>(
     consensus_client: &CClient,
+    consensus_offchain_tx_pool_factory: &OffchainTransactionPoolFactory<CBlock>,
     bundler: BundlerFn,
     mut slots: impl Stream<Item = (OperatorSlotInfo, Option<mpsc::Sender<()>>)> + Unpin,
 ) where
@@ -41,8 +43,13 @@ pub(crate) async fn handle_slot_notifications<Block, CBlock, CClient, BundlerFn>
 {
     while let Some((operator_slot_info, slot_acknowledgement_sender)) = slots.next().await {
         let slot = operator_slot_info.slot;
-        if let Err(error) =
-            on_new_slot::<Block, CBlock, _, _>(consensus_client, &bundler, operator_slot_info).await
+        if let Err(error) = on_new_slot::<Block, CBlock, _, _>(
+            consensus_client,
+            consensus_offchain_tx_pool_factory.clone(),
+            &bundler,
+            operator_slot_info,
+        )
+        .await
         {
             tracing::error!(
                 ?error,
@@ -193,6 +200,7 @@ pub(crate) async fn handle_block_import_notifications<
 
 async fn on_new_slot<Block, CBlock, CClient, BundlerFn>(
     consensus_client: &CClient,
+    consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory<CBlock>,
     bundler: &BundlerFn,
     operator_slot_info: OperatorSlotInfo,
 ) -> Result<(), ApiError>
@@ -225,9 +233,12 @@ where
         }
     };
 
-    consensus_client
-        .runtime_api()
-        .submit_bundle_unsigned(best_hash, opaque_bundle)?;
+    let mut runtime_api = consensus_client.runtime_api();
+    // Register the offchain tx pool to be able to use it from the runtime.
+    runtime_api.register_extension(
+        consensus_offchain_tx_pool_factory.offchain_transaction_pool(best_hash),
+    );
+    runtime_api.submit_bundle_unsigned(best_hash, opaque_bundle)?;
 
     Ok(())
 }

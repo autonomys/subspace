@@ -85,6 +85,7 @@ use crate::utils::BlockInfo;
 use futures::channel::mpsc;
 use futures::Stream;
 use sc_client_api::{AuxStore, BlockImportNotification};
+use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
@@ -161,6 +162,7 @@ pub struct OperatorParams<
     pub domain_id: DomainId,
     pub domain_created_at: NumberFor<CBlock>,
     pub consensus_client: Arc<CClient>,
+    pub consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory<CBlock>,
     pub consensus_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
     pub client: Arc<Client>,
     pub transaction_pool: Arc<TransactionPool>,

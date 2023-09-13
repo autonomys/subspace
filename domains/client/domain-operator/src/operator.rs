@@ -181,6 +181,7 @@ where
             crate::domain_worker_starter::start_worker(
                 spawn_essential.clone(),
                 params.consensus_client.clone(),
+                params.consensus_offchain_tx_pool_factory.clone(),
                 params.client.clone(),
                 params.is_authority,
                 bundle_producer,

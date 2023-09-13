@@ -13,6 +13,7 @@ use sc_cli::{CliConfiguration, Database, DefaultConfigurationValues, SubstrateCl
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{BlockImportingNotification, NewSlotNotification};
 use sc_service::{BasePath, Configuration};
+use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::{TracingUnboundedReceiver, TracingUnboundedSender};
 use sp_domains::RuntimeType;
 use std::sync::Arc;
@@ -26,6 +27,7 @@ pub struct DomainInstanceStarter {
     pub domain_cli: DomainCli,
     pub tokio_handle: tokio::runtime::Handle,
     pub consensus_client: Arc<CFullClient<CRuntimeApi, CExecutorDispatch>>,
+    pub consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory<CBlock>,
     pub block_importing_notification_stream:
         SubspaceNotificationStream<BlockImportingNotification<CBlock>>,
     pub new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
@@ -50,6 +52,7 @@ impl DomainInstanceStarter {
             domain_cli,
             tokio_handle,
             consensus_client,
+            consensus_offchain_tx_pool_factory,
             block_importing_notification_stream,
             new_slot_notification_stream,
             consensus_sync_service,
@@ -130,6 +133,7 @@ impl DomainInstanceStarter {
                     domain_config,
                     domain_created_at,
                     consensus_client,
+                    consensus_offchain_tx_pool_factory,
                     consensus_network_sync_oracle: consensus_sync_service.clone(),
                     select_chain,
                     operator_streams,

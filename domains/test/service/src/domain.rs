@@ -21,6 +21,7 @@ use sc_network::{NetworkService, NetworkStateInfo};
 use sc_network_sync::SyncingService;
 use sc_service::config::MultiaddrWithPeerId;
 use sc_service::{BasePath, Role, RpcHandlers, TFullBackend, TaskManager};
+use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedSender};
 use serde::de::DeserializeOwned;
 use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, NumberFor, ProvideRuntimeApi};
@@ -225,6 +226,9 @@ where
             domain_config,
             domain_created_at,
             consensus_client: mock_consensus_node.client.clone(),
+            consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory::new(
+                mock_consensus_node.transaction_pool.clone(),
+            ),
             consensus_network_sync_oracle: mock_consensus_node.sync_service.clone(),
             select_chain: mock_consensus_node.select_chain.clone(),
             operator_streams,

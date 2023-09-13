@@ -31,6 +31,7 @@ sc-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/subs
 sc-consensus-slots = { version = "0.10.0-dev", git = "https://github.com/subspace/substrate", rev = "48c5ebae44b90d45863195b91e0e489eca670898" }
 sc-proof-of-time = { version = "0.1.0", path = "../sc-proof-of-time" }
 sc-telemetry = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "48c5ebae44b90d45863195b91e0e489eca670898" }
+sc-transaction-pool-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "48c5ebae44b90d45863195b91e0e489eca670898" }
 sc-utils = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "48c5ebae44b90d45863195b91e0e489eca670898" }
 serde = { version = "1.0.183", features = ["derive"] }
 sp-api = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "48c5ebae44b90d45863195b91e0e489eca670898" }

@@ -16,6 +16,7 @@ use sc_proof_of_time::verifier::PotVerifier;
 #[cfg(not(feature = "pot"))]
 use sc_telemetry::CONSENSUS_DEBUG;
 use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_TRACE};
+use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use schnorrkel::context::SigningContext;
 use sp_api::{ApiExt, BlockT, HeaderT, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
@@ -58,6 +59,7 @@ pub fn import_queue<PosTable, Block: BlockT, Client, SelectChain, Inner, SN>(
     spawner: &impl sp_core::traits::SpawnEssentialNamed,
     registry: Option<&Registry>,
     telemetry: Option<TelemetryHandle>,
+    offchain_tx_pool_factory: OffchainTransactionPoolFactory<Block>,
     is_authoring_blocks: bool,
     #[cfg(feature = "pot")] pot_verifier: PotVerifier,
 ) -> Result<DefaultImportQueue<Block>, sp_blockchain::Error>
@@ -79,6 +81,7 @@ where
         select_chain,
         slot_now,
         telemetry,
+        offchain_tx_pool_factory,
         #[cfg(feature = "pot")]
         chain_constants,
         reward_signing_context: schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT),
@@ -163,6 +166,7 @@ struct SubspaceVerifier<PosTable, Block: BlockT, Client, SelectChain, SN> {
     // TODO: Remove field once PoT is the only option
     slot_now: SN,
     telemetry: Option<TelemetryHandle>,
+    offchain_tx_pool_factory: OffchainTransactionPoolFactory<Block>,
     #[cfg(feature = "pot")]
     chain_constants: ChainConstants,
     reward_signing_context: SigningContext,
@@ -346,8 +350,13 @@ where
                 .map_err(|e| Error::Client(e.into()))?;
 
             // submit equivocation report at best block.
-            self.client
-                .runtime_api()
+            let mut runtime_api = self.client.runtime_api();
+            // Register the offchain tx pool to be able to use it from the runtime.
+            runtime_api.register_extension(
+                self.offchain_tx_pool_factory
+                    .offchain_transaction_pool(best_hash),
+            );
+            runtime_api
                 .submit_report_equivocation_extrinsic(best_hash, equivocation_proof)
                 .map_err(Error::RuntimeApi)?;
 

@@ -30,6 +30,7 @@ use sc_executor::NativeExecutionDispatch;
 use sc_service::Configuration;
 use sc_service::PartialComponents;
 use sc_storage_monitor::StorageMonitorService;
+use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::tracing_unbounded;
 use sp_core::crypto::Ss58AddressFormat;
 use sp_core::traits::SpawnEssentialNamed;
@@ -617,6 +618,9 @@ fn main() -> Result<(), Error> {
                         domain_cli,
                         tokio_handle,
                         consensus_client: consensus_chain_node.client.clone(),
+                        consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory::new(
+                            consensus_chain_node.transaction_pool.clone(),
+                        ),
                         block_importing_notification_stream: consensus_chain_node
                             .block_importing_notification_stream
                             .clone(),

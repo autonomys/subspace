@@ -584,6 +584,7 @@ where
         &task_manager.spawn_essential_handle(),
         config.prometheus_registry(),
         telemetry.as_ref().map(|x| x.handle()),
+        OffchainTransactionPoolFactory::new(transaction_pool.clone()),
         config.role.is_authority(),
         #[cfg(feature = "pot")]
         pot_verifier.clone(),
@@ -898,6 +899,8 @@ where
         }
     }
 
+    let offchain_tx_pool_factory = OffchainTransactionPoolFactory::new(transaction_pool.clone());
+
     if config.base.offchain_worker.enabled {
         task_manager.spawn_handle().spawn(
             "offchain-workers-runner",
@@ -907,9 +910,7 @@ where
                 is_validator: config.base.role.is_authority(),
                 keystore: Some(keystore_container.keystore()),
                 offchain_db: backend.offchain_storage(),
-                transaction_pool: Some(OffchainTransactionPoolFactory::new(
-                    transaction_pool.clone(),
-                )),
+                transaction_pool: Some(offchain_tx_pool_factory.clone()),
                 network_provider: network_service.clone(),
                 enable_http_requests: true,
                 custom_extensions: |_| vec![],
@@ -994,7 +995,8 @@ where
             segment_headers_store: segment_headers_store.clone(),
             block_proposal_slot_portion,
             max_block_proposal_slot_portion: None,
-            telemetry: None,
+            telemetry: telemetry.as_ref().map(|x| x.handle()),
+            offchain_tx_pool_factory,
             #[cfg(feature = "pot")]
             pot_verifier,
             #[cfg(feature = "pot")]
