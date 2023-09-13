@@ -11552,6 +11552,7 @@ dependencies = [
  "sp-consensus",
  "sp-consensus-subspace",
  "sp-core",
+ "sp-domain-digests",
  "sp-domains",
  "sp-messenger",
  "sp-runtime",
