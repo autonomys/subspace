@@ -1,11 +1,11 @@
 use crate::endpoint::{Endpoint, EndpointRequest, EndpointResponse};
-use crate::verification::StorageProofVerifier;
 use codec::{Decode, Encode, FullCodec, MaxEncodedLen};
 use frame_support::storage::generator::StorageMap;
 use frame_support::{log, Identity};
 use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
 use sp_core::storage::StorageKey;
+use sp_domains::verification::StorageProofVerifier;
 use sp_domains::DomainId;
 use sp_runtime::app_crypto::sp_core::U256;
 use sp_runtime::{sp_std, DispatchError};

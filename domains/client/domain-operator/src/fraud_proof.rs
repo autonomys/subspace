@@ -9,7 +9,8 @@ use sp_blockchain::HeaderBackend;
 use sp_core::traits::CodeExecutor;
 use sp_core::H256;
 use sp_domains::fraud_proof::{
-    ExecutionPhase, FraudProof, InvalidBundleProof, InvalidStateTransitionProof, TotalRewardsProof,
+    ExecutionPhase, FraudProof, InvalidBundleProof, InvalidStateTransitionProof,
+    InvalidTotalRewardsProof,
 };
 
 use sp_domains::DomainId;
@@ -108,7 +109,7 @@ where
             .client
             .read_proof(block_hash, &mut [key.as_slice()].into_iter())?;
         Ok(FraudProof::InvalidBundle(InvalidBundleProof::TotalRewards(
-            TotalRewardsProof {
+            InvalidTotalRewardsProof {
                 domain_id,
                 bad_receipt_hash,
                 block_number: block_number.into(),

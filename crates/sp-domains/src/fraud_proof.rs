@@ -351,7 +351,7 @@ pub struct ImproperTransactionSortitionProof {
 }
 
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
-pub struct TotalRewardsProof<BlockNumber, BlockHash> {
+pub struct InvalidTotalRewardsProof<BlockNumber, BlockHash> {
     /// The id of the domain this fraud proof targeted
     pub domain_id: DomainId,
     /// Hash of the bad receipt this fraud proof targeted
@@ -367,7 +367,7 @@ pub struct TotalRewardsProof<BlockNumber, BlockHash> {
 /// Represents an invalid bundle fraud proof.
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
 pub enum InvalidBundleProof<BlockNumber, BlockHash> {
-    TotalRewards(TotalRewardsProof<BlockNumber, BlockHash>),
+    TotalRewards(InvalidTotalRewardsProof<BlockNumber, BlockHash>),
 }
 
 impl<BlockNumber, BlockHash> InvalidBundleProof<BlockNumber, BlockHash> {

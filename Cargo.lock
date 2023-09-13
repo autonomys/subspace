@@ -10640,6 +10640,7 @@ version = "0.1.0"
 dependencies = [
  "blake2",
  "frame-support",
+ "hash-db 0.16.0",
  "hexlit",
  "num-traits",
  "parity-scale-codec",

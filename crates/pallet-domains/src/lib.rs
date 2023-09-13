@@ -35,14 +35,17 @@ use crate::block_tree::verify_execution_receipt;
 use crate::staking::{do_nominate_operator, Operator, OperatorStatus};
 use codec::{Decode, Encode};
 use frame_support::ensure;
+use frame_support::storage::generator::StorageValue;
 use frame_support::traits::fungible::{Inspect, InspectHold};
 use frame_support::traits::{Get, Randomness as RandomnessT};
 use frame_system::offchain::SubmitTransaction;
 pub use pallet::*;
 use scale_info::TypeInfo;
+use sp_core::storage::StorageKey;
 use sp_core::H256;
 use sp_domains::bundle_producer_election::{is_below_threshold, BundleProducerElectionParams};
-use sp_domains::fraud_proof::FraudProof;
+use sp_domains::fraud_proof::{FraudProof, InvalidBundleProof, InvalidTotalRewardsProof};
+use sp_domains::verification::StorageProofVerifier;
 use sp_domains::{
     DomainBlockLimit, DomainId, DomainInstanceData, ExecutionReceipt, OpaqueBundle, OperatorId,
     OperatorPublicKey, ProofOfElection, RuntimeId, EMPTY_EXTRINSIC_ROOT,
@@ -569,6 +572,14 @@ mod pallet {
         ChallengingGenesisReceipt,
         /// The descendants of the fraudulent ER is not pruned
         DescendantsOfFraudulentERNotPruned,
+        FailedToDecodeDomainBlockNumber,
+        FailedToDecodeDomainBlockHash,
+        /// The domain block number and block hash has no associated state root.
+        MissingDomainStateRoot,
+        /// Proof of total rewards is invalid.
+        InvalidTotalRewardsProof,
+        /// Invalid fraud proof since total rewards are not mismatched.
+        InvalidTotalRewardsFraudProof,
     }
 
     impl<T> From<FraudProofError> for Error<T> {
@@ -1475,6 +1486,44 @@ impl<T: Config> Pallet<T> {
             !bad_receipt.domain_block_number.is_zero(),
             FraudProofError::ChallengingGenesisReceipt
         );
+
+        if let FraudProof::InvalidBundle(InvalidBundleProof::TotalRewards(
+            InvalidTotalRewardsProof {
+                domain_id,
+                block_number,
+                domain_block_hash,
+                storage_proof,
+                ..
+            },
+        )) = fraud_proof
+        {
+            let domain_number = T::DomainNumber::decode(&mut block_number.encode().as_slice())
+                .map_err(|_| FraudProofError::FailedToDecodeDomainBlockNumber)?;
+            let domain_block_hash =
+                T::DomainHash::decode(&mut domain_block_hash.encode().as_slice())
+                    .map_err(|_| FraudProofError::FailedToDecodeDomainBlockHash)?;
+            let state_root = T::Hash::decode(
+                &mut StateRoots::<T>::get((domain_id, domain_number, domain_block_hash))
+                    .ok_or(FraudProofError::MissingDomainStateRoot)?
+                    .encode()
+                    .as_slice(),
+            )
+            .map_err(|_| FraudProofError::FailedToDecodeDomainBlockHash)?;
+            let storage_key = StorageKey(
+                sp_domains::fraud_proof::OperatorBlockRewards::storage_value_final_key().to_vec(),
+            );
+            let storage_proof = storage_proof.clone();
+
+            let total_rewards = StorageProofVerifier::<T::Hashing>::verify_and_get_value::<
+                BalanceOf<T>,
+            >(&state_root, storage_proof, storage_key)
+            .map_err(|_| FraudProofError::InvalidTotalRewardsProof)?;
+
+            // if the rewards matches, then this is an invalid fraud proof since rewards must be different.
+            if bad_receipt.total_rewards == total_rewards {
+                return Err(FraudProofError::InvalidTotalRewardsProof);
+            }
+        }
 
         Ok(())
     }
