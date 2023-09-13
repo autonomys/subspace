@@ -41,6 +41,7 @@ use sp_runtime::traits::{Block as BlockT, Header as _, IdentityLookup};
 use sp_runtime::{BuildStorage, Perbill};
 use sp_weights::Weight;
 use std::iter;
+use std::marker::PhantomData;
 use std::num::{NonZeroU32, NonZeroU64};
 use std::sync::Once;
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
@@ -291,7 +292,7 @@ pub fn new_test_ext() -> TestExternalities {
         enable_storage_access: true,
         allow_authoring_by: AllowAuthoringBy::Anyone,
         pot_slot_iterations: NonZeroU32::new(100_000).unwrap(),
-        ..Default::default()
+        phantom: PhantomData,
     }
     .assimilate_storage(&mut storage)
     .unwrap();
