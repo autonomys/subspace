@@ -410,6 +410,35 @@ fn main() -> Result<(), Error> {
                 })?;
             }
             DomainSubcommand::BuildGenesisConfig(cmd) => cmd.run()?,
+            DomainSubcommand::ExportExecutionReceipt(cmd) => {
+                let runner = cli.create_runner(cmd)?;
+                runner.sync_run(|consensus_chain_config| {
+                    let domain_cli = DomainCli::new(
+                        cli.run
+                            .base_path()?
+                            .map(|base_path| base_path.path().to_path_buf()),
+                        cmd.domain_args.clone().into_iter(),
+                    );
+                    let domain_config = domain_cli
+                        .create_domain_configuration(consensus_chain_config.tokio_handle)
+                        .map_err(|error| {
+                            sc_service::Error::Other(format!(
+                                "Failed to create domain configuration: {error:?}"
+                            ))
+                        })?;
+
+                    let executor: sc_executor::NativeElseWasmExecutor<EVMDomainExecutorDispatch> =
+                        sc_service::new_native_or_wasm_executor(&domain_config);
+
+                    let (client, _, _, _) = sc_service::new_full_parts::<
+                        DomainBlock,
+                        evm_domain_runtime::RuntimeApi,
+                        _,
+                    >(&domain_config, None, executor)?;
+
+                    cmd.run(&client, &client)
+                })?;
+            }
             _ => unimplemented!("Domain subcommand"),
         },
         None => {
