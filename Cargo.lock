@@ -2526,6 +2526,7 @@ dependencies = [
 name = "domain-block-preprocessor"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "domain-runtime-primitives",
  "parity-scale-codec",
  "rand 0.8.5",
@@ -2537,10 +2538,12 @@ dependencies = [
  "sp-blockchain",
  "sp-core",
  "sp-domains",
+ "sp-inherents",
  "sp-keyring",
  "sp-messenger",
  "sp-runtime",
  "sp-state-machine",
+ "sp-timestamp 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
  "tracing",
@@ -2624,11 +2627,11 @@ dependencies = [
  "sp-block-builder",
  "sp-blockchain",
  "sp-consensus",
- "sp-consensus-slots",
+ "sp-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-core",
  "sp-domain-digests",
  "sp-domains",
- "sp-keystore",
+ "sp-keystore 0.27.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-messenger",
  "sp-runtime",
  "sp-state-machine",
@@ -2695,6 +2698,7 @@ dependencies = [
  "sp-block-builder",
  "sp-blockchain",
  "sp-core",
+ "sp-inherents",
  "sp-runtime",
  "substrate-frame-rpc-system",
 ]
@@ -2770,7 +2774,7 @@ dependencies = [
  "sc-rpc-api",
  "sc-rpc-spec-v2",
  "sc-service",
- "sc-telemetry",
+ "sc-telemetry 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sc-transaction-pool",
  "sc-transaction-pool-api",
  "sc-utils",
@@ -2779,11 +2783,11 @@ dependencies = [
  "sp-block-builder",
  "sp-blockchain",
  "sp-consensus",
- "sp-consensus-slots",
+ "sp-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-core",
  "sp-domains",
  "sp-inherents",
- "sp-keystore",
+ "sp-keystore 0.27.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-messenger",
  "sp-offchain",
  "sp-runtime",
@@ -2834,7 +2838,7 @@ dependencies = [
  "rand 0.8.5",
  "sc-client-api",
  "sc-consensus",
- "sc-consensus-slots",
+ "sc-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sc-executor",
  "sc-network",
  "sc-network-sync",
@@ -2847,8 +2851,8 @@ dependencies = [
  "serde",
  "serde_json",
  "sp-api",
- "sp-application-crypto",
- "sp-arithmetic",
+ "sp-application-crypto 23.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-arithmetic 16.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-block-builder",
  "sp-blockchain",
  "sp-core",
@@ -2859,7 +2863,7 @@ dependencies = [
  "sp-offchain",
  "sp-runtime",
  "sp-session",
- "sp-timestamp",
+ "sp-timestamp 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-transaction-pool",
  "subspace-networking",
  "subspace-proof-of-space",
@@ -3391,7 +3395,7 @@ checksum = "6999dc1837253364c2ebb0704ba97994bd874e8f195d665c50b7548f6ea92764"
 [[package]]
 name = "fc-api"
 version = "1.0.0-dev"
-source = "git+https://github.com/subspace/frontier?rev=068cb2eaae8b732a2a7d2c28e07a920684e19b69#068cb2eaae8b732a2a7d2c28e07a920684e19b69"
+source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
 dependencies = [
  "async-trait",
  "fp-storage",
@@ -3403,7 +3407,7 @@ dependencies = [
 [[package]]
 name = "fc-consensus"
 version = "2.0.0-dev"
-source = "git+https://github.com/subspace/frontier?rev=068cb2eaae8b732a2a7d2c28e07a920684e19b69#068cb2eaae8b732a2a7d2c28e07a920684e19b69"
+source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
 dependencies = [
  "async-trait",
  "fp-consensus",
@@ -3419,7 +3423,7 @@ dependencies = [
 [[package]]
 name = "fc-db"
 version = "2.0.0-dev"
-source = "git+https://github.com/subspace/frontier?rev=068cb2eaae8b732a2a7d2c28e07a920684e19b69#068cb2eaae8b732a2a7d2c28e07a920684e19b69"
+source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
 dependencies = [
  "async-trait",
  "fc-api",
@@ -3438,7 +3442,7 @@ dependencies = [
 [[package]]
 name = "fc-mapping-sync"
 version = "2.0.0-dev"
-source = "git+https://github.com/subspace/frontier?rev=068cb2eaae8b732a2a7d2c28e07a920684e19b69#068cb2eaae8b732a2a7d2c28e07a920684e19b69"
+source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
 dependencies = [
  "fc-db",
  "fc-storage",
@@ -3459,7 +3463,7 @@ dependencies = [
 [[package]]
 name = "fc-rpc"
 version = "2.0.0-dev"
-source = "git+https://github.com/subspace/frontier?rev=068cb2eaae8b732a2a7d2c28e07a920684e19b69#068cb2eaae8b732a2a7d2c28e07a920684e19b69"
+source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
 dependencies = [
  "ethereum",
  "ethereum-types",
@@ -3482,6 +3486,7 @@ dependencies = [
  "rand 0.8.5",
  "rlp",
  "sc-client-api",
+ "sc-consensus-aura",
  "sc-network",
  "sc-network-common",
  "sc-network-sync",
@@ -3496,19 +3501,23 @@ dependencies = [
  "sp-block-builder",
  "sp-blockchain",
  "sp-consensus",
+ "sp-consensus-aura 0.10.0-dev (git+https://github.com/paritytech/substrate?branch=master)",
  "sp-core",
+ "sp-inherents",
  "sp-io",
  "sp-runtime",
  "sp-state-machine",
  "sp-storage",
+ "sp-timestamp 4.0.0-dev (git+https://github.com/paritytech/substrate?branch=master)",
  "substrate-prometheus-endpoint",
+ "thiserror",
  "tokio",
 ]
 
 [[package]]
 name = "fc-rpc-core"
 version = "1.1.0-dev"
-source = "git+https://github.com/subspace/frontier?rev=068cb2eaae8b732a2a7d2c28e07a920684e19b69#068cb2eaae8b732a2a7d2c28e07a920684e19b69"
+source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
 dependencies = [
  "ethereum",
  "ethereum-types",
@@ -3521,7 +3530,7 @@ dependencies = [
 [[package]]
 name = "fc-storage"
 version = "1.0.0-dev"
-source = "git+https://github.com/subspace/frontier?rev=068cb2eaae8b732a2a7d2c28e07a920684e19b69#068cb2eaae8b732a2a7d2c28e07a920684e19b69"
+source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
 dependencies = [
  "ethereum",
  "ethereum-types",
@@ -3686,7 +3695,7 @@ dependencies = [
 [[package]]
 name = "fp-account"
 version = "1.0.0-dev"
-source = "git+https://github.com/subspace/frontier?rev=068cb2eaae8b732a2a7d2c28e07a920684e19b69#068cb2eaae8b732a2a7d2c28e07a920684e19b69"
+source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
 dependencies = [
  "hex",
  "impl-serde",
@@ -3705,7 +3714,7 @@ dependencies = [
 [[package]]
 name = "fp-consensus"
 version = "2.0.0-dev"
-source = "git+https://github.com/subspace/frontier?rev=068cb2eaae8b732a2a7d2c28e07a920684e19b69#068cb2eaae8b732a2a7d2c28e07a920684e19b69"
+source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
 dependencies = [
  "ethereum",
  "parity-scale-codec",
@@ -3717,7 +3726,7 @@ dependencies = [
 [[package]]
 name = "fp-ethereum"
 version = "1.0.0-dev"
-source = "git+https://github.com/subspace/frontier?rev=068cb2eaae8b732a2a7d2c28e07a920684e19b69#068cb2eaae8b732a2a7d2c28e07a920684e19b69"
+source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
 dependencies = [
  "ethereum",
  "ethereum-types",
@@ -3730,7 +3739,7 @@ dependencies = [
 [[package]]
 name = "fp-evm"
 version = "3.0.0-dev"
-source = "git+https://github.com/subspace/frontier?rev=068cb2eaae8b732a2a7d2c28e07a920684e19b69#068cb2eaae8b732a2a7d2c28e07a920684e19b69"
+source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
 dependencies = [
  "evm",
  "frame-support",
@@ -3746,7 +3755,7 @@ dependencies = [
 [[package]]
 name = "fp-rpc"
 version = "3.0.0-dev"
-source = "git+https://github.com/subspace/frontier?rev=068cb2eaae8b732a2a7d2c28e07a920684e19b69#068cb2eaae8b732a2a7d2c28e07a920684e19b69"
+source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
 dependencies = [
  "ethereum",
  "ethereum-types",
@@ -3763,7 +3772,7 @@ dependencies = [
 [[package]]
 name = "fp-self-contained"
 version = "1.0.0-dev"
-source = "git+https://github.com/subspace/frontier?rev=068cb2eaae8b732a2a7d2c28e07a920684e19b69#068cb2eaae8b732a2a7d2c28e07a920684e19b69"
+source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
 dependencies = [
  "frame-support",
  "parity-scale-codec",
@@ -3775,7 +3784,7 @@ dependencies = [
 [[package]]
 name = "fp-storage"
 version = "2.0.0"
-source = "git+https://github.com/subspace/frontier?rev=068cb2eaae8b732a2a7d2c28e07a920684e19b69#068cb2eaae8b732a2a7d2c28e07a920684e19b69"
+source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
 dependencies = [
  "parity-scale-codec",
  "serde",
@@ -3802,7 +3811,7 @@ dependencies = [
  "scale-info",
  "serde",
  "sp-api",
- "sp-application-crypto",
+ "sp-application-crypto 23.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-core",
  "sp-io",
  "sp-runtime",
@@ -3834,7 +3843,7 @@ dependencies = [
  "parity-scale-codec",
  "rand 0.8.5",
  "rand_pcg",
- "sc-block-builder",
+ "sc-block-builder 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sc-cli",
  "sc-client-api",
  "sc-client-db",
@@ -3850,7 +3859,7 @@ dependencies = [
  "sp-externalities",
  "sp-inherents",
  "sp-io",
- "sp-keystore",
+ "sp-keystore 0.27.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-runtime",
  "sp-state-machine",
  "sp-storage",
@@ -3912,7 +3921,7 @@ dependencies = [
  "serde_json",
  "smallvec",
  "sp-api",
- "sp-arithmetic",
+ "sp-arithmetic 16.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-core",
  "sp-core-hashing-proc-macro",
  "sp-debug-derive",
@@ -7134,7 +7143,7 @@ dependencies = [
  "pallet-timestamp",
  "parity-scale-codec",
  "scale-info",
- "sp-application-crypto",
+ "sp-application-crypto 23.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-consensus-babe",
  "sp-core",
  "sp-io",
@@ -7162,7 +7171,7 @@ dependencies = [
 [[package]]
 name = "pallet-base-fee"
 version = "1.0.0"
-source = "git+https://github.com/subspace/frontier?rev=068cb2eaae8b732a2a7d2c28e07a920684e19b69#068cb2eaae8b732a2a7d2c28e07a920684e19b69"
+source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
 dependencies = [
  "fp-evm",
  "frame-support",
@@ -7211,7 +7220,7 @@ dependencies = [
 [[package]]
 name = "pallet-ethereum"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/frontier?rev=068cb2eaae8b732a2a7d2c28e07a920684e19b69#068cb2eaae8b732a2a7d2c28e07a920684e19b69"
+source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
 dependencies = [
  "ethereum",
  "ethereum-types",
@@ -7234,7 +7243,7 @@ dependencies = [
 [[package]]
 name = "pallet-evm"
 version = "6.0.0-dev"
-source = "git+https://github.com/subspace/frontier?rev=068cb2eaae8b732a2a7d2c28e07a920684e19b69#068cb2eaae8b732a2a7d2c28e07a920684e19b69"
+source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
 dependencies = [
  "environmental",
  "evm",
@@ -7259,7 +7268,7 @@ dependencies = [
 [[package]]
 name = "pallet-evm-chain-id"
 version = "1.0.0-dev"
-source = "git+https://github.com/subspace/frontier?rev=068cb2eaae8b732a2a7d2c28e07a920684e19b69#068cb2eaae8b732a2a7d2c28e07a920684e19b69"
+source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
 dependencies = [
  "frame-support",
  "frame-system",
@@ -7271,7 +7280,7 @@ dependencies = [
 [[package]]
 name = "pallet-evm-precompile-modexp"
 version = "2.0.0-dev"
-source = "git+https://github.com/subspace/frontier?rev=068cb2eaae8b732a2a7d2c28e07a920684e19b69#068cb2eaae8b732a2a7d2c28e07a920684e19b69"
+source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
 dependencies = [
  "fp-evm",
  "num",
@@ -7280,7 +7289,7 @@ dependencies = [
 [[package]]
 name = "pallet-evm-precompile-sha3fips"
 version = "2.0.0-dev"
-source = "git+https://github.com/subspace/frontier?rev=068cb2eaae8b732a2a7d2c28e07a920684e19b69#068cb2eaae8b732a2a7d2c28e07a920684e19b69"
+source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
 dependencies = [
  "fp-evm",
  "tiny-keccak",
@@ -7289,7 +7298,7 @@ dependencies = [
 [[package]]
 name = "pallet-evm-precompile-simple"
 version = "2.0.0-dev"
-source = "git+https://github.com/subspace/frontier?rev=068cb2eaae8b732a2a7d2c28e07a920684e19b69#068cb2eaae8b732a2a7d2c28e07a920684e19b69"
+source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
 dependencies = [
  "fp-evm",
  "ripemd",
@@ -7326,7 +7335,7 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "serde",
- "sp-application-crypto",
+ "sp-application-crypto 23.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-consensus-grandpa",
  "sp-core",
  "sp-io",
@@ -7467,7 +7476,7 @@ dependencies = [
  "scale-info",
  "schnorrkel",
  "serde",
- "sp-consensus-slots",
+ "sp-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-consensus-subspace",
  "sp-core",
  "sp-io",
@@ -7515,7 +7524,7 @@ dependencies = [
  "sp-runtime",
  "sp-std",
  "sp-storage",
- "sp-timestamp",
+ "sp-timestamp 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
 ]
 
 [[package]]
@@ -8972,10 +8981,10 @@ dependencies = [
  "futures-timer",
  "log",
  "parity-scale-codec",
- "sc-block-builder",
+ "sc-block-builder 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sc-client-api",
  "sc-proposer-metrics",
- "sc-telemetry",
+ "sc-telemetry 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sc-transaction-pool-api",
  "sp-api",
  "sp-blockchain",
@@ -8984,6 +8993,21 @@ dependencies = [
  "sp-inherents",
  "sp-runtime",
  "substrate-prometheus-endpoint",
+]
+
+[[package]]
+name = "sc-block-builder"
+version = "0.10.0-dev"
+source = "git+https://github.com/paritytech/substrate?branch=master#033d4e86cc7eff0066cd376b9375f815761d653c"
+dependencies = [
+ "parity-scale-codec",
+ "sc-client-api",
+ "sp-api",
+ "sp-block-builder",
+ "sp-blockchain",
+ "sp-core",
+ "sp-inherents",
+ "sp-runtime",
 ]
 
 [[package]]
@@ -9011,7 +9035,7 @@ dependencies = [
  "sc-client-api",
  "sc-executor",
  "sc-network",
- "sc-telemetry",
+ "sc-telemetry 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "serde",
  "serde_json",
  "sp-blockchain",
@@ -9054,7 +9078,7 @@ dependencies = [
  "sc-keystore",
  "sc-network",
  "sc-service",
- "sc-telemetry",
+ "sc-telemetry 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sc-tracing",
  "sc-utils",
  "serde",
@@ -9062,7 +9086,7 @@ dependencies = [
  "sp-blockchain",
  "sp-core",
  "sp-keyring",
- "sp-keystore",
+ "sp-keystore 0.27.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-panic-handler",
  "sp-runtime",
  "sp-version",
@@ -9113,7 +9137,7 @@ dependencies = [
  "sc-client-api",
  "sc-state-db",
  "schnellru",
- "sp-arithmetic",
+ "sp-arithmetic 16.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-blockchain",
  "sp-core",
  "sp-database",
@@ -9148,6 +9172,35 @@ dependencies = [
 ]
 
 [[package]]
+name = "sc-consensus-aura"
+version = "0.10.0-dev"
+source = "git+https://github.com/paritytech/substrate?branch=master#033d4e86cc7eff0066cd376b9375f815761d653c"
+dependencies = [
+ "async-trait",
+ "futures",
+ "log",
+ "parity-scale-codec",
+ "sc-block-builder 0.10.0-dev (git+https://github.com/paritytech/substrate?branch=master)",
+ "sc-client-api",
+ "sc-consensus",
+ "sc-consensus-slots 0.10.0-dev (git+https://github.com/paritytech/substrate?branch=master)",
+ "sc-telemetry 4.0.0-dev (git+https://github.com/paritytech/substrate?branch=master)",
+ "sp-api",
+ "sp-application-crypto 23.0.0 (git+https://github.com/paritytech/substrate?branch=master)",
+ "sp-block-builder",
+ "sp-blockchain",
+ "sp-consensus",
+ "sp-consensus-aura 0.10.0-dev (git+https://github.com/paritytech/substrate?branch=master)",
+ "sp-consensus-slots 0.10.0-dev (git+https://github.com/paritytech/substrate?branch=master)",
+ "sp-core",
+ "sp-inherents",
+ "sp-keystore 0.27.0 (git+https://github.com/paritytech/substrate?branch=master)",
+ "sp-runtime",
+ "substrate-prometheus-endpoint",
+ "thiserror",
+]
+
+[[package]]
 name = "sc-consensus-fraud-proof"
 version = "0.1.0"
 dependencies = [
@@ -9164,6 +9217,29 @@ dependencies = [
 [[package]]
 name = "sc-consensus-slots"
 version = "0.10.0-dev"
+source = "git+https://github.com/paritytech/substrate?branch=master#033d4e86cc7eff0066cd376b9375f815761d653c"
+dependencies = [
+ "async-trait",
+ "futures",
+ "futures-timer",
+ "log",
+ "parity-scale-codec",
+ "sc-client-api",
+ "sc-consensus",
+ "sc-telemetry 4.0.0-dev (git+https://github.com/paritytech/substrate?branch=master)",
+ "sp-arithmetic 16.0.0 (git+https://github.com/paritytech/substrate?branch=master)",
+ "sp-blockchain",
+ "sp-consensus",
+ "sp-consensus-slots 0.10.0-dev (git+https://github.com/paritytech/substrate?branch=master)",
+ "sp-core",
+ "sp-inherents",
+ "sp-runtime",
+ "sp-state-machine",
+]
+
+[[package]]
+name = "sc-consensus-slots"
+version = "0.10.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
 dependencies = [
  "async-trait",
@@ -9173,11 +9249,11 @@ dependencies = [
  "parity-scale-codec",
  "sc-client-api",
  "sc-consensus",
- "sc-telemetry",
- "sp-arithmetic",
+ "sc-telemetry 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-arithmetic 16.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-blockchain",
  "sp-consensus",
- "sp-consensus-slots",
+ "sp-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-core",
  "sp-inherents",
  "sp-runtime",
@@ -9200,9 +9276,9 @@ dependencies = [
  "rand_chacha 0.3.1",
  "sc-client-api",
  "sc-consensus",
- "sc-consensus-slots",
+ "sc-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sc-proof-of-time",
- "sc-telemetry",
+ "sc-telemetry 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sc-transaction-pool-api",
  "sc-utils",
  "schnorrkel",
@@ -9211,7 +9287,7 @@ dependencies = [
  "sp-block-builder",
  "sp-blockchain",
  "sp-consensus",
- "sp-consensus-slots",
+ "sp-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-consensus-subspace",
  "sp-core",
  "sp-inherents",
@@ -9246,7 +9322,7 @@ dependencies = [
  "sp-api",
  "sp-blockchain",
  "sp-consensus",
- "sp-consensus-slots",
+ "sp-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-consensus-subspace",
  "sp-core",
  "sp-objects",
@@ -9334,9 +9410,9 @@ dependencies = [
  "array-bytes",
  "parking_lot 0.12.1",
  "serde_json",
- "sp-application-crypto",
+ "sp-application-crypto 23.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-core",
- "sp-keystore",
+ "sp-keystore 0.27.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "thiserror",
 ]
 
@@ -9371,7 +9447,7 @@ dependencies = [
  "serde",
  "serde_json",
  "smallvec",
- "sp-arithmetic",
+ "sp-arithmetic 16.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-blockchain",
  "sp-core",
  "sp-runtime",
@@ -9483,7 +9559,7 @@ dependencies = [
  "sc-utils",
  "schnellru",
  "smallvec",
- "sp-arithmetic",
+ "sp-arithmetic 16.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-blockchain",
  "sp-consensus",
  "sp-consensus-grandpa",
@@ -9538,7 +9614,7 @@ dependencies = [
  "sp-api",
  "sp-core",
  "sp-externalities",
- "sp-keystore",
+ "sp-keystore 0.27.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-offchain",
  "sp-runtime",
  "threadpool",
@@ -9559,13 +9635,13 @@ dependencies = [
  "parking_lot 0.12.1",
  "rayon",
  "sc-client-api",
- "sc-consensus-slots",
+ "sc-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sc-network",
  "sc-network-gossip",
  "sp-api",
  "sp-blockchain",
  "sp-consensus",
- "sp-consensus-slots",
+ "sp-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-consensus-subspace",
  "sp-core",
  "sp-inherents",
@@ -9596,7 +9672,7 @@ dependencies = [
  "log",
  "parity-scale-codec",
  "parking_lot 0.12.1",
- "sc-block-builder",
+ "sc-block-builder 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sc-chain-spec",
  "sc-client-api",
  "sc-rpc-api",
@@ -9607,7 +9683,7 @@ dependencies = [
  "sp-api",
  "sp-blockchain",
  "sp-core",
- "sp-keystore",
+ "sp-keystore 0.27.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-offchain",
  "sp-rpc",
  "sp-runtime",
@@ -9695,7 +9771,7 @@ dependencies = [
  "parking_lot 0.12.1",
  "pin-project",
  "rand 0.8.5",
- "sc-block-builder",
+ "sc-block-builder 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sc-chain-spec",
  "sc-client-api",
  "sc-client-db",
@@ -9713,7 +9789,7 @@ dependencies = [
  "sc-rpc-server",
  "sc-rpc-spec-v2",
  "sc-sysinfo",
- "sc-telemetry",
+ "sc-telemetry 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sc-tracing",
  "sc-transaction-pool",
  "sc-transaction-pool-api",
@@ -9725,7 +9801,7 @@ dependencies = [
  "sp-consensus",
  "sp-core",
  "sp-externalities",
- "sp-keystore",
+ "sp-keystore 0.27.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-runtime",
  "sp-session",
  "sp-state-machine",
@@ -9795,7 +9871,7 @@ version = "0.1.0"
 dependencies = [
  "sc-chain-spec",
  "sc-service",
- "sc-telemetry",
+ "sc-telemetry 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "serde",
  "sp-core",
  "sp-runtime",
@@ -9812,12 +9888,31 @@ dependencies = [
  "rand 0.8.5",
  "rand_pcg",
  "regex",
- "sc-telemetry",
+ "sc-telemetry 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "serde",
  "serde_json",
  "sp-core",
  "sp-io",
  "sp-std",
+]
+
+[[package]]
+name = "sc-telemetry"
+version = "4.0.0-dev"
+source = "git+https://github.com/paritytech/substrate?branch=master#033d4e86cc7eff0066cd376b9375f815761d653c"
+dependencies = [
+ "chrono",
+ "futures",
+ "libp2p 0.51.3",
+ "log",
+ "parking_lot 0.12.1",
+ "pin-project",
+ "rand 0.8.5",
+ "sc-utils",
+ "serde",
+ "serde_json",
+ "thiserror",
+ "wasm-timer",
 ]
 
 [[package]]
@@ -9933,7 +10028,7 @@ dependencies = [
  "log",
  "parking_lot 0.12.1",
  "prometheus",
- "sp-arithmetic",
+ "sp-arithmetic 16.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
 ]
 
 [[package]]
@@ -10492,6 +10587,19 @@ dependencies = [
 [[package]]
 name = "sp-application-crypto"
 version = "23.0.0"
+source = "git+https://github.com/paritytech/substrate?branch=master#033d4e86cc7eff0066cd376b9375f815761d653c"
+dependencies = [
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "sp-core",
+ "sp-io",
+ "sp-std",
+]
+
+[[package]]
+name = "sp-application-crypto"
+version = "23.0.0"
 source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
 dependencies = [
  "parity-scale-codec",
@@ -10500,6 +10608,20 @@ dependencies = [
  "sp-core",
  "sp-io",
  "sp-std",
+]
+
+[[package]]
+name = "sp-arithmetic"
+version = "16.0.0"
+source = "git+https://github.com/paritytech/substrate?branch=master#033d4e86cc7eff0066cd376b9375f815761d653c"
+dependencies = [
+ "integer-sqrt",
+ "num-traits",
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "sp-std",
+ "static_assertions",
 ]
 
 [[package]]
@@ -10563,18 +10685,35 @@ dependencies = [
 [[package]]
 name = "sp-consensus-aura"
 version = "0.10.0-dev"
+source = "git+https://github.com/paritytech/substrate?branch=master#033d4e86cc7eff0066cd376b9375f815761d653c"
+dependencies = [
+ "async-trait",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-api",
+ "sp-application-crypto 23.0.0 (git+https://github.com/paritytech/substrate?branch=master)",
+ "sp-consensus-slots 0.10.0-dev (git+https://github.com/paritytech/substrate?branch=master)",
+ "sp-inherents",
+ "sp-runtime",
+ "sp-std",
+ "sp-timestamp 4.0.0-dev (git+https://github.com/paritytech/substrate?branch=master)",
+]
+
+[[package]]
+name = "sp-consensus-aura"
+version = "0.10.0-dev"
 source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
 dependencies = [
  "async-trait",
  "parity-scale-codec",
  "scale-info",
  "sp-api",
- "sp-application-crypto",
- "sp-consensus-slots",
+ "sp-application-crypto 23.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-inherents",
  "sp-runtime",
  "sp-std",
- "sp-timestamp",
+ "sp-timestamp 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
 ]
 
 [[package]]
@@ -10587,13 +10726,13 @@ dependencies = [
  "scale-info",
  "serde",
  "sp-api",
- "sp-application-crypto",
- "sp-consensus-slots",
+ "sp-application-crypto 23.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-core",
  "sp-inherents",
  "sp-runtime",
  "sp-std",
- "sp-timestamp",
+ "sp-timestamp 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
 ]
 
 [[package]]
@@ -10607,11 +10746,23 @@ dependencies = [
  "scale-info",
  "serde",
  "sp-api",
- "sp-application-crypto",
+ "sp-application-crypto 23.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-core",
- "sp-keystore",
+ "sp-keystore 0.27.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-runtime",
  "sp-std",
+]
+
+[[package]]
+name = "sp-consensus-slots"
+version = "0.10.0-dev"
+source = "git+https://github.com/paritytech/substrate?branch=master#033d4e86cc7eff0066cd376b9375f815761d653c"
+dependencies = [
+ "parity-scale-codec",
+ "scale-info",
+ "serde",
+ "sp-std",
+ "sp-timestamp 4.0.0-dev (git+https://github.com/paritytech/substrate?branch=master)",
 ]
 
 [[package]]
@@ -10623,7 +10774,7 @@ dependencies = [
  "scale-info",
  "serde",
  "sp-std",
- "sp-timestamp",
+ "sp-timestamp 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
 ]
 
 [[package]]
@@ -10636,8 +10787,8 @@ dependencies = [
  "scale-info",
  "schnorrkel",
  "sp-api",
- "sp-application-crypto",
- "sp-consensus-slots",
+ "sp-application-crypto 23.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-core",
  "sp-externalities",
  "sp-inherents",
@@ -10645,7 +10796,7 @@ dependencies = [
  "sp-runtime",
  "sp-runtime-interface 17.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-std",
- "sp-timestamp",
+ "sp-timestamp 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "subspace-archiving",
  "subspace-core-primitives",
  "subspace-proof-of-space",
@@ -10766,12 +10917,12 @@ dependencies = [
  "scale-info",
  "serde",
  "sp-api",
- "sp-application-crypto",
+ "sp-application-crypto 23.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-blockchain",
- "sp-consensus-slots",
+ "sp-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-core",
  "sp-externalities",
- "sp-keystore",
+ "sp-keystore 0.27.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-runtime",
  "sp-runtime-interface 17.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-state-machine",
@@ -10833,7 +10984,7 @@ dependencies = [
  "secp256k1",
  "sp-core",
  "sp-externalities",
- "sp-keystore",
+ "sp-keystore 0.27.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-runtime-interface 17.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-state-machine",
  "sp-std",
@@ -10852,6 +11003,18 @@ dependencies = [
  "sp-core",
  "sp-runtime",
  "strum",
+]
+
+[[package]]
+name = "sp-keystore"
+version = "0.27.0"
+source = "git+https://github.com/paritytech/substrate?branch=master#033d4e86cc7eff0066cd376b9375f815761d653c"
+dependencies = [
+ "parity-scale-codec",
+ "parking_lot 0.12.1",
+ "sp-core",
+ "sp-externalities",
+ "thiserror",
 ]
 
 [[package]]
@@ -10876,8 +11039,8 @@ dependencies = [
  "rand 0.8.5",
  "scale-info",
  "schnorrkel",
- "sp-arithmetic",
- "sp-consensus-slots",
+ "sp-arithmetic 16.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-consensus-subspace",
  "sp-io",
  "sp-runtime",
@@ -10983,8 +11146,8 @@ dependencies = [
  "rand 0.8.5",
  "scale-info",
  "serde",
- "sp-application-crypto",
- "sp-arithmetic",
+ "sp-application-crypto 23.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-arithmetic 16.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-core",
  "sp-io",
  "sp-std",
@@ -11060,7 +11223,7 @@ dependencies = [
  "scale-info",
  "sp-api",
  "sp-core",
- "sp-keystore",
+ "sp-keystore 0.27.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-runtime",
  "sp-staking",
  "sp-std",
@@ -11115,7 +11278,7 @@ dependencies = [
  "scale-info",
  "sha2 0.10.7",
  "sp-api",
- "sp-application-crypto",
+ "sp-application-crypto 23.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-core",
  "sp-externalities",
  "sp-runtime",
@@ -11141,6 +11304,19 @@ dependencies = [
  "serde",
  "sp-debug-derive",
  "sp-std",
+]
+
+[[package]]
+name = "sp-timestamp"
+version = "4.0.0-dev"
+source = "git+https://github.com/paritytech/substrate?branch=master#033d4e86cc7eff0066cd376b9375f815761d653c"
+dependencies = [
+ "async-trait",
+ "parity-scale-codec",
+ "sp-inherents",
+ "sp-runtime",
+ "sp-std",
+ "thiserror",
 ]
 
 [[package]]
@@ -11290,7 +11466,7 @@ dependencies = [
  "scale-info",
  "serde",
  "smallvec",
- "sp-arithmetic",
+ "sp-arithmetic 16.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-core",
  "sp-debug-derive",
  "sp-std",
@@ -11703,7 +11879,7 @@ dependencies = [
  "sc-cli",
  "sc-client-api",
  "sc-consensus",
- "sc-consensus-slots",
+ "sc-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sc-consensus-subspace",
  "sc-executor",
  "sc-network",
@@ -11712,7 +11888,7 @@ dependencies = [
  "sc-service",
  "sc-storage-monitor",
  "sc-subspace-chain-specs",
- "sc-telemetry",
+ "sc-telemetry 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sc-tracing",
  "sc-transaction-pool-api",
  "sc-utils",
@@ -11812,7 +11988,7 @@ dependencies = [
  "scale-info",
  "sp-api",
  "sp-block-builder",
- "sp-consensus-slots",
+ "sp-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-consensus-subspace",
  "sp-core",
  "sp-domains",
@@ -11870,7 +12046,7 @@ dependencies = [
  "sc-client-api",
  "sc-consensus",
  "sc-consensus-fraud-proof",
- "sc-consensus-slots",
+ "sc-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sc-consensus-subspace",
  "sc-consensus-subspace-rpc",
  "sc-executor",
@@ -11883,7 +12059,7 @@ dependencies = [
  "sc-rpc-spec-v2",
  "sc-service",
  "sc-subspace-block-relay",
- "sc-telemetry",
+ "sc-telemetry 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sc-tracing",
  "sc-transaction-pool",
  "sc-transaction-pool-api",
@@ -11891,7 +12067,7 @@ dependencies = [
  "sp-block-builder",
  "sp-blockchain",
  "sp-consensus",
- "sp-consensus-slots",
+ "sp-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-consensus-subspace",
  "sp-core",
  "sp-domains",
@@ -11900,7 +12076,7 @@ dependencies = [
  "sp-offchain",
  "sp-runtime",
  "sp-session",
- "sp-timestamp",
+ "sp-timestamp 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-transaction-pool",
  "sp-trie",
  "static_assertions",
@@ -11985,7 +12161,7 @@ dependencies = [
  "scale-info",
  "sp-api",
  "sp-block-builder",
- "sp-consensus-slots",
+ "sp-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-consensus-subspace",
  "sp-core",
  "sp-domains",
@@ -12019,7 +12195,7 @@ dependencies = [
  "parity-scale-codec",
  "parking_lot 0.12.1",
  "rand 0.8.5",
- "sc-block-builder",
+ "sc-block-builder 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sc-client-api",
  "sc-consensus",
  "sc-consensus-fraud-proof",
@@ -12032,10 +12208,10 @@ dependencies = [
  "sc-transaction-pool-api",
  "sc-utils",
  "sp-api",
- "sp-application-crypto",
+ "sp-application-crypto 23.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-blockchain",
  "sp-consensus",
- "sp-consensus-slots",
+ "sp-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-consensus-subspace",
  "sp-core",
  "sp-domains",
@@ -12043,7 +12219,7 @@ dependencies = [
  "sp-inherents",
  "sp-keyring",
  "sp-runtime",
- "sp-timestamp",
+ "sp-timestamp 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "subspace-core-primitives",
  "subspace-fraud-proof",
  "subspace-node",
@@ -12090,7 +12266,7 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "schnorrkel",
- "sp-arithmetic",
+ "sp-arithmetic 16.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-std",
  "subspace-archiving",
  "subspace-core-primitives",
@@ -12169,7 +12345,7 @@ dependencies = [
  "sp-consensus",
  "sp-core",
  "sp-keyring",
- "sp-keystore",
+ "sp-keystore 0.27.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-runtime",
  "sp-state-machine",
 ]
@@ -12194,9 +12370,9 @@ dependencies = [
  "serde",
  "serde_json",
  "sp-api",
- "sp-application-crypto",
+ "sp-application-crypto 23.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-block-builder",
- "sp-consensus-aura",
+ "sp-consensus-aura 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sp-consensus-babe",
  "sp-consensus-grandpa",
  "sp-core",
@@ -12223,7 +12399,7 @@ version = "2.0.0"
 source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
 dependencies = [
  "futures",
- "sc-block-builder",
+ "sc-block-builder 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
  "sc-client-api",
  "sc-consensus",
  "sp-api",

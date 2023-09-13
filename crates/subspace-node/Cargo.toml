@@ -29,7 +29,7 @@ domain-eth-service = { version = "0.1.0", path = "../../domains/client/eth-servi
 domain-service = { version = "0.1.0", path = "../../domains/service" }
 domain-runtime-primitives = { version = "0.1.0", path = "../../domains/primitives/runtime" }
 evm-domain-runtime = { version = "0.1.0", path = "../../domains/runtime/evm" }
-fp-evm = { version = "3.0.0-dev", git = "https://github.com/subspace/frontier", rev = "068cb2eaae8b732a2a7d2c28e07a920684e19b69" }
+fp-evm = { version = "3.0.0-dev", git = "https://github.com/subspace/frontier", rev = "01b56190c0ed019b187c34d23422b9fea7ca4393" }
 frame-benchmarking = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "48c5ebae44b90d45863195b91e0e489eca670898", default-features = false }
 frame-benchmarking-cli = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "48c5ebae44b90d45863195b91e0e489eca670898", default-features = false }
 frame-support = { version = "4.0.0-dev", git = "https://github.com/subspace/substrate", rev = "48c5ebae44b90d45863195b91e0e489eca670898" }
