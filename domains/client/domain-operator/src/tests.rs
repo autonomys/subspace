@@ -1749,7 +1749,11 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
 // .unwrap();
 // }
 
+// TODO: this test is flaky and may fail due to `IO Error: Access is denied. (os error 5)`, it is
+// suspected that the failure is related to the node not completely stopped before restarting or
+// other unknown issues, re-enable this test once the root cause is located and fixed.
 #[substrate_test_utils::test(flavor = "multi_thread")]
+#[ignore]
 async fn test_restart_domain_operator() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
