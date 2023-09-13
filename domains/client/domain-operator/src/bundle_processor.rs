@@ -314,7 +314,7 @@ where
                 (consensus_block_hash, consensus_block_number),
                 (parent_hash, parent_number),
                 extrinsics,
-                invalid_bundles,
+                invalid_bundles.clone(),
                 extrinsics_roots,
                 digest,
             )
@@ -339,7 +339,7 @@ where
 
         // TODO: Remove as ReceiptsChecker has been superseded by ReceiptValidator in block-preprocessor.
         self.domain_receipts_checker
-            .check_state_transition(consensus_block_hash)?;
+            .check_state_transition(consensus_block_hash, invalid_bundles)?;
 
         self.domain_receipts_checker
             .submit_fraud_proof(consensus_block_hash)?;

@@ -18,7 +18,10 @@ use sp_consensus::{BlockOrigin, SyncOracle};
 use sp_core::traits::CodeExecutor;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::merkle_tree::MerkleTree;
-use sp_domains::{DomainId, DomainsApi, ExecutionReceipt, ExtrinsicsRoot, InvalidBundle};
+use sp_domains::{
+    DomainId, DomainsApi, ExecutionReceipt, ExtrinsicsRoot, InvalidBundle, InvalidBundleType,
+    InvalidReceipt,
+};
 use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, One, Zero};
 use sp_runtime::Digest;
 use std::cmp::Ordering;
@@ -594,8 +597,8 @@ where
     CBlock: BlockT,
     ParentChainBlock: BlockT,
     NumberFor<CBlock>: Into<NumberFor<Block>>,
-    NumberFor<Block>: Into<NumberFor<CBlock>>,
-    Block::Hash: Into<CBlock::Hash>,
+    NumberFor<Block>: Into<NumberFor<ParentChainBlock>>,
+    Block::Hash: Into<ParentChainBlock::Hash>,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + ProofProvider<Block>
@@ -615,6 +618,7 @@ where
     pub(crate) fn check_state_transition(
         &self,
         parent_chain_block_hash: ParentChainBlock::Hash,
+        invalid_bundles: Vec<InvalidBundle<ParentChainBlock::Hash>>,
     ) -> sp_blockchain::Result<()> {
         let extrinsics = self.parent_chain.block_body(parent_chain_block_hash)?;
 
@@ -626,7 +630,7 @@ where
             .parent_chain
             .extract_fraud_proofs(parent_chain_block_hash, extrinsics)?;
 
-        self.check_receipts(receipts, fraud_proofs)?;
+        self.check_receipts(receipts, fraud_proofs, invalid_bundles)?;
 
         Ok(())
     }
@@ -659,8 +663,36 @@ where
         &self,
         receipts: Vec<ExecutionReceiptFor<Block, ParentChainBlock>>,
         fraud_proofs: Vec<FraudProof<NumberFor<ParentChainBlock>, ParentChainBlock::Hash>>,
+        invalid_bundles: Vec<InvalidBundle<ParentChainBlock::Hash>>,
     ) -> Result<(), sp_blockchain::Error> {
         let mut bad_receipts_to_write = vec![];
+
+        // write invalid bundles with invalid ER first. If the state transition itself was invalid on these
+        // ERs, then they will be replaced by the next loop.
+        for invalid_bundle in invalid_bundles {
+            if let InvalidBundleType::InvalidReceipt(InvalidReceipt::InvalidTotalRewards {
+                consensus_block_hash,
+                bad_receipt_hash,
+            }) = invalid_bundle.invalid_bundle_type
+            {
+                let local_receipt = crate::aux_schema::load_execution_receipt::<
+                    _,
+                    Block,
+                    ParentChainBlock,
+                >(&*self.client, consensus_block_hash)?
+                .ok_or(sp_blockchain::Error::Backend(format!(
+                    "Receipt for consensus block {consensus_block_hash} not found",
+                )))?;
+
+                bad_receipts_to_write.push((
+                    local_receipt.consensus_block_number,
+                    bad_receipt_hash,
+                    ReceiptMismatchInfo::TotalRewardsMismatch {
+                        consensus_block_hash,
+                    },
+                ));
+            }
+        }
 
         for execution_receipt in receipts.iter() {
             // Skip check for genesis receipt as it is generated on the domain instantiation by
@@ -688,7 +720,7 @@ where
                 bad_receipts_to_write.push((
                     execution_receipt.consensus_block_number,
                     execution_receipt.hash(),
-                    (trace_mismatch_index, consensus_block_hash),
+                    (trace_mismatch_index, consensus_block_hash).into(),
                 ));
             }
         }
@@ -724,7 +756,7 @@ where
                 &*self.client,
                 bad_receipt_number,
                 bad_receipt_hash,
-                mismatch_info.into(),
+                mismatch_info,
             )?;
         }
 
@@ -788,7 +820,18 @@ where
                             "Failed to generate fraud proof: {err}"
                         )))
                     })?,
-                _ => unimplemented!("fraud proof not implemented for the invariants"),
+                ReceiptMismatchInfo::TotalRewardsMismatch { .. } => self
+                    .fraud_proof_generator
+                    .generate_invalid_total_rewards_proof::<ParentChainBlock>(
+                        self.domain_id,
+                        &local_receipt,
+                        bad_receipt_hash,
+                    )
+                    .map_err(|err| {
+                        sp_blockchain::Error::Application(Box::from(format!(
+                            "Failed to generate invalid block rewards fraud proof: {err}"
+                        )))
+                    })?,
             };
 
             return Ok(Some(fraud_proof));

@@ -62,8 +62,6 @@ impl<Block, CBlock, Client, CClient, Backend, E>
 where
     Block: BlockT,
     CBlock: BlockT,
-    NumberFor<Block>: Into<NumberFor<CBlock>>,
-    Block::Hash: Into<CBlock::Hash>,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + AuxStore
@@ -92,14 +90,17 @@ where
         }
     }
 
-    // TODO: remove once connected
-    #[allow(dead_code)]
-    pub(crate) fn generate_invalid_total_rewards_proof(
+    pub(crate) fn generate_invalid_total_rewards_proof<PCB>(
         &self,
         domain_id: DomainId,
         local_receipt: &ExecutionReceiptFor<Block, CBlock>,
         bad_receipt_hash: H256,
-    ) -> Result<FraudProof<NumberFor<CBlock>, CBlock::Hash>, FraudProofError> {
+    ) -> Result<FraudProof<NumberFor<PCB>, PCB::Hash>, FraudProofError>
+    where
+        PCB: BlockT,
+        NumberFor<Block>: Into<NumberFor<PCB>>,
+        Block::Hash: Into<PCB::Hash>,
+    {
         let block_hash = local_receipt.domain_block_hash;
         let block_number = local_receipt.domain_block_number;
         let key = sp_domains::fraud_proof::OperatorBlockRewards::storage_value_final_key();
