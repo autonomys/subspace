@@ -15,10 +15,11 @@ use prometheus_client::encoding::text::encode;
 use prometheus_client::registry::Registry as Libp2pMetricsRegistry;
 use std::error::Error;
 use std::future::Future;
+use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::ops::DerefMut;
 use std::sync::Arc;
-use tracing::info;
+use tracing::{error, info, warn};
 
 type SharedRegistry = Arc<Mutex<RegistryAdapter>>;
 
@@ -76,17 +77,48 @@ async fn metrics(registry: Data<SharedRegistry>) -> Result<HttpResponse, Box<dyn
 
 /// Start prometheus metrics server on the provided address.
 pub fn start_prometheus_metrics_server(
-    endpoints: Vec<SocketAddr>,
+    mut endpoints: Vec<SocketAddr>,
     registry: RegistryAdapter,
 ) -> std::io::Result<impl Future<Output = std::io::Result<()>>> {
     let shared_registry = Arc::new(Mutex::new(registry));
     let data = Data::new(shared_registry);
 
-    info!(?endpoints, "Starting metrics server...",);
+    let app_factory = move || App::new().app_data(data.clone()).service(metrics);
+    let result = HttpServer::new(app_factory.clone()).bind(endpoints.as_slice());
 
-    Ok(
-        HttpServer::new(move || App::new().app_data(data.clone()).service(metrics))
-            .bind(endpoints.as_slice())?
-            .run(),
-    )
+    let server = match result {
+        Ok(server) => server,
+        Err(error) => {
+            if error.kind() != ErrorKind::AddrInUse {
+                error!(?error, "Failed to start metrics server.");
+
+                return Err(error);
+            }
+
+            // Trying to recover from "address in use" error.
+            warn!(
+                ?error,
+                "Failed to start metrics server. Falling back to the random port...",
+            );
+
+            endpoints.iter_mut().for_each(|endpoint| {
+                endpoint.set_port(0);
+            });
+
+            let result = HttpServer::new(app_factory).bind(endpoints.as_slice());
+
+            match result {
+                Ok(server) => server,
+                Err(error) => {
+                    error!(?error, "Failed to start metrics server on the random port.");
+
+                    return Err(error);
+                }
+            }
+        }
+    };
+
+    info!(endpoints = ?server.addrs(), "Metrics server started.",);
+
+    Ok(server.run())
 }

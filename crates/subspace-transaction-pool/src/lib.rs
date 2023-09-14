@@ -361,6 +361,10 @@ where
         self.inner.status()
     }
 
+    fn futures(&self) -> Vec<Self::InPoolTransaction> {
+        self.inner.futures()
+    }
+
     fn import_notification_stream(&self) -> ImportNotificationStream<TxHash<Self>> {
         self.inner.import_notification_stream()
     }
