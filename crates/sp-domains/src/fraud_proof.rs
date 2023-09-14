@@ -167,6 +167,15 @@ pub enum VerificationError {
     /// Domain state root not found.
     #[cfg_attr(feature = "thiserror", error("Domain state root not found"))]
     DomainStateRootNotFound,
+    /// Consensus state root not found.
+    #[cfg_attr(feature = "thiserror", error("Consensus state root not found"))]
+    ConsensusStateRootNotFound,
+    /// Failed to construct Timestamp extrinsic
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Failed to construct Timestamp extrinsic")
+    )]
+    FailedToConstructTimestampExtrinsic,
     /// Fail to get runtime code.
     // The `String` here actually repersenting the `sc_executor_common::error::WasmError`
     // error, but it will be improper to use `WasmError` directly here since it will make

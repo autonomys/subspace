@@ -28,6 +28,7 @@ sp-messenger = { version = "0.1.0", path = "../../domains/primitives/messenger" 
 sp-runtime = { version = "24.0.0", git = "https://github.com/subspace/substrate", rev = "48c5ebae44b90d45863195b91e0e489eca670898" }
 sp-state-machine = { version = "0.28.0", git = "https://github.com/subspace/substrate", rev = "48c5ebae44b90d45863195b91e0e489eca670898" }
 sp-trie = { version = "22.0.0", git = "https://github.com/subspace/substrate", rev = "48c5ebae44b90d45863195b91e0e489eca670898" }
+subspace-runtime-primitives = { version = "0.1.0", path = "../../crates/subspace-runtime-primitives", default-features = false }
 tracing = "0.1.37"
 
 [dev-dependencies]
