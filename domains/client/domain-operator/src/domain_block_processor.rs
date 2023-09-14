@@ -345,10 +345,7 @@ where
                     "Domain block header for #{genesis_hash:?} not found",
                 ))
             })?;
-            ExecutionReceipt::genesis(
-                self.consensus_client.info().genesis_hash,
-                *genesis_header.state_root(),
-            )
+            ExecutionReceipt::genesis(*genesis_header.state_root())
         } else {
             crate::load_execution_receipt_by_domain_hash::<Block, CBlock, _>(
                 &*self.client,

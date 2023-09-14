@@ -130,9 +130,8 @@ pub(crate) fn do_instantiate_domain<T: Config>(
         let state_version = runtime_obj.version.state_version();
         let raw_genesis = runtime_obj.into_complete_raw_genesis(domain_id);
         let state_root = raw_genesis.state_root::<T::DomainHashing>(state_version);
-        let consensus_genesis_hash = frame_system::Pallet::<T>::block_hash(BlockNumberFor::<T>::zero());
 
-        ExecutionReceiptOf::<T>::genesis(consensus_genesis_hash, state_root)
+        ExecutionReceiptOf::<T>::genesis(state_root)
     };
     let genesis_receipt_hash = genesis_receipt.hash();
 

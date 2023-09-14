@@ -387,13 +387,13 @@ impl<
         BlakeTwo256::hash_of(self)
     }
 
-    pub fn genesis(consensus_genesis_hash: Hash, genesis_state_root: DomainHash) -> Self {
+    pub fn genesis(genesis_state_root: DomainHash) -> Self {
         ExecutionReceipt {
             domain_block_number: Zero::zero(),
             domain_block_hash: Default::default(),
             domain_block_extrinsic_root: Default::default(),
             parent_domain_block_receipt_hash: Default::default(),
-            consensus_block_hash: consensus_genesis_hash,
+            consensus_block_hash: Default::default(),
             consensus_block_number: Zero::zero(),
             invalid_bundles: Vec::new(),
             block_extrinsics_roots: sp_std::vec![],

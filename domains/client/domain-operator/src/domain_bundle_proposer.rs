@@ -217,10 +217,7 @@ where
                     "Domain block header for #{genesis_hash:?} not found",
                 ))
             })?;
-            return Ok(ExecutionReceipt::genesis(
-                self.consensus_client.info().genesis_hash,
-                *genesis_header.state_root(),
-            ));
+            return Ok(ExecutionReceipt::genesis(*genesis_header.state_root()));
         }
 
         // Get the domain block hash corresponding to `receipt_number` in the domain canonical chain
