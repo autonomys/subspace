@@ -42,8 +42,6 @@ use sp_runtime::traits::{
     BlakeTwo256, Block as BlockT, CheckedAdd, Hash as HashT, NumberFor, Zero,
 };
 use sp_runtime::{DigestItem, OpaqueExtrinsic, Percent};
-use sp_runtime_interface::pass_by::PassBy;
-use sp_runtime_interface::{pass_by, runtime_interface};
 use sp_std::vec::Vec;
 use sp_weights::Weight;
 use subspace_core_primitives::crypto::blake2b_256_hash;
@@ -108,10 +106,6 @@ pub type ExtrinsicsRoot = H256;
     MaxEncodedLen,
 )]
 pub struct DomainId(u32);
-
-impl PassBy for DomainId {
-    type PassBy = pass_by::Codec<Self>;
-}
 
 impl From<u32> for DomainId {
     #[inline]
@@ -533,10 +527,6 @@ pub enum RuntimeType {
     Evm,
 }
 
-impl PassBy for RuntimeType {
-    type PassBy = pass_by::Codec<Self>;
-}
-
 /// Type representing the runtime ID.
 pub type RuntimeId = u32;
 
@@ -630,50 +620,6 @@ pub fn self_domain_id_storage_key() -> StorageKey {
 pub struct DomainInstanceData {
     pub runtime_type: RuntimeType,
     pub raw_genesis: RawGenesis,
-}
-
-impl PassBy for DomainInstanceData {
-    type PassBy = pass_by::Codec<Self>;
-}
-
-#[cfg(feature = "std")]
-pub trait GenerateGenesisStateRoot: Send + Sync {
-    /// Returns the state root of genesis block built from the runtime genesis config on success.
-    fn generate_genesis_state_root(
-        &self,
-        domain_id: DomainId,
-        domain_instance_data: DomainInstanceData,
-    ) -> Option<H256>;
-}
-
-#[cfg(feature = "std")]
-sp_externalities::decl_extension! {
-    /// A domain genesis receipt extension.
-    pub struct GenesisReceiptExtension(std::sync::Arc<dyn GenerateGenesisStateRoot>);
-}
-
-#[cfg(feature = "std")]
-impl GenesisReceiptExtension {
-    /// Create a new instance of [`GenesisReceiptExtension`].
-    pub fn new(inner: std::sync::Arc<dyn GenerateGenesisStateRoot>) -> Self {
-        Self(inner)
-    }
-}
-
-/// Domain-related runtime interface
-#[runtime_interface]
-pub trait Domain {
-    fn generate_genesis_state_root(
-        &mut self,
-        domain_id: DomainId,
-        domain_instance_data: DomainInstanceData,
-    ) -> Option<H256> {
-        use sp_externalities::ExternalitiesExt;
-
-        self.extension::<GenesisReceiptExtension>()
-            .expect("No `GenesisReceiptExtension` associated for the current context!")
-            .generate_genesis_state_root(domain_id, domain_instance_data)
-    }
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, Clone)]

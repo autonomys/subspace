@@ -28,7 +28,6 @@ sp-core = { version = "21.0.0", default-features = false, git = "https://github.
 sp-externalities = { version = "0.19.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "48c5ebae44b90d45863195b91e0e489eca670898" }
 sp-keystore = { version = "0.27.0", git = "https://github.com/subspace/substrate", rev = "48c5ebae44b90d45863195b91e0e489eca670898", optional = true }
 sp-runtime = { version = "24.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "48c5ebae44b90d45863195b91e0e489eca670898" }
-sp-runtime-interface = { version = "17.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "48c5ebae44b90d45863195b91e0e489eca670898" }
 sp-state-machine = { version = "0.28.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "48c5ebae44b90d45863195b91e0e489eca670898" }
 sp-std = { version = "8.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "48c5ebae44b90d45863195b91e0e489eca670898" }
 sp-trie = { version = "22.0.0", default-features = false, git = "https://github.com/subspace/substrate", rev = "48c5ebae44b90d45863195b91e0e489eca670898" }
@@ -58,7 +57,6 @@ std = [
 	"sp-externalities/std",
 	"sp-keystore",
 	"sp-runtime/std",
-	"sp-runtime-interface/std",
 	"sp-state-machine/std",
 	"sp-std/std",
 	"sp-trie/std",

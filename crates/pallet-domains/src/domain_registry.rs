@@ -203,9 +203,6 @@ mod tests {
         };
 
         let mut ext = new_test_ext();
-        ext.register_extension(GenesisReceiptExtension::new(Arc::new(
-            GenesisStateRootGenerater,
-        )));
         ext.execute_with(|| {
             assert_eq!(NextDomainId::<Test>::get(), 0.into());
 

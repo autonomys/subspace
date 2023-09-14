@@ -81,7 +81,7 @@ use sp_consensus_subspace::PotExtension;
 use sp_consensus_subspace::{FarmerPublicKey, KzgExtension, PosExtension, SubspaceApi};
 use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::transaction::PreValidationObjectApi;
-use sp_domains::{DomainsApi, GenerateGenesisStateRoot, GenesisReceiptExtension};
+use sp_domains::DomainsApi;
 use sp_externalities::Extensions;
 use sp_objects::ObjectsApi;
 use sp_offchain::OffchainWorkerApi;
@@ -231,7 +231,6 @@ struct SubspaceExtensionsFactory<PosTable, Client> {
     client: Arc<Client>,
     #[cfg(feature = "pot")]
     pot_verifier: PotVerifier,
-    domain_genesis_receipt_ext: Option<Arc<dyn GenerateGenesisStateRoot>>,
     _pos_table: PhantomData<PosTable>,
 }
 
@@ -363,9 +362,6 @@ where
                 ))
             })
         }));
-        if let Some(ext) = self.domain_genesis_receipt_ext.clone() {
-            exts.register(GenesisReceiptExtension::new(ext));
-        }
         exts
     }
 }
@@ -413,12 +409,6 @@ type PartialComponents<RuntimeApi, ExecutorDispatch> = sc_service::PartialCompon
 #[allow(clippy::type_complexity)]
 pub fn new_partial<PosTable, RuntimeApi, ExecutorDispatch>(
     config: &Configuration,
-    construct_domain_genesis_block_builder: Option<
-        &dyn Fn(
-            Arc<FullBackend>,
-            NativeElseWasmExecutor<ExecutorDispatch>,
-        ) -> Arc<dyn GenerateGenesisStateRoot>,
-    >,
     #[cfg(feature = "pot")] pot_external_entropy: &[u8],
 ) -> Result<PartialComponents<RuntimeApi, ExecutorDispatch>, ServiceError>
 where
@@ -461,9 +451,6 @@ where
 
     let kzg = Kzg::new(embedded_kzg_settings());
 
-    let domain_genesis_receipt_ext =
-        construct_domain_genesis_block_builder.map(|f| f(backend.clone(), executor.clone()));
-
     let client = Arc::new(client);
 
     #[cfg(feature = "pot")]
@@ -477,7 +464,6 @@ where
             client: Arc::clone(&client),
             #[cfg(feature = "pot")]
             pot_verifier: pot_verifier.clone(),
-            domain_genesis_receipt_ext,
             _pos_table: PhantomData,
         },
     );

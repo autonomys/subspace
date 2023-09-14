@@ -18,15 +18,13 @@ use sp_domains::fraud_proof::FraudProof;
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::storage::RawGenesis;
 use sp_domains::{
-    BundleHeader, DomainId, DomainInstanceData, DomainsHoldIdentifier, ExecutionReceipt,
-    GenerateGenesisStateRoot, GenesisReceiptExtension, OpaqueBundle, OperatorId, OperatorPair,
-    ProofOfElection, RuntimeType, SealedBundleHeader, StakingHoldIdentifier,
+    BundleHeader, DomainId, DomainsHoldIdentifier, ExecutionReceipt, OpaqueBundle, OperatorId,
+    OperatorPair, ProofOfElection, RuntimeType, SealedBundleHeader, StakingHoldIdentifier,
 };
 use sp_runtime::traits::{AccountIdConversion, BlakeTwo256, Hash as HashT, IdentityLookup, Zero};
 use sp_runtime::{BuildStorage, OpaqueExtrinsic};
 use sp_version::RuntimeVersion;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
 use subspace_core_primitives::U256 as P256;
 use subspace_runtime_primitives::SSC;
 
@@ -231,10 +229,6 @@ pub(crate) fn new_test_ext_with_extensions() -> sp_io::TestExternalities {
     ext.register_extension(sp_core::traits::ReadRuntimeVersionExt::new(
         ReadRuntimeVersion(version.encode()),
     ));
-    ext.register_extension(GenesisReceiptExtension::new(Arc::new(
-        GenesisStateRootGenerater,
-    )));
-
     ext
 }
 
@@ -314,18 +308,6 @@ pub(crate) fn create_dummy_bundle_with_receipts(
     OpaqueBundle {
         sealed_header: SealedBundleHeader::new(header, signature),
         extrinsics: Vec::new(),
-    }
-}
-
-pub(crate) struct GenesisStateRootGenerater;
-
-impl GenerateGenesisStateRoot for GenesisStateRootGenerater {
-    fn generate_genesis_state_root(
-        &self,
-        _domain_id: DomainId,
-        _domain_instance_data: DomainInstanceData,
-    ) -> Option<H256> {
-        Some(Default::default())
     }
 }
 
