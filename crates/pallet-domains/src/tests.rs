@@ -610,7 +610,10 @@ fn test_bundle_fromat_verification() {
     let opaque_extrinsic = |dest: u64, value: u128| -> OpaqueExtrinsic {
         UncheckedExtrinsic {
             signature: None,
-            function: RuntimeCall::Balances(pallet_balances::Call::transfer { dest, value }),
+            function: RuntimeCall::Balances(pallet_balances::Call::transfer_allow_death {
+                dest,
+                value,
+            }),
         }
         .into()
     };

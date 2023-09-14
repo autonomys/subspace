@@ -127,7 +127,9 @@ fn pot_external_entropy(
 }
 
 fn main() -> Result<(), Error> {
-    let cli = Cli::from_args();
+    let mut cli = Cli::from_args();
+    // Force UTC logs for Subspace node
+    cli.run.shared_params.use_utc_log_time = true;
 
     match &cli.subcommand {
         Some(Subcommand::Key(cmd)) => cmd.run(&cli)?,

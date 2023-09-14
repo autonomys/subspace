@@ -38,7 +38,7 @@ fn number_of(consensus_node: &MockConsensusNode, block_hash: Hash) -> u32 {
         .unwrap_or_else(|| panic!("header {block_hash} not in the chain"))
 }
 
-#[substrate_test_utils::test(flavor = "multi_thread")]
+#[tokio::test(flavor = "multi_thread")]
 async fn test_domain_instance_bootstrapper() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -88,7 +88,7 @@ async fn test_domain_instance_bootstrapper() {
         .expect("3 consensus blocks produced successfully");
 }
 
-#[substrate_test_utils::test(flavor = "multi_thread")]
+#[tokio::test(flavor = "multi_thread")]
 async fn test_domain_block_production() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -202,7 +202,7 @@ async fn test_domain_block_production() {
     assert_eq!(alice.client.info().best_number, domain_block_number + 10);
 }
 
-#[substrate_test_utils::test(flavor = "multi_thread")]
+#[tokio::test(flavor = "multi_thread")]
 async fn test_processing_empty_consensus_block() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -286,7 +286,7 @@ async fn test_processing_empty_consensus_block() {
     assert_eq!(alice.client.info().best_number, 3);
 }
 
-#[substrate_test_utils::test(flavor = "multi_thread")]
+#[tokio::test(flavor = "multi_thread")]
 async fn test_domain_block_deriving_from_multiple_bundles() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -321,7 +321,7 @@ async fn test_domain_block_deriving_from_multiple_bundles() {
     for i in 0..3 {
         let tx = alice.construct_extrinsic(
             alice_account_nonce + i,
-            pallet_balances::Call::transfer {
+            pallet_balances::Call::transfer_allow_death {
                 dest: Bob.to_account_id(),
                 value: 1,
             },
@@ -362,7 +362,7 @@ async fn test_domain_block_deriving_from_multiple_bundles() {
     assert_eq!(domain_block_number, head_receipt_number);
 }
 
-#[substrate_test_utils::test(flavor = "multi_thread")]
+#[tokio::test(flavor = "multi_thread")]
 async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -546,7 +546,7 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
     );
 }
 
-#[substrate_test_utils::test(flavor = "multi_thread")]
+#[tokio::test(flavor = "multi_thread")]
 async fn test_domain_tx_propagate() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -592,7 +592,7 @@ async fn test_domain_tx_propagate() {
     let pre_bob_free_balance = alice.free_balance(bob.key.to_account_id());
     // Construct and send an extrinsic to bob, as bob is not a authority node, the extrinsic has
     // to propagate to alice to get executed
-    bob.construct_and_send_extrinsic(pallet_balances::Call::transfer {
+    bob.construct_and_send_extrinsic(pallet_balances::Call::transfer_allow_death {
         dest: Alice.to_account_id(),
         value: 123,
     })
@@ -613,7 +613,7 @@ async fn test_domain_tx_propagate() {
     .unwrap();
 }
 
-#[substrate_test_utils::test(flavor = "multi_thread")]
+#[tokio::test(flavor = "multi_thread")]
 async fn test_executor_full_node_catching_up() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -674,7 +674,7 @@ async fn test_executor_full_node_catching_up() {
     );
 }
 
-#[substrate_test_utils::test(flavor = "multi_thread")]
+#[tokio::test(flavor = "multi_thread")]
 async fn test_executor_inherent_timestamp_is_set() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -731,13 +731,13 @@ async fn test_executor_inherent_timestamp_is_set() {
     );
 }
 
-#[substrate_test_utils::test(flavor = "multi_thread")]
+#[tokio::test(flavor = "multi_thread")]
 #[ignore]
 async fn test_initialize_block_proof_creation_and_verification_should_work() {
     test_invalid_state_transition_proof_creation_and_verification(0).await
 }
 
-#[substrate_test_utils::test(flavor = "multi_thread")]
+#[tokio::test(flavor = "multi_thread")]
 #[ignore]
 async fn test_apply_extrinsic_proof_creation_and_verification_should_work() {
     test_invalid_state_transition_proof_creation_and_verification(1).await
@@ -746,7 +746,7 @@ async fn test_apply_extrinsic_proof_creation_and_verification_should_work() {
 // TODO: the test is ignored due to the invalid receipt can not pass the state root check
 // in the runtime now, thus can't construct `finalize_block` fraud proof, find a way to
 // bypass the check
-#[substrate_test_utils::test(flavor = "multi_thread")]
+#[tokio::test(flavor = "multi_thread")]
 #[ignore]
 async fn test_finalize_block_proof_creation_and_verification_should_work() {
     test_invalid_state_transition_proof_creation_and_verification(2).await
@@ -794,7 +794,7 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
     produce_blocks!(ferdie, alice, 5).await.unwrap();
 
     alice
-        .construct_and_send_extrinsic(pallet_balances::Call::transfer {
+        .construct_and_send_extrinsic(pallet_balances::Call::transfer_allow_death {
             dest: Bob.to_account_id(),
             value: 1,
         })
@@ -884,7 +884,7 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
     ferdie.produce_blocks(1).await.unwrap();
 }
 
-#[substrate_test_utils::test(flavor = "multi_thread")]
+#[tokio::test(flavor = "multi_thread")]
 #[ignore]
 async fn fraud_proof_verification_in_tx_pool_should_work() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
@@ -1058,7 +1058,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
 
 // TODO: construct a minimal consensus runtime code and use the `set_code` extrinsic to actually
 // cover the case that the new domain runtime are updated accordingly upon the new consensus runtime.
-#[substrate_test_utils::test(flavor = "multi_thread")]
+#[tokio::test(flavor = "multi_thread")]
 #[ignore]
 async fn set_new_code_should_work() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
@@ -1132,7 +1132,7 @@ async fn set_new_code_should_work() {
     assert_eq!(runtime_code, new_runtime_wasm_blob);
 }
 
-#[substrate_test_utils::test(flavor = "multi_thread")]
+#[tokio::test(flavor = "multi_thread")]
 async fn pallet_domains_unsigned_extrinsics_should_work() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -1232,7 +1232,7 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
     // assert_eq!(head_receipt_number(), 2);
 }
 
-#[substrate_test_utils::test(flavor = "multi_thread")]
+#[tokio::test(flavor = "multi_thread")]
 async fn duplicated_and_stale_bundle_should_be_rejected() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -1305,7 +1305,7 @@ async fn duplicated_and_stale_bundle_should_be_rejected() {
     }
 }
 
-#[substrate_test_utils::test(flavor = "multi_thread")]
+#[tokio::test(flavor = "multi_thread")]
 async fn existing_bundle_can_be_resubmitted_to_new_fork() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -1371,7 +1371,7 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
 }
 
 // TODO: Unlock test when multiple domains are supported in DecEx v2.
-// #[substrate_test_utils::test(flavor = "multi_thread")]
+// #[tokio::test(flavor = "multi_thread")]
 // async fn test_cross_domains_message_should_work() {
 //     let directory = TempDir::new().expect("Must be able to create temporary directory");
 //
@@ -1554,7 +1554,7 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
 // }
 
 // TODO: Unlock test when multiple domains are supported in DecEx v2.
-// #[substrate_test_utils::test(flavor = "multi_thread")]
+// #[tokio::test(flavor = "multi_thread")]
 // async fn test_unordered_cross_domains_message_should_work() {
 // let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -1749,7 +1749,7 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
 // .unwrap();
 // }
 
-#[substrate_test_utils::test(flavor = "multi_thread")]
+#[tokio::test(flavor = "multi_thread")]
 // TODO: https://github.com/subspace/subspace/pull/1954 broke this on Windows, we suspect the test
 //  is racy, but didn't find why and why it only fails on Windows. This needs to be fixed and test
 //  un-ignored on Windows.
@@ -1822,7 +1822,7 @@ async fn test_restart_domain_operator() {
     assert_eq!(alice.client.info().best_number, 10);
 }
 
-#[substrate_test_utils::test(flavor = "multi_thread")]
+#[tokio::test(flavor = "multi_thread")]
 async fn test_domain_transaction_fee_and_operator_reward() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -1891,7 +1891,7 @@ async fn test_domain_transaction_fee_and_operator_reward() {
     assert_eq!(alice_free_balance_changes, receipt.total_rewards);
 }
 
-#[substrate_test_utils::test(flavor = "multi_thread")]
+#[tokio::test(flavor = "multi_thread")]
 async fn test_multiple_consensus_blocks_derive_similar_domain_block() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 

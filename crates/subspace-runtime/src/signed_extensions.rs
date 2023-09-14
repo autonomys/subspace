@@ -72,7 +72,7 @@ impl SignedExtension for DisablePallets {
         if matches!(
             call,
             RuntimeCall::Balances(
-                pallet_balances::Call::transfer { .. }
+                pallet_balances::Call::transfer_allow_death { .. }
                     | pallet_balances::Call::transfer_keep_alive { .. }
                     | pallet_balances::Call::transfer_all { .. }
             )

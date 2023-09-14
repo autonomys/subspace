@@ -91,7 +91,7 @@ impl VerifierApi for TestVerifierClient {
 // Use the system domain id for testing
 const TEST_DOMAIN_ID: DomainId = DomainId::new(3u32);
 
-#[substrate_test_utils::test(flavor = "multi_thread")]
+#[tokio::test(flavor = "multi_thread")]
 #[ignore]
 async fn execution_proof_creation_and_verification_should_work() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
@@ -133,21 +133,21 @@ async fn execution_proof_creation_and_verification_should_work() {
     let alice_nonce = alice.account_nonce();
     let transfer_to_charlie = alice.construct_extrinsic(
         alice_nonce,
-        pallet_balances::Call::transfer {
+        pallet_balances::Call::transfer_allow_death {
             dest: Charlie.to_account_id(),
             value: 8,
         },
     );
     let transfer_to_dave = alice.construct_extrinsic(
         alice_nonce + 1,
-        pallet_balances::Call::transfer {
+        pallet_balances::Call::transfer_allow_death {
             dest: Dave.to_account_id(),
             value: 8,
         },
     );
     let transfer_to_charlie_again = alice.construct_extrinsic(
         alice_nonce + 2,
-        pallet_balances::Call::transfer {
+        pallet_balances::Call::transfer_allow_death {
             dest: Charlie.to_account_id(),
             value: 88,
         },
@@ -400,7 +400,7 @@ async fn execution_proof_creation_and_verification_should_work() {
     assert!(proof_verifier.verify(&fraud_proof).is_ok());
 }
 
-#[substrate_test_utils::test(flavor = "multi_thread")]
+#[tokio::test(flavor = "multi_thread")]
 #[ignore]
 async fn invalid_execution_proof_should_not_work() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
@@ -442,14 +442,14 @@ async fn invalid_execution_proof_should_not_work() {
     let alice_nonce = alice.account_nonce();
     let transfer_to_charlie = alice.construct_extrinsic(
         alice_nonce,
-        pallet_balances::Call::transfer {
+        pallet_balances::Call::transfer_allow_death {
             dest: Charlie.to_account_id(),
             value: 8,
         },
     );
     let transfer_to_charlie_again = alice.construct_extrinsic(
         alice_nonce + 1,
-        pallet_balances::Call::transfer {
+        pallet_balances::Call::transfer_allow_death {
             dest: Charlie.to_account_id(),
             value: 8,
         },
@@ -604,7 +604,7 @@ async fn invalid_execution_proof_should_not_work() {
 }
 
 // TODO: Unlock test when gossip message validator are supported in DecEx v2.
-// #[substrate_test_utils::test(flavor = "multi_thread")]
+// #[tokio::test(flavor = "multi_thread")]
 // async fn test_invalid_transaction_proof_creation_and_verification() {
 //     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -633,7 +633,7 @@ async fn invalid_execution_proof_should_not_work() {
 //     produce_blocks!(ferdie, alice, 3).await.unwrap();
 
 //     alice
-//         .construct_and_send_extrinsic(pallet_balances::Call::transfer {
+//         .construct_and_send_extrinsic(pallet_balances::Call::transfer_allow_death {
 //             dest: domain_test_service::evm_domain_test_runtime::Address::Id(One.public().into()),
 //             value: 500 + 1,
 //         })
@@ -651,7 +651,7 @@ async fn invalid_execution_proof_should_not_work() {
 //     // This is an invalid transaction.
 //     let transfer_from_one_to_bob = alice.construct_extrinsic_with_caller(
 //         One,
-//         pallet_balances::Call::transfer {
+//         pallet_balances::Call::transfer_allow_death {
 //             dest: domain_test_service::evm_domain_test_runtime::Address::Id(Bob.public().into()),
 //             value: 1000,
 //         },
