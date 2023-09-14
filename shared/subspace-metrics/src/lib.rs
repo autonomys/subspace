@@ -15,10 +15,10 @@ use prometheus_client::encoding::text::encode;
 use prometheus_client::registry::Registry as Libp2pMetricsRegistry;
 use std::error::Error;
 use std::future::Future;
-use std::net::SocketAddr;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::ops::DerefMut;
 use std::sync::Arc;
-use tracing::info;
+use tracing::{error, info, warn};
 
 type SharedRegistry = Arc<Mutex<RegistryAdapter>>;
 
@@ -82,11 +82,35 @@ pub fn start_prometheus_metrics_server(
     let shared_registry = Arc::new(Mutex::new(registry));
     let data = Data::new(shared_registry);
 
-    info!(?endpoints, "Starting metrics server...",);
+    let app_factory = move || App::new().app_data(data.clone()).service(metrics);
+    let result = HttpServer::new(app_factory.clone()).bind(endpoints.as_slice());
 
-    Ok(
-        HttpServer::new(move || App::new().app_data(data.clone()).service(metrics))
-            .bind(endpoints.as_slice())?
-            .run(),
-    )
+    let server = match result {
+        Ok(server) => server,
+        Err(error) => {
+            warn!(
+                ?error,
+                "Failed to start metrics server. Fallback to the random port on localhost.",
+            );
+
+            let default_endpoint = SocketAddr::new(IpAddr::V4(Ipv4Addr::new(127, 0, 0, 1)), 0);
+            let result = HttpServer::new(app_factory).bind(default_endpoint);
+
+            match result {
+                Ok(server) => server,
+                Err(error) => {
+                    error!(
+                        ?error,
+                        "Failed to start metrics server on the default port."
+                    );
+
+                    return Err(error);
+                }
+            }
+        }
+    };
+
+    info!(endpoints = ?server.addrs(), "Metrics server started.",);
+
+    Ok(server.run())
 }
