@@ -138,8 +138,8 @@ mod pallet {
         RuntimeType,
     };
     use sp_runtime::traits::{
-        AtLeast32BitUnsigned, BlockNumberProvider, Bounded, CheckEqual, CheckedAdd, MaybeDisplay,
-        One, SimpleBitOps, Zero,
+        AtLeast32BitUnsigned, BlockNumberProvider, Bounded, CheckEqual, CheckedAdd, Hash,
+        MaybeDisplay, One, SimpleBitOps, Zero,
     };
     use sp_runtime::SaturatedConversion;
     use sp_std::boxed::Box;
@@ -186,6 +186,9 @@ mod pallet {
             + MaxEncodedLen
             + Into<H256>
             + From<H256>;
+
+        /// The domain hashing algorithm.
+        type DomainHashing: Hash<Output = Self::DomainHash> + TypeInfo;
 
         /// Same with `pallet_subspace::Config::ConfirmationDepthK`.
         #[pallet::constant]
@@ -1304,14 +1307,13 @@ impl<T: Config> Pallet<T> {
         domain_id: DomainId,
     ) -> Option<(DomainInstanceData, BlockNumberFor<T>)> {
         let domain_obj = DomainRegistry::<T>::get(domain_id)?;
-        let (runtime_type, runtime_code) =
-            RuntimeRegistry::<T>::get(domain_obj.domain_config.runtime_id)
-                .map(|runtime_object| (runtime_object.runtime_type, runtime_object.code))?;
+        let runtime_object = RuntimeRegistry::<T>::get(domain_obj.domain_config.runtime_id)?;
+        let runtime_type = runtime_object.runtime_type.clone();
+        let raw_genesis = runtime_object.into_complete_raw_genesis(domain_id);
         Some((
             DomainInstanceData {
                 runtime_type,
-                runtime_code,
-                raw_genesis_config: domain_obj.raw_genesis_config,
+                raw_genesis,
             },
             domain_obj.created_at,
         ))

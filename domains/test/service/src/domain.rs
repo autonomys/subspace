@@ -183,7 +183,7 @@ where
                 .await
                 .expect("Failed to get domain instance data")
         };
-        let chain_spec = create_domain_spec(domain_id, domain_instance_data);
+        let chain_spec = create_domain_spec(domain_instance_data.raw_genesis);
         let domain_config = node_config(
             domain_id,
             tokio_handle.clone(),

@@ -25,7 +25,8 @@ use hex_literal::hex;
 use sc_service::ChainType;
 use sc_subspace_chain_specs::ExecutionChainSpec;
 use sp_core::crypto::UncheckedFrom;
-use sp_domains::{DomainId, DomainInstanceData, OperatorPublicKey, RuntimeType};
+use sp_domains::storage::RawGenesis;
+use sp_domains::OperatorPublicKey;
 use std::str::FromStr;
 use std::sync::OnceLock;
 use subspace_runtime_primitives::SSC;
@@ -235,29 +236,13 @@ pub fn get_testnet_genesis_by_spec_id(
     }
 }
 
-// HACK: `ChainSpec::from_genesis` is only allow to create hardcoded spec and `RuntimeGenesisConfig`
-// dosen't derive `Clone`, using global variable and serialization/deserialization to workaround
-// these limits.
-static GENESIS_CONFIG: OnceLock<Vec<u8>> = OnceLock::new();
-
-// Load chain spec that contains the given `RuntimeGenesisConfig`
-fn load_chain_spec_with(
-    spec_id: &str,
-    genesis_config: RuntimeGenesisConfig,
+pub fn create_domain_spec(
+    chain_id: &str,
+    raw_genesis: RawGenesis,
 ) -> Result<Box<dyn sc_cli::ChainSpec>, String> {
-    GENESIS_CONFIG
-        .set(
-            serde_json::to_vec(&genesis_config)
-                .expect("Genesis config serialization never fails; qed"),
-        )
-        .expect("This function should only call once upon node initialization");
-    let constructor = || {
-        let raw_genesis_config = GENESIS_CONFIG.get().expect("Value just set; qed");
-        serde_json::from_slice(raw_genesis_config)
-            .expect("Genesis config deserialization never fails; qed")
-    };
-
-    let chain_spec = match spec_id {
+    // The value of the `RuntimeGenesisConfig` doesn't matter since it will be overwritten later
+    let constructor = RuntimeGenesisConfig::default;
+    let mut chain_spec = match chain_id {
         "dev" => development_config(constructor),
         "gemini-3f" => gemini_3f_config(constructor),
         "devnet" => devnet_config(constructor),
@@ -265,36 +250,9 @@ fn load_chain_spec_with(
         path => ChainSpec::from_json_file(std::path::PathBuf::from(path))?,
     };
 
+    chain_spec.set_storage(raw_genesis.into_storage());
+
     Ok(Box::new(chain_spec))
-}
-
-pub fn create_domain_spec(
-    domain_id: DomainId,
-    chain_id: &str,
-    domain_instance_data: DomainInstanceData,
-) -> Result<Box<dyn sc_cli::ChainSpec>, String> {
-    let DomainInstanceData {
-        runtime_type,
-        runtime_code,
-        raw_genesis_config,
-    } = domain_instance_data;
-
-    match runtime_type {
-        RuntimeType::Evm => {
-            let mut genesis_config = match raw_genesis_config {
-                Some(raw_genesis_config) => {
-                    serde_json::from_slice(&raw_genesis_config).map_err(|_| {
-                        "Failed to deserialize genesis config of the evm domain".to_string()
-                    })?
-                }
-                None => RuntimeGenesisConfig::default(),
-            };
-            genesis_config.system.code = runtime_code;
-            genesis_config.self_domain_id.domain_id = Some(domain_id);
-            let spec = load_chain_spec_with(chain_id, genesis_config)?;
-            Ok(spec)
-        }
-    }
 }
 
 fn testnet_genesis(

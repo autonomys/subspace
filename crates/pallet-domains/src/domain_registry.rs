@@ -14,10 +14,7 @@ use frame_support::{ensure, PalletError};
 use frame_system::pallet_prelude::*;
 use scale_info::TypeInfo;
 use sp_core::Get;
-use sp_domains::domain::generate_genesis_state_root;
-use sp_domains::{
-    DomainId, DomainInstanceData, DomainsDigestItem, ReceiptHash, RuntimeId, RuntimeType,
-};
+use sp_domains::{DomainId, DomainsDigestItem, ReceiptHash, RuntimeId};
 use sp_runtime::traits::{CheckedAdd, Zero};
 use sp_runtime::DigestItem;
 use sp_std::collections::btree_map::BTreeMap;
@@ -129,12 +126,13 @@ pub(crate) fn do_instantiate_domain<T: Config>(
     let genesis_receipt = {
         let runtime_obj = RuntimeRegistry::<T>::get(domain_config.runtime_id)
             .expect("Runtime object must exist as checked in `can_instantiate_domain`; qed");
-        initialize_genesis_receipt::<T>(
-            domain_id,
-            runtime_obj.runtime_type,
-            runtime_obj.code,
-            raw_genesis_config.clone(),
-        )?
+
+        let state_version = runtime_obj.version.state_version();
+        let raw_genesis = runtime_obj.into_complete_raw_genesis(domain_id);
+        let state_root = raw_genesis.state_root::<T::DomainHashing>(state_version);
+        let consensus_genesis_hash = frame_system::Pallet::<T>::block_hash(BlockNumberFor::<T>::zero());
+
+        ExecutionReceiptOf::<T>::genesis(consensus_genesis_hash, state_root)
     };
     let genesis_receipt_hash = genesis_receipt.hash();
 
@@ -174,34 +172,6 @@ pub(crate) fn do_instantiate_domain<T: Config>(
     frame_system::Pallet::<T>::deposit_log(DigestItem::domain_instantiation(domain_id));
 
     Ok(domain_id)
-}
-
-fn initialize_genesis_receipt<T: Config>(
-    domain_id: DomainId,
-    runtime_type: RuntimeType,
-    runtime_code: Vec<u8>,
-    raw_genesis_config: Option<Vec<u8>>,
-) -> Result<ExecutionReceiptOf<T>, Error> {
-    let consensus_genesis_hash = frame_system::Pallet::<T>::block_hash(BlockNumberFor::<T>::zero());
-    // The `GenesisReceiptExtension` is unavailable during runtime benchmarking, remove once
-    // https://github.com/paritytech/substrate/issues/14733 is resolved.
-    let genesis_state_root = if cfg!(feature = "runtime-benchmarks") {
-        Default::default()
-    } else {
-        generate_genesis_state_root(
-            domain_id,
-            DomainInstanceData {
-                runtime_type,
-                runtime_code,
-                raw_genesis_config,
-            },
-        )
-        .ok_or(Error::FailedToGenerateGenesisStateRoot)?
-    };
-    Ok(ExecutionReceiptOf::<T>::genesis(
-        consensus_genesis_hash,
-        genesis_state_root.into(),
-    ))
 }
 
 #[cfg(test)]

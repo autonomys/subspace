@@ -183,6 +183,7 @@ impl pallet_domains::Config for Test {
     type RuntimeEvent = RuntimeEvent;
     type DomainNumber = BlockNumber;
     type DomainHash = sp_core::H256;
+    type DomainHashing = BlakeTwo256;
     type ConfirmationDepthK = ConfirmationDepthK;
     type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
     type Currency = Balances;

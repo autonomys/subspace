@@ -625,17 +625,11 @@ pub fn self_domain_id_storage_key() -> StorageKey {
     )
 }
 
-/// `DomainInstanceData` is used to construct `RuntimeGenesisConfig` which will be further used
-/// to construct the genesis block
+/// `DomainInstanceData` is used to construct the genesis storage of domain instance chain
 #[derive(PartialEq, Eq, Clone, Encode, Decode, TypeInfo)]
 pub struct DomainInstanceData {
     pub runtime_type: RuntimeType,
-    pub runtime_code: Vec<u8>,
-    // The genesis config of the domain, encoded in json format.
-    //
-    // NOTE: the WASM code in the `system-pallet` genesis config should be empty to avoid
-    // redundancy with the `runtime_code` field.
-    pub raw_genesis_config: Option<Vec<u8>>,
+    pub raw_genesis: RawGenesis,
 }
 
 impl PassBy for DomainInstanceData {
