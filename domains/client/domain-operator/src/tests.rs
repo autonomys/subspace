@@ -1066,6 +1066,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
         .unwrap()
         .unwrap();
     let parent_header = alice.client.header(*header.parent_hash()).unwrap().unwrap();
+    let primary_hash = ferdie.client.hash(*header.number()).unwrap().unwrap();
 
     let intermediate_roots = alice
         .client
@@ -1123,6 +1124,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
         bad_receipt_hash: bad_receipt.hash(),
         parent_number: parent_number_ferdie,
         consensus_parent_hash: parent_hash_ferdie,
+        consensus_hash: primary_hash,
         pre_state_root: *parent_header.state_root(),
         post_state_root: intermediate_roots[0].into(),
         proof: storage_proof,

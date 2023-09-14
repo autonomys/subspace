@@ -91,6 +91,7 @@ pub(super) async fn start_worker<
         + HeaderMetadata<CBlock, Error = sp_blockchain::Error>
         + BlockBackend<CBlock>
         + ProvideRuntimeApi<CBlock>
+        + ProofProvider<CBlock>
         + BlockchainEvents<CBlock>
         + 'static,
     CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>

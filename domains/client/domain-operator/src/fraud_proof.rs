@@ -69,7 +69,7 @@ where
         + ProofProvider<Block>
         + 'static,
     Client::Api: sp_block_builder::BlockBuilder<Block> + sp_api::ApiExt<Block>,
-    CClient: HeaderBackend<CBlock> + 'static,
+    CClient: HeaderBackend<CBlock> + ProofProvider<CBlock> + 'static,
     Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
     E: CodeExecutor,
 {
@@ -150,6 +150,10 @@ where
                 max: local_receipt.execution_trace.len() - 1,
             })?;
 
+        let consensus_hash =
+            H256::decode(&mut local_receipt.consensus_block_hash.encode().as_slice())
+                .map_err(|_| FraudProofError::InvalidStateRootType)?;
+
         let consensus_parent_hash = H256::decode(
             &mut self
                 .consensus_client
@@ -197,6 +201,7 @@ where
                 bad_receipt_hash,
                 parent_number,
                 consensus_parent_hash,
+                consensus_hash,
                 pre_state_root,
                 post_state_root,
                 proof,
@@ -239,6 +244,7 @@ where
                 bad_receipt_hash,
                 parent_number,
                 consensus_parent_hash,
+                consensus_hash,
                 pre_state_root,
                 post_state_root,
                 proof,
@@ -250,13 +256,21 @@ where
                 as_h256(&local_receipt.execution_trace[local_trace_index as usize - 1])?;
             let post_state_root = as_h256(local_root)?;
 
-            let (proof, execution_phase) = self.create_extrinsic_execution_proof(
-                local_trace_index as usize - 1,
-                &parent_header,
-                block_hash,
-                &prover,
-                digest,
-            )?;
+            // if the mismatch happened at the first extrinsic, then provide timestamp specific fraud proof
+            let (proof, execution_phase) = if local_trace_index == 1 {
+                self.create_timestamp_extrinsic_proof(
+                    local_trace_index as usize - 1,
+                    local_receipt.consensus_block_hash,
+                )?
+            } else {
+                self.create_extrinsic_execution_proof(
+                    local_trace_index as usize - 1,
+                    &parent_header,
+                    block_hash,
+                    &prover,
+                    digest,
+                )?
+            };
 
             // TODO: proof should be a CompactProof.
             InvalidStateTransitionProof {
@@ -264,6 +278,7 @@ where
                 bad_receipt_hash,
                 parent_number,
                 consensus_parent_hash,
+                consensus_hash,
                 pre_state_root,
                 post_state_root,
                 proof,
@@ -286,6 +301,25 @@ where
         self.client.block_body(at)?.ok_or_else(|| {
             sp_blockchain::Error::Backend(format!("Block body not found for {at:?}"))
         })
+    }
+
+    fn create_timestamp_extrinsic_proof(
+        &self,
+        extrinsic_index: usize,
+        consensus_block_hash: CBlock::Hash,
+    ) -> Result<(StorageProof, ExecutionPhase), FraudProofError> {
+        let execution_phase = ExecutionPhase::ApplyExtrinsic(
+            extrinsic_index
+                .try_into()
+                .expect("extrinsic_index must fit into u32"),
+        );
+
+        let key = sp_domains::fraud_proof::ConsensusTimestamp::storage_value_final_key();
+        let proof = self
+            .consensus_client
+            .read_proof(consensus_block_hash, &mut [key.as_slice()].into_iter())?;
+
+        Ok((proof, execution_phase))
     }
 
     fn create_extrinsic_execution_proof(

@@ -79,6 +79,7 @@ where
         + HeaderMetadata<CBlock, Error = sp_blockchain::Error>
         + BlockBackend<CBlock>
         + ProvideRuntimeApi<CBlock>
+        + ProofProvider<CBlock>
         + BlockchainEvents<CBlock>
         + Send
         + Sync

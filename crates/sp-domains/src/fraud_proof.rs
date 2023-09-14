@@ -8,7 +8,7 @@ use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
 use subspace_core_primitives::BlockNumber;
-use subspace_runtime_primitives::{AccountId, Balance};
+use subspace_runtime_primitives::{AccountId, Balance, Moment};
 
 /// A phase of a block's execution, carrying necessary information needed for verifying the
 /// invalid state transition proof.
@@ -267,7 +267,11 @@ pub struct InvalidStateTransitionProof {
     ///
     /// Runtime code for the execution of the domain block that is being challenged
     /// is retrieved on top of the consensus parent block from the consensus chain.
+    /// TODO: Since we capture runtime upgrade if it happened in the consensus block,
+    ///     I think using consensus parent block is wrong. Need further discussion.
     pub consensus_parent_hash: H256,
+    /// Hash of the consensus block from which domain block was derived.
+    pub consensus_hash: H256,
     /// State root before the fraudulent transaction.
     pub pre_state_root: H256,
     /// State root after the fraudulent transaction.
@@ -287,6 +291,7 @@ pub fn dummy_invalid_state_transition_proof(
         bad_receipt_hash: H256::default(),
         parent_number,
         consensus_parent_hash: H256::default(),
+        consensus_hash: H256::default(),
         pre_state_root: H256::default(),
         post_state_root: H256::default(),
         proof: StorageProof::empty(),
@@ -407,6 +412,30 @@ where
     }
 
     fn from_query_to_optional_value(v: Self::Query) -> Option<Balance> {
+        Some(v)
+    }
+}
+
+/// This is a representation of actual timestamp storage on pallet-timestamp.
+/// Any change in key or value there should be changed here accordingly.
+pub struct ConsensusTimestamp;
+
+impl StorageValue<Moment> for ConsensusTimestamp {
+    type Query = Moment;
+
+    fn module_prefix() -> &'static [u8] {
+        "Timestamp".as_ref()
+    }
+
+    fn storage_prefix() -> &'static [u8] {
+        "Now".as_ref()
+    }
+
+    fn from_optional_value_to_query(v: Option<Moment>) -> Self::Query {
+        v.unwrap_or_default()
+    }
+
+    fn from_query_to_optional_value(v: Self::Query) -> Option<Moment> {
         Some(v)
     }
 }

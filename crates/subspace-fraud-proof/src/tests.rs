@@ -281,6 +281,7 @@ async fn execution_proof_creation_and_verification_should_work() {
         bad_receipt_hash: Hash::random(),
         parent_number: parent_number_alice,
         consensus_parent_hash,
+        consensus_hash: primary_hash,
         pre_state_root: *parent_header.state_root(),
         post_state_root: intermediate_roots[0].into(),
         proof: storage_proof,
@@ -338,6 +339,7 @@ async fn execution_proof_creation_and_verification_should_work() {
             bad_receipt_hash: Hash::random(),
             parent_number: parent_number_alice,
             consensus_parent_hash,
+            consensus_hash: primary_hash,
             pre_state_root: intermediate_roots[target_extrinsic_index].into(),
             post_state_root: intermediate_roots[target_extrinsic_index + 1].into(),
             proof: storage_proof,
@@ -391,6 +393,7 @@ async fn execution_proof_creation_and_verification_should_work() {
         bad_receipt_hash: Hash::random(),
         parent_number: parent_number_alice,
         consensus_parent_hash,
+        consensus_hash: primary_hash,
         pre_state_root: intermediate_roots.last().unwrap().into(),
         post_state_root: post_execution_root,
         proof: storage_proof,
@@ -479,7 +482,7 @@ async fn invalid_execution_proof_should_not_work() {
     let best_hash = alice.client.info().best_hash;
     let header = alice.client.header(best_hash).unwrap().unwrap();
     let parent_header = alice.client.header(*header.parent_hash()).unwrap().unwrap();
-
+    let primary_hash = ferdie.client.hash(*header.number()).unwrap().unwrap();
     let create_block_builder = || {
         BlockBuilder::new(
             &*alice.client,
@@ -568,6 +571,7 @@ async fn invalid_execution_proof_should_not_work() {
         bad_receipt_hash: Hash::random(),
         parent_number: parent_number_alice,
         consensus_parent_hash,
+        consensus_hash: primary_hash,
         pre_state_root: post_delta_root0,
         post_state_root: post_delta_root1,
         proof: proof1,
@@ -581,6 +585,7 @@ async fn invalid_execution_proof_should_not_work() {
         bad_receipt_hash: Hash::random(),
         parent_number: parent_number_alice,
         consensus_parent_hash,
+        consensus_hash: primary_hash,
         pre_state_root: post_delta_root0,
         post_state_root: post_delta_root1,
         proof: proof0.clone(),
@@ -594,6 +599,7 @@ async fn invalid_execution_proof_should_not_work() {
         bad_receipt_hash: Hash::random(),
         parent_number: parent_number_alice,
         consensus_parent_hash,
+        consensus_hash: primary_hash,
         pre_state_root: post_delta_root0,
         post_state_root: post_delta_root1,
         proof: proof0,
