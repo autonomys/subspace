@@ -15,6 +15,7 @@ use prometheus_client::encoding::text::encode;
 use prometheus_client::registry::Registry as Libp2pMetricsRegistry;
 use std::error::Error;
 use std::future::Future;
+use std::io::ErrorKind;
 use std::net::SocketAddr;
 use std::ops::DerefMut;
 use std::sync::Arc;
@@ -88,6 +89,13 @@ pub fn start_prometheus_metrics_server(
     let server = match result {
         Ok(server) => server,
         Err(error) => {
+            if error.kind() != ErrorKind::AddrInUse {
+                error!(?error, "Failed to start metrics server.");
+
+                return Err(error);
+            }
+
+            // Trying to recover from "address in use" error.
             warn!(
                 ?error,
                 "Failed to start metrics server. Falling back to the random port...",
