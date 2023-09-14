@@ -922,14 +922,18 @@ mod pallet {
             origin: OriginFor<T>,
             runtime_name: Vec<u8>,
             runtime_type: RuntimeType,
-            code: Vec<u8>,
+            raw_genesis_storage: Vec<u8>,
         ) -> DispatchResult {
             ensure_root(origin)?;
 
             let block_number = frame_system::Pallet::<T>::current_block_number();
-            let runtime_id =
-                do_register_runtime::<T>(runtime_name, runtime_type.clone(), code, block_number)
-                    .map_err(Error::<T>::from)?;
+            let runtime_id = do_register_runtime::<T>(
+                runtime_name,
+                runtime_type.clone(),
+                raw_genesis_storage,
+                block_number,
+            )
+            .map_err(Error::<T>::from)?;
 
             Self::deposit_event(Event::DomainRuntimeCreated {
                 runtime_id,
@@ -1143,10 +1147,10 @@ mod pallet {
                         genesis_domain.runtime_name,
                         genesis_domain.runtime_type,
                         genesis_domain.runtime_version,
-                        genesis_domain.code,
+                        genesis_domain.raw_genesis_storage,
                         One::one(),
-                    )
-                    .expect("Genesis runtime registration must always succeed");
+                )
+                .expect("Genesis runtime registration must always succeed");
 
                     // Instantiate the genesis domain
                     let domain_config = DomainConfig {
@@ -1158,13 +1162,9 @@ mod pallet {
                         target_bundles_per_block: genesis_domain.target_bundles_per_block,
                     };
                     let domain_owner = genesis_domain.owner_account_id;
-                    let domain_id = do_instantiate_domain::<T>(
-                        domain_config,
-                        domain_owner.clone(),
-                        One::one(),
-                        Some(genesis_domain.raw_genesis_config),
-                    )
-                    .expect("Genesis domain instantiation must always succeed");
+                let domain_id =
+                    do_instantiate_domain::<T>(domain_config, domain_owner.clone(), One::one(), None)
+                        .expect("Genesis domain instantiation must always succeed");
 
                     // Register domain_owner as the genesis operator.
                     let operator_config = OperatorConfig {

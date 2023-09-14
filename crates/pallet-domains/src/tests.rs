@@ -16,6 +16,7 @@ use sp_core::crypto::Pair;
 use sp_core::{Get, H256, U256};
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::merkle_tree::MerkleTree;
+use sp_domains::storage::RawGenesis;
 use sp_domains::{
     BundleHeader, DomainId, DomainInstanceData, DomainsHoldIdentifier, ExecutionReceipt,
     GenerateGenesisStateRoot, GenesisReceiptExtension, OpaqueBundle, OperatorId, OperatorPair,
@@ -347,11 +348,16 @@ pub(crate) fn run_to_block<T: Config>(block_number: BlockNumberFor<T>, parent_ha
 }
 
 pub(crate) fn register_genesis_domain(creator: u64, operator_ids: Vec<OperatorId>) -> DomainId {
+    let raw_genesis_storage = {
+        let mut raw_genesis = RawGenesis::default();
+        raw_genesis.set_runtime_code(vec![1, 2, 3, 4]);
+        raw_genesis.encode()
+    };
     assert_ok!(crate::Pallet::<Test>::register_domain_runtime(
         RawOrigin::Root.into(),
         b"evm".to_vec(),
         RuntimeType::Evm,
-        vec![1, 2, 3, 4],
+        raw_genesis_storage,
     ));
 
     let domain_id = NextDomainId::<Test>::get();
