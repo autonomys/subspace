@@ -16,18 +16,26 @@
 
 use crate::domain::evm_chain_spec::{self, SpecId};
 use clap::Parser;
+use domain_runtime_primitives::opaque::Block as DomainBlock;
 use sc_cli::{
-    ChainSpec, CliConfiguration, DefaultConfigurationValues, ImportParams, KeystoreParams,
-    NetworkParams, Result, Role, RunCmd as SubstrateRunCmd, RuntimeVersion, SharedParams,
+    BlockNumberOrHash, ChainSpec, CliConfiguration, DefaultConfigurationValues, ImportParams,
+    KeystoreParams, NetworkParams, Result, Role, RunCmd as SubstrateRunCmd, SharedParams,
     SubstrateCli,
 };
+use sc_client_api::backend::AuxStore;
 use sc_service::config::PrometheusConfig;
 use sc_service::{BasePath, Configuration};
+use sp_blockchain::HeaderBackend;
+use sp_domain_digests::AsPredigest;
 use sp_domains::DomainId;
+use sp_runtime::generic::BlockId;
+use sp_runtime::traits::Header;
+use sp_runtime::DigestItem;
 use std::io::Write;
 use std::net::SocketAddr;
 use std::num::ParseIntError;
 use std::path::PathBuf;
+use subspace_runtime::Block;
 
 /// Sub-commands supported by the executor.
 #[derive(Debug, clap::Subcommand)]
@@ -45,6 +53,9 @@ pub enum Subcommand {
 
     /// Build the genesis config of the evm domain chain in json format
     BuildGenesisConfig(BuildGenesisConfigCmd),
+
+    /// The `export-execution-receipt` command used to get the ER from the auxiliary storage of the operator client
+    ExportExecutionReceipt(ExportExecutionReceiptCmd),
 }
 
 fn parse_domain_id(s: &str) -> std::result::Result<DomainId, ParseIntError> {
@@ -146,15 +157,6 @@ impl SubstrateCli for DomainCli {
         match runtime_name {
             "evm" => evm_chain_spec::load_chain_spec(id),
             unknown_name => Err(format!("Unknown runtime: {unknown_name}")),
-        }
-    }
-
-    fn native_runtime_version(_chain_spec: &Box<dyn ChainSpec>) -> &'static RuntimeVersion {
-        // TODO: Fetch the runtime name of `self.domain_id` properly.
-        let runtime_name = "evm";
-        match runtime_name {
-            "evm" => &evm_domain_runtime::VERSION,
-            unknown_name => unreachable!("Unknown runtime: {unknown_name}"),
         }
     }
 }
@@ -316,6 +318,107 @@ impl BuildGenesisConfigCmd {
             .is_err()
         {
             let _ = std::io::stderr().write_all(b"Error writing to stdout\n");
+        }
+        Ok(())
+    }
+}
+
+/// The `export-execution-receipt` command used to get the ER from the auxiliary storage of the operator client
+#[derive(Debug, Clone, Parser)]
+pub struct ExportExecutionReceiptCmd {
+    /// Get the `ExecutionReceipt` by domain block number or hash
+    #[arg(long, conflicts_with_all = &["consensus_block_hash"])]
+    pub domain_block: Option<BlockNumberOrHash>,
+
+    /// Get the `ExecutionReceipt` by consensus block hash
+    #[arg(long, conflicts_with_all = &["domain_block"])]
+    pub consensus_block_hash: Option<BlockNumberOrHash>,
+
+    /// The base struct of the export-execution-receipt command.
+    #[clap(flatten)]
+    pub shared_params: SharedParams,
+
+    /// Domain arguments
+    ///
+    /// The command-line arguments provided first will be passed to the embedded consensus node,
+    /// while the arguments provided after `--` will be passed to the domain node.
+    ///
+    /// subspace-node export-execution-receipt [consensus-chain-args] -- [domain-args]
+    #[arg(raw = true)]
+    pub domain_args: Vec<String>,
+}
+
+impl CliConfiguration for ExportExecutionReceiptCmd {
+    fn shared_params(&self) -> &SharedParams {
+        &self.shared_params
+    }
+}
+
+impl ExportExecutionReceiptCmd {
+    /// Run the export-execution-receipt command
+    pub fn run<Backend, Client>(
+        &self,
+        domain_client: &Client,
+        domain_backend: &Backend,
+    ) -> sc_cli::Result<()>
+    where
+        Backend: AuxStore,
+        Client: HeaderBackend<DomainBlock>,
+    {
+        let consensus_block_hash = match (&self.consensus_block_hash, &self.domain_block) {
+            // Get ER by consensus block hash
+            (Some(raw_consensus_block_hash), None) => {
+                match raw_consensus_block_hash.parse::<Block>()? {
+                    BlockId::Hash(h) => h,
+                    BlockId::Number(_) => {
+                        eprintln!(
+                            "unexpected input {raw_consensus_block_hash:?}, expected consensus block hash",
+                        );
+                        return Ok(());
+                    }
+                }
+            }
+            // Get ER by domain block hash or number
+            (None, Some(raw_domain_block)) => {
+                let domain_block_hash = match raw_domain_block.parse::<DomainBlock>()? {
+                    BlockId::Hash(h) => h,
+                    BlockId::Number(number) => domain_client.hash(number)?.ok_or_else(|| {
+                        sp_blockchain::Error::Backend(format!(
+                            "Domain block hash for #{number:?} not found",
+                        ))
+                    })?,
+                };
+                let domain_header = domain_client.header(domain_block_hash)?.ok_or_else(|| {
+                    sp_blockchain::Error::Backend(format!(
+                        "Header for domain block {domain_block_hash:?} not found"
+                    ))
+                })?;
+
+                domain_header
+                    .digest()
+                    .convert_first(DigestItem::as_consensus_block_info)
+                    .ok_or_else(|| {
+                        sp_blockchain::Error::Application(Box::from(
+                            "Domain block header for {domain_hash:?} must have consensus block info predigest"
+                        ))
+                    })?
+            }
+            _ => {
+                eprintln!("Expect the domain-block or consensus-block-hash argument",);
+                return Ok(());
+            }
+        };
+
+        match domain_client_operator::load_execution_receipt::<Backend, DomainBlock, Block>(
+            domain_backend,
+            consensus_block_hash,
+        )? {
+            Some(er) => {
+                println!("ExecutionReceipt of consensus block {consensus_block_hash:?}:\n{er:?}",);
+            }
+            None => {
+                println!("ExecutionReceipt of consensus block {consensus_block_hash:?} not found",);
+            }
         }
         Ok(())
     }

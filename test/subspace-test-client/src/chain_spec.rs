@@ -6,16 +6,17 @@ use sp_core::{sr25519, Pair, Public};
 use sp_domains::{GenesisDomain, OperatorPublicKey, RuntimeType};
 use sp_runtime::traits::{IdentifyAccount, Verify};
 use sp_runtime::Percent;
+use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, Signature};
 use subspace_test_runtime::{
-    AllowAuthoringBy, BalancesConfig, DomainsConfig, GenesisConfig, MaxDomainBlockSize,
-    MaxDomainBlockWeight, SubspaceConfig, SudoConfig, SystemConfig, VestingConfig, SSC,
+    AllowAuthoringBy, BalancesConfig, DomainsConfig, MaxDomainBlockSize, MaxDomainBlockWeight,
+    RuntimeGenesisConfig, SubspaceConfig, SudoConfig, SystemConfig, VestingConfig, SSC,
     WASM_BINARY,
 };
 
 /// The `ChainSpec` parameterized for subspace test runtime.
-pub type TestChainSpec = sc_service::GenericChainSpec<subspace_test_runtime::GenesisConfig>;
+pub type TestChainSpec = sc_service::GenericChainSpec<RuntimeGenesisConfig>;
 
 /// Generate a crypto pair from seed.
 pub fn get_from_seed<TPublic: Public>(seed: &str) -> <TPublic::Pair as Pair>::Public {
@@ -77,7 +78,7 @@ fn create_genesis_config(
     balances: Vec<(AccountId, Balance)>,
     // who, start, period, period_count, per_period
     vesting: Vec<(AccountId, BlockNumber, BlockNumber, u32, Balance)>,
-) -> GenesisConfig {
+) -> RuntimeGenesisConfig {
     let raw_domain_genesis_config = {
         let mut domain_genesis_config = testnet_evm_genesis();
         // Clear the WASM code of the genesis config since it is duplicated with `GenesisDomain::code`
@@ -85,10 +86,11 @@ fn create_genesis_config(
         serde_json::to_vec(&domain_genesis_config)
             .expect("Genesis config serialization never fails; qed")
     };
-    GenesisConfig {
+    RuntimeGenesisConfig {
         system: SystemConfig {
             // Add Wasm runtime to storage.
             code: wasm_binary.to_vec(),
+            ..Default::default()
         },
         balances: BalancesConfig { balances },
         transaction_payment: Default::default(),
@@ -101,6 +103,7 @@ fn create_genesis_config(
             enable_storage_access: false,
             allow_authoring_by: AllowAuthoringBy::Anyone,
             pot_slot_iterations: NonZeroU32::new(50_000_000).expect("Not zero; qed"),
+            phantom: PhantomData,
         },
         vesting: VestingConfig { vesting },
         domains: DomainsConfig {

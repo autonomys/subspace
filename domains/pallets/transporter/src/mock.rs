@@ -8,24 +8,18 @@ use pallet_balances::AccountData;
 use sp_core::H256;
 use sp_messenger::endpoint::{EndpointId, EndpointRequest, Sender};
 use sp_messenger::messages::ChainId;
-use sp_runtime::testing::Header;
 use sp_runtime::traits::{BlakeTwo256, Convert, IdentityLookup};
-use sp_runtime::DispatchError;
+use sp_runtime::{BuildStorage, DispatchError};
 
-type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<MockRuntime>;
 type Block = frame_system::mocking::MockBlock<MockRuntime>;
 pub(crate) type Balance = u64;
 pub(crate) type AccountId = u64;
 
 frame_support::construct_runtime!(
-    pub struct MockRuntime where
-        Block = Block,
-        NodeBlock = Block,
-        UncheckedExtrinsic = UncheckedExtrinsic,
-    {
-        System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
-        Balances: pallet_balances::{Pallet, Call, Config<T>, Storage, Event<T>},
-        Transporter: pallet_transporter::{Pallet, Call, Storage, Event<T>},
+    pub struct MockRuntime {
+        System: frame_system,
+        Balances: pallet_balances,
+        Transporter: pallet_transporter,
     }
 );
 
@@ -36,13 +30,12 @@ impl frame_system::Config for MockRuntime {
     type DbWeight = ();
     type RuntimeOrigin = RuntimeOrigin;
     type RuntimeCall = RuntimeCall;
-    type Index = u64;
-    type BlockNumber = u64;
+    type Nonce = u64;
     type Hash = H256;
     type Hashing = BlakeTwo256;
     type AccountId = AccountId;
     type Lookup = IdentityLookup<Self::AccountId>;
-    type Header = Header;
+    type Block = Block;
     type RuntimeEvent = RuntimeEvent;
     type BlockHashCount = ConstU64<250>;
     type Version = ();
@@ -133,8 +126,8 @@ pub const USER_ACCOUNT: AccountId = 1;
 pub const USER_INITIAL_BALANCE: Balance = 1000;
 
 pub fn new_test_ext() -> sp_io::TestExternalities {
-    let mut t = frame_system::GenesisConfig::default()
-        .build_storage::<MockRuntime>()
+    let mut t = frame_system::GenesisConfig::<MockRuntime>::default()
+        .build_storage()
         .unwrap();
 
     pallet_balances::GenesisConfig::<MockRuntime> {

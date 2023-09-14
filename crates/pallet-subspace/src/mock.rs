@@ -21,9 +21,8 @@ use crate::{
     self as pallet_subspace, AllowAuthoringBy, Config, CurrentSlot, FarmerPublicKey,
     NormalEraChange, NormalGlobalRandomnessInterval,
 };
-use frame_support::pallet_prelude::Weight;
 use frame_support::parameter_types;
-use frame_support::traits::{ConstU128, ConstU16, ConstU32, ConstU64, GenesisBuild, OnInitialize};
+use frame_support::traits::{ConstU128, ConstU16, ConstU32, ConstU64, OnInitialize};
 use futures::executor::block_on;
 use rand::Rng;
 use schnorrkel::Keypair;
@@ -39,8 +38,10 @@ use sp_core::H256;
 use sp_io::TestExternalities;
 use sp_runtime::testing::{Digest, DigestItem, Header, TestXt};
 use sp_runtime::traits::{Block as BlockT, Header as _, IdentityLookup};
-use sp_runtime::Perbill;
+use sp_runtime::{BuildStorage, Perbill};
+use sp_weights::Weight;
 use std::iter;
+use std::marker::PhantomData;
 use std::num::{NonZeroU32, NonZeroU64};
 use std::sync::Once;
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
@@ -62,18 +63,12 @@ use subspace_solving::REWARD_SIGNING_CONTEXT;
 
 type PosTable = ShimTable;
 
-type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
 
 const MAX_PIECES_IN_SECTOR: u16 = 1;
 
 frame_support::construct_runtime!(
-    pub struct Test
-    where
-        Block = Block,
-        NodeBlock = Block,
-        UncheckedExtrinsic = UncheckedExtrinsic,
-    {
+    pub struct Test {
         System: frame_system,
         Balances: pallet_balances,
         Subspace: pallet_subspace,
@@ -94,15 +89,14 @@ impl frame_system::Config for Test {
     type BlockLength = ();
     type DbWeight = ();
     type RuntimeOrigin = RuntimeOrigin;
-    type Index = u64;
-    type BlockNumber = u64;
+    type Nonce = u64;
     type RuntimeCall = RuntimeCall;
     type Hash = H256;
     type Version = ();
     type Hashing = sp_runtime::traits::BlakeTwo256;
     type AccountId = u64;
     type Lookup = IdentityLookup<Self::AccountId>;
-    type Header = Header;
+    type Block = Block;
     type RuntimeEvent = RuntimeEvent;
     type BlockHashCount = ConstU64<250>;
     type PalletInfo = PalletInfo;
@@ -289,19 +283,18 @@ pub fn new_test_ext() -> TestExternalities {
         let _ = env_logger::try_init_from_env(env_logger::Env::new().default_filter_or("error"));
     });
 
-    let mut storage = frame_system::GenesisConfig::default()
-        .build_storage::<Test>()
+    let mut storage = frame_system::GenesisConfig::<Test>::default()
+        .build_storage()
         .unwrap();
 
-    GenesisBuild::<Test>::assimilate_storage(
-        &pallet_subspace::GenesisConfig {
-            enable_rewards: true,
-            enable_storage_access: true,
-            allow_authoring_by: AllowAuthoringBy::Anyone,
-            pot_slot_iterations: NonZeroU32::new(100_000).unwrap(),
-        },
-        &mut storage,
-    )
+    pallet_subspace::GenesisConfig::<Test> {
+        enable_rewards: true,
+        enable_storage_access: true,
+        allow_authoring_by: AllowAuthoringBy::Anyone,
+        pot_slot_iterations: NonZeroU32::new(100_000).unwrap(),
+        phantom: PhantomData,
+    }
+    .assimilate_storage(&mut storage)
     .unwrap();
 
     let mut ext = TestExternalities::from(storage);

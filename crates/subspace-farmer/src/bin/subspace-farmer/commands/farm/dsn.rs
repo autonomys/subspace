@@ -1,5 +1,6 @@
 use crate::DsnArgs;
 use parking_lot::Mutex;
+use prometheus_client::registry::Registry;
 use std::collections::HashSet;
 use std::path::PathBuf;
 use std::sync::{Arc, Weak};
@@ -8,6 +9,7 @@ use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
 use subspace_farmer::{NodeClient, NodeRpcClient};
 use subspace_networking::libp2p::identity::Keypair;
 use subspace_networking::libp2p::kad::RecordKey;
+use subspace_networking::libp2p::metrics::Metrics;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::utils::strip_peer_id;
@@ -44,7 +46,8 @@ pub(super) fn configure_dsn(
     weak_readers_and_pieces: Weak<Mutex<Option<ReadersAndPieces>>>,
     node_client: NodeRpcClient,
     piece_cache: PieceCache,
-) -> Result<(Node, NodeRunner<PieceCache>), anyhow::Error> {
+    initialize_metrics: bool,
+) -> Result<(Node, NodeRunner<PieceCache>, Registry), anyhow::Error> {
     let networking_parameters_registry = NetworkingParametersManager::new(
         &base_path.join("known_addresses.bin"),
         strip_peer_id(bootstrap_nodes.clone())
@@ -53,6 +56,10 @@ pub(super) fn configure_dsn(
             .collect::<HashSet<_>>(),
     )
     .map(Box::new)?;
+
+    // Metrics
+    let mut metrics_registry = Registry::default();
+    let metrics = initialize_metrics.then(|| Metrics::new(&mut metrics_registry));
 
     let default_config = Config::new(
         protocol_prefix,
@@ -183,6 +190,7 @@ pub(super) fn configure_dsn(
         })),
         bootstrap_addresses: bootstrap_nodes,
         external_addresses,
+        metrics,
         ..default_config
     };
 
@@ -201,7 +209,7 @@ pub(super) fn configure_dsn(
             .detach();
 
             // Consider returning HandlerId instead of each `detach()` calls for other usages.
-            (node, node_runner)
+            (node, node_runner, metrics_registry)
         })
         .map_err(Into::into)
 }

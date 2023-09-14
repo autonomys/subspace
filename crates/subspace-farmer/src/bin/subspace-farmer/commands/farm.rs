@@ -25,6 +25,7 @@ use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
 use subspace_farmer::utils::run_future_in_dedicated_thread;
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_farmer_components::plotting::PlottedSector;
+use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
@@ -52,6 +53,7 @@ where
         dev,
         tmp,
         mut disk_farms,
+        metrics_endpoints,
     } = farming_args;
 
     // Override the `--enable_private_ips` flag with `--dev`
@@ -107,7 +109,9 @@ where
 
     let (piece_cache, piece_cache_worker) = PieceCache::new(node_client.clone(), peer_id);
 
-    let (node, mut node_runner) = {
+    let metrics_endpoints_are_specified = !metrics_endpoints.is_empty();
+
+    let (node, mut node_runner, metrics_registry) = {
         if dsn.bootstrap_nodes.is_empty() {
             dsn.bootstrap_nodes = farmer_app_info.dsn_bootstrap_nodes.clone();
         }
@@ -120,8 +124,18 @@ where
             Arc::downgrade(&readers_and_pieces),
             node_client.clone(),
             piece_cache.clone(),
+            metrics_endpoints_are_specified,
         )?
     };
+
+    if metrics_endpoints_are_specified {
+        let prometheus_task = start_prometheus_metrics_server(
+            metrics_endpoints,
+            RegistryAdapter::Libp2p(metrics_registry),
+        )?;
+
+        let _prometheus_worker = tokio::spawn(prometheus_task);
+    }
 
     let kzg = Kzg::new(embedded_kzg_settings());
     let erasure_coding = ErasureCoding::new(

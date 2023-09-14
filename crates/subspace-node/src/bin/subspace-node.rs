@@ -25,15 +25,19 @@ use futures::future::TryFutureExt;
 use log::warn;
 use sc_cli::{ChainSpec, CliConfiguration, SubstrateCli};
 use sc_consensus_slots::SlotProportion;
+use sc_executor::NativeExecutionDispatch;
 #[cfg(feature = "pot")]
 use sc_service::Configuration;
 use sc_service::PartialComponents;
 use sc_storage_monitor::StorageMonitorService;
+use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::tracing_unbounded;
 use sp_core::crypto::Ss58AddressFormat;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::GenerateGenesisStateRoot;
+use sp_io::SubstrateHostFunctions;
 use sp_messenger::messages::ChainId;
+use sp_wasm_interface::ExtendedHostFunctions;
 use std::sync::Arc;
 use subspace_node::domain::{
     DomainCli, DomainGenesisBlockBuilder, DomainInstanceStarter, DomainSubcommand,
@@ -286,6 +290,7 @@ fn main() -> Result<(), Error> {
             let runner = cli.create_runner(cmd)?;
             runner.sync_run(|config| cmd.run::<Block>(&config))?;
         }
+        #[cfg(feature = "runtime-benchmarks")]
         Some(Subcommand::Benchmark(cmd)) => {
             let runner = cli.create_runner(cmd)?;
 
@@ -302,7 +307,10 @@ fn main() -> Result<(), Error> {
                             );
                         }
 
-                        cmd.run::<Block, ExecutorDispatch>(config)
+                        cmd.run::<Block, ExtendedHostFunctions<
+                            SubstrateHostFunctions,
+                            <ExecutorDispatch as NativeExecutionDispatch>::ExtendHostFunctions,
+                        >>(config)
                     }
                     BenchmarkCmd::Block(cmd) => {
                         let PartialComponents { client, .. } = subspace_service::new_partial::<
@@ -392,13 +400,45 @@ fn main() -> Result<(), Error> {
                                         .into(),
                                 );
                             }
-                            cmd.run::<DomainBlock, EVMDomainExecutorDispatch>(domain_config)
+                            cmd.run::<DomainBlock, ExtendedHostFunctions<
+                                SubstrateHostFunctions,
+                                <EVMDomainExecutorDispatch as NativeExecutionDispatch>::ExtendHostFunctions,
+                            >>(domain_config)
                         }
                         _ => todo!("Not implemented"),
                     }
                 })?;
             }
             DomainSubcommand::BuildGenesisConfig(cmd) => cmd.run()?,
+            DomainSubcommand::ExportExecutionReceipt(cmd) => {
+                let runner = cli.create_runner(cmd)?;
+                runner.sync_run(|consensus_chain_config| {
+                    let domain_cli = DomainCli::new(
+                        cli.run
+                            .base_path()?
+                            .map(|base_path| base_path.path().to_path_buf()),
+                        cmd.domain_args.clone().into_iter(),
+                    );
+                    let domain_config = domain_cli
+                        .create_domain_configuration(consensus_chain_config.tokio_handle)
+                        .map_err(|error| {
+                            sc_service::Error::Other(format!(
+                                "Failed to create domain configuration: {error:?}"
+                            ))
+                        })?;
+
+                    let executor: sc_executor::NativeElseWasmExecutor<EVMDomainExecutorDispatch> =
+                        sc_service::new_native_or_wasm_executor(&domain_config);
+
+                    let (client, _, _, _) = sc_service::new_full_parts::<
+                        DomainBlock,
+                        evm_domain_runtime::RuntimeApi,
+                        _,
+                    >(&domain_config, None, executor)?;
+
+                    cmd.run(&client, &client)
+                })?;
+            }
             _ => unimplemented!("Domain subcommand"),
         },
         None => {
@@ -607,6 +647,9 @@ fn main() -> Result<(), Error> {
                         domain_cli,
                         tokio_handle,
                         consensus_client: consensus_chain_node.client.clone(),
+                        consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory::new(
+                            consensus_chain_node.transaction_pool.clone(),
+                        ),
                         block_importing_notification_stream: consensus_chain_node
                             .block_importing_notification_stream
                             .clone(),

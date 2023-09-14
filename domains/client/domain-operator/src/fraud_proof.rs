@@ -1,9 +1,9 @@
 use crate::utils::to_number_primitive;
-use crate::{ExecutionReceiptFor, TransactionFor};
+use crate::ExecutionReceiptFor;
 use codec::{Decode, Encode};
 use domain_block_builder::{BlockBuilder, RecordProof};
 use frame_support::storage::generator::StorageValue;
-use sc_client_api::{AuxStore, BlockBackend, ProofProvider, StateBackendFor};
+use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::CodeExecutor;
@@ -12,9 +12,8 @@ use sp_domains::fraud_proof::{
     ExecutionPhase, FraudProof, InvalidBundleProof, InvalidStateTransitionProof,
     InvalidTotalRewardsProof,
 };
-
 use sp_domains::DomainId;
-use sp_runtime::traits::{Block as BlockT, HashFor, Header as HeaderT, NumberFor};
+use sp_runtime::traits::{Block as BlockT, HashingFor, Header as HeaderT, NumberFor};
 use sp_runtime::Digest;
 use sp_trie::StorageProof;
 use std::marker::PhantomData;
@@ -69,11 +68,9 @@ where
         + ProvideRuntimeApi<Block>
         + ProofProvider<Block>
         + 'static,
-    Client::Api: sp_block_builder::BlockBuilder<Block>
-        + sp_api::ApiExt<Block, StateBackend = StateBackendFor<Backend, Block>>,
+    Client::Api: sp_block_builder::BlockBuilder<Block> + sp_api::ApiExt<Block>,
     CClient: HeaderBackend<CBlock> + 'static,
     Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
-    TransactionFor<Backend, Block>: sp_trie::HashDBT<HashFor<Block>, sp_trie::DBValue>,
     E: CodeExecutor,
 {
     pub fn new(
@@ -188,7 +185,7 @@ where
             };
             let initialize_block_call_data = new_header.encode();
 
-            let proof = prover.prove_execution::<TransactionFor<Backend, Block>>(
+            let proof = prover.prove_execution::<sp_trie::PrefixedMemoryDB<HashingFor<Block>>>(
                 parent_header.hash(),
                 &execution_phase,
                 &initialize_block_call_data,

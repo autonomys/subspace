@@ -26,6 +26,7 @@ use frame_support::sp_runtime::traits::Zero;
 use frame_support::sp_runtime::SaturatedConversion;
 use frame_support::traits::{Currency, Get};
 use frame_support::weights::Weight;
+use frame_system::pallet_prelude::*;
 pub use pallet::*;
 use scale_info::TypeInfo;
 use subspace_runtime_primitives::FindBlockRewardAddress;
@@ -173,7 +174,7 @@ impl<T: Config> Pallet<T>
 where
     BalanceOf<T>: From<u64>,
 {
-    fn do_initialize(_n: T::BlockNumber) {
+    fn do_initialize(_n: BlockNumberFor<T>) {
         // Block author may equivocate, in which case they'll not be present here
         if let Some(block_author) = T::FindBlockRewardAddress::find_block_reward_address() {
             BlockAuthor::<T>::put(block_author);
@@ -187,7 +188,7 @@ where
     }
 
     // TODO: Fees will be split between farmers and executors in the future
-    fn do_finalize(_n: T::BlockNumber) {
+    fn do_finalize(_n: BlockNumberFor<T>) {
         TransactionByteFee::<T>::take();
 
         let collected_fees = CollectedBlockFees::<T>::take()

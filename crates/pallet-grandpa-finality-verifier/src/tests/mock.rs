@@ -1,24 +1,19 @@
 use frame_support::weights::Weight;
 use frame_support::{construct_runtime, parameter_types};
-use sp_runtime::testing::{Header, H256};
+use sp_runtime::testing::H256;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup};
 use sp_runtime::Perbill;
 
 type AccountId = u64;
 pub(crate) type ChainId = u64;
 type Block = frame_system::mocking::MockBlock<TestRuntime>;
-type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<TestRuntime>;
 
 use crate as grandpa;
 
 construct_runtime! {
-    pub struct TestRuntime where
-        Block = Block,
-        NodeBlock = Block,
-        UncheckedExtrinsic = UncheckedExtrinsic,
-    {
-        System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
-        Grandpa: grandpa::{Pallet},
+    pub struct TestRuntime {
+        System: frame_system,
+        Grandpa: grandpa,
     }
 }
 
@@ -31,14 +26,13 @@ parameter_types! {
 
 impl frame_system::Config for TestRuntime {
     type RuntimeOrigin = RuntimeOrigin;
-    type Index = u64;
+    type Nonce = u64;
     type RuntimeCall = RuntimeCall;
-    type BlockNumber = u64;
     type Hash = H256;
     type Hashing = BlakeTwo256;
     type AccountId = AccountId;
     type Lookup = IdentityLookup<Self::AccountId>;
-    type Header = Header;
+    type Block = Block;
     type RuntimeEvent = ();
     type BlockHashCount = BlockHashCount;
     type Version = ();

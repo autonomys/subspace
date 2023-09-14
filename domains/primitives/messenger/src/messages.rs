@@ -1,7 +1,7 @@
 use crate::endpoint::{Endpoint, EndpointRequest, EndpointResponse};
 use codec::{Decode, Encode, FullCodec, MaxEncodedLen};
 use frame_support::storage::generator::StorageMap;
-use frame_support::{log, Identity};
+use frame_support::Identity;
 use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
 use sp_core::storage::StorageKey;
@@ -303,9 +303,9 @@ impl<BlockNumber, BlockHash, StateRoot> CrossDomainMessage<BlockNumber, BlockHas
                         Ok(result) => result,
                         Err(err) => {
                             log::error!(
-                            target: "runtime::messenger",
-                            "Failed to verify Domain proof: {:?}",
-                            err
+                                target: "runtime::messenger",
+                                "Failed to verify Domain proof: {:?}",
+                                err
                             );
                             return None;
                         }

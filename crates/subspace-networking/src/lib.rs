@@ -50,5 +50,4 @@ pub use protocols::request_response::handlers::segment_header::{
 };
 pub use shared::NewPeerInfo;
 pub use utils::multihash::Multihash;
-pub use utils::prometheus::start_prometheus_metrics_server;
 pub use utils::unique_record_binary_heap::{KeyWrapper, UniqueRecordBinaryHeap};

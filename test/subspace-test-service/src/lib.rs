@@ -26,8 +26,8 @@ use futures::{select, FutureExt, StreamExt};
 use jsonrpsee::RpcModule;
 use parking_lot::Mutex;
 use sc_block_builder::BlockBuilderProvider;
-use sc_client_api::execution_extensions::{ExecutionStrategies, ExtensionsFactory};
-use sc_client_api::{backend, ExecutorProvider};
+use sc_client_api::execution_extensions::ExtensionsFactory;
+use sc_client_api::ExecutorProvider;
 use sc_consensus::block_import::{
     BlockCheckParams, BlockImportParams, ForkChoiceStrategy, ImportResult,
 };
@@ -47,7 +47,7 @@ use sc_service::{
 use sc_transaction_pool::error::Error as PoolError;
 use sc_transaction_pool_api::TransactionSource;
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnboundedSender};
-use sp_api::{ApiExt, HashT, HeaderT, ProvideRuntimeApi, TransactionFor};
+use sp_api::{ApiExt, HashT, HeaderT, ProvideRuntimeApi};
 use sp_application_crypto::UncheckedFrom;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::{BlockOrigin, Error as ConsensusError};
@@ -144,14 +144,6 @@ pub fn node_config(
             instantiation_strategy: WasmtimeInstantiationStrategy::PoolingCopyOnWrite,
         },
         wasm_runtime_overrides: Default::default(),
-        // NOTE: we enforce the use of the native runtime to make the errors more debuggable
-        execution_strategies: ExecutionStrategies {
-            syncing: sc_client_api::ExecutionStrategy::NativeWhenPossible,
-            importing: sc_client_api::ExecutionStrategy::NativeWhenPossible,
-            block_construction: sc_client_api::ExecutionStrategy::NativeWhenPossible,
-            offchain_worker: sc_client_api::ExecutionStrategy::NativeWhenPossible,
-            other: sc_client_api::ExecutionStrategy::NativeWhenPossible,
-        },
         rpc_addr: None,
         rpc_max_request_size: 0,
         rpc_max_response_size: 0,
@@ -179,7 +171,7 @@ pub fn node_config(
     }
 }
 
-type StorageChanges = sp_api::StorageChanges<backend::StateBackendFor<Backend, Block>, Block>;
+type StorageChanges = sp_api::StorageChanges<Block>;
 
 type TxPreValidator = ConsensusChainTxPreValidator<Block, Client, FraudProofVerifier>;
 
@@ -193,7 +185,6 @@ where
         &self,
         _block_hash: Block::Hash,
         _block_number: NumberFor<Block>,
-        _capabilities: sp_core::offchain::Capabilities,
     ) -> Extensions {
         let mut exts = Extensions::new();
         exts.register(GenesisReceiptExtension::new(self.0.clone()));
@@ -757,10 +748,9 @@ fn log_new_block(block: &Block, used_time_ms: u128) {
 fn mock_import_queue<Block: BlockT, I>(
     block_import: I,
     spawner: &impl SpawnEssentialNamed,
-) -> BasicQueue<Block, I::Transaction>
+) -> BasicQueue<Block>
 where
     I: BlockImport<Block, Error = ConsensusError> + Send + Sync + 'static,
-    I::Transaction: Send,
 {
     BasicQueue::new(
         MockVerifier::default(),
@@ -790,8 +780,8 @@ where
 {
     async fn verify(
         &mut self,
-        block_params: BlockImportParams<Block, ()>,
-    ) -> Result<BlockImportParams<Block, ()>, String> {
+        block_params: BlockImportParams<Block>,
+    ) -> Result<BlockImportParams<Block>, String> {
         Ok(block_params)
     }
 }
@@ -843,19 +833,16 @@ impl<Inner: Clone, Client, Block: BlockT> MockBlockImport<Inner, Client, Block> 
 impl<Inner, Client, Block> BlockImport<Block> for MockBlockImport<Inner, Client, Block>
 where
     Block: BlockT,
-    Inner: BlockImport<Block, Transaction = TransactionFor<Client, Block>, Error = ConsensusError>
-        + Send
-        + Sync,
+    Inner: BlockImport<Block, Error = ConsensusError> + Send + Sync,
     Inner::Error: Into<ConsensusError>,
     Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + Send + Sync + 'static,
     Client::Api: ApiExt<Block>,
 {
     type Error = ConsensusError;
-    type Transaction = TransactionFor<Client, Block>;
 
     async fn import_block(
         &mut self,
-        mut block: BlockImportParams<Block, Self::Transaction>,
+        mut block: BlockImportParams<Block>,
     ) -> Result<ImportResult, Self::Error> {
         let block_number = *block.header.number();
         block.fork_choice = Some(ForkChoiceStrategy::LongestChain);

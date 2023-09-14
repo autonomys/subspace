@@ -33,7 +33,7 @@ use subspace_core_primitives::crypto::{
     blake3_hash_list, Scalar,
 };
 use subspace_core_primitives::{
-    Blake2b256Hash, Blake3Hash, BlockNumber, BlockWeight, HistorySize, PotProof, PublicKey,
+    Blake2b256Hash, Blake3Hash, BlockNumber, BlockWeight, HistorySize, PotOutput, PublicKey,
     Randomness, Record, RewardSignature, SectorId, SectorSlotChallenge, SegmentCommitment,
     SlotNumber, Solution, SolutionRange,
 };
@@ -168,7 +168,7 @@ pub struct VerifySolutionParams {
     pub global_randomness: Randomness,
     /// Proof of time for which solution is built
     #[cfg(feature = "pot")]
-    pub proof_of_time: PotProof,
+    pub proof_of_time: PotOutput,
     /// Solution range
     pub solution_range: SolutionRange,
     /// Parameters for checking piece validity.
@@ -339,7 +339,7 @@ pub fn derive_randomness<PublicKey, RewardAddress>(
 }
 
 /// Derive proof of time entropy from chunk and proof of time for injection purposes.
-pub fn derive_pot_entropy(chunk: Scalar, proof_of_time: PotProof) -> Blake3Hash {
+pub fn derive_pot_entropy(chunk: Scalar, proof_of_time: PotOutput) -> Blake3Hash {
     blake3_hash_list(&[&chunk.to_bytes(), proof_of_time.as_ref()])
 }
 

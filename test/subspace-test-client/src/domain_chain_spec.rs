@@ -1,6 +1,8 @@
 //! Chain specification for the evm domain.
 
-use evm_domain_test_runtime::{AccountId as AccountId20, GenesisConfig, Precompiles, Signature};
+use evm_domain_test_runtime::{
+    AccountId as AccountId20, Precompiles, RuntimeGenesisConfig, Signature,
+};
 use sp_core::{ecdsa, Pair, Public};
 use sp_domains::DomainId;
 use sp_runtime::traits::{IdentifyAccount, Verify};
@@ -39,7 +41,7 @@ fn endowed_accounts() -> Vec<AccountId20> {
 }
 
 /// Get the genesis config of the evm domain
-pub fn testnet_evm_genesis() -> GenesisConfig {
+pub fn testnet_evm_genesis() -> RuntimeGenesisConfig {
     // This is the simplest bytecode to revert without returning any data.
     // We will pre-deploy it under all of our precompiles to ensure they can be called from
     // within contracts.
@@ -48,11 +50,12 @@ pub fn testnet_evm_genesis() -> GenesisConfig {
 
     let alice = get_account_id_from_seed::<ecdsa::Public>("Alice");
 
-    evm_domain_test_runtime::GenesisConfig {
+    RuntimeGenesisConfig {
         system: evm_domain_test_runtime::SystemConfig {
             code: evm_domain_test_runtime::WASM_BINARY
                 .expect("WASM binary was not build, please build it!")
                 .to_vec(),
+            ..Default::default()
         },
         transaction_payment: Default::default(),
         balances: evm_domain_test_runtime::BalancesConfig {
@@ -63,7 +66,10 @@ pub fn testnet_evm_genesis() -> GenesisConfig {
                 .collect(),
         },
         sudo: evm_domain_test_runtime::SudoConfig { key: Some(alice) },
-        evm_chain_id: evm_domain_test_runtime::EVMChainIdConfig { chain_id: 100 },
+        evm_chain_id: evm_domain_test_runtime::EVMChainIdConfig {
+            chain_id: 100,
+            ..Default::default()
+        },
         evm: evm_domain_test_runtime::EVMConfig {
             // We need _some_ code inserted at the precompile address so that
             // the evm will actually call the address.
@@ -81,12 +87,14 @@ pub fn testnet_evm_genesis() -> GenesisConfig {
                     )
                 })
                 .collect(),
+            ..Default::default()
         },
         ethereum: Default::default(),
         base_fee: Default::default(),
         self_domain_id: evm_domain_test_runtime::SelfDomainIdConfig {
             // Id of the genesis domain
             domain_id: Some(DomainId::new(0)),
+            ..Default::default()
         },
     }
 }

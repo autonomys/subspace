@@ -3,7 +3,7 @@ use crate::service::{
     new_frontier_partial, spawn_frontier_tasks, EthConfiguration, FrontierPartialComponents,
 };
 use clap::Parser;
-use domain_runtime_primitives::{Balance, Index};
+use domain_runtime_primitives::{Balance, Nonce};
 use domain_service::providers::{BlockImportProvider, DefaultProvider, RpcProvider};
 use domain_service::rpc::FullDeps;
 use domain_service::FullClient;
@@ -12,12 +12,10 @@ use fc_rpc::EthConfig;
 use fc_storage::overrides_handle;
 use fp_rpc::{ConvertTransaction, ConvertTransactionRuntimeApi, EthereumRuntimeRPCApi};
 use jsonrpsee::RpcModule;
-use sc_client_api::{
-    AuxStore, Backend, BlockBackend, BlockchainEvents, StateBackendFor, StorageProvider,
-};
+use sc_client_api::{AuxStore, Backend, BlockBackend, BlockchainEvents, StorageProvider};
 use sc_executor::NativeExecutionDispatch;
 use sc_rpc::{RpcSubscriptionIdProvider, SubscriptionTaskExecutor};
-use sc_service::{BasePath, TFullBackend};
+use sc_service::BasePath;
 use sc_transaction_pool::ChainApi;
 use sc_transaction_pool_api::TransactionPool;
 use serde::de::DeserializeOwned;
@@ -26,6 +24,7 @@ use sp_block_builder::BlockBuilder;
 use sp_blockchain::{Error as BlockChainError, HeaderBackend, HeaderMetadata};
 use sp_core::traits::SpawnEssentialNamed;
 use sp_core::H256;
+use sp_inherents::CreateInherentDataProviders;
 use sp_runtime::codec::{Decode, Encode};
 use std::error::Error;
 use std::fmt::{Debug, Display};
@@ -64,10 +63,8 @@ where
         + Send
         + Sync
         + 'static,
-    RuntimeApi::RuntimeApi: ApiExt<Block, StateBackend = StateBackendFor<TFullBackend<Block>, Block>>
-        + Core<Block>
-        + BlockBuilder<Block>
-        + EthereumRuntimeRPCApi<Block>,
+    RuntimeApi::RuntimeApi:
+        ApiExt<Block> + Core<Block> + BlockBuilder<Block> + EthereumRuntimeRPCApi<Block>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
     type BI = FrontierBlockImport<
@@ -84,8 +81,8 @@ where
     }
 }
 
-impl<Block, Client, BE, TxPool, CA, AccountId, CT, EC>
-    RpcProvider<Block, Client, TxPool, CA, BE, AccountId> for EthProvider<CT, EC>
+impl<Block, Client, BE, TxPool, CA, AccountId, CT, EC, CIDP>
+    RpcProvider<Block, Client, TxPool, CA, BE, AccountId, CIDP> for EthProvider<CT, EC>
 where
     Block: BlockT<Hash = H256>,
     BE: Backend<Block> + 'static,
@@ -102,7 +99,7 @@ where
         + 'static,
     Client::Api: pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi<Block, Balance>
         + EthereumRuntimeRPCApi<Block>
-        + AccountNonceApi<Block, AccountId, Index>
+        + AccountNonceApi<Block, AccountId, Nonce>
         + ConvertTransactionRuntimeApi<Block>,
     Client::Api: BlockBuilder<Block>,
     Client::Api: EthereumRuntimeRPCApi<Block>,
@@ -111,12 +108,13 @@ where
     TxPool: TransactionPool<Block = Block> + Sync + Send + 'static,
     CA: ChainApi<Block = Block> + 'static,
     AccountId: DeserializeOwned + Encode + Debug + Decode + Display + Clone + Sync + Send + 'static,
+    CIDP: CreateInherentDataProviders<Block, ()> + Send + Clone + 'static,
 {
-    type Deps = EthDeps<Client, TxPool, CA, CT, Block, BE>;
+    type Deps = EthDeps<Client, TxPool, CA, CT, Block, BE, CIDP>;
 
     fn deps(
         &self,
-        full_deps: FullDeps<Block, Client, TxPool, CA, BE>,
+        full_deps: FullDeps<Block, Client, TxPool, CA, BE, CIDP>,
     ) -> Result<Self::Deps, sc_service::Error> {
         let client = full_deps.client.clone();
         let overrides = overrides_handle(client.clone());
@@ -157,6 +155,7 @@ where
             fee_history_cache_limit,
             execute_gas_limit_multiplier: self.eth_config.execute_gas_limit_multiplier,
             forced_parent_hashes: None,
+            pending_inherent_data_provider: full_deps.create_inherent_data_provider,
         })
     }
 
@@ -189,7 +188,7 @@ where
         > = Default::default();
         let pubsub_notification_sinks = Arc::new(pubsub_notification_sinks);
 
-        let io = create_eth_rpc::<Client, BE, TxPool, CA, CT, Block, EC>(
+        let io = create_eth_rpc::<Client, BE, TxPool, CA, CT, Block, EC, CIDP>(
             io,
             deps.clone(),
             subscription_task_executor,

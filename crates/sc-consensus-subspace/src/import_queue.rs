@@ -16,8 +16,9 @@ use sc_proof_of_time::verifier::PotVerifier;
 #[cfg(not(feature = "pot"))]
 use sc_telemetry::CONSENSUS_DEBUG;
 use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_TRACE};
+use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use schnorrkel::context::SigningContext;
-use sp_api::{ApiExt, BlockT, HeaderT, ProvideRuntimeApi, TransactionFor};
+use sp_api::{ApiExt, BlockT, HeaderT, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::{BlockOrigin, Error as ConsensusError};
@@ -58,15 +59,13 @@ pub fn import_queue<PosTable, Block: BlockT, Client, SelectChain, Inner, SN>(
     spawner: &impl sp_core::traits::SpawnEssentialNamed,
     registry: Option<&Registry>,
     telemetry: Option<TelemetryHandle>,
+    offchain_tx_pool_factory: OffchainTransactionPoolFactory<Block>,
     is_authoring_blocks: bool,
     #[cfg(feature = "pot")] pot_verifier: PotVerifier,
-) -> Result<DefaultImportQueue<Block, Client>, sp_blockchain::Error>
+) -> Result<DefaultImportQueue<Block>, sp_blockchain::Error>
 where
     PosTable: Table,
-    Inner: BlockImport<Block, Error = ConsensusError, Transaction = TransactionFor<Client, Block>>
-        + Send
-        + Sync
-        + 'static,
+    Inner: BlockImport<Block, Error = ConsensusError> + Send + Sync + 'static,
     Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + AuxStore + Send + Sync + 'static,
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey> + ApiExt<Block>,
     SelectChain: sp_consensus::SelectChain<Block> + 'static,
@@ -82,6 +81,7 @@ where
         select_chain,
         slot_now,
         telemetry,
+        offchain_tx_pool_factory,
         #[cfg(feature = "pot")]
         chain_constants,
         reward_signing_context: schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT),
@@ -166,6 +166,7 @@ struct SubspaceVerifier<PosTable, Block: BlockT, Client, SelectChain, SN> {
     // TODO: Remove field once PoT is the only option
     slot_now: SN,
     telemetry: Option<TelemetryHandle>,
+    offchain_tx_pool_factory: OffchainTransactionPoolFactory<Block>,
     #[cfg(feature = "pot")]
     chain_constants: ChainConstants,
     reward_signing_context: SigningContext,
@@ -268,7 +269,7 @@ where
         #[cfg(feature = "pot")]
         if !self
             .pot_verifier
-            .is_proof_valid(
+            .is_output_valid(
                 next_slot,
                 pot_seed,
                 slot_iterations,
@@ -349,8 +350,13 @@ where
                 .map_err(|e| Error::Client(e.into()))?;
 
             // submit equivocation report at best block.
-            self.client
-                .runtime_api()
+            let mut runtime_api = self.client.runtime_api();
+            // Register the offchain tx pool to be able to use it from the runtime.
+            runtime_api.register_extension(
+                self.offchain_tx_pool_factory
+                    .offchain_transaction_pool(best_hash),
+            );
+            runtime_api
                 .submit_report_equivocation_extrinsic(best_hash, equivocation_proof)
                 .map_err(Error::RuntimeApi)?;
 
@@ -379,8 +385,8 @@ where
 {
     async fn verify(
         &mut self,
-        mut block: BlockImportParams<Block, ()>,
-    ) -> Result<BlockImportParams<Block, ()>, String> {
+        mut block: BlockImportParams<Block>,
+    ) -> Result<BlockImportParams<Block>, String> {
         trace!(
             target: "subspace",
             "Verifying origin: {:?} header: {:?} justification(s): {:?} body: {:?}",

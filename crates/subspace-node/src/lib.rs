@@ -22,7 +22,7 @@ pub mod domain;
 
 use clap::Parser;
 use sc_cli::{RunCmd, SubstrateCli};
-use sc_executor::{NativeExecutionDispatch, RuntimeVersion};
+use sc_executor::NativeExecutionDispatch;
 use sc_service::ChainSpec;
 use sc_storage_monitor::StorageMonitorParams;
 use sc_subspace_chain_specs::ConsensusChainSpec;
@@ -174,6 +174,7 @@ pub enum Subcommand {
     Domain(domain::cli::Subcommand),
 
     /// Sub-commands concerned with benchmarking.
+    #[cfg(feature = "runtime-benchmarks")]
     #[clap(subcommand)]
     Benchmark(frame_benchmarking_cli::BenchmarkCmd),
 }
@@ -217,7 +218,7 @@ pub struct Cli {
     pub dsn_in_connections: u32,
 
     /// Defines max established outgoing swarm connection limit for DSN.
-    #[arg(long, default_value_t = 100)]
+    #[arg(long, default_value_t = 150)]
     pub dsn_out_connections: u32,
 
     /// Defines max pending incoming connection limit for DSN.
@@ -225,11 +226,11 @@ pub struct Cli {
     pub dsn_pending_in_connections: u32,
 
     /// Defines max pending outgoing swarm connection limit for DSN.
-    #[arg(long, default_value_t = 100)]
+    #[arg(long, default_value_t = 150)]
     pub dsn_pending_out_connections: u32,
 
     /// Defines target total (in and out) connection number for DSN that should be maintained.
-    #[arg(long, default_value_t = 50)]
+    #[arg(long, default_value_t = 30)]
     pub dsn_target_connections: u32,
 
     /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses
@@ -333,9 +334,5 @@ impl SubstrateCli for Cli {
                 .map_err(|error| error.to_string())?;
         }
         Ok(Box::new(chain_spec))
-    }
-
-    fn native_runtime_version(_: &Box<dyn ChainSpec>) -> &'static RuntimeVersion {
-        &subspace_runtime::VERSION
     }
 }

@@ -23,6 +23,7 @@ mod default_weights;
 
 use frame_support::traits::{Currency, Get};
 use frame_support::weights::Weight;
+use frame_system::pallet_prelude::*;
 pub use pallet::*;
 use subspace_runtime_primitives::{FindBlockRewardAddress, FindVotingRewardAddresses};
 
@@ -108,7 +109,7 @@ mod pallet {
 }
 
 impl<T: Config> Pallet<T> {
-    fn do_initialize(_block_number: T::BlockNumber) {
+    fn do_initialize(_block_number: BlockNumberFor<T>) {
         // Block author may equivocate, in which case they'll not be present here
         if let Some(block_author) = T::FindBlockRewardAddress::find_block_reward_address() {
             let reward = T::BlockReward::get();
@@ -122,7 +123,7 @@ impl<T: Config> Pallet<T> {
         }
     }
 
-    fn do_finalize(_block_number: T::BlockNumber) {
+    fn do_finalize(_block_number: BlockNumberFor<T>) {
         let reward = T::VoteReward::get();
 
         for voter in T::FindVotingRewardAddresses::find_voting_reward_addresses() {

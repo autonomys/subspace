@@ -17,37 +17,30 @@ pub type TestExternalities = sp_state_machine::TestExternalities<BlakeTwo256>;
 
 macro_rules! impl_runtime {
     ($runtime:ty, $chain_id:literal) => {
-        use crate::mock::{
-            AccountId, Balance, MessageId, MockEndpoint, TestExternalities,
-        };
-        use codec::{Encode, Decode};
+        use crate::mock::{AccountId, Balance, MessageId, MockEndpoint, TestExternalities};
+        use codec::{Decode, Encode};
         use domain_runtime_primitives::{MultiAccountId, TryConvertBack};
-        use frame_support::pallet_prelude::PhantomData;
+        use frame_support::pallet_prelude::*;
         use frame_support::parameter_types;
         use pallet_balances::AccountData;
         use sp_core::H256;
-        use sp_messenger::messages::ChainId;
         use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointId};
-        use sp_runtime::testing::Header;
-        use sp_runtime::traits::{BlakeTwo256, Convert, ConstU16, ConstU32, ConstU64, IdentityLookup};
-        use sp_std::vec::Vec;
+        use sp_messenger::messages::ChainId;
+        use sp_runtime::traits::{
+            BlakeTwo256, ConstU16, ConstU32, ConstU64, Convert, IdentityLookup,
+        };
+        use sp_runtime::BuildStorage;
 
-        type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Runtime>;
         type Block = frame_system::mocking::MockBlock<Runtime>;
 
         frame_support::construct_runtime!(
-            pub struct Runtime where
-                Block = Block,
-                NodeBlock = Block,
-                UncheckedExtrinsic = UncheckedExtrinsic,
-            {
-                System: frame_system::{Pallet, Call, Config, Storage, Event<T>},
-                Messenger: crate::{Pallet, Call, Event<T>},
-                Balances: pallet_balances::{Pallet, Call, Config<T>, Storage, Event<T>},
-                Transporter: pallet_transporter::{Pallet, Call, Storage, Event<T>},
+            pub struct Runtime {
+                System: frame_system,
+                Messenger: crate,
+                Balances: pallet_balances,
+                Transporter: pallet_transporter,
             }
         );
-
 
         impl frame_system::Config for $runtime {
             type BaseCallFilter = frame_support::traits::Everything;
@@ -56,13 +49,12 @@ macro_rules! impl_runtime {
             type DbWeight = ();
             type RuntimeOrigin = RuntimeOrigin;
             type RuntimeCall = RuntimeCall;
-            type Index = u64;
-            type BlockNumber = u64;
+            type Nonce = u64;
             type Hash = H256;
             type Hashing = BlakeTwo256;
             type AccountId = u64;
             type Lookup = IdentityLookup<Self::AccountId>;
-            type Header = Header;
+            type Block = Block;
             type RuntimeEvent = RuntimeEvent;
             type BlockHashCount = ConstU64<250>;
             type Version = ();
@@ -101,7 +93,7 @@ macro_rules! impl_runtime {
             /// function to fetch endpoint response handler by Endpoint.
             fn get_endpoint_handler(
                 endpoint: &Endpoint,
-            ) -> Option<Box<dyn EndpointHandler<MessageId>>>{
+            ) -> Option<Box<dyn EndpointHandler<MessageId>>> {
                 // Return a dummy handler for benchmark to observe the outer weight when processing cross chain
                 // message (i.e. updating the `next_nonce` of the channel, assigning msg to the relayer, etc.)
                 #[cfg(feature = "runtime-benchmarks")]
@@ -110,11 +102,12 @@ macro_rules! impl_runtime {
                 }
                 match endpoint {
                     Endpoint::Id(id) => match id {
-                        100 => Some(Box::new(pallet_transporter::EndpointHandler(PhantomData::<$runtime>))),
-                        _=> Some(Box::new(MockEndpoint{}))
-                    }
+                        100 => Some(Box::new(pallet_transporter::EndpointHandler(
+                            PhantomData::<$runtime>,
+                        ))),
+                        _ => Some(Box::new(MockEndpoint {})),
+                    },
                 }
-
             }
         }
 
@@ -170,21 +163,19 @@ macro_rules! impl_runtime {
         pub const USER_INITIAL_BALANCE: Balance = 1000;
 
         pub fn new_test_ext() -> TestExternalities {
-           let mut t = frame_system::GenesisConfig::default()
-                    .build_storage::<Runtime>()
-                    .unwrap();
+            let mut t = frame_system::GenesisConfig::<Runtime>::default()
+                .build_storage()
+                .unwrap();
 
-           pallet_balances::GenesisConfig::<$runtime> {
-                balances: vec![
-                    (USER_ACCOUNT, USER_INITIAL_BALANCE),
-                ],
-           }
+            pallet_balances::GenesisConfig::<$runtime> {
+                balances: vec![(USER_ACCOUNT, USER_INITIAL_BALANCE)],
+            }
             .assimilate_storage(&mut t)
             .unwrap();
 
-           let mut t: TestExternalities = t.into();
-           t.execute_with(|| System::set_block_number(1));
-           t
+            let mut t: TestExternalities = t.into();
+            t.execute_with(|| System::set_block_number(1));
+            t
         }
     };
 }

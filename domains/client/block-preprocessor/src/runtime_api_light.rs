@@ -7,7 +7,6 @@ use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
 use sc_executor_common::runtime_blob::RuntimeBlob;
 use sp_api::{ApiError, BlockT, Core, Hasher, RuntimeVersion};
 use sp_core::traits::{CallContext, CodeExecutor, FetchRuntimeCode, RuntimeCode};
-use sp_core::ExecutionContext;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::NumberFor;
 use sp_runtime::Storage;
@@ -38,7 +37,6 @@ where
     fn __runtime_api_internal_call_api_at(
         &self,
         _at: <Block as BlockT>::Hash,
-        _context: ExecutionContext,
         params: Vec<u8>,
         fn_name: &dyn Fn(RuntimeVersion) -> &'static str,
     ) -> Result<Vec<u8>, ApiError> {
@@ -54,7 +52,6 @@ where
     fn __runtime_api_internal_call_api_at(
         &self,
         _at: <Block as BlockT>::Hash,
-        _context: ExecutionContext,
         params: Vec<u8>,
         fn_name: &dyn Fn(RuntimeVersion) -> &'static str,
     ) -> Result<Vec<u8>, ApiError> {
@@ -71,7 +68,6 @@ where
     fn __runtime_api_internal_call_api_at(
         &self,
         _at: <Block as BlockT>::Hash,
-        _context: ExecutionContext,
         params: Vec<u8>,
         fn_name: &dyn Fn(RuntimeVersion) -> &'static str,
     ) -> Result<Vec<u8>, ApiError> {
@@ -176,7 +172,6 @@ where
     fn __runtime_api_internal_call_api_at(
         &self,
         _at: <Block as BlockT>::Hash,
-        _context: ExecutionContext,
         params: Vec<u8>,
         fn_name: &dyn Fn(RuntimeVersion) -> &'static str,
     ) -> Result<Vec<u8>, ApiError> {

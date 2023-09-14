@@ -40,14 +40,14 @@ use frame_system_rpc_runtime_api::AccountNonceApi;
 use futures::channel::oneshot;
 #[cfg(feature = "pot")]
 use futures::executor::block_on;
+use futures::FutureExt;
 use jsonrpsee::RpcModule;
 use pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi;
 use parking_lot::Mutex;
+use prometheus_client::registry::Registry;
 use sc_basic_authorship::ProposerFactory;
 use sc_client_api::execution_extensions::ExtensionsFactory;
-use sc_client_api::{
-    BlockBackend, BlockchainEvents, ExecutorProvider, HeaderBackend, StateBackendFor,
-};
+use sc_client_api::{Backend, BlockBackend, BlockchainEvents, ExecutorProvider, HeaderBackend};
 use sc_consensus::{BlockImport, DefaultImportQueue, ImportQueue};
 use sc_consensus_slots::SlotProportion;
 use sc_consensus_subspace::archiver::{create_subspace_archiver, SegmentHeadersStore};
@@ -68,7 +68,8 @@ use sc_service::error::Error as ServiceError;
 use sc_service::{Configuration, NetworkStarter, SpawnTasksParams, TaskManager};
 use sc_subspace_block_relay::{build_consensus_relay, NetworkWrapper};
 use sc_telemetry::{Telemetry, TelemetryWorker};
-use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi, TransactionFor};
+use sc_transaction_pool_api::OffchainTransactionPoolFactory;
+use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderMetadata;
 use sp_consensus::Error as ConsensusError;
@@ -78,7 +79,6 @@ use sp_consensus_subspace::digests::extract_pre_digest;
 #[cfg(feature = "pot")]
 use sp_consensus_subspace::PotExtension;
 use sp_consensus_subspace::{FarmerPublicKey, KzgExtension, PosExtension, SubspaceApi};
-use sp_core::offchain;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::transaction::PreValidationObjectApi;
 use sp_domains::{DomainsApi, GenerateGenesisStateRoot, GenesisReceiptExtension};
@@ -99,12 +99,13 @@ use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 #[cfg(feature = "pot")]
 use subspace_core_primitives::PotSeed;
 use subspace_fraud_proof::verifier_api::VerifierClient;
+use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::Node;
 use subspace_proof_of_space::Table;
 use subspace_runtime_primitives::opaque::Block;
-use subspace_runtime_primitives::{AccountId, Balance, Hash, Index as Nonce};
+use subspace_runtime_primitives::{AccountId, Balance, Hash, Nonce};
 use subspace_transaction_pool::{FullPool, PreValidateTransaction};
 use tracing::{debug, error, info, Instrument};
 
@@ -194,6 +195,8 @@ pub enum SubspaceNetworking {
         node: Node,
         /// Bootstrap nodes used (that can be also sent to the farmer over RPC)
         bootstrap_nodes: Vec<Multiaddr>,
+        /// DSN metrics registry (libp2p type).
+        metrics_registry: Option<Registry>,
     },
     /// Networking must be instantiated internally
     Create {
@@ -244,7 +247,6 @@ where
         &self,
         _block_hash: Block::Hash,
         _block_number: NumberFor<Block>,
-        _capabilities: offchain::Capabilities,
     ) -> Extensions {
         let mut exts = Extensions::new();
         exts.register(KzgExtension::new(self.kzg.clone()));
@@ -351,7 +353,7 @@ where
 
                 // Ensure proof of time and future proof of time included in upcoming block are
                 // valid
-                block_on(pot_verifier.is_proof_valid(
+                block_on(pot_verifier.is_output_valid(
                     after_parent_slot,
                     pot_seed,
                     slot_iterations,
@@ -378,14 +380,7 @@ where
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
     /// Subspace block import
-    pub block_import: Box<
-        dyn BlockImport<
-                Block,
-                Error = ConsensusError,
-                Transaction = TransactionFor<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
-            > + Send
-            + Sync,
-    >,
+    pub block_import: Box<dyn BlockImport<Block, Error = ConsensusError> + Send + Sync>,
     /// Subspace link
     pub subspace_link: SubspaceLink<Block>,
     /// Segment headers store
@@ -401,7 +396,7 @@ type PartialComponents<RuntimeApi, ExecutorDispatch> = sc_service::PartialCompon
     FullClient<RuntimeApi, ExecutorDispatch>,
     FullBackend,
     FullSelectChain,
-    DefaultImportQueue<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
+    DefaultImportQueue<Block>,
     FullPool<
         Block,
         FullClient<RuntimeApi, ExecutorDispatch>,
@@ -432,7 +427,7 @@ where
         + Send
         + Sync
         + 'static,
-    RuntimeApi::RuntimeApi: ApiExt<Block, StateBackend = StateBackendFor<FullBackend, Block>>
+    RuntimeApi::RuntimeApi: ApiExt<Block>
         + Metadata<Block>
         + BlockBuilder<Block>
         + OffchainWorkerApi<Block>
@@ -589,6 +584,7 @@ where
         &task_manager.spawn_essential_handle(),
         config.prometheus_registry(),
         telemetry.as_ref().map(|x| x.handle()),
+        OffchainTransactionPoolFactory::new(transaction_pool.clone()),
         config.role.is_authority(),
         #[cfg(feature = "pot")]
         pot_verifier.clone(),
@@ -670,7 +666,7 @@ type FullNode<RuntimeApi, ExecutorDispatch> = NewFull<
 
 /// Builds a new service for a full client.
 pub async fn new_full<PosTable, RuntimeApi, ExecutorDispatch>(
-    config: SubspaceConfiguration,
+    mut config: SubspaceConfiguration,
     partial_components: PartialComponents<RuntimeApi, ExecutorDispatch>,
     enable_rpc_extensions: bool,
     block_proposal_slot_portion: SlotProportion,
@@ -681,7 +677,7 @@ where
         + Send
         + Sync
         + 'static,
-    RuntimeApi::RuntimeApi: ApiExt<Block, StateBackend = StateBackendFor<FullBackend, Block>>
+    RuntimeApi::RuntimeApi: ApiExt<Block>
         + Metadata<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + BlockBuilder<Block>
@@ -714,11 +710,12 @@ where
         mut telemetry,
     } = other;
 
-    let (node, bootstrap_nodes) = match config.subspace_networking {
+    let (node, bootstrap_nodes, dsn_metrics_registry) = match config.subspace_networking {
         SubspaceNetworking::Reuse {
             node,
             bootstrap_nodes,
-        } => (node, bootstrap_nodes),
+            metrics_registry,
+        } => (node, bootstrap_nodes, metrics_registry),
         SubspaceNetworking::Create { config: dsn_config } => {
             let dsn_protocol_version = hex::encode(client.chain_info().genesis_hash);
 
@@ -728,10 +725,11 @@ where
                 "Setting DSN protocol version..."
             );
 
-            let (node, mut node_runner) = create_dsn_instance(
+            let (node, mut node_runner, dsn_metrics_registry) = create_dsn_instance(
                 dsn_protocol_version,
                 dsn_config.clone(),
                 segment_headers_store.clone(),
+                config.base.prometheus_config.is_some(),
             )?;
 
             info!("Subspace networking initialized: Node ID is {}", node.id());
@@ -761,7 +759,7 @@ where
                     ),
                 );
 
-            (node, dsn_config.bootstrap_nodes)
+            (node, dsn_config.bootstrap_nodes, dsn_metrics_registry)
         }
     };
 
@@ -901,12 +899,24 @@ where
         }
     }
 
+    let offchain_tx_pool_factory = OffchainTransactionPoolFactory::new(transaction_pool.clone());
+
     if config.base.offchain_worker.enabled {
-        sc_service::build_offchain_workers(
-            &config.base,
-            task_manager.spawn_handle(),
-            client.clone(),
-            network_service.clone(),
+        task_manager.spawn_handle().spawn(
+            "offchain-workers-runner",
+            "offchain-worker",
+            sc_offchain::OffchainWorkers::new(sc_offchain::OffchainWorkerOptions {
+                runtime_api_provider: client.clone(),
+                is_validator: config.base.role.is_authority(),
+                keystore: Some(keystore_container.keystore()),
+                offchain_db: backend.offchain_storage(),
+                transaction_pool: Some(offchain_tx_pool_factory.clone()),
+                network_provider: network_service.clone(),
+                enable_http_requests: true,
+                custom_extensions: |_| vec![],
+            })
+            .run(client.clone(), task_manager.spawn_handle())
+            .boxed(),
         );
     }
 
@@ -985,7 +995,8 @@ where
             segment_headers_store: segment_headers_store.clone(),
             block_proposal_slot_portion,
             max_block_proposal_slot_portion: None,
-            telemetry: None,
+            telemetry: telemetry.as_ref().map(|x| x.handle()),
+            offchain_tx_pool_factory,
             #[cfg(feature = "pot")]
             pot_verifier,
             #[cfg(feature = "pot")]
@@ -1005,6 +1016,26 @@ where
             subspace,
         );
     }
+
+    // We replace the Substrate implementation of metrics server with our own.
+    if let Some(prometheus_config) = config.base.prometheus_config.take() {
+        let registry = if let Some(dsn_metrics_registry) = dsn_metrics_registry {
+            RegistryAdapter::Both(dsn_metrics_registry, prometheus_config.registry)
+        } else {
+            RegistryAdapter::Substrate(prometheus_config.registry)
+        };
+
+        let metrics_server =
+            start_prometheus_metrics_server(vec![prometheus_config.port], registry)?.map(|error| {
+                debug!(?error, "Metrics server error.");
+            });
+
+        task_manager.spawn_handle().spawn(
+            "node-metrics-server",
+            Some("node-metrics-server"),
+            metrics_server,
+        );
+    };
 
     let rpc_handlers = sc_service::spawn_tasks(SpawnTasksParams {
         network: network_service.clone(),

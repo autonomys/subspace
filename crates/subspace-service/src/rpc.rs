@@ -44,7 +44,7 @@ use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_runtime_primitives::opaque::Block;
-use subspace_runtime_primitives::{AccountId, Balance, Index};
+use subspace_runtime_primitives::{AccountId, Balance, Nonce};
 use substrate_frame_rpc_system::{System, SystemApiServer};
 
 /// Full client dependencies.
@@ -92,7 +92,7 @@ where
         + Send
         + Sync
         + 'static,
-    C::Api: substrate_frame_rpc_system::AccountNonceApi<Block, AccountId, Index>
+    C::Api: substrate_frame_rpc_system::AccountNonceApi<Block, AccountId, Nonce>
         + pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi<Block, Balance>
         + BlockBuilder<Block>
         + SubspaceApi<Block, FarmerPublicKey>

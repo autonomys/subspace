@@ -34,6 +34,7 @@
 
 use frame_support::traits::Get;
 use frame_system::offchain::SubmitTransaction;
+use frame_system::pallet_prelude::*;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::offence::{Kind, Offence, OffenceError, ReportOffence};
 use sp_consensus_subspace::{EquivocationProof, FarmerPublicKey};
@@ -65,7 +66,7 @@ pub trait HandleEquivocation<T: Config> {
 
     /// Create and dispatch an equivocation report extrinsic.
     fn submit_equivocation_report(
-        equivocation_proof: EquivocationProof<T::Header>,
+        equivocation_proof: EquivocationProof<HeaderFor<T>>,
     ) -> DispatchResult;
 }
 
@@ -83,7 +84,7 @@ impl<T: Config> HandleEquivocation<T> for () {
     }
 
     fn submit_equivocation_report(
-        _equivocation_proof: EquivocationProof<T::Header>,
+        _equivocation_proof: EquivocationProof<HeaderFor<T>>,
     ) -> DispatchResult {
         Ok(())
     }
@@ -129,7 +130,7 @@ where
     }
 
     fn submit_equivocation_report(
-        equivocation_proof: EquivocationProof<T::Header>,
+        equivocation_proof: EquivocationProof<HeaderFor<T>>,
     ) -> DispatchResult {
         let call = Call::report_equivocation {
             equivocation_proof: Box::new(equivocation_proof),
@@ -157,7 +158,7 @@ where
 impl<T: Config> Pallet<T> {
     pub fn validate_equivocation_report(
         source: TransactionSource,
-        equivocation_proof: &EquivocationProof<T::Header>,
+        equivocation_proof: &EquivocationProof<HeaderFor<T>>,
     ) -> TransactionValidity {
         // Discard equivocation report not coming from the local node
         if !matches!(
@@ -199,7 +200,7 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn pre_dispatch_equivocation_report(
-        equivocation_proof: &EquivocationProof<T::Header>,
+        equivocation_proof: &EquivocationProof<HeaderFor<T>>,
     ) -> Result<(), TransactionValidityError> {
         // check report staleness
         is_known_offence::<T>(equivocation_proof)?;
@@ -216,7 +217,7 @@ impl<T: Config> Pallet<T> {
 }
 
 fn is_known_offence<T: Config>(
-    equivocation_proof: &EquivocationProof<T::Header>,
+    equivocation_proof: &EquivocationProof<HeaderFor<T>>,
 ) -> Result<(), TransactionValidityError> {
     // Check if the offence has already been reported, and if so then we can discard the report.
     if T::HandleEquivocation::is_known_offence(

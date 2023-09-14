@@ -1,5 +1,6 @@
 use crate::providers::{BlockImportProvider, RpcProvider};
 use crate::{FullBackend, FullClient};
+use domain_client_block_preprocessor::inherents::CreateInherentDataProvider;
 use domain_client_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_client_consensus_relay_chain::DomainBlockImport;
 use domain_client_message_relayer::GossipMessageSink;
@@ -9,9 +10,7 @@ use domain_runtime_primitives::{Balance, BlockNumber, DomainCoreApi, Hash, Inher
 use futures::channel::mpsc;
 use futures::Stream;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
-use sc_client_api::{
-    BlockBackend, BlockImportNotification, BlockchainEvents, ProofProvider, StateBackendFor,
-};
+use sc_client_api::{BlockBackend, BlockImportNotification, BlockchainEvents, ProofProvider};
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_rpc_api::DenyUnsafe;
 use sc_service::{
@@ -19,6 +18,7 @@ use sc_service::{
     SpawnTasksParams, TFullBackend, TaskManager,
 };
 use sc_telemetry::{Telemetry, TelemetryWorker, TelemetryWorkerHandle};
+use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver};
 use serde::de::DeserializeOwned;
 use sp_api::{ApiExt, BlockT, ConstructRuntimeApi, Metadata, NumberFor, ProvideRuntimeApi};
@@ -39,7 +39,7 @@ use std::marker::PhantomData;
 use std::str::FromStr;
 use std::sync::Arc;
 use subspace_core_primitives::Randomness;
-use subspace_runtime_primitives::Index as Nonce;
+use subspace_runtime_primitives::Nonce;
 use subspace_transaction_pool::FullChainApiWrapper;
 use substrate_frame_rpc_system::AccountNonceApi;
 
@@ -74,7 +74,7 @@ where
         + Send
         + Sync
         + 'static,
-    RuntimeApi::RuntimeApi: ApiExt<Block, StateBackend = StateBackendFor<TFullBackend<Block>, Block>>
+    RuntimeApi::RuntimeApi: ApiExt<Block>
         + Metadata<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + BlockBuilder<Block>
@@ -137,7 +137,7 @@ fn new_partial<RuntimeApi, ExecutorDispatch, CBlock, CClient, BIMP>(
         FullClient<Block, RuntimeApi, ExecutorDispatch>,
         FullBackend<Block>,
         (),
-        sc_consensus::DefaultImportQueue<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>,
+        sc_consensus::DefaultImportQueue<Block>,
         FullPool<CBlock, CClient, RuntimeApi, ExecutorDispatch>,
         (
             Option<Telemetry>,
@@ -163,9 +163,8 @@ where
         + Send
         + Sync
         + 'static,
-    RuntimeApi::RuntimeApi: TaggedTransactionQueue<Block>
-        + MessengerApi<Block, NumberFor<Block>>
-        + ApiExt<Block, StateBackend = StateBackendFor<TFullBackend<Block>, Block>>,
+    RuntimeApi::RuntimeApi:
+        TaggedTransactionQueue<Block> + MessengerApi<Block, NumberFor<Block>> + ApiExt<Block>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
     BIMP: BlockImportProvider<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>,
 {
@@ -245,6 +244,7 @@ where
     pub domain_config: ServiceConfiguration,
     pub domain_created_at: NumberFor<CBlock>,
     pub consensus_client: Arc<CClient>,
+    pub consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory<CBlock>,
     pub consensus_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
     pub select_chain: SC,
     pub operator_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS>,
@@ -305,7 +305,7 @@ where
         + Send
         + Sync
         + 'static,
-    RuntimeApi::RuntimeApi: ApiExt<Block, StateBackend = StateBackendFor<TFullBackend<Block>, Block>>
+    RuntimeApi::RuntimeApi: ApiExt<Block>
         + Metadata<Block>
         + BlockBuilder<Block>
         + OffchainWorkerApi<Block>
@@ -339,6 +339,7 @@ where
             >,
             TFullBackend<Block>,
             AccountId,
+            CreateInherentDataProvider<CClient, CBlock>,
         > + BlockImportProvider<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>
         + 'static,
 {
@@ -347,6 +348,7 @@ where
         mut domain_config,
         domain_created_at,
         consensus_client,
+        consensus_offchain_tx_pool_factory,
         consensus_network_sync_oracle,
         select_chain,
         operator_streams,
@@ -408,6 +410,9 @@ where
             database_source: domain_config.database.clone(),
             task_spawner: task_manager.spawn_handle(),
             backend: backend.clone(),
+            create_inherent_data_provider: CreateInherentDataProvider::new(
+                consensus_client.clone(),
+            ),
         };
 
         let spawn_essential = task_manager.spawn_essential_handle();
@@ -459,6 +464,7 @@ where
             domain_id,
             domain_created_at,
             consensus_client: consensus_client.clone(),
+            consensus_offchain_tx_pool_factory,
             consensus_network_sync_oracle,
             client: client.clone(),
             transaction_pool: transaction_pool.clone(),

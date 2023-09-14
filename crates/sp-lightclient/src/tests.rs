@@ -26,7 +26,7 @@ use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 #[cfg(feature = "pot")]
-use subspace_core_primitives::PotProof;
+use subspace_core_primitives::PotOutput;
 use subspace_core_primitives::{
     BlockWeight, HistorySize, PublicKey, Randomness, Record, RecordedHistorySegment,
     SegmentCommitment, SegmentIndex, SlotNumber, Solution, SolutionRange,
@@ -130,9 +130,9 @@ struct ValidHeaderParams<'a> {
     #[cfg(not(feature = "pot"))]
     global_randomness: Randomness,
     #[cfg(feature = "pot")]
-    proof_of_time: PotProof,
+    proof_of_time: PotOutput,
     #[cfg(feature = "pot")]
-    future_proof_of_time: PotProof,
+    future_proof_of_time: PotOutput,
     farmer_parameters: &'a FarmerParameters,
 }
 
@@ -797,10 +797,10 @@ fn test_reorg_to_heavier_smaller_chain() {
                 global_randomness: digests_at_2.global_randomness,
                 // TODO: Correct value
                 #[cfg(feature = "pot")]
-                proof_of_time: PotProof::default(),
+                proof_of_time: PotOutput::default(),
                 // TODO: Correct value
                 #[cfg(feature = "pot")]
-                future_proof_of_time: PotProof::default(),
+                future_proof_of_time: PotOutput::default(),
                 farmer_parameters: &farmer_parameters,
             });
         seal_header(&keypair, &mut header);
