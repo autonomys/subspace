@@ -100,7 +100,7 @@ where
     fn validate_receipt(
         &self,
         receipt: &ExecutionReceiptFor<Block, CBlock>,
-    ) -> sp_blockchain::Result<ReceiptValidity<CBlock::Hash>> {
+    ) -> sp_blockchain::Result<ReceiptValidity> {
         // Skip genesis receipt as it has been already verified by the consensus chain.
         if receipt.domain_block_number.is_zero() {
             return Ok(ReceiptValidity::Valid);
@@ -120,15 +120,6 @@ where
         if local_receipt.invalid_bundles != receipt.invalid_bundles {
             // TODO: Generate fraud proof
             return Ok(ReceiptValidity::Invalid(InvalidReceipt::InvalidBundles));
-        }
-
-        if local_receipt.total_rewards != receipt.total_rewards {
-            return Ok(ReceiptValidity::Invalid(
-                InvalidReceipt::InvalidTotalRewards {
-                    consensus_block_hash,
-                    bad_receipt_hash: receipt.hash(),
-                },
-            ));
         }
 
         Ok(ReceiptValidity::Valid)
@@ -309,7 +300,7 @@ where
                 (consensus_block_hash, consensus_block_number),
                 (parent_hash, parent_number),
                 extrinsics,
-                invalid_bundles.clone(),
+                invalid_bundles,
                 extrinsics_roots,
                 digest,
             )
@@ -334,7 +325,7 @@ where
 
         // TODO: Remove as ReceiptsChecker has been superseded by ReceiptValidator in block-preprocessor.
         self.domain_receipts_checker
-            .check_state_transition(consensus_block_hash, invalid_bundles)?;
+            .check_state_transition(consensus_block_hash)?;
 
         self.domain_receipts_checker
             .submit_fraud_proof(consensus_block_hash)?;

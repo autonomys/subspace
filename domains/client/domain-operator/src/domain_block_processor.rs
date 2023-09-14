@@ -16,10 +16,7 @@ use sp_consensus::{BlockOrigin, SyncOracle};
 use sp_core::traits::CodeExecutor;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::merkle_tree::MerkleTree;
-use sp_domains::{
-    DomainId, DomainsApi, ExecutionReceipt, ExtrinsicsRoot, InvalidBundle, InvalidBundleType,
-    InvalidReceipt,
-};
+use sp_domains::{DomainId, DomainsApi, ExecutionReceipt, ExtrinsicsRoot, InvalidBundle};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, One, Zero};
 use sp_runtime::Digest;
 use std::cmp::Ordering;
@@ -271,7 +268,7 @@ where
         (consensus_block_hash, consensus_block_number): (CBlock::Hash, NumberFor<CBlock>),
         (parent_hash, parent_number): (Block::Hash, NumberFor<Block>),
         extrinsics: Vec<Block::Extrinsic>,
-        invalid_bundles: Vec<InvalidBundle<CBlock::Hash>>,
+        invalid_bundles: Vec<InvalidBundle>,
         bundle_extrinsics_roots: Vec<ExtrinsicsRoot>,
         digests: Digest,
     ) -> Result<DomainBlockResult<Block, CBlock>, sp_blockchain::Error> {
@@ -589,8 +586,6 @@ where
     CBlock: BlockT,
     ParentChainBlock: BlockT,
     NumberFor<CBlock>: Into<NumberFor<Block>>,
-    NumberFor<Block>: Into<NumberFor<ParentChainBlock>>,
-    Block::Hash: Into<ParentChainBlock::Hash>,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + ProofProvider<Block>
@@ -608,7 +603,6 @@ where
     pub(crate) fn check_state_transition(
         &self,
         parent_chain_block_hash: ParentChainBlock::Hash,
-        invalid_bundles: Vec<InvalidBundle<ParentChainBlock::Hash>>,
     ) -> sp_blockchain::Result<()> {
         let extrinsics = self.parent_chain.block_body(parent_chain_block_hash)?;
 
@@ -620,7 +614,7 @@ where
             .parent_chain
             .extract_fraud_proofs(parent_chain_block_hash, extrinsics)?;
 
-        self.check_receipts(receipts, fraud_proofs, invalid_bundles)?;
+        self.check_receipts(receipts, fraud_proofs)?;
 
         Ok(())
     }
@@ -653,36 +647,8 @@ where
         &self,
         receipts: Vec<ExecutionReceiptFor<Block, ParentChainBlock>>,
         fraud_proofs: Vec<FraudProof<NumberFor<ParentChainBlock>, ParentChainBlock::Hash>>,
-        invalid_bundles: Vec<InvalidBundle<ParentChainBlock::Hash>>,
     ) -> Result<(), sp_blockchain::Error> {
         let mut bad_receipts_to_write = vec![];
-
-        // write invalid bundles with invalid ER first. If the state transition itself was invalid on these
-        // ERs, then they will be replaced by the next loop.
-        for invalid_bundle in invalid_bundles {
-            if let InvalidBundleType::InvalidReceipt(InvalidReceipt::InvalidTotalRewards {
-                consensus_block_hash,
-                bad_receipt_hash,
-            }) = invalid_bundle.invalid_bundle_type
-            {
-                let local_receipt = crate::aux_schema::load_execution_receipt::<
-                    _,
-                    Block,
-                    ParentChainBlock,
-                >(&*self.client, consensus_block_hash)?
-                .ok_or(sp_blockchain::Error::Backend(format!(
-                    "Receipt for consensus block {consensus_block_hash} not found",
-                )))?;
-
-                bad_receipts_to_write.push((
-                    local_receipt.consensus_block_number,
-                    bad_receipt_hash,
-                    ReceiptMismatchInfo::TotalRewardsMismatch {
-                        consensus_block_hash,
-                    },
-                ));
-            }
-        }
 
         for execution_receipt in receipts.iter() {
             // Skip check for genesis receipt as it is generated on the domain instantiation by
@@ -711,6 +677,17 @@ where
                     execution_receipt.consensus_block_number,
                     execution_receipt.hash(),
                     (trace_mismatch_index, consensus_block_hash).into(),
+                ));
+                continue;
+            }
+
+            if execution_receipt.total_rewards != local_receipt.total_rewards {
+                bad_receipts_to_write.push((
+                    execution_receipt.consensus_block_number,
+                    execution_receipt.hash(),
+                    ReceiptMismatchInfo::TotalRewardsMismatch {
+                        consensus_block_hash,
+                    },
                 ));
             }
         }

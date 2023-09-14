@@ -17,8 +17,7 @@ use sp_core::traits::FetchRuntimeCode;
 use sp_core::Pair;
 use sp_domain_digests::AsPredigest;
 use sp_domains::fraud_proof::{
-    ExecutionPhase, FraudProof, InvalidBundleProof, InvalidStateTransitionProof,
-    InvalidTotalRewardsProof,
+    ExecutionPhase, FraudProof, InvalidStateTransitionProof, InvalidTotalRewardsProof,
 };
 use sp_domains::transaction::InvalidTransactionCode;
 use sp_domains::{Bundle, DomainId, DomainsApi};
@@ -988,10 +987,7 @@ async fn test_invalid_total_rewards_proof_creation() {
             pallet_domains::Call::submit_fraud_proof { fraud_proof },
         ) = ext.function
         {
-            if let FraudProof::InvalidBundle(InvalidBundleProof::TotalRewards(
-                InvalidTotalRewardsProof { .. },
-            )) = *fraud_proof
-            {
+            if let FraudProof::InvalidTotalRewards(InvalidTotalRewardsProof { .. }) = *fraud_proof {
                 break;
             }
         }

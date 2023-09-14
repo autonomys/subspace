@@ -2,15 +2,13 @@ use crate::utils::to_number_primitive;
 use crate::ExecutionReceiptFor;
 use codec::{Decode, Encode};
 use domain_block_builder::{BlockBuilder, RecordProof};
-use frame_support::storage::generator::StorageValue;
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::CodeExecutor;
 use sp_core::H256;
 use sp_domains::fraud_proof::{
-    ExecutionPhase, FraudProof, InvalidBundleProof, InvalidStateTransitionProof,
-    InvalidTotalRewardsProof,
+    ExecutionPhase, FraudProof, InvalidStateTransitionProof, InvalidTotalRewardsProof,
 };
 use sp_domains::DomainId;
 use sp_runtime::traits::{Block as BlockT, HashingFor, Header as HeaderT, NumberFor};
@@ -96,24 +94,17 @@ where
     ) -> Result<FraudProof<NumberFor<PCB>, PCB::Hash>, FraudProofError>
     where
         PCB: BlockT,
-        NumberFor<Block>: Into<NumberFor<PCB>>,
-        Block::Hash: Into<PCB::Hash>,
     {
         let block_hash = local_receipt.domain_block_hash;
-        let block_number = local_receipt.domain_block_number;
-        let key = sp_domains::fraud_proof::OperatorBlockRewards::storage_value_final_key();
+        let key = sp_domains::fraud_proof::operator_block_rewards_final_key();
         let proof = self
             .client
             .read_proof(block_hash, &mut [key.as_slice()].into_iter())?;
-        Ok(FraudProof::InvalidBundle(InvalidBundleProof::TotalRewards(
-            InvalidTotalRewardsProof {
-                domain_id,
-                bad_receipt_hash,
-                block_number: block_number.into(),
-                domain_block_hash: block_hash.into(),
-                storage_proof: proof,
-            },
-        )))
+        Ok(FraudProof::InvalidTotalRewards(InvalidTotalRewardsProof {
+            domain_id,
+            bad_receipt_hash,
+            storage_proof: proof,
+        }))
     }
 
     pub(crate) fn generate_invalid_state_transition_proof<PCB>(

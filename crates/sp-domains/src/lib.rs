@@ -360,7 +360,7 @@ pub struct ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance> {
     /// The block hash corresponding to `consensus_block_number`.
     pub consensus_block_hash: Hash,
     /// Potential bundles that are excluded from the domain block building.
-    pub invalid_bundles: Vec<InvalidBundle<Hash>>,
+    pub invalid_bundles: Vec<InvalidBundle>,
     /// All `extrinsics_roots` for all bundles being executed by this block.
     ///
     /// Used to ensure these are contained within the state of the `execution_inbox`.
@@ -681,24 +681,20 @@ pub fn signer_in_tx_range(bundle_vrf_hash: &U256, signer_id_hash: &U256, tx_rang
 
 /// Receipt invalidity type.
 #[derive(Debug, Decode, Encode, TypeInfo, Clone, PartialEq, Eq)]
-pub enum InvalidReceipt<Hash> {
+pub enum InvalidReceipt {
     /// The field `invalid_bundles` in [`ExecutionReceipt`] is invalid.
     InvalidBundles,
-    InvalidTotalRewards {
-        consensus_block_hash: Hash,
-        bad_receipt_hash: ReceiptHash,
-    },
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, Clone, PartialEq, Eq)]
-pub enum ReceiptValidity<Hash> {
+pub enum ReceiptValidity {
     Valid,
-    Invalid(InvalidReceipt<Hash>),
+    Invalid(InvalidReceipt),
 }
 
 /// Bundle invalidity type.
 #[derive(Debug, Decode, Encode, TypeInfo, Clone, PartialEq, Eq)]
-pub enum InvalidBundleType<Hash> {
+pub enum InvalidBundleType {
     /// Failed to decode the opaque extrinsic.
     UndecodableTx,
     /// Transaction is out of the tx range.
@@ -706,24 +702,24 @@ pub enum InvalidBundleType<Hash> {
     /// Transaction is illegal (unable to pay the fee, etc).
     IllegalTx,
     /// Receipt is invalid.
-    InvalidReceipt(InvalidReceipt<Hash>),
+    InvalidReceipt(InvalidReceipt),
 }
 
 /// [`InvalidBundle`] represents a bundle that was originally included in the consensus
 /// block but subsequently excluded from the corresponding domain block by operator due
 /// to being flagged as invalid.
 #[derive(Debug, Decode, Encode, TypeInfo, Clone, PartialEq, Eq)]
-pub struct InvalidBundle<Hash> {
+pub struct InvalidBundle {
     /// Index of this bundle in the original list of bundles in the consensus block.
     pub bundle_index: u32,
     /// Specific type of invalidity.
-    pub invalid_bundle_type: InvalidBundleType<Hash>,
+    pub invalid_bundle_type: InvalidBundleType,
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, Clone, PartialEq, Eq)]
-pub enum BundleValidity<Extrinsic, Hash> {
+pub enum BundleValidity<Extrinsic> {
     Valid(Vec<Extrinsic>),
-    Invalid(InvalidBundleType<Hash>),
+    Invalid(InvalidBundleType),
 }
 
 /// Empty extrinsics root
