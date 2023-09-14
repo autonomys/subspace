@@ -399,7 +399,7 @@ fn main() -> Result<(), Error> {
                     }
                 })?;
             }
-            DomainSubcommand::BuildGenesisConfig(cmd) => cmd.run()?,
+            DomainSubcommand::BuildGenesisStorage(cmd) => cmd.run()?,
             DomainSubcommand::ExportExecutionReceipt(cmd) => {
                 let runner = cli.create_runner(cmd)?;
                 runner.sync_run(|consensus_chain_config| {
