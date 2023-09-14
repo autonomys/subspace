@@ -1016,19 +1016,12 @@ mod pallet {
         pub fn instantiate_domain(
             origin: OriginFor<T>,
             domain_config: DomainConfig,
-            raw_genesis: Vec<u8>,
         ) -> DispatchResult {
-            let (who, raw_genesis) = if raw_genesis.is_empty() {
-                (ensure_signed(origin)?, None)
-            } else {
-                // TODO: remove once XDM is finished
-                ensure_root(origin)?;
-                (T::SudoId::get(), Some(raw_genesis))
-            };
+            let who = ensure_signed(origin)?;
 
             let created_at = frame_system::Pallet::<T>::current_block_number();
 
-            let domain_id = do_instantiate_domain::<T>(domain_config, who, created_at, raw_genesis)
+            let domain_id = do_instantiate_domain::<T>(domain_config, who, created_at)
                 .map_err(Error::<T>::from)?;
 
             Self::deposit_event(Event::DomainInstantiated { domain_id });

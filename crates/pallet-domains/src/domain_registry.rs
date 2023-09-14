@@ -63,12 +63,6 @@ pub struct DomainObject<Number, AccountId> {
     pub genesis_receipt_hash: ReceiptHash,
     /// The domain config.
     pub domain_config: DomainConfig,
-    /// The genesis config of the domain, encoded in json format.
-    //
-    /// NOTE: the WASM code in the `system-pallet` genesis config should be empty to avoid
-    /// redundancy with the `RuntimeRegistry`. Currently, this value only set to `Some` for
-    /// the genesis domain instance.
-    pub raw_genesis_config: Option<Vec<u8>>,
 }
 
 pub(crate) fn can_instantiate_domain<T: Config>(
@@ -117,7 +111,6 @@ pub(crate) fn do_instantiate_domain<T: Config>(
     domain_config: DomainConfig,
     owner_account_id: T::AccountId,
     created_at: BlockNumberFor<T>,
-    raw_genesis_config: Option<Vec<u8>>,
 ) -> Result<DomainId, Error> {
     can_instantiate_domain::<T>(&owner_account_id, &domain_config)?;
 
@@ -140,7 +133,6 @@ pub(crate) fn do_instantiate_domain<T: Config>(
         created_at,
         genesis_receipt_hash,
         domain_config,
-        raw_genesis_config,
     };
     DomainRegistry::<T>::insert(domain_id, domain_obj);
 
@@ -178,12 +170,10 @@ mod tests {
     use super::*;
     use crate::pallet::{DomainRegistry, NextDomainId, RuntimeRegistry};
     use crate::runtime_registry::RuntimeObject;
-    use crate::tests::{new_test_ext, GenesisStateRootGenerater, Test};
+    use crate::tests::{new_test_ext, Test};
     use frame_support::traits::Currency;
-    use sp_domains::GenesisReceiptExtension;
     use sp_std::vec;
     use sp_version::RuntimeVersion;
-    use std::sync::Arc;
 
     type Balances = pallet_balances::Pallet<Test>;
 
@@ -207,7 +197,7 @@ mod tests {
 
             // Failed to instantiate domain due to `domain_name` too long
             assert_eq!(
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at, None),
+                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
                 Err(Error::DomainNameTooLong)
             );
             // Recorrect `domain_name`
@@ -215,7 +205,7 @@ mod tests {
 
             // Failed to instantiate domain due to using unregistered runtime id
             assert_eq!(
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at, None),
+                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
                 Err(Error::RuntimeNotFound)
             );
             // Register runtime id
@@ -227,6 +217,7 @@ mod tests {
                     runtime_upgrades: 0,
                     hash: Default::default(),
                     code: vec![1, 2, 3, 4],
+                    raw_genesis: Default::default(),
                     version: RuntimeVersion {
                         spec_name: "test".into(),
                         spec_version: 1,
@@ -241,7 +232,7 @@ mod tests {
 
             // Failed to instantiate domain due to exceed max domain block size limit
             assert_eq!(
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at, None),
+                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
                 Err(Error::ExceedMaxDomainBlockSize)
             );
             // Recorrect `max_block_size`
@@ -249,7 +240,7 @@ mod tests {
 
             // Failed to instantiate domain due to exceed max domain block weight limit
             assert_eq!(
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at, None),
+                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
                 Err(Error::ExceedMaxDomainBlockWeight)
             );
             // Recorrect `max_block_weight`
@@ -257,12 +248,12 @@ mod tests {
 
             // Failed to instantiate domain due to invalid `target_bundles_per_block`
             assert_eq!(
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at, None),
+                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
                 Err(Error::InvalidBundlesPerBlock)
             );
             domain_config.target_bundles_per_block = u32::MAX;
             assert_eq!(
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at, None),
+                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
                 Err(Error::InvalidBundlesPerBlock)
             );
             // Recorrect `target_bundles_per_block`
@@ -270,22 +261,22 @@ mod tests {
 
             // Failed to instantiate domain due to invalid `bundle_slot_probability`
             assert_eq!(
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at, None),
+                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
                 Err(Error::InvalidSlotProbability)
             );
             domain_config.bundle_slot_probability = (1, 0);
             assert_eq!(
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at, None),
+                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
                 Err(Error::InvalidSlotProbability)
             );
             domain_config.bundle_slot_probability = (0, 1);
             assert_eq!(
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at, None),
+                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
                 Err(Error::InvalidSlotProbability)
             );
             domain_config.bundle_slot_probability = (2, 1);
             assert_eq!(
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at, None),
+                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
                 Err(Error::InvalidSlotProbability)
             );
             // Recorrect `bundle_slot_probability`
@@ -293,7 +284,7 @@ mod tests {
 
             // Failed to instantiate domain due to creator don't have enough fund
             assert_eq!(
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at, None),
+                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
                 Err(Error::InsufficientFund)
             );
             // Set enough fund to creator
@@ -305,8 +296,7 @@ mod tests {
 
             // `instantiate_domain` must success now
             let domain_id =
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at, None)
-                    .unwrap();
+                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at).unwrap();
             let domain_obj = DomainRegistry::<Test>::get(domain_id).unwrap();
 
             assert_eq!(domain_obj.owner_account_id, creator);
@@ -318,7 +308,7 @@ mod tests {
 
             // cannot use the locked funds to create a new domain instance
             assert!(
-                do_instantiate_domain::<Test>(domain_config, creator, created_at, None)
+                do_instantiate_domain::<Test>(domain_config, creator, created_at)
                     == Err(Error::InsufficientFund)
             )
         });

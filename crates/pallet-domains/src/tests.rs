@@ -359,7 +359,6 @@ pub(crate) fn register_genesis_domain(creator: u64, operator_ids: Vec<OperatorId
             bundle_slot_probability: (1, 1),
             target_bundles_per_block: 1,
         },
-        vec![],
     )
     .unwrap();
 
@@ -620,7 +619,6 @@ fn test_bundle_fromat_verification() {
             created_at: Default::default(),
             genesis_receipt_hash: Default::default(),
             domain_config,
-            raw_genesis_config: None,
         };
         DomainRegistry::<Test>::insert(domain_id, domain_obj);
 
