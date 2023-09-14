@@ -57,7 +57,6 @@ pub fn testnet_evm_genesis() -> RuntimeGenesisConfig {
                 .to_vec(),
             ..Default::default()
         },
-        transaction_payment: Default::default(),
         balances: evm_domain_test_runtime::BalancesConfig {
             balances: endowed_accounts()
                 .iter()
@@ -89,12 +88,12 @@ pub fn testnet_evm_genesis() -> RuntimeGenesisConfig {
                 .collect(),
             ..Default::default()
         },
-        ethereum: Default::default(),
-        base_fee: Default::default(),
         self_domain_id: evm_domain_test_runtime::SelfDomainIdConfig {
-            // Id of the genesis domain
-            domain_id: Some(DomainId::new(0)),
+            // Set the domain id of the genesis domain to an arbitrary value
+            // it should be overwritten with the correct value
+            domain_id: Some(DomainId::new(123)),
             ..Default::default()
         },
+        ..Default::default()
     }
 }

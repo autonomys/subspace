@@ -19,16 +19,15 @@
 use crate::chain_spec_utils::{chain_spec_properties, get_public_key_from_seed};
 use evm_domain_runtime::{
     AccountId, BalancesConfig, EVMChainIdConfig, EVMConfig, Precompiles, RuntimeGenesisConfig,
-    SelfDomainIdConfig, SudoConfig, SystemConfig, WASM_BINARY,
+    SudoConfig, SystemConfig, WASM_BINARY,
 };
 use hex_literal::hex;
-use sc_service::ChainType;
+use sc_service::{ChainSpec as ChainSpecT, ChainType};
 use sc_subspace_chain_specs::ExecutionChainSpec;
 use sp_core::crypto::UncheckedFrom;
 use sp_domains::storage::RawGenesis;
 use sp_domains::OperatorPublicKey;
 use std::str::FromStr;
-use std::sync::OnceLock;
 use subspace_runtime_primitives::SSC;
 
 pub type ChainSpec = ExecutionChainSpec<RuntimeGenesisConfig>;
@@ -276,8 +275,8 @@ fn testnet_genesis(
         sudo: SudoConfig {
             key: maybe_sudo_account,
         },
-        transaction_payment: Default::default(),
         balances: BalancesConfig {
+            // TODO: remove `endowed_accounts` once XDM is ready
             balances: endowed_accounts
                 .iter()
                 .cloned()
@@ -307,12 +306,6 @@ fn testnet_genesis(
                 .collect(),
             ..Default::default()
         },
-        ethereum: Default::default(),
-        base_fee: Default::default(),
-        self_domain_id: SelfDomainIdConfig {
-            // Id of the genesis domain
-            domain_id: Some(DomainId::new(0)),
-            ..Default::default()
-        },
+        ..Default::default()
     }
 }
