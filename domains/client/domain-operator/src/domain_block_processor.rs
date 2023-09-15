@@ -369,6 +369,8 @@ where
             parent_domain_block_receipt_hash: parent_receipt.hash(),
             consensus_block_number,
             consensus_block_hash,
+            // TODO: set to proper value
+            valid_bundles: Vec::new(),
             invalid_bundles,
             block_extrinsics_roots: bundle_extrinsics_roots,
             final_state_root: state_root,

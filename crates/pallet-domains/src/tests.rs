@@ -268,6 +268,7 @@ pub(crate) fn create_dummy_receipt(
         parent_domain_block_receipt_hash,
         consensus_block_number: block_number,
         consensus_block_hash,
+        valid_bundles: Vec::new(),
         invalid_bundles: Vec::new(),
         block_extrinsics_roots,
         final_state_root: Default::default(),
