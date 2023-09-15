@@ -953,7 +953,7 @@ where
         let spawn_essential_handle = task_manager.spawn_essential_handle();
 
         spawn_essential_handle.spawn("pot-source", Some("pot"), pot_source_worker.run());
-        spawn_essential_handle.spawn_blocking("pot-gossip", Some("pot"), pot_gossip_worker.run());
+        spawn_essential_handle.spawn("pot-gossip", Some("pot"), pot_gossip_worker.run());
 
         pot_slot_info_stream
     };

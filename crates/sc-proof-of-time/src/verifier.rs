@@ -289,10 +289,39 @@ impl PotVerifier {
     }
 
     /// Verify proof of time checkpoints
+    pub async fn verify_checkpoints(
+        &self,
+        seed: PotSeed,
+        slot_iterations: NonZeroU32,
+        checkpoints: &PotCheckpoints,
+    ) -> bool {
+        // TODO: This "proxy" is a workaround for https://github.com/rust-lang/rust/issues/57478
+        let (result_sender, result_receiver) = oneshot::channel();
+        std::thread::spawn({
+            let verifier = self.clone();
+            let checkpoints = *checkpoints;
+
+            move || {
+                futures::executor::block_on({
+                    async move {
+                        // Result doesn't matter here
+                        let _ = result_sender.send(
+                            verifier
+                                .verify_checkpoints_internal(seed, slot_iterations, &checkpoints)
+                                .await,
+                        );
+                    }
+                });
+            }
+        });
+
+        result_receiver.await.unwrap_or_default()
+    }
+
     // TODO: False-positive, lock is not actually held over await point, remove suppression once
     //  fixed upstream
     #[allow(clippy::await_holding_lock)]
-    pub async fn verify_checkpoints(
+    pub async fn verify_checkpoints_internal(
         &self,
         seed: PotSeed,
         slot_iterations: NonZeroU32,

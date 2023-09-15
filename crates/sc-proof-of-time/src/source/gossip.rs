@@ -7,7 +7,7 @@ use futures::{FutureExt, SinkExt, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use sc_network::config::NonDefaultSetConfig;
-use sc_network::PeerId;
+use sc_network::{NetworkPeers, PeerId};
 use sc_network_gossip::{
     GossipEngine, MessageIntent, Network as GossipNetwork, Syncing as GossipSyncing,
     ValidationResult, Validator, ValidatorContext,
@@ -15,12 +15,40 @@ use sc_network_gossip::{
 use sp_consensus::SyncOracle;
 use sp_consensus_slots::Slot;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
+use std::cmp;
 use std::future::poll_fn;
 use std::num::NonZeroU32;
-use std::sync::atomic::Ordering;
-use std::sync::Arc;
+use std::sync::{atomic, Arc};
 use subspace_core_primitives::{PotCheckpoints, PotSeed};
 use tracing::{debug, error, trace, warn};
+
+/// How many slots can proof be before it is too far
+const MAX_SLOTS_IN_THE_FUTURE: u64 = 10;
+
+mod rep {
+    use sc_network::ReputationChange;
+
+    /// Reputation change when a peer sends us a gossip message that can't be decoded.
+    pub(super) const GOSSIP_NOT_DECODABLE: ReputationChange =
+        ReputationChange::new(-(1 << 3), "PoT: not decodable");
+    /// Reputation change when a peer sends us checkpoints that do not match next slot inputs.
+    pub(super) const GOSSIP_NEXT_SLOT_MISMATCH: ReputationChange =
+        ReputationChange::new(-(1 << 5), "PoT: next slot mismatch");
+    /// Reputation change when a peer sends us checkpoints that correspond to old slot.
+    pub(super) const GOSSIP_OLD_SLOT: ReputationChange =
+        ReputationChange::new(-(1 << 5), "PoT: old slot");
+    /// Reputation change when a peer sends us checkpoints that correspond to slot that is too far
+    /// in the future.
+    pub(super) const GOSSIP_TOO_FAR_IN_THE_FUTURE: ReputationChange =
+        ReputationChange::new(-(1 << 5), "PoT: slot too far in the future");
+    /// Reputation change when a peer sends us checkpoints that correspond to slot iterations
+    /// outside of range.
+    pub(super) const GOSSIP_SLOT_ITERATIONS_OUTSIDE_OF_RANGE: ReputationChange =
+        ReputationChange::new(-(1 << 5), "PoT: slot iterations outside of range");
+    /// Reputation change when a peer sends us an invalid proof
+    pub(super) const GOSSIP_INVALID_CHECKPOINTS: ReputationChange =
+        ReputationChange::new_fatal("PoT: Invalid proof");
+}
 
 const GOSSIP_PROTOCOL: &str = "/subspace/subspace-proof-of-time/1";
 
@@ -51,6 +79,8 @@ where
 {
     engine: Arc<Mutex<GossipEngine<Block>>>,
     topic: Block::Hash,
+    state: Arc<PotState>,
+    pot_verifier: PotVerifier,
     outgoing_messages_receiver: mpsc::Receiver<GossipCheckpoints>,
     incoming_messages_sender: mpsc::Sender<(PeerId, GossipCheckpoints)>,
 }
@@ -70,23 +100,25 @@ where
         sync_oracle: SO,
     ) -> Self
     where
-        Network: GossipNetwork<Block> + Send + Sync + Clone + 'static,
+        Network: GossipNetwork<Block> + NetworkPeers + Send + Sync + Clone + 'static,
         GossipSync: GossipSyncing<Block> + 'static,
         SO: SyncOracle + Send + Sync + 'static,
     {
         let topic = <<Block::Header as HeaderT>::Hashing as HashT>::hash(b"checkpoints");
 
         let validator = Arc::new(PotGossipValidator::new(
-            pot_verifier,
-            state,
+            Arc::clone(&state),
             topic,
             sync_oracle,
+            network.clone(),
         ));
         let engine = GossipEngine::new(network, sync, GOSSIP_PROTOCOL, validator, None);
 
         Self {
             engine: Arc::new(Mutex::new(engine)),
             topic,
+            state,
+            pot_verifier,
             outgoing_messages_receiver,
             incoming_messages_sender,
         }
@@ -98,7 +130,7 @@ where
     /// should be running on a dedicated thread.
     pub async fn run(mut self) {
         let message_receiver = self.engine.lock().messages_for(self.topic);
-        let mut incoming_messages = Box::pin(
+        let mut incoming_unverified_messages = Box::pin(
             message_receiver
                 .filter_map(|notification| async move {
                     notification.sender.map(|sender| {
@@ -114,13 +146,13 @@ where
         loop {
             let gossip_engine_poll = poll_fn(|cx| self.engine.lock().poll_unpin(cx));
             futures::select! {
-                incoming_message = incoming_messages.next() => {
+                incoming_message = incoming_unverified_messages.next() => {
                     if let Some((sender, message)) = incoming_message {
-                        self.handle_incoming_message(sender, message).await;
+                        self.handle_checkpoints_candidates(sender, message).await;
                     }
                 },
                 outgoing_message = self.outgoing_messages_receiver.select_next_some() => {
-                    self.handle_outgoing_message(outgoing_message)
+                    self.gossip_checkpoints(outgoing_message)
                 },
                  _ = gossip_engine_poll.fuse() => {
                     error!("Gossip engine has terminated");
@@ -130,14 +162,87 @@ where
         }
     }
 
-    /// Handles the incoming gossip message.
-    async fn handle_incoming_message(&mut self, sender: PeerId, message: GossipCheckpoints) {
-        if let Err(error) = self.incoming_messages_sender.send((sender, message)).await {
-            warn!(%error, "Failed to send incoming message");
+    async fn handle_checkpoints_candidates(&mut self, sender: PeerId, message: GossipCheckpoints) {
+        let next_slot_input = self.state.next_slot_input(atomic::Ordering::Relaxed);
+
+        match message.slot.cmp(&next_slot_input.slot) {
+            cmp::Ordering::Less => {
+                trace!(
+                    %sender,
+                    slot = %message.slot,
+                    next_slot = %next_slot_input.slot,
+                    "Checkpoints for outdated slot, ignoring",
+                );
+
+                if let Some(verified_checkpoints) = self
+                    .pot_verifier
+                    .get_checkpoints(message.seed, message.slot_iterations)
+                {
+                    if verified_checkpoints != message.checkpoints {
+                        trace!(
+                            %sender,
+                            slot = %message.slot,
+                            "Invalid old checkpoints, punishing sender",
+                        );
+
+                        self.engine
+                            .lock()
+                            .report(sender, rep::GOSSIP_INVALID_CHECKPOINTS);
+                    }
+                }
+
+                return;
+            }
+            cmp::Ordering::Equal => {
+                if !(message.seed == next_slot_input.seed
+                    && message.slot_iterations == next_slot_input.slot_iterations)
+                {
+                    trace!(
+                        %sender,
+                        slot = %message.slot,
+                        "Checkpoints with next slot mismatch, ignoring",
+                    );
+
+                    self.engine
+                        .lock()
+                        .report(sender, rep::GOSSIP_NEXT_SLOT_MISMATCH);
+                    return;
+                }
+            }
+            cmp::Ordering::Greater => {
+                trace!(
+                    %sender,
+                    slot = %message.slot,
+                    next_slot = %next_slot_input.slot,
+                    "Checkpoints from the future",
+                );
+
+                // TODO: Store future candidates somewhere for future processing
+                return;
+            }
+        }
+
+        if self
+            .pot_verifier
+            .verify_checkpoints(message.seed, message.slot_iterations, &message.checkpoints)
+            .await
+        {
+            debug!(%sender, slot = %message.slot, "Full verification succeeded");
+
+            self.gossip_checkpoints(message);
+
+            if let Err(error) = self.incoming_messages_sender.send((sender, message)).await {
+                warn!(%error, "Failed to send incoming message");
+            }
+        } else {
+            debug!(%sender, slot = %message.slot, "Full verification failed");
+            self.engine
+                .lock()
+                .report(sender, rep::GOSSIP_INVALID_CHECKPOINTS);
         }
     }
 
-    fn handle_outgoing_message(&self, message: GossipCheckpoints) {
+    fn gossip_checkpoints(&self, message: GossipCheckpoints) {
         self.engine
             .lock()
             .gossip_message(self.topic, message.encode(), false);
@@ -145,45 +250,41 @@ where
 }
 
 /// Validator for gossiped messages
-struct PotGossipValidator<Block, SO>
+struct PotGossipValidator<Block, SO, Network>
 where
     Block: BlockT,
 {
-    pot_verifier: PotVerifier,
     state: Arc<PotState>,
     topic: Block::Hash,
     sync_oracle: SO,
+    network: Network,
 }
 
-impl<Block, SO> PotGossipValidator<Block, SO>
+impl<Block, SO, Network> PotGossipValidator<Block, SO, Network>
 where
     Block: BlockT,
     SO: SyncOracle,
 {
     /// Creates the validator.
-    fn new(
-        pot_verifier: PotVerifier,
-        state: Arc<PotState>,
-        topic: Block::Hash,
-        sync_oracle: SO,
-    ) -> Self {
+    fn new(state: Arc<PotState>, topic: Block::Hash, sync_oracle: SO, network: Network) -> Self {
         Self {
-            pot_verifier,
             state,
             topic,
             sync_oracle,
+            network,
         }
     }
 }
 
-impl<Block, SO> Validator<Block> for PotGossipValidator<Block, SO>
+impl<Block, SO, Network> Validator<Block> for PotGossipValidator<Block, SO, Network>
 where
     Block: BlockT,
     SO: SyncOracle + Send + Sync,
+    Network: NetworkPeers + Send + Sync + 'static,
 {
     fn validate(
         &self,
-        context: &mut dyn ValidatorContext<Block>,
+        _context: &mut dyn ValidatorContext<Block>,
         sender: &PeerId,
         mut data: &[u8],
     ) -> ValidationResult<Block::Hash> {
@@ -194,18 +295,51 @@ where
 
         match GossipCheckpoints::decode(&mut data) {
             Ok(message) => {
-                // TODO: Gossip validation should be non-blocking!
-                // TODO: Check that slot number is not too far in the past of future
-                let current_slot_iterations = self
-                    .state
-                    .next_slot_input(Ordering::Relaxed)
-                    .slot_iterations;
+                let next_slot_input = self.state.next_slot_input(atomic::Ordering::Relaxed);
+                let current_slot = Slot::from(u64::from(next_slot_input.slot) - 1);
 
-                // Check that number of slot iterations is between 2/3 and 1.5 of current slot
-                // iterations, otherwise ignore
-                // TODO: Decrease reputation if slot iterations is within range, but doesn't match
-                //  exactly
-                if message.slot_iterations.get() < current_slot_iterations.get() * 2 / 3
+                if message.slot < current_slot {
+                    trace!(
+                        %sender,
+                        slot = %message.slot,
+                        "Received checkpoints for old slot, ignoring",
+                    );
+
+                    self.network.report_peer(*sender, rep::GOSSIP_OLD_SLOT);
+                    return ValidationResult::Discard;
+                }
+                if message.slot > current_slot + Slot::from(MAX_SLOTS_IN_THE_FUTURE) {
+                    trace!(
+                        %sender,
+                        slot = %message.slot,
+                        "Received checkpoints for slot too far in the future, ignoring",
+                    );
+
+                    self.network
+                        .report_peer(*sender, rep::GOSSIP_TOO_FAR_IN_THE_FUTURE);
+                    return ValidationResult::Discard;
+                }
+                // Next slot matches expectations, but other inputs are not
+                if message.slot == next_slot_input.slot
+                    && !(message.seed == next_slot_input.seed
+                        && message.slot_iterations == next_slot_input.slot_iterations)
+                {
+                    trace!(
+                        %sender,
+                        slot = %message.slot,
+                        "Received checkpoints with next slot mismatch, ignoring",
+                    );
+
+                    self.network
+                        .report_peer(*sender, rep::GOSSIP_NEXT_SLOT_MISMATCH);
+                    return ValidationResult::Discard;
+                }
+
+                let current_slot_iterations = next_slot_input.slot_iterations;
+
+                // Check that number of slot iterations is between current and 1.5 of current slot
+                // iterations
+                if message.slot_iterations.get() < next_slot_input.slot_iterations.get()
                     || message.slot_iterations.get() > current_slot_iterations.get() * 3 / 2
                 {
                     debug!(
@@ -216,40 +350,37 @@ where
                         "Slot iterations outside of reasonable range"
                     );
 
-                    // TODO: Reputation change
+                    self.network
+                        .report_peer(*sender, rep::GOSSIP_SLOT_ITERATIONS_OUTSIDE_OF_RANGE);
                     return ValidationResult::Discard;
                 }
 
-                if tokio::task::block_in_place(|| {
-                    tokio::runtime::Handle::current().block_on(
-                        self.pot_verifier.verify_checkpoints(
-                            message.seed,
-                            message.slot_iterations,
-                            &message.checkpoints,
-                        ),
-                    )
-                }) {
-                    trace!(%sender, slot = %message.slot, "Verification succeeded");
-                    context.broadcast_message(self.topic, data.to_vec(), false);
-                    ValidationResult::ProcessAndKeep(self.topic)
-                } else {
-                    debug!(%sender, slot = %message.slot, "Verification failed");
-                    // TODO: Reputation change
-                    ValidationResult::Discard
-                }
+                trace!(%sender, slot = %message.slot, "Superficial verification succeeded");
+
+                // We will fully validate and re-gossip it explicitly later if necessary
+                ValidationResult::ProcessAndDiscard(self.topic)
             }
-            Err(_) => {
-                // TODO: Reputation change
+            Err(error) => {
+                debug!(%error, "Gossip message couldn't be decoded");
+
+                self.network.report_peer(*sender, rep::GOSSIP_NOT_DECODABLE);
                 ValidationResult::Discard
             }
         }
     }
 
     fn message_expired<'a>(&'a self) -> Box<dyn FnMut(Block::Hash, &[u8]) -> bool + 'a> {
-        Box::new(move |_topic, _data| {
-            // TODO: Check that slots are not too far in the past or future, there is no other
-            //  inherent expiration policy here
-            false
+        let current_slot =
+            u64::from(self.state.next_slot_input(atomic::Ordering::Relaxed).slot) - 1;
+        Box::new(move |_topic, mut data| {
+            if let Ok(message) = GossipCheckpoints::decode(&mut data) {
+                // Slot is the only meaningful expiration policy here
+                if message.slot >= current_slot {
+                    return false;
+                }
+            }
+
+            true
         })
     }
 
