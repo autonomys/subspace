@@ -256,7 +256,7 @@ where
             let client = Arc::clone(&self.client);
             let pot_verifier = self.pot_verifier.clone();
 
-            Box::new(move |parent_hash, slot, proof_of_time| {
+            Box::new(move |parent_hash, slot, proof_of_time, quick_verification| {
                 let parent_hash = {
                     let mut converted_parent_hash = Block::Hash::default();
                     converted_parent_hash.as_mut().copy_from_slice(&parent_hash);
@@ -353,14 +353,26 @@ where
 
                 // Ensure proof of time and future proof of time included in upcoming block are
                 // valid
-                block_on(pot_verifier.is_output_valid(
-                    after_parent_slot,
-                    pot_seed,
-                    slot_iterations,
-                    Slot::from(slot - u64::from(parent_slot)),
-                    proof_of_time,
-                    pot_parameters.next_parameters_change(),
-                ))
+
+                if quick_verification {
+                    block_on(pot_verifier.try_is_output_valid(
+                        after_parent_slot,
+                        pot_seed,
+                        slot_iterations,
+                        Slot::from(slot - u64::from(parent_slot)),
+                        proof_of_time,
+                        pot_parameters.next_parameters_change(),
+                    ))
+                } else {
+                    block_on(pot_verifier.is_output_valid(
+                        after_parent_slot,
+                        pot_seed,
+                        slot_iterations,
+                        Slot::from(slot - u64::from(parent_slot)),
+                        proof_of_time,
+                        pot_parameters.next_parameters_change(),
+                    ))
+                }
             })
         }));
         if let Some(ext) = self.domain_genesis_receipt_ext.clone() {

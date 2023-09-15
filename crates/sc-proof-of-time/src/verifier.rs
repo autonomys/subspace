@@ -89,8 +89,57 @@ impl PotVerifier {
     ///
     /// NOTE: Potentially much slower than checkpoints, prefer [`Self::verify_checkpoints()`]
     /// whenever possible.
-    // TODO: Version of this API that never invokes proving, just checks
     pub async fn is_output_valid(
+        &self,
+        #[cfg(feature = "pot")] slot: Slot,
+        seed: PotSeed,
+        #[cfg_attr(not(feature = "pot"), allow(unused_mut))] slot_iterations: NonZeroU32,
+        slots: Slot,
+        output: PotOutput,
+        #[cfg(feature = "pot")] maybe_parameters_change: Option<PotParametersChange>,
+    ) -> bool {
+        self.is_output_valid_internal(
+            #[cfg(feature = "pot")]
+            slot,
+            seed,
+            slot_iterations,
+            slots,
+            output,
+            #[cfg(feature = "pot")]
+            maybe_parameters_change,
+            true,
+        )
+        .await
+    }
+
+    /// Does the same verification as [`Self::is_output_valid()`] except it relies on proofs being
+    /// pre-validated before and will return `false` in case proving is necessary, this is meant to
+    /// be a quick and cheap version of the function.
+    pub async fn try_is_output_valid(
+        &self,
+        #[cfg(feature = "pot")] slot: Slot,
+        seed: PotSeed,
+        #[cfg_attr(not(feature = "pot"), allow(unused_mut))] slot_iterations: NonZeroU32,
+        slots: Slot,
+        output: PotOutput,
+        #[cfg(feature = "pot")] maybe_parameters_change: Option<PotParametersChange>,
+    ) -> bool {
+        self.is_output_valid_internal(
+            #[cfg(feature = "pot")]
+            slot,
+            seed,
+            slot_iterations,
+            slots,
+            output,
+            #[cfg(feature = "pot")]
+            maybe_parameters_change,
+            false,
+        )
+        .await
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    async fn is_output_valid_internal(
         &self,
         #[cfg(feature = "pot")] mut slot: Slot,
         mut seed: PotSeed,
@@ -98,6 +147,7 @@ impl PotVerifier {
         slots: Slot,
         output: PotOutput,
         #[cfg(feature = "pot")] mut maybe_parameters_change: Option<PotParametersChange>,
+        do_proving_if_necessary: bool,
     ) -> bool {
         let mut slots = u64::from(slots);
 
@@ -111,8 +161,15 @@ impl PotVerifier {
                     futures::executor::block_on({
                         async move {
                             // Result doesn't matter here
-                            let _ = result_sender
-                                .send(verifier.calculate_output(seed, slot_iterations).await);
+                            let _ = result_sender.send(
+                                verifier
+                                    .calculate_output(
+                                        seed,
+                                        slot_iterations,
+                                        do_proving_if_necessary,
+                                    )
+                                    .await,
+                            );
                         }
                     });
                 }
@@ -158,6 +215,7 @@ impl PotVerifier {
         &self,
         seed: PotSeed,
         slot_iterations: NonZeroU32,
+        do_proving_if_necessary: bool,
     ) -> Option<PotOutput> {
         let cache_key = CacheKey {
             seed,
@@ -174,9 +232,13 @@ impl PotVerifier {
                     return Some(correct_checkpoints.output());
                 }
 
-                // There was another verification for these inputs and it wasn't successful,
-                // retry
+                // There was another verification for these inputs and it wasn't successful, retry
                 continue;
+            }
+
+            if !do_proving_if_necessary {
+                // If not found and proving is not allowed then just exit
+                return None;
             }
 
             let cache_value = CacheValue {
@@ -189,8 +251,7 @@ impl PotVerifier {
                 .expect("No one can access this mutex yet; qed");
             // Store pending verification entry in cache
             cache.push(cache_key, cache_value);
-            // Cache lock is no longer necessary, other callers should be able to access cache
-            // too
+            // Cache lock is no longer necessary, other callers should be able to access cache too
             drop(cache);
 
             let (result_sender, result_receiver) = oneshot::channel();

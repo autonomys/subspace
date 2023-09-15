@@ -1669,6 +1669,8 @@ fn check_vote<T: Config>(
             .expect("Must be able to convert to block hash type"),
         SlotNumber::from(slot),
         WrappedPotOutput::from(*proof_of_time),
+        // Quick verification when entering transaction pool, but not when constructing the block
+        !pre_dispatch,
     ) {
         debug!(target: "runtime::subspace", "Invalid proof of time");
 
@@ -1684,6 +1686,7 @@ fn check_vote<T: Config>(
                 .expect("Must be able to convert to block hash type"),
             SlotNumber::from(slot + T::BlockAuthoringDelay::get()),
             WrappedPotOutput::from(*future_proof_of_time),
+            false,
         )
     {
         debug!(target: "runtime::subspace", "Invalid future proof of time");
