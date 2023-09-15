@@ -66,7 +66,9 @@ use sc_proof_of_time::source::PotSourceWorker;
 use sc_proof_of_time::verifier::PotVerifier;
 use sc_service::error::Error as ServiceError;
 use sc_service::{Configuration, NetworkStarter, SpawnTasksParams, TaskManager};
-use sc_subspace_block_relay::{build_consensus_relay, NetworkWrapper};
+use sc_subspace_block_relay::{
+    build_consensus_relay, BlockRelayConfigurationError, NetworkWrapper,
+};
 use sc_telemetry::{Telemetry, TelemetryWorker};
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi};
@@ -148,6 +150,10 @@ pub enum Error {
     /// Subspace networking (DSN) error.
     #[error(transparent)]
     SubspaceDsn(#[from] DsnConfigurationError),
+
+    /// Failed to set up block relay.
+    #[error(transparent)]
+    BlockRelay(#[from] BlockRelayConfigurationError),
 
     /// Other.
     #[error(transparent)]
@@ -821,11 +827,15 @@ where
     let import_queue_service = import_queue.service();
     let network_wrapper = Arc::new(NetworkWrapper::default());
     let block_relay = if config.enable_subspace_block_relay {
-        Some(build_consensus_relay(
-            network_wrapper.clone(),
-            client.clone(),
-            transaction_pool.clone(),
-        ))
+        Some(
+            build_consensus_relay(
+                network_wrapper.clone(),
+                client.clone(),
+                transaction_pool.clone(),
+                config.base.prometheus_registry(),
+            )
+            .map_err(Error::BlockRelay)?,
+        )
     } else {
         None
     };

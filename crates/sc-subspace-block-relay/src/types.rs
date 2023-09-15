@@ -21,7 +21,7 @@ pub(crate) enum RequestResponseErr {
 }
 
 /// Relay error codes.
-#[derive(Debug, thiserror::Error)]
+#[derive(Debug, thiserror::Error, strum_macros::AsRefStr)]
 pub(crate) enum RelayError {
     #[error("Block header: {0}")]
     BlockHeader(String),

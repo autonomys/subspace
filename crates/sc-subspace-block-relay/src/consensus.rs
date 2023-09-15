@@ -3,4 +3,4 @@
 mod relay;
 mod types;
 
-pub use relay::build_consensus_relay;
+pub use relay::{build_consensus_relay, BlockRelayConfigurationError};

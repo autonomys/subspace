@@ -1,8 +1,8 @@
 //! Consensus block relay implementation.
 
 use crate::consensus::types::{
-    BlockHash, Extrinsic, FullDownloadRequest, FullDownloadResponse, InitialRequest,
-    InitialResponse, PartialBlock, ServerMessage,
+    BlockHash, ConsensusClientMetrics, ConsensusServerMetrics, Extrinsic, FullDownloadRequest,
+    FullDownloadResponse, InitialRequest, InitialResponse, PartialBlock, ServerMessage,
 };
 use crate::protocol::compact_block::{CompactBlockClient, CompactBlockServer};
 use crate::protocol::{
@@ -33,6 +33,7 @@ use sp_runtime::traits::{Block as BlockT, Header, One, Zero};
 use std::num::{NonZeroU32, NonZeroUsize};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
+use substrate_prometheus_endpoint::{PrometheusError, Registry};
 use tracing::{debug, info, trace, warn};
 
 const SYNC_PROTOCOL: &str = "/subspace/consensus-block-relay/1";
@@ -61,6 +62,7 @@ where
     protocol_name: ProtocolName,
     protocol: Arc<ProtoClient>,
     backend: Arc<ConsensusClientBackend<Pool>>,
+    metrics: ConsensusClientMetrics,
     _phantom_data: std::marker::PhantomData<(Block, Pool)>,
 }
 
@@ -76,12 +78,14 @@ where
         protocol_name: ProtocolName,
         protocol: Arc<ProtoClient>,
         backend: Arc<ConsensusClientBackend<Pool>>,
+        metrics: ConsensusClientMetrics,
     ) -> Self {
         Self {
             network,
             protocol_name,
             protocol,
             backend,
+            metrics,
             _phantom_data: Default::default(),
         }
     }
@@ -198,6 +202,7 @@ where
                         tx_size = %encoded.len(),
                         "resolve_extrinsics: local miss"
                     );
+                    self.metrics.tx_pool_miss.inc();
                     local_miss += encoded.len();
                 }
                 entry.protocol_unit
@@ -227,7 +232,10 @@ where
             self.download(who, request.clone()).await
         };
         match ret {
-            Ok(blocks) => Ok(Ok(blocks.encode())),
+            Ok(blocks) => {
+                self.metrics.on_download::<Block>(&blocks);
+                Ok(Ok(blocks.encode()))
+            }
             Err(error) => {
                 debug!(
                     target: LOG_TARGET,
@@ -236,6 +244,7 @@ where
                     ?error,
                     "download_block failed"
                 );
+                self.metrics.on_download_fail(&error);
                 match error {
                     RelayError::RequestResponse(error) => match error {
                         RequestResponseErr::DecodeFailed { .. } => {
@@ -276,6 +285,7 @@ struct ConsensusRelayServer<Block: BlockT, Client, Pool, ProtoServer> {
     protocol: Box<ProtoServer>,
     request_receiver: async_channel::Receiver<IncomingRequest>,
     backend: Arc<ConsensusServerBackend<Client, Pool>>,
+    metrics: ConsensusServerMetrics,
     _block: std::marker::PhantomData<Block>,
 }
 
@@ -293,12 +303,14 @@ where
         protocol: Box<ProtoServer>,
         request_receiver: async_channel::Receiver<IncomingRequest>,
         backend: Arc<ConsensusServerBackend<Client, Pool>>,
+        metrics: ConsensusServerMetrics,
     ) -> Self {
         Self {
             client,
             protocol,
             request_receiver,
             backend,
+            metrics,
             _block: Default::default(),
         }
     }
@@ -334,6 +346,7 @@ where
 
         match ret {
             Ok(response) => {
+                self.metrics.on_request();
                 self.send_response(peer, response, pending_response);
                 trace!(
                     target: LOG_TARGET,
@@ -342,6 +355,7 @@ where
                 );
             }
             Err(error) => {
+                self.metrics.on_failed_request(&error);
                 debug!(
                     target: LOG_TARGET,
                     ?peer,
@@ -646,12 +660,19 @@ where
     )))
 }
 
+#[derive(Debug, thiserror::Error)]
+pub enum BlockRelayConfigurationError {
+    #[error(transparent)]
+    PrometheusError(#[from] PrometheusError),
+}
+
 /// Sets up the relay components.
 pub fn build_consensus_relay<Block, Client, Pool>(
     network: Arc<NetworkWrapper>,
     client: Arc<Client>,
     pool: Arc<Pool>,
-) -> BlockRelayParams<Block>
+    registry: Option<&Registry>,
+) -> Result<BlockRelayParams<Block>, BlockRelayConfigurationError>
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + BlockBackend<Block> + ProvideRuntimeApi<Block> + 'static,
@@ -663,22 +684,28 @@ where
     let backend = Arc::new(ConsensusClientBackend {
         transaction_pool: pool.clone(),
     });
+    let metrics = ConsensusClientMetrics::new(registry)
+        .map_err(BlockRelayConfigurationError::PrometheusError)?;
     let relay_client: ConsensusRelayClient<Block, Pool, _> = ConsensusRelayClient::new(
         network,
         SYNC_PROTOCOL.into(),
         Arc::new(CompactBlockClient::new()),
         backend,
+        metrics,
     );
 
     let backend = Arc::new(ConsensusServerBackend {
         client: client.clone(),
         transaction_pool: pool.clone(),
     });
+    let metrics = ConsensusServerMetrics::new(registry)
+        .map_err(BlockRelayConfigurationError::PrometheusError)?;
     let relay_server = ConsensusRelayServer::new(
         client,
         Box::new(CompactBlockServer::new()),
         request_receiver,
         backend,
+        metrics,
     );
 
     let mut protocol_config = ProtocolConfig {
@@ -691,9 +718,9 @@ where
     };
     protocol_config.inbound_queue = Some(tx);
 
-    BlockRelayParams {
+    Ok(BlockRelayParams {
         server: Box::new(relay_server),
         downloader: Arc::new(relay_client),
         request_response_config: protocol_config,
-    }
+    })
 }

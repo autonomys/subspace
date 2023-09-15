@@ -7,9 +7,15 @@ use parking_lot::Mutex;
 use sc_network::request_responses::IfDisconnected;
 use sc_network::types::ProtocolName;
 use sc_network::{NetworkRequest, PeerId};
+use std::collections::HashMap;
 use std::sync::Arc;
+use substrate_prometheus_endpoint::{
+    register, Counter, CounterVec, Opts, PrometheusError, Registry, U64,
+};
 
 type NetworkRequestService = Arc<dyn NetworkRequest + Send + Sync + 'static>;
+
+pub(crate) const ERR_LABEL: &str = "error";
 
 /// Wrapper to work around the circular dependency in substrate:
 /// `build_network()` requires the block relay to be passed in,
@@ -88,5 +94,70 @@ impl NetworkPeerHandle {
         let response_len = response_bytes.len();
         Response::decode(&mut response_bytes.as_ref())
             .map_err(|err| RequestResponseErr::DecodeFailed { response_len, err })
+    }
+}
+
+/// Convenience wrapper around prometheus counter, which can be optional.
+pub(crate) struct RelayCounter(Option<Counter<U64>>);
+
+impl RelayCounter {
+    /// Creates the counter.
+    pub(crate) fn new(
+        name: &str,
+        help: &str,
+        registry: Option<&Registry>,
+    ) -> Result<Self, PrometheusError> {
+        let counter = if let Some(registry) = registry {
+            Some(register(Counter::new(name, help)?, registry)?)
+        } else {
+            None
+        };
+        Ok(Self(counter))
+    }
+
+    /// Increments the counter.
+    pub(crate) fn inc(&self) {
+        if let Some(counter) = self.0.as_ref() {
+            counter.inc()
+        }
+    }
+
+    /// Increments the counter by specified value.
+    pub(crate) fn inc_by(&self, v: u64) {
+        if let Some(counter) = self.0.as_ref() {
+            counter.inc_by(v)
+        }
+    }
+}
+
+/// Convenience wrapper around prometheus counter vec, which can be optional.
+pub(crate) struct RelayCounterVec(Option<CounterVec<U64>>);
+
+impl RelayCounterVec {
+    /// Creates the counter vec.
+    pub(crate) fn new(
+        name: &str,
+        help: &str,
+        labels: &[&str],
+        registry: Option<&Registry>,
+    ) -> Result<Self, PrometheusError> {
+        let counter_vec = if let Some(registry) = registry {
+            Some(register(
+                CounterVec::new(Opts::new(name, help), labels)?,
+                registry,
+            )?)
+        } else {
+            None
+        };
+        Ok(Self(counter_vec))
+    }
+
+    /// Increments the counter.
+    pub(crate) fn inc(&self, label: &str, label_value: &str) {
+        if let Some(counter) = self.0.as_ref() {
+            let mut labels = HashMap::new();
+            labels.insert(label, label_value);
+            counter.with(&labels).inc()
+        }
     }
 }
