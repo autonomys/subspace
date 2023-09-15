@@ -1,9 +1,11 @@
 //! PoT gossip functionality.
 
-use crate::source::state::PotState;
+use crate::source::state::{NextSlotInput, PotState};
 use crate::verifier::PotVerifier;
 use futures::channel::mpsc;
+use futures::executor::block_on;
 use futures::{FutureExt, SinkExt, StreamExt};
+use lru::LruCache;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use sc_network::config::NonDefaultSetConfig;
@@ -16,14 +18,19 @@ use sp_consensus::SyncOracle;
 use sp_consensus_slots::Slot;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
 use std::cmp;
+use std::collections::HashMap;
 use std::future::poll_fn;
-use std::num::NonZeroU32;
+use std::hash::{Hash, Hasher};
+use std::num::{NonZeroU32, NonZeroUsize};
 use std::sync::{atomic, Arc};
-use subspace_core_primitives::{PotCheckpoints, PotSeed};
+use subspace_core_primitives::{PotCheckpoints, PotSeed, SlotNumber};
 use tracing::{debug, error, trace, warn};
 
 /// How many slots can proof be before it is too far
 const MAX_SLOTS_IN_THE_FUTURE: u64 = 10;
+/// How much faster PoT verification is expected to be comparing to PoT proving
+const EXPECTED_POT_VERIFICATION_SPEEDUP: usize = 7;
+const GOSSIP_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(1_000).expect("Not zero; qed");
 
 mod rep {
     use sc_network::ReputationChange;
@@ -45,6 +52,14 @@ mod rep {
     /// outside of range.
     pub(super) const GOSSIP_SLOT_ITERATIONS_OUTSIDE_OF_RANGE: ReputationChange =
         ReputationChange::new(-(1 << 5), "PoT: slot iterations outside of range");
+    /// Reputation change when a peer sends us checkpoints that were unused and ended up becoming
+    /// outdated.
+    pub(super) const GOSSIP_OUTDATED_CHECKPOINTS: ReputationChange =
+        ReputationChange::new(-(1 << 5), "PoT: outdated checkpoints");
+    /// Reputation change when a peer sends us checkpoints that were unused and ended up not
+    /// matching slot inputs.
+    pub(super) const GOSSIP_SLOT_INPUT_MISMATCH: ReputationChange =
+        ReputationChange::new(-(1 << 5), "PoT: slot input mismatch");
     /// Reputation change when a peer sends us an invalid proof
     pub(super) const GOSSIP_INVALID_CHECKPOINTS: ReputationChange =
         ReputationChange::new_fatal("PoT: Invalid proof");
@@ -59,7 +74,7 @@ pub fn pot_gossip_peers_set_config() -> NonDefaultSetConfig {
     cfg
 }
 
-#[derive(Debug, Copy, Clone, Encode, Decode)]
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Encode, Decode)]
 pub(super) struct GossipCheckpoints {
     /// Slot number
     pub(super) slot: Slot,
@@ -71,9 +86,20 @@ pub(super) struct GossipCheckpoints {
     pub(super) checkpoints: PotCheckpoints,
 }
 
+// TODO: Replace with derive once `Slot` implements `Hash`
+impl Hash for GossipCheckpoints {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        SlotNumber::from(self.slot).hash(state);
+        self.seed.hash(state);
+        self.slot_iterations.hash(state);
+        self.checkpoints.hash(state);
+    }
+}
+
 #[derive(Debug)]
 pub(super) enum ToGossipMessage {
     Checkpoints(GossipCheckpoints),
+    NextSlotInput(NextSlotInput),
 }
 
 /// PoT gossip worker
@@ -86,6 +112,7 @@ where
     topic: Block::Hash,
     state: Arc<PotState>,
     pot_verifier: PotVerifier,
+    gossip_cache: LruCache<PeerId, Vec<GossipCheckpoints>>,
     to_gossip_receiver: mpsc::Receiver<ToGossipMessage>,
     from_gossip_sender: mpsc::Sender<(PeerId, GossipCheckpoints)>,
 }
@@ -124,6 +151,7 @@ where
             topic,
             state,
             pot_verifier,
+            gossip_cache: LruCache::new(GOSSIP_CACHE_SIZE),
             to_gossip_receiver,
             from_gossip_sender,
         }
@@ -157,7 +185,7 @@ where
                     }
                 },
                 outgoing_message = self.to_gossip_receiver.select_next_some() => {
-                    self.handle_to_gossip_messages(outgoing_message)
+                    self.handle_to_gossip_messages(outgoing_message).await
                 },
                  _ = gossip_engine_poll.fuse() => {
                     error!("Gossip engine has terminated");
@@ -181,7 +209,7 @@ where
 
                 if let Some(verified_checkpoints) = self
                     .pot_verifier
-                    .get_checkpoints(message.seed, message.slot_iterations)
+                    .try_get_checkpoints(message.seed, message.slot_iterations)
                 {
                     if verified_checkpoints != message.checkpoints {
                         trace!(
@@ -222,7 +250,9 @@ where
                     "Checkpoints from the future",
                 );
 
-                // TODO: Store future candidates somewhere for future processing
+                self.gossip_cache
+                    .get_or_insert_mut(sender, Default::default)
+                    .push(message);
                 return;
             }
         }
@@ -234,7 +264,9 @@ where
         {
             debug!(%sender, slot = %message.slot, "Full verification succeeded");
 
-            self.gossip_checkpoints(message);
+            self.engine
+                .lock()
+                .gossip_message(self.topic, message.encode(), false);
 
             if let Err(error) = self.from_gossip_sender.send((sender, message)).await {
                 warn!(%error, "Failed to send incoming message");
@@ -247,18 +279,198 @@ where
         }
     }
 
-    fn handle_to_gossip_messages(&mut self, message: ToGossipMessage) {
+    async fn handle_to_gossip_messages(&mut self, message: ToGossipMessage) {
         match message {
             ToGossipMessage::Checkpoints(checkpoints) => {
-                self.gossip_checkpoints(checkpoints);
+                self.engine
+                    .lock()
+                    .gossip_message(self.topic, checkpoints.encode(), false);
+            }
+            ToGossipMessage::NextSlotInput(next_slot_input) => {
+                self.handle_next_slot_input(next_slot_input).await;
             }
         }
     }
 
-    fn gossip_checkpoints(&self, message: GossipCheckpoints) {
-        self.engine
-            .lock()
-            .gossip_message(self.topic, message.encode(), false);
+    /// Handle next slot input and try to remove outdated checkpoints information from internal
+    /// cache as well as produce next checkpoint if it was already received out of order before
+    async fn handle_next_slot_input(&mut self, next_slot_input: NextSlotInput) {
+        let mut old_checkpoints = HashMap::<GossipCheckpoints, Vec<PeerId>>::new();
+        for (sender, checkpoints) in &mut self.gossip_cache {
+            for checkpoints in
+                checkpoints.extract_if(|checkpoints| checkpoints.slot <= next_slot_input.slot)
+            {
+                old_checkpoints
+                    .entry(checkpoints)
+                    .or_default()
+                    .push(*sender);
+            }
+        }
+
+        let mut potentially_matching_checkpoints = Vec::new();
+
+        for (checkpoints, senders) in old_checkpoints {
+            if checkpoints.slot != next_slot_input.slot {
+                let invalid_checkpoints = self
+                    .pot_verifier
+                    .try_get_checkpoints(checkpoints.seed, checkpoints.slot_iterations)
+                    .map(|verified_checkpoints| verified_checkpoints != checkpoints.checkpoints)
+                    .unwrap_or_default();
+
+                let engine = self.engine.lock();
+                if invalid_checkpoints {
+                    for sender in senders {
+                        trace!(
+                            %sender,
+                            slot = %checkpoints.slot,
+                            "Checkpoints ended up being invalid",
+                        );
+
+                        engine.report(sender, rep::GOSSIP_INVALID_CHECKPOINTS);
+                    }
+                } else {
+                    for sender in senders {
+                        trace!(
+                            %sender,
+                            slot = %checkpoints.slot,
+                            "Checkpoints ended up being unused",
+                        );
+
+                        engine.report(sender, rep::GOSSIP_OUTDATED_CHECKPOINTS);
+                    }
+                }
+
+                continue;
+            }
+
+            if !(checkpoints.seed == next_slot_input.seed
+                && checkpoints.slot_iterations == next_slot_input.slot_iterations)
+            {
+                let engine = self.engine.lock();
+                for sender in senders {
+                    trace!(
+                        %sender,
+                        slot = %checkpoints.slot,
+                        "Checkpoints ended up not matching slot inputs",
+                    );
+
+                    engine.report(sender, rep::GOSSIP_SLOT_INPUT_MISMATCH);
+                }
+
+                continue;
+            }
+
+            potentially_matching_checkpoints.push((checkpoints, senders));
+        }
+
+        // Avoid blocking gossip for too long
+        rayon::spawn({
+            let engine = Arc::clone(&self.engine);
+            let pot_verifier = self.pot_verifier.clone();
+            let from_gossip_sender = self.from_gossip_sender.clone();
+            let topic = self.topic;
+
+            move || {
+                block_on(Self::handle_potentially_matching_checkpoints(
+                    next_slot_input,
+                    potentially_matching_checkpoints,
+                    engine,
+                    &pot_verifier,
+                    from_gossip_sender,
+                    topic,
+                ));
+            }
+        });
+    }
+
+    async fn handle_potentially_matching_checkpoints(
+        next_slot_input: NextSlotInput,
+        potentially_matching_checkpoints: Vec<(GossipCheckpoints, Vec<PeerId>)>,
+        engine: Arc<Mutex<GossipEngine<Block>>>,
+        pot_verifier: &PotVerifier,
+        mut from_gossip_sender: mpsc::Sender<(PeerId, GossipCheckpoints)>,
+        topic: Block::Hash,
+    ) {
+        if potentially_matching_checkpoints.is_empty() {
+            // Nothing left to do
+            return;
+        }
+
+        // If we have too many unique checkpoints to verify it might be cheaper to prove it
+        // ourselves
+        let correct_checkpoints =
+            if potentially_matching_checkpoints.len() < EXPECTED_POT_VERIFICATION_SPEEDUP {
+                let mut correct_checkpoints = None;
+
+                // Verify all checkpoints
+                for (checkpoints, _senders) in &potentially_matching_checkpoints {
+                    if pot_verifier
+                        .verify_checkpoints(
+                            checkpoints.seed,
+                            checkpoints.slot_iterations,
+                            &checkpoints.checkpoints,
+                        )
+                        .await
+                    {
+                        correct_checkpoints.replace(*checkpoints);
+                        break;
+                    }
+                }
+
+                correct_checkpoints
+            } else {
+                match subspace_proof_of_time::prove(
+                    next_slot_input.seed,
+                    next_slot_input.slot_iterations,
+                ) {
+                    Ok(checkpoints) => Some(GossipCheckpoints {
+                        slot: next_slot_input.slot,
+                        seed: next_slot_input.seed,
+                        slot_iterations: next_slot_input.slot_iterations,
+                        checkpoints,
+                    }),
+                    Err(error) => {
+                        error!(
+                            %error,
+                            slot = %next_slot_input.slot,
+                            "Failed to run proof of time, this is an implementation bug",
+                        );
+                        return;
+                    }
+                }
+            };
+
+        for (checkpoints, senders) in potentially_matching_checkpoints {
+            if Some(checkpoints) == correct_checkpoints {
+                let mut sent = false;
+                for sender in senders {
+                    debug!(%sender, slot = %checkpoints.slot, "Correct future checkpoints");
+
+                    if sent {
+                        continue;
+                    }
+                    sent = true;
+
+                    if let Err(error) = from_gossip_sender.send((sender, checkpoints)).await {
+                        warn!(
+                            %error,
+                            slot = %checkpoints.slot,
+                            "Failed to send future checkpoints",
+                        );
+                    }
+
+                    engine
+                        .lock()
+                        .gossip_message(topic, checkpoints.encode(), false);
+                }
+            } else {
+                let engine = engine.lock();
+                for sender in senders {
+                    debug!(%sender, slot = %checkpoints.slot, "Next slot checkpoints are invalid");
+                    engine.report(sender, rep::GOSSIP_INVALID_CHECKPOINTS);
+                }
+            }
+        }
     }
 }
 

@@ -277,7 +277,10 @@ where
             }))
             .is_err()
         {
-            debug!(%slot, "Gossip is not able to keep-up with slot production");
+            debug!(
+                %slot,
+                "Gossip is not able to keep-up with slot production (timekeeper)",
+            );
         }
 
         // We don't care if block production is too slow or block production is not enabled on this
@@ -298,23 +301,31 @@ where
             seed: gossip_checkpoints.seed,
         };
 
-        if self
-            .state
-            .try_extend(
-                expected_next_slot_input,
-                gossip_checkpoints.slot,
-                gossip_checkpoints.checkpoints.output(),
-                #[cfg(feature = "pot")]
-                None,
-            )
-            .is_ok()
-        {
+        if let Ok(next_slot_input) = self.state.try_extend(
+            expected_next_slot_input,
+            gossip_checkpoints.slot,
+            gossip_checkpoints.checkpoints.output(),
+            #[cfg(feature = "pot")]
+            None,
+        ) {
             // We don't care if block production is too slow or block production is not enabled on
             // this node at all
             let _ = self.slot_sender.try_send(PotSlotInfo {
                 slot: gossip_checkpoints.slot,
                 checkpoints: gossip_checkpoints.checkpoints,
             });
+
+            if self
+                .to_gossip_sender
+                .try_send(ToGossipMessage::NextSlotInput(next_slot_input))
+                .is_err()
+            {
+                debug!(
+                    slot = %gossip_checkpoints.slot,
+                    next_slot = %next_slot_input.slot,
+                    "Gossip is not able to keep-up with slot production (gossip)",
+                );
+            }
         }
     }
 
@@ -327,7 +338,11 @@ where
     }
 
     #[cfg(feature = "pot")]
-    fn handle_block_import_notification(&self, block_hash: Block::Hash, header: &Block::Header) {
+    fn handle_block_import_notification(
+        &mut self,
+        block_hash: Block::Hash,
+        header: &Block::Header,
+    ) {
         let subspace_digest_items = match extract_subspace_digest_items::<
             Block::Header,
             FarmerPublicKey,
@@ -359,17 +374,24 @@ where
         // * if block import is on a different PoT chain, it will update next slot input to the
         //   correct fork
         // * if block import is on the same PoT chain this will essentially do nothing
-        if self
-            .state
-            .update(
-                best_slot,
-                best_proof,
-                #[cfg(feature = "pot")]
-                Some(subspace_digest_items.pot_parameters_change),
-            )
-            .is_some()
-        {
+        if let Some(next_slot_input) = self.state.update(
+            best_slot,
+            best_proof,
+            #[cfg(feature = "pot")]
+            Some(subspace_digest_items.pot_parameters_change),
+        ) {
             warn!("Proof of time chain reorg happened");
+
+            if self
+                .to_gossip_sender
+                .try_send(ToGossipMessage::NextSlotInput(next_slot_input))
+                .is_err()
+            {
+                debug!(
+                    next_slot = %next_slot_input.slot,
+                    "Gossip is not able to keep-up with slot production (block import)",
+                );
+            }
         }
     }
 }

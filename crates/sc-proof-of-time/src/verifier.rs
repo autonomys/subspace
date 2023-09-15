@@ -64,7 +64,8 @@ impl PotVerifier {
         self.genesis_seed
     }
 
-    pub fn get_checkpoints(
+    /// Try to get checkpoints quickly without waiting for potentially locked async mutex or proving
+    pub fn try_get_checkpoints(
         &self,
         seed: PotSeed,
         slot_iterations: NonZeroU32,
@@ -321,7 +322,7 @@ impl PotVerifier {
     // TODO: False-positive, lock is not actually held over await point, remove suppression once
     //  fixed upstream
     #[allow(clippy::await_holding_lock)]
-    pub async fn verify_checkpoints_internal(
+    async fn verify_checkpoints_internal(
         &self,
         seed: PotSeed,
         slot_iterations: NonZeroU32,
