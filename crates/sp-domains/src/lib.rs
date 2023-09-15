@@ -359,6 +359,8 @@ pub struct ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance> {
     pub consensus_block_number: Number,
     /// The block hash corresponding to `consensus_block_number`.
     pub consensus_block_hash: Hash,
+    /// All the bundles that are included in the domain block building.
+    pub valid_bundles: Vec<ValidBundle>,
     /// Potential bundles that are excluded from the domain block building.
     pub invalid_bundles: Vec<InvalidBundle>,
     /// All `extrinsics_roots` for all bundles being executed by this block.
@@ -400,6 +402,7 @@ impl<
             parent_domain_block_receipt_hash: Default::default(),
             consensus_block_hash: consensus_genesis_hash,
             consensus_block_number: Zero::zero(),
+            valid_bundles: Vec::new(),
             invalid_bundles: Vec::new(),
             block_extrinsics_roots: sp_std::vec![],
             final_state_root: genesis_state_root.clone(),
@@ -434,6 +437,7 @@ impl<
             parent_domain_block_receipt_hash,
             consensus_block_number,
             consensus_block_hash,
+            valid_bundles: Vec::new(),
             invalid_bundles: Vec::new(),
             block_extrinsics_roots: sp_std::vec![Default::default()],
             final_state_root: Default::default(),
@@ -701,6 +705,8 @@ pub enum InvalidBundleType {
     OutOfRangeTx,
     /// Transaction is illegal (unable to pay the fee, etc).
     IllegalTx,
+    /// Transaction is an invalid XDM
+    InvalidXDM,
     /// Receipt is invalid.
     InvalidReceipt(InvalidReceipt),
 }
@@ -714,6 +720,15 @@ pub struct InvalidBundle {
     pub bundle_index: u32,
     /// Specific type of invalidity.
     pub invalid_bundle_type: InvalidBundleType,
+}
+
+/// [`ValidBundle`] represents a bundle that was used when building the domain block.
+#[derive(Debug, Decode, Encode, TypeInfo, Clone, PartialEq, Eq)]
+pub struct ValidBundle {
+    /// Index of this bundle in the original list of bundles in the consensus block.
+    pub bundle_index: u32,
+    /// Hash of `Vec<(tx_signer, tx_hash)>` of all domain extrinsic being included in the bundle.
+    pub bundle_digest: H256,
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, Clone, PartialEq, Eq)]

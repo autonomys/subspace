@@ -27,14 +27,14 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 use runtime_api::InherentExtrinsicConstructor;
 use sc_client_api::BlockBackend;
-use sp_api::ProvideRuntimeApi;
+use sp_api::{HashT, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_domains::{
     BundleValidity, DomainId, DomainsApi, DomainsDigestItem, ExecutionReceipt, ExtrinsicsRoot,
-    InvalidBundle, InvalidBundleType, OpaqueBundle, OpaqueBundles, ReceiptValidity,
+    InvalidBundle, InvalidBundleType, OpaqueBundle, OpaqueBundles, ReceiptValidity, ValidBundle,
 };
 use sp_messenger::MessengerApi;
-use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
+use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Header as HeaderT, NumberFor};
 use std::borrow::Cow;
 use std::collections::{BTreeMap, VecDeque};
 use std::fmt::Debug;
@@ -108,18 +108,15 @@ where
     Ok((extrinsics, shuffling_seed, maybe_new_runtime))
 }
 
-fn deduplicate_and_shuffle_extrinsics<Block, SE>(
-    parent_hash: Block::Hash,
-    signer_extractor: &SE,
-    mut extrinsics: Vec<Block::Extrinsic>,
+fn deduplicate_and_shuffle_extrinsics<Block>(
+    mut extrinsics: Vec<(Option<AccountId>, Block::Extrinsic)>,
     shuffling_seed: Randomness,
 ) -> Result<Vec<Block::Extrinsic>, sp_blockchain::Error>
 where
     Block: BlockT,
-    SE: SignerExtractor<Block>,
 {
     let mut seen = Vec::new();
-    extrinsics.retain(|uxt| match seen.contains(uxt) {
+    extrinsics.retain(|(_, uxt)| match seen.contains(uxt) {
         true => {
             tracing::trace!(extrinsic = ?uxt, "Duplicated extrinsic");
             false
@@ -132,14 +129,6 @@ where
     drop(seen);
 
     tracing::trace!(?extrinsics, "Origin deduplicated extrinsics");
-
-    let extrinsics: Vec<_> = match signer_extractor.extract_signer(parent_hash, extrinsics) {
-        Ok(res) => res,
-        Err(e) => {
-            tracing::error!(error = ?e, "Error at calling runtime api: extract_signer");
-            return Err(e.into());
-        }
-    };
 
     let extrinsics =
         shuffle_extrinsics::<<Block as BlockT>::Extrinsic, AccountId>(extrinsics, shuffling_seed);
@@ -197,6 +186,7 @@ fn shuffle_extrinsics<Extrinsic: Debug, AccountId: Ord + Clone>(
 pub struct PreprocessResult<Block: BlockT> {
     pub extrinsics: Vec<Block::Extrinsic>,
     pub extrinsics_roots: Vec<ExtrinsicsRoot>,
+    pub valid_bundles: Vec<ValidBundle>,
     pub invalid_bundles: Vec<InvalidBundle>,
 }
 
@@ -312,16 +302,11 @@ where
             .runtime_api()
             .domain_tx_range(consensus_block_hash, self.domain_id)?;
 
-        let (invalid_bundles, extrinsics) =
+        let (valid_bundles, invalid_bundles, extrinsics) =
             self.compile_bundles_to_extrinsics(bundles, tx_range, domain_hash)?;
 
-        let extrinsics_in_bundle = deduplicate_and_shuffle_extrinsics(
-            domain_hash,
-            &self.runtime_api,
-            extrinsics,
-            shuffling_seed,
-        )
-        .map(|exts| self.filter_invalid_xdm_extrinsics(domain_hash, exts))?;
+        let extrinsics_in_bundle =
+            deduplicate_and_shuffle_extrinsics::<Block>(extrinsics, shuffling_seed)?;
 
         // Fetch inherent extrinsics
         let mut extrinsics = construct_inherent_extrinsics(
@@ -348,6 +333,7 @@ where
         Ok(Some(PreprocessResult {
             extrinsics,
             extrinsics_roots,
+            valid_bundles,
             invalid_bundles,
         }))
     }
@@ -360,13 +346,35 @@ where
         bundles: OpaqueBundles<CBlock, NumberFor<Block>, Block::Hash, Balance>,
         tx_range: U256,
         at: Block::Hash,
-    ) -> sp_blockchain::Result<(Vec<InvalidBundle>, Vec<Block::Extrinsic>)> {
+    ) -> sp_blockchain::Result<(
+        Vec<ValidBundle>,
+        Vec<InvalidBundle>,
+        Vec<(Option<AccountId>, Block::Extrinsic)>,
+    )> {
         let mut invalid_bundles = Vec::with_capacity(bundles.len());
+        let mut valid_bundles = Vec::with_capacity(bundles.len());
         let mut valid_extrinsics = Vec::new();
 
         for (index, bundle) in bundles.into_iter().enumerate() {
             match self.check_bundle_validity(&bundle, &tx_range, at)? {
-                BundleValidity::Valid(extrinsics) => valid_extrinsics.extend(extrinsics),
+                BundleValidity::Valid(extrinsics) => {
+                    let extrinsics: Vec<_> = match self.runtime_api.extract_signer(at, extrinsics) {
+                        Ok(res) => res,
+                        Err(e) => {
+                            tracing::error!(error = ?e, "Error at calling runtime api: extract_signer");
+                            return Err(e.into());
+                        }
+                    };
+                    let bundle_digest: Vec<_> = extrinsics
+                        .iter()
+                        .map(|(signer, tx)| (signer.clone(), BlakeTwo256::hash_of(tx)))
+                        .collect();
+                    valid_bundles.push(ValidBundle {
+                        bundle_index: index as u32,
+                        bundle_digest: BlakeTwo256::hash_of(&bundle_digest),
+                    });
+                    valid_extrinsics.extend(extrinsics);
+                }
                 BundleValidity::Invalid(invalid_bundle_type) => {
                     invalid_bundles.push(InvalidBundle {
                         bundle_index: index as u32,
@@ -376,7 +384,7 @@ where
             }
         }
 
-        Ok((invalid_bundles, valid_extrinsics))
+        Ok((valid_bundles, invalid_bundles, valid_extrinsics))
     }
 
     fn check_bundle_validity(
@@ -441,33 +449,23 @@ where
                 return Ok(BundleValidity::Invalid(InvalidBundleType::IllegalTx));
             }
 
+            // TODO: the behavior is changed, as before invalid XDM will be dropped silently,
+            // and the other extrinsic of the bundle will be continue processed, now the whole
+            // bundle is considered as invalid and excluded from further processing.
+            if !is_valid_xdm::<CClient, CBlock, Block, _>(
+                &self.consensus_client,
+                at,
+                &self.runtime_api,
+                &extrinsic,
+            )? {
+                // TODO: Generate a fraud proof for this invalid bundle
+                return Ok(BundleValidity::Invalid(InvalidBundleType::InvalidXDM));
+            }
+
             extrinsics.push(extrinsic);
         }
 
         Ok(BundleValidity::Valid(extrinsics))
-    }
-
-    fn filter_invalid_xdm_extrinsics(
-        &self,
-        at: Block::Hash,
-        exts: Vec<Block::Extrinsic>,
-    ) -> Vec<Block::Extrinsic> {
-        exts.into_iter()
-            .filter(|ext| {
-                match is_valid_xdm::<CClient, CBlock, Block, _>(
-                    &self.consensus_client,
-                    at,
-                    &self.runtime_api,
-                    ext,
-                ) {
-                    Ok(valid) => valid,
-                    Err(err) => {
-                        tracing::error!("failed to verify extrinsic: {err}",);
-                        false
-                    }
-                }
-            })
-            .collect()
     }
 }
 
