@@ -195,26 +195,30 @@ where
         }
     }
 
-    async fn handle_checkpoints_candidates(&mut self, sender: PeerId, message: GossipCheckpoints) {
+    async fn handle_checkpoints_candidates(
+        &mut self,
+        sender: PeerId,
+        checkpoints: GossipCheckpoints,
+    ) {
         let next_slot_input = self.state.next_slot_input(atomic::Ordering::Relaxed);
 
-        match message.slot.cmp(&next_slot_input.slot) {
+        match checkpoints.slot.cmp(&next_slot_input.slot) {
             cmp::Ordering::Less => {
                 trace!(
                     %sender,
-                    slot = %message.slot,
+                    slot = %checkpoints.slot,
                     next_slot = %next_slot_input.slot,
                     "Checkpoints for outdated slot, ignoring",
                 );
 
                 if let Some(verified_checkpoints) = self
                     .pot_verifier
-                    .try_get_checkpoints(message.seed, message.slot_iterations)
+                    .try_get_checkpoints(checkpoints.seed, checkpoints.slot_iterations)
                 {
-                    if verified_checkpoints != message.checkpoints {
+                    if verified_checkpoints != checkpoints.checkpoints {
                         trace!(
                             %sender,
-                            slot = %message.slot,
+                            slot = %checkpoints.slot,
                             "Invalid old checkpoints, punishing sender",
                         );
 
@@ -227,12 +231,12 @@ where
                 return;
             }
             cmp::Ordering::Equal => {
-                if !(message.seed == next_slot_input.seed
-                    && message.slot_iterations == next_slot_input.slot_iterations)
+                if !(checkpoints.seed == next_slot_input.seed
+                    && checkpoints.slot_iterations == next_slot_input.slot_iterations)
                 {
                     trace!(
                         %sender,
-                        slot = %message.slot,
+                        slot = %checkpoints.slot,
                         "Checkpoints with next slot mismatch, ignoring",
                     );
 
@@ -245,34 +249,38 @@ where
             cmp::Ordering::Greater => {
                 trace!(
                     %sender,
-                    slot = %message.slot,
+                    slot = %checkpoints.slot,
                     next_slot = %next_slot_input.slot,
                     "Checkpoints from the future",
                 );
 
                 self.gossip_cache
                     .get_or_insert_mut(sender, Default::default)
-                    .push(message);
+                    .push(checkpoints);
                 return;
             }
         }
 
         if self
             .pot_verifier
-            .verify_checkpoints(message.seed, message.slot_iterations, &message.checkpoints)
+            .verify_checkpoints(
+                checkpoints.seed,
+                checkpoints.slot_iterations,
+                &checkpoints.checkpoints,
+            )
             .await
         {
-            debug!(%sender, slot = %message.slot, "Full verification succeeded");
+            debug!(%sender, slot = %checkpoints.slot, "Full verification succeeded");
 
             self.engine
                 .lock()
-                .gossip_message(self.topic, message.encode(), false);
+                .gossip_message(self.topic, checkpoints.encode(), false);
 
-            if let Err(error) = self.from_gossip_sender.send((sender, message)).await {
+            if let Err(error) = self.from_gossip_sender.send((sender, checkpoints)).await {
                 warn!(%error, "Failed to send incoming message");
             }
         } else {
-            debug!(%sender, slot = %message.slot, "Full verification failed");
+            debug!(%sender, slot = %checkpoints.slot, "Full verification failed");
             self.engine
                 .lock()
                 .report(sender, rep::GOSSIP_INVALID_CHECKPOINTS);
