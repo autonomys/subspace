@@ -563,14 +563,14 @@ impl PosExtension {
 #[cfg(all(feature = "std", feature = "pot"))]
 sp_externalities::decl_extension! {
     /// A Poof of time extension.
-    pub struct PotExtension(Box<dyn (Fn(BlockHash, SlotNumber, PotOutput) -> bool) + Send + Sync>);
+    pub struct PotExtension(Box<dyn (Fn(BlockHash, SlotNumber, PotOutput, bool) -> bool) + Send + Sync>);
 }
 
 #[cfg(all(feature = "std", feature = "pot"))]
 impl PotExtension {
     /// Create new instance.
     pub fn new(
-        verifier: Box<dyn (Fn(BlockHash, SlotNumber, PotOutput) -> bool) + Send + Sync>,
+        verifier: Box<dyn (Fn(BlockHash, SlotNumber, PotOutput, bool) -> bool) + Send + Sync>,
     ) -> Self {
         Self(verifier)
     }
@@ -631,6 +631,7 @@ pub trait Consensus {
         parent_hash: BlockHash,
         slot: SlotNumber,
         proof_of_time: WrappedPotOutput,
+        quick_verification: bool,
     ) -> bool {
         use sp_externalities::ExternalitiesExt;
 
@@ -639,7 +640,7 @@ pub trait Consensus {
             .expect("No `PotExtension` associated for the current context!")
             .0;
 
-        verifier(parent_hash, slot, proof_of_time.0)
+        verifier(parent_hash, slot, proof_of_time.0, quick_verification)
     }
 }
 
