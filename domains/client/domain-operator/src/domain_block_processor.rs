@@ -5,6 +5,7 @@ use crate::utils::{DomainBlockImportNotification, DomainImportNotificationSinks}
 use crate::ExecutionReceiptFor;
 use codec::{Decode, Encode};
 use domain_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
+use domain_block_preprocessor::PreprocessResult;
 use domain_runtime_primitives::DomainCoreApi;
 use sc_client_api::{AuxStore, BlockBackend, Finalizer, ProofProvider};
 use sc_consensus::{
@@ -16,7 +17,7 @@ use sp_consensus::{BlockOrigin, SyncOracle};
 use sp_core::traits::CodeExecutor;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::merkle_tree::MerkleTree;
-use sp_domains::{DomainId, DomainsApi, ExecutionReceipt, ExtrinsicsRoot, InvalidBundle};
+use sp_domains::{DomainId, DomainsApi, ExecutionReceipt};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, One, Zero};
 use sp_runtime::Digest;
 use std::cmp::Ordering;
@@ -267,11 +268,16 @@ where
         &self,
         (consensus_block_hash, consensus_block_number): (CBlock::Hash, NumberFor<CBlock>),
         (parent_hash, parent_number): (Block::Hash, NumberFor<Block>),
-        extrinsics: Vec<Block::Extrinsic>,
-        invalid_bundles: Vec<InvalidBundle>,
-        bundle_extrinsics_roots: Vec<ExtrinsicsRoot>,
+        preprocess_result: PreprocessResult<Block>,
         digests: Digest,
     ) -> Result<DomainBlockResult<Block, CBlock>, sp_blockchain::Error> {
+        let PreprocessResult {
+            extrinsics,
+            extrinsics_roots,
+            valid_bundles,
+            invalid_bundles,
+        } = preprocess_result;
+
         // Although the domain block intuitively ought to use the same fork choice
         // from the corresponding consensus block, it's fine to forcibly always use
         // the longest chain for simplicity as we manually build the domain branches
@@ -369,10 +375,9 @@ where
             parent_domain_block_receipt_hash: parent_receipt.hash(),
             consensus_block_number,
             consensus_block_hash,
-            // TODO: set to proper value
-            valid_bundles: Vec::new(),
+            valid_bundles,
             invalid_bundles,
-            block_extrinsics_roots: bundle_extrinsics_roots,
+            block_extrinsics_roots: extrinsics_roots,
             final_state_root: state_root,
             execution_trace: trace,
             execution_trace_root: sp_core::H256(trace_root),
