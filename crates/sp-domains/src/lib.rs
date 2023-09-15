@@ -705,6 +705,8 @@ pub enum InvalidBundleType {
     OutOfRangeTx,
     /// Transaction is illegal (unable to pay the fee, etc).
     IllegalTx,
+    /// Transaction is an invalid XDM
+    InvalidXDM,
     /// Receipt is invalid.
     InvalidReceipt(InvalidReceipt),
 }

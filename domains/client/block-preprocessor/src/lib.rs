@@ -320,8 +320,7 @@ where
             &self.runtime_api,
             extrinsics,
             shuffling_seed,
-        )
-        .map(|exts| self.filter_invalid_xdm_extrinsics(domain_hash, exts))?;
+        )?;
 
         // Fetch inherent extrinsics
         let mut extrinsics = construct_inherent_extrinsics(
@@ -441,33 +440,23 @@ where
                 return Ok(BundleValidity::Invalid(InvalidBundleType::IllegalTx));
             }
 
+            // TODO: the behavior is changed, as before invalid XDM will be dropped silently,
+            // and the other extrinsic of the bundle will be continue processed, now the whole
+            // bundle is considered as invalid and excluded from further processing.
+            if !is_valid_xdm::<CClient, CBlock, Block, _>(
+                &self.consensus_client,
+                at,
+                &self.runtime_api,
+                &extrinsic,
+            )? {
+                // TODO: Generate a fraud proof for this invalid bundle
+                return Ok(BundleValidity::Invalid(InvalidBundleType::InvalidXDM));
+            }
+
             extrinsics.push(extrinsic);
         }
 
         Ok(BundleValidity::Valid(extrinsics))
-    }
-
-    fn filter_invalid_xdm_extrinsics(
-        &self,
-        at: Block::Hash,
-        exts: Vec<Block::Extrinsic>,
-    ) -> Vec<Block::Extrinsic> {
-        exts.into_iter()
-            .filter(|ext| {
-                match is_valid_xdm::<CClient, CBlock, Block, _>(
-                    &self.consensus_client,
-                    at,
-                    &self.runtime_api,
-                    ext,
-                ) {
-                    Ok(valid) => valid,
-                    Err(err) => {
-                        tracing::error!("failed to verify extrinsic: {err}",);
-                        false
-                    }
-                }
-            })
-            .collect()
     }
 }
 
