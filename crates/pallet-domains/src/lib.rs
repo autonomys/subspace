@@ -41,9 +41,11 @@ use frame_system::offchain::SubmitTransaction;
 use frame_system::pallet_prelude::*;
 pub use pallet::*;
 use scale_info::TypeInfo;
+use sp_core::storage::StorageKey;
 use sp_core::H256;
 use sp_domains::bundle_producer_election::{is_below_threshold, BundleProducerElectionParams};
-use sp_domains::fraud_proof::FraudProof;
+use sp_domains::fraud_proof::{FraudProof, InvalidTotalRewardsProof};
+use sp_domains::verification::StorageProofVerifier;
 use sp_domains::{
     DomainBlockLimit, DomainId, DomainInstanceData, ExecutionReceipt, OpaqueBundle, OperatorId,
     OperatorPublicKey, ProofOfElection, RuntimeId, EMPTY_EXTRINSIC_ROOT,
@@ -575,6 +577,12 @@ mod pallet {
         ChallengingGenesisReceipt,
         /// The descendants of the fraudulent ER is not pruned
         DescendantsOfFraudulentERNotPruned,
+        /// Proof of total rewards is invalid.
+        InvalidTotalRewardsProof,
+        /// Invalid fraud proof since total rewards are not mismatched.
+        InvalidTotalRewardsFraudProof,
+        /// Invalid state root.
+        FailedToDecodeDomainBlockHash,
     }
 
     impl<T> From<FraudProofError> for Error<T> {
@@ -1481,6 +1489,27 @@ impl<T: Config> Pallet<T> {
             !bad_receipt.domain_block_number.is_zero(),
             FraudProofError::ChallengingGenesisReceipt
         );
+
+        if let FraudProof::InvalidTotalRewards(InvalidTotalRewardsProof { storage_proof, .. }) =
+            fraud_proof
+        {
+            let state_root = bad_receipt.final_state_root.encode();
+            let state_root = T::Hash::decode(&mut state_root.as_slice())
+                .map_err(|_| FraudProofError::FailedToDecodeDomainBlockHash)?;
+            let storage_key =
+                StorageKey(sp_domains::fraud_proof::operator_block_rewards_final_key());
+            let storage_proof = storage_proof.clone();
+
+            let total_rewards = StorageProofVerifier::<T::Hashing>::verify_and_get_value::<
+                BalanceOf<T>,
+            >(&state_root, storage_proof, storage_key)
+            .map_err(|_| FraudProofError::InvalidTotalRewardsProof)?;
+
+            // if the rewards matches, then this is an invalid fraud proof since rewards must be different.
+            if bad_receipt.total_rewards == total_rewards {
+                return Err(FraudProofError::InvalidTotalRewardsFraudProof);
+            }
+        }
 
         Ok(())
     }

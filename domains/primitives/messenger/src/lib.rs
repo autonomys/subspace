@@ -19,7 +19,6 @@
 
 pub mod endpoint;
 pub mod messages;
-pub mod verification;
 
 use crate::messages::BlockInfo;
 use codec::{Decode, Encode};

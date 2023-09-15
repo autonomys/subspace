@@ -13,12 +13,12 @@ use frame_support::{assert_err, assert_ok};
 use pallet_transporter::Location;
 use sp_core::storage::StorageKey;
 use sp_core::{Blake2Hasher, H256};
+use sp_domains::verification::{StorageProofVerifier, VerificationError};
 use sp_messenger::endpoint::{Endpoint, EndpointPayload, EndpointRequest, Sender};
 use sp_messenger::messages::{
     BlockInfo, ChainId, CrossDomainMessage, InitiateChannelParams, Payload, Proof,
     ProtocolMessageRequest, RequestResponse, VersionedPayload,
 };
-use sp_messenger::verification::{StorageProofVerifier, VerificationError};
 use sp_runtime::traits::{Convert, ValidateUnsigned};
 
 fn create_channel(chain_id: ChainId, channel_id: ChannelId, fee_model: FeeModel<Balance>) {

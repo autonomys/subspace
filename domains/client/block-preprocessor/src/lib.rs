@@ -354,6 +354,7 @@ where
 
     /// Filter out the invalid bundles first and then convert the remaining valid ones to
     /// a list of extrinsics.
+    #[allow(clippy::type_complexity)]
     fn compile_bundles_to_extrinsics(
         &self,
         bundles: OpaqueBundles<CBlock, NumberFor<Block>, Block::Hash, Balance>,

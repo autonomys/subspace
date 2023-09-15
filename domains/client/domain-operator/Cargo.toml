@@ -11,6 +11,7 @@ domain-block-builder = { version = "0.1.0", path = "../block-builder" }
 domain-block-preprocessor = { version = "0.1.0", path = "../block-preprocessor" }
 domain-client-consensus-relay-chain = { version = "0.1.0", path = "../consensus-relay-chain" }
 domain-runtime-primitives = { version = "0.1.0", path = "../../primitives/runtime" }
+frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef" }
 futures = "0.3.28"
 futures-timer = "3.0.1"
 parking_lot = "0.12.1"

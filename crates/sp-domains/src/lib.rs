@@ -23,6 +23,7 @@ pub mod merkle_tree;
 #[cfg(test)]
 mod tests;
 pub mod transaction;
+pub mod verification;
 
 use bundle_producer_election::{BundleProducerElectionParams, VrfProofError};
 use hexlit::hex;

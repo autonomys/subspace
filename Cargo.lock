@@ -2618,6 +2618,7 @@ dependencies = [
  "domain-test-primitives",
  "domain-test-service",
  "evm-domain-test-runtime",
+ "frame-support",
  "frame-system",
  "futures",
  "futures-timer",
@@ -7225,6 +7226,7 @@ dependencies = [
  "sp-externalities",
  "sp-io",
  "sp-runtime",
+ "sp-state-machine",
  "sp-std",
  "sp-trie",
  "sp-version",
@@ -10813,6 +10815,8 @@ name = "sp-domains"
 version = "0.1.0"
 dependencies = [
  "blake2",
+ "frame-support",
+ "hash-db 0.16.0",
  "hexlit",
  "num-traits",
  "parity-scale-codec",
