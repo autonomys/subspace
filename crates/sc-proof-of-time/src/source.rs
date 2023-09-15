@@ -2,7 +2,7 @@ pub mod gossip;
 mod state;
 mod timekeeper;
 
-use crate::source::gossip::{GossipCheckpoints, PotGossipWorker};
+use crate::source::gossip::{GossipCheckpoints, PotGossipWorker, ToGossipMessage};
 use crate::source::state::{NextSlotInput, PotState};
 use crate::source::timekeeper::run_timekeeper;
 use crate::verifier::PotVerifier;
@@ -79,8 +79,8 @@ pub struct PotSourceWorker<Block, Client> {
     #[cfg(feature = "pot")]
     chain_constants: ChainConstants,
     timekeeper_checkpoints_receiver: mpsc::Receiver<TimekeeperCheckpoints>,
-    outgoing_messages_sender: mpsc::Sender<GossipCheckpoints>,
-    incoming_messages_receiver: mpsc::Receiver<(PeerId, GossipCheckpoints)>,
+    to_gossip_sender: mpsc::Sender<ToGossipMessage>,
+    from_gossip_receiver: mpsc::Receiver<(PeerId, GossipCheckpoints)>,
     slot_sender: mpsc::Sender<PotSlotInfo>,
     state: Arc<PotState>,
     _block: PhantomData<Block>,
@@ -186,13 +186,13 @@ where
                 .expect("Thread creation must not panic");
         }
 
-        let (outgoing_messages_sender, outgoing_messages_receiver) =
+        let (to_gossip_sender, to_gossip_receiver) =
             mpsc::channel(GOSSIP_OUTGOING_CHANNEL_CAPACITY);
-        let (incoming_messages_sender, incoming_messages_receiver) =
+        let (from_gossip_sender, from_gossip_receiver) =
             mpsc::channel(GOSSIP_INCOMING_CHANNEL_CAPACITY);
         let gossip_worker = PotGossipWorker::new(
-            outgoing_messages_receiver,
-            incoming_messages_sender,
+            to_gossip_receiver,
+            from_gossip_sender,
             pot_verifier,
             Arc::clone(&state),
             network,
@@ -205,8 +205,8 @@ where
             #[cfg(feature = "pot")]
             chain_constants,
             timekeeper_checkpoints_receiver,
-            outgoing_messages_sender,
-            incoming_messages_receiver,
+            to_gossip_sender,
+            from_gossip_receiver,
             slot_sender,
             state,
             _block: PhantomData,
@@ -228,7 +228,7 @@ where
                     self.handle_timekeeper_checkpoints(timekeeper_checkpoints);
                 }
                 // List of blocks that the client has finalized.
-                maybe_gossip_checkpoints = self.incoming_messages_receiver.next() => {
+                maybe_gossip_checkpoints = self.from_gossip_receiver.next() => {
                     if let Some((sender, gossip_checkpoints)) = maybe_gossip_checkpoints {
                         self.handle_gossip_checkpoints(sender, gossip_checkpoints);
                     } else {
@@ -268,13 +268,13 @@ where
         );
 
         if self
-            .outgoing_messages_sender
-            .try_send(GossipCheckpoints {
+            .to_gossip_sender
+            .try_send(ToGossipMessage::Checkpoints(GossipCheckpoints {
                 slot,
                 seed,
                 slot_iterations,
                 checkpoints,
-            })
+            }))
             .is_err()
         {
             debug!(%slot, "Gossip is not able to keep-up with slot production");

@@ -71,6 +71,11 @@ pub(super) struct GossipCheckpoints {
     pub(super) checkpoints: PotCheckpoints,
 }
 
+#[derive(Debug)]
+pub(super) enum ToGossipMessage {
+    Checkpoints(GossipCheckpoints),
+}
+
 /// PoT gossip worker
 #[must_use = "Gossip worker doesn't do anything unless run() method is called"]
 pub struct PotGossipWorker<Block>
@@ -81,8 +86,8 @@ where
     topic: Block::Hash,
     state: Arc<PotState>,
     pot_verifier: PotVerifier,
-    outgoing_messages_receiver: mpsc::Receiver<GossipCheckpoints>,
-    incoming_messages_sender: mpsc::Sender<(PeerId, GossipCheckpoints)>,
+    to_gossip_receiver: mpsc::Receiver<ToGossipMessage>,
+    from_gossip_sender: mpsc::Sender<(PeerId, GossipCheckpoints)>,
 }
 
 impl<Block> PotGossipWorker<Block>
@@ -91,8 +96,8 @@ where
 {
     /// Instantiate gossip worker
     pub(super) fn new<Network, GossipSync, SO>(
-        outgoing_messages_receiver: mpsc::Receiver<GossipCheckpoints>,
-        incoming_messages_sender: mpsc::Sender<(PeerId, GossipCheckpoints)>,
+        to_gossip_receiver: mpsc::Receiver<ToGossipMessage>,
+        from_gossip_sender: mpsc::Sender<(PeerId, GossipCheckpoints)>,
         pot_verifier: PotVerifier,
         state: Arc<PotState>,
         network: Network,
@@ -119,8 +124,8 @@ where
             topic,
             state,
             pot_verifier,
-            outgoing_messages_receiver,
-            incoming_messages_sender,
+            to_gossip_receiver,
+            from_gossip_sender,
         }
     }
 
@@ -151,8 +156,8 @@ where
                         self.handle_checkpoints_candidates(sender, message).await;
                     }
                 },
-                outgoing_message = self.outgoing_messages_receiver.select_next_some() => {
-                    self.gossip_checkpoints(outgoing_message)
+                outgoing_message = self.to_gossip_receiver.select_next_some() => {
+                    self.handle_to_gossip_messages(outgoing_message)
                 },
                  _ = gossip_engine_poll.fuse() => {
                     error!("Gossip engine has terminated");
@@ -231,7 +236,7 @@ where
 
             self.gossip_checkpoints(message);
 
-            if let Err(error) = self.incoming_messages_sender.send((sender, message)).await {
+            if let Err(error) = self.from_gossip_sender.send((sender, message)).await {
                 warn!(%error, "Failed to send incoming message");
             }
         } else {
@@ -239,6 +244,14 @@ where
             self.engine
                 .lock()
                 .report(sender, rep::GOSSIP_INVALID_CHECKPOINTS);
+        }
+    }
+
+    fn handle_to_gossip_messages(&mut self, message: ToGossipMessage) {
+        match message {
+            ToGossipMessage::Checkpoints(checkpoints) => {
+                self.gossip_checkpoints(checkpoints);
+            }
         }
     }
 
