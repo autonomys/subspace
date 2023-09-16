@@ -1,7 +1,7 @@
 //! Consensus related types.
 
 use crate::types::RelayError;
-use crate::utils::{RelayCounter, RelayCounterVec, ERR_LABEL};
+use crate::utils::{RelayCounter, RelayCounterVec};
 use codec::{Decode, Encode};
 use sc_network_common::sync::message::{BlockAttributes, BlockData, BlockRequest};
 use sp_runtime::generic::BlockId;
@@ -12,6 +12,13 @@ use substrate_prometheus_endpoint::{PrometheusError, Registry};
 pub(crate) type BlockHash<Block> = <Block as BlockT>::Hash;
 pub(crate) type BlockHeader<Block> = <Block as BlockT>::Header;
 pub(crate) type Extrinsic<Block> = <Block as BlockT>::Extrinsic;
+
+const STATUS_LABEL: &str = "status";
+const STATUS_SUCCESS: &str = "success";
+
+const DOWNLOAD_LABEL: &str = "client_download";
+const DOWNLOAD_BLOCKS: &str = "blocks";
+const DOWNLOAD_BYTES: &str = "bytes";
 
 /// Initial request for a single block.
 #[derive(Encode, Decode)]
@@ -109,35 +116,24 @@ impl<Block: BlockT> PartialBlock<Block> {
 
 /// Client side metrics.
 pub(crate) struct ConsensusClientMetrics {
-    pub(crate) requests: RelayCounter,
-    pub(crate) failed_requests: RelayCounterVec,
-    pub(crate) blocks_downloaded: RelayCounter,
-    pub(crate) bytes_downloaded: RelayCounter,
+    pub(crate) requests: RelayCounterVec,
+    pub(crate) downloads: RelayCounterVec,
     pub(crate) tx_pool_miss: RelayCounter,
 }
 
 impl ConsensusClientMetrics {
     pub(crate) fn new(registry: Option<&Registry>) -> Result<Self, PrometheusError> {
         Ok(Self {
-            requests: RelayCounter::new(
+            requests: RelayCounterVec::new(
                 "relay_client_requests",
-                "Total number of requests initiated by client",
+                "Relay client request metrics(by completion status)",
+                &[STATUS_LABEL],
                 registry,
             )?,
-            failed_requests: RelayCounterVec::new(
-                "relay_client_failed_requests",
-                "Number of failed client requests",
-                &[ERR_LABEL],
-                registry,
-            )?,
-            blocks_downloaded: RelayCounter::new(
-                "relay_client_blocks_downloaded",
-                "Number of blocks downloaded by client",
-                registry,
-            )?,
-            bytes_downloaded: RelayCounter::new(
-                "relay_client_bytes_downloaded",
-                "Number of bytes downloaded by client",
+            downloads: RelayCounterVec::new(
+                "relay_client_downloads",
+                "Relay client download metrics",
+                &[DOWNLOAD_LABEL],
                 registry,
             )?,
             tx_pool_miss: RelayCounter::new(
@@ -150,40 +146,34 @@ impl ConsensusClientMetrics {
 
     /// Updates the metrics on successful download completion.
     pub(crate) fn on_download<Block: BlockT>(&self, blocks: &[BlockData<Block>]) {
-        self.requests.inc();
+        self.requests.inc(STATUS_LABEL, STATUS_SUCCESS);
         if let Ok(blocks) = u64::try_from(blocks.len()) {
-            self.blocks_downloaded.inc_by(blocks);
+            self.downloads
+                .inc_by(DOWNLOAD_LABEL, DOWNLOAD_BLOCKS, blocks);
         }
         if let Ok(bytes) = u64::try_from(blocks.encoded_size()) {
-            self.bytes_downloaded.inc_by(bytes);
+            self.downloads.inc_by(DOWNLOAD_LABEL, DOWNLOAD_BYTES, bytes);
         }
     }
 
     /// Updates the metrics on failed download.
     pub(crate) fn on_download_fail(&self, err: &RelayError) {
-        self.requests.inc();
-        self.failed_requests.inc(ERR_LABEL, err.as_ref());
+        self.requests.inc(STATUS_LABEL, err.as_ref());
     }
 }
 
 /// Server side metrics.
 pub(crate) struct ConsensusServerMetrics {
-    pub(crate) requests: RelayCounter,
-    pub(crate) failed_requests: RelayCounterVec,
+    pub(crate) requests: RelayCounterVec,
 }
 
 impl ConsensusServerMetrics {
     pub(crate) fn new(registry: Option<&Registry>) -> Result<Self, PrometheusError> {
         Ok(Self {
-            requests: RelayCounter::new(
-                "relay_server_requests",
-                "Total number of requests processed by the server",
-                registry,
-            )?,
-            failed_requests: RelayCounterVec::new(
-                "relay_server_failed_requests",
-                "Number of failed server requests",
-                &[ERR_LABEL],
+            requests: RelayCounterVec::new(
+                "relay_server_status",
+                "Relay server request metrics(by status)",
+                &[STATUS_LABEL],
                 registry,
             )?,
         })
@@ -191,12 +181,11 @@ impl ConsensusServerMetrics {
 
     /// Updates the metrics on a successful request.
     pub(crate) fn on_request(&self) {
-        self.requests.inc();
+        self.requests.inc(STATUS_LABEL, STATUS_SUCCESS);
     }
 
     /// Updates the metrics on a failed request.
     pub(crate) fn on_failed_request(&self, err: &RelayError) {
-        self.requests.inc();
-        self.failed_requests.inc(ERR_LABEL, err.as_ref());
+        self.requests.inc(STATUS_LABEL, err.as_ref());
     }
 }

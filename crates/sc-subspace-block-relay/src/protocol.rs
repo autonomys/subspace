@@ -39,12 +39,12 @@
 //!    protocol units
 //!
 
+pub(crate) mod compact_block;
+
 use crate::types::RelayError;
 use crate::utils::NetworkPeerHandle;
 use async_trait::async_trait;
 use codec::{Decode, Encode};
-
-pub(crate) mod compact_block;
 
 /// The resolved protocol unit related info
 pub(crate) struct Resolved<ProtocolUnitId, ProtocolUnit> {

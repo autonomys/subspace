@@ -15,8 +15,6 @@ use substrate_prometheus_endpoint::{
 
 type NetworkRequestService = Arc<dyn NetworkRequest + Send + Sync + 'static>;
 
-pub(crate) const ERR_LABEL: &str = "error";
-
 /// Wrapper to work around the circular dependency in substrate:
 /// `build_network()` requires the block relay to be passed in,
 /// which internally needs the network handle. `set()` is
@@ -121,13 +119,6 @@ impl RelayCounter {
             counter.inc()
         }
     }
-
-    /// Increments the counter by specified value.
-    pub(crate) fn inc_by(&self, v: u64) {
-        if let Some(counter) = self.0.as_ref() {
-            counter.inc_by(v)
-        }
-    }
 }
 
 /// Convenience wrapper around prometheus counter vec, which can be optional.
@@ -158,6 +149,15 @@ impl RelayCounterVec {
             let mut labels = HashMap::new();
             labels.insert(label, label_value);
             counter.with(&labels).inc()
+        }
+    }
+
+    /// Increments the counter by specified value.
+    pub(crate) fn inc_by(&self, label: &str, label_value: &str, v: u64) {
+        if let Some(counter) = self.0.as_ref() {
+            let mut labels = HashMap::new();
+            labels.insert(label, label_value);
+            counter.with(&labels).inc_by(v)
         }
     }
 }
