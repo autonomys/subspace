@@ -24,6 +24,8 @@ sp-api = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sd
 sp-consensus-subspace = { version = "0.1.0", path = "../sp-consensus-subspace" }
 sc-transaction-pool-api = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef" }
 sp-runtime = { version = "24.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef" }
+strum_macros = "0.25.2"
+substrate-prometheus-endpoint = { git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef" }
 thiserror = "1.0.48"
 tracing = "0.1.37"
 
