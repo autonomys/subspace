@@ -220,6 +220,11 @@ where
 
                         self.engine.lock().report(sender, rep::GOSSIP_INVALID_PROOF);
                     }
+                } else {
+                    // We didn't use it, but also didn't bother verifying
+                    self.engine
+                        .lock()
+                        .report(sender, rep::GOSSIP_OUTDATED_PROOF);
                 }
 
                 return;
