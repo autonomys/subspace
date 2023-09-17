@@ -1,13 +1,27 @@
 use crate::source::state::PotState;
-use crate::source::TimekeeperProof;
 use crate::verifier::PotVerifier;
 use futures::channel::mpsc;
 use futures::executor::block_on;
 use futures::SinkExt;
+use sp_consensus_slots::Slot;
+use std::num::NonZeroU32;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
+use subspace_core_primitives::{PotCheckpoints, PotSeed};
 use subspace_proof_of_time::PotError;
 use tracing::debug;
+
+/// Proof of time slot information
+pub(super) struct TimekeeperProof {
+    /// Slot number
+    pub(super) slot: Slot,
+    /// Proof of time seed
+    pub(super) seed: PotSeed,
+    /// Iterations per slot
+    pub(super) slot_iterations: NonZeroU32,
+    /// Proof of time checkpoints
+    pub(super) checkpoints: PotCheckpoints,
+}
 
 /// Runs timekeeper, must be running on a fast dedicated CPU core
 pub(super) fn run_timekeeper(

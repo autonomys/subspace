@@ -4,7 +4,7 @@ mod timekeeper;
 
 use crate::source::gossip::{GossipProof, PotGossipWorker, ToGossipMessage};
 use crate::source::state::{NextSlotInput, PotState};
-use crate::source::timekeeper::run_timekeeper;
+use crate::source::timekeeper::{run_timekeeper, TimekeeperProof};
 use crate::verifier::PotVerifier;
 use derive_more::{Deref, DerefMut};
 use futures::channel::mpsc;
@@ -31,10 +31,11 @@ use sp_runtime::traits::Header as HeaderT;
 #[cfg(feature = "pot")]
 use sp_runtime::traits::Zero;
 use std::marker::PhantomData;
+#[cfg(not(feature = "pot"))]
 use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::thread;
-use subspace_core_primitives::{PotCheckpoints, PotSeed};
+use subspace_core_primitives::PotCheckpoints;
 #[cfg(feature = "pot")]
 use tracing::warn;
 use tracing::{debug, error};
@@ -50,18 +51,6 @@ pub struct PotSlotInfo {
     pub slot: Slot,
     /// Proof of time checkpoints
     pub checkpoints: PotCheckpoints,
-}
-
-/// Proof of time slot information
-struct TimekeeperProof {
-    /// Slot number
-    slot: Slot,
-    /// Proof of time seed
-    seed: PotSeed,
-    /// Iterations per slot
-    slot_iterations: NonZeroU32,
-    /// Proof of time checkpoints
-    checkpoints: PotCheckpoints,
 }
 
 /// Stream with proof of time slots
