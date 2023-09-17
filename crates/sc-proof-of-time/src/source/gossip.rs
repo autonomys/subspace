@@ -18,7 +18,7 @@ use sp_consensus::SyncOracle;
 use sp_consensus_slots::Slot;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
 use std::cmp;
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 use std::future::poll_fn;
 use std::hash::{Hash, Hasher};
 use std::num::{NonZeroU32, NonZeroUsize};
@@ -30,7 +30,8 @@ use tracing::{debug, error, trace, warn};
 const MAX_SLOTS_IN_THE_FUTURE: u64 = 10;
 /// How much faster PoT verification is expected to be comparing to PoT proving
 const EXPECTED_POT_VERIFICATION_SPEEDUP: usize = 7;
-const GOSSIP_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(1_000).expect("Not zero; qed");
+const GOSSIP_CACHE_PEER_COUNT: NonZeroUsize = NonZeroUsize::new(1_000).expect("Not zero; qed");
+const GOSSIP_CACHE_PER_PEER_SIZE: usize = 20;
 
 mod rep {
     use sc_network::ReputationChange;
@@ -56,6 +57,9 @@ mod rep {
     /// outdated.
     pub(super) const GOSSIP_OUTDATED_PROOF: ReputationChange =
         ReputationChange::new(-(1 << 5), "PoT: outdated proof");
+    /// Reputation change when a peer sends us too many proofs.
+    pub(super) const GOSSIP_TOO_MANY_PROOFS: ReputationChange =
+        ReputationChange::new(-(1 << 5), "PoT: too many proofs");
     /// Reputation change when a peer sends us proof that were unused and ended up not
     /// matching slot inputs.
     pub(super) const GOSSIP_SLOT_INPUT_MISMATCH: ReputationChange =
@@ -112,7 +116,7 @@ where
     topic: Block::Hash,
     state: Arc<PotState>,
     pot_verifier: PotVerifier,
-    gossip_cache: LruCache<PeerId, Vec<GossipProof>>,
+    gossip_cache: LruCache<PeerId, VecDeque<GossipProof>>,
     to_gossip_receiver: mpsc::Receiver<ToGossipMessage>,
     from_gossip_sender: mpsc::Sender<(PeerId, GossipProof)>,
 }
@@ -151,7 +155,7 @@ where
             topic,
             state,
             pot_verifier,
-            gossip_cache: LruCache::new(GOSSIP_CACHE_SIZE),
+            gossip_cache: LruCache::new(GOSSIP_CACHE_PEER_COUNT),
             to_gossip_receiver,
             from_gossip_sender,
         }
@@ -253,9 +257,24 @@ where
                     "Proof from the future",
                 );
 
-                self.gossip_cache
-                    .get_or_insert_mut(sender, Default::default)
-                    .push(proof);
+                let proofs = self
+                    .gossip_cache
+                    .get_or_insert_mut(sender, Default::default);
+                if proofs.len() == GOSSIP_CACHE_PER_PEER_SIZE {
+                    if let Some(proof) = proofs.pop_front() {
+                        trace!(
+                            %sender,
+                            slot = %proof.slot,
+                            next_slot = %next_slot_input.slot,
+                            "Too many proofs stored from peer",
+                        );
+
+                        self.engine
+                            .lock()
+                            .report(sender, rep::GOSSIP_TOO_MANY_PROOFS);
+                    }
+                }
+                proofs.push_back(proof);
                 return;
             }
         }
@@ -298,9 +317,14 @@ where
     async fn handle_next_slot_input(&mut self, next_slot_input: NextSlotInput) {
         let mut old_proofs = HashMap::<GossipProof, Vec<PeerId>>::new();
         for (sender, proofs) in &mut self.gossip_cache {
-            for proof in proofs.extract_if(|proof| proof.slot <= next_slot_input.slot) {
-                old_proofs.entry(proof).or_default().push(*sender);
-            }
+            proofs.retain(|proof| {
+                if proof.slot > next_slot_input.slot {
+                    true
+                } else {
+                    old_proofs.entry(*proof).or_default().push(*sender);
+                    false
+                }
+            });
         }
 
         let mut potentially_matching_proofs = Vec::new();
