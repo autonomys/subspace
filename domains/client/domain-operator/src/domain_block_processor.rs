@@ -775,6 +775,20 @@ where
                     execution_receipt.hash(),
                     receipt_mismatch_info,
                 ));
+
+                continue;
+            }
+
+            if execution_receipt.domain_block_extrinsic_root
+                != local_receipt.domain_block_extrinsic_root
+            {
+                bad_receipts_to_write.push((
+                    execution_receipt.consensus_block_number,
+                    execution_receipt.hash(),
+                    ReceiptMismatchInfo::DomainExtrinsicsRoot {
+                        consensus_block_hash,
+                    },
+                ));
                 continue;
             }
 
@@ -924,6 +938,18 @@ where
                     .map_err(|err| {
                         sp_blockchain::Error::Application(Box::from(format!(
                             "Failed to generate invalid bundles field fraud proof: {err}"
+                        )))
+                    })?,
+                ReceiptMismatchInfo::DomainExtrinsicsRoot { .. } => self
+                    .fraud_proof_generator
+                    .generate_invalid_domain_extrinsics_root_proof::<ParentChainBlock>(
+                        self.domain_id,
+                        &local_receipt,
+                        bad_receipt_hash,
+                    )
+                    .map_err(|err| {
+                        sp_blockchain::Error::Application(Box::from(format!(
+                            "Failed to generate invalid domain extrinsics root fraud proof: {err}"
                         )))
                     })?,
             };
