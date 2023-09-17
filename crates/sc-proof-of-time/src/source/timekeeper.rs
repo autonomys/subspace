@@ -1,5 +1,5 @@
 use crate::source::state::PotState;
-use crate::source::TimekeeperCheckpoints;
+use crate::source::TimekeeperProof;
 use crate::verifier::PotVerifier;
 use futures::channel::mpsc;
 use futures::executor::block_on;
@@ -13,7 +13,7 @@ use tracing::debug;
 pub(super) fn run_timekeeper(
     state: Arc<PotState>,
     pot_verifier: PotVerifier,
-    mut proofs_sender: mpsc::Sender<TimekeeperCheckpoints>,
+    mut proofs_sender: mpsc::Sender<TimekeeperProof>,
 ) -> Result<(), PotError> {
     let mut next_slot_input = state.next_slot_input(Ordering::Acquire);
 
@@ -21,7 +21,7 @@ pub(super) fn run_timekeeper(
         let checkpoints =
             subspace_proof_of_time::prove(next_slot_input.seed, next_slot_input.slot_iterations)?;
 
-        let slot_info = TimekeeperCheckpoints {
+        let proof = TimekeeperProof {
             seed: next_slot_input.seed,
             slot_iterations: next_slot_input.slot_iterations,
             slot: next_slot_input.slot,
@@ -44,7 +44,7 @@ pub(super) fn run_timekeeper(
             )
             .unwrap_or_else(|next_slot_input| next_slot_input);
 
-        if let Err(error) = proofs_sender.try_send(slot_info) {
+        if let Err(error) = proofs_sender.try_send(proof) {
             if let Err(error) = block_on(proofs_sender.send(error.into_inner())) {
                 debug!(%error, "Couldn't send checkpoints, channel is closed");
                 return Ok(());
