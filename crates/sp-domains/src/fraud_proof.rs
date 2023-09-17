@@ -239,6 +239,7 @@ pub enum FraudProof<Number, Hash> {
     BundleEquivocation(BundleEquivocationProof<Number, Hash>),
     ImproperTransactionSortition(ImproperTransactionSortitionProof),
     InvalidTotalRewards(InvalidTotalRewardsProof),
+    InvalidExtrinsicsRoot(InvalidExtrinsicsRootProof),
     // Dummy fraud proof only used in test and benchmark
     #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
     Dummy {
@@ -261,6 +262,7 @@ impl<Number, Hash> FraudProof<Number, Hash> {
             Self::Dummy { domain_id, .. } => *domain_id,
             FraudProof::InvalidTotalRewards(proof) => proof.domain_id(),
             FraudProof::InvalidBundles(proof) => proof.domain_id(),
+            FraudProof::InvalidExtrinsicsRoot(proof) => proof.domain_id,
         }
     }
 
@@ -280,6 +282,7 @@ impl<Number, Hash> FraudProof<Number, Hash> {
             FraudProof::InvalidTotalRewards(proof) => proof.bad_receipt_hash(),
             // TODO: Remove default value when invalid bundle proofs are fully expanded
             FraudProof::InvalidBundles(_) => Default::default(),
+            FraudProof::InvalidExtrinsicsRoot(proof) => proof.bad_receipt_hash,
         }
     }
 
@@ -411,6 +414,26 @@ pub struct InvalidTotalRewardsProof {
     pub storage_proof: StorageProof,
 }
 
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+pub struct ValidBundleDigest {
+    /// Index of this bundle in the original list of bundles in the consensus block.
+    pub bundle_index: u32,
+    /// `Vec<(tx_signer, tx_hash)>` of all extrinsics
+    pub bundle_digest: Vec<(Option<domain_runtime_primitives::opaque::AccountId>, H256)>,
+}
+
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+pub struct InvalidExtrinsicsRootProof {
+    /// The id of the domain this fraud proof targeted
+    pub domain_id: DomainId,
+    /// Hash of the bad receipt this fraud proof targeted
+    pub bad_receipt_hash: ReceiptHash,
+    /// Valid Bundle digests
+    pub valid_bundle_digests: Vec<ValidBundleDigest>,
+    /// Randomness Storage proof
+    pub randomness_proof: StorageProof,
+}
+
 impl InvalidTotalRewardsProof {
     pub(crate) fn domain_id(&self) -> DomainId {
         self.domain_id
@@ -426,4 +449,10 @@ impl InvalidTotalRewardsProof {
 pub fn operator_block_rewards_final_key() -> Vec<u8> {
     frame_support::storage::storage_prefix("OperatorRewards".as_ref(), "BlockRewards".as_ref())
         .to_vec()
+}
+
+/// This is a representation of actual Randomness on Consensus chain state.
+/// Any change in key or value there should be changed here accordingly.
+pub fn block_randomness_final_key() -> Vec<u8> {
+    frame_support::storage::storage_prefix("Subspace".as_ref(), "BlockRandomness".as_ref()).to_vec()
 }

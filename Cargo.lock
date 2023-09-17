@@ -10815,6 +10815,7 @@ name = "sp-domains"
 version = "0.1.0"
 dependencies = [
  "blake2",
+ "domain-runtime-primitives",
  "frame-support",
  "hash-db 0.16.0",
  "hexlit",
