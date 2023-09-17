@@ -179,13 +179,13 @@ where
         loop {
             let gossip_engine_poll = poll_fn(|cx| self.engine.lock().poll_unpin(cx));
             futures::select! {
-                incoming_message = incoming_unverified_messages.next() => {
-                    if let Some((sender, message)) = incoming_message {
-                        self.handle_proof_candidate(sender, message).await;
+                message = incoming_unverified_messages.next() => {
+                    if let Some((sender, proof)) = message {
+                        self.handle_proof_candidate(sender, proof).await;
                     }
                 },
-                outgoing_message = self.to_gossip_receiver.select_next_some() => {
-                    self.handle_to_gossip_messages(outgoing_message).await
+                message = self.to_gossip_receiver.select_next_some() => {
+                    self.handle_to_gossip_messages(message).await
                 },
                  _ = gossip_engine_poll.fuse() => {
                     error!("Gossip engine has terminated");
