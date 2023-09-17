@@ -686,7 +686,11 @@ where
         + 'static,
     Client::Api:
         DomainCoreApi<Block> + sp_block_builder::BlockBuilder<Block> + sp_api::ApiExt<Block>,
-    CClient: HeaderBackend<CBlock> + BlockBackend<CBlock> + ProvideRuntimeApi<CBlock> + 'static,
+    CClient: HeaderBackend<CBlock>
+        + BlockBackend<CBlock>
+        + ProofProvider<CBlock>
+        + ProvideRuntimeApi<CBlock>
+        + 'static,
     CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
     Backend: sc_client_api::Backend<Block> + 'static,
     E: CodeExecutor,

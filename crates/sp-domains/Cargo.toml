@@ -13,6 +13,7 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 blake2 = { version = "0.10.6", default-features = false }
+domain-runtime-primitives = { version = "0.1.0", default-features = false, path = "../../domains/primitives/runtime" }
 frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7" }
 hash-db = { version = "0.16.0", default-features = false }
 hexlit = "0.5.5"
@@ -43,28 +44,29 @@ num-traits = "0.2.16"
 [features]
 default = ["std"]
 std = [
-	"blake2/std",
-	"frame-support/std",
-	"hash-db/std",
-	"parity-scale-codec/std",
-	"rs_merkle/std",
-	"scale-info/std",
-	"serde/std",
-	"sp-api/std",
-	"sp-blockchain",
-	"sp-application-crypto/std",
-	"sp-consensus-slots/std",
-	"sp-core/std",
-	"sp-externalities/std",
-	"sp-keystore",
-	"sp-runtime/std",
-	"sp-runtime-interface/std",
-	"sp-state-machine/std",
-	"sp-std/std",
-	"sp-trie/std",
-	"sp-weights/std",
-	"subspace-core-primitives/std",
-	"subspace-runtime-primitives/std",
-	"thiserror",
+    "blake2/std",
+    "domain-runtime-primitives/std",
+    "frame-support/std",
+    "hash-db/std",
+    "parity-scale-codec/std",
+    "rs_merkle/std",
+    "scale-info/std",
+    "serde/std",
+    "sp-api/std",
+    "sp-blockchain",
+    "sp-application-crypto/std",
+    "sp-consensus-slots/std",
+    "sp-core/std",
+    "sp-externalities/std",
+    "sp-keystore",
+    "sp-runtime/std",
+    "sp-runtime-interface/std",
+    "sp-state-machine/std",
+    "sp-std/std",
+    "sp-trie/std",
+    "sp-weights/std",
+    "subspace-core-primitives/std",
+    "subspace-runtime-primitives/std",
+    "thiserror",
 ]
 runtime-benchmarks = []

@@ -3,18 +3,20 @@ use crate::utils::to_number_primitive;
 use crate::ExecutionReceiptFor;
 use codec::{Decode, Encode};
 use domain_block_builder::{BlockBuilder, RecordProof};
+use domain_runtime_primitives::opaque::AccountId;
+use domain_runtime_primitives::DomainCoreApi;
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
-use sp_api::ProvideRuntimeApi;
+use sp_api::{HashT, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::CodeExecutor;
 use sp_core::H256;
 use sp_domains::fraud_proof::{
-    ExecutionPhase, FraudProof, InvalidBundlesFraudProof, InvalidStateTransitionProof,
-    InvalidTotalRewardsProof, MissingInvalidBundleEntryFraudProof,
-    ValidAsInvalidBundleEntryFraudProof,
+    ExecutionPhase, FraudProof, InvalidBundlesFraudProof, InvalidExtrinsicsRootProof,
+    InvalidStateTransitionProof, InvalidTotalRewardsProof, MissingInvalidBundleEntryFraudProof,
+    ValidAsInvalidBundleEntryFraudProof, ValidBundleDigest,
 };
-use sp_domains::DomainId;
-use sp_runtime::traits::{Block as BlockT, HashingFor, Header as HeaderT, NumberFor};
+use sp_domains::{DomainId, DomainsApi};
+use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashingFor, Header as HeaderT, NumberFor};
 use sp_runtime::Digest;
 use sp_trie::StorageProof;
 use std::marker::PhantomData;
@@ -34,6 +36,10 @@ pub enum FraudProofError {
     Blockchain(#[from] sp_blockchain::Error),
     #[error(transparent)]
     RuntimeApi(#[from] sp_api::ApiError),
+    #[error("Missing bundle at {bundle_index}")]
+    MissingBundle { bundle_index: usize },
+    #[error("Invalid bundle extrinsic at bundle index[{bundle_index}]")]
+    InvalidBundleExtrinsic { bundle_index: usize },
 }
 
 pub struct FraudProofGenerator<Block, CBlock, Client, CClient, Backend, E> {
@@ -69,8 +75,14 @@ where
         + ProvideRuntimeApi<Block>
         + ProofProvider<Block>
         + 'static,
-    Client::Api: sp_block_builder::BlockBuilder<Block> + sp_api::ApiExt<Block>,
-    CClient: HeaderBackend<CBlock> + 'static,
+    Client::Api:
+        sp_block_builder::BlockBuilder<Block> + sp_api::ApiExt<Block> + DomainCoreApi<Block>,
+    CClient: HeaderBackend<CBlock>
+        + BlockBackend<CBlock>
+        + ProvideRuntimeApi<CBlock>
+        + ProofProvider<CBlock>
+        + 'static,
+    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
     Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
     E: CodeExecutor,
 {
@@ -136,6 +148,80 @@ where
                 ),
             )),
         }
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn generate_invalid_domain_extrinsics_root_proof<PCB>(
+        &self,
+        domain_id: DomainId,
+        local_receipt: &ExecutionReceiptFor<Block, CBlock>,
+        bad_receipt_hash: H256,
+    ) -> Result<FraudProof<NumberFor<PCB>, PCB::Hash>, FraudProofError>
+    where
+        PCB: BlockT,
+    {
+        let consensus_block_hash = local_receipt.consensus_block_hash;
+        let consensus_extrinsics = self
+            .consensus_client
+            .block_body(consensus_block_hash)?
+            .ok_or_else(|| {
+                sp_blockchain::Error::Backend(format!(
+                    "BlockBody of {consensus_block_hash:?} unavailable"
+                ))
+            })?;
+
+        let bundles = self
+            .consensus_client
+            .runtime_api()
+            .extract_successful_bundles(consensus_block_hash, domain_id, consensus_extrinsics)?;
+
+        let mut valid_bundle_digests = Vec::with_capacity(local_receipt.valid_bundles.len());
+        for valid_bundle in local_receipt.valid_bundles.iter() {
+            let bundle_index = valid_bundle.bundle_index;
+            let bundle =
+                bundles
+                    .get(bundle_index as usize)
+                    .ok_or(FraudProofError::MissingBundle {
+                        bundle_index: bundle_index as usize,
+                    })?;
+
+            let mut exts = Vec::with_capacity(bundle.extrinsics.len());
+            for opaque_extrinsic in &bundle.extrinsics {
+                let extrinsic = <<Block as BlockT>::Extrinsic>::decode(
+                    &mut opaque_extrinsic.encode().as_slice(),
+                )
+                .map_err(|_| FraudProofError::InvalidBundleExtrinsic {
+                    bundle_index: bundle_index as usize,
+                })?;
+
+                exts.push(extrinsic)
+            }
+
+            let domain_runtime_api = self.client.runtime_api();
+            let bundle_digest = domain_runtime_api
+                .extract_signer(local_receipt.domain_block_hash, exts)?
+                .into_iter()
+                .map(|(signer, ext)| (signer, BlakeTwo256::hash_of(&ext)))
+                .collect::<Vec<(Option<AccountId>, H256)>>();
+            valid_bundle_digests.push(ValidBundleDigest {
+                bundle_index,
+                bundle_digest,
+            });
+        }
+
+        let key = sp_domains::fraud_proof::block_randomness_final_key();
+        let randomness_proof = self
+            .consensus_client
+            .read_proof(consensus_block_hash, &mut [key.as_slice()].into_iter())?;
+
+        Ok(FraudProof::InvalidExtrinsicsRoot(
+            InvalidExtrinsicsRootProof {
+                domain_id,
+                bad_receipt_hash,
+                valid_bundle_digests,
+                randomness_proof,
+            },
+        ))
     }
 
     pub(crate) fn generate_invalid_state_transition_proof<PCB>(
