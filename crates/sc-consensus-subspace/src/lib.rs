@@ -1036,8 +1036,6 @@ where
         let added_weight = calculate_block_weight(subspace_digest_items.solution_range);
         let total_weight = parent_weight + added_weight;
 
-        let info = self.client.info();
-
         aux_schema::write_block_weight(block_hash, total_weight, |values| {
             block
                 .auxiliary
@@ -1070,12 +1068,14 @@ where
             }
         }
 
-        // The fork choice rule is that we pick the heaviest chain (i.e. smallest solution
-        // range), if there's a tie we go with the longest chain.
+        // The fork choice rule is that we pick the heaviest chain (i.e. smallest solution range),
+        // if there's a tie we go with the longest chain
         let fork_choice = {
+            let info = self.client.info();
+
             let last_best_weight = if &info.best_hash == block.header.parent_hash() {
-                // the parent=genesis case is already covered for loading parent weight,
-                // so we don't need to cover again here.
+                // the parent=genesis case is already covered for loading parent weight, so we don't
+                // need to cover again here
                 parent_weight
             } else {
                 aux_schema::load_block_weight(&*self.client, info.best_hash)
