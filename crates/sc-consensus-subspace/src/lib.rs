@@ -578,7 +578,11 @@ impl<Block: BlockT> SubspaceLink<Block> {
         self.archived_segment_notification_stream.clone()
     }
 
-    /// Get stream with notifications about each imported block.
+    /// Get stream with notifications about each imported block right BEFORE import actually
+    /// happens.
+    ///
+    /// NOTE: all Subspace checks have already happened for this block, but block can still
+    /// potentially fail to import in Substrate's internals.
     pub fn block_importing_notification_stream(
         &self,
     ) -> SubspaceNotificationStream<BlockImportingNotification<Block>> {
@@ -1087,7 +1091,6 @@ where
         };
         block.fork_choice = Some(fork_choice);
 
-        let import_result = self.inner.import_block(block).await?;
         let (acknowledgement_sender, mut acknowledgement_receiver) = mpsc::channel(0);
 
         self.subspace_link
@@ -1101,7 +1104,7 @@ where
             // Wait for all the acknowledgements to finish.
         }
 
-        Ok(import_result)
+        self.inner.import_block(block).await
     }
 
     async fn check_block(
