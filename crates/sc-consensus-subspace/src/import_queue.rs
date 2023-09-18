@@ -3,6 +3,10 @@
 #[cfg(feature = "pot")]
 use crate::get_chain_constants;
 use crate::Error;
+#[cfg(feature = "pot")]
+use futures::stream::FuturesUnordered;
+#[cfg(feature = "pot")]
+use futures::StreamExt;
 use log::{debug, info, trace, warn};
 use prometheus_endpoint::Registry;
 use sc_client_api::backend::AuxStore;
@@ -288,14 +292,13 @@ where
 
             // All checkpoints must be valid, at least according to the seed included in
             // justifications
-            for checkpoints in checkpoints {
-                if !self
-                    .pot_verifier
-                    .verify_checkpoints(seed, slot_iterations, &checkpoints)
-                    .await
-                {
-                    return Err(VerificationError::InvalidProofOfTime);
-                }
+            let verification_results = FuturesUnordered::new();
+            for checkpoints in &checkpoints {
+                verification_results.push(self.pot_verifier.verify_checkpoints(
+                    seed,
+                    slot_iterations,
+                    checkpoints,
+                ));
 
                 slot_to_check = slot_to_check + Slot::from(1);
                 if let Some(parameters_change) = subspace_digest_items.pot_parameters_change
@@ -308,6 +311,18 @@ where
                 } else {
                     seed = checkpoints.output().seed();
                 }
+            }
+            // Try to find invalid checkpoints
+            if verification_results
+                // TODO: Ideally we'd use `find` here instead, but it does not yet exists:
+                //  https://github.com/rust-lang/futures-rs/issues/2705
+                .filter(|&success| async move { !success })
+                .boxed()
+                .next()
+                .await
+                .is_some()
+            {
+                return Err(VerificationError::InvalidProofOfTime);
             }
 
             // Below verification that doesn't depend on justifications will be running more
