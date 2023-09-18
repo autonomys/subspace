@@ -753,10 +753,8 @@ where
 
         #[cfg(not(feature = "pot"))]
         let correct_global_randomness;
-        #[cfg(feature = "pot")]
-        let pot_seed;
-        #[cfg(feature = "pot")]
-        let slot_iterations;
+        // TODO: Remove suppression once PoT is the default
+        #[allow(clippy::needless_late_init)]
         let correct_solution_range;
 
         if block_number.is_one() {
@@ -768,15 +766,6 @@ where
                     self.client.as_ref(),
                     parent_hash,
                 )?;
-            }
-            #[cfg(feature = "pot")]
-            {
-                slot_iterations = self
-                    .client
-                    .runtime_api()
-                    .pot_parameters(parent_hash)?
-                    .slot_iterations();
-                pot_seed = self.pot_verifier.genesis_seed();
             }
 
             correct_solution_range =
@@ -798,7 +787,45 @@ where
                         None => parent_subspace_digest_items.global_randomness,
                     };
             }
-            #[cfg(feature = "pot")]
+
+            correct_solution_range = match parent_subspace_digest_items.next_solution_range {
+                Some(solution_range) => solution_range,
+                None => parent_subspace_digest_items.solution_range,
+            };
+        }
+
+        if subspace_digest_items.solution_range != correct_solution_range {
+            return Err(Error::InvalidSolutionRange(block_hash));
+        }
+
+        #[cfg(not(feature = "pot"))]
+        if subspace_digest_items.global_randomness != correct_global_randomness {
+            return Err(Error::InvalidGlobalRandomness(block_hash));
+        }
+
+        #[cfg(feature = "pot")]
+        let pot_seed;
+        #[cfg(feature = "pot")]
+        let slot_iterations;
+
+        #[cfg(feature = "pot")]
+        if block_number.is_one() {
+            // Genesis block doesn't contain usual digest items, we need to query runtime API
+            // instead
+            slot_iterations = self
+                .client
+                .runtime_api()
+                .pot_parameters(parent_hash)?
+                .slot_iterations();
+            pot_seed = self.pot_verifier.genesis_seed();
+        } else {
+            let parent_subspace_digest_items = extract_subspace_digest_items::<
+                _,
+                FarmerPublicKey,
+                FarmerPublicKey,
+                FarmerSignature,
+            >(&parent_header)?;
+
             // In case parameters change in the very first slot after slot of the parent block,
             // account for them
             if let Some(parameters_change) = subspace_digest_items.pot_parameters_change
@@ -818,17 +845,8 @@ where
                     .proof_of_time()
                     .seed();
             }
-
-            correct_solution_range = match parent_subspace_digest_items.next_solution_range {
-                Some(solution_range) => solution_range,
-                None => parent_subspace_digest_items.solution_range,
-            };
         }
 
-        #[cfg(not(feature = "pot"))]
-        if subspace_digest_items.global_randomness != correct_global_randomness {
-            return Err(Error::InvalidGlobalRandomness(block_hash));
-        }
         #[cfg(feature = "pot")]
         // TODO: Extend/optimize this check once we have checkpoints in justifications
         // Here we check that there is continuity from parent block's proof of time (but not future
@@ -850,10 +868,6 @@ where
             .await
         {
             return Err(Error::InvalidProofOfTime);
-        }
-
-        if subspace_digest_items.solution_range != correct_solution_range {
-            return Err(Error::InvalidSolutionRange(block_hash));
         }
 
         let sector_id = SectorId::new(
