@@ -29,6 +29,7 @@ use log::{debug, info, warn};
 use parking_lot::Mutex;
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
+use rayon::prelude::*;
 use sc_client_api::{AuxStore, Backend as BackendT, BlockBackend, Finalizer, LockImportRun};
 use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_INFO};
 use sc_utils::mpsc::tracing_unbounded;
@@ -260,56 +261,6 @@ where
     Ok(None)
 }
 
-struct BlockHashesToArchive<Block>
-where
-    Block: BlockT,
-{
-    block_hashes: Vec<Block::Hash>,
-    best_archived: Option<(Block::Hash, NumberFor<Block>)>,
-}
-
-fn block_hashes_to_archive<Block, Client>(
-    client: &Client,
-    best_block_hash: Block::Hash,
-    blocks_to_archive_from: NumberFor<Block>,
-    blocks_to_archive_to: NumberFor<Block>,
-) -> sp_blockchain::Result<BlockHashesToArchive<Block>>
-where
-    Block: BlockT,
-    Client: HeaderBackend<Block>,
-{
-    let block_range = blocks_to_archive_from..=blocks_to_archive_to;
-    let mut block_hashes = Vec::new();
-    let mut block_hash_to_check = best_block_hash;
-    let mut best_archived = None;
-
-    loop {
-        // TODO: `Error` here must be handled instead
-        let header = client
-            .header(block_hash_to_check)?
-            .expect("Parent block must exist; qed");
-
-        if block_range.contains(header.number()) {
-            block_hashes.push(block_hash_to_check);
-
-            if best_archived.is_none() {
-                best_archived.replace((block_hash_to_check, *header.number()));
-            }
-        }
-
-        if *header.number() == blocks_to_archive_from {
-            break;
-        }
-
-        block_hash_to_check = *header.parent_hash();
-    }
-
-    Ok(BlockHashesToArchive {
-        block_hashes,
-        best_archived,
-    })
-}
-
 /// Derive genesis segment on demand, returns `Ok(None)` in case genesis block was already pruned
 pub fn recreate_genesis_segment<Block, Client>(
     client: &Client,
@@ -388,7 +339,6 @@ where
 }
 
 fn initialize_archiver<Block, Client, AS>(
-    best_block_hash: Block::Hash,
     best_block_number: NumberFor<Block>,
     segment_headers_store: &SegmentHeadersStore<AS>,
     subspace_link: &SubspaceLink<Block>,
@@ -479,16 +429,21 @@ where
                 blocks_to_archive_to,
             );
 
-            let block_hashes_to_archive = block_hashes_to_archive(
-                client,
-                best_block_hash,
-                blocks_to_archive_from.into(),
-                blocks_to_archive_to.into(),
-            )?;
-            best_archived_block = block_hashes_to_archive.best_archived;
-            let block_hashes_to_archive = block_hashes_to_archive.block_hashes;
+            let block_hashes_to_archive = (blocks_to_archive_from..=blocks_to_archive_to)
+                .into_par_iter()
+                .map(|block_number| {
+                    Ok(client
+                        .hash(block_number.into())?
+                        .expect("All blocks since last archived must be present; qed"))
+                })
+                .collect::<sp_blockchain::Result<Vec<_>>>()?;
 
-            for block_hash_to_archive in block_hashes_to_archive.into_iter().rev() {
+            best_archived_block.replace((
+                *block_hashes_to_archive.last().expect("Not empty; qed"),
+                blocks_to_archive_to.into(),
+            ));
+
+            for block_hash_to_archive in block_hashes_to_archive {
                 let block = client
                     .block(block_hash_to_archive)?
                     .expect("Older block by number must always exist")
@@ -624,7 +579,6 @@ where
     SO: SyncOracle + Send + Sync + 'static,
 {
     let client_info = client.info();
-    let best_block_hash = client_info.best_hash;
     let best_block_number = client_info.best_number;
 
     let InitializedArchiver {
@@ -633,7 +587,6 @@ where
         older_archived_segments,
         best_archived_block: (mut best_archived_block_hash, mut best_archived_block_number),
     } = initialize_archiver(
-        best_block_hash,
         best_block_number,
         &segment_headers_store,
         subspace_link,

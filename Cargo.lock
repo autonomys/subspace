@@ -8868,6 +8868,7 @@ dependencies = [
  "parking_lot 0.12.1",
  "rand 0.8.5",
  "rand_chacha 0.3.1",
+ "rayon",
  "sc-client-api",
  "sc-consensus",
  "sc-consensus-slots",
