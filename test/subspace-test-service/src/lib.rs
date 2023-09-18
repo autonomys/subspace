@@ -847,7 +847,6 @@ where
         let block_number = *block.header.number();
         block.fork_choice = Some(ForkChoiceStrategy::LongestChain);
 
-        let import_result = self.inner.import_block(block).await?;
         let (acknowledgement_sender, mut acknowledgement_receiver) = mpsc::channel(0);
 
         // Must drop `block_import_acknowledgement_sender` after the notification otherwise the receiver
@@ -884,7 +883,7 @@ where
             }
         }
 
-        Ok(import_result)
+        self.inner.import_block(block).await
     }
 
     async fn check_block(
