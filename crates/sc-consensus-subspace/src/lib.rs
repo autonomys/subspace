@@ -607,8 +607,6 @@ where
 {
     inner: I,
     client: Arc<Client>,
-    block_importing_notification_sender:
-        SubspaceNotificationSender<BlockImportingNotification<Block>>,
     subspace_link: SubspaceLink<Block>,
     create_inherent_data_providers: CIDP,
     chain_constants: ChainConstants,
@@ -629,7 +627,6 @@ where
         SubspaceBlockImport {
             inner: self.inner.clone(),
             client: self.client.clone(),
-            block_importing_notification_sender: self.block_importing_notification_sender.clone(),
             subspace_link: self.subspace_link.clone(),
             create_inherent_data_providers: self.create_inherent_data_providers.clone(),
             chain_constants: self.chain_constants,
@@ -651,14 +648,9 @@ where
     AS: AuxStore + Send + Sync + 'static,
     BlockNumber: From<<<Block as BlockT>::Header as HeaderT>::Number>,
 {
-    // TODO: Create a struct for these parameters
-    #[allow(clippy::too_many_arguments)]
     fn new(
         client: Arc<Client>,
         block_import: I,
-        block_importing_notification_sender: SubspaceNotificationSender<
-            BlockImportingNotification<Block>,
-        >,
         subspace_link: SubspaceLink<Block>,
         create_inherent_data_providers: CIDP,
         chain_constants: ChainConstants,
@@ -668,7 +660,6 @@ where
         Self {
             client,
             inner: block_import,
-            block_importing_notification_sender,
             subspace_link,
             create_inherent_data_providers,
             chain_constants,
@@ -1099,7 +1090,8 @@ where
         let import_result = self.inner.import_block(block).await?;
         let (acknowledgement_sender, mut acknowledgement_receiver) = mpsc::channel(0);
 
-        self.block_importing_notification_sender
+        self.subspace_link
+            .block_importing_notification_sender
             .notify(move || BlockImportingNotification {
                 block_number,
                 acknowledgement_sender,
@@ -1203,7 +1195,7 @@ where
         reward_signing_notification_stream,
         archived_segment_notification_sender,
         archived_segment_notification_stream,
-        block_importing_notification_sender: block_importing_notification_sender.clone(),
+        block_importing_notification_sender,
         block_importing_notification_stream,
         // TODO: Consider making `confirmation_depth_k` non-zero
         segment_headers: Arc::new(Mutex::new(LruCache::new(
@@ -1219,7 +1211,6 @@ where
     let import = SubspaceBlockImport::new(
         client,
         wrapped_block_import,
-        block_importing_notification_sender,
         link.clone(),
         create_inherent_data_providers,
         chain_constants,
