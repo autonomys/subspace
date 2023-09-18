@@ -27,9 +27,11 @@ use sp_consensus_subspace::digests::{
     extract_subspace_digest_items, CompatibleDigestItem, PreDigest, SubspaceDigestItems,
 };
 #[cfg(feature = "pot")]
-use sp_consensus_subspace::ChainConstants;
+use sp_consensus_subspace::{ChainConstants, SubspaceJustification};
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi};
 use sp_runtime::DigestItem;
+#[cfg(feature = "pot")]
+use sp_runtime::Justifications;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::Kzg;
@@ -101,7 +103,7 @@ where
     ))
 }
 
-/// Errors encountered by the Subspace authorship task.
+/// Errors encountered by the Subspace verification task.
 #[derive(Debug, Eq, PartialEq, thiserror::Error)]
 pub enum VerificationError<Header: HeaderT> {
     /// Header has a bad seal
@@ -113,6 +115,14 @@ pub enum VerificationError<Header: HeaderT> {
     /// Bad reward signature
     #[error("Bad reward signature on {0:?}")]
     BadRewardSignature(Header::Hash),
+    /// Invalid Subspace justification
+    #[cfg(feature = "pot")]
+    #[error("Invalid Subspace justification: {0}")]
+    InvalidSubspaceJustification(codec::Error),
+    /// Invalid Subspace justification contents
+    #[cfg(feature = "pot")]
+    #[error("Invalid Subspace justification contents")]
+    InvalidSubspaceJustificationContents,
     /// Invalid proof of time
     #[cfg(feature = "pot")]
     #[error("Invalid proof of time")]
@@ -205,6 +215,7 @@ where
             FarmerPublicKey,
             FarmerSignature,
         >,
+        #[cfg(feature = "pot")] justifications: &Option<Justifications>,
     ) -> Result<CheckedHeader<Block::Header, VerifiedHeaderInfo>, VerificationError<Block::Header>>
     {
         let VerificationParams {
@@ -235,6 +246,75 @@ where
             return Ok(CheckedHeader::Deferred(header, slot));
         }
 
+        // The case where we have justifications is a happy case because we can verify most things
+        // right way and more efficiently than without justifications. But justifications are not
+        // always available, so fallback is still needed.
+        #[cfg(feature = "pot")]
+        if let Some(subspace_justification) = justifications.as_ref().and_then(|justifications| {
+            justifications
+                .iter()
+                .find_map(SubspaceJustification::try_from_justification)
+        }) {
+            let subspace_justification =
+                subspace_justification.map_err(VerificationError::InvalidSubspaceJustification)?;
+
+            let SubspaceJustification::PotCheckpoints {
+                mut seed,
+                checkpoints,
+            } = subspace_justification;
+
+            // Last checkpoint must be out future proof of time, this is how we anchor the rest of
+            // checks together
+            if checkpoints.last().map(|checkpoints| checkpoints.output())
+                != Some(pre_digest.pot_info().future_proof_of_time())
+            {
+                return Err(VerificationError::InvalidSubspaceJustificationContents);
+            }
+
+            let future_slot = slot + self.chain_constants.block_authoring_delay();
+            let mut slot_to_check = Slot::from(
+                future_slot
+                    .checked_sub(checkpoints.len() as u64 - 1)
+                    .ok_or(VerificationError::InvalidProofOfTime)?,
+            );
+            let mut slot_iterations = subspace_digest_items
+                .pot_parameters_change
+                .as_ref()
+                .and_then(|parameters_change| {
+                    (parameters_change.slot == slot_to_check)
+                        .then_some(parameters_change.slot_iterations)
+                })
+                .unwrap_or(subspace_digest_items.pot_slot_iterations);
+
+            // All checkpoints must be valid, at least according to the seed included in
+            // justifications
+            for checkpoints in checkpoints {
+                if !self
+                    .pot_verifier
+                    .verify_checkpoints(seed, slot_iterations, &checkpoints)
+                    .await
+                {
+                    return Err(VerificationError::InvalidProofOfTime);
+                }
+
+                slot_to_check = slot_to_check + Slot::from(1);
+                if let Some(parameters_change) = subspace_digest_items.pot_parameters_change
+                    && parameters_change.slot == slot_to_check
+                {
+                    slot_iterations = parameters_change.slot_iterations;
+                    seed = checkpoints
+                        .output()
+                        .seed_with_entropy(&parameters_change.entropy);
+                } else {
+                    seed = checkpoints.output().seed();
+                }
+            }
+
+            // Below verification that doesn't depend on justifications will be running more
+            // efficient due to correct checkpoints cached as the result of justification
+            // verification
+        }
+
         #[cfg(feature = "pot")]
         let slot_iterations;
         #[cfg(feature = "pot")]
@@ -261,8 +341,8 @@ where
             pot_seed = pre_digest.pot_info().proof_of_time().seed();
         }
 
-        // TODO: Extend/optimize this check once we have checkpoints in justifications
-        // Check proof of time between slot of the block and future proof of time
+        // Check proof of time between slot of the block and future proof of time.
+        //
         // Here during stateless verification we do not have access to parent block, thus only
         // verify proofs after proof of time of at current slot up until future proof of time
         // (inclusive), during block import we verify the rest.
@@ -466,6 +546,8 @@ where
                     },
                 },
                 subspace_digest_items,
+                #[cfg(feature = "pot")]
+                &block.justifications,
             )
             .await
             .map_err(Error::<Block::Header>::from)?;
