@@ -77,7 +77,7 @@ impl PotVerifier {
 
         self.cache
             .lock()
-            .peek(&cache_key)
+            .get(&cache_key)
             .and_then(|value| value.checkpoints.try_lock()?.as_ref().copied())
     }
 
@@ -155,7 +155,7 @@ impl PotVerifier {
         loop {
             // TODO: This "proxy" is a workaround for https://github.com/rust-lang/rust/issues/57478
             let (result_sender, result_receiver) = oneshot::channel();
-            std::thread::spawn({
+            rayon::spawn({
                 let verifier = self.clone();
 
                 move || {
@@ -225,7 +225,7 @@ impl PotVerifier {
 
         loop {
             let mut cache = self.cache.lock();
-            let maybe_cache_value = cache.peek(&cache_key).cloned();
+            let maybe_cache_value = cache.get(&cache_key).cloned();
             if let Some(cache_value) = maybe_cache_value {
                 drop(cache);
                 let correct_checkpoints = cache_value.checkpoints.lock().await;
@@ -298,7 +298,7 @@ impl PotVerifier {
     ) -> bool {
         // TODO: This "proxy" is a workaround for https://github.com/rust-lang/rust/issues/57478
         let (result_sender, result_receiver) = oneshot::channel();
-        std::thread::spawn({
+        rayon::spawn({
             let verifier = self.clone();
             let checkpoints = *checkpoints;
 
@@ -335,7 +335,7 @@ impl PotVerifier {
 
         loop {
             let mut cache = self.cache.lock();
-            if let Some(cache_value) = cache.peek(&cache_key).cloned() {
+            if let Some(cache_value) = cache.get(&cache_key).cloned() {
                 drop(cache);
                 let correct_checkpoints = cache_value.checkpoints.lock().await;
                 if let Some(correct_checkpoints) = correct_checkpoints.as_ref() {
