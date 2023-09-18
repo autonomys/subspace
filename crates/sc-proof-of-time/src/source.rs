@@ -2,9 +2,9 @@ pub mod gossip;
 mod state;
 mod timekeeper;
 
-use crate::source::gossip::{GossipCheckpoints, PotGossipWorker};
+use crate::source::gossip::{GossipProof, PotGossipWorker, ToGossipMessage};
 use crate::source::state::{NextSlotInput, PotState};
-use crate::source::timekeeper::run_timekeeper;
+use crate::source::timekeeper::{run_timekeeper, TimekeeperProof};
 use crate::verifier::PotVerifier;
 use derive_more::{Deref, DerefMut};
 use futures::channel::mpsc;
@@ -14,6 +14,7 @@ use sc_network::PeerId;
 use sc_network_gossip::{Network as GossipNetwork, Syncing as GossipSyncing};
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
+use sp_consensus::SyncOracle;
 use sp_consensus_slots::Slot;
 #[cfg(feature = "pot")]
 use sp_consensus_subspace::digests::extract_pre_digest;
@@ -30,10 +31,11 @@ use sp_runtime::traits::Header as HeaderT;
 #[cfg(feature = "pot")]
 use sp_runtime::traits::Zero;
 use std::marker::PhantomData;
+#[cfg(not(feature = "pot"))]
 use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::thread;
-use subspace_core_primitives::{PotCheckpoints, PotSeed};
+use subspace_core_primitives::PotCheckpoints;
 #[cfg(feature = "pot")]
 use tracing::warn;
 use tracing::{debug, error};
@@ -51,18 +53,6 @@ pub struct PotSlotInfo {
     pub checkpoints: PotCheckpoints,
 }
 
-/// Proof of time slot information
-struct TimekeeperCheckpoints {
-    /// Slot number
-    slot: Slot,
-    /// Proof of time seed
-    seed: PotSeed,
-    /// Iterations per slot
-    slot_iterations: NonZeroU32,
-    /// Proof of time checkpoints
-    checkpoints: PotCheckpoints,
-}
-
 /// Stream with proof of time slots
 #[derive(Debug, Deref, DerefMut)]
 pub struct PotSlotInfoStream(mpsc::Receiver<PotSlotInfo>);
@@ -77,9 +67,9 @@ pub struct PotSourceWorker<Block, Client> {
     client: Arc<Client>,
     #[cfg(feature = "pot")]
     chain_constants: ChainConstants,
-    timekeeper_checkpoints_receiver: mpsc::Receiver<TimekeeperCheckpoints>,
-    outgoing_messages_sender: mpsc::Sender<GossipCheckpoints>,
-    incoming_messages_receiver: mpsc::Receiver<(PeerId, GossipCheckpoints)>,
+    timekeeper_proofs_receiver: mpsc::Receiver<TimekeeperProof>,
+    to_gossip_sender: mpsc::Sender<ToGossipMessage>,
+    from_gossip_receiver: mpsc::Receiver<(PeerId, GossipProof)>,
     slot_sender: mpsc::Sender<PotSlotInfo>,
     state: Arc<PotState>,
     _block: PhantomData<Block>,
@@ -91,16 +81,18 @@ where
     Client: BlockchainEvents<Block> + HeaderBackend<Block> + ProvideRuntimeApi<Block>,
     Client::Api: SubspaceRuntimeApi<Block, FarmerPublicKey>,
 {
-    pub fn new<Network, GossipSync>(
+    pub fn new<Network, GossipSync, SO>(
         is_timekeeper: bool,
         client: Arc<Client>,
         pot_verifier: PotVerifier,
         network: Network,
         sync: Arc<GossipSync>,
+        sync_oracle: SO,
     ) -> Result<(Self, PotGossipWorker<Block>, PotSlotInfoStream), ApiError>
     where
         Network: GossipNetwork<Block> + Send + Sync + Clone + 'static,
         GossipSync: GossipSyncing<Block> + 'static,
+        SO: SyncOracle + Send + Sync + 'static,
     {
         #[cfg(feature = "pot")]
         let chain_constants;
@@ -164,7 +156,7 @@ where
             pot_verifier.clone(),
         ));
 
-        let (timekeeper_checkpoints_sender, timekeeper_checkpoints_receiver) =
+        let (timekeeper_proofs_sender, timekeeper_proofs_receiver) =
             mpsc::channel(LOCAL_PROOFS_CHANNEL_CAPACITY);
         let (slot_sender, slot_receiver) = mpsc::channel(SLOTS_CHANNEL_CAPACITY);
         if is_timekeeper {
@@ -175,7 +167,7 @@ where
                 .name("timekeeper".to_string())
                 .spawn(move || {
                     if let Err(error) =
-                        run_timekeeper(state, pot_verifier, timekeeper_checkpoints_sender)
+                        run_timekeeper(state, pot_verifier, timekeeper_proofs_sender)
                     {
                         error!(%error, "Timekeeper exited with an error");
                     }
@@ -183,26 +175,27 @@ where
                 .expect("Thread creation must not panic");
         }
 
-        let (outgoing_messages_sender, outgoing_messages_receiver) =
+        let (to_gossip_sender, to_gossip_receiver) =
             mpsc::channel(GOSSIP_OUTGOING_CHANNEL_CAPACITY);
-        let (incoming_messages_sender, incoming_messages_receiver) =
+        let (from_gossip_sender, from_gossip_receiver) =
             mpsc::channel(GOSSIP_INCOMING_CHANNEL_CAPACITY);
         let gossip_worker = PotGossipWorker::new(
-            outgoing_messages_receiver,
-            incoming_messages_sender,
+            to_gossip_receiver,
+            from_gossip_sender,
             pot_verifier,
             Arc::clone(&state),
             network,
             sync,
+            sync_oracle,
         );
 
         let source_worker = Self {
             client,
             #[cfg(feature = "pot")]
             chain_constants,
-            timekeeper_checkpoints_receiver,
-            outgoing_messages_sender,
-            incoming_messages_receiver,
+            timekeeper_proofs_receiver,
+            to_gossip_sender,
+            from_gossip_receiver,
             slot_sender,
             state,
             _block: PhantomData,
@@ -220,13 +213,13 @@ where
         loop {
             select! {
                 // List of blocks that the client has finalized.
-                timekeeper_checkpoints = self.timekeeper_checkpoints_receiver.select_next_some() => {
-                    self.handle_timekeeper_checkpoints(timekeeper_checkpoints);
+                timekeeper_proof = self.timekeeper_proofs_receiver.select_next_some() => {
+                    self.handle_timekeeper_proof(timekeeper_proof);
                 }
                 // List of blocks that the client has finalized.
-                maybe_gossip_checkpoints = self.incoming_messages_receiver.next() => {
-                    if let Some((sender, gossip_checkpoints)) = maybe_gossip_checkpoints {
-                        self.handle_gossip_checkpoints(sender, gossip_checkpoints);
+                maybe_gossip_proof = self.from_gossip_receiver.next() => {
+                    if let Some((sender, gossip_proof)) = maybe_gossip_proof {
+                        self.handle_gossip_proof(sender, gossip_proof);
                     } else {
                         debug!("Incoming gossip messages stream ended, exiting");
                         return;
@@ -247,13 +240,13 @@ where
         }
     }
 
-    fn handle_timekeeper_checkpoints(&mut self, timekeeper_checkpoints: TimekeeperCheckpoints) {
-        let TimekeeperCheckpoints {
+    fn handle_timekeeper_proof(&mut self, proof: TimekeeperProof) {
+        let TimekeeperProof {
             slot,
             seed,
             slot_iterations,
             checkpoints,
-        } = timekeeper_checkpoints;
+        } = proof;
 
         debug!(
             ?slot,
@@ -264,16 +257,19 @@ where
         );
 
         if self
-            .outgoing_messages_sender
-            .try_send(GossipCheckpoints {
+            .to_gossip_sender
+            .try_send(ToGossipMessage::Proof(GossipProof {
                 slot,
                 seed,
                 slot_iterations,
                 checkpoints,
-            })
+            }))
             .is_err()
         {
-            debug!(%slot, "Gossip is not able to keep-up with slot production");
+            debug!(
+                %slot,
+                "Gossip is not able to keep-up with slot production (timekeeper)",
+            );
         }
 
         // We don't care if block production is too slow or block production is not enabled on this
@@ -283,34 +279,38 @@ where
 
     // TODO: Follow both verified and unverified checkpoints to start secondary timekeeper ASAP in
     //  case verification succeeds
-    fn handle_gossip_checkpoints(
-        &mut self,
-        _sender: PeerId,
-        gossip_checkpoints: GossipCheckpoints,
-    ) {
+    fn handle_gossip_proof(&mut self, _sender: PeerId, proof: GossipProof) {
         let expected_next_slot_input = NextSlotInput {
-            slot: gossip_checkpoints.slot,
-            slot_iterations: gossip_checkpoints.slot_iterations,
-            seed: gossip_checkpoints.seed,
+            slot: proof.slot,
+            slot_iterations: proof.slot_iterations,
+            seed: proof.seed,
         };
 
-        if self
-            .state
-            .try_extend(
-                expected_next_slot_input,
-                gossip_checkpoints.slot,
-                gossip_checkpoints.checkpoints.output(),
-                #[cfg(feature = "pot")]
-                None,
-            )
-            .is_ok()
-        {
+        if let Ok(next_slot_input) = self.state.try_extend(
+            expected_next_slot_input,
+            proof.slot,
+            proof.checkpoints.output(),
+            #[cfg(feature = "pot")]
+            None,
+        ) {
             // We don't care if block production is too slow or block production is not enabled on
             // this node at all
             let _ = self.slot_sender.try_send(PotSlotInfo {
-                slot: gossip_checkpoints.slot,
-                checkpoints: gossip_checkpoints.checkpoints,
+                slot: proof.slot,
+                checkpoints: proof.checkpoints,
             });
+
+            if self
+                .to_gossip_sender
+                .try_send(ToGossipMessage::NextSlotInput(next_slot_input))
+                .is_err()
+            {
+                debug!(
+                    slot = %proof.slot,
+                    next_slot = %next_slot_input.slot,
+                    "Gossip is not able to keep-up with slot production (gossip)",
+                );
+            }
         }
     }
 
@@ -323,7 +323,11 @@ where
     }
 
     #[cfg(feature = "pot")]
-    fn handle_block_import_notification(&self, block_hash: Block::Hash, header: &Block::Header) {
+    fn handle_block_import_notification(
+        &mut self,
+        block_hash: Block::Hash,
+        header: &Block::Header,
+    ) {
         let subspace_digest_items = match extract_subspace_digest_items::<
             Block::Header,
             FarmerPublicKey,
@@ -355,17 +359,24 @@ where
         // * if block import is on a different PoT chain, it will update next slot input to the
         //   correct fork
         // * if block import is on the same PoT chain this will essentially do nothing
-        if self
-            .state
-            .update(
-                best_slot,
-                best_proof,
-                #[cfg(feature = "pot")]
-                Some(subspace_digest_items.pot_parameters_change),
-            )
-            .is_some()
-        {
+        if let Some(next_slot_input) = self.state.update(
+            best_slot,
+            best_proof,
+            #[cfg(feature = "pot")]
+            Some(subspace_digest_items.pot_parameters_change),
+        ) {
             warn!("Proof of time chain reorg happened");
+
+            if self
+                .to_gossip_sender
+                .try_send(ToGossipMessage::NextSlotInput(next_slot_input))
+                .is_err()
+            {
+                debug!(
+                    next_slot = %next_slot_input.slot,
+                    "Gossip is not able to keep-up with slot production (block import)",
+                );
+            }
         }
     }
 }
