@@ -251,7 +251,7 @@ where
         }
 
         // The case where we have justifications is a happy case because we can verify most things
-        // right way and more efficiently than without justifications. But justifications are not
+        // right away and more efficiently than without justifications. But justifications are not
         // always available, so fallback is still needed.
         #[cfg(feature = "pot")]
         if let Some(subspace_justification) = justifications.as_ref().and_then(|justifications| {
@@ -267,7 +267,7 @@ where
                 checkpoints,
             } = subspace_justification;
 
-            // Last checkpoint must be out future proof of time, this is how we anchor the rest of
+            // Last checkpoint must be our future proof of time, this is how we anchor the rest of
             // checks together
             if checkpoints.last().map(|checkpoints| checkpoints.output())
                 != Some(pre_digest.pot_info().future_proof_of_time())
@@ -314,7 +314,7 @@ where
             }
             // Try to find invalid checkpoints
             if verification_results
-                // TODO: Ideally we'd use `find` here instead, but it does not yet exists:
+                // TODO: Ideally we'd use `find` here instead, but it does not yet exist:
                 //  https://github.com/rust-lang/futures-rs/issues/2705
                 .filter(|&success| async move { !success })
                 .boxed()
