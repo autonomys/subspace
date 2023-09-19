@@ -60,10 +60,14 @@ use sp_consensus_slots::{Slot, SlotDuration};
 use sp_consensus_subspace::digests::{
     extract_pre_digest, extract_subspace_digest_items, Error as DigestError, SubspaceDigestItems,
 };
+#[cfg(feature = "pot")]
+use sp_consensus_subspace::SubspaceJustification;
 use sp_consensus_subspace::{ChainConstants, FarmerPublicKey, FarmerSignature, SubspaceApi};
 use sp_core::H256;
 use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
 use sp_runtime::traits::One;
+#[cfg(feature = "pot")]
+use sp_runtime::Justifications;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
@@ -170,6 +174,14 @@ pub enum Error<Header: HeaderT> {
     /// Bad reward signature
     #[error("Bad reward signature on {0:?}")]
     BadRewardSignature(Header::Hash),
+    /// Invalid Subspace justification
+    #[cfg(feature = "pot")]
+    #[error("Invalid Subspace justification: {0}")]
+    InvalidSubspaceJustification(codec::Error),
+    /// Invalid Subspace justification contents
+    #[cfg(feature = "pot")]
+    #[error("Invalid Subspace justification contents")]
+    InvalidSubspaceJustificationContents,
     /// Invalid proof of time
     #[cfg(feature = "pot")]
     #[error("Invalid proof of time")]
@@ -279,6 +291,14 @@ where
             VerificationError::HeaderUnsealed(block_hash) => Error::HeaderUnsealed(block_hash),
             VerificationError::BadRewardSignature(block_hash) => {
                 Error::BadRewardSignature(block_hash)
+            }
+            #[cfg(feature = "pot")]
+            VerificationError::InvalidSubspaceJustification(error) => {
+                Error::InvalidSubspaceJustification(error)
+            }
+            #[cfg(feature = "pot")]
+            VerificationError::InvalidSubspaceJustificationContents => {
+                Error::InvalidSubspaceJustificationContents
             }
             #[cfg(feature = "pot")]
             VerificationError::InvalidProofOfTime => Error::InvalidProofOfTime,
@@ -691,6 +711,7 @@ where
             FarmerPublicKey,
             FarmerSignature,
         >,
+        #[cfg(feature = "pot")] justifications: &Option<Justifications>,
         skip_runtime_access: bool,
     ) -> Result<(), Error<Block::Header>> {
         let block_number = *header.number();
@@ -753,11 +774,20 @@ where
 
         #[cfg(not(feature = "pot"))]
         let correct_global_randomness;
-        #[cfg(feature = "pot")]
-        let pot_seed;
-        #[cfg(feature = "pot")]
-        let slot_iterations;
+        // TODO: Remove suppression once PoT is the default
+        #[allow(clippy::needless_late_init)]
         let correct_solution_range;
+
+        let parent_subspace_digest_items = if block_number.is_one() {
+            None
+        } else {
+            Some(extract_subspace_digest_items::<
+                _,
+                FarmerPublicKey,
+                FarmerPublicKey,
+                FarmerSignature,
+            >(&parent_header)?)
+        };
 
         if block_number.is_one() {
             // Genesis block doesn't contain usual digest items, we need to query runtime API
@@ -769,27 +799,14 @@ where
                     parent_hash,
                 )?;
             }
-            #[cfg(feature = "pot")]
-            {
-                slot_iterations = self
-                    .client
-                    .runtime_api()
-                    .pot_parameters(parent_hash)?
-                    .slot_iterations();
-                pot_seed = self.pot_verifier.genesis_seed();
-            }
 
             correct_solution_range =
                 slot_worker::extract_solution_ranges_for_block(self.client.as_ref(), parent_hash)?
                     .0;
         } else {
-            let parent_subspace_digest_items = extract_subspace_digest_items::<
-                _,
-                FarmerPublicKey,
-                FarmerPublicKey,
-                FarmerSignature,
-            >(&parent_header)?;
-
+            let parent_subspace_digest_items = parent_subspace_digest_items
+                .as_ref()
+                .expect("Always Some for non-first block; qed");
             #[cfg(not(feature = "pot"))]
             {
                 correct_global_randomness =
@@ -798,26 +815,6 @@ where
                         None => parent_subspace_digest_items.global_randomness,
                     };
             }
-            #[cfg(feature = "pot")]
-            // In case parameters change in the very first slot after slot of the parent block,
-            // account for them
-            if let Some(parameters_change) = subspace_digest_items.pot_parameters_change
-                && parameters_change.slot == (parent_slot + Slot::from(1))
-            {
-                slot_iterations = parameters_change.slot_iterations;
-                pot_seed = parent_subspace_digest_items
-                    .pre_digest
-                    .pot_info()
-                    .proof_of_time()
-                    .seed_with_entropy(&parameters_change.entropy);
-            } else {
-                slot_iterations = subspace_digest_items.pot_slot_iterations;
-                pot_seed = parent_subspace_digest_items
-                    .pre_digest
-                    .pot_info()
-                    .proof_of_time()
-                    .seed();
-            }
 
             correct_solution_range = match parent_subspace_digest_items.next_solution_range {
                 Some(solution_range) => solution_range,
@@ -825,35 +822,137 @@ where
             };
         }
 
+        if subspace_digest_items.solution_range != correct_solution_range {
+            return Err(Error::InvalidSolutionRange(block_hash));
+        }
+
         #[cfg(not(feature = "pot"))]
         if subspace_digest_items.global_randomness != correct_global_randomness {
             return Err(Error::InvalidGlobalRandomness(block_hash));
         }
-        #[cfg(feature = "pot")]
-        // TODO: Extend/optimize this check once we have checkpoints in justifications
-        // Here we check that there is continuity from parent block's proof of time (but not future
-        // entropy since this block may be produced before slot corresponding to parent block's
-        // future proof of time) to current block's proof of time. During stateless verification we
-        // do not have access to parent block, thus only verify proofs after proof of time of at
-        // current slot up until future proof of time (inclusive), here during block import we
-        // verify the rest.
-        if !self
-            .pot_verifier
-            .is_output_valid(
-                parent_slot + Slot::from(1),
-                pot_seed,
-                slot_iterations,
-                slots_since_parent,
-                subspace_digest_items.pre_digest.pot_info().proof_of_time(),
-                subspace_digest_items.pot_parameters_change,
-            )
-            .await
-        {
-            return Err(Error::InvalidProofOfTime);
-        }
 
-        if subspace_digest_items.solution_range != correct_solution_range {
-            return Err(Error::InvalidSolutionRange(block_hash));
+        // The case where we have justifications is a happy case because we only need to check the
+        // seed and number of checkpoints. But justifications are not always available, so fallback
+        // is still needed.
+        #[cfg(feature = "pot")]
+        if let Some(subspace_justification) = justifications.as_ref().and_then(|justifications| {
+            justifications
+                .iter()
+                .find_map(SubspaceJustification::try_from_justification)
+        }) {
+            let subspace_justification =
+                subspace_justification.map_err(Error::InvalidSubspaceJustification)?;
+
+            let SubspaceJustification::PotCheckpoints { seed, checkpoints } =
+                subspace_justification;
+
+            let future_slot = pre_digest.slot() + self.chain_constants.block_authoring_delay();
+
+            if block_number.is_one() {
+                // In case of first block seed must match genesis seed
+                if seed != self.pot_verifier.genesis_seed() {
+                    return Err(Error::InvalidSubspaceJustificationContents);
+                }
+
+                // Number of checkpoints must match future slot number
+                if checkpoints.len() as u64 != *future_slot {
+                    return Err(Error::InvalidSubspaceJustificationContents);
+                }
+            } else {
+                let parent_subspace_digest_items = parent_subspace_digest_items
+                    .as_ref()
+                    .expect("Always Some for non-first block; qed");
+
+                let parent_future_slot = parent_slot + self.chain_constants.block_authoring_delay();
+                let after_parent_future_slot = parent_future_slot + Slot::from(1);
+                let correct_seed;
+
+                // In case parameters change in the very first slot after future slot of the parent
+                // block, account for them
+                if let Some(parameters_change) = subspace_digest_items.pot_parameters_change
+                    && parameters_change.slot == after_parent_future_slot
+                {
+                     correct_seed = parent_subspace_digest_items
+                        .pre_digest
+                        .pot_info()
+                        .future_proof_of_time()
+                        .seed_with_entropy(&parameters_change.entropy);
+                } else {
+                    correct_seed = parent_subspace_digest_items
+                        .pre_digest
+                        .pot_info()
+                        .future_proof_of_time()
+                        .seed();
+                }
+
+                if seed != correct_seed {
+                    return Err(Error::InvalidSubspaceJustificationContents);
+                }
+
+                // Number of checkpoints must match number of proofs that were not yet seen on chain
+                if checkpoints.len() as u64 != (*future_slot - *parent_future_slot) {
+                    return Err(Error::InvalidSubspaceJustificationContents);
+                }
+            }
+        } else {
+            let pot_seed;
+            let slot_iterations;
+
+            if block_number.is_one() {
+                // Genesis block doesn't contain usual digest items, we need to query runtime API
+                // instead
+                slot_iterations = self
+                    .client
+                    .runtime_api()
+                    .pot_parameters(parent_hash)?
+                    .slot_iterations();
+                pot_seed = self.pot_verifier.genesis_seed();
+            } else {
+                let parent_subspace_digest_items = parent_subspace_digest_items
+                    .as_ref()
+                    .expect("Always Some for non-first block; qed");
+
+                // In case parameters change in the very first slot after slot of the parent block,
+                // account for them
+                if let Some(parameters_change) = subspace_digest_items.pot_parameters_change
+                    && parameters_change.slot == (parent_slot + Slot::from(1))
+                {
+                    slot_iterations = parameters_change.slot_iterations;
+                    pot_seed = parent_subspace_digest_items
+                        .pre_digest
+                        .pot_info()
+                        .proof_of_time()
+                        .seed_with_entropy(&parameters_change.entropy);
+                } else {
+                    slot_iterations = subspace_digest_items.pot_slot_iterations;
+                    pot_seed = parent_subspace_digest_items
+                        .pre_digest
+                        .pot_info()
+                        .proof_of_time()
+                        .seed();
+                }
+            }
+
+            // Here we check that there is continuity from parent block's proof of time (but not future
+            // entropy since this block may be produced before slot corresponding to parent block's
+            // future proof of time) to current block's proof of time. During stateless verification we
+            // do not have access to parent block, thus only verify proofs after proof of time of at
+            // current slot up until future proof of time (inclusive), here during block import we
+            // verify the rest.
+            if !self
+                .pot_verifier
+                .is_output_valid(
+                    parent_slot + Slot::from(1),
+                    pot_seed,
+                    slot_iterations,
+                    slots_since_parent,
+                    subspace_digest_items.pre_digest.pot_info().proof_of_time(),
+                    subspace_digest_items.pot_parameters_change,
+                )
+                .await
+            {
+                return Err(Error::InvalidProofOfTime);
+            }
         }
 
         let sector_id = SectorId::new(
@@ -1020,6 +1119,8 @@ where
             block.body.clone(),
             &root_plot_public_key,
             &subspace_digest_items,
+            #[cfg(feature = "pot")]
+            &block.justifications,
             skip_execution_checks,
         )
         .await

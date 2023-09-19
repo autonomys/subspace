@@ -54,6 +54,8 @@ use sp_core::H256;
 use sp_runtime::traits::{Block as BlockT, Header, One, Saturating, Zero};
 use sp_runtime::DigestItem;
 #[cfg(feature = "pot")]
+use sp_runtime::{Justification, Justifications};
+#[cfg(feature = "pot")]
 use std::collections::BTreeMap;
 use std::future::Future;
 use std::marker::PhantomData;
@@ -306,6 +308,15 @@ where
         let maybe_root_plot_public_key = runtime_api.root_plot_public_key(parent_hash).ok()?;
 
         #[cfg(feature = "pot")]
+        let pot_parameters = runtime_api.pot_parameters(parent_hash).ok()?;
+        #[cfg(feature = "pot")]
+        let parent_future_slot = if parent_header.number().is_zero() {
+            parent_slot
+        } else {
+            parent_slot + self.chain_constants.block_authoring_delay()
+        };
+
+        #[cfg(feature = "pot")]
         let (proof_of_time, future_proof_of_time, new_checkpoints) = {
             // Remove checkpoints from old slots we will not need anymore
             self.pot_checkpoints
@@ -315,7 +326,6 @@ where
 
             // Future slot for which proof must be available before authoring block at this slot
             let future_slot = slot + self.chain_constants.block_authoring_delay();
-            let parent_future_slot = parent_slot + self.chain_constants.block_authoring_delay();
             let future_proof_of_time = self.pot_checkpoints.get(&future_slot)?.output();
 
             // New checkpoints that were produced since parent block's future slot up to current
@@ -329,7 +339,6 @@ where
                 })
                 .collect::<Vec<_>>();
 
-            let pot_parameters = runtime_api.pot_parameters(parent_hash).ok()?;
             let slot_iterations;
             let pot_seed;
             let after_parent_slot = parent_slot + Slot::from(1);
@@ -579,10 +588,34 @@ where
 
         #[cfg(feature = "pot")]
         {
+            let pot_seed;
+            if parent_header.number().is_zero() {
+                pot_seed = self.pot_verifier.genesis_seed();
+            } else {
+                let parent_pot_info = parent_pre_digest.pot_info();
+                let after_parent_future_slot = parent_future_slot + Slot::from(1);
+                // Only if entropy injection happens exactly after parent's future  slot we need to
+                // mix it in
+                if let Some(parameters_change) = pot_parameters.next_parameters_change()
+                    && parameters_change.slot == after_parent_future_slot
+                {
+                    pot_seed = parent_pot_info
+                        .future_proof_of_time()
+                        .seed_with_entropy(&parameters_change.entropy);
+                } else {
+                    pot_seed = parent_pot_info
+                        .future_proof_of_time()
+                        .seed();
+                }
+            }
+
             maybe_pre_digest.map(|pre_digest| {
                 (
                     pre_digest,
-                    SubspaceJustification::Checkpoints(new_checkpoints),
+                    SubspaceJustification::PotCheckpoints {
+                        seed: pot_seed,
+                        checkpoints: new_checkpoints,
+                    },
                 )
             })
         }
@@ -605,7 +638,7 @@ where
         header_hash: &Block::Hash,
         body: Vec<Block::Extrinsic>,
         storage_changes: sc_consensus_slots::StorageChanges<Block>,
-        #[cfg(feature = "pot")] (pre_digest, _justification): Self::Claim,
+        #[cfg(feature = "pot")] (pre_digest, justification): Self::Claim,
         #[cfg(not(feature = "pot"))] pre_digest: Self::Claim,
         _aux_data: Self::AuxData,
     ) -> Result<BlockImportParams<Block>, ConsensusError> {
@@ -623,12 +656,11 @@ where
         import_block.body = Some(body);
         import_block.state_action =
             StateAction::ApplyChanges(StorageChanges::Changes(storage_changes));
-        // TODO: Substrate only allows justifications in finalized blocks, need to figure out a way
-        //  to pass this along (could use auxiliary, but then will not be gossiped to other nodes)
-        // #[cfg(feature = "pot")]
-        // import_block
-        //     .justifications
-        //     .replace(Justifications::from(Justification::from(justification)));
+
+        #[cfg(feature = "pot")]
+        import_block
+            .justifications
+            .replace(Justifications::from(Justification::from(justification)));
 
         Ok(import_block)
     }
