@@ -85,6 +85,10 @@ use subspace_verification::{
     VerifySolutionParams,
 };
 
+#[cfg(feature = "pot")]
+const SUBSPACE_FULL_POT_VERIFICATION_INTERMEDIATE: &[u8] =
+    b"subspace_full_pot_verification_intermediate";
+
 /// Information about new slot that just arrived
 #[derive(Debug, Copy, Clone)]
 pub struct NewSlotInfo {
@@ -712,6 +716,7 @@ where
             FarmerPublicKey,
             FarmerSignature,
         >,
+        #[cfg(feature = "pot")] full_pot_verification: bool,
         #[cfg(feature = "pot")] justifications: &Option<Justifications>,
         skip_runtime_access: bool,
     ) -> Result<(), Error<Block::Header>> {
@@ -940,17 +945,18 @@ where
             // do not have access to parent block, thus only verify proofs after proof of time of at
             // current slot up until future proof of time (inclusive), here during block import we
             // verify the rest.
-            if !self
-                .pot_verifier
-                .is_output_valid(
-                    parent_slot + Slot::from(1),
-                    pot_seed,
-                    slot_iterations,
-                    slots_since_parent,
-                    subspace_digest_items.pre_digest.pot_info().proof_of_time(),
-                    subspace_digest_items.pot_parameters_change,
-                )
-                .await
+            if full_pot_verification
+                && !self
+                    .pot_verifier
+                    .is_output_valid(
+                        parent_slot + Slot::from(1),
+                        pot_seed,
+                        slot_iterations,
+                        slots_since_parent,
+                        subspace_digest_items.pre_digest.pot_info().proof_of_time(),
+                        subspace_digest_items.pot_parameters_change,
+                    )
+                    .await
             {
                 return Err(Error::InvalidProofOfTime);
             }
@@ -1090,6 +1096,12 @@ where
         &mut self,
         mut block: BlockImportParams<Block>,
     ) -> Result<ImportResult, Self::Error> {
+        #[cfg(feature = "pot")]
+        let full_pot_verification = block
+            .intermediates
+            .remove(SUBSPACE_FULL_POT_VERIFICATION_INTERMEDIATE)
+            .and_then(|full_pot_verification| full_pot_verification.downcast_ref().copied())
+            .unwrap_or(true);
         let block_hash = block.post_hash();
         let block_number = *block.header.number();
 
@@ -1120,6 +1132,8 @@ where
             block.body.clone(),
             &root_plot_public_key,
             &subspace_digest_items,
+            #[cfg(feature = "pot")]
+            full_pot_verification,
             #[cfg(feature = "pot")]
             &block.justifications,
             skip_execution_checks,
