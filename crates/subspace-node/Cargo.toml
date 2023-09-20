@@ -82,7 +82,7 @@ tokio = "1.32.0"
 substrate-build-script-utils = { version = "3.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef" }
 
 [features]
-default = ["do-not-enforce-cost-of-storage"]
+default = []
 pot = [
 	"sc-consensus-subspace/pot",
 	"sp-consensus-subspace/pot",
