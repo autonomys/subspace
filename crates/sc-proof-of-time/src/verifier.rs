@@ -155,7 +155,7 @@ impl PotVerifier {
         loop {
             // TODO: This "proxy" is a workaround for https://github.com/rust-lang/rust/issues/57478
             let (result_sender, result_receiver) = oneshot::channel();
-            rayon::spawn({
+            tokio::task::spawn_blocking({
                 let verifier = self.clone();
 
                 move || {
@@ -298,7 +298,7 @@ impl PotVerifier {
     ) -> bool {
         // TODO: This "proxy" is a workaround for https://github.com/rust-lang/rust/issues/57478
         let (result_sender, result_receiver) = oneshot::channel();
-        rayon::spawn({
+        tokio::task::spawn_blocking({
             let verifier = self.clone();
             let checkpoints = *checkpoints;
 
