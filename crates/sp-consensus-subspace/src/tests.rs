@@ -10,8 +10,7 @@ use sp_core::crypto::UncheckedFrom;
 use sp_runtime::traits::BlakeTwo256;
 use sp_runtime::{Digest, DigestItem};
 use std::num::NonZeroU64;
-use subspace_core_primitives::{HistorySize, PieceOffset, Solution};
-use subspace_solving::REWARD_SIGNING_CONTEXT;
+use subspace_core_primitives::{HistorySize, PieceOffset, Solution, REWARD_SIGNING_CONTEXT};
 
 type Header = sp_runtime::generic::Header<u32, BlakeTwo256>;
 type PreDigest = crate::PreDigest<FarmerPublicKey, ()>;

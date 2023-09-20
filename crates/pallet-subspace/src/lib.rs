@@ -76,9 +76,8 @@ use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::BlockHash;
 use subspace_core_primitives::{
     ArchivedHistorySegment, HistorySize, PublicKey, Randomness, RewardSignature, SectorId,
-    SectorIndex, SegmentHeader, SegmentIndex, SlotNumber, SolutionRange,
+    SectorIndex, SegmentHeader, SegmentIndex, SlotNumber, SolutionRange, REWARD_SIGNING_CONTEXT,
 };
-use subspace_solving::REWARD_SIGNING_CONTEXT;
 #[cfg(feature = "pot")]
 use subspace_verification::derive_pot_entropy;
 #[cfg(not(feature = "pot"))]

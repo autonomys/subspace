@@ -70,6 +70,9 @@ use uint::static_assertions::const_assert;
 // Refuse to compile on lower than 32-bit platforms
 const_assert!(core::mem::size_of::<usize>() >= core::mem::size_of::<u32>());
 
+/// Signing context used for creating reward signatures by farmers.
+pub const REWARD_SIGNING_CONTEXT: &[u8] = b"subspace_reward";
+
 /// Byte length of a randomness type.
 pub const RANDOMNESS_LENGTH: usize = 32;
 

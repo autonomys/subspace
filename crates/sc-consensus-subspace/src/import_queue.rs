@@ -39,7 +39,6 @@ use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{PublicKey, RewardSignature};
 use subspace_proof_of_space::Table;
-use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{check_reward_signature, verify_solution, VerifySolutionParams};
 
 /// Start an import queue for the Subspace consensus algorithm.
@@ -51,21 +50,12 @@ use subspace_verification::{check_reward_signature, verify_solution, VerifySolut
 ///
 /// The block import object provided must be the `SubspaceBlockImport` or a wrapper
 /// of it, otherwise crucial import logic will be omitted.
-// TODO: Create a struct for these parameters
-#[allow(clippy::too_many_arguments)]
-pub fn import_queue<PosTable, Block: BlockT, Client, SelectChain, Inner, SN>(
+pub fn import_queue<PosTable, Block: BlockT, Client, SelectChain, Inner, SlotNow>(
     block_import: Inner,
     justification_import: Option<BoxJustificationImport<Block>>,
-    client: Arc<Client>,
-    kzg: Kzg,
-    select_chain: SelectChain,
-    slot_now: SN,
+    verifier_options: SubspaceVerifierOptions<Block, Client, SelectChain, SlotNow>,
     spawner: &impl sp_core::traits::SpawnEssentialNamed,
     registry: Option<&Registry>,
-    telemetry: Option<TelemetryHandle>,
-    offchain_tx_pool_factory: OffchainTransactionPoolFactory<Block>,
-    is_authoring_blocks: bool,
-    #[cfg(feature = "pot")] pot_verifier: PotVerifier,
 ) -> Result<DefaultImportQueue<Block>, sp_blockchain::Error>
 where
     PosTable: Table,
@@ -73,29 +63,9 @@ where
     Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + AuxStore + Send + Sync + 'static,
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey> + ApiExt<Block>,
     SelectChain: sp_consensus::SelectChain<Block> + 'static,
-    SN: Fn() -> Slot + Send + Sync + 'static,
+    SlotNow: Fn() -> Slot + Send + Sync + 'static,
 {
-    #[cfg(feature = "pot")]
-    let chain_constants = client
-        .runtime_api()
-        .chain_constants(client.info().best_hash)?;
-
-    let verifier = SubspaceVerifier {
-        client,
-        kzg,
-        select_chain,
-        slot_now,
-        telemetry,
-        offchain_tx_pool_factory,
-        #[cfg(feature = "pot")]
-        chain_constants,
-        reward_signing_context: schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT),
-        is_authoring_blocks,
-        #[cfg(feature = "pot")]
-        pot_verifier,
-        _pos_table: PhantomData::<PosTable>,
-        _block: PhantomData,
-    };
+    let verifier = SubspaceVerifier::<PosTable, _, _, _, _>::new(verifier_options)?;
 
     Ok(BasicQueue::new(
         verifier,
@@ -171,13 +141,45 @@ struct VerifiedHeaderInfo {
     seal: DigestItem,
 }
 
+/// Options for Subspace block verifier
+pub struct SubspaceVerifierOptions<Block, Client, SelectChain, SlotNow>
+where
+    Block: BlockT,
+{
+    /// Substrate client
+    pub client: Arc<Client>,
+    /// Kzg instance
+    pub kzg: Kzg,
+    /// Chain selection rule
+    pub select_chain: SelectChain,
+    /// Callback for determining current slot based on timestamp
+    // TODO: Remove field once PoT is the only option
+    pub slot_now: SlotNow,
+    /// Telemetry
+    pub telemetry: Option<TelemetryHandle>,
+    /// The offchain transaction pool factory.
+    ///
+    /// Will be used when sending equivocation reports and votes.
+    pub offchain_tx_pool_factory: OffchainTransactionPoolFactory<Block>,
+    /// Context for reward signing
+    pub reward_signing_context: SigningContext,
+    /// Whether this node is authoring blocks
+    pub is_authoring_blocks: bool,
+    /// Proof of time verifier
+    #[cfg(feature = "pot")]
+    pub pot_verifier: PotVerifier,
+}
+
 /// A verifier for Subspace blocks.
-struct SubspaceVerifier<PosTable, Block: BlockT, Client, SelectChain, SN> {
+struct SubspaceVerifier<PosTable, Block, Client, SelectChain, SlotNow>
+where
+    Block: BlockT,
+{
     client: Arc<Client>,
     kzg: Kzg,
     select_chain: SelectChain,
     // TODO: Remove field once PoT is the only option
-    slot_now: SN,
+    slot_now: SlotNow,
     telemetry: Option<TelemetryHandle>,
     offchain_tx_pool_factory: OffchainTransactionPoolFactory<Block>,
     #[cfg(feature = "pot")]
@@ -199,6 +201,45 @@ where
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey>,
     SelectChain: sp_consensus::SelectChain<Block>,
 {
+    fn new(
+        options: SubspaceVerifierOptions<Block, Client, SelectChain, SN>,
+    ) -> sp_blockchain::Result<Self> {
+        let SubspaceVerifierOptions {
+            client,
+            kzg,
+            select_chain,
+            slot_now,
+            telemetry,
+            offchain_tx_pool_factory,
+            reward_signing_context,
+            is_authoring_blocks,
+            #[cfg(feature = "pot")]
+            pot_verifier,
+        } = options;
+
+        #[cfg(feature = "pot")]
+        let chain_constants = client
+            .runtime_api()
+            .chain_constants(client.info().best_hash)?;
+
+        Ok(Self {
+            client,
+            kzg,
+            select_chain,
+            slot_now,
+            telemetry,
+            offchain_tx_pool_factory,
+            #[cfg(feature = "pot")]
+            chain_constants,
+            reward_signing_context,
+            is_authoring_blocks,
+            #[cfg(feature = "pot")]
+            pot_verifier,
+            _pos_table: Default::default(),
+            _block: Default::default(),
+        })
+    }
+
     /// Check a header has been signed correctly and whether solution is correct. If the slot is too
     /// far in the future, an error will be returned. If successful, returns the pre-header and the
     /// digest item containing the seal.

@@ -51,6 +51,7 @@ use subspace_core_primitives::{
     ArchivedBlockProgress, ArchivedHistorySegment, Blake2b256Hash, BlockNumber, HistorySize,
     LastArchivedBlock, Piece, PieceOffset, PublicKey, Randomness, RecordedHistorySegment,
     SegmentCommitment, SegmentHeader, SegmentIndex, SlotNumber, Solution, SolutionRange,
+    REWARD_SIGNING_CONTEXT,
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector;
@@ -59,7 +60,6 @@ use subspace_farmer_components::sector::{sector_size, SectorMetadataChecksummed}
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::shim::ShimTable;
 use subspace_proof_of_space::Table;
-use subspace_solving::REWARD_SIGNING_CONTEXT;
 
 type PosTable = ShimTable;
 

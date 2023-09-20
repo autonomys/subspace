@@ -51,6 +51,7 @@ use sc_client_api::{Backend, BlockBackend, BlockchainEvents, ExecutorProvider, H
 use sc_consensus::{BlockImport, DefaultImportQueue, ImportQueue};
 use sc_consensus_slots::SlotProportion;
 use sc_consensus_subspace::archiver::{create_subspace_archiver, SegmentHeadersStore};
+use sc_consensus_subspace::import_queue::SubspaceVerifierOptions;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{
     ArchivedSegmentNotification, BlockImportingNotification, NewSlotNotification,
@@ -100,6 +101,7 @@ use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 #[cfg(feature = "pot")]
 use subspace_core_primitives::PotSeed;
+use subspace_core_primitives::REWARD_SIGNING_CONTEXT;
 use subspace_fraud_proof::verifier_api::VerifierClient;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::libp2p::multiaddr::Protocol;
@@ -587,25 +589,29 @@ where
     )?;
 
     let slot_duration = subspace_link.slot_duration();
-    let import_queue = sc_consensus_subspace::import_queue::import_queue::<PosTable, _, _, _, _, _>(
-        block_import.clone(),
-        None,
-        client.clone(),
+    let verifier_options = SubspaceVerifierOptions {
+        client: client.clone(),
         kzg,
-        select_chain.clone(),
+        select_chain: select_chain.clone(),
         // TODO: Remove use current best slot known from PoT verifier in PoT case
-        move || {
+        slot_now: move || {
             let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
 
             Slot::from_timestamp(*timestamp, slot_duration)
         },
+        telemetry: telemetry.as_ref().map(|x| x.handle()),
+        offchain_tx_pool_factory: OffchainTransactionPoolFactory::new(transaction_pool.clone()),
+        reward_signing_context: schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT),
+        is_authoring_blocks: config.role.is_authority(),
+        #[cfg(feature = "pot")]
+        pot_verifier: pot_verifier.clone(),
+    };
+    let import_queue = sc_consensus_subspace::import_queue::import_queue::<PosTable, _, _, _, _, _>(
+        block_import.clone(),
+        None,
+        verifier_options,
         &task_manager.spawn_essential_handle(),
         config.prometheus_registry(),
-        telemetry.as_ref().map(|x| x.handle()),
-        OffchainTransactionPoolFactory::new(transaction_pool.clone()),
-        config.role.is_authority(),
-        #[cfg(feature = "pot")]
-        pot_verifier.clone(),
     )?;
 
     let other = OtherPartialComponents {

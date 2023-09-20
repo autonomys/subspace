@@ -43,7 +43,6 @@ ss58-registry = "1.43.0"
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
 subspace-erasure-coding = { version = "0.1.0", path = "../subspace-erasure-coding" }
 subspace-farmer-components = { version = "0.1.0", path = "../subspace-farmer-components" }
-subspace-solving = { version = "0.1.0", path = "../subspace-solving" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-metrics = { version = "0.1.0", path = "../../shared/subspace-metrics" }
 subspace-networking = { version = "0.1.0", path = "../subspace-networking" }

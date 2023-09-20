@@ -77,10 +77,9 @@ use subspace_archiving::archiver::NewArchivedSegment;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
     BlockNumber, HistorySize, PublicKey, Randomness, SectorId, SegmentHeader, SegmentIndex,
-    Solution, SolutionRange,
+    Solution, SolutionRange, REWARD_SIGNING_CONTEXT,
 };
 use subspace_proof_of_space::Table;
-use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{
     calculate_block_weight, Error as VerificationPrimitiveError, PieceCheckParams,
     VerifySolutionParams,
