@@ -172,6 +172,7 @@ mod tests {
     use crate::runtime_registry::RuntimeObject;
     use crate::tests::{new_test_ext, Test};
     use frame_support::traits::Currency;
+    use sp_domains::storage::RawGenesis;
     use sp_std::vec;
     use sp_version::RuntimeVersion;
 
@@ -216,8 +217,7 @@ mod tests {
                     runtime_type: Default::default(),
                     runtime_upgrades: 0,
                     hash: Default::default(),
-                    code: vec![1, 2, 3, 4],
-                    raw_genesis: Default::default(),
+                    raw_genesis: RawGenesis::dummy(vec![1, 2, 3, 4]),
                     version: RuntimeVersion {
                         spec_name: "test".into(),
                         spec_version: 1,

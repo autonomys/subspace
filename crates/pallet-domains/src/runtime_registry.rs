@@ -34,8 +34,7 @@ pub struct RuntimeObject<Number, Hash> {
     pub runtime_type: RuntimeType,
     pub runtime_upgrades: u32,
     pub hash: Hash,
-    pub code: Vec<u8>,
-    // The raw gensis storage with runtime code removed.
+    // The raw gensis storage that contains the runtime code.
     // NOTE: don't use this field directly but `into_complete_raw_genesis` instead
     pub raw_genesis: RawGenesis,
     pub version: RuntimeVersion,
@@ -47,20 +46,18 @@ impl<Number, Hash> RuntimeObject<Number, Hash> {
     // Return a complete raw genesis with runtime code and domain id set properly
     pub fn into_complete_raw_genesis(self, domain_id: DomainId) -> RawGenesis {
         let RuntimeObject {
-            code,
-            mut raw_genesis,
-            ..
+            mut raw_genesis, ..
         } = self;
-        raw_genesis.set_runtime_code(code);
         raw_genesis.set_domain_id(domain_id);
         raw_genesis
     }
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
-pub struct ScheduledRuntimeUpgrade {
-    pub code: Vec<u8>,
+pub struct ScheduledRuntimeUpgrade<Hash> {
+    pub raw_genesis: RawGenesis,
     pub version: RuntimeVersion,
+    pub hash: Hash,
 }
 
 /// Extracts the runtime version of the provided code.
@@ -96,16 +93,15 @@ pub(crate) fn do_register_runtime<T: Config>(
     raw_genesis_storage: Vec<u8>,
     at: BlockNumberFor<T>,
 ) -> Result<RuntimeId, Error> {
-    let mut raw_genesis: RawGenesis = Decode::decode(&mut raw_genesis_storage.as_slice())
+    let raw_genesis: RawGenesis = Decode::decode(&mut raw_genesis_storage.as_slice())
         .map_err(|_| Error::FailedToDecodeRawGenesis)?;
 
-    // Remove the runtime code from `raw_genesis` before storing it
     let code = raw_genesis
-        .take_runtime_code()
+        .get_runtime_code()
         .ok_or(Error::RuntimeCodeNotFoundInRawGenesis)?;
 
-    let version = runtime_version(&code)?;
-    let runtime_hash = T::Hashing::hash(&code);
+    let version = runtime_version(code)?;
+    let runtime_hash = T::Hashing::hash(code);
     let runtime_id = NextRuntimeId::<T>::get();
 
     RuntimeRegistry::<T>::insert(
@@ -114,7 +110,6 @@ pub(crate) fn do_register_runtime<T: Config>(
             runtime_name,
             runtime_type,
             hash: runtime_hash,
-            code,
             raw_genesis,
             version,
             created_at: at,
@@ -138,15 +133,14 @@ pub(crate) fn register_runtime_at_genesis<T: Config>(
     raw_genesis_storage: Vec<u8>,
     at: BlockNumberFor<T>,
 ) -> Result<RuntimeId, Error> {
-    let mut raw_genesis: RawGenesis = Decode::decode(&mut raw_genesis_storage.as_slice())
+    let raw_genesis: RawGenesis = Decode::decode(&mut raw_genesis_storage.as_slice())
         .map_err(|_| Error::FailedToDecodeRawGenesis)?;
 
-    // Remove the runtime code from `raw_genesis` before storing it
     let code = raw_genesis
-        .take_runtime_code()
+        .get_runtime_code()
         .ok_or(Error::RuntimeCodeNotFoundInRawGenesis)?;
 
-    let runtime_hash = T::Hashing::hash(&code);
+    let runtime_hash = T::Hashing::hash(code);
     let runtime_id = NextRuntimeId::<T>::get();
 
     RuntimeRegistry::<T>::insert(
@@ -155,7 +149,6 @@ pub(crate) fn register_runtime_at_genesis<T: Config>(
             runtime_name,
             runtime_type,
             hash: runtime_hash,
-            code,
             raw_genesis,
             version: runtime_version,
             created_at: at,
@@ -173,19 +166,31 @@ pub(crate) fn register_runtime_at_genesis<T: Config>(
 /// Schedules a runtime upgrade after `DomainRuntimeUpgradeDelay` from current block number.
 pub(crate) fn do_schedule_runtime_upgrade<T: Config>(
     runtime_id: RuntimeId,
-    code: Vec<u8>,
+    raw_genesis_storage: Vec<u8>,
     current_block_number: BlockNumberFor<T>,
 ) -> Result<BlockNumberFor<T>, Error> {
     let runtime_obj = RuntimeRegistry::<T>::get(runtime_id).ok_or(Error::MissingRuntimeObject)?;
-    let new_runtime_version = can_upgrade_code(&runtime_obj.version, &code)?;
+
+    let new_raw_genesis: RawGenesis = Decode::decode(&mut raw_genesis_storage.as_slice())
+        .map_err(|_| Error::FailedToDecodeRawGenesis)?;
+
+    let new_code = new_raw_genesis
+        .get_runtime_code()
+        .ok_or(Error::RuntimeCodeNotFoundInRawGenesis)?;
+
+    let new_runtime_version = can_upgrade_code(&runtime_obj.version, new_code)?;
+    let new_runtime_hash = T::Hashing::hash(new_code);
+    let scheduled_upgrade = ScheduledRuntimeUpgrade {
+        raw_genesis: new_raw_genesis,
+        version: new_runtime_version,
+        hash: new_runtime_hash,
+    };
     let scheduled_at = current_block_number
         .checked_add(&T::DomainRuntimeUpgradeDelay::get())
         .ok_or(Error::MaxScheduledBlockNumber)?;
-    let scheduled_upgrade = ScheduledRuntimeUpgrade {
-        code,
-        version: new_runtime_version,
-    };
+
     ScheduledRuntimeUpgrades::<T>::insert(scheduled_at, runtime_id, scheduled_upgrade);
+
     Ok(scheduled_at)
 }
 
@@ -196,10 +201,9 @@ pub(crate) fn do_upgrade_runtimes<T: Config>(at: BlockNumberFor<T>) {
                 .as_mut()
                 .expect("Runtime object exists since an upgrade is scheduled after verification");
 
-            let runtime_hash = T::Hashing::hash(&scheduled_update.code);
-            runtime_obj.code = scheduled_update.code;
+            runtime_obj.raw_genesis = scheduled_update.raw_genesis;
             runtime_obj.version = scheduled_update.version;
-            runtime_obj.hash = runtime_hash;
+            runtime_obj.hash = scheduled_update.hash;
             runtime_obj.runtime_upgrades = runtime_obj.runtime_upgrades.saturating_add(1);
             runtime_obj.updated_at = at;
         });
@@ -251,11 +255,7 @@ mod tests {
             read_runtime_version,
         ));
         ext.execute_with(|| {
-            let raw_genesis_storage = {
-                let mut raw_genesis = RawGenesis::default();
-                raw_genesis.set_runtime_code(vec![1, 2, 3, 4]);
-                raw_genesis.encode()
-            };
+            let raw_genesis_storage = RawGenesis::dummy(vec![1, 2, 3, 4]).encode();
             let res = crate::Pallet::<Test>::register_domain_runtime(
                 RawOrigin::Root.into(),
                 b"evm".to_vec(),
@@ -281,8 +281,7 @@ mod tests {
                     runtime_type: Default::default(),
                     runtime_upgrades: 0,
                     hash: Default::default(),
-                    code: vec![1, 2, 3, 4],
-                    raw_genesis: Default::default(),
+                    raw_genesis: RawGenesis::dummy(vec![1, 2, 3, 4]),
                     version: RuntimeVersion {
                         spec_name: "test".into(),
                         spec_version: 1,
@@ -334,7 +333,7 @@ mod tests {
                 let res = crate::Pallet::<Test>::upgrade_domain_runtime(
                     RawOrigin::Root.into(),
                     0,
-                    vec![6, 7, 8, 9],
+                    RawGenesis::dummy(vec![6, 7, 8, 9]).encode(),
                 );
 
                 assert_eq!(res, expected.map_err(DispatchError::from))
@@ -355,7 +354,7 @@ mod tests {
                 }
             );
             assert_eq!(runtime_obj.runtime_upgrades, 0);
-            assert_eq!(runtime_obj.code, vec![1, 2, 3, 4]);
+            assert_eq!(runtime_obj.raw_genesis, RawGenesis::dummy(vec![1, 2, 3, 4]),);
 
             let block_number = frame_system::Pallet::<Test>::current_block_number();
             let scheduled_block_number = block_number
@@ -425,8 +424,7 @@ mod tests {
                     runtime_type: Default::default(),
                     runtime_upgrades: 0,
                     hash: Default::default(),
-                    code: vec![1, 2, 3, 4],
-                    raw_genesis: Default::default(),
+                    raw_genesis: RawGenesis::dummy(vec![1, 2, 3, 4]),
                     version: version.clone(),
                     created_at: Default::default(),
                     updated_at: Default::default(),
@@ -446,7 +444,7 @@ mod tests {
             let res = crate::Pallet::<Test>::upgrade_domain_runtime(
                 RawOrigin::Root.into(),
                 0,
-                vec![6, 7, 8, 9],
+                RawGenesis::dummy(vec![6, 7, 8, 9]).encode(),
             );
             assert_ok!(res);
 

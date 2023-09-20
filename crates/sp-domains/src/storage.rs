@@ -50,11 +50,17 @@ impl RawGenesis {
         );
     }
 
-    pub fn set_runtime_code(&mut self, code: Vec<u8>) {
+    fn set_runtime_code(&mut self, code: Vec<u8>) {
         let _ = self.top.insert(
             StorageKey(well_known_keys::CODE.to_vec()),
             StorageData(code),
         );
+    }
+
+    pub fn get_runtime_code(&self) -> Option<&[u8]> {
+        self.top
+            .get(&StorageKey(well_known_keys::CODE.to_vec()))
+            .map(|sd| sd.0.as_ref())
     }
 
     pub fn take_runtime_code(&mut self) -> Option<Vec<u8>> {
@@ -91,6 +97,12 @@ impl RawGenesis {
         );
 
         root
+    }
+
+    pub fn dummy(code: Vec<u8>) -> Self {
+        let mut raw_genesis = Self::default();
+        raw_genesis.set_runtime_code(code);
+        raw_genesis
     }
 }
 

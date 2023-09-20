@@ -304,7 +304,7 @@ mod pallet {
         BlockNumberFor<T>,
         Identity,
         RuntimeId,
-        ScheduledRuntimeUpgrade,
+        ScheduledRuntimeUpgrade<T::Hash>,
         OptionQuery,
     >;
 
@@ -946,13 +946,14 @@ mod pallet {
         pub fn upgrade_domain_runtime(
             origin: OriginFor<T>,
             runtime_id: RuntimeId,
-            code: Vec<u8>,
+            raw_genesis_storage: Vec<u8>,
         ) -> DispatchResult {
             ensure_root(origin)?;
 
             let block_number = frame_system::Pallet::<T>::current_block_number();
-            let scheduled_at = do_schedule_runtime_upgrade::<T>(runtime_id, code, block_number)
-                .map_err(Error::<T>::from)?;
+            let scheduled_at =
+                do_schedule_runtime_upgrade::<T>(runtime_id, raw_genesis_storage, block_number)
+                    .map_err(Error::<T>::from)?;
 
             Self::deposit_event(Event::DomainRuntimeUpgradeScheduled {
                 runtime_id,
@@ -1258,7 +1259,7 @@ impl<T: Config> Pallet<T> {
 
     pub fn domain_runtime_code(domain_id: DomainId) -> Option<Vec<u8>> {
         RuntimeRegistry::<T>::get(Self::runtime_id(domain_id)?)
-            .map(|runtime_object| runtime_object.code)
+            .and_then(|mut runtime_object| runtime_object.raw_genesis.take_runtime_code())
     }
 
     pub fn domain_best_number(domain_id: DomainId) -> Option<T::DomainNumber> {

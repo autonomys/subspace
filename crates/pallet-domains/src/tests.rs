@@ -331,11 +331,7 @@ pub(crate) fn run_to_block<T: Config>(block_number: BlockNumberFor<T>, parent_ha
 }
 
 pub(crate) fn register_genesis_domain(creator: u64, operator_ids: Vec<OperatorId>) -> DomainId {
-    let raw_genesis_storage = {
-        let mut raw_genesis = RawGenesis::default();
-        raw_genesis.set_runtime_code(vec![1, 2, 3, 4]);
-        raw_genesis.encode()
-    };
+    let raw_genesis_storage = RawGenesis::dummy(vec![1, 2, 3, 4]).encode();
     assert_ok!(crate::Pallet::<Test>::register_domain_runtime(
         RawOrigin::Root.into(),
         b"evm".to_vec(),
