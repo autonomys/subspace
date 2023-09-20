@@ -498,8 +498,10 @@ where
         max_block_proposal_slot_portion,
         telemetry,
         offchain_tx_pool_factory,
-        chain_constants: get_chain_constants(client.as_ref())
-            .map_err(|error| sp_consensus::Error::Other(error.into()))?,
+        chain_constants: client
+            .runtime_api()
+            .chain_constants(client.info().best_hash)
+            .map_err(|error| sp_consensus::Error::ChainLookup(error.to_string()))?,
         segment_headers_store,
         #[cfg(feature = "pot")]
         pending_solutions: Default::default(),
@@ -1221,40 +1223,6 @@ where
     }
 }
 
-/// Get chain constant configurations
-pub fn get_chain_constants<Block, Client>(
-    client: &Client,
-) -> Result<ChainConstants, Error<Block::Header>>
-where
-    Block: BlockT,
-    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + AuxStore,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
-{
-    match aux_schema::load_chain_constants(client)? {
-        Some(chain_constants) => Ok(chain_constants),
-        None => {
-            // This is only called on the very first block for which we always have runtime
-            // storage access
-            let chain_constants = client
-                .runtime_api()
-                .chain_constants(client.info().best_hash)
-                .map_err(Error::<Block::Header>::RuntimeApi)?;
-
-            aux_schema::write_chain_constants(&chain_constants, |values| {
-                client.insert_aux(
-                    &values
-                        .iter()
-                        .map(|(key, value)| (key.as_slice(), *value))
-                        .collect::<Vec<_>>(),
-                    &[],
-                )
-            })?;
-
-            Ok(chain_constants)
-        }
-    }
-}
-
 /// Produce a Subspace block-import object to be used later on in the construction of an
 /// import-queue.
 ///
@@ -1293,8 +1261,9 @@ where
     let (block_importing_notification_sender, block_importing_notification_stream) =
         notification::channel("subspace_block_importing_notification_stream");
 
-    let chain_constants = get_chain_constants(client.as_ref())
-        .map_err(|error| sp_blockchain::Error::Application(error.into()))?;
+    let chain_constants = client
+        .runtime_api()
+        .chain_constants(client.info().best_hash)?;
 
     let link = SubspaceLink {
         slot_duration,

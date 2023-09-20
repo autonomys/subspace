@@ -1,7 +1,5 @@
 //! Subspace block import implementation
 
-#[cfg(feature = "pot")]
-use crate::get_chain_constants;
 use crate::Error;
 #[cfg(feature = "pot")]
 use futures::stream::FuturesUnordered;
@@ -78,8 +76,9 @@ where
     SN: Fn() -> Slot + Send + Sync + 'static,
 {
     #[cfg(feature = "pot")]
-    let chain_constants = get_chain_constants(client.as_ref())
-        .map_err(|error| sp_blockchain::Error::Application(error.into()))?;
+    let chain_constants = client
+        .runtime_api()
+        .chain_constants(client.info().best_hash)?;
 
     let verifier = SubspaceVerifier {
         client,
