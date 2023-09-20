@@ -22,17 +22,17 @@
 
 pub mod archiver;
 pub mod aux_schema;
-pub mod import_queue;
 pub mod notification;
 mod slot_worker;
 #[cfg(test)]
 mod tests;
+pub mod verifier;
 
 use crate::archiver::{SegmentHeadersStore, FINALIZATION_DEPTH_IN_SEGMENTS};
-use crate::import_queue::VerificationError;
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use crate::slot_worker::SubspaceSlotWorker;
 pub use crate::slot_worker::SubspaceSyncOracle;
+use crate::verifier::VerificationError;
 use futures::channel::mpsc;
 use futures::StreamExt;
 use log::{debug, info, warn};

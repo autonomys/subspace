@@ -48,11 +48,11 @@ use prometheus_client::registry::Registry;
 use sc_basic_authorship::ProposerFactory;
 use sc_client_api::execution_extensions::ExtensionsFactory;
 use sc_client_api::{Backend, BlockBackend, BlockchainEvents, ExecutorProvider, HeaderBackend};
-use sc_consensus::{BlockImport, DefaultImportQueue, ImportQueue};
+use sc_consensus::{BasicQueue, BlockImport, DefaultImportQueue, ImportQueue};
 use sc_consensus_slots::SlotProportion;
 use sc_consensus_subspace::archiver::{create_subspace_archiver, SegmentHeadersStore};
-use sc_consensus_subspace::import_queue::SubspaceVerifierOptions;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
+use sc_consensus_subspace::verifier::{SubspaceVerifier, SubspaceVerifierOptions};
 use sc_consensus_subspace::{
     ArchivedSegmentNotification, BlockImportingNotification, NewSlotNotification,
     RewardSigningNotification, SubspaceLink, SubspaceParams, SubspaceSyncOracle,
@@ -589,7 +589,7 @@ where
     )?;
 
     let slot_duration = subspace_link.slot_duration();
-    let verifier_options = SubspaceVerifierOptions {
+    let verifier = SubspaceVerifier::<PosTable, _, _, _, _>::new(SubspaceVerifierOptions {
         client: client.clone(),
         kzg,
         select_chain: select_chain.clone(),
@@ -605,14 +605,14 @@ where
         is_authoring_blocks: config.role.is_authority(),
         #[cfg(feature = "pot")]
         pot_verifier: pot_verifier.clone(),
-    };
-    let import_queue = sc_consensus_subspace::import_queue::import_queue::<PosTable, _, _, _, _, _>(
-        block_import.clone(),
+    })?;
+    let import_queue = BasicQueue::new(
+        verifier,
+        Box::new(block_import.clone()),
         None,
-        verifier_options,
         &task_manager.spawn_essential_handle(),
         config.prometheus_registry(),
-    )?;
+    );
 
     let other = OtherPartialComponents {
         block_import: Box::new(block_import),

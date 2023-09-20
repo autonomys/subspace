@@ -6,12 +6,9 @@ use futures::stream::FuturesUnordered;
 #[cfg(feature = "pot")]
 use futures::StreamExt;
 use log::{debug, info, trace, warn};
-use prometheus_endpoint::Registry;
 use sc_client_api::backend::AuxStore;
-use sc_consensus::block_import::{BlockImport, BlockImportParams};
-use sc_consensus::import_queue::{
-    BasicQueue, BoxJustificationImport, DefaultImportQueue, Verifier,
-};
+use sc_consensus::block_import::BlockImportParams;
+use sc_consensus::import_queue::Verifier;
 use sc_consensus_slots::check_equivocation;
 #[cfg(feature = "pot")]
 use sc_proof_of_time::verifier::PotVerifier;
@@ -23,7 +20,7 @@ use schnorrkel::context::SigningContext;
 use sp_api::{ApiExt, BlockT, HeaderT, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
 use sp_blockchain::HeaderBackend;
-use sp_consensus::{BlockOrigin, Error as ConsensusError};
+use sp_consensus::BlockOrigin;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{
     extract_subspace_digest_items, CompatibleDigestItem, PreDigest, SubspaceDigestItems,
@@ -40,41 +37,6 @@ use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{PublicKey, RewardSignature};
 use subspace_proof_of_space::Table;
 use subspace_verification::{check_reward_signature, verify_solution, VerifySolutionParams};
-
-/// Start an import queue for the Subspace consensus algorithm.
-///
-/// This method returns the import queue, some data that needs to be passed to the block authoring
-/// logic (`SubspaceLink`), and a future that must be run to
-/// completion and is responsible for listening to finality notifications and
-/// pruning the epoch changes tree.
-///
-/// The block import object provided must be the `SubspaceBlockImport` or a wrapper
-/// of it, otherwise crucial import logic will be omitted.
-pub fn import_queue<PosTable, Block: BlockT, Client, SelectChain, Inner, SlotNow>(
-    block_import: Inner,
-    justification_import: Option<BoxJustificationImport<Block>>,
-    verifier_options: SubspaceVerifierOptions<Block, Client, SelectChain, SlotNow>,
-    spawner: &impl sp_core::traits::SpawnEssentialNamed,
-    registry: Option<&Registry>,
-) -> Result<DefaultImportQueue<Block>, sp_blockchain::Error>
-where
-    PosTable: Table,
-    Inner: BlockImport<Block, Error = ConsensusError> + Send + Sync + 'static,
-    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + AuxStore + Send + Sync + 'static,
-    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey> + ApiExt<Block>,
-    SelectChain: sp_consensus::SelectChain<Block> + 'static,
-    SlotNow: Fn() -> Slot + Send + Sync + 'static,
-{
-    let verifier = SubspaceVerifier::<PosTable, _, _, _, _>::new(verifier_options)?;
-
-    Ok(BasicQueue::new(
-        verifier,
-        Box::new(block_import),
-        justification_import,
-        spawner,
-        registry,
-    ))
-}
 
 /// Errors encountered by the Subspace verification task.
 #[derive(Debug, Eq, PartialEq, thiserror::Error)]
@@ -171,7 +133,7 @@ where
 }
 
 /// A verifier for Subspace blocks.
-struct SubspaceVerifier<PosTable, Block, Client, SelectChain, SlotNow>
+pub struct SubspaceVerifier<PosTable, Block, Client, SelectChain, SlotNow>
 where
     Block: BlockT,
 {
@@ -201,7 +163,8 @@ where
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey>,
     SelectChain: sp_consensus::SelectChain<Block>,
 {
-    fn new(
+    /// Create new instance
+    pub fn new(
         options: SubspaceVerifierOptions<Block, Client, SelectChain, SN>,
     ) -> sp_blockchain::Result<Self> {
         let SubspaceVerifierOptions {
