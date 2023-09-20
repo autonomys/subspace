@@ -865,11 +865,20 @@ where
         client.clone(),
         sync_oracle.clone(),
         telemetry.as_ref().map(|telemetry| telemetry.handle()),
-    );
+    )
+    .map_err(ServiceError::Client)?;
 
     task_manager
         .spawn_essential_handle()
-        .spawn_essential_blocking("subspace-archiver", None, Box::pin(subspace_archiver));
+        .spawn_essential_blocking(
+            "subspace-archiver",
+            None,
+            Box::pin(async move {
+                if let Err(error) = subspace_archiver.await {
+                    error!(%error, "Archiver exited with error");
+                }
+            }),
+        );
 
     if config.enable_subspace_block_relay {
         network_wrapper.set(network_service.clone());
