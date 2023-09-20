@@ -13,8 +13,10 @@ use sc_consensus::import_queue::ImportQueueService;
 use sc_consensus_subspace::archiver::SegmentHeadersStore;
 use sc_network::config::SyncMode;
 use sc_network::{NetworkPeers, NetworkService};
-use sp_api::BlockT;
+use sp_api::{BlockT, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
+use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
+use sp_runtime::Saturating;
 use std::future::Future;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
@@ -61,9 +63,11 @@ where
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + BlockchainEvents<Block>
+        + ProvideRuntimeApi<Block>
         + Send
         + Sync
         + 'static,
+    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
 {
     let (tx, rx) = mpsc::channel(0);
     let observer_fut = {
@@ -217,13 +221,31 @@ async fn create_worker<Block, AS, IQS, Client>(
 where
     Block: BlockT,
     AS: AuxStore + Send + Sync + 'static,
-    Client: HeaderBackend<Block> + BlockBackend<Block> + Send + Sync + 'static,
+    Client: HeaderBackend<Block>
+        + BlockBackend<Block>
+        + ProvideRuntimeApi<Block>
+        + Send
+        + Sync
+        + 'static,
+    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
     IQS: ImportQueueService<Block> + ?Sized,
 {
     // Corresponds to contents of block one, everyone has it, so we consider it being processed
     // right away
     let mut last_processed_segment_index = SegmentIndex::ZERO;
-    let mut last_processed_block_number = client.info().finalized_number;
+    // TODO: We'll be able to just take finalized block once we are able to decouple pruning from
+    //  finality: https://github.com/paritytech/polkadot-sdk/issues/1570
+    let mut last_processed_block_number = {
+        let info = client.info();
+        info.best_number.saturating_sub(
+            client
+                .runtime_api()
+                .chain_constants(info.best_hash)
+                .map_err(|error| error.to_string())?
+                .confirmation_depth_k()
+                .into(),
+        )
+    };
     let segment_header_downloader = SegmentHeaderDownloader::new(node);
     let piece_provider = PieceProvider::new(
         node.clone(),

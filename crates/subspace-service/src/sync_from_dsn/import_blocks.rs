@@ -117,10 +117,9 @@ where
             .is_some();
 
         let info = client.info();
-        // We already have this block imported and it is finalized, so can't change
-        if last_archived_block <= info.finalized_number {
+        // We have already processed this block, it can't change
+        if last_archived_block <= *last_processed_block_number {
             *last_processed_segment_index = segment_index;
-            *last_processed_block_number = last_archived_block;
             // Reset reconstructor instance
             reconstructor = Reconstructor::new().map_err(|error| error.to_string())?;
             continue;
