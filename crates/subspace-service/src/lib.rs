@@ -865,11 +865,20 @@ where
         client.clone(),
         sync_oracle.clone(),
         telemetry.as_ref().map(|telemetry| telemetry.handle()),
-    );
+    )
+    .map_err(ServiceError::Client)?;
 
     task_manager
         .spawn_essential_handle()
-        .spawn_essential_blocking("subspace-archiver", None, Box::pin(subspace_archiver));
+        .spawn_essential_blocking(
+            "subspace-archiver",
+            None,
+            Box::pin(async move {
+                if let Err(error) = subspace_archiver.await {
+                    error!(%error, "Archiver exited with error");
+                }
+            }),
+        );
 
     if config.enable_subspace_block_relay {
         network_wrapper.set(network_service.clone());
@@ -957,12 +966,13 @@ where
             pot_verifier.clone(),
             network_service.clone(),
             sync_service.clone(),
+            sync_oracle.clone(),
         )
         .map_err(|error| Error::Other(error.into()))?;
         let spawn_essential_handle = task_manager.spawn_essential_handle();
 
         spawn_essential_handle.spawn("pot-source", Some("pot"), pot_source_worker.run());
-        spawn_essential_handle.spawn_blocking("pot-gossip", Some("pot"), pot_gossip_worker.run());
+        spawn_essential_handle.spawn("pot-gossip", Some("pot"), pot_gossip_worker.run());
 
         pot_slot_info_stream
     };

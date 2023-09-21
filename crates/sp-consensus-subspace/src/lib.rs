@@ -52,9 +52,9 @@ use subspace_core_primitives::Randomness;
 #[cfg(feature = "pot")]
 use subspace_core_primitives::{Blake3Hash, PotOutput};
 use subspace_core_primitives::{
-    BlockNumber, HistorySize, PotCheckpoints, PublicKey, RewardSignature, SegmentCommitment,
-    SegmentHeader, SegmentIndex, SlotNumber, Solution, SolutionRange, PUBLIC_KEY_LENGTH,
-    REWARD_SIGNATURE_LENGTH,
+    BlockNumber, HistorySize, PotCheckpoints, PotSeed, PublicKey, RewardSignature,
+    SegmentCommitment, SegmentHeader, SegmentIndex, SlotNumber, Solution, SolutionRange,
+    PUBLIC_KEY_LENGTH, REWARD_SIGNATURE_LENGTH,
 };
 #[cfg(feature = "std")]
 use subspace_proof_of_space::chia::ChiaTable;
@@ -113,7 +113,13 @@ const SUBSPACE_ENGINE_ID: ConsensusEngineId = *b"SUB_";
 pub enum SubspaceJustification {
     /// Proof of time checkpoints that were not seen before
     #[codec(index = 0)]
-    Checkpoints(Vec<PotCheckpoints>),
+    PotCheckpoints {
+        /// Proof of time seed, the input for computing checkpoints
+        seed: PotSeed,
+        /// Proof of time checkpoints from after future proof of parent block to current block's
+        /// future proof (inclusive)
+        checkpoints: Vec<PotCheckpoints>,
+    },
 }
 
 impl From<SubspaceJustification> for Justification {
