@@ -1,19 +1,18 @@
 //! Subspace block import implementation
 
-#[cfg(feature = "pot")]
-use crate::get_chain_constants;
 use crate::Error;
+#[cfg(feature = "pot")]
+use crate::SUBSPACE_FULL_POT_VERIFICATION_INTERMEDIATE;
 #[cfg(feature = "pot")]
 use futures::stream::FuturesUnordered;
 #[cfg(feature = "pot")]
 use futures::StreamExt;
 use log::{debug, info, trace, warn};
-use prometheus_endpoint::Registry;
+#[cfg(feature = "pot")]
+use rand::prelude::*;
 use sc_client_api::backend::AuxStore;
-use sc_consensus::block_import::{BlockImport, BlockImportParams};
-use sc_consensus::import_queue::{
-    BasicQueue, BoxJustificationImport, DefaultImportQueue, Verifier,
-};
+use sc_consensus::block_import::BlockImportParams;
+use sc_consensus::import_queue::Verifier;
 use sc_consensus_slots::check_equivocation;
 #[cfg(feature = "pot")]
 use sc_proof_of_time::verifier::PotVerifier;
@@ -25,7 +24,7 @@ use schnorrkel::context::SigningContext;
 use sp_api::{ApiExt, BlockT, HeaderT, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
 use sp_blockchain::HeaderBackend;
-use sp_consensus::{BlockOrigin, Error as ConsensusError};
+use sp_consensus::BlockOrigin;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{
     extract_subspace_digest_items, CompatibleDigestItem, PreDigest, SubspaceDigestItems,
@@ -33,79 +32,18 @@ use sp_consensus_subspace::digests::{
 #[cfg(feature = "pot")]
 use sp_consensus_subspace::{ChainConstants, SubspaceJustification};
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi};
+use sp_runtime::traits::NumberFor;
 use sp_runtime::DigestItem;
 #[cfg(feature = "pot")]
 use sp_runtime::Justifications;
 use std::marker::PhantomData;
+#[cfg(feature = "pot")]
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::{PublicKey, RewardSignature};
+use subspace_core_primitives::{BlockNumber, PublicKey, RewardSignature};
 use subspace_proof_of_space::Table;
-use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{check_reward_signature, verify_solution, VerifySolutionParams};
-
-/// Start an import queue for the Subspace consensus algorithm.
-///
-/// This method returns the import queue, some data that needs to be passed to the block authoring
-/// logic (`SubspaceLink`), and a future that must be run to
-/// completion and is responsible for listening to finality notifications and
-/// pruning the epoch changes tree.
-///
-/// The block import object provided must be the `SubspaceBlockImport` or a wrapper
-/// of it, otherwise crucial import logic will be omitted.
-// TODO: Create a struct for these parameters
-#[allow(clippy::too_many_arguments)]
-pub fn import_queue<PosTable, Block: BlockT, Client, SelectChain, Inner, SN>(
-    block_import: Inner,
-    justification_import: Option<BoxJustificationImport<Block>>,
-    client: Arc<Client>,
-    kzg: Kzg,
-    select_chain: SelectChain,
-    slot_now: SN,
-    spawner: &impl sp_core::traits::SpawnEssentialNamed,
-    registry: Option<&Registry>,
-    telemetry: Option<TelemetryHandle>,
-    offchain_tx_pool_factory: OffchainTransactionPoolFactory<Block>,
-    is_authoring_blocks: bool,
-    #[cfg(feature = "pot")] pot_verifier: PotVerifier,
-) -> Result<DefaultImportQueue<Block>, sp_blockchain::Error>
-where
-    PosTable: Table,
-    Inner: BlockImport<Block, Error = ConsensusError> + Send + Sync + 'static,
-    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + AuxStore + Send + Sync + 'static,
-    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey> + ApiExt<Block>,
-    SelectChain: sp_consensus::SelectChain<Block> + 'static,
-    SN: Fn() -> Slot + Send + Sync + 'static,
-{
-    #[cfg(feature = "pot")]
-    let chain_constants = get_chain_constants(client.as_ref())
-        .map_err(|error| sp_blockchain::Error::Application(error.into()))?;
-
-    let verifier = SubspaceVerifier {
-        client,
-        kzg,
-        select_chain,
-        slot_now,
-        telemetry,
-        offchain_tx_pool_factory,
-        #[cfg(feature = "pot")]
-        chain_constants,
-        reward_signing_context: schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT),
-        is_authoring_blocks,
-        #[cfg(feature = "pot")]
-        pot_verifier,
-        _pos_table: PhantomData::<PosTable>,
-        _block: PhantomData,
-    };
-
-    Ok(BasicQueue::new(
-        verifier,
-        Box::new(block_import),
-        justification_import,
-        spawner,
-        registry,
-    ))
-}
 
 /// Errors encountered by the Subspace verification task.
 #[derive(Debug, Eq, PartialEq, thiserror::Error)]
@@ -172,18 +110,55 @@ struct VerifiedHeaderInfo {
     seal: DigestItem,
 }
 
+/// Options for Subspace block verifier
+pub struct SubspaceVerifierOptions<Block, Client, SelectChain, SlotNow>
+where
+    Block: BlockT,
+{
+    /// Substrate client
+    pub client: Arc<Client>,
+    /// Kzg instance
+    pub kzg: Kzg,
+    /// Chain selection rule
+    pub select_chain: SelectChain,
+    /// Callback for determining current slot based on timestamp
+    // TODO: Remove field once PoT is the only option
+    pub slot_now: SlotNow,
+    /// Telemetry
+    pub telemetry: Option<TelemetryHandle>,
+    /// The offchain transaction pool factory.
+    ///
+    /// Will be used when sending equivocation reports and votes.
+    pub offchain_tx_pool_factory: OffchainTransactionPoolFactory<Block>,
+    /// Context for reward signing
+    pub reward_signing_context: SigningContext,
+    /// Approximate target block number for syncing purposes
+    #[cfg(feature = "pot")]
+    pub sync_target_block_number: Arc<AtomicU32>,
+    /// Whether this node is authoring blocks
+    pub is_authoring_blocks: bool,
+    /// Proof of time verifier
+    #[cfg(feature = "pot")]
+    pub pot_verifier: PotVerifier,
+}
+
 /// A verifier for Subspace blocks.
-struct SubspaceVerifier<PosTable, Block: BlockT, Client, SelectChain, SN> {
+pub struct SubspaceVerifier<PosTable, Block, Client, SelectChain, SlotNow>
+where
+    Block: BlockT,
+{
     client: Arc<Client>,
     kzg: Kzg,
     select_chain: SelectChain,
     // TODO: Remove field once PoT is the only option
-    slot_now: SN,
+    slot_now: SlotNow,
     telemetry: Option<TelemetryHandle>,
     offchain_tx_pool_factory: OffchainTransactionPoolFactory<Block>,
     #[cfg(feature = "pot")]
     chain_constants: ChainConstants,
     reward_signing_context: SigningContext,
+    #[cfg(feature = "pot")]
+    sync_target_block_number: Arc<AtomicU32>,
     is_authoring_blocks: bool,
     #[cfg(feature = "pot")]
     pot_verifier: PotVerifier,
@@ -196,10 +171,80 @@ impl<PosTable, Block, Client, SelectChain, SN>
 where
     PosTable: Table,
     Block: BlockT,
+    BlockNumber: From<NumberFor<Block>>,
     Client: AuxStore + HeaderBackend<Block> + ProvideRuntimeApi<Block>,
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey>,
     SelectChain: sp_consensus::SelectChain<Block>,
 {
+    /// Create new instance
+    pub fn new(
+        options: SubspaceVerifierOptions<Block, Client, SelectChain, SN>,
+    ) -> sp_blockchain::Result<Self> {
+        let SubspaceVerifierOptions {
+            client,
+            kzg,
+            select_chain,
+            slot_now,
+            telemetry,
+            offchain_tx_pool_factory,
+            reward_signing_context,
+            #[cfg(feature = "pot")]
+            sync_target_block_number,
+            is_authoring_blocks,
+            #[cfg(feature = "pot")]
+            pot_verifier,
+        } = options;
+
+        #[cfg(feature = "pot")]
+        let chain_constants = client
+            .runtime_api()
+            .chain_constants(client.info().best_hash)?;
+
+        Ok(Self {
+            client,
+            kzg,
+            select_chain,
+            slot_now,
+            telemetry,
+            offchain_tx_pool_factory,
+            #[cfg(feature = "pot")]
+            chain_constants,
+            reward_signing_context,
+            #[cfg(feature = "pot")]
+            sync_target_block_number,
+            is_authoring_blocks,
+            #[cfg(feature = "pot")]
+            pot_verifier,
+            _pos_table: Default::default(),
+            _block: Default::default(),
+        })
+    }
+
+    /// Determine if full proof of time verification is needed for this block number
+    #[cfg(feature = "pot")]
+    fn full_pot_verification(&self, block_number: NumberFor<Block>) -> bool {
+        let sync_target_block_number: BlockNumber =
+            self.sync_target_block_number.load(Ordering::Relaxed);
+        let Some(diff) = sync_target_block_number.checked_sub(BlockNumber::from(block_number))
+        else {
+            return true;
+        };
+
+        let sample_size = match diff {
+            ..=1_581 => {
+                return true;
+            }
+            1_582..=6_234 => 1_581,
+            6_235..=63_240 => 3_162 * (diff - 3_162) / (diff - 1),
+            63_241..=3_162_000 => 3_162,
+            _ => diff / 1_000,
+        };
+
+        let n = thread_rng().gen_range(0..=diff);
+
+        n < sample_size
+    }
+
     /// Check a header has been signed correctly and whether solution is correct. If the slot is too
     /// far in the future, an error will be returned. If successful, returns the pre-header and the
     /// digest item containing the seal.
@@ -219,6 +264,7 @@ where
             FarmerPublicKey,
             FarmerSignature,
         >,
+        #[cfg(feature = "pot")] full_pot_verification: bool,
         #[cfg(feature = "pot")] justifications: &Option<Justifications>,
     ) -> Result<CheckedHeader<Block::Header, VerifiedHeaderInfo>, VerificationError<Block::Header>>
     {
@@ -313,14 +359,15 @@ where
                 }
             }
             // Try to find invalid checkpoints
-            if verification_results
-                // TODO: Ideally we'd use `find` here instead, but it does not yet exist:
-                //  https://github.com/rust-lang/futures-rs/issues/2705
-                .filter(|&success| async move { !success })
-                .boxed()
-                .next()
-                .await
-                .is_some()
+            if full_pot_verification
+                && verification_results
+                    // TODO: Ideally we'd use `find` here instead, but it does not yet exist:
+                    //  https://github.com/rust-lang/futures-rs/issues/2705
+                    .filter(|&success| async move { !success })
+                    .boxed()
+                    .next()
+                    .await
+                    .is_some()
             {
                 return Err(VerificationError::InvalidProofOfTime);
             }
@@ -362,17 +409,18 @@ where
         // verify proofs after proof of time of at current slot up until future proof of time
         // (inclusive), during block import we verify the rest.
         #[cfg(feature = "pot")]
-        if !self
-            .pot_verifier
-            .is_output_valid(
-                next_slot,
-                pot_seed,
-                slot_iterations,
-                self.chain_constants.block_authoring_delay(),
-                pre_digest.pot_info().future_proof_of_time(),
-                subspace_digest_items.pot_parameters_change,
-            )
-            .await
+        if full_pot_verification
+            && !self
+                .pot_verifier
+                .is_output_valid(
+                    next_slot,
+                    pot_seed,
+                    slot_iterations,
+                    self.chain_constants.block_authoring_delay(),
+                    pre_digest.pot_info().future_proof_of_time(),
+                    subspace_digest_items.pot_parameters_change,
+                )
+                .await
         {
             return Err(VerificationError::InvalidProofOfTime);
         }
@@ -473,6 +521,7 @@ impl<PosTable, Block, Client, SelectChain, SN> Verifier<Block>
 where
     PosTable: Table,
     Block: BlockT,
+    BlockNumber: From<NumberFor<Block>>,
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + AuxStore,
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey>,
     SelectChain: sp_consensus::SelectChain<Block>,
@@ -538,6 +587,9 @@ where
 
         let slot_now = (self.slot_now)();
 
+        #[cfg(feature = "pot")]
+        let full_pot_verification = self.full_pot_verification(*block.header.number());
+
         // Stateless header verification only. This means only check that header contains required
         // contents, correct signature and valid Proof-of-Space, but because previous block is not
         // guaranteed to be imported at this point, it is not possible to verify
@@ -562,10 +614,18 @@ where
                 },
                 subspace_digest_items,
                 #[cfg(feature = "pot")]
+                full_pot_verification,
+                #[cfg(feature = "pot")]
                 &block.justifications,
             )
             .await
             .map_err(Error::<Block::Header>::from)?;
+
+        #[cfg(feature = "pot")]
+        block.intermediates.insert(
+            SUBSPACE_FULL_POT_VERIFICATION_INTERMEDIATE.into(),
+            Box::new(full_pot_verification),
+        );
 
         match checked_header {
             CheckedHeader::Checked(pre_header, verified_info) => {

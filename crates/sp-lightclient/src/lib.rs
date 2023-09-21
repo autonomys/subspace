@@ -47,9 +47,8 @@ use sp_std::num::NonZeroU64;
 use subspace_core_primitives::Randomness;
 use subspace_core_primitives::{
     ArchivedHistorySegment, BlockWeight, HistorySize, PublicKey, RewardSignature, SectorId,
-    SegmentCommitment, SegmentIndex, SolutionRange,
+    SegmentCommitment, SegmentIndex, SolutionRange, REWARD_SIGNING_CONTEXT,
 };
-use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{
     calculate_block_weight, check_reward_signature, PieceCheckParams, VerifySolutionParams,
 };

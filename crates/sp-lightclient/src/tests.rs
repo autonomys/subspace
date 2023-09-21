@@ -29,7 +29,7 @@ use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::PotOutput;
 use subspace_core_primitives::{
     BlockWeight, HistorySize, PublicKey, Randomness, Record, RecordedHistorySegment,
-    SegmentCommitment, SegmentIndex, SlotNumber, Solution, SolutionRange,
+    SegmentCommitment, SegmentIndex, SlotNumber, Solution, SolutionRange, REWARD_SIGNING_CONTEXT,
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector;
@@ -37,7 +37,6 @@ use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy};
 use subspace_farmer_components::sector::{sector_size, SectorMetadataChecksummed};
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::Table;
-use subspace_solving::REWARD_SIGNING_CONTEXT;
 #[cfg(not(feature = "pot"))]
 use subspace_verification::derive_randomness;
 use subspace_verification::{calculate_block_weight, verify_solution, VerifySolutionParams};

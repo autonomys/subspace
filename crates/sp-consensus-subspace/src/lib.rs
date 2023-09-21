@@ -54,7 +54,7 @@ use subspace_core_primitives::{Blake3Hash, PotOutput};
 use subspace_core_primitives::{
     BlockNumber, HistorySize, PotCheckpoints, PotSeed, PublicKey, RewardSignature,
     SegmentCommitment, SegmentHeader, SegmentIndex, SlotNumber, Solution, SolutionRange,
-    PUBLIC_KEY_LENGTH, REWARD_SIGNATURE_LENGTH,
+    PUBLIC_KEY_LENGTH, REWARD_SIGNATURE_LENGTH, REWARD_SIGNING_CONTEXT,
 };
 #[cfg(feature = "std")]
 use subspace_proof_of_space::chia::ChiaTable;
@@ -64,7 +64,6 @@ use subspace_proof_of_space::shim::ShimTable;
 use subspace_proof_of_space::PosTableType;
 #[cfg(feature = "std")]
 use subspace_proof_of_space::Table;
-use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{check_reward_signature, VerifySolutionParams};
 
 /// Key type for Subspace pallet.

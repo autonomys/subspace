@@ -33,6 +33,8 @@ pub mod tx_pre_validator;
 use crate::dsn::{create_dsn_instance, DsnConfigurationError};
 use crate::metrics::NodeMetrics;
 use crate::tx_pre_validator::ConsensusChainTxPreValidator;
+#[cfg(feature = "pot")]
+use core::sync::atomic::{AtomicU32, Ordering};
 use cross_domain_message_gossip::cdm_gossip_peers_set_config;
 use domain_runtime_primitives::{BlockNumber as DomainNumber, Hash as DomainHash};
 pub use dsn::DsnConfig;
@@ -48,10 +50,11 @@ use prometheus_client::registry::Registry;
 use sc_basic_authorship::ProposerFactory;
 use sc_client_api::execution_extensions::ExtensionsFactory;
 use sc_client_api::{Backend, BlockBackend, BlockchainEvents, ExecutorProvider, HeaderBackend};
-use sc_consensus::{BlockImport, DefaultImportQueue, ImportQueue};
+use sc_consensus::{BasicQueue, BlockImport, DefaultImportQueue, ImportQueue};
 use sc_consensus_slots::SlotProportion;
 use sc_consensus_subspace::archiver::{create_subspace_archiver, SegmentHeadersStore};
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
+use sc_consensus_subspace::verifier::{SubspaceVerifier, SubspaceVerifierOptions};
 use sc_consensus_subspace::{
     ArchivedSegmentNotification, BlockImportingNotification, NewSlotNotification,
     RewardSigningNotification, SubspaceLink, SubspaceParams, SubspaceSyncOracle,
@@ -97,9 +100,12 @@ use std::marker::PhantomData;
 #[cfg(feature = "pot")]
 use std::num::NonZeroUsize;
 use std::sync::Arc;
+#[cfg(feature = "pot")]
+use std::time::Duration;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 #[cfg(feature = "pot")]
 use subspace_core_primitives::PotSeed;
+use subspace_core_primitives::REWARD_SIGNING_CONTEXT;
 use subspace_fraud_proof::verifier_api::VerifierClient;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::libp2p::multiaddr::Protocol;
@@ -119,6 +125,8 @@ const_assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<u64>());
 /// too large to handle
 #[cfg(feature = "pot")]
 const POT_VERIFIER_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(10_000).expect("Not zero; qed");
+#[cfg(feature = "pot")]
+const SYNC_TARGET_UPDATE_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Error type for Subspace service.
 #[derive(thiserror::Error, Debug)]
@@ -406,6 +414,9 @@ where
     /// Proof of time verifier
     #[cfg(feature = "pot")]
     pub pot_verifier: PotVerifier,
+    /// Approximate target block number for syncing purposes
+    #[cfg(feature = "pot")]
+    pub sync_target_block_number: Arc<AtomicU32>,
     /// Telemetry
     pub telemetry: Option<Telemetry>,
 }
@@ -587,26 +598,34 @@ where
     )?;
 
     let slot_duration = subspace_link.slot_duration();
-    let import_queue = sc_consensus_subspace::import_queue::import_queue::<PosTable, _, _, _, _, _>(
-        block_import.clone(),
-        None,
-        client.clone(),
+    #[cfg(feature = "pot")]
+    let sync_target_block_number = Arc::new(AtomicU32::new(0));
+    let verifier = SubspaceVerifier::<PosTable, _, _, _, _>::new(SubspaceVerifierOptions {
+        client: client.clone(),
         kzg,
-        select_chain.clone(),
+        select_chain: select_chain.clone(),
         // TODO: Remove use current best slot known from PoT verifier in PoT case
-        move || {
+        slot_now: move || {
             let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
 
             Slot::from_timestamp(*timestamp, slot_duration)
         },
+        telemetry: telemetry.as_ref().map(|x| x.handle()),
+        offchain_tx_pool_factory: OffchainTransactionPoolFactory::new(transaction_pool.clone()),
+        reward_signing_context: schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT),
+        #[cfg(feature = "pot")]
+        sync_target_block_number: Arc::clone(&sync_target_block_number),
+        is_authoring_blocks: config.role.is_authority(),
+        #[cfg(feature = "pot")]
+        pot_verifier: pot_verifier.clone(),
+    })?;
+    let import_queue = BasicQueue::new(
+        verifier,
+        Box::new(block_import.clone()),
+        None,
         &task_manager.spawn_essential_handle(),
         config.prometheus_registry(),
-        telemetry.as_ref().map(|x| x.handle()),
-        OffchainTransactionPoolFactory::new(transaction_pool.clone()),
-        config.role.is_authority(),
-        #[cfg(feature = "pot")]
-        pot_verifier.clone(),
-    )?;
+    );
 
     let other = OtherPartialComponents {
         block_import: Box::new(block_import),
@@ -614,6 +633,8 @@ where
         segment_headers_store,
         #[cfg(feature = "pot")]
         pot_verifier,
+        #[cfg(feature = "pot")]
+        sync_target_block_number,
         telemetry,
     };
 
@@ -725,6 +746,8 @@ where
         segment_headers_store,
         #[cfg(feature = "pot")]
         pot_verifier,
+        #[cfg(feature = "pot")]
+        sync_target_block_number,
         mut telemetry,
     } = other;
 
@@ -856,6 +879,28 @@ where
             warp_sync_params: None,
             block_relay,
         })?;
+
+    #[cfg(feature = "pot")]
+    task_manager.spawn_handle().spawn(
+        "sync-target-follower",
+        None,
+        Box::pin({
+            let sync_service = sync_service.clone();
+
+            async move {
+                loop {
+                    let best_seen_block = sync_service
+                        .status()
+                        .await
+                        .map(|status| status.best_seen_block.unwrap_or_default())
+                        .unwrap_or_default();
+                    sync_target_block_number.store(best_seen_block, Ordering::Relaxed);
+
+                    tokio::time::sleep(SYNC_TARGET_UPDATE_INTERVAL).await;
+                }
+            }
+        }),
+    );
 
     let sync_oracle = SubspaceSyncOracle::new(config.base.force_authoring, sync_service.clone());
 

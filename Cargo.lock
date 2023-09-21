@@ -7506,7 +7506,6 @@ dependencies = [
  "subspace-farmer-components",
  "subspace-proof-of-space",
  "subspace-runtime-primitives",
- "subspace-solving",
  "subspace-verification",
 ]
 
@@ -9280,7 +9279,6 @@ dependencies = [
  "subspace-archiving",
  "subspace-core-primitives",
  "subspace-proof-of-space",
- "subspace-solving",
  "subspace-verification",
  "substrate-prometheus-endpoint",
  "thiserror",
@@ -10709,7 +10707,6 @@ dependencies = [
  "subspace-archiving",
  "subspace-core-primitives",
  "subspace-proof-of-space",
- "subspace-solving",
  "subspace-verification",
  "thiserror",
 ]
@@ -10948,7 +10945,6 @@ dependencies = [
  "subspace-erasure-coding",
  "subspace-farmer-components",
  "subspace-proof-of-space",
- "subspace-solving",
  "subspace-verification",
 ]
 
@@ -11560,7 +11556,6 @@ dependencies = [
  "subspace-networking",
  "subspace-proof-of-space",
  "subspace-rpc-primitives",
- "subspace-solving",
  "substrate-bip39",
  "supports-color",
  "tempfile",
@@ -11907,6 +11902,7 @@ dependencies = [
  "sc-tracing",
  "sc-transaction-pool",
  "sc-transaction-pool-api",
+ "schnorrkel",
  "sp-api",
  "sp-block-builder",
  "sp-blockchain",
@@ -11940,10 +11936,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "subspace-solving"
-version = "0.1.0"
-
-[[package]]
 name = "subspace-test-client"
 version = "0.1.0"
 dependencies = [
@@ -11969,7 +11961,6 @@ dependencies = [
  "subspace-proof-of-space",
  "subspace-runtime-primitives",
  "subspace-service",
- "subspace-solving",
  "subspace-test-runtime",
  "zeroize",
 ]
@@ -12115,7 +12106,6 @@ dependencies = [
  "subspace-archiving",
  "subspace-core-primitives",
  "subspace-proof-of-space",
- "subspace-solving",
  "thiserror",
 ]
 

@@ -22,17 +22,17 @@
 
 pub mod archiver;
 pub mod aux_schema;
-pub mod import_queue;
 pub mod notification;
 mod slot_worker;
 #[cfg(test)]
 mod tests;
+pub mod verifier;
 
 use crate::archiver::{SegmentHeadersStore, FINALIZATION_DEPTH_IN_SEGMENTS};
-use crate::import_queue::VerificationError;
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use crate::slot_worker::SubspaceSlotWorker;
 pub use crate::slot_worker::SubspaceSyncOracle;
+use crate::verifier::VerificationError;
 use futures::channel::mpsc;
 use futures::StreamExt;
 use log::{debug, info, warn};
@@ -77,14 +77,17 @@ use subspace_archiving::archiver::NewArchivedSegment;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
     BlockNumber, HistorySize, PublicKey, Randomness, SectorId, SegmentHeader, SegmentIndex,
-    Solution, SolutionRange,
+    Solution, SolutionRange, REWARD_SIGNING_CONTEXT,
 };
 use subspace_proof_of_space::Table;
-use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{
     calculate_block_weight, Error as VerificationPrimitiveError, PieceCheckParams,
     VerifySolutionParams,
 };
+
+#[cfg(feature = "pot")]
+const SUBSPACE_FULL_POT_VERIFICATION_INTERMEDIATE: &[u8] =
+    b"subspace_full_pot_verification_intermediate";
 
 /// Information about new slot that just arrived
 #[derive(Debug, Copy, Clone)]
@@ -498,8 +501,10 @@ where
         max_block_proposal_slot_portion,
         telemetry,
         offchain_tx_pool_factory,
-        chain_constants: get_chain_constants(client.as_ref())
-            .map_err(|error| sp_consensus::Error::Other(error.into()))?,
+        chain_constants: client
+            .runtime_api()
+            .chain_constants(client.info().best_hash)
+            .map_err(|error| sp_consensus::Error::ChainLookup(error.to_string()))?,
         segment_headers_store,
         #[cfg(feature = "pot")]
         pending_solutions: Default::default(),
@@ -711,6 +716,7 @@ where
             FarmerPublicKey,
             FarmerSignature,
         >,
+        #[cfg(feature = "pot")] full_pot_verification: bool,
         #[cfg(feature = "pot")] justifications: &Option<Justifications>,
         skip_runtime_access: bool,
     ) -> Result<(), Error<Block::Header>> {
@@ -939,17 +945,18 @@ where
             // do not have access to parent block, thus only verify proofs after proof of time of at
             // current slot up until future proof of time (inclusive), here during block import we
             // verify the rest.
-            if !self
-                .pot_verifier
-                .is_output_valid(
-                    parent_slot + Slot::from(1),
-                    pot_seed,
-                    slot_iterations,
-                    slots_since_parent,
-                    subspace_digest_items.pre_digest.pot_info().proof_of_time(),
-                    subspace_digest_items.pot_parameters_change,
-                )
-                .await
+            if full_pot_verification
+                && !self
+                    .pot_verifier
+                    .is_output_valid(
+                        parent_slot + Slot::from(1),
+                        pot_seed,
+                        slot_iterations,
+                        slots_since_parent,
+                        subspace_digest_items.pre_digest.pot_info().proof_of_time(),
+                        subspace_digest_items.pot_parameters_change,
+                    )
+                    .await
             {
                 return Err(Error::InvalidProofOfTime);
             }
@@ -1089,6 +1096,12 @@ where
         &mut self,
         mut block: BlockImportParams<Block>,
     ) -> Result<ImportResult, Self::Error> {
+        #[cfg(feature = "pot")]
+        let full_pot_verification = block
+            .intermediates
+            .remove(SUBSPACE_FULL_POT_VERIFICATION_INTERMEDIATE)
+            .and_then(|full_pot_verification| full_pot_verification.downcast_ref().copied())
+            .unwrap_or(true);
         let block_hash = block.post_hash();
         let block_number = *block.header.number();
 
@@ -1119,6 +1132,8 @@ where
             block.body.clone(),
             &root_plot_public_key,
             &subspace_digest_items,
+            #[cfg(feature = "pot")]
+            full_pot_verification,
             #[cfg(feature = "pot")]
             &block.justifications,
             skip_execution_checks,
@@ -1221,40 +1236,6 @@ where
     }
 }
 
-/// Get chain constant configurations
-pub fn get_chain_constants<Block, Client>(
-    client: &Client,
-) -> Result<ChainConstants, Error<Block::Header>>
-where
-    Block: BlockT,
-    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + AuxStore,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
-{
-    match aux_schema::load_chain_constants(client)? {
-        Some(chain_constants) => Ok(chain_constants),
-        None => {
-            // This is only called on the very first block for which we always have runtime
-            // storage access
-            let chain_constants = client
-                .runtime_api()
-                .chain_constants(client.info().best_hash)
-                .map_err(Error::<Block::Header>::RuntimeApi)?;
-
-            aux_schema::write_chain_constants(&chain_constants, |values| {
-                client.insert_aux(
-                    &values
-                        .iter()
-                        .map(|(key, value)| (key.as_slice(), *value))
-                        .collect::<Vec<_>>(),
-                    &[],
-                )
-            })?;
-
-            Ok(chain_constants)
-        }
-    }
-}
-
 /// Produce a Subspace block-import object to be used later on in the construction of an
 /// import-queue.
 ///
@@ -1293,8 +1274,9 @@ where
     let (block_importing_notification_sender, block_importing_notification_stream) =
         notification::channel("subspace_block_importing_notification_stream");
 
-    let chain_constants = get_chain_constants(client.as_ref())
-        .map_err(|error| sp_blockchain::Error::Application(error.into()))?;
+    let chain_constants = client
+        .runtime_api()
+        .chain_constants(client.info().best_hash)?;
 
     let link = SubspaceLink {
         slot_duration,

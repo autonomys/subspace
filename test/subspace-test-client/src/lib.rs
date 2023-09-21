@@ -33,7 +33,9 @@ use std::num::{NonZeroU64, NonZeroUsize};
 use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::{HistorySize, PublicKey, Record, SegmentIndex, Solution};
+use subspace_core_primitives::{
+    HistorySize, PublicKey, Record, SegmentIndex, Solution, REWARD_SIGNING_CONTEXT,
+};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector;
 use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy, PlottedSector};
@@ -43,7 +45,6 @@ use subspace_proof_of_space::Table;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_service::tx_pre_validator::ConsensusChainTxPreValidator;
 use subspace_service::{FullClient, NewFull};
-use subspace_solving::REWARD_SIGNING_CONTEXT;
 use zeroize::Zeroizing;
 
 // Smaller value for testing purposes

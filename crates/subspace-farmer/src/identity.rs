@@ -4,7 +4,7 @@ use schnorrkel::{ExpansionMode, Keypair, PublicKey, SecretKey, Signature};
 use std::ops::Deref;
 use std::path::Path;
 use std::{fs, io};
-use subspace_solving::REWARD_SIGNING_CONTEXT;
+use subspace_core_primitives::REWARD_SIGNING_CONTEXT;
 use substrate_bip39::mini_secret_from_entropy;
 use thiserror::Error;
 use tracing::debug;

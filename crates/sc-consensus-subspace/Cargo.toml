@@ -50,7 +50,6 @@ sp-version = { version = "22.0.0", git = "https://github.com/subspace/polkadot-s
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space" }
-subspace-solving = { version = "0.1.0", path = "../subspace-solving" }
 subspace-verification = { version = "0.1.0", path = "../subspace-verification" }
 thiserror = "1.0.48"
 

@@ -20,7 +20,7 @@
 //! history (blocks) into archived history (pieces).
 
 use crate::{
-    get_chain_constants, ArchivedSegmentNotification, BlockImportingNotification, SubspaceLink,
+    ArchivedSegmentNotification, BlockImportingNotification, SubspaceLink,
     SubspaceNotificationSender, SubspaceSyncOracle,
 };
 use codec::{Decode, Encode};
@@ -343,7 +343,6 @@ where
 }
 
 fn initialize_archiver<Block, Client, AS>(
-    best_block_number: NumberFor<Block>,
     segment_headers_store: &SegmentHeadersStore<AS>,
     subspace_link: &SubspaceLink<Block>,
     client: &Client,
@@ -354,8 +353,13 @@ where
     Client::Api: SubspaceApi<Block, FarmerPublicKey> + ObjectsApi<Block>,
     AS: AuxStore,
 {
-    let confirmation_depth_k = get_chain_constants(client)
-        .expect("Must always be able to get chain constants")
+    let client_info = client.info();
+    let best_block_number = client_info.best_number;
+    let best_block_hash = client_info.best_hash;
+
+    let confirmation_depth_k = client
+        .runtime_api()
+        .chain_constants(best_block_hash)?
         .confirmation_depth_k();
 
     let maybe_last_archived_block = find_last_archived_block(client, segment_headers_store)?;
@@ -598,20 +602,12 @@ where
     AS: AuxStore + Send + Sync + 'static,
     SO: SyncOracle + Send + Sync + 'static,
 {
-    let client_info = client.info();
-    let best_block_number = client_info.best_number;
-
     let InitializedArchiver {
         confirmation_depth_k,
         mut archiver,
         older_archived_segments,
         best_archived_block: (mut best_archived_block_hash, mut best_archived_block_number),
-    } = initialize_archiver(
-        best_block_number,
-        &segment_headers_store,
-        subspace_link,
-        client.as_ref(),
-    )?;
+    } = initialize_archiver(&segment_headers_store, subspace_link, client.as_ref())?;
 
     let mut block_importing_notification_stream = subspace_link
         .block_importing_notification_stream
