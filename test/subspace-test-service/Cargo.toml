@@ -56,7 +56,7 @@ subspace-node = { path = "../../crates/subspace-node" }
 subspace-runtime-primitives = { path = "../../crates/subspace-runtime-primitives" }
 subspace-service = { path = "../../crates/subspace-service" }
 subspace-test-client = { path = "../subspace-test-client" }
-subspace-test-runtime = { version = "0.1.0", features = ["do-not-enforce-cost-of-storage"], path = "../subspace-test-runtime" }
+subspace-test-runtime = { version = "0.1.0", path = "../subspace-test-runtime" }
 subspace-transaction-pool = { path = "../../crates/subspace-transaction-pool" }
 tokio = "1.32.0"
 tracing = "0.1.37"
@@ -68,4 +68,7 @@ sp-keyring = { git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33
 pot = [
 	"sp-consensus-subspace/pot",
 	"subspace-test-runtime/pot",
+]
+do-not-enforce-cost-of-storage = [
+	"subspace-test-runtime/do-not-enforce-cost-of-storage",
 ]
