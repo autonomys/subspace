@@ -163,10 +163,10 @@ const GLOBAL_RANDOMNESS_UPDATE_INTERVAL: BlockNumber = 256;
 const BLOCK_AUTHORING_DELAY: SlotNumber = 4;
 
 /// Interval, in blocks, between blockchain entropy injection into proof of time chain.
-const POT_ENTROPY_INJECTION_INTERVAL: BlockNumber = 20;
+const POT_ENTROPY_INJECTION_INTERVAL: BlockNumber = 50;
 
 /// Interval, in entropy injection intervals, where to take entropy for injection from.
-const POT_ENTROPY_INJECTION_LOOKBACK_DEPTH: u8 = 5;
+const POT_ENTROPY_INJECTION_LOOKBACK_DEPTH: u8 = 2;
 
 /// Delay after block, in slots, when entropy injection takes effect.
 const POT_ENTROPY_INJECTION_DELAY: SlotNumber = 15;
