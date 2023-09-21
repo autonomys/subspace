@@ -278,6 +278,7 @@ impl<Number, Hash> FraudProof<Number, Hash> {
                 bad_receipt_hash, ..
             } => *bad_receipt_hash,
             FraudProof::InvalidTotalRewards(proof) => proof.bad_receipt_hash(),
+            // TODO: Remove default value when invalid bundle proofs are fully expanded
             FraudProof::InvalidBundles(_) => Default::default(),
         }
     }

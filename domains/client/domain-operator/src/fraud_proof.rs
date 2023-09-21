@@ -1,3 +1,4 @@
+use crate::aux_schema::InvalidBundlesMismatchType;
 use crate::utils::to_number_primitive;
 use crate::ExecutionReceiptFor;
 use codec::{Decode, Encode};
@@ -8,7 +9,9 @@ use sp_blockchain::HeaderBackend;
 use sp_core::traits::CodeExecutor;
 use sp_core::H256;
 use sp_domains::fraud_proof::{
-    ExecutionPhase, FraudProof, InvalidStateTransitionProof, InvalidTotalRewardsProof,
+    ExecutionPhase, FraudProof, InvalidBundlesFraudProof, InvalidStateTransitionProof,
+    InvalidTotalRewardsProof, MissingInvalidBundleEntryFraudProof,
+    ValidAsInvalidBundleEntryFraudProof,
 };
 use sp_domains::DomainId;
 use sp_runtime::traits::{Block as BlockT, HashingFor, Header as HeaderT, NumberFor};
@@ -105,6 +108,34 @@ where
             bad_receipt_hash,
             storage_proof: proof,
         }))
+    }
+
+    pub(crate) fn generate_invalid_bundle_field_proof<PCB>(
+        &self,
+        domain_id: DomainId,
+        _local_receipt: &ExecutionReceiptFor<Block, CBlock>,
+        mismatch_type: InvalidBundlesMismatchType,
+        bundle_index: u32,
+        _bad_receipt_hash: H256,
+    ) -> Result<FraudProof<NumberFor<PCB>, PCB::Hash>, FraudProofError>
+    where
+        PCB: BlockT,
+    {
+        match mismatch_type {
+            // TODO: Generate a proper proof once fields are in place
+            InvalidBundlesMismatchType::ValidAsInvalid => Ok(FraudProof::InvalidBundles(
+                InvalidBundlesFraudProof::ValidAsInvalid(ValidAsInvalidBundleEntryFraudProof::new(
+                    domain_id,
+                    bundle_index,
+                )),
+            )),
+            // TODO: Generate a proper proof once fields are in place
+            InvalidBundlesMismatchType::InvalidAsValid => Ok(FraudProof::InvalidBundles(
+                InvalidBundlesFraudProof::MissingInvalidBundleEntry(
+                    MissingInvalidBundleEntryFraudProof::new(domain_id, bundle_index),
+                ),
+            )),
+        }
     }
 
     pub(crate) fn generate_invalid_state_transition_proof<PCB>(
