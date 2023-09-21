@@ -201,7 +201,6 @@ impl pallet_domains::Config for Test {
     type StakeEpochDuration = StakeEpochDuration;
     type TreasuryAccount = TreasuryAccount;
     type MaxPendingStakingOperation = MaxPendingStakingOperation;
-    type SudoId = ();
     type Randomness = MockRandomness;
 }
 

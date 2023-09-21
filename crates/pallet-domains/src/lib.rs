@@ -274,9 +274,6 @@ mod pallet {
         #[pallet::constant]
         type MaxPendingStakingOperation: Get<u32>;
 
-        #[pallet::constant]
-        type SudoId: Get<Self::AccountId>;
-
         /// Randomness source.
         type Randomness: RandomnessT<Self::Hash, BlockNumberFor<Self>>;
     }
@@ -920,6 +917,9 @@ mod pallet {
             origin: OriginFor<T>,
             runtime_name: Vec<u8>,
             runtime_type: RuntimeType,
+            // TODO: we can use `RawGenesis` as argument directly to avoid decoding but the in tool like
+            // `polkadot.js` it will required the user to provide each field of the struct type and not
+            // support upload file which will brings bad UX.
             raw_genesis_storage: Vec<u8>,
         ) -> DispatchResult {
             ensure_root(origin)?;
