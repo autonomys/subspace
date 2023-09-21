@@ -16,6 +16,7 @@ use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HashAndNumber, HeaderBackend, HeaderMetadata};
 use sp_consensus::{BlockOrigin, SyncOracle};
 use sp_core::traits::CodeExecutor;
+use sp_core::H256;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{DomainId, DomainsApi, ExecutionReceipt};
@@ -100,6 +101,7 @@ where
     Block: BlockT,
     CBlock: BlockT,
     NumberFor<CBlock>: Into<NumberFor<Block>>,
+    Block::Hash: Into<H256>,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + AuxStore
@@ -371,7 +373,7 @@ where
         let execution_receipt = ExecutionReceipt {
             domain_block_number: header_number,
             domain_block_hash: header_hash,
-            domain_block_extrinsic_root: extrinsics_root,
+            domain_block_extrinsic_root: extrinsics_root.into(),
             parent_domain_block_receipt_hash: parent_receipt.hash(),
             consensus_block_number,
             consensus_block_hash,

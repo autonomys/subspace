@@ -22,13 +22,11 @@ use crate::xdm_verifier::is_valid_xdm;
 use codec::{Decode, Encode};
 use domain_runtime_primitives::opaque::AccountId;
 use domain_runtime_primitives::DomainCoreApi;
-use rand::seq::SliceRandom;
-use rand::SeedableRng;
-use rand_chacha::ChaCha8Rng;
 use runtime_api::InherentExtrinsicConstructor;
 use sc_client_api::BlockBackend;
 use sp_api::{HashT, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
+use sp_domains::verification::deduplicate_and_shuffle_extrinsics;
 use sp_domains::{
     BundleValidity, DomainId, DomainsApi, DomainsDigestItem, ExecutionReceipt, ExtrinsicsRoot,
     InvalidBundle, InvalidBundleType, OpaqueBundle, OpaqueBundles, ReceiptValidity, ValidBundle,
@@ -36,8 +34,6 @@ use sp_domains::{
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Header as HeaderT, NumberFor};
 use std::borrow::Cow;
-use std::collections::{BTreeMap, VecDeque};
-use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::{Randomness, U256};
@@ -106,81 +102,6 @@ where
         .extrinsics_shuffling_seed(block_hash)?;
 
     Ok((extrinsics, shuffling_seed, maybe_new_runtime))
-}
-
-fn deduplicate_and_shuffle_extrinsics<Block>(
-    mut extrinsics: Vec<(Option<AccountId>, Block::Extrinsic)>,
-    shuffling_seed: Randomness,
-) -> Result<Vec<Block::Extrinsic>, sp_blockchain::Error>
-where
-    Block: BlockT,
-{
-    let mut seen = Vec::new();
-    extrinsics.retain(|(_, uxt)| match seen.contains(uxt) {
-        true => {
-            tracing::trace!(extrinsic = ?uxt, "Duplicated extrinsic");
-            false
-        }
-        false => {
-            seen.push(uxt.clone());
-            true
-        }
-    });
-    drop(seen);
-
-    tracing::trace!(?extrinsics, "Origin deduplicated extrinsics");
-
-    let extrinsics =
-        shuffle_extrinsics::<<Block as BlockT>::Extrinsic, AccountId>(extrinsics, shuffling_seed);
-
-    Ok(extrinsics)
-}
-
-/// Shuffles the extrinsics in a deterministic way.
-///
-/// The extrinsics are grouped by the signer. The extrinsics without a signer, i.e., unsigned
-/// extrinsics, are considered as a special group. The items in different groups are cross shuffled,
-/// while the order of items inside the same group is still maintained.
-fn shuffle_extrinsics<Extrinsic: Debug, AccountId: Ord + Clone>(
-    extrinsics: Vec<(Option<AccountId>, Extrinsic)>,
-    shuffling_seed: Randomness,
-) -> Vec<Extrinsic> {
-    let mut rng = ChaCha8Rng::from_seed(*shuffling_seed);
-
-    let mut positions = extrinsics
-        .iter()
-        .map(|(maybe_signer, _)| maybe_signer)
-        .cloned()
-        .collect::<Vec<_>>();
-
-    // Shuffles the positions using Fisher–Yates algorithm.
-    positions.shuffle(&mut rng);
-
-    let mut grouped_extrinsics: BTreeMap<Option<AccountId>, VecDeque<_>> = extrinsics
-        .into_iter()
-        .fold(BTreeMap::new(), |mut groups, (maybe_signer, tx)| {
-            groups
-                .entry(maybe_signer)
-                .or_insert_with(VecDeque::new)
-                .push_back(tx);
-            groups
-        });
-
-    // The relative ordering for the items in the same group does not change.
-    let shuffled_extrinsics = positions
-        .into_iter()
-        .map(|maybe_signer| {
-            grouped_extrinsics
-                .get_mut(&maybe_signer)
-                .expect("Extrinsics are grouped correctly; qed")
-                .pop_front()
-                .expect("Extrinsic definitely exists as it's correctly grouped above; qed")
-        })
-        .collect::<Vec<_>>();
-
-    tracing::trace!(?shuffled_extrinsics, "Shuffled extrinsics");
-
-    shuffled_extrinsics
 }
 
 pub struct PreprocessResult<Block: BlockT> {
@@ -305,8 +226,10 @@ where
         let (valid_bundles, invalid_bundles, extrinsics) =
             self.compile_bundles_to_extrinsics(bundles, tx_range, domain_hash)?;
 
-        let extrinsics_in_bundle =
-            deduplicate_and_shuffle_extrinsics::<Block>(extrinsics, shuffling_seed)?;
+        let extrinsics_in_bundle = deduplicate_and_shuffle_extrinsics::<<Block as BlockT>::Extrinsic>(
+            extrinsics,
+            shuffling_seed,
+        );
 
         // Fetch inherent extrinsics
         let mut extrinsics = construct_inherent_extrinsics(
@@ -471,7 +394,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::shuffle_extrinsics;
+    use sp_domains::verification::shuffle_extrinsics;
     use sp_keyring::sr25519::Keyring;
     use sp_runtime::traits::{BlakeTwo256, Hash as HashT};
     use subspace_core_primitives::Randomness;

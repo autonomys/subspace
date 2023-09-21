@@ -10837,6 +10837,8 @@ dependencies = [
  "hexlit",
  "num-traits",
  "parity-scale-codec",
+ "rand 0.8.5",
+ "rand_chacha 0.3.1",
  "rs_merkle",
  "scale-info",
  "serde",
@@ -10856,6 +10858,7 @@ dependencies = [
  "subspace-core-primitives",
  "subspace-runtime-primitives",
  "thiserror",
+ "trie-db",
 ]
 
 [[package]]

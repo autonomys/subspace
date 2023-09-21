@@ -18,6 +18,8 @@ frame-support = { version = "4.0.0-dev", default-features = false, git = "https:
 hash-db = { version = "0.16.0", default-features = false }
 hexlit = "0.5.5"
 parity-scale-codec = { version = "3.6.5", default-features = false, features = ["derive"] }
+rand = { version = "0.8.5", default-features = false }
+rand_chacha = { version = "0.3.1", default-features = false }
 rs_merkle = { version = "1.4.1", default-features = false }
 scale-info = { version = "2.7.0", default-features = false, features = ["derive"] }
 serde = { version = "1.0.183", default-features = false, features = ["alloc", "derive"] }
@@ -36,10 +38,12 @@ sp-trie = { version = "22.0.0", default-features = false, git = "https://github.
 sp-weights = { version = "20.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7" }
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
 subspace-runtime-primitives = { version = "0.1.0", default-features = false, path = "../subspace-runtime-primitives" }
+trie-db = { version = "0.28.0", default-features = false }
 thiserror = { version = "1.0.48", optional = true }
 
 [dev-dependencies]
 num-traits = "0.2.16"
+rand = { version = "0.8.5", features = ["min_const_gen"] }
 
 [features]
 default = ["std"]
@@ -49,6 +53,8 @@ std = [
     "frame-support/std",
     "hash-db/std",
     "parity-scale-codec/std",
+    "rand/std",
+    "rand_chacha/std",
     "rs_merkle/std",
     "scale-info/std",
     "serde/std",
@@ -67,6 +73,7 @@ std = [
     "sp-weights/std",
     "subspace-core-primitives/std",
     "subspace-runtime-primitives/std",
+    "trie-db/std",
     "thiserror",
 ]
 runtime-benchmarks = []

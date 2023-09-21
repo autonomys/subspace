@@ -23,6 +23,7 @@ pub mod merkle_tree;
 #[cfg(test)]
 mod tests;
 pub mod transaction;
+pub mod valued_trie_root;
 pub mod verification;
 
 use bundle_producer_election::{BundleProducerElectionParams, VrfProofError};
@@ -51,6 +52,9 @@ use subspace_runtime_primitives::{Balance, Moment};
 
 /// Key type for Operator.
 const KEY_TYPE: KeyTypeId = KeyTypeId(*b"oper");
+
+/// Extrinsics shuffling seed
+pub const EXTRINSICS_SHUFFLING_SEED: &[u8] = b"extrinsics-shuffling-seed";
 
 mod app {
     use super::KEY_TYPE;
@@ -351,7 +355,7 @@ pub struct ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance> {
     /// The block hash corresponding to `domain_block_number`.
     pub domain_block_hash: DomainHash,
     /// Extrinsic root field of the header of domain block referenced by this ER.
-    pub domain_block_extrinsic_root: DomainHash,
+    pub domain_block_extrinsic_root: H256,
     /// The hash of the ER for the last domain block.
     pub parent_domain_block_receipt_hash: ReceiptHash,
     /// A pointer to the consensus block index which contains all of the bundles that were used to derive and
