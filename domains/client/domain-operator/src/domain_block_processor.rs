@@ -1,11 +1,13 @@
+use crate::aux_schema::ReceiptMismatchInfo;
 use crate::fraud_proof::{find_trace_mismatch, FraudProofGenerator};
 use crate::parent_chain::ParentChainInterface;
 use crate::utils::{DomainBlockImportNotification, DomainImportNotificationSinks};
 use crate::ExecutionReceiptFor;
 use codec::{Decode, Encode};
 use domain_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
+use domain_block_preprocessor::PreprocessResult;
 use domain_runtime_primitives::DomainCoreApi;
-use sc_client_api::{AuxStore, BlockBackend, Finalizer};
+use sc_client_api::{AuxStore, BlockBackend, Finalizer, ProofProvider};
 use sc_consensus::{
     BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult, StateAction, StorageChanges,
 };
@@ -15,7 +17,7 @@ use sp_consensus::{BlockOrigin, SyncOracle};
 use sp_core::traits::CodeExecutor;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::merkle_tree::MerkleTree;
-use sp_domains::{DomainId, DomainsApi, ExecutionReceipt, ExtrinsicsRoot, InvalidBundle};
+use sp_domains::{DomainId, DomainsApi, ExecutionReceipt};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, One, Zero};
 use sp_runtime::Digest;
 use std::cmp::Ordering;
@@ -171,7 +173,7 @@ where
                 None => {
                     return Err(sp_blockchain::Error::Backend(format!(
                         "Consensus hash for domain hash #{best_number},{best_hash} not found"
-                    )))
+                    )));
                 }
                 Some(b) => b,
             };
@@ -241,13 +243,13 @@ where
                     &*self.client,
                     &common_block_hash,
                 )?
-                .ok_or_else(
-                    || {
-                        sp_blockchain::Error::Backend(format!(
-                            "Hash of domain block derived from consensus block #{common_block_number},{common_block_hash} not found"
-                        ))
-                    },
-                )?;
+                    .ok_or_else(
+                        || {
+                            sp_blockchain::Error::Backend(format!(
+                                "Hash of domain block derived from consensus block #{common_block_number},{common_block_hash} not found"
+                            ))
+                        },
+                    )?;
                 let parent_header = self.client.header(domain_block_hash)?.ok_or_else(|| {
                     sp_blockchain::Error::Backend(format!(
                         "Domain block header for #{domain_block_hash:?} not found",
@@ -266,11 +268,16 @@ where
         &self,
         (consensus_block_hash, consensus_block_number): (CBlock::Hash, NumberFor<CBlock>),
         (parent_hash, parent_number): (Block::Hash, NumberFor<Block>),
-        extrinsics: Vec<Block::Extrinsic>,
-        invalid_bundles: Vec<InvalidBundle>,
-        bundle_extrinsics_roots: Vec<ExtrinsicsRoot>,
+        preprocess_result: PreprocessResult<Block>,
         digests: Digest,
     ) -> Result<DomainBlockResult<Block, CBlock>, sp_blockchain::Error> {
+        let PreprocessResult {
+            extrinsics,
+            extrinsics_roots,
+            valid_bundles,
+            invalid_bundles,
+        } = preprocess_result;
+
         // Although the domain block intuitively ought to use the same fork choice
         // from the corresponding consensus block, it's fine to forcibly always use
         // the longest chain for simplicity as we manually build the domain branches
@@ -356,10 +363,7 @@ where
 
         // Get the accumulated transaction fee of all transactions included in the block
         // and used as the operator reward
-        let total_rewards = self
-            .client
-            .runtime_api()
-            .block_transaction_fee(header_hash)?;
+        let total_rewards = self.client.runtime_api().block_rewards(header_hash)?;
 
         let execution_receipt = ExecutionReceipt {
             domain_block_number: header_number,
@@ -368,8 +372,9 @@ where
             parent_domain_block_receipt_hash: parent_receipt.hash(),
             consensus_block_number,
             consensus_block_hash,
+            valid_bundles,
             invalid_bundles,
-            block_extrinsics_roots: bundle_extrinsics_roots,
+            block_extrinsics_roots: extrinsics_roots,
             final_state_root: state_root,
             execution_trace: trace,
             execution_trace_root: sp_core::H256(trace_root),
@@ -585,8 +590,12 @@ where
     CBlock: BlockT,
     ParentChainBlock: BlockT,
     NumberFor<CBlock>: Into<NumberFor<Block>>,
-    Client:
-        HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block> + 'static,
+    Client: HeaderBackend<Block>
+        + BlockBackend<Block>
+        + ProofProvider<Block>
+        + AuxStore
+        + ProvideRuntimeApi<Block>
+        + 'static,
     Client::Api:
         DomainCoreApi<Block> + sp_block_builder::BlockBuilder<Block> + sp_api::ApiExt<Block>,
     CClient: HeaderBackend<CBlock> + BlockBackend<CBlock> + ProvideRuntimeApi<CBlock> + 'static,
@@ -611,6 +620,13 @@ where
 
         self.check_receipts(receipts, fraud_proofs)?;
 
+        Ok(())
+    }
+
+    pub(crate) fn submit_fraud_proof(
+        &self,
+        parent_chain_block_hash: ParentChainBlock::Hash,
+    ) -> sp_blockchain::Result<()> {
         if self.consensus_network_sync_oracle.is_major_syncing() {
             tracing::debug!(
                 "Skip reporting unconfirmed bad receipt as the consensus node is still major syncing..."
@@ -618,7 +634,7 @@ where
             return Ok(());
         }
 
-        // Submit fraud proof for the first unconfirmed incorrent ER.
+        // Submit fraud proof for the first unconfirmed incorrect ER.
         let oldest_receipt_number = self
             .parent_chain
             .oldest_receipt_number(parent_chain_block_hash)?;
@@ -664,7 +680,18 @@ where
                 bad_receipts_to_write.push((
                     execution_receipt.consensus_block_number,
                     execution_receipt.hash(),
-                    (trace_mismatch_index, consensus_block_hash),
+                    (trace_mismatch_index, consensus_block_hash).into(),
+                ));
+                continue;
+            }
+
+            if execution_receipt.total_rewards != local_receipt.total_rewards {
+                bad_receipts_to_write.push((
+                    execution_receipt.consensus_block_number,
+                    execution_receipt.hash(),
+                    ReceiptMismatchInfo::TotalRewardsMismatch {
+                        consensus_block_hash,
+                    },
                 ));
             }
         }
@@ -678,7 +705,7 @@ where
                         let bad_receipt_hash = fraud_proof.bad_receipt_hash;
 
                         // In order to not delete a receipt which was just inserted, accumulate the write&delete operations
-                        // in case the bad receipt and corresponding farud proof are included in the same block.
+                        // in case the bad receipt and corresponding fraud proof are included in the same block.
                         if let Some(index) = bad_receipts_to_write
                             .iter()
                             .map(|(_, receipt_hash, _)| receipt_hash)
@@ -727,7 +754,7 @@ where
     ) -> sp_blockchain::Result<
         Option<FraudProof<NumberFor<ParentChainBlock>, ParentChainBlock::Hash>>,
     > {
-        if let Some((bad_receipt_hash, trace_mismatch_index, consensus_block_hash)) =
+        if let Some((bad_receipt_hash, mismatch_info)) =
             crate::aux_schema::find_first_unconfirmed_bad_receipt_info::<_, Block, CBlock, _>(
                 &*self.client,
                 |height| {
@@ -739,6 +766,7 @@ where
                 },
             )?
         {
+            let consensus_block_hash = mismatch_info.consensus_hash();
             let local_receipt = crate::aux_schema::load_execution_receipt::<_, Block, CBlock>(
                 &*self.client,
                 consensus_block_hash,
@@ -749,19 +777,33 @@ where
                 ))
             })?;
 
-            let fraud_proof = self
-                .fraud_proof_generator
-                .generate_invalid_state_transition_proof::<ParentChainBlock>(
-                    self.domain_id,
-                    trace_mismatch_index,
-                    &local_receipt,
-                    bad_receipt_hash,
-                )
-                .map_err(|err| {
-                    sp_blockchain::Error::Application(Box::from(format!(
-                        "Failed to generate fraud proof: {err}"
-                    )))
-                })?;
+            let fraud_proof = match mismatch_info {
+                ReceiptMismatchInfo::TraceMismatch { trace_index, .. } => self
+                    .fraud_proof_generator
+                    .generate_invalid_state_transition_proof::<ParentChainBlock>(
+                        self.domain_id,
+                        trace_index,
+                        &local_receipt,
+                        bad_receipt_hash,
+                    )
+                    .map_err(|err| {
+                        sp_blockchain::Error::Application(Box::from(format!(
+                            "Failed to generate fraud proof: {err}"
+                        )))
+                    })?,
+                ReceiptMismatchInfo::TotalRewardsMismatch { .. } => self
+                    .fraud_proof_generator
+                    .generate_invalid_total_rewards_proof::<ParentChainBlock>(
+                        self.domain_id,
+                        &local_receipt,
+                        bad_receipt_hash,
+                    )
+                    .map_err(|err| {
+                        sp_blockchain::Error::Application(Box::from(format!(
+                            "Failed to generate invalid block rewards fraud proof: {err}"
+                        )))
+                    })?,
+            };
 
             return Ok(Some(fraud_proof));
         }

@@ -53,7 +53,6 @@ where
 }
 
 #[derive(Debug)]
-#[allow(dead_code)]
 pub struct CreateInherentDataProvider<CClient, CBlock> {
     consensus_client: Arc<CClient>,
     _marker: PhantomData<CBlock>,

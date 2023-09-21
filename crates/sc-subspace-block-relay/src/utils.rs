@@ -1,12 +1,17 @@
 //! Common utils.
 
+use crate::types::RequestResponseErr;
 use codec::{Decode, Encode};
 use futures::channel::oneshot;
 use parking_lot::Mutex;
 use sc_network::request_responses::IfDisconnected;
 use sc_network::types::ProtocolName;
-use sc_network::{NetworkRequest, PeerId, RequestFailure};
+use sc_network::{NetworkRequest, PeerId};
+use std::collections::HashMap;
 use std::sync::Arc;
+use substrate_prometheus_endpoint::{
+    register, Counter, CounterVec, Opts, PrometheusError, Registry, U64,
+};
 
 type NetworkRequestService = Arc<dyn NetworkRequest + Send + Sync + 'static>;
 
@@ -90,62 +95,69 @@ impl NetworkPeerHandle {
     }
 }
 
-#[derive(Debug, thiserror::Error)]
-pub(crate) enum RequestResponseErr {
-    #[error("RequestResponseErr::DecodeFailed: {response_len}/{err:?}")]
-    DecodeFailed {
-        response_len: usize,
-        err: codec::Error,
-    },
+/// Convenience wrapper around prometheus counter, which can be optional.
+pub(crate) struct RelayCounter(Option<Counter<U64>>);
 
-    #[error("RequestResponseErr::RequestFailure {0:?}")]
-    RequestFailure(RequestFailure),
+impl RelayCounter {
+    /// Creates the counter.
+    pub(crate) fn new(
+        name: &str,
+        help: &str,
+        registry: Option<&Registry>,
+    ) -> Result<Self, PrometheusError> {
+        let counter = if let Some(registry) = registry {
+            Some(register(Counter::new(name, help)?, registry)?)
+        } else {
+            None
+        };
+        Ok(Self(counter))
+    }
 
-    #[error("Network not initialized")]
-    NetworkUninitialized,
-
-    #[error("RequestResponseErr::Canceled")]
-    Canceled,
+    /// Increments the counter.
+    pub(crate) fn inc(&self) {
+        if let Some(counter) = self.0.as_ref() {
+            counter.inc()
+        }
+    }
 }
 
-#[derive(Debug, thiserror::Error)]
-pub(crate) enum RelayError {
-    #[error("Block header: {0}")]
-    BlockHeader(String),
+/// Convenience wrapper around prometheus counter vec, which can be optional.
+pub(crate) struct RelayCounterVec(Option<CounterVec<U64>>);
 
-    #[error("Block indexed body: {0}")]
-    BlockIndexedBody(String),
+impl RelayCounterVec {
+    /// Creates the counter vec.
+    pub(crate) fn new(
+        name: &str,
+        help: &str,
+        labels: &[&str],
+        registry: Option<&Registry>,
+    ) -> Result<Self, PrometheusError> {
+        let counter_vec = if let Some(registry) = registry {
+            Some(register(
+                CounterVec::new(Opts::new(name, help), labels)?,
+                registry,
+            )?)
+        } else {
+            None
+        };
+        Ok(Self(counter_vec))
+    }
 
-    #[error("Block justifications: {0}")]
-    BlockJustifications(String),
+    /// Increments the counter.
+    pub(crate) fn inc(&self, label: &str, label_value: &str) {
+        if let Some(counter) = self.0.as_ref() {
+            let mut labels = HashMap::new();
+            labels.insert(label, label_value);
+            counter.with(&labels).inc()
+        }
+    }
 
-    #[error("Block hash: {0}")]
-    BlockHash(String),
-
-    #[error("Block body: {0}")]
-    BlockBody(String),
-
-    #[error("Block extrinsics not found: {0}")]
-    BlockExtrinsicsNotFound(String),
-
-    #[error("Unexpected number of resolved entries: {expected}, {actual}")]
-    ResolveMismatch { expected: usize, actual: usize },
-
-    #[error("Resolved entry not found: {0}")]
-    ResolvedNotFound(usize),
-
-    #[error("Unexpected initial request")]
-    UnexpectedInitialRequest,
-
-    #[error("Unexpected initial response")]
-    UnexpectedInitialResponse,
-
-    #[error("Unexpected protocol request")]
-    UnexpectedProtocolRequest,
-
-    #[error("Unexpected protocol response")]
-    UnexpectedProtocolRespone,
-
-    #[error("Request/response error: {0}")]
-    RequestResponse(#[from] RequestResponseErr),
+    /// Increments the counter by specified value.
+    pub(crate) fn inc_by(&self, label: &str, label_value: &str, v: u64) {
+        if let Some(counter) = self.0.as_ref() {
+            let mut labels = HashMap::new();
+            labels.insert(label, label_value);
+            counter.with(&labels).inc_by(v)
+        }
+    }
 }

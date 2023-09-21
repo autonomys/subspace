@@ -47,10 +47,10 @@ mod pallet {
 
     /// The accumulated rewards of the current block
     ///
-    /// Currently, the only source of rewards is the transaction fees, in the furture it
+    /// Currently, the only source of rewards is the transaction fees, in the future it
     /// will include the XDM reward.
     #[pallet::storage]
-    #[pallet::getter(fn block_transaction_fee)]
+    #[pallet::getter(fn block_rewards)]
     pub(super) type BlockRewards<T: Config> = StorageValue<_, T::Balance, ValueQuery>;
 
     /// Pallet operator-rewards to store the accumulated rewards of the current block

@@ -105,13 +105,13 @@ mod pallet {
     use frame_support::weights::WeightToFee;
     use frame_system::pallet_prelude::*;
     use sp_core::storage::StorageKey;
+    use sp_domains::verification::{StorageProofVerifier, VerificationError};
     use sp_domains::DomainId;
     use sp_messenger::endpoint::{DomainInfo, Endpoint, EndpointHandler, EndpointRequest, Sender};
     use sp_messenger::messages::{
         BlockInfo, ChainId, CrossDomainMessage, InitiateChannelParams, Message, MessageId,
         MessageWeightTag, Payload, ProtocolMessageRequest, RequestResponse, VersionedPayload,
     };
-    use sp_messenger::verification::{StorageProofVerifier, VerificationError};
     use sp_messenger::OnXDMRewards;
     use sp_runtime::traits::CheckedSub;
     use sp_runtime::ArithmeticError;

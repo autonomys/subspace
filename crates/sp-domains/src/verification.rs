@@ -1,6 +1,6 @@
-use codec::{Decode, Encode};
 use frame_support::PalletError;
 use hash_db::Hasher;
+use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::storage::StorageKey;
 use sp_std::marker::PhantomData;

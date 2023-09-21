@@ -230,12 +230,46 @@ pub(super) fn target_receipt_is_pruned(
     head_receipt_number.saturating_sub(target_block) >= PRUNING_DEPTH
 }
 
+#[derive(Encode, Decode, Debug, PartialEq)]
+pub(super) enum ReceiptMismatchInfo<CHash> {
+    TotalRewardsMismatch {
+        consensus_block_hash: CHash,
+    },
+    TraceMismatch {
+        trace_index: u32,
+        consensus_block_hash: CHash,
+    },
+}
+
+impl<CHash> From<(u32, CHash)> for ReceiptMismatchInfo<CHash> {
+    fn from(value: (u32, CHash)) -> Self {
+        ReceiptMismatchInfo::TraceMismatch {
+            trace_index: value.0,
+            consensus_block_hash: value.1,
+        }
+    }
+}
+
+impl<CHash: Clone> ReceiptMismatchInfo<CHash> {
+    pub(super) fn consensus_hash(&self) -> CHash {
+        match self {
+            ReceiptMismatchInfo::TotalRewardsMismatch {
+                consensus_block_hash,
+            } => consensus_block_hash.clone(),
+            ReceiptMismatchInfo::TraceMismatch {
+                consensus_block_hash,
+                ..
+            } => consensus_block_hash.clone(),
+        }
+    }
+}
+
 /// Writes a bad execution receipt to aux storage.
 pub(super) fn write_bad_receipt<Backend, CBlock>(
     backend: &Backend,
     bad_receipt_number: NumberFor<CBlock>,
     bad_receipt_hash: H256,
-    trace_mismatch_info: (u32, CBlock::Hash),
+    mismatch_info: ReceiptMismatchInfo<CBlock::Hash>,
 ) -> Result<(), ClientError>
 where
     Backend: AuxStore,
@@ -250,7 +284,7 @@ where
         (bad_receipt_hashes_key, bad_receipt_hashes.encode()),
         (
             bad_receipt_mismatch_info_key(bad_receipt_hash),
-            trace_mismatch_info.encode(),
+            mismatch_info.encode(),
         ),
     ];
 
@@ -392,10 +426,11 @@ where
 }
 
 /// Returns the first unconfirmed bad receipt info necessary for building a fraud proof if any.
+#[allow(clippy::type_complexity)]
 pub(super) fn find_first_unconfirmed_bad_receipt_info<Backend, Block, CBlock, F>(
     backend: &Backend,
     canonical_consensus_hash_at: F,
-) -> Result<Option<(H256, u32, CBlock::Hash)>, ClientError>
+) -> Result<Option<(H256, ReceiptMismatchInfo<CBlock::Hash>)>, ClientError>
 where
     Backend: AuxStore + HeaderBackend<Block>,
     Block: BlockT,
@@ -413,7 +448,7 @@ where
         let canonical_consensus_hash = canonical_consensus_hash_at(bad_receipt_number)?;
 
         for bad_receipt_hash in bad_receipt_hashes.iter() {
-            let (trace_mismatch_index, consensus_block_hash): (u32, CBlock::Hash) = load_decode(
+            let mismatch_info: ReceiptMismatchInfo<CBlock::Hash> = load_decode(
                 backend,
                 bad_receipt_mismatch_info_key(bad_receipt_hash).as_slice(),
             )?
@@ -423,12 +458,8 @@ where
                 ))
             })?;
 
-            if consensus_block_hash == canonical_consensus_hash {
-                return Ok(Some((
-                    *bad_receipt_hash,
-                    trace_mismatch_index,
-                    consensus_block_hash,
-                )));
+            if mismatch_info.consensus_hash() == canonical_consensus_hash {
+                return Ok(Some((*bad_receipt_hash, mismatch_info)));
             }
         }
     }
@@ -462,6 +493,7 @@ mod tests {
             parent_domain_block_receipt_hash: H256::random(),
             consensus_block_number,
             consensus_block_hash: H256::random(),
+            valid_bundles: Vec::new(),
             invalid_bundles: Vec::new(),
             block_extrinsics_roots: Default::default(),
             final_state_root: Default::default(),
@@ -699,7 +731,7 @@ mod tests {
                 .map(|v: Vec<Hash>| v.into_iter().collect())
         };
 
-        let trace_mismatch_info_for = |receipt_hash| -> Option<(u32, Hash)> {
+        let trace_mismatch_info_for = |receipt_hash| -> Option<ReceiptMismatchInfo<Hash>> {
             load_decode(
                 &client,
                 bad_receipt_mismatch_info_key(receipt_hash).as_slice(),
@@ -712,7 +744,7 @@ mod tests {
         };
 
         let first_unconfirmed_bad_receipt_info =
-            |oldest_receipt_number: BlockNumber| -> Option<(H256, u32, Hash)> {
+            |oldest_receipt_number: BlockNumber| -> Option<(H256, ReceiptMismatchInfo<Hash>)> {
                 // Always check and prune the expired bad receipts before loading the first unconfirmed one.
                 prune_expired_bad_receipts(&client, oldest_receipt_number).unwrap();
                 find_first_unconfirmed_bad_receipt_info::<_, _, CBlock, _>(&client, |height| {
@@ -735,13 +767,16 @@ mod tests {
         );
 
         consensus_client.insert_number_to_hash_mapping(10, block_hash1);
-        write_bad_receipt::<_, CBlock>(&client, 10, bad_receipt_hash1, (1, block_hash1)).unwrap();
+        write_bad_receipt::<_, CBlock>(&client, 10, bad_receipt_hash1, (1, block_hash1).into())
+            .unwrap();
         assert_eq!(bad_receipt_numbers(), Some(vec![10]));
         consensus_client.insert_number_to_hash_mapping(10, block_hash2);
-        write_bad_receipt::<_, CBlock>(&client, 10, bad_receipt_hash2, (2, block_hash2)).unwrap();
+        write_bad_receipt::<_, CBlock>(&client, 10, bad_receipt_hash2, (2, block_hash2).into())
+            .unwrap();
         assert_eq!(bad_receipt_numbers(), Some(vec![10]));
         consensus_client.insert_number_to_hash_mapping(10, block_hash3);
-        write_bad_receipt::<_, CBlock>(&client, 10, bad_receipt_hash3, (3, block_hash3)).unwrap();
+        write_bad_receipt::<_, CBlock>(&client, 10, bad_receipt_hash3, (3, block_hash3).into())
+            .unwrap();
         assert_eq!(bad_receipt_numbers(), Some(vec![10]));
 
         let (bad_receipt_hash4, block_hash4) = (
@@ -749,24 +784,25 @@ mod tests {
             insert_header(backend.as_ref(), 4u64, block_hash3),
         );
         consensus_client.insert_number_to_hash_mapping(20, block_hash4);
-        write_bad_receipt::<_, CBlock>(&client, 20, bad_receipt_hash4, (1, block_hash4)).unwrap();
+        write_bad_receipt::<_, CBlock>(&client, 20, bad_receipt_hash4, (1, block_hash4).into())
+            .unwrap();
         assert_eq!(bad_receipt_numbers(), Some(vec![10, 20]));
 
         assert_eq!(
             trace_mismatch_info_for(bad_receipt_hash1).unwrap(),
-            (1, block_hash1)
+            (1, block_hash1).into()
         );
         assert_eq!(
             trace_mismatch_info_for(bad_receipt_hash2).unwrap(),
-            (2, block_hash2)
+            (2, block_hash2).into()
         );
         assert_eq!(
             trace_mismatch_info_for(bad_receipt_hash3).unwrap(),
-            (3, block_hash3)
+            (3, block_hash3).into()
         );
         assert_eq!(
             first_unconfirmed_bad_receipt_info(1),
-            Some((bad_receipt_hash1, 1, block_hash1))
+            Some((bad_receipt_hash1, (1, block_hash1).into()))
         );
 
         assert_eq!(
@@ -794,7 +830,7 @@ mod tests {
         assert!(bad_receipts_at(10).is_none());
         assert_eq!(
             first_unconfirmed_bad_receipt_info(1),
-            Some((bad_receipt_hash4, 1, block_hash4))
+            Some((bad_receipt_hash4, (1, block_hash4).into()))
         );
 
         assert!(delete_bad_receipt(&client, 20, bad_receipt_hash4).is_ok());
@@ -805,7 +841,8 @@ mod tests {
             insert_header(backend.as_ref(), 5u64, block_hash4),
         );
         consensus_client.insert_number_to_hash_mapping(30, block_hash5);
-        write_bad_receipt::<_, CBlock>(&client, 30, bad_receipt_hash5, (1, block_hash5)).unwrap();
+        write_bad_receipt::<_, CBlock>(&client, 30, bad_receipt_hash5, (1, block_hash5).into())
+            .unwrap();
         assert_eq!(bad_receipt_numbers(), Some(vec![30]));
         assert_eq!(bad_receipts_at(30).unwrap(), [bad_receipt_hash5].into());
         // Expired bad receipts will be removed.

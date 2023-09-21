@@ -3,8 +3,8 @@ use crate::{
     InboxResponses, Nonce, Outbox, OutboxMessageResult, Pallet,
 };
 use codec::{Decode, Encode};
-use frame_support::dispatch::TypeInfo;
 use frame_support::ensure;
+use scale_info::TypeInfo;
 use sp_messenger::messages::{
     BlockMessageWithStorageKey, BlockMessagesWithStorageKey, ChainId, Message, MessageId,
     MessageWeightTag, Payload, ProtocolMessageRequest, ProtocolMessageResponse, RequestResponse,

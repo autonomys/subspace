@@ -52,9 +52,9 @@ use subspace_core_primitives::Randomness;
 #[cfg(feature = "pot")]
 use subspace_core_primitives::{Blake3Hash, PotOutput};
 use subspace_core_primitives::{
-    BlockNumber, HistorySize, PotCheckpoints, PublicKey, RewardSignature, SegmentCommitment,
-    SegmentHeader, SegmentIndex, SlotNumber, Solution, SolutionRange, PUBLIC_KEY_LENGTH,
-    REWARD_SIGNATURE_LENGTH,
+    BlockNumber, HistorySize, PotCheckpoints, PotSeed, PublicKey, RewardSignature,
+    SegmentCommitment, SegmentHeader, SegmentIndex, SlotNumber, Solution, SolutionRange,
+    PUBLIC_KEY_LENGTH, REWARD_SIGNATURE_LENGTH,
 };
 #[cfg(feature = "std")]
 use subspace_proof_of_space::chia::ChiaTable;
@@ -113,7 +113,13 @@ const SUBSPACE_ENGINE_ID: ConsensusEngineId = *b"SUB_";
 pub enum SubspaceJustification {
     /// Proof of time checkpoints that were not seen before
     #[codec(index = 0)]
-    Checkpoints(Vec<PotCheckpoints>),
+    PotCheckpoints {
+        /// Proof of time seed, the input for computing checkpoints
+        seed: PotSeed,
+        /// Proof of time checkpoints from after future proof of parent block to current block's
+        /// future proof (inclusive)
+        checkpoints: Vec<PotCheckpoints>,
+    },
 }
 
 impl From<SubspaceJustification> for Justification {
@@ -563,14 +569,14 @@ impl PosExtension {
 #[cfg(all(feature = "std", feature = "pot"))]
 sp_externalities::decl_extension! {
     /// A Poof of time extension.
-    pub struct PotExtension(Box<dyn (Fn(BlockHash, SlotNumber, PotOutput) -> bool) + Send + Sync>);
+    pub struct PotExtension(Box<dyn (Fn(BlockHash, SlotNumber, PotOutput, bool) -> bool) + Send + Sync>);
 }
 
 #[cfg(all(feature = "std", feature = "pot"))]
 impl PotExtension {
     /// Create new instance.
     pub fn new(
-        verifier: Box<dyn (Fn(BlockHash, SlotNumber, PotOutput) -> bool) + Send + Sync>,
+        verifier: Box<dyn (Fn(BlockHash, SlotNumber, PotOutput, bool) -> bool) + Send + Sync>,
     ) -> Self {
         Self(verifier)
     }
@@ -631,6 +637,7 @@ pub trait Consensus {
         parent_hash: BlockHash,
         slot: SlotNumber,
         proof_of_time: WrappedPotOutput,
+        quick_verification: bool,
     ) -> bool {
         use sp_externalities::ExternalitiesExt;
 
@@ -639,7 +646,7 @@ pub trait Consensus {
             .expect("No `PotExtension` associated for the current context!")
             .0;
 
-        verifier(parent_hash, slot, proof_of_time.0)
+        verifier(parent_hash, slot, proof_of_time.0, quick_verification)
     }
 }
 

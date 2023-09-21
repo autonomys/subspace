@@ -590,9 +590,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "ark-scale"
+version = "0.0.10"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "49b08346a3e38e2be792ef53ee168623c9244d968ff00cd70fb9932f6fe36393"
+dependencies = [
+ "ark-ec",
+ "ark-ff",
+ "ark-serialize",
+ "ark-std",
+ "parity-scale-codec",
+]
+
+[[package]]
 name = "ark-secret-scalar"
 version = "0.0.2"
-source = "git+https://github.com/w3f/ring-vrf?rev=c86ebd4#c86ebd4114d3165d05f9ce28c1d9e8d7a9a4e801"
+source = "git+https://github.com/w3f/ring-vrf?rev=f4fe253#f4fe2534ccc6d916cd10d9c16891e673728ec8b4"
 dependencies = [
  "ark-ec",
  "ark-ff",
@@ -640,7 +653,7 @@ dependencies = [
 [[package]]
 name = "ark-transcript"
 version = "0.0.2"
-source = "git+https://github.com/w3f/ring-vrf?rev=c86ebd4#c86ebd4114d3165d05f9ce28c1d9e8d7a9a4e801"
+source = "git+https://github.com/w3f/ring-vrf?rev=f4fe253#f4fe2534ccc6d916cd10d9c16891e673728ec8b4"
 dependencies = [
  "ark-ff",
  "ark-serialize",
@@ -982,7 +995,7 @@ dependencies = [
 [[package]]
 name = "bandersnatch_vrfs"
 version = "0.0.1"
-source = "git+https://github.com/w3f/ring-vrf?rev=c86ebd4#c86ebd4114d3165d05f9ce28c1d9e8d7a9a4e801"
+source = "git+https://github.com/w3f/ring-vrf?rev=f4fe253#f4fe2534ccc6d916cd10d9c16891e673728ec8b4"
 dependencies = [
  "ark-bls12-381",
  "ark-ec",
@@ -1617,14 +1630,14 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9ab77dbd8adecaf3f0db40581631b995f312a8a5ae3aa9993188bb8f23d83a5b"
 dependencies = [
  "strum",
- "strum_macros",
+ "strum_macros 0.24.3",
  "unicode-width",
 ]
 
 [[package]]
 name = "common"
 version = "0.1.0"
-source = "git+https://github.com/w3f/ring-proof#0e948f3c28cbacecdd3020403c4841c0eb339213"
+source = "git+https://github.com/w3f/ring-proof?rev=8657210#86572101f4210647984ab4efedba6b3fcc890895"
 dependencies = [
  "ark-ec",
  "ark-ff",
@@ -1633,6 +1646,7 @@ dependencies = [
  "ark-std",
  "fflonk",
  "merlin 3.0.0",
+ "rand_chacha 0.3.1",
 ]
 
 [[package]]
@@ -2465,10 +2479,11 @@ dependencies = [
 [[package]]
 name = "dleq_vrf"
 version = "0.0.2"
-source = "git+https://github.com/w3f/ring-vrf?rev=c86ebd4#c86ebd4114d3165d05f9ce28c1d9e8d7a9a4e801"
+source = "git+https://github.com/w3f/ring-vrf?rev=f4fe253#f4fe2534ccc6d916cd10d9c16891e673728ec8b4"
 dependencies = [
  "ark-ec",
  "ark-ff",
+ "ark-scale",
  "ark-secret-scalar",
  "ark-serialize",
  "ark-std",
@@ -2543,7 +2558,7 @@ dependencies = [
  "sp-messenger",
  "sp-runtime",
  "sp-state-machine",
- "sp-timestamp 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-timestamp",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
  "tracing",
@@ -2603,6 +2618,7 @@ dependencies = [
  "domain-test-primitives",
  "domain-test-service",
  "evm-domain-test-runtime",
+ "frame-support",
  "frame-system",
  "futures",
  "futures-timer",
@@ -2627,11 +2643,11 @@ dependencies = [
  "sp-block-builder",
  "sp-blockchain",
  "sp-consensus",
- "sp-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-consensus-slots",
  "sp-core",
  "sp-domain-digests",
  "sp-domains",
- "sp-keystore 0.27.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-keystore",
  "sp-messenger",
  "sp-runtime",
  "sp-state-machine",
@@ -2721,7 +2737,7 @@ dependencies = [
  "sp-io",
  "sp-runtime",
  "sp-std",
- "sp-tracing 10.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-tracing",
  "sp-version",
 ]
 
@@ -2774,7 +2790,7 @@ dependencies = [
  "sc-rpc-api",
  "sc-rpc-spec-v2",
  "sc-service",
- "sc-telemetry 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sc-telemetry",
  "sc-transaction-pool",
  "sc-transaction-pool-api",
  "sc-utils",
@@ -2783,11 +2799,11 @@ dependencies = [
  "sp-block-builder",
  "sp-blockchain",
  "sp-consensus",
- "sp-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-consensus-slots",
  "sp-core",
  "sp-domains",
  "sp-inherents",
- "sp-keystore 0.27.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-keystore",
  "sp-messenger",
  "sp-offchain",
  "sp-runtime",
@@ -2838,7 +2854,7 @@ dependencies = [
  "rand 0.8.5",
  "sc-client-api",
  "sc-consensus",
- "sc-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sc-consensus-slots",
  "sc-executor",
  "sc-network",
  "sc-network-sync",
@@ -2851,8 +2867,8 @@ dependencies = [
  "serde",
  "serde_json",
  "sp-api",
- "sp-application-crypto 23.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
- "sp-arithmetic 16.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-application-crypto",
+ "sp-arithmetic",
  "sp-block-builder",
  "sp-blockchain",
  "sp-core",
@@ -2863,7 +2879,7 @@ dependencies = [
  "sp-offchain",
  "sp-runtime",
  "sp-session",
- "sp-timestamp 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-timestamp",
  "sp-transaction-pool",
  "subspace-networking",
  "subspace-proof-of-space",
@@ -3395,7 +3411,7 @@ checksum = "6999dc1837253364c2ebb0704ba97994bd874e8f195d665c50b7548f6ea92764"
 [[package]]
 name = "fc-api"
 version = "1.0.0-dev"
-source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
+source = "git+https://github.com/subspace/frontier?rev=e74fdd2de2a1d5749c067d6fd8e244e405b256e1#e74fdd2de2a1d5749c067d6fd8e244e405b256e1"
 dependencies = [
  "async-trait",
  "fp-storage",
@@ -3407,7 +3423,7 @@ dependencies = [
 [[package]]
 name = "fc-consensus"
 version = "2.0.0-dev"
-source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
+source = "git+https://github.com/subspace/frontier?rev=e74fdd2de2a1d5749c067d6fd8e244e405b256e1#e74fdd2de2a1d5749c067d6fd8e244e405b256e1"
 dependencies = [
  "async-trait",
  "fp-consensus",
@@ -3423,7 +3439,7 @@ dependencies = [
 [[package]]
 name = "fc-db"
 version = "2.0.0-dev"
-source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
+source = "git+https://github.com/subspace/frontier?rev=e74fdd2de2a1d5749c067d6fd8e244e405b256e1#e74fdd2de2a1d5749c067d6fd8e244e405b256e1"
 dependencies = [
  "async-trait",
  "fc-api",
@@ -3442,7 +3458,7 @@ dependencies = [
 [[package]]
 name = "fc-mapping-sync"
 version = "2.0.0-dev"
-source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
+source = "git+https://github.com/subspace/frontier?rev=e74fdd2de2a1d5749c067d6fd8e244e405b256e1#e74fdd2de2a1d5749c067d6fd8e244e405b256e1"
 dependencies = [
  "fc-db",
  "fc-storage",
@@ -3463,7 +3479,7 @@ dependencies = [
 [[package]]
 name = "fc-rpc"
 version = "2.0.0-dev"
-source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
+source = "git+https://github.com/subspace/frontier?rev=e74fdd2de2a1d5749c067d6fd8e244e405b256e1#e74fdd2de2a1d5749c067d6fd8e244e405b256e1"
 dependencies = [
  "ethereum",
  "ethereum-types",
@@ -3501,14 +3517,14 @@ dependencies = [
  "sp-block-builder",
  "sp-blockchain",
  "sp-consensus",
- "sp-consensus-aura 0.10.0-dev (git+https://github.com/paritytech/substrate?branch=master)",
+ "sp-consensus-aura",
  "sp-core",
  "sp-inherents",
  "sp-io",
  "sp-runtime",
  "sp-state-machine",
  "sp-storage",
- "sp-timestamp 4.0.0-dev (git+https://github.com/paritytech/substrate?branch=master)",
+ "sp-timestamp",
  "substrate-prometheus-endpoint",
  "thiserror",
  "tokio",
@@ -3517,7 +3533,7 @@ dependencies = [
 [[package]]
 name = "fc-rpc-core"
 version = "1.1.0-dev"
-source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
+source = "git+https://github.com/subspace/frontier?rev=e74fdd2de2a1d5749c067d6fd8e244e405b256e1#e74fdd2de2a1d5749c067d6fd8e244e405b256e1"
 dependencies = [
  "ethereum",
  "ethereum-types",
@@ -3530,7 +3546,7 @@ dependencies = [
 [[package]]
 name = "fc-storage"
 version = "1.0.0-dev"
-source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
+source = "git+https://github.com/subspace/frontier?rev=e74fdd2de2a1d5749c067d6fd8e244e405b256e1#e74fdd2de2a1d5749c067d6fd8e244e405b256e1"
 dependencies = [
  "ethereum",
  "ethereum-types",
@@ -3678,7 +3694,7 @@ checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 [[package]]
 name = "fork-tree"
 version = "3.0.0"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "parity-scale-codec",
 ]
@@ -3695,7 +3711,7 @@ dependencies = [
 [[package]]
 name = "fp-account"
 version = "1.0.0-dev"
-source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
+source = "git+https://github.com/subspace/frontier?rev=e74fdd2de2a1d5749c067d6fd8e244e405b256e1#e74fdd2de2a1d5749c067d6fd8e244e405b256e1"
 dependencies = [
  "hex",
  "impl-serde",
@@ -3707,14 +3723,14 @@ dependencies = [
  "sp-core",
  "sp-io",
  "sp-runtime",
- "sp-runtime-interface 17.0.0 (git+https://github.com/paritytech/substrate?branch=master)",
+ "sp-runtime-interface",
  "sp-std",
 ]
 
 [[package]]
 name = "fp-consensus"
 version = "2.0.0-dev"
-source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
+source = "git+https://github.com/subspace/frontier?rev=e74fdd2de2a1d5749c067d6fd8e244e405b256e1#e74fdd2de2a1d5749c067d6fd8e244e405b256e1"
 dependencies = [
  "ethereum",
  "parity-scale-codec",
@@ -3726,7 +3742,7 @@ dependencies = [
 [[package]]
 name = "fp-ethereum"
 version = "1.0.0-dev"
-source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
+source = "git+https://github.com/subspace/frontier?rev=e74fdd2de2a1d5749c067d6fd8e244e405b256e1#e74fdd2de2a1d5749c067d6fd8e244e405b256e1"
 dependencies = [
  "ethereum",
  "ethereum-types",
@@ -3739,7 +3755,7 @@ dependencies = [
 [[package]]
 name = "fp-evm"
 version = "3.0.0-dev"
-source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
+source = "git+https://github.com/subspace/frontier?rev=e74fdd2de2a1d5749c067d6fd8e244e405b256e1#e74fdd2de2a1d5749c067d6fd8e244e405b256e1"
 dependencies = [
  "evm",
  "frame-support",
@@ -3755,7 +3771,7 @@ dependencies = [
 [[package]]
 name = "fp-rpc"
 version = "3.0.0-dev"
-source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
+source = "git+https://github.com/subspace/frontier?rev=e74fdd2de2a1d5749c067d6fd8e244e405b256e1#e74fdd2de2a1d5749c067d6fd8e244e405b256e1"
 dependencies = [
  "ethereum",
  "ethereum-types",
@@ -3772,7 +3788,7 @@ dependencies = [
 [[package]]
 name = "fp-self-contained"
 version = "1.0.0-dev"
-source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
+source = "git+https://github.com/subspace/frontier?rev=e74fdd2de2a1d5749c067d6fd8e244e405b256e1#e74fdd2de2a1d5749c067d6fd8e244e405b256e1"
 dependencies = [
  "frame-support",
  "parity-scale-codec",
@@ -3784,7 +3800,7 @@ dependencies = [
 [[package]]
 name = "fp-storage"
 version = "2.0.0"
-source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
+source = "git+https://github.com/subspace/frontier?rev=e74fdd2de2a1d5749c067d6fd8e244e405b256e1#e74fdd2de2a1d5749c067d6fd8e244e405b256e1"
 dependencies = [
  "parity-scale-codec",
  "serde",
@@ -3799,7 +3815,7 @@ checksum = "6c2141d6d6c8512188a7891b4b01590a45f6dac67afb4f255c4124dbb86d4eaa"
 [[package]]
 name = "frame-benchmarking"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "frame-support",
  "frame-support-procedural",
@@ -3811,11 +3827,11 @@ dependencies = [
  "scale-info",
  "serde",
  "sp-api",
- "sp-application-crypto 23.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-application-crypto",
  "sp-core",
  "sp-io",
  "sp-runtime",
- "sp-runtime-interface 17.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-runtime-interface",
  "sp-std",
  "sp-storage",
  "static_assertions",
@@ -3824,7 +3840,7 @@ dependencies = [
 [[package]]
 name = "frame-benchmarking-cli"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "Inflector",
  "array-bytes",
@@ -3843,7 +3859,7 @@ dependencies = [
  "parity-scale-codec",
  "rand 0.8.5",
  "rand_pcg",
- "sc-block-builder 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sc-block-builder",
  "sc-cli",
  "sc-client-api",
  "sc-client-db",
@@ -3859,12 +3875,12 @@ dependencies = [
  "sp-externalities",
  "sp-inherents",
  "sp-io",
- "sp-keystore 0.27.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-keystore",
  "sp-runtime",
  "sp-state-machine",
  "sp-storage",
  "sp-trie",
- "sp-wasm-interface 14.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-wasm-interface",
  "thiserror",
  "thousands",
 ]
@@ -3872,7 +3888,7 @@ dependencies = [
 [[package]]
 name = "frame-executive"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "frame-support",
  "frame-system",
@@ -3884,7 +3900,7 @@ dependencies = [
  "sp-io",
  "sp-runtime",
  "sp-std",
- "sp-tracing 10.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-tracing",
 ]
 
 [[package]]
@@ -3902,7 +3918,7 @@ dependencies = [
 [[package]]
 name = "frame-support"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "aquamarine",
  "bitflags 1.3.2",
@@ -3921,7 +3937,7 @@ dependencies = [
  "serde_json",
  "smallvec",
  "sp-api",
- "sp-arithmetic 16.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-arithmetic",
  "sp-core",
  "sp-core-hashing-proc-macro",
  "sp-debug-derive",
@@ -3933,7 +3949,7 @@ dependencies = [
  "sp-staking",
  "sp-state-machine",
  "sp-std",
- "sp-tracing 10.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-tracing",
  "sp-weights",
  "static_assertions",
  "tt-call",
@@ -3942,7 +3958,7 @@ dependencies = [
 [[package]]
 name = "frame-support-procedural"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "Inflector",
  "cfg-expr",
@@ -3960,7 +3976,7 @@ dependencies = [
 [[package]]
 name = "frame-support-procedural-tools"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "frame-support-procedural-tools-derive",
  "proc-macro-crate",
@@ -3972,7 +3988,7 @@ dependencies = [
 [[package]]
 name = "frame-support-procedural-tools-derive"
 version = "3.0.0"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -3982,7 +3998,7 @@ dependencies = [
 [[package]]
 name = "frame-system"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "cfg-if",
  "frame-support",
@@ -4001,7 +4017,7 @@ dependencies = [
 [[package]]
 name = "frame-system-benchmarking"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "frame-benchmarking",
  "frame-support",
@@ -4016,7 +4032,7 @@ dependencies = [
 [[package]]
 name = "frame-system-rpc-runtime-api"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "parity-scale-codec",
  "sp-api",
@@ -4025,7 +4041,7 @@ dependencies = [
 [[package]]
 name = "frame-try-runtime"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "frame-support",
  "parity-scale-codec",
@@ -7118,7 +7134,7 @@ dependencies = [
 [[package]]
 name = "pallet-authorship"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "frame-support",
  "frame-system",
@@ -7132,7 +7148,7 @@ dependencies = [
 [[package]]
 name = "pallet-babe"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "frame-benchmarking",
  "frame-support",
@@ -7143,7 +7159,7 @@ dependencies = [
  "pallet-timestamp",
  "parity-scale-codec",
  "scale-info",
- "sp-application-crypto 23.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-application-crypto",
  "sp-consensus-babe",
  "sp-core",
  "sp-io",
@@ -7156,7 +7172,7 @@ dependencies = [
 [[package]]
 name = "pallet-balances"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "frame-benchmarking",
  "frame-support",
@@ -7171,7 +7187,7 @@ dependencies = [
 [[package]]
 name = "pallet-base-fee"
 version = "1.0.0"
-source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
+source = "git+https://github.com/subspace/frontier?rev=e74fdd2de2a1d5749c067d6fd8e244e405b256e1#e74fdd2de2a1d5749c067d6fd8e244e405b256e1"
 dependencies = [
  "fp-evm",
  "frame-support",
@@ -7212,6 +7228,7 @@ dependencies = [
  "sp-externalities",
  "sp-io",
  "sp-runtime",
+ "sp-state-machine",
  "sp-std",
  "sp-trie",
  "sp-version",
@@ -7222,7 +7239,7 @@ dependencies = [
 [[package]]
 name = "pallet-ethereum"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
+source = "git+https://github.com/subspace/frontier?rev=e74fdd2de2a1d5749c067d6fd8e244e405b256e1#e74fdd2de2a1d5749c067d6fd8e244e405b256e1"
 dependencies = [
  "ethereum",
  "ethereum-types",
@@ -7245,7 +7262,7 @@ dependencies = [
 [[package]]
 name = "pallet-evm"
 version = "6.0.0-dev"
-source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
+source = "git+https://github.com/subspace/frontier?rev=e74fdd2de2a1d5749c067d6fd8e244e405b256e1#e74fdd2de2a1d5749c067d6fd8e244e405b256e1"
 dependencies = [
  "environmental",
  "evm",
@@ -7270,7 +7287,7 @@ dependencies = [
 [[package]]
 name = "pallet-evm-chain-id"
 version = "1.0.0-dev"
-source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
+source = "git+https://github.com/subspace/frontier?rev=e74fdd2de2a1d5749c067d6fd8e244e405b256e1#e74fdd2de2a1d5749c067d6fd8e244e405b256e1"
 dependencies = [
  "frame-support",
  "frame-system",
@@ -7282,7 +7299,7 @@ dependencies = [
 [[package]]
 name = "pallet-evm-precompile-modexp"
 version = "2.0.0-dev"
-source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
+source = "git+https://github.com/subspace/frontier?rev=e74fdd2de2a1d5749c067d6fd8e244e405b256e1#e74fdd2de2a1d5749c067d6fd8e244e405b256e1"
 dependencies = [
  "fp-evm",
  "num",
@@ -7291,7 +7308,7 @@ dependencies = [
 [[package]]
 name = "pallet-evm-precompile-sha3fips"
 version = "2.0.0-dev"
-source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
+source = "git+https://github.com/subspace/frontier?rev=e74fdd2de2a1d5749c067d6fd8e244e405b256e1#e74fdd2de2a1d5749c067d6fd8e244e405b256e1"
 dependencies = [
  "fp-evm",
  "tiny-keccak",
@@ -7300,7 +7317,7 @@ dependencies = [
 [[package]]
 name = "pallet-evm-precompile-simple"
 version = "2.0.0-dev"
-source = "git+https://github.com/subspace/frontier?rev=01b56190c0ed019b187c34d23422b9fea7ca4393#01b56190c0ed019b187c34d23422b9fea7ca4393"
+source = "git+https://github.com/subspace/frontier?rev=e74fdd2de2a1d5749c067d6fd8e244e405b256e1#e74fdd2de2a1d5749c067d6fd8e244e405b256e1"
 dependencies = [
  "fp-evm",
  "ripemd",
@@ -7337,7 +7354,7 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "serde",
- "sp-application-crypto 23.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-application-crypto",
  "sp-consensus-grandpa",
  "sp-core",
  "sp-io",
@@ -7441,7 +7458,7 @@ dependencies = [
 [[package]]
 name = "pallet-session"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "frame-support",
  "frame-system",
@@ -7478,7 +7495,7 @@ dependencies = [
  "scale-info",
  "schnorrkel",
  "serde",
- "sp-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-consensus-slots",
  "sp-consensus-subspace",
  "sp-core",
  "sp-io",
@@ -7498,8 +7515,9 @@ dependencies = [
 [[package]]
 name = "pallet-sudo"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
+ "docify",
  "frame-benchmarking",
  "frame-support",
  "frame-system",
@@ -7513,7 +7531,7 @@ dependencies = [
 [[package]]
 name = "pallet-timestamp"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "frame-benchmarking",
  "frame-support",
@@ -7526,7 +7544,7 @@ dependencies = [
  "sp-runtime",
  "sp-std",
  "sp-storage",
- "sp-timestamp 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-timestamp",
 ]
 
 [[package]]
@@ -7543,7 +7561,7 @@ dependencies = [
 [[package]]
 name = "pallet-transaction-payment"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "frame-support",
  "frame-system",
@@ -7559,7 +7577,7 @@ dependencies = [
 [[package]]
 name = "pallet-transaction-payment-rpc"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "jsonrpsee",
  "pallet-transaction-payment-rpc-runtime-api",
@@ -7575,7 +7593,7 @@ dependencies = [
 [[package]]
 name = "pallet-transaction-payment-rpc-runtime-api"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "pallet-transaction-payment",
  "parity-scale-codec",
@@ -7606,7 +7624,7 @@ dependencies = [
 [[package]]
 name = "pallet-utility"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "frame-benchmarking",
  "frame-support",
@@ -8627,13 +8645,14 @@ dependencies = [
 [[package]]
 name = "ring"
 version = "0.1.0"
-source = "git+https://github.com/w3f/ring-proof#0e948f3c28cbacecdd3020403c4841c0eb339213"
+source = "git+https://github.com/w3f/ring-proof?rev=8657210#86572101f4210647984ab4efedba6b3fcc890895"
 dependencies = [
  "ark-ec",
  "ark-ff",
  "ark-poly",
  "ark-serialize",
  "ark-std",
+ "blake2",
  "common",
  "fflonk",
  "merlin 3.0.0",
@@ -8966,27 +8985,27 @@ dependencies = [
 [[package]]
 name = "sc-allocator"
 version = "4.1.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "log",
  "sp-core",
- "sp-wasm-interface 14.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-wasm-interface",
  "thiserror",
 ]
 
 [[package]]
 name = "sc-basic-authorship"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "futures",
  "futures-timer",
  "log",
  "parity-scale-codec",
- "sc-block-builder 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sc-block-builder",
  "sc-client-api",
  "sc-proposer-metrics",
- "sc-telemetry 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sc-telemetry",
  "sc-transaction-pool-api",
  "sp-api",
  "sp-blockchain",
@@ -9000,22 +9019,7 @@ dependencies = [
 [[package]]
 name = "sc-block-builder"
 version = "0.10.0-dev"
-source = "git+https://github.com/paritytech/substrate?branch=master#033d4e86cc7eff0066cd376b9375f815761d653c"
-dependencies = [
- "parity-scale-codec",
- "sc-client-api",
- "sp-api",
- "sp-block-builder",
- "sp-blockchain",
- "sp-core",
- "sp-inherents",
- "sp-runtime",
-]
-
-[[package]]
-name = "sc-block-builder"
-version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "parity-scale-codec",
  "sc-client-api",
@@ -9030,14 +9034,14 @@ dependencies = [
 [[package]]
 name = "sc-chain-spec"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "memmap2 0.5.10",
  "sc-chain-spec-derive",
  "sc-client-api",
  "sc-executor",
  "sc-network",
- "sc-telemetry 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sc-telemetry",
  "serde",
  "serde_json",
  "sp-blockchain",
@@ -9049,7 +9053,7 @@ dependencies = [
 [[package]]
 name = "sc-chain-spec-derive"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -9060,7 +9064,7 @@ dependencies = [
 [[package]]
 name = "sc-cli"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "array-bytes",
  "atomic",
@@ -9080,7 +9084,7 @@ dependencies = [
  "sc-keystore",
  "sc-network",
  "sc-service",
- "sc-telemetry 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sc-telemetry",
  "sc-tracing",
  "sc-utils",
  "serde",
@@ -9088,7 +9092,7 @@ dependencies = [
  "sp-blockchain",
  "sp-core",
  "sp-keyring",
- "sp-keystore 0.27.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-keystore",
  "sp-panic-handler",
  "sp-runtime",
  "sp-version",
@@ -9100,7 +9104,7 @@ dependencies = [
 [[package]]
 name = "sc-client-api"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "fnv",
  "futures",
@@ -9126,7 +9130,7 @@ dependencies = [
 [[package]]
 name = "sc-client-db"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "hash-db 0.16.0",
  "kvdb",
@@ -9139,7 +9143,7 @@ dependencies = [
  "sc-client-api",
  "sc-state-db",
  "schnellru",
- "sp-arithmetic 16.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-arithmetic",
  "sp-blockchain",
  "sp-core",
  "sp-database",
@@ -9151,7 +9155,7 @@ dependencies = [
 [[package]]
 name = "sc-consensus"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "async-trait",
  "futures",
@@ -9176,27 +9180,27 @@ dependencies = [
 [[package]]
 name = "sc-consensus-aura"
 version = "0.10.0-dev"
-source = "git+https://github.com/paritytech/substrate?branch=master#033d4e86cc7eff0066cd376b9375f815761d653c"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "async-trait",
  "futures",
  "log",
  "parity-scale-codec",
- "sc-block-builder 0.10.0-dev (git+https://github.com/paritytech/substrate?branch=master)",
+ "sc-block-builder",
  "sc-client-api",
  "sc-consensus",
- "sc-consensus-slots 0.10.0-dev (git+https://github.com/paritytech/substrate?branch=master)",
- "sc-telemetry 4.0.0-dev (git+https://github.com/paritytech/substrate?branch=master)",
+ "sc-consensus-slots",
+ "sc-telemetry",
  "sp-api",
- "sp-application-crypto 23.0.0 (git+https://github.com/paritytech/substrate?branch=master)",
+ "sp-application-crypto",
  "sp-block-builder",
  "sp-blockchain",
  "sp-consensus",
- "sp-consensus-aura 0.10.0-dev (git+https://github.com/paritytech/substrate?branch=master)",
- "sp-consensus-slots 0.10.0-dev (git+https://github.com/paritytech/substrate?branch=master)",
+ "sp-consensus-aura",
+ "sp-consensus-slots",
  "sp-core",
  "sp-inherents",
- "sp-keystore 0.27.0 (git+https://github.com/paritytech/substrate?branch=master)",
+ "sp-keystore",
  "sp-runtime",
  "substrate-prometheus-endpoint",
  "thiserror",
@@ -9219,7 +9223,7 @@ dependencies = [
 [[package]]
 name = "sc-consensus-slots"
 version = "0.10.0-dev"
-source = "git+https://github.com/paritytech/substrate?branch=master#033d4e86cc7eff0066cd376b9375f815761d653c"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "async-trait",
  "futures",
@@ -9228,34 +9232,11 @@ dependencies = [
  "parity-scale-codec",
  "sc-client-api",
  "sc-consensus",
- "sc-telemetry 4.0.0-dev (git+https://github.com/paritytech/substrate?branch=master)",
- "sp-arithmetic 16.0.0 (git+https://github.com/paritytech/substrate?branch=master)",
+ "sc-telemetry",
+ "sp-arithmetic",
  "sp-blockchain",
  "sp-consensus",
- "sp-consensus-slots 0.10.0-dev (git+https://github.com/paritytech/substrate?branch=master)",
- "sp-core",
- "sp-inherents",
- "sp-runtime",
- "sp-state-machine",
-]
-
-[[package]]
-name = "sc-consensus-slots"
-version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
-dependencies = [
- "async-trait",
- "futures",
- "futures-timer",
- "log",
- "parity-scale-codec",
- "sc-client-api",
- "sc-consensus",
- "sc-telemetry 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
- "sp-arithmetic 16.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
- "sp-blockchain",
- "sp-consensus",
- "sp-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-consensus-slots",
  "sp-core",
  "sp-inherents",
  "sp-runtime",
@@ -9276,11 +9257,12 @@ dependencies = [
  "parking_lot 0.12.1",
  "rand 0.8.5",
  "rand_chacha 0.3.1",
+ "rayon",
  "sc-client-api",
  "sc-consensus",
- "sc-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sc-consensus-slots",
  "sc-proof-of-time",
- "sc-telemetry 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sc-telemetry",
  "sc-transaction-pool-api",
  "sc-utils",
  "schnorrkel",
@@ -9289,7 +9271,7 @@ dependencies = [
  "sp-block-builder",
  "sp-blockchain",
  "sp-consensus",
- "sp-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-consensus-slots",
  "sp-consensus-subspace",
  "sp-core",
  "sp-inherents",
@@ -9324,7 +9306,7 @@ dependencies = [
  "sp-api",
  "sp-blockchain",
  "sp-consensus",
- "sp-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-consensus-slots",
  "sp-consensus-subspace",
  "sp-core",
  "sp-objects",
@@ -9340,7 +9322,7 @@ dependencies = [
 [[package]]
 name = "sc-executor"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "parity-scale-codec",
  "parking_lot 0.12.1",
@@ -9352,21 +9334,21 @@ dependencies = [
  "sp-externalities",
  "sp-io",
  "sp-panic-handler",
- "sp-runtime-interface 17.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-runtime-interface",
  "sp-trie",
  "sp-version",
- "sp-wasm-interface 14.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-wasm-interface",
  "tracing",
 ]
 
 [[package]]
 name = "sc-executor-common"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "sc-allocator",
  "sp-maybe-compressed-blob",
- "sp-wasm-interface 14.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-wasm-interface",
  "thiserror",
  "wasm-instrument",
 ]
@@ -9374,7 +9356,7 @@ dependencies = [
 [[package]]
 name = "sc-executor-wasmtime"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "anyhow",
  "cfg-if",
@@ -9383,15 +9365,15 @@ dependencies = [
  "rustix 0.36.15",
  "sc-allocator",
  "sc-executor-common",
- "sp-runtime-interface 17.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
- "sp-wasm-interface 14.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-runtime-interface",
+ "sp-wasm-interface",
  "wasmtime",
 ]
 
 [[package]]
 name = "sc-informant"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "ansi_term",
  "futures",
@@ -9407,21 +9389,21 @@ dependencies = [
 [[package]]
 name = "sc-keystore"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "array-bytes",
  "parking_lot 0.12.1",
  "serde_json",
- "sp-application-crypto 23.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-application-crypto",
  "sp-core",
- "sp-keystore 0.27.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-keystore",
  "thiserror",
 ]
 
 [[package]]
 name = "sc-network"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "array-bytes",
  "async-channel",
@@ -9449,7 +9431,7 @@ dependencies = [
  "serde",
  "serde_json",
  "smallvec",
- "sp-arithmetic 16.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-arithmetic",
  "sp-blockchain",
  "sp-core",
  "sp-runtime",
@@ -9463,7 +9445,7 @@ dependencies = [
 [[package]]
 name = "sc-network-bitswap"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "async-channel",
  "cid",
@@ -9483,7 +9465,7 @@ dependencies = [
 [[package]]
 name = "sc-network-common"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "async-trait",
  "bitflags 1.3.2",
@@ -9500,7 +9482,7 @@ dependencies = [
 [[package]]
 name = "sc-network-gossip"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "ahash 0.8.3",
  "futures",
@@ -9518,7 +9500,7 @@ dependencies = [
 [[package]]
 name = "sc-network-light"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "array-bytes",
  "async-channel",
@@ -9539,7 +9521,7 @@ dependencies = [
 [[package]]
 name = "sc-network-sync"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "array-bytes",
  "async-channel",
@@ -9561,7 +9543,7 @@ dependencies = [
  "sc-utils",
  "schnellru",
  "smallvec",
- "sp-arithmetic 16.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-arithmetic",
  "sp-blockchain",
  "sp-consensus",
  "sp-consensus-grandpa",
@@ -9574,7 +9556,7 @@ dependencies = [
 [[package]]
 name = "sc-network-transactions"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "array-bytes",
  "futures",
@@ -9592,7 +9574,7 @@ dependencies = [
 [[package]]
 name = "sc-offchain"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "array-bytes",
  "bytes",
@@ -9616,7 +9598,7 @@ dependencies = [
  "sp-api",
  "sp-core",
  "sp-externalities",
- "sp-keystore 0.27.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-keystore",
  "sp-offchain",
  "sp-runtime",
  "threadpool",
@@ -9637,13 +9619,13 @@ dependencies = [
  "parking_lot 0.12.1",
  "rayon",
  "sc-client-api",
- "sc-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sc-consensus-slots",
  "sc-network",
  "sc-network-gossip",
  "sp-api",
  "sp-blockchain",
  "sp-consensus",
- "sp-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-consensus-slots",
  "sp-consensus-subspace",
  "sp-core",
  "sp-inherents",
@@ -9658,7 +9640,7 @@ dependencies = [
 [[package]]
 name = "sc-proposer-metrics"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "log",
  "substrate-prometheus-endpoint",
@@ -9667,14 +9649,14 @@ dependencies = [
 [[package]]
 name = "sc-rpc"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "futures",
  "jsonrpsee",
  "log",
  "parity-scale-codec",
  "parking_lot 0.12.1",
- "sc-block-builder 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sc-block-builder",
  "sc-chain-spec",
  "sc-client-api",
  "sc-rpc-api",
@@ -9685,7 +9667,7 @@ dependencies = [
  "sp-api",
  "sp-blockchain",
  "sp-core",
- "sp-keystore 0.27.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-keystore",
  "sp-offchain",
  "sp-rpc",
  "sp-runtime",
@@ -9698,7 +9680,7 @@ dependencies = [
 [[package]]
 name = "sc-rpc-api"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "jsonrpsee",
  "parity-scale-codec",
@@ -9717,7 +9699,7 @@ dependencies = [
 [[package]]
 name = "sc-rpc-server"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "http",
  "jsonrpsee",
@@ -9732,7 +9714,7 @@ dependencies = [
 [[package]]
 name = "sc-rpc-spec-v2"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "array-bytes",
  "futures",
@@ -9760,7 +9742,7 @@ dependencies = [
 [[package]]
 name = "sc-service"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "async-trait",
  "directories",
@@ -9773,7 +9755,7 @@ dependencies = [
  "parking_lot 0.12.1",
  "pin-project",
  "rand 0.8.5",
- "sc-block-builder 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sc-block-builder",
  "sc-chain-spec",
  "sc-client-api",
  "sc-client-db",
@@ -9791,7 +9773,7 @@ dependencies = [
  "sc-rpc-server",
  "sc-rpc-spec-v2",
  "sc-sysinfo",
- "sc-telemetry 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sc-telemetry",
  "sc-tracing",
  "sc-transaction-pool",
  "sc-transaction-pool-api",
@@ -9803,7 +9785,7 @@ dependencies = [
  "sp-consensus",
  "sp-core",
  "sp-externalities",
- "sp-keystore 0.27.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-keystore",
  "sp-runtime",
  "sp-session",
  "sp-state-machine",
@@ -9824,7 +9806,7 @@ dependencies = [
 [[package]]
 name = "sc-state-db"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "log",
  "parity-scale-codec",
@@ -9835,7 +9817,7 @@ dependencies = [
 [[package]]
 name = "sc-storage-monitor"
 version = "0.1.0"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "clap",
  "fs4",
@@ -9863,6 +9845,8 @@ dependencies = [
  "sp-api",
  "sp-consensus-subspace",
  "sp-runtime",
+ "strum_macros 0.25.2",
+ "substrate-prometheus-endpoint",
  "thiserror",
  "tracing",
 ]
@@ -9873,7 +9857,7 @@ version = "0.1.0"
 dependencies = [
  "sc-chain-spec",
  "sc-service",
- "sc-telemetry 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sc-telemetry",
  "serde",
  "sp-core",
  "sp-runtime",
@@ -9882,7 +9866,7 @@ dependencies = [
 [[package]]
 name = "sc-sysinfo"
 version = "6.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "futures",
  "libc",
@@ -9890,7 +9874,7 @@ dependencies = [
  "rand 0.8.5",
  "rand_pcg",
  "regex",
- "sc-telemetry 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sc-telemetry",
  "serde",
  "serde_json",
  "sp-core",
@@ -9901,26 +9885,7 @@ dependencies = [
 [[package]]
 name = "sc-telemetry"
 version = "4.0.0-dev"
-source = "git+https://github.com/paritytech/substrate?branch=master#033d4e86cc7eff0066cd376b9375f815761d653c"
-dependencies = [
- "chrono",
- "futures",
- "libp2p 0.51.3",
- "log",
- "parking_lot 0.12.1",
- "pin-project",
- "rand 0.8.5",
- "sc-utils",
- "serde",
- "serde_json",
- "thiserror",
- "wasm-timer",
-]
-
-[[package]]
-name = "sc-telemetry"
-version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "chrono",
  "futures",
@@ -9939,7 +9904,7 @@ dependencies = [
 [[package]]
 name = "sc-tracing"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "ansi_term",
  "atty",
@@ -9958,7 +9923,7 @@ dependencies = [
  "sp-core",
  "sp-rpc",
  "sp-runtime",
- "sp-tracing 10.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-tracing",
  "thiserror",
  "tracing",
  "tracing-log",
@@ -9968,7 +9933,7 @@ dependencies = [
 [[package]]
 name = "sc-tracing-proc-macro"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "proc-macro-crate",
  "proc-macro2",
@@ -9979,7 +9944,7 @@ dependencies = [
 [[package]]
 name = "sc-transaction-pool"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "async-trait",
  "futures",
@@ -9996,7 +9961,7 @@ dependencies = [
  "sp-blockchain",
  "sp-core",
  "sp-runtime",
- "sp-tracing 10.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-tracing",
  "sp-transaction-pool",
  "substrate-prometheus-endpoint",
  "thiserror",
@@ -10005,7 +9970,7 @@ dependencies = [
 [[package]]
 name = "sc-transaction-pool-api"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "async-trait",
  "futures",
@@ -10021,7 +9986,7 @@ dependencies = [
 [[package]]
 name = "sc-utils"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "async-channel",
  "futures",
@@ -10030,7 +9995,7 @@ dependencies = [
  "log",
  "parking_lot 0.12.1",
  "prometheus",
- "sp-arithmetic 16.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-arithmetic",
 ]
 
 [[package]]
@@ -10554,7 +10519,7 @@ dependencies = [
 [[package]]
 name = "sp-api"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "hash-db 0.16.0",
  "log",
@@ -10575,7 +10540,7 @@ dependencies = [
 [[package]]
 name = "sp-api-proc-macro"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "Inflector",
  "blake2",
@@ -10589,20 +10554,7 @@ dependencies = [
 [[package]]
 name = "sp-application-crypto"
 version = "23.0.0"
-source = "git+https://github.com/paritytech/substrate?branch=master#033d4e86cc7eff0066cd376b9375f815761d653c"
-dependencies = [
- "parity-scale-codec",
- "scale-info",
- "serde",
- "sp-core",
- "sp-io",
- "sp-std",
-]
-
-[[package]]
-name = "sp-application-crypto"
-version = "23.0.0"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "parity-scale-codec",
  "scale-info",
@@ -10615,21 +10567,7 @@ dependencies = [
 [[package]]
 name = "sp-arithmetic"
 version = "16.0.0"
-source = "git+https://github.com/paritytech/substrate?branch=master#033d4e86cc7eff0066cd376b9375f815761d653c"
-dependencies = [
- "integer-sqrt",
- "num-traits",
- "parity-scale-codec",
- "scale-info",
- "serde",
- "sp-std",
- "static_assertions",
-]
-
-[[package]]
-name = "sp-arithmetic"
-version = "16.0.0"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "integer-sqrt",
  "num-traits",
@@ -10643,7 +10581,7 @@ dependencies = [
 [[package]]
 name = "sp-block-builder"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "sp-api",
  "sp-inherents",
@@ -10654,7 +10592,7 @@ dependencies = [
 [[package]]
 name = "sp-blockchain"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "futures",
  "log",
@@ -10672,7 +10610,7 @@ dependencies = [
 [[package]]
 name = "sp-consensus"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "async-trait",
  "futures",
@@ -10687,60 +10625,43 @@ dependencies = [
 [[package]]
 name = "sp-consensus-aura"
 version = "0.10.0-dev"
-source = "git+https://github.com/paritytech/substrate?branch=master#033d4e86cc7eff0066cd376b9375f815761d653c"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "async-trait",
  "parity-scale-codec",
  "scale-info",
  "sp-api",
- "sp-application-crypto 23.0.0 (git+https://github.com/paritytech/substrate?branch=master)",
- "sp-consensus-slots 0.10.0-dev (git+https://github.com/paritytech/substrate?branch=master)",
+ "sp-application-crypto",
+ "sp-consensus-slots",
  "sp-inherents",
  "sp-runtime",
  "sp-std",
- "sp-timestamp 4.0.0-dev (git+https://github.com/paritytech/substrate?branch=master)",
-]
-
-[[package]]
-name = "sp-consensus-aura"
-version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
-dependencies = [
- "async-trait",
- "parity-scale-codec",
- "scale-info",
- "sp-api",
- "sp-application-crypto 23.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
- "sp-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
- "sp-inherents",
- "sp-runtime",
- "sp-std",
- "sp-timestamp 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-timestamp",
 ]
 
 [[package]]
 name = "sp-consensus-babe"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "async-trait",
  "parity-scale-codec",
  "scale-info",
  "serde",
  "sp-api",
- "sp-application-crypto 23.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
- "sp-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-application-crypto",
+ "sp-consensus-slots",
  "sp-core",
  "sp-inherents",
  "sp-runtime",
  "sp-std",
- "sp-timestamp 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-timestamp",
 ]
 
 [[package]]
 name = "sp-consensus-grandpa"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "finality-grandpa",
  "log",
@@ -10748,9 +10669,9 @@ dependencies = [
  "scale-info",
  "serde",
  "sp-api",
- "sp-application-crypto 23.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-application-crypto",
  "sp-core",
- "sp-keystore 0.27.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-keystore",
  "sp-runtime",
  "sp-std",
 ]
@@ -10758,25 +10679,13 @@ dependencies = [
 [[package]]
 name = "sp-consensus-slots"
 version = "0.10.0-dev"
-source = "git+https://github.com/paritytech/substrate?branch=master#033d4e86cc7eff0066cd376b9375f815761d653c"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "parity-scale-codec",
  "scale-info",
  "serde",
  "sp-std",
- "sp-timestamp 4.0.0-dev (git+https://github.com/paritytech/substrate?branch=master)",
-]
-
-[[package]]
-name = "sp-consensus-slots"
-version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
-dependencies = [
- "parity-scale-codec",
- "scale-info",
- "serde",
- "sp-std",
- "sp-timestamp 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-timestamp",
 ]
 
 [[package]]
@@ -10789,16 +10698,16 @@ dependencies = [
  "scale-info",
  "schnorrkel",
  "sp-api",
- "sp-application-crypto 23.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
- "sp-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-application-crypto",
+ "sp-consensus-slots",
  "sp-core",
  "sp-externalities",
  "sp-inherents",
  "sp-io",
  "sp-runtime",
- "sp-runtime-interface 17.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-runtime-interface",
  "sp-std",
- "sp-timestamp 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-timestamp",
  "subspace-archiving",
  "subspace-core-primitives",
  "subspace-proof-of-space",
@@ -10810,15 +10719,14 @@ dependencies = [
 [[package]]
 name = "sp-core"
 version = "21.0.0"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "array-bytes",
- "arrayvec 0.7.4",
  "bandersnatch_vrfs",
  "bitflags 1.3.2",
  "blake2",
  "bounded-collections",
- "bs58 0.4.0",
+ "bs58 0.5.0",
  "dyn-clonable",
  "ed25519-zebra",
  "futures",
@@ -10843,7 +10751,7 @@ dependencies = [
  "sp-core-hashing",
  "sp-debug-derive",
  "sp-externalities",
- "sp-runtime-interface 17.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-runtime-interface",
  "sp-std",
  "sp-storage",
  "ss58-registry",
@@ -10857,7 +10765,7 @@ dependencies = [
 [[package]]
 name = "sp-core-hashing"
 version = "9.0.0"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "blake2b_simd",
  "byteorder",
@@ -10870,7 +10778,7 @@ dependencies = [
 [[package]]
 name = "sp-core-hashing-proc-macro"
 version = "9.0.0"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "quote",
  "sp-core-hashing",
@@ -10880,7 +10788,7 @@ dependencies = [
 [[package]]
 name = "sp-database"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "kvdb",
  "parking_lot 0.12.1",
@@ -10889,7 +10797,7 @@ dependencies = [
 [[package]]
 name = "sp-debug-derive"
 version = "8.0.0"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "proc-macro2",
  "quote",
@@ -10921,12 +10829,12 @@ dependencies = [
  "scale-info",
  "serde",
  "sp-api",
- "sp-application-crypto 23.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-application-crypto",
  "sp-blockchain",
- "sp-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-consensus-slots",
  "sp-core",
  "sp-externalities",
- "sp-keystore 0.27.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-keystore",
  "sp-runtime",
  "sp-state-machine",
  "sp-std",
@@ -10940,7 +10848,7 @@ dependencies = [
 [[package]]
 name = "sp-externalities"
 version = "0.19.0"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "environmental",
  "parity-scale-codec",
@@ -10951,7 +10859,7 @@ dependencies = [
 [[package]]
 name = "sp-genesis-builder"
 version = "0.1.0"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "serde_json",
  "sp-api",
@@ -10962,7 +10870,7 @@ dependencies = [
 [[package]]
 name = "sp-inherents"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "async-trait",
  "impl-trait-for-tuples",
@@ -10976,7 +10884,7 @@ dependencies = [
 [[package]]
 name = "sp-io"
 version = "23.0.0"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "bytes",
  "ed25519-dalek 2.0.0",
@@ -10987,11 +10895,11 @@ dependencies = [
  "secp256k1",
  "sp-core",
  "sp-externalities",
- "sp-keystore 0.27.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
- "sp-runtime-interface 17.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-keystore",
+ "sp-runtime-interface",
  "sp-state-machine",
  "sp-std",
- "sp-tracing 10.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-tracing",
  "sp-trie",
  "tracing",
  "tracing-core",
@@ -11000,7 +10908,7 @@ dependencies = [
 [[package]]
 name = "sp-keyring"
 version = "24.0.0"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "lazy_static",
  "sp-core",
@@ -11011,19 +10919,7 @@ dependencies = [
 [[package]]
 name = "sp-keystore"
 version = "0.27.0"
-source = "git+https://github.com/paritytech/substrate?branch=master#033d4e86cc7eff0066cd376b9375f815761d653c"
-dependencies = [
- "parity-scale-codec",
- "parking_lot 0.12.1",
- "sp-core",
- "sp-externalities",
- "thiserror",
-]
-
-[[package]]
-name = "sp-keystore"
-version = "0.27.0"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "parity-scale-codec",
  "parking_lot 0.12.1",
@@ -11042,8 +10938,8 @@ dependencies = [
  "rand 0.8.5",
  "scale-info",
  "schnorrkel",
- "sp-arithmetic 16.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
- "sp-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-arithmetic",
+ "sp-consensus-slots",
  "sp-consensus-subspace",
  "sp-io",
  "sp-runtime",
@@ -11060,7 +10956,7 @@ dependencies = [
 [[package]]
 name = "sp-maybe-compressed-blob"
 version = "4.1.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "thiserror",
  "zstd 0.12.4",
@@ -11087,7 +10983,7 @@ dependencies = [
 [[package]]
 name = "sp-metadata-ir"
 version = "0.1.0"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "frame-metadata",
  "parity-scale-codec",
@@ -11108,7 +11004,7 @@ dependencies = [
 [[package]]
 name = "sp-offchain"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "sp-api",
  "sp-core",
@@ -11118,7 +11014,7 @@ dependencies = [
 [[package]]
 name = "sp-panic-handler"
 version = "8.0.0"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "backtrace",
  "lazy_static",
@@ -11128,7 +11024,7 @@ dependencies = [
 [[package]]
 name = "sp-rpc"
 version = "6.0.0"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "rustc-hash",
  "serde",
@@ -11138,7 +11034,7 @@ dependencies = [
 [[package]]
 name = "sp-runtime"
 version = "24.0.0"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "either",
  "hash256-std-hasher",
@@ -11149,8 +11045,8 @@ dependencies = [
  "rand 0.8.5",
  "scale-info",
  "serde",
- "sp-application-crypto 23.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
- "sp-arithmetic 16.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-application-crypto",
+ "sp-arithmetic",
  "sp-core",
  "sp-io",
  "sp-std",
@@ -11160,55 +11056,25 @@ dependencies = [
 [[package]]
 name = "sp-runtime-interface"
 version = "17.0.0"
-source = "git+https://github.com/paritytech/substrate?branch=master#033d4e86cc7eff0066cd376b9375f815761d653c"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "bytes",
  "impl-trait-for-tuples",
  "parity-scale-codec",
  "primitive-types",
  "sp-externalities",
- "sp-runtime-interface-proc-macro 11.0.0 (git+https://github.com/paritytech/substrate?branch=master)",
+ "sp-runtime-interface-proc-macro",
  "sp-std",
  "sp-storage",
- "sp-tracing 10.0.0 (git+https://github.com/paritytech/substrate?branch=master)",
- "sp-wasm-interface 14.0.0 (git+https://github.com/paritytech/substrate?branch=master)",
- "static_assertions",
-]
-
-[[package]]
-name = "sp-runtime-interface"
-version = "17.0.0"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
-dependencies = [
- "bytes",
- "impl-trait-for-tuples",
- "parity-scale-codec",
- "primitive-types",
- "sp-externalities",
- "sp-runtime-interface-proc-macro 11.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
- "sp-std",
- "sp-storage",
- "sp-tracing 10.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
- "sp-wasm-interface 14.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-tracing",
+ "sp-wasm-interface",
  "static_assertions",
 ]
 
 [[package]]
 name = "sp-runtime-interface-proc-macro"
 version = "11.0.0"
-source = "git+https://github.com/paritytech/substrate?branch=master#033d4e86cc7eff0066cd376b9375f815761d653c"
-dependencies = [
- "Inflector",
- "proc-macro-crate",
- "proc-macro2",
- "quote",
- "syn 2.0.32",
-]
-
-[[package]]
-name = "sp-runtime-interface-proc-macro"
-version = "11.0.0"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "Inflector",
  "proc-macro-crate",
@@ -11220,13 +11086,13 @@ dependencies = [
 [[package]]
 name = "sp-session"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "parity-scale-codec",
  "scale-info",
  "sp-api",
  "sp-core",
- "sp-keystore 0.27.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-keystore",
  "sp-runtime",
  "sp-staking",
  "sp-std",
@@ -11235,7 +11101,7 @@ dependencies = [
 [[package]]
 name = "sp-staking"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "impl-trait-for-tuples",
  "parity-scale-codec",
@@ -11249,7 +11115,7 @@ dependencies = [
 [[package]]
 name = "sp-state-machine"
 version = "0.28.0"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "hash-db 0.16.0",
  "log",
@@ -11270,7 +11136,7 @@ dependencies = [
 [[package]]
 name = "sp-statement-store"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "aes-gcm 0.10.2",
  "curve25519-dalek 4.1.0",
@@ -11281,11 +11147,11 @@ dependencies = [
  "scale-info",
  "sha2 0.10.7",
  "sp-api",
- "sp-application-crypto 23.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-application-crypto",
  "sp-core",
  "sp-externalities",
  "sp-runtime",
- "sp-runtime-interface 17.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-runtime-interface",
  "sp-std",
  "thiserror",
  "x25519-dalek 2.0.0",
@@ -11294,12 +11160,12 @@ dependencies = [
 [[package]]
 name = "sp-std"
 version = "8.0.0"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 
 [[package]]
 name = "sp-storage"
 version = "13.0.0"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "impl-serde",
  "parity-scale-codec",
@@ -11312,20 +11178,7 @@ dependencies = [
 [[package]]
 name = "sp-timestamp"
 version = "4.0.0-dev"
-source = "git+https://github.com/paritytech/substrate?branch=master#033d4e86cc7eff0066cd376b9375f815761d653c"
-dependencies = [
- "async-trait",
- "parity-scale-codec",
- "sp-inherents",
- "sp-runtime",
- "sp-std",
- "thiserror",
-]
-
-[[package]]
-name = "sp-timestamp"
-version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "async-trait",
  "parity-scale-codec",
@@ -11338,19 +11191,7 @@ dependencies = [
 [[package]]
 name = "sp-tracing"
 version = "10.0.0"
-source = "git+https://github.com/paritytech/substrate?branch=master#033d4e86cc7eff0066cd376b9375f815761d653c"
-dependencies = [
- "parity-scale-codec",
- "sp-std",
- "tracing",
- "tracing-core",
- "tracing-subscriber 0.2.25",
-]
-
-[[package]]
-name = "sp-tracing"
-version = "10.0.0"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "parity-scale-codec",
  "sp-std",
@@ -11362,7 +11203,7 @@ dependencies = [
 [[package]]
 name = "sp-transaction-pool"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "sp-api",
  "sp-runtime",
@@ -11371,7 +11212,7 @@ dependencies = [
 [[package]]
 name = "sp-transaction-storage-proof"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "async-trait",
  "parity-scale-codec",
@@ -11386,7 +11227,7 @@ dependencies = [
 [[package]]
 name = "sp-trie"
 version = "22.0.0"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "ahash 0.8.3",
  "hash-db 0.16.0",
@@ -11409,7 +11250,7 @@ dependencies = [
 [[package]]
 name = "sp-version"
 version = "22.0.0"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "impl-serde",
  "parity-scale-codec",
@@ -11426,7 +11267,7 @@ dependencies = [
 [[package]]
 name = "sp-version-proc-macro"
 version = "8.0.0"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "parity-scale-codec",
  "proc-macro2",
@@ -11437,20 +11278,7 @@ dependencies = [
 [[package]]
 name = "sp-wasm-interface"
 version = "14.0.0"
-source = "git+https://github.com/paritytech/substrate?branch=master#033d4e86cc7eff0066cd376b9375f815761d653c"
-dependencies = [
- "anyhow",
- "impl-trait-for-tuples",
- "log",
- "parity-scale-codec",
- "sp-std",
- "wasmtime",
-]
-
-[[package]]
-name = "sp-wasm-interface"
-version = "14.0.0"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "anyhow",
  "impl-trait-for-tuples",
@@ -11463,13 +11291,13 @@ dependencies = [
 [[package]]
 name = "sp-weights"
 version = "20.0.0"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "parity-scale-codec",
  "scale-info",
  "serde",
  "smallvec",
- "sp-arithmetic 16.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-arithmetic",
  "sp-core",
  "sp-debug-derive",
  "sp-std",
@@ -11583,7 +11411,7 @@ version = "0.24.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "063e6045c0e62079840579a7e47a355ae92f60eb74daaf156fb1e84ba164e63f"
 dependencies = [
- "strum_macros",
+ "strum_macros 0.24.3",
 ]
 
 [[package]]
@@ -11597,6 +11425,19 @@ dependencies = [
  "quote",
  "rustversion",
  "syn 1.0.109",
+]
+
+[[package]]
+name = "strum_macros"
+version = "0.25.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ad8d03b598d3d0fff69bf533ee3ef19b8eeb342729596df84bcc7e1f96ec4059"
+dependencies = [
+ "heck",
+ "proc-macro2",
+ "quote",
+ "rustversion",
+ "syn 2.0.32",
 ]
 
 [[package]]
@@ -11882,7 +11723,7 @@ dependencies = [
  "sc-cli",
  "sc-client-api",
  "sc-consensus",
- "sc-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sc-consensus-slots",
  "sc-consensus-subspace",
  "sc-executor",
  "sc-network",
@@ -11891,7 +11732,7 @@ dependencies = [
  "sc-service",
  "sc-storage-monitor",
  "sc-subspace-chain-specs",
- "sc-telemetry 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sc-telemetry",
  "sc-tracing",
  "sc-transaction-pool-api",
  "sc-utils",
@@ -11906,7 +11747,7 @@ dependencies = [
  "sp-io",
  "sp-messenger",
  "sp-runtime",
- "sp-wasm-interface 14.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-wasm-interface",
  "subspace-archiving",
  "subspace-core-primitives",
  "subspace-networking",
@@ -11992,7 +11833,7 @@ dependencies = [
  "scale-info",
  "sp-api",
  "sp-block-builder",
- "sp-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-consensus-slots",
  "sp-consensus-subspace",
  "sp-core",
  "sp-domains",
@@ -12050,7 +11891,7 @@ dependencies = [
  "sc-client-api",
  "sc-consensus",
  "sc-consensus-fraud-proof",
- "sc-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sc-consensus-slots",
  "sc-consensus-subspace",
  "sc-consensus-subspace-rpc",
  "sc-executor",
@@ -12063,7 +11904,7 @@ dependencies = [
  "sc-rpc-spec-v2",
  "sc-service",
  "sc-subspace-block-relay",
- "sc-telemetry 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sc-telemetry",
  "sc-tracing",
  "sc-transaction-pool",
  "sc-transaction-pool-api",
@@ -12071,7 +11912,7 @@ dependencies = [
  "sp-block-builder",
  "sp-blockchain",
  "sp-consensus",
- "sp-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-consensus-slots",
  "sp-consensus-subspace",
  "sp-core",
  "sp-domains",
@@ -12080,7 +11921,7 @@ dependencies = [
  "sp-offchain",
  "sp-runtime",
  "sp-session",
- "sp-timestamp 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-timestamp",
  "sp-transaction-pool",
  "sp-trie",
  "static_assertions",
@@ -12165,7 +12006,7 @@ dependencies = [
  "scale-info",
  "sp-api",
  "sp-block-builder",
- "sp-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-consensus-slots",
  "sp-consensus-subspace",
  "sp-core",
  "sp-domains",
@@ -12199,7 +12040,7 @@ dependencies = [
  "parity-scale-codec",
  "parking_lot 0.12.1",
  "rand 0.8.5",
- "sc-block-builder 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sc-block-builder",
  "sc-consensus",
  "sc-consensus-fraud-proof",
  "sc-executor",
@@ -12211,17 +12052,17 @@ dependencies = [
  "sc-transaction-pool-api",
  "sc-utils",
  "sp-api",
- "sp-application-crypto 23.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-application-crypto",
  "sp-blockchain",
  "sp-consensus",
- "sp-consensus-slots 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-consensus-slots",
  "sp-consensus-subspace",
  "sp-core",
  "sp-domains",
  "sp-inherents",
  "sp-keyring",
  "sp-runtime",
- "sp-timestamp 4.0.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-timestamp",
  "subspace-core-primitives",
  "subspace-fraud-proof",
  "subspace-runtime-primitives",
@@ -12267,7 +12108,7 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "schnorrkel",
- "sp-arithmetic 16.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-arithmetic",
  "sp-std",
  "subspace-archiving",
  "subspace-core-primitives",
@@ -12292,12 +12133,12 @@ dependencies = [
 [[package]]
 name = "substrate-build-script-utils"
 version = "3.0.0"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 
 [[package]]
 name = "substrate-frame-rpc-system"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "frame-system-rpc-runtime-api",
  "futures",
@@ -12316,7 +12157,7 @@ dependencies = [
 [[package]]
 name = "substrate-prometheus-endpoint"
 version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "hyper",
  "log",
@@ -12328,7 +12169,7 @@ dependencies = [
 [[package]]
 name = "substrate-test-client"
 version = "2.0.1"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "array-bytes",
  "async-trait",
@@ -12346,7 +12187,7 @@ dependencies = [
  "sp-consensus",
  "sp-core",
  "sp-keyring",
- "sp-keystore 0.27.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-keystore",
  "sp-runtime",
  "sp-state-machine",
 ]
@@ -12354,7 +12195,7 @@ dependencies = [
 [[package]]
 name = "substrate-test-runtime"
 version = "2.0.0"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "array-bytes",
  "frame-executive",
@@ -12371,9 +12212,9 @@ dependencies = [
  "serde",
  "serde_json",
  "sp-api",
- "sp-application-crypto 23.0.0 (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-application-crypto",
  "sp-block-builder",
- "sp-consensus-aura 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sp-consensus-aura",
  "sp-consensus-babe",
  "sp-consensus-grandpa",
  "sp-core",
@@ -12397,10 +12238,10 @@ dependencies = [
 [[package]]
 name = "substrate-test-runtime-client"
 version = "2.0.0"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "futures",
- "sc-block-builder 0.10.0-dev (git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898)",
+ "sc-block-builder",
  "sc-client-api",
  "sc-consensus",
  "sp-api",
@@ -12415,28 +12256,16 @@ dependencies = [
 [[package]]
 name = "substrate-test-utils"
 version = "4.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "futures",
- "substrate-test-utils-derive",
  "tokio",
-]
-
-[[package]]
-name = "substrate-test-utils-derive"
-version = "0.10.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
-dependencies = [
- "proc-macro-crate",
- "proc-macro2",
- "quote",
- "syn 2.0.32",
 ]
 
 [[package]]
 name = "substrate-wasm-builder"
 version = "5.0.0-dev"
-source = "git+https://github.com/subspace/substrate?rev=48c5ebae44b90d45863195b91e0e489eca670898#48c5ebae44b90d45863195b91e0e489eca670898"
+source = "git+https://github.com/subspace/polkadot-sdk?rev=20be5f33a3d2b3f4b31a894f9829184b29fba3ef#20be5f33a3d2b3f4b31a894f9829184b29fba3ef"
 dependencies = [
  "ansi_term",
  "build-helper",
@@ -12956,9 +12785,9 @@ dependencies = [
 
 [[package]]
 name = "trie-db"
-version = "0.27.1"
+version = "0.28.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "767abe6ffed88a1889671a102c2861ae742726f52e0a5a425b92c9fbfa7e9c85"
+checksum = "ff28e0f815c2fea41ebddf148e008b077d2faddb026c9555b29696114d602642"
 dependencies = [
  "hash-db 0.16.0",
  "hashbrown 0.13.2",
@@ -13071,7 +12900,7 @@ checksum = "97fee6b57c6a41524a810daee9286c02d7752c4253064d0b05472833a438f675"
 dependencies = [
  "cfg-if",
  "digest 0.10.7",
- "rand 0.7.3",
+ "rand 0.8.5",
  "static_assertions",
 ]
 
@@ -13360,7 +13189,7 @@ dependencies = [
  "anyhow",
  "libc",
  "strum",
- "strum_macros",
+ "strum_macros 0.24.3",
  "tempfile",
  "thiserror",
  "wasm-opt-cxx-sys",

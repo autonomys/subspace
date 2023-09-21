@@ -23,8 +23,6 @@ use crate::{
 use futures::channel::mpsc;
 use futures::{StreamExt, TryFutureExt};
 use log::{debug, error, info, warn};
-#[cfg(feature = "pot")]
-use parking_lot::Mutex;
 use sc_client_api::AuxStore;
 use sc_consensus::block_import::{BlockImport, BlockImportParams, StateAction};
 use sc_consensus::{JustificationSyncLink, StorageChanges};
@@ -55,6 +53,8 @@ use sp_core::crypto::ByteArray;
 use sp_core::H256;
 use sp_runtime::traits::{Block as BlockT, Header, One, Saturating, Zero};
 use sp_runtime::DigestItem;
+#[cfg(feature = "pot")]
+use sp_runtime::{Justification, Justifications};
 #[cfg(feature = "pot")]
 use std::collections::BTreeMap;
 use std::future::Future;
@@ -137,13 +137,11 @@ where
     /// Solution receivers for challenges that were sent to farmers and expected to be received
     /// eventually
     #[cfg(feature = "pot")]
-    // TODO: Substrate should make `fn claim_slot` take `&mut self`, the  we'll not need `Mutex`
     pub(super) pending_solutions:
-        Mutex<BTreeMap<Slot, mpsc::Receiver<Solution<FarmerPublicKey, FarmerPublicKey>>>>,
+        BTreeMap<Slot, mpsc::Receiver<Solution<FarmerPublicKey, FarmerPublicKey>>>,
     /// Collection of PoT slots that can be retrieved later if needed by block production
     #[cfg(feature = "pot")]
-    // TODO: Substrate should make `fn claim_slot` take `&mut self`, the  we'll not need `Mutex`
-    pub(super) pot_checkpoints: Mutex<BTreeMap<Slot, PotCheckpoints>>,
+    pub(super) pot_checkpoints: BTreeMap<Slot, PotCheckpoints>,
     #[cfg(feature = "pot")]
     pub(super) pot_verifier: PotVerifier,
     pub(super) _pos_table: PhantomData<PosTable>,
@@ -159,14 +157,11 @@ where
     SO: SyncOracle + Send + Sync,
 {
     fn on_proof(&mut self, slot: Slot, checkpoints: PotCheckpoints) {
-        {
-            let mut pot_checkpoints = self.pot_checkpoints.lock();
+        // Remove checkpoints from future slots, if present they are out of date anyway
+        self.pot_checkpoints
+            .retain(|&stored_slot, _checkpoints| stored_slot < slot);
 
-            // Remove checkpoints from future slots, if present they are out of date anyway
-            pot_checkpoints.retain(|&stored_slot, _checkpoints| stored_slot < slot);
-
-            pot_checkpoints.insert(slot, checkpoints);
-        }
+        self.pot_checkpoints.insert(slot, checkpoints);
 
         if self.sync_oracle.is_major_syncing() {
             debug!(
@@ -210,9 +205,7 @@ where
                 solution_sender,
             });
 
-        self.pending_solutions
-            .lock()
-            .insert(slot, solution_receiver);
+        self.pending_solutions.insert(slot, solution_receiver);
     }
 }
 
@@ -277,7 +270,7 @@ where
     }
 
     async fn claim_slot(
-        &self,
+        &mut self,
         parent_header: &Block::Header,
         slot: Slot,
         _aux_data: &Self::AuxData,
@@ -315,38 +308,37 @@ where
         let maybe_root_plot_public_key = runtime_api.root_plot_public_key(parent_hash).ok()?;
 
         #[cfg(feature = "pot")]
+        let pot_parameters = runtime_api.pot_parameters(parent_hash).ok()?;
+        #[cfg(feature = "pot")]
+        let parent_future_slot = if parent_header.number().is_zero() {
+            parent_slot
+        } else {
+            parent_slot + self.chain_constants.block_authoring_delay()
+        };
+
+        #[cfg(feature = "pot")]
         let (proof_of_time, future_proof_of_time, new_checkpoints) = {
-            // TODO: These variables and code block below are only necessary to work around
-            //  https://github.com/rust-lang/rust/issues/57478
-            let proof_of_time;
-            let future_slot;
-            let future_proof_of_time;
-            let new_checkpoints;
-            {
-                let mut pot_checkpoints = self.pot_checkpoints.lock();
+            // Remove checkpoints from old slots we will not need anymore
+            self.pot_checkpoints
+                .retain(|&stored_slot, _checkpoints| stored_slot > parent_slot);
 
-                // Remove checkpoints from old slots we will not need anymore
-                pot_checkpoints.retain(|&stored_slot, _checkpoints| stored_slot > parent_slot);
+            let proof_of_time = self.pot_checkpoints.get(&slot)?.output();
 
-                proof_of_time = pot_checkpoints.get(&slot)?.output();
+            // Future slot for which proof must be available before authoring block at this slot
+            let future_slot = slot + self.chain_constants.block_authoring_delay();
+            let future_proof_of_time = self.pot_checkpoints.get(&future_slot)?.output();
 
-                // Future slot for which proof must be available before authoring block at this slot
-                future_slot = slot + self.chain_constants.block_authoring_delay();
-                let parent_future_slot = parent_slot + self.chain_constants.block_authoring_delay();
-                future_proof_of_time = pot_checkpoints.get(&future_slot)?.output();
+            // New checkpoints that were produced since parent block's future slot up to current
+            // future slot (inclusive)
+            let new_checkpoints = self
+                .pot_checkpoints
+                .iter()
+                .filter_map(|(&stored_slot, &checkpoints)| {
+                    (stored_slot > parent_future_slot && stored_slot <= future_slot)
+                        .then_some(checkpoints)
+                })
+                .collect::<Vec<_>>();
 
-                // New checkpoints that were produced since parent block's future slot up to current
-                // future slot (inclusive)
-                new_checkpoints = pot_checkpoints
-                    .iter()
-                    .filter_map(|(&stored_slot, &checkpoints)| {
-                        (stored_slot > parent_future_slot && stored_slot <= future_slot)
-                            .then_some(checkpoints)
-                    })
-                    .collect::<Vec<_>>();
-            }
-
-            let pot_parameters = runtime_api.pot_parameters(parent_hash).ok()?;
             let slot_iterations;
             let pot_seed;
             let after_parent_slot = parent_slot + Slot::from(1);
@@ -383,7 +375,7 @@ where
             // Ensure proof of time and future proof of time included in upcoming block are valid
             if !self
                 .pot_verifier
-                .is_output_valid(
+                .try_is_output_valid(
                     after_parent_slot,
                     pot_seed,
                     slot_iterations,
@@ -406,11 +398,11 @@ where
 
         #[cfg(feature = "pot")]
         let mut solution_receiver = {
-            let mut pending_solutions = self.pending_solutions.lock();
             // Remove receivers for old slots we will not need anymore
-            pending_solutions.retain(|&stored_slot, _solution_receiver| stored_slot >= slot);
+            self.pending_solutions
+                .retain(|&stored_slot, _solution_receiver| stored_slot >= slot);
 
-            let mut solution_receiver = pending_solutions.remove(&slot)?;
+            let mut solution_receiver = self.pending_solutions.remove(&slot)?;
             // Time is out, we will not accept any more solutions
             solution_receiver.close();
             solution_receiver
@@ -596,10 +588,34 @@ where
 
         #[cfg(feature = "pot")]
         {
+            let pot_seed;
+            if parent_header.number().is_zero() {
+                pot_seed = self.pot_verifier.genesis_seed();
+            } else {
+                let parent_pot_info = parent_pre_digest.pot_info();
+                let after_parent_future_slot = parent_future_slot + Slot::from(1);
+                // Only if entropy injection happens exactly after parent's future  slot we need to
+                // mix it in
+                if let Some(parameters_change) = pot_parameters.next_parameters_change()
+                    && parameters_change.slot == after_parent_future_slot
+                {
+                    pot_seed = parent_pot_info
+                        .future_proof_of_time()
+                        .seed_with_entropy(&parameters_change.entropy);
+                } else {
+                    pot_seed = parent_pot_info
+                        .future_proof_of_time()
+                        .seed();
+                }
+            }
+
             maybe_pre_digest.map(|pre_digest| {
                 (
                     pre_digest,
-                    SubspaceJustification::Checkpoints(new_checkpoints),
+                    SubspaceJustification::PotCheckpoints {
+                        seed: pot_seed,
+                        checkpoints: new_checkpoints,
+                    },
                 )
             })
         }
@@ -622,7 +638,7 @@ where
         header_hash: &Block::Hash,
         body: Vec<Block::Extrinsic>,
         storage_changes: sc_consensus_slots::StorageChanges<Block>,
-        #[cfg(feature = "pot")] (pre_digest, _justification): Self::Claim,
+        #[cfg(feature = "pot")] (pre_digest, justification): Self::Claim,
         #[cfg(not(feature = "pot"))] pre_digest: Self::Claim,
         _aux_data: Self::AuxData,
     ) -> Result<BlockImportParams<Block>, ConsensusError> {
@@ -640,12 +656,11 @@ where
         import_block.body = Some(body);
         import_block.state_action =
             StateAction::ApplyChanges(StorageChanges::Changes(storage_changes));
-        // TODO: Substrate only allows justifications in finalized blocks, need to figure out a way
-        //  to pass this along (could use auxiliary, but then will not be gossiped to other nodes)
-        // #[cfg(feature = "pot")]
-        // import_block
-        //     .justifications
-        //     .replace(Justifications::from(Justification::from(justification)));
+
+        #[cfg(feature = "pot")]
+        import_block
+            .justifications
+            .replace(Justifications::from(Justification::from(justification)));
 
         Ok(import_block)
     }

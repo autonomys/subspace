@@ -3,9 +3,9 @@ use crate::domain_block_processor::{
 };
 use crate::{DomainParentChain, ExecutionReceiptFor};
 use domain_block_preprocessor::runtime_api_full::RuntimeApiFull;
-use domain_block_preprocessor::{DomainBlockPreprocessor, PreprocessResult};
+use domain_block_preprocessor::DomainBlockPreprocessor;
 use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
-use sc_client_api::{AuxStore, BlockBackend, Finalizer};
+use sc_client_api::{AuxStore, BlockBackend, Finalizer, ProofProvider};
 use sc_consensus::{BlockImport, BlockImportParams, ForkChoiceStrategy, StateAction};
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
@@ -137,6 +137,7 @@ where
         + BlockBackend<Block>
         + AuxStore
         + ProvideRuntimeApi<Block>
+        + ProofProvider<Block>
         + Finalizer<Block, Backend>
         + 'static,
     Client::Api: DomainCoreApi<Block>
@@ -268,11 +269,7 @@ where
             .head_receipt_number(consensus_block_hash, self.domain_id)?
             .into();
 
-        let Some(PreprocessResult {
-            extrinsics,
-            extrinsics_roots,
-            invalid_bundles,
-        }) = self
+        let Some(preprocess_result) = self
             .domain_block_preprocessor
             .preprocess_consensus_block(consensus_block_hash, parent_hash)?
         else {
@@ -298,9 +295,7 @@ where
             .process_domain_block(
                 (consensus_block_hash, consensus_block_number),
                 (parent_hash, parent_number),
-                extrinsics,
-                invalid_bundles,
-                extrinsics_roots,
+                preprocess_result,
                 digest,
             )
             .await?;
@@ -325,6 +320,9 @@ where
         // TODO: Remove as ReceiptsChecker has been superseded by ReceiptValidator in block-preprocessor.
         self.domain_receipts_checker
             .check_state_transition(consensus_block_hash)?;
+
+        self.domain_receipts_checker
+            .submit_fraud_proof(consensus_block_hash)?;
 
         Ok(Some(built_block_info))
     }

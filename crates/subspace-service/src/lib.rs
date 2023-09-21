@@ -66,7 +66,9 @@ use sc_proof_of_time::source::PotSourceWorker;
 use sc_proof_of_time::verifier::PotVerifier;
 use sc_service::error::Error as ServiceError;
 use sc_service::{Configuration, NetworkStarter, SpawnTasksParams, TaskManager};
-use sc_subspace_block_relay::{build_consensus_relay, NetworkWrapper};
+use sc_subspace_block_relay::{
+    build_consensus_relay, BlockRelayConfigurationError, NetworkWrapper,
+};
 use sc_telemetry::{Telemetry, TelemetryWorker};
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi};
@@ -148,6 +150,10 @@ pub enum Error {
     /// Subspace networking (DSN) error.
     #[error(transparent)]
     SubspaceDsn(#[from] DsnConfigurationError),
+
+    /// Failed to set up block relay.
+    #[error(transparent)]
+    BlockRelay(#[from] BlockRelayConfigurationError),
 
     /// Other.
     #[error(transparent)]
@@ -255,7 +261,7 @@ where
             let client = Arc::clone(&self.client);
             let pot_verifier = self.pot_verifier.clone();
 
-            Box::new(move |parent_hash, slot, proof_of_time| {
+            Box::new(move |parent_hash, slot, proof_of_time, quick_verification| {
                 let parent_hash = {
                     let mut converted_parent_hash = Block::Hash::default();
                     converted_parent_hash.as_mut().copy_from_slice(&parent_hash);
@@ -352,14 +358,26 @@ where
 
                 // Ensure proof of time and future proof of time included in upcoming block are
                 // valid
-                block_on(pot_verifier.is_output_valid(
-                    after_parent_slot,
-                    pot_seed,
-                    slot_iterations,
-                    Slot::from(slot - u64::from(parent_slot)),
-                    proof_of_time,
-                    pot_parameters.next_parameters_change(),
-                ))
+
+                if quick_verification {
+                    block_on(pot_verifier.try_is_output_valid(
+                        after_parent_slot,
+                        pot_seed,
+                        slot_iterations,
+                        Slot::from(slot - u64::from(parent_slot)),
+                        proof_of_time,
+                        pot_parameters.next_parameters_change(),
+                    ))
+                } else {
+                    block_on(pot_verifier.is_output_valid(
+                        after_parent_slot,
+                        pot_seed,
+                        slot_iterations,
+                        Slot::from(slot - u64::from(parent_slot)),
+                        proof_of_time,
+                        pot_parameters.next_parameters_change(),
+                    ))
+                }
             })
         }));
         exts
@@ -795,11 +813,15 @@ where
     let import_queue_service = import_queue.service();
     let network_wrapper = Arc::new(NetworkWrapper::default());
     let block_relay = if config.enable_subspace_block_relay {
-        Some(build_consensus_relay(
-            network_wrapper.clone(),
-            client.clone(),
-            transaction_pool.clone(),
-        ))
+        Some(
+            build_consensus_relay(
+                network_wrapper.clone(),
+                client.clone(),
+                transaction_pool.clone(),
+                config.base.prometheus_registry(),
+            )
+            .map_err(Error::BlockRelay)?,
+        )
     } else {
         None
     };
@@ -829,11 +851,20 @@ where
         client.clone(),
         sync_oracle.clone(),
         telemetry.as_ref().map(|telemetry| telemetry.handle()),
-    );
+    )
+    .map_err(ServiceError::Client)?;
 
     task_manager
         .spawn_essential_handle()
-        .spawn_essential_blocking("subspace-archiver", None, Box::pin(subspace_archiver));
+        .spawn_essential_blocking(
+            "subspace-archiver",
+            None,
+            Box::pin(async move {
+                if let Err(error) = subspace_archiver.await {
+                    error!(%error, "Archiver exited with error");
+                }
+            }),
+        );
 
     if config.enable_subspace_block_relay {
         network_wrapper.set(network_service.clone());
@@ -921,12 +952,13 @@ where
             pot_verifier.clone(),
             network_service.clone(),
             sync_service.clone(),
+            sync_oracle.clone(),
         )
         .map_err(|error| Error::Other(error.into()))?;
         let spawn_essential_handle = task_manager.spawn_essential_handle();
 
         spawn_essential_handle.spawn("pot-source", Some("pot"), pot_source_worker.run());
-        spawn_essential_handle.spawn_blocking("pot-gossip", Some("pot"), pot_gossip_worker.run());
+        spawn_essential_handle.spawn("pot-gossip", Some("pot"), pot_gossip_worker.run());
 
         pot_slot_info_stream
     };

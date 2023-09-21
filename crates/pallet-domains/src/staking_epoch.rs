@@ -11,10 +11,10 @@ use crate::{
     BalanceOf, Config, ElectionVerificationParams, FungibleHoldId, HoldIdentifier, NominatorId,
 };
 use codec::{Decode, Encode};
-use frame_support::dispatch::TypeInfo;
 use frame_support::traits::fungible::{InspectHold, Mutate, MutateHold};
 use frame_support::traits::tokens::{Fortitude, Precision, Restriction};
 use frame_support::PalletError;
+use scale_info::TypeInfo;
 use sp_core::Get;
 use sp_domains::{DomainId, EpochIndex, OperatorId};
 use sp_runtime::traits::{CheckedAdd, CheckedSub, One, Zero};
