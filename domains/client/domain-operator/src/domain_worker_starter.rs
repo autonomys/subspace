@@ -32,6 +32,7 @@ use sp_api::{BlockT, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
+use sp_core::H256;
 use sp_domains::{BundleProducerElectionApi, DomainsApi};
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::NumberFor;
@@ -72,6 +73,7 @@ pub(super) async fn start_worker<
     active_leaves: Vec<BlockInfo<CBlock>>,
 ) where
     Block: BlockT,
+    Block::Hash: Into<H256>,
     CBlock: BlockT,
     NumberFor<CBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
     CBlock::Hash: From<Block::Hash>,

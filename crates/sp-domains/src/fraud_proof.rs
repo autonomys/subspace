@@ -1,4 +1,5 @@
 use crate::{DomainId, ReceiptHash, SealedBundleHeader};
+use hash_db::Hasher;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
@@ -8,6 +9,7 @@ use sp_std::vec::Vec;
 use sp_trie::StorageProof;
 use subspace_core_primitives::BlockNumber;
 use subspace_runtime_primitives::{AccountId, Balance};
+use trie_db::TrieLayout;
 
 /// A phase of a block's execution, carrying necessary information needed for verifying the
 /// invalid state transition proof.
@@ -304,7 +306,7 @@ where
     Hash: Encode,
 {
     pub fn hash(&self) -> H256 {
-        BlakeTwo256::hash(&self.encode())
+        <BlakeTwo256 as HashT>::hash(&self.encode())
     }
 }
 
@@ -415,11 +417,39 @@ pub struct InvalidTotalRewardsProof {
 }
 
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+pub enum ExtrinsicDigest {
+    /// Actual extrinsic data that is inlined since it is less than 33 bytes.
+    Data(Vec<u8>),
+    /// Extrinsic Hash.
+    Hash(H256),
+}
+
+impl ExtrinsicDigest {
+    pub fn new<Layout: TrieLayout>(ext: Vec<u8>) -> Self
+    where
+        Layout::Hash: Hasher<Out = H256>,
+    {
+        if let Some(threshold) = Layout::MAX_INLINE_VALUE {
+            if ext.len() >= threshold as usize {
+                ExtrinsicDigest::Hash(Layout::Hash::hash(&ext))
+            } else {
+                ExtrinsicDigest::Data(ext)
+            }
+        } else {
+            ExtrinsicDigest::Data(ext)
+        }
+    }
+}
+
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
 pub struct ValidBundleDigest {
     /// Index of this bundle in the original list of bundles in the consensus block.
     pub bundle_index: u32,
     /// `Vec<(tx_signer, tx_hash)>` of all extrinsics
-    pub bundle_digest: Vec<(Option<domain_runtime_primitives::opaque::AccountId>, H256)>,
+    pub bundle_digest: Vec<(
+        Option<domain_runtime_primitives::opaque::AccountId>,
+        ExtrinsicDigest,
+    )>,
 }
 
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]

@@ -6,19 +6,19 @@ use domain_block_builder::{BlockBuilder, RecordProof};
 use domain_runtime_primitives::opaque::AccountId;
 use domain_runtime_primitives::DomainCoreApi;
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
-use sp_api::{HashT, ProvideRuntimeApi};
+use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::CodeExecutor;
 use sp_core::H256;
 use sp_domains::fraud_proof::{
-    ExecutionPhase, FraudProof, InvalidBundlesFraudProof, InvalidExtrinsicsRootProof,
-    InvalidStateTransitionProof, InvalidTotalRewardsProof, MissingInvalidBundleEntryFraudProof,
-    ValidAsInvalidBundleEntryFraudProof, ValidBundleDigest,
+    ExecutionPhase, ExtrinsicDigest, FraudProof, InvalidBundlesFraudProof,
+    InvalidExtrinsicsRootProof, InvalidStateTransitionProof, InvalidTotalRewardsProof,
+    MissingInvalidBundleEntryFraudProof, ValidAsInvalidBundleEntryFraudProof, ValidBundleDigest,
 };
 use sp_domains::{DomainId, DomainsApi};
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashingFor, Header as HeaderT, NumberFor};
 use sp_runtime::Digest;
-use sp_trie::StorageProof;
+use sp_trie::{LayoutV1, StorageProof};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_fraud_proof::invalid_state_transition_proof::ExecutionProver;
@@ -201,8 +201,13 @@ where
             let bundle_digest = domain_runtime_api
                 .extract_signer(local_receipt.domain_block_hash, exts)?
                 .into_iter()
-                .map(|(signer, ext)| (signer, BlakeTwo256::hash_of(&ext)))
-                .collect::<Vec<(Option<AccountId>, H256)>>();
+                .map(|(signer, ext)| {
+                    (
+                        signer,
+                        ExtrinsicDigest::new::<LayoutV1<BlakeTwo256>>(ext.encode()),
+                    )
+                })
+                .collect::<Vec<(Option<AccountId>, ExtrinsicDigest)>>();
             valid_bundle_digests.push(ValidBundleDigest {
                 bundle_index,
                 bundle_digest,

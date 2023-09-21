@@ -47,7 +47,7 @@ use sp_domains::fraud_proof::{FraudProof, InvalidTotalRewardsProof};
 use sp_domains::verification::verify_invalid_total_rewards_fraud_proof;
 use sp_domains::{
     DomainBlockLimit, DomainId, DomainInstanceData, ExecutionReceipt, OpaqueBundle, OperatorId,
-    OperatorPublicKey, ProofOfElection, RuntimeId, EMPTY_EXTRINSIC_ROOT,
+    OperatorPublicKey, ProofOfElection, RuntimeId, EMPTY_EXTRINSIC_ROOT, EXTRINSICS_SHUFFLING_SEED,
 };
 use sp_runtime::traits::{BlakeTwo256, CheckedSub, Hash, One, Zero};
 use sp_runtime::{RuntimeAppPublic, SaturatedConversion, Saturating};
@@ -1674,7 +1674,7 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn extrinsics_shuffling_seed() -> T::Hash {
-        let seed: &[u8] = b"extrinsics-shuffling-seed";
+        let seed = EXTRINSICS_SHUFFLING_SEED;
         let (randomness, _) = T::Randomness::random(seed);
         randomness
     }
