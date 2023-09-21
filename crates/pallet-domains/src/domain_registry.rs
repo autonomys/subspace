@@ -6,6 +6,7 @@ use crate::staking::StakingSummary;
 use crate::{
     Config, DomainRegistry, ExecutionReceiptOf, HoldIdentifier, NextDomainId, RuntimeRegistry,
 };
+use alloc::string::String;
 use codec::{Decode, Encode};
 use frame_support::traits::fungible::{Inspect, MutateHold};
 use frame_support::traits::tokens::{Fortitude, Preservation};
@@ -19,7 +20,6 @@ use sp_runtime::traits::{CheckedAdd, Zero};
 use sp_runtime::DigestItem;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
-use sp_std::vec::Vec;
 
 /// Domain registry specific errors
 #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
@@ -39,7 +39,7 @@ pub enum Error {
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
 pub struct DomainConfig {
     /// A user defined name for this domain, should be a human-readable UTF-8 encoded string.
-    pub domain_name: Vec<u8>,
+    pub domain_name: String,
     /// A pointer to the `RuntimeRegistry` entry for this domain.
     pub runtime_id: RuntimeId,
     /// The max block size for this domain, may not exceed the system-wide `MaxDomainBlockSize` limit.
@@ -184,7 +184,7 @@ mod tests {
         let created_at = 0u64;
         // Construct an invalid domain config initially
         let mut domain_config = DomainConfig {
-            domain_name: vec![0; 1024],
+            domain_name: String::from_utf8(vec![0; 1024]).unwrap(),
             runtime_id: 0,
             max_block_size: u32::MAX,
             max_block_weight: Weight::MAX,
@@ -202,7 +202,7 @@ mod tests {
                 Err(Error::DomainNameTooLong)
             );
             // Recorrect `domain_name`
-            domain_config.domain_name = b"evm-domain".to_vec();
+            domain_config.domain_name = "evm-domain".to_owned();
 
             // Failed to instantiate domain due to using unregistered runtime id
             assert_eq!(
@@ -213,7 +213,7 @@ mod tests {
             RuntimeRegistry::<Test>::insert(
                 domain_config.runtime_id,
                 RuntimeObject {
-                    runtime_name: b"evm".to_vec(),
+                    runtime_name: "evm".to_owned(),
                     runtime_type: Default::default(),
                     runtime_upgrades: 0,
                     hash: Default::default(),

@@ -460,14 +460,14 @@ fn subspace_genesis_config(
         },
         domains: DomainsConfig {
             genesis_domain: Some(sp_domains::GenesisDomain {
-                runtime_name: b"evm".to_vec(),
+                runtime_name: "evm".to_owned(),
                 runtime_type: RuntimeType::Evm,
                 runtime_version: evm_domain_runtime::VERSION,
                 raw_genesis_storage,
 
                 // Domain config, mainly for placeholder the concrete value TBD
                 owner_account_id: sudo_account,
-                domain_name: b"evm-domain".to_vec(),
+                domain_name: "evm-domain".to_owned(),
                 max_block_size: MaxDomainBlockSize::get(),
                 max_block_weight: MaxDomainBlockWeight::get(),
                 bundle_slot_probability: (1, 1),

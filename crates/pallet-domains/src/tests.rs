@@ -340,7 +340,7 @@ pub(crate) fn register_genesis_domain(creator: u64, operator_ids: Vec<OperatorId
     let raw_genesis_storage = RawGenesis::dummy(vec![1, 2, 3, 4]).encode();
     assert_ok!(crate::Pallet::<Test>::register_domain_runtime(
         RawOrigin::Root.into(),
-        b"evm".to_vec(),
+        "evm".to_owned(),
         RuntimeType::Evm,
         raw_genesis_storage,
     ));
@@ -354,7 +354,7 @@ pub(crate) fn register_genesis_domain(creator: u64, operator_ids: Vec<OperatorId
     crate::Pallet::<Test>::instantiate_domain(
         RawOrigin::Signed(creator).into(),
         DomainConfig {
-            domain_name: b"evm-domain".to_vec(),
+            domain_name: "evm-domain".to_owned(),
             runtime_id: 0,
             max_block_size: 1u32,
             max_block_weight: Weight::from_parts(1, 0),
@@ -612,7 +612,7 @@ fn test_bundle_fromat_verification() {
         let max_extrincis_count = 10;
         let max_block_size = opaque_extrinsic(0, 0).encoded_size() as u32 * max_extrincis_count;
         let domain_config = DomainConfig {
-            domain_name: b"test-domain".to_vec(),
+            domain_name: "test-domain".to_owned(),
             runtime_id: 0u32,
             max_block_size,
             max_block_weight: Weight::MAX,

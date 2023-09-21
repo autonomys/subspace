@@ -31,6 +31,8 @@ mod staking;
 mod staking_epoch;
 pub mod weights;
 
+extern crate alloc;
+
 use crate::block_tree::verify_execution_receipt;
 use crate::staking::{do_nominate_operator, Operator, OperatorStatus};
 use codec::{Decode, Encode};
@@ -125,6 +127,7 @@ mod pallet {
     use crate::{
         BalanceOf, ElectionVerificationParams, HoldIdentifier, NominatorId, OpaqueBundleOf,
     };
+    use alloc::string::String;
     use codec::FullCodec;
     use frame_support::pallet_prelude::*;
     use frame_support::traits::fungible::{InspectHold, Mutate, MutateHold};
@@ -923,7 +926,7 @@ mod pallet {
         #[pallet::weight(T::WeightInfo::register_domain_runtime())]
         pub fn register_domain_runtime(
             origin: OriginFor<T>,
-            runtime_name: Vec<u8>,
+            runtime_name: String,
             runtime_type: RuntimeType,
             // TODO: we can use `RawGenesis` as argument directly to avoid decoding but the in tool like
             // `polkadot.js` it will required the user to provide each field of the struct type and not

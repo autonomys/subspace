@@ -26,7 +26,10 @@ mod tests;
 pub mod transaction;
 pub mod verification;
 
+extern crate alloc;
+
 use crate::storage::{RawGenesis, StorageKey};
+use alloc::string::String;
 use bundle_producer_election::{BundleProducerElectionParams, VrfProofError};
 use hexlit::hex;
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
@@ -504,14 +507,14 @@ impl ProofOfElection {
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GenesisDomain<AccountId> {
     // Domain runtime items
-    pub runtime_name: Vec<u8>,
+    pub runtime_name: String,
     pub runtime_type: RuntimeType,
     pub runtime_version: RuntimeVersion,
     pub raw_genesis_storage: Vec<u8>,
 
     // Domain config items
     pub owner_account_id: AccountId,
-    pub domain_name: Vec<u8>,
+    pub domain_name: String,
     pub max_block_size: u32,
     pub max_block_weight: Weight,
     pub bundle_slot_probability: (u64, u64),

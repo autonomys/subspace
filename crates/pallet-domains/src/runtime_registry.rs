@@ -2,6 +2,7 @@
 
 use crate::pallet::{NextRuntimeId, RuntimeRegistry, ScheduledRuntimeUpgrades};
 use crate::{Config, Event};
+use alloc::string::String;
 use codec::{Decode, Encode};
 use frame_support::PalletError;
 use frame_system::pallet_prelude::*;
@@ -30,7 +31,7 @@ pub enum Error {
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
 pub struct RuntimeObject<Number, Hash> {
-    pub runtime_name: Vec<u8>,
+    pub runtime_name: String,
     pub runtime_type: RuntimeType,
     pub runtime_upgrades: u32,
     pub hash: Hash,
@@ -88,7 +89,7 @@ pub(crate) fn can_upgrade_code(
 
 /// Registers a new domain runtime..
 pub(crate) fn do_register_runtime<T: Config>(
-    runtime_name: Vec<u8>,
+    runtime_name: String,
     runtime_type: RuntimeType,
     raw_genesis_storage: Vec<u8>,
     at: BlockNumberFor<T>,
@@ -127,7 +128,7 @@ pub(crate) fn do_register_runtime<T: Config>(
 // TODO: Remove once `do_register_runtime` works at genesis.
 /// Registers a new domain runtime at genesis.
 pub(crate) fn register_runtime_at_genesis<T: Config>(
-    runtime_name: Vec<u8>,
+    runtime_name: String,
     runtime_type: RuntimeType,
     runtime_version: RuntimeVersion,
     raw_genesis_storage: Vec<u8>,
@@ -258,7 +259,7 @@ mod tests {
             let raw_genesis_storage = RawGenesis::dummy(vec![1, 2, 3, 4]).encode();
             let res = crate::Pallet::<Test>::register_domain_runtime(
                 RawOrigin::Root.into(),
-                b"evm".to_vec(),
+                "evm".to_owned(),
                 RuntimeType::Evm,
                 raw_genesis_storage,
             );
@@ -277,7 +278,7 @@ mod tests {
             RuntimeRegistry::<Test>::insert(
                 0,
                 RuntimeObject {
-                    runtime_name: b"evm".to_vec(),
+                    runtime_name: "evm".to_owned(),
                     runtime_type: Default::default(),
                     runtime_upgrades: 0,
                     hash: Default::default(),
@@ -420,7 +421,7 @@ mod tests {
             RuntimeRegistry::<Test>::insert(
                 0,
                 RuntimeObject {
-                    runtime_name: b"evm".to_vec(),
+                    runtime_name: "evm".to_owned(),
                     runtime_type: Default::default(),
                     runtime_upgrades: 0,
                     hash: Default::default(),
