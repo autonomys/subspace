@@ -598,7 +598,6 @@ where
         import_block.body = Some(body);
         import_block.state_action =
             StateAction::ApplyChanges(StorageChanges::Changes(storage_changes));
-
         import_block
             .justifications
             .replace(Justifications::from(Justification::from(justification)));

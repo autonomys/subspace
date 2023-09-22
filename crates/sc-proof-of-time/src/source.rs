@@ -80,33 +80,30 @@ where
         GossipSync: GossipSyncing<Block> + 'static,
         SO: SyncOracle + Send + Sync + 'static,
     {
-        let chain_constants;
-        let mut maybe_next_parameters_change;
-        let start_slot;
+        let best_hash = client.info().best_hash;
+        let runtime_api = client.runtime_api();
+        let chain_constants = runtime_api.chain_constants(best_hash)?;
+
+        let best_header = client
+            .header(best_hash)?
+            .ok_or_else(|| ApiError::UnknownBlock(format!("Parent block {best_hash} not found")))?;
+        let best_pre_digest = extract_pre_digest(&best_header)
+            .map_err(|error| ApiError::Application(error.into()))?;
+
+        let start_slot = if best_header.number().is_zero() {
+            Slot::from(1)
+        } else {
+            // Next slot after the best one seen
+            best_pre_digest.slot() + chain_constants.block_authoring_delay() + Slot::from(1)
+        };
+
+        let pot_parameters = runtime_api.pot_parameters(best_hash)?;
+        let mut maybe_next_parameters_change = pot_parameters.next_parameters_change();
+
         let start_seed;
         let slot_iterations;
-        {
-            let best_hash = client.info().best_hash;
-            let runtime_api = client.runtime_api();
-            chain_constants = runtime_api.chain_constants(best_hash)?;
 
-            let best_header = client.header(best_hash)?.ok_or_else(|| {
-                ApiError::UnknownBlock(format!("Parent block {best_hash} not found"))
-            })?;
-            let best_pre_digest = extract_pre_digest(&best_header)
-                .map_err(|error| ApiError::Application(error.into()))?;
-
-            start_slot = if best_header.number().is_zero() {
-                Slot::from(1)
-            } else {
-                // Next slot after the best one seen
-                best_pre_digest.slot() + chain_constants.block_authoring_delay() + Slot::from(1)
-            };
-
-            let pot_parameters = runtime_api.pot_parameters(best_hash)?;
-            maybe_next_parameters_change = pot_parameters.next_parameters_change();
-
-            if let Some(parameters_change) = maybe_next_parameters_change
+        if let Some(parameters_change) = maybe_next_parameters_change
                 && parameters_change.slot == start_slot
             {
                 start_seed = best_pre_digest.pot_info().future_proof_of_time().seed_with_entropy(&parameters_change.entropy);
@@ -120,7 +117,6 @@ where
                 };
                 slot_iterations = pot_parameters.slot_iterations();
             }
-        }
 
         let state = Arc::new(PotState::new(
             NextSlotInput {

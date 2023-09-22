@@ -971,23 +971,22 @@ where
     let block_importing_notification_stream = subspace_link.block_importing_notification_stream();
     let archived_segment_notification_stream = subspace_link.archived_segment_notification_stream();
 
-    let pot_slot_info_stream = {
-        let (pot_source_worker, pot_gossip_worker, pot_slot_info_stream) = PotSourceWorker::new(
-            config.is_timekeeper,
-            client.clone(),
-            pot_verifier.clone(),
-            network_service.clone(),
-            sync_service.clone(),
-            sync_oracle.clone(),
-        )
-        .map_err(|error| Error::Other(error.into()))?;
-        let spawn_essential_handle = task_manager.spawn_essential_handle();
+    let (pot_source_worker, pot_gossip_worker, pot_slot_info_stream) = PotSourceWorker::new(
+        config.is_timekeeper,
+        client.clone(),
+        pot_verifier.clone(),
+        network_service.clone(),
+        sync_service.clone(),
+        sync_oracle.clone(),
+    )
+    .map_err(|error| Error::Other(error.into()))?;
 
-        spawn_essential_handle.spawn("pot-source", Some("pot"), pot_source_worker.run());
-        spawn_essential_handle.spawn("pot-gossip", Some("pot"), pot_gossip_worker.run());
-
-        pot_slot_info_stream
-    };
+    task_manager
+        .spawn_essential_handle()
+        .spawn("pot-source", Some("pot"), pot_source_worker.run());
+    task_manager
+        .spawn_essential_handle()
+        .spawn("pot-gossip", Some("pot"), pot_gossip_worker.run());
 
     if config.base.role.is_authority() || config.force_new_slot_notifications {
         let proposer_factory = ProposerFactory::new(
