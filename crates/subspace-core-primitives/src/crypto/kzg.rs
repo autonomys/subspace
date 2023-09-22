@@ -31,8 +31,6 @@ use scale_info::{Type, TypeInfo};
 use spin::Mutex;
 use tracing::debug;
 
-// TODO: Update with final Ethereum parameters once KZG Summoning Ceremony is finished:
-//  https://ceremony.ethereum.org/
 /// Embedded KZG settings as bytes, too big for `no_std` in most cases
 /// Generated with with following command (using current Ethereum KZG Summoning Ceremony):
 /// ```bash
