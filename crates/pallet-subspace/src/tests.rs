@@ -16,10 +16,10 @@
 
 //! Consensus extension module tests for Subspace consensus.
 
-#[cfg(feature = "pot")]
-use crate::mock::allow_all_pot_extension;
 #[cfg(not(feature = "pot"))]
 use crate::mock::GlobalRandomnessUpdateInterval;
+#[cfg(feature = "pot")]
+use crate::mock::{allow_all_pot_extension, BlockAuthoringDelay};
 use crate::mock::{
     create_archived_segment, create_segment_header, create_signed_vote,
     generate_equivocation_proof, go_to_block, new_test_ext, progress_to_block, ReportLongevity,
@@ -34,10 +34,14 @@ use codec::Encode;
 use frame_support::dispatch::{GetDispatchInfo, Pays};
 use frame_support::{assert_err, assert_ok};
 use frame_system::{EventRecord, Phase};
+#[cfg(feature = "pot")]
+use rand::prelude::*;
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
 #[cfg(not(feature = "pot"))]
 use sp_consensus_subspace::GlobalRandomnesses;
+#[cfg(feature = "pot")]
+use sp_consensus_subspace::PotExtension;
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SolutionRanges};
 use sp_core::crypto::UncheckedFrom;
 use sp_runtime::traits::{BlockNumberProvider, Header};
@@ -47,7 +51,11 @@ use sp_runtime::transaction_validity::{
 use sp_runtime::DispatchError;
 use std::assert_matches::assert_matches;
 use std::collections::BTreeMap;
+#[cfg(feature = "pot")]
+use std::sync::{Arc, Mutex};
 use subspace_core_primitives::crypto::Scalar;
+#[cfg(feature = "pot")]
+use subspace_core_primitives::PotOutput;
 use subspace_core_primitives::{SegmentIndex, SolutionRange};
 use subspace_runtime_primitives::{FindBlockRewardAddress, FindVotingRewardAddresses};
 
@@ -107,8 +115,6 @@ fn can_update_global_randomness() {
         );
     })
 }
-
-// TODO: Tests for proof of time correctness in votes
 
 #[test]
 fn can_update_solution_range_on_era_change() {
@@ -690,7 +696,7 @@ fn vote_block_listed() {
             (),
         );
 
-        // Can't submit vote right after genesis block
+        // Vote author is in block list
         let signed_vote = create_signed_vote(
             &keypair,
             0,
@@ -1171,6 +1177,163 @@ fn vote_outside_of_solution_range() {
         assert_matches!(result, Err(CheckVoteError::InvalidSolution(_)));
         if let Err(CheckVoteError::InvalidSolution(error)) = result {
             assert!(error.contains("is outside of solution range"));
+        }
+    });
+}
+
+#[test]
+#[cfg(feature = "pot")]
+fn vote_invalid_proof_of_time() {
+    let correct_proofs_of_time = Arc::new(Mutex::new(Vec::new()));
+    let pot_extension = PotExtension::new(Box::new({
+        let correct_proofs_of_time = Arc::clone(&correct_proofs_of_time);
+        move |parent_hash, slot, proof_of_time, quick_verification| {
+            correct_proofs_of_time.lock().unwrap().contains(&(
+                parent_hash,
+                slot,
+                proof_of_time,
+                quick_verification,
+            ))
+        }
+    }));
+    new_test_ext(pot_extension).execute_with(|| {
+        let keypair = Keypair::generate();
+        let archived_segment = create_archived_segment();
+
+        progress_to_block(&keypair, 2, 1);
+
+        SegmentCommitment::<Test>::insert(
+            archived_segment.segment_header.segment_index(),
+            archived_segment.segment_header.segment_commitment(),
+        );
+
+        // Reset so that any solution works for votes
+        pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+            solution_ranges.voting_current = u64::MAX;
+        });
+
+        let current_block_number = frame_system::Pallet::<Test>::current_block_number();
+        let block_one_hash = frame_system::Pallet::<Test>::block_hash(1);
+        let slot = Subspace::current_slot();
+
+        let mut test_proof_of_time = PotOutput::default();
+        rand::thread_rng().fill(test_proof_of_time.as_mut_slice());
+        let mut test_future_proof_of_time = PotOutput::default();
+        rand::thread_rng().fill(test_future_proof_of_time.as_mut_slice());
+
+        // Proof of time not valid yet for votes before block is produced
+        {
+            let signed_vote = create_signed_vote(
+                &keypair,
+                current_block_number,
+                block_one_hash,
+                slot + 1,
+                test_proof_of_time,
+                Default::default(),
+                &archived_segment.pieces,
+                1,
+                SolutionRange::MAX,
+            );
+
+            assert_err!(
+                super::check_vote::<Test>(&signed_vote, false),
+                CheckVoteError::InvalidProofOfTime
+            );
+        }
+
+        correct_proofs_of_time.lock().unwrap().push((
+            block_one_hash.into(),
+            *slot + 1,
+            test_proof_of_time,
+            true,
+        ));
+
+        // Proof of time is valid for votes before block is produced
+        {
+            let signed_vote = create_signed_vote(
+                &keypair,
+                current_block_number,
+                block_one_hash,
+                slot + 1,
+                test_proof_of_time,
+                Default::default(),
+                &archived_segment.pieces,
+                1,
+                SolutionRange::MAX,
+            );
+
+            assert_ok!(super::check_vote::<Test>(&signed_vote, false));
+        }
+
+        // Proof of time not valid yet during pre-dispatch
+        {
+            let signed_vote = create_signed_vote(
+                &keypair,
+                current_block_number,
+                block_one_hash,
+                slot,
+                test_proof_of_time,
+                Default::default(),
+                &archived_segment.pieces,
+                1,
+                SolutionRange::MAX,
+            );
+
+            assert_err!(
+                super::check_vote::<Test>(&signed_vote, true),
+                CheckVoteError::InvalidProofOfTime
+            );
+        }
+
+        correct_proofs_of_time.lock().unwrap().push((
+            block_one_hash.into(),
+            *slot,
+            test_proof_of_time,
+            false,
+        ));
+
+        // Proof of time is valid during pre-dispatch, but not future proof of time yet
+        {
+            let signed_vote = create_signed_vote(
+                &keypair,
+                current_block_number,
+                block_one_hash,
+                slot,
+                test_proof_of_time,
+                Default::default(),
+                &archived_segment.pieces,
+                1,
+                SolutionRange::MAX,
+            );
+
+            assert_err!(
+                super::check_vote::<Test>(&signed_vote, true),
+                CheckVoteError::InvalidFutureProofOfTime
+            );
+        }
+
+        correct_proofs_of_time.lock().unwrap().push((
+            block_one_hash.into(),
+            *slot + BlockAuthoringDelay::get(),
+            test_future_proof_of_time,
+            false,
+        ));
+
+        // Both proof of time and future proof of time are valid during pre-dispatch
+        {
+            let signed_vote = create_signed_vote(
+                &keypair,
+                current_block_number,
+                block_one_hash,
+                slot,
+                test_proof_of_time,
+                test_future_proof_of_time,
+                &archived_segment.pieces,
+                1,
+                SolutionRange::MAX,
+            );
+
+            assert_ok!(super::check_vote::<Test>(&signed_vote, true));
         }
     });
 }
