@@ -6,6 +6,7 @@ use sc_client_api::backend::AuxStore;
 use sc_client_api::HeaderBackend;
 use sp_blockchain::{Error as ClientError, Result as ClientResult};
 use sp_core::H256;
+use sp_domains::InvalidBundleType;
 use sp_runtime::traits::{Block as BlockT, NumberFor, One, SaturatedConversion};
 use subspace_core_primitives::BlockNumber;
 
@@ -230,11 +231,15 @@ pub(super) fn target_receipt_is_pruned(
     head_receipt_number.saturating_sub(target_block) >= PRUNING_DEPTH
 }
 
-// TODO: Naming could use some work
 #[derive(Encode, Decode, Debug, PartialEq)]
-pub(super) enum InvalidBundlesMismatchType {
-    ValidAsInvalid,
-    InvalidAsValid,
+pub(super) enum BundleMismatchType {
+    // The invalid bundle is mismatch
+    // For `TrueInvalid`, the fraud proof need to prove the bundle is indees invalid due to `InvalidBundleType`
+    // For `TrueInvalid`, the fraud proof need to prove the bundle is not invalid due to `InvalidBundleType`
+    TrueInvalid(InvalidBundleType),
+    FalseInvalid(InvalidBundleType),
+    // The valid bundle is mismatch
+    Valid,
 }
 
 #[derive(Encode, Decode, Debug, PartialEq)]
@@ -249,8 +254,8 @@ pub(super) enum ReceiptMismatchInfo<CHash> {
     DomainExtrinsicsRoot {
         consensus_block_hash: CHash,
     },
-    InvalidBundles {
-        mismatch_type: InvalidBundlesMismatchType,
+    Bundles {
+        mismatch_type: BundleMismatchType,
         bundle_index: u32,
         consensus_block_hash: CHash,
     },
@@ -275,7 +280,7 @@ impl<CHash: Clone> ReceiptMismatchInfo<CHash> {
                 consensus_block_hash,
                 ..
             } => consensus_block_hash.clone(),
-            ReceiptMismatchInfo::InvalidBundles {
+            ReceiptMismatchInfo::Bundles {
                 consensus_block_hash,
                 ..
             } => consensus_block_hash.clone(),

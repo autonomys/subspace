@@ -1,4 +1,4 @@
-use crate::aux_schema::InvalidBundlesMismatchType;
+use crate::aux_schema::BundleMismatchType;
 use crate::utils::to_number_primitive;
 use crate::ExecutionReceiptFor;
 use codec::{Decode, Encode};
@@ -126,7 +126,7 @@ where
         &self,
         domain_id: DomainId,
         _local_receipt: &ExecutionReceiptFor<Block, CBlock>,
-        mismatch_type: InvalidBundlesMismatchType,
+        mismatch_type: BundleMismatchType,
         bundle_index: u32,
         _bad_receipt_hash: H256,
     ) -> Result<FraudProof<NumberFor<PCB>, PCB::Hash>, FraudProofError>
@@ -135,18 +135,24 @@ where
     {
         match mismatch_type {
             // TODO: Generate a proper proof once fields are in place
-            InvalidBundlesMismatchType::ValidAsInvalid => Ok(FraudProof::InvalidBundles(
+            BundleMismatchType::TrueInvalid(_invalid_type) => Ok(FraudProof::InvalidBundles(
                 InvalidBundlesFraudProof::ValidAsInvalid(ValidAsInvalidBundleEntryFraudProof::new(
                     domain_id,
                     bundle_index,
                 )),
             )),
             // TODO: Generate a proper proof once fields are in place
-            InvalidBundlesMismatchType::InvalidAsValid => Ok(FraudProof::InvalidBundles(
+            BundleMismatchType::FalseInvalid(_invalid_type) => Ok(FraudProof::InvalidBundles(
                 InvalidBundlesFraudProof::MissingInvalidBundleEntry(
                     MissingInvalidBundleEntryFraudProof::new(domain_id, bundle_index),
                 ),
             )),
+            BundleMismatchType::Valid => Err(sp_blockchain::Error::Application(
+                "Unexpected bundle mismatch type, this should not happen"
+                    .to_string()
+                    .into(),
+            )
+            .into()),
         }
     }
 
