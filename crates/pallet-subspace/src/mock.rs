@@ -42,14 +42,14 @@ use sp_runtime::{BuildStorage, Perbill};
 use sp_weights::Weight;
 use std::iter;
 use std::marker::PhantomData;
-use std::num::{NonZeroU32, NonZeroU64};
-use std::sync::Once;
+use std::num::{NonZeroU32, NonZeroU64, NonZeroUsize};
+use std::sync::{Once, OnceLock};
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::{
     ArchivedBlockProgress, ArchivedHistorySegment, Blake2b256Hash, BlockNumber, HistorySize,
-    LastArchivedBlock, Piece, PieceOffset, PublicKey, Randomness, RecordedHistorySegment,
+    LastArchivedBlock, Piece, PieceOffset, PublicKey, Randomness, Record, RecordedHistorySegment,
     SegmentCommitment, SegmentHeader, SegmentIndex, SlotNumber, Solution, SolutionRange,
     REWARD_SIGNING_CONTEXT,
 };
@@ -66,6 +66,23 @@ type PosTable = ShimTable;
 type Block = frame_system::mocking::MockBlock<Test>;
 
 const MAX_PIECES_IN_SECTOR: u16 = 1;
+
+fn kzg_instance() -> &'static Kzg {
+    static KZG: OnceLock<Kzg> = OnceLock::new();
+
+    KZG.get_or_init(|| Kzg::new(embedded_kzg_settings()))
+}
+
+fn erasure_coding_instance() -> &'static ErasureCoding {
+    static ERASURE_CODING: OnceLock<ErasureCoding> = OnceLock::new();
+
+    ERASURE_CODING.get_or_init(|| {
+        ErasureCoding::new(
+            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
+        )
+        .unwrap()
+    })
+}
 
 frame_support::construct_runtime!(
     pub struct Test {
@@ -299,7 +316,7 @@ pub fn new_test_ext() -> TestExternalities {
 
     let mut ext = TestExternalities::from(storage);
 
-    ext.register_extension(KzgExtension::new(Kzg::new(embedded_kzg_settings())));
+    ext.register_extension(KzgExtension::new(kzg_instance().clone()));
     ext.register_extension(PosExtension::new::<PosTable>());
     #[cfg(feature = "pot")]
     ext.register_extension(PotExtension::new(Box::new(
@@ -400,16 +417,20 @@ pub fn create_segment_header(segment_index: SegmentIndex) -> SegmentHeader {
     }
 }
 
-pub fn create_archived_segment(kzg: Kzg) -> NewArchivedSegment {
-    let mut archiver = Archiver::new(kzg).unwrap();
+pub fn create_archived_segment() -> &'static NewArchivedSegment {
+    static ARCHIVED_SEGMENT: OnceLock<NewArchivedSegment> = OnceLock::new();
 
-    let mut block = vec![0u8; RecordedHistorySegment::SIZE];
-    rand::thread_rng().fill(block.as_mut_slice());
-    archiver
-        .add_block(block, Default::default(), true)
-        .into_iter()
-        .next()
-        .unwrap()
+    ARCHIVED_SEGMENT.get_or_init(|| {
+        let mut archiver = Archiver::new(kzg_instance().clone()).unwrap();
+
+        let mut block = vec![0u8; RecordedHistorySegment::SIZE];
+        rand::thread_rng().fill(block.as_mut_slice());
+        archiver
+            .add_block(block, Default::default(), true)
+            .into_iter()
+            .next()
+            .unwrap()
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -421,10 +442,10 @@ pub fn create_signed_vote(
     global_randomness: &Randomness,
     archived_history_segment: &ArchivedHistorySegment,
     reward_address: <Test as frame_system::Config>::AccountId,
-    kzg: &Kzg,
-    erasure_coding: &ErasureCoding,
     solution_range: SolutionRange,
 ) -> SignedVote<u64, <Block as BlockT>::Hash, <Test as frame_system::Config>::AccountId> {
+    let kzg = kzg_instance();
+    let erasure_coding = erasure_coding_instance();
     let reward_signing_context = schnorrkel::signing_context(REWARD_SIGNING_CONTEXT);
     let public_key = PublicKey::from(keypair.public.to_bytes());
 
