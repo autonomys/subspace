@@ -515,7 +515,7 @@ mod pallet {
     /// these bundles will be used to construct the domain block and `ExecutionInbox` is used to:
     ///
     /// 1. Ensure subsequent ERs of that domain block include all pre-validated extrinsic bundles
-    /// 2. Index the `InboxedBundle` and pruned its value when the corresponding `ExecutionInbox` is pruned
+    /// 2. Index the `InboxedBundleAuthor` and pruned its value when the corresponding `ExecutionInbox` is pruned
     #[pallet::storage]
     pub type ExecutionInbox<T: Config> = StorageNMap<
         _,
@@ -532,7 +532,7 @@ mod pallet {
     /// the last `BlockTreePruningDepth` domain blocks. Used to verify the invalid bundle fraud proof and
     /// slash malicious operator who have submitted invalid bundle.
     #[pallet::storage]
-    pub(super) type InboxedBundle<T: Config> =
+    pub(super) type InboxedBundleAuthor<T: Config> =
         StorageMap<_, Identity, H256, OperatorId, OptionQuery>;
 
     /// The block number of the best domain block, increase by one when the first bundle of the domain is
@@ -845,7 +845,7 @@ mod pallet {
                 },
             );
 
-            InboxedBundle::<T>::insert(bundle_header_hash, operator_id);
+            InboxedBundleAuthor::<T>::insert(bundle_header_hash, operator_id);
 
             SuccessfulBundles::<T>::append(domain_id, bundle_hash);
 
@@ -1462,7 +1462,7 @@ impl<T: Config> Pallet<T> {
         // and sign an existing bundle thus creating a duplicated bundle and pass the check.
         let bundle_header_hash = opaque_bundle.sealed_header.pre_hash();
         ensure!(
-            !InboxedBundle::<T>::contains_key(bundle_header_hash),
+            !InboxedBundleAuthor::<T>::contains_key(bundle_header_hash),
             BundleError::DuplicatedBundle
         );
         Ok(())

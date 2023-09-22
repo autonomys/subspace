@@ -736,12 +736,6 @@ pub struct ValidBundle {
     pub bundle_digest_hash: H256,
 }
 
-#[derive(Debug, Decode, Encode, TypeInfo, Clone, PartialEq, Eq)]
-pub enum BundleValidity<Extrinsic> {
-    Valid(Vec<Extrinsic>),
-    Invalid(InvalidBundleType),
-}
-
 /// Empty extrinsics root
 pub const EMPTY_EXTRINSIC_ROOT: ExtrinsicsRoot = ExtrinsicsRoot {
     0: hex!("03170a2e7597b7b7e3d84c05391d139a62b157e78786d8c082f29dcf4c111314"),

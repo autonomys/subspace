@@ -3,7 +3,7 @@
 use crate::pallet::StateRoots;
 use crate::{
     BalanceOf, BlockTree, Config, ConsensusBlockInfo, DomainBlockDescendants, DomainBlocks,
-    ExecutionInbox, ExecutionReceiptOf, HeadReceiptNumber, InboxedBundle,
+    ExecutionInbox, ExecutionReceiptOf, HeadReceiptNumber, InboxedBundleAuthor,
 };
 use codec::{Decode, Encode};
 use frame_support::{ensure, PalletError};
@@ -297,7 +297,7 @@ pub(crate) fn process_execution_receipt<T: Config>(
                     execution_receipt.consensus_block_number,
                 ));
                 for (index, bd) in bundle_digests.into_iter().enumerate() {
-                    if let Some(bundle_author) = InboxedBundle::<T>::take(bd.header_hash) {
+                    if let Some(bundle_author) = InboxedBundleAuthor::<T>::take(bd.header_hash) {
                         if execution_receipt
                             .invalid_bundles
                             .iter()
@@ -506,7 +506,9 @@ mod tests {
                         extrinsics_root: bundle_extrinsics_root,
                     }]
                 );
-                assert!(InboxedBundle::<Test>::contains_key(bundle_header_hash));
+                assert!(InboxedBundleAuthor::<Test>::contains_key(
+                    bundle_header_hash
+                ));
 
                 // Head receipt number should be updated
                 let head_receipt_number = HeadReceiptNumber::<Test>::get(domain_id);
@@ -545,7 +547,7 @@ mod tests {
             let pruned_bundle = bundle_header_hash_of_block_1.unwrap();
             assert!(BlockTree::<Test>::get(domain_id, 1).is_empty());
             assert!(ExecutionInbox::<Test>::get((domain_id, 1, 1)).is_empty());
-            assert!(!InboxedBundle::<Test>::contains_key(pruned_bundle));
+            assert!(!InboxedBundleAuthor::<Test>::contains_key(pruned_bundle));
             assert_eq!(
                 execution_receipt_type::<Test>(domain_id, &pruned_receipt),
                 ReceiptType::Rejected(RejectedReceiptType::Pruned)

@@ -28,8 +28,8 @@ use sp_api::{HashT, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_domains::verification::deduplicate_and_shuffle_extrinsics;
 use sp_domains::{
-    BundleValidity, DomainId, DomainsApi, DomainsDigestItem, ExecutionReceipt, ExtrinsicsRoot,
-    InvalidBundle, InvalidBundleType, OpaqueBundle, OpaqueBundles, ReceiptValidity, ValidBundle,
+    DomainId, DomainsApi, DomainsDigestItem, ExecutionReceipt, ExtrinsicsRoot, InvalidBundle,
+    InvalidBundleType, OpaqueBundle, OpaqueBundles, ReceiptValidity, ValidBundle,
 };
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Header as HeaderT, NumberFor};
@@ -46,6 +46,11 @@ type DomainBlockElements<CBlock> = (
     Randomness,
     MaybeNewRuntime,
 );
+
+enum BundleValidity<Extrinsic> {
+    Valid(Vec<Extrinsic>),
+    Invalid(InvalidBundleType),
+}
 
 /// Extracts the raw materials for building a new domain block from the primary block.
 fn prepare_domain_block_elements<Block, CBlock, CClient>(
