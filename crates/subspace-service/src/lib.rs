@@ -88,6 +88,7 @@ use sp_runtime::traits::{Block as BlockT, BlockIdTo, Header, NumberFor, Zero};
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use static_assertions::const_assert;
+use std::collections::HashSet;
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -222,6 +223,8 @@ pub struct SubspaceConfiguration {
     pub enable_subspace_block_relay: bool,
     /// Is this node a Timekeeper
     pub is_timekeeper: bool,
+    /// CPU cores that timekeeper can use
+    pub timekeeper_cpu_cores: HashSet<usize>,
 }
 
 struct SubspaceExtensionsFactory<PosTable, Client> {
@@ -974,6 +977,7 @@ where
     let pot_slot_info_stream = {
         let (pot_source_worker, pot_gossip_worker, pot_slot_info_stream) = PotSourceWorker::new(
             config.is_timekeeper,
+            config.timekeeper_cpu_cores,
             client.clone(),
             pot_verifier.clone(),
             network_service.clone(),

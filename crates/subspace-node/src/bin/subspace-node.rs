@@ -516,6 +516,7 @@ fn main() -> Result<(), Error> {
                         enable_subspace_block_relay: cli.enable_subspace_block_relay,
                         // Timekeeper is enabled if `--dev` is used
                         is_timekeeper: cli.timekeeper || cli.run.shared_params.dev,
+                        timekeeper_cpu_cores: cli.timekeeper_cpu_cores,
                     };
 
                     let construct_domain_genesis_block_builder =

@@ -6,6 +6,7 @@ use crate::source::gossip::{GossipProof, PotGossipWorker, ToGossipMessage};
 use crate::source::state::{NextSlotInput, PotState};
 use crate::source::timekeeper::{run_timekeeper, TimekeeperProof};
 use crate::verifier::PotVerifier;
+use core_affinity::CoreId;
 use derive_more::{Deref, DerefMut};
 use futures::channel::mpsc;
 use futures::{select, StreamExt};
@@ -21,6 +22,7 @@ use sp_consensus_subspace::{
     ChainConstants, FarmerPublicKey, FarmerSignature, SubspaceApi as SubspaceRuntimeApi,
 };
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, Zero};
+use std::collections::HashSet;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use std::thread;
@@ -69,6 +71,7 @@ where
 {
     pub fn new<Network, GossipSync, SO>(
         is_timekeeper: bool,
+        timekeeper_cpu_cores: HashSet<usize>,
         client: Arc<Client>,
         pot_verifier: PotVerifier,
         network: Network,
@@ -142,6 +145,16 @@ where
             thread::Builder::new()
                 .name("timekeeper".to_string())
                 .spawn(move || {
+                    if let Some(core) = timekeeper_cpu_cores.into_iter().next() {
+                        if !core_affinity::set_for_current(CoreId { id: core }) {
+                            warn!(
+                                %core,
+                                "Failed to set core affinity, timekeeper will run on random CPU \
+                                core",
+                            );
+                        }
+                    }
+
                     if let Err(error) =
                         run_timekeeper(state, pot_verifier, timekeeper_proofs_sender)
                     {
