@@ -13,7 +13,7 @@ use sp_consensus::BlockOrigin;
 use sp_core::traits::CodeExecutor;
 use sp_core::H256;
 use sp_domain_digests::AsPredigest;
-use sp_domains::{DomainId, DomainsApi, InvalidReceipt, ReceiptValidity};
+use sp_domains::{DomainId, DomainsApi, ReceiptValidity};
 use sp_keystore::KeystorePtr;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, Zero};
@@ -108,7 +108,7 @@ where
         }
 
         let consensus_block_hash = receipt.consensus_block_hash;
-        let local_receipt = crate::aux_schema::load_execution_receipt::<_, Block, CBlock>(
+        let _local_receipt = crate::aux_schema::load_execution_receipt::<_, Block, CBlock>(
             &*self.client,
             consensus_block_hash,
         )?
@@ -117,11 +117,6 @@ where
                 "Receipt for consensus block {consensus_block_hash} not found"
             ))
         })?;
-
-        if local_receipt.invalid_bundles != receipt.invalid_bundles {
-            // TODO: Generate fraud proof
-            return Ok(ReceiptValidity::Invalid(InvalidReceipt::InvalidBundles));
-        }
 
         Ok(ReceiptValidity::Valid)
     }

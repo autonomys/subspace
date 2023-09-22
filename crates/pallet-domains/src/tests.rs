@@ -23,8 +23,9 @@ use sp_domains::fraud_proof::{
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{
     BundleHeader, DomainId, DomainInstanceData, DomainsHoldIdentifier, ExecutionReceipt,
-    GenerateGenesisStateRoot, GenesisReceiptExtension, OpaqueBundle, OperatorId, OperatorPair,
-    ProofOfElection, ReceiptHash, RuntimeType, SealedBundleHeader, StakingHoldIdentifier,
+    GenerateGenesisStateRoot, GenesisReceiptExtension, InboxedBundle, OpaqueBundle, OperatorId,
+    OperatorPair, ProofOfElection, ReceiptHash, RuntimeType, SealedBundleHeader,
+    StakingHoldIdentifier,
 };
 use sp_runtime::traits::{AccountIdConversion, BlakeTwo256, Hash as HashT, IdentityLookup, Zero};
 use sp_runtime::{BuildStorage, OpaqueExtrinsic};
@@ -304,6 +305,10 @@ pub(crate) fn create_dummy_receipt(
             .into();
         (execution_trace, execution_trace_root)
     };
+    let bundles = block_extrinsics_roots
+        .into_iter()
+        .map(InboxedBundle::dummy)
+        .collect();
     ExecutionReceipt {
         domain_block_number: block_number,
         domain_block_hash: H256::random(),
@@ -311,9 +316,7 @@ pub(crate) fn create_dummy_receipt(
         parent_domain_block_receipt_hash,
         consensus_block_number: block_number,
         consensus_block_hash,
-        valid_bundles: Vec::new(),
-        invalid_bundles: Vec::new(),
-        block_extrinsics_roots,
+        bundles,
         final_state_root: Default::default(),
         execution_trace,
         execution_trace_root,

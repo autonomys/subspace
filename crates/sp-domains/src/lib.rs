@@ -364,14 +364,8 @@ pub struct ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance> {
     pub consensus_block_number: Number,
     /// The block hash corresponding to `consensus_block_number`.
     pub consensus_block_hash: Hash,
-    /// All the bundles that are included in the domain block building.
-    pub valid_bundles: Vec<ValidBundle>,
-    /// Potential bundles that are excluded from the domain block building.
-    pub invalid_bundles: Vec<InvalidBundle>,
-    /// All `extrinsics_roots` for all bundles being executed by this block.
-    ///
-    /// Used to ensure these are contained within the state of the `execution_inbox`.
-    pub block_extrinsics_roots: Vec<ExtrinsicsRoot>,
+    /// All the bundles that being included in the consensus block.
+    pub bundles: Vec<InboxedBundle>,
     /// The final state root for the current domain block reflected by this ER.
     ///
     /// Used for verifying storage proofs for domains.
@@ -384,6 +378,35 @@ pub struct ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance> {
     pub execution_trace_root: H256,
     /// All SSC rewards for this ER to be shared across operators.
     pub total_rewards: Balance,
+}
+
+impl<Number, Hash, DomainNumber, DomainHash, Balance>
+    ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance>
+{
+    pub fn bundles_extrinsics_roots(&self) -> Vec<&ExtrinsicsRoot> {
+        self.bundles.iter().map(|b| &b.extrinsics_root).collect()
+    }
+
+    pub fn valid_bundle_digests(&self) -> Vec<H256> {
+        self.bundles
+            .iter()
+            .filter_map(|b| match b.bundle {
+                BundleValidity::Valid(bundle_digest_hash) => Some(bundle_digest_hash),
+                BundleValidity::Invalid(_) => None,
+            })
+            .collect()
+    }
+
+    pub fn valid_bundle_indexes(&self) -> Vec<u32> {
+        self.bundles
+            .iter()
+            .enumerate()
+            .filter_map(|(index, b)| match b.bundle {
+                BundleValidity::Valid(_) => Some(index as u32),
+                BundleValidity::Invalid(_) => None,
+            })
+            .collect()
+    }
 }
 
 impl<
@@ -407,9 +430,7 @@ impl<
             parent_domain_block_receipt_hash: Default::default(),
             consensus_block_hash: consensus_genesis_hash,
             consensus_block_number: Zero::zero(),
-            valid_bundles: Vec::new(),
-            invalid_bundles: Vec::new(),
-            block_extrinsics_roots: sp_std::vec![],
+            bundles: Vec::new(),
             final_state_root: genesis_state_root.clone(),
             execution_trace: sp_std::vec![genesis_state_root],
             execution_trace_root: Default::default(),
@@ -442,9 +463,7 @@ impl<
             parent_domain_block_receipt_hash,
             consensus_block_number,
             consensus_block_hash,
-            valid_bundles: Vec::new(),
-            invalid_bundles: Vec::new(),
-            block_extrinsics_roots: sp_std::vec![Default::default()],
+            bundles: sp_std::vec![InboxedBundle::dummy(Default::default())],
             final_state_root: Default::default(),
             execution_trace,
             execution_trace_root,
@@ -701,39 +720,90 @@ pub enum ReceiptValidity {
     Invalid(InvalidReceipt),
 }
 
-/// Bundle invalidity type.
+/// Bundle invalidity type
+///
+/// Each type contains the index of the first invalid extrinsic within the bundle
 #[derive(Debug, Decode, Encode, TypeInfo, Clone, PartialEq, Eq)]
 pub enum InvalidBundleType {
     /// Failed to decode the opaque extrinsic.
-    UndecodableTx,
+    UndecodableTx(u32),
     /// Transaction is out of the tx range.
-    OutOfRangeTx,
+    OutOfRangeTx(u32),
     /// Transaction is illegal (unable to pay the fee, etc).
-    IllegalTx,
+    IllegalTx(u32),
     /// Transaction is an invalid XDM
-    InvalidXDM,
-    /// Receipt is invalid.
-    InvalidReceipt(InvalidReceipt),
+    InvalidXDM(u32),
 }
 
-/// [`InvalidBundle`] represents a bundle that was originally included in the consensus
-/// block but subsequently excluded from the corresponding domain block by operator due
-/// to being flagged as invalid.
-#[derive(Debug, Decode, Encode, TypeInfo, Clone, PartialEq, Eq)]
-pub struct InvalidBundle {
-    /// Index of this bundle in the original list of bundles in the consensus block.
-    pub bundle_index: u32,
-    /// Specific type of invalidity.
-    pub invalid_bundle_type: InvalidBundleType,
+impl InvalidBundleType {
+    // Return the checking order of the invalid type
+    pub fn checking_order(&self) -> u8 {
+        // Use explicit number as the order instead of the enum discriminant
+        // to avoid chenging the order accidentally
+        match self {
+            Self::UndecodableTx(_) => 1,
+            Self::OutOfRangeTx(_) => 2,
+            Self::IllegalTx(_) => 3,
+            Self::InvalidXDM(_) => 4,
+        }
+    }
+
+    pub fn extrinsic_index(&self) -> u32 {
+        match self {
+            Self::UndecodableTx(i) => *i,
+            Self::OutOfRangeTx(i) => *i,
+            Self::IllegalTx(i) => *i,
+            Self::InvalidXDM(i) => *i,
+        }
+    }
 }
 
-/// [`ValidBundle`] represents a bundle that was used when building the domain block.
-#[derive(Debug, Decode, Encode, TypeInfo, Clone, PartialEq, Eq)]
-pub struct ValidBundle {
-    /// Index of this bundle in the original list of bundles in the consensus block.
-    pub bundle_index: u32,
-    /// Hash of `Vec<(tx_signer, tx_hash)>` of all domain extrinsic being included in the bundle.
-    pub bundle_digest_hash: H256,
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub enum BundleValidity {
+    // The invalid bundle was originally included in the consensus block but subsequently
+    // excluded from execution due to being flagged as invalid of `InvalidBundleType`
+    Invalid(InvalidBundleType),
+    // The valid bundle's hash of `Vec<(tx_signer, tx_hash)>` of all domain extrinsic being
+    // included in the bundle.
+    Valid(H256),
+}
+
+/// [`InboxedBundle`] represents a bundle that was successfully submitted to the consensus chain
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub struct InboxedBundle {
+    pub bundle: BundleValidity,
+    pub extrinsics_root: ExtrinsicsRoot,
+}
+
+impl InboxedBundle {
+    pub fn valid(bundle_digest_hash: H256, extrinsics_root: ExtrinsicsRoot) -> Self {
+        InboxedBundle {
+            bundle: BundleValidity::Valid(bundle_digest_hash),
+            extrinsics_root,
+        }
+    }
+
+    pub fn invalid(
+        invalid_bundle_type: InvalidBundleType,
+        extrinsics_root: ExtrinsicsRoot,
+    ) -> Self {
+        InboxedBundle {
+            bundle: BundleValidity::Invalid(invalid_bundle_type),
+            extrinsics_root,
+        }
+    }
+
+    pub fn is_invalid(&self) -> bool {
+        matches!(self.bundle, BundleValidity::Invalid(_))
+    }
+
+    #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
+    pub fn dummy(extrinsics_root: ExtrinsicsRoot) -> Self {
+        InboxedBundle {
+            bundle: BundleValidity::Valid(H256::random()),
+            extrinsics_root,
+        }
+    }
 }
 
 /// Empty extrinsics root

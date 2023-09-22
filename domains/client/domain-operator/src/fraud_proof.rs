@@ -175,9 +175,8 @@ where
             .extract_successful_bundles(consensus_block_hash, domain_id, consensus_extrinsics)?;
 
         let domain_runtime_api = self.client.runtime_api();
-        let mut valid_bundle_digests = Vec::with_capacity(local_receipt.valid_bundles.len());
-        for valid_bundle in local_receipt.valid_bundles.iter() {
-            let bundle_index = valid_bundle.bundle_index;
+        let mut valid_bundle_digests = Vec::new();
+        for bundle_index in local_receipt.valid_bundle_indexes() {
             let bundle =
                 bundles
                     .get(bundle_index as usize)
