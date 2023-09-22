@@ -16,11 +16,14 @@
 
 //! Consensus extension module tests for Subspace consensus.
 
+#[cfg(feature = "pot")]
+use crate::mock::allow_all_pot_extension;
+#[cfg(not(feature = "pot"))]
+use crate::mock::GlobalRandomnessUpdateInterval;
 use crate::mock::{
     create_archived_segment, create_segment_header, create_signed_vote,
-    generate_equivocation_proof, go_to_block, new_test_ext, progress_to_block,
-    GlobalRandomnessUpdateInterval, ReportLongevity, RuntimeEvent, RuntimeOrigin, Subspace, System,
-    Test, INITIAL_SOLUTION_RANGE, SLOT_PROBABILITY,
+    generate_equivocation_proof, go_to_block, new_test_ext, progress_to_block, ReportLongevity,
+    RuntimeEvent, RuntimeOrigin, Subspace, System, Test, INITIAL_SOLUTION_RANGE, SLOT_PROBABILITY,
 };
 use crate::{
     pallet, AllowAuthoringByAnyone, AuditChunkOffset, BlockList, Call, CheckVoteError, Config,
@@ -50,7 +53,11 @@ use subspace_runtime_primitives::{FindBlockRewardAddress, FindVotingRewardAddres
 
 #[test]
 fn genesis_slot_is_correct() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
 
         // this sets the genesis slot to 6;
@@ -60,8 +67,13 @@ fn genesis_slot_is_correct() {
 }
 
 #[test]
+#[cfg(not(feature = "pot"))]
 fn can_update_global_randomness() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
 
         assert_eq!(<Test as Config>::GlobalRandomnessUpdateInterval::get(), 10);
@@ -96,9 +108,15 @@ fn can_update_global_randomness() {
     })
 }
 
+// TODO: Tests for proof of time correctness in votes
+
 #[test]
 fn can_update_solution_range_on_era_change() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
 
         assert_eq!(<Test as Config>::EraDuration::get(), 4);
@@ -170,7 +188,11 @@ fn can_update_solution_range_on_era_change() {
 
 #[test]
 fn can_override_solution_range_update() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
 
         assert_eq!(
@@ -220,7 +242,11 @@ fn can_override_solution_range_update() {
 
 #[test]
 fn solution_range_should_not_update_when_disabled() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
 
         assert_eq!(<Test as Config>::EraDuration::get(), 4);
@@ -286,7 +312,11 @@ fn solution_range_should_not_update_when_disabled() {
 
 #[test]
 fn report_equivocation_current_session_works() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
 
         progress_to_block(&keypair, 1, 1);
@@ -311,7 +341,11 @@ fn report_equivocation_current_session_works() {
 
 #[test]
 fn report_equivocation_old_session_works() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
 
         progress_to_block(&keypair, 1, 1);
@@ -339,7 +373,11 @@ fn report_equivocation_old_session_works() {
 
 #[test]
 fn report_equivocation_invalid_equivocation_proof() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
 
         progress_to_block(&keypair, 1, 1);
@@ -409,7 +447,11 @@ fn report_equivocation_invalid_equivocation_proof() {
 
 #[test]
 fn report_equivocation_validate_unsigned_prevents_duplicates() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
 
         progress_to_block(&keypair, 1, 1);
@@ -472,7 +514,11 @@ fn report_equivocation_validate_unsigned_prevents_duplicates() {
 
 #[test]
 fn valid_equivocation_reports_dont_pay_fees() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
 
         progress_to_block(&keypair, 1, 1);
@@ -517,7 +563,11 @@ fn valid_equivocation_reports_dont_pay_fees() {
 
 #[test]
 fn store_segment_header_works() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
 
         progress_to_block(&keypair, 1, 1);
@@ -544,7 +594,11 @@ fn store_segment_header_works() {
 
 #[test]
 fn store_segment_header_validate_unsigned_prevents_duplicates() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
 
         progress_to_block(&keypair, 1, 1);
@@ -623,7 +677,11 @@ fn store_segment_header_validate_unsigned_prevents_duplicates() {
 
 #[test]
 fn vote_block_listed() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
 
@@ -638,7 +696,12 @@ fn vote_block_listed() {
             0,
             <Test as frame_system::Config>::Hash::default(),
             Subspace::current_slot() + 1,
+            #[cfg(not(feature = "pot"))]
             &Subspace::global_randomnesses().current,
+            #[cfg(feature = "pot")]
+            Default::default(),
+            #[cfg(feature = "pot")]
+            Default::default(),
             &archived_segment.pieces,
             1,
             SolutionRange::MAX,
@@ -653,7 +716,11 @@ fn vote_block_listed() {
 
 #[test]
 fn vote_after_genesis() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
 
@@ -663,7 +730,12 @@ fn vote_after_genesis() {
             0,
             <Test as frame_system::Config>::Hash::default(),
             Subspace::current_slot() + 1,
+            #[cfg(not(feature = "pot"))]
             &Subspace::global_randomnesses().current,
+            #[cfg(feature = "pot")]
+            Default::default(),
+            #[cfg(feature = "pot")]
+            Default::default(),
             &archived_segment.pieces,
             1,
             SolutionRange::MAX,
@@ -678,7 +750,11 @@ fn vote_after_genesis() {
 
 #[test]
 fn vote_too_low_height() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
 
@@ -692,7 +768,12 @@ fn vote_too_low_height() {
                 height,
                 <Test as frame_system::Config>::Hash::default(),
                 Subspace::current_slot() + 1,
+                #[cfg(not(feature = "pot"))]
                 &Subspace::global_randomnesses().current,
+                #[cfg(feature = "pot")]
+                Default::default(),
+                #[cfg(feature = "pot")]
+                Default::default(),
                 &archived_segment.pieces,
                 1,
                 SolutionRange::MAX,
@@ -708,7 +789,11 @@ fn vote_too_low_height() {
 
 #[test]
 fn vote_past_future_height() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
 
@@ -721,7 +806,12 @@ fn vote_past_future_height() {
                 5,
                 <Test as frame_system::Config>::Hash::default(),
                 Subspace::current_slot() + 1,
+                #[cfg(not(feature = "pot"))]
                 &Subspace::global_randomnesses().current,
+                #[cfg(feature = "pot")]
+                Default::default(),
+                #[cfg(feature = "pot")]
+                Default::default(),
                 &archived_segment.pieces,
                 1,
                 SolutionRange::MAX,
@@ -740,7 +830,12 @@ fn vote_past_future_height() {
                 2,
                 <Test as frame_system::Config>::Hash::default(),
                 Subspace::current_slot() + 1,
+                #[cfg(not(feature = "pot"))]
                 &Subspace::global_randomnesses().current,
+                #[cfg(feature = "pot")]
+                Default::default(),
+                #[cfg(feature = "pot")]
+                Default::default(),
                 &archived_segment.pieces,
                 1,
                 SolutionRange::MAX,
@@ -756,7 +851,11 @@ fn vote_past_future_height() {
 
 #[test]
 fn vote_wrong_parent() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
 
@@ -768,7 +867,12 @@ fn vote_wrong_parent() {
             2,
             <Test as frame_system::Config>::Hash::default(),
             Subspace::current_slot() + 1,
+            #[cfg(not(feature = "pot"))]
             &Subspace::global_randomnesses().current,
+            #[cfg(feature = "pot")]
+            Default::default(),
+            #[cfg(feature = "pot")]
+            Default::default(),
             &archived_segment.pieces,
             1,
             SolutionRange::MAX,
@@ -783,7 +887,11 @@ fn vote_wrong_parent() {
 
 #[test]
 fn vote_past_future_slot() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
 
@@ -806,7 +914,12 @@ fn vote_past_future_slot() {
                 3,
                 frame_system::Pallet::<Test>::block_hash(2),
                 2.into(),
+                #[cfg(not(feature = "pot"))]
                 &Subspace::global_randomnesses().current,
+                #[cfg(feature = "pot")]
+                Default::default(),
+                #[cfg(feature = "pot")]
+                Default::default(),
                 &archived_segment.pieces,
                 1,
                 SolutionRange::MAX,
@@ -829,7 +942,12 @@ fn vote_past_future_slot() {
                 3,
                 frame_system::Pallet::<Test>::block_hash(2),
                 4.into(),
+                #[cfg(not(feature = "pot"))]
                 &Subspace::global_randomnesses().current,
+                #[cfg(feature = "pot")]
+                Default::default(),
+                #[cfg(feature = "pot")]
+                Default::default(),
                 &archived_segment.pieces,
                 1,
                 SolutionRange::MAX,
@@ -851,7 +969,12 @@ fn vote_past_future_slot() {
                 2,
                 frame_system::Pallet::<Test>::block_hash(1),
                 2.into(),
+                #[cfg(not(feature = "pot"))]
                 &Subspace::global_randomnesses().current,
+                #[cfg(feature = "pot")]
+                Default::default(),
+                #[cfg(feature = "pot")]
+                Default::default(),
                 &archived_segment.pieces,
                 1,
                 SolutionRange::MAX,
@@ -865,7 +988,11 @@ fn vote_past_future_slot() {
 
 #[test]
 fn vote_same_slot() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let block_keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
 
@@ -890,7 +1017,12 @@ fn vote_same_slot() {
                 3,
                 frame_system::Pallet::<Test>::block_hash(2),
                 Subspace::current_slot(),
+                #[cfg(not(feature = "pot"))]
                 &Subspace::global_randomnesses().current,
+                #[cfg(feature = "pot")]
+                Default::default(),
+                #[cfg(feature = "pot")]
+                Default::default(),
                 &archived_segment.pieces,
                 1,
                 SolutionRange::MAX,
@@ -908,7 +1040,12 @@ fn vote_same_slot() {
                 2,
                 frame_system::Pallet::<Test>::block_hash(1),
                 Subspace::current_slot(),
+                #[cfg(not(feature = "pot"))]
                 &Subspace::global_randomnesses().current,
+                #[cfg(feature = "pot")]
+                Default::default(),
+                #[cfg(feature = "pot")]
+                Default::default(),
                 &archived_segment.pieces,
                 1,
                 SolutionRange::MAX,
@@ -924,7 +1061,11 @@ fn vote_same_slot() {
 
 #[test]
 fn vote_bad_reward_signature() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
 
@@ -936,7 +1077,12 @@ fn vote_bad_reward_signature() {
             2,
             frame_system::Pallet::<Test>::block_hash(1),
             Subspace::current_slot() + 1,
+            #[cfg(not(feature = "pot"))]
             &Subspace::global_randomnesses().current,
+            #[cfg(feature = "pot")]
+            Default::default(),
+            #[cfg(feature = "pot")]
+            Default::default(),
             &archived_segment.pieces,
             1,
             SolutionRange::MAX,
@@ -953,7 +1099,11 @@ fn vote_bad_reward_signature() {
 
 #[test]
 fn vote_unknown_segment_commitment() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
 
@@ -965,7 +1115,12 @@ fn vote_unknown_segment_commitment() {
             2,
             frame_system::Pallet::<Test>::block_hash(1),
             Subspace::current_slot() + 1,
+            #[cfg(not(feature = "pot"))]
             &Subspace::global_randomnesses().current,
+            #[cfg(feature = "pot")]
+            Default::default(),
+            #[cfg(feature = "pot")]
+            Default::default(),
             &archived_segment.pieces,
             1,
             SolutionRange::MAX,
@@ -980,7 +1135,11 @@ fn vote_unknown_segment_commitment() {
 
 #[test]
 fn vote_outside_of_solution_range() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
 
@@ -997,7 +1156,12 @@ fn vote_outside_of_solution_range() {
             2,
             frame_system::Pallet::<Test>::block_hash(1),
             Subspace::current_slot() + 1,
+            #[cfg(not(feature = "pot"))]
             &Subspace::global_randomnesses().current,
+            #[cfg(feature = "pot")]
+            Default::default(),
+            #[cfg(feature = "pot")]
+            Default::default(),
             &archived_segment.pieces,
             1,
             SolutionRange::MAX,
@@ -1013,7 +1177,11 @@ fn vote_outside_of_solution_range() {
 
 #[test]
 fn vote_correct_signature() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
 
@@ -1035,7 +1203,12 @@ fn vote_correct_signature() {
             2,
             frame_system::Pallet::<Test>::block_hash(1),
             Subspace::current_slot() + 1,
+            #[cfg(not(feature = "pot"))]
             &Subspace::global_randomnesses().current,
+            #[cfg(feature = "pot")]
+            Default::default(),
+            #[cfg(feature = "pot")]
+            Default::default(),
             &archived_segment.pieces,
             1,
             SolutionRange::MAX,
@@ -1046,8 +1219,13 @@ fn vote_correct_signature() {
 }
 
 #[test]
+#[cfg(not(feature = "pot"))]
 fn vote_randomness_update() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
 
@@ -1084,7 +1262,11 @@ fn vote_randomness_update() {
 
 #[test]
 fn vote_equivocation_current_block_plus_vote() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
 
@@ -1108,7 +1290,12 @@ fn vote_equivocation_current_block_plus_vote() {
             2,
             frame_system::Pallet::<Test>::block_hash(1),
             slot,
+            #[cfg(not(feature = "pot"))]
             &Subspace::global_randomnesses().current,
+            #[cfg(feature = "pot")]
+            Default::default(),
+            #[cfg(feature = "pot")]
+            Default::default(),
             &archived_segment.pieces,
             reward_address,
             SolutionRange::MAX,
@@ -1137,7 +1324,11 @@ fn vote_equivocation_current_block_plus_vote() {
 
 #[test]
 fn vote_equivocation_parent_block_plus_vote() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
 
@@ -1161,7 +1352,12 @@ fn vote_equivocation_parent_block_plus_vote() {
             2,
             frame_system::Pallet::<Test>::block_hash(1),
             slot,
+            #[cfg(not(feature = "pot"))]
             &Subspace::global_randomnesses().current,
+            #[cfg(feature = "pot")]
+            Default::default(),
+            #[cfg(feature = "pot")]
+            Default::default(),
             &archived_segment.pieces,
             reward_address,
             SolutionRange::MAX,
@@ -1199,7 +1395,11 @@ fn vote_equivocation_parent_block_plus_vote() {
 
 #[test]
 fn vote_equivocation_current_voters_duplicate() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let archived_segment = create_archived_segment();
 
         progress_to_block(&Keypair::generate(), 2, 1);
@@ -1224,7 +1424,12 @@ fn vote_equivocation_current_voters_duplicate() {
             2,
             frame_system::Pallet::<Test>::block_hash(1),
             slot,
+            #[cfg(not(feature = "pot"))]
             &Subspace::global_randomnesses().current,
+            #[cfg(feature = "pot")]
+            Default::default(),
+            #[cfg(feature = "pot")]
+            Default::default(),
             &archived_segment.pieces,
             reward_address,
             SolutionRange::MAX,
@@ -1280,7 +1485,11 @@ fn vote_equivocation_current_voters_duplicate() {
 
 #[test]
 fn vote_equivocation_parent_voters_duplicate() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
         let archived_segment = create_archived_segment();
 
@@ -1305,7 +1514,12 @@ fn vote_equivocation_parent_voters_duplicate() {
             2,
             frame_system::Pallet::<Test>::block_hash(1),
             slot,
+            #[cfg(not(feature = "pot"))]
             &Subspace::global_randomnesses().current,
+            #[cfg(feature = "pot")]
+            Default::default(),
+            #[cfg(feature = "pot")]
+            Default::default(),
             &archived_segment.pieces,
             reward_address,
             SolutionRange::MAX,
@@ -1389,7 +1603,11 @@ fn enabling_block_rewards_works() {
             map
         });
     }
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
 
         progress_to_block(&keypair, 1, 1);
@@ -1427,7 +1645,11 @@ fn enabling_block_rewards_works() {
 
 #[test]
 fn allow_authoring_by_anyone_works() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair1 = Keypair::generate();
         let keypair2 = Keypair::generate();
 

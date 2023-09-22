@@ -47,9 +47,13 @@ use std::sync::{Once, OnceLock};
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::crypto::Scalar;
+#[cfg(feature = "pot")]
+use subspace_core_primitives::PotOutput;
+#[cfg(not(feature = "pot"))]
+use subspace_core_primitives::Randomness;
 use subspace_core_primitives::{
     ArchivedBlockProgress, ArchivedHistorySegment, Blake2b256Hash, BlockNumber, HistorySize,
-    LastArchivedBlock, Piece, PieceOffset, PublicKey, Randomness, Record, RecordedHistorySegment,
+    LastArchivedBlock, Piece, PieceOffset, PublicKey, Record, RecordedHistorySegment,
     SegmentCommitment, SegmentHeader, SegmentIndex, SlotNumber, Solution, SolutionRange,
     REWARD_SIGNING_CONTEXT,
 };
@@ -172,7 +176,6 @@ pub const INITIAL_SOLUTION_RANGE: SolutionRange =
     u64::MAX / (1024 * 1024 * 1024 / Piece::SIZE as u64) * SLOT_PROBABILITY.0 / SLOT_PROBABILITY.1;
 
 parameter_types! {
-    #[cfg(not(feature = "pot"))]
     pub const GlobalRandomnessUpdateInterval: u64 = 10;
     pub const BlockAuthoringDelay: SlotNumber = 2;
     pub const PotEntropyInjectionInterval: BlockNumber = 5;
@@ -286,7 +289,6 @@ pub fn make_pre_digest(
         solution,
         #[cfg(feature = "pot")]
         pot_info: PreDigestPotInfo::V0 {
-            iterations: NonZeroU32::new(100_000).unwrap(),
             proof_of_time: Default::default(),
             future_proof_of_time: Default::default(),
         },
@@ -294,7 +296,14 @@ pub fn make_pre_digest(
     Digest { logs: vec![log] }
 }
 
-pub fn new_test_ext() -> TestExternalities {
+#[cfg(feature = "pot")]
+pub fn allow_all_pot_extension() -> PotExtension {
+    PotExtension::new(Box::new(
+        |_parent_hash, _slot, _proof_of_time, _quick_verification| true,
+    ))
+}
+
+pub fn new_test_ext(#[cfg(feature = "pot")] pot_extension: PotExtension) -> TestExternalities {
     static INITIALIZE_LOGGER: Once = Once::new();
     INITIALIZE_LOGGER.call_once(|| {
         let _ = env_logger::try_init_from_env(env_logger::Env::new().default_filter_or("error"));
@@ -319,9 +328,7 @@ pub fn new_test_ext() -> TestExternalities {
     ext.register_extension(KzgExtension::new(kzg_instance().clone()));
     ext.register_extension(PosExtension::new::<PosTable>());
     #[cfg(feature = "pot")]
-    ext.register_extension(PotExtension::new(Box::new(
-        |parent_hash, slot, proof_of_time| todo!(),
-    )));
+    ext.register_extension(pot_extension);
 
     ext
 }
@@ -439,7 +446,9 @@ pub fn create_signed_vote(
     height: u64,
     parent_hash: <Block as BlockT>::Hash,
     slot: Slot,
-    global_randomness: &Randomness,
+    #[cfg(not(feature = "pot"))] global_randomness: &Randomness,
+    #[cfg(feature = "pot")] proof_of_time: PotOutput,
+    #[cfg(feature = "pot")] future_proof_of_time: PotOutput,
     archived_history_segment: &ArchivedHistorySegment,
     reward_address: <Test as frame_system::Config>::AccountId,
     solution_range: SolutionRange,
@@ -486,7 +495,12 @@ pub fn create_signed_vote(
         let maybe_solution_candidates = audit_sector(
             &public_key,
             sector_index,
+            #[cfg(not(feature = "pot"))]
             &global_randomness.derive_global_challenge(slot.into()),
+            #[cfg(feature = "pot")]
+            &proof_of_time
+                .derive_global_randomness()
+                .derive_global_challenge(slot.into()),
             solution_range,
             &plotted_sector_bytes,
             &plotted_sector.sector_metadata,
@@ -521,6 +535,10 @@ pub fn create_signed_vote(
                 audit_chunk_offset: solution.audit_chunk_offset,
                 proof_of_space: solution.proof_of_space,
             },
+            #[cfg(feature = "pot")]
+            proof_of_time,
+            #[cfg(feature = "pot")]
+            future_proof_of_time,
         };
 
         let signature = FarmerSignature::unchecked_from(
