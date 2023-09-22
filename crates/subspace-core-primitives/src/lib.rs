@@ -233,7 +233,7 @@ impl Default for PosProof {
 
 impl PosProof {
     /// Size of proof of space proof in bytes.
-    pub const SIZE: usize = 17 * 8;
+    pub const SIZE: usize = 20 * 8;
 
     /// Proof hash.
     pub fn hash(&self) -> Blake2b256Hash {
