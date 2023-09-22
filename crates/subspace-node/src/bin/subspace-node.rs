@@ -514,7 +514,8 @@ fn main() -> Result<(), Error> {
                         subspace_networking: SubspaceNetworking::Create { config: dsn_config },
                         sync_from_dsn: cli.sync_from_dsn,
                         enable_subspace_block_relay: cli.enable_subspace_block_relay,
-                        is_timekeeper: cli.timekeeper,
+                        // Timekeeper is enabled if `--dev` is used
+                        is_timekeeper: cli.timekeeper || cli.run.shared_params.dev,
                     };
 
                     let construct_domain_genesis_block_builder =
