@@ -19,7 +19,7 @@
 use crate::equivocation::EquivocationHandler;
 use crate::{
     self as pallet_subspace, AllowAuthoringBy, Config, CurrentSlot, FarmerPublicKey,
-    NormalEraChange, NormalGlobalRandomnessInterval,
+    NormalEraChange,
 };
 use frame_support::parameter_types;
 use frame_support::traits::{ConstU128, ConstU16, ConstU32, ConstU64, OnInitialize};
@@ -27,12 +27,10 @@ use futures::executor::block_on;
 use rand::Rng;
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
-#[cfg(feature = "pot")]
-use sp_consensus_subspace::digests::PreDigestPotInfo;
-use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
-#[cfg(feature = "pot")]
-use sp_consensus_subspace::PotExtension;
-use sp_consensus_subspace::{FarmerSignature, KzgExtension, PosExtension, SignedVote, Vote};
+use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest, PreDigestPotInfo};
+use sp_consensus_subspace::{
+    FarmerSignature, KzgExtension, PosExtension, PotExtension, SignedVote, Vote,
+};
 use sp_core::crypto::UncheckedFrom;
 use sp_core::H256;
 use sp_io::TestExternalities;
@@ -47,13 +45,9 @@ use std::sync::{Once, OnceLock};
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::crypto::Scalar;
-#[cfg(feature = "pot")]
-use subspace_core_primitives::PotOutput;
-#[cfg(not(feature = "pot"))]
-use subspace_core_primitives::Randomness;
 use subspace_core_primitives::{
     ArchivedBlockProgress, ArchivedHistorySegment, Blake2b256Hash, BlockNumber, HistorySize,
-    LastArchivedBlock, Piece, PieceOffset, PublicKey, Record, RecordedHistorySegment,
+    LastArchivedBlock, Piece, PieceOffset, PotOutput, PublicKey, Record, RecordedHistorySegment,
     SegmentCommitment, SegmentHeader, SegmentIndex, SlotNumber, Solution, SolutionRange,
     REWARD_SIGNING_CONTEXT,
 };
@@ -94,7 +88,6 @@ frame_support::construct_runtime!(
         Balances: pallet_balances,
         Subspace: pallet_subspace,
         OffencesSubspace: pallet_offences_subspace,
-        Timestamp: pallet_timestamp,
     }
 );
 
@@ -138,16 +131,6 @@ where
     type Extrinsic = TestXt<RuntimeCall, ()>;
 }
 
-impl pallet_timestamp::Config for Test {
-    type Moment = u64;
-    #[cfg(not(feature = "pot"))]
-    type OnTimestampSet = Subspace;
-    #[cfg(feature = "pot")]
-    type OnTimestampSet = ();
-    type MinimumPeriod = ConstU64<1>;
-    type WeightInfo = ();
-}
-
 impl pallet_balances::Config for Test {
     type MaxLocks = ();
     type MaxReserves = ();
@@ -176,7 +159,6 @@ pub const INITIAL_SOLUTION_RANGE: SolutionRange =
     u64::MAX / (1024 * 1024 * 1024 / Piece::SIZE as u64) * SLOT_PROBABILITY.0 / SLOT_PROBABILITY.1;
 
 parameter_types! {
-    pub const GlobalRandomnessUpdateInterval: u64 = 10;
     pub const BlockAuthoringDelay: SlotNumber = 2;
     pub const PotEntropyInjectionInterval: BlockNumber = 5;
     pub const PotEntropyInjectionLookbackDepth: u8 = 2;
@@ -201,7 +183,6 @@ parameter_types! {
 
 impl Config for Test {
     type RuntimeEvent = RuntimeEvent;
-    type GlobalRandomnessUpdateInterval = GlobalRandomnessUpdateInterval;
     type BlockAuthoringDelay = BlockAuthoringDelay;
     type PotEntropyInjectionInterval = PotEntropyInjectionInterval;
     type PotEntropyInjectionLookbackDepth = PotEntropyInjectionLookbackDepth;
@@ -209,7 +190,6 @@ impl Config for Test {
     type EraDuration = EraDuration;
     type InitialSolutionRange = InitialSolutionRange;
     type SlotProbability = SlotProbability;
-    type ExpectedBlockTime = ConstU64<1>;
     type ConfirmationDepthK = ConfirmationDepthK;
     type RecentSegments = RecentSegments;
     type RecentHistoryFraction = RecentHistoryFraction;
@@ -217,7 +197,6 @@ impl Config for Test {
     type ExpectedVotesPerBlock = ExpectedVotesPerBlock;
     type MaxPiecesInSector = ConstU16<{ MAX_PIECES_IN_SECTOR }>;
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
-    type GlobalRandomnessIntervalTrigger = NormalGlobalRandomnessInterval;
     type EraChangeTrigger = NormalEraChange;
 
     type HandleEquivocation = EquivocationHandler<OffencesSubspace, ReportLongevity>;
@@ -287,7 +266,6 @@ pub fn make_pre_digest(
     let log = DigestItem::subspace_pre_digest(&PreDigest::V0 {
         slot,
         solution,
-        #[cfg(feature = "pot")]
         pot_info: PreDigestPotInfo::V0 {
             proof_of_time: Default::default(),
             future_proof_of_time: Default::default(),
@@ -296,14 +274,13 @@ pub fn make_pre_digest(
     Digest { logs: vec![log] }
 }
 
-#[cfg(feature = "pot")]
 pub fn allow_all_pot_extension() -> PotExtension {
     PotExtension::new(Box::new(
         |_parent_hash, _slot, _proof_of_time, _quick_verification| true,
     ))
 }
 
-pub fn new_test_ext(#[cfg(feature = "pot")] pot_extension: PotExtension) -> TestExternalities {
+pub fn new_test_ext(pot_extension: PotExtension) -> TestExternalities {
     static INITIALIZE_LOGGER: Once = Once::new();
     INITIALIZE_LOGGER.call_once(|| {
         let _ = env_logger::try_init_from_env(env_logger::Env::new().default_filter_or("error"));
@@ -327,7 +304,6 @@ pub fn new_test_ext(#[cfg(feature = "pot")] pot_extension: PotExtension) -> Test
 
     ext.register_extension(KzgExtension::new(kzg_instance().clone()));
     ext.register_extension(PosExtension::new::<PosTable>());
-    #[cfg(feature = "pot")]
     ext.register_extension(pot_extension);
 
     ext
@@ -373,8 +349,6 @@ pub fn generate_equivocation_proof(
         System::reset_events();
         System::initialize(&current_block, &parent_hash, &pre_digest);
         System::set_block_number(current_block);
-        #[cfg(not(feature = "pot"))]
-        Timestamp::set_timestamp(*current_slot * Subspace::slot_duration());
         System::finalize()
     };
 
@@ -446,9 +420,8 @@ pub fn create_signed_vote(
     height: u64,
     parent_hash: <Block as BlockT>::Hash,
     slot: Slot,
-    #[cfg(not(feature = "pot"))] global_randomness: &Randomness,
-    #[cfg(feature = "pot")] proof_of_time: PotOutput,
-    #[cfg(feature = "pot")] future_proof_of_time: PotOutput,
+    proof_of_time: PotOutput,
+    future_proof_of_time: PotOutput,
     archived_history_segment: &ArchivedHistorySegment,
     reward_address: <Test as frame_system::Config>::AccountId,
     solution_range: SolutionRange,
@@ -495,9 +468,6 @@ pub fn create_signed_vote(
         let maybe_solution_candidates = audit_sector(
             &public_key,
             sector_index,
-            #[cfg(not(feature = "pot"))]
-            &global_randomness.derive_global_challenge(slot.into()),
-            #[cfg(feature = "pot")]
             &proof_of_time
                 .derive_global_randomness()
                 .derive_global_challenge(slot.into()),
@@ -535,9 +505,7 @@ pub fn create_signed_vote(
                 audit_chunk_offset: solution.audit_chunk_offset,
                 proof_of_space: solution.proof_of_space,
             },
-            #[cfg(feature = "pot")]
             proof_of_time,
-            #[cfg(feature = "pot")]
             future_proof_of_time,
         };
 

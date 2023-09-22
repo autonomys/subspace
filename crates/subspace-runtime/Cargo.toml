@@ -72,11 +72,6 @@ sp-io = { version = "23.0.0", git = "https://github.com/subspace/polkadot-sdk", 
 
 [features]
 default = ["std"]
-pot = [
-	"pallet-subspace/pot",
-	"sp-consensus-subspace/pot",
-	"subspace-verification/pot",
-]
 std = [
 	"codec/std",
 	"domain-runtime-primitives/std",

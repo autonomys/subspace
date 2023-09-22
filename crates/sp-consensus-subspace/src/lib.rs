@@ -40,21 +40,14 @@ use sp_io::hashing;
 use sp_runtime::{ConsensusEngineId, Justification};
 use sp_runtime_interface::pass_by::PassBy;
 use sp_runtime_interface::{pass_by, runtime_interface};
-#[cfg(feature = "pot")]
 use sp_std::num::NonZeroU32;
 use sp_std::vec::Vec;
 #[cfg(feature = "std")]
 use subspace_core_primitives::crypto::kzg::Kzg;
-#[cfg(feature = "pot")]
-use subspace_core_primitives::BlockHash;
-#[cfg(not(feature = "pot"))]
-use subspace_core_primitives::Randomness;
-#[cfg(feature = "pot")]
-use subspace_core_primitives::{Blake3Hash, PotOutput};
 use subspace_core_primitives::{
-    BlockNumber, HistorySize, PotCheckpoints, PotSeed, PublicKey, RewardSignature,
-    SegmentCommitment, SegmentHeader, SegmentIndex, SlotNumber, Solution, SolutionRange,
-    PUBLIC_KEY_LENGTH, REWARD_SIGNATURE_LENGTH, REWARD_SIGNING_CONTEXT,
+    Blake3Hash, BlockHash, BlockNumber, HistorySize, PotCheckpoints, PotOutput, PotSeed, PublicKey,
+    RewardSignature, SegmentCommitment, SegmentHeader, SegmentIndex, SlotNumber, Solution,
+    SolutionRange, PUBLIC_KEY_LENGTH, REWARD_SIGNATURE_LENGTH, REWARD_SIGNING_CONTEXT,
 };
 #[cfg(feature = "std")]
 use subspace_proof_of_space::chia::ChiaTable;
@@ -144,7 +137,6 @@ impl SubspaceJustification {
 pub type EquivocationProof<Header> = sp_consensus_slots::EquivocationProof<Header, FarmerPublicKey>;
 
 /// Change of parameters to apply to PoT chain
-#[cfg(feature = "pot")]
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Decode, Encode, TypeInfo, MaxEncodedLen)]
 pub struct PotParametersChange {
     /// At which slot change of parameters takes effect
@@ -162,23 +154,13 @@ enum ConsensusLog {
     /// Number of iterations for proof of time per slot, corresponds to slot that directly follows
     /// parent block's slot and can change before slot for which block is produced.
     #[codec(index = 0)]
-    #[cfg(feature = "pot")]
     PotSlotIterations(NonZeroU32),
-    /// Global randomness for this block/interval.
-    #[codec(index = 0)]
-    #[cfg(not(feature = "pot"))]
-    GlobalRandomness(Randomness),
     /// Solution range for this block/era.
     #[codec(index = 1)]
     SolutionRange(SolutionRange),
     /// Change of parameters to apply to PoT chain.
     #[codec(index = 2)]
-    #[cfg(feature = "pot")]
     PotParametersChange(PotParametersChange),
-    /// Global randomness for next block/interval.
-    #[codec(index = 2)]
-    #[cfg(not(feature = "pot"))]
-    NextGlobalRandomness(Randomness),
     /// Solution range for next block/era.
     #[codec(index = 3)]
     NextSolutionRange(SolutionRange),
@@ -209,10 +191,8 @@ pub enum Vote<Number, Hash, RewardAddress> {
         /// Solution (includes PoR).
         solution: Solution<FarmerPublicKey, RewardAddress>,
         /// Proof of time for this slot
-        #[cfg(feature = "pot")]
         proof_of_time: PotOutput,
         /// Future proof of time
-        #[cfg(feature = "pot")]
         future_proof_of_time: PotOutput,
     },
 }
@@ -339,17 +319,6 @@ where
         && is_seal_signature_valid(proof.second_header.clone(), &proof.offender)
 }
 
-/// Subspace global randomnesses used for deriving global challenges.
-#[derive(Default, Decode, Encode, MaxEncodedLen, PartialEq, Eq, Clone, Copy, Debug, TypeInfo)]
-#[cfg(not(feature = "pot"))]
-pub struct GlobalRandomnesses {
-    /// Global randomness used for deriving global challenge in current block/interval.
-    pub current: Randomness,
-    /// Global randomness that will be used for deriving global challenge in the next
-    /// block/interval.
-    pub next: Option<Randomness>,
-}
-
 /// Subspace solution ranges used for challenges.
 #[derive(Decode, Encode, MaxEncodedLen, PartialEq, Eq, Clone, Copy, Debug, TypeInfo)]
 pub struct SolutionRanges {
@@ -384,11 +353,7 @@ pub enum ChainConstants {
     V0 {
         /// Depth `K` after which a block enters the recorded history.
         confirmation_depth_k: BlockNumber,
-        /// Number of blocks between global randomness updates.
-        #[cfg(not(feature = "pot"))]
-        global_randomness_interval: BlockNumber,
         /// Number of slots between slot arrival and when corresponding block can be produced.
-        #[cfg(feature = "pot")]
         block_authoring_delay: Slot,
         /// Era duration in blocks.
         era_duration: BlockNumber,
@@ -413,16 +378,6 @@ impl ChainConstants {
         *confirmation_depth_k
     }
 
-    /// Number of blocks between global randomness updates.
-    #[cfg(not(feature = "pot"))]
-    pub fn global_randomness_interval(&self) -> BlockNumber {
-        let Self::V0 {
-            global_randomness_interval,
-            ..
-        } = self;
-        *global_randomness_interval
-    }
-
     /// Era duration in blocks.
     pub fn era_duration(&self) -> BlockNumber {
         let Self::V0 { era_duration, .. } = self;
@@ -430,7 +385,6 @@ impl ChainConstants {
     }
 
     /// Number of slots between slot arrival and when corresponding block can be produced.
-    #[cfg(feature = "pot")]
     pub fn block_authoring_delay(&self) -> Slot {
         let Self::V0 {
             block_authoring_delay,
@@ -518,10 +472,8 @@ impl<'a> PassBy for WrappedVerifySolutionParams<'a> {
 
 /// Wrapped proof of time output for the purposes of runtime interface.
 #[derive(Debug, Encode, Decode)]
-#[cfg(feature = "pot")]
 pub struct WrappedPotOutput(PotOutput);
 
-#[cfg(feature = "pot")]
 impl From<PotOutput> for WrappedPotOutput {
     #[inline]
     fn from(value: PotOutput) -> Self {
@@ -529,7 +481,6 @@ impl From<PotOutput> for WrappedPotOutput {
     }
 }
 
-#[cfg(feature = "pot")]
 impl PassBy for WrappedPotOutput {
     type PassBy = pass_by::Codec<Self>;
 }
@@ -565,13 +516,13 @@ impl PosExtension {
     }
 }
 
-#[cfg(all(feature = "std", feature = "pot"))]
+#[cfg(feature = "std")]
 sp_externalities::decl_extension! {
     /// A Poof of time extension.
     pub struct PotExtension(Box<dyn (Fn(BlockHash, SlotNumber, PotOutput, bool) -> bool) + Send + Sync>);
 }
 
-#[cfg(all(feature = "std", feature = "pot"))]
+#[cfg(feature = "std")]
 impl PotExtension {
     /// Create new instance.
     pub fn new(
@@ -630,7 +581,6 @@ pub trait Consensus {
 
     /// Verify whether `proof_of_time` is valid at specified `slot` if built on top of `parent_hash`
     /// fork of the chain.
-    #[cfg(feature = "pot")]
     fn is_proof_of_time_valid(
         &mut self,
         parent_hash: BlockHash,
@@ -649,70 +599,7 @@ pub trait Consensus {
     }
 }
 
-#[cfg(not(feature = "pot"))]
-sp_api::decl_runtime_apis! {
-    /// API necessary for block authorship with Subspace.
-    pub trait SubspaceApi<RewardAddress: Encode + Decode> {
-        /// The slot duration in milliseconds for Subspace.
-        fn slot_duration() -> SlotDuration;
-
-        /// Global randomnesses used for deriving global challenges.
-        fn global_randomnesses() -> GlobalRandomnesses;
-
-        /// Solution ranges.
-        fn solution_ranges() -> SolutionRanges;
-
-        /// Submits an unsigned extrinsic to report an equivocation. The caller must provide the
-        /// equivocation proof. The extrinsic will be unsigned and should only be accepted for local
-        /// authorship (not to be broadcast to the network). This method returns `None` when
-        /// creation of the extrinsic fails, e.g. if equivocation reporting is disabled for the
-        /// given runtime (i.e. this method is hardcoded to return `None`). Only useful in an
-        /// offchain context.
-        fn submit_report_equivocation_extrinsic(
-            equivocation_proof: EquivocationProof<Block::Header>,
-        ) -> Option<()>;
-
-        /// Submit farmer vote vote that is essentially a header with bigger solution range than
-        /// acceptable for block authoring. Only useful in an offchain context.
-        fn submit_vote_extrinsic(
-            signed_vote: SignedVote<
-                <<Block as BlockT>::Header as HeaderT>::Number,
-                Block::Hash,
-                RewardAddress,
-            >,
-        );
-
-        /// Check if `farmer_public_key` is in block list (due to equivocation)
-        fn is_in_block_list(farmer_public_key: &FarmerPublicKey) -> bool;
-
-        /// Size of the blockchain history
-        fn history_size() -> HistorySize;
-
-        /// How many pieces one sector is supposed to contain (max)
-        fn max_pieces_in_sector() -> u16;
-
-        /// Get the segment commitment of records for specified segment index
-        fn segment_commitment(segment_index: SegmentIndex) -> Option<SegmentCommitment>;
-
-        /// Returns `Vec<SegmentHeader>` if a given extrinsic has them.
-        fn extract_segment_headers(ext: &Block::Extrinsic) -> Option<Vec<SegmentHeader >>;
-
-        /// Checks if the extrinsic is an inherent.
-        fn is_inherent(ext: &Block::Extrinsic) -> bool;
-
-        /// Returns root plot public key in case block authoring is restricted.
-        fn root_plot_public_key() -> Option<FarmerPublicKey>;
-
-        /// Whether solution range adjustment is enabled.
-        fn should_adjust_solution_range() -> bool;
-
-        /// Get Subspace blockchain constants
-        fn chain_constants() -> ChainConstants;
-    }
-}
-
 /// Proof of time parameters
-#[cfg(feature = "pot")]
 #[derive(Debug, Clone, Encode, Decode, TypeInfo, MaxEncodedLen)]
 pub enum PotParameters {
     /// Initial version of the parameters
@@ -725,7 +612,6 @@ pub enum PotParameters {
     },
 }
 
-#[cfg(feature = "pot")]
 impl PotParameters {
     /// Number of iterations for proof of time per slot, corresponds to slot that directly follows
     /// parent block's slot and can change before slot for which block is produced
@@ -745,7 +631,6 @@ impl PotParameters {
     }
 }
 
-#[cfg(feature = "pot")]
 sp_api::decl_runtime_apis! {
     /// API necessary for block authorship with Subspace.
     pub trait SubspaceApi<RewardAddress: Encode + Decode> {

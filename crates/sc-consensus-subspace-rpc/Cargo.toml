@@ -38,9 +38,3 @@ subspace-farmer-components = { version = "0.1.0", path = "../subspace-farmer-com
 subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
 subspace-rpc-primitives = { version = "0.1.0", path = "../subspace-rpc-primitives" }
 tracing = "0.1.37"
-
-[features]
-pot = [
-    "sc-consensus-subspace/pot",
-    "sp-consensus-subspace/pot",
-]

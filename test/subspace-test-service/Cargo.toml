@@ -65,10 +65,6 @@ tracing = "0.1.37"
 sp-keyring = { git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef" }
 
 [features]
-pot = [
-	"sp-consensus-subspace/pot",
-	"subspace-test-runtime/pot",
-]
 do-not-enforce-cost-of-storage = [
 	"subspace-test-runtime/do-not-enforce-cost-of-storage",
 ]

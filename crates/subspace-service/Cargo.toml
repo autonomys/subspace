@@ -89,9 +89,3 @@ pallet-transaction-payment-rpc-runtime-api = { version = "4.0.0-dev", git = "htt
 
 [features]
 default = []
-pot = [
-	"sc-consensus-subspace/pot",
-	"sc-consensus-subspace-rpc/pot",
-	"sc-proof-of-time/pot",
-	"sp-consensus-subspace/pot",
-]

@@ -52,9 +52,7 @@ use sp_application_crypto::UncheckedFrom;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::{BlockOrigin, Error as ConsensusError};
 use sp_consensus_slots::Slot;
-#[cfg(feature = "pot")]
-use sp_consensus_subspace::digests::PreDigestPotInfo;
-use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
+use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest, PreDigestPotInfo};
 use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_core::H256;
@@ -592,7 +590,6 @@ impl MockConsensusNode {
         let pre_digest: PreDigest<FarmerPublicKey, AccountId> = PreDigest::V0 {
             slot,
             solution: self.mock_solution.clone(),
-            #[cfg(feature = "pot")]
             pot_info: PreDigestPotInfo::V0 {
                 proof_of_time: Default::default(),
                 future_proof_of_time: Default::default(),

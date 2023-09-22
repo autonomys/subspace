@@ -45,9 +45,7 @@ use sc_consensus::block_import::{
 };
 use sc_consensus::JustificationSyncLink;
 use sc_consensus_slots::{BackoffAuthoringBlocksStrategy, InherentDataProviderExt, SlotProportion};
-#[cfg(feature = "pot")]
 use sc_proof_of_time::source::PotSlotInfoStream;
-#[cfg(feature = "pot")]
 use sc_proof_of_time::verifier::PotVerifier;
 use sc_telemetry::TelemetryHandle;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
@@ -60,13 +58,12 @@ use sp_consensus_slots::{Slot, SlotDuration};
 use sp_consensus_subspace::digests::{
     extract_pre_digest, extract_subspace_digest_items, Error as DigestError, SubspaceDigestItems,
 };
-#[cfg(feature = "pot")]
-use sp_consensus_subspace::SubspaceJustification;
-use sp_consensus_subspace::{ChainConstants, FarmerPublicKey, FarmerSignature, SubspaceApi};
+use sp_consensus_subspace::{
+    ChainConstants, FarmerPublicKey, FarmerSignature, SubspaceApi, SubspaceJustification,
+};
 use sp_core::H256;
 use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
 use sp_runtime::traits::One;
-#[cfg(feature = "pot")]
 use sp_runtime::Justifications;
 use std::future::Future;
 use std::marker::PhantomData;
@@ -85,7 +82,6 @@ use subspace_verification::{
     VerifySolutionParams,
 };
 
-#[cfg(feature = "pot")]
 const SUBSPACE_FULL_POT_VERIFICATION_INTERMEDIATE: &[u8] =
     b"subspace_full_pot_verification_intermediate";
 
@@ -155,10 +151,6 @@ pub enum Error<Header: HeaderT> {
     /// Error during digest item extraction
     #[error("Digest item error: {0}")]
     DigestItemError(#[from] DigestError),
-    /// Header rejected: too far in the future
-    #[error("Header {0:?} rejected: too far in the future")]
-    #[cfg(not(feature = "pot"))]
-    TooFarInFuture(Header::Hash),
     /// Parent unavailable. Cannot import
     #[error("Parent ({0}) of {1} unavailable. Cannot import")]
     ParentUnavailable(Header::Hash, Header::Hash),
@@ -178,15 +170,12 @@ pub enum Error<Header: HeaderT> {
     #[error("Bad reward signature on {0:?}")]
     BadRewardSignature(Header::Hash),
     /// Invalid Subspace justification
-    #[cfg(feature = "pot")]
     #[error("Invalid Subspace justification: {0}")]
     InvalidSubspaceJustification(codec::Error),
     /// Invalid Subspace justification contents
-    #[cfg(feature = "pot")]
     #[error("Invalid Subspace justification contents")]
     InvalidSubspaceJustificationContents,
     /// Invalid proof of time
-    #[cfg(feature = "pot")]
     #[error("Invalid proof of time")]
     InvalidProofOfTime,
     /// Solution is outside of solution range
@@ -227,10 +216,6 @@ pub enum Error<Header: HeaderT> {
     /// Parent block has no associated weight
     #[error("Parent block of {0} has no associated weight")]
     ParentBlockNoAssociatedWeight(Header::Hash),
-    /// Block has invalid associated global randomness
-    #[cfg(not(feature = "pot"))]
-    #[error("Invalid global randomness for block {0}")]
-    InvalidGlobalRandomness(Header::Hash),
     /// Block has invalid associated solution range
     #[error("Invalid solution range for block {0}")]
     InvalidSolutionRange(Header::Hash),
@@ -295,15 +280,12 @@ where
             VerificationError::BadRewardSignature(block_hash) => {
                 Error::BadRewardSignature(block_hash)
             }
-            #[cfg(feature = "pot")]
             VerificationError::InvalidSubspaceJustification(error) => {
                 Error::InvalidSubspaceJustification(error)
             }
-            #[cfg(feature = "pot")]
             VerificationError::InvalidSubspaceJustificationContents => {
                 Error::InvalidSubspaceJustificationContents
             }
-            #[cfg(feature = "pot")]
             VerificationError::InvalidProofOfTime => Error::InvalidProofOfTime,
             VerificationError::VerificationError(slot, error) => match error {
                 VerificationPrimitiveError::InvalidPieceOffset {
@@ -429,11 +411,9 @@ where
     pub offchain_tx_pool_factory: OffchainTransactionPoolFactory<Block>,
 
     /// Proof of time verifier
-    #[cfg(feature = "pot")]
     pub pot_verifier: PotVerifier,
 
     /// Stream with proof of time slots.
-    #[cfg(feature = "pot")]
     pub pot_slot_info_stream: PotSlotInfoStream,
 }
 
@@ -455,9 +435,7 @@ pub fn start_subspace<PosTable, Block, Client, SC, E, I, SO, CIDP, BS, L, AS, Er
         max_block_proposal_slot_portion,
         telemetry,
         offchain_tx_pool_factory,
-        #[cfg(feature = "pot")]
         pot_verifier,
-        #[cfg(feature = "pot")]
         pot_slot_info_stream,
     }: SubspaceParams<Block, Client, SC, E, I, SO, L, CIDP, BS, AS>,
 ) -> Result<SubspaceWorker, sp_consensus::Error>
@@ -506,25 +484,13 @@ where
             .chain_constants(client.info().best_hash)
             .map_err(|error| sp_consensus::Error::ChainLookup(error.to_string()))?,
         segment_headers_store,
-        #[cfg(feature = "pot")]
         pending_solutions: Default::default(),
-        #[cfg(feature = "pot")]
         pot_checkpoints: Default::default(),
-        #[cfg(feature = "pot")]
         pot_verifier,
         _pos_table: PhantomData::<PosTable>,
     };
 
     info!(target: "subspace", "🧑‍🌾 Starting Subspace Authorship worker");
-    #[cfg(not(feature = "pot"))]
-    let inner = sc_consensus_slots::start_slot_worker(
-        subspace_link.slot_duration(),
-        select_chain,
-        sc_consensus_slots::SimpleSlotWorkerToSlotWorker(worker),
-        sync_oracle,
-        create_inherent_data_providers,
-    );
-    #[cfg(feature = "pot")]
     let inner = sc_proof_of_time::start_slot_worker(
         subspace_link.slot_duration(),
         client,
@@ -638,7 +604,6 @@ where
     create_inherent_data_providers: CIDP,
     chain_constants: ChainConstants,
     segment_headers_store: SegmentHeadersStore<AS>,
-    #[cfg(feature = "pot")]
     pot_verifier: PotVerifier,
     _pos_table: PhantomData<PosTable>,
 }
@@ -659,7 +624,6 @@ where
             create_inherent_data_providers: self.create_inherent_data_providers.clone(),
             chain_constants: self.chain_constants,
             segment_headers_store: self.segment_headers_store.clone(),
-            #[cfg(feature = "pot")]
             pot_verifier: self.pot_verifier.clone(),
             _pos_table: PhantomData,
         }
@@ -688,7 +652,7 @@ where
         create_inherent_data_providers: CIDP,
         chain_constants: ChainConstants,
         segment_headers_store: SegmentHeadersStore<AS>,
-        #[cfg(feature = "pot")] pot_verifier: PotVerifier,
+        pot_verifier: PotVerifier,
     ) -> Self {
         Self {
             client,
@@ -698,7 +662,6 @@ where
             create_inherent_data_providers,
             chain_constants,
             segment_headers_store,
-            #[cfg(feature = "pot")]
             pot_verifier,
             _pos_table: PhantomData,
         }
@@ -716,8 +679,8 @@ where
             FarmerPublicKey,
             FarmerSignature,
         >,
-        #[cfg(feature = "pot")] full_pot_verification: bool,
-        #[cfg(feature = "pot")] justifications: &Option<Justifications>,
+        full_pot_verification: bool,
+        justifications: &Option<Justifications>,
         skip_runtime_access: bool,
     ) -> Result<(), Error<Block::Header>> {
         let block_number = *header.number();
@@ -764,7 +727,6 @@ where
         let parent_slot = extract_pre_digest(&parent_header).map(|d| d.slot())?;
 
         // Make sure that slot number is strictly increasing
-        #[cfg_attr(not(feature = "pot"), allow(unused_variables))]
         let slots_since_parent = match pre_digest.slot().checked_sub(*parent_slot) {
             Some(slots_since_parent) => {
                 if slots_since_parent > 0 {
@@ -778,12 +740,6 @@ where
             }
         };
 
-        #[cfg(not(feature = "pot"))]
-        let correct_global_randomness;
-        // TODO: Remove suppression once PoT is the default
-        #[allow(clippy::needless_late_init)]
-        let correct_solution_range;
-
         let parent_subspace_digest_items = if block_number.is_one() {
             None
         } else {
@@ -795,52 +751,26 @@ where
             >(&parent_header)?)
         };
 
-        if block_number.is_one() {
-            // Genesis block doesn't contain usual digest items, we need to query runtime API
-            // instead
-            #[cfg(not(feature = "pot"))]
-            {
-                correct_global_randomness = slot_worker::extract_global_randomness_for_block(
-                    self.client.as_ref(),
-                    parent_hash,
-                )?;
-            }
-
-            correct_solution_range =
-                slot_worker::extract_solution_ranges_for_block(self.client.as_ref(), parent_hash)?
-                    .0;
+        let correct_solution_range = if block_number.is_one() {
+            slot_worker::extract_solution_ranges_for_block(self.client.as_ref(), parent_hash)?.0
         } else {
             let parent_subspace_digest_items = parent_subspace_digest_items
                 .as_ref()
                 .expect("Always Some for non-first block; qed");
-            #[cfg(not(feature = "pot"))]
-            {
-                correct_global_randomness =
-                    match parent_subspace_digest_items.next_global_randomness {
-                        Some(global_randomness) => global_randomness,
-                        None => parent_subspace_digest_items.global_randomness,
-                    };
-            }
 
-            correct_solution_range = match parent_subspace_digest_items.next_solution_range {
+            match parent_subspace_digest_items.next_solution_range {
                 Some(solution_range) => solution_range,
                 None => parent_subspace_digest_items.solution_range,
-            };
-        }
+            }
+        };
 
         if subspace_digest_items.solution_range != correct_solution_range {
             return Err(Error::InvalidSolutionRange(block_hash));
         }
 
-        #[cfg(not(feature = "pot"))]
-        if subspace_digest_items.global_randomness != correct_global_randomness {
-            return Err(Error::InvalidGlobalRandomness(block_hash));
-        }
-
         // The case where we have justifications is a happy case because we only need to check the
         // seed and number of checkpoints. But justifications are not always available, so fallback
         // is still needed.
-        #[cfg(feature = "pot")]
         if let Some(subspace_justification) = justifications.as_ref().and_then(|justifications| {
             justifications
                 .iter()
@@ -1009,9 +939,6 @@ where
             // Slot was already checked during initial block verification
             pre_digest.slot().into(),
             &VerifySolutionParams {
-                #[cfg(not(feature = "pot"))]
-                global_randomness: subspace_digest_items.global_randomness,
-                #[cfg(feature = "pot")]
                 proof_of_time: subspace_digest_items.pre_digest.pot_info().proof_of_time(),
                 solution_range: subspace_digest_items.solution_range,
                 piece_check_params: Some(PieceCheckParams {
@@ -1096,7 +1023,6 @@ where
         &mut self,
         mut block: BlockImportParams<Block>,
     ) -> Result<ImportResult, Self::Error> {
-        #[cfg(feature = "pot")]
         let full_pot_verification = block
             .intermediates
             .remove(SUBSPACE_FULL_POT_VERIFICATION_INTERMEDIATE)
@@ -1132,9 +1058,7 @@ where
             block.body.clone(),
             &root_plot_public_key,
             &subspace_digest_items,
-            #[cfg(feature = "pot")]
             full_pot_verification,
-            #[cfg(feature = "pot")]
             &block.justifications,
             skip_execution_checks,
         )
@@ -1248,7 +1172,7 @@ pub fn block_import<PosTable, Client, Block, I, CIDP, AS>(
     kzg: Kzg,
     create_inherent_data_providers: CIDP,
     segment_headers_store: SegmentHeadersStore<AS>,
-    #[cfg(feature = "pot")] pot_verifier: PotVerifier,
+    pot_verifier: PotVerifier,
 ) -> Result<
     (
         SubspaceBlockImport<PosTable, Block, Client, I, CIDP, AS>,
@@ -1307,7 +1231,6 @@ where
         create_inherent_data_providers,
         chain_constants,
         segment_headers_store,
-        #[cfg(feature = "pot")]
         pot_verifier,
     );
 

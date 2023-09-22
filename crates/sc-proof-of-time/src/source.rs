@@ -16,29 +16,16 @@ use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus::SyncOracle;
 use sp_consensus_slots::Slot;
-#[cfg(feature = "pot")]
-use sp_consensus_subspace::digests::extract_pre_digest;
-#[cfg(feature = "pot")]
-use sp_consensus_subspace::digests::extract_subspace_digest_items;
-#[cfg(feature = "pot")]
-use sp_consensus_subspace::ChainConstants;
-#[cfg(feature = "pot")]
-use sp_consensus_subspace::FarmerSignature;
-use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi as SubspaceRuntimeApi};
-use sp_runtime::traits::Block as BlockT;
-#[cfg(feature = "pot")]
-use sp_runtime::traits::Header as HeaderT;
-#[cfg(feature = "pot")]
-use sp_runtime::traits::Zero;
+use sp_consensus_subspace::digests::{extract_pre_digest, extract_subspace_digest_items};
+use sp_consensus_subspace::{
+    ChainConstants, FarmerPublicKey, FarmerSignature, SubspaceApi as SubspaceRuntimeApi,
+};
+use sp_runtime::traits::{Block as BlockT, Header as HeaderT, Zero};
 use std::marker::PhantomData;
-#[cfg(not(feature = "pot"))]
-use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::thread;
 use subspace_core_primitives::PotCheckpoints;
-#[cfg(feature = "pot")]
-use tracing::warn;
-use tracing::{debug, error};
+use tracing::{debug, error, warn};
 
 const LOCAL_PROOFS_CHANNEL_CAPACITY: usize = 10;
 const SLOTS_CHANNEL_CAPACITY: usize = 10;
@@ -65,7 +52,6 @@ pub struct PotSlotInfoStream(mpsc::Receiver<PotSlotInfo>);
 #[must_use = "Proof of time source doesn't do anything unless run() method is called"]
 pub struct PotSourceWorker<Block, Client> {
     client: Arc<Client>,
-    #[cfg(feature = "pot")]
     chain_constants: ChainConstants,
     timekeeper_proofs_receiver: mpsc::Receiver<TimekeeperProof>,
     to_gossip_sender: mpsc::Sender<ToGossipMessage>,
@@ -94,14 +80,11 @@ where
         GossipSync: GossipSyncing<Block> + 'static,
         SO: SyncOracle + Send + Sync + 'static,
     {
-        #[cfg(feature = "pot")]
         let chain_constants;
-        #[cfg(feature = "pot")]
         let mut maybe_next_parameters_change;
         let start_slot;
         let start_seed;
         let slot_iterations;
-        #[cfg(feature = "pot")]
         {
             let best_hash = client.info().best_hash;
             let runtime_api = client.runtime_api();
@@ -138,12 +121,6 @@ where
                 slot_iterations = pot_parameters.slot_iterations();
             }
         }
-        #[cfg(not(feature = "pot"))]
-        {
-            start_slot = Slot::from(1);
-            start_seed = pot_verifier.genesis_seed();
-            slot_iterations = NonZeroU32::new(100_000_000).expect("Not zero; qed");
-        }
 
         let state = Arc::new(PotState::new(
             NextSlotInput {
@@ -151,7 +128,6 @@ where
                 slot_iterations,
                 seed: start_seed,
             },
-            #[cfg(feature = "pot")]
             maybe_next_parameters_change,
             pot_verifier.clone(),
         ));
@@ -191,7 +167,6 @@ where
 
         let source_worker = Self {
             client,
-            #[cfg(feature = "pot")]
             chain_constants,
             timekeeper_proofs_receiver,
             to_gossip_sender,
@@ -290,7 +265,6 @@ where
             expected_next_slot_input,
             proof.slot,
             proof.checkpoints.output(),
-            #[cfg(feature = "pot")]
             None,
         ) {
             // We don't care if block production is too slow or block production is not enabled on
@@ -314,15 +288,6 @@ where
         }
     }
 
-    #[cfg(not(feature = "pot"))]
-    fn handle_block_import_notification(
-        &mut self,
-        _block_hash: Block::Hash,
-        _header: &Block::Header,
-    ) {
-    }
-
-    #[cfg(feature = "pot")]
     fn handle_block_import_notification(
         &mut self,
         block_hash: Block::Hash,
@@ -362,7 +327,6 @@ where
         if let Some(next_slot_input) = self.state.update(
             best_slot,
             best_proof,
-            #[cfg(feature = "pot")]
             Some(subspace_digest_items.pot_parameters_change),
         ) {
             warn!("Proof of time chain reorg happened");
