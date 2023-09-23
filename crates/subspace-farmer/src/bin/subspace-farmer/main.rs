@@ -260,7 +260,7 @@ async fn main() -> anyhow::Result<()> {
                 SingleDiskFarm::wipe(disk_farm)?;
             }
 
-            if disk_farms.len() == 0 {
+            if disk_farms.is_empty() {
                 info!("No farm was specified, so there is nothing to do");
             } else {
                 info!("Done");
@@ -270,14 +270,14 @@ async fn main() -> anyhow::Result<()> {
             commands::farm::<PosTable>(farming_args).await?;
         }
         Command::Info { disk_farms } => {
-            if disk_farms.len() == 0 {
+            if disk_farms.is_empty() {
                 info!("No farm was specified, so there is nothing to do");
             } else {
                 commands::info(disk_farms);
             }
         }
         Command::Scrub { disk_farms } => {
-            if disk_farms.len() == 0 {
+            if disk_farms.is_empty() {
                 info!("No farm was specified, so there is nothing to do");
             } else {
                 commands::scrub(&disk_farms);
