@@ -574,14 +574,19 @@ impl MockConsensusNode {
         extrinsics
     }
 
-    async fn mock_inherent_data(slot: Slot) -> Result<InherentData, Box<dyn Error>> {
+    async fn mock_inherent_data(
+        slot: Slot,
+        parent_state_root: <Block as BlockT>::Hash,
+    ) -> Result<InherentData, Box<dyn Error>> {
         let timestamp = sp_timestamp::InherentDataProvider::new(Timestamp::new(
             <Slot as Into<u64>>::into(slot) * SLOT_DURATION,
         ));
         let subspace_inherents =
             sp_consensus_subspace::inherents::InherentDataProvider::new(slot, vec![]);
 
-        let inherent_data = (subspace_inherents, timestamp)
+        let domain_inherents = sp_domains::inherents::InherentDataProvider::new(parent_state_root);
+
+        let inherent_data = (subspace_inherents, timestamp, domain_inherents)
             .create_inherent_data()
             .await?;
 
@@ -611,7 +616,9 @@ impl MockConsensusNode {
         extrinsics: Vec<<Block as BlockT>::Extrinsic>,
     ) -> Result<(Block, StorageChanges), Box<dyn Error>> {
         let digest = self.mock_subspace_digest(slot);
-        let inherent_data = Self::mock_inherent_data(slot).await?;
+        let parent_state_root = self.client.header(parent_hash)?.unwrap().state_root;
+
+        let inherent_data = Self::mock_inherent_data(slot, parent_state_root).await?;
 
         let mut block_builder = self.client.new_block_at(parent_hash, digest, false)?;
 

@@ -161,7 +161,6 @@ where
         })
         .collect();
     // TODO: include timestamp and domain runtime upgrade extrinsic
-    // TODO: change Layout version used for deriving extrinsics root in frame system
     let extrinsics_root =
         valued_ordered_trie_root::<LayoutV1<BlakeTwo256>>(ordered_trie_node_values);
     if bad_receipt.domain_block_extrinsic_root == extrinsics_root {

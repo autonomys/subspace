@@ -23,6 +23,7 @@ macro_rules! impl_runtime {
         use frame_support::pallet_prelude::*;
         use frame_support::parameter_types;
         use pallet_balances::AccountData;
+        use sp_core::storage::StateVersion;
         use sp_core::H256;
         use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointId};
         use sp_messenger::messages::ChainId;
@@ -66,10 +67,12 @@ macro_rules! impl_runtime {
             type SS58Prefix = ConstU16<42>;
             type OnSetCode = ();
             type MaxConsumers = ConstU32<16>;
+            type ExtrinsicsRootStateVersion = ExtrinsicsRootStateVersion;
         }
 
         parameter_types! {
             pub const ExistentialDeposit: u64 = 1;
+            pub const ExtrinsicsRootStateVersion: StateVersion = StateVersion::V0;
         }
 
         parameter_types! {

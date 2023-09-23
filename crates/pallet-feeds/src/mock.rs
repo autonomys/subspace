@@ -4,6 +4,7 @@ use codec::{Compact, CompactLen, Decode, Encode};
 use frame_support::parameter_types;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64};
 use scale_info::TypeInfo;
+use sp_core::storage::StateVersion;
 use sp_core::H256;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup};
 use sp_runtime::BuildStorage;
@@ -42,11 +43,13 @@ impl frame_system::Config for Test {
     type SS58Prefix = ConstU16<42>;
     type OnSetCode = ();
     type MaxConsumers = ConstU32<16>;
+    type ExtrinsicsRootStateVersion = ExtrinsicsRootStateVersion;
 }
 
 parameter_types! {
     pub const ExistentialDeposit: u64 = 1;
     pub const MaxFeeds: u32 = 1;
+    pub const ExtrinsicsRootStateVersion: StateVersion = StateVersion::V0;
 }
 
 #[derive(Default, Debug, Copy, Clone, Encode, Decode, TypeInfo, Eq, PartialEq)]

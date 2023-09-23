@@ -133,6 +133,7 @@ mod pallet {
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
     use sp_domains::fraud_proof::FraudProof;
+    use sp_domains::inherents::{InherentError, InherentType, INHERENT_IDENTIFIER};
     use sp_domains::transaction::InvalidTransactionCode;
     use sp_domains::{
         BundleDigest, DomainId, EpochIndex, GenesisDomain, OperatorId, ReceiptHash, RuntimeId,
@@ -478,16 +479,24 @@ mod pallet {
         OptionQuery,
     >;
 
-    /// The consensus block hash used to verify ER, only store the consensus block hash for a domain
+    /// The consensus block hash and state root used to verify ER and storage proofs,
+    /// only store the consensus block hash for a domain
     /// if that consensus block contains bundle of the domain, the hash will be pruned when the ER
     /// that point to the consensus block is pruned.
     ///
     /// TODO: this storage is unbounded in some cases, see https://github.com/subspace/subspace/issues/1673
     /// for more details, this will be fixed once https://github.com/subspace/subspace/issues/1731 is implemented.
     #[pallet::storage]
-    #[pallet::getter(fn consensus_hash)]
-    pub type ConsensusBlockHash<T: Config> =
-        StorageDoubleMap<_, Identity, DomainId, Identity, BlockNumberFor<T>, T::Hash, OptionQuery>;
+    #[pallet::getter(fn consensus_block_info)]
+    pub type ConsensusBlockInfo<T: Config> = StorageDoubleMap<
+        _,
+        Identity,
+        DomainId,
+        Identity,
+        BlockNumberFor<T>,
+        (T::Hash, T::Hash),
+        OptionQuery,
+    >;
 
     /// A set of `BundleDigest` from all bundles that successfully submitted to the consensus block,
     /// these bundles will be used to construct the domain block and `ExecutionInbox` is used to:
@@ -1108,6 +1117,27 @@ mod pallet {
 
             Ok(())
         }
+
+        /// Submit parent state root to the blockchain.
+        #[pallet::call_index(11)]
+        #[pallet::weight((Weight::from_all(10_000), DispatchClass::Mandatory, Pays::No))]
+        pub fn store_parent_state_root(
+            origin: OriginFor<T>,
+            parent_state_root: T::Hash,
+        ) -> DispatchResult {
+            ensure_none(origin)?;
+            let block_number = frame_system::Pallet::<T>::block_number();
+            let parent_number = block_number - One::one();
+
+            let domains_ids = DomainRegistry::<T>::iter_keys().collect::<Vec<DomainId>>();
+            for domain_id in domains_ids {
+                if let Some(info) = ConsensusBlockInfo::<T>::get(domain_id, parent_number) {
+                    let info = (info.0, parent_state_root);
+                    ConsensusBlockInfo::<T>::insert(domain_id, parent_number, info);
+                }
+            }
+            Ok(())
+        }
     }
 
     #[pallet::genesis_config]
@@ -1198,7 +1228,11 @@ mod pallet {
             let parent_number = block_number - One::one();
             let parent_hash = frame_system::Pallet::<T>::block_hash(parent_number);
             for (domain_id, _) in SuccessfulBundles::<T>::drain() {
-                ConsensusBlockHash::<T>::insert(domain_id, parent_number, parent_hash);
+                ConsensusBlockInfo::<T>::insert(
+                    domain_id,
+                    parent_number,
+                    (parent_hash, T::Hash::default()),
+                );
             }
 
             Weight::zero()
@@ -1220,6 +1254,42 @@ mod pallet {
             .build()
     }
 
+    #[pallet::inherent]
+    impl<T: Config> ProvideInherent for Pallet<T> {
+        type Call = Call<T>;
+        type Error = InherentError;
+        const INHERENT_IDENTIFIER: InherentIdentifier = INHERENT_IDENTIFIER;
+
+        fn create_inherent(data: &InherentData) -> Option<Self::Call> {
+            let inherent_data = data
+                .get_data::<InherentType<T::Hash>>(&INHERENT_IDENTIFIER)
+                .expect("Domains inherent data not correctly encoded")
+                .expect("Domains inherent data must be provided");
+
+            let parent_state_root = inherent_data.parent_state_root;
+            Some(Call::store_parent_state_root { parent_state_root })
+        }
+
+        fn check_inherent(call: &Self::Call, data: &InherentData) -> Result<(), Self::Error> {
+            if let Call::store_parent_state_root { parent_state_root } = call {
+                let inherent_data = data
+                    .get_data::<InherentType<T::Hash>>(&INHERENT_IDENTIFIER)
+                    .expect("Domains inherent data not correctly encoded")
+                    .expect("Domains inherent data must be provided");
+
+                if parent_state_root != &inherent_data.parent_state_root {
+                    return Err(InherentError::IncorrectParentStateRoot);
+                }
+            }
+
+            Ok(())
+        }
+
+        fn is_inherent(call: &Self::Call) -> bool {
+            matches!(call, Call::store_parent_state_root { .. })
+        }
+    }
+
     #[pallet::validate_unsigned]
     impl<T: Config> ValidateUnsigned for Pallet<T> {
         type Call = Call<T>;
@@ -1229,6 +1299,7 @@ mod pallet {
                     .map_err(|_| InvalidTransaction::Call.into()),
                 Call::submit_fraud_proof { fraud_proof } => Self::validate_fraud_proof(fraud_proof)
                     .map_err(|_| InvalidTransaction::Call.into()),
+                Call::store_parent_state_root { .. } => Ok(()),
                 _ => Err(InvalidTransaction::Call.into()),
             }
         }
@@ -1268,6 +1339,13 @@ mod pallet {
 
                     // TODO: proper tag value.
                     unsigned_validity("SubspaceSubmitFraudProof", fraud_proof)
+                }
+                Call::store_parent_state_root { .. } => {
+                    ValidTransaction::with_tag_prefix("Domain Parent State root Inherent")
+                        .priority(TransactionPriority::MAX)
+                        .longevity(0)
+                        .propagate(false)
+                        .build()
                 }
 
                 _ => InvalidTransaction::Call.into(),

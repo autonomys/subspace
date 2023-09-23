@@ -5,6 +5,7 @@ use domain_runtime_primitives::MultiAccountId;
 use frame_support::parameter_types;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64};
 use pallet_balances::AccountData;
+use sp_core::storage::StateVersion;
 use sp_core::H256;
 use sp_messenger::endpoint::{EndpointId, EndpointRequest, Sender};
 use sp_messenger::messages::ChainId;
@@ -47,10 +48,12 @@ impl frame_system::Config for MockRuntime {
     type SS58Prefix = ConstU16<42>;
     type OnSetCode = ();
     type MaxConsumers = ConstU32<16>;
+    type ExtrinsicsRootStateVersion = ExtrinsicsRootStateVersion;
 }
 
 parameter_types! {
     pub const ExistentialDeposit: u64 = 1;
+    pub const ExtrinsicsRootStateVersion: StateVersion = StateVersion::V0;
 }
 
 impl pallet_balances::Config for MockRuntime {

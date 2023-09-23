@@ -1,7 +1,7 @@
 use crate::block_tree::DomainBlock;
 use crate::domain_registry::{DomainConfig, DomainObject};
 use crate::{
-    self as pallet_domains, BalanceOf, BlockTree, BundleError, Config, ConsensusBlockHash,
+    self as pallet_domains, BalanceOf, BlockTree, BundleError, Config, ConsensusBlockInfo,
     DomainBlocks, DomainRegistry, ExecutionInbox, ExecutionReceiptOf, FraudProofError,
     FungibleHoldId, HeadReceiptNumber, NextDomainId, Operator, OperatorStatus, Operators,
 };
@@ -13,7 +13,7 @@ use frame_support::{assert_err, assert_ok, parameter_types, PalletId};
 use frame_system::pallet_prelude::*;
 use scale_info::TypeInfo;
 use sp_core::crypto::Pair;
-use sp_core::storage::StorageKey;
+use sp_core::storage::{StateVersion, StorageKey};
 use sp_core::{Get, H256, U256};
 use sp_domains::fraud_proof::{FraudProof, InvalidTotalRewardsProof};
 use sp_domains::merkle_tree::MerkleTree;
@@ -79,6 +79,7 @@ impl frame_system::Config for Test {
     type SS58Prefix = ConstU16<42>;
     type OnSetCode = ();
     type MaxConsumers = ConstU32<16>;
+    type ExtrinsicsRootStateVersion = ExtrinsicsRootStateVersion;
 }
 
 parameter_types! {
@@ -92,6 +93,7 @@ parameter_types! {
     pub const DomainInstantiationDeposit: Balance = 100;
     pub const MaxDomainNameLength: u32 = 16;
     pub const BlockTreePruningDepth: u32 = 16;
+    pub const ExtrinsicsRootStateVersion: StateVersion = StateVersion::V0;
 }
 
 static CONFIRMATION_DEPTH_K: AtomicU64 = AtomicU64::new(10);
@@ -854,7 +856,7 @@ fn test_basic_fraud_proof_processing() {
             assert!(
                 !ExecutionInbox::<Test>::get((domain_id, block_number, block_number)).is_empty()
             );
-            assert!(ConsensusBlockHash::<Test>::get(domain_id, block_number).is_some());
+            assert!(ConsensusBlockInfo::<Test>::get(domain_id, block_number).is_some());
         }
 
         // Re-submit the valid ER

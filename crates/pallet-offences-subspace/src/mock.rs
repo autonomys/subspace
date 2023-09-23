@@ -26,7 +26,8 @@ use frame_support::weights::constants::RocksDbWeight;
 use frame_support::weights::Weight;
 use sp_consensus_subspace::offence::{self, Kind, OffenceDetails};
 use sp_consensus_subspace::FarmerPublicKey;
-use sp_core::H256;
+use sp_core::storage::StateVersion;
+use sp_core::{parameter_types, H256};
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup};
 use sp_runtime::{BuildStorage, Perbill};
 use std::cell::RefCell;
@@ -59,6 +60,10 @@ frame_support::construct_runtime!(
     }
 );
 
+parameter_types! {
+    pub const ExtrinsicsRootStateVersion: StateVersion = StateVersion::V0;
+}
+
 impl frame_system::Config for Runtime {
     type BaseCallFilter = frame_support::traits::Everything;
     type BlockWeights = ();
@@ -83,6 +88,7 @@ impl frame_system::Config for Runtime {
     type SS58Prefix = ();
     type OnSetCode = ();
     type MaxConsumers = ConstU32<16>;
+    type ExtrinsicsRootStateVersion = ExtrinsicsRootStateVersion;
 }
 
 impl Config for Runtime {
