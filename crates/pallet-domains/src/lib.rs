@@ -44,7 +44,9 @@ use scale_info::TypeInfo;
 use sp_core::H256;
 use sp_domains::bundle_producer_election::{is_below_threshold, BundleProducerElectionParams};
 use sp_domains::fraud_proof::{FraudProof, InvalidTotalRewardsProof};
-use sp_domains::verification::verify_invalid_total_rewards_fraud_proof;
+use sp_domains::verification::{
+    verify_invalid_domain_extrinsics_root_fraud_proof, verify_invalid_total_rewards_fraud_proof,
+};
 use sp_domains::{
     DomainBlockLimit, DomainId, DomainInstanceData, ExecutionReceipt, OpaqueBundle, OperatorId,
     OperatorPublicKey, ProofOfElection, RuntimeId, EMPTY_EXTRINSIC_ROOT, EXTRINSICS_SHUFFLING_SEED,
@@ -590,6 +592,10 @@ mod pallet {
         DescendantsOfFraudulentERNotPruned,
         /// Invalid fraud proof since total rewards are not mismatched.
         InvalidTotalRewardsFraudProof(sp_domains::verification::VerificationError),
+        /// Missing state root for a given consensus block
+        MissingConsensusStateRoot,
+        /// Invalid domain extrinsic fraud proof
+        InvalidExtrinsicRootFraudProof(sp_domains::verification::VerificationError),
     }
 
     impl<T> From<FraudProofError> for Error<T> {
@@ -1567,17 +1573,34 @@ impl<T: Config> Pallet<T> {
             FraudProofError::ChallengingGenesisReceipt
         );
 
-        if let FraudProof::InvalidTotalRewards(InvalidTotalRewardsProof { storage_proof, .. }) =
-            fraud_proof
-        {
-            verify_invalid_total_rewards_fraud_proof::<
-                T::Block,
-                T::DomainNumber,
-                T::DomainHash,
-                BalanceOf<T>,
-                T::Hashing,
-            >(bad_receipt, storage_proof)
-            .map_err(FraudProofError::InvalidTotalRewardsFraudProof)?;
+        match fraud_proof {
+            FraudProof::InvalidTotalRewards(InvalidTotalRewardsProof { storage_proof, .. }) => {
+                verify_invalid_total_rewards_fraud_proof::<
+                    T::Block,
+                    T::DomainNumber,
+                    T::DomainHash,
+                    BalanceOf<T>,
+                    T::Hashing,
+                >(bad_receipt, storage_proof)
+                .map_err(FraudProofError::InvalidTotalRewardsFraudProof)?;
+            }
+            FraudProof::InvalidExtrinsicsRoot(proof) => {
+                let consensus_state_root = ConsensusBlockInfo::<T>::get(
+                    proof.domain_id,
+                    bad_receipt.consensus_block_number,
+                )
+                .ok_or(FraudProofError::MissingConsensusStateRoot)?
+                .1;
+                verify_invalid_domain_extrinsics_root_fraud_proof::<
+                    T::Block,
+                    T::DomainNumber,
+                    T::DomainHash,
+                    BalanceOf<T>,
+                    T::Hashing,
+                >(consensus_state_root, bad_receipt, proof)
+                .map_err(FraudProofError::InvalidExtrinsicRootFraudProof)?;
+            }
+            _ => {}
         }
 
         Ok(())
