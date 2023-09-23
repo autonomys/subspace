@@ -112,11 +112,10 @@ pub fn verify_invalid_domain_extrinsics_root_fraud_proof<
         DomainHash,
         Balance,
     >,
-    fraud_proof: InvalidExtrinsicsRootProof,
+    fraud_proof: &InvalidExtrinsicsRootProof,
 ) -> Result<(), VerificationError>
 where
     CBlock: Block,
-    CBlock::Hash: Into<H256>,
     Hashing: Hasher<Out = CBlock::Hash>,
 {
     let InvalidExtrinsicsRootProof {
@@ -136,7 +135,7 @@ where
             return Err(VerificationError::InvalidBundleDigest);
         }
 
-        ext_values.extend(bundle_digest.bundle_digest);
+        ext_values.extend(bundle_digest.bundle_digest.clone());
     }
 
     let storage_key = StorageKey(crate::fraud_proof::block_randomness_final_key());
@@ -148,11 +147,13 @@ where
     )
     .map_err(|_| VerificationError::InvalidProof)?;
 
-    let shuffling_seed = extrinsics_shuffling_seed::<Hashing>(block_randomness)
-        .into()
-        .to_fixed_bytes();
-    let ordered_extrinsics =
-        deduplicate_and_shuffle_extrinsics(ext_values, Randomness::from(shuffling_seed));
+    let shuffling_seed =
+        H256::decode(&mut extrinsics_shuffling_seed::<Hashing>(block_randomness).as_ref())
+            .map_err(|_| VerificationError::FailedToDecode)?;
+    let ordered_extrinsics = deduplicate_and_shuffle_extrinsics(
+        ext_values,
+        Randomness::from(shuffling_seed.to_fixed_bytes()),
+    );
     let ordered_trie_node_values = ordered_extrinsics
         .iter()
         .map(|ext_digest| match ext_digest {

@@ -15,7 +15,10 @@ use scale_info::TypeInfo;
 use sp_core::crypto::Pair;
 use sp_core::storage::{StateVersion, StorageKey};
 use sp_core::{Get, H256, U256};
-use sp_domains::fraud_proof::{FraudProof, InvalidTotalRewardsProof};
+use sp_domains::fraud_proof::{
+    ExtrinsicDigest, FraudProof, InvalidExtrinsicsRootProof, InvalidTotalRewardsProof,
+    ValidBundleDigest,
+};
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{
     BundleHeader, DomainId, DomainInstanceData, DomainsHoldIdentifier, ExecutionReceipt,
@@ -31,7 +34,7 @@ use sp_trie::{PrefixedMemoryDB, StorageProof, TrieMut};
 use sp_version::RuntimeVersion;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
-use subspace_core_primitives::U256 as P256;
+use subspace_core_primitives::{Randomness, U256 as P256};
 use subspace_runtime_primitives::SSC;
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
@@ -815,6 +818,73 @@ fn storage_proof_for_key<T: Config, B: Backend<T::Hashing> + AsTrieBackend<T::Ha
     let root = backend.storage_root(std::iter::empty(), state_version).0;
     let proof = StorageProof::new(prove_read(backend, &[key]).unwrap().iter_nodes().cloned());
     (root, proof)
+}
+
+#[test]
+fn test_invalid_domain_extrinsic_root_proof() {
+    let creator = 0u64;
+    let operator_id = 1u64;
+    let head_domain_number = 10;
+    let mut ext = new_test_ext_with_extensions();
+    ext.execute_with(|| {
+        let domain_id = register_genesis_domain(creator, vec![operator_id]);
+        extend_block_tree(domain_id, operator_id, head_domain_number + 1);
+        assert_eq!(
+            HeadReceiptNumber::<Test>::get(domain_id),
+            head_domain_number
+        );
+
+        let bad_receipt_at = 8;
+        let domain_block = get_block_tree_node_at::<Test>(domain_id, bad_receipt_at).unwrap();
+
+        let bad_receipt_hash = domain_block.execution_receipt.hash();
+        let (fraud_proof, root) = generate_invalid_domain_extrinsic_root_fraud_proof::<Test>(
+            domain_id,
+            bad_receipt_hash,
+            Randomness::from([1u8; 32]),
+        );
+        let (consensus_block_number, consensus_block_hash) = (
+            domain_block.execution_receipt.consensus_block_number,
+            domain_block.execution_receipt.consensus_block_hash,
+        );
+        ConsensusBlockInfo::<Test>::insert(
+            domain_id,
+            consensus_block_number,
+            (consensus_block_hash, root),
+        );
+        DomainBlocks::<Test>::insert(bad_receipt_hash, domain_block);
+        assert_ok!(Domains::validate_fraud_proof(&fraud_proof),);
+    });
+}
+
+fn generate_invalid_domain_extrinsic_root_fraud_proof<T: Config>(
+    domain_id: DomainId,
+    bad_receipt_hash: ReceiptHash,
+    randomness: Randomness,
+) -> (FraudProof<BlockNumberFor<T>, T::Hash>, T::Hash) {
+    let storage_key = sp_domains::fraud_proof::block_randomness_final_key();
+    let mut root = T::Hash::default();
+    let mut mdb = PrefixedMemoryDB::<T::Hashing>::default();
+    {
+        let mut trie = TrieDBMutBuilderV1::new(&mut mdb, &mut root).build();
+        trie.insert(&storage_key, &randomness.encode()).unwrap();
+    };
+
+    let backend = TrieBackendBuilder::new(mdb, root).build();
+    let (root, randomness_proof) = storage_proof_for_key::<T, _>(backend, StorageKey(storage_key));
+    let valid_bundle_digests = vec![ValidBundleDigest {
+        bundle_index: 0,
+        bundle_digest: vec![(Some(vec![1, 2, 3]), ExtrinsicDigest::Data(vec![4, 5, 6]))],
+    }];
+    (
+        FraudProof::InvalidExtrinsicsRoot(InvalidExtrinsicsRootProof {
+            domain_id,
+            bad_receipt_hash,
+            randomness_proof,
+            valid_bundle_digests,
+        }),
+        root,
+    )
 }
 
 #[test]
