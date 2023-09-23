@@ -1,7 +1,7 @@
 use crate::block_tree::DomainBlock;
 use crate::domain_registry::{DomainConfig, DomainObject};
 use crate::{
-    self as pallet_domains, BalanceOf, BlockTree, BundleError, Config, ConsensusBlockHash,
+    self as pallet_domains, BalanceOf, BlockTree, BundleError, Config, ConsensusBlockInfo,
     DomainBlocks, DomainRegistry, ExecutionInbox, ExecutionReceiptOf, FraudProofError,
     FungibleHoldId, HeadReceiptNumber, NextDomainId, Operator, OperatorStatus, Operators,
 };
@@ -859,7 +859,7 @@ fn test_basic_fraud_proof_processing() {
             assert!(
                 !ExecutionInbox::<Test>::get((domain_id, block_number, block_number)).is_empty()
             );
-            assert!(ConsensusBlockHash::<Test>::get(domain_id, block_number).is_some());
+            assert!(ConsensusBlockInfo::<Test>::get(domain_id, block_number).is_some());
         }
 
         // Re-submit the valid ER

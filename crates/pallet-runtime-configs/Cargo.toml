@@ -8,8 +8,8 @@ homepage = "https://subspace.network"
 repository = "https://github.com/subspace/subspace"
 description = "Pallet for tweaking the runtime configs for multiple network"
 include = [
-  "/src",
-  "/Cargo.toml",
+    "/src",
+    "/Cargo.toml",
 ]
 
 [package.metadata.docs.rs]
@@ -28,17 +28,17 @@ sp-std = { version = "8.0.0", default-features = false, git = "https://github.co
 [features]
 default = ["std"]
 std = [
-  "codec/std",
-  "frame-support/std",
-  "frame-system/std",
-  "scale-info/std",
-  "sp-runtime/std",
-  "sp-std?/std",
+    "codec/std",
+    "frame-support/std",
+    "frame-system/std",
+    "scale-info/std",
+    "sp-runtime/std",
+    "sp-std?/std",
 ]
 try-runtime = ["frame-support/try-runtime"]
 runtime-benchmarks = [
-  "frame-benchmarking",
-  "frame-benchmarking/runtime-benchmarks",
-  "sp-core",
-  "sp-std",
+    "frame-benchmarking",
+    "frame-benchmarking/runtime-benchmarks",
+    "sp-core",
+    "sp-std",
 ]

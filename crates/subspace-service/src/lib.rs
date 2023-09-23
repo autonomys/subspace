@@ -556,10 +556,12 @@ where
                     let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
 
                     // TODO: Would be nice if the whole header was passed in here
-                    let parent_block_number = client
+                    let parent_header = client
                         .header(parent_hash)?
-                        .expect("Parent header must always exist when block is created; qed")
-                        .number;
+                        .expect("Parent header must always exist when block is created; qed");
+
+                    let parent_block_number = parent_header.number;
+                    let parent_state_root = parent_header.state_root;
 
                     let subspace_inherents =
                         sp_consensus_subspace::inherents::InherentDataProvider::from_timestamp_and_slot_duration(
@@ -568,7 +570,10 @@ where
                             subspace_link.segment_headers_for_block(parent_block_number + 1),
                         );
 
-                    Ok((timestamp, subspace_inherents))
+                    let domain_inherents =
+                        sp_domains::inherents::InherentDataProvider::new(parent_state_root);
+
+                    Ok((timestamp, subspace_inherents, domain_inherents))
                 }
             }
         },

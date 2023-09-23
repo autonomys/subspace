@@ -19,6 +19,7 @@
 
 pub mod bundle_producer_election;
 pub mod fraud_proof;
+pub mod inherents;
 pub mod merkle_tree;
 #[cfg(test)]
 mod tests;
