@@ -8,6 +8,7 @@ use sp_consensus_subspace::{KzgExtension, PosExtension};
 use sp_io::TestExternalities;
 use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
 use std::collections::{BTreeMap, HashMap};
+use std::sync::OnceLock;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{BlockWeight, SegmentCommitment, SegmentIndex, SolutionRange};
 use subspace_proof_of_space::shim::ShimTable;
@@ -18,6 +19,12 @@ pub(crate) type Header = sp_runtime::generic::Header<u32, BlakeTwo256>;
 
 // Smaller value for testing purposes
 const MAX_PIECES_IN_SECTOR: u16 = 32;
+
+pub(crate) fn kzg_instance() -> &'static Kzg {
+    static KZG: OnceLock<Kzg> = OnceLock::new();
+
+    KZG.get_or_init(|| Kzg::new(embedded_kzg_settings()))
+}
 
 #[derive(Debug)]
 struct StorageData {
@@ -203,7 +210,7 @@ impl MockStorage {
 pub fn new_test_ext() -> TestExternalities {
     let mut ext = TestExternalities::new_empty();
 
-    ext.register_extension(KzgExtension::new(Kzg::new(embedded_kzg_settings())));
+    ext.register_extension(KzgExtension::new(kzg_instance().clone()));
     ext.register_extension(PosExtension::new::<PosTable>());
     #[cfg(feature = "pot")]
     ext.register_extension(PotExtension::new(Box::new(

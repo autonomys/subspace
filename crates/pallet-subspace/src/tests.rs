@@ -16,11 +16,14 @@
 
 //! Consensus extension module tests for Subspace consensus.
 
+#[cfg(not(feature = "pot"))]
+use crate::mock::GlobalRandomnessUpdateInterval;
+#[cfg(feature = "pot")]
+use crate::mock::{allow_all_pot_extension, BlockAuthoringDelay};
 use crate::mock::{
     create_archived_segment, create_segment_header, create_signed_vote,
-    generate_equivocation_proof, go_to_block, new_test_ext, progress_to_block,
-    GlobalRandomnessUpdateInterval, ReportLongevity, RuntimeEvent, RuntimeOrigin, Subspace, System,
-    Test, INITIAL_SOLUTION_RANGE, SLOT_PROBABILITY,
+    generate_equivocation_proof, go_to_block, new_test_ext, progress_to_block, ReportLongevity,
+    RuntimeEvent, RuntimeOrigin, Subspace, System, Test, INITIAL_SOLUTION_RANGE, SLOT_PROBABILITY,
 };
 use crate::{
     pallet, AllowAuthoringByAnyone, AuditChunkOffset, BlockList, Call, CheckVoteError, Config,
@@ -31,10 +34,14 @@ use codec::Encode;
 use frame_support::dispatch::{GetDispatchInfo, Pays};
 use frame_support::{assert_err, assert_ok};
 use frame_system::{EventRecord, Phase};
+#[cfg(feature = "pot")]
+use rand::prelude::*;
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
 #[cfg(not(feature = "pot"))]
 use sp_consensus_subspace::GlobalRandomnesses;
+#[cfg(feature = "pot")]
+use sp_consensus_subspace::PotExtension;
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SolutionRanges};
 use sp_core::crypto::UncheckedFrom;
 use sp_runtime::traits::{BlockNumberProvider, Header};
@@ -44,16 +51,21 @@ use sp_runtime::transaction_validity::{
 use sp_runtime::DispatchError;
 use std::assert_matches::assert_matches;
 use std::collections::BTreeMap;
-use std::num::NonZeroUsize;
-use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
+#[cfg(feature = "pot")]
+use std::sync::{Arc, Mutex};
 use subspace_core_primitives::crypto::Scalar;
-use subspace_core_primitives::{Record, SegmentIndex, SolutionRange};
-use subspace_erasure_coding::ErasureCoding;
+#[cfg(feature = "pot")]
+use subspace_core_primitives::PotOutput;
+use subspace_core_primitives::{SegmentIndex, SolutionRange};
 use subspace_runtime_primitives::{FindBlockRewardAddress, FindVotingRewardAddresses};
 
 #[test]
 fn genesis_slot_is_correct() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
 
         // this sets the genesis slot to 6;
@@ -63,8 +75,13 @@ fn genesis_slot_is_correct() {
 }
 
 #[test]
+#[cfg(not(feature = "pot"))]
 fn can_update_global_randomness() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
 
         assert_eq!(<Test as Config>::GlobalRandomnessUpdateInterval::get(), 10);
@@ -101,7 +118,11 @@ fn can_update_global_randomness() {
 
 #[test]
 fn can_update_solution_range_on_era_change() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
 
         assert_eq!(<Test as Config>::EraDuration::get(), 4);
@@ -173,7 +194,11 @@ fn can_update_solution_range_on_era_change() {
 
 #[test]
 fn can_override_solution_range_update() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
 
         assert_eq!(
@@ -223,7 +248,11 @@ fn can_override_solution_range_update() {
 
 #[test]
 fn solution_range_should_not_update_when_disabled() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
 
         assert_eq!(<Test as Config>::EraDuration::get(), 4);
@@ -289,7 +318,11 @@ fn solution_range_should_not_update_when_disabled() {
 
 #[test]
 fn report_equivocation_current_session_works() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
 
         progress_to_block(&keypair, 1, 1);
@@ -314,7 +347,11 @@ fn report_equivocation_current_session_works() {
 
 #[test]
 fn report_equivocation_old_session_works() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
 
         progress_to_block(&keypair, 1, 1);
@@ -342,7 +379,11 @@ fn report_equivocation_old_session_works() {
 
 #[test]
 fn report_equivocation_invalid_equivocation_proof() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
 
         progress_to_block(&keypair, 1, 1);
@@ -412,7 +453,11 @@ fn report_equivocation_invalid_equivocation_proof() {
 
 #[test]
 fn report_equivocation_validate_unsigned_prevents_duplicates() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
 
         progress_to_block(&keypair, 1, 1);
@@ -475,7 +520,11 @@ fn report_equivocation_validate_unsigned_prevents_duplicates() {
 
 #[test]
 fn valid_equivocation_reports_dont_pay_fees() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
 
         progress_to_block(&keypair, 1, 1);
@@ -520,7 +569,11 @@ fn valid_equivocation_reports_dont_pay_fees() {
 
 #[test]
 fn store_segment_header_works() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
 
         progress_to_block(&keypair, 1, 1);
@@ -547,7 +600,11 @@ fn store_segment_header_works() {
 
 #[test]
 fn store_segment_header_validate_unsigned_prevents_duplicates() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
 
         progress_to_block(&keypair, 1, 1);
@@ -626,31 +683,33 @@ fn store_segment_header_validate_unsigned_prevents_duplicates() {
 
 #[test]
 fn vote_block_listed() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
-        let kzg = Kzg::new(embedded_kzg_settings());
-        let erasure_coding = ErasureCoding::new(
-            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
-        )
-        .unwrap();
-        let archived_segment = create_archived_segment(kzg.clone());
+        let archived_segment = create_archived_segment();
 
         BlockList::<Test>::insert(
             FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
             (),
         );
 
-        // Can't submit vote right after genesis block
+        // Vote author is in block list
         let signed_vote = create_signed_vote(
             &keypair,
             0,
             <Test as frame_system::Config>::Hash::default(),
             Subspace::current_slot() + 1,
+            #[cfg(not(feature = "pot"))]
             &Subspace::global_randomnesses().current,
+            #[cfg(feature = "pot")]
+            Default::default(),
+            #[cfg(feature = "pot")]
+            Default::default(),
             &archived_segment.pieces,
             1,
-            &kzg,
-            &erasure_coding,
             SolutionRange::MAX,
         );
 
@@ -663,14 +722,13 @@ fn vote_block_listed() {
 
 #[test]
 fn vote_after_genesis() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
-        let kzg = Kzg::new(embedded_kzg_settings());
-        let erasure_coding = ErasureCoding::new(
-            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
-        )
-        .unwrap();
-        let archived_segment = create_archived_segment(kzg.clone());
+        let archived_segment = create_archived_segment();
 
         // Can't submit vote right after genesis block
         let signed_vote = create_signed_vote(
@@ -678,11 +736,14 @@ fn vote_after_genesis() {
             0,
             <Test as frame_system::Config>::Hash::default(),
             Subspace::current_slot() + 1,
+            #[cfg(not(feature = "pot"))]
             &Subspace::global_randomnesses().current,
+            #[cfg(feature = "pot")]
+            Default::default(),
+            #[cfg(feature = "pot")]
+            Default::default(),
             &archived_segment.pieces,
             1,
-            &kzg,
-            &erasure_coding,
             SolutionRange::MAX,
         );
 
@@ -695,14 +756,13 @@ fn vote_after_genesis() {
 
 #[test]
 fn vote_too_low_height() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
-        let kzg = Kzg::new(embedded_kzg_settings());
-        let erasure_coding = ErasureCoding::new(
-            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
-        )
-        .unwrap();
-        let archived_segment = create_archived_segment(kzg.clone());
+        let archived_segment = create_archived_segment();
 
         progress_to_block(&keypair, 1, 1);
 
@@ -714,11 +774,14 @@ fn vote_too_low_height() {
                 height,
                 <Test as frame_system::Config>::Hash::default(),
                 Subspace::current_slot() + 1,
+                #[cfg(not(feature = "pot"))]
                 &Subspace::global_randomnesses().current,
+                #[cfg(feature = "pot")]
+                Default::default(),
+                #[cfg(feature = "pot")]
+                Default::default(),
                 &archived_segment.pieces,
                 1,
-                &kzg,
-                &erasure_coding,
                 SolutionRange::MAX,
             );
 
@@ -732,14 +795,13 @@ fn vote_too_low_height() {
 
 #[test]
 fn vote_past_future_height() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
-        let kzg = Kzg::new(embedded_kzg_settings());
-        let erasure_coding = ErasureCoding::new(
-            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
-        )
-        .unwrap();
-        let archived_segment = create_archived_segment(kzg.clone());
+        let archived_segment = create_archived_segment();
 
         progress_to_block(&keypair, 4, 1);
 
@@ -750,11 +812,14 @@ fn vote_past_future_height() {
                 5,
                 <Test as frame_system::Config>::Hash::default(),
                 Subspace::current_slot() + 1,
+                #[cfg(not(feature = "pot"))]
                 &Subspace::global_randomnesses().current,
+                #[cfg(feature = "pot")]
+                Default::default(),
+                #[cfg(feature = "pot")]
+                Default::default(),
                 &archived_segment.pieces,
                 1,
-                &kzg,
-                &erasure_coding,
                 SolutionRange::MAX,
             );
 
@@ -771,11 +836,14 @@ fn vote_past_future_height() {
                 2,
                 <Test as frame_system::Config>::Hash::default(),
                 Subspace::current_slot() + 1,
+                #[cfg(not(feature = "pot"))]
                 &Subspace::global_randomnesses().current,
+                #[cfg(feature = "pot")]
+                Default::default(),
+                #[cfg(feature = "pot")]
+                Default::default(),
                 &archived_segment.pieces,
                 1,
-                &kzg,
-                &erasure_coding,
                 SolutionRange::MAX,
             );
 
@@ -789,14 +857,13 @@ fn vote_past_future_height() {
 
 #[test]
 fn vote_wrong_parent() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
-        let kzg = Kzg::new(embedded_kzg_settings());
-        let erasure_coding = ErasureCoding::new(
-            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
-        )
-        .unwrap();
-        let archived_segment = create_archived_segment(kzg.clone());
+        let archived_segment = create_archived_segment();
 
         progress_to_block(&keypair, 2, 1);
 
@@ -806,11 +873,14 @@ fn vote_wrong_parent() {
             2,
             <Test as frame_system::Config>::Hash::default(),
             Subspace::current_slot() + 1,
+            #[cfg(not(feature = "pot"))]
             &Subspace::global_randomnesses().current,
+            #[cfg(feature = "pot")]
+            Default::default(),
+            #[cfg(feature = "pot")]
+            Default::default(),
             &archived_segment.pieces,
             1,
-            &kzg,
-            &erasure_coding,
             SolutionRange::MAX,
         );
 
@@ -823,14 +893,13 @@ fn vote_wrong_parent() {
 
 #[test]
 fn vote_past_future_slot() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
-        let kzg = Kzg::new(embedded_kzg_settings());
-        let erasure_coding = ErasureCoding::new(
-            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
-        )
-        .unwrap();
-        let archived_segment = create_archived_segment(kzg.clone());
+        let archived_segment = create_archived_segment();
 
         SegmentCommitment::<Test>::insert(
             archived_segment.segment_header.segment_index(),
@@ -851,11 +920,14 @@ fn vote_past_future_slot() {
                 3,
                 frame_system::Pallet::<Test>::block_hash(2),
                 2.into(),
+                #[cfg(not(feature = "pot"))]
                 &Subspace::global_randomnesses().current,
+                #[cfg(feature = "pot")]
+                Default::default(),
+                #[cfg(feature = "pot")]
+                Default::default(),
                 &archived_segment.pieces,
                 1,
-                &kzg,
-                &erasure_coding,
                 SolutionRange::MAX,
             );
 
@@ -876,11 +948,14 @@ fn vote_past_future_slot() {
                 3,
                 frame_system::Pallet::<Test>::block_hash(2),
                 4.into(),
+                #[cfg(not(feature = "pot"))]
                 &Subspace::global_randomnesses().current,
+                #[cfg(feature = "pot")]
+                Default::default(),
+                #[cfg(feature = "pot")]
+                Default::default(),
                 &archived_segment.pieces,
                 1,
-                &kzg,
-                &erasure_coding,
                 SolutionRange::MAX,
             );
 
@@ -900,11 +975,14 @@ fn vote_past_future_slot() {
                 2,
                 frame_system::Pallet::<Test>::block_hash(1),
                 2.into(),
+                #[cfg(not(feature = "pot"))]
                 &Subspace::global_randomnesses().current,
+                #[cfg(feature = "pot")]
+                Default::default(),
+                #[cfg(feature = "pot")]
+                Default::default(),
                 &archived_segment.pieces,
                 1,
-                &kzg,
-                &erasure_coding,
                 SolutionRange::MAX,
             );
 
@@ -916,14 +994,13 @@ fn vote_past_future_slot() {
 
 #[test]
 fn vote_same_slot() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let block_keypair = Keypair::generate();
-        let kzg = Kzg::new(embedded_kzg_settings());
-        let erasure_coding = ErasureCoding::new(
-            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
-        )
-        .unwrap();
-        let archived_segment = create_archived_segment(kzg.clone());
+        let archived_segment = create_archived_segment();
 
         // Move to the block 3, but time slot 4, but in two time slots
         go_to_block(&block_keypair, 3, 4, 1);
@@ -946,11 +1023,14 @@ fn vote_same_slot() {
                 3,
                 frame_system::Pallet::<Test>::block_hash(2),
                 Subspace::current_slot(),
+                #[cfg(not(feature = "pot"))]
                 &Subspace::global_randomnesses().current,
+                #[cfg(feature = "pot")]
+                Default::default(),
+                #[cfg(feature = "pot")]
+                Default::default(),
                 &archived_segment.pieces,
                 1,
-                &kzg,
-                &erasure_coding,
                 SolutionRange::MAX,
             );
 
@@ -966,11 +1046,14 @@ fn vote_same_slot() {
                 2,
                 frame_system::Pallet::<Test>::block_hash(1),
                 Subspace::current_slot(),
+                #[cfg(not(feature = "pot"))]
                 &Subspace::global_randomnesses().current,
+                #[cfg(feature = "pot")]
+                Default::default(),
+                #[cfg(feature = "pot")]
+                Default::default(),
                 &archived_segment.pieces,
                 1,
-                &kzg,
-                &erasure_coding,
                 SolutionRange::MAX,
             );
 
@@ -984,14 +1067,13 @@ fn vote_same_slot() {
 
 #[test]
 fn vote_bad_reward_signature() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
-        let kzg = Kzg::new(embedded_kzg_settings());
-        let erasure_coding = ErasureCoding::new(
-            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
-        )
-        .unwrap();
-        let archived_segment = create_archived_segment(kzg.clone());
+        let archived_segment = create_archived_segment();
 
         progress_to_block(&keypair, 2, 1);
 
@@ -1001,11 +1083,14 @@ fn vote_bad_reward_signature() {
             2,
             frame_system::Pallet::<Test>::block_hash(1),
             Subspace::current_slot() + 1,
+            #[cfg(not(feature = "pot"))]
             &Subspace::global_randomnesses().current,
+            #[cfg(feature = "pot")]
+            Default::default(),
+            #[cfg(feature = "pot")]
+            Default::default(),
             &archived_segment.pieces,
             1,
-            &kzg,
-            &erasure_coding,
             SolutionRange::MAX,
         );
 
@@ -1020,14 +1105,13 @@ fn vote_bad_reward_signature() {
 
 #[test]
 fn vote_unknown_segment_commitment() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
-        let kzg = Kzg::new(embedded_kzg_settings());
-        let erasure_coding = ErasureCoding::new(
-            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
-        )
-        .unwrap();
-        let archived_segment = create_archived_segment(kzg.clone());
+        let archived_segment = create_archived_segment();
 
         progress_to_block(&keypair, 2, 1);
 
@@ -1037,11 +1121,14 @@ fn vote_unknown_segment_commitment() {
             2,
             frame_system::Pallet::<Test>::block_hash(1),
             Subspace::current_slot() + 1,
+            #[cfg(not(feature = "pot"))]
             &Subspace::global_randomnesses().current,
+            #[cfg(feature = "pot")]
+            Default::default(),
+            #[cfg(feature = "pot")]
+            Default::default(),
             &archived_segment.pieces,
             1,
-            &kzg,
-            &erasure_coding,
             SolutionRange::MAX,
         );
 
@@ -1054,14 +1141,13 @@ fn vote_unknown_segment_commitment() {
 
 #[test]
 fn vote_outside_of_solution_range() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
-        let kzg = Kzg::new(embedded_kzg_settings());
-        let erasure_coding = ErasureCoding::new(
-            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
-        )
-        .unwrap();
-        let archived_segment = create_archived_segment(kzg.clone());
+        let archived_segment = create_archived_segment();
 
         progress_to_block(&keypair, 2, 1);
 
@@ -1076,11 +1162,14 @@ fn vote_outside_of_solution_range() {
             2,
             frame_system::Pallet::<Test>::block_hash(1),
             Subspace::current_slot() + 1,
+            #[cfg(not(feature = "pot"))]
             &Subspace::global_randomnesses().current,
+            #[cfg(feature = "pot")]
+            Default::default(),
+            #[cfg(feature = "pot")]
+            Default::default(),
             &archived_segment.pieces,
             1,
-            &kzg,
-            &erasure_coding,
             SolutionRange::MAX,
         );
 
@@ -1093,15 +1182,171 @@ fn vote_outside_of_solution_range() {
 }
 
 #[test]
-fn vote_correct_signature() {
-    new_test_ext().execute_with(|| {
+#[cfg(feature = "pot")]
+fn vote_invalid_proof_of_time() {
+    let correct_proofs_of_time = Arc::new(Mutex::new(Vec::new()));
+    let pot_extension = PotExtension::new(Box::new({
+        let correct_proofs_of_time = Arc::clone(&correct_proofs_of_time);
+        move |parent_hash, slot, proof_of_time, quick_verification| {
+            correct_proofs_of_time.lock().unwrap().contains(&(
+                parent_hash,
+                slot,
+                proof_of_time,
+                quick_verification,
+            ))
+        }
+    }));
+    new_test_ext(pot_extension).execute_with(|| {
         let keypair = Keypair::generate();
-        let kzg = Kzg::new(embedded_kzg_settings());
-        let erasure_coding = ErasureCoding::new(
-            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
-        )
-        .unwrap();
-        let archived_segment = create_archived_segment(kzg.clone());
+        let archived_segment = create_archived_segment();
+
+        progress_to_block(&keypair, 2, 1);
+
+        SegmentCommitment::<Test>::insert(
+            archived_segment.segment_header.segment_index(),
+            archived_segment.segment_header.segment_commitment(),
+        );
+
+        // Reset so that any solution works for votes
+        pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+            solution_ranges.voting_current = u64::MAX;
+        });
+
+        let current_block_number = frame_system::Pallet::<Test>::current_block_number();
+        let block_one_hash = frame_system::Pallet::<Test>::block_hash(1);
+        let slot = Subspace::current_slot();
+
+        let mut test_proof_of_time = PotOutput::default();
+        rand::thread_rng().fill(test_proof_of_time.as_mut_slice());
+        let mut test_future_proof_of_time = PotOutput::default();
+        rand::thread_rng().fill(test_future_proof_of_time.as_mut_slice());
+
+        // Proof of time not valid yet for votes before block is produced
+        {
+            let signed_vote = create_signed_vote(
+                &keypair,
+                current_block_number,
+                block_one_hash,
+                slot + 1,
+                test_proof_of_time,
+                Default::default(),
+                &archived_segment.pieces,
+                1,
+                SolutionRange::MAX,
+            );
+
+            assert_err!(
+                super::check_vote::<Test>(&signed_vote, false),
+                CheckVoteError::InvalidProofOfTime
+            );
+        }
+
+        correct_proofs_of_time.lock().unwrap().push((
+            block_one_hash.into(),
+            *slot + 1,
+            test_proof_of_time,
+            true,
+        ));
+
+        // Proof of time is valid for votes before block is produced
+        {
+            let signed_vote = create_signed_vote(
+                &keypair,
+                current_block_number,
+                block_one_hash,
+                slot + 1,
+                test_proof_of_time,
+                Default::default(),
+                &archived_segment.pieces,
+                1,
+                SolutionRange::MAX,
+            );
+
+            assert_ok!(super::check_vote::<Test>(&signed_vote, false));
+        }
+
+        // Proof of time not valid yet during pre-dispatch
+        {
+            let signed_vote = create_signed_vote(
+                &keypair,
+                current_block_number,
+                block_one_hash,
+                slot,
+                test_proof_of_time,
+                Default::default(),
+                &archived_segment.pieces,
+                1,
+                SolutionRange::MAX,
+            );
+
+            assert_err!(
+                super::check_vote::<Test>(&signed_vote, true),
+                CheckVoteError::InvalidProofOfTime
+            );
+        }
+
+        correct_proofs_of_time.lock().unwrap().push((
+            block_one_hash.into(),
+            *slot,
+            test_proof_of_time,
+            false,
+        ));
+
+        // Proof of time is valid during pre-dispatch, but not future proof of time yet
+        {
+            let signed_vote = create_signed_vote(
+                &keypair,
+                current_block_number,
+                block_one_hash,
+                slot,
+                test_proof_of_time,
+                Default::default(),
+                &archived_segment.pieces,
+                1,
+                SolutionRange::MAX,
+            );
+
+            assert_err!(
+                super::check_vote::<Test>(&signed_vote, true),
+                CheckVoteError::InvalidFutureProofOfTime
+            );
+        }
+
+        correct_proofs_of_time.lock().unwrap().push((
+            block_one_hash.into(),
+            *slot + BlockAuthoringDelay::get(),
+            test_future_proof_of_time,
+            false,
+        ));
+
+        // Both proof of time and future proof of time are valid during pre-dispatch
+        {
+            let signed_vote = create_signed_vote(
+                &keypair,
+                current_block_number,
+                block_one_hash,
+                slot,
+                test_proof_of_time,
+                test_future_proof_of_time,
+                &archived_segment.pieces,
+                1,
+                SolutionRange::MAX,
+            );
+
+            assert_ok!(super::check_vote::<Test>(&signed_vote, true));
+        }
+    });
+}
+
+#[test]
+fn vote_correct_signature() {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
+        let keypair = Keypair::generate();
+        let archived_segment = create_archived_segment();
 
         progress_to_block(&keypair, 2, 1);
 
@@ -1121,11 +1366,14 @@ fn vote_correct_signature() {
             2,
             frame_system::Pallet::<Test>::block_hash(1),
             Subspace::current_slot() + 1,
+            #[cfg(not(feature = "pot"))]
             &Subspace::global_randomnesses().current,
+            #[cfg(feature = "pot")]
+            Default::default(),
+            #[cfg(feature = "pot")]
+            Default::default(),
             &archived_segment.pieces,
             1,
-            &kzg,
-            &erasure_coding,
             SolutionRange::MAX,
         );
 
@@ -1134,15 +1382,15 @@ fn vote_correct_signature() {
 }
 
 #[test]
+#[cfg(not(feature = "pot"))]
 fn vote_randomness_update() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
-        let kzg = Kzg::new(embedded_kzg_settings());
-        let erasure_coding = ErasureCoding::new(
-            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
-        )
-        .unwrap();
-        let archived_segment = create_archived_segment(kzg.clone());
+        let archived_segment = create_archived_segment();
 
         SegmentCommitment::<Test>::insert(
             archived_segment.segment_header.segment_index(),
@@ -1168,8 +1416,6 @@ fn vote_randomness_update() {
             &Subspace::global_randomnesses().next.unwrap(),
             &archived_segment.pieces,
             1,
-            &kzg,
-            &erasure_coding,
             SolutionRange::MAX,
         );
 
@@ -1179,14 +1425,13 @@ fn vote_randomness_update() {
 
 #[test]
 fn vote_equivocation_current_block_plus_vote() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
-        let kzg = Kzg::new(embedded_kzg_settings());
-        let erasure_coding = ErasureCoding::new(
-            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
-        )
-        .unwrap();
-        let archived_segment = create_archived_segment(kzg.clone());
+        let archived_segment = create_archived_segment();
 
         progress_to_block(&keypair, 2, 1);
 
@@ -1208,11 +1453,14 @@ fn vote_equivocation_current_block_plus_vote() {
             2,
             frame_system::Pallet::<Test>::block_hash(1),
             slot,
+            #[cfg(not(feature = "pot"))]
             &Subspace::global_randomnesses().current,
+            #[cfg(feature = "pot")]
+            Default::default(),
+            #[cfg(feature = "pot")]
+            Default::default(),
             &archived_segment.pieces,
             reward_address,
-            &kzg,
-            &erasure_coding,
             SolutionRange::MAX,
         );
 
@@ -1239,14 +1487,13 @@ fn vote_equivocation_current_block_plus_vote() {
 
 #[test]
 fn vote_equivocation_parent_block_plus_vote() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
-        let kzg = Kzg::new(embedded_kzg_settings());
-        let erasure_coding = ErasureCoding::new(
-            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
-        )
-        .unwrap();
-        let archived_segment = create_archived_segment(kzg.clone());
+        let archived_segment = create_archived_segment();
 
         progress_to_block(&keypair, 2, 1);
 
@@ -1268,11 +1515,14 @@ fn vote_equivocation_parent_block_plus_vote() {
             2,
             frame_system::Pallet::<Test>::block_hash(1),
             slot,
+            #[cfg(not(feature = "pot"))]
             &Subspace::global_randomnesses().current,
+            #[cfg(feature = "pot")]
+            Default::default(),
+            #[cfg(feature = "pot")]
+            Default::default(),
             &archived_segment.pieces,
             reward_address,
-            &kzg,
-            &erasure_coding,
             SolutionRange::MAX,
         );
 
@@ -1308,13 +1558,12 @@ fn vote_equivocation_parent_block_plus_vote() {
 
 #[test]
 fn vote_equivocation_current_voters_duplicate() {
-    new_test_ext().execute_with(|| {
-        let kzg = Kzg::new(embedded_kzg_settings());
-        let erasure_coding = ErasureCoding::new(
-            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
-        )
-        .unwrap();
-        let archived_segment = create_archived_segment(kzg.clone());
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
+        let archived_segment = create_archived_segment();
 
         progress_to_block(&Keypair::generate(), 2, 1);
 
@@ -1338,11 +1587,14 @@ fn vote_equivocation_current_voters_duplicate() {
             2,
             frame_system::Pallet::<Test>::block_hash(1),
             slot,
+            #[cfg(not(feature = "pot"))]
             &Subspace::global_randomnesses().current,
+            #[cfg(feature = "pot")]
+            Default::default(),
+            #[cfg(feature = "pot")]
+            Default::default(),
             &archived_segment.pieces,
             reward_address,
-            &kzg,
-            &erasure_coding,
             SolutionRange::MAX,
         );
 
@@ -1396,14 +1648,13 @@ fn vote_equivocation_current_voters_duplicate() {
 
 #[test]
 fn vote_equivocation_parent_voters_duplicate() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
-        let kzg = Kzg::new(embedded_kzg_settings());
-        let erasure_coding = ErasureCoding::new(
-            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
-        )
-        .unwrap();
-        let archived_segment = create_archived_segment(kzg.clone());
+        let archived_segment = create_archived_segment();
 
         progress_to_block(&keypair, 2, 1);
 
@@ -1426,11 +1677,14 @@ fn vote_equivocation_parent_voters_duplicate() {
             2,
             frame_system::Pallet::<Test>::block_hash(1),
             slot,
+            #[cfg(not(feature = "pot"))]
             &Subspace::global_randomnesses().current,
+            #[cfg(feature = "pot")]
+            Default::default(),
+            #[cfg(feature = "pot")]
+            Default::default(),
             &archived_segment.pieces,
             reward_address,
-            &kzg,
-            &erasure_coding,
             SolutionRange::MAX,
         );
 
@@ -1512,7 +1766,11 @@ fn enabling_block_rewards_works() {
             map
         });
     }
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair = Keypair::generate();
 
         progress_to_block(&keypair, 1, 1);
@@ -1550,7 +1808,11 @@ fn enabling_block_rewards_works() {
 
 #[test]
 fn allow_authoring_by_anyone_works() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(
+        #[cfg(feature = "pot")]
+        allow_all_pot_extension(),
+    )
+    .execute_with(|| {
         let keypair1 = Keypair::generate();
         let keypair2 = Keypair::generate();
 

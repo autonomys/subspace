@@ -22,10 +22,9 @@ extern crate alloc;
 
 pub mod equivocation;
 
-// TODO: Unlock tests for PoT as well once PoT implementation settled
-#[cfg(all(test, not(feature = "pot")))]
+#[cfg(test)]
 mod mock;
-#[cfg(all(test, not(feature = "pot")))]
+#[cfg(test)]
 mod tests;
 
 #[cfg(feature = "runtime-benchmarks")]
