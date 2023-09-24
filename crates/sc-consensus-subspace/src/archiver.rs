@@ -233,7 +233,7 @@ where
     {
         let last_archived_block_number = segment_header.last_archived_block().number;
         if NumberFor::<Block>::from(last_archived_block_number) > best_block_to_archive {
-            // Last archived block in segment header it too high for current stat of the chain
+            // Last archived block in segment header is too high for current state of the chain
             // (segment headers store may know about more blocks in existence than is currently
             // imported)
             continue;
