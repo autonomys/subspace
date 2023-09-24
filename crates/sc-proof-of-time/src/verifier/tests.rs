@@ -1,5 +1,4 @@
 use crate::verifier::PotVerifier;
-use futures::executor::block_on;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::PotParametersChange;
 use std::mem;
@@ -10,8 +9,8 @@ const SEED: [u8; 16] = [
     0xd6, 0x66, 0xcc, 0xd8, 0xd5, 0x93, 0xc2, 0x3d, 0xa8, 0xdb, 0x6b, 0x5b, 0x14, 0x13, 0xb1, 0x3a,
 ];
 
-#[test]
-fn test_basic() {
+#[tokio::test]
+async fn test_basic() {
     let genesis_seed = PotSeed::from(SEED);
     let slot_iterations = NonZeroU32::new(512).unwrap();
     let checkpoints_1 = subspace_proof_of_time::prove(genesis_seed, slot_iterations).unwrap();
@@ -19,110 +18,142 @@ fn test_basic() {
     let verifier = PotVerifier::new(genesis_seed, NonZeroUsize::new(1000).unwrap());
 
     // Expected to be valid
-    assert!(block_on(verifier.is_output_valid(
-        Slot::from(1),
-        genesis_seed,
-        slot_iterations,
-        Slot::from(1),
-        checkpoints_1.output(),
-        None
-    )));
-    assert!(block_on(verifier.verify_checkpoints(
-        genesis_seed,
-        slot_iterations,
-        &checkpoints_1
-    )));
+    assert!(
+        verifier
+            .is_output_valid(
+                Slot::from(1),
+                genesis_seed,
+                slot_iterations,
+                Slot::from(1),
+                checkpoints_1.output(),
+                None
+            )
+            .await
+    );
+    assert!(
+        verifier
+            .verify_checkpoints(genesis_seed, slot_iterations, &checkpoints_1)
+            .await
+    );
 
     // Invalid number of slots
-    assert!(!block_on(verifier.is_output_valid(
-        Slot::from(1),
-        genesis_seed,
-        slot_iterations,
-        Slot::from(2),
-        checkpoints_1.output(),
-        None
-    )));
+    assert!(
+        !verifier
+            .is_output_valid(
+                Slot::from(1),
+                genesis_seed,
+                slot_iterations,
+                Slot::from(2),
+                checkpoints_1.output(),
+                None
+            )
+            .await
+    );
     // Invalid seed
-    assert!(!block_on(verifier.is_output_valid(
-        Slot::from(1),
-        checkpoints_1.output().seed(),
-        slot_iterations,
-        Slot::from(1),
-        checkpoints_1.output(),
-        None
-    )));
+    assert!(
+        !verifier
+            .is_output_valid(
+                Slot::from(1),
+                checkpoints_1.output().seed(),
+                slot_iterations,
+                Slot::from(1),
+                checkpoints_1.output(),
+                None
+            )
+            .await
+    );
     // Invalid number of iterations
-    assert!(!block_on(
-        verifier.verify_checkpoints(
-            genesis_seed,
-            slot_iterations
-                .checked_mul(NonZeroU32::new(2).unwrap())
-                .unwrap(),
-            &checkpoints_1
-        )
-    ));
+    assert!(
+        !verifier
+            .verify_checkpoints(
+                genesis_seed,
+                slot_iterations
+                    .checked_mul(NonZeroU32::new(2).unwrap())
+                    .unwrap(),
+                &checkpoints_1
+            )
+            .await
+    );
 
     let seed_1 = checkpoints_1.output().seed();
     let checkpoints_2 = subspace_proof_of_time::prove(seed_1, slot_iterations).unwrap();
 
     // Expected to be valid
-    assert!(block_on(verifier.is_output_valid(
-        Slot::from(2),
-        seed_1,
-        slot_iterations,
-        Slot::from(1),
-        checkpoints_2.output(),
-        None
-    )));
-    assert!(block_on(verifier.is_output_valid(
-        Slot::from(1),
-        genesis_seed,
-        slot_iterations,
-        Slot::from(2),
-        checkpoints_2.output(),
-        None
-    )));
-    assert!(block_on(verifier.verify_checkpoints(
-        seed_1,
-        slot_iterations,
-        &checkpoints_2
-    )));
+    assert!(
+        verifier
+            .is_output_valid(
+                Slot::from(2),
+                seed_1,
+                slot_iterations,
+                Slot::from(1),
+                checkpoints_2.output(),
+                None
+            )
+            .await
+    );
+    assert!(
+        verifier
+            .is_output_valid(
+                Slot::from(1),
+                genesis_seed,
+                slot_iterations,
+                Slot::from(2),
+                checkpoints_2.output(),
+                None
+            )
+            .await
+    );
+    assert!(
+        verifier
+            .verify_checkpoints(seed_1, slot_iterations, &checkpoints_2)
+            .await
+    );
 
     // Invalid number of slots
-    assert!(!block_on(verifier.is_output_valid(
-        Slot::from(1),
-        seed_1,
-        slot_iterations,
-        Slot::from(2),
-        checkpoints_2.output(),
-        None
-    )));
+    assert!(
+        !verifier
+            .is_output_valid(
+                Slot::from(1),
+                seed_1,
+                slot_iterations,
+                Slot::from(2),
+                checkpoints_2.output(),
+                None
+            )
+            .await
+    );
     // Invalid seed
-    assert!(!block_on(verifier.is_output_valid(
-        Slot::from(1),
-        seed_1,
-        slot_iterations,
-        Slot::from(2),
-        checkpoints_2.output(),
-        None
-    )));
+    assert!(
+        !verifier
+            .is_output_valid(
+                Slot::from(1),
+                seed_1,
+                slot_iterations,
+                Slot::from(2),
+                checkpoints_2.output(),
+                None
+            )
+            .await
+    );
     // Invalid number of iterations
-    assert!(!block_on(
-        verifier.is_output_valid(
-            Slot::from(1),
-            genesis_seed,
-            slot_iterations
-                .checked_mul(NonZeroU32::new(2).unwrap())
-                .unwrap(),
-            Slot::from(2),
-            checkpoints_2.output(),
-            None
-        )
-    ));
+    assert!(
+        !verifier
+            .is_output_valid(
+                Slot::from(1),
+                genesis_seed,
+                slot_iterations
+                    .checked_mul(NonZeroU32::new(2).unwrap())
+                    .unwrap(),
+                Slot::from(2),
+                checkpoints_2.output(),
+                None
+            )
+            .await
+    );
 }
 
-#[test]
-fn parameters_change() {
+#[tokio::test]
+async fn parameters_change() {
     let genesis_seed = PotSeed::from(SEED);
     let slot_iterations_1 = NonZeroU32::new(512).unwrap();
     let entropy = [1; mem::size_of::<Blake3Hash>()];
@@ -139,78 +170,102 @@ fn parameters_change() {
     let verifier = PotVerifier::new(genesis_seed, NonZeroUsize::new(1000).unwrap());
 
     // Changing parameters after first slot
-    assert!(block_on(verifier.is_output_valid(
-        Slot::from(1),
-        genesis_seed,
-        slot_iterations_1,
-        Slot::from(1),
-        checkpoints_1.output(),
-        Some(PotParametersChange {
-            slot: Slot::from(2),
-            slot_iterations: slot_iterations_2,
-            entropy,
-        })
-    )));
+    assert!(
+        verifier
+            .is_output_valid(
+                Slot::from(1),
+                genesis_seed,
+                slot_iterations_1,
+                Slot::from(1),
+                checkpoints_1.output(),
+                Some(PotParametersChange {
+                    slot: Slot::from(2),
+                    slot_iterations: slot_iterations_2,
+                    entropy,
+                })
+            )
+            .await
+    );
     // Changing parameters in the middle
-    assert!(block_on(verifier.is_output_valid(
-        Slot::from(1),
-        genesis_seed,
-        slot_iterations_1,
-        Slot::from(3),
-        checkpoints_3.output(),
-        Some(PotParametersChange {
-            slot: Slot::from(2),
-            slot_iterations: slot_iterations_2,
-            entropy,
-        })
-    )));
+    assert!(
+        verifier
+            .is_output_valid(
+                Slot::from(1),
+                genesis_seed,
+                slot_iterations_1,
+                Slot::from(3),
+                checkpoints_3.output(),
+                Some(PotParametersChange {
+                    slot: Slot::from(2),
+                    slot_iterations: slot_iterations_2,
+                    entropy,
+                })
+            )
+            .await
+    );
     // Changing parameters on last slot
-    assert!(block_on(verifier.is_output_valid(
-        Slot::from(1),
-        genesis_seed,
-        slot_iterations_1,
-        Slot::from(2),
-        checkpoints_2.output(),
-        Some(PotParametersChange {
-            slot: Slot::from(2),
-            slot_iterations: slot_iterations_2,
-            entropy,
-        })
-    )));
+    assert!(
+        verifier
+            .is_output_valid(
+                Slot::from(1),
+                genesis_seed,
+                slot_iterations_1,
+                Slot::from(2),
+                checkpoints_2.output(),
+                Some(PotParametersChange {
+                    slot: Slot::from(2),
+                    slot_iterations: slot_iterations_2,
+                    entropy,
+                })
+            )
+            .await
+    );
     // Not changing parameters because changes apply to the very first slot that is verified
-    assert!(block_on(verifier.is_output_valid(
-        Slot::from(2),
-        checkpoints_1.output().seed_with_entropy(&entropy),
-        slot_iterations_2,
-        Slot::from(2),
-        checkpoints_3.output(),
-        Some(PotParametersChange {
-            slot: Slot::from(2),
-            slot_iterations: slot_iterations_2,
-            entropy,
-        })
-    )));
+    assert!(
+        verifier
+            .is_output_valid(
+                Slot::from(2),
+                checkpoints_1.output().seed_with_entropy(&entropy),
+                slot_iterations_2,
+                Slot::from(2),
+                checkpoints_3.output(),
+                Some(PotParametersChange {
+                    slot: Slot::from(2),
+                    slot_iterations: slot_iterations_2,
+                    entropy,
+                })
+            )
+            .await
+    );
 
     // Missing parameters change
-    assert!(!block_on(verifier.is_output_valid(
-        Slot::from(1),
-        genesis_seed,
-        slot_iterations_1,
-        Slot::from(3),
-        checkpoints_3.output(),
-        None
-    )));
+    assert!(
+        !verifier
+            .is_output_valid(
+                Slot::from(1),
+                genesis_seed,
+                slot_iterations_1,
+                Slot::from(3),
+                checkpoints_3.output(),
+                None
+            )
+            .await
+    );
     // Invalid slot
-    assert!(!block_on(verifier.is_output_valid(
-        Slot::from(2),
-        genesis_seed,
-        slot_iterations_1,
-        Slot::from(3),
-        checkpoints_3.output(),
-        Some(PotParametersChange {
-            slot: Slot::from(2),
-            slot_iterations: slot_iterations_2,
-            entropy,
-        })
-    )));
+    assert!(
+        !verifier
+            .is_output_valid(
+                Slot::from(2),
+                genesis_seed,
+                slot_iterations_1,
+                Slot::from(3),
+                checkpoints_3.output(),
+                Some(PotParametersChange {
+                    slot: Slot::from(2),
+                    slot_iterations: slot_iterations_2,
+                    entropy,
+                })
+            )
+            .await
+    );
 }
