@@ -45,6 +45,7 @@ use domain_runtime_primitives::{
     BlockNumber as DomainNumber, Hash as DomainHash, MultiAccountId, TryConvertBack,
 };
 use frame_support::inherent::ProvideInherent;
+use frame_support::storage::generator::StorageValue;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, ConstU8, Currency, Everything, Get};
 use frame_support::weights::constants::{RocksDbWeight, WEIGHT_REF_TIME_PER_SECOND};
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
@@ -65,7 +66,7 @@ use sp_consensus_subspace::{
     ChainConstants, EquivocationProof, FarmerPublicKey, SignedVote, SolutionRanges, Vote,
 };
 use sp_core::crypto::{ByteArray, KeyTypeId};
-use sp_core::storage::StateVersion;
+use sp_core::storage::{StateVersion, StorageKey};
 use sp_core::{OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
@@ -617,6 +618,10 @@ parameter_types! {
 
 pub struct DeriveExtrinsics;
 impl sp_domains::fraud_proof::DeriveExtrinsics<Moment> for DeriveExtrinsics {
+    fn timestamp_storage_key() -> StorageKey {
+        StorageKey(pallet_timestamp::pallet::Now::<Runtime>::storage_value_final_key().to_vec())
+    }
+
     fn derive_timestamp_extrinsic(now: Moment) -> Vec<u8> {
         pallet_timestamp::Call::<Runtime>::set { now }.encode()
     }
@@ -1086,6 +1091,10 @@ impl_runtime_apis! {
 
         fn domain_state_root(domain_id: DomainId, number: DomainNumber, hash: DomainHash) -> Option<DomainHash>{
             Domains::domain_state_root(domain_id, number, hash)
+        }
+
+        fn timestamp_storage_key() -> Vec<u8> {
+            pallet_timestamp::pallet::Now::<Runtime>::storage_value_final_key().to_vec()
         }
     }
 

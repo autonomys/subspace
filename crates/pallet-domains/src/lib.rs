@@ -1591,12 +1591,14 @@ impl<T: Config> Pallet<T> {
                 )
                 .ok_or(FraudProofError::MissingConsensusStateRoot)?
                 .1;
+
                 verify_invalid_domain_extrinsics_root_fraud_proof::<
                     T::Block,
                     T::DomainNumber,
                     T::DomainHash,
                     BalanceOf<T>,
                     T::Hashing,
+                    T::DeriveExtrinsics,
                 >(consensus_state_root, bad_receipt, proof)
                 .map_err(FraudProofError::InvalidExtrinsicRootFraudProof)?;
             }

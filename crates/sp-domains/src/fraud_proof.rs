@@ -3,6 +3,7 @@ use hash_db::Hasher;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
+use sp_core::storage::StorageKey;
 use sp_core::H256;
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
 use sp_std::vec::Vec;
@@ -71,6 +72,7 @@ impl ExecutionPhase {
 
 /// Trait to derive extrinsics for timestamp.
 pub trait DeriveExtrinsics<Moment> {
+    fn timestamp_storage_key() -> StorageKey;
     fn derive_timestamp_extrinsic(moment: Moment) -> Vec<u8>;
 }
 
@@ -467,6 +469,8 @@ pub struct InvalidExtrinsicsRootProof {
     pub valid_bundle_digests: Vec<ValidBundleDigest>,
     /// Randomness Storage proof
     pub randomness_proof: StorageProof,
+    /// Timestamp storage proof
+    pub timestamp_proof: StorageProof,
 }
 
 impl InvalidTotalRewardsProof {
