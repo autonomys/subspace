@@ -472,6 +472,8 @@ pub struct InvalidExtrinsicsRootProof {
     pub valid_bundle_digests: Vec<ValidBundleDigest>,
     /// Randomness Storage proof
     pub randomness_proof: StorageProof,
+    /// Timestamp storage proof
+    pub timestamp_proof: StorageProof,
 }
 
 impl InvalidTotalRewardsProof {

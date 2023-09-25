@@ -150,7 +150,6 @@ where
         }
     }
 
-    #[allow(dead_code)]
     pub(crate) fn generate_invalid_domain_extrinsics_root_proof<PCB>(
         &self,
         domain_id: DomainId,
@@ -222,12 +221,19 @@ where
             &mut [block_randomness_key.as_slice()].into_iter(),
         )?;
 
+        let timestamp_key = consensus_runtime.timestamp_storage_key(consensus_block_hash)?;
+        let timestamp_proof = self.consensus_client.read_proof(
+            consensus_block_hash,
+            &mut [timestamp_key.as_slice()].into_iter(),
+        )?;
+
         Ok(FraudProof::InvalidExtrinsicsRoot(
             InvalidExtrinsicsRootProof {
                 domain_id,
                 bad_receipt_hash,
                 valid_bundle_digests,
                 randomness_proof,
+                timestamp_proof,
             },
         ))
     }

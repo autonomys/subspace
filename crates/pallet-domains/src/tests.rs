@@ -880,6 +880,7 @@ fn test_invalid_domain_extrinsic_root_proof() {
             domain_id,
             bad_receipt_hash,
             Randomness::from([1u8; 32]),
+            1000,
         );
         let (consensus_block_number, consensus_block_hash) = (
             domain_block.execution_receipt.consensus_block_number,
@@ -895,23 +896,29 @@ fn test_invalid_domain_extrinsic_root_proof() {
     });
 }
 
-fn generate_invalid_domain_extrinsic_root_fraud_proof<T: Config>(
+fn generate_invalid_domain_extrinsic_root_fraud_proof<T: Config + pallet_timestamp::Config>(
     domain_id: DomainId,
     bad_receipt_hash: ReceiptHash,
     randomness: Randomness,
+    moment: Moment,
 ) -> (FraudProof<BlockNumberFor<T>, T::Hash>, T::Hash) {
-    let storage_key =
+    let randomness_storage_key =
         frame_support::storage::storage_prefix("Subspace".as_ref(), "BlockRandomness".as_ref())
             .to_vec();
+    let timestamp_key = pallet_timestamp::pallet::Now::<T>::storage_value_final_key().to_vec();
     let mut root = T::Hash::default();
     let mut mdb = PrefixedMemoryDB::<T::Hashing>::default();
     {
         let mut trie = TrieDBMutBuilderV1::new(&mut mdb, &mut root).build();
-        trie.insert(&storage_key, &randomness.encode()).unwrap();
+        trie.insert(&randomness_storage_key, &randomness.encode())
+            .unwrap();
+        trie.insert(&timestamp_key, &moment.encode()).unwrap();
     };
 
     let backend = TrieBackendBuilder::new(mdb, root).build();
-    let (root, randomness_proof) = storage_proof_for_key::<T, _>(backend, StorageKey(storage_key));
+    let (_, randomness_proof) =
+        storage_proof_for_key::<T, _>(backend.clone(), StorageKey(randomness_storage_key));
+    let (root, timestamp_proof) = storage_proof_for_key::<T, _>(backend, StorageKey(timestamp_key));
     let valid_bundle_digests = vec![ValidBundleDigest {
         bundle_index: 0,
         bundle_digest: vec![(Some(vec![1, 2, 3]), ExtrinsicDigest::Data(vec![4, 5, 6]))],
@@ -922,6 +929,7 @@ fn generate_invalid_domain_extrinsic_root_fraud_proof<T: Config>(
             bad_receipt_hash,
             randomness_proof,
             valid_bundle_digests,
+            timestamp_proof,
         }),
         root,
     )
