@@ -183,6 +183,10 @@ pub enum Subcommand {
 fn parse_timekeeper_cpu_cores(
     s: &str,
 ) -> Result<HashSet<usize>, Box<dyn std::error::Error + Send + Sync>> {
+    if s.is_empty() {
+        return Ok(HashSet::new());
+    }
+
     let mut cpu_cores = HashSet::new();
     for s in s.split(',') {
         let mut parts = s.split('-');
@@ -302,7 +306,7 @@ pub struct Cli {
     /// * `0,1` - use cores 0 and 1
     /// * `0-3` - use cores 0, 1, 2 and 3
     /// * `0,1,6-7` - use cores 0, 1, 6 and 7
-    #[arg(long, value_parser = parse_timekeeper_cpu_cores, verbatim_doc_comment)]
+    #[arg(long, default_value = "", value_parser = parse_timekeeper_cpu_cores, verbatim_doc_comment)]
     pub timekeeper_cpu_cores: HashSet<usize>,
 
     /// External entropy, used initially when PoT chain starts to derive the first seed
