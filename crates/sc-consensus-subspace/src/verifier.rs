@@ -60,14 +60,17 @@ pub enum VerificationError<Header: HeaderT> {
     VerificationError(Slot, subspace_verification::Error),
 }
 
-// TODO: Make this non-enum
 /// A header which has been checked
-enum CheckedHeader<H, S> {
-    /// A header which is fully checked, including signature. This is the pre-header
-    /// accompanied by the seal components.
+struct CheckedHeader<H> {
+    /// A header which is fully checked, including signature. This is the pre-header accompanied by
+    /// the seal components.
     ///
     /// Includes the digest item that encoded the seal.
-    Checked(H, S),
+    pre_header: H,
+    /// Pre-digest
+    pre_digest: PreDigest<FarmerPublicKey, FarmerPublicKey>,
+    /// Seal (signature)
+    seal: DigestItem,
 }
 
 /// Subspace verification parameters
@@ -79,14 +82,6 @@ where
     header: Header,
     /// Parameters for solution verification
     verify_solution_params: &'a VerifySolutionParams,
-}
-
-/// Information from verified header
-struct VerifiedHeaderInfo {
-    /// Pre-digest
-    pre_digest: PreDigest<FarmerPublicKey, FarmerPublicKey>,
-    /// Seal (signature)
-    seal: DigestItem,
 }
 
 /// Options for Subspace block verifier
@@ -233,8 +228,7 @@ where
         >,
         full_pot_verification: bool,
         justifications: &Option<Justifications>,
-    ) -> Result<CheckedHeader<Block::Header, VerifiedHeaderInfo>, VerificationError<Block::Header>>
-    {
+    ) -> Result<CheckedHeader<Block::Header>, VerificationError<Block::Header>> {
         let VerificationParams {
             mut header,
             verify_solution_params,
@@ -399,10 +393,11 @@ where
         )
         .map_err(|error| VerificationError::VerificationError(slot, error))?;
 
-        Ok(CheckedHeader::Checked(
-            header,
-            VerifiedHeaderInfo { pre_digest, seal },
-        ))
+        Ok(CheckedHeader {
+            pre_header: header,
+            pre_digest,
+            seal,
+        })
     }
 
     async fn check_and_report_equivocation(
@@ -571,44 +566,46 @@ where
             Box::new(full_pot_verification),
         );
 
-        match checked_header {
-            CheckedHeader::Checked(pre_header, verified_info) => {
-                let slot = verified_info.pre_digest.slot();
+        let CheckedHeader {
+            pre_header,
+            pre_digest,
+            seal,
+        } = checked_header;
 
-                // the header is valid but let's check if there was something else already
-                // proposed at the same slot by the given author. if there was, we will
-                // report the equivocation to the runtime.
-                if let Err(err) = self
-                    .check_and_report_equivocation(
-                        slot_now,
-                        slot,
-                        &block.header,
-                        &verified_info.pre_digest.solution().public_key,
-                        &block.origin,
-                    )
-                    .await
-                {
-                    warn!(
-                        target: "subspace",
-                        "Error checking/reporting Subspace equivocation: {}",
-                        err
-                    );
-                }
+        let slot = pre_digest.slot();
 
-                trace!(target: "subspace", "Checked {:?}; importing.", pre_header);
-                telemetry!(
-                    self.telemetry;
-                    CONSENSUS_TRACE;
-                    "subspace.checked_and_importing";
-                    "pre_header" => ?pre_header,
-                );
-
-                block.header = pre_header;
-                block.post_digests.push(verified_info.seal);
-                block.post_hash = Some(hash);
-
-                Ok(block)
-            }
+        // the header is valid but let's check if there was something else already proposed at the
+        // same slot by the given author. if there was, we will report the equivocation to the
+        // runtime.
+        if let Err(err) = self
+            .check_and_report_equivocation(
+                slot_now,
+                slot,
+                &block.header,
+                &pre_digest.solution().public_key,
+                &block.origin,
+            )
+            .await
+        {
+            warn!(
+                target: "subspace",
+                "Error checking/reporting Subspace equivocation: {}",
+                err
+            );
         }
+
+        trace!(target: "subspace", "Checked {:?}; importing.", pre_header);
+        telemetry!(
+            self.telemetry;
+            CONSENSUS_TRACE;
+            "subspace.checked_and_importing";
+            "pre_header" => ?pre_header,
+        );
+
+        block.header = pre_header;
+        block.post_digests.push(seal);
+        block.post_hash = Some(hash);
+
+        Ok(block)
     }
 }
