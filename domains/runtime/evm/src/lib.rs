@@ -603,6 +603,9 @@ construct_runtime!(
     pub struct Runtime {
         // System support stuff.
         System: frame_system = 0,
+        // Note: Ensure index of the timestamp matches with the index of timestamp on Consensus
+        //  so that consensus can constructed encoded extrinsic that matches with Domain encoded
+        //  extrinsic.
         Timestamp: pallet_timestamp = 1,
         ExecutivePallet: domain_pallet_executive = 2,
 

@@ -70,6 +70,11 @@ impl ExecutionPhase {
     }
 }
 
+/// Trait to derive extrinsics.
+pub trait DeriveExtrinsics<Moment> {
+    fn derive_timestamp_extrinsic(moment: Moment) -> Vec<u8>;
+}
+
 /// Error type of fraud proof verification on consensus node.
 #[derive(Debug)]
 #[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
@@ -482,6 +487,7 @@ impl InvalidTotalRewardsProof {
 /// Trait to get Storage keys.
 pub trait StorageKeys {
     fn block_randomness_key() -> StorageKey;
+    fn timestamp_storage_key() -> StorageKey;
 }
 
 /// This is a representation of actual Block Rewards storage in pallet-operator-rewards.
