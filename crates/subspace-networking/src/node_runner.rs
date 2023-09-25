@@ -17,9 +17,8 @@ use crate::protocols::request_response::request_response_factory::{
     Event as RequestResponseEvent, IfDisconnected,
 };
 use crate::shared::{Command, CreatedSubscription, NewPeerInfo, Shared};
-use crate::utils::{
-    is_global_address_or_dns, strip_peer_id, PeerAddress, ResizableSemaphorePermit,
-};
+use crate::utils::rate_limiter::resizable_semaphore::ResizableSemaphorePermit;
+use crate::utils::{is_global_address_or_dns, strip_peer_id, PeerAddress};
 use async_mutex::Mutex as AsyncMutex;
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;

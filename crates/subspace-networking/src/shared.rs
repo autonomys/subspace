@@ -4,7 +4,10 @@
 use crate::protocols::peer_info::PeerInfo;
 use crate::protocols::request_response::request_response_factory::RequestFailure;
 use crate::utils::multihash::Multihash;
-use crate::utils::{Handler, ResizableSemaphore, ResizableSemaphorePermit};
+use crate::utils::rate_limiter::resizable_semaphore::{
+    ResizableSemaphore, ResizableSemaphorePermit,
+};
+use crate::utils::Handler;
 use bytes::Bytes;
 use futures::channel::{mpsc, oneshot};
 use libp2p::gossipsub::{PublishError, Sha256Topic, SubscriptionError};
