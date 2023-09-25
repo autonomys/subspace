@@ -7,10 +7,7 @@ use crate::behavior::{
 };
 use crate::constructor;
 use crate::constructor::temporary_bans::TemporaryBans;
-use crate::constructor::{
-    ConnectedPeersHandler, LocalOnlyRecordStore, KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER,
-    REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER,
-};
+use crate::constructor::{ConnectedPeersHandler, LocalOnlyRecordStore};
 use crate::protocols::connected_peers::Event as ConnectedPeersEvent;
 use crate::protocols::peer_info::{Event as PeerInfoEvent, PeerInfoSuccess};
 use crate::protocols::request_response::request_response_factory::{
@@ -481,16 +478,10 @@ where
                     + 1;
                 if num_established_peer_connections > CONCURRENT_TASKS_BOOST_PEERS_THRESHOLD.get() {
                     // The peer count exceeded the threshold, bump up the quota.
-                    if let Err(error) = shared
-                        .kademlia_tasks_semaphore
-                        .expand(KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER)
-                    {
+                    if let Err(error) = shared.rate_limiter.expand_kademlia_semaphore() {
                         warn!(%error, "Failed to expand Kademlia concurrent tasks");
                     }
-                    if let Err(error) = shared
-                        .regular_tasks_semaphore
-                        .expand(REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER)
-                    {
+                    if let Err(error) = shared.rate_limiter.expand_regular_semaphore() {
                         warn!(%error, "Failed to expand regular concurrent tasks");
                     }
                 }
@@ -548,16 +539,10 @@ where
                 if num_established_peer_connections == CONCURRENT_TASKS_BOOST_PEERS_THRESHOLD.get()
                 {
                     // The previous peer count was over the threshold, reclaim the quota.
-                    if let Err(error) = shared
-                        .kademlia_tasks_semaphore
-                        .shrink(KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER)
-                    {
+                    if let Err(error) = shared.rate_limiter.shrink_kademlia_semaphore() {
                         warn!(%error, "Failed to shrink Kademlia concurrent tasks");
                     }
-                    if let Err(error) = shared
-                        .regular_tasks_semaphore
-                        .shrink(REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER)
-                    {
+                    if let Err(error) = shared.rate_limiter.shrink_regular_semaphore() {
                         warn!(%error, "Failed to shrink regular concurrent tasks");
                     }
                 }

@@ -266,7 +266,7 @@ impl Node {
         &self,
         key: Multihash,
     ) -> Result<impl Stream<Item = PeerRecord>, GetValueError> {
-        let permit = self.shared.kademlia_tasks_semaphore.acquire().await;
+        let permit = self.shared.rate_limiter.acquire_kademlia_permit().await;
         let (result_sender, result_receiver) = mpsc::unbounded();
 
         self.shared
@@ -289,7 +289,7 @@ impl Node {
         key: Multihash,
         value: Vec<u8>,
     ) -> Result<impl Stream<Item = ()>, PutValueError> {
-        let permit = self.shared.kademlia_tasks_semaphore.acquire().await;
+        let permit = self.shared.rate_limiter.acquire_kademlia_permit().await;
         let (result_sender, result_receiver) = mpsc::unbounded();
 
         self.shared
@@ -309,7 +309,7 @@ impl Node {
 
     /// Subcribe to some topic on the DSN.
     pub async fn subscribe(&self, topic: Sha256Topic) -> Result<TopicSubscription, SubscribeError> {
-        let permit = self.shared.regular_tasks_semaphore.acquire().await;
+        let permit = self.shared.rate_limiter.acquire_regular_permit().await;
         let (result_sender, result_receiver) = oneshot::channel();
 
         self.shared
@@ -337,7 +337,7 @@ impl Node {
 
     /// Subcribe a messgo to some topic on the DSN.
     pub async fn publish(&self, topic: Sha256Topic, message: Vec<u8>) -> Result<(), PublishError> {
-        let _permit = self.shared.regular_tasks_semaphore.acquire().await;
+        let _permit = self.shared.rate_limiter.acquire_regular_permit().await;
         let (result_sender, result_receiver) = oneshot::channel();
 
         self.shared
@@ -362,7 +362,7 @@ impl Node {
     where
         Request: GenericRequest,
     {
-        let _permit = self.shared.regular_tasks_semaphore.acquire().await;
+        let _permit = self.shared.rate_limiter.acquire_regular_permit().await;
         let (result_sender, result_receiver) = oneshot::channel();
         let command = Command::GenericRequest {
             peer_id,
@@ -383,7 +383,7 @@ impl Node {
         &self,
         key: Multihash,
     ) -> Result<impl Stream<Item = PeerId>, GetClosestPeersError> {
-        let permit = self.shared.kademlia_tasks_semaphore.acquire().await;
+        let permit = self.shared.rate_limiter.acquire_kademlia_permit().await;
         trace!(?key, "Starting 'GetClosestPeers' request.");
 
         let (result_sender, result_receiver) = mpsc::unbounded();
@@ -407,7 +407,7 @@ impl Node {
         &self,
         key: Multihash,
     ) -> Result<impl Stream<Item = PeerId>, GetProvidersError> {
-        let permit = self.shared.kademlia_tasks_semaphore.acquire().await;
+        let permit = self.shared.rate_limiter.acquire_kademlia_permit().await;
         let (result_sender, result_receiver) = mpsc::unbounded();
 
         trace!(?key, "Starting 'get_providers' request.");
