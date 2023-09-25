@@ -25,13 +25,14 @@ sp-runtime = { version = "24.0.0", default-features = false, git = "https://gith
 sp-std = { version = "8.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "fb2fd5da02ca6bc86ef7445708c55292084fecd8" }
 sp-version = { version = "22.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "fb2fd5da02ca6bc86ef7445708c55292084fecd8", features = ["serde"] }
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
+subspace-runtime-primitives = { version = "0.1.0", default-features = false, path = "../subspace-runtime-primitives" }
 
 [dev-dependencies]
 pallet-balances = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "fb2fd5da02ca6bc86ef7445708c55292084fecd8" }
+pallet-timestamp = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "fb2fd5da02ca6bc86ef7445708c55292084fecd8" }
 sp-state-machine = { version = "0.28.0", git = "https://github.com/subspace/polkadot-sdk", rev = "fb2fd5da02ca6bc86ef7445708c55292084fecd8" }
 sp-trie = { version = "22.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "fb2fd5da02ca6bc86ef7445708c55292084fecd8" }
 sp-externalities = { version = "0.19.0", git = "https://github.com/subspace/polkadot-sdk", rev = "fb2fd5da02ca6bc86ef7445708c55292084fecd8" }
-subspace-runtime-primitives = { version = "0.1.0", path = "../subspace-runtime-primitives" }
 
 [features]
 default = ["std"]
@@ -49,6 +50,7 @@ std = [
   "sp-std/std",
   "sp-version/std",
   "subspace-core-primitives/std",
+  "subspace-runtime-primitives/std",
 ]
 try-runtime = ["frame-support/try-runtime"]
 runtime-benchmarks = [

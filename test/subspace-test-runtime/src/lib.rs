@@ -657,6 +657,13 @@ parameter_types! {
     pub SudoId: AccountId = Sudo::key().expect("Sudo account must exist");
 }
 
+pub struct DeriveExtrinsics;
+impl sp_domains::fraud_proof::DeriveExtrinsics<Moment> for DeriveExtrinsics {
+    fn derive_timestamp_extrinsic(now: Moment) -> Vec<u8> {
+        pallet_timestamp::Call::<Runtime>::set { now }.encode()
+    }
+}
+
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type DomainNumber = DomainNumber;
@@ -682,6 +689,7 @@ impl pallet_domains::Config for Runtime {
     type MaxPendingStakingOperation = MaxPendingStakingOperation;
     type SudoId = SudoId;
     type Randomness = Subspace;
+    type DeriveExtrinsics = DeriveExtrinsics;
 }
 
 parameter_types! {

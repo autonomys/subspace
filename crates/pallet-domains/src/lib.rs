@@ -134,7 +134,7 @@ mod pallet {
     use frame_support::{Identity, PalletError};
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
-    use sp_domains::fraud_proof::FraudProof;
+    use sp_domains::fraud_proof::{DeriveExtrinsics, FraudProof};
     use sp_domains::inherents::{InherentError, InherentType, INHERENT_IDENTIFIER};
     use sp_domains::transaction::InvalidTransactionCode;
     use sp_domains::{
@@ -153,6 +153,7 @@ mod pallet {
     use sp_std::vec;
     use sp_std::vec::Vec;
     use subspace_core_primitives::U256;
+    use subspace_runtime_primitives::Moment;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -280,6 +281,9 @@ mod pallet {
 
         /// Randomness source.
         type Randomness: RandomnessT<Self::Hash, BlockNumberFor<Self>>;
+
+        /// Derive extrinsics trait impl.
+        type DeriveExtrinsics: DeriveExtrinsics<Moment>;
     }
 
     #[pallet::pallet]
