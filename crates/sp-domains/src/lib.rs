@@ -55,7 +55,7 @@ use subspace_runtime_primitives::{Balance, Moment};
 const KEY_TYPE: KeyTypeId = KeyTypeId(*b"oper");
 
 /// Extrinsics shuffling seed
-pub const EXTRINSICS_SHUFFLING_SEED: &[u8] = b"extrinsics-shuffling-seed";
+pub const DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT: &[u8] = b"extrinsics-shuffling-seed";
 
 mod app {
     use super::KEY_TYPE;
@@ -733,7 +733,7 @@ pub struct ValidBundle {
     /// Index of this bundle in the original list of bundles in the consensus block.
     pub bundle_index: u32,
     /// Hash of `Vec<(tx_signer, tx_hash)>` of all domain extrinsic being included in the bundle.
-    pub bundle_digest: H256,
+    pub bundle_digest_hash: H256,
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, Clone, PartialEq, Eq)]

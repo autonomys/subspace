@@ -294,7 +294,7 @@ where
                         .collect();
                     valid_bundles.push(ValidBundle {
                         bundle_index: index as u32,
-                        bundle_digest: BlakeTwo256::hash_of(&bundle_digest),
+                        bundle_digest_hash: BlakeTwo256::hash_of(&bundle_digest),
                     });
                     valid_extrinsics.extend(extrinsics);
                 }

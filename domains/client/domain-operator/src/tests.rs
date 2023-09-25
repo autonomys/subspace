@@ -1088,6 +1088,7 @@ async fn test_invalid_domain_extrinsics_root_proof_creation() {
 
     // When the domain node operator process the primary block that contains the `bad_submit_bundle_tx`,
     // it will generate and submit a fraud proof
+    let mut fraud_proof_submitted = false;
     while let Some(ready_tx_hash) = import_tx_stream.next().await {
         let ready_tx = ferdie
             .transaction_pool
@@ -1104,10 +1105,13 @@ async fn test_invalid_domain_extrinsics_root_proof_creation() {
             if let FraudProof::InvalidExtrinsicsRoot(InvalidExtrinsicsRootProof { .. }) =
                 *fraud_proof
             {
+                fraud_proof_submitted = true;
                 break;
             }
         }
     }
+
+    assert!(fraud_proof_submitted, "Fraud proof must be submitted");
 
     // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified on
     // on the runtime itself

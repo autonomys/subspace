@@ -1,6 +1,6 @@
 use crate::fraud_proof::{ExtrinsicDigest, InvalidExtrinsicsRootProof, StorageKeys};
 use crate::valued_trie_root::valued_ordered_trie_root;
-use crate::{ExecutionReceipt, EXTRINSICS_SHUFFLING_SEED};
+use crate::{ExecutionReceipt, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT};
 use domain_runtime_primitives::opaque::AccountId;
 use frame_support::PalletError;
 use hash_db::Hasher;
@@ -126,18 +126,18 @@ where
         ..
     } = fraud_proof;
 
-    let mut ext_values = Vec::new();
+    let mut bundle_extrinsics_digests = Vec::new();
     for (valid_bundle, bundle_digest) in bad_receipt
         .valid_bundles
         .into_iter()
         .zip(valid_bundle_digests)
     {
         let bundle_digest_hash = BlakeTwo256::hash_of(&bundle_digest.bundle_digest);
-        if bundle_digest_hash != valid_bundle.bundle_digest {
+        if bundle_digest_hash != valid_bundle.bundle_digest_hash {
             return Err(VerificationError::InvalidBundleDigest);
         }
 
-        ext_values.extend(bundle_digest.bundle_digest.clone());
+        bundle_extrinsics_digests.extend(bundle_digest.bundle_digest.clone());
     }
 
     let storage_key = SK::block_randomness_key();
@@ -153,7 +153,7 @@ where
         H256::decode(&mut extrinsics_shuffling_seed::<Hashing>(block_randomness).as_ref())
             .map_err(|_| VerificationError::FailedToDecode)?;
     let ordered_extrinsics = deduplicate_and_shuffle_extrinsics(
-        ext_values,
+        bundle_extrinsics_digests,
         Randomness::from(shuffling_seed.to_fixed_bytes()),
     );
     let ordered_trie_node_values = ordered_extrinsics
@@ -177,7 +177,7 @@ fn extrinsics_shuffling_seed<Hashing>(block_randomness: Randomness) -> Hashing::
 where
     Hashing: Hasher,
 {
-    let mut subject = EXTRINSICS_SHUFFLING_SEED.to_vec();
+    let mut subject = DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT.to_vec();
     subject.extend_from_slice(block_randomness.as_ref());
     Hashing::hash(&subject)
 }
