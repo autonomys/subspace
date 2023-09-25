@@ -428,6 +428,7 @@ where
                     );
                 })
                 .checked_sub(confirmation_depth_k)
+                .filter(|&blocks_to_archive_to| blocks_to_archive_to >= blocks_to_archive_from)
                 .or({
                     if have_last_segment_header {
                         None
