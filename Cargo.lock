@@ -7487,7 +7487,6 @@ dependencies = [
  "log",
  "pallet-balances",
  "pallet-offences-subspace",
- "pallet-timestamp",
  "parity-scale-codec",
  "rand 0.8.5",
  "scale-info",
@@ -10922,30 +10921,6 @@ dependencies = [
  "sp-core",
  "sp-externalities",
  "thiserror",
-]
-
-[[package]]
-name = "sp-lightclient"
-version = "0.1.0"
-dependencies = [
- "frame-support",
- "futures",
- "parity-scale-codec",
- "rand 0.8.5",
- "scale-info",
- "schnorrkel",
- "sp-arithmetic",
- "sp-consensus-slots",
- "sp-consensus-subspace",
- "sp-io",
- "sp-runtime",
- "sp-std",
- "subspace-archiving",
- "subspace-core-primitives",
- "subspace-erasure-coding",
- "subspace-farmer-components",
- "subspace-proof-of-space",
- "subspace-verification",
 ]
 
 [[package]]

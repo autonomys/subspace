@@ -179,7 +179,6 @@ pub enum Subcommand {
     Benchmark(frame_benchmarking_cli::BenchmarkCmd),
 }
 
-#[cfg(feature = "pot")]
 fn parse_pot_external_entropy(s: &str) -> Result<Vec<u8>, hex::FromHexError> {
     hex::decode(s)
 }
@@ -266,12 +265,10 @@ pub struct Cli {
 
     /// Assigned PoT role for this node.
     #[arg(long)]
-    #[cfg(feature = "pot")]
     pub timekeeper: bool,
 
     /// External entropy, used initially when PoT chain starts to derive the first seed
     #[arg(long, value_parser = parse_pot_external_entropy)]
-    #[cfg(feature = "pot")]
     pub pot_external_entropy: Option<Vec<u8>>,
 }
 

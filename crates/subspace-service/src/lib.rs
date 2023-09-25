@@ -33,14 +33,12 @@ pub mod tx_pre_validator;
 use crate::dsn::{create_dsn_instance, DsnConfigurationError};
 use crate::metrics::NodeMetrics;
 use crate::tx_pre_validator::ConsensusChainTxPreValidator;
-#[cfg(feature = "pot")]
 use core::sync::atomic::{AtomicU32, Ordering};
 use cross_domain_message_gossip::cdm_gossip_peers_set_config;
 use domain_runtime_primitives::{BlockNumber as DomainNumber, Hash as DomainHash};
 pub use dsn::DsnConfig;
 use frame_system_rpc_runtime_api::AccountNonceApi;
 use futures::channel::oneshot;
-#[cfg(feature = "pot")]
 use futures::executor::block_on;
 use futures::FutureExt;
 use jsonrpsee::RpcModule;
@@ -61,11 +59,8 @@ use sc_consensus_subspace::{
 };
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
-#[cfg(feature = "pot")]
 use sc_proof_of_time::source::gossip::pot_gossip_peers_set_config;
-#[cfg(feature = "pot")]
 use sc_proof_of_time::source::PotSourceWorker;
-#[cfg(feature = "pot")]
 use sc_proof_of_time::verifier::PotVerifier;
 use sc_service::error::Error as ServiceError;
 use sc_service::{Configuration, NetworkStarter, SpawnTasksParams, TaskManager};
@@ -79,33 +74,26 @@ use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderMetadata;
 use sp_consensus::Error as ConsensusError;
 use sp_consensus_slots::Slot;
-#[cfg(feature = "pot")]
 use sp_consensus_subspace::digests::extract_pre_digest;
-#[cfg(feature = "pot")]
-use sp_consensus_subspace::PotExtension;
-use sp_consensus_subspace::{FarmerPublicKey, KzgExtension, PosExtension, SubspaceApi};
+use sp_consensus_subspace::{
+    FarmerPublicKey, KzgExtension, PosExtension, PotExtension, SubspaceApi,
+};
 use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::transaction::PreValidationObjectApi;
 use sp_domains::{DomainsApi, GenerateGenesisStateRoot, GenesisReceiptExtension};
 use sp_externalities::Extensions;
 use sp_objects::ObjectsApi;
 use sp_offchain::OffchainWorkerApi;
-use sp_runtime::traits::{Block as BlockT, BlockIdTo, NumberFor};
-#[cfg(feature = "pot")]
-use sp_runtime::traits::{Header, Zero};
+use sp_runtime::traits::{Block as BlockT, BlockIdTo, Header, NumberFor, Zero};
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use static_assertions::const_assert;
 use std::marker::PhantomData;
-#[cfg(feature = "pot")]
 use std::num::NonZeroUsize;
 use std::sync::Arc;
-#[cfg(feature = "pot")]
 use std::time::Duration;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
-#[cfg(feature = "pot")]
-use subspace_core_primitives::PotSeed;
-use subspace_core_primitives::REWARD_SIGNING_CONTEXT;
+use subspace_core_primitives::{PotSeed, REWARD_SIGNING_CONTEXT};
 use subspace_fraud_proof::verifier_api::VerifierClient;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::libp2p::multiaddr::Protocol;
@@ -123,9 +111,7 @@ const_assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<u64>());
 
 /// This is over 15 minutes of slots assuming there are no forks, should be both sufficient and not
 /// too large to handle
-#[cfg(feature = "pot")]
 const POT_VERIFIER_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(10_000).expect("Not zero; qed");
-#[cfg(feature = "pot")]
 const SYNC_TARGET_UPDATE_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Error type for Subspace service.
@@ -235,15 +221,12 @@ pub struct SubspaceConfiguration {
     /// instead of the default substrate handler.
     pub enable_subspace_block_relay: bool,
     /// Is this node a Timekeeper
-    #[cfg(feature = "pot")]
     pub is_timekeeper: bool,
 }
 
 struct SubspaceExtensionsFactory<PosTable, Client> {
     kzg: Kzg,
-    #[cfg_attr(not(feature = "pot"), allow(dead_code))]
     client: Arc<Client>,
-    #[cfg(feature = "pot")]
     pot_verifier: PotVerifier,
     domain_genesis_receipt_ext: Option<Arc<dyn GenerateGenesisStateRoot>>,
     _pos_table: PhantomData<PosTable>,
@@ -265,7 +248,6 @@ where
         let mut exts = Extensions::new();
         exts.register(KzgExtension::new(self.kzg.clone()));
         exts.register(PosExtension::new::<PosTable>());
-        #[cfg(feature = "pot")]
         exts.register(PotExtension::new({
             let client = Arc::clone(&self.client);
             let pot_verifier = self.pot_verifier.clone();
@@ -412,10 +394,8 @@ where
     /// Segment headers store
     pub segment_headers_store: SegmentHeadersStore<FullClient<RuntimeApi, ExecutorDispatch>>,
     /// Proof of time verifier
-    #[cfg(feature = "pot")]
     pub pot_verifier: PotVerifier,
     /// Approximate target block number for syncing purposes
-    #[cfg(feature = "pot")]
     pub sync_target_block_number: Arc<AtomicU32>,
     /// Telemetry
     pub telemetry: Option<Telemetry>,
@@ -448,7 +428,7 @@ pub fn new_partial<PosTable, RuntimeApi, ExecutorDispatch>(
             NativeElseWasmExecutor<ExecutorDispatch>,
         ) -> Arc<dyn GenerateGenesisStateRoot>,
     >,
-    #[cfg(feature = "pot")] pot_external_entropy: &[u8],
+    pot_external_entropy: &[u8],
 ) -> Result<PartialComponents<RuntimeApi, ExecutorDispatch>, ServiceError>
 where
     PosTable: Table,
@@ -495,7 +475,6 @@ where
 
     let client = Arc::new(client);
 
-    #[cfg(feature = "pot")]
     let pot_verifier = PotVerifier::new(
         PotSeed::from_genesis(client.info().genesis_hash.as_ref(), pot_external_entropy),
         POT_VERIFIER_CACHE_SIZE,
@@ -504,7 +483,6 @@ where
         SubspaceExtensionsFactory::<PosTable, _> {
             kzg: kzg.clone(),
             client: Arc::clone(&client),
-            #[cfg(feature = "pot")]
             pot_verifier: pot_verifier.clone(),
             domain_genesis_receipt_ext,
             _pos_table: PhantomData,
@@ -593,12 +571,10 @@ where
             }
         },
         segment_headers_store.clone(),
-        #[cfg(feature = "pot")]
         pot_verifier.clone(),
     )?;
 
     let slot_duration = subspace_link.slot_duration();
-    #[cfg(feature = "pot")]
     let sync_target_block_number = Arc::new(AtomicU32::new(0));
     let verifier = SubspaceVerifier::<PosTable, _, _, _, _>::new(SubspaceVerifierOptions {
         client: client.clone(),
@@ -613,10 +589,8 @@ where
         telemetry: telemetry.as_ref().map(|x| x.handle()),
         offchain_tx_pool_factory: OffchainTransactionPoolFactory::new(transaction_pool.clone()),
         reward_signing_context: schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT),
-        #[cfg(feature = "pot")]
         sync_target_block_number: Arc::clone(&sync_target_block_number),
         is_authoring_blocks: config.role.is_authority(),
-        #[cfg(feature = "pot")]
         pot_verifier: pot_verifier.clone(),
     })?;
     let import_queue = BasicQueue::new(
@@ -631,9 +605,7 @@ where
         block_import: Box::new(block_import),
         subspace_link,
         segment_headers_store,
-        #[cfg(feature = "pot")]
         pot_verifier,
-        #[cfg(feature = "pot")]
         sync_target_block_number,
         telemetry,
     };
@@ -744,9 +716,7 @@ where
         block_import,
         subspace_link,
         segment_headers_store,
-        #[cfg(feature = "pot")]
         pot_verifier,
-        #[cfg(feature = "pot")]
         sync_target_block_number,
         mut telemetry,
     } = other;
@@ -864,7 +834,6 @@ where
     };
     let mut net_config = sc_network::config::FullNetworkConfiguration::new(&config.base.network);
     net_config.add_notification_protocol(cdm_gossip_peers_set_config());
-    #[cfg(feature = "pot")]
     net_config.add_notification_protocol(pot_gossip_peers_set_config());
     let sync_mode = Arc::clone(&net_config.network_config.sync_mode);
     let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
@@ -880,7 +849,6 @@ where
             block_relay,
         })?;
 
-    #[cfg(feature = "pot")]
     task_manager.spawn_handle().spawn(
         "sync-target-follower",
         None,
@@ -1003,7 +971,6 @@ where
     let block_importing_notification_stream = subspace_link.block_importing_notification_stream();
     let archived_segment_notification_stream = subspace_link.archived_segment_notification_stream();
 
-    #[cfg(feature = "pot")]
     let pot_slot_info_stream = {
         let (pot_source_worker, pot_gossip_worker, pot_slot_info_stream) = PotSourceWorker::new(
             config.is_timekeeper,
@@ -1074,9 +1041,7 @@ where
             max_block_proposal_slot_portion: None,
             telemetry: telemetry.as_ref().map(|x| x.handle()),
             offchain_tx_pool_factory,
-            #[cfg(feature = "pot")]
             pot_verifier,
-            #[cfg(feature = "pot")]
             pot_slot_info_stream,
         };
 

@@ -40,10 +40,6 @@ subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-spac
 
 [features]
 default = ["std"]
-pot = [
-    "sp-consensus-subspace/pot",
-    "subspace-verification/pot",
-]
 std = [
     "codec/std",
     "scale-info/std",

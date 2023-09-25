@@ -83,12 +83,6 @@ substrate-build-script-utils = { version = "3.0.0", git = "https://github.com/su
 
 [features]
 default = []
-pot = [
-	"sc-consensus-subspace/pot",
-	"sp-consensus-subspace/pot",
-	"subspace-runtime/pot",
-	"subspace-service/pot",
-]
 do-not-enforce-cost-of-storage = [
 	"subspace-runtime/do-not-enforce-cost-of-storage"
 ]

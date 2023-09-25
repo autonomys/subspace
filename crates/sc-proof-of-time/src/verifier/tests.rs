@@ -1,13 +1,9 @@
 use crate::verifier::PotVerifier;
 use sp_consensus_slots::Slot;
-#[cfg(feature = "pot")]
 use sp_consensus_subspace::PotParametersChange;
-#[cfg(feature = "pot")]
 use std::mem;
 use std::num::{NonZeroU32, NonZeroUsize};
-#[cfg(feature = "pot")]
-use subspace_core_primitives::Blake3Hash;
-use subspace_core_primitives::PotSeed;
+use subspace_core_primitives::{Blake3Hash, PotSeed};
 
 const SEED: [u8; 16] = [
     0xd6, 0x66, 0xcc, 0xd8, 0xd5, 0x93, 0xc2, 0x3d, 0xa8, 0xdb, 0x6b, 0x5b, 0x14, 0x13, 0xb1, 0x3a,
@@ -25,13 +21,11 @@ async fn test_basic() {
     assert!(
         verifier
             .is_output_valid(
-                #[cfg(feature = "pot")]
                 Slot::from(1),
                 genesis_seed,
                 slot_iterations,
                 Slot::from(1),
                 checkpoints_1.output(),
-                #[cfg(feature = "pot")]
                 None
             )
             .await
@@ -46,13 +40,11 @@ async fn test_basic() {
     assert!(
         !verifier
             .is_output_valid(
-                #[cfg(feature = "pot")]
                 Slot::from(1),
                 genesis_seed,
                 slot_iterations,
                 Slot::from(2),
                 checkpoints_1.output(),
-                #[cfg(feature = "pot")]
                 None
             )
             .await
@@ -61,13 +53,11 @@ async fn test_basic() {
     assert!(
         !verifier
             .is_output_valid(
-                #[cfg(feature = "pot")]
                 Slot::from(1),
                 checkpoints_1.output().seed(),
                 slot_iterations,
                 Slot::from(1),
                 checkpoints_1.output(),
-                #[cfg(feature = "pot")]
                 None
             )
             .await
@@ -92,13 +82,11 @@ async fn test_basic() {
     assert!(
         verifier
             .is_output_valid(
-                #[cfg(feature = "pot")]
                 Slot::from(2),
                 seed_1,
                 slot_iterations,
                 Slot::from(1),
                 checkpoints_2.output(),
-                #[cfg(feature = "pot")]
                 None
             )
             .await
@@ -106,13 +94,11 @@ async fn test_basic() {
     assert!(
         verifier
             .is_output_valid(
-                #[cfg(feature = "pot")]
                 Slot::from(1),
                 genesis_seed,
                 slot_iterations,
                 Slot::from(2),
                 checkpoints_2.output(),
-                #[cfg(feature = "pot")]
                 None
             )
             .await
@@ -127,13 +113,11 @@ async fn test_basic() {
     assert!(
         !verifier
             .is_output_valid(
-                #[cfg(feature = "pot")]
                 Slot::from(1),
                 seed_1,
                 slot_iterations,
                 Slot::from(2),
                 checkpoints_2.output(),
-                #[cfg(feature = "pot")]
                 None
             )
             .await
@@ -142,13 +126,11 @@ async fn test_basic() {
     assert!(
         !verifier
             .is_output_valid(
-                #[cfg(feature = "pot")]
                 Slot::from(1),
                 seed_1,
                 slot_iterations,
                 Slot::from(2),
                 checkpoints_2.output(),
-                #[cfg(feature = "pot")]
                 None
             )
             .await
@@ -157,7 +139,6 @@ async fn test_basic() {
     assert!(
         !verifier
             .is_output_valid(
-                #[cfg(feature = "pot")]
                 Slot::from(1),
                 genesis_seed,
                 slot_iterations
@@ -165,14 +146,12 @@ async fn test_basic() {
                     .unwrap(),
                 Slot::from(2),
                 checkpoints_2.output(),
-                #[cfg(feature = "pot")]
                 None
             )
             .await
     );
 }
 
-#[cfg(feature = "pot")]
 #[tokio::test]
 async fn parameters_change() {
     let genesis_seed = PotSeed::from(SEED);

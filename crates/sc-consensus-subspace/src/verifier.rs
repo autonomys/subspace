@@ -1,23 +1,15 @@
 //! Subspace block import implementation
 
-use crate::Error;
-#[cfg(feature = "pot")]
-use crate::SUBSPACE_FULL_POT_VERIFICATION_INTERMEDIATE;
-#[cfg(feature = "pot")]
+use crate::{Error, SUBSPACE_FULL_POT_VERIFICATION_INTERMEDIATE};
 use futures::stream::FuturesUnordered;
-#[cfg(feature = "pot")]
 use futures::StreamExt;
 use log::{debug, info, trace, warn};
-#[cfg(feature = "pot")]
 use rand::prelude::*;
 use sc_client_api::backend::AuxStore;
 use sc_consensus::block_import::BlockImportParams;
 use sc_consensus::import_queue::Verifier;
 use sc_consensus_slots::check_equivocation;
-#[cfg(feature = "pot")]
 use sc_proof_of_time::verifier::PotVerifier;
-#[cfg(not(feature = "pot"))]
-use sc_telemetry::CONSENSUS_DEBUG;
 use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_TRACE};
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use schnorrkel::context::SigningContext;
@@ -29,15 +21,12 @@ use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{
     extract_subspace_digest_items, CompatibleDigestItem, PreDigest, SubspaceDigestItems,
 };
-#[cfg(feature = "pot")]
-use sp_consensus_subspace::{ChainConstants, SubspaceJustification};
-use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi};
+use sp_consensus_subspace::{
+    ChainConstants, FarmerPublicKey, FarmerSignature, SubspaceApi, SubspaceJustification,
+};
 use sp_runtime::traits::NumberFor;
-use sp_runtime::DigestItem;
-#[cfg(feature = "pot")]
-use sp_runtime::Justifications;
+use sp_runtime::{DigestItem, Justifications};
 use std::marker::PhantomData;
-#[cfg(feature = "pot")]
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::Kzg;
@@ -58,15 +47,12 @@ pub enum VerificationError<Header: HeaderT> {
     #[error("Bad reward signature on {0:?}")]
     BadRewardSignature(Header::Hash),
     /// Invalid Subspace justification
-    #[cfg(feature = "pot")]
     #[error("Invalid Subspace justification: {0}")]
     InvalidSubspaceJustification(codec::Error),
     /// Invalid Subspace justification contents
-    #[cfg(feature = "pot")]
     #[error("Invalid Subspace justification contents")]
     InvalidSubspaceJustificationContents,
     /// Invalid proof of time
-    #[cfg(feature = "pot")]
     #[error("Invalid proof of time")]
     InvalidProofOfTime,
     /// Verification error
@@ -74,12 +60,9 @@ pub enum VerificationError<Header: HeaderT> {
     VerificationError(Slot, subspace_verification::Error),
 }
 
+// TODO: Make this non-enum
 /// A header which has been checked
 enum CheckedHeader<H, S> {
-    /// A header which has slot in the future. this is the full header (not stripped)
-    /// and the slot in which it should be processed.
-    #[cfg(not(feature = "pot"))]
-    Deferred(H, Slot),
     /// A header which is fully checked, including signature. This is the pre-header
     /// accompanied by the seal components.
     ///
@@ -94,10 +77,6 @@ where
 {
     /// The header being verified.
     header: Header,
-    /// The slot number of the current time.
-    // TODO: Remove field once PoT is the only option
-    #[cfg(not(feature = "pot"))]
-    slot_now: Slot,
     /// Parameters for solution verification
     verify_solution_params: &'a VerifySolutionParams,
 }
@@ -133,12 +112,10 @@ where
     /// Context for reward signing
     pub reward_signing_context: SigningContext,
     /// Approximate target block number for syncing purposes
-    #[cfg(feature = "pot")]
     pub sync_target_block_number: Arc<AtomicU32>,
     /// Whether this node is authoring blocks
     pub is_authoring_blocks: bool,
     /// Proof of time verifier
-    #[cfg(feature = "pot")]
     pub pot_verifier: PotVerifier,
 }
 
@@ -154,13 +131,10 @@ where
     slot_now: SlotNow,
     telemetry: Option<TelemetryHandle>,
     offchain_tx_pool_factory: OffchainTransactionPoolFactory<Block>,
-    #[cfg(feature = "pot")]
     chain_constants: ChainConstants,
     reward_signing_context: SigningContext,
-    #[cfg(feature = "pot")]
     sync_target_block_number: Arc<AtomicU32>,
     is_authoring_blocks: bool,
-    #[cfg(feature = "pot")]
     pot_verifier: PotVerifier,
     _pos_table: PhantomData<PosTable>,
     _block: PhantomData<Block>,
@@ -188,14 +162,11 @@ where
             telemetry,
             offchain_tx_pool_factory,
             reward_signing_context,
-            #[cfg(feature = "pot")]
             sync_target_block_number,
             is_authoring_blocks,
-            #[cfg(feature = "pot")]
             pot_verifier,
         } = options;
 
-        #[cfg(feature = "pot")]
         let chain_constants = client
             .runtime_api()
             .chain_constants(client.info().best_hash)?;
@@ -207,13 +178,10 @@ where
             slot_now,
             telemetry,
             offchain_tx_pool_factory,
-            #[cfg(feature = "pot")]
             chain_constants,
             reward_signing_context,
-            #[cfg(feature = "pot")]
             sync_target_block_number,
             is_authoring_blocks,
-            #[cfg(feature = "pot")]
             pot_verifier,
             _pos_table: Default::default(),
             _block: Default::default(),
@@ -221,7 +189,6 @@ where
     }
 
     /// Determine if full proof of time verification is needed for this block number
-    #[cfg(feature = "pot")]
     fn full_pot_verification(&self, block_number: NumberFor<Block>) -> bool {
         let sync_target_block_number: BlockNumber =
             self.sync_target_block_number.load(Ordering::Relaxed);
@@ -264,14 +231,12 @@ where
             FarmerPublicKey,
             FarmerSignature,
         >,
-        #[cfg(feature = "pot")] full_pot_verification: bool,
-        #[cfg(feature = "pot")] justifications: &Option<Justifications>,
+        full_pot_verification: bool,
+        justifications: &Option<Justifications>,
     ) -> Result<CheckedHeader<Block::Header, VerifiedHeaderInfo>, VerificationError<Block::Header>>
     {
         let VerificationParams {
             mut header,
-            #[cfg(not(feature = "pot"))]
-            slot_now,
             verify_solution_params,
         } = params;
 
@@ -290,16 +255,9 @@ where
         // The pre-hash of the header doesn't include the seal and that's what we sign
         let pre_hash = header.hash();
 
-        #[cfg(not(feature = "pot"))]
-        if slot > slot_now {
-            header.digest_mut().push(seal);
-            return Ok(CheckedHeader::Deferred(header, slot));
-        }
-
         // The case where we have justifications is a happy case because we can verify most things
         // right away and more efficiently than without justifications. But justifications are not
         // always available, so fallback is still needed.
-        #[cfg(feature = "pot")]
         if let Some(subspace_justification) = justifications.as_ref().and_then(|justifications| {
             justifications
                 .iter()
@@ -377,13 +335,9 @@ where
             // verification
         }
 
-        #[cfg(feature = "pot")]
         let slot_iterations;
-        #[cfg(feature = "pot")]
         let pot_seed;
-        #[cfg(feature = "pot")]
         let next_slot = slot + Slot::from(1);
-        #[cfg(feature = "pot")]
         // The change to number of iterations might have happened before `next_slot`
         if let Some(parameters_change) = subspace_digest_items.pot_parameters_change
             && parameters_change.slot <= next_slot
@@ -408,7 +362,6 @@ where
         // Here during stateless verification we do not have access to parent block, thus only
         // verify proofs after proof of time of at current slot up until future proof of time
         // (inclusive), during block import we verify the rest.
-        #[cfg(feature = "pot")]
         if full_pot_verification
             && !self
                 .pot_verifier
@@ -587,7 +540,6 @@ where
 
         let slot_now = (self.slot_now)();
 
-        #[cfg(feature = "pot")]
         let full_pot_verification = self.full_pot_verification(*block.header.number());
 
         // Stateless header verification only. This means only check that header contains required
@@ -601,27 +553,19 @@ where
             .check_header(
                 VerificationParams {
                     header: block.header.clone(),
-                    #[cfg(not(feature = "pot"))]
-                    slot_now: slot_now + 1,
                     verify_solution_params: &VerifySolutionParams {
-                        #[cfg(not(feature = "pot"))]
-                        global_randomness: subspace_digest_items.global_randomness,
-                        #[cfg(feature = "pot")]
                         proof_of_time: subspace_digest_items.pre_digest.pot_info().proof_of_time(),
                         solution_range: subspace_digest_items.solution_range,
                         piece_check_params: None,
                     },
                 },
                 subspace_digest_items,
-                #[cfg(feature = "pot")]
                 full_pot_verification,
-                #[cfg(feature = "pot")]
                 &block.justifications,
             )
             .await
             .map_err(Error::<Block::Header>::from)?;
 
-        #[cfg(feature = "pot")]
         block.intermediates.insert(
             SUBSPACE_FULL_POT_VERIFICATION_INTERMEDIATE.into(),
             Box::new(full_pot_verification),
@@ -664,17 +608,6 @@ where
                 block.post_hash = Some(hash);
 
                 Ok(block)
-            }
-            #[cfg(not(feature = "pot"))]
-            CheckedHeader::Deferred(a, b) => {
-                debug!(target: "subspace", "Checking {:?} failed; {:?}, {:?}.", hash, a, b);
-                telemetry!(
-                    self.telemetry;
-                    CONSENSUS_DEBUG;
-                    "subspace.header_too_far_in_future";
-                    "hash" => ?hash, "a" => ?a, "b" => ?b
-                );
-                Err(Error::<Block::Header>::TooFarInFuture(hash).into())
             }
         }
     }

@@ -29,13 +29,12 @@ use sp_arithmetic::traits::SaturatedConversion;
 use subspace_archiving::archiver;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::crypto::{
-    blake2b_256_254_hash_to_scalar, blake2b_256_hash_list, blake2b_256_hash_with_key,
-    blake3_hash_list, Scalar,
+    blake2b_256_254_hash_to_scalar, blake2b_256_hash_with_key, blake3_hash_list, Scalar,
 };
 use subspace_core_primitives::{
     Blake2b256Hash, Blake3Hash, BlockNumber, BlockWeight, HistorySize, PotOutput, PublicKey,
-    Randomness, Record, RewardSignature, SectorId, SectorSlotChallenge, SegmentCommitment,
-    SlotNumber, Solution, SolutionRange,
+    Record, RewardSignature, SectorId, SectorSlotChallenge, SegmentCommitment, SlotNumber,
+    Solution, SolutionRange,
 };
 use subspace_proof_of_space::Table;
 
@@ -163,11 +162,7 @@ pub struct PieceCheckParams {
 /// Parameters for solution verification
 #[derive(Debug, Clone, Encode, Decode, MaxEncodedLen)]
 pub struct VerifySolutionParams {
-    /// Global randomness
-    #[cfg(not(feature = "pot"))]
-    pub global_randomness: Randomness,
     /// Proof of time for which solution is built
-    #[cfg(feature = "pot")]
     pub proof_of_time: PotOutput,
     /// Solution range
     pub solution_range: SolutionRange,
@@ -195,9 +190,6 @@ where
     PublicKey: From<&'a FarmerPublicKey>,
 {
     let VerifySolutionParams {
-        #[cfg(not(feature = "pot"))]
-        global_randomness,
-        #[cfg(feature = "pot")]
         proof_of_time,
         solution_range,
         piece_check_params,
@@ -208,7 +200,6 @@ where
         solution.sector_index,
     );
 
-    #[cfg(feature = "pot")]
     let global_randomness = proof_of_time.derive_global_randomness();
     let global_challenge = global_randomness.derive_global_challenge(slot);
     let sector_slot_challenge = sector_id.derive_sector_slot_challenge(&global_challenge);
@@ -324,18 +315,6 @@ where
     }
 
     Ok(solution_distance)
-}
-
-/// Derive on-chain randomness from solution.
-// TODO: Remove once PoT is enabled by default
-pub fn derive_randomness<PublicKey, RewardAddress>(
-    solution: &Solution<PublicKey, RewardAddress>,
-    slot: SlotNumber,
-) -> Randomness {
-    Randomness::from(blake2b_256_hash_list(&[
-        &solution.chunk.to_bytes(),
-        &slot.to_le_bytes(),
-    ]))
 }
 
 /// Derive proof of time entropy from chunk and proof of time for injection purposes.
