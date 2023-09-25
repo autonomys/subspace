@@ -20,6 +20,7 @@
 
 use codec::{Decode, Encode};
 use cross_domain_message_gossip::GossipWorkerBuilder;
+use domain_runtime_primitives::opaque::Block as DomainBlock;
 use domain_runtime_primitives::BlockNumber as DomainNumber;
 use futures::channel::mpsc;
 use futures::{select, FutureExt, StreamExt};
@@ -173,7 +174,7 @@ pub fn node_config(
 
 type StorageChanges = sp_api::StorageChanges<Block>;
 
-type TxPreValidator = ConsensusChainTxPreValidator<Block, Client, FraudProofVerifier>;
+type TxPreValidator = ConsensusChainTxPreValidator<Block, DomainBlock, Client, FraudProofVerifier>;
 
 struct MockExtensionsFactory(Arc<dyn GenerateGenesisStateRoot>);
 
@@ -223,7 +224,7 @@ pub struct MockConsensusNode {
     /// Block import pipeline
     #[allow(clippy::type_complexity)]
     block_import: MockBlockImport<
-        FraudProofBlockImport<Block, Client, Arc<Client>, FraudProofVerifier, DomainNumber, H256>,
+        FraudProofBlockImport<Block, DomainBlock, Client, Arc<Client>, FraudProofVerifier>,
         Client,
         Block,
     >,

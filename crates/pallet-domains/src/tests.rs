@@ -3,7 +3,8 @@ use crate::domain_registry::{DomainConfig, DomainObject};
 use crate::{
     self as pallet_domains, BalanceOf, BlockTree, BundleError, Config, ConsensusBlockHash,
     DomainBlocks, DomainRegistry, ExecutionInbox, ExecutionReceiptOf, FraudProofError,
-    FungibleHoldId, HeadReceiptNumber, NextDomainId, Operator, OperatorStatus, Operators,
+    FraudProofOf, FungibleHoldId, HeadReceiptNumber, NextDomainId, Operator, OperatorStatus,
+    Operators,
 };
 use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::dispatch::RawOrigin;
@@ -784,7 +785,7 @@ fn generate_invalid_total_rewards_fraud_proof<T: Config>(
     domain_id: DomainId,
     bad_receipt_hash: ReceiptHash,
     rewards: BalanceOf<T>,
-) -> (FraudProof<BlockNumberFor<T>, T::Hash>, T::Hash) {
+) -> (FraudProofOf<T>, T::Hash) {
     let storage_key = sp_domains::fraud_proof::operator_block_rewards_final_key();
     let mut root = T::Hash::default();
     let mut mdb = PrefixedMemoryDB::<T::Hashing>::default();

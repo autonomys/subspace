@@ -15,6 +15,7 @@ include = [
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
+domain-runtime-primitives = { version = "0.1.0", path = "../../domains/primitives/runtime" }
 evm-domain-test-runtime = { version = "0.1.0", path = "../../domains/test/runtime/evm" }
 fp-evm = { version = "3.0.0-dev", git = "https://github.com/subspace/frontier", rev = "e74fdd2de2a1d5749c067d6fd8e244e405b256e1" }
 futures = "0.3.28"

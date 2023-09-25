@@ -89,6 +89,7 @@ pub(super) async fn start_worker<
         + sp_api::ApiExt<Block>,
     CClient: HeaderBackend<CBlock>
         + HeaderMetadata<CBlock, Error = sp_blockchain::Error>
+        + ProofProvider<CBlock>
         + BlockBackend<CBlock>
         + ProvideRuntimeApi<CBlock>
         + BlockchainEvents<CBlock>

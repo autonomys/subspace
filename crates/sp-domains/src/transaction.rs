@@ -40,7 +40,7 @@ where
     Block: BlockT,
 {
     Null,
-    FraudProof(FraudProof<NumberFor<Block>, Block::Hash>),
+    FraudProof(FraudProof<NumberFor<Block>, Block::Hash, DomainNumber, DomainHash>),
     Bundle(OpaqueBundle<NumberFor<Block>, Block::Hash, DomainNumber, DomainHash, Balance>),
 }
 

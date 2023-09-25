@@ -150,6 +150,7 @@ where
         + HeaderMetadata<CBlock, Error = sp_blockchain::Error>
         + BlockBackend<CBlock>
         + ProvideRuntimeApi<CBlock>
+        + ProofProvider<CBlock>
         + 'static,
     CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>
         + MessengerApi<CBlock, NumberFor<CBlock>>

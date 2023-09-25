@@ -88,6 +88,13 @@ pub type OpaqueBundleOf<T> = OpaqueBundle<
     BalanceOf<T>,
 >;
 
+pub type FraudProofOf<T> = FraudProof<
+    BlockNumberFor<T>,
+    <T as frame_system::Config>::Hash,
+    <T as Config>::DomainNumber,
+    <T as Config>::DomainHash,
+>;
+
 /// Parameters used to verify proof of election.
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
 pub(crate) struct ElectionVerificationParams<Balance> {
@@ -108,8 +115,7 @@ mod pallet {
     };
     use crate::runtime_registry::{
         do_register_runtime, do_schedule_runtime_upgrade, do_upgrade_runtimes,
-        register_runtime_at_genesis, Error as RuntimeRegistryError, RuntimeObject,
-        ScheduledRuntimeUpgrade,
+        register_runtime_at_genesis, Error as RuntimeRegistryError, ScheduledRuntimeUpgrade,
     };
     use crate::staking::{
         do_auto_stake_block_rewards, do_deregister_operator, do_nominate_operator,
@@ -123,7 +129,8 @@ mod pallet {
     };
     use crate::weights::WeightInfo;
     use crate::{
-        BalanceOf, ElectionVerificationParams, HoldIdentifier, NominatorId, OpaqueBundleOf,
+        BalanceOf, ElectionVerificationParams, FraudProofOf, HoldIdentifier, NominatorId,
+        OpaqueBundleOf,
     };
     use codec::FullCodec;
     use frame_support::pallet_prelude::*;
@@ -133,11 +140,10 @@ mod pallet {
     use frame_support::{Identity, PalletError};
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
-    use sp_domains::fraud_proof::FraudProof;
     use sp_domains::transaction::InvalidTransactionCode;
     use sp_domains::{
         BundleDigest, DomainId, EpochIndex, GenesisDomain, OperatorId, ReceiptHash, RuntimeId,
-        RuntimeType,
+        RuntimeObject, RuntimeType,
     };
     use sp_runtime::traits::{
         AtLeast32BitUnsigned, BlockNumberProvider, Bounded, CheckEqual, CheckedAdd, MaybeDisplay,
@@ -432,6 +438,11 @@ mod pallet {
         DomainObject<BlockNumberFor<T>, T::AccountId>,
         OptionQuery,
     >;
+
+    /// A handy mapping of `domain_id` -> `runtime_id`, used in fraud proof to generate storage
+    /// proof of the domain runtime code.
+    #[pallet::storage]
+    pub(super) type DomainRuntimeMap<T> = StorageMap<_, Identity, DomainId, RuntimeId, OptionQuery>;
 
     /// The domain block tree, map (`domain_id`, `domain_block_number`) to the hash of a domain blocks,
     /// which can be used get the domain block in `DomainBlocks`
@@ -841,7 +852,7 @@ mod pallet {
         #[pallet::weight((Weight::from_all(10_000), Pays::No))]
         pub fn submit_fraud_proof(
             origin: OriginFor<T>,
-            fraud_proof: Box<FraudProof<BlockNumberFor<T>, T::Hash>>,
+            fraud_proof: Box<FraudProofOf<T>>,
         ) -> DispatchResult {
             ensure_none(origin)?;
 
@@ -1304,8 +1315,7 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn runtime_id(domain_id: DomainId) -> Option<RuntimeId> {
-        DomainRegistry::<T>::get(domain_id)
-            .map(|domain_object| domain_object.domain_config.runtime_id)
+        DomainRuntimeMap::<T>::get(domain_id)
     }
 
     pub fn domain_instance_data(
@@ -1478,9 +1488,7 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    fn validate_fraud_proof(
-        fraud_proof: &FraudProof<BlockNumberFor<T>, T::Hash>,
-    ) -> Result<(), FraudProofError> {
+    fn validate_fraud_proof(fraud_proof: &FraudProofOf<T>) -> Result<(), FraudProofError> {
         let bad_receipt = DomainBlocks::<T>::get(fraud_proof.bad_receipt_hash())
             .ok_or(FraudProofError::BadReceiptNotFound)?
             .execution_receipt;
@@ -1718,7 +1726,7 @@ where
     }
 
     /// Submits an unsigned extrinsic [`Call::submit_fraud_proof`].
-    pub fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<BlockNumberFor<T>, T::Hash>) {
+    pub fn submit_fraud_proof_unsigned(fraud_proof: FraudProofOf<T>) {
         let call = Call::submit_fraud_proof {
             fraud_proof: Box::new(fraud_proof),
         };

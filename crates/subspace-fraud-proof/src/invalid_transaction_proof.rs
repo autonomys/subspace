@@ -83,7 +83,7 @@ where
     for storage_key in storage_keys.into_iter() {
         let storage_value =
             read_trie_value::<LayoutV1<BlakeTwo256>, _>(&db, state_root, &storage_key, None, None)
-                .map_err(|_| VerificationError::InvalidStorageProof)?
+                .map_err(|_| sp_domains::storage_proof::VerificationError::InvalidProof)?
                 .ok_or_else(|| VerificationError::StateNotFound(storage_key.clone()))?;
         top_storage_map.insert(storage_key, storage_value);
     }

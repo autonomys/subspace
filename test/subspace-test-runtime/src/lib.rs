@@ -1098,7 +1098,7 @@ fn extract_receipts(
 fn extract_fraud_proofs(
     extrinsics: Vec<UncheckedExtrinsic>,
     domain_id: DomainId,
-) -> Vec<FraudProof<NumberFor<Block>, Hash>> {
+) -> Vec<FraudProof<NumberFor<Block>, Hash, DomainNumber, DomainHash>> {
     // TODO: Ensure fraud proof extrinsic is infallible.
     extrinsics
         .into_iter()

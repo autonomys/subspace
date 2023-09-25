@@ -4,6 +4,7 @@ use crate::verifier_api::VerifierApi;
 use crate::ProofVerifier;
 use codec::Encode;
 use domain_block_builder::{BlockBuilder, RecordProof};
+use domain_runtime_primitives::opaque::Block as DomainBlock;
 use domain_runtime_primitives::{DomainCoreApi, Hash};
 use domain_test_service::domain::EvmDomainClient as DomainClient;
 use domain_test_service::evm_domain_test_runtime::Header;
@@ -268,7 +269,7 @@ async fn execution_proof_creation_and_verification_should_work() {
         TestVerifierClient::new(ferdie.client.clone(), alice.client.clone()),
     );
 
-    let proof_verifier = ProofVerifier::<Block, _, _>::new(
+    let proof_verifier = ProofVerifier::<Block, DomainBlock, _, _>::new(
         Arc::new(invalid_transaction_proof_verifier),
         Arc::new(invalid_state_transition_proof_verifier),
     );
@@ -555,7 +556,7 @@ async fn invalid_execution_proof_should_not_work() {
         TestVerifierClient::new(ferdie.client.clone(), alice.client.clone()),
     );
 
-    let proof_verifier = ProofVerifier::<Block, _, _>::new(
+    let proof_verifier = ProofVerifier::<Block, DomainBlock, _, _>::new(
         Arc::new(invalid_transaction_proof_verifier),
         Arc::new(invalid_state_transition_proof_verifier),
     );

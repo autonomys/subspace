@@ -3,6 +3,7 @@ use crate::utils::to_number_primitive;
 use crate::ExecutionReceiptFor;
 use codec::{Decode, Encode};
 use domain_block_builder::{BlockBuilder, RecordProof};
+use domain_runtime_primitives::DomainCoreApi;
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
@@ -10,15 +11,17 @@ use sp_core::traits::CodeExecutor;
 use sp_core::H256;
 use sp_domains::fraud_proof::{
     ExecutionPhase, FraudProof, InvalidBundlesFraudProof, InvalidStateTransitionProof,
-    InvalidTotalRewardsProof, MissingInvalidBundleEntryFraudProof,
+    InvalidTotalRewardsProof, MissingBundleAdditionalData, MissingInvalidBundleEntryFraudProof,
     ValidAsInvalidBundleEntryFraudProof,
 };
-use sp_domains::DomainId;
+use sp_domains::storage_proof::{DomainRuntimeCodeWithProof, OpaqueBundleWithProof};
+use sp_domains::{DomainId, DomainsApi, ExecutionReceipt, InvalidBundleType};
 use sp_runtime::traits::{Block as BlockT, HashingFor, Header as HeaderT, NumberFor};
 use sp_runtime::Digest;
 use sp_trie::StorageProof;
 use std::marker::PhantomData;
 use std::sync::Arc;
+use subspace_core_primitives::U256;
 use subspace_fraud_proof::invalid_state_transition_proof::ExecutionProver;
 
 /// Error type for fraud proof generation.
@@ -30,6 +33,22 @@ pub enum FraudProofError {
     InvalidTraceIndex { index: usize, max: usize },
     #[error("Invalid extrinsic index for creating the execution proof, got: {index}, max: {max}")]
     InvalidExtrinsicIndex { index: usize, max: usize },
+    #[error(
+        "Invalid bundle index for creating the invalid bundles proof, got: {index}, max: {max}"
+    )]
+    InvalidBundleIndex { index: usize, max: usize },
+    #[error(
+        "Missing bundle for creating the invalid bundles proof, for: {index}, max: {max_bundles}"
+    )]
+    MissingBundle { index: usize, max_bundles: usize },
+    #[error("No tx in the bundle with index {bundle_index} is out of range")]
+    NoOutOfRangeTx { bundle_index: usize },
+    #[error("Unable to decode extrinsic with index {extrinsic_index} in bundle {bundle_index}")]
+    UnableToDecodeExtrinsic {
+        extrinsic_index: usize,
+        bundle_index: usize,
+        decoding_error: codec::Error,
+    },
     #[error(transparent)]
     Blockchain(#[from] sp_blockchain::Error),
     #[error(transparent)]
@@ -69,8 +88,14 @@ where
         + ProvideRuntimeApi<Block>
         + ProofProvider<Block>
         + 'static,
-    Client::Api: sp_block_builder::BlockBuilder<Block> + sp_api::ApiExt<Block>,
-    CClient: HeaderBackend<CBlock> + 'static,
+    Client::Api:
+        sp_block_builder::BlockBuilder<Block> + sp_api::ApiExt<Block> + DomainCoreApi<Block>,
+    CClient: HeaderBackend<CBlock>
+        + BlockBackend<CBlock>
+        + 'static
+        + ProvideRuntimeApi<CBlock>
+        + ProofProvider<CBlock>,
+    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
     Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
     E: CodeExecutor,
 {
@@ -94,7 +119,7 @@ where
         domain_id: DomainId,
         local_receipt: &ExecutionReceiptFor<Block, CBlock>,
         bad_receipt_hash: H256,
-    ) -> Result<FraudProof<NumberFor<PCB>, PCB::Hash>, FraudProofError>
+    ) -> Result<FraudProof<NumberFor<PCB>, PCB::Hash, NumberFor<Block>, Block::Hash>, FraudProofError>
     where
         PCB: BlockT,
     {
@@ -110,17 +135,137 @@ where
         }))
     }
 
-    pub(crate) fn generate_invalid_bundle_field_proof<PCB>(
+    fn generate_out_of_range_tx_in_bundle_fraud_proof(
         &self,
         domain_id: DomainId,
-        _local_receipt: &ExecutionReceiptFor<Block, CBlock>,
+        local_receipt: &ExecutionReceiptFor<Block, CBlock>,
+        bundle_index: u32,
+        bad_receipt_hash: H256,
+        consensus_block_hash: &CBlock::Hash,
+        runtime_code_with_proof: DomainRuntimeCodeWithProof,
+    ) -> Result<
+        FraudProof<NumberFor<CBlock>, CBlock::Hash, NumberFor<Block>, Block::Hash>,
+        FraudProofError,
+    > {
+        let out_of_range_bundle = {
+            let extrinsics = self
+                .consensus_client
+                .block_body(*consensus_block_hash)?
+                .ok_or_else(|| {
+                    sp_blockchain::Error::Backend(format!(
+                        "BlockBody of {consensus_block_hash:?} unavailable"
+                    ))
+                })?;
+            let bundles = self
+                .consensus_client
+                .runtime_api()
+                .extract_successful_bundles(*consensus_block_hash, domain_id, extrinsics)?;
+            bundles
+                .get(bundle_index as usize)
+                .ok_or(FraudProofError::MissingBundle {
+                    index: bundle_index as usize,
+                    max_bundles: bundles.len(),
+                })?
+                .clone()
+        };
+
+        let tx_range = self
+            .consensus_client
+            .runtime_api()
+            .domain_tx_range(local_receipt.consensus_block_hash, domain_id)?;
+
+        let bundle_vrf_hash = U256::from_be_bytes(
+            out_of_range_bundle
+                .sealed_header
+                .header
+                .proof_of_election
+                .vrf_hash(),
+        );
+
+        let parent_domain_block_hash = {
+            let header = self
+                .client
+                .header(local_receipt.domain_block_hash)?
+                .ok_or_else(|| {
+                    sp_blockchain::Error::Backend(format!(
+                        "Header of {:?} unavailable",
+                        local_receipt.domain_block_hash
+                    ))
+                })?;
+            *header.parent_hash()
+        };
+
+        let mut extrinsic_index = None;
+        for (index, opaque_extrinsic) in out_of_range_bundle.extrinsics.iter().enumerate() {
+            // TODO: Handle the error
+            let extrinsic =
+                <<Block as BlockT>::Extrinsic>::decode(&mut opaque_extrinsic.encode().as_slice())
+                    .map_err(|e| FraudProofError::UnableToDecodeExtrinsic {
+                    extrinsic_index: index,
+                    bundle_index: bundle_index as usize,
+                    decoding_error: e,
+                })?;
+            let is_within_tx_range = self.client.runtime_api().is_within_tx_range(
+                parent_domain_block_hash,
+                &extrinsic,
+                &bundle_vrf_hash,
+                &tx_range,
+            )?;
+            if !is_within_tx_range {
+                extrinsic_index = Some(index as u32);
+                break;
+            }
+        }
+
+        if extrinsic_index.is_none() {
+            return Err(FraudProofError::NoOutOfRangeTx {
+                bundle_index: bundle_index as usize,
+            });
+        }
+
+        let bundle_with_proof = OpaqueBundleWithProof::generate(
+            self.consensus_client.as_ref(),
+            domain_id,
+            *consensus_block_hash,
+            out_of_range_bundle,
+            bundle_index,
+        )?;
+
+        Ok(FraudProof::InvalidBundles(
+            InvalidBundlesFraudProof::MissingInvalidBundleEntry(
+                MissingInvalidBundleEntryFraudProof::new(
+                    domain_id,
+                    bad_receipt_hash,
+                    consensus_block_hash.clone(),
+                    parent_domain_block_hash,
+                    bundle_index,
+                    bundle_with_proof,
+                    runtime_code_with_proof,
+                    MissingBundleAdditionalData::OutOfRangeTx {
+                        extrinsic_index: extrinsic_index.expect("checked for None above; qed"),
+                    },
+                ),
+            ),
+        ))
+    }
+
+    pub(crate) fn generate_invalid_bundle_field_proof(
+        &self,
+        domain_id: DomainId,
+        local_receipt: &ExecutionReceiptFor<Block, CBlock>,
         mismatch_type: InvalidBundlesMismatchType,
         bundle_index: u32,
-        _bad_receipt_hash: H256,
-    ) -> Result<FraudProof<NumberFor<PCB>, PCB::Hash>, FraudProofError>
-    where
-        PCB: BlockT,
-    {
+        bad_receipt_hash: H256,
+    ) -> Result<
+        FraudProof<NumberFor<CBlock>, CBlock::Hash, NumberFor<Block>, Block::Hash>,
+        FraudProofError,
+    > {
+        let ExecutionReceipt {
+            consensus_block_hash,
+            invalid_bundles,
+            ..
+        } = local_receipt;
+
         match mismatch_type {
             // TODO: Generate a proper proof once fields are in place
             InvalidBundlesMismatchType::ValidAsInvalid => Ok(FraudProof::InvalidBundles(
@@ -129,12 +274,64 @@ where
                     bundle_index,
                 )),
             )),
-            // TODO: Generate a proper proof once fields are in place
-            InvalidBundlesMismatchType::InvalidAsValid => Ok(FraudProof::InvalidBundles(
-                InvalidBundlesFraudProof::MissingInvalidBundleEntry(
-                    MissingInvalidBundleEntryFraudProof::new(domain_id, bundle_index),
-                ),
-            )),
+            InvalidBundlesMismatchType::InvalidAsValid => {
+                let invalid_bundle = invalid_bundles.get(bundle_index as usize).ok_or(
+                    FraudProofError::InvalidBundleIndex {
+                        index: bundle_index as usize,
+                        max: local_receipt.invalid_bundles.len(),
+                    },
+                )?;
+
+                let parent_consensus_block_hash = {
+                    let header = self
+                        .consensus_client
+                        .header(*consensus_block_hash)?
+                        .ok_or_else(|| {
+                            sp_blockchain::Error::Backend(format!(
+                                "Header of {consensus_block_hash:?} unavailable"
+                            ))
+                        })?;
+                    *header.parent_hash()
+                };
+
+                let runtime_id = self
+                    .consensus_client
+                    .runtime_api()
+                    .runtime_id(parent_consensus_block_hash, domain_id)?
+                    .ok_or_else(|| {
+                        sp_blockchain::Error::Application(
+                            format!(
+                                "runtime_id of {domain_id:?} not found, this should not happen"
+                            )
+                            .into(),
+                        )
+                    })?;
+                // NOTE: we use the parent consensus block here, see the comment of `DomainRuntimeCodeWithProof`
+                // for more detail.
+                let runtime_code_with_proof = DomainRuntimeCodeWithProof::generate(
+                    self.consensus_client.as_ref(),
+                    domain_id,
+                    runtime_id,
+                    parent_consensus_block_hash,
+                )?;
+
+                match invalid_bundle.invalid_bundle_type {
+                    InvalidBundleType::OutOfRangeTx => self
+                        .generate_out_of_range_tx_in_bundle_fraud_proof(
+                            domain_id,
+                            local_receipt,
+                            bundle_index,
+                            bad_receipt_hash,
+                            consensus_block_hash,
+                            runtime_code_with_proof,
+                        ),
+                    // TODO: Add fraud proof for illegal tx
+                    _ => Ok(FraudProof::Dummy {
+                        domain_id,
+                        bad_receipt_hash: Default::default(),
+                    }),
+                }
+            }
         }
     }
 
@@ -144,7 +341,7 @@ where
         local_trace_index: u32,
         local_receipt: &ExecutionReceiptFor<Block, CBlock>,
         bad_receipt_hash: H256,
-    ) -> Result<FraudProof<NumberFor<PCB>, PCB::Hash>, FraudProofError>
+    ) -> Result<FraudProof<NumberFor<PCB>, PCB::Hash, NumberFor<Block>, Block::Hash>, FraudProofError>
     where
         PCB: BlockT,
     {

@@ -1,9 +1,10 @@
+use crate::storage_proof::{DomainRuntimeCodeWithProof, OpaqueBundleWithProof};
 use crate::{DomainId, ReceiptHash, SealedBundleHeader};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
 use sp_core::H256;
-use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
+use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT, Zero};
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
 use subspace_core_primitives::BlockNumber;
@@ -155,8 +156,8 @@ pub enum VerificationError {
     Client(#[from] sp_blockchain::Error),
     /// Invalid storage proof.
     #[cfg(feature = "std")]
-    #[cfg_attr(feature = "thiserror", error("Invalid stroage proof"))]
-    InvalidStorageProof,
+    #[cfg_attr(feature = "thiserror", error("Invalid stroage proof: {0:?}"))]
+    InvalidStorageProof(#[from] crate::storage_proof::VerificationError),
     /// Can not find signer from the domain extrinsic.
     #[cfg_attr(
         feature = "thiserror",
@@ -179,20 +180,56 @@ pub enum VerificationError {
         error("Oneshot error when verifying fraud proof in tx pool: {0}")
     )]
     Oneshot(String),
+    #[cfg_attr(feature = "thiserror", error("Tx is in range: {extrinsic_index}"))]
+    TxIsInRange { extrinsic_index: u32 },
 }
 
-// TODO: Define rest of the fraud proof fields
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct MissingInvalidBundleEntryFraudProof {
-    domain_id: DomainId,
-    bundle_index: u32,
+pub enum MissingBundleAdditionalData {
+    OutOfRangeTx { extrinsic_index: u32 },
 }
 
-impl MissingInvalidBundleEntryFraudProof {
-    pub fn new(domain_id: DomainId, bundle_index: u32) -> Self {
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub struct MissingInvalidBundleEntryFraudProof<Number, Hash, DomainNumber, DomainHash> {
+    pub domain_id: DomainId,
+    pub bad_receipt_hash: H256,
+    pub consensus_block_hash: Hash,
+    pub parent_domain_block_hash: DomainHash,
+    pub bundle_index: u32,
+    pub opaque_bundle_with_proof:
+        OpaqueBundleWithProof<Number, Hash, DomainNumber, DomainHash, Balance>,
+    pub runtime_code_with_proof: DomainRuntimeCodeWithProof,
+    pub additional_data: MissingBundleAdditionalData,
+}
+
+impl<Number, Hash, DomainNumber, DomainHash>
+    MissingInvalidBundleEntryFraudProof<Number, Hash, DomainNumber, DomainHash>
+{
+    pub fn new(
+        domain_id: DomainId,
+        bad_receipt_hash: H256,
+        consensus_block_hash: Hash,
+        parent_domain_block_hash: DomainHash,
+        bundle_index: u32,
+        opaque_bundle_with_proof: OpaqueBundleWithProof<
+            Number,
+            Hash,
+            DomainNumber,
+            DomainHash,
+            Balance,
+        >,
+        runtime_code_with_proof: DomainRuntimeCodeWithProof,
+        additional_data: MissingBundleAdditionalData,
+    ) -> Self {
         Self {
             domain_id,
+            bad_receipt_hash,
+            consensus_block_hash,
+            parent_domain_block_hash,
             bundle_index,
+            opaque_bundle_with_proof,
+            runtime_code_with_proof,
+            additional_data,
         }
     }
 }
@@ -215,12 +252,16 @@ impl ValidAsInvalidBundleEntryFraudProof {
 
 /// Fraud proof indicating that `invalid_bundles` field of the receipt is incorrect
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub enum InvalidBundlesFraudProof {
-    MissingInvalidBundleEntry(MissingInvalidBundleEntryFraudProof),
+pub enum InvalidBundlesFraudProof<Number, Hash, DomainNumber, DomainHash> {
+    MissingInvalidBundleEntry(
+        MissingInvalidBundleEntryFraudProof<Number, Hash, DomainNumber, DomainHash>,
+    ),
     ValidAsInvalid(ValidAsInvalidBundleEntryFraudProof),
 }
 
-impl InvalidBundlesFraudProof {
+impl<Number, Hash, DomainNumber, DomainHash>
+    InvalidBundlesFraudProof<Number, Hash, DomainNumber, DomainHash>
+{
     pub fn domain_id(&self) -> DomainId {
         match self {
             InvalidBundlesFraudProof::MissingInvalidBundleEntry(proof) => proof.domain_id,
@@ -233,7 +274,7 @@ impl InvalidBundlesFraudProof {
 // TODO: Revisit when fraud proof v2 is implemented.
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub enum FraudProof<Number, Hash> {
+pub enum FraudProof<Number, Hash, DomainNumber, DomainHash> {
     InvalidStateTransition(InvalidStateTransitionProof),
     InvalidTransaction(InvalidTransactionProof),
     BundleEquivocation(BundleEquivocationProof<Number, Hash>),
@@ -247,10 +288,16 @@ pub enum FraudProof<Number, Hash> {
         /// Hash of the bad receipt this fraud proof targeted
         bad_receipt_hash: ReceiptHash,
     },
-    InvalidBundles(InvalidBundlesFraudProof),
+    InvalidBundles(InvalidBundlesFraudProof<Number, Hash, DomainNumber, DomainHash>),
 }
 
-impl<Number, Hash> FraudProof<Number, Hash> {
+impl<Number, Hash, DomainNumber, DomainHash> FraudProof<Number, Hash, DomainNumber, DomainHash>
+where
+    Number: Encode + Zero,
+    Hash: Encode + Default,
+    DomainNumber: Encode + Zero,
+    DomainHash: Clone + Encode + Default,
+{
     pub fn domain_id(&self) -> DomainId {
         match self {
             Self::InvalidStateTransition(proof) => proof.domain_id,
@@ -287,19 +334,13 @@ impl<Number, Hash> FraudProof<Number, Hash> {
     pub fn dummy_fraud_proof(
         domain_id: DomainId,
         bad_receipt_hash: ReceiptHash,
-    ) -> FraudProof<Number, Hash> {
+    ) -> FraudProof<Number, Hash, DomainNumber, DomainHash> {
         FraudProof::Dummy {
             domain_id,
             bad_receipt_hash,
         }
     }
-}
 
-impl<Number, Hash> FraudProof<Number, Hash>
-where
-    Number: Encode,
-    Hash: Encode,
-{
     pub fn hash(&self) -> H256 {
         BlakeTwo256::hash(&self.encode())
     }

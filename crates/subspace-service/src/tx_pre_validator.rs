@@ -1,4 +1,3 @@
-use domain_runtime_primitives::{BlockNumber as DomainNumber, Hash as DomainHash};
 use sc_transaction_pool::error::Result as TxPoolResult;
 use sc_transaction_pool_api::error::Error as TxPoolError;
 use sc_transaction_pool_api::TransactionSource;
@@ -7,20 +6,21 @@ use sp_core::traits::SpawnNamed;
 use sp_domains::transaction::{
     InvalidTransactionCode, PreValidationObject, PreValidationObjectApi,
 };
-use sp_runtime::traits::Block as BlockT;
+use sp_runtime::traits::{Block as BlockT, NumberFor};
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_fraud_proof::VerifyFraudProof;
 use subspace_transaction_pool::PreValidateTransaction;
 
-pub struct ConsensusChainTxPreValidator<Block, Client, Verifier> {
+pub struct ConsensusChainTxPreValidator<Block, DomainBlock, Client, Verifier> {
     client: Arc<Client>,
     spawner: Box<dyn SpawnNamed>,
     fraud_proof_verifier: Verifier,
-    _phantom_data: PhantomData<Block>,
+    _phantom_data: PhantomData<(Block, DomainBlock)>,
 }
 
-impl<Block, Client, Verifier> Clone for ConsensusChainTxPreValidator<Block, Client, Verifier>
+impl<Block, DomainBlock, Client, Verifier> Clone
+    for ConsensusChainTxPreValidator<Block, DomainBlock, Client, Verifier>
 where
     Verifier: Clone,
 {
@@ -34,7 +34,9 @@ where
     }
 }
 
-impl<Block, Client, Verifier> ConsensusChainTxPreValidator<Block, Client, Verifier> {
+impl<Block, DomainBlock, Client, Verifier>
+    ConsensusChainTxPreValidator<Block, DomainBlock, Client, Verifier>
+{
     pub fn new(
         client: Arc<Client>,
         spawner: Box<dyn SpawnNamed>,
@@ -50,13 +52,14 @@ impl<Block, Client, Verifier> ConsensusChainTxPreValidator<Block, Client, Verifi
 }
 
 #[async_trait::async_trait]
-impl<Block, Client, Verifier> PreValidateTransaction
-    for ConsensusChainTxPreValidator<Block, Client, Verifier>
+impl<Block, DomainBlock, Client, Verifier> PreValidateTransaction
+    for ConsensusChainTxPreValidator<Block, DomainBlock, Client, Verifier>
 where
     Block: BlockT,
+    DomainBlock: BlockT,
     Client: ProvideRuntimeApi<Block> + Send + Sync,
-    Client::Api: PreValidationObjectApi<Block, DomainNumber, DomainHash>,
-    Verifier: VerifyFraudProof<Block> + Clone + Send + Sync + 'static,
+    Client::Api: PreValidationObjectApi<Block, NumberFor<DomainBlock>, DomainBlock::Hash>,
+    Verifier: VerifyFraudProof<Block, DomainBlock> + Clone + Send + Sync + 'static,
 {
     type Block = Block;
     async fn pre_validate_transaction(
@@ -79,7 +82,7 @@ where
                 // TODO: perhaps move the bundle format check here
             }
             PreValidationObject::FraudProof(fraud_proof) => {
-                subspace_fraud_proof::validate_fraud_proof_in_tx_pool(
+                subspace_fraud_proof::validate_fraud_proof_in_tx_pool::<Block, _, _>(
                     &self.spawner,
                     self.fraud_proof_verifier.clone(),
                     fraud_proof,

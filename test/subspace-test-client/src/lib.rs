@@ -21,6 +21,7 @@
 pub mod chain_spec;
 pub mod domain_chain_spec;
 
+use domain_runtime_primitives::opaque::Block as DomainBlock;
 use futures::executor::block_on;
 use futures::StreamExt;
 use sc_client_api::{BlockBackend, HeaderBackend};
@@ -78,7 +79,7 @@ pub type Backend = sc_service::TFullBackend<Block>;
 pub type FraudProofVerifier =
     subspace_service::FraudProofVerifier<subspace_test_runtime::RuntimeApi, TestExecutorDispatch>;
 
-type TxPreValidator = ConsensusChainTxPreValidator<Block, Client, FraudProofVerifier>;
+type TxPreValidator = ConsensusChainTxPreValidator<Block, DomainBlock, Client, FraudProofVerifier>;
 
 /// Run a farmer.
 pub fn start_farmer<PosTable>(new_full: &NewFull<Client, TxPreValidator>)

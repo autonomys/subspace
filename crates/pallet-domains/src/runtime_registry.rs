@@ -7,7 +7,7 @@ use frame_support::PalletError;
 use frame_system::pallet_prelude::*;
 use scale_info::TypeInfo;
 use sp_core::Hasher;
-use sp_domains::{DomainsDigestItem, RuntimeId, RuntimeType};
+use sp_domains::{DomainsDigestItem, RuntimeId, RuntimeObject, RuntimeType};
 use sp_runtime::traits::{CheckedAdd, Get};
 use sp_runtime::DigestItem;
 use sp_std::vec::Vec;
@@ -23,18 +23,6 @@ pub enum Error {
     MissingRuntimeObject,
     RuntimeUpgradeAlreadyScheduled,
     MaxScheduledBlockNumber,
-}
-
-#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
-pub struct RuntimeObject<Number, Hash> {
-    pub runtime_name: Vec<u8>,
-    pub runtime_type: RuntimeType,
-    pub runtime_upgrades: u32,
-    pub hash: Hash,
-    pub code: Vec<u8>,
-    pub version: RuntimeVersion,
-    pub created_at: Number,
-    pub updated_at: Number,
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]

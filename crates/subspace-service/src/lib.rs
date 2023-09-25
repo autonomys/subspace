@@ -36,6 +36,7 @@ use crate::tx_pre_validator::ConsensusChainTxPreValidator;
 #[cfg(feature = "pot")]
 use core::sync::atomic::{AtomicU32, Ordering};
 use cross_domain_message_gossip::cdm_gossip_peers_set_config;
+use domain_runtime_primitives::opaque::Block as DomainBlock;
 use domain_runtime_primitives::{BlockNumber as DomainNumber, Hash as DomainHash};
 pub use dsn::DsnConfig;
 use frame_system_rpc_runtime_api::AccountNonceApi;
@@ -195,6 +196,7 @@ pub type InvalidStateTransitionProofVerifier<RuntimeApi, ExecutorDispatch> =
 
 pub type FraudProofVerifier<RuntimeApi, ExecutorDispatch> = subspace_fraud_proof::ProofVerifier<
     Block,
+    DomainBlock,
     InvalidTransactionProofVerifier<RuntimeApi, ExecutorDispatch>,
     InvalidStateTransitionProofVerifier<RuntimeApi, ExecutorDispatch>,
 >;
@@ -431,6 +433,7 @@ type PartialComponents<RuntimeApi, ExecutorDispatch> = sc_service::PartialCompon
         FullClient<RuntimeApi, ExecutorDispatch>,
         ConsensusChainTxPreValidator<
             Block,
+            DomainBlock,
             FullClient<RuntimeApi, ExecutorDispatch>,
             FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
         >,
@@ -698,6 +701,7 @@ type FullNode<RuntimeApi, ExecutorDispatch> = NewFull<
     FullClient<RuntimeApi, ExecutorDispatch>,
     ConsensusChainTxPreValidator<
         Block,
+        DomainBlock,
         FullClient<RuntimeApi, ExecutorDispatch>,
         FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
     >,

@@ -4,7 +4,8 @@ use crate::block_tree::import_genesis_receipt;
 use crate::pallet::DomainStakingSummary;
 use crate::staking::StakingSummary;
 use crate::{
-    Config, DomainRegistry, ExecutionReceiptOf, HoldIdentifier, NextDomainId, RuntimeRegistry,
+    Config, DomainRegistry, DomainRuntimeMap, ExecutionReceiptOf, HoldIdentifier, NextDomainId,
+    RuntimeRegistry,
 };
 use codec::{Decode, Encode};
 use frame_support::traits::fungible::{Inspect, MutateHold};
@@ -125,9 +126,10 @@ pub(crate) fn do_instantiate_domain<T: Config>(
     can_instantiate_domain::<T>(&owner_account_id, &domain_config)?;
 
     let domain_id = NextDomainId::<T>::get();
+    let runtime_id = domain_config.runtime_id;
 
     let genesis_receipt = {
-        let runtime_obj = RuntimeRegistry::<T>::get(domain_config.runtime_id)
+        let runtime_obj = RuntimeRegistry::<T>::get(runtime_id)
             .expect("Runtime object must exist as checked in `can_instantiate_domain`; qed");
         initialize_genesis_receipt::<T>(
             domain_id,
@@ -146,6 +148,7 @@ pub(crate) fn do_instantiate_domain<T: Config>(
         raw_genesis_config,
     };
     DomainRegistry::<T>::insert(domain_id, domain_obj);
+    DomainRuntimeMap::<T>::insert(domain_id, runtime_id);
 
     let next_domain_id = domain_id.checked_add(&1.into()).ok_or(Error::MaxDomainId)?;
     NextDomainId::<T>::set(next_domain_id);
@@ -208,10 +211,9 @@ fn initialize_genesis_receipt<T: Config>(
 mod tests {
     use super::*;
     use crate::pallet::{DomainRegistry, NextDomainId, RuntimeRegistry};
-    use crate::runtime_registry::RuntimeObject;
     use crate::tests::{new_test_ext, GenesisStateRootGenerater, Test};
     use frame_support::traits::Currency;
-    use sp_domains::GenesisReceiptExtension;
+    use sp_domains::{GenesisReceiptExtension, RuntimeObject};
     use sp_std::vec;
     use sp_version::RuntimeVersion;
     use std::sync::Arc;

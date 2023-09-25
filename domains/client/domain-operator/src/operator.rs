@@ -80,6 +80,7 @@ where
         + BlockBackend<CBlock>
         + ProvideRuntimeApi<CBlock>
         + BlockchainEvents<CBlock>
+        + ProofProvider<CBlock>
         + Send
         + Sync
         + 'static,

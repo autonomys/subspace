@@ -20,6 +20,7 @@
 pub mod bundle_producer_election;
 pub mod fraud_proof;
 pub mod merkle_tree;
+pub mod storage_proof;
 #[cfg(test)]
 mod tests;
 pub mod transaction;
@@ -549,6 +550,18 @@ pub type EpochIndex = u32;
 
 /// Type representing operator ID
 pub type OperatorId = u64;
+
+#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
+pub struct RuntimeObject<Number, Hash> {
+    pub runtime_name: Vec<u8>,
+    pub runtime_type: RuntimeType,
+    pub runtime_upgrades: u32,
+    pub hash: Hash,
+    pub code: Vec<u8>,
+    pub version: RuntimeVersion,
+    pub created_at: Number,
+    pub updated_at: Number,
+}
 
 /// Staking specific hold identifier
 #[derive(

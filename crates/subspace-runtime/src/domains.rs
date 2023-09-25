@@ -50,7 +50,7 @@ pub(crate) fn extract_receipts(
 pub(crate) fn extract_fraud_proofs(
     extrinsics: Vec<UncheckedExtrinsic>,
     domain_id: DomainId,
-) -> Vec<FraudProof<BlockNumber, Hash>> {
+) -> Vec<FraudProof<BlockNumber, Hash, DomainNumber, DomainHash>> {
     // TODO: Ensure fraud proof extrinsic is infallible.
     extrinsics
         .into_iter()

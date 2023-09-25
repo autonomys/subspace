@@ -3,6 +3,7 @@
 #![warn(missing_docs)]
 
 mod domain_runtime_code;
+pub mod invalid_bundles_fraud_proof;
 pub mod invalid_state_transition_proof;
 pub mod invalid_transaction_proof;
 #[cfg(test)]
@@ -22,23 +23,28 @@ use std::sync::Arc;
 /// Verify fraud proof.
 ///
 /// Verifier is either the primary chain client or the system domain client.
-pub trait VerifyFraudProof<VerifierBlock: BlockT> {
+pub trait VerifyFraudProof<VerifierBlock: BlockT, DomainBlock: BlockT> {
     /// Verifies fraud proof.
     fn verify_fraud_proof(
         &self,
-        proof: &FraudProof<NumberFor<VerifierBlock>, VerifierBlock::Hash>,
+        proof: &FraudProof<
+            NumberFor<VerifierBlock>,
+            VerifierBlock::Hash,
+            NumberFor<DomainBlock>,
+            DomainBlock::Hash,
+        >,
     ) -> Result<(), VerificationError>;
 }
 
 /// Fraud proof verifier.
-pub struct ProofVerifier<VerifierBlock, ITPVerifier, ISTPVerifier> {
+pub struct ProofVerifier<VerifierBlock, DomainBlock, ITPVerifier, ISTPVerifier> {
     invalid_transaction_proof_verifier: Arc<ITPVerifier>,
     invalid_state_transition_proof_verifier: Arc<ISTPVerifier>,
-    _phantom: PhantomData<VerifierBlock>,
+    _phantom: PhantomData<(VerifierBlock, DomainBlock)>,
 }
 
-impl<VerifierBlock, ITPVerifier, ISTPVerifier> Clone
-    for ProofVerifier<VerifierBlock, ITPVerifier, ISTPVerifier>
+impl<VerifierBlock, DomainBlock, ITPVerifier, ISTPVerifier> Clone
+    for ProofVerifier<VerifierBlock, DomainBlock, ITPVerifier, ISTPVerifier>
 {
     fn clone(&self) -> Self {
         Self {
@@ -51,10 +57,11 @@ impl<VerifierBlock, ITPVerifier, ISTPVerifier> Clone
     }
 }
 
-impl<VerifierBlock, ITPVerifier, ISTPVerifier>
-    ProofVerifier<VerifierBlock, ITPVerifier, ISTPVerifier>
+impl<VerifierBlock, DomainBlock, ITPVerifier, ISTPVerifier>
+    ProofVerifier<VerifierBlock, DomainBlock, ITPVerifier, ISTPVerifier>
 where
     VerifierBlock: BlockT,
+    DomainBlock: BlockT,
     ITPVerifier: VerifyInvalidTransactionProof,
     ISTPVerifier: VerifyInvalidStateTransitionProof,
 {
@@ -73,7 +80,12 @@ where
     /// Verifies the fraud proof.
     pub fn verify(
         &self,
-        fraud_proof: &FraudProof<NumberFor<VerifierBlock>, VerifierBlock::Hash>,
+        fraud_proof: &FraudProof<
+            NumberFor<VerifierBlock>,
+            VerifierBlock::Hash,
+            NumberFor<DomainBlock>,
+            DomainBlock::Hash,
+        >,
     ) -> Result<(), VerificationError> {
         match fraud_proof {
             FraudProof::InvalidStateTransition(proof) => self
@@ -87,30 +99,43 @@ where
     }
 }
 
-impl<VerifierBlock, ITPVerifier, ISTPVerifier> VerifyFraudProof<VerifierBlock>
-    for ProofVerifier<VerifierBlock, ITPVerifier, ISTPVerifier>
+impl<VerifierBlock, DomainBlock, ITPVerifier, ISTPVerifier>
+    VerifyFraudProof<VerifierBlock, DomainBlock>
+    for ProofVerifier<VerifierBlock, DomainBlock, ITPVerifier, ISTPVerifier>
 where
     VerifierBlock: BlockT,
+    DomainBlock: BlockT,
     ITPVerifier: VerifyInvalidTransactionProof,
     ISTPVerifier: VerifyInvalidStateTransitionProof,
 {
     fn verify_fraud_proof(
         &self,
-        proof: &FraudProof<NumberFor<VerifierBlock>, VerifierBlock::Hash>,
+        proof: &FraudProof<
+            NumberFor<VerifierBlock>,
+            VerifierBlock::Hash,
+            NumberFor<DomainBlock>,
+            DomainBlock::Hash,
+        >,
     ) -> Result<(), VerificationError> {
         self.verify(proof)
     }
 }
 
 /// Verifies the fraud proof extracted from extrinsic in the transaction pool.
-pub async fn validate_fraud_proof_in_tx_pool<Block, Verifier>(
+pub async fn validate_fraud_proof_in_tx_pool<Block, DomainBlock, Verifier>(
     spawner: &dyn SpawnNamed,
     fraud_proof_verifier: Verifier,
-    fraud_proof: FraudProof<NumberFor<Block>, Block::Hash>,
+    fraud_proof: FraudProof<
+        NumberFor<Block>,
+        Block::Hash,
+        NumberFor<DomainBlock>,
+        DomainBlock::Hash,
+    >,
 ) -> Result<(), VerificationError>
 where
     Block: BlockT,
-    Verifier: VerifyFraudProof<Block> + Send + 'static,
+    DomainBlock: BlockT,
+    Verifier: VerifyFraudProof<Block, DomainBlock> + Send + 'static,
 {
     let (verified_result_sender, verified_result_receiver) = oneshot::channel();
 
