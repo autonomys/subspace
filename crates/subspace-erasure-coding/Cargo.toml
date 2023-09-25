@@ -15,26 +15,23 @@ include = [
 bench = false
 
 [dependencies]
-# TODO: Switch to upstream `main` once https://github.com/sifraitech/rust-kzg/pull/204 is merged and blst has upstream no_std support
-blst_rust = { git = "https://github.com/subspace/rust-kzg", rev = "1058cc8c8af8461b490dc212c41d7d506a746577", default-features = false }
-# TODO: Switch to upstream `main` once https://github.com/sifraitech/rust-kzg/pull/204 is merged and blst has upstream no_std support
-kzg = { git = "https://github.com/subspace/rust-kzg", rev = "1058cc8c8af8461b490dc212c41d7d506a746577", default-features = false }
+kzg = { git = "https://github.com/sifraitech/rust-kzg", rev = "c34b73916af9b8a699a74bd0186f82f25e72861c", default-features = false }
+rust-kzg-blst = { git = "https://github.com/sifraitech/rust-kzg", rev = "c34b73916af9b8a699a74bd0186f82f25e72861c", default-features = false }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives", default-features = false }
 
 [dev-dependencies]
-# TODO: Switch to upstream `main` once https://github.com/sifraitech/rust-kzg/pull/204 is merged and blst has upstream no_std support
-blst_rust = { git = "https://github.com/subspace/rust-kzg", rev = "1058cc8c8af8461b490dc212c41d7d506a746577" }
+rust-kzg-blst = { git = "https://github.com/sifraitech/rust-kzg", rev = "c34b73916af9b8a699a74bd0186f82f25e72861c" }
 criterion = "0.5.1"
 rand = "0.8.5"
 
 [features]
 default = ["std", "parallel"]
 std = [
-    "blst_rust/std",
     "kzg/std",
+    "rust-kzg-blst/std",
     "subspace-core-primitives/std",
 ]
-parallel = ["blst_rust/parallel"]
+parallel = ["rust-kzg-blst/parallel"]
 
 [[bench]]
 name = "commitments"

@@ -1224,28 +1224,13 @@ dependencies = [
 
 [[package]]
 name = "blst"
-version = "0.3.10"
-source = "git+https://github.com/subspace/blst.git?rev=017edf9d7b943813b9ba2804a9eda20607b48139#017edf9d7b943813b9ba2804a9eda20607b48139"
+version = "0.3.11"
+source = "git+https://github.com/supranational/blst.git#3f3457c04ec0bdf8de51b16a2092e349fdd9d8ef"
 dependencies = [
  "cc",
  "glob",
  "threadpool",
  "zeroize",
-]
-
-[[package]]
-name = "blst_rust"
-version = "0.1.0"
-source = "git+https://github.com/subspace/rust-kzg?rev=1058cc8c8af8461b490dc212c41d7d506a746577#1058cc8c8af8461b490dc212c41d7d506a746577"
-dependencies = [
- "blst",
- "kzg",
- "libc",
- "num_cpus",
- "once_cell",
- "rand 0.8.5",
- "rayon",
- "smallvec",
 ]
 
 [[package]]
@@ -5221,7 +5206,7 @@ dependencies = [
 [[package]]
 name = "kzg"
 version = "0.1.0"
-source = "git+https://github.com/subspace/rust-kzg?rev=1058cc8c8af8461b490dc212c41d7d506a746577#1058cc8c8af8461b490dc212c41d7d506a746577"
+source = "git+https://github.com/sifraitech/rust-kzg?rev=c34b73916af9b8a699a74bd0186f82f25e72861c#c34b73916af9b8a699a74bd0186f82f25e72861c"
 dependencies = [
  "blst",
  "sha2 0.10.7",
@@ -8775,6 +8760,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "rust-kzg-blst"
+version = "0.1.0"
+source = "git+https://github.com/sifraitech/rust-kzg?rev=c34b73916af9b8a699a74bd0186f82f25e72861c#c34b73916af9b8a699a74bd0186f82f25e72861c"
+dependencies = [
+ "blst",
+ "hex",
+ "kzg",
+ "libc",
+ "num_cpus",
+ "once_cell",
+ "rand 0.8.5",
+ "rayon",
+ "smallvec",
+]
+
+[[package]]
 name = "rustc-demangle"
 version = "0.1.23"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -11481,7 +11482,6 @@ name = "subspace-core-primitives"
 version = "0.1.0"
 dependencies = [
  "blake3",
- "blst_rust",
  "criterion",
  "derive_more",
  "hex",
@@ -11493,6 +11493,7 @@ dependencies = [
  "rand_chacha 0.3.1",
  "rand_core 0.6.4",
  "rayon",
+ "rust-kzg-blst",
  "scale-info",
  "serde",
  "serde_arrays",
@@ -11507,10 +11508,10 @@ dependencies = [
 name = "subspace-erasure-coding"
 version = "0.1.0"
 dependencies = [
- "blst_rust",
  "criterion",
  "kzg",
  "rand 0.8.5",
+ "rust-kzg-blst",
  "subspace-core-primitives",
 ]
 

@@ -11,17 +11,17 @@ use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use blst_rust::types::fft_settings::FsFFTSettings;
-use blst_rust::types::g1::FsG1;
-use blst_rust::types::g2::FsG2;
-use blst_rust::types::kzg_settings::FsKZGSettings;
-use blst_rust::types::poly::FsPoly;
 use core::mem;
 use derive_more::{AsMut, AsRef, Deref, DerefMut, From, Into};
 use kzg::eip_4844::{BYTES_PER_G1, BYTES_PER_G2};
-use kzg::{FFTFr, FFTSettings, Fr, KZGSettings};
+use kzg::{FFTFr, FFTSettings, Fr, KZGSettings, G1, G2};
 #[cfg(feature = "std")]
 use parking_lot::Mutex;
+use rust_kzg_blst::types::fft_settings::FsFFTSettings;
+use rust_kzg_blst::types::g1::FsG1;
+use rust_kzg_blst::types::g2::FsG2;
+use rust_kzg_blst::types::kzg_settings::FsKZGSettings;
+use rust_kzg_blst::types::poly::FsPoly;
 #[cfg(not(feature = "std"))]
 use spin::Mutex;
 use tracing::debug;
@@ -53,23 +53,11 @@ pub fn bytes_to_kzg_settings(
     let (secret_g1_bytes, secret_g2_bytes) = bytes.split_at(BYTES_PER_G1 * num_g1_powers);
     let secret_g1 = secret_g1_bytes
         .chunks_exact(BYTES_PER_G1)
-        .map(|bytes| {
-            FsG1::from_bytes(
-                bytes
-                    .try_into()
-                    .expect("Chunked into correct number of bytes above; qed"),
-            )
-        })
+        .map(FsG1::from_bytes)
         .collect::<Result<Vec<_>, _>>()?;
     let secret_g2 = secret_g2_bytes
         .chunks_exact(BYTES_PER_G2)
-        .map(|bytes| {
-            FsG2::from_bytes(
-                bytes
-                    .try_into()
-                    .expect("Chunked into correct number of bytes above; qed"),
-            )
-        })
+        .map(FsG2::from_bytes)
         .collect::<Result<Vec<_>, _>>()?;
 
     let fft_settings = FsFFTSettings::new(

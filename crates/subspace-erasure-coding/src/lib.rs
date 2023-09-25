@@ -8,11 +8,11 @@ extern crate alloc;
 use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use blst_rust::types::fft_settings::FsFFTSettings;
-use blst_rust::types::g1::FsG1;
-use blst_rust::types::poly::FsPoly;
 use core::num::NonZeroUsize;
 use kzg::{FFTSettings, PolyRecover, DAS, FFTG1, G1};
+use rust_kzg_blst::types::fft_settings::FsFFTSettings;
+use rust_kzg_blst::types::g1::FsG1;
+use rust_kzg_blst::types::poly::FsPoly;
 use subspace_core_primitives::crypto::kzg::{Commitment, Polynomial};
 use subspace_core_primitives::crypto::Scalar;
 
