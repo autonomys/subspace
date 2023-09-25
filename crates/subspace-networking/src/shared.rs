@@ -4,9 +4,8 @@
 use crate::protocols::peer_info::PeerInfo;
 use crate::protocols::request_response::request_response_factory::RequestFailure;
 use crate::utils::multihash::Multihash;
-use crate::utils::rate_limiter::resizable_semaphore::{
-    ResizableSemaphore, ResizableSemaphorePermit,
-};
+use crate::utils::rate_limiter::resizable_semaphore::ResizableSemaphorePermit;
+use crate::utils::rate_limiter::RateLimiter;
 use crate::utils::Handler;
 use bytes::Bytes;
 use futures::channel::{mpsc, oneshot};
@@ -111,16 +110,14 @@ pub(crate) struct Shared {
     pub(crate) num_established_peer_connections: Arc<AtomicUsize>,
     /// Sender end of the channel for sending commands to the swarm.
     pub(crate) command_sender: mpsc::Sender<Command>,
-    pub(crate) kademlia_tasks_semaphore: ResizableSemaphore,
-    pub(crate) regular_tasks_semaphore: ResizableSemaphore,
+    pub(crate) rate_limiter: RateLimiter,
 }
 
 impl Shared {
     pub(crate) fn new(
         id: PeerId,
         command_sender: mpsc::Sender<Command>,
-        kademlia_tasks_semaphore: ResizableSemaphore,
-        regular_tasks_semaphore: ResizableSemaphore,
+        rate_limiter: RateLimiter,
     ) -> Self {
         Self {
             handlers: Handlers::default(),
@@ -129,8 +126,7 @@ impl Shared {
             external_addresses: Mutex::default(),
             num_established_peer_connections: Arc::new(AtomicUsize::new(0)),
             command_sender,
-            kademlia_tasks_semaphore,
-            regular_tasks_semaphore,
+            rate_limiter,
         }
     }
 }
