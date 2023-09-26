@@ -218,6 +218,9 @@ impl DiskPieceCache {
 
     pub(crate) fn wipe(directory: &Path) -> io::Result<()> {
         let piece_cache = directory.join(Self::FILE_NAME);
+        if !piece_cache.exists() {
+            return Ok(());
+        }
         info!("Deleting piece cache file at {}", piece_cache.display());
         fs::remove_file(piece_cache)
     }
