@@ -1198,11 +1198,17 @@ impl SingleDiskFarm {
 
         {
             let plot = directory.join(Self::PLOT_FILE);
+            if !plot.exists() {
+                return Ok(());
+            }
             info!("Deleting plot file at {}", plot.display());
             fs::remove_file(plot)?;
         }
         {
             let metadata = directory.join(Self::METADATA_FILE);
+            if !metadata.exists() {
+                return Ok(());
+            }
             info!("Deleting metadata file at {}", metadata.display());
             fs::remove_file(metadata)?;
         }
@@ -1210,6 +1216,9 @@ impl SingleDiskFarm {
         //  here
         {
             let identity = directory.join("identity.bin");
+            if !identity.exists() {
+                return Ok(());
+            }
             info!("Deleting identity file at {}", identity.display());
             fs::remove_file(identity)?;
         }
