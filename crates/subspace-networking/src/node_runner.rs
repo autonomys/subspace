@@ -14,7 +14,7 @@ use crate::protocols::request_response::request_response_factory::{
     Event as RequestResponseEvent, IfDisconnected,
 };
 use crate::shared::{Command, CreatedSubscription, NewPeerInfo, Shared};
-use crate::utils::rate_limiter::resizable_semaphore::ResizableSemaphorePermit;
+use crate::utils::rate_limiter::RateLimiterPermit;
 use crate::utils::{is_global_address_or_dns, strip_peer_id, PeerAddress};
 use async_mutex::Mutex as AsyncMutex;
 use bytes::Bytes;
@@ -62,22 +62,22 @@ enum QueryResultSender {
     Value {
         sender: mpsc::UnboundedSender<PeerRecord>,
         // Just holding onto permit while data structure is not dropped
-        _permit: ResizableSemaphorePermit,
+        _permit: RateLimiterPermit,
     },
     ClosestPeers {
         sender: mpsc::UnboundedSender<PeerId>,
         // Just holding onto permit while data structure is not dropped
-        _permit: ResizableSemaphorePermit,
+        _permit: RateLimiterPermit,
     },
     Providers {
         sender: mpsc::UnboundedSender<PeerId>,
         // Just holding onto permit while data structure is not dropped
-        _permit: ResizableSemaphorePermit,
+        _permit: RateLimiterPermit,
     },
     PutValue {
         sender: mpsc::UnboundedSender<()>,
         // Just holding onto permit while data structure is not dropped
-        _permit: ResizableSemaphorePermit,
+        _permit: RateLimiterPermit,
     },
     Bootstrap {
         sender: mpsc::UnboundedSender<()>,

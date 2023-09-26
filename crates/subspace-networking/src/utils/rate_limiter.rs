@@ -6,6 +6,7 @@ use crate::utils::rate_limiter::resizable_semaphore::{
     ResizableSemaphore, ResizableSemaphorePermit, SemaphoreError,
 };
 use std::num::NonZeroUsize;
+use tracing::{debug, trace};
 
 /// Base limit for number of concurrent tasks initiated towards Kademlia.
 ///
@@ -30,45 +31,104 @@ const REGULAR_BASE_CONCURRENT_TASKS: NonZeroUsize =
 /// to be tweaked in the future.
 pub(crate) const REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER: usize = 25;
 
+/// Defines the minimum size of the "connection limit semaphore".
+const MINIMUM_CONNECTIONS_SEMAPHORE_SIZE: usize = 3;
+
+#[derive(Debug)]
+pub(crate) struct RateLimiterPermit {
+    /// Limits Kademlia substreams.
+    _substream_limit_permit: ResizableSemaphorePermit,
+
+    /// Limits outgoing connections.
+    _connection_limit_permit: ResizableSemaphorePermit,
+}
+
 #[derive(Debug)]
 pub(crate) struct RateLimiter {
     kademlia_tasks_semaphore: ResizableSemaphore,
     regular_tasks_semaphore: ResizableSemaphore,
+    connections_semaphore: ResizableSemaphore,
 }
 
 impl RateLimiter {
-    pub(crate) fn new() -> Self {
+    pub(crate) fn new(out_connections: u32, pending_out_connections: u32) -> Self {
+        let permits = Self::calculate_connection_semaphore_size(
+            out_connections as usize,
+            pending_out_connections as usize,
+        );
+
+        debug!(%out_connections, %pending_out_connections, %permits, "Rate limiter was instantiated.");
+
         Self {
             kademlia_tasks_semaphore: ResizableSemaphore::new(KADEMLIA_BASE_CONCURRENT_TASKS),
             regular_tasks_semaphore: ResizableSemaphore::new(REGULAR_BASE_CONCURRENT_TASKS),
+            connections_semaphore: ResizableSemaphore::new(
+                NonZeroUsize::new(permits).expect("Manual setting."),
+            ),
         }
     }
 
-    pub(crate) async fn acquire_regular_permit(&self) -> ResizableSemaphorePermit {
-        self.regular_tasks_semaphore.acquire().await
+    /// Calculates an empiric formula for the semaphore size based on the connection parameters and
+    /// existing constants.
+    fn calculate_connection_semaphore_size(
+        out_connections: usize,
+        pending_out_connections: usize,
+    ) -> usize {
+        let connections = out_connections.min(pending_out_connections);
+        if connections == 0 {
+            return 0;
+        }
+        // Number of "in-flight" parallel requests for each query
+        let kademlia_parallelism_level = libp2p::kad::ALPHA_VALUE.get();
+        // Empiric parameter for connection timeout and retry parameters (total retries and backoff time).
+        let connection_timeout_parameter = 10;
+
+        let result = connections / (kademlia_parallelism_level * connection_timeout_parameter);
+
+        result.max(MINIMUM_CONNECTIONS_SEMAPHORE_SIZE)
+    }
+
+    pub(crate) async fn acquire_regular_permit(&self) -> RateLimiterPermit {
+        let connections_permit = self.connections_semaphore.acquire().await;
+        let substream_permit = self.regular_tasks_semaphore.acquire().await;
+
+        RateLimiterPermit {
+            _connection_limit_permit: connections_permit,
+            _substream_limit_permit: substream_permit,
+        }
     }
 
     pub(crate) fn expand_regular_semaphore(&self) -> Result<(), SemaphoreError> {
         self.regular_tasks_semaphore
             .expand(REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER)
+            .map(|old_capacity| trace!(%old_capacity,  "Expand regular semaphore."))
     }
 
     pub(crate) fn shrink_regular_semaphore(&self) -> Result<(), SemaphoreError> {
         self.regular_tasks_semaphore
             .shrink(REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER)
+            .map(|old_capacity| trace!(%old_capacity,  "Shrink regular semaphore."))
     }
 
-    pub(crate) async fn acquire_kademlia_permit(&self) -> ResizableSemaphorePermit {
-        self.kademlia_tasks_semaphore.acquire().await
+    pub(crate) async fn acquire_kademlia_permit(&self) -> RateLimiterPermit {
+        let connections_permit = self.connections_semaphore.acquire().await;
+        let substream_permit = self.kademlia_tasks_semaphore.acquire().await;
+
+        RateLimiterPermit {
+            _connection_limit_permit: connections_permit,
+            _substream_limit_permit: substream_permit,
+        }
     }
 
     pub(crate) fn expand_kademlia_semaphore(&self) -> Result<(), SemaphoreError> {
         self.kademlia_tasks_semaphore
             .expand(KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER)
+            .map(|old_capacity| trace!(%old_capacity,  "Expand kademlia semaphore."))
     }
 
     pub(crate) fn shrink_kademlia_semaphore(&self) -> Result<(), SemaphoreError> {
         self.kademlia_tasks_semaphore
             .shrink(KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER)
+            .map(|old_capacity| trace!(%old_capacity,  "Shrink kademlia semaphore."))
     }
 }
