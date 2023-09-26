@@ -35,8 +35,8 @@ mod pallet {
 
     /// Whether to disable the normal balances transfer calls.
     #[pallet::storage]
-    #[pallet::getter(fn enable_transfer)]
-    pub type EnableTransfer<T> = StorageValue<_, bool, ValueQuery>;
+    #[pallet::getter(fn enable_balance_transfers)]
+    pub type EnableBalanceTransfers<T> = StorageValue<_, bool, ValueQuery>;
 
     #[pallet::storage]
     pub type ConfirmationDepthK<T: Config> = StorageValue<_, BlockNumberFor<T>, ValueQuery>;
@@ -47,7 +47,7 @@ mod pallet {
     #[pallet::genesis_config]
     pub struct GenesisConfig<T: Config> {
         pub enable_domains: bool,
-        pub enable_transfer: bool,
+        pub enable_balance_transfers: bool,
         pub confirmation_depth_k: BlockNumberFor<T>,
     }
 
@@ -56,7 +56,7 @@ mod pallet {
         fn default() -> Self {
             Self {
                 enable_domains: false,
-                enable_transfer: false,
+                enable_balance_transfers: false,
                 confirmation_depth_k: BlockNumberFor::<T>::from(100u32),
             }
         }
@@ -67,7 +67,7 @@ mod pallet {
         fn build(&self) {
             let Self {
                 enable_domains,
-                enable_transfer,
+                enable_balance_transfers,
                 confirmation_depth_k,
             } = self;
 
@@ -77,7 +77,7 @@ mod pallet {
             );
 
             <EnableDomains<T>>::put(enable_domains);
-            <EnableTransfer<T>>::put(enable_transfer);
+            <EnableBalanceTransfers<T>>::put(enable_balance_transfers);
             <ConfirmationDepthK<T>>::put(confirmation_depth_k);
         }
     }

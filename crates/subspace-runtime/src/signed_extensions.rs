@@ -76,7 +76,7 @@ impl SignedExtension for DisablePallets {
                     | pallet_balances::Call::transfer_keep_alive { .. }
                     | pallet_balances::Call::transfer_all { .. }
             )
-        ) && !RuntimeConfigs::enable_transfer()
+        ) && !RuntimeConfigs::enable_balance_transfers()
         {
             InvalidTransaction::Call.into()
         } else {
