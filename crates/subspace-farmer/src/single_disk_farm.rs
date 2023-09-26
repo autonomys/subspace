@@ -1198,29 +1198,26 @@ impl SingleDiskFarm {
 
         {
             let plot = directory.join(Self::PLOT_FILE);
-            if !plot.exists() {
-                return Ok(());
+            if plot.exists() {
+                info!("Deleting plot file at {}", plot.display());
+                fs::remove_file(plot)?;
             }
-            info!("Deleting plot file at {}", plot.display());
-            fs::remove_file(plot)?;
         }
         {
             let metadata = directory.join(Self::METADATA_FILE);
-            if !metadata.exists() {
-                return Ok(());
+            if metadata.exists() {
+                info!("Deleting metadata file at {}", metadata.display());
+                fs::remove_file(metadata)?;
             }
-            info!("Deleting metadata file at {}", metadata.display());
-            fs::remove_file(metadata)?;
         }
         // TODO: Identity should be able to wipe itself instead of assuming a specific file name
         //  here
         {
             let identity = directory.join("identity.bin");
-            if !identity.exists() {
-                return Ok(());
+            if identity.exists() {
+                info!("Deleting identity file at {}", identity.display());
+                fs::remove_file(identity)?;
             }
-            info!("Deleting identity file at {}", identity.display());
-            fs::remove_file(identity)?;
         }
 
         DiskPieceCache::wipe(directory)?;
