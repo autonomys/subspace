@@ -17,10 +17,13 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3.6.5", default-features = false, features = ["derive"] }
+frame-benchmarking = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef", optional = true }
 frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef" }
 frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef" }
 scale-info = { version = "2.7.0", default-features = false, features = ["derive"] }
+sp-core = { version = "21.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef", optional = true }
 sp-runtime = { version = "24.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef" }
+sp-std = { version = "8.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef", optional = true }
 
 [features]
 default = ["std"]
@@ -30,5 +33,12 @@ std = [
   "frame-system/std",
   "scale-info/std",
   "sp-runtime/std",
+  "sp-std?/std",
 ]
 try-runtime = ["frame-support/try-runtime"]
+runtime-benchmarks = [
+  "frame-benchmarking",
+  "frame-benchmarking/runtime-benchmarks",
+  "sp-core",
+  "sp-std",
+]

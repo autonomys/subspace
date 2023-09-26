@@ -695,7 +695,9 @@ impl pallet_object_store::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
 }
 
-impl pallet_runtime_configs::Config for Runtime {}
+impl pallet_runtime_configs::Config for Runtime {
+    type WeightInfo = pallet_runtime_configs::weights::SubstrateWeight<Runtime>;
+}
 
 parameter_types! {
     // This value doesn't matter, we don't use it (`VestedTransferOrigin = EnsureNever` below).
@@ -837,6 +839,7 @@ mod benches {
         [frame_system, SystemBench::<Runtime>]
         [pallet_balances, Balances]
         [pallet_domains, Domains]
+        [pallet_runtime_configs, RuntimeConfigs]
         [pallet_subspace, Subspace]
         [pallet_timestamp, Timestamp]
     );
