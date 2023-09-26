@@ -59,6 +59,7 @@ pub(crate) fn do_finalize_domain_current_epoch<T: Config>(
 }
 
 /// Unlocks any operators who are de-registering or nominators who are withdrawing staked funds.
+#[cfg(any(not(feature = "runtime-benchmarks"), test))]
 pub(crate) fn do_unlock_pending_withdrawals<T: Config>(
     domain_id: DomainId,
     domain_block_number: T::DomainNumber,
@@ -206,6 +207,7 @@ fn do_finalize_operator_deregistrations<T: Config>(
     Ok(())
 }
 
+#[cfg(any(not(feature = "runtime-benchmarks"), test))]
 fn unlock_operator<T: Config>(operator_id: OperatorId) -> Result<(), Error> {
     Operators::<T>::try_mutate_exists(operator_id, |maybe_operator| {
         // take the operator so this operator info is removed once we unlock the operator.
@@ -288,6 +290,7 @@ fn release_pending_deposits<T: Config>(operator_id: OperatorId) -> Result<(), Tr
     Ok(())
 }
 
+#[cfg(any(not(feature = "runtime-benchmarks"), test))]
 fn unlock_nominator_withdrawals<T: Config>(
     operator_id: OperatorId,
     domain_block_number: T::DomainNumber,
