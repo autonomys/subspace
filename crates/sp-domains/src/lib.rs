@@ -800,6 +800,9 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the chain state root at the given block.
         fn domain_state_root(domain_id: DomainId, number: DomainNumber, hash: DomainHash) -> Option<DomainHash>;
+
+        /// Block randomness key.
+        fn block_randomness_key() -> Vec<u8>;
     }
 
     pub trait BundleProducerElectionApi<Balance: Encode + Decode> {

@@ -137,7 +137,7 @@ mod pallet {
     use frame_support::{Identity, PalletError};
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
-    use sp_domains::fraud_proof::FraudProof;
+    use sp_domains::fraud_proof::{FraudProof, StorageKeys};
     use sp_domains::inherents::{InherentError, InherentType, INHERENT_IDENTIFIER};
     use sp_domains::transaction::InvalidTransactionCode;
     use sp_domains::{
@@ -283,6 +283,9 @@ mod pallet {
 
         /// Randomness source.
         type Randomness: RandomnessT<Self::Hash, BlockNumberFor<Self>>;
+
+        /// Trait impl to fetch storage keys.
+        type StorageKeys: StorageKeys;
     }
 
     #[pallet::pallet]
@@ -1597,6 +1600,7 @@ impl<T: Config> Pallet<T> {
                     T::DomainHash,
                     BalanceOf<T>,
                     T::Hashing,
+                    T::StorageKeys,
                 >(consensus_state_root, bad_receipt, proof)
                 .map_err(FraudProofError::InvalidExtrinsicRootFraudProof)?;
             }

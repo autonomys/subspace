@@ -175,6 +175,7 @@ where
             .runtime_api()
             .extract_successful_bundles(consensus_block_hash, domain_id, consensus_extrinsics)?;
 
+        let domain_runtime_api = self.client.runtime_api();
         let mut valid_bundle_digests = Vec::with_capacity(local_receipt.valid_bundles.len());
         for valid_bundle in local_receipt.valid_bundles.iter() {
             let bundle_index = valid_bundle.bundle_index;
@@ -197,7 +198,6 @@ where
                 exts.push(extrinsic)
             }
 
-            let domain_runtime_api = self.client.runtime_api();
             let bundle_digest = domain_runtime_api
                 .extract_signer(local_receipt.domain_block_hash, exts)?
                 .into_iter()
@@ -214,10 +214,13 @@ where
             });
         }
 
-        let key = sp_domains::fraud_proof::block_randomness_final_key();
-        let randomness_proof = self
-            .consensus_client
-            .read_proof(consensus_block_hash, &mut [key.as_slice()].into_iter())?;
+        let consensus_runtime = self.consensus_client.runtime_api();
+        let block_randomness_key = consensus_runtime.block_randomness_key(consensus_block_hash)?;
+
+        let randomness_proof = self.consensus_client.read_proof(
+            consensus_block_hash,
+            &mut [block_randomness_key.as_slice()].into_iter(),
+        )?;
 
         Ok(FraudProof::InvalidExtrinsicsRoot(
             InvalidExtrinsicsRootProof {

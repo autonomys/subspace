@@ -3,6 +3,7 @@ use hash_db::Hasher;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
+use sp_core::storage::StorageKey;
 use sp_core::H256;
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
 use sp_std::vec::Vec;
@@ -406,6 +407,7 @@ pub struct ImproperTransactionSortitionProof {
     pub bad_receipt_hash: ReceiptHash,
 }
 
+/// Represents an invalid total rewards proof.
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
 pub struct InvalidTotalRewardsProof {
     /// The id of the domain this fraud proof targeted
@@ -416,6 +418,7 @@ pub struct InvalidTotalRewardsProof {
     pub storage_proof: StorageProof,
 }
 
+/// Represents the extrinsic either as full data or hash of the data.
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
 pub enum ExtrinsicDigest {
     /// Actual extrinsic data that is inlined since it is less than 33 bytes.
@@ -441,6 +444,7 @@ impl ExtrinsicDigest {
     }
 }
 
+/// Represents a valid bundle index and all the extrinsics within that bundle.
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
 pub struct ValidBundleDigest {
     /// Index of this bundle in the original list of bundles in the consensus block.
@@ -452,6 +456,7 @@ pub struct ValidBundleDigest {
     )>,
 }
 
+/// Represents an Invalid domain extrinsics root proof with necessary info for verification.
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
 pub struct InvalidExtrinsicsRootProof {
     /// The id of the domain this fraud proof targeted
@@ -474,15 +479,14 @@ impl InvalidTotalRewardsProof {
     }
 }
 
+/// Trait to get Storage keys.
+pub trait StorageKeys {
+    fn block_randomness_key() -> StorageKey;
+}
+
 /// This is a representation of actual Block Rewards storage in pallet-operator-rewards.
 /// Any change in key or value there should be changed here accordingly.
 pub fn operator_block_rewards_final_key() -> Vec<u8> {
     frame_support::storage::storage_prefix("OperatorRewards".as_ref(), "BlockRewards".as_ref())
         .to_vec()
-}
-
-/// This is a representation of actual Randomness on Consensus chain state.
-/// Any change in key or value there should be changed here accordingly.
-pub fn block_randomness_final_key() -> Vec<u8> {
-    frame_support::storage::storage_prefix("Subspace".as_ref(), "BlockRandomness".as_ref()).to_vec()
 }

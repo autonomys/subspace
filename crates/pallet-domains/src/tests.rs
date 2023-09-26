@@ -191,6 +191,16 @@ impl frame_support::traits::Randomness<Hash, BlockNumber> for MockRandomness {
     }
 }
 
+pub struct StorageKeys;
+impl sp_domains::fraud_proof::StorageKeys for StorageKeys {
+    fn block_randomness_key() -> StorageKey {
+        StorageKey(
+            frame_support::storage::storage_prefix("Subspace".as_ref(), "BlockRandomness".as_ref())
+                .to_vec(),
+        )
+    }
+}
+
 impl pallet_domains::Config for Test {
     type RuntimeEvent = RuntimeEvent;
     type DomainNumber = BlockNumber;
@@ -216,6 +226,7 @@ impl pallet_domains::Config for Test {
     type MaxPendingStakingOperation = MaxPendingStakingOperation;
     type SudoId = ();
     type Randomness = MockRandomness;
+    type StorageKeys = StorageKeys;
 }
 
 pub(crate) fn new_test_ext() -> sp_io::TestExternalities {
@@ -865,7 +876,9 @@ fn generate_invalid_domain_extrinsic_root_fraud_proof<T: Config>(
     bad_receipt_hash: ReceiptHash,
     randomness: Randomness,
 ) -> (FraudProof<BlockNumberFor<T>, T::Hash>, T::Hash) {
-    let storage_key = sp_domains::fraud_proof::block_randomness_final_key();
+    let storage_key =
+        frame_support::storage::storage_prefix("Subspace".as_ref(), "BlockRandomness".as_ref())
+            .to_vec();
     let mut root = T::Hash::default();
     let mut mdb = PrefixedMemoryDB::<T::Hashing>::default();
     {

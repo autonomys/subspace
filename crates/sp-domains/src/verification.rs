@@ -1,4 +1,4 @@
-use crate::fraud_proof::{ExtrinsicDigest, InvalidExtrinsicsRootProof};
+use crate::fraud_proof::{ExtrinsicDigest, InvalidExtrinsicsRootProof, StorageKeys};
 use crate::valued_trie_root::valued_ordered_trie_root;
 use crate::{ExecutionReceipt, EXTRINSICS_SHUFFLING_SEED};
 use domain_runtime_primitives::opaque::AccountId;
@@ -103,6 +103,7 @@ pub fn verify_invalid_domain_extrinsics_root_fraud_proof<
     DomainHash,
     Balance,
     Hashing,
+    SK,
 >(
     consensus_state_root: CBlock::Hash,
     bad_receipt: ExecutionReceipt<
@@ -117,6 +118,7 @@ pub fn verify_invalid_domain_extrinsics_root_fraud_proof<
 where
     CBlock: Block,
     Hashing: Hasher<Out = CBlock::Hash>,
+    SK: StorageKeys,
 {
     let InvalidExtrinsicsRootProof {
         valid_bundle_digests,
@@ -138,7 +140,7 @@ where
         ext_values.extend(bundle_digest.bundle_digest.clone());
     }
 
-    let storage_key = StorageKey(crate::fraud_proof::block_randomness_final_key());
+    let storage_key = SK::block_randomness_key();
     let storage_proof = randomness_proof.clone();
     let block_randomness = StorageProofVerifier::<Hashing>::verify_and_get_value::<Randomness>(
         &consensus_state_root,

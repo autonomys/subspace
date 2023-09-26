@@ -103,7 +103,7 @@ struct VoteVerificationData {
 struct AuditChunkOffset(u8);
 
 #[frame_support::pallet]
-mod pallet {
+pub mod pallet {
     use super::{AuditChunkOffset, EraChangeTrigger, VoteVerificationData};
     use crate::equivocation::HandleEquivocation;
     use crate::weights::WeightInfo;
@@ -449,7 +449,7 @@ mod pallet {
     /// The current block randomness, updated at block initialization. When the proof of time feature
     /// is enabled it derived from PoT otherwise PoR.
     #[pallet::storage]
-    pub(super) type BlockRandomness<T> = StorageValue<_, Randomness>;
+    pub type BlockRandomness<T> = StorageValue<_, Randomness>;
 
     /// Enable storage access for all users.
     #[pallet::storage]
