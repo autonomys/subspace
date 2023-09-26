@@ -152,19 +152,27 @@ impl ResizableSemaphore {
         }
     }
 
-    // Expands the capacity by the specified amount.
-    pub(crate) fn expand(&self, delta: usize) -> Result<(), SemaphoreError> {
-        let notify_waiters = self.0.state.lock().expand(delta)?;
+    // Expands the capacity by the specified amount. Returns old capacity.
+    pub(crate) fn expand(&self, delta: usize) -> Result<usize, SemaphoreError> {
+        let mut state = self.0.state.lock();
+        let old_capacity = state.capacity;
+
+        let notify_waiters = state.expand(delta)?;
         if notify_waiters {
             self.0.notify.notify_waiters();
         }
 
-        Ok(())
+        Ok(old_capacity)
     }
 
     // Shrinks the capacity by the specified amount.
-    pub(crate) fn shrink(&self, delta: usize) -> Result<(), SemaphoreError> {
-        self.0.state.lock().shrink(delta)
+    pub(crate) fn shrink(&self, delta: usize) -> Result<usize, SemaphoreError> {
+        let mut state = self.0.state.lock();
+        let old_capacity = state.capacity;
+
+        state.shrink(delta)?;
+
+        Ok(old_capacity)
     }
 }
 

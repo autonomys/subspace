@@ -502,7 +502,10 @@ where
     // Create final structs
     let (command_sender, command_receiver) = mpsc::channel(1);
 
-    let rate_limiter = RateLimiter::new();
+    let rate_limiter = RateLimiter::new(
+        max_established_outgoing_connections,
+        max_pending_outgoing_connections,
+    );
 
     let shared = Arc::new(Shared::new(local_peer_id, command_sender, rate_limiter));
     let shared_weak = Arc::downgrade(&shared);

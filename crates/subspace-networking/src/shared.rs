@@ -4,8 +4,7 @@
 use crate::protocols::peer_info::PeerInfo;
 use crate::protocols::request_response::request_response_factory::RequestFailure;
 use crate::utils::multihash::Multihash;
-use crate::utils::rate_limiter::resizable_semaphore::ResizableSemaphorePermit;
-use crate::utils::rate_limiter::RateLimiter;
+use crate::utils::rate_limiter::{RateLimiter, RateLimiterPermit};
 use crate::utils::Handler;
 use bytes::Bytes;
 use futures::channel::{mpsc, oneshot};
@@ -29,13 +28,13 @@ pub(crate) enum Command {
     GetValue {
         key: Multihash,
         result_sender: mpsc::UnboundedSender<PeerRecord>,
-        permit: ResizableSemaphorePermit,
+        permit: RateLimiterPermit,
     },
     PutValue {
         key: Multihash,
         value: Vec<u8>,
         result_sender: mpsc::UnboundedSender<()>,
-        permit: ResizableSemaphorePermit,
+        permit: RateLimiterPermit,
     },
     Subscribe {
         topic: Sha256Topic,
@@ -53,7 +52,7 @@ pub(crate) enum Command {
     GetClosestPeers {
         key: Multihash,
         result_sender: mpsc::UnboundedSender<PeerId>,
-        permit: ResizableSemaphorePermit,
+        permit: RateLimiterPermit,
     },
     GenericRequest {
         peer_id: PeerId,
@@ -64,7 +63,7 @@ pub(crate) enum Command {
     GetProviders {
         key: Multihash,
         result_sender: mpsc::UnboundedSender<PeerId>,
-        permit: ResizableSemaphorePermit,
+        permit: RateLimiterPermit,
     },
     BanPeer {
         peer_id: PeerId,

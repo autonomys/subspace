@@ -3,7 +3,7 @@ use crate::protocols::request_response::request_response_factory;
 pub use crate::shared::NewPeerInfo;
 use crate::shared::{Command, CreatedSubscription, Shared};
 use crate::utils::multihash::Multihash;
-use crate::utils::rate_limiter::resizable_semaphore::ResizableSemaphorePermit;
+use crate::utils::rate_limiter::RateLimiterPermit;
 use crate::utils::HandlerFn;
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;
@@ -29,7 +29,7 @@ pub struct TopicSubscription {
     command_sender: Option<mpsc::Sender<Command>>,
     #[pin]
     receiver: mpsc::UnboundedReceiver<Bytes>,
-    _permit: ResizableSemaphorePermit,
+    _permit: RateLimiterPermit,
 }
 
 impl Stream for TopicSubscription {
