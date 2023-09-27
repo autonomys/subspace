@@ -3,7 +3,9 @@ use crate::reading::{read_record_metadata, read_sector_record_chunks, ReadingErr
 use crate::sector::{
     SectorContentsMap, SectorContentsMapFromBytesError, SectorMetadataChecksummed,
 };
+use crate::ReadAt;
 use std::collections::VecDeque;
+use std::io;
 use subspace_core_primitives::crypto::kzg::{Commitment, Kzg, Witness};
 use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::{
@@ -51,6 +53,9 @@ pub enum ProvingError {
     /// Failed to decode sector contents map
     #[error("Failed to decode sector contents map: {0}")]
     FailedToDecodeSectorContentsMap(#[from] SectorContentsMapFromBytesError),
+    /// I/O error occurred
+    #[error("I/O error: {0}")]
+    Io(#[from] io::Error),
     /// Record reading error
     #[error("Record reading error: {0}")]
     RecordReadingError(#[from] ReadingError),
@@ -67,24 +72,47 @@ struct WinningChunk {
 }
 
 /// Container for solutions
-#[derive(Debug, Clone)]
-pub struct SolutionCandidates<'a> {
+#[derive(Debug)]
+pub struct SolutionCandidates<'a, Sector>
+where
+    Sector: ?Sized,
+{
     public_key: &'a PublicKey,
     sector_index: SectorIndex,
     sector_id: SectorId,
     s_bucket: SBucket,
-    sector: &'a [u8],
+    sector: &'a Sector,
     sector_metadata: &'a SectorMetadataChecksummed,
     chunk_candidates: VecDeque<ChunkCandidate>,
 }
 
-impl<'a> SolutionCandidates<'a> {
+impl<'a, Sector> Clone for SolutionCandidates<'a, Sector>
+where
+    Sector: ?Sized,
+{
+    fn clone(&self) -> Self {
+        Self {
+            public_key: self.public_key,
+            sector_index: self.sector_index,
+            sector_id: self.sector_id,
+            s_bucket: self.s_bucket,
+            sector: self.sector,
+            sector_metadata: self.sector_metadata,
+            chunk_candidates: self.chunk_candidates.clone(),
+        }
+    }
+}
+
+impl<'a, Sector> SolutionCandidates<'a, Sector>
+where
+    Sector: ReadAt + ?Sized,
+{
     pub(crate) fn new(
         public_key: &'a PublicKey,
         sector_index: SectorIndex,
         sector_id: SectorId,
         s_bucket: SBucket,
-        sector: &'a [u8],
+        sector: &'a Sector,
         sector_metadata: &'a SectorMetadataChecksummed,
         chunk_candidates: VecDeque<ChunkCandidate>,
     ) -> Self {
@@ -126,7 +154,7 @@ impl<'a> SolutionCandidates<'a> {
         RewardAddress: Copy,
         PosTable: Table,
     {
-        SolutionCandidatesIterator::<'a, RewardAddress, PosTable>::new(
+        SolutionCandidatesIterator::<'a, RewardAddress, Sector, PosTable>::new(
             self.public_key,
             reward_address,
             self.sector_index,
@@ -151,8 +179,9 @@ struct ChunkCache {
     proof_of_space: PosProof,
 }
 
-struct SolutionCandidatesIterator<'a, RewardAddress, PosTable>
+struct SolutionCandidatesIterator<'a, RewardAddress, Sector, PosTable>
 where
+    Sector: ?Sized,
     PosTable: Table,
 {
     public_key: &'a PublicKey,
@@ -165,7 +194,7 @@ where
     kzg: &'a Kzg,
     erasure_coding: &'a ErasureCoding,
     sector_contents_map: SectorContentsMap,
-    sector: &'a [u8],
+    sector: &'a Sector,
     winning_chunks: VecDeque<WinningChunk>,
     count: usize,
     chunk_cache: Option<ChunkCache>,
@@ -173,9 +202,11 @@ where
 }
 
 // TODO: This can be potentially parallelized with rayon
-impl<RewardAddress, PosTable> Iterator for SolutionCandidatesIterator<'_, RewardAddress, PosTable>
+impl<RewardAddress, Sector, PosTable> Iterator
+    for SolutionCandidatesIterator<'_, RewardAddress, Sector, PosTable>
 where
     RewardAddress: Copy,
+    Sector: ReadAt + ?Sized,
     PosTable: Table,
 {
     type Item = Result<Solution<PublicKey, RewardAddress>, ProvingError>;
@@ -333,16 +364,19 @@ where
     }
 }
 
-impl<RewardAddress, PosTable> ExactSizeIterator
-    for SolutionCandidatesIterator<'_, RewardAddress, PosTable>
+impl<RewardAddress, Sector, PosTable> ExactSizeIterator
+    for SolutionCandidatesIterator<'_, RewardAddress, Sector, PosTable>
 where
     RewardAddress: Copy,
+    Sector: ReadAt + ?Sized,
     PosTable: Table,
 {
 }
 
-impl<'a, RewardAddress, PosTable> SolutionCandidatesIterator<'a, RewardAddress, PosTable>
+impl<'a, RewardAddress, Sector, PosTable>
+    SolutionCandidatesIterator<'a, RewardAddress, Sector, PosTable>
 where
+    Sector: ReadAt + ?Sized,
     PosTable: Table,
 {
     #[allow(clippy::too_many_arguments)]
@@ -352,7 +386,7 @@ where
         sector_index: SectorIndex,
         sector_id: SectorId,
         s_bucket: SBucket,
-        sector: &'a [u8],
+        sector: &'a Sector,
         sector_metadata: &'a SectorMetadataChecksummed,
         kzg: &'a Kzg,
         erasure_coding: &'a ErasureCoding,
@@ -364,8 +398,12 @@ where
         }
 
         let sector_contents_map = {
+            let mut sector_contents_map_bytes =
+                vec![0; SectorContentsMap::encoded_size(sector_metadata.pieces_in_sector)];
+            sector.read_at(&mut sector_contents_map_bytes, 0)?;
+
             SectorContentsMap::from_bytes(
-                &sector[..SectorContentsMap::encoded_size(sector_metadata.pieces_in_sector)],
+                &sector_contents_map_bytes,
                 sector_metadata.pieces_in_sector,
             )?
         };

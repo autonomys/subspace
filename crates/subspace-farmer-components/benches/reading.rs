@@ -148,7 +148,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     group.throughput(Throughput::Elements(1));
     group.bench_function("piece/memory", |b| {
         b.iter(|| {
-            read_piece::<PosTable>(
+            read_piece::<PosTable, _>(
                 black_box(piece_offset),
                 black_box(&plotted_sector.sector_id),
                 black_box(&plotted_sector.sector_metadata),
@@ -196,7 +196,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                 let start = Instant::now();
                 for _i in 0..iters {
                     for sector in plot_mmap.chunks_exact(sector_size) {
-                        read_piece::<PosTable>(
+                        read_piece::<PosTable, _>(
                             black_box(piece_offset),
                             black_box(&plotted_sector.sector_id),
                             black_box(&plotted_sector.sector_metadata),
