@@ -13,7 +13,7 @@ use frame_support::{assert_err, assert_ok, parameter_types, PalletId};
 use frame_system::pallet_prelude::*;
 use scale_info::TypeInfo;
 use sp_core::crypto::Pair;
-use sp_core::storage::StorageKey;
+use sp_core::storage::{StateVersion, StorageKey};
 use sp_core::{Get, H256, U256};
 use sp_domains::fraud_proof::{FraudProof, InvalidTotalRewardsProof};
 use sp_domains::merkle_tree::MerkleTree;
@@ -55,6 +55,10 @@ frame_support::construct_runtime!(
 type BlockNumber = u64;
 type Hash = H256;
 
+parameter_types! {
+    pub const ExtrinsicsRootStateVersion: StateVersion = StateVersion::V0;
+}
+
 impl frame_system::Config for Test {
     type BaseCallFilter = frame_support::traits::Everything;
     type BlockWeights = ();
@@ -79,6 +83,7 @@ impl frame_system::Config for Test {
     type SS58Prefix = ConstU16<42>;
     type OnSetCode = ();
     type MaxConsumers = ConstU32<16>;
+    type ExtrinsicsRootStateVersion = ExtrinsicsRootStateVersion;
 }
 
 parameter_types! {

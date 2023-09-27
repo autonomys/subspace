@@ -9,7 +9,8 @@ use domain_block_preprocessor::PreprocessResult;
 use domain_runtime_primitives::DomainCoreApi;
 use sc_client_api::{AuxStore, BlockBackend, Finalizer, ProofProvider};
 use sc_consensus::{
-    BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult, StateAction, StorageChanges,
+    BlockImportParams, ForkChoiceStrategy, ImportResult, SharedBlockImport, StateAction,
+    StorageChanges,
 };
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HashAndNumber, HeaderBackend, HeaderMetadata};
@@ -44,7 +45,7 @@ where
 }
 
 /// An abstracted domain block processor.
-pub(crate) struct DomainBlockProcessor<Block, CBlock, Client, CClient, Backend, BI>
+pub(crate) struct DomainBlockProcessor<Block, CBlock, Client, CClient, Backend>
 where
     Block: BlockT,
     CBlock: BlockT,
@@ -55,12 +56,12 @@ where
     pub(crate) consensus_client: Arc<CClient>,
     pub(crate) backend: Arc<Backend>,
     pub(crate) domain_confirmation_depth: NumberFor<Block>,
-    pub(crate) block_import: Arc<BI>,
+    pub(crate) block_import: SharedBlockImport<Block>,
     pub(crate) import_notification_sinks: DomainImportNotificationSinks<Block, CBlock>,
 }
 
-impl<Block, CBlock, Client, CClient, Backend, BI> Clone
-    for DomainBlockProcessor<Block, CBlock, Client, CClient, Backend, BI>
+impl<Block, CBlock, Client, CClient, Backend> Clone
+    for DomainBlockProcessor<Block, CBlock, Client, CClient, Backend>
 where
     Block: BlockT,
     CBlock: BlockT,
@@ -93,8 +94,8 @@ pub(crate) struct PendingConsensusBlocks<Block: BlockT, CBlock: BlockT> {
     pub consensus_imports: Vec<HashAndNumber<CBlock>>,
 }
 
-impl<Block, CBlock, Client, CClient, Backend, BI>
-    DomainBlockProcessor<Block, CBlock, Client, CClient, Backend, BI>
+impl<Block, CBlock, Client, CClient, Backend>
+    DomainBlockProcessor<Block, CBlock, Client, CClient, Backend>
 where
     Block: BlockT,
     CBlock: BlockT,
@@ -107,7 +108,6 @@ where
         + 'static,
     Client::Api:
         DomainCoreApi<Block> + sp_block_builder::BlockBuilder<Block> + sp_api::ApiExt<Block>,
-    for<'b> &'b BI: BlockImport<Block, Error = sp_consensus::Error>,
     CClient: HeaderBackend<CBlock>
         + HeaderMetadata<CBlock, Error = sp_blockchain::Error>
         + BlockBackend<CBlock>
@@ -449,7 +449,9 @@ where
             *block_import_params.header.parent_hash(),
         );
 
-        let import_result = (&*self.block_import)
+        let import_result = (*self.block_import)
+            .write()
+            .await
             .import_block(block_import_params)
             .await?;
 

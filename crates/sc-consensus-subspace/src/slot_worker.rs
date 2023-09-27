@@ -24,8 +24,8 @@ use futures::channel::mpsc;
 use futures::{StreamExt, TryFutureExt};
 use log::{debug, error, info, warn};
 use sc_client_api::AuxStore;
-use sc_consensus::block_import::{BlockImport, BlockImportParams, StateAction};
-use sc_consensus::{JustificationSyncLink, StorageChanges};
+use sc_consensus::block_import::{BlockImportParams, StateAction};
+use sc_consensus::{JustificationSyncLink, SharedBlockImport, StorageChanges};
 use sc_consensus_slots::{
     BackoffAuthoringBlocksStrategy, SimpleSlotWorker, SlotInfo, SlotLenienceType, SlotProportion,
 };
@@ -107,12 +107,12 @@ where
     }
 }
 
-pub(super) struct SubspaceSlotWorker<PosTable, Block, Client, E, I, SO, L, BS, AS>
+pub(super) struct SubspaceSlotWorker<PosTable, Block, Client, E, SO, L, BS, AS>
 where
     Block: BlockT,
 {
     pub(super) client: Arc<Client>,
-    pub(super) block_import: I,
+    pub(super) block_import: SharedBlockImport<Block>,
     pub(super) env: E,
     pub(super) sync_oracle: SO,
     pub(super) justification_sync_link: L,
@@ -136,8 +136,8 @@ where
     pub(super) _pos_table: PhantomData<PosTable>,
 }
 
-impl<PosTable, Block, Client, E, I, SO, L, BS, AS> PotSlotWorker<Block>
-    for SubspaceSlotWorker<PosTable, Block, Client, E, I, SO, L, BS, AS>
+impl<PosTable, Block, Client, E, SO, L, BS, AS> PotSlotWorker<Block>
+    for SubspaceSlotWorker<PosTable, Block, Client, E, SO, L, BS, AS>
 where
     Block: BlockT,
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block>,
@@ -198,8 +198,8 @@ where
 }
 
 #[async_trait::async_trait]
-impl<PosTable, Block, Client, E, I, Error, SO, L, BS, AS> SimpleSlotWorker<Block>
-    for SubspaceSlotWorker<PosTable, Block, Client, E, I, SO, L, BS, AS>
+impl<PosTable, Block, Client, E, Error, SO, L, BS, AS> SimpleSlotWorker<Block>
+    for SubspaceSlotWorker<PosTable, Block, Client, E, SO, L, BS, AS>
 where
     PosTable: Table,
     Block: BlockT,
@@ -211,15 +211,14 @@ where
     Client::Api: SubspaceApi<Block, FarmerPublicKey>,
     E: Environment<Block, Error = Error> + Send + Sync,
     E::Proposer: Proposer<Block, Error = Error>,
-    I: BlockImport<Block> + Send + Sync + 'static,
     SO: SyncOracle + Send + Sync,
     L: JustificationSyncLink<Block>,
     BS: BackoffAuthoringBlocksStrategy<NumberFor<Block>> + Send + Sync,
-    Error: std::error::Error + Send + From<ConsensusError> + From<I::Error> + 'static,
+    Error: std::error::Error + Send + From<ConsensusError> + 'static,
     AS: AuxStore + Send + Sync + 'static,
     BlockNumber: From<<<Block as BlockT>::Header as Header>::Number>,
 {
-    type BlockImport = I;
+    type BlockImport = SharedBlockImport<Block>;
     type SyncOracle = SO;
     type JustificationSyncLink = L;
     type CreateProposer =
@@ -661,8 +660,8 @@ where
     }
 }
 
-impl<PosTable, Block, Client, E, I, Error, SO, L, BS, AS>
-    SubspaceSlotWorker<PosTable, Block, Client, E, I, SO, L, BS, AS>
+impl<PosTable, Block, Client, E, Error, SO, L, BS, AS>
+    SubspaceSlotWorker<PosTable, Block, Client, E, SO, L, BS, AS>
 where
     PosTable: Table,
     Block: BlockT,
@@ -674,11 +673,10 @@ where
     Client::Api: SubspaceApi<Block, FarmerPublicKey>,
     E: Environment<Block, Error = Error> + Send + Sync,
     E::Proposer: Proposer<Block, Error = Error>,
-    I: BlockImport<Block> + Send + Sync + 'static,
     SO: SyncOracle + Send + Sync,
     L: JustificationSyncLink<Block>,
     BS: BackoffAuthoringBlocksStrategy<NumberFor<Block>> + Send + Sync,
-    Error: std::error::Error + Send + From<ConsensusError> + From<I::Error> + 'static,
+    Error: std::error::Error + Send + From<ConsensusError> + 'static,
     AS: AuxStore + Send + Sync + 'static,
     BlockNumber: From<<<Block as BlockT>::Header as Header>::Number>,
 {

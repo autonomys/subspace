@@ -26,7 +26,6 @@ use futures::{future, FutureExt, Stream, StreamExt, TryFutureExt};
 use sc_client_api::{
     AuxStore, BlockBackend, BlockImportNotification, BlockchainEvents, Finalizer, ProofProvider,
 };
-use sc_consensus::BlockImport;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sp_api::{BlockT, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
@@ -51,7 +50,6 @@ pub(super) async fn start_worker<
     CIBNS,
     NSNS,
     E,
-    BI,
 >(
     spawn_essential: Box<dyn SpawnEssentialNamed>,
     consensus_client: Arc<CClient>,
@@ -67,7 +65,7 @@ pub(super) async fn start_worker<
         DomainParentChain<Block, CBlock, CClient>,
         TransactionPool,
     >,
-    bundle_processor: BundleProcessor<Block, CBlock, Client, CClient, Backend, E, BI>,
+    bundle_processor: BundleProcessor<Block, CBlock, Client, CClient, Backend, E>,
     operator_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS>,
     active_leaves: Vec<BlockInfo<CBlock>>,
 ) where
@@ -102,8 +100,6 @@ pub(super) async fn start_worker<
     CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + 'static,
     NSNS: Stream<Item = NewSlotNotification> + Send + 'static,
     E: CodeExecutor,
-    for<'b> &'b BI: BlockImport<Block, Error = sp_consensus::Error>,
-    BI: Send + Sync + 'static,
 {
     let span = tracing::Span::current();
 

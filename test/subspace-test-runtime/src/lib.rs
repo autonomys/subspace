@@ -51,6 +51,7 @@ use sp_consensus_subspace::{
     Vote,
 };
 use sp_core::crypto::{ByteArray, KeyTypeId};
+use sp_core::storage::StateVersion;
 use sp_core::{Hasher, OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::fraud_proof::FraudProof;
@@ -206,6 +207,7 @@ parameter_types! {
     pub SubspaceBlockWeights: BlockWeights = BlockWeights::with_sensible_defaults(BLOCK_WEIGHT_FOR_2_SEC, NORMAL_DISPATCH_RATIO);
     /// We allow for 3.75 MiB for `Normal` extrinsic with 5 MiB maximum block length.
     pub SubspaceBlockLength: BlockLength = BlockLength::max_with_normal_ratio(MAX_BLOCK_LENGTH, NORMAL_DISPATCH_RATIO);
+    pub const ExtrinsicsRootStateVersion: StateVersion = StateVersion::V0;
 }
 
 pub type SS58Prefix = ConstU16<2254>;
@@ -260,6 +262,7 @@ impl frame_system::Config for Runtime {
     /// The set code logic, just the default since we're not a parachain.
     type OnSetCode = ();
     type MaxConsumers = ConstU32<16>;
+    type ExtrinsicsRootStateVersion = ExtrinsicsRootStateVersion;
 }
 
 parameter_types! {
