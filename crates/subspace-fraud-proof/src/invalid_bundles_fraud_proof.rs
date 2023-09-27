@@ -6,11 +6,11 @@ use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::CodeExecutor;
 use sp_domains::fraud_proof::{
-    InvalidBundlesFraudProof, MissingBundleAdditionalData, MissingInvalidBundleEntryFraudProof,
-    VerificationError,
+    ExecutionReceiptApi, InvalidBundlesFraudProof, MissingBundleAdditionalData,
+    MissingInvalidBundleEntryFraudProof, VerificationError,
 };
 use sp_domains::storage_proof::OpaqueBundleWithProof;
-use sp_domains::DomainsApi;
+use sp_domains::{DomainsApi, InvalidBundleType};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -41,7 +41,8 @@ where
     CBlock: BlockT,
     DomainBlock: BlockT,
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock> + Send + Sync,
-    CClient::Api: DomainsApi<CBlock, NumberFor<DomainBlock>, <DomainBlock as BlockT>::Hash>,
+    CClient::Api: DomainsApi<CBlock, NumberFor<DomainBlock>, <DomainBlock as BlockT>::Hash>
+        + ExecutionReceiptApi<CBlock, NumberFor<DomainBlock>, <DomainBlock as BlockT>::Hash>,
     Exec: CodeExecutor + 'static,
 {
     /// Constructs a new instance of [`InvalidBundleProofVerifier`].
@@ -68,10 +69,11 @@ where
                 let MissingInvalidBundleEntryFraudProof {
                     domain_id,
                     consensus_block_hash,
-                    parent_domain_block_hash,
                     runtime_code_with_proof,
                     opaque_bundle_with_proof,
                     additional_data,
+                    bad_receipt_hash,
+                    bundle_index,
                     ..
                 } = proof;
 
@@ -91,10 +93,46 @@ where
                     })?
                 };
 
+                // Retrieve parent domain block hash. We are assuming here verification client has
+                // the bad receipt and its parent in state.
+                let bad_receipt = self
+                    .consensus_client
+                    .runtime_api()
+                    .get_execution_receipt_by_hash(*consensus_block_hash, *bad_receipt_hash)?
+                    .ok_or(VerificationError::ExecutionReceiptNotFound)?;
+
+                let parent_of_bad_receipt = self
+                    .consensus_client
+                    .runtime_api()
+                    .get_execution_receipt_by_hash(
+                        *consensus_block_hash,
+                        bad_receipt.parent_domain_block_receipt_hash,
+                    )?
+                    .ok_or(VerificationError::ExecutionReceiptNotFound)?;
+
+                let parent_domain_block_hash = parent_of_bad_receipt.domain_block_hash;
+
                 // Verify the existence of the `bundle` in the consensus chain
                 opaque_bundle_with_proof
                     .verify::<CBlock>(*domain_id, consensus_block_header.state_root())?;
                 let OpaqueBundleWithProof { bundle, .. } = opaque_bundle_with_proof;
+
+                // Bundle with tx out of range, should be either part of invalid bundle with different invalid bundle type
+                // or not part of the invalid bundles array.
+                let maybe_target_invalid_bundle = bad_receipt
+                    .invalid_bundles
+                    .iter()
+                    .find(|b| b.bundle_index == *bundle_index);
+                if maybe_target_invalid_bundle.is_some() {
+                    let target_invalid_bundle = maybe_target_invalid_bundle
+                        .expect("already checked for None in if condition above; qed");
+                    if target_invalid_bundle.invalid_bundle_type == InvalidBundleType::OutOfRangeTx
+                    {
+                        return Err(VerificationError::IncorrectBundleInFraudProof {
+                            bundle_index: *bundle_index,
+                        });
+                    }
+                }
 
                 // Verify the existence of the `domain_runtime_code` in the consensus chain
                 //
@@ -132,7 +170,7 @@ where
                                 DomainBlock,
                             >>::is_within_tx_range(
                                 &runtime_api_light,
-                                *parent_domain_block_hash,
+                                parent_domain_block_hash,
                                 &extrinsic,
                                 &bundle_vrf_hash,
                                 &tx_range,
@@ -174,7 +212,8 @@ where
     CBlock: BlockT,
     DomainBlock: BlockT,
     Client: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock> + Send + Sync,
-    Client::Api: DomainsApi<CBlock, NumberFor<DomainBlock>, <DomainBlock as BlockT>::Hash>,
+    Client::Api: DomainsApi<CBlock, NumberFor<DomainBlock>, <DomainBlock as BlockT>::Hash>
+        + ExecutionReceiptApi<CBlock, NumberFor<DomainBlock>, <DomainBlock as BlockT>::Hash>,
     Exec: CodeExecutor + 'static,
 {
     fn verify_invalid_bundle_proof(

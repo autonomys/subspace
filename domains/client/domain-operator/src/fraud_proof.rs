@@ -237,7 +237,6 @@ where
                     domain_id,
                     bad_receipt_hash,
                     consensus_block_hash.clone(),
-                    parent_domain_block_hash,
                     bundle_index,
                     bundle_with_proof,
                     runtime_code_with_proof,
@@ -275,12 +274,13 @@ where
                 )),
             )),
             InvalidBundlesMismatchType::InvalidAsValid => {
-                let invalid_bundle = invalid_bundles.get(bundle_index as usize).ok_or(
-                    FraudProofError::InvalidBundleIndex {
+                let invalid_bundle = invalid_bundles
+                    .iter()
+                    .find(|b| b.bundle_index == bundle_index)
+                    .ok_or(FraudProofError::InvalidBundleIndex {
                         index: bundle_index as usize,
                         max: local_receipt.invalid_bundles.len(),
-                    },
-                )?;
+                    })?;
 
                 let parent_consensus_block_hash = {
                     let header = self

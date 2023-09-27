@@ -167,6 +167,9 @@ pub enum VerificationError {
     /// Domain state root not found.
     #[cfg_attr(feature = "thiserror", error("Domain state root not found"))]
     DomainStateRootNotFound,
+    /// Execution receipt not found.
+    #[cfg_attr(feature = "thiserror", error("Execution receipt not found"))]
+    ExecutionReceiptNotFound,
     /// Fail to get runtime code.
     // The `String` here actually repersenting the `sc_executor_common::error::WasmError`
     // error, but it will be improper to use `WasmError` directly here since it will make
@@ -180,8 +183,15 @@ pub enum VerificationError {
         error("Oneshot error when verifying fraud proof in tx pool: {0}")
     )]
     Oneshot(String),
+    /// Tx indicated in fraud proof is in range
     #[cfg_attr(feature = "thiserror", error("Tx is in range: {extrinsic_index}"))]
     TxIsInRange { extrinsic_index: u32 },
+    /// Bundle passed in fraud proof is incorrect
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Bundle passed in fraud proof is incorrect: {bundle_index}")
+    )]
+    IncorrectBundleInFraudProof { bundle_index: u32 },
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
@@ -194,7 +204,6 @@ pub struct MissingInvalidBundleEntryFraudProof<Number, Hash, DomainNumber, Domai
     pub domain_id: DomainId,
     pub bad_receipt_hash: H256,
     pub consensus_block_hash: Hash,
-    pub parent_domain_block_hash: DomainHash,
     pub bundle_index: u32,
     pub opaque_bundle_with_proof:
         OpaqueBundleWithProof<Number, Hash, DomainNumber, DomainHash, Balance>,
@@ -209,7 +218,6 @@ impl<Number, Hash, DomainNumber, DomainHash>
         domain_id: DomainId,
         bad_receipt_hash: H256,
         consensus_block_hash: Hash,
-        parent_domain_block_hash: DomainHash,
         bundle_index: u32,
         opaque_bundle_with_proof: OpaqueBundleWithProof<
             Number,
@@ -225,7 +233,6 @@ impl<Number, Hash, DomainNumber, DomainHash>
             domain_id,
             bad_receipt_hash,
             consensus_block_hash,
-            parent_domain_block_hash,
             bundle_index,
             opaque_bundle_with_proof,
             runtime_code_with_proof,
