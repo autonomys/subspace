@@ -41,6 +41,7 @@ use domain_runtime_primitives::{
     BlockNumber as DomainNumber, Hash as DomainHash, MultiAccountId, TryConvertBack,
 };
 use frame_support::inherent::ProvideInherent;
+use frame_support::storage::generator::StorageValue;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, ConstU8, Currency, Everything, Get};
 use frame_support::weights::constants::{RocksDbWeight, WEIGHT_REF_TIME_PER_SECOND};
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
@@ -58,7 +59,7 @@ use sp_consensus_subspace::{
     Vote,
 };
 use sp_core::crypto::{ByteArray, KeyTypeId};
-use sp_core::storage::StateVersion;
+use sp_core::storage::{StateVersion, StorageKey};
 use sp_core::{OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
@@ -619,6 +620,15 @@ parameter_types! {
     pub SudoId: AccountId = Sudo::key().expect("Sudo account must exist");
 }
 
+pub struct StorageKeys;
+impl sp_domains::fraud_proof::StorageKeys for StorageKeys {
+    fn block_randomness_key() -> StorageKey {
+        StorageKey(
+            pallet_subspace::pallet::BlockRandomness::<Runtime>::storage_value_final_key().to_vec(),
+        )
+    }
+}
+
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type DomainNumber = DomainNumber;
@@ -644,6 +654,7 @@ impl pallet_domains::Config for Runtime {
     type MaxPendingStakingOperation = MaxPendingStakingOperation;
     type SudoId = SudoId;
     type Randomness = Subspace;
+    type StorageKeys = StorageKeys;
 }
 
 pub struct StakingOnReward;
@@ -1088,6 +1099,10 @@ impl_runtime_apis! {
 
         fn domain_state_root(domain_id: DomainId, number: DomainNumber, hash: DomainHash) -> Option<DomainHash>{
             Domains::domain_state_root(domain_id, number, hash)
+        }
+
+        fn block_randomness_key() -> Vec<u8> {
+            pallet_subspace::pallet::BlockRandomness::<Runtime>::storage_value_final_key().to_vec()
         }
     }
 

@@ -11,6 +11,7 @@ use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::BlockOrigin;
 use sp_core::traits::CodeExecutor;
+use sp_core::H256;
 use sp_domain_digests::AsPredigest;
 use sp_domains::{DomainId, DomainsApi, InvalidReceipt, ReceiptValidity};
 use sp_keystore::KeystorePtr;
@@ -133,6 +134,7 @@ where
     CBlock: BlockT,
     NumberFor<CBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
     CBlock::Hash: From<Block::Hash>,
+    Block::Hash: Into<H256>,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + AuxStore
@@ -148,6 +150,7 @@ where
     CClient: HeaderBackend<CBlock>
         + HeaderMetadata<CBlock, Error = sp_blockchain::Error>
         + BlockBackend<CBlock>
+        + ProofProvider<CBlock>
         + ProvideRuntimeApi<CBlock>
         + 'static,
     CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>

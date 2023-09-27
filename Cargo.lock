@@ -10830,12 +10830,16 @@ dependencies = [
 name = "sp-domains"
 version = "0.1.0"
 dependencies = [
+ "async-trait",
  "blake2",
+ "domain-runtime-primitives",
  "frame-support",
  "hash-db 0.16.0",
  "hexlit",
  "num-traits",
  "parity-scale-codec",
+ "rand 0.8.5",
+ "rand_chacha 0.3.1",
  "rs_merkle",
  "scale-info",
  "serde",
@@ -10845,6 +10849,7 @@ dependencies = [
  "sp-consensus-slots",
  "sp-core",
  "sp-externalities",
+ "sp-inherents",
  "sp-keystore",
  "sp-runtime",
  "sp-runtime-interface",
@@ -10855,6 +10860,7 @@ dependencies = [
  "subspace-core-primitives",
  "subspace-runtime-primitives",
  "thiserror",
+ "trie-db",
 ]
 
 [[package]]

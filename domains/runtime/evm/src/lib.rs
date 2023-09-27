@@ -245,7 +245,7 @@ parameter_types! {
         })
         .avg_block_initialization(AVERAGE_ON_INITIALIZE_RATIO)
         .build_or_panic();
-    pub const ExtrinsicsRootStateVersion: StateVersion = StateVersion::V0;
+    pub const ExtrinsicsRootStateVersion: StateVersion = StateVersion::V1;
 }
 
 impl frame_system::Config for Runtime {
