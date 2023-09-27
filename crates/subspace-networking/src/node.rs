@@ -1,7 +1,7 @@
 use crate::protocols::request_response::handlers::generic_request_handler::GenericRequest;
 use crate::protocols::request_response::request_response_factory;
 pub use crate::shared::NewPeerInfo;
-use crate::shared::{Command, CreatedSubscription, Shared};
+use crate::shared::{Command, CreatedSubscription, PeerDiscovered, Shared};
 use crate::utils::multihash::Multihash;
 use crate::utils::rate_limiter::RateLimiterPermit;
 use crate::utils::HandlerFn;
@@ -528,5 +528,10 @@ impl Node {
     /// Callback is called when a peer is connected.
     pub fn on_connected_peer(&self, callback: HandlerFn<PeerId>) -> HandlerId {
         self.shared.handlers.connected_peer.add(callback)
+    }
+
+    /// Callback is called when a routable or unraoutable peer is discovered.
+    pub fn on_discovered_peer(&self, callback: HandlerFn<PeerDiscovered>) -> HandlerId {
+        self.shared.handlers.peer_discovered.add(callback)
     }
 }

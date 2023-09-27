@@ -15,6 +15,34 @@ use parking_lot::Mutex;
 use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 
+/// Represents Kademlia events (RoutablePeer, PendingRoutablePeer, UnroutablePeer).
+#[derive(Clone, Debug)]
+pub enum PeerDiscovered {
+    /// Kademlia's unroutable peer event.
+    UnroutablePeer {
+        /// Peer ID
+        peer_id: PeerId,
+    },
+
+    /// Kademlia's routable or pending routable peer event.
+    RoutablePeer {
+        /// Peer ID
+        peer_id: PeerId,
+        /// Peer address
+        address: Multiaddr,
+    },
+}
+
+impl PeerDiscovered {
+    /// Extracts peer ID from event.
+    pub fn peer_id(&self) -> PeerId {
+        match self {
+            PeerDiscovered::UnroutablePeer { peer_id } => *peer_id,
+            PeerDiscovered::RoutablePeer { peer_id, .. } => *peer_id,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub(crate) struct CreatedSubscription {
     /// Subscription ID to be used for unsubscribing.
@@ -97,6 +125,7 @@ pub(crate) struct Handlers {
     pub(crate) new_peer_info: Handler<NewPeerInfo>,
     pub(crate) disconnected_peer: Handler<PeerId>,
     pub(crate) connected_peer: Handler<PeerId>,
+    pub(crate) peer_discovered: Handler<PeerDiscovered>,
 }
 
 #[derive(Debug)]
