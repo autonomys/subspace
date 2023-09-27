@@ -129,8 +129,7 @@ async fn read_pieces<PosTable>(
                     error!(
                         %sector_index,
                         %sector_count,
-                        "Tried to read piece from sector that is not yet \
-                        plotted"
+                        "Tried to read piece from sector that is not yet plotted"
                     );
                     continue;
                 }
@@ -139,13 +138,39 @@ async fn read_pieces<PosTable>(
             (sector_metadata, sector_count)
         };
 
+        // Sector must be plotted
+        if sector_index >= sector_count {
+            warn!(
+                %sector_index,
+                %piece_offset,
+                %sector_count,
+                "Incorrect sector offset"
+            );
+            // Doesn't matter if receiver still cares about it
+            let _ = response_sender.send(None);
+            continue;
+        }
+        // Piece must be within sector
+        if u16::from(piece_offset) >= pieces_in_sector {
+            warn!(
+                %sector_index,
+                %piece_offset,
+                %sector_count,
+                "Incorrect piece offset"
+            );
+            // Doesn't matter if receiver still cares about it
+            let _ = response_sender.send(None);
+            continue;
+        }
+
+        let sector_size = sector_size(pieces_in_sector);
+        let sector = &global_plot_mmap[sector_index as usize * sector_size..][..sector_size];
+
         let maybe_piece = read_piece::<PosTable>(
             &public_key,
             piece_offset,
-            pieces_in_sector,
-            sector_count,
             &sector_metadata,
-            &global_plot_mmap,
+            sector,
             &erasure_coding,
             &mut table_generator,
         );
@@ -155,14 +180,11 @@ async fn read_pieces<PosTable>(
     }
 }
 
-#[allow(clippy::too_many_arguments)]
 fn read_piece<PosTable>(
     public_key: &PublicKey,
     piece_offset: PieceOffset,
-    pieces_in_sector: u16,
-    sector_count: SectorIndex,
     sector_metadata: &SectorMetadataChecksummed,
-    global_plot: &[u8],
+    sector: &[u8],
     erasure_coding: &ErasureCoding,
     table_generator: &mut PosTable::Generator,
 ) -> Option<Piece>
@@ -170,31 +192,8 @@ where
     PosTable: Table,
 {
     let sector_index = sector_metadata.sector_index;
-    // Sector must be plotted
-    if sector_index >= sector_count {
-        warn!(
-            %sector_index,
-            %piece_offset,
-            %sector_count,
-            "Incorrect sector offset"
-        );
-        return None;
-    }
-    // Piece must be within sector
-    if u16::from(piece_offset) >= pieces_in_sector {
-        warn!(
-            %sector_index,
-            %piece_offset,
-            %sector_count,
-            "Incorrect piece offset"
-        );
-        return None;
-    }
 
     let sector_id = SectorId::new(public_key.hash(), sector_index);
-    let sector_size = sector_size(pieces_in_sector);
-    // TODO: Would be nicer to have list of plots here and just index it
-    let sector = &global_plot[sector_index as usize * sector_size..][..sector_size];
 
     let piece = match reading::read_piece::<PosTable>(
         piece_offset,
@@ -209,7 +208,6 @@ where
             error!(
                 %sector_index,
                 %piece_offset,
-                %sector_count,
                 %error,
                 "Failed to read piece from sector"
             );
