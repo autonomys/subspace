@@ -31,7 +31,9 @@ use sc_client_api::ExecutorProvider;
 use sc_consensus::block_import::{
     BlockCheckParams, BlockImportParams, ForkChoiceStrategy, ImportResult,
 };
-use sc_consensus::{BasicQueue, BlockImport, StateAction, Verifier as VerifierT};
+use sc_consensus::{
+    BasicQueue, BlockImport, SharedBlockImport, StateAction, Verifier as VerifierT,
+};
 use sc_consensus_fraud_proof::FraudProofBlockImport;
 use sc_executor::NativeElseWasmExecutor;
 use sc_network::config::{NetworkConfiguration, TransportConfig};
@@ -751,7 +753,7 @@ where
 {
     BasicQueue::new(
         MockVerifier::default(),
-        Box::new(block_import),
+        SharedBlockImport::new(block_import),
         None,
         spawner,
         None,
@@ -776,7 +778,7 @@ where
     Block: BlockT,
 {
     async fn verify(
-        &mut self,
+        &self,
         block_params: BlockImportParams<Block>,
     ) -> Result<BlockImportParams<Block>, String> {
         Ok(block_params)
@@ -885,7 +887,7 @@ where
     }
 
     async fn check_block(
-        &mut self,
+        &self,
         block: BlockCheckParams<Block>,
     ) -> Result<ImportResult, Self::Error> {
         self.inner.check_block(block).await.map_err(Into::into)

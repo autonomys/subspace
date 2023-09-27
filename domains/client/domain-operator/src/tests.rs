@@ -8,6 +8,7 @@ use domain_test_service::Sr25519Keyring::{self, Ferdie};
 use domain_test_service::GENESIS_DOMAIN_ID;
 use futures::StreamExt;
 use sc_client_api::{Backend, BlockBackend, HeaderBackend};
+use sc_consensus::SharedBlockImport;
 use sc_service::{BasePath, Role};
 use sc_transaction_pool_api::error::Error as TxPoolError;
 use sc_transaction_pool_api::TransactionPool;
@@ -239,7 +240,7 @@ async fn test_processing_empty_consensus_block() {
         consensus_client: ferdie.client.clone(),
         backend: alice.backend.clone(),
         domain_confirmation_depth: 256u32,
-        block_import: alice.client.clone(),
+        block_import: SharedBlockImport::new(alice.client.clone()),
         import_notification_sinks: Default::default(),
     };
 

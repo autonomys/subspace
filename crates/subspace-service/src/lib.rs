@@ -48,7 +48,7 @@ use prometheus_client::registry::Registry;
 use sc_basic_authorship::ProposerFactory;
 use sc_client_api::execution_extensions::ExtensionsFactory;
 use sc_client_api::{Backend, BlockBackend, BlockchainEvents, ExecutorProvider, HeaderBackend};
-use sc_consensus::{BasicQueue, BlockImport, DefaultImportQueue, ImportQueue};
+use sc_consensus::{BasicQueue, DefaultImportQueue, ImportQueue, SharedBlockImport};
 use sc_consensus_slots::SlotProportion;
 use sc_consensus_subspace::archiver::{create_subspace_archiver, SegmentHeadersStore};
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
@@ -72,7 +72,6 @@ use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderMetadata;
-use sp_consensus::Error as ConsensusError;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::extract_pre_digest;
 use sp_consensus_subspace::{
@@ -391,7 +390,7 @@ where
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
     /// Subspace block import
-    pub block_import: Box<dyn BlockImport<Block, Error = ConsensusError> + Send + Sync>,
+    pub block_import: SharedBlockImport<Block>,
     /// Subspace link
     pub subspace_link: SubspaceLink<Block>,
     /// Segment headers store
@@ -596,16 +595,18 @@ where
         is_authoring_blocks: config.role.is_authority(),
         pot_verifier: pot_verifier.clone(),
     })?;
+
+    let block_import = SharedBlockImport::new(block_import);
     let import_queue = BasicQueue::new(
         verifier,
-        Box::new(block_import.clone()),
+        block_import.clone(),
         None,
         &task_manager.spawn_essential_handle(),
         config.prometheus_registry(),
     );
 
     let other = OtherPartialComponents {
-        block_import: Box::new(block_import),
+        block_import,
         subspace_link,
         segment_headers_store,
         pot_verifier,
@@ -1049,7 +1050,7 @@ where
         };
 
         let subspace =
-            sc_consensus_subspace::start_subspace::<PosTable, _, _, _, _, _, _, _, _, _, _, _>(
+            sc_consensus_subspace::start_subspace::<PosTable, _, _, _, _, _, _, _, _, _, _>(
                 subspace_config,
             )?;
 

@@ -8,12 +8,18 @@ use frame_support::{
 	traits::{ConstU32, ConstU64, EnsureOrigin, Everything},
 };
 use frame_system::RawOrigin;
+use sp_core::storage::StateVersion;
 use sp_core::H256;
 use sp_runtime::{traits::IdentityLookup, BuildStorage};
 
 use crate as vesting;
 
 pub type AccountId = u128;
+
+parameter_types! {
+    pub const ExtrinsicsRootStateVersion: StateVersion = StateVersion::V0;
+}
+
 impl frame_system::Config for Runtime {
 	type RuntimeOrigin = RuntimeOrigin;
 	type RuntimeCall = RuntimeCall;
@@ -38,6 +44,7 @@ impl frame_system::Config for Runtime {
 	type SS58Prefix = ();
 	type OnSetCode = ();
 	type MaxConsumers = ConstU32<16>;
+	type ExtrinsicsRootStateVersion = ExtrinsicsRootStateVersion;
 }
 
 type Balance = u64;

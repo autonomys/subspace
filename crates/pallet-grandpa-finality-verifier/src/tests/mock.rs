@@ -1,5 +1,6 @@
 use frame_support::weights::Weight;
 use frame_support::{construct_runtime, parameter_types};
+use sp_core::storage::StateVersion;
 use sp_runtime::testing::H256;
 use sp_runtime::traits::{BlakeTwo256, IdentityLookup};
 use sp_runtime::Perbill;
@@ -22,6 +23,7 @@ parameter_types! {
     pub const MaximumBlockWeight: Weight = Weight::from_parts(1024, 0);
     pub const MaximumBlockLength: u32 = 2 * 1024;
     pub const AvailableBlockRatio: Perbill = Perbill::one();
+    pub const ExtrinsicsRootStateVersion: StateVersion = StateVersion::V0;
 }
 
 impl frame_system::Config for TestRuntime {
@@ -48,6 +50,7 @@ impl frame_system::Config for TestRuntime {
     type SS58Prefix = ();
     type OnSetCode = ();
     type MaxConsumers = frame_support::traits::ConstU32<16>;
+    type ExtrinsicsRootStateVersion = ExtrinsicsRootStateVersion;
 }
 
 impl grandpa::Config for TestRuntime {

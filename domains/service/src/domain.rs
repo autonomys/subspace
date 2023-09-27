@@ -2,7 +2,6 @@ use crate::providers::{BlockImportProvider, RpcProvider};
 use crate::{FullBackend, FullClient};
 use domain_client_block_preprocessor::inherents::CreateInherentDataProvider;
 use domain_client_block_preprocessor::runtime_api_full::RuntimeApiFull;
-use domain_client_consensus_relay_chain::DomainBlockImport;
 use domain_client_message_relayer::GossipMessageSink;
 use domain_client_operator::{Operator, OperatorParams, OperatorStreams};
 use domain_runtime_primitives::opaque::Block;
@@ -11,6 +10,7 @@ use futures::channel::mpsc;
 use futures::Stream;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
 use sc_client_api::{BlockBackend, BlockImportNotification, BlockchainEvents, ProofProvider};
+use sc_consensus::SharedBlockImport;
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_rpc_api::DenyUnsafe;
 use sc_service::{
@@ -43,9 +43,7 @@ use subspace_runtime_primitives::Nonce;
 use subspace_transaction_pool::FullChainApiWrapper;
 use substrate_frame_rpc_system::AccountNonceApi;
 
-type BlockImportOf<Block, Client, Provider> = <Provider as BlockImportProvider<Block, Client>>::BI;
-
-pub type DomainOperator<Block, CBlock, CClient, RuntimeApi, ExecutorDispatch, BI> = Operator<
+pub type DomainOperator<Block, CBlock, CClient, RuntimeApi, ExecutorDispatch> = Operator<
     Block,
     CBlock,
     FullClient<Block, RuntimeApi, ExecutorDispatch>,
@@ -53,11 +51,10 @@ pub type DomainOperator<Block, CBlock, CClient, RuntimeApi, ExecutorDispatch, BI
     FullPool<CBlock, CClient, RuntimeApi, ExecutorDispatch>,
     FullBackend<Block>,
     NativeElseWasmExecutor<ExecutorDispatch>,
-    DomainBlockImport<BI>,
 >;
 
 /// Domain full node along with some other components.
-pub struct NewFull<C, CodeExecutor, CBlock, CClient, RuntimeApi, ExecutorDispatch, AccountId, BI>
+pub struct NewFull<C, CodeExecutor, CBlock, CClient, RuntimeApi, ExecutorDispatch, AccountId>
 where
     Block: BlockT,
     CBlock: BlockT,
@@ -105,7 +102,7 @@ where
     /// Network starter.
     pub network_starter: NetworkStarter,
     /// Operator.
-    pub operator: DomainOperator<Block, CBlock, CClient, RuntimeApi, ExecutorDispatch, BI>,
+    pub operator: DomainOperator<Block, CBlock, CClient, RuntimeApi, ExecutorDispatch>,
     _phantom_data: PhantomData<AccountId>,
 }
 
@@ -143,7 +140,7 @@ fn new_partial<RuntimeApi, ExecutorDispatch, CBlock, CClient, BIMP>(
             Option<Telemetry>,
             Option<TelemetryWorkerHandle>,
             NativeElseWasmExecutor<ExecutorDispatch>,
-            Arc<DomainBlockImport<BIMP::BI>>,
+            SharedBlockImport<Block>,
         ),
     >,
     sc_service::Error,
@@ -212,10 +209,10 @@ where
         domain_tx_pre_validator,
     );
 
-    let block_import = Arc::new(DomainBlockImport::new(BlockImportProvider::block_import(
+    let block_import = SharedBlockImport::new(BlockImportProvider::block_import(
         block_import_provider,
         client.clone(),
-    )));
+    ));
     let import_queue = domain_client_consensus_relay_chain::import_queue(
         block_import.clone(),
         &task_manager.spawn_essential_handle(),
@@ -276,7 +273,6 @@ pub async fn new_full<
         RuntimeApi,
         ExecutorDispatch,
         AccountId,
-        BlockImportOf<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>, Provider>,
     >,
 >
 where

@@ -476,7 +476,7 @@ where
     SN: Fn() -> Slot + Send + Sync + 'static,
 {
     async fn verify(
-        &mut self,
+        &self,
         mut block: BlockImportParams<Block>,
     ) -> Result<BlockImportParams<Block>, String> {
         trace!(

@@ -43,7 +43,7 @@ use sc_client_api::{BlockBackend, BlockchainEvents, ProvideUncles, UsageProvider
 use sc_consensus::block_import::{
     BlockCheckParams, BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult,
 };
-use sc_consensus::JustificationSyncLink;
+use sc_consensus::{JustificationSyncLink, SharedBlockImport};
 use sc_consensus_slots::{BackoffAuthoringBlocksStrategy, InherentDataProviderExt, SlotProportion};
 use sc_proof_of_time::source::PotSlotInfoStream;
 use sc_proof_of_time::verifier::PotVerifier;
@@ -351,7 +351,7 @@ where
 }
 
 /// Parameters for Subspace.
-pub struct SubspaceParams<Block, Client, SC, E, I, SO, L, CIDP, BS, AS>
+pub struct SubspaceParams<Block, Client, SC, E, SO, L, CIDP, BS, AS>
 where
     Block: BlockT,
     SO: SyncOracle + Send + Sync,
@@ -368,7 +368,7 @@ where
     /// The underlying block-import object to supply our produced blocks to.
     /// This must be a `SubspaceBlockImport` or a wrapper of it, otherwise
     /// critical consensus logic will be omitted.
-    pub block_import: I,
+    pub block_import: SharedBlockImport<Block>,
 
     /// A sync oracle
     pub sync_oracle: SubspaceSyncOracle<SO>,
@@ -418,7 +418,7 @@ where
 }
 
 /// Start the Subspace worker.
-pub fn start_subspace<PosTable, Block, Client, SC, E, I, SO, CIDP, BS, L, AS, Error>(
+pub fn start_subspace<PosTable, Block, Client, SC, E, SO, CIDP, BS, L, AS, Error>(
     SubspaceParams {
         client,
         select_chain,
@@ -437,7 +437,7 @@ pub fn start_subspace<PosTable, Block, Client, SC, E, I, SO, CIDP, BS, L, AS, Er
         offchain_tx_pool_factory,
         pot_verifier,
         pot_slot_info_stream,
-    }: SubspaceParams<Block, Client, SC, E, I, SO, L, CIDP, BS, AS>,
+    }: SubspaceParams<Block, Client, SC, E, SO, L, CIDP, BS, AS>,
 ) -> Result<SubspaceWorker, sp_consensus::Error>
 where
     PosTable: Table,
@@ -455,14 +455,13 @@ where
     SC: SelectChain<Block> + 'static,
     E: Environment<Block, Error = Error> + Send + Sync + 'static,
     E::Proposer: Proposer<Block, Error = Error>,
-    I: BlockImport<Block, Error = ConsensusError> + Send + Sync + 'static,
     SO: SyncOracle + Send + Sync + Clone + 'static,
     L: JustificationSyncLink<Block> + 'static,
     CIDP: CreateInherentDataProviders<Block, ()> + Send + Sync + 'static,
     CIDP::InherentDataProviders: InherentDataProviderExt + Send,
     BS: BackoffAuthoringBlocksStrategy<NumberFor<Block>> + Send + Sync + 'static,
     AS: AuxStore + Send + Sync + 'static,
-    Error: std::error::Error + Send + From<ConsensusError> + From<I::Error> + 'static,
+    Error: std::error::Error + Send + From<ConsensusError> + 'static,
     BlockNumber: From<<<Block as BlockT>::Header as HeaderT>::Number>,
 {
     let worker = SubspaceSlotWorker {
@@ -1153,7 +1152,7 @@ where
     }
 
     async fn check_block(
-        &mut self,
+        &self,
         block: BlockCheckParams<Block>,
     ) -> Result<ImportResult, Self::Error> {
         self.inner.check_block(block).await.map_err(Into::into)

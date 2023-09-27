@@ -6,7 +6,7 @@ use domain_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_block_preprocessor::DomainBlockPreprocessor;
 use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
 use sc_client_api::{AuxStore, BlockBackend, Finalizer, ProofProvider};
-use sc_consensus::{BlockImport, BlockImportParams, ForkChoiceStrategy, StateAction};
+use sc_consensus::{BlockImportParams, ForkChoiceStrategy, StateAction};
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::BlockOrigin;
@@ -30,7 +30,7 @@ type DomainReceiptsChecker<Block, CBlock, Client, CClient, Backend, E> = Receipt
     CBlock,
 >;
 
-pub(crate) struct BundleProcessor<Block, CBlock, Client, CClient, Backend, E, BI>
+pub(crate) struct BundleProcessor<Block, CBlock, Client, CClient, Backend, E>
 where
     Block: BlockT,
     CBlock: BlockT,
@@ -49,11 +49,11 @@ where
         RuntimeApiFull<Client>,
         ReceiptValidator<Client>,
     >,
-    domain_block_processor: DomainBlockProcessor<Block, CBlock, Client, CClient, Backend, BI>,
+    domain_block_processor: DomainBlockProcessor<Block, CBlock, Client, CClient, Backend>,
 }
 
-impl<Block, CBlock, Client, CClient, Backend, E, BI> Clone
-    for BundleProcessor<Block, CBlock, Client, CClient, Backend, E, BI>
+impl<Block, CBlock, Client, CClient, Backend, E> Clone
+    for BundleProcessor<Block, CBlock, Client, CClient, Backend, E>
 where
     Block: BlockT,
     CBlock: BlockT,
@@ -126,8 +126,8 @@ where
     }
 }
 
-impl<Block, CBlock, Client, CClient, Backend, E, BI>
-    BundleProcessor<Block, CBlock, Client, CClient, Backend, E, BI>
+impl<Block, CBlock, Client, CClient, Backend, E>
+    BundleProcessor<Block, CBlock, Client, CClient, Backend, E>
 where
     Block: BlockT,
     CBlock: BlockT,
@@ -145,7 +145,6 @@ where
         + InherentExtrinsicApi<Block>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<Block>,
-    for<'b> &'b BI: BlockImport<Block, Error = sp_consensus::Error>,
     CClient: HeaderBackend<CBlock>
         + HeaderMetadata<CBlock, Error = sp_blockchain::Error>
         + BlockBackend<CBlock>
@@ -164,7 +163,7 @@ where
         backend: Arc<Backend>,
         keystore: KeystorePtr,
         domain_receipts_checker: DomainReceiptsChecker<Block, CBlock, Client, CClient, Backend, E>,
-        domain_block_processor: DomainBlockProcessor<Block, CBlock, Client, CClient, Backend, BI>,
+        domain_block_processor: DomainBlockProcessor<Block, CBlock, Client, CClient, Backend>,
     ) -> Self {
         let domain_block_preprocessor = DomainBlockPreprocessor::new(
             domain_id,
