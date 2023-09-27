@@ -48,7 +48,7 @@ use sp_domains::fraud_proof::{FraudProof, InvalidTotalRewardsProof};
 use sp_domains::verification::StorageProofVerifier;
 use sp_domains::{
     DomainBlockLimit, DomainId, DomainInstanceData, ExecutionReceipt, OpaqueBundle, OperatorId,
-    OperatorPublicKey, ProofOfElection, RuntimeId, EMPTY_EXTRINSIC_ROOT,
+    OperatorPublicKey, ProofOfElection, ReceiptHash, RuntimeId, EMPTY_EXTRINSIC_ROOT,
 };
 use sp_runtime::traits::{BlakeTwo256, CheckedSub, Hash, One, Zero};
 use sp_runtime::{RuntimeAppPublic, SaturatedConversion, Saturating};
@@ -1665,6 +1665,10 @@ impl<T: Config> Pallet<T> {
                 }
             }
         });
+    }
+
+    pub fn execution_receipt_by_hash(hash: ReceiptHash) -> Option<ExecutionReceiptOf<T>> {
+        DomainBlocks::<T>::get(hash).map(|domain_block| domain_block.execution_receipt)
     }
 
     /// Returns if there are any ERs in the challenge period that have non empty extrinsics.

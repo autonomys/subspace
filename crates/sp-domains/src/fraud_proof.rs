@@ -1,10 +1,10 @@
 use crate::storage_proof::{DomainRuntimeCodeWithProof, OpaqueBundleWithProof};
-use crate::{DomainId, ReceiptHash, SealedBundleHeader};
+use crate::{DomainId, ExecutionReceipt, ReceiptHash, SealedBundleHeader};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
 use sp_core::H256;
-use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT, Zero};
+use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT, NumberFor, Zero};
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
 use subspace_core_primitives::BlockNumber;
@@ -467,4 +467,11 @@ impl InvalidTotalRewardsProof {
 pub fn operator_block_rewards_final_key() -> Vec<u8> {
     frame_support::storage::storage_prefix("OperatorRewards".as_ref(), "BlockRewards".as_ref())
         .to_vec()
+}
+
+sp_api::decl_runtime_apis! {
+    /// API related to execution receipts stored in runtime
+    pub trait ExecutionReceiptApi<DomainNumber: Encode + Decode, DomainHash: Encode + Decode> {
+        fn get_execution_receipt_by_hash(hash: ReceiptHash) -> Option<ExecutionReceipt<NumberFor<Block>, Block::Hash, DomainNumber, DomainHash, Balance>>;
+    }
 }

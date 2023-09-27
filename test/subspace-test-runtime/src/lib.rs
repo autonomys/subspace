@@ -60,7 +60,7 @@ use sp_domains::fraud_proof::FraudProof;
 use sp_domains::transaction::PreValidationObject;
 use sp_domains::{
     DomainId, DomainInstanceData, DomainsHoldIdentifier, ExecutionReceipt, OpaqueBundle,
-    OpaqueBundles, OperatorId, OperatorPublicKey, StakingHoldIdentifier,
+    OpaqueBundles, OperatorId, OperatorPublicKey, ReceiptHash, StakingHoldIdentifier,
 };
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
@@ -1395,6 +1395,12 @@ impl_runtime_apis! {
 
         fn operator(operator_id: OperatorId) -> Option<(OperatorPublicKey, Balance)> {
             Domains::operator(operator_id)
+        }
+    }
+
+    impl sp_domains::fraud_proof::ExecutionReceiptApi<Block, DomainNumber, DomainHash> for Runtime {
+        fn get_execution_receipt_by_hash(hash: ReceiptHash) -> Option<ExecutionReceipt<NumberFor<Block>, <Block as BlockT>::Hash, DomainNumber, DomainHash, Balance>> {
+            Domains::execution_receipt_by_hash(hash)
         }
     }
 
