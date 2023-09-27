@@ -195,7 +195,7 @@ where
 
     let sector_id = SectorId::new(public_key.hash(), sector_index);
 
-    let piece = match reading::read_piece::<PosTable>(
+    let piece = match reading::read_piece::<PosTable, _>(
         piece_offset,
         &sector_id,
         sector_metadata,
