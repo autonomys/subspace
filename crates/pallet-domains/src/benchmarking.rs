@@ -22,6 +22,7 @@ const SEED: u32 = 0;
 #[benchmarks]
 mod benchmarks {
     use super::*;
+    use sp_std::vec;
 
     /// Benchmark `submit_bundle` extrinsic with the worst possible conditions:
     /// - The bundle is the first bundle of the consensus block
@@ -529,10 +530,10 @@ mod benchmarks {
         (operator_account, operator_id)
     }
 
-    fn run_to_block<T: Config>(block_number: T::BlockNumber, parent_hash: T::Hash) {
+    fn run_to_block<T: Config>(block_number: BlockNumberFor<T>, parent_hash: T::Hash) {
         System::<T>::set_block_number(block_number);
         System::<T>::initialize(&block_number, &parent_hash, &Default::default());
-        <Domains<T> as Hooks<T::BlockNumber>>::on_initialize(block_number);
+        <Domains<T> as Hooks<BlockNumberFor<T>>>::on_initialize(block_number);
         System::<T>::finalize();
     }
 

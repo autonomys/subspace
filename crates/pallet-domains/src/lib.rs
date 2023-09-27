@@ -111,15 +111,18 @@ mod pallet {
         register_runtime_at_genesis, Error as RuntimeRegistryError, RuntimeObject,
         ScheduledRuntimeUpgrade,
     };
+    #[cfg(not(feature = "runtime-benchmarks"))]
+    use crate::staking::do_reward_operators;
     use crate::staking::{
         do_auto_stake_block_rewards, do_deregister_operator, do_nominate_operator,
-        do_register_operator, do_reward_operators, do_slash_operators, do_switch_operator_domain,
-        do_withdraw_stake, Error as StakingError, Nominator, Operator, OperatorConfig,
-        StakingSummary, Withdraw,
+        do_register_operator, do_slash_operators, do_switch_operator_domain, do_withdraw_stake,
+        Error as StakingError, Nominator, Operator, OperatorConfig, StakingSummary, Withdraw,
     };
+    #[cfg(not(feature = "runtime-benchmarks"))]
+    use crate::staking_epoch::do_unlock_pending_withdrawals;
     use crate::staking_epoch::{
-        do_finalize_domain_current_epoch, do_unlock_pending_withdrawals,
-        Error as StakingEpochError, PendingNominatorUnlock, PendingOperatorSlashInfo,
+        do_finalize_domain_current_epoch, Error as StakingEpochError, PendingNominatorUnlock,
+        PendingOperatorSlashInfo,
     };
     use crate::weights::WeightInfo;
     use crate::{
@@ -751,6 +754,7 @@ mod pallet {
                 }
                 // Add the exeuctione receipt to the block tree
                 ReceiptType::Accepted(accepted_receipt_type) => {
+                    #[cfg_attr(feature = "runtime-benchmarks", allow(unused_variables))]
                     let maybe_confirmed_domain_block_info = process_execution_receipt::<T>(
                         domain_id,
                         operator_id,

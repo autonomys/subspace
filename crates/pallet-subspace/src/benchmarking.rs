@@ -1,35 +1,46 @@
 //! Benchmarking for `pallet-subspace`.
 
-use super::*;
-use crate::Pallet as Subspace;
 use frame_benchmarking::v2::*;
-use frame_system::{Pallet as System, RawOrigin};
-use sp_consensus_subspace::Vote;
-use sp_core::crypto::UncheckedFrom;
-use sp_runtime::traits::Header;
-use subspace_core_primitives::{
-    ArchivedBlockProgress, Blake2b256Hash, LastArchivedBlock, SegmentHeader, SegmentIndex, Solution,
-};
-
-const SEED: u32 = 0;
 
 #[benchmarks]
 mod benchmarks {
-    use super::*;
+    use crate::{
+        AllowAuthoringByAnyone, Call, Config, CurrentSlot, EnableRewards,
+        NextSolutionRangeOverride, Pallet, SegmentCommitment, ShouldAdjustSolutionRange,
+        SolutionRanges,
+    };
+    use frame_benchmarking::v2::*;
+    use frame_system::pallet_prelude::*;
+    use frame_system::{Pallet as System, RawOrigin};
+    use sp_consensus_subspace::{
+        EquivocationProof, FarmerPublicKey, FarmerSignature, SignedVote, Vote,
+    };
+    use sp_core::crypto::UncheckedFrom;
+    use sp_core::Get;
+    use sp_runtime::traits::{Block, Header};
+    use sp_std::boxed::Box;
+    use sp_std::vec;
+    use sp_std::vec::Vec;
+    use subspace_core_primitives::{
+        ArchivedBlockProgress, Blake2b256Hash, LastArchivedBlock, PotOutput, SegmentHeader,
+        SegmentIndex, Solution, SolutionRange,
+    };
+
+    const SEED: u32 = 0;
 
     #[benchmark]
     fn report_equivocation() {
         // Construct a dummy equivocation proof which is invalid but it is okay because the
         // proof is not validate during the call
         let offender = FarmerPublicKey::unchecked_from([0u8; 32]);
-        let header = T::Header::new(
+        let header = <T::Block as Block>::Header::new(
             System::<T>::block_number(),
             Default::default(),
             Default::default(),
             System::<T>::parent_hash(),
             Default::default(),
         );
-        let proof = sp_consensus_subspace::EquivocationProof {
+        let proof = EquivocationProof {
             slot: CurrentSlot::<T>::get(),
             offender,
             first_header: header.clone(),
@@ -53,10 +64,10 @@ mod benchmarks {
     }
 
     /// Benchmark `enable_solution_range_adjustment` extrinsic with the worst possible conditions,
-    /// where both `SolutionRanges` and `NextSolutionRangeOverride` are overrided.
+    /// where both `SolutionRanges` and `NextSolutionRangeOverride` are overridden.
     #[benchmark]
     fn enable_solution_range_adjustment() {
-        let solution_range_override = 10;
+        let solution_range_override: SolutionRange = 10;
         let voting_solution_range_override =
             solution_range_override.saturating_mul(u64::from(T::ExpectedVotesPerBlock::get()) + 1);
 
@@ -88,9 +99,9 @@ mod benchmarks {
 
     #[benchmark]
     fn vote() {
-        // Construct a dummy vote which is invalid but it is okay because the vote is not validate
+        // Construct a dummy vote which is invalid but it is okay because the vote is not validated
         // during the call
-        let unsigned_vote: Vote<T::BlockNumber, T::Hash, T::AccountId> = Vote::V0 {
+        let unsigned_vote: Vote<BlockNumberFor<T>, T::Hash, T::AccountId> = Vote::V0 {
             height: System::<T>::block_number(),
             parent_hash: System::<T>::parent_hash(),
             slot: CurrentSlot::<T>::get(),
@@ -98,6 +109,8 @@ mod benchmarks {
                 FarmerPublicKey::unchecked_from([1u8; 32]),
                 account("user1", 1, SEED),
             ),
+            proof_of_time: PotOutput::default(),
+            future_proof_of_time: PotOutput::default(),
         };
         let signature = FarmerSignature::unchecked_from([2u8; 64]);
         let signed_vote = SignedVote {
@@ -124,7 +137,7 @@ mod benchmarks {
         #[extrinsic_call]
         _(RawOrigin::Root);
 
-        assert!(Subspace::<T>::is_storage_access_enabled());
+        assert!(Pallet::<T>::is_storage_access_enabled());
     }
 
     #[benchmark]
@@ -133,7 +146,7 @@ mod benchmarks {
         _(RawOrigin::Root);
 
         assert!(AllowAuthoringByAnyone::<T>::get());
-        assert!(Subspace::<T>::root_plot_public_key().is_none());
+        assert!(Pallet::<T>::root_plot_public_key().is_none());
     }
 
     // Create a dummy segment header
@@ -149,5 +162,9 @@ mod benchmarks {
         }
     }
 
-    impl_benchmark_test_suite!(Subspace, crate::mock::new_test_ext(), crate::mock::Test);
+    impl_benchmark_test_suite!(
+        Pallet,
+        crate::mock::new_test_ext(crate::mock::allow_all_pot_extension()),
+        crate::mock::Test
+    );
 }

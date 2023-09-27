@@ -29,10 +29,6 @@ mod signed_extensions;
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
-#[cfg(feature = "runtime-benchmarks")]
-#[macro_use]
-extern crate frame_benchmarking;
-
 use crate::feed_processor::feed_processor;
 pub use crate::feed_processor::FeedProcessorKind;
 use crate::fees::{OnChargeTransaction, TransactionByteFee};
@@ -699,7 +695,9 @@ impl pallet_object_store::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
 }
 
-impl pallet_runtime_configs::Config for Runtime {}
+impl pallet_runtime_configs::Config for Runtime {
+    type WeightInfo = pallet_runtime_configs::weights::SubstrateWeight<Runtime>;
+}
 
 parameter_types! {
     // This value doesn't matter, we don't use it (`VestedTransferOrigin = EnsureNever` below).
@@ -841,6 +839,7 @@ mod benches {
         [frame_system, SystemBench::<Runtime>]
         [pallet_balances, Balances]
         [pallet_domains, Domains]
+        [pallet_runtime_configs, RuntimeConfigs]
         [pallet_subspace, Subspace]
         [pallet_timestamp, Timestamp]
     );
@@ -1206,7 +1205,8 @@ impl_runtime_apis! {
         fn dispatch_benchmark(
             config: frame_benchmarking::BenchmarkConfig
         ) -> Result<Vec<frame_benchmarking::BenchmarkBatch>, sp_runtime::RuntimeString> {
-            use frame_benchmarking::{baseline, Benchmarking, BenchmarkBatch, TrackedStorageKey};
+            use frame_benchmarking::{baseline, Benchmarking, BenchmarkBatch};
+            use sp_core::storage::TrackedStorageKey;
 
             use frame_system_benchmarking::Pallet as SystemBench;
             use baseline::Pallet as BaselineBench;

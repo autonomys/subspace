@@ -85,7 +85,7 @@ struct GenesisParams {
     allow_authoring_by: AllowAuthoringBy,
     pot_slot_iterations: NonZeroU32,
     enable_domains: bool,
-    enable_transfer: bool,
+    enable_balance_transfers: bool,
     confirmation_depth_k: u32,
 }
 
@@ -155,7 +155,7 @@ pub fn gemini_3f_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, 
                     // TODO: Adjust once we bench PoT on faster hardware
                     pot_slot_iterations: NonZeroU32::new(183_270_000).expect("Not zero; qed"),
                     enable_domains: true,
-                    enable_transfer: false,
+                    enable_balance_transfers: true,
                     confirmation_depth_k: 100, // TODO: Proper value here
                 },
             )
@@ -253,7 +253,7 @@ pub fn devnet_config_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfi
                     allow_authoring_by: AllowAuthoringBy::FirstFarmer,
                     pot_slot_iterations: NonZeroU32::new(150_000_000).expect("Not zero; qed"),
                     enable_domains: true,
-                    enable_transfer: true,
+                    enable_balance_transfers: true,
                     confirmation_depth_k: 100, // TODO: Proper value here
                 },
             )
@@ -311,7 +311,7 @@ pub fn dev_config() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String> 
                     allow_authoring_by: AllowAuthoringBy::Anyone,
                     pot_slot_iterations: NonZeroU32::new(100_000_000).expect("Not zero; qed"),
                     enable_domains: true,
-                    enable_transfer: true,
+                    enable_balance_transfers: true,
                     confirmation_depth_k: 5,
                 },
             )
@@ -374,7 +374,7 @@ pub fn local_config() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String
                     allow_authoring_by: AllowAuthoringBy::Anyone,
                     pot_slot_iterations: NonZeroU32::new(100_000_000).expect("Not zero; qed"),
                     enable_domains: true,
-                    enable_transfer: true,
+                    enable_balance_transfers: true,
                     confirmation_depth_k: 1,
                 },
             )
@@ -416,7 +416,7 @@ fn subspace_genesis_config(
         allow_authoring_by,
         pot_slot_iterations,
         enable_domains,
-        enable_transfer,
+        enable_balance_transfers,
         confirmation_depth_k,
     } = genesis_params;
 
@@ -449,7 +449,7 @@ fn subspace_genesis_config(
         vesting: VestingConfig { vesting },
         runtime_configs: RuntimeConfigsConfig {
             enable_domains,
-            enable_transfer,
+            enable_balance_transfers,
             confirmation_depth_k,
         },
         domains: DomainsConfig {
