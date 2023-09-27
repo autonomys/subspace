@@ -22,13 +22,26 @@ pub mod reading;
 pub mod sector;
 mod segment_reconstruction;
 
+use crate::file_ext::FileExt;
 use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
+use std::fs::File;
 use std::io;
 use subspace_core_primitives::HistorySize;
 
 /// Trait for reading data at specific offset
 pub trait ReadAt: Send + Sync {
+    /// Get implementation of [`ReadAt`] that add specified offset to all attempted reads
+    fn offset(&self, offset: usize) -> ReadAtOffset<&Self>
+    where
+        Self: Sized,
+    {
+        ReadAtOffset {
+            inner: self,
+            offset,
+        }
+    }
+
     /// Fill the buffer by reading bytes at a specific offset
     fn read_at(&self, buf: &mut [u8], offset: usize) -> io::Result<()>;
 }
@@ -51,6 +64,33 @@ impl ReadAt for [u8] {
 impl ReadAt for Vec<u8> {
     fn read_at(&self, buf: &mut [u8], offset: usize) -> io::Result<()> {
         self.as_slice().read_at(buf, offset)
+    }
+}
+
+impl ReadAt for File {
+    fn read_at(&self, buf: &mut [u8], offset: usize) -> io::Result<()> {
+        self.read_exact_at(buf, offset as u64)
+    }
+}
+
+impl ReadAt for &File {
+    fn read_at(&self, buf: &mut [u8], offset: usize) -> io::Result<()> {
+        self.read_exact_at(buf, offset as u64)
+    }
+}
+
+/// Reader with fixed offset added to all attempted reads
+pub struct ReadAtOffset<T> {
+    inner: T,
+    offset: usize,
+}
+
+impl<T> ReadAt for ReadAtOffset<T>
+where
+    T: ReadAt,
+{
+    fn read_at(&self, buf: &mut [u8], offset: usize) -> io::Result<()> {
+        self.inner.read_at(buf, offset + self.offset)
     }
 }
 
