@@ -291,6 +291,10 @@ mod pallet {
 
         /// Derive extrinsics trait impl.
         type DeriveExtrinsics: DeriveExtrinsics<Moment>;
+
+        /// Maximum runtime upgrades to hold.
+        #[pallet::constant]
+        type MaximumRuntimeUpgradesToHold: Get<u32>;
     }
 
     #[pallet::pallet]
@@ -305,9 +309,24 @@ mod pallet {
     #[pallet::storage]
     pub(super) type NextRuntimeId<T> = StorageValue<_, RuntimeId, ValueQuery>;
 
+    /// Stores the current runtime mapped to runtime ID.
     #[pallet::storage]
     pub(super) type RuntimeRegistry<T: Config> =
         StorageMap<_, Identity, RuntimeId, RuntimeObject<BlockNumberFor<T>, T::Hash>, OptionQuery>;
+
+    /// Stores the runtime code against runtime hash
+    #[pallet::storage]
+    pub type Runtimes<T: Config> = StorageMap<_, Identity, T::Hash, Vec<u8>, OptionQuery>;
+
+    /// Stores the runtime hashes against runtime_id.
+    #[pallet::storage]
+    pub type RuntimeMap<T: Config> = StorageMap<_, Identity, RuntimeId, Vec<T::Hash>, OptionQuery>;
+
+    /// Temporary storage to hold the upgraded runtimes in the block.
+    /// Will be cleared on_initialize of next block.
+    /// This storage is used to provide a proof as part of invalid domain extrinsic root fraud proof.
+    #[pallet::storage]
+    pub type RuntimeUpgraded<T: Config> = StorageMap<_, Identity, RuntimeId, T::Hash, OptionQuery>;
 
     #[pallet::storage]
     pub(super) type ScheduledRuntimeUpgrades<T: Config> = StorageDoubleMap<
@@ -1239,6 +1258,8 @@ mod pallet {
                 }
             }
 
+            let _ = RuntimeUpgraded::<T>::clear(u32::MAX, None);
+
             do_upgrade_runtimes::<T>(block_number);
 
             // Store the hash of the parent consensus block for domain that have bundles submitted
@@ -1379,7 +1400,7 @@ impl<T: Config> Pallet<T> {
 
     pub fn domain_runtime_code(domain_id: DomainId) -> Option<Vec<u8>> {
         RuntimeRegistry::<T>::get(Self::runtime_id(domain_id)?)
-            .map(|runtime_object| runtime_object.code)
+            .and_then(|runtime_object| Runtimes::<T>::get(runtime_object.hash))
     }
 
     pub fn domain_best_number(domain_id: DomainId) -> Option<T::DomainNumber> {
@@ -1403,12 +1424,11 @@ impl<T: Config> Pallet<T> {
         domain_id: DomainId,
     ) -> Option<(DomainInstanceData, BlockNumberFor<T>)> {
         let domain_obj = DomainRegistry::<T>::get(domain_id)?;
-        let (runtime_type, runtime_code) =
-            RuntimeRegistry::<T>::get(domain_obj.domain_config.runtime_id)
-                .map(|runtime_object| (runtime_object.runtime_type, runtime_object.code))?;
+        let runtime_object = RuntimeRegistry::<T>::get(domain_obj.domain_config.runtime_id)?;
+        let runtime_code = Runtimes::<T>::get(runtime_object.hash)?;
         Some((
             DomainInstanceData {
-                runtime_type,
+                runtime_type: runtime_object.runtime_type,
                 runtime_code,
                 raw_genesis_config: domain_obj.raw_genesis_config,
             },

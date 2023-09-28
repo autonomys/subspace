@@ -1,7 +1,7 @@
 //! Runtime registry for domains
 
 use crate::pallet::{NextRuntimeId, RuntimeRegistry, ScheduledRuntimeUpgrades};
-use crate::{Config, Event};
+use crate::{Config, Event, RuntimeMap, RuntimeUpgraded, Runtimes};
 use codec::{Decode, Encode};
 use frame_support::PalletError;
 use frame_system::pallet_prelude::*;
@@ -10,6 +10,7 @@ use sp_core::Hasher;
 use sp_domains::{DomainsDigestItem, RuntimeId, RuntimeType};
 use sp_runtime::traits::{CheckedAdd, Get};
 use sp_runtime::DigestItem;
+use sp_std::vec;
 use sp_std::vec::Vec;
 use sp_version::RuntimeVersion;
 
@@ -31,7 +32,6 @@ pub struct RuntimeObject<Number, Hash> {
     pub runtime_type: RuntimeType,
     pub runtime_upgrades: u32,
     pub hash: Hash,
-    pub code: Vec<u8>,
     pub version: RuntimeVersion,
     pub created_at: Number,
     pub updated_at: Number,
@@ -86,13 +86,15 @@ pub(crate) fn do_register_runtime<T: Config>(
             runtime_name,
             runtime_type,
             hash: runtime_hash,
-            code,
             version: runtime_version,
             created_at: at,
             updated_at: at,
             runtime_upgrades: 0u32,
         },
     );
+
+    Runtimes::<T>::insert(runtime_hash, code);
+    RuntimeMap::<T>::insert(runtime_id, vec![runtime_hash]);
 
     let next_runtime_id = runtime_id.checked_add(1).ok_or(Error::MaxRuntimeId)?;
     NextRuntimeId::<T>::set(next_runtime_id);
@@ -118,13 +120,14 @@ pub(crate) fn register_runtime_at_genesis<T: Config>(
             runtime_name,
             runtime_type,
             hash: runtime_hash,
-            code,
             version: runtime_version,
             created_at: at,
             updated_at: at,
             runtime_upgrades: 0u32,
         },
     );
+    Runtimes::<T>::insert(runtime_hash, code);
+    RuntimeMap::<T>::insert(runtime_id, vec![runtime_hash]);
 
     let next_runtime_id = runtime_id.checked_add(1).ok_or(Error::MaxRuntimeId)?;
     NextRuntimeId::<T>::set(next_runtime_id);
@@ -159,11 +162,20 @@ pub(crate) fn do_upgrade_runtimes<T: Config>(at: BlockNumberFor<T>) {
                 .expect("Runtime object exists since an upgrade is scheduled after verification");
 
             let runtime_hash = T::Hashing::hash(&scheduled_update.code);
-            runtime_obj.code = scheduled_update.code;
             runtime_obj.version = scheduled_update.version;
             runtime_obj.hash = runtime_hash;
             runtime_obj.runtime_upgrades = runtime_obj.runtime_upgrades.saturating_add(1);
             runtime_obj.updated_at = at;
+
+            // prune old runtimes
+            prune_old_runtimes::<T>(runtime_id);
+            Runtimes::<T>::insert(runtime_hash, scheduled_update.code);
+            RuntimeMap::<T>::mutate(runtime_id, |maybe_runtime_hashes| {
+                let mut runtime_hashes = maybe_runtime_hashes.as_mut().cloned().unwrap_or_default();
+                runtime_hashes.push(runtime_hash);
+                *maybe_runtime_hashes = Some(runtime_hashes)
+            });
+            RuntimeUpgraded::<T>::insert(runtime_id, runtime_hash);
         });
 
         // deposit digest log for light clients
@@ -176,6 +188,18 @@ pub(crate) fn do_upgrade_runtimes<T: Config>(at: BlockNumberFor<T>) {
     }
 }
 
+fn prune_old_runtimes<T: Config>(runtime_id: RuntimeId) {
+    let mut runtime_hashes = RuntimeMap::<T>::get(runtime_id).unwrap_or_default();
+    let max_runtimes = T::MaximumRuntimeUpgradesToHold::get() as usize;
+    if runtime_hashes.len() >= max_runtimes {
+        let pruned_hashes: Vec<_> = runtime_hashes
+            .drain(0..(runtime_hashes.len() - max_runtimes + 1))
+            .collect();
+        let _ = pruned_hashes.into_iter().map(Runtimes::<T>::remove);
+        RuntimeMap::<T>::insert(runtime_id, runtime_hashes);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use crate::pallet::{NextRuntimeId, RuntimeRegistry, ScheduledRuntimeUpgrades};
@@ -183,11 +207,12 @@ mod tests {
     use crate::tests::{
         new_test_ext, DomainRuntimeUpgradeDelay, Domains, ReadRuntimeVersion, System, Test,
     };
-    use crate::Error;
+    use crate::{Error, RuntimeMap, RuntimeUpgraded, Runtimes};
     use codec::Encode;
     use frame_support::assert_ok;
     use frame_support::dispatch::RawOrigin;
     use frame_support::traits::OnInitialize;
+    use sp_core::H256;
     use sp_domains::{DomainsDigestItem, RuntimeId, RuntimeType};
     use sp_runtime::traits::BlockNumberProvider;
     use sp_runtime::{Digest, DispatchError};
@@ -222,7 +247,13 @@ mod tests {
             assert_ok!(res);
             let runtime_obj = RuntimeRegistry::<Test>::get(0).unwrap();
             assert_eq!(runtime_obj.version, version);
-            assert_eq!(NextRuntimeId::<Test>::get(), 1)
+            assert_eq!(NextRuntimeId::<Test>::get(), 1);
+
+            let runtime_code = Runtimes::<Test>::get(runtime_obj.hash).unwrap();
+            assert_eq!(runtime_code, vec![1, 2, 3, 4]);
+
+            let runtime_maps = RuntimeMap::<Test>::get(0).unwrap();
+            assert_eq!(runtime_maps.len(), 1);
         })
     }
 
@@ -237,7 +268,6 @@ mod tests {
                     runtime_type: Default::default(),
                     runtime_upgrades: 0,
                     hash: Default::default(),
-                    code: vec![1, 2, 3, 4],
                     version: RuntimeVersion {
                         spec_name: "test".into(),
                         spec_version: 1,
@@ -250,6 +280,8 @@ mod tests {
                 },
             );
 
+            Runtimes::<Test>::insert(H256::default(), vec![1, 2, 3, 4]);
+            RuntimeMap::<Test>::insert(0, vec![H256::default()]);
             NextRuntimeId::<Test>::set(1);
         });
 
@@ -310,7 +342,9 @@ mod tests {
                 }
             );
             assert_eq!(runtime_obj.runtime_upgrades, 0);
-            assert_eq!(runtime_obj.code, vec![1, 2, 3, 4]);
+
+            let runtime_code = Runtimes::<Test>::get(runtime_obj.hash).unwrap();
+            assert_eq!(runtime_code, vec![1, 2, 3, 4]);
 
             let block_number = frame_system::Pallet::<Test>::current_block_number();
             let scheduled_block_number = block_number
@@ -380,13 +414,13 @@ mod tests {
                     runtime_type: Default::default(),
                     runtime_upgrades: 0,
                     hash: Default::default(),
-                    code: vec![1, 2, 3, 4],
                     version: version.clone(),
                     created_at: Default::default(),
                     updated_at: Default::default(),
                 },
             );
-
+            Runtimes::<Test>::insert(H256::default(), vec![1, 2, 3, 4]);
+            RuntimeMap::<Test>::insert(0, vec![H256::default()]);
             NextRuntimeId::<Test>::set(1);
         });
 
@@ -417,6 +451,17 @@ mod tests {
 
             let runtime_obj = RuntimeRegistry::<Test>::get(0).unwrap();
             assert_eq!(runtime_obj.version, version);
+
+            assert_eq!(
+                Runtimes::<Test>::get(runtime_obj.hash).unwrap(),
+                vec![6, 7, 8, 9],
+            );
+
+            let runtime_maps = RuntimeMap::<Test>::get(0).unwrap();
+            assert_eq!(runtime_maps.len(), 2);
+
+            let upgraded_runtime_hash = RuntimeUpgraded::<Test>::get(0).unwrap();
+            assert_eq!(upgraded_runtime_hash, runtime_obj.hash);
 
             let digest = System::digest();
             assert_eq!(Some(0), fetch_upgraded_runtime_from_digest(digest))

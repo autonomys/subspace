@@ -5,6 +5,7 @@ use crate::pallet::DomainStakingSummary;
 use crate::staking::StakingSummary;
 use crate::{
     Config, DomainRegistry, ExecutionReceiptOf, HoldIdentifier, NextDomainId, RuntimeRegistry,
+    Runtimes,
 };
 use codec::{Decode, Encode};
 use frame_support::traits::fungible::{Inspect, MutateHold};
@@ -129,10 +130,12 @@ pub(crate) fn do_instantiate_domain<T: Config>(
     let genesis_receipt = {
         let runtime_obj = RuntimeRegistry::<T>::get(domain_config.runtime_id)
             .expect("Runtime object must exist as checked in `can_instantiate_domain`; qed");
+        let runtime_code = Runtimes::<T>::get(runtime_obj.hash)
+            .expect("Runtime code must exist as checked in `can_instantiate_domain`; qed");
         initialize_genesis_receipt::<T>(
             domain_id,
             runtime_obj.runtime_type,
-            runtime_obj.code,
+            runtime_code,
             raw_genesis_config.clone(),
         )?
     };
@@ -211,6 +214,7 @@ mod tests {
     use crate::runtime_registry::RuntimeObject;
     use crate::tests::{new_test_ext, GenesisStateRootGenerater, Test};
     use frame_support::traits::Currency;
+    use sp_core::H256;
     use sp_domains::GenesisReceiptExtension;
     use sp_std::vec;
     use sp_version::RuntimeVersion;
@@ -260,7 +264,6 @@ mod tests {
                     runtime_type: Default::default(),
                     runtime_upgrades: 0,
                     hash: Default::default(),
-                    code: vec![1, 2, 3, 4],
                     version: RuntimeVersion {
                         spec_name: "test".into(),
                         spec_version: 1,
@@ -272,6 +275,8 @@ mod tests {
                     updated_at: Default::default(),
                 },
             );
+
+            Runtimes::<Test>::insert(H256::default(), vec![1, 2, 3, 4]);
 
             // Failed to instantiate domain due to exceed max domain block size limit
             assert_eq!(
@@ -351,9 +356,9 @@ mod tests {
             assert_eq!(Balances::usable_balance(creator), Zero::zero());
 
             // cannot use the locked funds to create a new domain instance
-            assert!(
-                do_instantiate_domain::<Test>(domain_config, creator, created_at, None)
-                    == Err(Error::InsufficientFund)
+            assert_eq!(
+                do_instantiate_domain::<Test>(domain_config, creator, created_at, None),
+                Err(Error::InsufficientFund)
             )
         });
     }

@@ -224,6 +224,10 @@ impl sp_domains::fraud_proof::DeriveExtrinsics<Moment> for DeriveExtrinsics {
     }
 }
 
+parameter_types! {
+    pub const MaximumRuntimeUpgradesToHold: u32 = 5;
+}
+
 impl pallet_domains::Config for Test {
     type RuntimeEvent = RuntimeEvent;
     type DomainNumber = BlockNumber;
@@ -251,6 +255,7 @@ impl pallet_domains::Config for Test {
     type Randomness = MockRandomness;
     type StorageKeys = StorageKeys;
     type DeriveExtrinsics = DeriveExtrinsics;
+    type MaximumRuntimeUpgradesToHold = MaximumRuntimeUpgradesToHold;
 }
 
 pub(crate) fn new_test_ext() -> sp_io::TestExternalities {
