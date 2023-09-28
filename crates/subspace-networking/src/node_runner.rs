@@ -13,7 +13,7 @@ use crate::protocols::peer_info::{Event as PeerInfoEvent, PeerInfoSuccess};
 use crate::protocols::request_response::request_response_factory::{
     Event as RequestResponseEvent, IfDisconnected,
 };
-use crate::shared::{Command, CreatedSubscription, NewPeerInfo, Shared};
+use crate::shared::{Command, CreatedSubscription, NewPeerInfo, PeerDiscovered, Shared};
 use crate::utils::rate_limiter::RateLimiterPermit;
 use crate::utils::{is_global_address_or_dns, strip_peer_id, PeerAddress};
 use async_mutex::Mutex as AsyncMutex;
@@ -798,6 +798,39 @@ where
                 debug!("Unroutable peer detected: {:?}", peer);
 
                 self.swarm.behaviour_mut().kademlia.remove_peer(&peer);
+
+                if let Some(shared) = self.shared_weak.upgrade() {
+                    shared
+                        .handlers
+                        .peer_discovered
+                        .call_simple(&PeerDiscovered::UnroutablePeer { peer_id: peer });
+                }
+            }
+            KademliaEvent::RoutablePeer { peer, address } => {
+                debug!(?address, "Routable peer detected: {:?}", peer);
+
+                if let Some(shared) = self.shared_weak.upgrade() {
+                    shared
+                        .handlers
+                        .peer_discovered
+                        .call_simple(&PeerDiscovered::RoutablePeer {
+                            peer_id: peer,
+                            address,
+                        });
+                }
+            }
+            KademliaEvent::PendingRoutablePeer { peer, address } => {
+                debug!(?address, "Pending routable peer detected: {:?}", peer);
+
+                if let Some(shared) = self.shared_weak.upgrade() {
+                    shared
+                        .handlers
+                        .peer_discovered
+                        .call_simple(&PeerDiscovered::RoutablePeer {
+                            peer_id: peer,
+                            address,
+                        });
+                }
             }
             KademliaEvent::OutboundQueryProgressed {
                 step: ProgressStep { last, .. },
