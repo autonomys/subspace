@@ -8,6 +8,7 @@ use futures::{select, FutureExt, SinkExt, StreamExt};
 use lru::LruCache;
 use parity_scale_codec::Encode;
 use parking_lot::RwLock;
+use rayon::ThreadPool;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io;
@@ -30,6 +31,7 @@ use subspace_farmer_components::plotting::{
 use subspace_farmer_components::sector::SectorMetadataChecksummed;
 use subspace_proof_of_space::Table;
 use thiserror::Error;
+use tokio::runtime::Handle;
 use tracing::{debug, info, trace, warn};
 
 const FARMER_APP_INFO_RETRY_INTERVAL: Duration = Duration::from_millis(500);
@@ -90,6 +92,8 @@ pub(super) struct PlottingOptions<NC, PG> {
     pub(super) modifying_sector_index: Arc<RwLock<Option<SectorIndex>>>,
     pub(super) target_sector_count: u16,
     pub(super) sectors_to_plot_receiver: mpsc::Receiver<(SectorIndex, oneshot::Sender<()>)>,
+    pub(super) plotting_thread_pool: Arc<ThreadPool>,
+    pub(super) replotting_thread_pool: Arc<ThreadPool>,
 }
 
 /// Starts plotting process.
@@ -101,7 +105,7 @@ pub(super) async fn plotting<NC, PG, PosTable>(
 ) -> Result<(), PlottingError>
 where
     NC: NodeClient,
-    PG: PieceGetter + Send + 'static,
+    PG: PieceGetter + Clone + Send + 'static,
     PosTable: Table,
 {
     let PlottingOptions {
@@ -121,6 +125,8 @@ where
         modifying_sector_index,
         target_sector_count,
         mut sectors_to_plot_receiver,
+        plotting_thread_pool,
+        replotting_thread_pool,
     } = plotting_options;
 
     let mut table_generator = PosTable::generator();
@@ -129,12 +135,10 @@ where
     {
         trace!(%sector_index, "Preparing to plot sector");
 
-        let mut sector = vec![0; sector_size];
-        let mut sector_metadata = vec![0; sector_metadata_size];
-
         let maybe_old_sector_metadata = sectors_metadata.read().get(sector_index as usize).cloned();
+        let replotting = maybe_old_sector_metadata.is_some();
 
-        if maybe_old_sector_metadata.is_some() {
+        if replotting {
             debug!(%sector_index, "Replotting sector");
         } else {
             debug!(%sector_index, "Plotting sector");
@@ -167,24 +171,65 @@ where
             break farmer_app_info;
         };
 
-        let plot_sector_fut = plot_sector::<_, PosTable>(
-            &public_key,
-            sector_index,
-            &piece_getter,
-            PieceGetterRetryPolicy::Limited(PIECE_GETTER_RETRY_NUMBER.get()),
-            &farmer_app_info.protocol_info,
-            &kzg,
-            &erasure_coding,
-            pieces_in_sector,
-            &mut sector,
-            &mut sector_metadata,
-            &mut table_generator,
-        );
-
         // Inform others that this sector is being modified
         modifying_sector_index.write().replace(sector_index);
 
-        let plotted_sector = plot_sector_fut.await?;
+        let sector;
+        let sector_metadata;
+        let plotted_sector;
+
+        (sector, sector_metadata, table_generator, plotted_sector) = {
+            let mut sector = vec![0; sector_size];
+            let mut sector_metadata = vec![0; sector_metadata_size];
+
+            let piece_getter = piece_getter.clone();
+            let kzg = kzg.clone();
+            let erasure_coding = erasure_coding.clone();
+            let handle = Handle::current();
+
+            if replotting {
+                replotting_thread_pool.install(move || {
+                    let plot_sector_fut = plot_sector::<_, PosTable>(
+                        &public_key,
+                        sector_index,
+                        &piece_getter,
+                        PieceGetterRetryPolicy::Limited(PIECE_GETTER_RETRY_NUMBER.get()),
+                        &farmer_app_info.protocol_info,
+                        &kzg,
+                        &erasure_coding,
+                        pieces_in_sector,
+                        &mut sector,
+                        &mut sector_metadata,
+                        &mut table_generator,
+                    );
+
+                    handle.block_on(plot_sector_fut).map(|plotted_sector| {
+                        (sector, sector_metadata, table_generator, plotted_sector)
+                    })
+                })?
+            } else {
+                plotting_thread_pool.install(move || {
+                    let plot_sector_fut = plot_sector::<_, PosTable>(
+                        &public_key,
+                        sector_index,
+                        &piece_getter,
+                        PieceGetterRetryPolicy::Limited(PIECE_GETTER_RETRY_NUMBER.get()),
+                        &farmer_app_info.protocol_info,
+                        &kzg,
+                        &erasure_coding,
+                        pieces_in_sector,
+                        &mut sector,
+                        &mut sector_metadata,
+                        &mut table_generator,
+                    );
+
+                    handle.block_on(plot_sector_fut).map(|plotted_sector| {
+                        (sector, sector_metadata, table_generator, plotted_sector)
+                    })
+                })?
+            }
+        };
+
         plot_file.write_all_at(&sector, (sector_index as usize * sector_size) as u64)?;
         metadata_file.write_all_at(
             &sector_metadata,
@@ -235,7 +280,7 @@ where
         // Inform others that this sector is no longer being modified
         modifying_sector_index.write().take();
 
-        if maybe_old_plotted_sector.is_some() {
+        if replotting {
             info!(%sector_index, "Sector replotted successfully");
         } else {
             info!(

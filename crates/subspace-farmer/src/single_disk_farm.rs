@@ -24,6 +24,7 @@ use futures::StreamExt;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::{Mutex, RwLock};
 use rayon::prelude::*;
+use rayon::ThreadPool;
 use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
 use std::fs::{File, OpenOptions};
@@ -284,6 +285,14 @@ pub struct SingleDiskFarmOptions<NC, PG> {
     pub erasure_coding: ErasureCoding,
     /// Percentage of allocated space dedicated for caching purposes
     pub cache_percentage: NonZeroU8,
+    /// Thread pool used for farming (mostly for blocking I/O, but also for some compute-intensive
+    /// operations during proving)
+    pub farming_thread_pool: Arc<ThreadPool>,
+    /// Thread pool used for plotting
+    pub plotting_thread_pool: Arc<ThreadPool>,
+    /// Thread pool used for replotting, typically smaller pool than for plotting to not affect
+    /// farming as much
+    pub replotting_thread_pool: Arc<ThreadPool>,
 }
 
 /// Errors happening when trying to create/open single disk farm
@@ -570,7 +579,7 @@ impl SingleDiskFarm {
     ) -> Result<Self, SingleDiskFarmError>
     where
         NC: NodeClient,
-        PG: PieceGetter + Send + 'static,
+        PG: PieceGetter + Clone + Send + 'static,
         PosTable: Table,
     {
         let handle = Handle::current();
@@ -586,6 +595,9 @@ impl SingleDiskFarm {
             kzg,
             erasure_coding,
             cache_percentage,
+            farming_thread_pool,
+            plotting_thread_pool,
+            replotting_thread_pool,
         } = options;
         fs::create_dir_all(&directory)?;
 
@@ -892,6 +904,8 @@ impl SingleDiskFarm {
                             modifying_sector_index,
                             target_sector_count,
                             sectors_to_plot_receiver,
+                            plotting_thread_pool,
+                            replotting_thread_pool,
                         };
                         plotting::<_, _, PosTable>(plotting_options).await
                     };
@@ -977,7 +991,6 @@ impl SingleDiskFarm {
                         }
 
                         let farming_options = FarmingOptions {
-                            disk_farm_index,
                             public_key,
                             reward_address,
                             node_client,
@@ -989,6 +1002,7 @@ impl SingleDiskFarm {
                             handlers,
                             modifying_sector_index,
                             slot_info_notifications: slot_info_forwarder_receiver,
+                            thread_pool: farming_thread_pool,
                         };
                         farming::<PosTable, _>(farming_options).await
                     };
