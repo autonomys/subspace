@@ -225,7 +225,7 @@ impl FromStr for DiskFarm {
 #[clap(about, version)]
 enum Command {
     /// Start a farmer, does plotting and farming
-    Farm(FarmingArgs),
+    Farm(Box<FarmingArgs>),
     /// Print information about farm and its content
     Info {
         /// One or more farm located at specified path.
@@ -292,7 +292,7 @@ async fn main() -> anyhow::Result<()> {
             info!("Done");
         }
         Command::Farm(farming_args) => {
-            commands::farm::<PosTable>(farming_args).await?;
+            commands::farm::<PosTable>(*farming_args).await?;
         }
         Command::Info { disk_farms } => {
             commands::info(disk_farms);
