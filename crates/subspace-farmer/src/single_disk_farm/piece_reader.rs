@@ -1,13 +1,13 @@
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, StreamExt};
-use memmap2::Mmap;
 use parking_lot::RwLock;
+use std::fs::File;
 use std::future::Future;
 use std::sync::Arc;
 use subspace_core_primitives::{Piece, PieceOffset, PublicKey, SectorId, SectorIndex};
 use subspace_erasure_coding::ErasureCoding;
-use subspace_farmer_components::reading;
 use subspace_farmer_components::sector::{sector_size, SectorMetadataChecksummed};
+use subspace_farmer_components::{reading, ReadAt};
 use subspace_proof_of_space::Table;
 use tracing::{error, warn};
 
@@ -32,7 +32,7 @@ impl PieceReader {
     pub(super) fn new<PosTable>(
         public_key: PublicKey,
         pieces_in_sector: u16,
-        global_plot_mmap: Mmap,
+        plot_file: Arc<File>,
         sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
         erasure_coding: ErasureCoding,
         modifying_sector_index: Arc<RwLock<Option<SectorIndex>>>,
@@ -45,7 +45,7 @@ impl PieceReader {
         let reading_fut = read_pieces::<PosTable>(
             public_key,
             pieces_in_sector,
-            global_plot_mmap,
+            plot_file,
             sectors_metadata,
             erasure_coding,
             modifying_sector_index,
@@ -83,7 +83,7 @@ impl PieceReader {
 async fn read_pieces<PosTable>(
     public_key: PublicKey,
     pieces_in_sector: u16,
-    global_plot_mmap: Mmap,
+    plot_file: Arc<File>,
     sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
     erasure_coding: ErasureCoding,
     modifying_sector_index: Arc<RwLock<Option<SectorIndex>>>,
@@ -91,13 +91,6 @@ async fn read_pieces<PosTable>(
 ) where
     PosTable: Table,
 {
-    #[cfg(unix)]
-    {
-        if let Err(error) = global_plot_mmap.advise(memmap2::Advice::Random) {
-            error!(%error, "Failed to set random access on global plot mmap");
-        }
-    }
-
     let mut table_generator = PosTable::generator();
 
     while let Some(read_piece_request) = read_piece_receiver.next().await {
@@ -164,13 +157,13 @@ async fn read_pieces<PosTable>(
         }
 
         let sector_size = sector_size(pieces_in_sector);
-        let sector = &global_plot_mmap[sector_index as usize * sector_size..][..sector_size];
+        let sector = plot_file.offset(sector_index as usize * sector_size);
 
-        let maybe_piece = read_piece::<PosTable>(
+        let maybe_piece = read_piece::<PosTable, _>(
             &public_key,
             piece_offset,
             &sector_metadata,
-            sector,
+            &sector,
             &erasure_coding,
             &mut table_generator,
         );
@@ -180,16 +173,17 @@ async fn read_pieces<PosTable>(
     }
 }
 
-fn read_piece<PosTable>(
+fn read_piece<PosTable, Sector>(
     public_key: &PublicKey,
     piece_offset: PieceOffset,
     sector_metadata: &SectorMetadataChecksummed,
-    sector: &[u8],
+    sector: &Sector,
     erasure_coding: &ErasureCoding,
     table_generator: &mut PosTable::Generator,
 ) -> Option<Piece>
 where
     PosTable: Table,
+    Sector: ReadAt + ?Sized,
 {
     let sector_index = sector_metadata.sector_index;
 

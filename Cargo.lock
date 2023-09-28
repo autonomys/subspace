@@ -11534,7 +11534,6 @@ dependencies = [
  "hex",
  "jsonrpsee",
  "lru 0.11.1",
- "memmap2 0.7.1",
  "parity-scale-codec",
  "parking_lot 0.12.1",
  "prometheus-client 0.21.2",
