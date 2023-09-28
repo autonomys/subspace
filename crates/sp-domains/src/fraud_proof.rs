@@ -332,8 +332,13 @@ where
                 bad_receipt_hash, ..
             } => *bad_receipt_hash,
             FraudProof::InvalidTotalRewards(proof) => proof.bad_receipt_hash(),
-            // TODO: Remove default value when invalid bundle proofs are fully expanded
-            FraudProof::InvalidBundles(_) => Default::default(),
+            FraudProof::InvalidBundles(proof) => match proof {
+                InvalidBundlesFraudProof::MissingInvalidBundleEntry(proof) => {
+                    proof.bad_receipt_hash
+                }
+                // TODO: Return bad receipt hash
+                InvalidBundlesFraudProof::ValidAsInvalid(_) => Default::default(),
+            },
         }
     }
 
