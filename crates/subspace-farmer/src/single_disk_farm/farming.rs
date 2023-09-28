@@ -64,31 +64,49 @@ pub enum FarmingError {
     FailedToCreateThreadPool(#[from] ThreadPoolBuildError),
 }
 
+pub(super) struct FarmingOptions<'a, NC> {
+    pub(super) disk_farm_index: usize,
+    pub(super) public_key: PublicKey,
+    pub(super) reward_address: PublicKey,
+    pub(super) node_client: NC,
+    pub(super) sector_size: usize,
+    pub(super) plot_file: &'a File,
+    pub(super) sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
+    pub(super) kzg: Kzg,
+    pub(super) erasure_coding: ErasureCoding,
+    pub(super) handlers: Arc<Handlers>,
+    pub(super) modifying_sector_index: Arc<RwLock<Option<SectorIndex>>>,
+    pub(super) slot_info_notifications: mpsc::Receiver<SlotInfo>,
+}
+
 /// Starts farming process.
 ///
 /// NOTE: Returned future is async, but does blocking operations and should be running in dedicated
 /// thread.
 // False-positive, we do drop lock before .await
 #[allow(clippy::await_holding_lock)]
-#[allow(clippy::too_many_arguments)]
-pub(super) async fn farming<NC, PosTable>(
-    disk_farm_index: usize,
-    public_key: PublicKey,
-    reward_address: PublicKey,
-    node_client: NC,
-    sector_size: usize,
-    plot_file: &File,
-    sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
-    kzg: Kzg,
-    erasure_coding: ErasureCoding,
-    handlers: Arc<Handlers>,
-    modifying_sector_index: Arc<RwLock<Option<SectorIndex>>>,
-    mut slot_info_notifications: mpsc::Receiver<SlotInfo>,
+pub(super) async fn farming<PosTable, NC>(
+    farming_options: FarmingOptions<'_, NC>,
 ) -> Result<(), FarmingError>
 where
-    NC: NodeClient,
     PosTable: Table,
+    NC: NodeClient,
 {
+    let FarmingOptions {
+        disk_farm_index,
+        public_key,
+        reward_address,
+        node_client,
+        sector_size,
+        plot_file,
+        sectors_metadata,
+        kzg,
+        erasure_coding,
+        handlers,
+        modifying_sector_index,
+        mut slot_info_notifications,
+    } = farming_options;
+
     let mut table_generator = PosTable::generator();
     let thread_pool = ThreadPoolBuilder::new()
         .thread_name(move |thread_index| format!("farming-{disk_farm_index}.{thread_index}"))

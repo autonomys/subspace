@@ -73,37 +73,60 @@ pub enum PlottingError {
     LowLevel(#[from] plotting::PlottingError),
 }
 
+pub(super) struct PlottingOptions<NC, PG> {
+    pub(super) public_key: PublicKey,
+    pub(super) node_client: NC,
+    pub(super) pieces_in_sector: u16,
+    pub(super) sector_size: usize,
+    pub(super) sector_metadata_size: usize,
+    pub(super) metadata_header: PlotMetadataHeader,
+    pub(super) plot_file: Arc<File>,
+    pub(super) metadata_file: File,
+    pub(super) sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
+    pub(super) piece_getter: PG,
+    pub(super) kzg: Kzg,
+    pub(super) erasure_coding: ErasureCoding,
+    pub(super) handlers: Arc<Handlers>,
+    pub(super) modifying_sector_index: Arc<RwLock<Option<SectorIndex>>>,
+    pub(super) target_sector_count: u16,
+    pub(super) sectors_to_plot_receiver: mpsc::Receiver<(SectorIndex, oneshot::Sender<()>)>,
+}
+
 /// Starts plotting process.
 ///
 /// NOTE: Returned future is async, but does blocking operations and should be running in dedicated
 /// thread.
-#[allow(clippy::too_many_arguments)]
 pub(super) async fn plotting<NC, PG, PosTable>(
-    public_key: PublicKey,
-    node_client: NC,
-    pieces_in_sector: u16,
-    sector_size: usize,
-    sector_metadata_size: usize,
-    mut metadata_header: PlotMetadataHeader,
-    plot_file: Arc<File>,
-    metadata_file: File,
-    sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
-    piece_getter: PG,
-    kzg: Kzg,
-    erasure_coding: ErasureCoding,
-    handlers: Arc<Handlers>,
-    modifying_sector_index: Arc<RwLock<Option<SectorIndex>>>,
-    target_sector_count: u16,
-    mut sectors_to_plot: mpsc::Receiver<(SectorIndex, oneshot::Sender<()>)>,
+    plotting_options: PlottingOptions<NC, PG>,
 ) -> Result<(), PlottingError>
 where
     NC: NodeClient,
     PG: PieceGetter + Send + 'static,
     PosTable: Table,
 {
+    let PlottingOptions {
+        public_key,
+        node_client,
+        pieces_in_sector,
+        sector_size,
+        sector_metadata_size,
+        mut metadata_header,
+        plot_file,
+        metadata_file,
+        sectors_metadata,
+        piece_getter,
+        kzg,
+        erasure_coding,
+        handlers,
+        modifying_sector_index,
+        target_sector_count,
+        mut sectors_to_plot_receiver,
+    } = plotting_options;
+
     let mut table_generator = PosTable::generator();
     // TODO: Concurrency
-    while let Some((sector_index, _acknowledgement_sender)) = sectors_to_plot.next().await {
+    while let Some((sector_index, _acknowledgement_sender)) = sectors_to_plot_receiver.next().await
+    {
         trace!(%sector_index, "Preparing to plot sector");
 
         let mut sector = vec![0; sector_size];
@@ -230,20 +253,34 @@ where
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
+pub(super) struct PlottingSchedulerOptions<NC> {
+    pub(super) public_key_hash: Blake2b256Hash,
+    pub(super) sectors_indices_left_to_plot: Range<SectorIndex>,
+    pub(super) target_sector_count: SectorIndex,
+    pub(super) last_archived_segment_index: SegmentIndex,
+    pub(super) min_sector_lifetime: HistorySize,
+    pub(super) node_client: NC,
+    pub(super) sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
+    pub(super) sectors_to_plot_sender: mpsc::Sender<(SectorIndex, oneshot::Sender<()>)>,
+}
+
 pub(super) async fn plotting_scheduler<NC>(
-    public_key_hash: Blake2b256Hash,
-    sectors_indices_left_to_plot: Range<SectorIndex>,
-    target_sector_count: SectorIndex,
-    last_archived_segment_index: SegmentIndex,
-    min_sector_lifetime: HistorySize,
-    node_client: NC,
-    sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
-    sectors_to_plot_sender: mpsc::Sender<(SectorIndex, oneshot::Sender<()>)>,
+    plotting_scheduler_options: PlottingSchedulerOptions<NC>,
 ) -> Result<(), BackgroundTaskError>
 where
     NC: NodeClient,
 {
+    let PlottingSchedulerOptions {
+        public_key_hash,
+        sectors_indices_left_to_plot,
+        target_sector_count,
+        last_archived_segment_index,
+        min_sector_lifetime,
+        node_client,
+        sectors_metadata,
+        sectors_to_plot_sender,
+    } = plotting_scheduler_options;
+
     // Create a proxy channel with atomically updatable last archived segment that
     // allows to not buffer messages from RPC subscription, but also access the most
     // recent value at any time
