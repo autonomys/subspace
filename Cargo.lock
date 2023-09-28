@@ -9297,6 +9297,7 @@ dependencies = [
  "subspace-verification",
  "substrate-prometheus-endpoint",
  "thiserror",
+ "tokio",
 ]
 
 [[package]]
