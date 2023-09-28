@@ -86,6 +86,7 @@ use sp_consensus_subspace::digests::extract_pre_digest;
 use sp_consensus_subspace::PotExtension;
 use sp_consensus_subspace::{FarmerPublicKey, KzgExtension, PosExtension, SubspaceApi};
 use sp_core::traits::SpawnEssentialNamed;
+use sp_domains::fraud_proof::ExecutionReceiptApi;
 use sp_domains::transaction::PreValidationObjectApi;
 use sp_domains::{DomainsApi, GenerateGenesisStateRoot, GenesisReceiptExtension};
 use sp_externalities::Extensions;
@@ -107,6 +108,7 @@ use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 #[cfg(feature = "pot")]
 use subspace_core_primitives::PotSeed;
 use subspace_core_primitives::REWARD_SIGNING_CONTEXT;
+use subspace_fraud_proof::invalid_bundles_fraud_proof::InvalidBundleProofVerifier;
 use subspace_fraud_proof::verifier_api::VerifierClient;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::libp2p::multiaddr::Protocol;
@@ -199,6 +201,12 @@ pub type FraudProofVerifier<RuntimeApi, ExecutorDispatch> = subspace_fraud_proof
     DomainBlock,
     InvalidTransactionProofVerifier<RuntimeApi, ExecutorDispatch>,
     InvalidStateTransitionProofVerifier<RuntimeApi, ExecutorDispatch>,
+    InvalidBundleProofVerifier<
+        Block,
+        DomainBlock,
+        FullClient<RuntimeApi, ExecutorDispatch>,
+        NativeElseWasmExecutor<ExecutorDispatch>,
+    >,
 >;
 
 /// Subspace networking instantiation variant
@@ -468,7 +476,8 @@ where
         + SubspaceApi<Block, FarmerPublicKey>
         + DomainsApi<Block, DomainNumber, DomainHash>
         + ObjectsApi<Block>
-        + PreValidationObjectApi<Block, DomainNumber, DomainHash>,
+        + PreValidationObjectApi<Block, DomainNumber, DomainHash>
+        + ExecutionReceiptApi<Block, DomainNumber, DomainHash>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
     let telemetry = config
@@ -529,6 +538,9 @@ where
         VerifierClient::new(client.clone()),
     );
 
+    let invalid_bundle_proof_verifier =
+        InvalidBundleProofVerifier::new(client.clone(), Arc::new(executor.clone()));
+
     let invalid_state_transition_proof_verifier = InvalidStateTransitionProofVerifier::new(
         client.clone(),
         executor,
@@ -538,6 +550,7 @@ where
     let proof_verifier = subspace_fraud_proof::ProofVerifier::new(
         Arc::new(invalid_transaction_proof_verifier),
         Arc::new(invalid_state_transition_proof_verifier),
+        Arc::new(invalid_bundle_proof_verifier),
     );
 
     let tx_pre_validator = ConsensusChainTxPreValidator::new(
@@ -731,7 +744,8 @@ where
         + SubspaceApi<Block, FarmerPublicKey>
         + DomainsApi<Block, DomainNumber, DomainHash>
         + ObjectsApi<Block>
-        + PreValidationObjectApi<Block, DomainNumber, DomainHash>,
+        + PreValidationObjectApi<Block, DomainNumber, DomainHash>
+        + ExecutionReceiptApi<Block, DomainNumber, DomainHash>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
     let PartialComponents {

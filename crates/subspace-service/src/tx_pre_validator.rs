@@ -3,6 +3,7 @@ use sc_transaction_pool_api::error::Error as TxPoolError;
 use sc_transaction_pool_api::TransactionSource;
 use sp_api::ProvideRuntimeApi;
 use sp_core::traits::SpawnNamed;
+use sp_domains::fraud_proof::ExecutionReceiptApi;
 use sp_domains::transaction::{
     InvalidTransactionCode, PreValidationObject, PreValidationObjectApi,
 };
@@ -58,7 +59,8 @@ where
     Block: BlockT,
     DomainBlock: BlockT,
     Client: ProvideRuntimeApi<Block> + Send + Sync,
-    Client::Api: PreValidationObjectApi<Block, NumberFor<DomainBlock>, DomainBlock::Hash>,
+    Client::Api: PreValidationObjectApi<Block, NumberFor<DomainBlock>, DomainBlock::Hash>
+        + ExecutionReceiptApi<Block, NumberFor<DomainBlock>, DomainBlock::Hash>,
     Verifier: VerifyFraudProof<Block, DomainBlock> + Clone + Send + Sync + 'static,
 {
     type Block = Block;

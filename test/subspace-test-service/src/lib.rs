@@ -72,6 +72,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time;
 use subspace_core_primitives::{Randomness, Solution};
+use subspace_fraud_proof::invalid_bundles_fraud_proof::InvalidBundleProofVerifier;
 use subspace_fraud_proof::invalid_state_transition_proof::InvalidStateTransitionProofVerifier;
 use subspace_fraud_proof::invalid_transaction_proof::InvalidTransactionProofVerifier;
 use subspace_fraud_proof::verifier_api::VerifierClient;
@@ -278,6 +279,9 @@ impl MockConsensusNode {
             VerifierClient::new(client.clone()),
         );
 
+        let invalid_bundle_proof_verifier =
+            InvalidBundleProofVerifier::new(client.clone(), Arc::new(executor.clone()));
+
         let invalid_state_transition_proof_verifier = InvalidStateTransitionProofVerifier::new(
             client.clone(),
             executor.clone(),
@@ -287,6 +291,7 @@ impl MockConsensusNode {
         let proof_verifier = subspace_fraud_proof::ProofVerifier::new(
             Arc::new(invalid_transaction_proof_verifier),
             Arc::new(invalid_state_transition_proof_verifier),
+            Arc::new(invalid_bundle_proof_verifier),
         );
 
         let tx_pre_validator = ConsensusChainTxPreValidator::new(

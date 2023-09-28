@@ -10,6 +10,7 @@ pub mod invalid_transaction_proof;
 mod tests;
 pub mod verifier_api;
 
+use crate::invalid_bundles_fraud_proof::VerifyInvalidBundleProof;
 use futures::channel::oneshot;
 use futures::FutureExt;
 use invalid_state_transition_proof::VerifyInvalidStateTransitionProof;
@@ -37,14 +38,15 @@ pub trait VerifyFraudProof<VerifierBlock: BlockT, DomainBlock: BlockT> {
 }
 
 /// Fraud proof verifier.
-pub struct ProofVerifier<VerifierBlock, DomainBlock, ITPVerifier, ISTPVerifier> {
+pub struct ProofVerifier<VerifierBlock, DomainBlock, ITPVerifier, ISTPVerifier, IBPVerifier> {
     invalid_transaction_proof_verifier: Arc<ITPVerifier>,
     invalid_state_transition_proof_verifier: Arc<ISTPVerifier>,
+    invalid_bundle_proof_verifier: Arc<IBPVerifier>,
     _phantom: PhantomData<(VerifierBlock, DomainBlock)>,
 }
 
-impl<VerifierBlock, DomainBlock, ITPVerifier, ISTPVerifier> Clone
-    for ProofVerifier<VerifierBlock, DomainBlock, ITPVerifier, ISTPVerifier>
+impl<VerifierBlock, DomainBlock, ITPVerifier, ISTPVerifier, IBPVerifier> Clone
+    for ProofVerifier<VerifierBlock, DomainBlock, ITPVerifier, ISTPVerifier, IBPVerifier>
 {
     fn clone(&self) -> Self {
         Self {
@@ -52,27 +54,31 @@ impl<VerifierBlock, DomainBlock, ITPVerifier, ISTPVerifier> Clone
             invalid_state_transition_proof_verifier: self
                 .invalid_state_transition_proof_verifier
                 .clone(),
+            invalid_bundle_proof_verifier: self.invalid_bundle_proof_verifier.clone(),
             _phantom: self._phantom,
         }
     }
 }
 
-impl<VerifierBlock, DomainBlock, ITPVerifier, ISTPVerifier>
-    ProofVerifier<VerifierBlock, DomainBlock, ITPVerifier, ISTPVerifier>
+impl<VerifierBlock, DomainBlock, ITPVerifier, ISTPVerifier, IBPVerifier>
+    ProofVerifier<VerifierBlock, DomainBlock, ITPVerifier, ISTPVerifier, IBPVerifier>
 where
     VerifierBlock: BlockT,
     DomainBlock: BlockT,
     ITPVerifier: VerifyInvalidTransactionProof,
     ISTPVerifier: VerifyInvalidStateTransitionProof,
+    IBPVerifier: VerifyInvalidBundleProof<VerifierBlock, DomainBlock>,
 {
     /// Constructs a new instance of [`ProofVerifier`].
     pub fn new(
         invalid_transaction_proof_verifier: Arc<ITPVerifier>,
         invalid_state_transition_proof_verifier: Arc<ISTPVerifier>,
+        invalid_bundle_proof_verifier: Arc<IBPVerifier>,
     ) -> Self {
         Self {
             invalid_transaction_proof_verifier,
             invalid_state_transition_proof_verifier,
+            invalid_bundle_proof_verifier,
             _phantom: Default::default(),
         }
     }
@@ -94,19 +100,23 @@ where
             FraudProof::InvalidTransaction(proof) => self
                 .invalid_transaction_proof_verifier
                 .verify_invalid_transaction_proof(proof),
+            FraudProof::InvalidBundles(proof) => self
+                .invalid_bundle_proof_verifier
+                .verify_invalid_bundle_proof(proof),
             proof => unimplemented!("Can not verify {proof:?}"),
         }
     }
 }
 
-impl<VerifierBlock, DomainBlock, ITPVerifier, ISTPVerifier>
+impl<VerifierBlock, DomainBlock, ITPVerifier, ISTPVerifier, IBPVerifier>
     VerifyFraudProof<VerifierBlock, DomainBlock>
-    for ProofVerifier<VerifierBlock, DomainBlock, ITPVerifier, ISTPVerifier>
+    for ProofVerifier<VerifierBlock, DomainBlock, ITPVerifier, ISTPVerifier, IBPVerifier>
 where
     VerifierBlock: BlockT,
     DomainBlock: BlockT,
     ITPVerifier: VerifyInvalidTransactionProof,
     ISTPVerifier: VerifyInvalidStateTransitionProof,
+    IBPVerifier: VerifyInvalidBundleProof<VerifierBlock, DomainBlock>,
 {
     fn verify_fraud_proof(
         &self,
