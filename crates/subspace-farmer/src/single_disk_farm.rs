@@ -6,12 +6,14 @@ mod plotting;
 use crate::identity::{Identity, IdentityError};
 use crate::node_client::NodeClient;
 use crate::reward_signing::reward_signing;
-use crate::single_disk_farm::farming::farming;
 pub use crate::single_disk_farm::farming::FarmingError;
+use crate::single_disk_farm::farming::{farming, FarmingOptions};
 use crate::single_disk_farm::piece_cache::{DiskPieceCache, DiskPieceCacheError};
 use crate::single_disk_farm::piece_reader::PieceReader;
 pub use crate::single_disk_farm::plotting::PlottingError;
-use crate::single_disk_farm::plotting::{plotting, plotting_scheduler};
+use crate::single_disk_farm::plotting::{
+    plotting, plotting_scheduler, PlottingOptions, PlottingSchedulerOptions,
+};
 use crate::utils::JoinOnDrop;
 use derive_more::{Display, From};
 use event_listener_primitives::{Bag, HandlerId};
@@ -22,6 +24,7 @@ use futures::StreamExt;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::{Mutex, RwLock};
 use rayon::prelude::*;
+use rayon::ThreadPool;
 use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
 use std::fs::{File, OpenOptions};
@@ -282,6 +285,14 @@ pub struct SingleDiskFarmOptions<NC, PG> {
     pub erasure_coding: ErasureCoding,
     /// Percentage of allocated space dedicated for caching purposes
     pub cache_percentage: NonZeroU8,
+    /// Thread pool used for farming (mostly for blocking I/O, but also for some compute-intensive
+    /// operations during proving)
+    pub farming_thread_pool: Arc<ThreadPool>,
+    /// Thread pool used for plotting
+    pub plotting_thread_pool: Arc<ThreadPool>,
+    /// Thread pool used for replotting, typically smaller pool than for plotting to not affect
+    /// farming as much
+    pub replotting_thread_pool: Arc<ThreadPool>,
 }
 
 /// Errors happening when trying to create/open single disk farm
@@ -568,7 +579,7 @@ impl SingleDiskFarm {
     ) -> Result<Self, SingleDiskFarmError>
     where
         NC: NodeClient,
-        PG: PieceGetter + Send + 'static,
+        PG: PieceGetter + Clone + Send + 'static,
         PosTable: Table,
     {
         let handle = Handle::current();
@@ -584,6 +595,9 @@ impl SingleDiskFarm {
             kzg,
             erasure_coding,
             cache_percentage,
+            farming_thread_pool,
+            plotting_thread_pool,
+            replotting_thread_pool,
         } = options;
         fs::create_dir_all(&directory)?;
 
@@ -873,7 +887,7 @@ impl SingleDiskFarm {
                             return Ok(());
                         }
 
-                        plotting::<_, _, PosTable>(
+                        let plotting_options = PlottingOptions {
                             public_key,
                             node_client,
                             pieces_in_sector,
@@ -890,8 +904,10 @@ impl SingleDiskFarm {
                             modifying_sector_index,
                             target_sector_count,
                             sectors_to_plot_receiver,
-                        )
-                        .await
+                            plotting_thread_pool,
+                            replotting_thread_pool,
+                        };
+                        plotting::<_, _, PosTable>(plotting_options).await
                     };
 
                     let initial_plotting_result = handle.block_on(select(
@@ -909,16 +925,17 @@ impl SingleDiskFarm {
                 }
             })?;
 
-        tasks.push(Box::pin(plotting_scheduler(
-            public_key.hash(),
+        let plotting_scheduler_options = PlottingSchedulerOptions {
+            public_key_hash: public_key.hash(),
             sectors_indices_left_to_plot,
             target_sector_count,
-            farmer_app_info.protocol_info.history_size.segment_index(),
-            farmer_app_info.protocol_info.min_sector_lifetime,
-            node_client.clone(),
-            Arc::clone(&sectors_metadata),
+            last_archived_segment_index: farmer_app_info.protocol_info.history_size.segment_index(),
+            min_sector_lifetime: farmer_app_info.protocol_info.min_sector_lifetime,
+            node_client: node_client.clone(),
+            sectors_metadata: Arc::clone(&sectors_metadata),
             sectors_to_plot_sender,
-        )));
+        };
+        tasks.push(Box::pin(plotting_scheduler(plotting_scheduler_options)));
 
         let (mut slot_info_forwarder_sender, slot_info_forwarder_receiver) = mpsc::channel(0);
 
@@ -973,21 +990,21 @@ impl SingleDiskFarm {
                             return Ok(());
                         }
 
-                        farming::<_, PosTable>(
-                            disk_farm_index,
+                        let farming_options = FarmingOptions {
                             public_key,
                             reward_address,
                             node_client,
                             sector_size,
-                            &plot_file,
+                            plot_file: &plot_file,
                             sectors_metadata,
                             kzg,
                             erasure_coding,
                             handlers,
                             modifying_sector_index,
-                            slot_info_forwarder_receiver,
-                        )
-                        .await
+                            slot_info_notifications: slot_info_forwarder_receiver,
+                            thread_pool: farming_thread_pool,
+                        };
+                        farming::<PosTable, _>(farming_options).await
                     };
 
                     let farming_result = handle.block_on(select(
