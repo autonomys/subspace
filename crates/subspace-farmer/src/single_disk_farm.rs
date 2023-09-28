@@ -19,7 +19,6 @@ use futures::channel::{mpsc, oneshot};
 use futures::future::{select, Either};
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
-use memmap2::{Mmap, MmapOptions};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::{Mutex, RwLock};
 use rayon::prelude::*;
@@ -737,10 +736,12 @@ impl SingleDiskFarm {
             .create(true)
             .open(directory.join(Self::METADATA_FILE))?;
 
+        metadata_file.advise_random_access()?;
+
         let metadata_size = metadata_file.seek(SeekFrom::End(0))?;
         let expected_metadata_size =
             RESERVED_PLOT_METADATA + sector_metadata_size as u64 * u64::from(target_sector_count);
-        let (metadata_header, metadata_header_mmap) = if metadata_size == 0 {
+        let metadata_header = if metadata_size == 0 {
             let metadata_header = PlotMetadataHeader {
                 version: 0,
                 plotted_sector_count: 0,
@@ -751,13 +752,7 @@ impl SingleDiskFarm {
                 .map_err(SingleDiskFarmError::CantPreallocateMetadataFile)?;
             metadata_file.write_all_at(metadata_header.encode().as_slice(), 0)?;
 
-            let metadata_header_mmap = unsafe {
-                MmapOptions::new()
-                    .len(PlotMetadataHeader::encoded_size())
-                    .map_mut(&metadata_file)?
-            };
-
-            (metadata_header, metadata_header_mmap)
+            metadata_header
         } else {
             if metadata_size != expected_metadata_size {
                 // Allocating the whole file (`set_len` below can create a sparse file, which will
@@ -768,14 +763,12 @@ impl SingleDiskFarm {
                 // Truncating file (if necessary)
                 metadata_file.set_len(expected_metadata_size)?;
             }
-            let mut metadata_header_mmap = unsafe {
-                MmapOptions::new()
-                    .len(PlotMetadataHeader::encoded_size())
-                    .map_mut(&metadata_file)?
-            };
+
+            let mut metadata_header_bytes = vec![0; PlotMetadataHeader::encoded_size()];
+            metadata_file.read_exact_at(&mut metadata_header_bytes, 0)?;
 
             let mut metadata_header =
-                PlotMetadataHeader::decode(&mut metadata_header_mmap.as_ref())
+                PlotMetadataHeader::decode(&mut metadata_header_bytes.as_ref())
                     .map_err(SingleDiskFarmError::FailedToDecodeMetadataHeader)?;
 
             if metadata_header.version != Self::SUPPORTED_PLOT_VERSION {
@@ -786,29 +779,24 @@ impl SingleDiskFarm {
 
             if metadata_header.plotted_sector_count > target_sector_count {
                 metadata_header.plotted_sector_count = target_sector_count;
-                metadata_header.encode_to(&mut metadata_header_mmap.as_mut());
+                metadata_file.write_all_at(&metadata_header.encode(), 0)?;
             }
 
-            (metadata_header, metadata_header_mmap)
+            metadata_header
         };
 
         let sectors_metadata = {
-            let metadata_mmap = unsafe {
-                MmapOptions::new()
-                    .offset(RESERVED_PLOT_METADATA)
-                    .len(sector_metadata_size * usize::from(target_sector_count))
-                    .map(&metadata_file)?
-            };
-
             let mut sectors_metadata =
                 Vec::<SectorMetadataChecksummed>::with_capacity(usize::from(target_sector_count));
 
-            for mut sector_metadata_bytes in metadata_mmap
-                .chunks_exact(sector_metadata_size)
-                .take(metadata_header.plotted_sector_count as usize)
-            {
+            let mut sector_metadata_bytes = vec![0; sector_metadata_size];
+            for sector_index in 0..metadata_header.plotted_sector_count {
+                metadata_file.read_exact_at(
+                    &mut sector_metadata_bytes,
+                    RESERVED_PLOT_METADATA + sector_metadata_size as u64 * u64::from(sector_index),
+                )?;
                 sectors_metadata.push(
-                    SectorMetadataChecksummed::decode(&mut sector_metadata_bytes)
+                    SectorMetadataChecksummed::decode(&mut sector_metadata_bytes.as_ref())
                         .map_err(SingleDiskFarmError::FailedToDecodeSectorMetadata)?,
                 );
             }
@@ -823,6 +811,8 @@ impl SingleDiskFarm {
                 .create(true)
                 .open(directory.join(Self::PLOT_FILE))?,
         );
+
+        plot_file.advise_random_access()?;
 
         // Allocating the whole file (`set_len` below can create a sparse file, which will cause
         // writes to fail later)
@@ -890,7 +880,6 @@ impl SingleDiskFarm {
                             sector_size,
                             sector_metadata_size,
                             metadata_header,
-                            metadata_header_mmap,
                             plot_file,
                             metadata_file,
                             sectors_metadata,
@@ -963,12 +952,7 @@ impl SingleDiskFarm {
         let farming_join_handle = thread::Builder::new()
             .name(format!("farming-{disk_farm_index}"))
             .spawn({
-                let plot_mmap = unsafe { Mmap::map(&*plot_file)? };
-                #[cfg(unix)]
-                {
-                    plot_mmap.advise(memmap2::Advice::Random)?;
-                }
-
+                let plot_file = Arc::clone(&plot_file);
                 let handle = handle.clone();
                 let erasure_coding = erasure_coding.clone();
                 let handlers = Arc::clone(&handlers);
@@ -995,7 +979,7 @@ impl SingleDiskFarm {
                             reward_address,
                             node_client,
                             sector_size,
-                            plot_mmap,
+                            &plot_file,
                             sectors_metadata,
                             kzg,
                             erasure_coding,
@@ -1024,7 +1008,7 @@ impl SingleDiskFarm {
         let (piece_reader, reading_fut) = PieceReader::new::<PosTable>(
             public_key,
             pieces_in_sector,
-            unsafe { Mmap::map(&*plot_file)? },
+            plot_file,
             Arc::clone(&sectors_metadata),
             erasure_coding,
             modifying_sector_index,

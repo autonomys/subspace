@@ -11143,8 +11143,6 @@ dependencies = [
  "jemallocator",
  "jsonrpsee",
  "lru 0.10.0",
- "memmap2 0.7.1",
- "parity-db",
  "parity-scale-codec",
  "parking_lot 0.12.1",
  "rand 0.8.5",
