@@ -3,18 +3,18 @@ use crate::node_client::NodeClient;
 use crate::single_disk_farm::Handlers;
 use futures::channel::mpsc;
 use futures::StreamExt;
-use memmap2::Mmap;
 use parking_lot::RwLock;
 use rayon::prelude::*;
 use rayon::{ThreadPoolBuildError, ThreadPoolBuilder};
+use std::fs::File;
 use std::io;
 use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{PublicKey, SectorIndex, Solution};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector;
-use subspace_farmer_components::proving;
 use subspace_farmer_components::sector::SectorMetadataChecksummed;
+use subspace_farmer_components::{proving, ReadAt};
 use subspace_proof_of_space::Table;
 use subspace_rpc_primitives::{SlotInfo, SolutionResponse};
 use thiserror::Error;
@@ -77,7 +77,7 @@ pub(super) async fn farming<NC, PosTable>(
     reward_address: PublicKey,
     node_client: NC,
     sector_size: usize,
-    plot_mmap: Mmap,
+    plot_file: &File,
     sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
     kzg: Kzg,
     erasure_coding: ErasureCoding,
@@ -105,10 +105,14 @@ where
         let maybe_sector_being_modified = modifying_sector_guard.as_ref().copied();
         let mut solutions = Vec::<Solution<PublicKey, PublicKey>>::new();
 
+        let sectors = (0..sector_count)
+            .map(|sector_index| plot_file.offset(sector_index * sector_size))
+            .collect::<Vec<_>>();
+
         let solution_candidates = thread_pool.install(|| {
             sectors_metadata
                 .par_iter()
-                .zip(plot_mmap.par_chunks_exact(sector_size))
+                .zip(&sectors)
                 .enumerate()
                 .filter_map(|(sector_index, (sector_metadata, sector))| {
                     let sector_index = sector_index as u16;

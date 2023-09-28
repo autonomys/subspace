@@ -6,7 +6,6 @@ use atomic::Atomic;
 use futures::channel::{mpsc, oneshot};
 use futures::{select, FutureExt, SinkExt, StreamExt};
 use lru::LruCache;
-use memmap2::{MmapMut, MmapOptions};
 use parity_scale_codec::Encode;
 use parking_lot::RwLock;
 use std::collections::HashMap;
@@ -23,6 +22,7 @@ use subspace_core_primitives::{
     SegmentIndex,
 };
 use subspace_erasure_coding::ErasureCoding;
+use subspace_farmer_components::file_ext::FileExt;
 use subspace_farmer_components::plotting;
 use subspace_farmer_components::plotting::{
     plot_sector, PieceGetter, PieceGetterRetryPolicy, PlottedSector,
@@ -85,7 +85,6 @@ pub(super) async fn plotting<NC, PG, PosTable>(
     sector_size: usize,
     sector_metadata_size: usize,
     mut metadata_header: PlotMetadataHeader,
-    mut metadata_header_mmap: MmapMut,
     plot_file: Arc<File>,
     metadata_file: File,
     sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
@@ -107,21 +106,8 @@ where
     while let Some((sector_index, _acknowledgement_sender)) = sectors_to_plot.next().await {
         trace!(%sector_index, "Preparing to plot sector");
 
-        let mut sector = unsafe {
-            MmapOptions::new()
-                .offset((sector_index as usize * sector_size) as u64)
-                .len(sector_size)
-                .map_mut(&*plot_file)?
-        };
-        let mut sector_metadata = unsafe {
-            MmapOptions::new()
-                .offset(
-                    RESERVED_PLOT_METADATA
-                        + (u64::from(sector_index) * sector_metadata_size as u64),
-                )
-                .len(sector_metadata_size)
-                .map_mut(&metadata_file)?
-        };
+        let mut sector = vec![0; sector_size];
+        let mut sector_metadata = vec![0; sector_metadata_size];
 
         let maybe_old_sector_metadata = sectors_metadata.read().get(sector_index as usize).cloned();
 
@@ -176,12 +162,15 @@ where
         modifying_sector_index.write().replace(sector_index);
 
         let plotted_sector = plot_sector_fut.await?;
-        sector.flush()?;
-        sector_metadata.flush()?;
+        plot_file.write_all_at(&sector, (sector_index as usize * sector_size) as u64)?;
+        metadata_file.write_all_at(
+            &sector_metadata,
+            RESERVED_PLOT_METADATA + (u64::from(sector_index) * sector_metadata_size as u64),
+        )?;
 
         if sector_index + 1 > metadata_header.plotted_sector_count {
             metadata_header.plotted_sector_count = sector_index + 1;
-            metadata_header.encode_to(&mut metadata_header_mmap.as_mut());
+            metadata_file.write_all_at(&metadata_header.encode(), 0)?;
         }
         {
             let mut sectors_metadata = sectors_metadata.write();
