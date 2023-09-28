@@ -9,6 +9,7 @@ use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use lru::LruCache;
 use parking_lot::Mutex;
+use rayon::ThreadPoolBuilder;
 use std::fs;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -54,6 +55,9 @@ where
         tmp,
         mut disk_farms,
         metrics_endpoints,
+        farming_thread_pool_size,
+        plotting_thread_pool_size,
+        replotting_thread_pool_size,
     } = farming_args;
 
     // Override the `--enable_private_ips` flag with `--dev`
@@ -187,6 +191,25 @@ where
         None => farmer_app_info.protocol_info.max_pieces_in_sector,
     };
 
+    let farming_thread_pool = Arc::new(
+        ThreadPoolBuilder::new()
+            .thread_name(move |thread_index| format!("farming#{thread_index}"))
+            .num_threads(farming_thread_pool_size)
+            .build()?,
+    );
+    let plotting_thread_pool = Arc::new(
+        ThreadPoolBuilder::new()
+            .thread_name(move |thread_index| format!("plotting#{thread_index}"))
+            .num_threads(plotting_thread_pool_size)
+            .build()?,
+    );
+    let replotting_thread_pool = Arc::new(
+        ThreadPoolBuilder::new()
+            .thread_name(move |thread_index| format!("replotting#{thread_index}"))
+            .num_threads(replotting_thread_pool_size)
+            .build()?,
+    );
+
     // TODO: Check plot and metadata sizes to ensure there is enough space for farmer to not
     //  fail later
     for (disk_farm_index, disk_farm) in disk_farms.into_iter().enumerate() {
@@ -205,6 +228,9 @@ where
                 erasure_coding: erasure_coding.clone(),
                 piece_getter: piece_getter.clone(),
                 cache_percentage,
+                farming_thread_pool: Arc::clone(&farming_thread_pool),
+                plotting_thread_pool: Arc::clone(&plotting_thread_pool),
+                replotting_thread_pool: Arc::clone(&replotting_thread_pool),
             },
             disk_farm_index,
         );
