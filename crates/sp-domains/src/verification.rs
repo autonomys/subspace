@@ -1,4 +1,6 @@
-use crate::fraud_proof::{ExtrinsicDigest, InvalidExtrinsicsRootProof, StorageKeys};
+use crate::fraud_proof::{
+    DeriveExtrinsics, ExtrinsicDigest, InvalidExtrinsicsRootProof, StorageKeys,
+};
 use crate::valued_trie_root::valued_ordered_trie_root;
 use crate::{ExecutionReceipt, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT};
 use domain_runtime_primitives::opaque::AccountId;
@@ -20,6 +22,7 @@ use sp_std::marker::PhantomData;
 use sp_std::vec::Vec;
 use sp_trie::{read_trie_value, LayoutV1, StorageProof};
 use subspace_core_primitives::Randomness;
+use subspace_runtime_primitives::Moment;
 use trie_db::node::Value;
 
 /// Verification error.
@@ -104,6 +107,7 @@ pub fn verify_invalid_domain_extrinsics_root_fraud_proof<
     Balance,
     Hashing,
     SK,
+    DE,
 >(
     consensus_state_root: CBlock::Hash,
     bad_receipt: ExecutionReceipt<
@@ -119,10 +123,12 @@ where
     CBlock: Block,
     Hashing: Hasher<Out = CBlock::Hash>,
     SK: StorageKeys,
+    DE: DeriveExtrinsics<Moment>,
 {
     let InvalidExtrinsicsRootProof {
         valid_bundle_digests,
-        randomness_proof,
+        randomness_storage_proof,
+        timestamp_storage_proof,
         ..
     } = fraud_proof;
 
@@ -140,22 +146,33 @@ where
         bundle_extrinsics_digests.extend(bundle_digest.bundle_digest.clone());
     }
 
-    let storage_key = SK::block_randomness_key();
-    let storage_proof = randomness_proof.clone();
     let block_randomness = StorageProofVerifier::<Hashing>::verify_and_get_value::<Randomness>(
         &consensus_state_root,
-        storage_proof,
-        storage_key,
+        randomness_storage_proof.clone(),
+        SK::block_randomness_storage_key(),
+    )
+    .map_err(|_| VerificationError::InvalidProof)?;
+
+    let timestamp = StorageProofVerifier::<Hashing>::verify_and_get_value::<Moment>(
+        &consensus_state_root,
+        timestamp_storage_proof.clone(),
+        SK::timestamp_storage_key(),
     )
     .map_err(|_| VerificationError::InvalidProof)?;
 
     let shuffling_seed =
         H256::decode(&mut extrinsics_shuffling_seed::<Hashing>(block_randomness).as_ref())
             .map_err(|_| VerificationError::FailedToDecode)?;
-    let ordered_extrinsics = deduplicate_and_shuffle_extrinsics(
+
+    let mut ordered_extrinsics = deduplicate_and_shuffle_extrinsics(
         bundle_extrinsics_digests,
         Randomness::from(shuffling_seed.to_fixed_bytes()),
     );
+
+    let timestamp_extrinsic =
+        ExtrinsicDigest::new::<LayoutV1<BlakeTwo256>>(DE::derive_timestamp_extrinsic(timestamp));
+    ordered_extrinsics.insert(0, timestamp_extrinsic);
+
     let ordered_trie_node_values = ordered_extrinsics
         .iter()
         .map(|ext_digest| match ext_digest {
@@ -163,7 +180,8 @@ where
             ExtrinsicDigest::Hash(hash) => Value::Node(hash.0.as_slice()),
         })
         .collect();
-    // TODO: include timestamp and domain runtime upgrade extrinsic
+
+    // TODO: domain runtime upgrade extrinsic
     let extrinsics_root =
         valued_ordered_trie_root::<LayoutV1<BlakeTwo256>>(ordered_trie_node_values);
     if bad_receipt.domain_block_extrinsic_root == extrinsics_root {
@@ -185,7 +203,7 @@ where
 pub fn deduplicate_and_shuffle_extrinsics<Extrinsic>(
     mut extrinsics: Vec<(Option<AccountId>, Extrinsic)>,
     shuffling_seed: Randomness,
-) -> Vec<Extrinsic>
+) -> VecDeque<Extrinsic>
 where
     Extrinsic: Debug + PartialEq + Clone,
 {
@@ -213,7 +231,7 @@ where
 pub fn shuffle_extrinsics<Extrinsic: Debug, AccountId: Ord + Clone>(
     extrinsics: Vec<(Option<AccountId>, Extrinsic)>,
     shuffling_seed: Randomness,
-) -> Vec<Extrinsic> {
+) -> VecDeque<Extrinsic> {
     let mut rng = ChaCha8Rng::from_seed(*shuffling_seed);
 
     let mut positions = extrinsics
@@ -245,7 +263,7 @@ pub fn shuffle_extrinsics<Extrinsic: Debug, AccountId: Ord + Clone>(
                 .pop_front()
                 .expect("Extrinsic definitely exists as it's correctly grouped above; qed")
         })
-        .collect::<Vec<_>>();
+        .collect::<VecDeque<_>>();
 
     trace!(?shuffled_extrinsics, "Shuffled extrinsics");
 

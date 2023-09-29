@@ -646,10 +646,22 @@ parameter_types! {
 
 pub struct StorageKeys;
 impl sp_domains::fraud_proof::StorageKeys for StorageKeys {
-    fn block_randomness_key() -> StorageKey {
+    fn block_randomness_storage_key() -> StorageKey {
         StorageKey(
             pallet_subspace::pallet::BlockRandomness::<Runtime>::storage_value_final_key().to_vec(),
         )
+    }
+
+    fn timestamp_storage_key() -> StorageKey {
+        StorageKey(pallet_timestamp::pallet::Now::<Runtime>::storage_value_final_key().to_vec())
+    }
+}
+
+pub struct DeriveExtrinsics;
+impl sp_domains::fraud_proof::DeriveExtrinsics<Moment> for DeriveExtrinsics {
+    fn derive_timestamp_extrinsic(now: Moment) -> Vec<u8> {
+        UncheckedExtrinsic::new_unsigned(pallet_timestamp::Call::<Runtime>::set { now }.into())
+            .encode()
     }
 }
 
@@ -679,6 +691,7 @@ impl pallet_domains::Config for Runtime {
     type SudoId = SudoId;
     type Randomness = Subspace;
     type StorageKeys = StorageKeys;
+    type DeriveExtrinsics = DeriveExtrinsics;
 }
 
 parameter_types! {
@@ -1390,8 +1403,12 @@ impl_runtime_apis! {
             Domains::domain_state_root(domain_id, number, hash)
         }
 
-        fn block_randomness_key() -> Vec<u8> {
+        fn block_randomness_storage_key() -> Vec<u8> {
             pallet_subspace::pallet::BlockRandomness::<Runtime>::storage_value_final_key().to_vec()
+        }
+
+        fn timestamp_storage_key() -> Vec<u8> {
+            pallet_timestamp::pallet::Now::<Runtime>::storage_value_final_key().to_vec()
         }
     }
 

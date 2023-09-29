@@ -138,7 +138,7 @@ mod pallet {
     use frame_support::{Identity, PalletError};
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
-    use sp_domains::fraud_proof::{FraudProof, StorageKeys};
+    use sp_domains::fraud_proof::{DeriveExtrinsics, FraudProof, StorageKeys};
     use sp_domains::inherents::{InherentError, InherentType, INHERENT_IDENTIFIER};
     use sp_domains::transaction::InvalidTransactionCode;
     use sp_domains::{
@@ -157,6 +157,7 @@ mod pallet {
     use sp_std::vec;
     use sp_std::vec::Vec;
     use subspace_core_primitives::U256;
+    use subspace_runtime_primitives::Moment;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -287,6 +288,9 @@ mod pallet {
 
         /// Trait impl to fetch storage keys.
         type StorageKeys: StorageKeys;
+
+        /// Derive extrinsics trait impl.
+        type DeriveExtrinsics: DeriveExtrinsics<Moment>;
     }
 
     #[pallet::pallet]
@@ -1595,6 +1599,7 @@ impl<T: Config> Pallet<T> {
                 )
                 .ok_or(FraudProofError::MissingConsensusStateRoot)?
                 .1;
+
                 verify_invalid_domain_extrinsics_root_fraud_proof::<
                     T::Block,
                     T::DomainNumber,
@@ -1602,6 +1607,7 @@ impl<T: Config> Pallet<T> {
                     BalanceOf<T>,
                     T::Hashing,
                     T::StorageKeys,
+                    T::DeriveExtrinsics,
                 >(consensus_state_root, bad_receipt, proof)
                 .map_err(FraudProofError::InvalidExtrinsicRootFraudProof)?;
             }
