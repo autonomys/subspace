@@ -4,10 +4,11 @@ use crate::{
     self as pallet_domains, BalanceOf, BlockTree, BundleError, Config, ConsensusBlockInfo,
     DomainBlocks, DomainRegistry, ExecutionInbox, ExecutionReceiptOf, FraudProofError,
     FungibleHoldId, HeadReceiptNumber, NextDomainId, Operator, OperatorStatus, Operators,
+    RuntimeUpgraded,
 };
 use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::dispatch::RawOrigin;
-use frame_support::storage::generator::StorageValue;
+use frame_support::storage::generator::{StorageMap, StorageValue};
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, Currency, Hooks};
 use frame_support::weights::Weight;
 use frame_support::{assert_err, assert_ok, parameter_types, PalletId};
@@ -24,7 +25,8 @@ use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{
     BundleHeader, DomainId, DomainInstanceData, DomainsHoldIdentifier, ExecutionReceipt,
     GenerateGenesisStateRoot, GenesisReceiptExtension, OpaqueBundle, OperatorId, OperatorPair,
-    ProofOfElection, ReceiptHash, RuntimeType, SealedBundleHeader, StakingHoldIdentifier,
+    ProofOfElection, ReceiptHash, RuntimeId, RuntimeType, SealedBundleHeader,
+    StakingHoldIdentifier,
 };
 use sp_runtime::traits::{AccountIdConversion, BlakeTwo256, Hash as HashT, IdentityLookup, Zero};
 use sp_runtime::{BuildStorage, OpaqueExtrinsic};
@@ -204,6 +206,10 @@ impl sp_domains::fraud_proof::StorageKeys for StorageKeys {
 
     fn timestamp_storage_key() -> StorageKey {
         StorageKey(pallet_timestamp::pallet::Now::<Test>::storage_value_final_key().to_vec())
+    }
+
+    fn domain_runtime_upgraded_storage_key(runtime_id: RuntimeId) -> StorageKey {
+        StorageKey(RuntimeUpgraded::<Test>::storage_map_final_key(runtime_id))
     }
 }
 
@@ -888,9 +894,11 @@ fn test_invalid_domain_extrinsic_root_proof() {
         let bad_receipt_hash = domain_block.execution_receipt.hash();
         let (fraud_proof, root) = generate_invalid_domain_extrinsic_root_fraud_proof::<Test>(
             domain_id,
+            0,
             bad_receipt_hash,
             Randomness::from([1u8; 32]),
             1000,
+            H256::default(),
         );
         let (consensus_block_number, consensus_block_hash) = (
             domain_block.execution_receipt.consensus_block_number,
@@ -908,15 +916,20 @@ fn test_invalid_domain_extrinsic_root_proof() {
 
 fn generate_invalid_domain_extrinsic_root_fraud_proof<T: Config + pallet_timestamp::Config>(
     domain_id: DomainId,
+    runtime_id: RuntimeId,
     bad_receipt_hash: ReceiptHash,
     randomness: Randomness,
     moment: Moment,
+    runtime_hash: T::Hash,
 ) -> (FraudProof<BlockNumberFor<T>, T::Hash>, T::Hash) {
     let randomness_storage_key =
         frame_support::storage::storage_prefix("Subspace".as_ref(), "BlockRandomness".as_ref())
             .to_vec();
     let timestamp_storage_key =
         pallet_timestamp::pallet::Now::<T>::storage_value_final_key().to_vec();
+    let domain_runtime_upgraded_storage_key =
+        RuntimeUpgraded::<T>::storage_map_final_key(runtime_id);
+
     let mut root = T::Hash::default();
     let mut mdb = PrefixedMemoryDB::<T::Hashing>::default();
     {
@@ -925,13 +938,18 @@ fn generate_invalid_domain_extrinsic_root_fraud_proof<T: Config + pallet_timesta
             .unwrap();
         trie.insert(&timestamp_storage_key, &moment.encode())
             .unwrap();
+        trie.insert(&domain_runtime_upgraded_storage_key, &runtime_hash.encode())
+            .unwrap();
     };
 
     let backend = TrieBackendBuilder::new(mdb, root).build();
     let (_, randomness_storage_proof) =
         storage_proof_for_key::<T, _>(backend.clone(), StorageKey(randomness_storage_key));
-    let (root, timestamp_storage_proof) =
-        storage_proof_for_key::<T, _>(backend, StorageKey(timestamp_storage_key));
+    let (_, timestamp_storage_proof) =
+        storage_proof_for_key::<T, _>(backend.clone(), StorageKey(timestamp_storage_key));
+    let (root, domain_runtime_upgraded_storage_proof) =
+        storage_proof_for_key::<T, _>(backend, StorageKey(domain_runtime_upgraded_storage_key));
+
     let valid_bundle_digests = vec![ValidBundleDigest {
         bundle_index: 0,
         bundle_digest: vec![(Some(vec![1, 2, 3]), ExtrinsicDigest::Data(vec![4, 5, 6]))],
@@ -943,6 +961,7 @@ fn generate_invalid_domain_extrinsic_root_fraud_proof<T: Config + pallet_timesta
             randomness_storage_proof,
             valid_bundle_digests,
             timestamp_storage_proof,
+            domain_runtime_upgraded_storage_proof,
         }),
         root,
     )

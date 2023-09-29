@@ -2,7 +2,7 @@ use crate::fraud_proof::{
     DeriveExtrinsics, ExtrinsicDigest, InvalidExtrinsicsRootProof, StorageKeys,
 };
 use crate::valued_trie_root::valued_ordered_trie_root;
-use crate::{ExecutionReceipt, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT};
+use crate::{ExecutionReceipt, RuntimeId, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT};
 use domain_runtime_primitives::opaque::AccountId;
 use frame_support::PalletError;
 use hash_db::Hasher;
@@ -34,8 +34,10 @@ pub enum VerificationError {
     MissingValue,
     /// Failed to decode value.
     FailedToDecode,
-    /// Invalid bundle digest
+    /// Invalid bundle digest.
     InvalidBundleDigest,
+    /// Missing domain runtime for the given runtime hash.
+    MissingDomainRuntime,
 }
 
 pub struct StorageProofVerifier<H: Hasher>(PhantomData<H>);
@@ -108,8 +110,10 @@ pub fn verify_invalid_domain_extrinsics_root_fraud_proof<
     Hashing,
     SK,
     DE,
+    FR,
 >(
     consensus_state_root: CBlock::Hash,
+    runtime_id: RuntimeId,
     bad_receipt: ExecutionReceipt<
         NumberFor<CBlock>,
         CBlock::Hash,
@@ -118,17 +122,20 @@ pub fn verify_invalid_domain_extrinsics_root_fraud_proof<
         Balance,
     >,
     fraud_proof: &InvalidExtrinsicsRootProof,
+    fetch_runtime: FR,
 ) -> Result<(), VerificationError>
 where
     CBlock: Block,
     Hashing: Hasher<Out = CBlock::Hash>,
     SK: StorageKeys,
     DE: DeriveExtrinsics<Moment>,
+    FR: Fn(CBlock::Hash) -> Option<Vec<u8>>,
 {
     let InvalidExtrinsicsRootProof {
         valid_bundle_digests,
         randomness_storage_proof,
         timestamp_storage_proof,
+        domain_runtime_upgraded_storage_proof,
         ..
     } = fraud_proof;
 
@@ -160,6 +167,14 @@ where
     )
     .map_err(|_| VerificationError::InvalidProof)?;
 
+    let maybe_runtime_upgraded_hash =
+        StorageProofVerifier::<Hashing>::verify_and_get_value::<Option<CBlock::Hash>>(
+            &consensus_state_root,
+            domain_runtime_upgraded_storage_proof.clone(),
+            SK::domain_runtime_upgraded_storage_key(runtime_id),
+        )
+        .map_err(|_| VerificationError::InvalidProof)?;
+
     let shuffling_seed =
         H256::decode(&mut extrinsics_shuffling_seed::<Hashing>(block_randomness).as_ref())
             .map_err(|_| VerificationError::FailedToDecode)?;
@@ -171,7 +186,16 @@ where
 
     let timestamp_extrinsic =
         ExtrinsicDigest::new::<LayoutV1<BlakeTwo256>>(DE::derive_timestamp_extrinsic(timestamp));
-    ordered_extrinsics.insert(0, timestamp_extrinsic);
+    ordered_extrinsics.push_front(timestamp_extrinsic);
+
+    if let Some(runtime_hash) = maybe_runtime_upgraded_hash {
+        let domain_runtime_code =
+            fetch_runtime(runtime_hash).ok_or(VerificationError::MissingDomainRuntime)?;
+        let domain_set_code_extrinsic = ExtrinsicDigest::new::<LayoutV1<BlakeTwo256>>(
+            DE::derive_domain_set_code_extrinsic(domain_runtime_code),
+        );
+        ordered_extrinsics.push_back(domain_set_code_extrinsic);
+    }
 
     let ordered_trie_node_values = ordered_extrinsics
         .iter()
@@ -181,7 +205,6 @@ where
         })
         .collect();
 
-    // TODO: domain runtime upgrade extrinsic
     let extrinsics_root =
         valued_ordered_trie_root::<LayoutV1<BlakeTwo256>>(ordered_trie_node_values);
     if bad_receipt.domain_block_extrinsic_root == extrinsics_root {

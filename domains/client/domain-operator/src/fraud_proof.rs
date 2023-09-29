@@ -228,6 +228,20 @@ where
             &mut [timestamp_storage_key.as_slice()].into_iter(),
         )?;
 
+        let runtime_id = consensus_runtime
+            .runtime_id(consensus_block_hash, domain_id)?
+            .ok_or_else(|| {
+                sp_blockchain::Error::Application(Box::from(format!(
+                    "Runtime id not found for {domain_id:?}"
+                )))
+            })?;
+        let domain_runtime_upgraded_storage_key = consensus_runtime
+            .domain_runtime_upgraded_storage_key(consensus_block_hash, runtime_id)?;
+        let domain_runtime_upgraded_storage_proof = self.consensus_client.read_proof(
+            consensus_block_hash,
+            &mut [domain_runtime_upgraded_storage_key.as_slice()].into_iter(),
+        )?;
+
         Ok(FraudProof::InvalidExtrinsicsRoot(
             InvalidExtrinsicsRootProof {
                 domain_id,
@@ -235,6 +249,7 @@ where
                 valid_bundle_digests,
                 randomness_storage_proof,
                 timestamp_storage_proof,
+                domain_runtime_upgraded_storage_proof,
             },
         ))
     }

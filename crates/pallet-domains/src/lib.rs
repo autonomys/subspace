@@ -98,7 +98,7 @@ pub(crate) struct ElectionVerificationParams<Balance> {
 }
 
 #[frame_support::pallet]
-mod pallet {
+pub mod pallet {
     #![allow(clippy::large_enum_variant)]
 
     use crate::block_tree::{
@@ -623,6 +623,8 @@ mod pallet {
         MissingConsensusStateRoot,
         /// Invalid domain extrinsic fraud proof
         InvalidExtrinsicRootFraudProof(sp_domains::verification::VerificationError),
+        /// Missing RuntimeId for a given DomainId.
+        MissingRuntimeId,
     }
 
     impl<T> From<FraudProofError> for Error<T> {
@@ -1601,6 +1603,9 @@ impl<T: Config> Pallet<T> {
             FraudProofError::ChallengingGenesisReceipt
         );
 
+        let runtime_id =
+            Self::runtime_id(fraud_proof.domain_id()).ok_or(FraudProofError::MissingRuntimeId)?;
+
         match fraud_proof {
             FraudProof::InvalidTotalRewards(InvalidTotalRewardsProof { storage_proof, .. }) => {
                 verify_invalid_total_rewards_fraud_proof::<
@@ -1628,7 +1633,14 @@ impl<T: Config> Pallet<T> {
                     T::Hashing,
                     T::StorageKeys,
                     T::DeriveExtrinsics,
-                >(consensus_state_root, bad_receipt, proof)
+                    _,
+                >(
+                    consensus_state_root,
+                    runtime_id,
+                    bad_receipt,
+                    proof,
+                    Runtimes::<T>::get,
+                )
                 .map_err(FraudProofError::InvalidExtrinsicRootFraudProof)?;
             }
             _ => {}

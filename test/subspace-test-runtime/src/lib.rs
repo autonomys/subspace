@@ -29,7 +29,7 @@ use domain_runtime_primitives::{
     BlockNumber as DomainNumber, Hash as DomainHash, MultiAccountId, TryConvertBack,
 };
 use frame_support::inherent::ProvideInherent;
-use frame_support::storage::generator::StorageValue;
+use frame_support::storage::generator::{StorageMap, StorageValue};
 use frame_support::traits::{
     ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, Currency, ExistenceRequirement, Get,
     Imbalance, WithdrawReasons,
@@ -40,6 +40,7 @@ use frame_support::{construct_runtime, parameter_types, PalletId};
 use frame_system::limits::{BlockLength, BlockWeights};
 use frame_system::EnsureNever;
 use pallet_balances::NegativeImbalance;
+use pallet_domains::RuntimeUpgraded;
 use pallet_feeds::feed_processor::{FeedMetadata, FeedObjectMapping, FeedProcessor};
 use pallet_grandpa_finality_verifier::chain::Chain;
 pub use pallet_subspace::AllowAuthoringBy;
@@ -59,7 +60,7 @@ use sp_domains::fraud_proof::{domain_executive_set_code_extrinsic, FraudProof};
 use sp_domains::transaction::PreValidationObject;
 use sp_domains::{
     DomainId, DomainInstanceData, DomainsHoldIdentifier, ExecutionReceipt, OpaqueBundle,
-    OpaqueBundles, OperatorId, OperatorPublicKey, StakingHoldIdentifier,
+    OpaqueBundles, OperatorId, OperatorPublicKey, RuntimeId, StakingHoldIdentifier,
 };
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
@@ -654,6 +655,12 @@ impl sp_domains::fraud_proof::StorageKeys for StorageKeys {
 
     fn timestamp_storage_key() -> StorageKey {
         StorageKey(pallet_timestamp::pallet::Now::<Runtime>::storage_value_final_key().to_vec())
+    }
+
+    fn domain_runtime_upgraded_storage_key(runtime_id: RuntimeId) -> StorageKey {
+        StorageKey(RuntimeUpgraded::<Runtime>::storage_map_final_key(
+            runtime_id,
+        ))
     }
 }
 
@@ -1419,6 +1426,10 @@ impl_runtime_apis! {
 
         fn timestamp_storage_key() -> Vec<u8> {
             pallet_timestamp::pallet::Now::<Runtime>::storage_value_final_key().to_vec()
+        }
+
+        fn domain_runtime_upgraded_storage_key(runtime_id: RuntimeId) -> Vec<u8> {
+            pallet_domains::pallet::RuntimeUpgraded::<Runtime>::storage_map_final_key(runtime_id)
         }
     }
 

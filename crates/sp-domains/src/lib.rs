@@ -804,8 +804,11 @@ sp_api::decl_runtime_apis! {
         /// Returns the storage key for block randomness.
         fn block_randomness_storage_key() -> Vec<u8>;
 
-        /// Returns the storage key for timestamp;
+        /// Returns the storage key for timestamp.
         fn timestamp_storage_key() -> Vec<u8>;
+
+        /// Returns the storage for domain_runtime_upgraded.
+        fn domain_runtime_upgraded_storage_key(runtime_id: RuntimeId) -> Vec<u8>;
     }
 
     pub trait BundleProducerElectionApi<Balance: Encode + Decode> {

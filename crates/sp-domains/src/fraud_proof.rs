@@ -1,4 +1,4 @@
-use crate::{DomainId, ReceiptHash, SealedBundleHeader};
+use crate::{DomainId, ReceiptHash, RuntimeId, SealedBundleHeader};
 use hash_db::Hasher;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
@@ -524,6 +524,8 @@ pub struct InvalidExtrinsicsRootProof {
     pub randomness_storage_proof: StorageProof,
     /// Timestamp Storage proof
     pub timestamp_storage_proof: StorageProof,
+    /// Domain runtime upgraded Storage proof
+    pub domain_runtime_upgraded_storage_proof: StorageProof,
 }
 
 impl InvalidTotalRewardsProof {
@@ -540,6 +542,7 @@ impl InvalidTotalRewardsProof {
 pub trait StorageKeys {
     fn block_randomness_storage_key() -> StorageKey;
     fn timestamp_storage_key() -> StorageKey;
+    fn domain_runtime_upgraded_storage_key(runtime_id: RuntimeId) -> StorageKey;
 }
 
 /// This is a representation of actual Block Rewards storage in pallet-operator-rewards.
