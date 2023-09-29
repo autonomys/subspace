@@ -55,7 +55,7 @@ use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::storage::{StateVersion, StorageKey};
 use sp_core::{Hasher, OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
-use sp_domains::fraud_proof::FraudProof;
+use sp_domains::fraud_proof::{domain_executive_set_code_extrinsic, FraudProof};
 use sp_domains::transaction::PreValidationObject;
 use sp_domains::{
     DomainId, DomainInstanceData, DomainsHoldIdentifier, ExecutionReceipt, OpaqueBundle,
@@ -662,6 +662,11 @@ impl sp_domains::fraud_proof::DeriveExtrinsics<Moment> for DeriveExtrinsics {
     fn derive_timestamp_extrinsic(now: Moment) -> Vec<u8> {
         UncheckedExtrinsic::new_unsigned(pallet_timestamp::Call::<Runtime>::set { now }.into())
             .encode()
+    }
+
+    fn derive_domain_set_code_extrinsic(code: Vec<u8>) -> Vec<u8> {
+        let set_code_extrinsic = frame_system::Call::<Runtime>::set_code { code };
+        domain_executive_set_code_extrinsic::<_, SignedExtra>(set_code_extrinsic)
     }
 }
 

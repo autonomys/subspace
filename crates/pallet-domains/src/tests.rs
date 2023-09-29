@@ -17,8 +17,8 @@ use sp_core::crypto::Pair;
 use sp_core::storage::{StateVersion, StorageKey};
 use sp_core::{Get, H256, U256};
 use sp_domains::fraud_proof::{
-    ExtrinsicDigest, FraudProof, InvalidExtrinsicsRootProof, InvalidTotalRewardsProof,
-    ValidBundleDigest,
+    domain_executive_set_code_extrinsic, ExtrinsicDigest, FraudProof, InvalidExtrinsicsRootProof,
+    InvalidTotalRewardsProof, ValidBundleDigest,
 };
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{
@@ -221,6 +221,11 @@ impl sp_domains::fraud_proof::DeriveExtrinsics<Moment> for DeriveExtrinsics {
     fn derive_timestamp_extrinsic(now: Moment) -> Vec<u8> {
         UncheckedExtrinsic::new_unsigned(pallet_timestamp::Call::<Test>::set { now }.into())
             .encode()
+    }
+
+    fn derive_domain_set_code_extrinsic(code: Vec<u8>) -> Vec<u8> {
+        let set_code_extrinsic = frame_system::Call::<Test>::set_code { code };
+        domain_executive_set_code_extrinsic::<_, ()>(set_code_extrinsic)
     }
 }
 

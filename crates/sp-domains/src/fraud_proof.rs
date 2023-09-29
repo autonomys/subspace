@@ -5,9 +5,12 @@ use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
 use sp_core::storage::StorageKey;
 use sp_core::H256;
-use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
+use sp_runtime::generic::UncheckedExtrinsic;
+use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT, SignedExtension};
+use sp_std::boxed::Box;
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
+use sp_weights::Weight;
 use subspace_core_primitives::BlockNumber;
 use subspace_runtime_primitives::{AccountId, Balance};
 use trie_db::TrieLayout;
@@ -70,10 +73,56 @@ impl ExecutionPhase {
     }
 }
 
-/// Trait to derive domain extrinsics such as timestamp on Consensus chain.
+/// Represents the domain-pallet-executive::Call structure.
+#[derive(Encode)]
+pub enum DomainExecutiveCall<RuntimeCall> {
+    #[codec(index = 0)]
+    SudoUncheckedWeightUnsigned {
+        call: Box<RuntimeCall>,
+        weight: Weight,
+    },
+}
+
+/// Represents the domain-pallet-executive pallet structure.
+#[derive(Encode)]
+pub enum DomainExecutive<RuntimeCall> {
+    #[codec(index = 0)]
+    Call(DomainExecutiveCall<RuntimeCall>),
+}
+
+/// Represents the domain-runtime::Call pallet structure.
+#[derive(Encode)]
+pub enum DomainRuntimeCall<RuntimeCall> {
+    #[codec(index = 2)]
+    DomainExecutive(DomainExecutive<RuntimeCall>),
+}
+
+/// Derives domain specific set code extrinsic.
+/// This is used on the Consensus runtime to derive this extrinsic while verifying
+/// invalid_domain_extrinsic_root fraud proof.
+pub fn domain_executive_set_code_extrinsic<RuntimeCall, Extra>(
+    set_code_extrinsic: RuntimeCall,
+) -> Vec<u8>
+where
+    RuntimeCall: Encode,
+    Extra: SignedExtension,
+{
+    let domain_executive =
+        DomainExecutive::Call(DomainExecutiveCall::SudoUncheckedWeightUnsigned {
+            call: Box::new(set_code_extrinsic),
+            weight: Weight::from_parts(0, 0),
+        });
+    let domain_runtime_call = DomainRuntimeCall::DomainExecutive(domain_executive);
+    UncheckedExtrinsic::<(), _, (), Extra>::new_unsigned(domain_runtime_call).encode()
+}
+
+/// Trait to derive domain extrinsics such as timestamp and domain set code on Consensus chain.
 pub trait DeriveExtrinsics<Moment> {
     /// Derives pallet_timestamp::set extrinsic.
     fn derive_timestamp_extrinsic(moment: Moment) -> Vec<u8>;
+
+    /// Derives domain_executive::sudo_unchecked_weight_unsigned extrinsic.
+    fn derive_domain_set_code_extrinsic(code: Vec<u8>) -> Vec<u8>;
 }
 
 /// Error type of fraud proof verification on consensus node.

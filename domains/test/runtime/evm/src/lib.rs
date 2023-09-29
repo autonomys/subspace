@@ -893,12 +893,10 @@ impl_runtime_apis! {
     }
 
     impl domain_runtime_primitives::InherentExtrinsicApi<Block> for Runtime {
-        fn construct_inherent_timestamp_extrinsic(moment: Moment) -> Option<<Block as BlockT>::Extrinsic> {
-             Some(
-                UncheckedExtrinsic::new_unsigned(
-                    pallet_timestamp::Call::set{ now: moment }.into()
-                )
-             )
+        fn construct_inherent_timestamp_extrinsic(moment: Moment) -> <Block as BlockT>::Extrinsic {
+            UncheckedExtrinsic::new_unsigned(
+                pallet_timestamp::Call::set{ now: moment }.into()
+            )
         }
     }
 

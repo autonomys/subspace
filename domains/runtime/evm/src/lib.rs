@@ -711,6 +711,22 @@ pub fn extract_signer(
         .collect()
 }
 
+fn construct_set_code_extrinsic_inner(code: Vec<u8>) -> Vec<u8> {
+    let set_code_call = frame_system::Call::<Runtime>::set_code { code };
+    UncheckedExtrinsic::new_unsigned(
+        domain_pallet_executive::Call::<Runtime>::sudo_unchecked_weight_unsigned {
+            call: Box::new(set_code_call.into()),
+            weight: Weight::from_parts(0, 0),
+        }
+        .into(),
+    )
+    .encode()
+}
+
+fn construct_set_timestamp_extrinsic_inner(now: Moment) -> <Block as BlockT>::Extrinsic {
+    UncheckedExtrinsic::new_unsigned(pallet_timestamp::Call::<Runtime>::set { now }.into())
+}
+
 impl_runtime_apis! {
     impl sp_api::Core<Block> for Runtime {
         fn version() -> RuntimeVersion {
@@ -857,14 +873,7 @@ impl_runtime_apis! {
         }
 
         fn construct_set_code_extrinsic(code: Vec<u8>) -> Vec<u8> {
-            use codec::Encode;
-            let set_code_call = frame_system::Call::set_code { code };
-            UncheckedExtrinsic::new_unsigned(
-                domain_pallet_executive::Call::sudo_unchecked_weight_unsigned {
-                    call: Box::new(set_code_call.into()),
-                    weight: Weight::from_parts(0, 0),
-                }.into()
-            ).encode()
+            construct_set_code_extrinsic_inner(code)
         }
 
         fn check_transaction_validity(
@@ -896,12 +905,8 @@ impl_runtime_apis! {
     }
 
     impl domain_runtime_primitives::InherentExtrinsicApi<Block> for Runtime {
-        fn construct_inherent_timestamp_extrinsic(moment: Moment) -> Option<<Block as BlockT>::Extrinsic> {
-             Some(
-                UncheckedExtrinsic::new_unsigned(
-                    pallet_timestamp::Call::set{ now: moment }.into()
-                )
-             )
+        fn construct_inherent_timestamp_extrinsic(moment: Moment) -> <Block as BlockT>::Extrinsic {
+             construct_set_timestamp_extrinsic_inner(moment)
         }
     }
 
@@ -1177,5 +1182,36 @@ impl_runtime_apis! {
             if batches.is_empty() { return Err("Benchmark not found for this pallet.".into()) }
             Ok(batches)
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use crate::{
+        construct_set_code_extrinsic_inner, construct_set_timestamp_extrinsic_inner, WASM_BINARY,
+    };
+    use codec::Encode;
+    use sp_domains::fraud_proof::DeriveExtrinsics as DeriveExtrinsicsT;
+    use subspace_runtime::DeriveExtrinsics;
+    use subspace_runtime_primitives::Moment;
+
+    #[test]
+    fn verify_encoded_set_code_call() {
+        let code = WASM_BINARY
+            .expect("WASM binary was not build, please build it!")
+            .to_vec();
+        let actual_encoded_extrinsic = construct_set_code_extrinsic_inner(code.clone());
+
+        let encoded_extrinsic = DeriveExtrinsics::derive_domain_set_code_extrinsic(code);
+        assert_eq!(actual_encoded_extrinsic, encoded_extrinsic);
+    }
+
+    #[test]
+    fn verify_encoded_set_timestamp_call() {
+        let timestamp: Moment = 1000;
+        let actual_encoded_extrinsic = construct_set_timestamp_extrinsic_inner(timestamp).encode();
+
+        let encoded_extrinsic = DeriveExtrinsics::derive_timestamp_extrinsic(timestamp);
+        assert_eq!(actual_encoded_extrinsic, encoded_extrinsic);
     }
 }
