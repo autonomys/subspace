@@ -195,7 +195,7 @@ impl frame_support::traits::Randomness<Hash, BlockNumber> for MockRandomness {
 
 pub struct StorageKeys;
 impl sp_domains::fraud_proof::StorageKeys for StorageKeys {
-    fn block_randomness_key() -> StorageKey {
+    fn block_randomness_storage_key() -> StorageKey {
         StorageKey(
             frame_support::storage::storage_prefix("Subspace".as_ref(), "BlockRandomness".as_ref())
                 .to_vec(),
@@ -905,20 +905,23 @@ fn generate_invalid_domain_extrinsic_root_fraud_proof<T: Config + pallet_timesta
     let randomness_storage_key =
         frame_support::storage::storage_prefix("Subspace".as_ref(), "BlockRandomness".as_ref())
             .to_vec();
-    let timestamp_key = pallet_timestamp::pallet::Now::<T>::storage_value_final_key().to_vec();
+    let timestamp_storage_key =
+        pallet_timestamp::pallet::Now::<T>::storage_value_final_key().to_vec();
     let mut root = T::Hash::default();
     let mut mdb = PrefixedMemoryDB::<T::Hashing>::default();
     {
         let mut trie = TrieDBMutBuilderV1::new(&mut mdb, &mut root).build();
         trie.insert(&randomness_storage_key, &randomness.encode())
             .unwrap();
-        trie.insert(&timestamp_key, &moment.encode()).unwrap();
+        trie.insert(&timestamp_storage_key, &moment.encode())
+            .unwrap();
     };
 
     let backend = TrieBackendBuilder::new(mdb, root).build();
-    let (_, randomness_proof) =
+    let (_, randomness_storage_proof) =
         storage_proof_for_key::<T, _>(backend.clone(), StorageKey(randomness_storage_key));
-    let (root, timestamp_proof) = storage_proof_for_key::<T, _>(backend, StorageKey(timestamp_key));
+    let (root, timestamp_storage_proof) =
+        storage_proof_for_key::<T, _>(backend, StorageKey(timestamp_storage_key));
     let valid_bundle_digests = vec![ValidBundleDigest {
         bundle_index: 0,
         bundle_digest: vec![(Some(vec![1, 2, 3]), ExtrinsicDigest::Data(vec![4, 5, 6]))],
@@ -927,9 +930,9 @@ fn generate_invalid_domain_extrinsic_root_fraud_proof<T: Config + pallet_timesta
         FraudProof::InvalidExtrinsicsRoot(InvalidExtrinsicsRootProof {
             domain_id,
             bad_receipt_hash,
-            randomness_proof,
+            randomness_storage_proof,
             valid_bundle_digests,
-            timestamp_proof,
+            timestamp_storage_proof,
         }),
         root,
     )

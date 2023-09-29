@@ -70,8 +70,9 @@ impl ExecutionPhase {
     }
 }
 
-/// Trait to derive extrinsics.
+/// Trait to derive domain extrinsics such as timestamp on Consensus chain.
 pub trait DeriveExtrinsics<Moment> {
+    /// Derives pallet_timestamp::set extrinsic.
     fn derive_timestamp_extrinsic(moment: Moment) -> Vec<u8>;
 }
 
@@ -471,9 +472,9 @@ pub struct InvalidExtrinsicsRootProof {
     /// Valid Bundle digests
     pub valid_bundle_digests: Vec<ValidBundleDigest>,
     /// Randomness Storage proof
-    pub randomness_proof: StorageProof,
-    /// Timestamp storage proof
-    pub timestamp_proof: StorageProof,
+    pub randomness_storage_proof: StorageProof,
+    /// Timestamp Storage proof
+    pub timestamp_storage_proof: StorageProof,
 }
 
 impl InvalidTotalRewardsProof {
@@ -488,7 +489,7 @@ impl InvalidTotalRewardsProof {
 
 /// Trait to get Storage keys.
 pub trait StorageKeys {
-    fn block_randomness_key() -> StorageKey;
+    fn block_randomness_storage_key() -> StorageKey;
     fn timestamp_storage_key() -> StorageKey;
 }
 

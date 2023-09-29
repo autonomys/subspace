@@ -646,7 +646,7 @@ parameter_types! {
 
 pub struct StorageKeys;
 impl sp_domains::fraud_proof::StorageKeys for StorageKeys {
-    fn block_randomness_key() -> StorageKey {
+    fn block_randomness_storage_key() -> StorageKey {
         StorageKey(
             pallet_subspace::pallet::BlockRandomness::<Runtime>::storage_value_final_key().to_vec(),
         )
@@ -1403,7 +1403,7 @@ impl_runtime_apis! {
             Domains::domain_state_root(domain_id, number, hash)
         }
 
-        fn block_randomness_key() -> Vec<u8> {
+        fn block_randomness_storage_key() -> Vec<u8> {
             pallet_subspace::pallet::BlockRandomness::<Runtime>::storage_value_final_key().to_vec()
         }
 

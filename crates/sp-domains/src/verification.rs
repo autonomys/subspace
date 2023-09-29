@@ -127,8 +127,8 @@ where
 {
     let InvalidExtrinsicsRootProof {
         valid_bundle_digests,
-        randomness_proof,
-        timestamp_proof,
+        randomness_storage_proof,
+        timestamp_storage_proof,
         ..
     } = fraud_proof;
 
@@ -146,17 +146,16 @@ where
         bundle_extrinsics_digests.extend(bundle_digest.bundle_digest.clone());
     }
 
-    let storage_key = SK::block_randomness_key();
     let block_randomness = StorageProofVerifier::<Hashing>::verify_and_get_value::<Randomness>(
         &consensus_state_root,
-        randomness_proof.clone(),
-        storage_key,
+        randomness_storage_proof.clone(),
+        SK::block_randomness_storage_key(),
     )
     .map_err(|_| VerificationError::InvalidProof)?;
 
     let timestamp = StorageProofVerifier::<Hashing>::verify_and_get_value::<Moment>(
         &consensus_state_root,
-        timestamp_proof.clone(),
+        timestamp_storage_proof.clone(),
         SK::timestamp_storage_key(),
     )
     .map_err(|_| VerificationError::InvalidProof)?;
@@ -204,7 +203,7 @@ where
 pub fn deduplicate_and_shuffle_extrinsics<Extrinsic>(
     mut extrinsics: Vec<(Option<AccountId>, Extrinsic)>,
     shuffling_seed: Randomness,
-) -> Vec<Extrinsic>
+) -> VecDeque<Extrinsic>
 where
     Extrinsic: Debug + PartialEq + Clone,
 {
@@ -232,7 +231,7 @@ where
 pub fn shuffle_extrinsics<Extrinsic: Debug, AccountId: Ord + Clone>(
     extrinsics: Vec<(Option<AccountId>, Extrinsic)>,
     shuffling_seed: Randomness,
-) -> Vec<Extrinsic> {
+) -> VecDeque<Extrinsic> {
     let mut rng = ChaCha8Rng::from_seed(*shuffling_seed);
 
     let mut positions = extrinsics
@@ -264,7 +263,7 @@ pub fn shuffle_extrinsics<Extrinsic: Debug, AccountId: Ord + Clone>(
                 .pop_front()
                 .expect("Extrinsic definitely exists as it's correctly grouped above; qed")
         })
-        .collect::<Vec<_>>();
+        .collect::<VecDeque<_>>();
 
     trace!(?shuffled_extrinsics, "Shuffled extrinsics");
 
