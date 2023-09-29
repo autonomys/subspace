@@ -1,6 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use futures::executor::block_on;
-use memmap2::Mmap;
 use rand::prelude::*;
 use schnorrkel::Keypair;
 use std::fs::OpenOptions;
@@ -21,7 +20,7 @@ use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy, 
 use subspace_farmer_components::sector::{
     sector_size, SectorContentsMap, SectorMetadata, SectorMetadataChecksummed,
 };
-use subspace_farmer_components::FarmerProtocolInfo;
+use subspace_farmer_components::{FarmerProtocolInfo, ReadAt};
 use subspace_proof_of_space::chia::ChiaTable;
 use subspace_proof_of_space::Table;
 
@@ -234,15 +233,12 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                 .unwrap();
         }
 
-        let plot_mmap = unsafe { Mmap::map(&plot_file).unwrap() };
+        let sectors = (0..sectors_count as usize)
+            .map(|sector_offset| plot_file.offset(sector_offset * sector_size))
+            .collect::<Vec<_>>();
 
-        #[cfg(unix)]
-        {
-            plot_mmap.advise(memmap2::Advice::Random).unwrap();
-        }
-
-        let solution_candidates = plot_mmap
-            .chunks_exact(sector_size)
+        let solution_candidates = sectors
+            .iter()
             .map(|sector| {
                 audit_sector(
                     &public_key,

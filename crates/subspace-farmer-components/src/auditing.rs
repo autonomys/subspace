@@ -1,10 +1,12 @@
 use crate::proving::SolutionCandidates;
 use crate::sector::{SectorContentsMap, SectorMetadataChecksummed};
+use crate::ReadAt;
 use std::collections::VecDeque;
 use std::mem;
 use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::{Blake2b256Hash, PublicKey, SectorId, SectorIndex, SolutionRange};
 use subspace_verification::is_within_solution_range;
+use tracing::warn;
 
 #[derive(Debug, Clone)]
 pub(crate) struct ChunkCandidate {
@@ -17,20 +19,23 @@ pub(crate) struct ChunkCandidate {
 /// Audit a single sector and generate a stream of solutions, where `sector` must be positioned
 /// correctly at the beginning of the sector (seek to desired offset before calling this function
 /// and seek back afterwards if necessary).
-pub fn audit_sector<'a>(
+pub fn audit_sector<'a, Sector>(
     public_key: &'a PublicKey,
     sector_index: SectorIndex,
     global_challenge: &Blake2b256Hash,
     solution_range: SolutionRange,
-    sector: &'a [u8],
+    sector: &'a Sector,
     sector_metadata: &'a SectorMetadataChecksummed,
-) -> Option<SolutionCandidates<'a>> {
+) -> Option<SolutionCandidates<'a, Sector>>
+where
+    Sector: ReadAt + ?Sized,
+{
     let sector_id = SectorId::new(public_key.hash(), sector_index);
 
     let sector_slot_challenge = sector_id.derive_sector_slot_challenge(global_challenge);
     let s_bucket_audit_index = sector_slot_challenge.s_bucket_audit_index();
-    let s_bucket_audit_size = Scalar::FULL_BYTES
-        * usize::from(sector_metadata.s_bucket_sizes[usize::from(s_bucket_audit_index)]);
+    let s_bucket_audit_size =
+        usize::from(sector_metadata.s_bucket_sizes[usize::from(s_bucket_audit_index)]);
     let s_bucket_audit_offset = Scalar::FULL_BYTES
         * sector_metadata
             .s_bucket_sizes
@@ -43,15 +48,19 @@ pub fn audit_sector<'a>(
     let sector_contents_map_size =
         SectorContentsMap::encoded_size(sector_metadata.pieces_in_sector);
 
-    // Read s-bucket
-    let s_bucket =
-        &sector[sector_contents_map_size + s_bucket_audit_offset..][..s_bucket_audit_size];
+    let s_bucket_audit_offset_in_sector = sector_contents_map_size + s_bucket_audit_offset;
 
     // Map all winning chunks
-    let winning_chunks = s_bucket
-        .array_chunks::<{ Scalar::FULL_BYTES }>()
-        .enumerate()
-        .filter_map(|(chunk_offset, chunk)| {
+    let winning_chunks = (0..s_bucket_audit_size)
+        .filter_map(|chunk_offset| {
+            let mut chunk = [0; Scalar::FULL_BYTES];
+            if let Err(error) = sector.read_at(
+                &mut chunk,
+                s_bucket_audit_offset_in_sector + chunk_offset * Scalar::FULL_BYTES,
+            ) {
+                warn!(%error, %sector_index, %chunk_offset, "Failed read chunk sector");
+                return None;
+            }
             // Check all audit chunks within chunk, there might be more than one winning
             let winning_audit_chunk_offsets = chunk
                 .array_chunks::<{ mem::size_of::<SolutionRange>() }>()
