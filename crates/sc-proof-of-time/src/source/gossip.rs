@@ -3,7 +3,6 @@
 use crate::source::state::{NextSlotInput, PotState};
 use crate::verifier::PotVerifier;
 use futures::channel::mpsc;
-use futures::executor::block_on;
 use futures::{FutureExt, SinkExt, StreamExt};
 use lru::LruCache;
 use parity_scale_codec::{Decode, Encode};
@@ -24,6 +23,7 @@ use std::hash::{Hash, Hasher};
 use std::num::{NonZeroU32, NonZeroUsize};
 use std::sync::{atomic, Arc};
 use subspace_core_primitives::{PotCheckpoints, PotSeed, SlotNumber};
+use tokio::runtime::Handle;
 use tracing::{debug, error, trace, warn};
 
 /// How many slots can proof be before it is too far
@@ -384,6 +384,7 @@ where
         }
 
         // Avoid blocking gossip for too long
+        let handle = Handle::current();
         rayon::spawn({
             let engine = Arc::clone(&self.engine);
             let pot_verifier = self.pot_verifier.clone();
@@ -391,7 +392,7 @@ where
             let topic = self.topic;
 
             move || {
-                block_on(Self::handle_potentially_matching_proofs(
+                handle.block_on(Self::handle_potentially_matching_proofs(
                     next_slot_input,
                     potentially_matching_proofs,
                     engine,
