@@ -694,7 +694,6 @@ where
         }
 
         // Check if farmer's plot is burned.
-        // TODO: Add to header and store in aux storage?
         if self
             .client
             .runtime_api()

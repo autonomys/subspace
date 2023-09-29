@@ -1,6 +1,7 @@
 //! Subspace block import implementation
 
 use crate::{Error, SUBSPACE_FULL_POT_VERIFICATION_INTERMEDIATE};
+use futures::lock::Mutex;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use log::{debug, info, trace, warn};
@@ -33,6 +34,10 @@ use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{BlockNumber, PublicKey, RewardSignature};
 use subspace_proof_of_space::Table;
 use subspace_verification::{check_reward_signature, verify_solution, VerifySolutionParams};
+use tokio::sync::Semaphore;
+
+/// This corresponds to default value of `--max-runtime-instances` in Substrate
+const BLOCKS_LIST_CHECK_CONCURRENCY: usize = 8;
 
 /// Errors encountered by the Subspace verification task.
 #[derive(Debug, Eq, PartialEq, thiserror::Error)]
@@ -131,6 +136,8 @@ where
     sync_target_block_number: Arc<AtomicU32>,
     is_authoring_blocks: bool,
     pot_verifier: PotVerifier,
+    equivocation_mutex: Mutex<()>,
+    block_list_verification_semaphore: Semaphore,
     _pos_table: PhantomData<PosTable>,
     _block: PhantomData<Block>,
 }
@@ -178,6 +185,8 @@ where
             sync_target_block_number,
             is_authoring_blocks,
             pot_verifier,
+            equivocation_mutex: Mutex::default(),
+            block_list_verification_semaphore: Semaphore::new(BLOCKS_LIST_CHECK_CONCURRENCY),
             _pos_table: Default::default(),
             _block: Default::default(),
         })
@@ -414,6 +423,10 @@ where
             return Ok(());
         }
 
+        // Equivocation verification uses `AuxStore` in a way that is not safe from concurrency,
+        // this lock ensures that we process one header at a time
+        let _guard = self.equivocation_mutex.lock().await;
+
         // check if authorship of this header is an equivocation and return a proof if so.
         let equivocation_proof =
             match check_equivocation(&*self.client, slot_now, slot, header, author)
@@ -475,6 +488,10 @@ where
     SelectChain: sp_consensus::SelectChain<Block>,
     SN: Fn() -> Slot + Send + Sync + 'static,
 {
+    fn supports_stateless_verification(&self) -> bool {
+        true
+    }
+
     async fn verify(
         &self,
         mut block: BlockImportParams<Block>,
@@ -500,37 +517,39 @@ where
         >(&block.header)
         .map_err(Error::<Block::Header>::from)?;
 
-        // Check if farmer's plot is burned.
-        // TODO: Add to header and store in aux storage?
-        if self
-            .client
-            .runtime_api()
-            .is_in_block_list(
-                *block.header.parent_hash(),
-                &subspace_digest_items.pre_digest.solution().public_key,
-            )
-            .or_else(|error| {
-                if block.state_action.skip_execution_checks() {
-                    Ok(false)
-                } else {
-                    Err(Error::<Block::Header>::RuntimeApi(error))
-                }
-            })?
+        // Check if farmer's plot is burned, ignore runtime API errors since this check will happen
+        // during block import anyway
         {
-            warn!(
-                target: "subspace",
-                "Verifying block with solution provided by farmer in block list: {}",
-                subspace_digest_items.pre_digest.solution().public_key
-            );
+            // We need to limit number of threads to avoid running out of WASM instances
+            let _permit = self
+                .block_list_verification_semaphore
+                .acquire()
+                .await
+                .expect("Never closed; qed");
+            if self
+                .client
+                .runtime_api()
+                .is_in_block_list(
+                    *block.header.parent_hash(),
+                    &subspace_digest_items.pre_digest.solution().public_key,
+                )
+                .unwrap_or_default()
+            {
+                warn!(
+                    target: "subspace",
+                    "Verifying block with solution provided by farmer in block list: {}",
+                    subspace_digest_items.pre_digest.solution().public_key
+                );
 
-            return Err(Error::<Block::Header>::FarmerInBlockList(
-                subspace_digest_items
-                    .pre_digest
-                    .solution()
-                    .public_key
-                    .clone(),
-            )
-            .into());
+                return Err(Error::<Block::Header>::FarmerInBlockList(
+                    subspace_digest_items
+                        .pre_digest
+                        .solution()
+                        .public_key
+                        .clone(),
+                )
+                .into());
+            }
         }
 
         let slot_now = (self.slot_now)();
