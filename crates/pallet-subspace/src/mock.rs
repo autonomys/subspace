@@ -439,7 +439,7 @@ pub fn create_signed_vote(
         ))
         .unwrap();
 
-        let maybe_solution_candidates = audit_sector(
+        let maybe_audit_result = audit_sector(
             &public_key,
             sector_index,
             &global_randomness.derive_global_challenge(slot.into()),
@@ -448,13 +448,19 @@ pub fn create_signed_vote(
             &plotted_sector.sector_metadata,
         );
 
-        let Some(solution_candidates) = maybe_solution_candidates else {
+        let Some(audit_result) = maybe_audit_result else {
             // Sector didn't have any solutions
             continue;
         };
 
-        let solution = solution_candidates
-            .into_iter::<_, PosTable>(&reward_address, kzg, erasure_coding, &mut table_generator)
+        let solution = audit_result
+            .solution_candidates
+            .into_solutions::<_, PosTable>(
+                &reward_address,
+                kzg,
+                erasure_coding,
+                &mut table_generator,
+            )
             .unwrap()
             .next()
             .unwrap()
