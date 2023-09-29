@@ -934,7 +934,7 @@ where
     if let Some(registry) = config.base.prometheus_registry() {
         match NodeMetrics::new(
             client.clone(),
-            client.import_notification_stream(),
+            client.every_import_notification_stream(),
             registry,
         ) {
             Ok(node_metrics) => {
