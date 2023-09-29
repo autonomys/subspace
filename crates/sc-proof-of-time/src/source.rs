@@ -211,6 +211,10 @@ where
                 }
                 maybe_import_notification = import_notification_stream.next() => {
                     if let Some(import_notification) = maybe_import_notification {
+                        if !import_notification.is_new_best {
+                            // Ignore blocks that don't extend the chain
+                            continue;
+                        }
                         self.handle_block_import_notification(
                             import_notification.hash,
                             &import_notification.header,
