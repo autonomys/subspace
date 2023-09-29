@@ -186,7 +186,7 @@ async fn start_farming<PosTable, Client>(
             let global_challenge = new_slot_info
                 .global_randomness
                 .derive_global_challenge(new_slot_info.slot.into());
-            let solution_candidates = audit_sector(
+            let audit_result = audit_sector(
                 &public_key,
                 sector_index,
                 &global_challenge,
@@ -196,8 +196,14 @@ async fn start_farming<PosTable, Client>(
             )
             .expect("With max solution range there must be a sector eligible; qed");
 
-            let solution = solution_candidates
-                .into_iter::<_, PosTable>(&public_key, &kzg, &erasure_coding, &mut table_generator)
+            let solution = audit_result
+                .solution_candidates
+                .into_solutions::<_, PosTable>(
+                    &public_key,
+                    &kzg,
+                    &erasure_coding,
+                    &mut table_generator,
+                )
                 .unwrap()
                 .next()
                 .expect("With max solution range there must be a solution; qed")

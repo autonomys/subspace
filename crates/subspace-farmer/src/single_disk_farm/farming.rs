@@ -124,7 +124,7 @@ where
             .map(|sector_index| plot_file.offset(sector_index * sector_size))
             .collect::<Vec<_>>();
 
-        let solution_candidates = thread_pool.install(|| {
+        let audit_results = thread_pool.install(|| {
             sectors_metadata
                 .par_iter()
                 .zip(&sectors)
@@ -151,13 +151,17 @@ where
                 .collect::<Vec<_>>()
         });
 
-        for (sector_index, solution_candidates) in solution_candidates {
-            for maybe_solution in solution_candidates.into_iter::<_, PosTable>(
-                &reward_address,
-                &kzg,
-                &erasure_coding,
-                &mut table_generator,
-            )? {
+        // TODO: Prefer solution candidates with better solution distance
+        for (sector_index, audit_result) in audit_results {
+            for maybe_solution in audit_result
+                .solution_candidates
+                .into_solutions::<_, PosTable>(
+                    &reward_address,
+                    &kzg,
+                    &erasure_coding,
+                    &mut table_generator,
+                )?
+            {
                 let solution = match maybe_solution {
                     Ok(solution) => solution,
                     Err(error) => {

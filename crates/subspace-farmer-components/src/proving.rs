@@ -1,4 +1,4 @@
-use crate::auditing::ChunkCandidate;
+use crate::auditing::{AuditChunkCandidate, ChunkCandidate};
 use crate::reading::{read_record_metadata, read_sector_record_chunks, ReadingError};
 use crate::sector::{
     SectorContentsMap, SectorContentsMapFromBytesError, SectorMetadataChecksummed,
@@ -10,10 +10,17 @@ use subspace_core_primitives::crypto::kzg::{Commitment, Kzg, Witness};
 use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::{
     PieceOffset, PosProof, PublicKey, Record, SBucket, SectorId, SectorIndex, Solution,
+    SolutionRange,
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_proof_of_space::{Quality, Table, TableGenerator};
 use thiserror::Error;
+
+/// Solutions that can be proven if necessary
+pub trait ProvableSolutions: ExactSizeIterator {
+    /// Best solution distance found, `None` in case iterator is empty
+    fn best_solution_distance(&self) -> Option<SolutionRange>;
+}
 
 /// Errors that happen during proving
 #[derive(Debug, Error)]
@@ -67,8 +74,8 @@ struct WinningChunk {
     chunk_offset: u32,
     /// Piece offset in a sector
     piece_offset: PieceOffset,
-    /// Audit chunk offsets in above chunk
-    audit_chunk_offsets: VecDeque<u8>,
+    /// Audit chunk in above chunk
+    audit_chunks: VecDeque<AuditChunkCandidate>,
 }
 
 /// Container for solutions
@@ -131,7 +138,7 @@ where
     pub fn len(&self) -> usize {
         self.chunk_candidates
             .iter()
-            .map(|winning_chunk| winning_chunk.audit_chunk_offsets.len())
+            .map(|winning_chunk| winning_chunk.audit_chunks.len())
             .sum()
     }
 
@@ -140,21 +147,21 @@ where
         self.chunk_candidates.is_empty()
     }
 
-    pub fn into_iter<RewardAddress, PosTable>(
+    pub fn into_solutions<RewardAddress, PosTable>(
         self,
         reward_address: &'a RewardAddress,
         kzg: &'a Kzg,
         erasure_coding: &'a ErasureCoding,
         table_generator: &'a mut PosTable::Generator,
     ) -> Result<
-        impl ExactSizeIterator<Item = Result<Solution<PublicKey, RewardAddress>, ProvingError>> + 'a,
+        impl ProvableSolutions<Item = Result<Solution<PublicKey, RewardAddress>, ProvingError>> + 'a,
         ProvingError,
     >
     where
         RewardAddress: Copy,
         PosTable: Table,
     {
-        SolutionCandidatesIterator::<'a, RewardAddress, Sector, PosTable>::new(
+        SolutionsIterator::<'a, RewardAddress, Sector, PosTable>::new(
             self.public_key,
             reward_address,
             self.sector_index,
@@ -179,7 +186,7 @@ struct ChunkCache {
     proof_of_space: PosProof,
 }
 
-struct SolutionCandidatesIterator<'a, RewardAddress, Sector, PosTable>
+struct SolutionsIterator<'a, RewardAddress, Sector, PosTable>
 where
     Sector: ?Sized,
     PosTable: Table,
@@ -198,12 +205,13 @@ where
     winning_chunks: VecDeque<WinningChunk>,
     count: usize,
     chunk_cache: Option<ChunkCache>,
+    best_solution_distance: Option<SolutionRange>,
     table_generator: &'a mut PosTable::Generator,
 }
 
 // TODO: This can be potentially parallelized with rayon
 impl<RewardAddress, Sector, PosTable> Iterator
-    for SolutionCandidatesIterator<'_, RewardAddress, Sector, PosTable>
+    for SolutionsIterator<'_, RewardAddress, Sector, PosTable>
 where
     RewardAddress: Copy,
     Sector: ReadAt + ?Sized,
@@ -215,16 +223,16 @@ where
         let (chunk_offset, piece_offset, audit_chunk_offset) = {
             let winning_chunk = self.winning_chunks.front_mut()?;
 
-            let audit_chunk_offset = winning_chunk.audit_chunk_offsets.pop_front()?;
+            let audit_chunk = winning_chunk.audit_chunks.pop_front()?;
             let chunk_offset = winning_chunk.chunk_offset;
             let piece_offset = winning_chunk.piece_offset;
 
-            if winning_chunk.audit_chunk_offsets.is_empty() {
+            if winning_chunk.audit_chunks.is_empty() {
                 // When all audit chunk offsets are removed, the winning chunks entry itself can be removed
                 self.winning_chunks.pop_front();
             }
 
-            (chunk_offset, piece_offset, audit_chunk_offset)
+            (chunk_offset, piece_offset, audit_chunk.offset)
         };
 
         self.count -= 1;
@@ -325,7 +333,7 @@ where
                         if winning_chunk.chunk_offset == chunk_offset {
                             // Subsequent attempts to generate solutions for this chunk offset will
                             // fail too, remove it so save potential computation
-                            self.count -= winning_chunk.audit_chunk_offsets.len();
+                            self.count -= winning_chunk.audit_chunks.len();
                             self.winning_chunks.pop_front();
                         }
                     }
@@ -365,7 +373,7 @@ where
 }
 
 impl<RewardAddress, Sector, PosTable> ExactSizeIterator
-    for SolutionCandidatesIterator<'_, RewardAddress, Sector, PosTable>
+    for SolutionsIterator<'_, RewardAddress, Sector, PosTable>
 where
     RewardAddress: Copy,
     Sector: ReadAt + ?Sized,
@@ -373,8 +381,19 @@ where
 {
 }
 
-impl<'a, RewardAddress, Sector, PosTable>
-    SolutionCandidatesIterator<'a, RewardAddress, Sector, PosTable>
+impl<RewardAddress, Sector, PosTable> ProvableSolutions
+    for SolutionsIterator<'_, RewardAddress, Sector, PosTable>
+where
+    RewardAddress: Copy,
+    Sector: ReadAt + ?Sized,
+    PosTable: Table,
+{
+    fn best_solution_distance(&self) -> Option<SolutionRange> {
+        self.best_solution_distance
+    }
+}
+
+impl<'a, RewardAddress, Sector, PosTable> SolutionsIterator<'a, RewardAddress, Sector, PosTable>
 where
     Sector: ReadAt + ?Sized,
     PosTable: Table,
@@ -428,7 +447,7 @@ where
                     return encoded_chunk_used.then_some(WinningChunk {
                         chunk_offset,
                         piece_offset,
-                        audit_chunk_offsets: chunk_candidate.audit_chunk_offsets,
+                        audit_chunks: chunk_candidate.audit_chunks.into(),
                     });
                 }
             })
@@ -436,8 +455,15 @@ where
 
         let count = winning_chunks
             .iter()
-            .map(|winning_chunk| winning_chunk.audit_chunk_offsets.len())
+            .map(|winning_chunk| winning_chunk.audit_chunks.len())
             .sum();
+
+        let best_solution_distance = winning_chunks.front().and_then(|winning_chunk| {
+            winning_chunk
+                .audit_chunks
+                .front()
+                .map(|audit_chunk| audit_chunk.solution_distance)
+        });
 
         let s_bucket_offsets = sector_metadata.s_bucket_offsets();
 
@@ -456,6 +482,7 @@ where
             winning_chunks,
             count,
             chunk_cache: None,
+            best_solution_distance,
             table_generator,
         })
     }
