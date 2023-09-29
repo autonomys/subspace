@@ -356,7 +356,7 @@ where
             // Ensure proof of time and future proof of time included in upcoming block are valid
             if !self
                 .pot_verifier
-                .try_is_output_valid(
+                .is_output_valid(
                     after_parent_slot,
                     pot_seed,
                     slot_iterations,
