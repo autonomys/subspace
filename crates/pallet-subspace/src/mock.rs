@@ -44,7 +44,7 @@ use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::{
     ArchivedBlockProgress, ArchivedHistorySegment, Blake2b256Hash, HistorySize, LastArchivedBlock,
-    Piece, PieceOffset, PublicKey, Randomness, RecordedHistorySegment, SegmentCommitment,
+    Piece, PieceOffset, PosSeed, PublicKey, Randomness, RecordedHistorySegment, SegmentCommitment,
     SegmentHeader, SegmentIndex, Solution, SolutionRange,
 };
 use subspace_erasure_coding::ErasureCoding;
@@ -53,7 +53,7 @@ use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy};
 use subspace_farmer_components::sector::{sector_size, SectorMetadataChecksummed};
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::shim::ShimTable;
-use subspace_proof_of_space::Table;
+use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 
 type PosTable = ShimTable;
@@ -455,12 +455,9 @@ pub fn create_signed_vote(
 
         let solution = audit_result
             .solution_candidates
-            .into_solutions::<_, PosTable>(
-                &reward_address,
-                kzg,
-                erasure_coding,
-                &mut table_generator,
-            )
+            .into_solutions(&reward_address, kzg, erasure_coding, |seed: &PosSeed| {
+                table_generator.generate_parallel(seed)
+            })
             .unwrap()
             .next()
             .unwrap()

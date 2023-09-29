@@ -9,11 +9,11 @@ use std::io;
 use subspace_core_primitives::crypto::kzg::{Commitment, Kzg, Witness};
 use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::{
-    PieceOffset, PosProof, PublicKey, Record, SBucket, SectorId, SectorIndex, Solution,
+    PieceOffset, PosProof, PosSeed, PublicKey, Record, SBucket, SectorId, SectorIndex, Solution,
     SolutionRange,
 };
 use subspace_erasure_coding::ErasureCoding;
-use subspace_proof_of_space::{Quality, Table, TableGenerator};
+use subspace_proof_of_space::{Quality, Table};
 use thiserror::Error;
 
 /// Solutions that can be proven if necessary
@@ -147,12 +147,12 @@ where
         self.chunk_candidates.is_empty()
     }
 
-    pub fn into_solutions<RewardAddress, PosTable>(
+    pub fn into_solutions<RewardAddress, PosTable, TableGenerator>(
         self,
         reward_address: &'a RewardAddress,
         kzg: &'a Kzg,
         erasure_coding: &'a ErasureCoding,
-        table_generator: &'a mut PosTable::Generator,
+        table_generator: TableGenerator,
     ) -> Result<
         impl ProvableSolutions<Item = Result<Solution<PublicKey, RewardAddress>, ProvingError>> + 'a,
         ProvingError,
@@ -160,8 +160,9 @@ where
     where
         RewardAddress: Copy,
         PosTable: Table,
+        TableGenerator: (FnMut(&PosSeed) -> PosTable) + 'a,
     {
-        SolutionsIterator::<'a, RewardAddress, Sector, PosTable>::new(
+        SolutionsIterator::<'a, RewardAddress, Sector, PosTable, TableGenerator>::new(
             self.public_key,
             reward_address,
             self.sector_index,
@@ -186,10 +187,11 @@ struct ChunkCache {
     proof_of_space: PosProof,
 }
 
-struct SolutionsIterator<'a, RewardAddress, Sector, PosTable>
+struct SolutionsIterator<'a, RewardAddress, Sector, PosTable, TableGenerator>
 where
     Sector: ?Sized,
     PosTable: Table,
+    TableGenerator: (FnMut(&PosSeed) -> PosTable) + 'a,
 {
     public_key: &'a PublicKey,
     reward_address: &'a RewardAddress,
@@ -206,16 +208,17 @@ where
     count: usize,
     chunk_cache: Option<ChunkCache>,
     best_solution_distance: Option<SolutionRange>,
-    table_generator: &'a mut PosTable::Generator,
+    table_generator: TableGenerator,
 }
 
 // TODO: This can be potentially parallelized with rayon
-impl<RewardAddress, Sector, PosTable> Iterator
-    for SolutionsIterator<'_, RewardAddress, Sector, PosTable>
+impl<'a, RewardAddress, Sector, PosTable, TableGenerator> Iterator
+    for SolutionsIterator<'a, RewardAddress, Sector, PosTable, TableGenerator>
 where
     RewardAddress: Copy,
     Sector: ReadAt + ?Sized,
     PosTable: Table,
+    TableGenerator: (FnMut(&PosSeed) -> PosTable) + 'a,
 {
     type Item = Result<Solution<PublicKey, RewardAddress>, ProvingError>;
 
@@ -245,7 +248,7 @@ where
             }
 
             // Derive PoSpace table
-            let pos_table = self.table_generator.generate_parallel(
+            let pos_table = (self.table_generator)(
                 &self
                     .sector_id
                     .derive_evaluation_seed(piece_offset, self.sector_metadata.history_size),
@@ -372,31 +375,35 @@ where
     }
 }
 
-impl<RewardAddress, Sector, PosTable> ExactSizeIterator
-    for SolutionsIterator<'_, RewardAddress, Sector, PosTable>
+impl<'a, RewardAddress, Sector, PosTable, TableGenerator> ExactSizeIterator
+    for SolutionsIterator<'a, RewardAddress, Sector, PosTable, TableGenerator>
 where
     RewardAddress: Copy,
     Sector: ReadAt + ?Sized,
     PosTable: Table,
+    TableGenerator: (FnMut(&PosSeed) -> PosTable) + 'a,
 {
 }
 
-impl<RewardAddress, Sector, PosTable> ProvableSolutions
-    for SolutionsIterator<'_, RewardAddress, Sector, PosTable>
+impl<'a, RewardAddress, Sector, PosTable, TableGenerator> ProvableSolutions
+    for SolutionsIterator<'a, RewardAddress, Sector, PosTable, TableGenerator>
 where
     RewardAddress: Copy,
     Sector: ReadAt + ?Sized,
     PosTable: Table,
+    TableGenerator: (FnMut(&PosSeed) -> PosTable) + 'a,
 {
     fn best_solution_distance(&self) -> Option<SolutionRange> {
         self.best_solution_distance
     }
 }
 
-impl<'a, RewardAddress, Sector, PosTable> SolutionsIterator<'a, RewardAddress, Sector, PosTable>
+impl<'a, RewardAddress, Sector, PosTable, TableGenerator>
+    SolutionsIterator<'a, RewardAddress, Sector, PosTable, TableGenerator>
 where
     Sector: ReadAt + ?Sized,
     PosTable: Table,
+    TableGenerator: (FnMut(&PosSeed) -> PosTable) + 'a,
 {
     #[allow(clippy::too_many_arguments)]
     fn new(
@@ -410,7 +417,7 @@ where
         kzg: &'a Kzg,
         erasure_coding: &'a ErasureCoding,
         chunk_candidates: VecDeque<ChunkCandidate>,
-        table_generator: &'a mut PosTable::Generator,
+        table_generator: TableGenerator,
     ) -> Result<Self, ProvingError> {
         if erasure_coding.max_shards() < Record::NUM_S_BUCKETS {
             return Err(ProvingError::InvalidErasureCodingInstance);
