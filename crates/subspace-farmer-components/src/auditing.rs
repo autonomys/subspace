@@ -7,6 +7,7 @@ use subspace_core_primitives::{Blake2b256Hash, PublicKey, SectorId, SectorIndex,
 use subspace_verification::is_within_solution_range;
 use tracing::warn;
 
+/// Result of sector audit
 #[derive(Debug, Clone)]
 pub struct AuditResult<'a, Sector>
 where
