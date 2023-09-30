@@ -3,22 +3,23 @@ use crate::node_client::NodeClient;
 use crate::single_disk_farm::Handlers;
 use futures::channel::mpsc;
 use futures::StreamExt;
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
 use rayon::prelude::*;
 use rayon::{ThreadPool, ThreadPoolBuildError};
 use std::fs::File;
 use std::io;
 use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::{PublicKey, SectorIndex, Solution};
+use subspace_core_primitives::{PosSeed, PublicKey, SectorIndex, Solution, SolutionRange};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector;
+use subspace_farmer_components::proving::ProvableSolutions;
 use subspace_farmer_components::sector::SectorMetadataChecksummed;
 use subspace_farmer_components::{proving, ReadAt};
-use subspace_proof_of_space::Table;
+use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_rpc_primitives::{SlotInfo, SolutionResponse};
 use thiserror::Error;
-use tracing::{debug, error, trace};
+use tracing::{debug, error, trace, warn};
 
 /// Self-imposed limit for number of solutions that farmer will not go over per challenge.
 ///
@@ -107,25 +108,30 @@ where
         thread_pool,
     } = farming_options;
 
-    let mut table_generator = PosTable::generator();
+    let table_generator = Arc::new(Mutex::new(PosTable::generator()));
 
     while let Some(slot_info) = slot_info_notifications.next().await {
-        let slot = slot_info.slot_number;
-        let sectors_metadata = sectors_metadata.read();
-        let sector_count = sectors_metadata.len();
+        let modifying_sector_index = Arc::clone(&modifying_sector_index);
+        let sectors_metadata = Arc::clone(&sectors_metadata);
+        let table_generator = Arc::clone(&table_generator);
+        let kzg = kzg.clone();
+        let erasure_coding = erasure_coding.clone();
 
-        debug!(%slot, %sector_count, "Reading sectors");
+        let response = thread_pool.install(move || {
+            let slot = slot_info.slot_number;
+            let sectors_metadata = sectors_metadata.read();
+            let sector_count = sectors_metadata.len();
 
-        let modifying_sector_guard = modifying_sector_index.read();
-        let maybe_sector_being_modified = modifying_sector_guard.as_ref().copied();
-        let mut solutions = Vec::<Solution<PublicKey, PublicKey>>::new();
+            debug!(%slot, %sector_count, "Reading sectors");
 
-        let sectors = (0..sector_count)
-            .map(|sector_index| plot_file.offset(sector_index * sector_size))
-            .collect::<Vec<_>>();
+            let modifying_sector_guard = modifying_sector_index.read();
+            let maybe_sector_being_modified = modifying_sector_guard.as_ref().copied();
 
-        let solution_candidates = thread_pool.install(|| {
-            sectors_metadata
+            let sectors = (0..sector_count)
+                .map(|sector_index| plot_file.offset(sector_index * sector_size))
+                .collect::<Vec<_>>();
+
+            let mut sectors_solutions = sectors_metadata
                 .par_iter()
                 .zip(&sectors)
                 .enumerate()
@@ -137,7 +143,7 @@ where
                     }
                     trace!(%slot, %sector_index, "Auditing sector");
 
-                    let solution_candidates = audit_sector(
+                    let audit_results = audit_sector(
                         &public_key,
                         sector_index,
                         &slot_info.global_challenge,
@@ -146,57 +152,89 @@ where
                         sector_metadata,
                     )?;
 
-                    Some((sector_index, solution_candidates))
+                    Some((sector_index, audit_results.solution_candidates))
                 })
                 .collect::<Vec<_>>()
-        });
+                .into_iter()
+                .filter_map(|(sector_index, solution_candidates)| {
+                    let sector_solutions = match solution_candidates.into_solutions(
+                        &reward_address,
+                        &kzg,
+                        &erasure_coding,
+                        |seed: &PosSeed| table_generator.lock().generate_parallel(seed),
+                    ) {
+                        Ok(solutions) => solutions,
+                        Err(error) => {
+                            warn!(
+                                %error,
+                                %sector_index,
+                                "Failed to turn solution candidates into solutions",
+                            );
 
-        for (sector_index, solution_candidates) in solution_candidates {
-            for maybe_solution in solution_candidates.into_iter::<_, PosTable>(
-                &reward_address,
-                &kzg,
-                &erasure_coding,
-                &mut table_generator,
-            )? {
-                let solution = match maybe_solution {
-                    Ok(solution) => solution,
-                    Err(error) => {
-                        error!(%slot, %sector_index, %error, "Failed to prove");
-                        // Do not error completely on disk corruption or other
-                        // reasons why proving might fail
-                        continue;
+                            return None;
+                        }
+                    };
+
+                    if sector_solutions.len() == 0 {
+                        return None;
                     }
-                };
 
-                debug!(%slot, %sector_index, "Solution found");
-                trace!(?solution, "Solution found");
+                    Some((sector_index, sector_solutions))
+                })
+                .collect::<Vec<_>>();
 
-                solutions.push(solution);
+            sectors_solutions.sort_by(|a, b| {
+                let a_solution_distance =
+                    a.1.best_solution_distance().unwrap_or(SolutionRange::MAX);
+                let b_solution_distance =
+                    b.1.best_solution_distance().unwrap_or(SolutionRange::MAX);
+
+                // Comparing `b` to `a` because we want smaller values first
+                b_solution_distance.cmp(&a_solution_distance)
+            });
+
+            let mut solutions = Vec::<Solution<PublicKey, PublicKey>>::new();
+
+            for (sector_index, sector_solutions) in sectors_solutions {
+                for maybe_solution in sector_solutions {
+                    let solution = match maybe_solution {
+                        Ok(solution) => solution,
+                        Err(error) => {
+                            error!(%slot, %sector_index, %error, "Failed to prove");
+                            // Do not error completely as disk corruption or other reasons why
+                            // proving might fail
+                            continue;
+                        }
+                    };
+
+                    debug!(%slot, %sector_index, "Solution found");
+                    trace!(?solution, "Solution found");
+
+                    solutions.push(solution);
+
+                    if solutions.len() >= SOLUTIONS_LIMIT {
+                        break;
+                    }
+                }
 
                 if solutions.len() >= SOLUTIONS_LIMIT {
                     break;
                 }
+                // TODO: It is known that decoding is slow now and we'll only be
+                //  able to decode a single sector within time slot reliably, in the
+                //  future we may want allow more than one sector to be valid within
+                //  the same disk plot.
+                if !solutions.is_empty() {
+                    break;
+                }
             }
 
-            if solutions.len() >= SOLUTIONS_LIMIT {
-                break;
+            SolutionResponse {
+                slot_number: slot_info.slot_number,
+                solutions,
             }
-            // TODO: It is known that decoding is slow now and we'll only be
-            //  able to decode a single sector within time slot reliably, in the
-            //  future we may want allow more than one sector to be valid within
-            //  the same disk plot.
-            if !solutions.is_empty() {
-                break;
-            }
-        }
+        });
 
-        drop(sectors_metadata);
-        drop(modifying_sector_guard);
-
-        let response = SolutionResponse {
-            slot_number: slot_info.slot_number,
-            solutions,
-        };
         handlers.solution.call_simple(&response);
         node_client
             .submit_solution_response(response)
