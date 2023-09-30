@@ -11,7 +11,8 @@ use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    Blake2b256Hash, HistorySize, PublicKey, Record, RecordedHistorySegment, SectorId, SolutionRange,
+    Blake2b256Hash, HistorySize, PosSeed, PublicKey, Record, RecordedHistorySegment, SectorId,
+    SolutionRange,
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector;
@@ -22,7 +23,7 @@ use subspace_farmer_components::sector::{
 };
 use subspace_farmer_components::{FarmerProtocolInfo, ReadAt};
 use subspace_proof_of_space::chia::ChiaTable;
-use subspace_proof_of_space::Table;
+use subspace_proof_of_space::{Table, TableGenerator};
 
 type PosTable = ChiaTable;
 
@@ -151,7 +152,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         let mut global_challenge = Blake2b256Hash::default();
         rng.fill_bytes(&mut global_challenge);
 
-        let maybe_solution_candidates = audit_sector(
+        let maybe_audit_result = audit_sector(
             &public_key,
             sector_index,
             &global_challenge,
@@ -160,8 +161,8 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             &plotted_sector.sector_metadata,
         );
 
-        let solution_candidates = match maybe_solution_candidates {
-            Some(solution_candidates) => solution_candidates,
+        let solution_candidates = match maybe_audit_result {
+            Some(audit_result) => audit_result.solution_candidates,
             None => {
                 continue;
             }
@@ -169,7 +170,9 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
         let num_actual_solutions = solution_candidates
             .clone()
-            .into_iter::<_, PosTable>(&reward_address, &kzg, &erasure_coding, &mut table_generator)
+            .into_solutions(&reward_address, &kzg, &erasure_coding, |seed: &PosSeed| {
+                table_generator.generate_parallel(seed)
+            })
             .unwrap()
             .len();
 
@@ -188,18 +191,19 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             &plotted_sector_bytes,
             &plotted_sector.sector_metadata,
         )
-        .unwrap();
+        .unwrap()
+        .solution_candidates;
 
         group.throughput(Throughput::Elements(1));
         group.bench_function("memory", |b| {
             b.iter(|| {
                 solution_candidates
                     .clone()
-                    .into_iter::<_, PosTable>(
+                    .into_solutions(
                         black_box(&reward_address),
                         black_box(&kzg),
                         black_box(&erasure_coding),
-                        black_box(&mut table_generator),
+                        black_box(|seed: &PosSeed| table_generator.generate_parallel(seed)),
                     )
                     .unwrap()
                     // Process just one solution
@@ -249,6 +253,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                     &plotted_sector.sector_metadata,
                 )
                 .unwrap()
+                .solution_candidates
             })
             .collect::<Vec<_>>();
 
@@ -259,11 +264,11 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                 for _i in 0..iters {
                     for solution_candidates in solution_candidates.clone() {
                         solution_candidates
-                            .into_iter::<_, PosTable>(
+                            .into_solutions(
                                 black_box(&reward_address),
                                 black_box(&kzg),
                                 black_box(&erasure_coding),
-                                black_box(&mut table_generator),
+                                black_box(|seed: &PosSeed| table_generator.generate_parallel(seed)),
                             )
                             .unwrap()
                             // Process just one solution
