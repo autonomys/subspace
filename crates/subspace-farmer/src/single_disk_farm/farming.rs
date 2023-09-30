@@ -201,8 +201,8 @@ where
                         Ok(solution) => solution,
                         Err(error) => {
                             error!(%slot, %sector_index, %error, "Failed to prove");
-                            // Do not error completely on disk corruption or other
-                            // reasons why proving might fail
+                            // Do not error completely as disk corruption or other reasons why
+                            // proving might fail
                             continue;
                         }
                     };
