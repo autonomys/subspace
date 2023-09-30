@@ -34,8 +34,8 @@ where
 
     let sector_slot_challenge = sector_id.derive_sector_slot_challenge(global_challenge);
     let s_bucket_audit_index = sector_slot_challenge.s_bucket_audit_index();
-    let s_bucket_audit_size =
-        usize::from(sector_metadata.s_bucket_sizes[usize::from(s_bucket_audit_index)]);
+    let s_bucket_audit_size = Scalar::FULL_BYTES
+        * usize::from(sector_metadata.s_bucket_sizes[usize::from(s_bucket_audit_index)]);
     let s_bucket_audit_offset = Scalar::FULL_BYTES
         * sector_metadata
             .s_bucket_sizes
@@ -50,17 +50,17 @@ where
 
     let s_bucket_audit_offset_in_sector = sector_contents_map_size + s_bucket_audit_offset;
 
+    let mut s_bucket = vec![0; s_bucket_audit_size];
+    if let Err(error) = sector.read_at(&mut s_bucket, s_bucket_audit_offset_in_sector) {
+        warn!(%error, %sector_index, %s_bucket_audit_index, "Failed read s-bucket");
+        return None;
+    }
+
     // Map all winning chunks
-    let winning_chunks = (0..s_bucket_audit_size)
-        .filter_map(|chunk_offset| {
-            let mut chunk = [0; Scalar::FULL_BYTES];
-            if let Err(error) = sector.read_at(
-                &mut chunk,
-                s_bucket_audit_offset_in_sector + chunk_offset * Scalar::FULL_BYTES,
-            ) {
-                warn!(%error, %sector_index, %chunk_offset, "Failed read chunk sector");
-                return None;
-            }
+    let winning_chunks = s_bucket
+        .array_chunks::<{ Scalar::FULL_BYTES }>()
+        .enumerate()
+        .filter_map(|(chunk_offset, chunk)| {
             // Check all audit chunks within chunk, there might be more than one winning
             let winning_audit_chunk_offsets = chunk
                 .array_chunks::<{ mem::size_of::<SolutionRange>() }>()
