@@ -1,19 +1,41 @@
 use crate::proving::SolutionCandidates;
 use crate::sector::{SectorContentsMap, SectorMetadataChecksummed};
 use crate::ReadAt;
-use std::collections::VecDeque;
 use std::mem;
 use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::{Blake2b256Hash, PublicKey, SectorId, SectorIndex, SolutionRange};
 use subspace_verification::is_within_solution_range;
 use tracing::warn;
 
+/// Result of sector audit
+#[derive(Debug, Clone)]
+pub struct AuditResult<'a, Sector>
+where
+    Sector: ?Sized,
+{
+    /// Solution candidates
+    pub solution_candidates: SolutionCandidates<'a, Sector>,
+    /// Best solution distance found
+    pub best_solution_distance: SolutionRange,
+}
+
+/// Audit chunk candidate
+#[derive(Debug, Clone)]
+pub(crate) struct AuditChunkCandidate {
+    /// Audit chunk offset
+    pub(crate) offset: u8,
+    /// Solution distance of this audit chunk, can be used to prioritize higher quality solutions
+    pub(crate) solution_distance: SolutionRange,
+}
+
+/// Chunk candidate, contains one or more potentially winning audit chunks (in case chunk itself was
+/// encoded and eligible for claiming a reward)
 #[derive(Debug, Clone)]
 pub(crate) struct ChunkCandidate {
     /// Chunk offset within s-bucket
     pub(crate) chunk_offset: u32,
-    /// Audit chunk offsets in above chunk
-    pub(crate) audit_chunk_offsets: VecDeque<u8>,
+    /// Audit chunk candidates in above chunk
+    pub(crate) audit_chunks: Vec<AuditChunkCandidate>,
 }
 
 /// Audit a single sector and generate a stream of solutions, where `sector` must be positioned
@@ -26,7 +48,7 @@ pub fn audit_sector<'a, Sector>(
     solution_range: SolutionRange,
     sector: &'a Sector,
     sector_metadata: &'a SectorMetadataChecksummed,
-) -> Option<SolutionCandidates<'a, Sector>>
+) -> Option<AuditResult<'a, Sector>>
 where
     Sector: ReadAt + ?Sized,
 {
@@ -57,12 +79,12 @@ where
     }
 
     // Map all winning chunks
-    let winning_chunks = s_bucket
+    let mut winning_chunks = s_bucket
         .array_chunks::<{ Scalar::FULL_BYTES }>()
         .enumerate()
         .filter_map(|(chunk_offset, chunk)| {
             // Check all audit chunks within chunk, there might be more than one winning
-            let winning_audit_chunk_offsets = chunk
+            let mut winning_audit_chunks = chunk
                 .array_chunks::<{ mem::size_of::<SolutionRange>() }>()
                 .enumerate()
                 .filter_map(|(audit_chunk_offset, &audit_chunk)| {
@@ -72,34 +94,69 @@ where
                         &sector_slot_challenge,
                         solution_range,
                     )
-                    .then_some(audit_chunk_offset as u8)
+                    .map(|solution_distance| AuditChunkCandidate {
+                        offset: audit_chunk_offset as u8,
+                        solution_distance,
+                    })
                 })
-                .collect::<VecDeque<_>>();
+                .collect::<Vec<_>>();
 
             // In case none of the audit chunks are winning, we don't care about this sector
-            if winning_audit_chunk_offsets.is_empty() {
+            if winning_audit_chunks.is_empty() {
                 return None;
             }
 
+            winning_audit_chunks.sort_by(|a, b| {
+                // Comparing `b` to `a` because we want smaller values first
+                b.solution_distance.cmp(&a.solution_distance)
+            });
+
             Some(ChunkCandidate {
                 chunk_offset: chunk_offset as u32,
-                audit_chunk_offsets: winning_audit_chunk_offsets,
+                audit_chunks: winning_audit_chunks,
             })
         })
-        .collect::<VecDeque<_>>();
+        .collect::<Vec<_>>();
 
     // Check if there are any solutions possible
     if winning_chunks.is_empty() {
         return None;
     }
 
-    Some(SolutionCandidates::new(
-        public_key,
-        sector_index,
-        sector_id,
-        s_bucket_audit_index,
-        sector,
-        sector_metadata,
-        winning_chunks,
-    ))
+    winning_chunks.sort_by(|a, b| {
+        let a_solution_distance = a
+            .audit_chunks
+            .first()
+            .expect("Lists of audit chunks are non-empty; qed")
+            .solution_distance;
+        let b_solution_distance = b
+            .audit_chunks
+            .first()
+            .expect("Lists of audit chunks are non-empty; qed")
+            .solution_distance;
+
+        // Comparing `b` to `a` because we want smaller values first
+        b_solution_distance.cmp(&a_solution_distance)
+    });
+
+    let best_solution_distance = winning_chunks
+        .first()
+        .expect("Not empty, checked above; qed")
+        .audit_chunks
+        .first()
+        .expect("Lists of audit chunks are non-empty; qed")
+        .solution_distance;
+
+    Some(AuditResult {
+        solution_candidates: SolutionCandidates::new(
+            public_key,
+            sector_index,
+            sector_id,
+            s_bucket_audit_index,
+            sector,
+            sector_metadata,
+            winning_chunks.into(),
+        ),
+        best_solution_distance,
+    })
 }
