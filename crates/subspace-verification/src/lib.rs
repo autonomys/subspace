@@ -129,15 +129,17 @@ fn calculate_solution_distance(
     )
 }
 
-/// Returns true if solution distance is within the solution range for provided parameters.
+/// Returns `Some(solution_distance)` if solution distance is within the solution range for provided
+/// parameters.
 pub fn is_within_solution_range(
     global_challenge: &Blake2b256Hash,
     audit_chunk: SolutionRange,
     sector_slot_challenge: &SectorSlotChallenge,
     solution_range: SolutionRange,
-) -> bool {
-    calculate_solution_distance(global_challenge, audit_chunk, sector_slot_challenge)
-        <= solution_range / 2
+) -> Option<SolutionRange> {
+    let solution_distance =
+        calculate_solution_distance(global_challenge, audit_chunk, sector_slot_challenge);
+    (solution_distance <= solution_range / 2).then_some(solution_distance)
 }
 
 /// Parameters for checking piece validity

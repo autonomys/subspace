@@ -25,7 +25,7 @@ use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    BlockWeight, HistorySize, PublicKey, Randomness, Record, RecordedHistorySegment,
+    BlockWeight, HistorySize, PosSeed, PublicKey, Randomness, Record, RecordedHistorySegment,
     SegmentCommitment, SegmentIndex, Solution, SolutionRange,
 };
 use subspace_erasure_coding::ErasureCoding;
@@ -33,7 +33,7 @@ use subspace_farmer_components::auditing::audit_sector;
 use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy};
 use subspace_farmer_components::sector::{sector_size, SectorMetadataChecksummed};
 use subspace_farmer_components::FarmerProtocolInfo;
-use subspace_proof_of_space::Table;
+use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{
     calculate_block_weight, derive_randomness, verify_solution, VerifySolutionParams,
@@ -178,7 +178,7 @@ fn valid_header(
 
         let global_challenge = global_randomness.derive_global_challenge(slot);
 
-        let maybe_solution_candidates = audit_sector(
+        let maybe_audit_results = audit_sector(
             &public_key,
             sector_index,
             &global_challenge,
@@ -187,17 +187,18 @@ fn valid_header(
             &plotted_sector.sector_metadata,
         );
 
-        let Some(solution_candidates) = maybe_solution_candidates else {
+        let Some(audit_results) = maybe_audit_results else {
             // Sector didn't have any solutions
             continue;
         };
 
-        let solution = solution_candidates
-            .into_iter::<_, PosTable>(
+        let solution = audit_results
+            .solution_candidates
+            .into_solutions(
                 &public_key,
                 &farmer_parameters.kzg,
                 &farmer_parameters.erasure_coding,
-                &mut table_generator,
+                |seed: &PosSeed| table_generator.generate_parallel(seed),
             )
             .unwrap()
             .next()
