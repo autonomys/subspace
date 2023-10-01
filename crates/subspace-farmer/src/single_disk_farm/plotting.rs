@@ -185,48 +185,35 @@ where
             let piece_getter = piece_getter.clone();
             let kzg = kzg.clone();
             let erasure_coding = erasure_coding.clone();
-            let handle = Handle::current();
+
+            let plotting_fn = move || {
+                tokio::task::block_in_place(move || {
+                    let plot_sector_fut = plot_sector::<_, PosTable>(
+                        &public_key,
+                        sector_index,
+                        &piece_getter,
+                        PieceGetterRetryPolicy::Limited(PIECE_GETTER_RETRY_NUMBER.get()),
+                        &farmer_app_info.protocol_info,
+                        &kzg,
+                        &erasure_coding,
+                        pieces_in_sector,
+                        &mut sector,
+                        &mut sector_metadata,
+                        &mut table_generator,
+                    );
+
+                    Handle::current()
+                        .block_on(plot_sector_fut)
+                        .map(|plotted_sector| {
+                            (sector, sector_metadata, table_generator, plotted_sector)
+                        })
+                })
+            };
 
             if replotting {
-                replotting_thread_pool.install(move || {
-                    let plot_sector_fut = plot_sector::<_, PosTable>(
-                        &public_key,
-                        sector_index,
-                        &piece_getter,
-                        PieceGetterRetryPolicy::Limited(PIECE_GETTER_RETRY_NUMBER.get()),
-                        &farmer_app_info.protocol_info,
-                        &kzg,
-                        &erasure_coding,
-                        pieces_in_sector,
-                        &mut sector,
-                        &mut sector_metadata,
-                        &mut table_generator,
-                    );
-
-                    handle.block_on(plot_sector_fut).map(|plotted_sector| {
-                        (sector, sector_metadata, table_generator, plotted_sector)
-                    })
-                })?
+                replotting_thread_pool.install(plotting_fn)?
             } else {
-                plotting_thread_pool.install(move || {
-                    let plot_sector_fut = plot_sector::<_, PosTable>(
-                        &public_key,
-                        sector_index,
-                        &piece_getter,
-                        PieceGetterRetryPolicy::Limited(PIECE_GETTER_RETRY_NUMBER.get()),
-                        &farmer_app_info.protocol_info,
-                        &kzg,
-                        &erasure_coding,
-                        pieces_in_sector,
-                        &mut sector,
-                        &mut sector_metadata,
-                        &mut table_generator,
-                    );
-
-                    handle.block_on(plot_sector_fut).map(|plotted_sector| {
-                        (sector, sector_metadata, table_generator, plotted_sector)
-                    })
-                })?
+                plotting_thread_pool.install(plotting_fn)?
             }
         };
 
