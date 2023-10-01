@@ -23,7 +23,7 @@ use subspace_farmer::single_disk_farm::{
 use subspace_farmer::utils::farmer_piece_getter::FarmerPieceGetter;
 use subspace_farmer::utils::piece_validator::SegmentCommitmentPieceValidator;
 use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
-use subspace_farmer::utils::run_future_in_dedicated_thread;
+use subspace_farmer::utils::{run_future_in_dedicated_thread, tokio_rayon_spawn_handler};
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_farmer_components::plotting::PlottedSector;
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
@@ -181,18 +181,21 @@ where
         ThreadPoolBuilder::new()
             .thread_name(move |thread_index| format!("farming#{thread_index}"))
             .num_threads(farming_thread_pool_size)
+            .spawn_handler(tokio_rayon_spawn_handler())
             .build()?,
     );
     let plotting_thread_pool = Arc::new(
         ThreadPoolBuilder::new()
             .thread_name(move |thread_index| format!("plotting#{thread_index}"))
             .num_threads(plotting_thread_pool_size)
+            .spawn_handler(tokio_rayon_spawn_handler())
             .build()?,
     );
     let replotting_thread_pool = Arc::new(
         ThreadPoolBuilder::new()
             .thread_name(move |thread_index| format!("replotting#{thread_index}"))
             .num_threads(replotting_thread_pool_size)
+            .spawn_handler(tokio_rayon_spawn_handler())
             .build()?,
     );
 

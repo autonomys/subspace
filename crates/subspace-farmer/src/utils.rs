@@ -8,6 +8,7 @@ use futures::channel::oneshot;
 use futures::channel::oneshot::Canceled;
 use futures::future::{Either, Fuse, FusedFuture};
 use futures::FutureExt;
+use rayon::ThreadBuilder;
 use std::future::Future;
 use std::ops::Deref;
 use std::pin::Pin;
@@ -112,4 +113,28 @@ where
         drop(join_on_drop);
         result
     })
+}
+
+/// This function is supposed to be used with [`rayon::ThreadPoolBuilder::spawn_handler()`] to
+/// inherit current tokio runtime.
+pub fn tokio_rayon_spawn_handler() -> impl FnMut(ThreadBuilder) -> io::Result<()> {
+    let handle = Handle::current();
+
+    move |thread: ThreadBuilder| {
+        let mut b = thread::Builder::new();
+        if let Some(name) = thread.name() {
+            b = b.name(name.to_owned());
+        }
+        if let Some(stack_size) = thread.stack_size() {
+            b = b.stack_size(stack_size);
+        }
+
+        let handle = handle.clone();
+        b.spawn(move || {
+            let _guard = handle.enter();
+
+            tokio::task::block_in_place(|| thread.run())
+        })?;
+        Ok(())
+    }
 }
