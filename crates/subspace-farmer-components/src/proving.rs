@@ -434,29 +434,22 @@ where
             )?
         };
 
-        let mut s_bucket_records = (0u32..)
-            .zip(
-                sector_contents_map
-                    .iter_s_bucket_records(s_bucket)
-                    .expect("S-bucket audit index is guaranteed to be in range; qed"),
-            )
-            .take(sector_metadata.pieces_in_sector.into());
+        let s_bucket_records = sector_contents_map
+            .iter_s_bucket_records(s_bucket)
+            .expect("S-bucket audit index is guaranteed to be in range; qed")
+            .collect::<Vec<_>>();
         let winning_chunks = chunk_candidates
             .into_iter()
-            .filter_map(move |chunk_candidate| loop {
-                let (chunk_offset, (piece_offset, encoded_chunk_used)) = s_bucket_records
-                    .next()
-                    .expect("Chunk candidates are within s-bucket records; qed");
+            .filter_map(move |chunk_candidate| {
+                let (piece_offset, encoded_chunk_used) = s_bucket_records
+                    .get(chunk_candidate.chunk_offset as usize)
+                    .expect("Wouldn't be a candidate if wasn't within s-bucket; qed");
 
-                // Not all chunks are within solution range, skip irrelevant chunk offsets until
-                // desired one is found
-                if chunk_offset == chunk_candidate.chunk_offset {
-                    return encoded_chunk_used.then_some(WinningChunk {
-                        chunk_offset,
-                        piece_offset,
-                        audit_chunks: chunk_candidate.audit_chunks.into(),
-                    });
-                }
+                encoded_chunk_used.then_some(WinningChunk {
+                    chunk_offset: chunk_candidate.chunk_offset,
+                    piece_offset: *piece_offset,
+                    audit_chunks: chunk_candidate.audit_chunks.into(),
+                })
             })
             .collect::<VecDeque<_>>();
 
