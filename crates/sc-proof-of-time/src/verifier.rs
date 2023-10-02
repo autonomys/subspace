@@ -63,11 +63,40 @@ impl PotVerifier {
         self.genesis_seed
     }
 
+    /// Try to get checkpoints for provided seed and slot iterations, returns `None` if proving
+    /// fails internally.
+    pub async fn get_checkpoints(
+        &self,
+        slot_iterations: NonZeroU32,
+        seed: PotSeed,
+    ) -> Option<PotCheckpoints> {
+        // TODO: This "proxy" is a workaround for https://github.com/rust-lang/rust/issues/57478
+        let (result_sender, result_receiver) = oneshot::channel();
+        tokio::task::spawn_blocking({
+            let verifier = self.clone();
+
+            move || {
+                futures::executor::block_on({
+                    async move {
+                        // Result doesn't matter here
+                        let _ = result_sender.send(
+                            verifier
+                                .calculate_checkpoints(slot_iterations, seed, true)
+                                .await,
+                        );
+                    }
+                });
+            }
+        });
+
+        result_receiver.await.unwrap_or_default()
+    }
+
     /// Try to get checkpoints quickly without waiting for potentially locked async mutex or proving
     pub fn try_get_checkpoints(
         &self,
-        seed: PotSeed,
         slot_iterations: NonZeroU32,
+        seed: PotSeed,
     ) -> Option<PotCheckpoints> {
         let cache_key = CacheKey {
             seed,
@@ -136,9 +165,9 @@ impl PotVerifier {
                             // Result doesn't matter here
                             let _ = result_sender.send(
                                 verifier
-                                    .calculate_output(
-                                        input.seed,
+                                    .calculate_checkpoints(
                                         input.slot_iterations,
+                                        input.seed,
                                         do_proving_if_necessary,
                                     )
                                     .await,
@@ -148,20 +177,21 @@ impl PotVerifier {
                 }
             });
 
-            let Ok(Some(calculated_proof)) = result_receiver.await else {
+            let Ok(Some(calculated_checkpoints)) = result_receiver.await else {
                 return false;
             };
+            let calculated_output = calculated_checkpoints.output();
 
             slots -= 1;
 
             if slots == 0 {
-                return output == calculated_proof;
+                return output == calculated_output;
             }
 
             input = PotNextSlotInput::derive(
                 input.slot_iterations,
                 input.slot,
-                calculated_proof,
+                calculated_output,
                 &maybe_parameters_change,
             );
         }
@@ -171,12 +201,12 @@ impl PotVerifier {
     // TODO: False-positive, lock is not actually held over await point, remove suppression once
     //  fixed upstream
     #[allow(clippy::await_holding_lock)]
-    async fn calculate_output(
+    async fn calculate_checkpoints(
         &self,
-        seed: PotSeed,
         slot_iterations: NonZeroU32,
+        seed: PotSeed,
         do_proving_if_necessary: bool,
-    ) -> Option<PotOutput> {
+    ) -> Option<PotCheckpoints> {
         let cache_key = CacheKey {
             seed,
             slot_iterations,
@@ -188,8 +218,8 @@ impl PotVerifier {
             if let Some(cache_value) = maybe_cache_value {
                 drop(cache);
                 let correct_checkpoints = cache_value.checkpoints.lock().await;
-                if let Some(correct_checkpoints) = correct_checkpoints.as_ref() {
-                    return Some(correct_checkpoints.output());
+                if let Some(correct_checkpoints) = *correct_checkpoints {
+                    return Some(correct_checkpoints);
                 }
 
                 // There was another verification for these inputs and it wasn't successful, retry
@@ -242,9 +272,8 @@ impl PotVerifier {
                 return None;
             };
 
-            let proof = generated_checkpoints.output();
             checkpoints.replace(generated_checkpoints);
-            return Some(proof);
+            return Some(generated_checkpoints);
         }
     }
 

@@ -33,8 +33,8 @@ impl InnerState {
 
             // Advance further as far as possible using previously verified proofs/checkpoints
             if let Some(checkpoints) = pot_verifier.try_get_checkpoints(
-                self.next_slot_input.seed,
                 self.next_slot_input.slot_iterations,
+                self.next_slot_input.seed,
             ) {
                 best_slot = self.next_slot_input.slot;
                 best_output = checkpoints.output();
@@ -163,7 +163,7 @@ impl PotState {
             {
                 let slot = Slot::from(slot);
 
-                let Some(checkpoints) = self.verifier.try_get_checkpoints(seed, slot_iterations)
+                let Some(checkpoints) = self.verifier.try_get_checkpoints(slot_iterations, seed)
                 else {
                     break;
                 };

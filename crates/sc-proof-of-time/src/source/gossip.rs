@@ -214,7 +214,7 @@ where
 
                 if let Some(verified_checkpoints) = self
                     .pot_verifier
-                    .try_get_checkpoints(proof.seed, proof.slot_iterations)
+                    .try_get_checkpoints(proof.slot_iterations, proof.seed)
                 {
                     if verified_checkpoints != proof.checkpoints {
                         trace!(
@@ -334,7 +334,7 @@ where
             if proof.slot != next_slot_input.slot {
                 let invalid_proof = self
                     .pot_verifier
-                    .try_get_checkpoints(proof.seed, proof.slot_iterations)
+                    .try_get_checkpoints(proof.slot_iterations, proof.seed)
                     .map(|verified_checkpoints| verified_checkpoints != proof.checkpoints)
                     .unwrap_or_default();
 
