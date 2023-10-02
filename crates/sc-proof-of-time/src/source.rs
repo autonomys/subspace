@@ -3,7 +3,7 @@ mod state;
 mod timekeeper;
 
 use crate::source::gossip::{GossipProof, PotGossipWorker, ToGossipMessage};
-use crate::source::state::{NextSlotInput, PotState};
+use crate::source::state::{NextSlotInput, PotState, PotStateUpdateOutcome};
 use crate::source::timekeeper::{run_timekeeper, TimekeeperProof};
 use crate::verifier::PotVerifier;
 use core_affinity::CoreId;
@@ -27,7 +27,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::thread;
 use subspace_core_primitives::PotCheckpoints;
-use tracing::{debug, error, warn};
+use tracing::{debug, error, trace, warn};
 
 const LOCAL_PROOFS_CHANNEL_CAPACITY: usize = 10;
 const SLOTS_CHANNEL_CAPACITY: usize = 10;
@@ -335,24 +335,54 @@ where
         // This will do one of 3 things depending on circumstances:
         // * if block import is ahead of timekeeper and gossip, it will update next slot input
         // * if block import is on a different PoT chain, it will update next slot input to the
-        //   correct fork
+        //   correct fork (reorg)
         // * if block import is on the same PoT chain this will essentially do nothing
-        if let Some(next_slot_input) = self.state.update(
+        match self.state.update(
             best_slot,
             best_proof,
             Some(subspace_digest_items.pot_parameters_change),
         ) {
-            warn!("Proof of time chain reorg happened");
-
-            if self
-                .to_gossip_sender
-                .try_send(ToGossipMessage::NextSlotInput(next_slot_input))
-                .is_err()
-            {
-                debug!(
-                    next_slot = %next_slot_input.slot,
-                    "Gossip is not able to keep-up with slot production (block import)",
+            PotStateUpdateOutcome::NoChange => {
+                trace!(
+                    %best_slot,
+                    "Block import didn't result in proof of time chain changes",
                 );
+            }
+            PotStateUpdateOutcome::Extension { from, to } => {
+                warn!(
+                    from_next_slot = %from.slot,
+                    to_next_slot = %to.slot,
+                    "Proof of time chain was extended from block import",
+                );
+
+                if self
+                    .to_gossip_sender
+                    .try_send(ToGossipMessage::NextSlotInput(to))
+                    .is_err()
+                {
+                    debug!(
+                        next_slot = %to.slot,
+                        "Gossip is not able to keep-up with slot production (block import)",
+                    );
+                }
+            }
+            PotStateUpdateOutcome::Reorg { from, to } => {
+                warn!(
+                    from_next_slot = %from.slot,
+                    to_next_slot = %to.slot,
+                    "Proof of time chain reorg happened",
+                );
+
+                if self
+                    .to_gossip_sender
+                    .try_send(ToGossipMessage::NextSlotInput(to))
+                    .is_err()
+                {
+                    debug!(
+                        next_slot = %to.slot,
+                        "Gossip is not able to keep-up with slot production (block import)",
+                    );
+                }
             }
         }
     }
