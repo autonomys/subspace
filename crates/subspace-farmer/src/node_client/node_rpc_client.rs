@@ -12,15 +12,19 @@ use subspace_rpc_primitives::{
     FarmerAppInfo, NodeSyncStatus, RewardSignatureResponse, RewardSigningInfo, SlotInfo,
     SolutionResponse,
 };
+use tokio::sync::Semaphore;
 
-// Defines max_concurrent_requests constant in the node rpc client.
-// It must be set for large plots.
-const WS_PRC_MAX_CONCURRENT_REQUESTS: usize = 1_000_000;
+/// Defines max_concurrent_requests constant in the node rpc client
+const RPC_MAX_CONCURRENT_REQUESTS: usize = 1_000_000;
+/// Node is having a hard time responding for many piece requests
+// TODO: Remove this once https://github.com/paritytech/jsonrpsee/issues/1189 is resolved
+const MAX_CONCURRENT_PIECE_REQUESTS: usize = 10;
 
 /// `WsClient` wrapper.
-#[derive(Clone, Debug)]
+#[derive(Debug, Clone)]
 pub struct NodeRpcClient {
     client: Arc<WsClient>,
+    piece_request_semaphore: Arc<Semaphore>,
 }
 
 impl NodeRpcClient {
@@ -28,12 +32,16 @@ impl NodeRpcClient {
     pub async fn new(url: &str) -> Result<Self, JsonError> {
         let client = Arc::new(
             WsClientBuilder::default()
-                .max_concurrent_requests(WS_PRC_MAX_CONCURRENT_REQUESTS)
+                .max_concurrent_requests(RPC_MAX_CONCURRENT_REQUESTS)
                 .max_request_body_size(20 * 1024 * 1024)
                 .build(url)
                 .await?,
         );
-        Ok(Self { client })
+        let piece_request_semaphore = Arc::new(Semaphore::new(MAX_CONCURRENT_PIECE_REQUESTS));
+        Ok(Self {
+            client,
+            piece_request_semaphore,
+        })
     }
 }
 
@@ -152,6 +160,7 @@ impl NodeClient for NodeRpcClient {
     }
 
     async fn piece(&self, piece_index: PieceIndex) -> Result<Option<Piece>, RpcError> {
+        let _permit = self.piece_request_semaphore.acquire().await?;
         let result: Option<Vec<u8>> = self
             .client
             .request("subspace_piece", rpc_params![&piece_index])
