@@ -35,6 +35,7 @@ use pallet_evm::{
 use pallet_transporter::EndpointHandler;
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
+use sp_core::storage::StateVersion;
 use sp_core::{Get, OpaqueMetadata, H160, H256, U256};
 use sp_domains::DomainId;
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
@@ -244,6 +245,7 @@ parameter_types! {
         })
         .avg_block_initialization(AVERAGE_ON_INITIALIZE_RATIO)
         .build_or_panic();
+    pub const ExtrinsicsRootStateVersion: StateVersion = StateVersion::V1;
 }
 
 impl frame_system::Config for Runtime {
@@ -291,6 +293,7 @@ impl frame_system::Config for Runtime {
     /// The action to take on a Runtime Upgrade
     type OnSetCode = ();
     type MaxConsumers = ConstU32<16>;
+    type ExtrinsicsRootStateVersion = ExtrinsicsRootStateVersion;
 }
 
 impl pallet_timestamp::Config for Runtime {
@@ -600,6 +603,9 @@ construct_runtime!(
     pub struct Runtime {
         // System support stuff.
         System: frame_system = 0,
+        // Note: Ensure index of the timestamp matches with the index of timestamp on Consensus
+        //  so that consensus can constructed encoded extrinsic that matches with Domain encoded
+        //  extrinsic.
         Timestamp: pallet_timestamp = 1,
         ExecutivePallet: domain_pallet_executive = 2,
 
@@ -1144,7 +1150,8 @@ impl_runtime_apis! {
         fn dispatch_benchmark(
             config: frame_benchmarking::BenchmarkConfig
         ) -> Result<Vec<frame_benchmarking::BenchmarkBatch>, sp_runtime::RuntimeString> {
-            use frame_benchmarking::{Benchmarking, BenchmarkBatch, TrackedStorageKey, add_benchmark};
+            use frame_benchmarking::{Benchmarking, BenchmarkBatch, add_benchmark};
+            use sp_core::storage::TrackedStorageKey;
 
             use frame_system_benchmarking::Pallet as SystemBench;
             impl frame_system_benchmarking::Config for Runtime {}

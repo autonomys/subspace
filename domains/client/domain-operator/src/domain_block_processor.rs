@@ -9,12 +9,14 @@ use domain_block_preprocessor::PreprocessResult;
 use domain_runtime_primitives::DomainCoreApi;
 use sc_client_api::{AuxStore, BlockBackend, Finalizer, ProofProvider};
 use sc_consensus::{
-    BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult, StateAction, StorageChanges,
+    BlockImportParams, ForkChoiceStrategy, ImportResult, SharedBlockImport, StateAction,
+    StorageChanges,
 };
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HashAndNumber, HeaderBackend, HeaderMetadata};
 use sp_consensus::{BlockOrigin, SyncOracle};
 use sp_core::traits::CodeExecutor;
+use sp_core::H256;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{DomainId, DomainsApi, ExecutionReceipt};
@@ -44,7 +46,7 @@ where
 }
 
 /// An abstracted domain block processor.
-pub(crate) struct DomainBlockProcessor<Block, CBlock, Client, CClient, Backend, BI>
+pub(crate) struct DomainBlockProcessor<Block, CBlock, Client, CClient, Backend>
 where
     Block: BlockT,
     CBlock: BlockT,
@@ -55,12 +57,12 @@ where
     pub(crate) consensus_client: Arc<CClient>,
     pub(crate) backend: Arc<Backend>,
     pub(crate) domain_confirmation_depth: NumberFor<Block>,
-    pub(crate) block_import: Arc<BI>,
+    pub(crate) block_import: SharedBlockImport<Block>,
     pub(crate) import_notification_sinks: DomainImportNotificationSinks<Block, CBlock>,
 }
 
-impl<Block, CBlock, Client, CClient, Backend, BI> Clone
-    for DomainBlockProcessor<Block, CBlock, Client, CClient, Backend, BI>
+impl<Block, CBlock, Client, CClient, Backend> Clone
+    for DomainBlockProcessor<Block, CBlock, Client, CClient, Backend>
 where
     Block: BlockT,
     CBlock: BlockT,
@@ -93,12 +95,13 @@ pub(crate) struct PendingConsensusBlocks<Block: BlockT, CBlock: BlockT> {
     pub consensus_imports: Vec<HashAndNumber<CBlock>>,
 }
 
-impl<Block, CBlock, Client, CClient, Backend, BI>
-    DomainBlockProcessor<Block, CBlock, Client, CClient, Backend, BI>
+impl<Block, CBlock, Client, CClient, Backend>
+    DomainBlockProcessor<Block, CBlock, Client, CClient, Backend>
 where
     Block: BlockT,
     CBlock: BlockT,
     NumberFor<CBlock>: Into<NumberFor<Block>>,
+    Block::Hash: Into<H256>,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + AuxStore
@@ -107,7 +110,6 @@ where
         + 'static,
     Client::Api:
         DomainCoreApi<Block> + sp_block_builder::BlockBuilder<Block> + sp_api::ApiExt<Block>,
-    for<'b> &'b BI: BlockImport<Block, Error = sp_consensus::Error>,
     CClient: HeaderBackend<CBlock>
         + HeaderMetadata<CBlock, Error = sp_blockchain::Error>
         + BlockBackend<CBlock>
@@ -371,7 +373,7 @@ where
         let execution_receipt = ExecutionReceipt {
             domain_block_number: header_number,
             domain_block_hash: header_hash,
-            domain_block_extrinsic_root: extrinsics_root,
+            domain_block_extrinsic_root: extrinsics_root.into(),
             parent_domain_block_receipt_hash: parent_receipt.hash(),
             consensus_block_number,
             consensus_block_hash,
@@ -449,7 +451,9 @@ where
             *block_import_params.header.parent_hash(),
         );
 
-        let import_result = (&*self.block_import)
+        let import_result = (*self.block_import)
+            .write()
+            .await
             .import_block(block_import_params)
             .await?;
 
@@ -692,6 +696,7 @@ where
     Backend: sc_client_api::Backend<Block> + 'static,
     E: CodeExecutor,
     ParentChain: ParentChainInterface<Block, CBlock>,
+    ParentChainBlock: BlockT,
 {
     pub(crate) fn check_state_transition(
         &self,
@@ -768,6 +773,20 @@ where
                     execution_receipt.consensus_block_number,
                     execution_receipt.hash(),
                     receipt_mismatch_info,
+                ));
+
+                continue;
+            }
+
+            if execution_receipt.domain_block_extrinsic_root
+                != local_receipt.domain_block_extrinsic_root
+            {
+                bad_receipts_to_write.push((
+                    execution_receipt.consensus_block_number,
+                    execution_receipt.hash(),
+                    ReceiptMismatchInfo::DomainExtrinsicsRoot {
+                        consensus_block_hash,
+                    },
                 ));
                 continue;
             }
@@ -916,6 +935,18 @@ where
                     .map_err(|err| {
                         sp_blockchain::Error::Application(Box::from(format!(
                             "Failed to generate invalid bundles field fraud proof: {err}"
+                        )))
+                    })?,
+                ReceiptMismatchInfo::DomainExtrinsicsRoot { .. } => self
+                    .fraud_proof_generator
+                    .generate_invalid_domain_extrinsics_root_proof::<CBlock>(
+                        self.domain_id,
+                        &local_receipt,
+                        bad_receipt_hash,
+                    )
+                    .map_err(|err| {
+                        sp_blockchain::Error::Application(Box::from(format!(
+                            "Failed to generate invalid domain extrinsics root fraud proof: {err}"
                         )))
                     })?,
             };

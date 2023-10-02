@@ -1,5 +1,4 @@
 use derive_more::Display;
-use memmap2::{Mmap, MmapOptions};
 use std::fs::{File, OpenOptions};
 use std::path::Path;
 use std::sync::Arc;
@@ -43,8 +42,7 @@ pub struct Offset(usize);
 #[derive(Debug)]
 struct Inner {
     file: File,
-    read_mmap: Mmap,
-    file_size: usize,
+    num_elements: usize,
 }
 
 /// Piece cache stored on one disk
@@ -67,6 +65,8 @@ impl DiskPieceCache {
             .create(true)
             .open(directory.join(Self::FILE_NAME))?;
 
+        file.advise_random_access()?;
+
         let expected_size = Self::element_size() * capacity;
         // Allocating the whole file (`set_len` below can create a sparse file, which will cause
         // writes to fail later)
@@ -75,17 +75,10 @@ impl DiskPieceCache {
         // Truncating file (if necessary)
         file.set_len(expected_size as u64)?;
 
-        let read_mmap = unsafe { MmapOptions::new().len(expected_size).map(&file)? };
-        #[cfg(unix)]
-        {
-            read_mmap.advise(memmap2::Advice::Random)?;
-        }
-
         Ok(Self {
             inner: Arc::new(Inner {
                 file,
-                read_mmap,
-                file_size: expected_size,
+                num_elements: expected_size / Self::element_size(),
             }),
         })
     }
@@ -101,28 +94,33 @@ impl DiskPieceCache {
     pub(crate) fn contents(
         &self,
     ) -> impl ExactSizeIterator<Item = (Offset, Option<PieceIndex>)> + '_ {
-        self.inner
-            .read_mmap
-            .array_chunks::<{ Self::element_size() }>()
-            .enumerate()
-            .map(|(offset, chunk)| {
-                let (piece_index_bytes, piece_bytes) = chunk.split_at(PieceIndex::SIZE);
-                let piece_index = PieceIndex::from_bytes(
-                    piece_index_bytes
-                        .try_into()
-                        .expect("Statically known to have correct size; qed"),
-                );
-                // Piece index zero might mean we have piece index zero or just an empty space
-                let piece_index = if piece_index != PieceIndex::ZERO
-                    || piece_bytes.iter().any(|&byte| byte != 0)
-                {
+        let file = &self.inner.file;
+        let mut element = vec![0; Self::element_size()];
+
+        (0..self.inner.num_elements).map(move |offset| {
+            if let Err(error) =
+                file.read_exact_at(&mut element, (offset * Self::element_size()) as u64)
+            {
+                warn!(%error, %offset, "Failed to read cache element #1");
+                return (Offset(offset), None);
+            }
+
+            let (piece_index_bytes, piece_bytes) = element.split_at(PieceIndex::SIZE);
+            let piece_index = PieceIndex::from_bytes(
+                piece_index_bytes
+                    .try_into()
+                    .expect("Statically known to have correct size; qed"),
+            );
+            // Piece index zero might mean we have piece index zero or just an empty space
+            let piece_index =
+                if piece_index != PieceIndex::ZERO || piece_bytes.iter().any(|&byte| byte != 0) {
                     Some(piece_index)
                 } else {
                     None
                 };
 
-                (Offset(offset), piece_index)
-            })
+            (Offset(offset), piece_index)
+        })
     }
 
     /// Store piece in cache at specified offset, replacing existing piece if there is any
@@ -136,27 +134,26 @@ impl DiskPieceCache {
         piece: &Piece,
     ) -> Result<(), DiskPieceCacheError> {
         let Offset(offset) = offset;
-        if offset >= self.inner.file_size / Self::element_size() {
+        if offset >= self.inner.num_elements {
             return Err(DiskPieceCacheError::OffsetOutsideOfRange {
                 provided: offset,
-                max: self.inner.file_size / Self::element_size() - 1,
+                max: self.inner.num_elements - 1,
             });
         }
 
-        let mut write_mmap = unsafe {
-            MmapOptions::new()
-                .offset((offset * Self::element_size()) as u64)
-                .len(Self::element_size())
-                .map_mut(&self.inner.file)?
-        };
+        let element_offset = (offset * Self::element_size()) as u64;
 
-        let (piece_index_bytes, remaining_bytes) = write_mmap.split_at_mut(PieceIndex::SIZE);
-        piece_index_bytes.copy_from_slice(&piece_index.to_bytes());
-        let (piece_bytes, checksum) = remaining_bytes.split_at_mut(Piece::SIZE);
-        piece_bytes.copy_from_slice(piece.as_ref());
-        checksum.copy_from_slice(&blake3_hash_list(&[piece_index_bytes, piece.as_ref()]));
-
-        write_mmap.flush()?;
+        let piece_index_bytes = piece_index.to_bytes();
+        self.inner
+            .file
+            .write_all_at(&piece_index_bytes, element_offset)?;
+        self.inner
+            .file
+            .write_all_at(piece.as_ref(), element_offset + PieceIndex::SIZE as u64)?;
+        self.inner.file.write_all_at(
+            &blake3_hash_list(&[&piece_index_bytes, piece.as_ref()]),
+            element_offset + PieceIndex::SIZE as u64 + Piece::SIZE as u64,
+        )?;
 
         Ok(())
     }
@@ -169,16 +166,22 @@ impl DiskPieceCache {
     /// doesn't happen for the same piece being accessed!
     pub(crate) fn read_piece_index(&self, offset: Offset) -> Option<PieceIndex> {
         let Offset(offset) = offset;
-        if offset >= self.inner.file_size / Self::element_size() {
+        if offset >= self.inner.num_elements {
             warn!(%offset, "Trying to read piece out of range, this must be an implementation bug");
             return None;
         }
 
-        Some(PieceIndex::from_bytes(
-            self.inner.read_mmap[Self::element_size() * offset..][..PieceIndex::SIZE]
-                .try_into()
-                .expect("Statically guaranteed to be correct size; qed"),
-        ))
+        let mut piece_index_bytes = [0; PieceIndex::SIZE];
+
+        if let Err(error) = self.inner.file.read_exact_at(
+            &mut piece_index_bytes,
+            (offset * Self::element_size()) as u64,
+        ) {
+            warn!(%error, %offset, "Failed to read cache piece index");
+            return None;
+        }
+
+        Some(PieceIndex::from_bytes(piece_index_bytes))
     }
 
     /// Read piece from cache at specified offset.
@@ -189,14 +192,17 @@ impl DiskPieceCache {
     /// doesn't happen for the same piece being accessed!
     pub(crate) fn read_piece(&self, offset: Offset) -> Result<Option<Piece>, DiskPieceCacheError> {
         let Offset(offset) = offset;
-        if offset >= self.inner.file_size / Self::element_size() {
+        if offset >= self.inner.num_elements {
             warn!(%offset, "Trying to read piece out of range, this must be an implementation bug");
             return Ok(None);
         }
 
-        let piece_element_memory =
-            &self.inner.read_mmap[offset * Self::element_size()..][..Self::element_size()];
-        let (piece_index_bytes, remaining_bytes) = piece_element_memory.split_at(PieceIndex::SIZE);
+        let mut element = vec![0; Self::element_size()];
+        self.inner
+            .file
+            .read_exact_at(&mut element, (offset * Self::element_size()) as u64)?;
+
+        let (piece_index_bytes, remaining_bytes) = element.split_at(PieceIndex::SIZE);
         let (piece_bytes, expected_checksum) = remaining_bytes.split_at(Piece::SIZE);
         let mut piece = Piece::default();
         piece.copy_from_slice(piece_bytes);
@@ -218,6 +224,9 @@ impl DiskPieceCache {
 
     pub(crate) fn wipe(directory: &Path) -> io::Result<()> {
         let piece_cache = directory.join(Self::FILE_NAME);
+        if !piece_cache.exists() {
+            return Ok(());
+        }
         info!("Deleting piece cache file at {}", piece_cache.display());
         fs::remove_file(piece_cache)
     }

@@ -26,12 +26,12 @@ use futures::{future, FutureExt, Stream, StreamExt, TryFutureExt};
 use sc_client_api::{
     AuxStore, BlockBackend, BlockImportNotification, BlockchainEvents, Finalizer, ProofProvider,
 };
-use sc_consensus::BlockImport;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sp_api::{BlockT, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
+use sp_core::H256;
 use sp_domains::{BundleProducerElectionApi, DomainsApi};
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::NumberFor;
@@ -51,7 +51,6 @@ pub(super) async fn start_worker<
     CIBNS,
     NSNS,
     E,
-    BI,
 >(
     spawn_essential: Box<dyn SpawnEssentialNamed>,
     consensus_client: Arc<CClient>,
@@ -67,11 +66,12 @@ pub(super) async fn start_worker<
         DomainParentChain<Block, CBlock, CClient>,
         TransactionPool,
     >,
-    bundle_processor: BundleProcessor<Block, CBlock, Client, CClient, Backend, E, BI>,
+    bundle_processor: BundleProcessor<Block, CBlock, Client, CClient, Backend, E>,
     operator_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS>,
     active_leaves: Vec<BlockInfo<CBlock>>,
 ) where
     Block: BlockT,
+    Block::Hash: Into<H256>,
     CBlock: BlockT,
     NumberFor<CBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
     CBlock::Hash: From<Block::Hash>,
@@ -91,6 +91,7 @@ pub(super) async fn start_worker<
         + HeaderMetadata<CBlock, Error = sp_blockchain::Error>
         + ProofProvider<CBlock>
         + BlockBackend<CBlock>
+        + ProofProvider<CBlock>
         + ProvideRuntimeApi<CBlock>
         + BlockchainEvents<CBlock>
         + 'static,
@@ -103,8 +104,6 @@ pub(super) async fn start_worker<
     CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + 'static,
     NSNS: Stream<Item = NewSlotNotification> + Send + 'static,
     E: CodeExecutor,
-    for<'b> &'b BI: BlockImport<Block, Error = sp_consensus::Error>,
-    BI: Send + Sync + 'static,
 {
     let span = tracing::Span::current();
 

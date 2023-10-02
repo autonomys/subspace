@@ -35,14 +35,14 @@ use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
-    HistorySize, PublicKey, Record, SegmentIndex, Solution, REWARD_SIGNING_CONTEXT,
+    HistorySize, PosSeed, PublicKey, Record, SegmentIndex, Solution, REWARD_SIGNING_CONTEXT,
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector;
 use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy, PlottedSector};
 use subspace_farmer_components::sector::{sector_size, SectorMetadataChecksummed};
 use subspace_farmer_components::FarmerProtocolInfo;
-use subspace_proof_of_space::Table;
+use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_service::tx_pre_validator::ConsensusChainTxPreValidator;
 use subspace_service::{FullClient, NewFull};
@@ -187,7 +187,7 @@ async fn start_farming<PosTable, Client>(
             let global_challenge = new_slot_info
                 .global_randomness
                 .derive_global_challenge(new_slot_info.slot.into());
-            let solution_candidates = audit_sector(
+            let audit_result = audit_sector(
                 &public_key,
                 sector_index,
                 &global_challenge,
@@ -197,8 +197,11 @@ async fn start_farming<PosTable, Client>(
             )
             .expect("With max solution range there must be a sector eligible; qed");
 
-            let solution = solution_candidates
-                .into_iter::<_, PosTable>(&public_key, &kzg, &erasure_coding, &mut table_generator)
+            let solution = audit_result
+                .solution_candidates
+                .into_solutions(&public_key, &kzg, &erasure_coding, |seed: &PosSeed| {
+                    table_generator.generate_parallel(seed)
+                })
                 .unwrap()
                 .next()
                 .expect("With max solution range there must be a solution; qed")

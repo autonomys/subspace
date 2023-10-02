@@ -6,9 +6,9 @@ use atomic::Atomic;
 use futures::channel::{mpsc, oneshot};
 use futures::{select, FutureExt, SinkExt, StreamExt};
 use lru::LruCache;
-use memmap2::{MmapMut, MmapOptions};
 use parity_scale_codec::Encode;
 use parking_lot::RwLock;
+use rayon::ThreadPool;
 use std::collections::HashMap;
 use std::fs::File;
 use std::io;
@@ -23,6 +23,7 @@ use subspace_core_primitives::{
     SegmentIndex,
 };
 use subspace_erasure_coding::ErasureCoding;
+use subspace_farmer_components::file_ext::FileExt;
 use subspace_farmer_components::plotting;
 use subspace_farmer_components::plotting::{
     plot_sector, PieceGetter, PieceGetterRetryPolicy, PlottedSector,
@@ -30,6 +31,7 @@ use subspace_farmer_components::plotting::{
 use subspace_farmer_components::sector::SectorMetadataChecksummed;
 use subspace_proof_of_space::Table;
 use thiserror::Error;
+use tokio::runtime::Handle;
 use tracing::{debug, info, trace, warn};
 
 const FARMER_APP_INFO_RETRY_INTERVAL: Duration = Duration::from_millis(500);
@@ -73,59 +75,70 @@ pub enum PlottingError {
     LowLevel(#[from] plotting::PlottingError),
 }
 
+pub(super) struct PlottingOptions<NC, PG> {
+    pub(super) public_key: PublicKey,
+    pub(super) node_client: NC,
+    pub(super) pieces_in_sector: u16,
+    pub(super) sector_size: usize,
+    pub(super) sector_metadata_size: usize,
+    pub(super) metadata_header: PlotMetadataHeader,
+    pub(super) plot_file: Arc<File>,
+    pub(super) metadata_file: File,
+    pub(super) sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
+    pub(super) piece_getter: PG,
+    pub(super) kzg: Kzg,
+    pub(super) erasure_coding: ErasureCoding,
+    pub(super) handlers: Arc<Handlers>,
+    pub(super) modifying_sector_index: Arc<RwLock<Option<SectorIndex>>>,
+    pub(super) target_sector_count: u16,
+    pub(super) sectors_to_plot_receiver: mpsc::Receiver<(SectorIndex, oneshot::Sender<()>)>,
+    pub(super) plotting_thread_pool: Arc<ThreadPool>,
+    pub(super) replotting_thread_pool: Arc<ThreadPool>,
+}
+
 /// Starts plotting process.
 ///
 /// NOTE: Returned future is async, but does blocking operations and should be running in dedicated
 /// thread.
-#[allow(clippy::too_many_arguments)]
 pub(super) async fn plotting<NC, PG, PosTable>(
-    public_key: PublicKey,
-    node_client: NC,
-    pieces_in_sector: u16,
-    sector_size: usize,
-    sector_metadata_size: usize,
-    mut metadata_header: PlotMetadataHeader,
-    mut metadata_header_mmap: MmapMut,
-    plot_file: Arc<File>,
-    metadata_file: File,
-    sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
-    piece_getter: PG,
-    kzg: Kzg,
-    erasure_coding: ErasureCoding,
-    handlers: Arc<Handlers>,
-    modifying_sector_index: Arc<RwLock<Option<SectorIndex>>>,
-    target_sector_count: u16,
-    mut sectors_to_plot: mpsc::Receiver<(SectorIndex, oneshot::Sender<()>)>,
+    plotting_options: PlottingOptions<NC, PG>,
 ) -> Result<(), PlottingError>
 where
     NC: NodeClient,
-    PG: PieceGetter + Send + 'static,
+    PG: PieceGetter + Clone + Send + 'static,
     PosTable: Table,
 {
+    let PlottingOptions {
+        public_key,
+        node_client,
+        pieces_in_sector,
+        sector_size,
+        sector_metadata_size,
+        mut metadata_header,
+        plot_file,
+        metadata_file,
+        sectors_metadata,
+        piece_getter,
+        kzg,
+        erasure_coding,
+        handlers,
+        modifying_sector_index,
+        target_sector_count,
+        mut sectors_to_plot_receiver,
+        plotting_thread_pool,
+        replotting_thread_pool,
+    } = plotting_options;
+
     let mut table_generator = PosTable::generator();
     // TODO: Concurrency
-    while let Some((sector_index, _acknowledgement_sender)) = sectors_to_plot.next().await {
+    while let Some((sector_index, _acknowledgement_sender)) = sectors_to_plot_receiver.next().await
+    {
         trace!(%sector_index, "Preparing to plot sector");
 
-        let mut sector = unsafe {
-            MmapOptions::new()
-                .offset((sector_index as usize * sector_size) as u64)
-                .len(sector_size)
-                .map_mut(&*plot_file)?
-        };
-        let mut sector_metadata = unsafe {
-            MmapOptions::new()
-                .offset(
-                    RESERVED_PLOT_METADATA
-                        + (u64::from(sector_index) * sector_metadata_size as u64),
-                )
-                .len(sector_metadata_size)
-                .map_mut(&metadata_file)?
-        };
-
         let maybe_old_sector_metadata = sectors_metadata.read().get(sector_index as usize).cloned();
+        let replotting = maybe_old_sector_metadata.is_some();
 
-        if maybe_old_sector_metadata.is_some() {
+        if replotting {
             debug!(%sector_index, "Replotting sector");
         } else {
             debug!(%sector_index, "Plotting sector");
@@ -158,30 +171,61 @@ where
             break farmer_app_info;
         };
 
-        let plot_sector_fut = plot_sector::<_, PosTable>(
-            &public_key,
-            sector_index,
-            &piece_getter,
-            PieceGetterRetryPolicy::Limited(PIECE_GETTER_RETRY_NUMBER.get()),
-            &farmer_app_info.protocol_info,
-            &kzg,
-            &erasure_coding,
-            pieces_in_sector,
-            &mut sector,
-            &mut sector_metadata,
-            &mut table_generator,
-        );
-
         // Inform others that this sector is being modified
         modifying_sector_index.write().replace(sector_index);
 
-        let plotted_sector = plot_sector_fut.await?;
-        sector.flush()?;
-        sector_metadata.flush()?;
+        let sector;
+        let sector_metadata;
+        let plotted_sector;
+
+        (sector, sector_metadata, table_generator, plotted_sector) = {
+            let mut sector = vec![0; sector_size];
+            let mut sector_metadata = vec![0; sector_metadata_size];
+
+            let piece_getter = piece_getter.clone();
+            let kzg = kzg.clone();
+            let erasure_coding = erasure_coding.clone();
+
+            let plotting_fn = move || {
+                tokio::task::block_in_place(move || {
+                    let plot_sector_fut = plot_sector::<_, PosTable>(
+                        &public_key,
+                        sector_index,
+                        &piece_getter,
+                        PieceGetterRetryPolicy::Limited(PIECE_GETTER_RETRY_NUMBER.get()),
+                        &farmer_app_info.protocol_info,
+                        &kzg,
+                        &erasure_coding,
+                        pieces_in_sector,
+                        &mut sector,
+                        &mut sector_metadata,
+                        &mut table_generator,
+                    );
+
+                    Handle::current()
+                        .block_on(plot_sector_fut)
+                        .map(|plotted_sector| {
+                            (sector, sector_metadata, table_generator, plotted_sector)
+                        })
+                })
+            };
+
+            if replotting {
+                replotting_thread_pool.install(plotting_fn)?
+            } else {
+                plotting_thread_pool.install(plotting_fn)?
+            }
+        };
+
+        plot_file.write_all_at(&sector, (sector_index as usize * sector_size) as u64)?;
+        metadata_file.write_all_at(
+            &sector_metadata,
+            RESERVED_PLOT_METADATA + (u64::from(sector_index) * sector_metadata_size as u64),
+        )?;
 
         if sector_index + 1 > metadata_header.plotted_sector_count {
             metadata_header.plotted_sector_count = sector_index + 1;
-            metadata_header.encode_to(&mut metadata_header_mmap.as_mut());
+            metadata_file.write_all_at(&metadata_header.encode(), 0)?;
         }
         {
             let mut sectors_metadata = sectors_metadata.write();
@@ -223,7 +267,7 @@ where
         // Inform others that this sector is no longer being modified
         modifying_sector_index.write().take();
 
-        if maybe_old_plotted_sector.is_some() {
+        if replotting {
             info!(%sector_index, "Sector replotted successfully");
         } else {
             info!(
@@ -241,20 +285,34 @@ where
     Ok(())
 }
 
-#[allow(clippy::too_many_arguments)]
+pub(super) struct PlottingSchedulerOptions<NC> {
+    pub(super) public_key_hash: Blake2b256Hash,
+    pub(super) sectors_indices_left_to_plot: Range<SectorIndex>,
+    pub(super) target_sector_count: SectorIndex,
+    pub(super) last_archived_segment_index: SegmentIndex,
+    pub(super) min_sector_lifetime: HistorySize,
+    pub(super) node_client: NC,
+    pub(super) sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
+    pub(super) sectors_to_plot_sender: mpsc::Sender<(SectorIndex, oneshot::Sender<()>)>,
+}
+
 pub(super) async fn plotting_scheduler<NC>(
-    public_key_hash: Blake2b256Hash,
-    sectors_indices_left_to_plot: Range<SectorIndex>,
-    target_sector_count: SectorIndex,
-    last_archived_segment_index: SegmentIndex,
-    min_sector_lifetime: HistorySize,
-    node_client: NC,
-    sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
-    sectors_to_plot_sender: mpsc::Sender<(SectorIndex, oneshot::Sender<()>)>,
+    plotting_scheduler_options: PlottingSchedulerOptions<NC>,
 ) -> Result<(), BackgroundTaskError>
 where
     NC: NodeClient,
 {
+    let PlottingSchedulerOptions {
+        public_key_hash,
+        sectors_indices_left_to_plot,
+        target_sector_count,
+        last_archived_segment_index,
+        min_sector_lifetime,
+        node_client,
+        sectors_metadata,
+        sectors_to_plot_sender,
+    } = plotting_scheduler_options;
+
     // Create a proxy channel with atomically updatable last archived segment that
     // allows to not buffer messages from RPC subscription, but also access the most
     // recent value at any time

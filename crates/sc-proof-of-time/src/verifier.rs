@@ -8,7 +8,6 @@ use futures::channel::oneshot;
 use lru::LruCache;
 use parking_lot::Mutex;
 use sp_consensus_slots::Slot;
-#[cfg(feature = "pot")]
 use sp_consensus_subspace::PotParametersChange;
 use std::num::{NonZeroU32, NonZeroUsize};
 use std::sync::Arc;
@@ -92,21 +91,19 @@ impl PotVerifier {
     /// whenever possible.
     pub async fn is_output_valid(
         &self,
-        #[cfg(feature = "pot")] slot: Slot,
+        slot: Slot,
         seed: PotSeed,
-        #[cfg_attr(not(feature = "pot"), allow(unused_mut))] slot_iterations: NonZeroU32,
+        slot_iterations: NonZeroU32,
         slots: Slot,
         output: PotOutput,
-        #[cfg(feature = "pot")] maybe_parameters_change: Option<PotParametersChange>,
+        maybe_parameters_change: Option<PotParametersChange>,
     ) -> bool {
         self.is_output_valid_internal(
-            #[cfg(feature = "pot")]
             slot,
             seed,
             slot_iterations,
             slots,
             output,
-            #[cfg(feature = "pot")]
             maybe_parameters_change,
             true,
         )
@@ -118,21 +115,19 @@ impl PotVerifier {
     /// be a quick and cheap version of the function.
     pub async fn try_is_output_valid(
         &self,
-        #[cfg(feature = "pot")] slot: Slot,
+        slot: Slot,
         seed: PotSeed,
-        #[cfg_attr(not(feature = "pot"), allow(unused_mut))] slot_iterations: NonZeroU32,
+        slot_iterations: NonZeroU32,
         slots: Slot,
         output: PotOutput,
-        #[cfg(feature = "pot")] maybe_parameters_change: Option<PotParametersChange>,
+        maybe_parameters_change: Option<PotParametersChange>,
     ) -> bool {
         self.is_output_valid_internal(
-            #[cfg(feature = "pot")]
             slot,
             seed,
             slot_iterations,
             slots,
             output,
-            #[cfg(feature = "pot")]
             maybe_parameters_change,
             false,
         )
@@ -142,12 +137,12 @@ impl PotVerifier {
     #[allow(clippy::too_many_arguments)]
     async fn is_output_valid_internal(
         &self,
-        #[cfg(feature = "pot")] mut slot: Slot,
+        mut slot: Slot,
         mut seed: PotSeed,
-        #[cfg_attr(not(feature = "pot"), allow(unused_mut))] mut slot_iterations: NonZeroU32,
+        mut slot_iterations: NonZeroU32,
         slots: Slot,
         output: PotOutput,
-        #[cfg(feature = "pot")] mut maybe_parameters_change: Option<PotParametersChange>,
+        mut maybe_parameters_change: Option<PotParametersChange>,
         do_proving_if_necessary: bool,
     ) -> bool {
         let mut slots = u64::from(slots);
@@ -155,7 +150,7 @@ impl PotVerifier {
         loop {
             // TODO: This "proxy" is a workaround for https://github.com/rust-lang/rust/issues/57478
             let (result_sender, result_receiver) = oneshot::channel();
-            rayon::spawn({
+            tokio::task::spawn_blocking({
                 let verifier = self.clone();
 
                 move || {
@@ -186,12 +181,8 @@ impl PotVerifier {
                 return output == calculated_proof;
             }
 
-            #[cfg(feature = "pot")]
-            {
-                slot = slot + Slot::from(1);
-            }
+            slot = slot + Slot::from(1);
 
-            #[cfg(feature = "pot")]
             if let Some(parameters_change) = maybe_parameters_change
                 && parameters_change.slot == slot
             {
@@ -199,10 +190,6 @@ impl PotVerifier {
                 seed = calculated_proof.seed_with_entropy(&parameters_change.entropy);
                 maybe_parameters_change.take();
             } else {
-                seed = calculated_proof.seed();
-            }
-            #[cfg(not(feature = "pot"))]
-            {
                 seed = calculated_proof.seed();
             }
         }
@@ -298,7 +285,7 @@ impl PotVerifier {
     ) -> bool {
         // TODO: This "proxy" is a workaround for https://github.com/rust-lang/rust/issues/57478
         let (result_sender, result_receiver) = oneshot::channel();
-        rayon::spawn({
+        tokio::task::spawn_blocking({
             let verifier = self.clone();
             let checkpoints = *checkpoints;
 

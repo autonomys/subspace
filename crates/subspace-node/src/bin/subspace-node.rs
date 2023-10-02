@@ -21,14 +21,11 @@ use domain_client_operator::Bootstrapper;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
-#[cfg(feature = "pot")]
 use log::warn;
 use sc_cli::{ChainSpec, CliConfiguration, SubstrateCli};
 use sc_consensus_slots::SlotProportion;
 use sc_executor::NativeExecutionDispatch;
-#[cfg(feature = "pot")]
-use sc_service::Configuration;
-use sc_service::PartialComponents;
+use sc_service::{Configuration, PartialComponents};
 use sc_storage_monitor::StorageMonitorService;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::tracing_unbounded;
@@ -97,7 +94,6 @@ fn set_default_ss58_version<C: AsRef<dyn ChainSpec>>(chain_spec: C) {
     }
 }
 
-#[cfg(feature = "pot")]
 fn pot_external_entropy(
     consensus_chain_config: &Configuration,
     cli: &Cli,
@@ -149,7 +145,6 @@ fn main() -> Result<(), Error> {
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
                     &config,
                     None,
-                    #[cfg(feature = "pot")]
                     &pot_external_entropy(&config, &cli)?,
                 )?;
                 Ok((
@@ -169,7 +164,6 @@ fn main() -> Result<(), Error> {
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
                     &config,
                     None,
-                    #[cfg(feature = "pot")]
                     &pot_external_entropy(&config, &cli)?,
                 )?;
                 Ok((
@@ -190,7 +184,6 @@ fn main() -> Result<(), Error> {
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
                     &config,
                     None,
-                    #[cfg(feature = "pot")]
                     &pot_external_entropy(&config, &cli)?,
                 )?;
                 Ok((
@@ -212,7 +205,6 @@ fn main() -> Result<(), Error> {
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
                     &config,
                     None,
-                    #[cfg(feature = "pot")]
                     &pot_external_entropy(&config, &cli)?,
                 )?;
                 Ok((
@@ -279,7 +271,6 @@ fn main() -> Result<(), Error> {
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
                     &config,
                     None,
-                    #[cfg(feature = "pot")]
                     &pot_external_entropy(&config, &cli)?,
                 )?;
                 Ok((
@@ -322,7 +313,6 @@ fn main() -> Result<(), Error> {
                         >(
                             &config,
                             None,
-                            #[cfg(feature = "pot")]
                             &pot_external_entropy(&config, &cli)?,
                         )?;
 
@@ -334,7 +324,6 @@ fn main() -> Result<(), Error> {
                         } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
                             &config,
                             None,
-                            #[cfg(feature = "pot")]
                             &pot_external_entropy(&config, &cli)?,
                         )?;
                         let db = backend.expose_db();
@@ -456,7 +445,6 @@ fn main() -> Result<(), Error> {
                     );
                     let _enter = span.enter();
 
-                    #[cfg(feature = "pot")]
                     let pot_external_entropy = pot_external_entropy(&consensus_chain_config, &cli)?;
 
                     let dsn_config = {
@@ -526,8 +514,9 @@ fn main() -> Result<(), Error> {
                         subspace_networking: SubspaceNetworking::Create { config: dsn_config },
                         sync_from_dsn: cli.sync_from_dsn,
                         enable_subspace_block_relay: cli.enable_subspace_block_relay,
-                        #[cfg(feature = "pot")]
-                        is_timekeeper: cli.timekeeper,
+                        // Timekeeper is enabled if `--dev` is used
+                        is_timekeeper: cli.timekeeper || cli.run.shared_params.dev,
+                        timekeeper_cpu_cores: cli.timekeeper_cpu_cores,
                     };
 
                     let construct_domain_genesis_block_builder =
@@ -538,7 +527,6 @@ fn main() -> Result<(), Error> {
                         subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
                             &consensus_chain_config.base,
                             Some(&construct_domain_genesis_block_builder),
-                            #[cfg(feature = "pot")]
                             &pot_external_entropy,
                         )
                         .map_err(|error| {

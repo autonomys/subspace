@@ -86,6 +86,7 @@ use crate::utils::BlockInfo;
 use futures::channel::mpsc;
 use futures::Stream;
 use sc_client_api::{AuxStore, BlockImportNotification};
+use sc_consensus::SharedBlockImport;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::ProvideRuntimeApi;
@@ -152,7 +153,6 @@ pub struct OperatorParams<
     IBNS,
     CIBNS,
     NSNS,
-    BI,
 > where
     Block: BlockT,
     CBlock: BlockT,
@@ -174,7 +174,7 @@ pub struct OperatorParams<
     pub bundle_sender: Arc<BundleSender<Block, CBlock>>,
     pub operator_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS>,
     pub domain_confirmation_depth: NumberFor<Block>,
-    pub block_import: Arc<BI>,
+    pub block_import: SharedBlockImport<Block>,
 }
 
 /// Returns the active leaves the operator should start with.

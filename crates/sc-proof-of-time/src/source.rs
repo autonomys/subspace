@@ -3,9 +3,10 @@ mod state;
 mod timekeeper;
 
 use crate::source::gossip::{GossipProof, PotGossipWorker, ToGossipMessage};
-use crate::source::state::{NextSlotInput, PotState};
+use crate::source::state::{NextSlotInput, PotState, PotStateUpdateOutcome};
 use crate::source::timekeeper::{run_timekeeper, TimekeeperProof};
 use crate::verifier::PotVerifier;
+use core_affinity::CoreId;
 use derive_more::{Deref, DerefMut};
 use futures::channel::mpsc;
 use futures::{select, StreamExt};
@@ -16,29 +17,17 @@ use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus::SyncOracle;
 use sp_consensus_slots::Slot;
-#[cfg(feature = "pot")]
-use sp_consensus_subspace::digests::extract_pre_digest;
-#[cfg(feature = "pot")]
-use sp_consensus_subspace::digests::extract_subspace_digest_items;
-#[cfg(feature = "pot")]
-use sp_consensus_subspace::ChainConstants;
-#[cfg(feature = "pot")]
-use sp_consensus_subspace::FarmerSignature;
-use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi as SubspaceRuntimeApi};
-use sp_runtime::traits::Block as BlockT;
-#[cfg(feature = "pot")]
-use sp_runtime::traits::Header as HeaderT;
-#[cfg(feature = "pot")]
-use sp_runtime::traits::Zero;
+use sp_consensus_subspace::digests::{extract_pre_digest, extract_subspace_digest_items};
+use sp_consensus_subspace::{
+    ChainConstants, FarmerPublicKey, FarmerSignature, SubspaceApi as SubspaceRuntimeApi,
+};
+use sp_runtime::traits::{Block as BlockT, Header as HeaderT, Zero};
+use std::collections::HashSet;
 use std::marker::PhantomData;
-#[cfg(not(feature = "pot"))]
-use std::num::NonZeroU32;
 use std::sync::Arc;
 use std::thread;
 use subspace_core_primitives::PotCheckpoints;
-#[cfg(feature = "pot")]
-use tracing::warn;
-use tracing::{debug, error};
+use tracing::{debug, error, trace, warn};
 
 const LOCAL_PROOFS_CHANNEL_CAPACITY: usize = 10;
 const SLOTS_CHANNEL_CAPACITY: usize = 10;
@@ -65,7 +54,6 @@ pub struct PotSlotInfoStream(mpsc::Receiver<PotSlotInfo>);
 #[must_use = "Proof of time source doesn't do anything unless run() method is called"]
 pub struct PotSourceWorker<Block, Client> {
     client: Arc<Client>,
-    #[cfg(feature = "pot")]
     chain_constants: ChainConstants,
     timekeeper_proofs_receiver: mpsc::Receiver<TimekeeperProof>,
     to_gossip_sender: mpsc::Sender<ToGossipMessage>,
@@ -83,6 +71,7 @@ where
 {
     pub fn new<Network, GossipSync, SO>(
         is_timekeeper: bool,
+        timekeeper_cpu_cores: HashSet<usize>,
         client: Arc<Client>,
         pot_verifier: PotVerifier,
         network: Network,
@@ -94,36 +83,30 @@ where
         GossipSync: GossipSyncing<Block> + 'static,
         SO: SyncOracle + Send + Sync + 'static,
     {
-        #[cfg(feature = "pot")]
-        let chain_constants;
-        #[cfg(feature = "pot")]
-        let mut maybe_next_parameters_change;
-        let start_slot;
+        let best_hash = client.info().best_hash;
+        let runtime_api = client.runtime_api();
+        let chain_constants = runtime_api.chain_constants(best_hash)?;
+
+        let best_header = client
+            .header(best_hash)?
+            .ok_or_else(|| ApiError::UnknownBlock(format!("Parent block {best_hash} not found")))?;
+        let best_pre_digest = extract_pre_digest(&best_header)
+            .map_err(|error| ApiError::Application(error.into()))?;
+
+        let start_slot = if best_header.number().is_zero() {
+            Slot::from(1)
+        } else {
+            // Next slot after the best one seen
+            best_pre_digest.slot() + chain_constants.block_authoring_delay() + Slot::from(1)
+        };
+
+        let pot_parameters = runtime_api.pot_parameters(best_hash)?;
+        let mut maybe_next_parameters_change = pot_parameters.next_parameters_change();
+
         let start_seed;
         let slot_iterations;
-        #[cfg(feature = "pot")]
-        {
-            let best_hash = client.info().best_hash;
-            let runtime_api = client.runtime_api();
-            chain_constants = runtime_api.chain_constants(best_hash)?;
 
-            let best_header = client.header(best_hash)?.ok_or_else(|| {
-                ApiError::UnknownBlock(format!("Parent block {best_hash} not found"))
-            })?;
-            let best_pre_digest = extract_pre_digest(&best_header)
-                .map_err(|error| ApiError::Application(error.into()))?;
-
-            start_slot = if best_header.number().is_zero() {
-                Slot::from(1)
-            } else {
-                // Next slot after the best one seen
-                best_pre_digest.slot() + chain_constants.block_authoring_delay() + Slot::from(1)
-            };
-
-            let pot_parameters = runtime_api.pot_parameters(best_hash)?;
-            maybe_next_parameters_change = pot_parameters.next_parameters_change();
-
-            if let Some(parameters_change) = maybe_next_parameters_change
+        if let Some(parameters_change) = maybe_next_parameters_change
                 && parameters_change.slot == start_slot
             {
                 start_seed = best_pre_digest.pot_info().future_proof_of_time().seed_with_entropy(&parameters_change.entropy);
@@ -137,13 +120,6 @@ where
                 };
                 slot_iterations = pot_parameters.slot_iterations();
             }
-        }
-        #[cfg(not(feature = "pot"))]
-        {
-            start_slot = Slot::from(1);
-            start_seed = pot_verifier.genesis_seed();
-            slot_iterations = NonZeroU32::new(100_000_000).expect("Not zero; qed");
-        }
 
         let state = Arc::new(PotState::new(
             NextSlotInput {
@@ -151,7 +127,6 @@ where
                 slot_iterations,
                 seed: start_seed,
             },
-            #[cfg(feature = "pot")]
             maybe_next_parameters_change,
             pot_verifier.clone(),
         ));
@@ -166,6 +141,16 @@ where
             thread::Builder::new()
                 .name("timekeeper".to_string())
                 .spawn(move || {
+                    if let Some(core) = timekeeper_cpu_cores.into_iter().next() {
+                        if !core_affinity::set_for_current(CoreId { id: core }) {
+                            warn!(
+                                %core,
+                                "Failed to set core affinity, timekeeper will run on random CPU \
+                                core",
+                            );
+                        }
+                    }
+
                     if let Err(error) =
                         run_timekeeper(state, pot_verifier, timekeeper_proofs_sender)
                     {
@@ -191,7 +176,6 @@ where
 
         let source_worker = Self {
             client,
-            #[cfg(feature = "pot")]
             chain_constants,
             timekeeper_proofs_receiver,
             to_gossip_sender,
@@ -227,6 +211,10 @@ where
                 }
                 maybe_import_notification = import_notification_stream.next() => {
                     if let Some(import_notification) = maybe_import_notification {
+                        if !import_notification.is_new_best {
+                            // Ignore blocks that don't extend the chain
+                            continue;
+                        }
                         self.handle_block_import_notification(
                             import_notification.hash,
                             &import_notification.header,
@@ -290,7 +278,6 @@ where
             expected_next_slot_input,
             proof.slot,
             proof.checkpoints.output(),
-            #[cfg(feature = "pot")]
             None,
         ) {
             // We don't care if block production is too slow or block production is not enabled on
@@ -314,15 +301,6 @@ where
         }
     }
 
-    #[cfg(not(feature = "pot"))]
-    fn handle_block_import_notification(
-        &mut self,
-        _block_hash: Block::Hash,
-        _header: &Block::Header,
-    ) {
-    }
-
-    #[cfg(feature = "pot")]
     fn handle_block_import_notification(
         &mut self,
         block_hash: Block::Hash,
@@ -357,25 +335,54 @@ where
         // This will do one of 3 things depending on circumstances:
         // * if block import is ahead of timekeeper and gossip, it will update next slot input
         // * if block import is on a different PoT chain, it will update next slot input to the
-        //   correct fork
+        //   correct fork (reorg)
         // * if block import is on the same PoT chain this will essentially do nothing
-        if let Some(next_slot_input) = self.state.update(
+        match self.state.update(
             best_slot,
             best_proof,
-            #[cfg(feature = "pot")]
             Some(subspace_digest_items.pot_parameters_change),
         ) {
-            warn!("Proof of time chain reorg happened");
-
-            if self
-                .to_gossip_sender
-                .try_send(ToGossipMessage::NextSlotInput(next_slot_input))
-                .is_err()
-            {
-                debug!(
-                    next_slot = %next_slot_input.slot,
-                    "Gossip is not able to keep-up with slot production (block import)",
+            PotStateUpdateOutcome::NoChange => {
+                trace!(
+                    %best_slot,
+                    "Block import didn't result in proof of time chain changes",
                 );
+            }
+            PotStateUpdateOutcome::Extension { from, to } => {
+                warn!(
+                    from_next_slot = %from.slot,
+                    to_next_slot = %to.slot,
+                    "Proof of time chain was extended from block import",
+                );
+
+                if self
+                    .to_gossip_sender
+                    .try_send(ToGossipMessage::NextSlotInput(to))
+                    .is_err()
+                {
+                    debug!(
+                        next_slot = %to.slot,
+                        "Gossip is not able to keep-up with slot production (block import)",
+                    );
+                }
+            }
+            PotStateUpdateOutcome::Reorg { from, to } => {
+                warn!(
+                    from_next_slot = %from.slot,
+                    to_next_slot = %to.slot,
+                    "Proof of time chain reorg happened",
+                );
+
+                if self
+                    .to_gossip_sender
+                    .try_send(ToGossipMessage::NextSlotInput(to))
+                    .is_err()
+                {
+                    debug!(
+                        next_slot = %to.slot,
+                        "Gossip is not able to keep-up with slot production (block import)",
+                    );
+                }
             }
         }
     }

@@ -17,12 +17,9 @@ use sp_consensus_slots::{Slot, SlotDuration};
 use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi as SubspaceRuntimeApi};
 use sp_inherents::CreateInherentDataProviders;
 use sp_runtime::traits::Block as BlockT;
-#[cfg(feature = "pot")]
 use std::sync::Arc;
 use subspace_core_primitives::PotCheckpoints;
-#[cfg(feature = "pot")]
-use tracing::error;
-use tracing::{debug, trace};
+use tracing::{debug, error, trace};
 
 pub trait PotSlotWorker<Block>
 where
@@ -40,7 +37,7 @@ where
 /// polled until completion, unless we are major syncing.
 pub async fn start_slot_worker<Block, Client, SC, Worker, SO, CIDP>(
     slot_duration: SlotDuration,
-    #[cfg(feature = "pot")] client: Arc<Client>,
+    client: Arc<Client>,
     select_chain: SC,
     worker: Worker,
     sync_oracle: SO,
@@ -55,11 +52,8 @@ pub async fn start_slot_worker<Block, Client, SC, Worker, SO, CIDP>(
     SO: SyncOracle + Send,
     CIDP: CreateInherentDataProviders<Block, ()> + Send + 'static,
 {
-    #[cfg(feature = "pot")]
     let best_hash = client.info().best_hash;
-    #[cfg(feature = "pot")]
     let runtime_api = client.runtime_api();
-    #[cfg(feature = "pot")]
     let block_authoring_delay = match runtime_api.chain_constants(best_hash) {
         Ok(chain_constants) => chain_constants.block_authoring_delay(),
         Err(error) => {
@@ -67,8 +61,6 @@ pub async fn start_slot_worker<Block, Client, SC, Worker, SO, CIDP>(
             return;
         }
     };
-    #[cfg(not(feature = "pot"))]
-    let block_authoring_delay = Slot::from(6);
 
     let slot_info_producer = SlotInfoProducer::new(
         slot_duration.as_duration(),

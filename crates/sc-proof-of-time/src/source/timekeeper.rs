@@ -53,7 +53,6 @@ pub(super) fn run_timekeeper(
                 next_slot_input,
                 next_slot_input.slot,
                 checkpoints.output(),
-                #[cfg(feature = "pot")]
                 None,
             )
             .unwrap_or_else(|next_slot_input| next_slot_input);

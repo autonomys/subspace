@@ -72,7 +72,6 @@ pub type DomainOperator<RuntimeApi, ExecutorDispatch> = domain_service::DomainOp
     subspace_test_client::Client,
     RuntimeApi,
     ExecutorDispatch,
-    Arc<Client<RuntimeApi, ExecutorDispatch>>,
 >;
 
 /// A generic domain node instance used for testing.

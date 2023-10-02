@@ -12,6 +12,7 @@ on:
       - '**.md'
       - '.github/CODEOWNERS'
   workflow_dispatch:
+  merge_group:
 
 concurrency:
   group: rust-${{ github.workflow }}-${{ github.ref }}

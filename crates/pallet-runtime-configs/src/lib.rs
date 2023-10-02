@@ -17,10 +17,15 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+#[cfg(feature = "runtime-benchmarks")]
+mod benchmarking;
+pub mod weights;
+
 pub use pallet::*;
 
 #[frame_support::pallet]
 mod pallet {
+    use crate::weights::WeightInfo;
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
     use sp_runtime::traits::Zero;
@@ -35,19 +40,22 @@ mod pallet {
 
     /// Whether to disable the normal balances transfer calls.
     #[pallet::storage]
-    #[pallet::getter(fn enable_transfer)]
-    pub type EnableTransfer<T> = StorageValue<_, bool, ValueQuery>;
+    #[pallet::getter(fn enable_balance_transfers)]
+    pub type EnableBalanceTransfers<T> = StorageValue<_, bool, ValueQuery>;
 
     #[pallet::storage]
     pub type ConfirmationDepthK<T: Config> = StorageValue<_, BlockNumberFor<T>, ValueQuery>;
 
     #[pallet::config]
-    pub trait Config: frame_system::Config {}
+    pub trait Config: frame_system::Config {
+        /// Weight information for extrinsics in this pallet.
+        type WeightInfo: WeightInfo;
+    }
 
     #[pallet::genesis_config]
     pub struct GenesisConfig<T: Config> {
         pub enable_domains: bool,
-        pub enable_transfer: bool,
+        pub enable_balance_transfers: bool,
         pub confirmation_depth_k: BlockNumberFor<T>,
     }
 
@@ -56,7 +64,7 @@ mod pallet {
         fn default() -> Self {
             Self {
                 enable_domains: false,
-                enable_transfer: false,
+                enable_balance_transfers: false,
                 confirmation_depth_k: BlockNumberFor::<T>::from(100u32),
             }
         }
@@ -67,7 +75,7 @@ mod pallet {
         fn build(&self) {
             let Self {
                 enable_domains,
-                enable_transfer,
+                enable_balance_transfers,
                 confirmation_depth_k,
             } = self;
 
@@ -77,8 +85,36 @@ mod pallet {
             );
 
             <EnableDomains<T>>::put(enable_domains);
-            <EnableTransfer<T>>::put(enable_transfer);
+            <EnableBalanceTransfers<T>>::put(enable_balance_transfers);
             <ConfirmationDepthK<T>>::put(confirmation_depth_k);
+        }
+    }
+
+    #[pallet::call]
+    impl<T: Config> Pallet<T> {
+        /// Change enable domains state.
+        #[pallet::call_index(0)]
+        #[pallet::weight(<T as Config>::WeightInfo::set_enable_domains())]
+        pub fn set_enable_domains(origin: OriginFor<T>, enable_domains: bool) -> DispatchResult {
+            ensure_root(origin)?;
+
+            EnableDomains::<T>::put(enable_domains);
+
+            Ok(())
+        }
+
+        /// Enable or disable balance transfers for all users.
+        #[pallet::call_index(1)]
+        #[pallet::weight(<T as Config>::WeightInfo::set_enable_balance_transfers())]
+        pub fn set_enable_balance_transfers(
+            origin: OriginFor<T>,
+            enable_balance_transfers: bool,
+        ) -> DispatchResult {
+            ensure_root(origin)?;
+
+            EnableBalanceTransfers::<T>::put(enable_balance_transfers);
+
+            Ok(())
         }
     }
 }

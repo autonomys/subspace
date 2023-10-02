@@ -16,12 +16,27 @@ use subspace_core_primitives::PublicKey;
 use subspace_farmer::single_disk_farm::SingleDiskFarm;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_proof_of_space::chia::ChiaTable;
-use tracing::info;
+use tracing::{info, warn};
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::{fmt, EnvFilter};
 
 type PosTable = ChiaTable;
+
+fn available_parallelism() -> usize {
+    match std::thread::available_parallelism() {
+        Ok(parallelism) => parallelism.get(),
+        Err(error) => {
+            warn!(
+                %error,
+                "Unable to identify available parallelism, you might want to configure thread pool sizes with CLI \
+                options manually"
+            );
+
+            0
+        }
+    }
+}
 
 /// Arguments for farmer
 #[derive(Debug, Parser)]
@@ -69,13 +84,24 @@ struct FarmingArgs {
     /// DSN parameters
     #[clap(flatten)]
     dsn: DsnArgs,
-    /// Do not print info about configured farms on startup.
+    /// Do not print info about configured farms on startup
     #[arg(long)]
     no_info: bool,
     /// Defines endpoints for the prometheus metrics server. It doesn't start without at least
     /// one specified endpoint. Format: 127.0.0.1:8080
     #[arg(long, alias = "metrics-endpoint")]
     metrics_endpoints: Vec<SocketAddr>,
+    /// Size of thread pool used for farming (mostly for blocking I/O, but also for some compute-intensive
+    /// operations during proving), defaults to number of CPU cores available in the system
+    #[arg(long, default_value_t = available_parallelism())]
+    farming_thread_pool_size: usize,
+    /// Size of thread pool used for plotting, defaults to number of CPU cores available in the system
+    #[arg(long, default_value_t = available_parallelism())]
+    plotting_thread_pool_size: usize,
+    /// Size of thread pool used for replotting, typically smaller pool than for plotting to not affect farming as much,
+    /// defaults to half of the number of CPU cores available in the system.
+    #[arg(long, default_value_t = available_parallelism() / 2)]
+    replotting_thread_pool_size: usize,
 }
 
 fn cache_percentage_parser(s: &str) -> anyhow::Result<NonZeroU8> {
@@ -260,16 +286,28 @@ async fn main() -> anyhow::Result<()> {
                 SingleDiskFarm::wipe(disk_farm)?;
             }
 
-            info!("Done");
+            if disk_farms.is_empty() {
+                info!("No farm was specified, so there is nothing to do");
+            } else {
+                info!("Done");
+            }
         }
         Command::Farm(farming_args) => {
             commands::farm::<PosTable>(farming_args).await?;
         }
         Command::Info { disk_farms } => {
-            commands::info(disk_farms);
+            if disk_farms.is_empty() {
+                info!("No farm was specified, so there is nothing to do");
+            } else {
+                commands::info(disk_farms);
+            }
         }
         Command::Scrub { disk_farms } => {
-            commands::scrub(&disk_farms);
+            if disk_farms.is_empty() {
+                info!("No farm was specified, so there is nothing to do");
+            } else {
+                commands::scrub(&disk_farms);
+            }
         }
     }
     Ok(())

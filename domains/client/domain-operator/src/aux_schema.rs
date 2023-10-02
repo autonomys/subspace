@@ -246,6 +246,9 @@ pub(super) enum ReceiptMismatchInfo<CHash> {
         trace_index: u32,
         consensus_block_hash: CHash,
     },
+    DomainExtrinsicsRoot {
+        consensus_block_hash: CHash,
+    },
     InvalidBundles {
         mismatch_type: InvalidBundlesMismatchType,
         bundle_index: u32,
@@ -275,6 +278,9 @@ impl<CHash: Clone> ReceiptMismatchInfo<CHash> {
             ReceiptMismatchInfo::InvalidBundles {
                 consensus_block_hash,
                 ..
+            } => consensus_block_hash.clone(),
+            ReceiptMismatchInfo::DomainExtrinsicsRoot {
+                consensus_block_hash,
             } => consensus_block_hash.clone(),
         }
     }
