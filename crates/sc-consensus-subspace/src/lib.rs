@@ -858,9 +858,7 @@ where
                 && !self
                     .pot_verifier
                     .is_output_valid(
-                        pot_input.slot,
-                        pot_input.seed,
-                        pot_input.slot_iterations,
+                        pot_input,
                         slots_since_parent,
                         subspace_digest_items.pre_digest.pot_info().proof_of_time(),
                         subspace_digest_items.pot_parameters_change,

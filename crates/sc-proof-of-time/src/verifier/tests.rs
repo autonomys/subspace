@@ -1,6 +1,6 @@
 use crate::verifier::PotVerifier;
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::PotParametersChange;
+use sp_consensus_subspace::{PotNextSlotInput, PotParametersChange};
 use std::mem;
 use std::num::{NonZeroU32, NonZeroUsize};
 use subspace_core_primitives::{Blake3Hash, PotSeed};
@@ -21,9 +21,11 @@ async fn test_basic() {
     assert!(
         verifier
             .is_output_valid(
-                Slot::from(1),
-                genesis_seed,
-                slot_iterations,
+                PotNextSlotInput {
+                    slot: Slot::from(1),
+                    slot_iterations,
+                    seed: genesis_seed,
+                },
                 Slot::from(1),
                 checkpoints_1.output(),
                 None
@@ -40,9 +42,11 @@ async fn test_basic() {
     assert!(
         !verifier
             .is_output_valid(
-                Slot::from(1),
-                genesis_seed,
-                slot_iterations,
+                PotNextSlotInput {
+                    slot: Slot::from(1),
+                    slot_iterations,
+                    seed: genesis_seed,
+                },
                 Slot::from(2),
                 checkpoints_1.output(),
                 None
@@ -53,9 +57,11 @@ async fn test_basic() {
     assert!(
         !verifier
             .is_output_valid(
-                Slot::from(1),
-                checkpoints_1.output().seed(),
-                slot_iterations,
+                PotNextSlotInput {
+                    slot: Slot::from(1),
+                    slot_iterations,
+                    seed: checkpoints_1.output().seed(),
+                },
                 Slot::from(1),
                 checkpoints_1.output(),
                 None
@@ -82,9 +88,11 @@ async fn test_basic() {
     assert!(
         verifier
             .is_output_valid(
-                Slot::from(2),
-                seed_1,
-                slot_iterations,
+                PotNextSlotInput {
+                    slot: Slot::from(2),
+                    slot_iterations,
+                    seed: seed_1,
+                },
                 Slot::from(1),
                 checkpoints_2.output(),
                 None
@@ -94,9 +102,11 @@ async fn test_basic() {
     assert!(
         verifier
             .is_output_valid(
-                Slot::from(1),
-                genesis_seed,
-                slot_iterations,
+                PotNextSlotInput {
+                    slot: Slot::from(1),
+                    slot_iterations,
+                    seed: genesis_seed,
+                },
                 Slot::from(2),
                 checkpoints_2.output(),
                 None
@@ -113,9 +123,11 @@ async fn test_basic() {
     assert!(
         !verifier
             .is_output_valid(
-                Slot::from(1),
-                seed_1,
-                slot_iterations,
+                PotNextSlotInput {
+                    slot: Slot::from(1),
+                    slot_iterations,
+                    seed: seed_1,
+                },
                 Slot::from(2),
                 checkpoints_2.output(),
                 None
@@ -126,9 +138,11 @@ async fn test_basic() {
     assert!(
         !verifier
             .is_output_valid(
-                Slot::from(1),
-                seed_1,
-                slot_iterations,
+                PotNextSlotInput {
+                    slot: Slot::from(1),
+                    slot_iterations,
+                    seed: seed_1,
+                },
                 Slot::from(2),
                 checkpoints_2.output(),
                 None
@@ -139,11 +153,13 @@ async fn test_basic() {
     assert!(
         !verifier
             .is_output_valid(
-                Slot::from(1),
-                genesis_seed,
-                slot_iterations
-                    .checked_mul(NonZeroU32::new(2).unwrap())
-                    .unwrap(),
+                PotNextSlotInput {
+                    slot: Slot::from(1),
+                    slot_iterations: slot_iterations
+                        .checked_mul(NonZeroU32::new(2).unwrap())
+                        .unwrap(),
+                    seed: genesis_seed,
+                },
                 Slot::from(2),
                 checkpoints_2.output(),
                 None
@@ -173,9 +189,11 @@ async fn parameters_change() {
     assert!(
         verifier
             .is_output_valid(
-                Slot::from(1),
-                genesis_seed,
-                slot_iterations_1,
+                PotNextSlotInput {
+                    slot: Slot::from(1),
+                    slot_iterations: slot_iterations_1,
+                    seed: genesis_seed,
+                },
                 Slot::from(1),
                 checkpoints_1.output(),
                 Some(PotParametersChange {
@@ -190,9 +208,11 @@ async fn parameters_change() {
     assert!(
         verifier
             .is_output_valid(
-                Slot::from(1),
-                genesis_seed,
-                slot_iterations_1,
+                PotNextSlotInput {
+                    slot: Slot::from(1),
+                    slot_iterations: slot_iterations_1,
+                    seed: genesis_seed,
+                },
                 Slot::from(3),
                 checkpoints_3.output(),
                 Some(PotParametersChange {
@@ -207,9 +227,11 @@ async fn parameters_change() {
     assert!(
         verifier
             .is_output_valid(
-                Slot::from(1),
-                genesis_seed,
-                slot_iterations_1,
+                PotNextSlotInput {
+                    slot: Slot::from(1),
+                    slot_iterations: slot_iterations_1,
+                    seed: genesis_seed,
+                },
                 Slot::from(2),
                 checkpoints_2.output(),
                 Some(PotParametersChange {
@@ -224,9 +246,11 @@ async fn parameters_change() {
     assert!(
         verifier
             .is_output_valid(
-                Slot::from(2),
-                checkpoints_1.output().seed_with_entropy(&entropy),
-                slot_iterations_2,
+                PotNextSlotInput {
+                    slot: Slot::from(2),
+                    slot_iterations: slot_iterations_2,
+                    seed: checkpoints_1.output().seed_with_entropy(&entropy),
+                },
                 Slot::from(2),
                 checkpoints_3.output(),
                 Some(PotParametersChange {
@@ -242,9 +266,11 @@ async fn parameters_change() {
     assert!(
         !verifier
             .is_output_valid(
-                Slot::from(1),
-                genesis_seed,
-                slot_iterations_1,
+                PotNextSlotInput {
+                    slot: Slot::from(1),
+                    slot_iterations: slot_iterations_1,
+                    seed: genesis_seed,
+                },
                 Slot::from(3),
                 checkpoints_3.output(),
                 None
@@ -255,9 +281,11 @@ async fn parameters_change() {
     assert!(
         !verifier
             .is_output_valid(
-                Slot::from(2),
-                genesis_seed,
-                slot_iterations_1,
+                PotNextSlotInput {
+                    slot: Slot::from(2),
+                    slot_iterations: slot_iterations_1,
+                    seed: genesis_seed,
+                },
                 Slot::from(3),
                 checkpoints_3.output(),
                 Some(PotParametersChange {

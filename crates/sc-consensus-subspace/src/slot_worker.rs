@@ -339,9 +339,7 @@ where
             if !self
                 .pot_verifier
                 .is_output_valid(
-                    pot_input.slot,
-                    pot_input.seed,
-                    pot_input.slot_iterations,
+                    pot_input,
                     Slot::from(u64::from(future_slot) - u64::from(parent_slot)),
                     future_proof_of_time,
                     parent_pot_parameters.next_parameters_change(),

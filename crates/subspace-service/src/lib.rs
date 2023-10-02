@@ -338,18 +338,14 @@ where
 
                 if quick_verification {
                     block_on(pot_verifier.try_is_output_valid(
-                        pot_input.slot,
-                        pot_input.seed,
-                        pot_input.slot_iterations,
+                        pot_input,
                         Slot::from(slot - u64::from(parent_slot)),
                         proof_of_time,
                         pot_parameters.next_parameters_change(),
                     ))
                 } else {
                     block_on(pot_verifier.is_output_valid(
-                        pot_input.slot,
-                        pot_input.seed,
-                        pot_input.slot_iterations,
+                        pot_input,
                         Slot::from(slot - u64::from(parent_slot)),
                         proof_of_time,
                         pot_parameters.next_parameters_change(),

@@ -356,9 +356,7 @@ where
             && !self
                 .pot_verifier
                 .is_output_valid(
-                    pot_input.slot,
-                    pot_input.seed,
-                    pot_input.slot_iterations,
+                    pot_input,
                     self.chain_constants.block_authoring_delay(),
                     pre_digest.pot_info().future_proof_of_time(),
                     subspace_digest_items.pot_parameters_change,

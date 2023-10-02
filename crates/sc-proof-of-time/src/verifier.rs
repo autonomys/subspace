@@ -91,23 +91,13 @@ impl PotVerifier {
     /// whenever possible.
     pub async fn is_output_valid(
         &self,
-        slot: Slot,
-        seed: PotSeed,
-        slot_iterations: NonZeroU32,
+        input: PotNextSlotInput,
         slots: Slot,
         output: PotOutput,
         maybe_parameters_change: Option<PotParametersChange>,
     ) -> bool {
-        self.is_output_valid_internal(
-            slot,
-            seed,
-            slot_iterations,
-            slots,
-            output,
-            maybe_parameters_change,
-            true,
-        )
-        .await
+        self.is_output_valid_internal(input, slots, output, maybe_parameters_change, true)
+            .await
     }
 
     /// Does the same verification as [`Self::is_output_valid()`] except it relies on proofs being
@@ -115,31 +105,18 @@ impl PotVerifier {
     /// be a quick and cheap version of the function.
     pub async fn try_is_output_valid(
         &self,
-        slot: Slot,
-        seed: PotSeed,
-        slot_iterations: NonZeroU32,
+        input: PotNextSlotInput,
         slots: Slot,
         output: PotOutput,
         maybe_parameters_change: Option<PotParametersChange>,
     ) -> bool {
-        self.is_output_valid_internal(
-            slot,
-            seed,
-            slot_iterations,
-            slots,
-            output,
-            maybe_parameters_change,
-            false,
-        )
-        .await
+        self.is_output_valid_internal(input, slots, output, maybe_parameters_change, false)
+            .await
     }
 
-    #[allow(clippy::too_many_arguments)]
     async fn is_output_valid_internal(
         &self,
-        mut slot: Slot,
-        mut seed: PotSeed,
-        mut slot_iterations: NonZeroU32,
+        mut input: PotNextSlotInput,
         slots: Slot,
         output: PotOutput,
         maybe_parameters_change: Option<PotParametersChange>,
@@ -160,8 +137,8 @@ impl PotVerifier {
                             let _ = result_sender.send(
                                 verifier
                                     .calculate_output(
-                                        seed,
-                                        slot_iterations,
+                                        input.seed,
+                                        input.slot_iterations,
                                         do_proving_if_necessary,
                                     )
                                     .await,
@@ -181,18 +158,12 @@ impl PotVerifier {
                 return output == calculated_proof;
             }
 
-            let pot_input = PotNextSlotInput::derive(
-                slot_iterations,
-                slot,
+            input = PotNextSlotInput::derive(
+                input.slot_iterations,
+                input.slot,
                 calculated_proof,
                 &maybe_parameters_change,
             );
-
-            // TODO: Consider carrying of the whole `PotNextSlotInput` rather than individual
-            //  variables
-            slot = pot_input.slot;
-            slot_iterations = pot_input.slot_iterations;
-            seed = pot_input.seed;
         }
     }
 
