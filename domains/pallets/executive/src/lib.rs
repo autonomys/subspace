@@ -51,7 +51,7 @@ pub type OriginOf<E, C> = <CallOf<E, C> as Dispatchable>::RuntimeOrigin;
 mod pallet {
     use frame_support::dispatch::GetDispatchInfo;
     use frame_support::pallet_prelude::*;
-    use frame_support::traits::UnfilteredDispatchable;
+    use frame_support::traits::{Contains, UnfilteredDispatchable};
     use frame_system::pallet_prelude::*;
     use sp_std::boxed::Box;
     use sp_std::vec::Vec;
@@ -62,11 +62,18 @@ mod pallet {
         type RuntimeCall: Parameter
             + UnfilteredDispatchable<RuntimeOrigin = Self::RuntimeOrigin>
             + GetDispatchInfo;
+        type ExecutiveCallFilter: Contains<<Self as Config>::RuntimeCall>;
     }
 
     #[pallet::pallet]
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
+
+    /// Pallet-executive errors.
+    #[pallet::error]
+    pub enum Error<T> {
+        InvalidCall,
+    }
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
@@ -80,6 +87,10 @@ mod pallet {
             call: Box<<T as Config>::RuntimeCall>,
         ) -> DispatchResult {
             ensure_none(origin)?;
+            ensure!(
+                T::ExecutiveCallFilter::contains(&call),
+                Error::<T>::InvalidCall
+            );
             let res = call.dispatch_bypass_filter(frame_system::RawOrigin::Root.into());
             Self::deposit_event(Event::Sudid {
                 sudo_result: res.map(|_| ()).map_err(|e| e.error),

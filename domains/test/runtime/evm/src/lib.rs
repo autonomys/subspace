@@ -16,8 +16,8 @@ use fp_account::EthereumSignature;
 use fp_self_contained::SelfContainedCall;
 use frame_support::dispatch::{DispatchClass, GetDispatchInfo};
 use frame_support::traits::{
-    ConstU16, ConstU32, ConstU64, Currency, Everything, FindAuthor, Imbalance, OnFinalize,
-    OnUnbalanced,
+    ConstU16, ConstU32, ConstU64, Contains, Currency, Everything, FindAuthor, Imbalance,
+    OnFinalize, OnUnbalanced,
 };
 use frame_support::weights::constants::{
     BlockExecutionWeight, ExtrinsicBaseWeight, ParityDbWeight, WEIGHT_REF_TIME_PER_MILLIS,
@@ -359,9 +359,17 @@ impl pallet_transaction_payment::Config for Runtime {
     type OperationalFeeMultiplier = OperationalFeeMultiplier;
 }
 
+pub struct SetCodeCallFilter;
+impl Contains<RuntimeCall> for SetCodeCallFilter {
+    fn contains(t: &RuntimeCall) -> bool {
+        matches!(t, RuntimeCall::System(frame_system::Call::set_code { .. }))
+    }
+}
+
 impl domain_pallet_executive::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type RuntimeCall = RuntimeCall;
+    type ExecutiveCallFilter = SetCodeCallFilter;
 }
 
 impl pallet_sudo::Config for Runtime {
