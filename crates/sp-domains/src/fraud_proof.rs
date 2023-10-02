@@ -203,7 +203,8 @@ pub enum MissingBundleAdditionalData {
 pub struct MissingInvalidBundleEntryFraudProof<Number, Hash, DomainNumber, DomainHash> {
     pub domain_id: DomainId,
     pub bad_receipt_hash: H256,
-    pub consensus_block_hash: Hash,
+    pub consensus_block_incl_bundle: Hash,
+    pub consensus_block_incl_er: Hash,
     pub bundle_index: u32,
     pub opaque_bundle_with_proof:
         OpaqueBundleWithProof<Number, Hash, DomainNumber, DomainHash, Balance>,
@@ -217,7 +218,8 @@ impl<Number, Hash, DomainNumber, DomainHash>
     pub fn new(
         domain_id: DomainId,
         bad_receipt_hash: H256,
-        consensus_block_hash: Hash,
+        consensus_block_incl_bundle: Hash,
+        consensus_block_incl_er: Hash,
         bundle_index: u32,
         opaque_bundle_with_proof: OpaqueBundleWithProof<
             Number,
@@ -232,7 +234,8 @@ impl<Number, Hash, DomainNumber, DomainHash>
         Self {
             domain_id,
             bad_receipt_hash,
-            consensus_block_hash,
+            consensus_block_incl_er,
+            consensus_block_incl_bundle,
             bundle_index,
             opaque_bundle_with_proof,
             runtime_code_with_proof,

@@ -232,7 +232,7 @@ pub(super) fn target_receipt_is_pruned(
 
 // TODO: Naming could use some work
 #[derive(Encode, Decode, Debug, PartialEq)]
-pub(super) enum InvalidBundlesMismatchType {
+pub enum InvalidBundlesMismatchType {
     ValidAsInvalid,
     InvalidAsValid,
 }

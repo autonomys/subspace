@@ -231,12 +231,15 @@ where
             bundle_index,
         )?;
 
+        let consensus_block_hash_incl_er = self.consensus_client.info().best_hash;
+
         Ok(FraudProof::InvalidBundles(
             InvalidBundlesFraudProof::MissingInvalidBundleEntry(
                 MissingInvalidBundleEntryFraudProof::new(
                     domain_id,
                     bad_receipt_hash,
                     consensus_block_hash.clone(),
+                    consensus_block_hash_incl_er,
                     bundle_index,
                     bundle_with_proof,
                     runtime_code_with_proof,
@@ -248,7 +251,7 @@ where
         ))
     }
 
-    pub(crate) fn generate_invalid_bundle_field_proof(
+    pub fn generate_invalid_bundle_field_proof(
         &self,
         domain_id: DomainId,
         local_receipt: &ExecutionReceiptFor<Block, CBlock>,

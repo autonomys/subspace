@@ -2,6 +2,7 @@
 
 use codec::{Decode, Encode};
 use domain_block_preprocessor::runtime_api_light::RuntimeApiLight;
+use sc_executor::RuntimeVersionOf;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::CodeExecutor;
@@ -43,7 +44,7 @@ where
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock> + Send + Sync,
     CClient::Api: DomainsApi<CBlock, NumberFor<DomainBlock>, <DomainBlock as BlockT>::Hash>
         + ExecutionReceiptApi<CBlock, NumberFor<DomainBlock>, <DomainBlock as BlockT>::Hash>,
-    Exec: CodeExecutor + 'static,
+    Exec: CodeExecutor + 'static + RuntimeVersionOf,
 {
     /// Constructs a new instance of [`InvalidBundleProofVerifier`].
     pub fn new(consensus_client: Arc<CClient>, executor: Arc<Exec>) -> Self {
@@ -68,7 +69,8 @@ where
             InvalidBundlesFraudProof::MissingInvalidBundleEntry(proof) => {
                 let MissingInvalidBundleEntryFraudProof {
                     domain_id,
-                    consensus_block_hash,
+                    consensus_block_incl_bundle: consensus_block_hash_incl_bundle,
+                    consensus_block_incl_er: consensus_block_hash_incl_er,
                     runtime_code_with_proof,
                     opaque_bundle_with_proof,
                     additional_data,
@@ -77,17 +79,17 @@ where
                     ..
                 } = proof;
 
-                let consensus_block_header = {
-                    self.consensus_client
-                        .header(*consensus_block_hash)?
-                        .ok_or_else(|| {
-                            sp_blockchain::Error::Backend(format!(
-                                "Header for {consensus_block_hash} not found"
-                            ))
-                        })?
-                };
-                let parent_consensus_block_header = {
-                    let parent_hash = consensus_block_header.parent_hash();
+                let consensus_block_header_incl_bundle = self
+                    .consensus_client
+                    .header(*consensus_block_hash_incl_bundle)?
+                    .ok_or_else(|| {
+                        sp_blockchain::Error::Backend(format!(
+                            "Header for {consensus_block_hash_incl_bundle} not found"
+                        ))
+                    })?;
+
+                let parent_consensus_block_header_incl_bundle = {
+                    let parent_hash = consensus_block_header_incl_bundle.parent_hash();
                     self.consensus_client.header(*parent_hash)?.ok_or_else(|| {
                         sp_blockchain::Error::Backend(format!("Header for {parent_hash} not found"))
                     })?
@@ -98,14 +100,17 @@ where
                 let bad_receipt = self
                     .consensus_client
                     .runtime_api()
-                    .get_execution_receipt_by_hash(*consensus_block_hash, *bad_receipt_hash)?
+                    .get_execution_receipt_by_hash(
+                        *consensus_block_hash_incl_er,
+                        *bad_receipt_hash,
+                    )?
                     .ok_or(VerificationError::ExecutionReceiptNotFound)?;
 
                 let parent_of_bad_receipt = self
                     .consensus_client
                     .runtime_api()
                     .get_execution_receipt_by_hash(
-                        *consensus_block_hash,
+                        *consensus_block_hash_incl_er,
                         bad_receipt.parent_domain_block_receipt_hash,
                     )?
                     .ok_or(VerificationError::ExecutionReceiptNotFound)?;
@@ -113,8 +118,10 @@ where
                 let parent_domain_block_hash = parent_of_bad_receipt.domain_block_hash;
 
                 // Verify the existence of the `bundle` in the consensus chain
-                opaque_bundle_with_proof
-                    .verify::<CBlock>(*domain_id, consensus_block_header.state_root())?;
+                opaque_bundle_with_proof.verify::<CBlock>(
+                    *domain_id,
+                    consensus_block_header_incl_bundle.state_root(),
+                )?;
                 let OpaqueBundleWithProof { bundle, .. } = opaque_bundle_with_proof;
 
                 // Bundle with tx out of range, should be either part of invalid bundle with different invalid bundle type
@@ -138,8 +145,10 @@ where
                 //
                 // NOTE: we use the state root of the parent block to verify here, see the comment
                 // of `DomainRuntimeCodeWithProof` for more detail.
-                let domain_runtime_code = runtime_code_with_proof
-                    .verify::<CBlock>(*domain_id, parent_consensus_block_header.state_root())?;
+                let domain_runtime_code = runtime_code_with_proof.verify::<CBlock>(
+                    *domain_id,
+                    parent_consensus_block_header_incl_bundle.state_root(),
+                )?;
 
                 let runtime_api_light =
                     RuntimeApiLight::new(self.executor.clone(), domain_runtime_code.into());
@@ -159,7 +168,7 @@ where
                         let tx_range = self
                             .consensus_client
                             .runtime_api()
-                            .domain_tx_range(*consensus_block_hash, *domain_id)?;
+                            .domain_tx_range(*consensus_block_hash_incl_bundle, *domain_id)?;
 
                         let bundle_vrf_hash = U256::from_be_bytes(
                             bundle.sealed_header.header.proof_of_election.vrf_hash(),
@@ -214,7 +223,7 @@ where
     Client: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock> + Send + Sync,
     Client::Api: DomainsApi<CBlock, NumberFor<DomainBlock>, <DomainBlock as BlockT>::Hash>
         + ExecutionReceiptApi<CBlock, NumberFor<DomainBlock>, <DomainBlock as BlockT>::Hash>,
-    Exec: CodeExecutor + 'static,
+    Exec: CodeExecutor + 'static + RuntimeVersionOf,
 {
     fn verify_invalid_bundle_proof(
         &self,

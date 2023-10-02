@@ -61,7 +61,7 @@
 #![feature(const_option)]
 #![feature(extract_if)]
 
-mod aux_schema;
+pub mod aux_schema;
 mod bootstrapper;
 mod bundle_processor;
 mod bundle_producer_election_solver;
@@ -70,7 +70,7 @@ pub mod domain_bundle_producer;
 mod domain_bundle_proposer;
 mod domain_worker;
 mod domain_worker_starter;
-mod fraud_proof;
+pub mod fraud_proof;
 mod operator;
 mod parent_chain;
 #[cfg(test)]
