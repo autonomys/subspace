@@ -478,18 +478,7 @@ parameter_types! {
 
 type NegativeImbalance = <Balances as Currency<AccountId>>::NegativeImbalance;
 
-// `BaseFeeHandler` is used to handle the base fee of the evm extrinsic separately, this is necessary
-// because `InnerEVMCurrencyAdapter::pallet_operator_rewards` only return the tip of the evm extrinsic.
-struct BaseFeeHandler;
-
-impl OnUnbalanced<NegativeImbalance> for BaseFeeHandler {
-    fn on_nonzero_unbalanced(base_fee: NegativeImbalance) {
-        // Record the evm transaction base fee
-        OperatorRewards::note_operator_rewards(base_fee.peek())
-    }
-}
-
-type InnerEVMCurrencyAdapter = pallet_evm::EVMCurrencyAdapter<Balances, BaseFeeHandler>;
+type InnerEVMCurrencyAdapter = pallet_evm::EVMCurrencyAdapter<Balances, ()>;
 
 // Implementation of [`pallet_transaction_payment::OnChargeTransaction`] that charges evm transaction
 // fees from the transaction sender and collect all the fees (including both the base fee and tip) in
@@ -512,15 +501,14 @@ impl pallet_evm::OnChargeEVMTransaction<Runtime> for EVMCurrencyAdapter {
         base_fee: U256,
         already_withdrawn: Self::LiquidityInfo,
     ) -> Self::LiquidityInfo {
-        let tip =
-            <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<
-                Runtime,
-            >>::correct_and_deposit_fee(who, corrected_fee, base_fee, already_withdrawn);
-        if let Some(t) = tip.as_ref() {
-            // Record the evm transaction tip
-            OperatorRewards::note_operator_rewards(t.peek())
+        if already_withdrawn.is_some() {
+            // Record the evm actual transaction fee
+            OperatorRewards::note_operator_rewards(corrected_fee.as_u128());
         }
-        tip
+
+        <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<
+            Runtime,
+        >>::correct_and_deposit_fee(who, corrected_fee, base_fee, already_withdrawn)
     }
 
     fn pay_priority_fee(tip: Self::LiquidityInfo) {
