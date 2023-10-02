@@ -30,7 +30,6 @@ use sc_subspace_chain_specs::ConsensusChainSpec;
 use sc_telemetry::serde_json;
 use serde_json::Value;
 use std::io::Write;
-use std::num::NonZeroUsize;
 use std::{fs, io};
 use subspace_networking::libp2p::Multiaddr;
 
@@ -288,12 +287,6 @@ pub struct Cli {
     /// Assigned PoT role for this node.
     #[arg(long, default_value = "none", value_parser(EnumValueParser::< CliPotRole >::new()))]
     pub pot_role: CliPotRole,
-
-    /// Defines the parallelism level (number of simultaneous requests) for DSN synchronization.
-    /// It should be changed along with outgoing connection limits. Affects the sync performance,
-    /// error rate, and overall machine responsiveness.
-    #[arg(long, default_value_t = NonZeroUsize::new(5).expect("Manual setting"))]
-    pub dsn_sync_parallelism_level: NonZeroUsize,
 }
 
 impl SubstrateCli for Cli {

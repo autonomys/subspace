@@ -199,8 +199,6 @@ pub struct SubspaceConfiguration {
     /// Use the block request handler implementation from subspace
     /// instead of the default substrate handler.
     pub enable_subspace_block_relay: bool,
-    /// Defines the parallelism level (number of simultaneous requests) for DSN synchronization.
-    pub dsn_sync_parallelism_level: usize,
 }
 
 struct SubspaceExtensionsFactory<PosTable> {
@@ -725,7 +723,6 @@ where
             import_queue_service,
             sync_mode,
             subspace_link.kzg().clone(),
-            config.dsn_sync_parallelism_level,
         );
         task_manager
             .spawn_handle()
