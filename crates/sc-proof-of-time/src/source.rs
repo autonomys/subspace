@@ -3,7 +3,7 @@ mod state;
 mod timekeeper;
 
 use crate::source::gossip::{GossipProof, PotGossipWorker, ToGossipMessage};
-use crate::source::state::{NextSlotInput, PotState, PotStateUpdateOutcome};
+use crate::source::state::{PotState, PotStateUpdateOutcome};
 use crate::source::timekeeper::{run_timekeeper, TimekeeperProof};
 use crate::verifier::PotVerifier;
 use core_affinity::CoreId;
@@ -19,7 +19,8 @@ use sp_consensus::SyncOracle;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{extract_pre_digest, extract_subspace_digest_items};
 use sp_consensus_subspace::{
-    ChainConstants, FarmerPublicKey, FarmerSignature, SubspaceApi as SubspaceRuntimeApi,
+    ChainConstants, FarmerPublicKey, FarmerSignature, PotNextSlotInput,
+    SubspaceApi as SubspaceRuntimeApi,
 };
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, Zero};
 use std::collections::HashSet;
@@ -122,7 +123,7 @@ where
             }
 
         let state = Arc::new(PotState::new(
-            NextSlotInput {
+            PotNextSlotInput {
                 slot: start_slot,
                 slot_iterations,
                 seed: start_seed,
@@ -268,7 +269,7 @@ where
     // TODO: Follow both verified and unverified checkpoints to start secondary timekeeper ASAP in
     //  case verification succeeds
     fn handle_gossip_proof(&mut self, _sender: PeerId, proof: GossipProof) {
-        let expected_next_slot_input = NextSlotInput {
+        let expected_next_slot_input = PotNextSlotInput {
             slot: proof.slot,
             slot_iterations: proof.slot_iterations,
             seed: proof.seed,

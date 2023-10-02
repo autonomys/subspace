@@ -136,6 +136,17 @@ impl SubspaceJustification {
 /// An equivocation proof for multiple block authorships on the same slot (i.e. double vote).
 pub type EquivocationProof<Header> = sp_consensus_slots::EquivocationProof<Header, FarmerPublicKey>;
 
+/// Next slot input for proof of time evaluation
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Decode, Encode, TypeInfo, MaxEncodedLen)]
+pub struct PotNextSlotInput {
+    /// Slot
+    pub slot: Slot,
+    /// Slot iterations for this slot
+    pub slot_iterations: NonZeroU32,
+    /// Seed for this slot
+    pub seed: PotSeed,
+}
+
 /// Change of parameters to apply to PoT chain
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Decode, Encode, TypeInfo, MaxEncodedLen)]
 pub struct PotParametersChange {

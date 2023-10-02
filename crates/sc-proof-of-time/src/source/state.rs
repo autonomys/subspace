@@ -1,21 +1,13 @@
 use crate::verifier::PotVerifier;
 use atomic::Atomic;
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::PotParametersChange;
-use std::num::NonZeroU32;
+use sp_consensus_subspace::{PotNextSlotInput, PotParametersChange};
 use std::sync::atomic::Ordering;
-use subspace_core_primitives::{PotOutput, PotSeed};
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub(super) struct NextSlotInput {
-    pub(super) slot: Slot,
-    pub(super) slot_iterations: NonZeroU32,
-    pub(super) seed: PotSeed,
-}
+use subspace_core_primitives::PotOutput;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 struct InnerState {
-    next_slot_input: NextSlotInput,
+    next_slot_input: PotNextSlotInput,
     parameters_change: Option<PotParametersChange>,
 }
 
@@ -52,7 +44,7 @@ impl InnerState {
                 next_seed = best_output.seed();
             }
 
-            self.next_slot_input = NextSlotInput {
+            self.next_slot_input = PotNextSlotInput {
                 slot: next_slot,
                 slot_iterations: next_slot_iterations,
                 seed: next_seed,
@@ -77,12 +69,12 @@ impl InnerState {
 pub(super) enum PotStateUpdateOutcome {
     NoChange,
     Extension {
-        from: NextSlotInput,
-        to: NextSlotInput,
+        from: PotNextSlotInput,
+        to: PotNextSlotInput,
     },
     Reorg {
-        from: NextSlotInput,
-        to: NextSlotInput,
+        from: PotNextSlotInput,
+        to: PotNextSlotInput,
     },
 }
 
@@ -94,7 +86,7 @@ pub(super) struct PotState {
 
 impl PotState {
     pub(super) fn new(
-        next_slot_input: NextSlotInput,
+        next_slot_input: PotNextSlotInput,
         parameters_change: Option<PotParametersChange>,
         verifier: PotVerifier,
     ) -> Self {
@@ -109,7 +101,7 @@ impl PotState {
         }
     }
 
-    pub(super) fn next_slot_input(&self, ordering: Ordering) -> NextSlotInput {
+    pub(super) fn next_slot_input(&self, ordering: Ordering) -> PotNextSlotInput {
         self.inner_state.load(ordering).next_slot_input
     }
 
@@ -119,11 +111,11 @@ impl PotState {
     /// `Err(existing_next_slot_input)` in case state was changed in the meantime.
     pub(super) fn try_extend(
         &self,
-        expected_previous_next_slot_input: NextSlotInput,
+        expected_previous_next_slot_input: PotNextSlotInput,
         best_slot: Slot,
         best_output: PotOutput,
         maybe_updated_parameters_change: Option<Option<PotParametersChange>>,
-    ) -> Result<NextSlotInput, NextSlotInput> {
+    ) -> Result<PotNextSlotInput, PotNextSlotInput> {
         let old_inner_state = self.inner_state.load(Ordering::Acquire);
         if expected_previous_next_slot_input != old_inner_state.next_slot_input {
             return Err(old_inner_state.next_slot_input);
