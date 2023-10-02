@@ -24,37 +24,19 @@ impl InnerState {
         }
 
         loop {
-            let next_slot = best_slot + Slot::from(1);
-            let next_slot_iterations;
-            let next_seed;
-
-            // The change to number of iterations might have happened before `next_slot`
-            if let Some(parameters_change) = self.parameters_change
-                && parameters_change.slot <= next_slot
-            {
-                next_slot_iterations = parameters_change.slot_iterations;
-                // Only if entropy injection happens on this exact slot we need to mix it in
-                if parameters_change.slot == next_slot {
-                    next_seed = best_output.seed_with_entropy(&parameters_change.entropy);
-                } else {
-                    next_seed = best_output.seed();
-                }
-            } else {
-                next_slot_iterations = self.next_slot_input.slot_iterations;
-                next_seed = best_output.seed();
-            }
-
-            self.next_slot_input = PotNextSlotInput {
-                slot: next_slot,
-                slot_iterations: next_slot_iterations,
-                seed: next_seed,
-            };
+            self.next_slot_input = PotNextSlotInput::derive(
+                self.next_slot_input.slot_iterations,
+                best_slot,
+                best_output,
+                &self.parameters_change,
+            );
 
             // Advance further as far as possible using previously verified proofs/checkpoints
-            if let Some(checkpoints) =
-                pot_verifier.try_get_checkpoints(next_seed, next_slot_iterations)
-            {
-                best_slot = best_slot + Slot::from(1);
+            if let Some(checkpoints) = pot_verifier.try_get_checkpoints(
+                self.next_slot_input.seed,
+                self.next_slot_input.slot_iterations,
+            ) {
+                best_slot = self.next_slot_input.slot;
                 best_output = checkpoints.output();
             } else {
                 break;
@@ -186,17 +168,18 @@ impl PotState {
                     break;
                 };
 
-                let next_slot = slot + Slot::from(1);
+                let pot_input = PotNextSlotInput::derive(
+                    slot_iterations,
+                    slot,
+                    checkpoints.output(),
+                    &maybe_updated_parameters_change.flatten(),
+                );
 
-                // In case parameters change in the next slot, account for them
-                if let Some(Some(parameters_change)) = maybe_updated_parameters_change
-                    && parameters_change.slot == next_slot
-                {
-                    slot_iterations = parameters_change.slot_iterations;
-                    seed = checkpoints.output().seed_with_entropy(&parameters_change.entropy);
-                } else {
-                    seed = checkpoints.output().seed();
-                }
+                // TODO: Consider carrying of the whole `PotNextSlotInput` rather than individual
+                //  variables
+                let next_slot = slot + Slot::from(1);
+                slot_iterations = pot_input.slot_iterations;
+                seed = pot_input.seed;
 
                 if next_slot == best_state.next_slot_input.slot
                     && slot_iterations == best_state.next_slot_input.slot_iterations

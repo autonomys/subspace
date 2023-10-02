@@ -8,7 +8,7 @@ use futures::channel::oneshot;
 use lru::LruCache;
 use parking_lot::Mutex;
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::PotParametersChange;
+use sp_consensus_subspace::{PotNextSlotInput, PotParametersChange};
 use std::num::{NonZeroU32, NonZeroUsize};
 use std::sync::Arc;
 use subspace_core_primitives::{PotCheckpoints, PotOutput, PotSeed};
@@ -142,7 +142,7 @@ impl PotVerifier {
         mut slot_iterations: NonZeroU32,
         slots: Slot,
         output: PotOutput,
-        mut maybe_parameters_change: Option<PotParametersChange>,
+        maybe_parameters_change: Option<PotParametersChange>,
         do_proving_if_necessary: bool,
     ) -> bool {
         let mut slots = u64::from(slots);
@@ -181,17 +181,18 @@ impl PotVerifier {
                 return output == calculated_proof;
             }
 
-            slot = slot + Slot::from(1);
+            let pot_input = PotNextSlotInput::derive(
+                slot_iterations,
+                slot,
+                calculated_proof,
+                &maybe_parameters_change,
+            );
 
-            if let Some(parameters_change) = maybe_parameters_change
-                && parameters_change.slot == slot
-            {
-                slot_iterations = parameters_change.slot_iterations;
-                seed = calculated_proof.seed_with_entropy(&parameters_change.entropy);
-                maybe_parameters_change.take();
-            } else {
-                seed = calculated_proof.seed();
-            }
+            // TODO: Consider carrying of the whole `PotNextSlotInput` rather than individual
+            //  variables
+            slot = pot_input.slot;
+            slot_iterations = pot_input.slot_iterations;
+            seed = pot_input.seed;
         }
     }
 

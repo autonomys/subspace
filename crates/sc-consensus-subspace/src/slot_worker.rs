@@ -43,7 +43,7 @@ use sp_consensus_subspace::digests::{
     extract_pre_digest, CompatibleDigestItem, PreDigest, PreDigestPotInfo,
 };
 use sp_consensus_subspace::{
-    ChainConstants, FarmerPublicKey, FarmerSignature, SignedVote, SubspaceApi,
+    ChainConstants, FarmerPublicKey, FarmerSignature, PotNextSlotInput, SignedVote, SubspaceApi,
     SubspaceJustification, Vote,
 };
 use sp_core::crypto::ByteArray;
@@ -291,7 +291,7 @@ where
 
         let maybe_root_plot_public_key = runtime_api.root_plot_public_key(parent_hash).ok()?;
 
-        let pot_parameters = runtime_api.pot_parameters(parent_hash).ok()?;
+        let parent_pot_parameters = runtime_api.pot_parameters(parent_hash).ok()?;
         let parent_future_slot = if parent_header.number().is_zero() {
             parent_slot
         } else {
@@ -320,49 +320,31 @@ where
                 })
                 .collect::<Vec<_>>();
 
-            let slot_iterations;
-            let pot_seed;
-            let after_parent_slot = parent_slot + Slot::from(1);
-
-            if parent_header.number().is_zero() {
-                slot_iterations = pot_parameters.slot_iterations();
-                pot_seed = self.pot_verifier.genesis_seed();
-            } else {
-                let pot_info = parent_pre_digest.pot_info();
-                // The change to number of iterations might have happened before
-                // `after_parent_slot`
-                if let Some(parameters_change) = pot_parameters.next_parameters_change()
-                    && parameters_change.slot <= after_parent_slot
-                {
-                    slot_iterations = parameters_change.slot_iterations;
-                    // Only if entropy injection happens exactly after parent slot we need to \
-                    // mix it in
-                    if parameters_change.slot == after_parent_slot {
-                        pot_seed = pot_info
-                            .proof_of_time()
-                            .seed_with_entropy(&parameters_change.entropy);
-                    } else {
-                        pot_seed = pot_info
-                            .proof_of_time().seed();
-                    }
-                } else {
-                    slot_iterations = pot_parameters.slot_iterations();
-                    pot_seed = pot_info
-                        .proof_of_time()
-                        .seed();
+            let pot_input = if parent_header.number().is_zero() {
+                PotNextSlotInput {
+                    slot: parent_slot + Slot::from(1),
+                    slot_iterations: parent_pot_parameters.slot_iterations(),
+                    seed: self.pot_verifier.genesis_seed(),
                 }
+            } else {
+                PotNextSlotInput::derive(
+                    parent_pot_parameters.slot_iterations(),
+                    parent_slot,
+                    parent_pre_digest.pot_info().proof_of_time(),
+                    &parent_pot_parameters.next_parameters_change(),
+                )
             };
 
             // Ensure proof of time and future proof of time included in upcoming block are valid
             if !self
                 .pot_verifier
                 .is_output_valid(
-                    after_parent_slot,
-                    pot_seed,
-                    slot_iterations,
+                    pot_input.slot,
+                    pot_input.seed,
+                    pot_input.slot_iterations,
                     Slot::from(u64::from(future_slot) - u64::from(parent_slot)),
                     future_proof_of_time,
-                    pot_parameters.next_parameters_change(),
+                    parent_pot_parameters.next_parameters_change(),
                 )
                 .await
             {
@@ -539,20 +521,14 @@ where
             self.pot_verifier.genesis_seed()
         } else {
             let parent_pot_info = parent_pre_digest.pot_info();
-            let after_parent_future_slot = parent_future_slot + Slot::from(1);
-            // Only if entropy injection happens exactly after parent's future  slot we need to
-            // mix it in
-            if let Some(parameters_change) = pot_parameters.next_parameters_change()
-                    && parameters_change.slot == after_parent_future_slot
-                {
-                     parent_pot_info
-                        .future_proof_of_time()
-                        .seed_with_entropy(&parameters_change.entropy)
-                } else {
-                     parent_pot_info
-                        .future_proof_of_time()
-                        .seed()
-                }
+
+            PotNextSlotInput::derive(
+                parent_pot_parameters.slot_iterations(),
+                parent_future_slot,
+                parent_pot_info.future_proof_of_time(),
+                &parent_pot_parameters.next_parameters_change(),
+            )
+            .seed
         };
 
         maybe_pre_digest.map(|pre_digest| {
