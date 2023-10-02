@@ -19,10 +19,14 @@
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
 
+pub mod test_runtime_extension;
+
 // Make the WASM binary available.
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
+use crate::test_runtime_extension::pallet_test_override;
+use crate::test_runtime_extension::runtime_decl_for_test_override_api::TestOverrideApi;
 use codec::{Compact, CompactLen, Decode, Encode, MaxEncodedLen};
 use core::num::NonZeroU64;
 use domain_runtime_primitives::{
@@ -782,6 +786,8 @@ impl orml_vesting::Config for Runtime {
     type BlockNumberProvider = System;
 }
 
+impl pallet_test_override::Config for Runtime {}
+
 construct_runtime!(
     pub struct Runtime {
         System: frame_system = 0,
@@ -810,6 +816,7 @@ construct_runtime!(
 
         // Reserve some room for other pallets as we'll remove sudo pallet eventually.
         Sudo: pallet_sudo = 100,
+        TestOverride: pallet_test_override = 101,
     }
 );
 
@@ -1352,7 +1359,7 @@ impl_runtime_apis! {
         }
 
         fn domain_tx_range(_: DomainId) -> U256 {
-            U256::MAX
+            <Self as TestOverrideApi<Block>>::overriden_tx_range()
         }
 
         fn genesis_state_root(domain_id: DomainId) -> Option<H256> {
@@ -1486,6 +1493,12 @@ impl_runtime_apis! {
 
         fn should_relay_inbox_message_response(dst_chain_id: ChainId, msg_id: MessageId) -> bool {
             Messenger::should_relay_inbox_message_response(dst_chain_id, msg_id)
+        }
+    }
+
+    impl test_runtime_extension::TestOverrideApi<Block> for Runtime {
+        fn overriden_tx_range() -> U256 {
+            TestOverride::overridden_tx_range()
         }
     }
 }
@@ -1697,7 +1710,7 @@ impl_runtime_apis! {
         }
 
         fn domain_tx_range(_: DomainId) -> U256 {
-            U256::MAX
+            <Self as TestOverrideApi<Block>>::overriden_tx_range()
         }
 
         fn genesis_state_root(domain_id: DomainId) -> Option<H256> {
@@ -1825,6 +1838,12 @@ impl_runtime_apis! {
 
         fn should_relay_inbox_message_response(dst_chain_id: ChainId, msg_id: MessageId) -> bool {
             Messenger::should_relay_inbox_message_response(dst_chain_id, msg_id)
+        }
+    }
+
+    impl test_runtime_extension::TestOverrideApi<Block> for Runtime {
+        fn overriden_tx_range() -> U256 {
+            TestOverride::overridden_tx_range()
         }
     }
 }

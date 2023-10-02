@@ -7,8 +7,8 @@ use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::CodeExecutor;
 use sp_domains::fraud_proof::{
-    ExecutionReceiptApi, InvalidBundlesFraudProof, MissingBundleAdditionalData,
-    MissingInvalidBundleEntryFraudProof, VerificationError,
+    ConsensusBlockDetails, ExecutionReceiptApi, InvalidBundlesFraudProof,
+    MissingBundleAdditionalData, MissingInvalidBundleEntryFraudProof, VerificationError,
 };
 use sp_domains::storage_proof::OpaqueBundleWithProof;
 use sp_domains::{DomainsApi, InvalidBundleType};
@@ -69,8 +69,7 @@ where
             InvalidBundlesFraudProof::MissingInvalidBundleEntry(proof) => {
                 let MissingInvalidBundleEntryFraudProof {
                     domain_id,
-                    consensus_block_incl_bundle: consensus_block_hash_incl_bundle,
-                    consensus_block_incl_er: consensus_block_hash_incl_er,
+                    consensus_block_details,
                     runtime_code_with_proof,
                     opaque_bundle_with_proof,
                     additional_data,
@@ -78,6 +77,11 @@ where
                     bundle_index,
                     ..
                 } = proof;
+
+                let ConsensusBlockDetails {
+                    consensus_block_incl_bundle: consensus_block_hash_incl_bundle,
+                    consensus_block_incl_er: consensus_block_hash_incl_er,
+                } = consensus_block_details;
 
                 let consensus_block_header_incl_bundle = self
                     .consensus_client
@@ -130,9 +134,10 @@ where
                     .invalid_bundles
                     .iter()
                     .find(|b| b.bundle_index == *bundle_index);
-                if maybe_target_invalid_bundle.is_some() {
-                    let target_invalid_bundle = maybe_target_invalid_bundle
-                        .expect("already checked for None in if condition above; qed");
+                // If there is a target invalid bundle means execution receipt contains a invalid bundle
+                // with wrong bundle type. Otherwise a invalid bundle with out of range tx is considered
+                // as valid. In both cases, proof would be the same.
+                if let Some(target_invalid_bundle) = maybe_target_invalid_bundle {
                     if target_invalid_bundle.invalid_bundle_type == InvalidBundleType::OutOfRangeTx
                     {
                         return Err(VerificationError::IncorrectBundleInFraudProof {
@@ -162,8 +167,7 @@ where
 
                         let extrinsic = <<DomainBlock as BlockT>::Extrinsic>::decode(
                             &mut opaque_extrinsic.encode().as_slice(),
-                        )
-                        .map_err(|e| VerificationError::Decode(e))?;
+                        )?;
 
                         let tx_range = self
                             .consensus_client

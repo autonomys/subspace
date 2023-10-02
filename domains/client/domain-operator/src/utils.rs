@@ -1,6 +1,7 @@
 use parking_lot::Mutex;
 use sc_utils::mpsc::{TracingUnboundedReceiver, TracingUnboundedSender};
 use sp_consensus_slots::Slot;
+use sp_domains::fraud_proof::FraudProof;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use std::convert::TryInto;
 use std::sync::Arc;
@@ -45,6 +46,13 @@ pub type DomainImportNotificationSinks<Block, CBlock> =
 
 pub type DomainImportNotifications<Block, CBlock> =
     TracingUnboundedReceiver<DomainBlockImportNotification<Block, CBlock>>;
+
+pub type FraudProofOf<ConsensusBlock, Block> = FraudProof<
+    NumberFor<ConsensusBlock>,
+    <ConsensusBlock as BlockT>::Hash,
+    NumberFor<Block>,
+    <Block as BlockT>::Hash,
+>;
 
 #[derive(Clone, Debug)]
 pub struct DomainBlockImportNotification<Block: BlockT, CBlock: BlockT> {

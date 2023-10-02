@@ -1,5 +1,5 @@
 use crate::aux_schema::InvalidBundlesMismatchType;
-use crate::utils::to_number_primitive;
+use crate::utils::{to_number_primitive, FraudProofOf};
 use crate::ExecutionReceiptFor;
 use codec::{Decode, Encode};
 use domain_block_builder::{BlockBuilder, RecordProof};
@@ -10,9 +10,9 @@ use sp_blockchain::HeaderBackend;
 use sp_core::traits::CodeExecutor;
 use sp_core::H256;
 use sp_domains::fraud_proof::{
-    ExecutionPhase, FraudProof, InvalidBundlesFraudProof, InvalidStateTransitionProof,
-    InvalidTotalRewardsProof, MissingBundleAdditionalData, MissingInvalidBundleEntryFraudProof,
-    ValidAsInvalidBundleEntryFraudProof,
+    ConsensusBlockDetails, ExecutionPhase, FraudProof, InvalidBundlesFraudProof,
+    InvalidStateTransitionProof, InvalidTotalRewardsProof, MissingBundleAdditionalData,
+    MissingInvalidBundleEntryFraudProof, ValidAsInvalidBundleEntryFraudProof,
 };
 use sp_domains::storage_proof::{DomainRuntimeCodeWithProof, OpaqueBundleWithProof};
 use sp_domains::{DomainId, DomainsApi, ExecutionReceipt, InvalidBundleType};
@@ -119,7 +119,7 @@ where
         domain_id: DomainId,
         local_receipt: &ExecutionReceiptFor<Block, CBlock>,
         bad_receipt_hash: H256,
-    ) -> Result<FraudProof<NumberFor<PCB>, PCB::Hash, NumberFor<Block>, Block::Hash>, FraudProofError>
+    ) -> Result<FraudProofOf<PCB, Block>, FraudProofError>
     where
         PCB: BlockT,
     {
@@ -143,10 +143,7 @@ where
         bad_receipt_hash: H256,
         consensus_block_hash: &CBlock::Hash,
         runtime_code_with_proof: DomainRuntimeCodeWithProof,
-    ) -> Result<
-        FraudProof<NumberFor<CBlock>, CBlock::Hash, NumberFor<Block>, Block::Hash>,
-        FraudProofError,
-    > {
+    ) -> Result<FraudProofOf<CBlock, Block>, FraudProofError> {
         let out_of_range_bundle = {
             let extrinsics = self
                 .consensus_client
@@ -238,8 +235,10 @@ where
                 MissingInvalidBundleEntryFraudProof::new(
                     domain_id,
                     bad_receipt_hash,
-                    consensus_block_hash.clone(),
-                    consensus_block_hash_incl_er,
+                    ConsensusBlockDetails {
+                        consensus_block_incl_bundle: *consensus_block_hash,
+                        consensus_block_incl_er: consensus_block_hash_incl_er,
+                    },
                     bundle_index,
                     bundle_with_proof,
                     runtime_code_with_proof,
@@ -258,10 +257,7 @@ where
         mismatch_type: InvalidBundlesMismatchType,
         bundle_index: u32,
         bad_receipt_hash: H256,
-    ) -> Result<
-        FraudProof<NumberFor<CBlock>, CBlock::Hash, NumberFor<Block>, Block::Hash>,
-        FraudProofError,
-    > {
+    ) -> Result<FraudProofOf<CBlock, Block>, FraudProofError> {
         let ExecutionReceipt {
             consensus_block_hash,
             invalid_bundles,
@@ -344,7 +340,7 @@ where
         local_trace_index: u32,
         local_receipt: &ExecutionReceiptFor<Block, CBlock>,
         bad_receipt_hash: H256,
-    ) -> Result<FraudProof<NumberFor<PCB>, PCB::Hash, NumberFor<Block>, Block::Hash>, FraudProofError>
+    ) -> Result<FraudProofOf<PCB, Block>, FraudProofError>
     where
         PCB: BlockT,
     {

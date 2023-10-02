@@ -1,30 +1,37 @@
+use crate::invalid_bundles_fraud_proof::InvalidBundleProofVerifier;
 use crate::invalid_state_transition_proof::{ExecutionProver, InvalidStateTransitionProofVerifier};
 use crate::invalid_transaction_proof::InvalidTransactionProofVerifier;
 use crate::verifier_api::VerifierApi;
 use crate::ProofVerifier;
 use codec::Encode;
 use domain_block_builder::{BlockBuilder, RecordProof};
+use domain_client_operator::aux_schema::InvalidBundlesMismatchType;
+use domain_client_operator::fraud_proof::FraudProofGenerator;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
 use domain_runtime_primitives::{DomainCoreApi, Hash};
 use domain_test_service::domain::EvmDomainClient as DomainClient;
 use domain_test_service::evm_domain_test_runtime::Header;
 use domain_test_service::EcdsaKeyring::{Alice, Bob, Charlie, Dave};
-use domain_test_service::Sr25519Keyring::Ferdie;
+use domain_test_service::Sr25519Keyring::{self, Ferdie};
 use domain_test_service::GENESIS_DOMAIN_ID;
+use frame_support::assert_ok;
 use sc_client_api::{HeaderBackend, StorageProof};
 use sc_service::{BasePath, Role};
 use sp_api::ProvideRuntimeApi;
-use sp_core::H256;
+use sp_core::{Pair, H256};
 use sp_domain_digests::AsPredigest;
 use sp_domains::fraud_proof::{
-    ExecutionPhase, FraudProof, InvalidStateTransitionProof, VerificationError,
+    ExecutionPhase, FraudProof, InvalidBundlesFraudProof, InvalidStateTransitionProof,
+    VerificationError,
 };
-use sp_domains::DomainId;
+use sp_domains::{DomainId, InvalidBundle, InvalidBundleType};
 use sp_runtime::generic::{Digest, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
 use std::sync::Arc;
+use subspace_core_primitives::U256;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_test_client::Client;
+use subspace_test_runtime::test_runtime_extension::pallet_test_override;
 use subspace_test_service::{produce_block_with, produce_blocks, MockConsensusNode};
 use tempfile::TempDir;
 
@@ -91,6 +98,182 @@ impl VerifierApi for TestVerifierClient {
 
 // Use the system domain id for testing
 const TEST_DOMAIN_ID: DomainId = DomainId::new(3u32);
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_valid_bundle_proof_generation_and_verification() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    let change_tx_range = |new_range| {
+        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+            pallet_test_override::Call::override_tx_range { new_range }.into(),
+        )
+        .into()
+    };
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Produce 1 consensus block to initialize genesis domain
+    ferdie.produce_block_with_slot(1.into()).await.unwrap();
+
+    // Run Alice (a evm domain authority node)
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .await;
+
+    let fraud_proof_generator = FraudProofGenerator::new(
+        alice.client.clone(),
+        ferdie.client.clone(),
+        alice.backend.clone(),
+        alice.code_executor.clone(),
+    );
+    let invalid_bundle_proof_verifier = InvalidBundleProofVerifier::<_, DomainBlock, _, _>::new(
+        ferdie.client.clone(),
+        alice.code_executor.clone(),
+    );
+
+    for i in 0..3 {
+        let tx = alice.construct_extrinsic(
+            alice.account_nonce() + i,
+            pallet_balances::Call::transfer_allow_death {
+                dest: Bob.to_account_id(),
+                value: 1,
+            },
+        );
+        alice
+            .send_extrinsic(tx)
+            .await
+            .expect("Failed to send extrinsic");
+
+        // Produce a bundle and submit to the tx pool of the consensus node
+        let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+        assert!(bundle.is_some());
+
+        // In the last iteration, produce a consensus block which will included all the previous bundles
+        if i == 2 {
+            ferdie
+                .submit_transaction(change_tx_range(U256::one()))
+                .await
+                .unwrap();
+
+            produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+                .await
+                .unwrap();
+        }
+    }
+
+    let bundle_to_tx = |opaque_bundle| {
+        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+            pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
+        )
+        .into()
+    };
+
+    // Produce a bundle that will include the reciept of the last 3 bundles and modified the receipt's
+    // `valid_bundles` field to make it invalid
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let original_submit_bundle_tx = bundle_to_tx(bundle.clone().unwrap());
+    let bundle_index = 0;
+    let (bad_receipt, valid_receipt, submit_bundle_tx_with_bad_receipt) = {
+        let mut bundle = bundle.clone().unwrap();
+        let valid_receipt = bundle.receipt().clone();
+        assert_eq!(valid_receipt.valid_bundles.len(), 0);
+        assert_eq!(valid_receipt.invalid_bundles.len(), 3);
+        for invalid_bundle in valid_receipt.invalid_bundles.iter() {
+            assert_eq!(
+                invalid_bundle.invalid_bundle_type,
+                InvalidBundleType::OutOfRangeTx
+            );
+        }
+
+        bundle.sealed_header.header.receipt.invalid_bundles[0] = InvalidBundle {
+            bundle_index: bundle.sealed_header.header.receipt.invalid_bundles[0].bundle_index,
+            invalid_bundle_type: InvalidBundleType::IllegalTx,
+        };
+
+        bundle.sealed_header.signature = Sr25519Keyring::Alice
+            .pair()
+            .sign(bundle.sealed_header.pre_hash().as_ref())
+            .into();
+
+        (
+            bundle.receipt().clone(),
+            valid_receipt,
+            bundle_to_tx(bundle),
+        )
+    };
+    // Replace `original_submit_bundle_tx` with `submit_bundle_tx_with_bad_receipt` in the tx pool
+    ferdie
+        .prune_tx_from_pool(&original_submit_bundle_tx)
+        .await
+        .unwrap();
+    assert!(ferdie.get_bundle_from_tx_pool(slot.into()).is_none());
+    ferdie
+        .submit_transaction(submit_bundle_tx_with_bad_receipt)
+        .await
+        .unwrap();
+
+    // Produce one more block to inlcude the bad receipt in the consensus chain
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+
+    // TODO: let the operator construct the valid bundle fraud proof by it own once the `valid_bundles`
+    // fraud detection is implemented
+    let invalid_bundle_proof = fraud_proof_generator
+        .generate_invalid_bundle_field_proof(
+            GENESIS_DOMAIN_ID,
+            &valid_receipt,
+            InvalidBundlesMismatchType::InvalidAsValid,
+            bundle_index as u32,
+            bad_receipt.hash(),
+        )
+        .unwrap();
+
+    match invalid_bundle_proof {
+        FraudProof::InvalidBundles(InvalidBundlesFraudProof::MissingInvalidBundleEntry(
+            inner_proof,
+        )) => {
+            // If the fraud proof target a valid bundle it is considered invalid
+            let mut bad_proof = inner_proof.clone();
+            bad_proof.bundle_index = 1;
+            assert!(invalid_bundle_proof_verifier
+                .verify(&InvalidBundlesFraudProof::MissingInvalidBundleEntry(
+                    bad_proof,
+                ))
+                .is_err());
+
+            // If the fraud proof point to non-exist bundle then it is invalid
+            let mut bad_proof = inner_proof.clone();
+            bad_proof.opaque_bundle_with_proof.bundle.extrinsics = Default::default();
+            assert!(invalid_bundle_proof_verifier
+                .verify(&InvalidBundlesFraudProof::MissingInvalidBundleEntry(
+                    bad_proof,
+                ))
+                .is_err());
+
+            // The original fraud proof is valid
+            assert_ok!(invalid_bundle_proof_verifier.verify(
+                &InvalidBundlesFraudProof::MissingInvalidBundleEntry(inner_proof,)
+            ));
+        }
+        _ => unreachable!("Unexpected fraud proof"),
+    }
+}
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
@@ -269,9 +452,13 @@ async fn execution_proof_creation_and_verification_should_work() {
         TestVerifierClient::new(ferdie.client.clone(), alice.client.clone()),
     );
 
-    let proof_verifier = ProofVerifier::<Block, DomainBlock, _, _>::new(
+    let invalid_bundle_proof_verifier =
+        InvalidBundleProofVerifier::new(ferdie.client.clone(), Arc::new(ferdie.executor.clone()));
+
+    let proof_verifier = ProofVerifier::<Block, DomainBlock, _, _, _>::new(
         Arc::new(invalid_transaction_proof_verifier),
         Arc::new(invalid_state_transition_proof_verifier),
+        Arc::new(invalid_bundle_proof_verifier),
     );
 
     let parent_number_alice = *parent_header.number();
@@ -556,9 +743,13 @@ async fn invalid_execution_proof_should_not_work() {
         TestVerifierClient::new(ferdie.client.clone(), alice.client.clone()),
     );
 
-    let proof_verifier = ProofVerifier::<Block, DomainBlock, _, _>::new(
+    let invalid_bundle_proof_verifier =
+        InvalidBundleProofVerifier::new(ferdie.client.clone(), Arc::new(ferdie.executor.clone()));
+
+    let proof_verifier = ProofVerifier::<Block, DomainBlock, _, _, _>::new(
         Arc::new(invalid_transaction_proof_verifier),
         Arc::new(invalid_state_transition_proof_verifier),
+        Arc::new(invalid_bundle_proof_verifier),
     );
 
     let parent_number_alice = *parent_header.number();

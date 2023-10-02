@@ -4,7 +4,9 @@ use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
 use sp_core::H256;
-use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT, NumberFor, Zero};
+use sp_runtime::traits::{
+    BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor, Zero,
+};
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
 use subspace_core_primitives::BlockNumber;
@@ -200,11 +202,16 @@ pub enum MissingBundleAdditionalData {
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub struct ConsensusBlockDetails<Hash> {
+    pub consensus_block_incl_bundle: Hash,
+    pub consensus_block_incl_er: Hash,
+}
+
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct MissingInvalidBundleEntryFraudProof<Number, Hash, DomainNumber, DomainHash> {
     pub domain_id: DomainId,
     pub bad_receipt_hash: H256,
-    pub consensus_block_incl_bundle: Hash,
-    pub consensus_block_incl_er: Hash,
+    pub consensus_block_details: ConsensusBlockDetails<Hash>,
     pub bundle_index: u32,
     pub opaque_bundle_with_proof:
         OpaqueBundleWithProof<Number, Hash, DomainNumber, DomainHash, Balance>,
@@ -218,8 +225,7 @@ impl<Number, Hash, DomainNumber, DomainHash>
     pub fn new(
         domain_id: DomainId,
         bad_receipt_hash: H256,
-        consensus_block_incl_bundle: Hash,
-        consensus_block_incl_er: Hash,
+        consensus_block_details: ConsensusBlockDetails<Hash>,
         bundle_index: u32,
         opaque_bundle_with_proof: OpaqueBundleWithProof<
             Number,
@@ -234,8 +240,7 @@ impl<Number, Hash, DomainNumber, DomainHash>
         Self {
             domain_id,
             bad_receipt_hash,
-            consensus_block_incl_er,
-            consensus_block_incl_bundle,
+            consensus_block_details,
             bundle_index,
             opaque_bundle_with_proof,
             runtime_code_with_proof,
@@ -484,9 +489,11 @@ pub fn operator_block_rewards_final_key() -> Vec<u8> {
         .to_vec()
 }
 
+type ExecutionReceiptInConsensusRuntime<Block, DomainNumber, DomainHash> =
+    ExecutionReceipt<NumberFor<Block>, <Block as BlockT>::Hash, DomainNumber, DomainHash, Balance>;
 sp_api::decl_runtime_apis! {
     /// API related to execution receipts stored in runtime
     pub trait ExecutionReceiptApi<DomainNumber: Encode + Decode, DomainHash: Encode + Decode> {
-        fn get_execution_receipt_by_hash(hash: ReceiptHash) -> Option<ExecutionReceipt<NumberFor<Block>, Block::Hash, DomainNumber, DomainHash, Balance>>;
+        fn get_execution_receipt_by_hash(hash: ReceiptHash) -> Option<ExecutionReceiptInConsensusRuntime<Block, DomainNumber, DomainHash>>;
     }
 }

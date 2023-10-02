@@ -22,6 +22,7 @@ frame-executive = { version = "4.0.0-dev", default-features = false, git = "http
 frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef" }
 frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef" }
 hex-literal = { version = "0.4.0", optional = true }
+log = { version = "0.4.20", default-features = false }
 orml-vesting = { version = "0.4.1-dev", default-features = false, path = "../../orml/vesting" }
 pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef" }
 pallet-domains = { version = "0.1.0", default-features = false, path = "../../crates/pallet-domains" }
@@ -80,6 +81,7 @@ std = [
 	"frame-support/std",
 	"frame-system/std",
 	"frame-system-rpc-runtime-api/std",
+	"log/std",
 	"orml-vesting/std",
 	"pallet-balances/std",
 	"pallet-domains/std",

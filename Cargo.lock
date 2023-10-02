@@ -11605,6 +11605,7 @@ version = "0.1.0"
 dependencies = [
  "domain-block-builder",
  "domain-block-preprocessor",
+ "domain-client-operator",
  "domain-runtime-primitives",
  "domain-test-service",
  "frame-support",
@@ -11615,6 +11616,7 @@ dependencies = [
  "parity-scale-codec",
  "sc-cli",
  "sc-client-api",
+ "sc-executor",
  "sc-service",
  "sp-api",
  "sp-blockchain",
@@ -11978,6 +11980,7 @@ dependencies = [
  "frame-system",
  "frame-system-rpc-runtime-api",
  "hex-literal",
+ "log",
  "orml-vesting",
  "pallet-balances",
  "pallet-domains",

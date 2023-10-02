@@ -1,7 +1,7 @@
 use crate::aux_schema::{InvalidBundlesMismatchType, ReceiptMismatchInfo};
 use crate::fraud_proof::{find_trace_mismatch, FraudProofGenerator};
 use crate::parent_chain::ParentChainInterface;
-use crate::utils::{DomainBlockImportNotification, DomainImportNotificationSinks};
+use crate::utils::{DomainBlockImportNotification, DomainImportNotificationSinks, FraudProofOf};
 use crate::ExecutionReceiptFor;
 use codec::{Decode, Encode};
 use domain_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
@@ -739,9 +739,7 @@ where
     fn check_receipts(
         &self,
         receipts: Vec<ExecutionReceiptFor<Block, CBlock>>,
-        fraud_proofs: Vec<
-            FraudProof<NumberFor<CBlock>, CBlock::Hash, NumberFor<Block>, Block::Hash>,
-        >,
+        fraud_proofs: Vec<FraudProofOf<CBlock, Block>>,
     ) -> Result<(), sp_blockchain::Error> {
         let mut bad_receipts_to_write = vec![];
 
@@ -852,9 +850,7 @@ where
 
     fn create_fraud_proof_for_first_unconfirmed_bad_receipt(
         &self,
-    ) -> sp_blockchain::Result<
-        Option<FraudProof<NumberFor<CBlock>, CBlock::Hash, NumberFor<Block>, Block::Hash>>,
-    > {
+    ) -> sp_blockchain::Result<Option<FraudProofOf<CBlock, Block>>> {
         if let Some((bad_receipt_hash, mismatch_info)) =
             crate::aux_schema::find_first_unconfirmed_bad_receipt_info::<_, Block, CBlock, _>(
                 &*self.client,
