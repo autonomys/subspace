@@ -1,9 +1,14 @@
 //! Consensus related types.
 
+use crate::protocol::compact_block::{
+    CompactBlockHandshake, CompactBlockInitialRequest, CompactBlockInitialResponse,
+};
 use crate::types::RelayError;
 use crate::utils::{RelayCounter, RelayCounterVec};
 use codec::{Decode, Encode};
+use derive_more::From;
 use sc_network_common::sync::message::{BlockAttributes, BlockData, BlockRequest};
+use sc_transaction_pool_api::{TransactionPool, TxHash};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_runtime::Justifications;
@@ -20,33 +25,81 @@ const DOWNLOAD_LABEL: &str = "client_download";
 const DOWNLOAD_BLOCKS: &str = "blocks";
 const DOWNLOAD_BYTES: &str = "bytes";
 
+/// Client -> server request.
+#[derive(From, Encode, Decode)]
+pub(crate) enum ConsensusRequest<Block: BlockT, Pool: TransactionPool> {
+    /// Initial request for block download. This may
+    /// result in partial blocks returned by the server,
+    /// with tx hash instead of the full transaction.
+    BlockDownload(InitialRequest<Block>),
+
+    /// Protocol specific hand shake messages, following the
+    /// initial `BlockDownload` message (e.g) to resolve
+    /// tx pool misses.
+    ProtocolMessage(ProtocolMessage<Block, Pool>),
+
+    /// Request for full block download, without going through
+    /// the relay protocols. This is used in scenarios like a node
+    /// doing initial sync.
+    /// TODO: versioning for substrate data types
+    FullBlockDownload(FullDownloadRequest<Block>),
+}
+
 /// Initial request for a single block.
 #[derive(Encode, Decode)]
-pub(crate) struct InitialRequest<Block: BlockT, ProtocolRequest> {
-    /// Starting block
+pub(crate) struct InitialRequest<Block: BlockT> {
+    /// Starting block.
     pub(crate) from_block: BlockId<Block>,
 
-    /// Requested block components
+    /// Requested block components.
     pub(crate) block_attributes: BlockAttributes,
 
-    /// The protocol specific part of the request
-    pub(crate) protocol_request: ProtocolRequest,
+    /// The protocol specific part of the initial request.
+    pub(crate) protocol_request: ProtocolInitialRequest,
 }
 
 /// Initial response for a single block.
 #[derive(Encode, Decode)]
-pub(crate) struct InitialResponse<Block: BlockT, ProtocolResponse> {
-    ///  Hash of the block being downloaded
+pub(crate) struct InitialResponse<Block: BlockT, Pool: TransactionPool> {
+    ///  Hash of the block being downloaded.
     pub(crate) block_hash: BlockHash<Block>,
 
-    /// The partial block, without the extrinsics
+    /// The partial block, without the extrinsics.
     pub(crate) partial_block: PartialBlock<Block>,
 
     /// The opaque protocol specific part of the response.
     /// This is optional because BlockAttributes::BODY may not be set in
     /// the BlockRequest, in which case we don't need to fetch the
-    /// extrinsics
-    pub(crate) protocol_response: Option<ProtocolResponse>,
+    /// extrinsics.
+    pub(crate) protocol_response: Option<ProtocolInitialResponse<Block, Pool>>,
+}
+
+/// Protocol specific part of the initial request.
+#[derive(From, Encode, Decode)]
+pub(crate) enum ProtocolInitialRequest {
+    CompactBlock(CompactBlockInitialRequest),
+}
+
+/// Protocol specific part of the initial response.
+#[derive(From, Encode, Decode)]
+pub(crate) enum ProtocolInitialResponse<Block: BlockT, Pool: TransactionPool> {
+    CompactBlock(CompactBlockInitialResponse<BlockHash<Block>, TxHash<Pool>, Extrinsic<Block>>),
+}
+
+/// Protocol specific handshake requests.
+#[derive(From, Encode, Decode)]
+pub(crate) enum ProtocolMessage<Block: BlockT, Pool: TransactionPool> {
+    CompactBlock(CompactBlockHandshake<BlockHash<Block>, TxHash<Pool>>),
+}
+
+impl<Block: BlockT, Pool: TransactionPool>
+    From<CompactBlockHandshake<BlockHash<Block>, TxHash<Pool>>> for ConsensusRequest<Block, Pool>
+{
+    fn from(
+        inner: CompactBlockHandshake<BlockHash<Block>, TxHash<Pool>>,
+    ) -> ConsensusRequest<Block, Pool> {
+        ConsensusRequest::ProtocolMessage(ProtocolMessage::CompactBlock(inner))
+    }
 }
 
 /// Request to download multiple/complete blocks, for scenarios like the
@@ -61,29 +114,6 @@ pub(crate) struct FullDownloadRequest<Block: BlockT>(pub(crate) BlockRequest<Blo
 /// Response to the full download request.
 #[derive(Encode, Decode)]
 pub(crate) struct FullDownloadResponse<Block: BlockT>(pub(crate) Vec<BlockData<Block>>);
-
-/// The message to the server
-#[allow(clippy::enum_variant_names)]
-#[derive(Encode, Decode)]
-pub(crate) enum ServerMessage<Block: BlockT, ProtocolRequest> {
-    /// Initial message, to be handled both by the client
-    /// and the protocol
-    InitialRequest(InitialRequest<Block, ProtocolRequest>),
-
-    /// Message to be handled by the protocol
-    ProtocolRequest(ProtocolRequest),
-
-    /// Full download request.
-    FullDownloadRequest(FullDownloadRequest<Block>),
-}
-
-impl<Block: BlockT, ProtocolRequest> From<ProtocolRequest>
-    for ServerMessage<Block, ProtocolRequest>
-{
-    fn from(inner: ProtocolRequest) -> ServerMessage<Block, ProtocolRequest> {
-        ServerMessage::ProtocolRequest(inner)
-    }
-}
 
 /// The partial block response from the server. It has all the fields
 /// except the extrinsics(and some other meta info). The extrinsics
