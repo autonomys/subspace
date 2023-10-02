@@ -29,10 +29,6 @@ mod signed_extensions;
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
-#[cfg(feature = "runtime-benchmarks")]
-#[macro_use]
-extern crate frame_benchmarking;
-
 use crate::feed_processor::feed_processor;
 pub use crate::feed_processor::FeedProcessorKind;
 use crate::fees::{OnChargeTransaction, TransactionByteFee};
@@ -45,6 +41,7 @@ use domain_runtime_primitives::{
     BlockNumber as DomainNumber, Hash as DomainHash, MultiAccountId, TryConvertBack,
 };
 use frame_support::inherent::ProvideInherent;
+use frame_support::storage::generator::StorageValue;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, ConstU8, Currency, Everything, Get};
 use frame_support::weights::constants::{RocksDbWeight, WEIGHT_REF_TIME_PER_SECOND};
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
@@ -57,14 +54,12 @@ use pallet_transporter::EndpointHandler;
 use scale_info::TypeInfo;
 use sp_api::{impl_runtime_apis, BlockT};
 use sp_consensus_slots::SlotDuration;
-#[cfg(not(feature = "pot"))]
-use sp_consensus_subspace::GlobalRandomnesses;
-#[cfg(feature = "pot")]
-use sp_consensus_subspace::PotParameters;
 use sp_consensus_subspace::{
-    ChainConstants, EquivocationProof, FarmerPublicKey, SignedVote, SolutionRanges, Vote,
+    ChainConstants, EquivocationProof, FarmerPublicKey, PotParameters, SignedVote, SolutionRanges,
+    Vote,
 };
 use sp_core::crypto::{ByteArray, KeyTypeId};
+use sp_core::storage::{StateVersion, StorageKey};
 use sp_core::{OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
@@ -156,17 +151,14 @@ const SLOT_DURATION: u64 = 1000;
 /// Must match ratio between block and slot duration in constants above.
 const SLOT_PROBABILITY: (u64, u64) = (1, 6);
 
-/// The amount of time, in blocks, between updates of global randomness.
-const GLOBAL_RANDOMNESS_UPDATE_INTERVAL: BlockNumber = 256;
-
 /// Number of slots between slot arrival and when corresponding block can be produced.
 const BLOCK_AUTHORING_DELAY: SlotNumber = 4;
 
 /// Interval, in blocks, between blockchain entropy injection into proof of time chain.
-const POT_ENTROPY_INJECTION_INTERVAL: BlockNumber = 20;
+const POT_ENTROPY_INJECTION_INTERVAL: BlockNumber = 50;
 
 /// Interval, in entropy injection intervals, where to take entropy for injection from.
-const POT_ENTROPY_INJECTION_LOOKBACK_DEPTH: u8 = 5;
+const POT_ENTROPY_INJECTION_LOOKBACK_DEPTH: u8 = 2;
 
 /// Delay after block, in slots, when entropy injection takes effect.
 const POT_ENTROPY_INJECTION_DELAY: SlotNumber = 15;
@@ -190,18 +182,8 @@ const INITIAL_DOMAIN_TX_RANGE: u64 = 3;
 /// Tx range is adjusted every DOMAIN_TX_RANGE_ADJUSTMENT_INTERVAL blocks.
 const TX_RANGE_ADJUSTMENT_INTERVAL_BLOCKS: u64 = 100;
 
-// We assume initial plot size starts with the a single sector, where we effectively audit each
-// chunk of every piece.
-const INITIAL_SOLUTION_RANGE: SolutionRange = (SolutionRange::MAX
-    // Account for number of pieces plotted initially (assuming 1 sector)
-    / MAX_PIECES_IN_SECTOR as u64
-    // Account for slot probability
-    / SLOT_PROBABILITY.1 * SLOT_PROBABILITY.0
-    // Account for probability of hitting occupied s-bucket in sector (for one piece)
-    / Record::NUM_S_BUCKETS as u64 * Record::NUM_CHUNKS as u64
-    // Account for how many audit chunks each chunk has
-    / mem::size_of::<SolutionRange>() as u64)
-    .saturating_mul(Scalar::FULL_BYTES as u64);
+// We assume initial plot size starts with the a single sector.
+const INITIAL_SOLUTION_RANGE: SolutionRange = sectors_to_solution_range(1);
 
 /// Number of votes expected per block.
 ///
@@ -229,6 +211,49 @@ const NORMAL_DISPATCH_RATIO: Perbill = Perbill::from_percent(75);
 /// Maximum block length for non-`Normal` extrinsic is 5 MiB.
 const MAX_BLOCK_LENGTH: u32 = 5 * 1024 * 1024;
 
+/// Computes the following:
+/// ```
+/// MAX * slot_probability / audit_chunks_per_chunk / (pieces_in_sector * chunks / s_buckets)
+///     / sectors
+/// ```
+const fn sectors_to_solution_range(sectors: u64) -> SolutionRange {
+    let audit_chunks_per_chunk = Scalar::FULL_BYTES / mem::size_of::<SolutionRange>();
+    let solution_range = SolutionRange::MAX
+        // Account for slot probability
+        / SLOT_PROBABILITY.1 * SLOT_PROBABILITY.0
+        // We're auditing one chunk in each sector, account for how many audit chunks each chunk has
+        / audit_chunks_per_chunk as u64
+        // Now take sector size and probability of hitting occupied s-bucket in sector into account
+        / (MAX_PIECES_IN_SECTOR as u64 * Record::NUM_CHUNKS as u64 / Record::NUM_S_BUCKETS as u64);
+
+    // Take number of sectors into account
+    solution_range / sectors
+}
+
+/// Computes the following:
+/// ```
+/// MAX * slot_probability / audit_chunks_per_chunk / (pieces_in_sector * chunks / s_buckets)
+///     / solution_range
+/// ```
+const fn solution_range_to_sectors(solution_range: SolutionRange) -> u64 {
+    let audit_chunks_per_chunk = Scalar::FULL_BYTES / mem::size_of::<SolutionRange>();
+    let sectors = SolutionRange::MAX
+        // Account for slot probability
+        / SLOT_PROBABILITY.1 * SLOT_PROBABILITY.0
+        // We're auditing one chunk in each sector, account for how many audit chunks each chunk has
+        / audit_chunks_per_chunk as u64
+        // Now take sector size and probability of hitting occupied s-bucket in sector into account
+        / (MAX_PIECES_IN_SECTOR as u64 * Record::NUM_CHUNKS as u64 / Record::NUM_S_BUCKETS as u64);
+
+    // Take solution range into account
+    sectors / solution_range
+}
+
+// Quick test to ensure functions above are the inverse of each other
+const_assert!(solution_range_to_sectors(sectors_to_solution_range(1)) == 1);
+const_assert!(solution_range_to_sectors(sectors_to_solution_range(3)) == 3);
+const_assert!(solution_range_to_sectors(sectors_to_solution_range(5)) == 5);
+
 parameter_types! {
     pub const Version: RuntimeVersion = VERSION;
     pub const BlockHashCount: BlockNumber = 2400;
@@ -236,6 +261,7 @@ parameter_types! {
     pub SubspaceBlockWeights: BlockWeights = BlockWeights::with_sensible_defaults(BLOCK_WEIGHT_FOR_2_SEC, NORMAL_DISPATCH_RATIO);
     /// We allow for 3.75 MiB for `Normal` extrinsic with 5 MiB maximum block length.
     pub SubspaceBlockLength: BlockLength = BlockLength::max_with_normal_ratio(MAX_BLOCK_LENGTH, NORMAL_DISPATCH_RATIO);
+    pub const ExtrinsicsRootStateVersion: StateVersion = StateVersion::V0;
 }
 
 pub type SS58Prefix = ConstU16<2254>;
@@ -293,6 +319,7 @@ impl frame_system::Config for Runtime {
     /// The set code logic, just the default since we're not a parachain.
     type OnSetCode = ();
     type MaxConsumers = ConstU32<16>;
+    type ExtrinsicsRootStateVersion = ExtrinsicsRootStateVersion;
 }
 
 parameter_types! {
@@ -301,7 +328,6 @@ parameter_types! {
     pub const PotEntropyInjectionLookbackDepth: u8 = POT_ENTROPY_INJECTION_LOOKBACK_DEPTH;
     pub const PotEntropyInjectionDelay: SlotNumber = POT_ENTROPY_INJECTION_DELAY;
     pub const SlotProbability: (u64, u64) = SLOT_PROBABILITY;
-    pub const ExpectedBlockTime: Moment = MILLISECS_PER_BLOCK;
     pub const ExpectedVotesPerBlock: u32 = EXPECTED_VOTES_PER_BLOCK;
     pub const RecentSegments: HistorySize = RECENT_SEGMENTS;
     pub const RecentHistoryFraction: (HistorySize, HistorySize) = RECENT_HISTORY_FRACTION;
@@ -321,7 +347,6 @@ impl Get<BlockNumber> for ConfirmationDepthK {
 
 impl pallet_subspace::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type GlobalRandomnessUpdateInterval = ConstU32<GLOBAL_RANDOMNESS_UPDATE_INTERVAL>;
     type BlockAuthoringDelay = BlockAuthoringDelay;
     type PotEntropyInjectionInterval = PotEntropyInjectionInterval;
     type PotEntropyInjectionLookbackDepth = PotEntropyInjectionLookbackDepth;
@@ -329,7 +354,6 @@ impl pallet_subspace::Config for Runtime {
     type EraDuration = ConstU32<ERA_DURATION_IN_BLOCKS>;
     type InitialSolutionRange = ConstU64<INITIAL_SOLUTION_RANGE>;
     type SlotProbability = SlotProbability;
-    type ExpectedBlockTime = ExpectedBlockTime;
     type ConfirmationDepthK = ConfirmationDepthK;
     type RecentSegments = RecentSegments;
     type RecentHistoryFraction = RecentHistoryFraction;
@@ -337,7 +361,6 @@ impl pallet_subspace::Config for Runtime {
     type ExpectedVotesPerBlock = ExpectedVotesPerBlock;
     type MaxPiecesInSector = ConstU16<{ MAX_PIECES_IN_SECTOR }>;
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
-    type GlobalRandomnessIntervalTrigger = pallet_subspace::NormalGlobalRandomnessInterval;
     type EraChangeTrigger = pallet_subspace::NormalEraChange;
 
     type HandleEquivocation = pallet_subspace::equivocation::EquivocationHandler<
@@ -351,9 +374,6 @@ impl pallet_subspace::Config for Runtime {
 impl pallet_timestamp::Config for Runtime {
     /// A timestamp: milliseconds since the unix epoch.
     type Moment = Moment;
-    #[cfg(not(feature = "pot"))]
-    type OnTimestampSet = Subspace;
-    #[cfg(feature = "pot")]
     type OnTimestampSet = ();
     type MinimumPeriod = ConstU64<{ SLOT_DURATION / 2 }>;
     type WeightInfo = ();
@@ -435,20 +455,8 @@ pub struct TotalSpacePledged;
 
 impl Get<u128> for TotalSpacePledged {
     fn get() -> u128 {
-        // Operations reordered to avoid data loss, but essentially are:
-        // SolutionRange::MAX * SlotProbability
-        //     / solution_range * Piece::SIZE
-        //     / Record::NUM_S_BUCKETS * Record::NUM_CHUNKS
-        //     / SolutionRange::SIZE * Scalar::FULL_BYTES
-        u128::from(u64::MAX)
-            .saturating_mul(Piece::SIZE as u128)
-            .saturating_mul(u128::from(SlotProbability::get().0))
-            / Record::NUM_S_BUCKETS as u128
-            * Record::NUM_CHUNKS as u128
-            / u128::from(Subspace::solution_ranges().current)
-            / u128::from(SlotProbability::get().1)
-            * Scalar::FULL_BYTES as u128
-            / mem::size_of::<SolutionRange>() as u128
+        let sectors = solution_range_to_sectors(Subspace::solution_ranges().current);
+        sectors as u128 * MAX_PIECES_IN_SECTOR as u128 * Piece::SIZE as u128
     }
 }
 
@@ -611,6 +619,27 @@ parameter_types! {
     pub const MaxPendingStakingOperation: u32 = 100;
 }
 
+pub struct StorageKeys;
+impl sp_domains::fraud_proof::StorageKeys for StorageKeys {
+    fn block_randomness_storage_key() -> StorageKey {
+        StorageKey(
+            pallet_subspace::pallet::BlockRandomness::<Runtime>::storage_value_final_key().to_vec(),
+        )
+    }
+
+    fn timestamp_storage_key() -> StorageKey {
+        StorageKey(pallet_timestamp::pallet::Now::<Runtime>::storage_value_final_key().to_vec())
+    }
+}
+
+pub struct DeriveExtrinsics;
+impl sp_domains::fraud_proof::DeriveExtrinsics<Moment> for DeriveExtrinsics {
+    fn derive_timestamp_extrinsic(now: Moment) -> Vec<u8> {
+        UncheckedExtrinsic::new_unsigned(pallet_timestamp::Call::<Runtime>::set { now }.into())
+            .encode()
+    }
+}
+
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type DomainNumber = DomainNumber;
@@ -636,6 +665,8 @@ impl pallet_domains::Config for Runtime {
     type TreasuryAccount = TreasuryAccount;
     type MaxPendingStakingOperation = MaxPendingStakingOperation;
     type Randomness = Subspace;
+    type StorageKeys = StorageKeys;
+    type DeriveExtrinsics = DeriveExtrinsics;
 }
 
 pub struct StakingOnReward;
@@ -690,7 +721,9 @@ impl pallet_object_store::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
 }
 
-impl pallet_runtime_configs::Config for Runtime {}
+impl pallet_runtime_configs::Config for Runtime {
+    type WeightInfo = pallet_runtime_configs::weights::SubstrateWeight<Runtime>;
+}
 
 parameter_types! {
     // This value doesn't matter, we don't use it (`VestedTransferOrigin = EnsureNever` below).
@@ -832,388 +865,12 @@ mod benches {
         [frame_system, SystemBench::<Runtime>]
         [pallet_balances, Balances]
         [pallet_domains, Domains]
+        [pallet_runtime_configs, RuntimeConfigs]
         [pallet_subspace, Subspace]
         [pallet_timestamp, Timestamp]
     );
 }
 
-#[cfg(not(feature = "pot"))]
-impl_runtime_apis! {
-    impl sp_api::Core<Block> for Runtime {
-        fn version() -> RuntimeVersion {
-            VERSION
-        }
-
-        fn execute_block(block: Block) {
-            Executive::execute_block(block);
-        }
-
-        fn initialize_block(header: &<Block as BlockT>::Header) {
-            Executive::initialize_block(header)
-        }
-    }
-
-    impl sp_api::Metadata<Block> for Runtime {
-        fn metadata() -> OpaqueMetadata {
-            OpaqueMetadata::new(Runtime::metadata().into())
-        }
-
-        fn metadata_at_version(version: u32) -> Option<OpaqueMetadata> {
-            Runtime::metadata_at_version(version)
-        }
-
-        fn metadata_versions() -> sp_std::vec::Vec<u32> {
-            Runtime::metadata_versions()
-        }
-    }
-
-    impl sp_block_builder::BlockBuilder<Block> for Runtime {
-        fn apply_extrinsic(extrinsic: <Block as BlockT>::Extrinsic) -> ApplyExtrinsicResult {
-            Executive::apply_extrinsic(extrinsic)
-        }
-
-        fn finalize_block() -> <Block as BlockT>::Header {
-            Executive::finalize_block()
-        }
-
-        fn inherent_extrinsics(data: sp_inherents::InherentData) -> Vec<<Block as BlockT>::Extrinsic> {
-            data.create_extrinsics()
-        }
-
-        fn check_inherents(
-            block: Block,
-            data: sp_inherents::InherentData,
-        ) -> sp_inherents::CheckInherentsResult {
-            data.check_extrinsics(&block)
-        }
-    }
-
-    impl sp_transaction_pool::runtime_api::TaggedTransactionQueue<Block> for Runtime {
-        fn validate_transaction(
-            source: TransactionSource,
-            tx: <Block as BlockT>::Extrinsic,
-            block_hash: <Block as BlockT>::Hash,
-        ) -> TransactionValidity {
-            Executive::validate_transaction(source, tx, block_hash)
-        }
-    }
-
-    impl sp_offchain::OffchainWorkerApi<Block> for Runtime {
-        fn offchain_worker(header: &<Block as BlockT>::Header) {
-            Executive::offchain_worker(header)
-        }
-    }
-
-    impl sp_objects::ObjectsApi<Block> for Runtime {
-        fn extract_block_object_mapping(block: Block, successful_calls: Vec<Hash>) -> BlockObjectMapping {
-            extract_block_object_mapping(block, successful_calls)
-        }
-
-        fn validated_object_call_hashes() -> Vec<Hash> {
-            Feeds::successful_puts()
-        }
-    }
-
-    impl sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey> for Runtime {
-        fn history_size() -> HistorySize {
-            <pallet_subspace::Pallet<Runtime>>::history_size()
-        }
-
-        fn max_pieces_in_sector() -> u16 {
-            MAX_PIECES_IN_SECTOR
-        }
-
-        fn slot_duration() -> SlotDuration {
-            SlotDuration::from_millis(SLOT_DURATION)
-        }
-
-        fn global_randomnesses() -> GlobalRandomnesses {
-            Subspace::global_randomnesses()
-        }
-
-        fn solution_ranges() -> SolutionRanges {
-            Subspace::solution_ranges()
-        }
-
-        fn submit_report_equivocation_extrinsic(
-            equivocation_proof: EquivocationProof<<Block as BlockT>::Header>,
-        ) -> Option<()> {
-            Subspace::submit_equivocation_report(equivocation_proof)
-        }
-
-        fn submit_vote_extrinsic(
-            signed_vote: SignedVote<NumberFor<Block>, <Block as BlockT>::Hash, FarmerPublicKey>,
-        ) {
-            let SignedVote { vote, signature } = signed_vote;
-            let Vote::V0 {
-                height,
-                parent_hash,
-                slot,
-                solution,
-            } = vote;
-
-            Subspace::submit_vote(SignedVote {
-                vote: Vote::V0 {
-                    height,
-                    parent_hash,
-                    slot,
-                    solution: solution.into_reward_address_format::<RewardAddress, AccountId32>(),
-                },
-                signature,
-            })
-        }
-
-        fn is_in_block_list(farmer_public_key: &FarmerPublicKey) -> bool {
-            // TODO: Either check tx pool too for pending equivocations or replace equivocation
-            //  mechanism with an alternative one, so that blocking happens faster
-            Subspace::is_in_block_list(farmer_public_key)
-        }
-
-        fn segment_commitment(segment_index: SegmentIndex) -> Option<SegmentCommitment> {
-            Subspace::segment_commitment(segment_index)
-        }
-
-        fn extract_segment_headers(ext: &<Block as BlockT>::Extrinsic) -> Option<Vec<SegmentHeader >> {
-            extract_segment_headers(ext)
-        }
-
-        fn is_inherent(ext: &<Block as BlockT>::Extrinsic) -> bool {
-            match &ext.function {
-                RuntimeCall::Subspace(call) => Subspace::is_inherent(call),
-                RuntimeCall::Timestamp(call) => Timestamp::is_inherent(call),
-                _ => false,
-            }
-        }
-
-        fn root_plot_public_key() -> Option<FarmerPublicKey> {
-            Subspace::root_plot_public_key()
-        }
-
-        fn should_adjust_solution_range() -> bool {
-            Subspace::should_adjust_solution_range()
-        }
-
-        fn chain_constants() -> ChainConstants {
-            Subspace::chain_constants()
-        }
-    }
-
-    impl sp_domains::transaction::PreValidationObjectApi<Block, DomainNumber, DomainHash, > for Runtime {
-        fn extract_pre_validation_object(
-            extrinsic: <Block as BlockT>::Extrinsic,
-        ) -> sp_domains::transaction::PreValidationObject<Block, DomainNumber, DomainHash> {
-            crate::domains::extract_pre_validation_object(extrinsic)
-        }
-    }
-
-    impl sp_domains::DomainsApi<Block, DomainNumber, DomainHash> for Runtime {
-        fn submit_bundle_unsigned(
-            opaque_bundle: sp_domains::OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainNumber, DomainHash, Balance>,
-        ) {
-            Domains::submit_bundle_unsigned(opaque_bundle)
-        }
-
-        fn extract_successful_bundles(
-            domain_id: DomainId,
-            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> sp_domains::OpaqueBundles<Block, DomainNumber, DomainHash, Balance> {
-            crate::domains::extract_successful_bundles(domain_id, extrinsics)
-        }
-
-        fn extrinsics_shuffling_seed() -> Randomness {
-            Randomness::from(Domains::extrinsics_shuffling_seed().to_fixed_bytes())
-        }
-
-        fn domain_runtime_code(domain_id: DomainId) -> Option<Vec<u8>> {
-            Domains::domain_runtime_code(domain_id)
-        }
-
-        fn runtime_id(domain_id: DomainId) -> Option<sp_domains::RuntimeId> {
-            Domains::runtime_id(domain_id)
-        }
-
-        fn domain_instance_data(domain_id: DomainId) -> Option<(DomainInstanceData, NumberFor<Block>)> {
-            Domains::domain_instance_data(domain_id)
-        }
-
-        fn timestamp() -> Moment{
-            Timestamp::now()
-        }
-
-        fn domain_tx_range(domain_id: DomainId) -> U256 {
-            Domains::domain_tx_range(domain_id)
-        }
-
-        fn genesis_state_root(domain_id: DomainId) -> Option<H256> {
-            Domains::genesis_state_root(domain_id)
-        }
-
-        fn head_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
-            Domains::head_receipt_number(domain_id)
-        }
-
-        fn oldest_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
-            Domains::oldest_receipt_number(domain_id)
-        }
-
-        fn block_tree_pruning_depth() -> NumberFor<Block> {
-            Domains::block_tree_pruning_depth()
-        }
-
-        fn domain_block_limit(domain_id: DomainId) -> Option<sp_domains::DomainBlockLimit> {
-            Domains::domain_block_limit(domain_id)
-        }
-
-        fn non_empty_er_exists(domain_id: DomainId) -> bool {
-            Domains::non_empty_er_exists(domain_id)
-        }
-
-        fn domain_best_number(domain_id: DomainId) -> Option<DomainNumber> {
-            Domains::domain_best_number(domain_id)
-        }
-
-        fn domain_state_root(domain_id: DomainId, number: DomainNumber, hash: DomainHash) -> Option<DomainHash>{
-            Domains::domain_state_root(domain_id, number, hash)
-        }
-    }
-
-    impl sp_domains::BundleProducerElectionApi<Block, Balance> for Runtime {
-        fn bundle_producer_election_params(domain_id: DomainId) -> Option<BundleProducerElectionParams<Balance>> {
-            Domains::bundle_producer_election_params(domain_id)
-        }
-
-        fn operator(operator_id: OperatorId) -> Option<(OperatorPublicKey, Balance)> {
-            Domains::operator(operator_id)
-        }
-    }
-
-    impl sp_session::SessionKeys<Block> for Runtime {
-        fn generate_session_keys(seed: Option<Vec<u8>>) -> Vec<u8> {
-            SessionKeys::generate(seed)
-        }
-
-        fn decode_session_keys(
-            encoded: Vec<u8>,
-        ) -> Option<Vec<(Vec<u8>, KeyTypeId)>> {
-            SessionKeys::decode_into_raw_public_keys(&encoded)
-        }
-    }
-
-    impl frame_system_rpc_runtime_api::AccountNonceApi<Block, AccountId, Nonce> for Runtime {
-        fn account_nonce(account: AccountId) -> Nonce {
-            System::account_nonce(account)
-        }
-    }
-
-    impl pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi<Block, Balance> for Runtime {
-        fn query_info(
-            uxt: <Block as BlockT>::Extrinsic,
-            len: u32,
-        ) -> pallet_transaction_payment_rpc_runtime_api::RuntimeDispatchInfo<Balance> {
-            TransactionPayment::query_info(uxt, len)
-        }
-        fn query_fee_details(
-            uxt: <Block as BlockT>::Extrinsic,
-            len: u32,
-        ) -> pallet_transaction_payment::FeeDetails<Balance> {
-            TransactionPayment::query_fee_details(uxt, len)
-        }
-        fn query_weight_to_fee(weight: Weight) -> Balance {
-            TransactionPayment::weight_to_fee(weight)
-        }
-        fn query_length_to_fee(length: u32) -> Balance {
-            TransactionPayment::length_to_fee(length)
-        }
-    }
-
-    impl sp_messenger::MessengerApi<Block, BlockNumber> for Runtime {
-        fn extract_xdm_proof_state_roots(
-            extrinsic: Vec<u8>,
-        ) -> Option<ExtractedStateRootsFromProof<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>> {
-            extract_xdm_proof_state_roots(extrinsic)
-        }
-
-        fn is_domain_info_confirmed(
-            domain_id: DomainId,
-            domain_block_info: BlockInfo<BlockNumber, <Block as BlockT>::Hash>,
-            domain_state_root: <Block as BlockT>::Hash,
-        ) -> bool{
-            Messenger::is_domain_info_confirmed(domain_id, domain_block_info, domain_state_root)
-        }
-    }
-
-    impl sp_messenger::RelayerApi<Block, BlockNumber> for Runtime {
-        fn chain_id() -> ChainId {
-            SelfChainId::get()
-        }
-
-        fn relay_confirmation_depth() -> BlockNumber {
-            RelayConfirmationDepth::get()
-        }
-
-        fn block_messages() -> BlockMessagesWithStorageKey {
-            Messenger::get_block_messages()
-        }
-
-        fn outbox_message_unsigned(msg: CrossDomainMessage<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
-            Messenger::outbox_message_unsigned(msg)
-        }
-
-        fn inbox_response_message_unsigned(msg: CrossDomainMessage<BlockNumber, <Block as BlockT>::Hash, <Block as BlockT>::Hash>) -> Option<<Block as BlockT>::Extrinsic> {
-            Messenger::inbox_response_message_unsigned(msg)
-        }
-
-        fn should_relay_outbox_message(dst_chain_id: ChainId, msg_id: MessageId) -> bool {
-            Messenger::should_relay_outbox_message(dst_chain_id, msg_id)
-        }
-
-        fn should_relay_inbox_message_response(dst_chain_id: ChainId, msg_id: MessageId) -> bool {
-            Messenger::should_relay_inbox_message_response(dst_chain_id, msg_id)
-        }
-    }
-
-    #[cfg(feature = "runtime-benchmarks")]
-    impl frame_benchmarking::Benchmark<Block> for Runtime {
-        fn benchmark_metadata(extra: bool) -> (
-            Vec<frame_benchmarking::BenchmarkList>,
-            Vec<frame_support::traits::StorageInfo>,
-        ) {
-            use frame_benchmarking::{baseline, Benchmarking, BenchmarkList};
-            use frame_support::traits::StorageInfoTrait;
-            use frame_system_benchmarking::Pallet as SystemBench;
-            use baseline::Pallet as BaselineBench;
-
-            let mut list = Vec::<BenchmarkList>::new();
-            list_benchmarks!(list, extra);
-
-            let storage_info = AllPalletsWithSystem::storage_info();
-
-            (list, storage_info)
-        }
-
-        fn dispatch_benchmark(
-            config: frame_benchmarking::BenchmarkConfig
-        ) -> Result<Vec<frame_benchmarking::BenchmarkBatch>, sp_runtime::RuntimeString> {
-            use frame_benchmarking::{baseline, Benchmarking, BenchmarkBatch, TrackedStorageKey};
-
-            use frame_system_benchmarking::Pallet as SystemBench;
-            use baseline::Pallet as BaselineBench;
-
-            impl frame_system_benchmarking::Config for Runtime {}
-            impl baseline::Config for Runtime {}
-
-            use frame_support::traits::WhitelistedStorageKeys;
-            let whitelist: Vec<TrackedStorageKey> = AllPalletsWithSystem::whitelisted_storage_keys();
-
-            let mut batches = Vec::<BenchmarkBatch>::new();
-            let params = (&config, &whitelist);
-            add_benchmarks!(params, batches);
-
-            Ok(batches)
-        }
-    }
-}
-#[cfg(feature = "pot")]
 impl_runtime_apis! {
     impl sp_api::Core<Block> for Runtime {
         fn version() -> RuntimeVersion {
@@ -1455,6 +1112,14 @@ impl_runtime_apis! {
         fn domain_state_root(domain_id: DomainId, number: DomainNumber, hash: DomainHash) -> Option<DomainHash>{
             Domains::domain_state_root(domain_id, number, hash)
         }
+
+        fn block_randomness_storage_key() -> Vec<u8> {
+            pallet_subspace::pallet::BlockRandomness::<Runtime>::storage_value_final_key().to_vec()
+        }
+
+        fn timestamp_storage_key() -> Vec<u8> {
+            pallet_timestamp::pallet::Now::<Runtime>::storage_value_final_key().to_vec()
+        }
     }
 
     impl sp_domains::BundleProducerElectionApi<Block, Balance> for Runtime {
@@ -1574,7 +1239,8 @@ impl_runtime_apis! {
         fn dispatch_benchmark(
             config: frame_benchmarking::BenchmarkConfig
         ) -> Result<Vec<frame_benchmarking::BenchmarkBatch>, sp_runtime::RuntimeString> {
-            use frame_benchmarking::{baseline, Benchmarking, BenchmarkBatch, TrackedStorageKey};
+            use frame_benchmarking::{baseline, Benchmarking, BenchmarkBatch};
+            use sp_core::storage::TrackedStorageKey;
 
             use frame_system_benchmarking::Pallet as SystemBench;
             use baseline::Pallet as BaselineBench;

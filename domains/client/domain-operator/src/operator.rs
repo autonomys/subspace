@@ -16,6 +16,7 @@ use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::SelectChain;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
+use sp_core::H256;
 use sp_domains::{BundleProducerElectionApi, DomainsApi};
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
@@ -23,7 +24,7 @@ use std::sync::Arc;
 use subspace_runtime_primitives::Balance;
 
 /// Domain operator.
-pub struct Operator<Block, CBlock, Client, CClient, TransactionPool, Backend, E, BI>
+pub struct Operator<Block, CBlock, Client, CClient, TransactionPool, Backend, E>
 where
     Block: BlockT,
     CBlock: BlockT,
@@ -33,12 +34,12 @@ where
     transaction_pool: Arc<TransactionPool>,
     backend: Arc<Backend>,
     fraud_proof_generator: FraudProofGenerator<Block, CBlock, Client, CClient, Backend, E>,
-    bundle_processor: BundleProcessor<Block, CBlock, Client, CClient, Backend, E, BI>,
-    domain_block_processor: DomainBlockProcessor<Block, CBlock, Client, CClient, Backend, BI>,
+    bundle_processor: BundleProcessor<Block, CBlock, Client, CClient, Backend, E>,
+    domain_block_processor: DomainBlockProcessor<Block, CBlock, Client, CClient, Backend>,
 }
 
-impl<Block, CBlock, Client, CClient, TransactionPool, Backend, E, BI> Clone
-    for Operator<Block, CBlock, Client, CClient, TransactionPool, Backend, E, BI>
+impl<Block, CBlock, Client, CClient, TransactionPool, Backend, E> Clone
+    for Operator<Block, CBlock, Client, CClient, TransactionPool, Backend, E>
 where
     Block: BlockT,
     CBlock: BlockT,
@@ -56,13 +57,14 @@ where
     }
 }
 
-impl<Block, CBlock, Client, CClient, TransactionPool, Backend, E, BI>
-    Operator<Block, CBlock, Client, CClient, TransactionPool, Backend, E, BI>
+impl<Block, CBlock, Client, CClient, TransactionPool, Backend, E>
+    Operator<Block, CBlock, Client, CClient, TransactionPool, Backend, E>
 where
     Block: BlockT,
     CBlock: BlockT,
     NumberFor<CBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
     CBlock::Hash: From<Block::Hash>,
+    Block::Hash: Into<H256>,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + AuxStore
@@ -79,6 +81,7 @@ where
         + HeaderMetadata<CBlock, Error = sp_blockchain::Error>
         + BlockBackend<CBlock>
         + ProvideRuntimeApi<CBlock>
+        + ProofProvider<CBlock>
         + BlockchainEvents<CBlock>
         + Send
         + Sync
@@ -89,8 +92,6 @@ where
     Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
     E: CodeExecutor,
-    for<'b> &'b BI: sc_consensus::BlockImport<Block, Error = sp_consensus::Error>,
-    BI: Send + Sync + 'static,
 {
     /// Create a new instance.
     pub async fn new<SC, IBNS, CIBNS, NSNS>(
@@ -107,7 +108,6 @@ where
             IBNS,
             CIBNS,
             NSNS,
-            BI,
         >,
     ) -> Result<Self, sp_consensus::Error>
     where

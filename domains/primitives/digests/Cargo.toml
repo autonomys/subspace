@@ -15,10 +15,10 @@ include = [
 
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3.1.5", default-features = false, features = ["derive"] }
-sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef" }
-sp-core = { version = "21.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef" }
+sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7" }
+sp-core = { version = "21.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7" }
 sp-domains = { version = "0.1.0", default-features = false, path = "../../../crates/sp-domains" }
-sp-runtime = { version = "24.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef" }
+sp-runtime = { version = "24.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7" }
 
 [features]
 default = ["std"]

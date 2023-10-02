@@ -230,20 +230,35 @@ pub(super) fn target_receipt_is_pruned(
     head_receipt_number.saturating_sub(target_block) >= PRUNING_DEPTH
 }
 
+// TODO: Naming could use some work
+#[derive(Encode, Decode, Debug, PartialEq)]
+pub(super) enum InvalidBundlesMismatchType {
+    ValidAsInvalid,
+    InvalidAsValid,
+}
+
 #[derive(Encode, Decode, Debug, PartialEq)]
 pub(super) enum ReceiptMismatchInfo<CHash> {
-    TotalRewardsMismatch {
+    TotalRewards {
         consensus_block_hash: CHash,
     },
-    TraceMismatch {
+    Trace {
         trace_index: u32,
+        consensus_block_hash: CHash,
+    },
+    DomainExtrinsicsRoot {
+        consensus_block_hash: CHash,
+    },
+    InvalidBundles {
+        mismatch_type: InvalidBundlesMismatchType,
+        bundle_index: u32,
         consensus_block_hash: CHash,
     },
 }
 
 impl<CHash> From<(u32, CHash)> for ReceiptMismatchInfo<CHash> {
     fn from(value: (u32, CHash)) -> Self {
-        ReceiptMismatchInfo::TraceMismatch {
+        ReceiptMismatchInfo::Trace {
             trace_index: value.0,
             consensus_block_hash: value.1,
         }
@@ -253,12 +268,19 @@ impl<CHash> From<(u32, CHash)> for ReceiptMismatchInfo<CHash> {
 impl<CHash: Clone> ReceiptMismatchInfo<CHash> {
     pub(super) fn consensus_hash(&self) -> CHash {
         match self {
-            ReceiptMismatchInfo::TotalRewardsMismatch {
+            ReceiptMismatchInfo::TotalRewards {
                 consensus_block_hash,
             } => consensus_block_hash.clone(),
-            ReceiptMismatchInfo::TraceMismatch {
+            ReceiptMismatchInfo::Trace {
                 consensus_block_hash,
                 ..
+            } => consensus_block_hash.clone(),
+            ReceiptMismatchInfo::InvalidBundles {
+                consensus_block_hash,
+                ..
+            } => consensus_block_hash.clone(),
+            ReceiptMismatchInfo::DomainExtrinsicsRoot {
+                consensus_block_hash,
             } => consensus_block_hash.clone(),
         }
     }

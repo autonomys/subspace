@@ -28,7 +28,6 @@ futures = "0.3.28"
 hex = { version = "0.4.3", features = ["serde"] }
 jsonrpsee = { version = "0.16.3", features = ["client"] }
 lru = "0.11.0"
-memmap2 = "0.7.1"
 parity-scale-codec = "3.6.5"
 parking_lot = "0.12.1"
 prometheus-client = "0.21.2"
@@ -43,7 +42,6 @@ ss58-registry = "1.43.0"
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
 subspace-erasure-coding = { version = "0.1.0", path = "../subspace-erasure-coding" }
 subspace-farmer-components = { version = "0.1.0", path = "../subspace-farmer-components" }
-subspace-solving = { version = "0.1.0", path = "../subspace-solving" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-metrics = { version = "0.1.0", path = "../../shared/subspace-metrics" }
 subspace-networking = { version = "0.1.0", path = "../subspace-networking" }

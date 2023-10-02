@@ -1,4 +1,3 @@
-#[cfg(feature = "pot")]
 use crate::digests::PreDigestPotInfo;
 use crate::{
     is_equivocation_proof_valid, CompatibleDigestItem, EquivocationProof, FarmerPublicKey,
@@ -10,8 +9,7 @@ use sp_core::crypto::UncheckedFrom;
 use sp_runtime::traits::BlakeTwo256;
 use sp_runtime::{Digest, DigestItem};
 use std::num::NonZeroU64;
-use subspace_core_primitives::{HistorySize, PieceOffset, Solution};
-use subspace_solving::REWARD_SIGNING_CONTEXT;
+use subspace_core_primitives::{HistorySize, PieceOffset, Solution, REWARD_SIGNING_CONTEXT};
 
 type Header = sp_runtime::generic::Header<u32, BlakeTwo256>;
 type PreDigest = crate::PreDigest<FarmerPublicKey, ()>;
@@ -44,7 +42,6 @@ fn test_is_equivocation_proof_valid() {
             logs: vec![DigestItem::subspace_pre_digest(&PreDigest::V0 {
                 slot,
                 solution: solution.clone(),
-                #[cfg(feature = "pot")]
                 pot_info: PreDigestPotInfo::V0 {
                     proof_of_time: Default::default(),
                     future_proof_of_time: Default::default(),
@@ -73,7 +70,6 @@ fn test_is_equivocation_proof_valid() {
             logs: vec![DigestItem::subspace_pre_digest(&PreDigest::V0 {
                 slot,
                 solution,
-                #[cfg(feature = "pot")]
                 pot_info: PreDigestPotInfo::V0 {
                     proof_of_time: Default::default(),
                     future_proof_of_time: Default::default(),

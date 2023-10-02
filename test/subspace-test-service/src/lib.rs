@@ -29,7 +29,9 @@ use sc_block_builder::BlockBuilderProvider;
 use sc_consensus::block_import::{
     BlockCheckParams, BlockImportParams, ForkChoiceStrategy, ImportResult,
 };
-use sc_consensus::{BasicQueue, BlockImport, StateAction, Verifier as VerifierT};
+use sc_consensus::{
+    BasicQueue, BlockImport, SharedBlockImport, StateAction, Verifier as VerifierT,
+};
 use sc_consensus_fraud_proof::FraudProofBlockImport;
 use sc_executor::NativeElseWasmExecutor;
 use sc_network::config::{NetworkConfiguration, TransportConfig};
@@ -50,9 +52,7 @@ use sp_application_crypto::UncheckedFrom;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::{BlockOrigin, Error as ConsensusError};
 use sp_consensus_slots::Slot;
-#[cfg(feature = "pot")]
-use sp_consensus_subspace::digests::PreDigestPotInfo;
-use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
+use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest, PreDigestPotInfo};
 use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_core::H256;
@@ -547,14 +547,19 @@ impl MockConsensusNode {
         extrinsics
     }
 
-    async fn mock_inherent_data(slot: Slot) -> Result<InherentData, Box<dyn Error>> {
+    async fn mock_inherent_data(
+        slot: Slot,
+        parent_state_root: <Block as BlockT>::Hash,
+    ) -> Result<InherentData, Box<dyn Error>> {
         let timestamp = sp_timestamp::InherentDataProvider::new(Timestamp::new(
             <Slot as Into<u64>>::into(slot) * SLOT_DURATION,
         ));
         let subspace_inherents =
             sp_consensus_subspace::inherents::InherentDataProvider::new(slot, vec![]);
 
-        let inherent_data = (subspace_inherents, timestamp)
+        let domain_inherents = sp_domains::inherents::InherentDataProvider::new(parent_state_root);
+
+        let inherent_data = (subspace_inherents, timestamp, domain_inherents)
             .create_inherent_data()
             .await?;
 
@@ -565,7 +570,6 @@ impl MockConsensusNode {
         let pre_digest: PreDigest<FarmerPublicKey, AccountId> = PreDigest::V0 {
             slot,
             solution: self.mock_solution.clone(),
-            #[cfg(feature = "pot")]
             pot_info: PreDigestPotInfo::V0 {
                 proof_of_time: Default::default(),
                 future_proof_of_time: Default::default(),
@@ -584,7 +588,9 @@ impl MockConsensusNode {
         extrinsics: Vec<<Block as BlockT>::Extrinsic>,
     ) -> Result<(Block, StorageChanges), Box<dyn Error>> {
         let digest = self.mock_subspace_digest(slot);
-        let inherent_data = Self::mock_inherent_data(slot).await?;
+        let parent_state_root = self.client.header(parent_hash)?.unwrap().state_root;
+
+        let inherent_data = Self::mock_inherent_data(slot, parent_state_root).await?;
 
         let mut block_builder = self.client.new_block_at(parent_hash, digest, false)?;
 
@@ -727,7 +733,7 @@ where
 {
     BasicQueue::new(
         MockVerifier::default(),
-        Box::new(block_import),
+        SharedBlockImport::new(block_import),
         None,
         spawner,
         None,
@@ -752,7 +758,7 @@ where
     Block: BlockT,
 {
     async fn verify(
-        &mut self,
+        &self,
         block_params: BlockImportParams<Block>,
     ) -> Result<BlockImportParams<Block>, String> {
         Ok(block_params)
@@ -861,7 +867,7 @@ where
     }
 
     async fn check_block(
-        &mut self,
+        &self,
         block: BlockCheckParams<Block>,
     ) -> Result<ImportResult, Self::Error> {
         self.inner.check_block(block).await.map_err(Into::into)

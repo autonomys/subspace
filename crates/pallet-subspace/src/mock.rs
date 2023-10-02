@@ -19,7 +19,7 @@
 use crate::equivocation::EquivocationHandler;
 use crate::{
     self as pallet_subspace, AllowAuthoringBy, Config, CurrentSlot, FarmerPublicKey,
-    NormalEraChange, NormalGlobalRandomnessInterval,
+    NormalEraChange,
 };
 use frame_support::parameter_types;
 use frame_support::traits::{ConstU128, ConstU16, ConstU32, ConstU64, OnInitialize};
@@ -27,13 +27,12 @@ use futures::executor::block_on;
 use rand::Rng;
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
-#[cfg(feature = "pot")]
-use sp_consensus_subspace::digests::PreDigestPotInfo;
-use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
-#[cfg(feature = "pot")]
-use sp_consensus_subspace::PotExtension;
-use sp_consensus_subspace::{FarmerSignature, KzgExtension, PosExtension, SignedVote, Vote};
+use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest, PreDigestPotInfo};
+use sp_consensus_subspace::{
+    FarmerSignature, KzgExtension, PosExtension, PotExtension, SignedVote, Vote,
+};
 use sp_core::crypto::UncheckedFrom;
+use sp_core::storage::StateVersion;
 use sp_core::H256;
 use sp_io::TestExternalities;
 use sp_runtime::testing::{Digest, DigestItem, Header, TestXt};
@@ -42,15 +41,16 @@ use sp_runtime::{BuildStorage, Perbill};
 use sp_weights::Weight;
 use std::iter;
 use std::marker::PhantomData;
-use std::num::{NonZeroU32, NonZeroU64};
-use std::sync::Once;
+use std::num::{NonZeroU32, NonZeroU64, NonZeroUsize};
+use std::sync::{Once, OnceLock};
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::{
     ArchivedBlockProgress, ArchivedHistorySegment, Blake2b256Hash, BlockNumber, HistorySize,
-    LastArchivedBlock, Piece, PieceOffset, PublicKey, Randomness, RecordedHistorySegment,
-    SegmentCommitment, SegmentHeader, SegmentIndex, SlotNumber, Solution, SolutionRange,
+    LastArchivedBlock, Piece, PieceOffset, PosSeed, PotOutput, PublicKey, Record,
+    RecordedHistorySegment, SegmentCommitment, SegmentHeader, SegmentIndex, SlotNumber, Solution,
+    SolutionRange, REWARD_SIGNING_CONTEXT,
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector;
@@ -58,8 +58,7 @@ use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy};
 use subspace_farmer_components::sector::{sector_size, SectorMetadataChecksummed};
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::shim::ShimTable;
-use subspace_proof_of_space::Table;
-use subspace_solving::REWARD_SIGNING_CONTEXT;
+use subspace_proof_of_space::{Table, TableGenerator};
 
 type PosTable = ShimTable;
 
@@ -67,13 +66,29 @@ type Block = frame_system::mocking::MockBlock<Test>;
 
 const MAX_PIECES_IN_SECTOR: u16 = 1;
 
+fn kzg_instance() -> &'static Kzg {
+    static KZG: OnceLock<Kzg> = OnceLock::new();
+
+    KZG.get_or_init(|| Kzg::new(embedded_kzg_settings()))
+}
+
+fn erasure_coding_instance() -> &'static ErasureCoding {
+    static ERASURE_CODING: OnceLock<ErasureCoding> = OnceLock::new();
+
+    ERASURE_CODING.get_or_init(|| {
+        ErasureCoding::new(
+            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
+        )
+        .unwrap()
+    })
+}
+
 frame_support::construct_runtime!(
     pub struct Test {
         System: frame_system,
         Balances: pallet_balances,
         Subspace: pallet_subspace,
         OffencesSubspace: pallet_offences_subspace,
-        Timestamp: pallet_timestamp,
     }
 );
 
@@ -81,6 +96,7 @@ parameter_types! {
     pub const DisabledValidatorsThreshold: Perbill = Perbill::from_percent(16);
     pub BlockWeights: frame_system::limits::BlockWeights =
         frame_system::limits::BlockWeights::simple_max(Weight::from_parts(1024, 0));
+    pub const ExtrinsicsRootStateVersion: StateVersion = StateVersion::V0;
 }
 
 impl frame_system::Config for Test {
@@ -107,6 +123,7 @@ impl frame_system::Config for Test {
     type SS58Prefix = ();
     type OnSetCode = ();
     type MaxConsumers = ConstU32<16>;
+    type ExtrinsicsRootStateVersion = ExtrinsicsRootStateVersion;
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Test
@@ -115,16 +132,6 @@ where
 {
     type OverarchingCall = RuntimeCall;
     type Extrinsic = TestXt<RuntimeCall, ()>;
-}
-
-impl pallet_timestamp::Config for Test {
-    type Moment = u64;
-    #[cfg(not(feature = "pot"))]
-    type OnTimestampSet = Subspace;
-    #[cfg(feature = "pot")]
-    type OnTimestampSet = ();
-    type MinimumPeriod = ConstU64<1>;
-    type WeightInfo = ();
 }
 
 impl pallet_balances::Config for Test {
@@ -155,8 +162,6 @@ pub const INITIAL_SOLUTION_RANGE: SolutionRange =
     u64::MAX / (1024 * 1024 * 1024 / Piece::SIZE as u64) * SLOT_PROBABILITY.0 / SLOT_PROBABILITY.1;
 
 parameter_types! {
-    #[cfg(not(feature = "pot"))]
-    pub const GlobalRandomnessUpdateInterval: u64 = 10;
     pub const BlockAuthoringDelay: SlotNumber = 2;
     pub const PotEntropyInjectionInterval: BlockNumber = 5;
     pub const PotEntropyInjectionLookbackDepth: u8 = 2;
@@ -181,7 +186,6 @@ parameter_types! {
 
 impl Config for Test {
     type RuntimeEvent = RuntimeEvent;
-    type GlobalRandomnessUpdateInterval = GlobalRandomnessUpdateInterval;
     type BlockAuthoringDelay = BlockAuthoringDelay;
     type PotEntropyInjectionInterval = PotEntropyInjectionInterval;
     type PotEntropyInjectionLookbackDepth = PotEntropyInjectionLookbackDepth;
@@ -189,7 +193,6 @@ impl Config for Test {
     type EraDuration = EraDuration;
     type InitialSolutionRange = InitialSolutionRange;
     type SlotProbability = SlotProbability;
-    type ExpectedBlockTime = ConstU64<1>;
     type ConfirmationDepthK = ConfirmationDepthK;
     type RecentSegments = RecentSegments;
     type RecentHistoryFraction = RecentHistoryFraction;
@@ -197,7 +200,6 @@ impl Config for Test {
     type ExpectedVotesPerBlock = ExpectedVotesPerBlock;
     type MaxPiecesInSector = ConstU16<{ MAX_PIECES_IN_SECTOR }>;
     type ShouldAdjustSolutionRange = ShouldAdjustSolutionRange;
-    type GlobalRandomnessIntervalTrigger = NormalGlobalRandomnessInterval;
     type EraChangeTrigger = NormalEraChange;
 
     type HandleEquivocation = EquivocationHandler<OffencesSubspace, ReportLongevity>;
@@ -267,9 +269,7 @@ pub fn make_pre_digest(
     let log = DigestItem::subspace_pre_digest(&PreDigest::V0 {
         slot,
         solution,
-        #[cfg(feature = "pot")]
         pot_info: PreDigestPotInfo::V0 {
-            iterations: NonZeroU32::new(100_000).unwrap(),
             proof_of_time: Default::default(),
             future_proof_of_time: Default::default(),
         },
@@ -277,7 +277,13 @@ pub fn make_pre_digest(
     Digest { logs: vec![log] }
 }
 
-pub fn new_test_ext() -> TestExternalities {
+pub fn allow_all_pot_extension() -> PotExtension {
+    PotExtension::new(Box::new(
+        |_parent_hash, _slot, _proof_of_time, _quick_verification| true,
+    ))
+}
+
+pub fn new_test_ext(pot_extension: PotExtension) -> TestExternalities {
     static INITIALIZE_LOGGER: Once = Once::new();
     INITIALIZE_LOGGER.call_once(|| {
         let _ = env_logger::try_init_from_env(env_logger::Env::new().default_filter_or("error"));
@@ -299,12 +305,9 @@ pub fn new_test_ext() -> TestExternalities {
 
     let mut ext = TestExternalities::from(storage);
 
-    ext.register_extension(KzgExtension::new(Kzg::new(embedded_kzg_settings())));
+    ext.register_extension(KzgExtension::new(kzg_instance().clone()));
     ext.register_extension(PosExtension::new::<PosTable>());
-    #[cfg(feature = "pot")]
-    ext.register_extension(PotExtension::new(Box::new(
-        |parent_hash, slot, proof_of_time| todo!(),
-    )));
+    ext.register_extension(pot_extension);
 
     ext
 }
@@ -349,8 +352,6 @@ pub fn generate_equivocation_proof(
         System::reset_events();
         System::initialize(&current_block, &parent_hash, &pre_digest);
         System::set_block_number(current_block);
-        #[cfg(not(feature = "pot"))]
-        Timestamp::set_timestamp(*current_slot * Subspace::slot_duration());
         System::finalize()
     };
 
@@ -400,16 +401,20 @@ pub fn create_segment_header(segment_index: SegmentIndex) -> SegmentHeader {
     }
 }
 
-pub fn create_archived_segment(kzg: Kzg) -> NewArchivedSegment {
-    let mut archiver = Archiver::new(kzg).unwrap();
+pub fn create_archived_segment() -> &'static NewArchivedSegment {
+    static ARCHIVED_SEGMENT: OnceLock<NewArchivedSegment> = OnceLock::new();
 
-    let mut block = vec![0u8; RecordedHistorySegment::SIZE];
-    rand::thread_rng().fill(block.as_mut_slice());
-    archiver
-        .add_block(block, Default::default(), true)
-        .into_iter()
-        .next()
-        .unwrap()
+    ARCHIVED_SEGMENT.get_or_init(|| {
+        let mut archiver = Archiver::new(kzg_instance().clone()).unwrap();
+
+        let mut block = vec![0u8; RecordedHistorySegment::SIZE];
+        rand::thread_rng().fill(block.as_mut_slice());
+        archiver
+            .add_block(block, Default::default(), true)
+            .into_iter()
+            .next()
+            .unwrap()
+    })
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -418,13 +423,14 @@ pub fn create_signed_vote(
     height: u64,
     parent_hash: <Block as BlockT>::Hash,
     slot: Slot,
-    global_randomness: &Randomness,
+    proof_of_time: PotOutput,
+    future_proof_of_time: PotOutput,
     archived_history_segment: &ArchivedHistorySegment,
     reward_address: <Test as frame_system::Config>::AccountId,
-    kzg: &Kzg,
-    erasure_coding: &ErasureCoding,
     solution_range: SolutionRange,
 ) -> SignedVote<u64, <Block as BlockT>::Hash, <Test as frame_system::Config>::AccountId> {
+    let kzg = kzg_instance();
+    let erasure_coding = erasure_coding_instance();
     let reward_signing_context = schnorrkel::signing_context(REWARD_SIGNING_CONTEXT);
     let public_key = PublicKey::from(keypair.public.to_bytes());
 
@@ -462,22 +468,27 @@ pub fn create_signed_vote(
         ))
         .unwrap();
 
-        let maybe_solution_candidates = audit_sector(
+        let maybe_audit_result = audit_sector(
             &public_key,
             sector_index,
-            &global_randomness.derive_global_challenge(slot.into()),
+            &proof_of_time
+                .derive_global_randomness()
+                .derive_global_challenge(slot.into()),
             solution_range,
             &plotted_sector_bytes,
             &plotted_sector.sector_metadata,
         );
 
-        let Some(solution_candidates) = maybe_solution_candidates else {
+        let Some(audit_result) = maybe_audit_result else {
             // Sector didn't have any solutions
             continue;
         };
 
-        let solution = solution_candidates
-            .into_iter::<_, PosTable>(&reward_address, kzg, erasure_coding, &mut table_generator)
+        let solution = audit_result
+            .solution_candidates
+            .into_solutions(&reward_address, kzg, erasure_coding, |seed: &PosSeed| {
+                table_generator.generate_parallel(seed)
+            })
             .unwrap()
             .next()
             .unwrap()
@@ -500,6 +511,8 @@ pub fn create_signed_vote(
                 audit_chunk_offset: solution.audit_chunk_offset,
                 proof_of_space: solution.proof_of_space,
             },
+            proof_of_time,
+            future_proof_of_time,
         };
 
         let signature = FarmerSignature::unchecked_from(

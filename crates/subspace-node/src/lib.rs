@@ -28,6 +28,7 @@ use sc_storage_monitor::StorageMonitorParams;
 use sc_subspace_chain_specs::ConsensusChainSpec;
 use sc_telemetry::serde_json;
 use serde_json::Value;
+use std::collections::HashSet;
 use std::io::Write;
 use std::{fs, io};
 use subspace_networking::libp2p::Multiaddr;
@@ -175,7 +176,32 @@ pub enum Subcommand {
     Benchmark(frame_benchmarking_cli::BenchmarkCmd),
 }
 
-#[cfg(feature = "pot")]
+fn parse_timekeeper_cpu_cores(
+    s: &str,
+) -> Result<HashSet<usize>, Box<dyn std::error::Error + Send + Sync>> {
+    if s.is_empty() {
+        return Ok(HashSet::new());
+    }
+
+    let mut cpu_cores = HashSet::new();
+    for s in s.split(',') {
+        let mut parts = s.split('-');
+        let range_start = parts
+            .next()
+            .ok_or("Bad string format, must be comma separated list of CPU cores or ranges")?
+            .parse()?;
+        if let Some(range_end) = parts.next() {
+            let range_end = range_end.parse()?;
+
+            cpu_cores.extend(range_start..=range_end);
+        } else {
+            cpu_cores.insert(range_start);
+        }
+    }
+
+    Ok(cpu_cores)
+}
+
 fn parse_pot_external_entropy(s: &str) -> Result<Vec<u8>, hex::FromHexError> {
     hex::decode(s)
 }
@@ -262,12 +288,25 @@ pub struct Cli {
 
     /// Assigned PoT role for this node.
     #[arg(long)]
-    #[cfg(feature = "pot")]
     pub timekeeper: bool,
+
+    /// CPU cores that timekeeper can use.
+    ///
+    /// At least 2 cores should be provided, if more cores than necessary are provided, random cores
+    /// out of provided will be utilized, if not enough cores are provided timekeeper may occupy
+    /// random CPU cores.
+    ///
+    /// Comma separated list of individual cores or ranges of cores.
+    ///
+    /// Examples:
+    /// * `0,1` - use cores 0 and 1
+    /// * `0-3` - use cores 0, 1, 2 and 3
+    /// * `0,1,6-7` - use cores 0, 1, 6 and 7
+    #[arg(long, default_value = "", value_parser = parse_timekeeper_cpu_cores, verbatim_doc_comment)]
+    pub timekeeper_cpu_cores: HashSet<usize>,
 
     /// External entropy, used initially when PoT chain starts to derive the first seed
     #[arg(long, value_parser = parse_pot_external_entropy)]
-    #[cfg(feature = "pot")]
     pub pot_external_entropy: Option<Vec<u8>>,
 }
 

@@ -1,6 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use futures::executor::block_on;
-use memmap2::Mmap;
 use rand::prelude::*;
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -21,7 +20,7 @@ use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy, 
 use subspace_farmer_components::sector::{
     sector_size, SectorContentsMap, SectorMetadata, SectorMetadataChecksummed,
 };
-use subspace_farmer_components::FarmerProtocolInfo;
+use subspace_farmer_components::{FarmerProtocolInfo, ReadAt};
 use subspace_proof_of_space::chia::ChiaTable;
 use subspace_proof_of_space::Table;
 
@@ -183,29 +182,19 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                 .unwrap();
         }
 
-        let plot_mmap = unsafe { Mmap::map(&plot_file).unwrap() };
-
-        #[cfg(unix)]
-        {
-            plot_mmap.advise(memmap2::Advice::Random).unwrap();
-        }
-
         group.throughput(Throughput::Elements(sectors_count));
-        group.bench_function("disk", move |b| {
+        group.bench_function("disk", |b| {
             b.iter_custom(|iters| {
                 let start = Instant::now();
                 for _i in 0..iters {
-                    for (sector_index, sector) in plot_mmap
-                        .chunks_exact(sector_size)
-                        .enumerate()
-                        .map(|(sector_index, sector)| (sector_index as SectorIndex, sector))
-                    {
+                    for sector_index in 0..sectors_count as usize {
+                        let sector = plot_file.offset(sector_index * sector_size);
                         audit_sector(
                             black_box(&public_key),
-                            black_box(sector_index),
+                            black_box(sector_index as SectorIndex),
                             black_box(&global_challenge),
                             black_box(solution_range),
-                            black_box(sector),
+                            black_box(&sector),
                             black_box(&plotted_sector.sector_metadata),
                         );
                     }

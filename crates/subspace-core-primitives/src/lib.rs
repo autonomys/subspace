@@ -70,6 +70,9 @@ use uint::static_assertions::const_assert;
 // Refuse to compile on lower than 32-bit platforms
 const_assert!(core::mem::size_of::<usize>() >= core::mem::size_of::<u32>());
 
+/// Signing context used for creating reward signatures by farmers.
+pub const REWARD_SIGNING_CONTEXT: &[u8] = b"subspace_reward";
+
 /// Byte length of a randomness type.
 pub const RANDOMNESS_LENGTH: usize = 32;
 
@@ -230,7 +233,7 @@ impl Default for PosProof {
 
 impl PosProof {
     /// Size of proof of space proof in bytes.
-    pub const SIZE: usize = 17 * 8;
+    pub const SIZE: usize = 20 * 8;
 
     /// Proof hash.
     pub fn hash(&self) -> Blake2b256Hash {

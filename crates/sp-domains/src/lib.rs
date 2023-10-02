@@ -19,11 +19,13 @@
 
 pub mod bundle_producer_election;
 pub mod fraud_proof;
+pub mod inherents;
 pub mod merkle_tree;
 pub mod storage;
 #[cfg(test)]
 mod tests;
 pub mod transaction;
+pub mod valued_trie_root;
 pub mod verification;
 
 extern crate alloc;
@@ -54,6 +56,9 @@ use subspace_runtime_primitives::{Balance, Moment};
 
 /// Key type for Operator.
 const KEY_TYPE: KeyTypeId = KeyTypeId(*b"oper");
+
+/// Extrinsics shuffling seed
+pub const DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT: &[u8] = b"extrinsics-shuffling-seed";
 
 mod app {
     use super::KEY_TYPE;
@@ -350,7 +355,7 @@ pub struct ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance> {
     /// The block hash corresponding to `domain_block_number`.
     pub domain_block_hash: DomainHash,
     /// Extrinsic root field of the header of domain block referenced by this ER.
-    pub domain_block_extrinsic_root: DomainHash,
+    pub domain_block_extrinsic_root: H256,
     /// The hash of the ER for the last domain block.
     pub parent_domain_block_receipt_hash: ReceiptHash,
     /// A pointer to the consensus block index which contains all of the bundles that were used to derive and
@@ -689,7 +694,7 @@ pub struct ValidBundle {
     /// Index of this bundle in the original list of bundles in the consensus block.
     pub bundle_index: u32,
     /// Hash of `Vec<(tx_signer, tx_hash)>` of all domain extrinsic being included in the bundle.
-    pub bundle_digest: H256,
+    pub bundle_digest_hash: H256,
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, Clone, PartialEq, Eq)]
@@ -756,6 +761,12 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the chain state root at the given block.
         fn domain_state_root(domain_id: DomainId, number: DomainNumber, hash: DomainHash) -> Option<DomainHash>;
+
+        /// Returns the storage key for block randomness.
+        fn block_randomness_storage_key() -> Vec<u8>;
+
+        /// Returns the storage key for timestamp;
+        fn timestamp_storage_key() -> Vec<u8>;
     }
 
     pub trait BundleProducerElectionApi<Balance: Encode + Decode> {
