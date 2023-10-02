@@ -677,10 +677,6 @@ impl sp_domains::fraud_proof::DeriveExtrinsics<Moment> for DeriveExtrinsics {
     }
 }
 
-parameter_types! {
-    pub const MaximumRuntimeUpgradesToHold: u32 = 5;
-}
-
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type DomainNumber = DomainNumber;
@@ -708,7 +704,7 @@ impl pallet_domains::Config for Runtime {
     type Randomness = Subspace;
     type StorageKeys = StorageKeys;
     type DeriveExtrinsics = DeriveExtrinsics;
-    type MaximumRuntimeUpgradesToHold = MaximumRuntimeUpgradesToHold;
+    type MaximumRuntimeUpgradesToHold = BlockTreePruningDepth;
 }
 
 parameter_types! {

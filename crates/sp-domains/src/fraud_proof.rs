@@ -10,7 +10,6 @@ use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT, SignedEx
 use sp_std::boxed::Box;
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
-use sp_weights::Weight;
 use subspace_core_primitives::BlockNumber;
 use subspace_runtime_primitives::{AccountId, Balance};
 use trie_db::TrieLayout;
@@ -77,10 +76,7 @@ impl ExecutionPhase {
 #[derive(Encode)]
 pub enum DomainExecutiveCall<RuntimeCall> {
     #[codec(index = 0)]
-    SudoUncheckedWeightUnsigned {
-        call: Box<RuntimeCall>,
-        weight: Weight,
-    },
+    SudoUnsigned { call: Box<RuntimeCall> },
 }
 
 /// Represents the domain-pallet-executive pallet structure.
@@ -107,11 +103,9 @@ where
     RuntimeCall: Encode,
     Extra: SignedExtension,
 {
-    let domain_executive =
-        DomainExecutive::Call(DomainExecutiveCall::SudoUncheckedWeightUnsigned {
-            call: Box::new(set_code_extrinsic),
-            weight: Weight::from_parts(0, 0),
-        });
+    let domain_executive = DomainExecutive::Call(DomainExecutiveCall::SudoUnsigned {
+        call: Box::new(set_code_extrinsic),
+    });
     let domain_runtime_call = DomainRuntimeCall::DomainExecutive(domain_executive);
     UncheckedExtrinsic::<(), _, (), Extra>::new_unsigned(domain_runtime_call).encode()
 }

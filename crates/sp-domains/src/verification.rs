@@ -110,7 +110,7 @@ pub fn verify_invalid_domain_extrinsics_root_fraud_proof<
     Hashing,
     SK,
     DE,
-    FR,
+    FetchRuntime,
 >(
     consensus_state_root: CBlock::Hash,
     runtime_id: RuntimeId,
@@ -122,14 +122,14 @@ pub fn verify_invalid_domain_extrinsics_root_fraud_proof<
         Balance,
     >,
     fraud_proof: &InvalidExtrinsicsRootProof,
-    fetch_runtime: FR,
+    fetch_runtime: FetchRuntime,
 ) -> Result<(), VerificationError>
 where
     CBlock: Block,
     Hashing: Hasher<Out = CBlock::Hash>,
     SK: StorageKeys,
     DE: DeriveExtrinsics<Moment>,
-    FR: Fn(CBlock::Hash) -> Option<Vec<u8>>,
+    FetchRuntime: Fn(CBlock::Hash) -> Option<Vec<u8>>,
 {
     let InvalidExtrinsicsRootProof {
         valid_bundle_digests,

@@ -167,14 +167,13 @@ pub(crate) fn do_upgrade_runtimes<T: Config>(at: BlockNumberFor<T>) {
             runtime_obj.runtime_upgrades = runtime_obj.runtime_upgrades.saturating_add(1);
             runtime_obj.updated_at = at;
 
-            // prune old runtimes
-            prune_old_runtimes::<T>(runtime_id);
-            Runtimes::<T>::insert(runtime_hash, scheduled_update.code);
-            RuntimeMap::<T>::mutate(runtime_id, |maybe_runtime_hashes| {
-                let mut runtime_hashes = maybe_runtime_hashes.as_mut().cloned().unwrap_or_default();
-                runtime_hashes.push(runtime_hash);
-                *maybe_runtime_hashes = Some(runtime_hashes)
+            RuntimeMap::<T>::mutate(runtime_id, |runtime_hashes| {
+                if runtime_hashes.len() >= T::MaximumRuntimeUpgradesToHold::get() as usize {
+                    let _ = runtime_hashes.pop_front().map(Runtimes::<T>::remove);
+                }
+                runtime_hashes.push_back(runtime_hash);
             });
+            Runtimes::<T>::insert(runtime_hash, scheduled_update.code);
             RuntimeUpgraded::<T>::insert(runtime_id, runtime_hash);
         });
 
@@ -185,18 +184,6 @@ pub(crate) fn do_upgrade_runtimes<T: Config>(at: BlockNumberFor<T>) {
         frame_system::Pallet::<T>::deposit_event(<T as Config>::RuntimeEvent::from(
             Event::DomainRuntimeUpgraded { runtime_id },
         ));
-    }
-}
-
-fn prune_old_runtimes<T: Config>(runtime_id: RuntimeId) {
-    let mut runtime_hashes = RuntimeMap::<T>::get(runtime_id).unwrap_or_default();
-    let max_runtimes = T::MaximumRuntimeUpgradesToHold::get() as usize;
-    if runtime_hashes.len() >= max_runtimes {
-        let pruned_hashes: Vec<_> = runtime_hashes
-            .drain(0..(runtime_hashes.len() - max_runtimes + 1))
-            .collect();
-        let _ = pruned_hashes.into_iter().map(Runtimes::<T>::remove);
-        RuntimeMap::<T>::insert(runtime_id, runtime_hashes);
     }
 }
 
@@ -252,7 +239,7 @@ mod tests {
             let runtime_code = Runtimes::<Test>::get(runtime_obj.hash).unwrap();
             assert_eq!(runtime_code, vec![1, 2, 3, 4]);
 
-            let runtime_maps = RuntimeMap::<Test>::get(0).unwrap();
+            let runtime_maps = RuntimeMap::<Test>::get(0);
             assert_eq!(runtime_maps.len(), 1);
         })
     }
@@ -457,7 +444,7 @@ mod tests {
                 vec![6, 7, 8, 9],
             );
 
-            let runtime_maps = RuntimeMap::<Test>::get(0).unwrap();
+            let runtime_maps = RuntimeMap::<Test>::get(0);
             assert_eq!(runtime_maps.len(), 2);
 
             let upgraded_runtime_hash = RuntimeUpgraded::<Test>::get(0).unwrap();

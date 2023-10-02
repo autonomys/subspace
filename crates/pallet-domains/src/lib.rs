@@ -153,6 +153,7 @@ pub mod pallet {
     use sp_std::boxed::Box;
     use sp_std::collections::btree_map::BTreeMap;
     use sp_std::collections::btree_set::BTreeSet;
+    use sp_std::collections::vec_deque::VecDeque;
     use sp_std::fmt::Debug;
     use sp_std::vec;
     use sp_std::vec::Vec;
@@ -320,7 +321,8 @@ pub mod pallet {
 
     /// Stores the runtime hashes against runtime_id.
     #[pallet::storage]
-    pub type RuntimeMap<T: Config> = StorageMap<_, Identity, RuntimeId, Vec<T::Hash>, OptionQuery>;
+    pub type RuntimeMap<T: Config> =
+        StorageMap<_, Identity, RuntimeId, VecDeque<T::Hash>, ValueQuery>;
 
     /// Temporary storage to hold the upgraded runtimes in the block.
     /// Will be cleared on_initialize of next block.

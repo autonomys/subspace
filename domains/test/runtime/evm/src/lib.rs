@@ -857,9 +857,8 @@ impl_runtime_apis! {
             // Use `set_code_without_checks` instead of `set_code` in the test environment.
             let set_code_call = frame_system::Call::set_code_without_checks { code };
             UncheckedExtrinsic::new_unsigned(
-                domain_pallet_executive::Call::sudo_unchecked_weight_unsigned {
+                domain_pallet_executive::Call::sudo_unsigned {
                     call: Box::new(set_code_call.into()),
-                    weight: Weight::from_parts(0, 0),
                 }.into()
             ).encode()
         }

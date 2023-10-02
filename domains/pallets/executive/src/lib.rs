@@ -74,11 +74,10 @@ mod pallet {
         /// Unsigned version of `frame_sudo::sudo_unchecked_weight`.
         #[allow(clippy::boxed_local)]
         #[pallet::call_index(0)]
-        #[pallet::weight((*_weight, call.get_dispatch_info().class, Pays::No))]
-        pub fn sudo_unchecked_weight_unsigned(
+        #[pallet::weight((call.get_dispatch_info().weight, call.get_dispatch_info().class, Pays::No))]
+        pub fn sudo_unsigned(
             origin: OriginFor<T>,
             call: Box<<T as Config>::RuntimeCall>,
-            _weight: Weight,
         ) -> DispatchResult {
             ensure_none(origin)?;
             let res = call.dispatch_bypass_filter(frame_system::RawOrigin::Root.into());

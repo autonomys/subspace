@@ -714,9 +714,8 @@ pub fn extract_signer(
 fn construct_set_code_extrinsic_inner(code: Vec<u8>) -> Vec<u8> {
     let set_code_call = frame_system::Call::<Runtime>::set_code { code };
     UncheckedExtrinsic::new_unsigned(
-        domain_pallet_executive::Call::<Runtime>::sudo_unchecked_weight_unsigned {
+        domain_pallet_executive::Call::<Runtime>::sudo_unsigned {
             call: Box::new(set_code_call.into()),
-            weight: Weight::from_parts(0, 0),
         }
         .into(),
     )
