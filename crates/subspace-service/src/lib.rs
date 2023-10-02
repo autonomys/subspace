@@ -75,7 +75,7 @@ use sp_blockchain::HeaderMetadata;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::extract_pre_digest;
 use sp_consensus_subspace::{
-    FarmerPublicKey, KzgExtension, PosExtension, PotExtension, SubspaceApi,
+    FarmerPublicKey, KzgExtension, PosExtension, PotExtension, PotNextSlotInput, SubspaceApi,
 };
 use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::transaction::PreValidationObjectApi;
@@ -316,37 +316,21 @@ where
                     }
                 };
 
-                let slot_iterations;
-                let pot_seed;
-                let after_parent_slot = parent_slot + Slot::from(1);
-
-                if parent_header.number().is_zero() {
-                    slot_iterations = pot_parameters.slot_iterations();
-                    pot_seed = pot_verifier.genesis_seed();
+                let pot_input = if parent_header.number().is_zero() {
+                    PotNextSlotInput {
+                        slot: parent_slot + Slot::from(1),
+                        slot_iterations: pot_parameters.slot_iterations(),
+                        seed: pot_verifier.genesis_seed(),
+                    }
                 } else {
                     let pot_info = parent_pre_digest.pot_info();
-                    // The change to number of iterations might have happened before
-                    // `after_parent_slot`
-                    if let Some(parameters_change) = pot_parameters.next_parameters_change()
-                        && parameters_change.slot <= after_parent_slot
-                    {
-                        slot_iterations = parameters_change.slot_iterations;
-                        // Only if entropy injection happens exactly after parent slot we need to \
-                        // mix it in
-                        if parameters_change.slot == after_parent_slot {
-                            pot_seed = pot_info
-                                .proof_of_time()
-                                .seed_with_entropy(&parameters_change.entropy);
-                        } else {
-                            pot_seed = pot_info
-                                .proof_of_time().seed();
-                        }
-                    } else {
-                        slot_iterations = pot_parameters.slot_iterations();
-                        pot_seed = pot_info
-                            .proof_of_time()
-                            .seed();
-                    }
+
+                    PotNextSlotInput::derive(
+                        pot_parameters.slot_iterations(),
+                        parent_slot,
+                        pot_info.proof_of_time(),
+                        &pot_parameters.next_parameters_change(),
+                    )
                 };
 
                 // Ensure proof of time and future proof of time included in upcoming block are
@@ -354,18 +338,14 @@ where
 
                 if quick_verification {
                     block_on(pot_verifier.try_is_output_valid(
-                        after_parent_slot,
-                        pot_seed,
-                        slot_iterations,
+                        pot_input,
                         Slot::from(slot - u64::from(parent_slot)),
                         proof_of_time,
                         pot_parameters.next_parameters_change(),
                     ))
                 } else {
                     block_on(pot_verifier.is_output_valid(
-                        after_parent_slot,
-                        pot_seed,
-                        slot_iterations,
+                        pot_input,
                         Slot::from(slot - u64::from(parent_slot)),
                         proof_of_time,
                         pot_parameters.next_parameters_change(),

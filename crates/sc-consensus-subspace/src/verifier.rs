@@ -23,7 +23,8 @@ use sp_consensus_subspace::digests::{
     extract_subspace_digest_items, CompatibleDigestItem, PreDigest, SubspaceDigestItems,
 };
 use sp_consensus_subspace::{
-    ChainConstants, FarmerPublicKey, FarmerSignature, SubspaceApi, SubspaceJustification,
+    ChainConstants, FarmerPublicKey, FarmerSignature, PotNextSlotInput, SubspaceApi,
+    SubspaceJustification,
 };
 use sp_runtime::traits::NumberFor;
 use sp_runtime::{DigestItem, Justifications};
@@ -307,17 +308,18 @@ where
                     checkpoints,
                 ));
 
-                slot_to_check = slot_to_check + Slot::from(1);
-                if let Some(parameters_change) = subspace_digest_items.pot_parameters_change
-                    && parameters_change.slot == slot_to_check
-                {
-                    slot_iterations = parameters_change.slot_iterations;
-                    seed = checkpoints
-                        .output()
-                        .seed_with_entropy(&parameters_change.entropy);
-                } else {
-                    seed = checkpoints.output().seed();
-                }
+                let pot_input = PotNextSlotInput::derive(
+                    slot_iterations,
+                    slot_to_check,
+                    checkpoints.output(),
+                    &subspace_digest_items.pot_parameters_change,
+                );
+
+                // TODO: Consider carrying of the whole `PotNextSlotInput` rather than individual
+                //  variables
+                slot_to_check = pot_input.slot;
+                slot_iterations = pot_input.slot_iterations;
+                seed = pot_input.seed;
             }
             // Try to find invalid checkpoints
             if full_pot_verification
@@ -338,27 +340,12 @@ where
             // verification
         }
 
-        let slot_iterations;
-        let pot_seed;
-        let next_slot = slot + Slot::from(1);
-        // The change to number of iterations might have happened before `next_slot`
-        if let Some(parameters_change) = subspace_digest_items.pot_parameters_change
-            && parameters_change.slot <= next_slot
-        {
-            slot_iterations = parameters_change.slot_iterations;
-            // Only if entropy injection happens exactly on next slot we need to mix it in
-            if parameters_change.slot == next_slot {
-                pot_seed = pre_digest
-                    .pot_info()
-                    .proof_of_time()
-                    .seed_with_entropy(&parameters_change.entropy);
-            } else {
-                pot_seed = pre_digest.pot_info().proof_of_time().seed();
-            }
-        } else {
-            slot_iterations = subspace_digest_items.pot_slot_iterations;
-            pot_seed = pre_digest.pot_info().proof_of_time().seed();
-        }
+        let pot_input = PotNextSlotInput::derive(
+            subspace_digest_items.pot_slot_iterations,
+            slot,
+            pre_digest.pot_info().proof_of_time(),
+            &subspace_digest_items.pot_parameters_change,
+        );
 
         // Check proof of time between slot of the block and future proof of time.
         //
@@ -369,9 +356,7 @@ where
             && !self
                 .pot_verifier
                 .is_output_valid(
-                    next_slot,
-                    pot_seed,
-                    slot_iterations,
+                    pot_input,
                     self.chain_constants.block_authoring_delay(),
                     pre_digest.pot_info().future_proof_of_time(),
                     subspace_digest_items.pot_parameters_change,

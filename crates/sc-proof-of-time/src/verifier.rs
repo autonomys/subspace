@@ -8,7 +8,7 @@ use futures::channel::oneshot;
 use lru::LruCache;
 use parking_lot::Mutex;
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::PotParametersChange;
+use sp_consensus_subspace::{PotNextSlotInput, PotParametersChange};
 use std::num::{NonZeroU32, NonZeroUsize};
 use std::sync::Arc;
 use subspace_core_primitives::{PotCheckpoints, PotOutput, PotSeed};
@@ -91,23 +91,13 @@ impl PotVerifier {
     /// whenever possible.
     pub async fn is_output_valid(
         &self,
-        slot: Slot,
-        seed: PotSeed,
-        slot_iterations: NonZeroU32,
+        input: PotNextSlotInput,
         slots: Slot,
         output: PotOutput,
         maybe_parameters_change: Option<PotParametersChange>,
     ) -> bool {
-        self.is_output_valid_internal(
-            slot,
-            seed,
-            slot_iterations,
-            slots,
-            output,
-            maybe_parameters_change,
-            true,
-        )
-        .await
+        self.is_output_valid_internal(input, slots, output, maybe_parameters_change, true)
+            .await
     }
 
     /// Does the same verification as [`Self::is_output_valid()`] except it relies on proofs being
@@ -115,34 +105,21 @@ impl PotVerifier {
     /// be a quick and cheap version of the function.
     pub async fn try_is_output_valid(
         &self,
-        slot: Slot,
-        seed: PotSeed,
-        slot_iterations: NonZeroU32,
+        input: PotNextSlotInput,
         slots: Slot,
         output: PotOutput,
         maybe_parameters_change: Option<PotParametersChange>,
     ) -> bool {
-        self.is_output_valid_internal(
-            slot,
-            seed,
-            slot_iterations,
-            slots,
-            output,
-            maybe_parameters_change,
-            false,
-        )
-        .await
+        self.is_output_valid_internal(input, slots, output, maybe_parameters_change, false)
+            .await
     }
 
-    #[allow(clippy::too_many_arguments)]
     async fn is_output_valid_internal(
         &self,
-        mut slot: Slot,
-        mut seed: PotSeed,
-        mut slot_iterations: NonZeroU32,
+        mut input: PotNextSlotInput,
         slots: Slot,
         output: PotOutput,
-        mut maybe_parameters_change: Option<PotParametersChange>,
+        maybe_parameters_change: Option<PotParametersChange>,
         do_proving_if_necessary: bool,
     ) -> bool {
         let mut slots = u64::from(slots);
@@ -160,8 +137,8 @@ impl PotVerifier {
                             let _ = result_sender.send(
                                 verifier
                                     .calculate_output(
-                                        seed,
-                                        slot_iterations,
+                                        input.seed,
+                                        input.slot_iterations,
                                         do_proving_if_necessary,
                                     )
                                     .await,
@@ -181,17 +158,12 @@ impl PotVerifier {
                 return output == calculated_proof;
             }
 
-            slot = slot + Slot::from(1);
-
-            if let Some(parameters_change) = maybe_parameters_change
-                && parameters_change.slot == slot
-            {
-                slot_iterations = parameters_change.slot_iterations;
-                seed = calculated_proof.seed_with_entropy(&parameters_change.entropy);
-                maybe_parameters_change.take();
-            } else {
-                seed = calculated_proof.seed();
-            }
+            input = PotNextSlotInput::derive(
+                input.slot_iterations,
+                input.slot,
+                calculated_proof,
+                &maybe_parameters_change,
+            );
         }
     }
 
