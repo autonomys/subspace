@@ -43,7 +43,7 @@ use sp_consensus_subspace::digests::{
     extract_pre_digest, CompatibleDigestItem, PreDigest, PreDigestPotInfo,
 };
 use sp_consensus_subspace::{
-    ChainConstants, FarmerPublicKey, FarmerSignature, SignedVote, SubspaceApi,
+    ChainConstants, FarmerPublicKey, FarmerSignature, PotNextSlotInput, SignedVote, SubspaceApi,
     SubspaceJustification, Vote,
 };
 use sp_core::crypto::ByteArray;
@@ -291,14 +291,14 @@ where
 
         let maybe_root_plot_public_key = runtime_api.root_plot_public_key(parent_hash).ok()?;
 
-        let pot_parameters = runtime_api.pot_parameters(parent_hash).ok()?;
+        let parent_pot_parameters = runtime_api.pot_parameters(parent_hash).ok()?;
         let parent_future_slot = if parent_header.number().is_zero() {
             parent_slot
         } else {
             parent_slot + self.chain_constants.block_authoring_delay()
         };
 
-        let (proof_of_time, future_proof_of_time, new_checkpoints) = {
+        let (proof_of_time, future_proof_of_time, pot_justification) = {
             // Remove checkpoints from old slots we will not need anymore
             self.pot_checkpoints
                 .retain(|&stored_slot, _checkpoints| stored_slot > parent_slot);
@@ -307,74 +307,89 @@ where
 
             // Future slot for which proof must be available before authoring block at this slot
             let future_slot = slot + self.chain_constants.block_authoring_delay();
-            let future_proof_of_time = self.pot_checkpoints.get(&future_slot)?.output();
 
-            // New checkpoints that were produced since parent block's future slot up to current
-            // future slot (inclusive)
-            let new_checkpoints = self
-                .pot_checkpoints
-                .iter()
-                .filter_map(|(&stored_slot, &checkpoints)| {
-                    (stored_slot > parent_future_slot && stored_slot <= future_slot)
-                        .then_some(checkpoints)
-                })
-                .collect::<Vec<_>>();
-
-            let slot_iterations;
-            let pot_seed;
-            let after_parent_slot = parent_slot + Slot::from(1);
-
-            if parent_header.number().is_zero() {
-                slot_iterations = pot_parameters.slot_iterations();
-                pot_seed = self.pot_verifier.genesis_seed();
-            } else {
-                let pot_info = parent_pre_digest.pot_info();
-                // The change to number of iterations might have happened before
-                // `after_parent_slot`
-                if let Some(parameters_change) = pot_parameters.next_parameters_change()
-                    && parameters_change.slot <= after_parent_slot
-                {
-                    slot_iterations = parameters_change.slot_iterations;
-                    // Only if entropy injection happens exactly after parent slot we need to \
-                    // mix it in
-                    if parameters_change.slot == after_parent_slot {
-                        pot_seed = pot_info
-                            .proof_of_time()
-                            .seed_with_entropy(&parameters_change.entropy);
-                    } else {
-                        pot_seed = pot_info
-                            .proof_of_time().seed();
-                    }
-                } else {
-                    slot_iterations = pot_parameters.slot_iterations();
-                    pot_seed = pot_info
-                        .proof_of_time()
-                        .seed();
+            let pot_input = if parent_header.number().is_zero() {
+                PotNextSlotInput {
+                    slot: parent_slot + Slot::from(1),
+                    slot_iterations: parent_pot_parameters.slot_iterations(),
+                    seed: self.pot_verifier.genesis_seed(),
                 }
+            } else {
+                PotNextSlotInput::derive(
+                    parent_pot_parameters.slot_iterations(),
+                    parent_slot,
+                    parent_pre_digest.pot_info().proof_of_time(),
+                    &parent_pot_parameters.next_parameters_change(),
+                )
             };
 
-            // Ensure proof of time and future proof of time included in upcoming block are valid
+            // Ensure proof of time is valid according to parent block
             if !self
                 .pot_verifier
                 .is_output_valid(
-                    after_parent_slot,
-                    pot_seed,
-                    slot_iterations,
-                    Slot::from(u64::from(future_slot) - u64::from(parent_slot)),
-                    future_proof_of_time,
-                    pot_parameters.next_parameters_change(),
+                    pot_input,
+                    Slot::from(u64::from(slot) - u64::from(parent_slot)),
+                    proof_of_time,
+                    parent_pot_parameters.next_parameters_change(),
                 )
                 .await
             {
                 warn!(
                     target: "subspace",
-                    "Proof of time or future proof of time is invalid, skipping block \
-                    production at slot {slot:?}"
+                    "Proof of time is invalid, skipping block authoring at slot {slot:?}"
                 );
                 return None;
             }
 
-            (proof_of_time, future_proof_of_time, new_checkpoints)
+            let mut checkpoints_pot_input = if parent_header.number().is_zero() {
+                PotNextSlotInput {
+                    slot: parent_slot + Slot::from(1),
+                    slot_iterations: parent_pot_parameters.slot_iterations(),
+                    seed: self.pot_verifier.genesis_seed(),
+                }
+            } else {
+                let parent_pot_info = parent_pre_digest.pot_info();
+
+                PotNextSlotInput::derive(
+                    parent_pot_parameters.slot_iterations(),
+                    parent_future_slot,
+                    parent_pot_info.future_proof_of_time(),
+                    &parent_pot_parameters.next_parameters_change(),
+                )
+            };
+            let seed = checkpoints_pot_input.seed;
+
+            let mut checkpoints = Vec::with_capacity((*future_slot - *parent_future_slot) as usize);
+
+            for slot in *parent_future_slot + 1..=*future_slot {
+                let slot = Slot::from(slot);
+                let maybe_slot_checkpoints_fut = self.pot_verifier.get_checkpoints(
+                    checkpoints_pot_input.slot_iterations,
+                    checkpoints_pot_input.seed,
+                );
+                let Some(slot_checkpoints) = maybe_slot_checkpoints_fut.await else {
+                    warn!("Proving failed during block authoring");
+                    return None;
+                };
+
+                checkpoints.push(slot_checkpoints);
+
+                checkpoints_pot_input = PotNextSlotInput::derive(
+                    checkpoints_pot_input.slot_iterations,
+                    slot,
+                    slot_checkpoints.output(),
+                    &parent_pot_parameters.next_parameters_change(),
+                );
+            }
+
+            let future_proof_of_time = checkpoints
+                .last()
+                .expect("Never empty, there is at least one slot between blocks; qed")
+                .output();
+
+            let pot_justification = SubspaceJustification::PotCheckpoints { seed, checkpoints };
+
+            (proof_of_time, future_proof_of_time, pot_justification)
         };
 
         let mut solution_receiver = {
@@ -535,35 +550,7 @@ where
             }
         }
 
-        let pot_seed = if parent_header.number().is_zero() {
-            self.pot_verifier.genesis_seed()
-        } else {
-            let parent_pot_info = parent_pre_digest.pot_info();
-            let after_parent_future_slot = parent_future_slot + Slot::from(1);
-            // Only if entropy injection happens exactly after parent's future  slot we need to
-            // mix it in
-            if let Some(parameters_change) = pot_parameters.next_parameters_change()
-                    && parameters_change.slot == after_parent_future_slot
-                {
-                     parent_pot_info
-                        .future_proof_of_time()
-                        .seed_with_entropy(&parameters_change.entropy)
-                } else {
-                     parent_pot_info
-                        .future_proof_of_time()
-                        .seed()
-                }
-        };
-
-        maybe_pre_digest.map(|pre_digest| {
-            (
-                pre_digest,
-                SubspaceJustification::PotCheckpoints {
-                    seed: pot_seed,
-                    checkpoints: new_checkpoints,
-                },
-            )
-        })
+        maybe_pre_digest.map(|pre_digest| (pre_digest, pot_justification))
     }
 
     fn pre_digest_data(

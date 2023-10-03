@@ -1,21 +1,13 @@
 use crate::verifier::PotVerifier;
 use atomic::Atomic;
 use sp_consensus_slots::Slot;
-use sp_consensus_subspace::PotParametersChange;
-use std::num::NonZeroU32;
+use sp_consensus_subspace::{PotNextSlotInput, PotParametersChange};
 use std::sync::atomic::Ordering;
-use subspace_core_primitives::{PotOutput, PotSeed};
-
-#[derive(Debug, Copy, Clone, Eq, PartialEq)]
-pub(super) struct NextSlotInput {
-    pub(super) slot: Slot,
-    pub(super) slot_iterations: NonZeroU32,
-    pub(super) seed: PotSeed,
-}
+use subspace_core_primitives::PotOutput;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 struct InnerState {
-    next_slot_input: NextSlotInput,
+    next_slot_input: PotNextSlotInput,
     parameters_change: Option<PotParametersChange>,
 }
 
@@ -32,37 +24,19 @@ impl InnerState {
         }
 
         loop {
-            let next_slot = best_slot + Slot::from(1);
-            let next_slot_iterations;
-            let next_seed;
-
-            // The change to number of iterations might have happened before `next_slot`
-            if let Some(parameters_change) = self.parameters_change
-                && parameters_change.slot <= next_slot
-            {
-                next_slot_iterations = parameters_change.slot_iterations;
-                // Only if entropy injection happens on this exact slot we need to mix it in
-                if parameters_change.slot == next_slot {
-                    next_seed = best_output.seed_with_entropy(&parameters_change.entropy);
-                } else {
-                    next_seed = best_output.seed();
-                }
-            } else {
-                next_slot_iterations = self.next_slot_input.slot_iterations;
-                next_seed = best_output.seed();
-            }
-
-            self.next_slot_input = NextSlotInput {
-                slot: next_slot,
-                slot_iterations: next_slot_iterations,
-                seed: next_seed,
-            };
+            self.next_slot_input = PotNextSlotInput::derive(
+                self.next_slot_input.slot_iterations,
+                best_slot,
+                best_output,
+                &self.parameters_change,
+            );
 
             // Advance further as far as possible using previously verified proofs/checkpoints
-            if let Some(checkpoints) =
-                pot_verifier.try_get_checkpoints(next_seed, next_slot_iterations)
-            {
-                best_slot = best_slot + Slot::from(1);
+            if let Some(checkpoints) = pot_verifier.try_get_checkpoints(
+                self.next_slot_input.slot_iterations,
+                self.next_slot_input.seed,
+            ) {
+                best_slot = self.next_slot_input.slot;
                 best_output = checkpoints.output();
             } else {
                 break;
@@ -77,12 +51,12 @@ impl InnerState {
 pub(super) enum PotStateUpdateOutcome {
     NoChange,
     Extension {
-        from: NextSlotInput,
-        to: NextSlotInput,
+        from: PotNextSlotInput,
+        to: PotNextSlotInput,
     },
     Reorg {
-        from: NextSlotInput,
-        to: NextSlotInput,
+        from: PotNextSlotInput,
+        to: PotNextSlotInput,
     },
 }
 
@@ -94,7 +68,7 @@ pub(super) struct PotState {
 
 impl PotState {
     pub(super) fn new(
-        next_slot_input: NextSlotInput,
+        next_slot_input: PotNextSlotInput,
         parameters_change: Option<PotParametersChange>,
         verifier: PotVerifier,
     ) -> Self {
@@ -109,7 +83,7 @@ impl PotState {
         }
     }
 
-    pub(super) fn next_slot_input(&self, ordering: Ordering) -> NextSlotInput {
+    pub(super) fn next_slot_input(&self, ordering: Ordering) -> PotNextSlotInput {
         self.inner_state.load(ordering).next_slot_input
     }
 
@@ -119,11 +93,11 @@ impl PotState {
     /// `Err(existing_next_slot_input)` in case state was changed in the meantime.
     pub(super) fn try_extend(
         &self,
-        expected_previous_next_slot_input: NextSlotInput,
+        expected_previous_next_slot_input: PotNextSlotInput,
         best_slot: Slot,
         best_output: PotOutput,
         maybe_updated_parameters_change: Option<Option<PotParametersChange>>,
-    ) -> Result<NextSlotInput, NextSlotInput> {
+    ) -> Result<PotNextSlotInput, PotNextSlotInput> {
         let old_inner_state = self.inner_state.load(Ordering::Acquire);
         if expected_previous_next_slot_input != old_inner_state.next_slot_input {
             return Err(old_inner_state.next_slot_input);
@@ -189,22 +163,23 @@ impl PotState {
             {
                 let slot = Slot::from(slot);
 
-                let Some(checkpoints) = self.verifier.try_get_checkpoints(seed, slot_iterations)
+                let Some(checkpoints) = self.verifier.try_get_checkpoints(slot_iterations, seed)
                 else {
                     break;
                 };
 
-                let next_slot = slot + Slot::from(1);
+                let pot_input = PotNextSlotInput::derive(
+                    slot_iterations,
+                    slot,
+                    checkpoints.output(),
+                    &maybe_updated_parameters_change.flatten(),
+                );
 
-                // In case parameters change in the next slot, account for them
-                if let Some(Some(parameters_change)) = maybe_updated_parameters_change
-                    && parameters_change.slot == next_slot
-                {
-                    slot_iterations = parameters_change.slot_iterations;
-                    seed = checkpoints.output().seed_with_entropy(&parameters_change.entropy);
-                } else {
-                    seed = checkpoints.output().seed();
-                }
+                // TODO: Consider carrying of the whole `PotNextSlotInput` rather than individual
+                //  variables
+                let next_slot = slot + Slot::from(1);
+                slot_iterations = pot_input.slot_iterations;
+                seed = pot_input.seed;
 
                 if next_slot == best_state.next_slot_input.slot
                     && slot_iterations == best_state.next_slot_input.slot_iterations

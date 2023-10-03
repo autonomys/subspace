@@ -1,6 +1,6 @@
 //! PoT gossip functionality.
 
-use crate::source::state::{NextSlotInput, PotState};
+use crate::source::state::PotState;
 use crate::verifier::PotVerifier;
 use futures::channel::mpsc;
 use futures::{FutureExt, SinkExt, StreamExt};
@@ -15,6 +15,7 @@ use sc_network_gossip::{
 };
 use sp_consensus::SyncOracle;
 use sp_consensus_slots::Slot;
+use sp_consensus_subspace::PotNextSlotInput;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
 use std::cmp;
 use std::collections::{HashMap, VecDeque};
@@ -103,7 +104,7 @@ impl Hash for GossipProof {
 #[derive(Debug)]
 pub(super) enum ToGossipMessage {
     Proof(GossipProof),
-    NextSlotInput(NextSlotInput),
+    NextSlotInput(PotNextSlotInput),
 }
 
 /// PoT gossip worker
@@ -213,7 +214,7 @@ where
 
                 if let Some(verified_checkpoints) = self
                     .pot_verifier
-                    .try_get_checkpoints(proof.seed, proof.slot_iterations)
+                    .try_get_checkpoints(proof.slot_iterations, proof.seed)
                 {
                     if verified_checkpoints != proof.checkpoints {
                         trace!(
@@ -314,7 +315,7 @@ where
 
     /// Handle next slot input and try to remove outdated proofs information from internal cache as
     /// well as produce next proof if it was already received out of order before
-    async fn handle_next_slot_input(&mut self, next_slot_input: NextSlotInput) {
+    async fn handle_next_slot_input(&mut self, next_slot_input: PotNextSlotInput) {
         let mut old_proofs = HashMap::<GossipProof, Vec<PeerId>>::new();
         for (sender, proofs) in &mut self.gossip_cache {
             proofs.retain(|proof| {
@@ -333,7 +334,7 @@ where
             if proof.slot != next_slot_input.slot {
                 let invalid_proof = self
                     .pot_verifier
-                    .try_get_checkpoints(proof.seed, proof.slot_iterations)
+                    .try_get_checkpoints(proof.slot_iterations, proof.seed)
                     .map(|verified_checkpoints| verified_checkpoints != proof.checkpoints)
                     .unwrap_or_default();
 
@@ -405,7 +406,7 @@ where
     }
 
     async fn handle_potentially_matching_proofs(
-        next_slot_input: NextSlotInput,
+        next_slot_input: PotNextSlotInput,
         potentially_matching_proofs: Vec<(GossipProof, Vec<PeerId>)>,
         engine: Arc<Mutex<GossipEngine<Block>>>,
         pot_verifier: &PotVerifier,

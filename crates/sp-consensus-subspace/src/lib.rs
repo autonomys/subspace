@@ -18,6 +18,7 @@
 
 #![forbid(unsafe_code, missing_docs)]
 #![cfg_attr(not(feature = "std"), no_std)]
+#![feature(let_chains)]
 
 extern crate alloc;
 
@@ -135,6 +136,57 @@ impl SubspaceJustification {
 
 /// An equivocation proof for multiple block authorships on the same slot (i.e. double vote).
 pub type EquivocationProof<Header> = sp_consensus_slots::EquivocationProof<Header, FarmerPublicKey>;
+
+/// Next slot input for proof of time evaluation
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Decode, Encode, TypeInfo, MaxEncodedLen)]
+pub struct PotNextSlotInput {
+    /// Slot
+    pub slot: Slot,
+    /// Slot iterations for this slot
+    pub slot_iterations: NonZeroU32,
+    /// Seed for this slot
+    pub seed: PotSeed,
+}
+
+impl PotNextSlotInput {
+    /// Derive next slot input while taking parameters change into account.
+    ///
+    /// NOTE: base slot iterations doesn't have to be parent block, just something that is after
+    /// prior parameters change (if any) took effect, in most cases this value corresponds to parent
+    /// block's slot.
+    pub fn derive(
+        base_slot_iterations: NonZeroU32,
+        parent_slot: Slot,
+        parent_output: PotOutput,
+        pot_parameters_change: &Option<PotParametersChange>,
+    ) -> Self {
+        let next_slot = parent_slot + Slot::from(1);
+        let slot_iterations;
+        let seed;
+
+        // The change to number of iterations might have happened before `next_slot`
+        if let Some(parameters_change) = pot_parameters_change
+            && parameters_change.slot <= next_slot
+        {
+            slot_iterations = parameters_change.slot_iterations;
+            // Only if entropy injection happens exactly on next slot we need to mix it in
+            if parameters_change.slot == next_slot {
+                seed = parent_output.seed_with_entropy(&parameters_change.entropy);
+            } else {
+                seed = parent_output.seed();
+            }
+        } else {
+            slot_iterations = base_slot_iterations;
+            seed = parent_output.seed();
+        }
+
+        PotNextSlotInput {
+            slot: next_slot,
+            slot_iterations,
+            seed,
+        }
+    }
+}
 
 /// Change of parameters to apply to PoT chain
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Decode, Encode, TypeInfo, MaxEncodedLen)]

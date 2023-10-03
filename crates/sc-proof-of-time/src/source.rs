@@ -3,7 +3,7 @@ mod state;
 mod timekeeper;
 
 use crate::source::gossip::{GossipProof, PotGossipWorker, ToGossipMessage};
-use crate::source::state::{NextSlotInput, PotState, PotStateUpdateOutcome};
+use crate::source::state::{PotState, PotStateUpdateOutcome};
 use crate::source::timekeeper::{run_timekeeper, TimekeeperProof};
 use crate::verifier::PotVerifier;
 use core_affinity::CoreId;
@@ -19,7 +19,8 @@ use sp_consensus::SyncOracle;
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{extract_pre_digest, extract_subspace_digest_items};
 use sp_consensus_subspace::{
-    ChainConstants, FarmerPublicKey, FarmerSignature, SubspaceApi as SubspaceRuntimeApi,
+    ChainConstants, FarmerPublicKey, FarmerSignature, PotNextSlotInput,
+    SubspaceApi as SubspaceRuntimeApi,
 };
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, Zero};
 use std::collections::HashSet;
@@ -93,40 +94,33 @@ where
         let best_pre_digest = extract_pre_digest(&best_header)
             .map_err(|error| ApiError::Application(error.into()))?;
 
-        let start_slot = if best_header.number().is_zero() {
-            Slot::from(1)
+        let parent_slot = if best_header.number().is_zero() {
+            Slot::from(0)
         } else {
-            // Next slot after the best one seen
-            best_pre_digest.slot() + chain_constants.block_authoring_delay() + Slot::from(1)
+            // The best one seen
+            best_pre_digest.slot() + chain_constants.block_authoring_delay()
         };
 
         let pot_parameters = runtime_api.pot_parameters(best_hash)?;
-        let mut maybe_next_parameters_change = pot_parameters.next_parameters_change();
+        let maybe_next_parameters_change = pot_parameters.next_parameters_change();
 
-        let start_seed;
-        let slot_iterations;
-
-        if let Some(parameters_change) = maybe_next_parameters_change
-                && parameters_change.slot == start_slot
-            {
-                start_seed = best_pre_digest.pot_info().future_proof_of_time().seed_with_entropy(&parameters_change.entropy);
-                slot_iterations = parameters_change.slot_iterations;
-                maybe_next_parameters_change.take();
-            } else {
-                start_seed = if best_header.number().is_zero() {
-                    pot_verifier.genesis_seed()
-                } else {
-                    best_pre_digest.pot_info().future_proof_of_time().seed()
-                };
-                slot_iterations = pot_parameters.slot_iterations();
+        let pot_input = if best_header.number().is_zero() {
+            PotNextSlotInput {
+                slot: parent_slot + Slot::from(1),
+                slot_iterations: pot_parameters.slot_iterations(),
+                seed: pot_verifier.genesis_seed(),
             }
+        } else {
+            PotNextSlotInput::derive(
+                pot_parameters.slot_iterations(),
+                parent_slot,
+                best_pre_digest.pot_info().future_proof_of_time(),
+                &maybe_next_parameters_change,
+            )
+        };
 
         let state = Arc::new(PotState::new(
-            NextSlotInput {
-                slot: start_slot,
-                slot_iterations,
-                seed: start_seed,
-            },
+            pot_input,
             maybe_next_parameters_change,
             pot_verifier.clone(),
         ));
@@ -268,7 +262,7 @@ where
     // TODO: Follow both verified and unverified checkpoints to start secondary timekeeper ASAP in
     //  case verification succeeds
     fn handle_gossip_proof(&mut self, _sender: PeerId, proof: GossipProof) {
-        let expected_next_slot_input = NextSlotInput {
+        let expected_next_slot_input = PotNextSlotInput {
             slot: proof.slot,
             slot_iterations: proof.slot_iterations,
             seed: proof.seed,

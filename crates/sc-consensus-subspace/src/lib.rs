@@ -59,7 +59,8 @@ use sp_consensus_subspace::digests::{
     extract_pre_digest, extract_subspace_digest_items, Error as DigestError, SubspaceDigestItems,
 };
 use sp_consensus_subspace::{
-    ChainConstants, FarmerPublicKey, FarmerSignature, SubspaceApi, SubspaceJustification,
+    ChainConstants, FarmerPublicKey, FarmerSignature, PotNextSlotInput, SubspaceApi,
+    SubspaceJustification,
 };
 use sp_core::H256;
 use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
@@ -798,28 +799,18 @@ where
                     .expect("Always Some for non-first block; qed");
 
                 let parent_future_slot = parent_slot + self.chain_constants.block_authoring_delay();
-                let after_parent_future_slot = parent_future_slot + Slot::from(1);
-                let correct_seed;
 
-                // In case parameters change in the very first slot after future slot of the parent
-                // block, account for them
-                if let Some(parameters_change) = subspace_digest_items.pot_parameters_change
-                    && parameters_change.slot == after_parent_future_slot
-                {
-                     correct_seed = parent_subspace_digest_items
+                let correct_input_parameters = PotNextSlotInput::derive(
+                    subspace_digest_items.pot_slot_iterations,
+                    parent_future_slot,
+                    parent_subspace_digest_items
                         .pre_digest
                         .pot_info()
-                        .future_proof_of_time()
-                        .seed_with_entropy(&parameters_change.entropy);
-                } else {
-                    correct_seed = parent_subspace_digest_items
-                        .pre_digest
-                        .pot_info()
-                        .future_proof_of_time()
-                        .seed();
-                }
+                        .future_proof_of_time(),
+                    &subspace_digest_items.pot_parameters_change,
+                );
 
-                if seed != correct_seed {
+                if seed != correct_input_parameters.seed {
                     return Err(Error::InvalidSubspaceJustificationContents);
                 }
 
@@ -829,43 +820,33 @@ where
                 }
             }
         } else {
-            let pot_seed;
-            let slot_iterations;
-
-            if block_number.is_one() {
-                // Genesis block doesn't contain usual digest items, we need to query runtime API
-                // instead
-                slot_iterations = self
-                    .client
-                    .runtime_api()
-                    .pot_parameters(parent_hash)?
-                    .slot_iterations();
-                pot_seed = self.pot_verifier.genesis_seed();
+            let pot_input = if block_number.is_one() {
+                PotNextSlotInput {
+                    slot: parent_slot + Slot::from(1),
+                    // Genesis block doesn't contain usual digest items, we need to query runtime
+                    // API instead
+                    slot_iterations: self
+                        .client
+                        .runtime_api()
+                        .pot_parameters(parent_hash)?
+                        .slot_iterations(),
+                    seed: self.pot_verifier.genesis_seed(),
+                }
             } else {
                 let parent_subspace_digest_items = parent_subspace_digest_items
                     .as_ref()
                     .expect("Always Some for non-first block; qed");
 
-                // In case parameters change in the very first slot after slot of the parent block,
-                // account for them
-                if let Some(parameters_change) = subspace_digest_items.pot_parameters_change
-                    && parameters_change.slot == (parent_slot + Slot::from(1))
-                {
-                    slot_iterations = parameters_change.slot_iterations;
-                    pot_seed = parent_subspace_digest_items
+                PotNextSlotInput::derive(
+                    subspace_digest_items.pot_slot_iterations,
+                    parent_slot,
+                    parent_subspace_digest_items
                         .pre_digest
                         .pot_info()
-                        .proof_of_time()
-                        .seed_with_entropy(&parameters_change.entropy);
-                } else {
-                    slot_iterations = subspace_digest_items.pot_slot_iterations;
-                    pot_seed = parent_subspace_digest_items
-                        .pre_digest
-                        .pot_info()
-                        .proof_of_time()
-                        .seed();
-                }
-            }
+                        .proof_of_time(),
+                    &subspace_digest_items.pot_parameters_change,
+                )
+            };
 
             // Here we check that there is continuity from parent block's proof of time (but not future
             // entropy since this block may be produced before slot corresponding to parent block's
@@ -877,9 +858,7 @@ where
                 && !self
                     .pot_verifier
                     .is_output_valid(
-                        parent_slot + Slot::from(1),
-                        pot_seed,
-                        slot_iterations,
+                        pot_input,
                         slots_since_parent,
                         subspace_digest_items.pre_digest.pot_info().proof_of_time(),
                         subspace_digest_items.pot_parameters_change,

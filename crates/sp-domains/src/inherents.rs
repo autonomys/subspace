@@ -1,7 +1,9 @@
 //! Inherents for domain
 
 use parity_scale_codec::{Decode, Encode};
-use sp_inherents::{Error, InherentData, InherentIdentifier, IsFatalError};
+#[cfg(feature = "std")]
+use sp_inherents::{Error, InherentData};
+use sp_inherents::{InherentIdentifier, IsFatalError};
 
 /// The domain inherent identifier.
 pub const INHERENT_IDENTIFIER: InherentIdentifier = *b"domains_";
