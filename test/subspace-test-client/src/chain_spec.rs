@@ -1,11 +1,13 @@
 //! Chain specification for the test runtime.
 
 use crate::domain_chain_spec::testnet_evm_genesis;
+use codec::Encode;
 use sc_chain_spec::ChainType;
 use sp_core::{sr25519, Pair, Public};
+use sp_domains::storage::RawGenesis;
 use sp_domains::{GenesisDomain, OperatorPublicKey, RuntimeType};
 use sp_runtime::traits::{IdentifyAccount, Verify};
-use sp_runtime::Percent;
+use sp_runtime::{BuildStorage, Percent};
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, Signature};
@@ -79,12 +81,13 @@ fn create_genesis_config(
     // who, start, period, period_count, per_period
     vesting: Vec<(AccountId, BlockNumber, BlockNumber, u32, Balance)>,
 ) -> RuntimeGenesisConfig {
-    let raw_domain_genesis_config = {
-        let mut domain_genesis_config = testnet_evm_genesis();
-        // Clear the WASM code of the genesis config since it is duplicated with `GenesisDomain::code`
-        domain_genesis_config.system.code = Default::default();
-        serde_json::to_vec(&domain_genesis_config)
-            .expect("Genesis config serialization never fails; qed")
+    let raw_genesis_storage = {
+        let domain_genesis_config = testnet_evm_genesis();
+        let storage = domain_genesis_config
+            .build_storage()
+            .expect("Failed to build genesis storage from genesis runtime config");
+        let raw_genesis = RawGenesis::from_storage(storage);
+        raw_genesis.encode()
     };
     RuntimeGenesisConfig {
         system: SystemConfig {
@@ -108,21 +111,18 @@ fn create_genesis_config(
         vesting: VestingConfig { vesting },
         domains: DomainsConfig {
             genesis_domain: Some(GenesisDomain {
-                runtime_name: b"evm".to_vec(),
+                runtime_name: "evm".to_owned(),
                 runtime_type: RuntimeType::Evm,
                 runtime_version: evm_domain_test_runtime::VERSION,
-                code: evm_domain_test_runtime::WASM_BINARY
-                    .unwrap_or_else(|| panic!("EVM domain runtime not available"))
-                    .to_owned(),
+                raw_genesis_storage,
 
                 // Domain config, mainly for placeholder the concrete value TBD
                 owner_account_id: sudo_account,
-                domain_name: b"evm-domain".to_vec(),
+                domain_name: "evm-domain".to_owned(),
                 max_block_size: MaxDomainBlockSize::get(),
                 max_block_weight: MaxDomainBlockWeight::get(),
                 bundle_slot_probability: (1, 1),
                 target_bundles_per_block: 10,
-                raw_genesis_config: raw_domain_genesis_config,
 
                 signing_key: get_from_seed::<OperatorPublicKey>("Alice"),
                 minimum_nominator_stake: 100 * SSC,

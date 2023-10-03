@@ -6,6 +6,7 @@ use crate::staking::StakingSummary;
 use crate::{
     Config, DomainRegistry, ExecutionReceiptOf, HoldIdentifier, NextDomainId, RuntimeRegistry,
 };
+use alloc::string::String;
 use codec::{Decode, Encode};
 use frame_support::traits::fungible::{Inspect, MutateHold};
 use frame_support::traits::tokens::{Fortitude, Preservation};
@@ -14,15 +15,11 @@ use frame_support::{ensure, PalletError};
 use frame_system::pallet_prelude::*;
 use scale_info::TypeInfo;
 use sp_core::Get;
-use sp_domains::domain::generate_genesis_state_root;
-use sp_domains::{
-    DomainId, DomainInstanceData, DomainsDigestItem, ReceiptHash, RuntimeId, RuntimeType,
-};
+use sp_domains::{DomainId, DomainsDigestItem, ReceiptHash, RuntimeId};
 use sp_runtime::traits::{CheckedAdd, Zero};
 use sp_runtime::DigestItem;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
-use sp_std::vec::Vec;
 
 /// Domain registry specific errors
 #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
@@ -42,7 +39,7 @@ pub enum Error {
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
 pub struct DomainConfig {
     /// A user defined name for this domain, should be a human-readable UTF-8 encoded string.
-    pub domain_name: Vec<u8>,
+    pub domain_name: String,
     /// A pointer to the `RuntimeRegistry` entry for this domain.
     pub runtime_id: RuntimeId,
     /// The max block size for this domain, may not exceed the system-wide `MaxDomainBlockSize` limit.
@@ -66,12 +63,6 @@ pub struct DomainObject<Number, AccountId> {
     pub genesis_receipt_hash: ReceiptHash,
     /// The domain config.
     pub domain_config: DomainConfig,
-    /// The genesis config of the domain, encoded in json format.
-    //
-    /// NOTE: the WASM code in the `system-pallet` genesis config should be empty to avoid
-    /// redundancy with the `RuntimeRegistry`. Currently, this value only set to `Some` for
-    /// the genesis domain instance.
-    pub raw_genesis_config: Option<Vec<u8>>,
 }
 
 pub(crate) fn can_instantiate_domain<T: Config>(
@@ -120,7 +111,6 @@ pub(crate) fn do_instantiate_domain<T: Config>(
     domain_config: DomainConfig,
     owner_account_id: T::AccountId,
     created_at: BlockNumberFor<T>,
-    raw_genesis_config: Option<Vec<u8>>,
 ) -> Result<DomainId, Error> {
     can_instantiate_domain::<T>(&owner_account_id, &domain_config)?;
 
@@ -129,12 +119,12 @@ pub(crate) fn do_instantiate_domain<T: Config>(
     let genesis_receipt = {
         let runtime_obj = RuntimeRegistry::<T>::get(domain_config.runtime_id)
             .expect("Runtime object must exist as checked in `can_instantiate_domain`; qed");
-        initialize_genesis_receipt::<T>(
-            domain_id,
-            runtime_obj.runtime_type,
-            runtime_obj.code,
-            raw_genesis_config.clone(),
-        )?
+
+        let state_version = runtime_obj.version.state_version();
+        let raw_genesis = runtime_obj.into_complete_raw_genesis(domain_id);
+        let state_root = raw_genesis.state_root::<T::DomainHashing>(state_version);
+
+        ExecutionReceiptOf::<T>::genesis(state_root)
     };
     let genesis_receipt_hash = genesis_receipt.hash();
 
@@ -143,7 +133,6 @@ pub(crate) fn do_instantiate_domain<T: Config>(
         created_at,
         genesis_receipt_hash,
         domain_config,
-        raw_genesis_config,
     };
     DomainRegistry::<T>::insert(domain_id, domain_obj);
 
@@ -176,45 +165,16 @@ pub(crate) fn do_instantiate_domain<T: Config>(
     Ok(domain_id)
 }
 
-fn initialize_genesis_receipt<T: Config>(
-    domain_id: DomainId,
-    runtime_type: RuntimeType,
-    runtime_code: Vec<u8>,
-    raw_genesis_config: Option<Vec<u8>>,
-) -> Result<ExecutionReceiptOf<T>, Error> {
-    let consensus_genesis_hash = frame_system::Pallet::<T>::block_hash(BlockNumberFor::<T>::zero());
-    // The `GenesisReceiptExtension` is unavailable during runtime benchmarking, remove once
-    // https://github.com/paritytech/substrate/issues/14733 is resolved.
-    let genesis_state_root = if cfg!(feature = "runtime-benchmarks") {
-        Default::default()
-    } else {
-        generate_genesis_state_root(
-            domain_id,
-            DomainInstanceData {
-                runtime_type,
-                runtime_code,
-                raw_genesis_config,
-            },
-        )
-        .ok_or(Error::FailedToGenerateGenesisStateRoot)?
-    };
-    Ok(ExecutionReceiptOf::<T>::genesis(
-        consensus_genesis_hash,
-        genesis_state_root.into(),
-    ))
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::pallet::{DomainRegistry, NextDomainId, RuntimeRegistry};
     use crate::runtime_registry::RuntimeObject;
-    use crate::tests::{new_test_ext, GenesisStateRootGenerater, Test};
+    use crate::tests::{new_test_ext, Test};
     use frame_support::traits::Currency;
-    use sp_domains::GenesisReceiptExtension;
+    use sp_domains::storage::RawGenesis;
     use sp_std::vec;
     use sp_version::RuntimeVersion;
-    use std::sync::Arc;
 
     type Balances = pallet_balances::Pallet<Test>;
 
@@ -224,7 +184,7 @@ mod tests {
         let created_at = 0u64;
         // Construct an invalid domain config initially
         let mut domain_config = DomainConfig {
-            domain_name: vec![0; 1024],
+            domain_name: String::from_utf8(vec![0; 1024]).unwrap(),
             runtime_id: 0,
             max_block_size: u32::MAX,
             max_block_weight: Weight::MAX,
@@ -233,34 +193,31 @@ mod tests {
         };
 
         let mut ext = new_test_ext();
-        ext.register_extension(GenesisReceiptExtension::new(Arc::new(
-            GenesisStateRootGenerater,
-        )));
         ext.execute_with(|| {
             assert_eq!(NextDomainId::<Test>::get(), 0.into());
 
             // Failed to instantiate domain due to `domain_name` too long
             assert_eq!(
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at, None),
+                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
                 Err(Error::DomainNameTooLong)
             );
             // Recorrect `domain_name`
-            domain_config.domain_name = b"evm-domain".to_vec();
+            domain_config.domain_name = "evm-domain".to_owned();
 
             // Failed to instantiate domain due to using unregistered runtime id
             assert_eq!(
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at, None),
+                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
                 Err(Error::RuntimeNotFound)
             );
             // Register runtime id
             RuntimeRegistry::<Test>::insert(
                 domain_config.runtime_id,
                 RuntimeObject {
-                    runtime_name: b"evm".to_vec(),
+                    runtime_name: "evm".to_owned(),
                     runtime_type: Default::default(),
                     runtime_upgrades: 0,
                     hash: Default::default(),
-                    code: vec![1, 2, 3, 4],
+                    raw_genesis: RawGenesis::dummy(vec![1, 2, 3, 4]),
                     version: RuntimeVersion {
                         spec_name: "test".into(),
                         spec_version: 1,
@@ -275,7 +232,7 @@ mod tests {
 
             // Failed to instantiate domain due to exceed max domain block size limit
             assert_eq!(
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at, None),
+                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
                 Err(Error::ExceedMaxDomainBlockSize)
             );
             // Recorrect `max_block_size`
@@ -283,7 +240,7 @@ mod tests {
 
             // Failed to instantiate domain due to exceed max domain block weight limit
             assert_eq!(
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at, None),
+                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
                 Err(Error::ExceedMaxDomainBlockWeight)
             );
             // Recorrect `max_block_weight`
@@ -291,12 +248,12 @@ mod tests {
 
             // Failed to instantiate domain due to invalid `target_bundles_per_block`
             assert_eq!(
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at, None),
+                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
                 Err(Error::InvalidBundlesPerBlock)
             );
             domain_config.target_bundles_per_block = u32::MAX;
             assert_eq!(
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at, None),
+                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
                 Err(Error::InvalidBundlesPerBlock)
             );
             // Recorrect `target_bundles_per_block`
@@ -304,22 +261,22 @@ mod tests {
 
             // Failed to instantiate domain due to invalid `bundle_slot_probability`
             assert_eq!(
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at, None),
+                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
                 Err(Error::InvalidSlotProbability)
             );
             domain_config.bundle_slot_probability = (1, 0);
             assert_eq!(
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at, None),
+                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
                 Err(Error::InvalidSlotProbability)
             );
             domain_config.bundle_slot_probability = (0, 1);
             assert_eq!(
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at, None),
+                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
                 Err(Error::InvalidSlotProbability)
             );
             domain_config.bundle_slot_probability = (2, 1);
             assert_eq!(
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at, None),
+                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
                 Err(Error::InvalidSlotProbability)
             );
             // Recorrect `bundle_slot_probability`
@@ -327,7 +284,7 @@ mod tests {
 
             // Failed to instantiate domain due to creator don't have enough fund
             assert_eq!(
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at, None),
+                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at),
                 Err(Error::InsufficientFund)
             );
             // Set enough fund to creator
@@ -339,8 +296,7 @@ mod tests {
 
             // `instantiate_domain` must success now
             let domain_id =
-                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at, None)
-                    .unwrap();
+                do_instantiate_domain::<Test>(domain_config.clone(), creator, created_at).unwrap();
             let domain_obj = DomainRegistry::<Test>::get(domain_id).unwrap();
 
             assert_eq!(domain_obj.owner_account_id, creator);
@@ -352,7 +308,7 @@ mod tests {
 
             // cannot use the locked funds to create a new domain instance
             assert!(
-                do_instantiate_domain::<Test>(domain_config, creator, created_at, None)
+                do_instantiate_domain::<Test>(domain_config, creator, created_at)
                     == Err(Error::InsufficientFund)
             )
         });

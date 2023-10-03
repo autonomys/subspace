@@ -21,10 +21,11 @@ use sp_domains::fraud_proof::{
     ValidBundleDigest,
 };
 use sp_domains::merkle_tree::MerkleTree;
+use sp_domains::storage::RawGenesis;
 use sp_domains::{
-    BundleHeader, DomainId, DomainInstanceData, DomainsHoldIdentifier, ExecutionReceipt,
-    GenerateGenesisStateRoot, GenesisReceiptExtension, OpaqueBundle, OperatorId, OperatorPair,
-    ProofOfElection, ReceiptHash, RuntimeType, SealedBundleHeader, StakingHoldIdentifier,
+    BundleHeader, DomainId, DomainsHoldIdentifier, ExecutionReceipt, OpaqueBundle, OperatorId,
+    OperatorPair, ProofOfElection, ReceiptHash, RuntimeType, SealedBundleHeader,
+    StakingHoldIdentifier,
 };
 use sp_runtime::traits::{AccountIdConversion, BlakeTwo256, Hash as HashT, IdentityLookup, Zero};
 use sp_runtime::{BuildStorage, OpaqueExtrinsic};
@@ -34,7 +35,6 @@ use sp_trie::trie_types::TrieDBMutBuilderV1;
 use sp_trie::{PrefixedMemoryDB, StorageProof, TrieMut};
 use sp_version::RuntimeVersion;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::Arc;
 use subspace_core_primitives::{Randomness, U256 as P256};
 use subspace_runtime_primitives::{Moment, SSC};
 
@@ -228,6 +228,7 @@ impl pallet_domains::Config for Test {
     type RuntimeEvent = RuntimeEvent;
     type DomainNumber = BlockNumber;
     type DomainHash = sp_core::H256;
+    type DomainHashing = BlakeTwo256;
     type ConfirmationDepthK = ConfirmationDepthK;
     type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
     type Currency = Balances;
@@ -247,7 +248,6 @@ impl pallet_domains::Config for Test {
     type StakeEpochDuration = StakeEpochDuration;
     type TreasuryAccount = TreasuryAccount;
     type MaxPendingStakingOperation = MaxPendingStakingOperation;
-    type SudoId = ();
     type Randomness = MockRandomness;
     type StorageKeys = StorageKeys;
     type DeriveExtrinsics = DeriveExtrinsics;
@@ -277,10 +277,6 @@ pub(crate) fn new_test_ext_with_extensions() -> sp_io::TestExternalities {
     ext.register_extension(sp_core::traits::ReadRuntimeVersionExt::new(
         ReadRuntimeVersion(version.encode()),
     ));
-    ext.register_extension(GenesisReceiptExtension::new(Arc::new(
-        GenesisStateRootGenerater,
-    )));
-
     ext
 }
 
@@ -364,18 +360,6 @@ pub(crate) fn create_dummy_bundle_with_receipts(
     }
 }
 
-pub(crate) struct GenesisStateRootGenerater;
-
-impl GenerateGenesisStateRoot for GenesisStateRootGenerater {
-    fn generate_genesis_state_root(
-        &self,
-        _domain_id: DomainId,
-        _domain_instance_data: DomainInstanceData,
-    ) -> Option<H256> {
-        Some(Default::default())
-    }
-}
-
 pub(crate) struct ReadRuntimeVersion(pub Vec<u8>);
 
 impl sp_core::traits::ReadRuntimeVersion for ReadRuntimeVersion {
@@ -396,11 +380,12 @@ pub(crate) fn run_to_block<T: Config>(block_number: BlockNumberFor<T>, parent_ha
 }
 
 pub(crate) fn register_genesis_domain(creator: u64, operator_ids: Vec<OperatorId>) -> DomainId {
+    let raw_genesis_storage = RawGenesis::dummy(vec![1, 2, 3, 4]).encode();
     assert_ok!(crate::Pallet::<Test>::register_domain_runtime(
         RawOrigin::Root.into(),
-        b"evm".to_vec(),
+        "evm".to_owned(),
         RuntimeType::Evm,
-        vec![1, 2, 3, 4],
+        raw_genesis_storage,
     ));
 
     let domain_id = NextDomainId::<Test>::get();
@@ -412,14 +397,13 @@ pub(crate) fn register_genesis_domain(creator: u64, operator_ids: Vec<OperatorId
     crate::Pallet::<Test>::instantiate_domain(
         RawOrigin::Signed(creator).into(),
         DomainConfig {
-            domain_name: b"evm-domain".to_vec(),
+            domain_name: "evm-domain".to_owned(),
             runtime_id: 0,
             max_block_size: 1u32,
             max_block_weight: Weight::from_parts(1, 0),
             bundle_slot_probability: (1, 1),
             target_bundles_per_block: 1,
         },
-        vec![],
     )
     .unwrap();
 
@@ -671,7 +655,7 @@ fn test_bundle_fromat_verification() {
         let max_extrincis_count = 10;
         let max_block_size = opaque_extrinsic(0, 0).encoded_size() as u32 * max_extrincis_count;
         let domain_config = DomainConfig {
-            domain_name: b"test-domain".to_vec(),
+            domain_name: "test-domain".to_owned(),
             runtime_id: 0u32,
             max_block_size,
             max_block_weight: Weight::MAX,
@@ -683,7 +667,6 @@ fn test_bundle_fromat_verification() {
             created_at: Default::default(),
             genesis_receipt_hash: Default::default(),
             domain_config,
-            raw_genesis_config: None,
         };
         DomainRegistry::<Test>::insert(domain_id, domain_obj);
 

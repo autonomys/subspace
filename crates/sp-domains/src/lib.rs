@@ -21,12 +21,17 @@ pub mod bundle_producer_election;
 pub mod fraud_proof;
 pub mod inherents;
 pub mod merkle_tree;
+pub mod storage;
 #[cfg(test)]
 mod tests;
 pub mod transaction;
 pub mod valued_trie_root;
 pub mod verification;
 
+extern crate alloc;
+
+use crate::storage::{RawGenesis, StorageKey};
+use alloc::string::String;
 use bundle_producer_election::{BundleProducerElectionParams, VrfProofError};
 use hexlit::hex;
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
@@ -43,8 +48,6 @@ use sp_runtime::traits::{
     BlakeTwo256, Block as BlockT, CheckedAdd, Hash as HashT, NumberFor, Zero,
 };
 use sp_runtime::{DigestItem, OpaqueExtrinsic, Percent};
-use sp_runtime_interface::pass_by::PassBy;
-use sp_runtime_interface::{pass_by, runtime_interface};
 use sp_std::vec::Vec;
 use sp_weights::Weight;
 use subspace_core_primitives::crypto::blake2b_256_hash;
@@ -112,10 +115,6 @@ pub type ExtrinsicsRoot = H256;
     MaxEncodedLen,
 )]
 pub struct DomainId(u32);
-
-impl PassBy for DomainId {
-    type PassBy = pass_by::Codec<Self>;
-}
 
 impl From<u32> for DomainId {
     #[inline]
@@ -399,13 +398,13 @@ impl<
         BlakeTwo256::hash_of(self)
     }
 
-    pub fn genesis(consensus_genesis_hash: Hash, genesis_state_root: DomainHash) -> Self {
+    pub fn genesis(genesis_state_root: DomainHash) -> Self {
         ExecutionReceipt {
             domain_block_number: Zero::zero(),
             domain_block_hash: Default::default(),
             domain_block_extrinsic_root: Default::default(),
             parent_domain_block_receipt_hash: Default::default(),
-            consensus_block_hash: consensus_genesis_hash,
+            consensus_block_hash: Default::default(),
             consensus_block_number: Zero::zero(),
             valid_bundles: Vec::new(),
             invalid_bundles: Vec::new(),
@@ -513,19 +512,18 @@ impl ProofOfElection {
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GenesisDomain<AccountId> {
     // Domain runtime items
-    pub runtime_name: Vec<u8>,
+    pub runtime_name: String,
     pub runtime_type: RuntimeType,
     pub runtime_version: RuntimeVersion,
-    pub code: Vec<u8>,
+    pub raw_genesis_storage: Vec<u8>,
 
     // Domain config items
     pub owner_account_id: AccountId,
-    pub domain_name: Vec<u8>,
+    pub domain_name: String,
     pub max_block_size: u32,
     pub max_block_weight: Weight,
     pub bundle_slot_probability: (u64, u64),
     pub target_bundles_per_block: u32,
-    pub raw_genesis_config: Vec<u8>,
 
     // Genesis operator
     pub signing_key: OperatorPublicKey,
@@ -540,10 +538,6 @@ pub struct GenesisDomain<AccountId> {
 pub enum RuntimeType {
     #[default]
     Evm,
-}
-
-impl PassBy for RuntimeType {
-    type PassBy = pass_by::Codec<Self>;
 }
 
 /// Type representing the runtime ID.
@@ -617,61 +611,28 @@ impl DomainsDigestItem for DigestItem {
     }
 }
 
-/// `DomainInstanceData` is used to construct `RuntimeGenesisConfig` which will be further used
-/// to construct the genesis block
+/// The storage key of the `SelfDomainId` storage item in the `pallet-domain-id`
+///
+/// Any change to the storage item name or the `pallet-domain-id` name used in the `construct_runtime`
+/// macro must be reflected here.
+pub fn self_domain_id_storage_key() -> StorageKey {
+    StorageKey(
+        frame_support::storage::storage_prefix(
+            // This is the name used for the `pallet-domain-id` in the `construct_runtime` macro
+            // i.e. `SelfDomainId: pallet_domain_id = 90`
+            "SelfDomainId".as_bytes(),
+            // This is the storage item name used inside the `pallet-domain-id`
+            "SelfDomainId".as_bytes(),
+        )
+        .to_vec(),
+    )
+}
+
+/// `DomainInstanceData` is used to construct the genesis storage of domain instance chain
 #[derive(PartialEq, Eq, Clone, Encode, Decode, TypeInfo)]
 pub struct DomainInstanceData {
     pub runtime_type: RuntimeType,
-    pub runtime_code: Vec<u8>,
-    // The genesis config of the domain, encoded in json format.
-    //
-    // NOTE: the WASM code in the `system-pallet` genesis config should be empty to avoid
-    // redundancy with the `runtime_code` field.
-    pub raw_genesis_config: Option<Vec<u8>>,
-}
-
-impl PassBy for DomainInstanceData {
-    type PassBy = pass_by::Codec<Self>;
-}
-
-#[cfg(feature = "std")]
-pub trait GenerateGenesisStateRoot: Send + Sync {
-    /// Returns the state root of genesis block built from the runtime genesis config on success.
-    fn generate_genesis_state_root(
-        &self,
-        domain_id: DomainId,
-        domain_instance_data: DomainInstanceData,
-    ) -> Option<H256>;
-}
-
-#[cfg(feature = "std")]
-sp_externalities::decl_extension! {
-    /// A domain genesis receipt extension.
-    pub struct GenesisReceiptExtension(std::sync::Arc<dyn GenerateGenesisStateRoot>);
-}
-
-#[cfg(feature = "std")]
-impl GenesisReceiptExtension {
-    /// Create a new instance of [`GenesisReceiptExtension`].
-    pub fn new(inner: std::sync::Arc<dyn GenerateGenesisStateRoot>) -> Self {
-        Self(inner)
-    }
-}
-
-/// Domain-related runtime interface
-#[runtime_interface]
-pub trait Domain {
-    fn generate_genesis_state_root(
-        &mut self,
-        domain_id: DomainId,
-        domain_instance_data: DomainInstanceData,
-    ) -> Option<H256> {
-        use sp_externalities::ExternalitiesExt;
-
-        self.extension::<GenesisReceiptExtension>()
-            .expect("No `GenesisReceiptExtension` associated for the current context!")
-            .generate_genesis_state_root(domain_id, domain_instance_data)
-    }
+    pub raw_genesis: RawGenesis,
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, Clone)]
