@@ -7,7 +7,7 @@ use crate::identity::{Identity, IdentityError};
 use crate::node_client::NodeClient;
 use crate::reward_signing::reward_signing;
 pub use crate::single_disk_farm::farming::FarmingError;
-use crate::single_disk_farm::farming::{farming, FarmingOptions};
+use crate::single_disk_farm::farming::{farming, slot_notification_forwarder, FarmingOptions};
 use crate::single_disk_farm::piece_cache::{DiskPieceCache, DiskPieceCacheError};
 use crate::single_disk_farm::piece_reader::PieceReader;
 pub use crate::single_disk_farm::plotting::PlottingError;
@@ -937,32 +937,15 @@ impl SingleDiskFarm {
         };
         tasks.push(Box::pin(plotting_scheduler(plotting_scheduler_options)));
 
-        let (mut slot_info_forwarder_sender, slot_info_forwarder_receiver) = mpsc::channel(0);
+        let (slot_info_forwarder_sender, slot_info_forwarder_receiver) = mpsc::channel(0);
 
         tasks.push(Box::pin({
             let node_client = node_client.clone();
 
             async move {
-                info!("Subscribing to slot info notifications");
-
-                let mut slot_info_notifications = node_client
-                    .subscribe_slot_info()
+                slot_notification_forwarder(&node_client, slot_info_forwarder_sender)
                     .await
-                    .map_err(|error| FarmingError::FailedToSubscribeSlotInfo { error })?;
-
-                while let Some(slot_info) = slot_info_notifications.next().await {
-                    debug!(?slot_info, "New slot");
-
-                    let slot = slot_info.slot_number;
-
-                    // Error means farmer is still solving for previous slot, which is too late and
-                    // we need to skip this slot
-                    if slot_info_forwarder_sender.try_send(slot_info).is_err() {
-                        debug!(%slot, "Slow farming, skipping slot");
-                    }
-                }
-
-                Ok(())
+                    .map_err(BackgroundTaskError::Farming)
             }
         }));
 
