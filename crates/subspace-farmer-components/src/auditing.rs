@@ -106,10 +106,7 @@ where
                 return None;
             }
 
-            winning_audit_chunks.sort_by(|a, b| {
-                // Comparing `b` to `a` because we want smaller values first
-                b.solution_distance.cmp(&a.solution_distance)
-            });
+            winning_audit_chunks.sort_by(|a, b| a.solution_distance.cmp(&b.solution_distance));
 
             Some(ChunkCandidate {
                 chunk_offset: chunk_offset as u32,
@@ -135,8 +132,7 @@ where
             .expect("Lists of audit chunks are non-empty; qed")
             .solution_distance;
 
-        // Comparing `b` to `a` because we want smaller values first
-        b_solution_distance.cmp(&a_solution_distance)
+        a_solution_distance.cmp(&b_solution_distance)
     });
 
     let best_solution_distance = winning_chunks
