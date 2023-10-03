@@ -876,18 +876,33 @@ fn test_invalid_domain_extrinsic_root_proof() {
         );
 
         let bad_receipt_at = 8;
-        let domain_block = get_block_tree_node_at::<Test>(domain_id, bad_receipt_at).unwrap();
+        let valid_bundle_digests = vec![ValidBundleDigest {
+            bundle_index: 0,
+            bundle_digest: vec![(Some(vec![1, 2, 3]), ExtrinsicDigest::Data(vec![4, 5, 6]))],
+        }];
+        let mut domain_block = get_block_tree_node_at::<Test>(domain_id, bad_receipt_at).unwrap();
+        let bad_receipt = &mut domain_block.execution_receipt;
+        bad_receipt.bundles = {
+            valid_bundle_digests
+                .iter()
+                .map(|vbd| {
+                    InboxedBundle::valid(BlakeTwo256::hash_of(&vbd.bundle_digest), H256::random())
+                })
+                .collect()
+        };
+        bad_receipt.domain_block_extrinsic_root = H256::random();
 
-        let bad_receipt_hash = domain_block.execution_receipt.hash();
+        let bad_receipt_hash = bad_receipt.hash();
         let (fraud_proof, root) = generate_invalid_domain_extrinsic_root_fraud_proof::<Test>(
             domain_id,
             bad_receipt_hash,
+            valid_bundle_digests,
             Randomness::from([1u8; 32]),
             1000,
         );
         let (consensus_block_number, consensus_block_hash) = (
-            domain_block.execution_receipt.consensus_block_number,
-            domain_block.execution_receipt.consensus_block_hash,
+            bad_receipt.consensus_block_number,
+            bad_receipt.consensus_block_hash,
         );
         ConsensusBlockInfo::<Test>::insert(
             domain_id,
@@ -902,6 +917,7 @@ fn test_invalid_domain_extrinsic_root_proof() {
 fn generate_invalid_domain_extrinsic_root_fraud_proof<T: Config + pallet_timestamp::Config>(
     domain_id: DomainId,
     bad_receipt_hash: ReceiptHash,
+    valid_bundle_digests: Vec<ValidBundleDigest>,
     randomness: Randomness,
     moment: Moment,
 ) -> (FraudProof<BlockNumberFor<T>, T::Hash>, T::Hash) {
@@ -925,10 +941,6 @@ fn generate_invalid_domain_extrinsic_root_fraud_proof<T: Config + pallet_timesta
         storage_proof_for_key::<T, _>(backend.clone(), StorageKey(randomness_storage_key));
     let (root, timestamp_storage_proof) =
         storage_proof_for_key::<T, _>(backend, StorageKey(timestamp_storage_key));
-    let valid_bundle_digests = vec![ValidBundleDigest {
-        bundle_index: 0,
-        bundle_digest: vec![(Some(vec![1, 2, 3]), ExtrinsicDigest::Data(vec![4, 5, 6]))],
-    }];
     (
         FraudProof::InvalidExtrinsicsRoot(InvalidExtrinsicsRootProof {
             domain_id,
