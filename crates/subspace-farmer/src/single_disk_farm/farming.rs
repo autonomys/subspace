@@ -19,7 +19,7 @@ use subspace_farmer_components::{proving, ReadAt};
 use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_rpc_primitives::{SlotInfo, SolutionResponse};
 use thiserror::Error;
-use tracing::{debug, error, trace, warn};
+use tracing::{debug, error, info, trace, warn};
 
 /// Self-imposed limit for number of solutions that farmer will not go over per challenge.
 ///
@@ -63,6 +63,35 @@ pub enum FarmingError {
     /// Failed to create thread pool
     #[error("Failed to create thread pool: {0}")]
     FailedToCreateThreadPool(#[from] ThreadPoolBuildError),
+}
+
+pub(super) async fn slot_notification_forwarder<NC>(
+    node_client: &NC,
+    mut slot_info_forwarder_sender: mpsc::Sender<SlotInfo>,
+) -> Result<(), FarmingError>
+where
+    NC: NodeClient,
+{
+    info!("Subscribing to slot info notifications");
+
+    let mut slot_info_notifications = node_client
+        .subscribe_slot_info()
+        .await
+        .map_err(|error| FarmingError::FailedToSubscribeSlotInfo { error })?;
+
+    while let Some(slot_info) = slot_info_notifications.next().await {
+        debug!(?slot_info, "New slot");
+
+        let slot = slot_info.slot_number;
+
+        // Error means farmer is still solving for previous slot, which is too late and
+        // we need to skip this slot
+        if slot_info_forwarder_sender.try_send(slot_info).is_err() {
+            debug!(%slot, "Slow farming, skipping slot");
+        }
+    }
+
+    Ok(())
 }
 
 pub(super) struct FarmingOptions<'a, NC> {
