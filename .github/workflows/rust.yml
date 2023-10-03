@@ -5,12 +5,12 @@ on:
     branches:
       - main
     paths-ignore:
-      - '**.md'
-      - '.github/CODEOWNERS'
+      - "**.md"
+      - ".github/CODEOWNERS"
   pull_request:
     paths-ignore:
-      - '**.md'
-      - '.github/CODEOWNERS'
+      - "**.md"
+      - ".github/CODEOWNERS"
   workflow_dispatch:
   merge_group:
 
@@ -44,7 +44,7 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Configure cache
-        uses: actions/cache@9b0c1fce7a93df8e3bb8926b0d6e9d89e92f20a7 # @v3.0.11
+        uses: actions/cache@704facf57e6136b1bc63b828d79edcd491f0ee84 # @v3.3.2
         with:
           path: |
             ~/.cargo/registry
