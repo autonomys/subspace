@@ -53,8 +53,9 @@ pub struct PotSlotInfoStream(mpsc::Receiver<PotSlotInfo>);
 /// up to day with blockchain reorgs.
 #[derive(Debug)]
 #[must_use = "Proof of time source doesn't do anything unless run() method is called"]
-pub struct PotSourceWorker<Block, Client> {
+pub struct PotSourceWorker<Block, Client, SO> {
     client: Arc<Client>,
+    sync_oracle: SO,
     chain_constants: ChainConstants,
     timekeeper_proofs_receiver: mpsc::Receiver<TimekeeperProof>,
     to_gossip_sender: mpsc::Sender<ToGossipMessage>,
@@ -64,13 +65,14 @@ pub struct PotSourceWorker<Block, Client> {
     _block: PhantomData<Block>,
 }
 
-impl<Block, Client> PotSourceWorker<Block, Client>
+impl<Block, Client, SO> PotSourceWorker<Block, Client, SO>
 where
     Block: BlockT,
     Client: BlockchainEvents<Block> + HeaderBackend<Block> + ProvideRuntimeApi<Block>,
     Client::Api: SubspaceRuntimeApi<Block, FarmerPublicKey>,
+    SO: SyncOracle + Clone + Send + Sync + 'static,
 {
-    pub fn new<Network, GossipSync, SO>(
+    pub fn new<Network, GossipSync>(
         is_timekeeper: bool,
         timekeeper_cpu_cores: HashSet<usize>,
         client: Arc<Client>,
@@ -82,7 +84,6 @@ where
     where
         Network: GossipNetwork<Block> + Send + Sync + Clone + 'static,
         GossipSync: GossipSyncing<Block> + 'static,
-        SO: SyncOracle + Send + Sync + 'static,
     {
         let best_hash = client.info().best_hash;
         let runtime_api = client.runtime_api();
@@ -165,11 +166,12 @@ where
             Arc::clone(&state),
             network,
             sync,
-            sync_oracle,
+            sync_oracle.clone(),
         );
 
         let source_worker = Self {
             client,
+            sync_oracle,
             chain_constants,
             timekeeper_proofs_receiver,
             to_gossip_sender,
@@ -229,6 +231,18 @@ where
             slot_iterations,
             checkpoints,
         } = proof;
+
+        if self.sync_oracle.is_major_syncing() {
+            trace!(
+                ?slot,
+                %seed,
+                %slot_iterations,
+                output = %checkpoints.output(),
+                "Ignore timekeeper proof due to major syncing",
+            );
+
+            return;
+        }
 
         debug!(
             ?slot,
