@@ -217,6 +217,8 @@ where
             }
         };
 
+        debug!(%last_segment_index, "Identified last segment index");
+
         worker_state.heap.clear();
         // Change limit to number of pieces
         worker_state.heap.set_limit(
@@ -255,8 +257,15 @@ where
                 });
         });
 
+        debug!(
+            count = %piece_indices_to_store.len(),
+            "Identified piece indices that should be cached",
+        );
+
         // TODO: Can probably do concurrency here
         for (index, piece_index) in piece_indices_to_store.into_values().enumerate() {
+            trace!(%piece_index, "Downloading piece");
+
             let result = piece_getter
                 .get_piece(
                     piece_index,
@@ -265,7 +274,11 @@ where
                 .await;
 
             let piece = match result {
-                Ok(Some(piece)) => piece,
+                Ok(Some(piece)) => {
+                    trace!(%piece_index, "Downloaded piece successfully");
+
+                    piece
+                }
                 Ok(None) => {
                     debug!(%piece_index, "Couldn't find piece");
                     continue;
