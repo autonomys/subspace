@@ -13,7 +13,10 @@ use tracing::{trace, warn};
 /// as part of the initial download request for compact blocks).
 #[derive(From, Encode, Decode)]
 pub(crate) enum CompactBlockInitialRequest {
+    #[codec(index = 0)]
     V0,
+    // Next version/variant goes here:
+    // #[codec(index = 1)]
 }
 
 /// The compact block initial response from the server.
@@ -30,14 +33,20 @@ pub(crate) struct CompactBlockInitialResponse<DownloadUnitId, ProtocolUnitId, Pr
 #[derive(From, Encode, Decode)]
 pub(crate) enum CompactBlockHandshake<DownloadUnitId, ProtocolUnitId> {
     /// Request for missing transactions
-    MissingEntries(MissingEntriesRequest<DownloadUnitId, ProtocolUnitId>),
+    #[codec(index = 0)]
+    MissingEntriesV0(MissingEntriesRequest<DownloadUnitId, ProtocolUnitId>),
+    // Next version/variant goes here:
+    // #[codec(index = 1)]
 }
 
 /// The handshake reply from the server.
 #[derive(From, Encode, Decode)]
 pub(crate) enum CompactBlockHandshakeResponse<ProtocolUnit> {
     /// Response for missing transactions
-    MissingEntries(MissingEntriesResponse<ProtocolUnit>),
+    #[codec(index = 0)]
+    MissingEntriesV0(MissingEntriesResponse<ProtocolUnit>),
+    // Next version/variant goes here:
+    // #[codec(index = 1)]
 }
 
 /// Request for missing transactions
@@ -63,39 +72,6 @@ struct ResolveContext<ProtocolUnitId, ProtocolUnit> {
     resolved: BTreeMap<u64, Resolved<ProtocolUnitId, ProtocolUnit>>,
     local_miss: BTreeMap<u64, ProtocolUnitId>,
 }
-
-/*
-/// Request messages
-#[derive(Encode, Decode)]
-pub(crate) enum CompactBlockRequest<DownloadUnitId, ProtocolUnitId> {
-    /// Initial request
-    Initial,
-
-    /// Request for missing transactions
-    MissingEntries(MissingEntriesRequest<DownloadUnitId, ProtocolUnitId>),
-}
-
-/// Response messages
-#[derive(Encode, Decode)]
-pub(crate) enum CompactBlockResponse<DownloadUnitId, ProtocolUnitId, ProtocolUnit> {
-    /// Initial/compact response
-    Initial(InitialResponse<DownloadUnitId, ProtocolUnitId, ProtocolUnit>),
-
-    /// Response for missing transactions request
-    MissingEntries(MissingEntriesResponse<ProtocolUnit>),
-}
-
-/// The compact response
-#[derive(Encode, Decode)]
-pub(crate) struct InitialResponse<DownloadUnitId, ProtocolUnitId, ProtocolUnit> {
-    /// The download unit
-    download_unit_id: DownloadUnitId,
-
-    /// List of the protocol units Ids.
-    protocol_units: Vec<ProtocolUnitInfo<ProtocolUnitId, ProtocolUnit>>,
-}
-
- */
 
 pub(crate) struct CompactBlockClient<DownloadUnitId, ProtocolUnitId, ProtocolUnit> {
     _phantom_data: std::marker::PhantomData<(DownloadUnitId, ProtocolUnitId, ProtocolUnit)>,
@@ -235,8 +211,9 @@ where
             protocol_unit_ids: local_miss.clone(),
         });
 
-        let missing_entries_response: MissingEntriesResponse<ProtocolUnit> =
+        let response: CompactBlockHandshakeResponse<ProtocolUnit> =
             network_peer_handle.request(Request::from(request)).await?;
+        let CompactBlockHandshakeResponse::MissingEntriesV0(missing_entries_response) = response;
 
         if missing_entries_response.protocol_units.len() != missing {
             return Err(RelayError::ResolveMismatch {
@@ -304,7 +281,7 @@ where
         message: CompactBlockHandshake<DownloadUnitId, ProtocolUnitId>,
         backend: &dyn ServerBackend<DownloadUnitId, ProtocolUnitId, ProtocolUnit>,
     ) -> Result<CompactBlockHandshakeResponse<ProtocolUnit>, RelayError> {
-        let CompactBlockHandshake::MissingEntries(request) = message;
+        let CompactBlockHandshake::MissingEntriesV0(request) = message;
 
         let mut protocol_units = BTreeMap::new();
         let total_len = request.protocol_unit_ids.len();

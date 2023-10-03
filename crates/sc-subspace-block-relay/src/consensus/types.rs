@@ -25,24 +25,38 @@ const DOWNLOAD_LABEL: &str = "client_download";
 const DOWNLOAD_BLOCKS: &str = "blocks";
 const DOWNLOAD_BYTES: &str = "bytes";
 
+/// The relay protocol needs to expose these data types to be included
+/// in the top level data types:
+/// 1. The request/response types to be included in
+///    `ProtocolInitialRequest`/`ProtocolInitialResponse`.
+/// 2. The handshake message to be included in `ProtocolMessage`.
+///    The corresponding handshake response is not included in the
+///    top level messages, and is private to the protocol
+///    implementation.
+
 /// Client -> server request.
 #[derive(From, Encode, Decode)]
 pub(crate) enum ConsensusRequest<Block: BlockT, Pool: TransactionPool> {
     /// Initial request for block download. This may
     /// result in partial blocks returned by the server,
     /// with tx hash instead of the full transaction.
-    BlockDownload(InitialRequest<Block>),
+    #[codec(index = 0)]
+    BlockDownloadV0(InitialRequest<Block>),
 
     /// Protocol specific hand shake messages, following the
     /// initial `BlockDownload` message (e.g) to resolve
     /// tx pool misses.
-    ProtocolMessage(ProtocolMessage<Block, Pool>),
+    #[codec(index = 1)]
+    ProtocolMessageV0(ProtocolMessage<Block, Pool>),
 
     /// Request for full block download, without going through
     /// the relay protocols. This is used in scenarios like a node
     /// doing initial sync.
     /// TODO: versioning for substrate data types
-    FullBlockDownload(FullDownloadRequest<Block>),
+    #[codec(index = 2)]
+    FullBlockDownloadV0(FullDownloadRequest<Block>),
+    // Next version/variant goes here:
+    // #[codec(index = 3)]
 }
 
 /// Initial request for a single block.
@@ -77,19 +91,28 @@ pub(crate) struct InitialResponse<Block: BlockT, Pool: TransactionPool> {
 /// Protocol specific part of the initial request.
 #[derive(From, Encode, Decode)]
 pub(crate) enum ProtocolInitialRequest {
+    #[codec(index = 0)]
     CompactBlock(CompactBlockInitialRequest),
+    // New protocol goes here:
+    // #[codec(index = 1)]
 }
 
 /// Protocol specific part of the initial response.
 #[derive(From, Encode, Decode)]
 pub(crate) enum ProtocolInitialResponse<Block: BlockT, Pool: TransactionPool> {
+    #[codec(index = 0)]
     CompactBlock(CompactBlockInitialResponse<BlockHash<Block>, TxHash<Pool>, Extrinsic<Block>>),
+    // New protocol goes here:
+    // #[codec(index = 1)]
 }
 
 /// Protocol specific handshake requests.
 #[derive(From, Encode, Decode)]
 pub(crate) enum ProtocolMessage<Block: BlockT, Pool: TransactionPool> {
+    #[codec(index = 0)]
     CompactBlock(CompactBlockHandshake<BlockHash<Block>, TxHash<Pool>>),
+    // New protocol goes here:
+    // #[codec(index = 1)]
 }
 
 impl<Block: BlockT, Pool: TransactionPool>
@@ -98,7 +121,7 @@ impl<Block: BlockT, Pool: TransactionPool>
     fn from(
         inner: CompactBlockHandshake<BlockHash<Block>, TxHash<Pool>>,
     ) -> ConsensusRequest<Block, Pool> {
-        ConsensusRequest::ProtocolMessage(ProtocolMessage::CompactBlock(inner))
+        ConsensusRequest::ProtocolMessageV0(ProtocolMessage::CompactBlock(inner))
     }
 }
 

@@ -316,7 +316,7 @@ where
     }
 
     /// Handles the received request from the client side
-    async fn on_request(&mut self, request: IncomingRequest) {
+    async fn process_incoming_request(&mut self, request: IncomingRequest) {
         // Drop the request in case of errors and let the client time out.
         // This is the behavior of the current substrate block handler.
         let IncomingRequest {
@@ -338,9 +338,13 @@ where
         };
 
         let ret = match req {
-            ConsensusRequest::BlockDownload(req) => self.on_initial_request(req),
-            ConsensusRequest::ProtocolMessage(msg) => self.on_protocol_message(msg),
-            ConsensusRequest::FullBlockDownload(req) => self.on_full_download_request(req),
+            ConsensusRequest::BlockDownloadV0(req) => {
+                self.on_initial_request(req).map(|rsp| rsp.encode())
+            }
+            ConsensusRequest::ProtocolMessageV0(msg) => self.on_protocol_message(msg),
+            ConsensusRequest::FullBlockDownloadV0(req) => {
+                self.on_full_download_request(req).map(|rsp| rsp.encode())
+            }
         };
 
         match ret {
@@ -369,7 +373,7 @@ where
     fn on_initial_request(
         &mut self,
         initial_request: InitialRequest<Block>,
-    ) -> Result<Vec<u8>, RelayError> {
+    ) -> Result<InitialResponse<Block, Pool>, RelayError> {
         let block_hash = self.block_hash(&initial_request.from_block)?;
         let block_attributes = initial_request.block_attributes;
 
@@ -388,12 +392,11 @@ where
             None
         };
 
-        let initial_response: InitialResponse<Block, Pool> = InitialResponse {
+        Ok(InitialResponse {
             block_hash,
             partial_block,
             protocol_response,
-        };
-        Ok(initial_response.encode())
+        })
     }
 
     /// Handles the protocol message from the client
@@ -414,7 +417,7 @@ where
     fn on_full_download_request(
         &mut self,
         full_download_request: FullDownloadRequest<Block>,
-    ) -> Result<Vec<u8>, RelayError> {
+    ) -> Result<FullDownloadResponse<Block>, RelayError> {
         let block_request = full_download_request.0;
         let mut blocks = Vec::new();
         let mut block_id = match block_request.from {
@@ -458,7 +461,7 @@ where
             };
         }
 
-        Ok(blocks.encode())
+        Ok(FullDownloadResponse(blocks))
     }
 
     /// Builds the partial block response
@@ -557,7 +560,7 @@ where
             "relay::consensus block server: starting"
         );
         while let Some(request) = self.request_receiver.next().await {
-            self.on_request(request).await;
+            self.process_incoming_request(request).await;
         }
     }
 }
