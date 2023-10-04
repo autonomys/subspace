@@ -1,7 +1,55 @@
 //! File extension trait
 
-use std::fs::File;
+use std::fs::{File, OpenOptions};
 use std::io::Result;
+
+pub trait OpenOptionsExt {
+    /// Advise OS/file system that file will use random access and read-ahead behavior is
+    /// undesirable, only has impact on Windows, for other operating systems see [`FileExt`]
+    fn advise_random_access(&mut self) -> &mut Self;
+
+    /// Advise OS/file system that file will use sequential access and read-ahead behavior is
+    /// desirable, only has impact on Windows, for other operating systems see [`FileExt`]
+    fn advise_sequential_access(&mut self) -> &mut Self;
+}
+
+impl OpenOptionsExt for OpenOptions {
+    #[cfg(target_os = "linux")]
+    fn advise_random_access(&mut self) -> &mut Self {
+        // Not supported
+        self
+    }
+
+    #[cfg(target_os = "macos")]
+    fn advise_random_access(&mut self) -> &mut Self {
+        // Not supported
+        self
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    fn advise_random_access(&mut self) -> &mut Self {
+        use std::os::windows::fs::OpenOptionsExt;
+        self.custom_flags(winapi::um::winbase::FILE_FLAG_RANDOM_ACCESS)
+    }
+
+    #[cfg(target_os = "linux")]
+    fn advise_sequential_access(&mut self) -> &mut Self {
+        // Not supported
+        self
+    }
+
+    #[cfg(target_os = "macos")]
+    fn advise_sequential_access(&mut self) -> &mut Self {
+        // Not supported
+        self
+    }
+
+    #[cfg(not(any(target_os = "macos", target_os = "linux")))]
+    fn advise_sequential_access(&mut self) -> &mut Self {
+        use std::os::windows::fs::OpenOptionsExt;
+        self.custom_flags(winapi::um::winbase::FILE_FLAG_SEQUENTIAL_SCAN)
+    }
+}
 
 /// Extension convenience trait that allows pre-allocating files, suggesting random access pattern
 /// and doing cross-platform exact reads/writes
@@ -10,11 +58,11 @@ pub trait FileExt {
     fn preallocate(&self, len: u64) -> Result<()>;
 
     /// Advise OS/file system that file will use random access and read-ahead behavior is
-    /// undesirable
+    /// undesirable, on Windows this can only be set when file is opened, see [`OpenOptionsExt`]
     fn advise_random_access(&self) -> Result<()>;
 
     /// Advise OS/file system that file will use sequential access and read-ahead behavior is
-    /// desirable
+    /// desirable, on Windows this can only be set when file is opened, see [`OpenOptionsExt`]
     fn advise_sequential_access(&self) -> Result<()>;
 
     /// Read exact number of bytes at a specific offset

@@ -16,7 +16,7 @@ use subspace_core_primitives::{
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector;
-use subspace_farmer_components::file_ext::FileExt;
+use subspace_farmer_components::file_ext::{FileExt, OpenOptionsExt};
 use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy, PlottedSector};
 use subspace_farmer_components::sector::{
     sector_size, SectorContentsMap, SectorMetadata, SectorMetadataChecksummed,
@@ -223,6 +223,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             .write(true)
             .create(true)
             .truncate(true)
+            .advise_random_access()
             .open(&plot_file_path)
             .unwrap();
 
