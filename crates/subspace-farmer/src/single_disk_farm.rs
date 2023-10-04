@@ -285,9 +285,9 @@ pub struct SingleDiskFarmOptions<NC, PG> {
     pub erasure_coding: ErasureCoding,
     /// Percentage of allocated space dedicated for caching purposes
     pub cache_percentage: NonZeroU8,
-    /// Thread pool used for farming (mostly for blocking I/O, but also for some compute-intensive
-    /// operations during proving)
-    pub farming_thread_pool: Arc<ThreadPool>,
+    /// Thread pool size used for farming (mostly for blocking I/O, but also for some
+    /// compute-intensive operations during proving)
+    pub farming_thread_pool_size: usize,
     /// Thread pool used for plotting
     pub plotting_thread_pool: Arc<ThreadPool>,
     /// Thread pool used for replotting, typically smaller pool than for plotting to not affect
@@ -595,7 +595,7 @@ impl SingleDiskFarm {
             kzg,
             erasure_coding,
             cache_percentage,
-            farming_thread_pool,
+            farming_thread_pool_size,
             plotting_thread_pool,
             replotting_thread_pool,
         } = options;
@@ -991,6 +991,7 @@ impl SingleDiskFarm {
                         }
 
                         let farming_options = FarmingOptions {
+                            disk_farm_index,
                             public_key,
                             reward_address,
                             node_client,
@@ -1002,7 +1003,7 @@ impl SingleDiskFarm {
                             handlers,
                             modifying_sector_index,
                             slot_info_notifications: slot_info_forwarder_receiver,
-                            thread_pool: farming_thread_pool,
+                            thread_pool_size: farming_thread_pool_size,
                         };
                         farming::<PosTable, _>(farming_options).await
                     };
