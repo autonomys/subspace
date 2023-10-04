@@ -55,7 +55,6 @@ use subspace_core_primitives::{
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector;
 use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy};
-use subspace_farmer_components::sector::{sector_size, SectorMetadataChecksummed};
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::shim::ShimTable;
 use subspace_proof_of_space::{Table, TableGenerator};
@@ -445,13 +444,12 @@ pub fn create_signed_vote(
         min_sector_lifetime: HistorySize::from(NonZeroU64::new(4).unwrap()),
     };
     let pieces_in_sector = farmer_protocol_info.max_pieces_in_sector;
-    let sector_size = sector_size(pieces_in_sector);
 
     let mut table_generator = PosTable::generator();
 
     for sector_index in iter::from_fn(|| Some(rand::random())) {
-        let mut plotted_sector_bytes = vec![0; sector_size];
-        let mut plotted_sector_metadata_bytes = vec![0; SectorMetadataChecksummed::encoded_size()];
+        let mut plotted_sector_bytes = Vec::new();
+        let mut plotted_sector_metadata_bytes = Vec::new();
 
         let plotted_sector = block_on(plot_sector::<_, PosTable>(
             &public_key,

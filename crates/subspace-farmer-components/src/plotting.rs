@@ -155,6 +155,10 @@ pub enum PlottingError {
 /// beginning of the sector (seek to desired offset before calling this function and seek back
 /// afterwards if necessary).
 ///
+/// Sector output and sector metadata output should be either empty (in which case they'll be
+/// resized to correct size automatically) or correctly sized from the beginning or else error will
+/// be returned.
+///
 /// NOTE: Even though this function is async, it has blocking code inside and must be running in a
 /// separate thread in order to prevent blocking an executor.
 #[allow(clippy::too_many_arguments)]
@@ -167,8 +171,8 @@ pub async fn plot_sector<PG, PosTable>(
     kzg: &Kzg,
     erasure_coding: &ErasureCoding,
     pieces_in_sector: u16,
-    sector_output: &mut [u8],
-    sector_metadata_output: &mut [u8],
+    sector_output: &mut Vec<u8>,
+    sector_metadata_output: &mut Vec<u8>,
     table_generator: &mut PosTable::Generator,
 ) -> Result<PlottedSector, PlottingError>
 where
@@ -181,14 +185,16 @@ where
 
     let sector_size = sector_size(pieces_in_sector);
 
-    if sector_output.len() != sector_size {
+    if !sector_output.is_empty() && sector_output.len() != sector_size {
         return Err(PlottingError::BadSectorOutputSize {
             provided: sector_output.len(),
             expected: sector_size,
         });
     }
 
-    if sector_metadata_output.len() < SectorMetadataChecksummed::encoded_size() {
+    if !sector_metadata_output.is_empty()
+        && sector_metadata_output.len() != SectorMetadataChecksummed::encoded_size()
+    {
         return Err(PlottingError::BadSectorMetadataOutputSize {
             provided: sector_metadata_output.len(),
             expected: SectorMetadataChecksummed::encoded_size(),
@@ -340,6 +346,9 @@ where
                     *output_chunk = input_chunk.to_bytes();
                 });
         });
+
+    sector_output.resize(sector_size, 0);
+    sector_metadata_output.resize(SectorMetadataChecksummed::encoded_size(), 0);
 
     // Write sector to disk in form of following regions:
     // * sector contents map
