@@ -11595,6 +11595,7 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
+ "winapi",
 ]
 
 [[package]]
