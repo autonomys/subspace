@@ -16,6 +16,7 @@
 //! Primitives for Subspace RPC.
 
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 use subspace_core_primitives::{
     Blake2b256Hash, PublicKey, RewardSignature, SlotNumber, Solution, SolutionRange,
 };
@@ -32,8 +33,10 @@ pub struct FarmerAppInfo {
     /// Genesis hash of the chain
     #[serde(with = "hex::serde")]
     pub genesis_hash: [u8; 32],
-    /// Bootstrap nodes for DSN.
+    /// Bootstrap nodes for DSN
     pub dsn_bootstrap_nodes: Vec<Multiaddr>,
+    /// How much time farmer has to audit sectors and generate a solution
+    pub farming_timeout: Duration,
     /// Protocol info for farmer
     pub protocol_info: FarmerProtocolInfo,
 }

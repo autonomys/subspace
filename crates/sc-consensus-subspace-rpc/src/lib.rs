@@ -301,6 +301,7 @@ where
             })?;
 
         let farmer_app_info: Result<FarmerAppInfo, ApiError> = try {
+            let slot_duration = runtime_api.slot_duration(best_hash)?;
             let chain_constants = runtime_api.chain_constants(best_hash)?;
             let protocol_info = FarmerProtocolInfo {
                 history_size: runtime_api.history_size(best_hash)?,
@@ -313,6 +314,9 @@ where
             FarmerAppInfo {
                 genesis_hash,
                 dsn_bootstrap_nodes: self.dsn_bootstrap_nodes.clone(),
+                farming_timeout: slot_duration
+                    .as_duration()
+                    .mul_f64(SlotNumber::from(chain_constants.block_authoring_delay()) as f64),
                 protocol_info,
             }
         };

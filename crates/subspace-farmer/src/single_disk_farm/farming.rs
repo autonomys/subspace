@@ -10,6 +10,7 @@ use rayon::ThreadPoolBuildError;
 use std::fs::File;
 use std::io;
 use std::sync::Arc;
+use std::time::Instant;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{PosSeed, PublicKey, SectorIndex, SolutionRange};
 use subspace_erasure_coding::ErasureCoding;
@@ -36,12 +37,6 @@ pub enum FarmingError {
     FailedToGetFarmerInfo {
         /// Lower-level error
         error: node_client::Error,
-    },
-    /// Failed to create memory mapping for metadata
-    #[error("Failed to create memory mapping for metadata: {error}")]
-    FailedToMapMetadata {
-        /// Lower-level error
-        error: io::Error,
     },
     /// Low-level proving error
     #[error("Low-level proving error: {0}")]
@@ -122,9 +117,18 @@ where
         mut slot_info_notifications,
     } = farming_options;
 
+    let farmer_app_info = node_client
+        .farmer_app_info()
+        .await
+        .map_err(|error| FarmingError::FailedToGetFarmerInfo { error })?;
+
+    // We assume that each slot is one second
+    let farming_timeout = farmer_app_info.farming_timeout;
+
     let table_generator = Arc::new(Mutex::new(PosTable::generator()));
 
     while let Some(slot_info) = slot_info_notifications.next().await {
+        let start = Instant::now();
         let slot = slot_info.slot_number;
         let sectors_metadata = sectors_metadata.read();
         let sector_count = sectors_metadata.len();
@@ -206,9 +210,7 @@ where
         // Holds futures such that this function doesn't exit until all solutions were sent out
         let mut sending_solutions = Vec::new();
 
-        // TODO: This loop can take too long, abort if solutions will not make it into block/vote
-        //  anyway
-        for (sector_index, sector_solutions) in sectors_solutions {
+        'solutions_processing: for (sector_index, sector_solutions) in sectors_solutions {
             for maybe_solution in sector_solutions {
                 let solution = match maybe_solution {
                     Ok(solution) => solution,
@@ -222,6 +224,10 @@ where
 
                 debug!(%slot, %sector_index, "Solution found");
                 trace!(?solution, "Solution found");
+
+                if start.elapsed() >= farming_timeout {
+                    break 'solutions_processing;
+                }
 
                 let response = SolutionResponse {
                     slot_number: slot_info.slot_number,
