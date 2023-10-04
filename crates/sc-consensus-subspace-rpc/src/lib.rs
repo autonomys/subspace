@@ -53,7 +53,9 @@ use std::sync::{Arc, Weak};
 use std::time::Duration;
 use subspace_archiving::archiver::NewArchivedSegment;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::{PieceIndex, SegmentHeader, SegmentIndex, SlotNumber, Solution};
+use subspace_core_primitives::{
+    PieceIndex, PublicKey, SegmentHeader, SegmentIndex, SlotNumber, Solution,
+};
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_rpc_primitives::{
@@ -204,7 +206,9 @@ where
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
     reward_signing_notification_stream: SubspaceNotificationStream<RewardSigningNotification>,
     archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegmentNotification>,
-    solution_response_senders: Arc<Mutex<LruCache<SlotNumber, mpsc::Sender<SolutionResponse>>>>,
+    #[allow(clippy::type_complexity)]
+    solution_response_senders:
+        Arc<Mutex<LruCache<SlotNumber, mpsc::Sender<Solution<PublicKey, PublicKey>>>>>,
     reward_signature_senders: Arc<Mutex<BlockSignatureSenders>>,
     dsn_bootstrap_nodes: Vec<Multiaddr>,
     segment_headers_store: SegmentHeadersStore<AS>,
@@ -327,7 +331,7 @@ where
 
         let success = solution_response_senders
             .peek_mut(&slot)
-            .and_then(|sender| sender.try_send(solution_response).ok())
+            .and_then(|sender| sender.try_send(solution_response.solution).ok())
             .is_some();
 
         if !success {
@@ -367,40 +371,38 @@ where
                     // Wait for solutions and transform proposed proof of space solutions
                     // into data structure `sc-consensus-subspace` expects
                     let forward_solution_fut = async move {
-                        while let Some(solution_response) = response_receiver.next().await {
-                            for solution in solution_response.solutions {
-                                let public_key =
-                                    FarmerPublicKey::from_slice(solution.public_key.as_ref())
-                                        .expect("Always correct length; qed");
-                                let reward_address =
-                                    FarmerPublicKey::from_slice(solution.reward_address.as_ref())
-                                        .expect("Always correct length; qed");
+                        while let Some(solution) = response_receiver.next().await {
+                            let public_key =
+                                FarmerPublicKey::from_slice(solution.public_key.as_ref())
+                                    .expect("Always correct length; qed");
+                            let reward_address =
+                                FarmerPublicKey::from_slice(solution.reward_address.as_ref())
+                                    .expect("Always correct length; qed");
 
-                                let sector_index = solution.sector_index;
+                            let sector_index = solution.sector_index;
 
-                                let solution = Solution {
-                                    public_key: public_key.clone(),
-                                    reward_address,
-                                    sector_index,
-                                    history_size: solution.history_size,
-                                    piece_offset: solution.piece_offset,
-                                    record_commitment: solution.record_commitment,
-                                    record_witness: solution.record_witness,
-                                    chunk: solution.chunk,
-                                    chunk_witness: solution.chunk_witness,
-                                    audit_chunk_offset: solution.audit_chunk_offset,
-                                    proof_of_space: solution.proof_of_space,
-                                };
+                            let solution = Solution {
+                                public_key: public_key.clone(),
+                                reward_address,
+                                sector_index,
+                                history_size: solution.history_size,
+                                piece_offset: solution.piece_offset,
+                                record_commitment: solution.record_commitment,
+                                record_witness: solution.record_witness,
+                                chunk: solution.chunk,
+                                chunk_witness: solution.chunk_witness,
+                                audit_chunk_offset: solution.audit_chunk_offset,
+                                proof_of_space: solution.proof_of_space,
+                            };
 
-                                if solution_sender.try_send(solution).is_err() {
-                                    warn!(
-                                        slot = %solution_response.slot_number,
-                                        %sector_index,
-                                        %public_key,
-                                        "Solution receiver is closed, likely because farmer was too \
-                                        slow"
-                                    );
-                                }
+                            if solution_sender.try_send(solution).is_err() {
+                                warn!(
+                                    slot = %slot_number,
+                                    %sector_index,
+                                    %public_key,
+                                    "Solution receiver is closed, likely because farmer was too \
+                                    slow"
+                                );
                             }
                         }
                     };
