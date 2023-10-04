@@ -45,7 +45,7 @@ use std::assert_matches::assert_matches;
 use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex};
 use subspace_core_primitives::crypto::Scalar;
-use subspace_core_primitives::{PotOutput, SegmentIndex, SolutionRange};
+use subspace_core_primitives::{PieceOffset, PotOutput, SegmentIndex, SolutionRange};
 use subspace_runtime_primitives::{FindBlockRewardAddress, FindVotingRewardAddresses};
 
 #[test]
@@ -1217,6 +1217,7 @@ fn vote_equivocation_current_block_plus_vote() {
         CurrentBlockAuthorInfo::<Test>::put((
             FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
             signed_vote.vote.solution().sector_index,
+            signed_vote.vote.solution().piece_offset,
             signed_vote.vote.solution().chunk,
             AuditChunkOffset(signed_vote.vote.solution().audit_chunk_offset),
             slot,
@@ -1271,6 +1272,7 @@ fn vote_equivocation_parent_block_plus_vote() {
         ParentBlockAuthorInfo::<Test>::put((
             FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
             signed_vote.vote.solution().sector_index,
+            signed_vote.vote.solution().piece_offset,
             signed_vote.vote.solution().chunk,
             AuditChunkOffset(signed_vote.vote.solution().audit_chunk_offset),
             slot,
@@ -1336,6 +1338,7 @@ fn vote_equivocation_current_voters_duplicate() {
                 (
                     FarmerPublicKey::unchecked_from(voter_keypair.public.to_bytes()),
                     signed_vote.vote.solution().sector_index,
+                    signed_vote.vote.solution().piece_offset,
                     signed_vote.vote.solution().chunk,
                     AuditChunkOffset(signed_vote.vote.solution().audit_chunk_offset),
                     slot,
@@ -1357,6 +1360,7 @@ fn vote_equivocation_current_voters_duplicate() {
                 (
                     FarmerPublicKey::unchecked_from(voter_keypair.public.to_bytes()),
                     signed_vote.vote.solution().sector_index,
+                    signed_vote.vote.solution().piece_offset,
                     signed_vote.vote.solution().chunk,
                     AuditChunkOffset(signed_vote.vote.solution().audit_chunk_offset),
                     slot,
@@ -1418,6 +1422,7 @@ fn vote_equivocation_parent_voters_duplicate() {
                 (
                     FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
                     signed_vote.vote.solution().sector_index,
+                    signed_vote.vote.solution().piece_offset,
                     signed_vote.vote.solution().chunk,
                     AuditChunkOffset(signed_vote.vote.solution().audit_chunk_offset),
                     slot,
@@ -1439,6 +1444,7 @@ fn vote_equivocation_parent_voters_duplicate() {
                 (
                     FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
                     signed_vote.vote.solution().sector_index,
+                    signed_vote.vote.solution().piece_offset,
                     signed_vote.vote.solution().chunk,
                     AuditChunkOffset(signed_vote.vote.solution().audit_chunk_offset),
                     slot,
@@ -1470,6 +1476,7 @@ fn enabling_block_rewards_works() {
         CurrentBlockAuthorInfo::<Test>::put((
             FarmerPublicKey::unchecked_from(Keypair::generate().public.to_bytes()),
             0,
+            PieceOffset::ZERO,
             Scalar::default(),
             AuditChunkOffset(0),
             Subspace::current_slot(),
@@ -1481,6 +1488,7 @@ fn enabling_block_rewards_works() {
                 (
                     FarmerPublicKey::unchecked_from(Keypair::generate().public.to_bytes()),
                     0,
+                    PieceOffset::ZERO,
                     Scalar::default(),
                     AuditChunkOffset(0),
                     Subspace::current_slot(),
