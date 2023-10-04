@@ -29,14 +29,15 @@ use core::num::NonZeroUsize;
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode, Input, Output};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use subspace_core_primitives::crypto::kzg::{Kzg, Witness};
+use subspace_core_primitives::crypto::kzg::{Commitment, Kzg, Witness};
 use subspace_core_primitives::crypto::{blake2b_256_254_hash_to_scalar, Scalar};
 use subspace_core_primitives::objects::{
     BlockObject, BlockObjectMapping, PieceObject, PieceObjectMapping,
 };
 use subspace_core_primitives::{
     ArchivedBlockProgress, ArchivedHistorySegment, Blake2b256Hash, BlockNumber, LastArchivedBlock,
-    PieceArray, RawRecord, RecordedHistorySegment, SegmentCommitment, SegmentHeader, SegmentIndex,
+    PieceArray, RawRecord, RecordWitness, RecordedHistorySegment, SegmentCommitment, SegmentHeader,
+    SegmentIndex,
 };
 use subspace_erasure_coding::ErasureCoding;
 
@@ -784,10 +785,11 @@ impl Archiver {
             )
             .expect("Internally produced values must never fail; qed");
 
-        let segment_commitment = self
-            .kzg
-            .commit(&polynomial)
-            .expect("Internally produced values must never fail; qed");
+        let segment_commitment = SegmentCommitment::from(
+            self.kzg
+                .commit(&polynomial)
+                .expect("Internally produced values must never fail; qed"),
+        );
 
         // Create witness for every record and write it to corresponding piece.
         pieces
@@ -884,10 +886,14 @@ pub fn is_piece_valid(
         return false;
     }
 
+    let Ok(segment_commitment) = Commitment::try_from(segment_commitment) else {
+        return false;
+    };
+
     let commitment_hash = blake2b_256_254_hash_to_scalar(commitment.as_ref());
 
     kzg.verify(
-        segment_commitment,
+        &segment_commitment,
         ArchivedHistorySegment::NUM_PIECES,
         position,
         &commitment_hash,
@@ -900,14 +906,21 @@ pub fn is_record_commitment_hash_valid(
     kzg: &Kzg,
     record_commitment_hash: &Scalar,
     commitment: &SegmentCommitment,
-    witness: &Witness,
+    witness: &RecordWitness,
     position: u32,
 ) -> bool {
+    let Ok(commitment) = Commitment::try_from(commitment) else {
+        return false;
+    };
+    let Ok(witness) = Witness::try_from(witness) else {
+        return false;
+    };
+
     kzg.verify(
-        commitment,
+        &commitment,
         ArchivedHistorySegment::NUM_PIECES,
         position,
         record_commitment_hash,
-        witness,
+        &witness,
     )
 }
