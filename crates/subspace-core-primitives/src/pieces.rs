@@ -3,12 +3,14 @@ mod serde;
 #[cfg(test)]
 mod tests;
 
+use crate::crypto::kzg::{Commitment, Witness};
 use crate::crypto::Scalar;
 use crate::segments::{ArchivedHistorySegment, SegmentIndex};
 use crate::RecordedHistorySegment;
 #[cfg(feature = "serde")]
 use ::serde::{Deserialize, Serialize};
 use alloc::boxed::Box;
+use alloc::string::String;
 use alloc::vec;
 use alloc::vec::Vec;
 use core::array::TryFromSliceError;
@@ -464,6 +466,7 @@ impl Record {
     Clone,
     Eq,
     PartialEq,
+    Hash,
     Deref,
     DerefMut,
     From,
@@ -474,7 +477,10 @@ impl Record {
     MaxEncodedLen,
 )]
 #[repr(transparent)]
-pub struct RecordCommitment([u8; RecordCommitment::SIZE]);
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct RecordCommitment(
+    #[cfg_attr(feature = "serde", serde(with = "hex::serde"))] [u8; RecordCommitment::SIZE],
+);
 
 impl Default for RecordCommitment {
     #[inline]
@@ -511,6 +517,31 @@ impl RecordCommitment {
     pub const SIZE: usize = 48;
 }
 
+impl From<Commitment> for RecordCommitment {
+    #[inline]
+    fn from(commitment: Commitment) -> Self {
+        Self(commitment.to_bytes())
+    }
+}
+
+impl TryFrom<&RecordCommitment> for Commitment {
+    type Error = String;
+
+    #[inline]
+    fn try_from(commitment: &RecordCommitment) -> Result<Self, Self::Error> {
+        Commitment::try_from(&commitment.0)
+    }
+}
+
+impl TryFrom<RecordCommitment> for Commitment {
+    type Error = String;
+
+    #[inline]
+    fn try_from(commitment: RecordCommitment) -> Result<Self, Self::Error> {
+        Commitment::try_from(commitment.0)
+    }
+}
+
 /// Record witness contained within a piece.
 #[derive(
     Debug,
@@ -518,6 +549,7 @@ impl RecordCommitment {
     Clone,
     Eq,
     PartialEq,
+    Hash,
     Deref,
     DerefMut,
     From,
@@ -528,7 +560,10 @@ impl RecordCommitment {
     MaxEncodedLen,
 )]
 #[repr(transparent)]
-pub struct RecordWitness([u8; RecordWitness::SIZE]);
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct RecordWitness(
+    #[cfg_attr(feature = "serde", serde(with = "hex::serde"))] [u8; RecordWitness::SIZE],
+);
 
 impl Default for RecordWitness {
     #[inline]
@@ -563,6 +598,114 @@ impl AsMut<[u8]> for RecordWitness {
 impl RecordWitness {
     /// Size of record witness in bytes.
     pub const SIZE: usize = 48;
+}
+
+impl From<Witness> for RecordWitness {
+    #[inline]
+    fn from(witness: Witness) -> Self {
+        Self(witness.to_bytes())
+    }
+}
+
+impl TryFrom<&RecordWitness> for Witness {
+    type Error = String;
+
+    #[inline]
+    fn try_from(witness: &RecordWitness) -> Result<Self, Self::Error> {
+        Witness::try_from(&witness.0)
+    }
+}
+
+impl TryFrom<RecordWitness> for Witness {
+    type Error = String;
+
+    #[inline]
+    fn try_from(witness: RecordWitness) -> Result<Self, Self::Error> {
+        Witness::try_from(witness.0)
+    }
+}
+
+/// Witness for chunk contained within a record.
+#[derive(
+    Debug,
+    Copy,
+    Clone,
+    Eq,
+    PartialEq,
+    Hash,
+    Deref,
+    DerefMut,
+    From,
+    Into,
+    Encode,
+    Decode,
+    TypeInfo,
+    MaxEncodedLen,
+)]
+#[repr(transparent)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct ChunkWitness(
+    #[cfg_attr(feature = "serde", serde(with = "hex::serde"))] [u8; ChunkWitness::SIZE],
+);
+
+impl Default for ChunkWitness {
+    #[inline]
+    fn default() -> Self {
+        Self([0; Self::SIZE])
+    }
+}
+
+impl TryFrom<&[u8]> for ChunkWitness {
+    type Error = TryFromSliceError;
+
+    #[inline]
+    fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
+        <[u8; Self::SIZE]>::try_from(slice).map(Self)
+    }
+}
+
+impl AsRef<[u8]> for ChunkWitness {
+    #[inline]
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl AsMut<[u8]> for ChunkWitness {
+    #[inline]
+    fn as_mut(&mut self) -> &mut [u8] {
+        &mut self.0
+    }
+}
+
+impl ChunkWitness {
+    /// Size of chunk witness in bytes.
+    pub const SIZE: usize = 48;
+}
+
+impl From<Witness> for ChunkWitness {
+    #[inline]
+    fn from(witness: Witness) -> Self {
+        Self(witness.to_bytes())
+    }
+}
+
+impl TryFrom<&ChunkWitness> for Witness {
+    type Error = String;
+
+    #[inline]
+    fn try_from(witness: &ChunkWitness) -> Result<Self, Self::Error> {
+        Witness::try_from(&witness.0)
+    }
+}
+
+impl TryFrom<ChunkWitness> for Witness {
+    type Error = String;
+
+    #[inline]
+    fn try_from(witness: ChunkWitness) -> Result<Self, Self::Error> {
+        Witness::try_from(witness.0)
+    }
 }
 
 /// A piece of archival history in Subspace Network.
