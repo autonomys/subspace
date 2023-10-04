@@ -37,7 +37,6 @@ use subspace_core_primitives::{HistorySize, PosSeed, PublicKey, Record, SegmentI
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector;
 use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy, PlottedSector};
-use subspace_farmer_components::sector::{sector_size, SectorMetadataChecksummed};
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_runtime_primitives::opaque::Block;
@@ -240,8 +239,8 @@ where
         .next()
         .expect("First block is always producing one segment; qed");
     let history_size = HistorySize::from(SegmentIndex::ZERO);
-    let mut sector = vec![0u8; sector_size(pieces_in_sector)];
-    let mut sector_metadata = vec![0u8; SectorMetadataChecksummed::encoded_size()];
+    let mut sector = Vec::new();
+    let mut sector_metadata = Vec::new();
     let sector_index = 0;
     let public_key = PublicKey::from(keypair.public.to_bytes());
     let farmer_protocol_info = FarmerProtocolInfo {
