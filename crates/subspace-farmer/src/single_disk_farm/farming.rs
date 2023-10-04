@@ -5,7 +5,7 @@ use futures::channel::mpsc;
 use futures::StreamExt;
 use parking_lot::{Mutex, RwLock};
 use rayon::prelude::*;
-use rayon::{ThreadPool, ThreadPoolBuildError};
+use rayon::{ThreadPoolBuildError, ThreadPoolBuilder};
 use std::fs::File;
 use std::io;
 use std::sync::Arc;
@@ -66,6 +66,7 @@ pub enum FarmingError {
 }
 
 pub(super) struct FarmingOptions<'a, NC> {
+    pub(super) disk_farm_index: usize,
     pub(super) public_key: PublicKey,
     pub(super) reward_address: PublicKey,
     pub(super) node_client: NC,
@@ -77,15 +78,13 @@ pub(super) struct FarmingOptions<'a, NC> {
     pub(super) handlers: Arc<Handlers>,
     pub(super) modifying_sector_index: Arc<RwLock<Option<SectorIndex>>>,
     pub(super) slot_info_notifications: mpsc::Receiver<SlotInfo>,
-    pub(super) thread_pool: Arc<ThreadPool>,
+    pub(super) thread_pool_size: usize,
 }
 
 /// Starts farming process.
 ///
 /// NOTE: Returned future is async, but does blocking operations and should be running in dedicated
 /// thread.
-// False-positive, we do drop lock before .await
-#[allow(clippy::await_holding_lock)]
 pub(super) async fn farming<PosTable, NC>(
     farming_options: FarmingOptions<'_, NC>,
 ) -> Result<(), FarmingError>
@@ -94,6 +93,7 @@ where
     NC: NodeClient,
 {
     let FarmingOptions {
+        disk_farm_index,
         public_key,
         reward_address,
         node_client,
@@ -105,8 +105,13 @@ where
         handlers,
         modifying_sector_index,
         mut slot_info_notifications,
-        thread_pool,
+        thread_pool_size,
     } = farming_options;
+
+    let thread_pool = ThreadPoolBuilder::new()
+        .thread_name(move |thread_index| format!("farming-{disk_farm_index}.{thread_index}"))
+        .num_threads(thread_pool_size)
+        .build()?;
 
     let table_generator = Arc::new(Mutex::new(PosTable::generator()));
 
