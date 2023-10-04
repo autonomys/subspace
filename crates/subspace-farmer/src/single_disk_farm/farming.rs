@@ -218,8 +218,7 @@ where
                 let b_solution_distance =
                     b.1.best_solution_distance().unwrap_or(SolutionRange::MAX);
 
-                // Comparing `b` to `a` because we want smaller values first
-                b_solution_distance.cmp(&a_solution_distance)
+                a_solution_distance.cmp(&b_solution_distance)
             });
 
             let mut solutions = Vec::<Solution<PublicKey, PublicKey>>::new();
