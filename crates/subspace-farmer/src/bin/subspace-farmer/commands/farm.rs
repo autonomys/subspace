@@ -191,13 +191,6 @@ where
         None => farmer_app_info.protocol_info.max_pieces_in_sector,
     };
 
-    let farming_thread_pool = Arc::new(
-        ThreadPoolBuilder::new()
-            .thread_name(move |thread_index| format!("farming#{thread_index}"))
-            .num_threads(farming_thread_pool_size)
-            .spawn_handler(tokio_rayon_spawn_handler())
-            .build()?,
-    );
     let plotting_thread_pool = Arc::new(
         ThreadPoolBuilder::new()
             .thread_name(move |thread_index| format!("plotting#{thread_index}"))
@@ -231,7 +224,7 @@ where
                 erasure_coding: erasure_coding.clone(),
                 piece_getter: piece_getter.clone(),
                 cache_percentage,
-                farming_thread_pool: Arc::clone(&farming_thread_pool),
+                farming_thread_pool_size,
                 plotting_thread_pool: Arc::clone(&plotting_thread_pool),
                 replotting_thread_pool: Arc::clone(&replotting_thread_pool),
             },
