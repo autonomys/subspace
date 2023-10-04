@@ -19,6 +19,7 @@
 
 #![feature(try_blocks)]
 
+use futures::channel::mpsc;
 use futures::{future, FutureExt, StreamExt};
 use jsonrpsee::core::{async_trait, Error as JsonRpseeError, RpcResult};
 use jsonrpsee::proc_macros::rpc;
@@ -61,7 +62,9 @@ use subspace_rpc_primitives::{
 };
 use tracing::{debug, error, warn};
 
-const SOLUTION_TIMEOUT: Duration = Duration::from_secs(2);
+/// This is essentially equal to expected number of votes per block, one more is added implicitly by
+/// the fact that channel sender exists
+const SOLUTION_SENDER_CHANNEL_CAPACITY: usize = 9;
 const REWARD_SIGNING_TIMEOUT: Duration = Duration::from_millis(500);
 const NODE_SYNC_STATUS_CHECK_INTERVAL: Duration = Duration::from_secs(1);
 
@@ -201,8 +204,7 @@ where
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
     reward_signing_notification_stream: SubspaceNotificationStream<RewardSigningNotification>,
     archived_segment_notification_stream: SubspaceNotificationStream<ArchivedSegmentNotification>,
-    solution_response_senders:
-        Arc<Mutex<LruCache<SlotNumber, Vec<async_oneshot::Sender<SolutionResponse>>>>>,
+    solution_response_senders: Arc<Mutex<LruCache<SlotNumber, mpsc::Sender<SolutionResponse>>>>,
     reward_signature_senders: Arc<Mutex<BlockSignatureSenders>>,
     dsn_bootstrap_nodes: Vec<Multiaddr>,
     segment_headers_store: SegmentHeadersStore<AS>,
@@ -320,19 +322,12 @@ where
     fn submit_solution_response(&self, solution_response: SolutionResponse) -> RpcResult<()> {
         self.deny_unsafe.check_if_safe()?;
 
-        let solution_response_senders = self.solution_response_senders.clone();
-
-        // TODO: This doesn't track what client sent a solution, allowing some clients to send
-        //  multiple (https://github.com/paritytech/jsonrpsee/issues/452)
-
-        let mut solution_response_senders = solution_response_senders.lock();
-
         let slot = solution_response.slot_number;
+        let mut solution_response_senders = self.solution_response_senders.lock();
 
         let success = solution_response_senders
             .peek_mut(&slot)
-            .and_then(|senders| senders.pop())
-            .and_then(|mut sender| sender.send(solution_response).ok())
+            .and_then(|sender| sender.try_send(solution_response).ok())
             .is_some();
 
         if !success {
@@ -350,98 +345,90 @@ where
         let solution_response_senders = self.solution_response_senders.clone();
         let allow_solutions = self.deny_unsafe.check_if_safe().is_ok();
 
-        let stream =
-            self.new_slot_notification_stream
-                .subscribe()
-                .map(move |new_slot_notification| {
-                    let NewSlotNotification {
-                        new_slot_info,
-                        mut solution_sender,
-                    } = new_slot_notification;
+        let handle_slot_notification = move |new_slot_notification| {
+            let NewSlotNotification {
+                new_slot_info,
+                mut solution_sender,
+            } = new_slot_notification;
 
-                    // Only handle solution responses in case unsafe APIs are allowed
-                    if allow_solutions {
-                        let (response_sender, response_receiver) = async_oneshot::oneshot();
+            let slot_number = SlotNumber::from(new_slot_info.slot);
 
-                        // Store solution sender so that we can retrieve it when solution comes from
-                        // the farmer
-                        {
-                            let mut solution_response_senders = solution_response_senders.lock();
+            // Only handle solution responses in case unsafe APIs are allowed
+            if allow_solutions {
+                // Store solution sender so that we can retrieve it when solution comes from
+                // the farmer
+                let mut solution_response_senders = solution_response_senders.lock();
+                if solution_response_senders.peek(&slot_number).is_none() {
+                    let (response_sender, mut response_receiver) =
+                        mpsc::channel(SOLUTION_SENDER_CHANNEL_CAPACITY);
 
-                            solution_response_senders
-                                .get_or_insert_mut(SlotNumber::from(new_slot_info.slot), Vec::new)
-                                .push(response_sender);
-                        }
+                    solution_response_senders.push(slot_number, response_sender);
 
-                        // Wait for solutions and transform proposed proof of space solutions into
-                        // data structure `sc-consensus-subspace` expects
-                        let forward_solution_fut = async move {
-                            if let Ok(solution_response) = response_receiver.await {
-                                for solution in solution_response.solutions {
-                                    let public_key =
-                                        FarmerPublicKey::from_slice(solution.public_key.as_ref())
-                                            .expect("Always correct length; qed");
-                                    let reward_address = FarmerPublicKey::from_slice(
-                                        solution.reward_address.as_ref(),
-                                    )
-                                    .expect("Always correct length; qed");
+                    // Wait for solutions and transform proposed proof of space solutions
+                    // into data structure `sc-consensus-subspace` expects
+                    let forward_solution_fut = async move {
+                        while let Some(solution_response) = response_receiver.next().await {
+                            for solution in solution_response.solutions {
+                                let public_key =
+                                    FarmerPublicKey::from_slice(solution.public_key.as_ref())
+                                        .expect("Always correct length; qed");
+                                let reward_address =
+                                    FarmerPublicKey::from_slice(solution.reward_address.as_ref())
+                                        .expect("Always correct length; qed");
 
-                                    let sector_index = solution.sector_index;
+                                let sector_index = solution.sector_index;
 
-                                    let solution = Solution {
-                                        public_key: public_key.clone(),
-                                        reward_address,
-                                        sector_index,
-                                        history_size: solution.history_size,
-                                        piece_offset: solution.piece_offset,
-                                        record_commitment: solution.record_commitment,
-                                        record_witness: solution.record_witness,
-                                        chunk: solution.chunk,
-                                        chunk_witness: solution.chunk_witness,
-                                        audit_chunk_offset: solution.audit_chunk_offset,
-                                        proof_of_space: solution.proof_of_space,
-                                    };
+                                let solution = Solution {
+                                    public_key: public_key.clone(),
+                                    reward_address,
+                                    sector_index,
+                                    history_size: solution.history_size,
+                                    piece_offset: solution.piece_offset,
+                                    record_commitment: solution.record_commitment,
+                                    record_witness: solution.record_witness,
+                                    chunk: solution.chunk,
+                                    chunk_witness: solution.chunk_witness,
+                                    audit_chunk_offset: solution.audit_chunk_offset,
+                                    proof_of_space: solution.proof_of_space,
+                                };
 
-                                    if solution_sender.try_send(solution).is_err() {
-                                        warn!(
-                                            slot = %solution_response.slot_number,
-                                            %sector_index,
-                                            %public_key,
-                                            "Solution receiver is closed, likely because farmer \
-                                            was too slow"
-                                        );
-                                    }
+                                if solution_sender.try_send(solution).is_err() {
+                                    warn!(
+                                        slot = %solution_response.slot_number,
+                                        %sector_index,
+                                        %public_key,
+                                        "Solution receiver is closed, likely because farmer was too \
+                                        slow"
+                                    );
                                 }
                             }
-                        };
+                        }
+                    };
 
-                        // Run above future with timeout
-                        executor.spawn(
-                            "subspace-slot-info-forward",
-                            Some("rpc"),
-                            future::select(
-                                futures_timer::Delay::new(SOLUTION_TIMEOUT),
-                                Box::pin(forward_solution_fut),
-                            )
-                            .map(|_| ())
-                            .boxed(),
-                        );
-                    }
+                    executor.spawn(
+                        "subspace-slot-info-forward",
+                        Some("rpc"),
+                        Box::pin(forward_solution_fut),
+                    );
+                }
+            }
 
-                    let slot_number = new_slot_info.slot.into();
+            let global_challenge = new_slot_info
+                .global_randomness
+                .derive_global_challenge(slot_number);
 
-                    let global_challenge = new_slot_info
-                        .global_randomness
-                        .derive_global_challenge(slot_number);
-
-                    // This will be sent to the farmer
-                    SlotInfo {
-                        slot_number,
-                        global_challenge,
-                        solution_range: new_slot_info.solution_range,
-                        voting_solution_range: new_slot_info.voting_solution_range,
-                    }
-                });
+            // This will be sent to the farmer
+            SlotInfo {
+                slot_number,
+                global_challenge,
+                solution_range: new_slot_info.solution_range,
+                voting_solution_range: new_slot_info.voting_solution_range,
+            }
+        };
+        let stream = self
+            .new_slot_notification_stream
+            .subscribe()
+            .map(handle_slot_notification);
 
         let fut = async move {
             sink.pipe_from_stream(stream).await;
