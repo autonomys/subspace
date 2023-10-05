@@ -1,8 +1,39 @@
 ## Pre-requisites
 
-You'll have to have [Rust toolchain](https://rustup.rs/) installed as well as LLVM, Clang and CMake in addition to usual developer tooling (Ubuntu example):
+You'll have to have [Rust toolchain](https://rustup.rs/) installed as well as LLVM, Clang and CMake in addition to usual developer tooling.
+
+Below are some examples of how to install these dependencies on different operating systems.
+
+### Ubuntu
+
 ```bash
 sudo apt-get install llvm clang cmake
+```
+
+### macOS
+
+1. Install via Homebrew:
+
+```bash
+brew install llvm@15 clang cmake
+```
+
+2. Add `llvm` to your `~/.zshrc` or `~/.bashrc`:
+
+```bash
+export PATH="/opt/homebrew/opt/llvm@15/bin:$PATH"
+```
+
+3. Activate the changes:
+
+```bash
+source ~/.zshrc
+```
+
+4. Verify that `llvm` is installed:
+
+```bash
+llvm-config --version
 ```
 
 ## To Farm By Yourself (Offline)
@@ -11,6 +42,7 @@ sudo apt-get install llvm clang cmake
 2. Open your favourite terminal, and go to the folder where you download the executables
 
 **Linux/MacOS:**
+
 1. Make them executable: `chmod +x subspace-farmer-x86_64-*-snapshot subspace-node-x86_64-*-snapshot`
 2. Run the node: `./subspace-node-x86_64-*-snapshot --dev --tmp`
 3. In macOS, it may prompt that this app is not verified. Click on `cancel` instead of moving it to trash.
@@ -22,6 +54,7 @@ sudo apt-get install llvm clang cmake
    After this, simply repeat step 4. This time, there will be `Open` button in the prompt, click it to run node.
 
 **Windows**
+
 1. Run the node: `subspace-node-x86_64-*-snapshot --dev --tmp`
 2. After running this command, Windows may ask you for permissions related to firewall, select `allow` in this case.
 3. Run the farmer (do this in another terminal): `subspace-farmer-x86_64-*-snapshot farm`
