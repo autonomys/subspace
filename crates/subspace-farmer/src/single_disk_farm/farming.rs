@@ -3,6 +3,8 @@ use crate::node_client::NodeClient;
 use crate::single_disk_farm::Handlers;
 use futures::channel::mpsc;
 use futures::StreamExt;
+#[cfg(windows)]
+use memmap2::Mmap;
 use parking_lot::{Mutex, RwLock};
 use rayon::prelude::*;
 use rayon::{ThreadPoolBuildError, ThreadPoolBuilder};
@@ -13,9 +15,11 @@ use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{PosSeed, PublicKey, SectorIndex, Solution, SolutionRange};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector;
+use subspace_farmer_components::proving;
 use subspace_farmer_components::proving::ProvableSolutions;
 use subspace_farmer_components::sector::SectorMetadataChecksummed;
-use subspace_farmer_components::{proving, ReadAt};
+#[cfg(not(windows))]
+use subspace_farmer_components::ReadAt;
 use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_rpc_primitives::{SlotInfo, SolutionResponse};
 use thiserror::Error;
@@ -113,6 +117,8 @@ where
         .num_threads(thread_pool_size)
         .build()?;
 
+    #[cfg(windows)]
+    let plot_mmap = &*unsafe { Mmap::map(plot_file)? };
     let table_generator = Arc::new(Mutex::new(PosTable::generator()));
 
     while let Some(slot_info) = slot_info_notifications.next().await {
@@ -132,13 +138,19 @@ where
             let modifying_sector_guard = modifying_sector_index.read();
             let maybe_sector_being_modified = modifying_sector_guard.as_ref().copied();
 
+            #[cfg(not(windows))]
             let sectors = (0..sector_count)
-                .map(|sector_index| plot_file.offset(sector_index * sector_size))
-                .collect::<Vec<_>>();
+                .into_par_iter()
+                .map(|sector_index| plot_file.offset(sector_index * sector_size));
+            // On Windows random read is horrible in terms of performance, memory-mapped I/O helps
+            // TODO: Remove this once https://internals.rust-lang.org/t/introduce-write-all-at-read-exact-at-on-windows/19649
+            //  or similar exists in standard library
+            #[cfg(windows)]
+            let sectors = plot_mmap.par_chunks_exact(sector_size);
 
             let mut sectors_solutions = sectors_metadata
                 .par_iter()
-                .zip(&sectors)
+                .zip(sectors)
                 .enumerate()
                 .filter_map(|(sector_index, (sector_metadata, sector))| {
                     let sector_index = sector_index as u16;
