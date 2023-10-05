@@ -23,6 +23,8 @@
 //! a single connection for each peer. Multiple protocol instances could be instantiated.
 
 mod handler;
+
+#[cfg(not(windows))] // TODO: Restore tests on windows after changing the waiting algorithm
 #[cfg(test)]
 mod tests;
 
