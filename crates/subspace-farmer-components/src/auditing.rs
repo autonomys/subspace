@@ -11,7 +11,7 @@ use tracing::warn;
 #[derive(Debug, Clone)]
 pub struct AuditResult<'a, Sector>
 where
-    Sector: ?Sized,
+    Sector: 'a,
 {
     /// Solution candidates
     pub solution_candidates: SolutionCandidates<'a, Sector>,
@@ -46,11 +46,11 @@ pub fn audit_sector<'a, Sector>(
     sector_index: SectorIndex,
     global_challenge: &Blake2b256Hash,
     solution_range: SolutionRange,
-    sector: &'a Sector,
+    sector: Sector,
     sector_metadata: &'a SectorMetadataChecksummed,
 ) -> Option<AuditResult<'a, Sector>>
 where
-    Sector: ReadAt + ?Sized,
+    Sector: ReadAt + 'a,
 {
     let sector_id = SectorId::new(public_key.hash(), sector_index);
 
