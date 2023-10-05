@@ -113,16 +113,17 @@ where
             ),
         };
         let initial_response = network_peer_handle
-            .request::<_, InitialResponse<Block, Pool>>(ConsensusRequest::<Block, Pool>::from(
-                initial_request,
-            ))
+            .request::<_, InitialResponse<Block, TxHash<Pool>>>(ConsensusRequest::<
+                Block,
+                TxHash<Pool>,
+            >::from(initial_request))
             .await?;
 
         // Resolve the protocol response to get the extrinsics
         let (body, local_miss) = if let Some(protocol_response) = initial_response.protocol_response
         {
             let (body, local_miss) = self
-                .resolve_extrinsics::<ConsensusRequest<Block, Pool>>(
+                .resolve_extrinsics::<ConsensusRequest<Block, TxHash<Pool>>>(
                     protocol_response,
                     &network_peer_handle,
                 )
@@ -157,7 +158,7 @@ where
             .network_peer_handle(self.protocol_name.clone(), who)?;
 
         let server_request =
-            ConsensusRequest::<Block, Pool>::from(FullDownloadRequest(request.clone()));
+            ConsensusRequest::<Block, TxHash<Pool>>::from(FullDownloadRequest(request.clone()));
         let full_response = network_peer_handle
             .request::<_, FullDownloadResponse<Block>>(server_request)
             .await?;
@@ -177,7 +178,7 @@ where
     /// Resolves the extrinsics from the initial response
     async fn resolve_extrinsics<Request>(
         &self,
-        protocol_response: ProtocolInitialResponse<Block, Pool>,
+        protocol_response: ProtocolInitialResponse<Block, TxHash<Pool>>,
         network_peer_handle: &NetworkPeerHandle,
     ) -> Result<(Vec<Extrinsic<Block>>, usize), RelayError>
     where
@@ -324,7 +325,8 @@ where
             payload,
             pending_response,
         } = request;
-        let req: ConsensusRequest<Block, Pool> = match Decode::decode(&mut payload.as_ref()) {
+        let req: ConsensusRequest<Block, TxHash<Pool>> = match Decode::decode(&mut payload.as_ref())
+        {
             Ok(msg) => msg,
             Err(err) => {
                 warn!(
@@ -373,7 +375,7 @@ where
     fn on_initial_request(
         &mut self,
         initial_request: InitialRequest<Block>,
-    ) -> Result<InitialResponse<Block, Pool>, RelayError> {
+    ) -> Result<InitialResponse<Block, TxHash<Pool>>, RelayError> {
         let block_hash = self.block_hash(&initial_request.from_block)?;
         let block_attributes = initial_request.block_attributes;
 
@@ -402,7 +404,7 @@ where
     /// Handles the protocol message from the client
     fn on_protocol_message(
         &mut self,
-        msg: ProtocolMessage<Block, Pool>,
+        msg: ProtocolMessage<Block, TxHash<Pool>>,
     ) -> Result<Vec<u8>, RelayError> {
         let response = match msg {
             ProtocolMessage::CompactBlock(msg) => self

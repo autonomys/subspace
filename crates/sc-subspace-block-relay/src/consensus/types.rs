@@ -8,7 +8,6 @@ use crate::utils::{RelayCounter, RelayCounterVec};
 use codec::{Decode, Encode};
 use derive_more::From;
 use sc_network_common::sync::message::{BlockAttributes, BlockData, BlockRequest};
-use sc_transaction_pool_api::{TransactionPool, TxHash};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_runtime::Justifications;
@@ -36,7 +35,7 @@ const DOWNLOAD_BYTES: &str = "bytes";
 
 /// Client -> server request.
 #[derive(From, Encode, Decode)]
-pub(crate) enum ConsensusRequest<Block: BlockT, Pool: TransactionPool> {
+pub(crate) enum ConsensusRequest<Block: BlockT, TxHash> {
     /// Initial request for block download. This may
     /// result in partial blocks returned by the server,
     /// with tx hash instead of the full transaction.
@@ -47,7 +46,7 @@ pub(crate) enum ConsensusRequest<Block: BlockT, Pool: TransactionPool> {
     /// initial `BlockDownload` message (e.g) to resolve
     /// tx pool misses.
     #[codec(index = 1)]
-    ProtocolMessageV0(ProtocolMessage<Block, Pool>),
+    ProtocolMessageV0(ProtocolMessage<Block, TxHash>),
 
     /// Request for full block download, without going through
     /// the relay protocols. This is used in scenarios like a node
@@ -74,7 +73,7 @@ pub(crate) struct InitialRequest<Block: BlockT> {
 
 /// Initial response for a single block.
 #[derive(Encode, Decode)]
-pub(crate) struct InitialResponse<Block: BlockT, Pool: TransactionPool> {
+pub(crate) struct InitialResponse<Block: BlockT, TxHash> {
     ///  Hash of the block being downloaded.
     pub(crate) block_hash: BlockHash<Block>,
 
@@ -85,7 +84,7 @@ pub(crate) struct InitialResponse<Block: BlockT, Pool: TransactionPool> {
     /// This is optional because BlockAttributes::BODY may not be set in
     /// the BlockRequest, in which case we don't need to fetch the
     /// extrinsics.
-    pub(crate) protocol_response: Option<ProtocolInitialResponse<Block, Pool>>,
+    pub(crate) protocol_response: Option<ProtocolInitialResponse<Block, TxHash>>,
 }
 
 /// Protocol specific part of the initial request.
@@ -99,28 +98,28 @@ pub(crate) enum ProtocolInitialRequest {
 
 /// Protocol specific part of the initial response.
 #[derive(From, Encode, Decode)]
-pub(crate) enum ProtocolInitialResponse<Block: BlockT, Pool: TransactionPool> {
+pub(crate) enum ProtocolInitialResponse<Block: BlockT, TxHash> {
     #[codec(index = 0)]
-    CompactBlock(CompactBlockInitialResponse<BlockHash<Block>, TxHash<Pool>, Extrinsic<Block>>),
+    CompactBlock(CompactBlockInitialResponse<BlockHash<Block>, TxHash, Extrinsic<Block>>),
     // New protocol goes here:
     // #[codec(index = 1)]
 }
 
 /// Protocol specific handshake requests.
 #[derive(From, Encode, Decode)]
-pub(crate) enum ProtocolMessage<Block: BlockT, Pool: TransactionPool> {
+pub(crate) enum ProtocolMessage<Block: BlockT, TxHash> {
     #[codec(index = 0)]
-    CompactBlock(CompactBlockHandshake<BlockHash<Block>, TxHash<Pool>>),
+    CompactBlock(CompactBlockHandshake<BlockHash<Block>, TxHash>),
     // New protocol goes here:
     // #[codec(index = 1)]
 }
 
-impl<Block: BlockT, Pool: TransactionPool>
-    From<CompactBlockHandshake<BlockHash<Block>, TxHash<Pool>>> for ConsensusRequest<Block, Pool>
+impl<Block: BlockT, TxHash> From<CompactBlockHandshake<BlockHash<Block>, TxHash>>
+    for ConsensusRequest<Block, TxHash>
 {
     fn from(
-        inner: CompactBlockHandshake<BlockHash<Block>, TxHash<Pool>>,
-    ) -> ConsensusRequest<Block, Pool> {
+        inner: CompactBlockHandshake<BlockHash<Block>, TxHash>,
+    ) -> ConsensusRequest<Block, TxHash> {
         ConsensusRequest::ProtocolMessageV0(ProtocolMessage::CompactBlock(inner))
     }
 }
