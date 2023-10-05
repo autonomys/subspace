@@ -78,15 +78,15 @@ where
     async fn get_piece_from_cache(&self, piece_index: PieceIndex) -> Option<Piece> {
         let key = piece_index.to_multihash();
 
-        let get_providers_result = self.node.get_providers(key).await;
+        let mut request_batch = self.node.get_requests_batch_handle().await;
+        let get_providers_result = request_batch.get_providers(key).await;
 
         match get_providers_result {
             Ok(mut get_providers_stream) => {
                 while let Some(provider_id) = get_providers_stream.next().await {
                     trace!(%piece_index, %provider_id, "get_providers returned an item");
 
-                    let request_result = self
-                        .node
+                    let request_result = request_batch
                         .send_generic_request(provider_id, PieceByIndexRequest { piece_index })
                         .await;
 

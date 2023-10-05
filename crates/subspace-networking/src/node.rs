@@ -353,16 +353,21 @@ impl Node {
         result_receiver.await?.map_err(PublishError::Publish)
     }
 
-    /// Sends the generic request to the peer and awaits the result.
-    pub async fn send_generic_request<Request>(
+    async fn send_generic_request_internal<Request>(
         &self,
         peer_id: PeerId,
         request: Request,
+        acquire_permit: bool,
     ) -> Result<Request::Response, SendRequestError>
     where
         Request: GenericRequest,
     {
-        let _permit = self.shared.rate_limiter.acquire_regular_permit().await;
+        let _permit = if acquire_permit {
+            Some(self.shared.rate_limiter.acquire_kademlia_permit().await)
+        } else {
+            None
+        };
+
         let (result_sender, result_receiver) = oneshot::channel();
         let command = Command::GenericRequest {
             peer_id,
@@ -376,6 +381,19 @@ impl Node {
         let result = result_receiver.await??;
 
         Request::Response::decode(&mut result.as_slice()).map_err(Into::into)
+    }
+
+    /// Sends the generic request to the peer and awaits the result.
+    pub async fn send_generic_request<Request>(
+        &self,
+        peer_id: PeerId,
+        request: Request,
+    ) -> Result<Request::Response, SendRequestError>
+    where
+        Request: GenericRequest,
+    {
+        self.send_generic_request_internal(peer_id, request, true)
+            .await
     }
 
     /// Get closest peers by multihash key using Kademlia DHT.
@@ -407,7 +425,20 @@ impl Node {
         &self,
         key: Multihash,
     ) -> Result<impl Stream<Item = PeerId>, GetProvidersError> {
-        let permit = self.shared.rate_limiter.acquire_kademlia_permit().await;
+        self.get_providers_internal(key, true).await
+    }
+
+    async fn get_providers_internal(
+        &self,
+        key: Multihash,
+        acquire_permit: bool,
+    ) -> Result<impl Stream<Item = PeerId>, GetProvidersError> {
+        let permit = if acquire_permit {
+            Some(self.shared.rate_limiter.acquire_kademlia_permit().await)
+        } else {
+            None
+        };
+
         let (result_sender, result_receiver) = mpsc::unbounded();
 
         trace!(?key, "Starting 'get_providers' request.");
@@ -533,5 +564,47 @@ impl Node {
     /// Callback is called when a routable or unraoutable peer is discovered.
     pub fn on_discovered_peer(&self, callback: HandlerFn<PeerDiscovered>) -> HandlerId {
         self.shared.handlers.peer_discovered.add(callback)
+    }
+
+    /// Returns the request batch handle with common "connection permit" slot from the shared pool.
+    pub async fn get_requests_batch_handle(&self) -> NodeRequestsBatchHandle {
+        let _permit = self.shared.rate_limiter.acquire_regular_permit().await;
+
+        NodeRequestsBatchHandle {
+            _permit,
+            node: self.clone(),
+        }
+    }
+}
+
+/// Requests handle for node operations. These operations share the same semaphore permit for
+/// connection and substream limits. It generally serves for the case when we have `get-providers`
+/// operation followed by request-responses. This way we likely share the same connection and
+/// we don't need to obtain separate semaphore permits for the operations.
+pub struct NodeRequestsBatchHandle {
+    node: Node,
+    _permit: RateLimiterPermit,
+}
+
+impl NodeRequestsBatchHandle {
+    /// Get item providers by its key. Initiate 'providers' Kademlia operation.
+    pub async fn get_providers(
+        &mut self,
+        key: Multihash,
+    ) -> Result<impl Stream<Item = PeerId>, GetProvidersError> {
+        self.node.get_providers_internal(key, false).await
+    }
+    /// Sends the generic request to the peer and awaits the result.
+    pub async fn send_generic_request<Request>(
+        &mut self,
+        peer_id: PeerId,
+        request: Request,
+    ) -> Result<Request::Response, SendRequestError>
+    where
+        Request: GenericRequest,
+    {
+        self.node
+            .send_generic_request_internal(peer_id, request, false)
+            .await
     }
 }

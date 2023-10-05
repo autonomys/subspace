@@ -91,7 +91,7 @@ pub(crate) enum Command {
     GetProviders {
         key: Multihash,
         result_sender: mpsc::UnboundedSender<PeerId>,
-        permit: RateLimiterPermit,
+        permit: Option<RateLimiterPermit>,
     },
     BanPeer {
         peer_id: PeerId,
