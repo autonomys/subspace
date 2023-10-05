@@ -31,14 +31,11 @@ use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::tracing_unbounded;
 use sp_core::crypto::Ss58AddressFormat;
 use sp_core::traits::SpawnEssentialNamed;
-use sp_domains::GenerateGenesisStateRoot;
 use sp_io::SubstrateHostFunctions;
 use sp_messenger::messages::ChainId;
 use sp_wasm_interface::ExtendedHostFunctions;
-use std::sync::Arc;
 use subspace_node::domain::{
-    DomainCli, DomainGenesisBlockBuilder, DomainInstanceStarter, DomainSubcommand,
-    EVMDomainExecutorDispatch,
+    DomainCli, DomainInstanceStarter, DomainSubcommand, EVMDomainExecutorDispatch,
 };
 use subspace_node::{Cli, ExecutorDispatch, Subcommand};
 use subspace_proof_of_space::chia::ChiaTable;
@@ -144,7 +141,6 @@ fn main() -> Result<(), Error> {
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
                     &config,
-                    None,
                     &pot_external_entropy(&config, &cli)?,
                 )?;
                 Ok((
@@ -163,7 +159,6 @@ fn main() -> Result<(), Error> {
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
                     &config,
-                    None,
                     &pot_external_entropy(&config, &cli)?,
                 )?;
                 Ok((
@@ -183,7 +178,6 @@ fn main() -> Result<(), Error> {
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
                     &config,
-                    None,
                     &pot_external_entropy(&config, &cli)?,
                 )?;
                 Ok((
@@ -204,7 +198,6 @@ fn main() -> Result<(), Error> {
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
                     &config,
-                    None,
                     &pot_external_entropy(&config, &cli)?,
                 )?;
                 Ok((
@@ -270,7 +263,6 @@ fn main() -> Result<(), Error> {
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
                     &config,
-                    None,
                     &pot_external_entropy(&config, &cli)?,
                 )?;
                 Ok((
@@ -312,7 +304,6 @@ fn main() -> Result<(), Error> {
                             ExecutorDispatch,
                         >(
                             &config,
-                            None,
                             &pot_external_entropy(&config, &cli)?,
                         )?;
 
@@ -323,7 +314,6 @@ fn main() -> Result<(), Error> {
                             client, backend, ..
                         } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
                             &config,
-                            None,
                             &pot_external_entropy(&config, &cli)?,
                         )?;
                         let db = backend.expose_db();
@@ -400,7 +390,7 @@ fn main() -> Result<(), Error> {
                     }
                 })?;
             }
-            DomainSubcommand::BuildGenesisConfig(cmd) => cmd.run()?,
+            DomainSubcommand::BuildGenesisStorage(cmd) => cmd.run()?,
             DomainSubcommand::ExportExecutionReceipt(cmd) => {
                 let runner = cli.create_runner(cmd)?;
                 runner.sync_run(|consensus_chain_config| {
@@ -519,14 +509,9 @@ fn main() -> Result<(), Error> {
                         timekeeper_cpu_cores: cli.timekeeper_cpu_cores,
                     };
 
-                    let construct_domain_genesis_block_builder =
-                        |backend, executor| -> Arc<dyn GenerateGenesisStateRoot> {
-                            Arc::new(DomainGenesisBlockBuilder::new(backend, executor))
-                        };
                     let partial_components =
                         subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
                             &consensus_chain_config.base,
-                            Some(&construct_domain_genesis_block_builder),
                             &pot_external_entropy,
                         )
                         .map_err(|error| {

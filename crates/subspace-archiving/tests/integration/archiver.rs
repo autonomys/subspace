@@ -7,12 +7,13 @@ use std::io::Write;
 use std::iter;
 use subspace_archiving::archiver;
 use subspace_archiving::archiver::{Archiver, ArchiverInstantiationError, SegmentItem};
-use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Commitment, Kzg};
+use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping, PieceObject};
 use subspace_core_primitives::{
     ArchivedBlockProgress, ArchivedHistorySegment, Blake2b256Hash, LastArchivedBlock, PieceArray,
-    Record, RecordedHistorySegment, SegmentHeader, SegmentIndex, BLAKE2B_256_HASH_SIZE,
+    Record, RecordedHistorySegment, SegmentCommitment, SegmentHeader, SegmentIndex,
+    BLAKE2B_256_HASH_SIZE,
 };
 
 fn extract_data<O: Into<u64>>(data: &[u8], offset: O) -> &[u8] {
@@ -396,7 +397,7 @@ fn invalid_usage() {
             kzg.clone(),
             SegmentHeader::V0 {
                 segment_index: SegmentIndex::ZERO,
-                segment_commitment: Commitment::default(),
+                segment_commitment: SegmentCommitment::default(),
                 prev_segment_header_hash: Blake2b256Hash::default(),
                 last_archived_block: LastArchivedBlock {
                     number: 0,
@@ -422,7 +423,7 @@ fn invalid_usage() {
             kzg,
             SegmentHeader::V0 {
                 segment_index: SegmentIndex::ZERO,
-                segment_commitment: Commitment::default(),
+                segment_commitment: SegmentCommitment::default(),
                 prev_segment_header_hash: Blake2b256Hash::default(),
                 last_archived_block: LastArchivedBlock {
                     number: 0,

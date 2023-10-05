@@ -27,7 +27,7 @@ use schnorrkel::context::SigningContext;
 use schnorrkel::SignatureError;
 use sp_arithmetic::traits::SaturatedConversion;
 use subspace_archiving::archiver;
-use subspace_core_primitives::crypto::kzg::Kzg;
+use subspace_core_primitives::crypto::kzg::{Commitment, Kzg, Witness};
 use subspace_core_primitives::crypto::{
     blake2b_256_254_hash_to_scalar, blake2b_256_hash_with_key, blake3_hash_list, Scalar,
 };
@@ -245,11 +245,12 @@ where
 
     // Check that chunk belongs to the record
     if !kzg.verify(
-        &solution.record_commitment,
+        &Commitment::try_from(solution.record_commitment)
+            .map_err(|_error| Error::InvalidChunkWitness)?,
         Record::NUM_S_BUCKETS,
         s_bucket_audit_index.into(),
         &solution.chunk,
-        &solution.chunk_witness,
+        &Witness::try_from(solution.chunk_witness).map_err(|_error| Error::InvalidChunkWitness)?,
     ) {
         return Err(Error::InvalidChunkWitness);
     }
@@ -307,7 +308,7 @@ where
         // Check that piece is part of the blockchain history
         if !archiver::is_record_commitment_hash_valid(
             kzg,
-            &blake2b_256_254_hash_to_scalar(&solution.record_commitment.to_bytes()),
+            &blake2b_256_254_hash_to_scalar(solution.record_commitment.as_ref()),
             segment_commitment,
             &solution.record_witness,
             position,

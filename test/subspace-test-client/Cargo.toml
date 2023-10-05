@@ -15,6 +15,7 @@ include = [
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
+codec = { package = "parity-scale-codec", version = "3.6.5", features = [ "derive" ] }
 evm-domain-test-runtime = { version = "0.1.0", path = "../../domains/test/runtime/evm" }
 fp-evm = { version = "3.0.0-dev", git = "https://github.com/subspace/frontier", rev = "04f06279e7ec0b095b82be35f41d09d36f3290f5" }
 futures = "0.3.28"
@@ -24,7 +25,6 @@ sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6
 sc-consensus-subspace = { version = "0.1.0", path = "../../crates/sc-consensus-subspace" }
 sc-executor = { git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7" }
 sc-service = { git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7", default-features = false }
-serde_json = "1.0.106"
 sp-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7" }
 sp-consensus-subspace = { version = "0.1.0", path = "../../crates/sp-consensus-subspace" }
 sp-core = { git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7" }

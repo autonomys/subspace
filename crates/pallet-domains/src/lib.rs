@@ -31,6 +31,8 @@ mod staking;
 mod staking_epoch;
 pub mod weights;
 
+extern crate alloc;
+
 use crate::block_tree::verify_execution_receipt;
 use crate::staking::{do_nominate_operator, Operator, OperatorStatus};
 use codec::{Decode, Encode};
@@ -130,6 +132,7 @@ mod pallet {
     use crate::{
         BalanceOf, ElectionVerificationParams, HoldIdentifier, NominatorId, OpaqueBundleOf,
     };
+    use alloc::string::String;
     use codec::FullCodec;
     use frame_support::pallet_prelude::*;
     use frame_support::traits::fungible::{InspectHold, Mutate, MutateHold};
@@ -146,8 +149,8 @@ mod pallet {
         RuntimeType,
     };
     use sp_runtime::traits::{
-        AtLeast32BitUnsigned, BlockNumberProvider, Bounded, CheckEqual, CheckedAdd, MaybeDisplay,
-        One, SimpleBitOps, Zero,
+        AtLeast32BitUnsigned, BlockNumberProvider, Bounded, CheckEqual, CheckedAdd, Hash,
+        MaybeDisplay, One, SimpleBitOps, Zero,
     };
     use sp_runtime::SaturatedConversion;
     use sp_std::boxed::Box;
@@ -195,6 +198,9 @@ mod pallet {
             + MaxEncodedLen
             + Into<H256>
             + From<H256>;
+
+        /// The domain hashing algorithm.
+        type DomainHashing: Hash<Output = Self::DomainHash> + TypeInfo;
 
         /// Same with `pallet_subspace::Config::ConfirmationDepthK`.
         #[pallet::constant]
@@ -280,9 +286,6 @@ mod pallet {
         #[pallet::constant]
         type MaxPendingStakingOperation: Get<u32>;
 
-        #[pallet::constant]
-        type SudoId: Get<Self::AccountId>;
-
         /// Randomness source.
         type Randomness: RandomnessT<Self::Hash, BlockNumberFor<Self>>;
 
@@ -316,7 +319,7 @@ mod pallet {
         BlockNumberFor<T>,
         Identity,
         RuntimeId,
-        ScheduledRuntimeUpgrade,
+        ScheduledRuntimeUpgrade<T::Hash>,
         OptionQuery,
     >;
 
@@ -543,16 +546,11 @@ mod pallet {
     pub(super) type HeadDomainNumber<T: Config> =
         StorageMap<_, Identity, DomainId, T::DomainNumber, ValueQuery>;
 
-    /// The genesis domian that scheduled to register at block #1, should be removed once
-    /// https://github.com/paritytech/substrate/issues/14541 is resolved.
-    #[pallet::storage]
-    type PendingGenesisDomain<T: Config> =
-        StorageValue<_, GenesisDomain<T::AccountId>, OptionQuery>;
-
     /// A temporary storage to hold any previous epoch details for a given domain
     /// if the epoch transitioned in this block so that all the submitted bundles
     /// within this block are verified.
-    /// The storage is cleared on block finalization.
+    /// TODO: The storage is cleared on block finalization that means this storage is already cleared when
+    /// verifying the `submit_bundle` extrinsic and not used at all
     #[pallet::storage]
     pub(super) type LastEpochStakingDistribution<T: Config> =
         StorageMap<_, Identity, DomainId, ElectionVerificationParams<BalanceOf<T>>, OptionQuery>;
@@ -950,16 +948,23 @@ mod pallet {
         #[pallet::weight(T::WeightInfo::register_domain_runtime())]
         pub fn register_domain_runtime(
             origin: OriginFor<T>,
-            runtime_name: Vec<u8>,
+            runtime_name: String,
             runtime_type: RuntimeType,
-            code: Vec<u8>,
+            // TODO: we can use `RawGenesis` as argument directly to avoid decoding but the in tool like
+            // `polkadot.js` it will required the user to provide each field of the struct type and not
+            // support upload file which will brings bad UX.
+            raw_genesis_storage: Vec<u8>,
         ) -> DispatchResult {
             ensure_root(origin)?;
 
             let block_number = frame_system::Pallet::<T>::current_block_number();
-            let runtime_id =
-                do_register_runtime::<T>(runtime_name, runtime_type.clone(), code, block_number)
-                    .map_err(Error::<T>::from)?;
+            let runtime_id = do_register_runtime::<T>(
+                runtime_name,
+                runtime_type.clone(),
+                raw_genesis_storage,
+                block_number,
+            )
+            .map_err(Error::<T>::from)?;
 
             Self::deposit_event(Event::DomainRuntimeCreated {
                 runtime_id,
@@ -974,13 +979,14 @@ mod pallet {
         pub fn upgrade_domain_runtime(
             origin: OriginFor<T>,
             runtime_id: RuntimeId,
-            code: Vec<u8>,
+            raw_genesis_storage: Vec<u8>,
         ) -> DispatchResult {
             ensure_root(origin)?;
 
             let block_number = frame_system::Pallet::<T>::current_block_number();
-            let scheduled_at = do_schedule_runtime_upgrade::<T>(runtime_id, code, block_number)
-                .map_err(Error::<T>::from)?;
+            let scheduled_at =
+                do_schedule_runtime_upgrade::<T>(runtime_id, raw_genesis_storage, block_number)
+                    .map_err(Error::<T>::from)?;
 
             Self::deposit_event(Event::DomainRuntimeUpgradeScheduled {
                 runtime_id,
@@ -1044,19 +1050,12 @@ mod pallet {
         pub fn instantiate_domain(
             origin: OriginFor<T>,
             domain_config: DomainConfig,
-            raw_genesis: Vec<u8>,
         ) -> DispatchResult {
-            let (who, raw_genesis) = if raw_genesis.is_empty() {
-                (ensure_signed(origin)?, None)
-            } else {
-                // TODO: remove once XDM is finished
-                ensure_root(origin)?;
-                (T::SudoId::get(), Some(raw_genesis))
-            };
+            let who = ensure_signed(origin)?;
 
             let created_at = frame_system::Pallet::<T>::current_block_number();
 
-            let domain_id = do_instantiate_domain::<T>(domain_config, who, created_at, raw_genesis)
+            let domain_id = do_instantiate_domain::<T>(domain_config, who, created_at)
                 .map_err(Error::<T>::from)?;
 
             Self::deposit_event(Event::DomainInstantiated { domain_id });
@@ -1174,11 +1173,45 @@ mod pallet {
     #[pallet::genesis_build]
     impl<T: Config> BuildGenesisConfig for GenesisConfig<T> {
         fn build(&self) {
-            // Delay the genesis domain register to block #1 due to the required `GenesisReceiptExtension` is not
-            // registered during genesis storage build, remove once https://github.com/paritytech/substrate/issues/14541
-            // is resolved.
-            if let Some(genesis_domain) = &self.genesis_domain {
-                PendingGenesisDomain::<T>::set(Some(genesis_domain.clone()));
+            if let Some(genesis_domain) = self.genesis_domain.as_ref().cloned() {
+                // Register the genesis domain runtime
+                let runtime_id = register_runtime_at_genesis::<T>(
+                    genesis_domain.runtime_name,
+                    genesis_domain.runtime_type,
+                    genesis_domain.runtime_version,
+                    genesis_domain.raw_genesis_storage,
+                    Zero::zero(),
+                )
+                .expect("Genesis runtime registration must always succeed");
+
+                // Instantiate the genesis domain
+                let domain_config = DomainConfig {
+                    domain_name: genesis_domain.domain_name,
+                    runtime_id,
+                    max_block_size: genesis_domain.max_block_size,
+                    max_block_weight: genesis_domain.max_block_weight,
+                    bundle_slot_probability: genesis_domain.bundle_slot_probability,
+                    target_bundles_per_block: genesis_domain.target_bundles_per_block,
+                };
+                let domain_owner = genesis_domain.owner_account_id;
+                let domain_id =
+                    do_instantiate_domain::<T>(domain_config, domain_owner.clone(), Zero::zero())
+                        .expect("Genesis domain instantiation must always succeed");
+
+                // Register domain_owner as the genesis operator.
+                let operator_config = OperatorConfig {
+                    signing_key: genesis_domain.signing_key.clone(),
+                    minimum_nominator_stake: genesis_domain
+                        .minimum_nominator_stake
+                        .saturated_into(),
+                    nomination_tax: genesis_domain.nomination_tax,
+                };
+                let operator_stake = T::MinOperatorStake::get();
+                do_register_operator::<T>(domain_owner, domain_id, operator_stake, operator_config)
+                    .expect("Genesis operator registration must succeed");
+
+                do_finalize_domain_current_epoch::<T>(domain_id, Zero::zero())
+                    .expect("Genesis epoch must succeed");
             }
         }
     }
@@ -1187,58 +1220,7 @@ mod pallet {
     // TODO: proper benchmark
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
         fn on_initialize(block_number: BlockNumberFor<T>) -> Weight {
-            if block_number.is_one() {
-                if let Some(genesis_domain) = PendingGenesisDomain::<T>::take() {
-                    // Register the genesis domain runtime
-                    let runtime_id = register_runtime_at_genesis::<T>(
-                        genesis_domain.runtime_name,
-                        genesis_domain.runtime_type,
-                        genesis_domain.runtime_version,
-                        genesis_domain.code,
-                        One::one(),
-                    )
-                    .expect("Genesis runtime registration must always succeed");
-
-                    // Instantiate the genesis domain
-                    let domain_config = DomainConfig {
-                        domain_name: genesis_domain.domain_name,
-                        runtime_id,
-                        max_block_size: genesis_domain.max_block_size,
-                        max_block_weight: genesis_domain.max_block_weight,
-                        bundle_slot_probability: genesis_domain.bundle_slot_probability,
-                        target_bundles_per_block: genesis_domain.target_bundles_per_block,
-                    };
-                    let domain_owner = genesis_domain.owner_account_id;
-                    let domain_id = do_instantiate_domain::<T>(
-                        domain_config,
-                        domain_owner.clone(),
-                        One::one(),
-                        Some(genesis_domain.raw_genesis_config),
-                    )
-                    .expect("Genesis domain instantiation must always succeed");
-
-                    // Register domain_owner as the genesis operator.
-                    let operator_config = OperatorConfig {
-                        signing_key: genesis_domain.signing_key.clone(),
-                        minimum_nominator_stake: genesis_domain
-                            .minimum_nominator_stake
-                            .saturated_into(),
-                        nomination_tax: genesis_domain.nomination_tax,
-                    };
-                    let operator_stake = T::MinOperatorStake::get();
-                    do_register_operator::<T>(
-                        domain_owner,
-                        domain_id,
-                        operator_stake,
-                        operator_config,
-                    )
-                    .expect("Genesis operator registration must succeed");
-
-                    do_finalize_domain_current_epoch::<T>(domain_id, One::one())
-                        .expect("Genesis epoch must succeed");
-                }
-            }
-
+            // Do scheduled domain runtime upgrade
             do_upgrade_runtimes::<T>(block_number);
 
             // Store the hash of the parent consensus block for domain that have bundles submitted
@@ -1379,7 +1361,7 @@ impl<T: Config> Pallet<T> {
 
     pub fn domain_runtime_code(domain_id: DomainId) -> Option<Vec<u8>> {
         RuntimeRegistry::<T>::get(Self::runtime_id(domain_id)?)
-            .map(|runtime_object| runtime_object.code)
+            .and_then(|mut runtime_object| runtime_object.raw_genesis.take_runtime_code())
     }
 
     pub fn domain_best_number(domain_id: DomainId) -> Option<T::DomainNumber> {
@@ -1403,14 +1385,13 @@ impl<T: Config> Pallet<T> {
         domain_id: DomainId,
     ) -> Option<(DomainInstanceData, BlockNumberFor<T>)> {
         let domain_obj = DomainRegistry::<T>::get(domain_id)?;
-        let (runtime_type, runtime_code) =
-            RuntimeRegistry::<T>::get(domain_obj.domain_config.runtime_id)
-                .map(|runtime_object| (runtime_object.runtime_type, runtime_object.code))?;
+        let runtime_object = RuntimeRegistry::<T>::get(domain_obj.domain_config.runtime_id)?;
+        let runtime_type = runtime_object.runtime_type.clone();
+        let raw_genesis = runtime_object.into_complete_raw_genesis(domain_id);
         Some((
             DomainInstanceData {
                 runtime_type,
-                runtime_code,
-                raw_genesis_config: domain_obj.raw_genesis_config,
+                raw_genesis,
             },
             domain_obj.created_at,
         ))
@@ -1625,26 +1606,19 @@ impl<T: Config> Pallet<T> {
         domain_id: DomainId,
         operator_id: &OperatorId,
     ) -> Result<(BalanceOf<T>, BalanceOf<T>), BundleError> {
-        match LastEpochStakingDistribution::<T>::get(domain_id) {
-            None => {
-                let domain_stake_summary = DomainStakingSummary::<T>::get(domain_id)
-                    .ok_or(BundleError::InvalidDomainId)?;
-
-                let operator_stake = domain_stake_summary
-                    .current_operators
-                    .get(operator_id)
-                    .ok_or(BundleError::BadOperator)?;
-
-                Ok((*operator_stake, domain_stake_summary.current_total_stake))
-            }
-            Some(pending_election_params) => {
-                let operator_stake = pending_election_params
-                    .operators
-                    .get(operator_id)
-                    .ok_or(BundleError::BadOperator)?;
-                Ok((*operator_stake, pending_election_params.total_domain_stake))
+        if let Some(pending_election_params) = LastEpochStakingDistribution::<T>::get(domain_id) {
+            if let Some(operator_stake) = pending_election_params.operators.get(operator_id) {
+                return Ok((*operator_stake, pending_election_params.total_domain_stake));
             }
         }
+        let domain_stake_summary =
+            DomainStakingSummary::<T>::get(domain_id).ok_or(BundleError::InvalidDomainId)?;
+        let operator_stake = domain_stake_summary
+            .current_operators
+            .get(operator_id)
+            .ok_or(BundleError::BadOperator)
+            .unwrap();
+        Ok((*operator_stake, domain_stake_summary.current_total_stake))
     }
 
     /// Called when a bundle is added to update the bundle state for tx range

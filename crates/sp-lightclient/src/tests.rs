@@ -172,8 +172,8 @@ fn valid_header(
     let mut table_generator = PosTable::generator();
 
     for sector_index in iter::from_fn(|| Some(rand::random())) {
-        let mut plotted_sector_bytes = vec![0; sector_size];
-        let mut plotted_sector_metadata_bytes = vec![0; SectorMetadataChecksummed::encoded_size()];
+        let mut plotted_sector_bytes = Vec::new();
+        let mut plotted_sector_metadata_bytes = Vec::new();
 
         let plotted_sector = block_on(plot_sector::<_, PosTable>(
             &public_key,

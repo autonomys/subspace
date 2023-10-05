@@ -1,7 +1,5 @@
 //! Tools for KZG commitment scheme
 
-#[cfg(feature = "serde")]
-mod serde;
 #[cfg(test)]
 mod tests;
 
@@ -18,15 +16,12 @@ use blst_rust::types::g1::FsG1;
 use blst_rust::types::g2::FsG2;
 use blst_rust::types::kzg_settings::FsKZGSettings;
 use blst_rust::types::poly::FsPoly;
-use core::hash::{Hash, Hasher};
 use core::mem;
 use derive_more::{AsMut, AsRef, Deref, DerefMut, From, Into};
 use kzg::eip_4844::{BYTES_PER_G1, BYTES_PER_G2};
 use kzg::{FFTFr, FFTSettings, Fr, KZGSettings};
-use parity_scale_codec::{Decode, Encode, EncodeLike, Input, MaxEncodedLen};
 #[cfg(feature = "std")]
 use parking_lot::Mutex;
-use scale_info::{Type, TypeInfo};
 #[cfg(not(feature = "std"))]
 use spin::Mutex;
 use tracing::debug;
@@ -279,12 +274,6 @@ impl Commitment {
     }
 }
 
-impl Hash for Commitment {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.to_bytes().hash(state);
-    }
-}
-
 impl From<Commitment> for [u8; Commitment::SIZE] {
     #[inline]
     fn from(commitment: Commitment) -> Self {
@@ -314,63 +303,6 @@ impl TryFrom<[u8; Self::SIZE]> for Commitment {
     #[inline]
     fn try_from(bytes: [u8; Self::SIZE]) -> Result<Self, Self::Error> {
         Self::try_from(&bytes)
-    }
-}
-
-impl Encode for Commitment {
-    #[inline]
-    fn size_hint(&self) -> usize {
-        Self::SIZE
-    }
-
-    fn using_encoded<R, F: FnOnce(&[u8]) -> R>(&self, f: F) -> R {
-        f(&self.to_bytes())
-    }
-
-    #[inline]
-    fn encoded_size(&self) -> usize {
-        Self::SIZE
-    }
-}
-
-impl EncodeLike for Commitment {}
-
-impl MaxEncodedLen for Commitment {
-    #[inline]
-    fn max_encoded_len() -> usize {
-        Self::SIZE
-    }
-}
-
-impl Decode for Commitment {
-    fn decode<I: Input>(input: &mut I) -> Result<Self, parity_scale_codec::Error> {
-        Self::try_from_bytes(&Decode::decode(input)?).map_err(|error| {
-            parity_scale_codec::Error::from("Failed to decode from bytes")
-                .chain(alloc::format!("{error:?}"))
-        })
-    }
-
-    #[inline]
-    fn encoded_fixed_size() -> Option<usize> {
-        Some(Self::SIZE)
-    }
-}
-
-impl TypeInfo for Commitment {
-    type Identity = Self;
-
-    fn type_info() -> Type {
-        Type::builder()
-            .path(scale_info::Path::new(
-                stringify!(Commitment),
-                module_path!(),
-            ))
-            .docs(&["Commitment to polynomial"])
-            .composite(scale_info::build::Fields::named().field(|f| {
-                f.ty::<[u8; Self::SIZE]>()
-                    .name(stringify!(inner))
-                    .type_name("G1Affine")
-            }))
     }
 }
 
@@ -423,59 +355,6 @@ impl TryFrom<[u8; Self::SIZE]> for Witness {
     #[inline]
     fn try_from(bytes: [u8; Self::SIZE]) -> Result<Self, Self::Error> {
         Self::try_from(&bytes)
-    }
-}
-
-impl Encode for Witness {
-    fn size_hint(&self) -> usize {
-        Self::SIZE
-    }
-
-    fn using_encoded<R, F: FnOnce(&[u8]) -> R>(&self, f: F) -> R {
-        f(&self.to_bytes())
-    }
-
-    #[inline]
-    fn encoded_size(&self) -> usize {
-        Self::SIZE
-    }
-}
-
-impl EncodeLike for Witness {}
-
-impl MaxEncodedLen for Witness {
-    #[inline]
-    fn max_encoded_len() -> usize {
-        Self::SIZE
-    }
-}
-
-impl Decode for Witness {
-    fn decode<I: Input>(input: &mut I) -> Result<Self, parity_scale_codec::Error> {
-        Self::try_from_bytes(&Decode::decode(input)?).map_err(|error| {
-            parity_scale_codec::Error::from("Failed to decode from bytes")
-                .chain(alloc::format!("{error:?}"))
-        })
-    }
-
-    #[inline]
-    fn encoded_fixed_size() -> Option<usize> {
-        Some(Self::SIZE)
-    }
-}
-
-impl TypeInfo for Witness {
-    type Identity = Self;
-
-    fn type_info() -> Type {
-        Type::builder()
-            .path(scale_info::Path::new(stringify!(Witness), module_path!()))
-            .docs(&["Witness for polynomial evaluation"])
-            .composite(scale_info::build::Fields::named().field(|f| {
-                f.ty::<[u8; Self::SIZE]>()
-                    .name(stringify!(inner))
-                    .type_name("G1Affine")
-            }))
     }
 }
 

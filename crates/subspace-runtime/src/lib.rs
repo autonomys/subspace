@@ -617,7 +617,6 @@ parameter_types! {
     pub const StakeEpochDuration: DomainNumber = 100;
     pub TreasuryAccount: AccountId = PalletId(*b"treasury").into_account_truncating();
     pub const MaxPendingStakingOperation: u32 = 100;
-    pub SudoId: AccountId = Sudo::key().expect("Sudo account must exist");
 }
 
 pub struct StorageKeys;
@@ -645,6 +644,7 @@ impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type DomainNumber = DomainNumber;
     type DomainHash = DomainHash;
+    type DomainHashing = BlakeTwo256;
     type ConfirmationDepthK = ConfirmationDepthK;
     type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
     type Currency = Balances;
@@ -664,7 +664,6 @@ impl pallet_domains::Config for Runtime {
     type StakeEpochDuration = StakeEpochDuration;
     type TreasuryAccount = TreasuryAccount;
     type MaxPendingStakingOperation = MaxPendingStakingOperation;
-    type SudoId = SudoId;
     type Randomness = Subspace;
     type StorageKeys = StorageKeys;
     type DeriveExtrinsics = DeriveExtrinsics;
@@ -1017,6 +1016,7 @@ impl_runtime_apis! {
 
         fn is_inherent(ext: &<Block as BlockT>::Extrinsic) -> bool {
             match &ext.function {
+                RuntimeCall::Domains(call) => Domains::is_inherent(call),
                 RuntimeCall::Subspace(call) => Subspace::is_inherent(call),
                 RuntimeCall::Timestamp(call) => Timestamp::is_inherent(call),
                 _ => false,

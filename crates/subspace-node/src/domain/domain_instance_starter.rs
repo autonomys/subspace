@@ -15,7 +15,7 @@ use sc_consensus_subspace::{BlockImportingNotification, NewSlotNotification};
 use sc_service::{BasePath, Configuration};
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::{TracingUnboundedReceiver, TracingUnboundedSender};
-use sp_domains::RuntimeType;
+use sp_domains::{DomainInstanceData, RuntimeType};
 use std::sync::Arc;
 use subspace_runtime::RuntimeApi as CRuntimeApi;
 use subspace_runtime_primitives::opaque::Block as CBlock;
@@ -48,6 +48,11 @@ impl DomainInstanceStarter {
             imported_block_notification_stream,
         } = bootstrap_result;
 
+        let DomainInstanceData {
+            runtime_type,
+            raw_genesis,
+        } = domain_instance_data;
+
         let DomainInstanceStarter {
             domain_cli,
             tokio_handle,
@@ -61,16 +66,11 @@ impl DomainInstanceStarter {
             gossip_message_sink,
         } = self;
 
-        let runtime_type = domain_instance_data.runtime_type.clone();
         let domain_id = domain_cli.domain_id;
         let domain_config = {
             let chain_id = domain_cli.chain_id(domain_cli.is_dev()?)?;
 
-            let domain_spec = evm_chain_spec::create_domain_spec(
-                domain_id,
-                chain_id.as_str(),
-                domain_instance_data,
-            )?;
+            let domain_spec = evm_chain_spec::create_domain_spec(chain_id.as_str(), raw_genesis)?;
 
             create_configuration::<_, DomainCli, DomainCli>(&domain_cli, domain_spec, tokio_handle)?
         };

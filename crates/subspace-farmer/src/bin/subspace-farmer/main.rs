@@ -91,15 +91,18 @@ struct FarmingArgs {
     /// one specified endpoint. Format: 127.0.0.1:8080
     #[arg(long, alias = "metrics-endpoint")]
     metrics_endpoints: Vec<SocketAddr>,
-    /// Size of thread pool used for farming (mostly for blocking I/O, but also for some compute-intensive
-    /// operations during proving), defaults to number of CPU cores available in the system
+    /// Size of PER FARM thread pool used for farming (mostly for blocking I/O, but also for some
+    /// compute-intensive operations during proving), defaults to number of CPU cores available in
+    /// the system
     #[arg(long, default_value_t = available_parallelism())]
     farming_thread_pool_size: usize,
-    /// Size of thread pool used for plotting, defaults to number of CPU cores available in the system
+    /// Size of thread pool used for plotting, defaults to number of CPU cores available in the
+    /// system. This thread pool is global for all farms and generally doesn't need to be changed.
     #[arg(long, default_value_t = available_parallelism())]
     plotting_thread_pool_size: usize,
-    /// Size of thread pool used for replotting, typically smaller pool than for plotting to not affect farming as much,
-    /// defaults to half of the number of CPU cores available in the system.
+    /// Size of thread pool used for replotting, typically smaller pool than for plotting to not
+    /// affect farming as much, defaults to half of the number of CPU cores available in the system.
+    /// This thread pool is global for all farms and generally doesn't need to be changed.
     #[arg(long, default_value_t = available_parallelism() / 2)]
     replotting_thread_pool_size: usize,
 }

@@ -1,16 +1,18 @@
 use crate::node_client;
 use crate::node_client::NodeClient;
 use crate::single_disk_farm::Handlers;
+use crate::utils::AsyncJoinOnDrop;
 use futures::channel::mpsc;
 use futures::StreamExt;
 use parking_lot::{Mutex, RwLock};
 use rayon::prelude::*;
-use rayon::{ThreadPool, ThreadPoolBuildError};
+use rayon::ThreadPoolBuildError;
 use std::fs::File;
 use std::io;
 use std::sync::Arc;
+use std::time::Instant;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::{PosSeed, PublicKey, SectorIndex, Solution, SolutionRange};
+use subspace_core_primitives::{PosSeed, PublicKey, SectorIndex, SolutionRange};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector;
 use subspace_farmer_components::proving::ProvableSolutions;
@@ -19,13 +21,7 @@ use subspace_farmer_components::{proving, ReadAt};
 use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_rpc_primitives::{SlotInfo, SolutionResponse};
 use thiserror::Error;
-use tracing::{debug, error, trace, warn};
-
-/// Self-imposed limit for number of solutions that farmer will not go over per challenge.
-///
-/// Only useful for initial network bootstrapping where due to initial plot size there might be too
-/// many solutions.
-const SOLUTIONS_LIMIT: usize = 1;
+use tracing::{debug, error, info, trace, warn};
 
 /// Errors that happen during farming
 #[derive(Debug, Error)]
@@ -42,18 +38,6 @@ pub enum FarmingError {
         /// Lower-level error
         error: node_client::Error,
     },
-    /// Failed to create memory mapping for metadata
-    #[error("Failed to create memory mapping for metadata: {error}")]
-    FailedToMapMetadata {
-        /// Lower-level error
-        error: io::Error,
-    },
-    /// Failed to submit solutions response
-    #[error("Failed to submit solutions response: {error}")]
-    FailedToSubmitSolutionsResponse {
-        /// Lower-level error
-        error: node_client::Error,
-    },
     /// Low-level proving error
     #[error("Low-level proving error: {0}")]
     LowLevelProving(#[from] proving::ProvingError),
@@ -63,6 +47,35 @@ pub enum FarmingError {
     /// Failed to create thread pool
     #[error("Failed to create thread pool: {0}")]
     FailedToCreateThreadPool(#[from] ThreadPoolBuildError),
+}
+
+pub(super) async fn slot_notification_forwarder<NC>(
+    node_client: &NC,
+    mut slot_info_forwarder_sender: mpsc::Sender<SlotInfo>,
+) -> Result<(), FarmingError>
+where
+    NC: NodeClient,
+{
+    info!("Subscribing to slot info notifications");
+
+    let mut slot_info_notifications = node_client
+        .subscribe_slot_info()
+        .await
+        .map_err(|error| FarmingError::FailedToSubscribeSlotInfo { error })?;
+
+    while let Some(slot_info) = slot_info_notifications.next().await {
+        debug!(?slot_info, "New slot");
+
+        let slot = slot_info.slot_number;
+
+        // Error means farmer is still solving for previous slot, which is too late and
+        // we need to skip this slot
+        if slot_info_forwarder_sender.try_send(slot_info).is_err() {
+            debug!(%slot, "Slow farming, skipping slot");
+        }
+    }
+
+    Ok(())
 }
 
 pub(super) struct FarmingOptions<'a, NC> {
@@ -77,15 +90,12 @@ pub(super) struct FarmingOptions<'a, NC> {
     pub(super) handlers: Arc<Handlers>,
     pub(super) modifying_sector_index: Arc<RwLock<Option<SectorIndex>>>,
     pub(super) slot_info_notifications: mpsc::Receiver<SlotInfo>,
-    pub(super) thread_pool: Arc<ThreadPool>,
 }
 
 /// Starts farming process.
 ///
 /// NOTE: Returned future is async, but does blocking operations and should be running in dedicated
 /// thread.
-// False-positive, we do drop lock before .await
-#[allow(clippy::await_holding_lock)]
 pub(super) async fn farming<PosTable, NC>(
     farming_options: FarmingOptions<'_, NC>,
 ) -> Result<(), FarmingError>
@@ -105,31 +115,33 @@ where
         handlers,
         modifying_sector_index,
         mut slot_info_notifications,
-        thread_pool,
     } = farming_options;
+
+    let farmer_app_info = node_client
+        .farmer_app_info()
+        .await
+        .map_err(|error| FarmingError::FailedToGetFarmerInfo { error })?;
+
+    // We assume that each slot is one second
+    let farming_timeout = farmer_app_info.farming_timeout;
 
     let table_generator = Arc::new(Mutex::new(PosTable::generator()));
 
     while let Some(slot_info) = slot_info_notifications.next().await {
-        let modifying_sector_index = Arc::clone(&modifying_sector_index);
-        let sectors_metadata = Arc::clone(&sectors_metadata);
-        let table_generator = Arc::clone(&table_generator);
-        let kzg = kzg.clone();
-        let erasure_coding = erasure_coding.clone();
+        let start = Instant::now();
+        let slot = slot_info.slot_number;
+        let sectors_metadata = sectors_metadata.read();
+        let sector_count = sectors_metadata.len();
 
-        let response = thread_pool.install(move || {
-            let slot = slot_info.slot_number;
-            let sectors_metadata = sectors_metadata.read();
-            let sector_count = sectors_metadata.len();
+        debug!(%slot, %sector_count, "Reading sectors");
 
-            debug!(%slot, %sector_count, "Reading sectors");
+        let sectors = (0..sector_count)
+            .map(|sector_index| plot_file.offset(sector_index * sector_size))
+            .collect::<Vec<_>>();
 
+        let sectors_solutions = {
             let modifying_sector_guard = modifying_sector_index.read();
             let maybe_sector_being_modified = modifying_sector_guard.as_ref().copied();
-
-            let sectors = (0..sector_count)
-                .map(|sector_index| plot_file.offset(sector_index * sector_size))
-                .collect::<Vec<_>>();
 
             let mut sectors_solutions = sectors_metadata
                 .par_iter()
@@ -189,57 +201,54 @@ where
                 let b_solution_distance =
                     b.1.best_solution_distance().unwrap_or(SolutionRange::MAX);
 
-                // Comparing `b` to `a` because we want smaller values first
-                b_solution_distance.cmp(&a_solution_distance)
+                a_solution_distance.cmp(&b_solution_distance)
             });
 
-            let mut solutions = Vec::<Solution<PublicKey, PublicKey>>::new();
+            sectors_solutions
+        };
 
-            for (sector_index, sector_solutions) in sectors_solutions {
-                for maybe_solution in sector_solutions {
-                    let solution = match maybe_solution {
-                        Ok(solution) => solution,
-                        Err(error) => {
-                            error!(%slot, %sector_index, %error, "Failed to prove");
-                            // Do not error completely as disk corruption or other reasons why
-                            // proving might fail
-                            continue;
-                        }
-                    };
+        // Holds futures such that this function doesn't exit until all solutions were sent out
+        let mut sending_solutions = Vec::new();
 
-                    debug!(%slot, %sector_index, "Solution found");
-                    trace!(?solution, "Solution found");
-
-                    solutions.push(solution);
-
-                    if solutions.len() >= SOLUTIONS_LIMIT {
-                        break;
+        'solutions_processing: for (sector_index, sector_solutions) in sectors_solutions {
+            for maybe_solution in sector_solutions {
+                let solution = match maybe_solution {
+                    Ok(solution) => solution,
+                    Err(error) => {
+                        error!(%slot, %sector_index, %error, "Failed to prove");
+                        // Do not error completely as disk corruption or other reasons why
+                        // proving might fail
+                        continue;
                     }
+                };
+
+                debug!(%slot, %sector_index, "Solution found");
+                trace!(?solution, "Solution found");
+
+                if start.elapsed() >= farming_timeout {
+                    break 'solutions_processing;
                 }
 
-                if solutions.len() >= SOLUTIONS_LIMIT {
-                    break;
-                }
-                // TODO: It is known that decoding is slow now and we'll only be
-                //  able to decode a single sector within time slot reliably, in the
-                //  future we may want allow more than one sector to be valid within
-                //  the same disk plot.
-                if !solutions.is_empty() {
-                    break;
-                }
+                let response = SolutionResponse {
+                    slot_number: slot_info.slot_number,
+                    solution,
+                };
+
+                handlers.solution.call_simple(&response);
+
+                let sending_solution = tokio::task::spawn({
+                    let node_client = node_client.clone();
+
+                    async move {
+                        if let Err(error) = node_client.submit_solution_response(response).await {
+                            warn!(%error, "Failed to submit solutions response");
+                        }
+                    }
+                });
+
+                sending_solutions.push(AsyncJoinOnDrop::new(sending_solution));
             }
-
-            SolutionResponse {
-                slot_number: slot_info.slot_number,
-                solutions,
-            }
-        });
-
-        handlers.solution.call_simple(&response);
-        node_client
-            .submit_solution_response(response)
-            .await
-            .map_err(|error| FarmingError::FailedToSubmitSolutionsResponse { error })?;
+        }
     }
 
     Ok(())

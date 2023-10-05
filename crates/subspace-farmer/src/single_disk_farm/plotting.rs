@@ -179,8 +179,8 @@ where
         let plotted_sector;
 
         (sector, sector_metadata, table_generator, plotted_sector) = {
-            let mut sector = vec![0; sector_size];
-            let mut sector_metadata = vec![0; sector_metadata_size];
+            let mut sector = Vec::new();
+            let mut sector_metadata = Vec::new();
 
             let piece_getter = piece_getter.clone();
             let kzg = kzg.clone();

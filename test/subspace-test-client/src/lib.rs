@@ -39,7 +39,6 @@ use subspace_core_primitives::{
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector;
 use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy, PlottedSector};
-use subspace_farmer_components::sector::{sector_size, SectorMetadataChecksummed};
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_runtime_primitives::opaque::Block;
@@ -54,10 +53,7 @@ const MAX_PIECES_IN_SECTOR: u16 = 32;
 pub struct TestExecutorDispatch;
 
 impl sc_executor::NativeExecutionDispatch for TestExecutorDispatch {
-    type ExtendHostFunctions = (
-        sp_consensus_subspace::consensus::HostFunctions,
-        sp_domains::domain::HostFunctions,
-    );
+    type ExtendHostFunctions = sp_consensus_subspace::consensus::HostFunctions;
 
     fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
         subspace_test_runtime::api::dispatch(method, data)
@@ -241,8 +237,8 @@ where
         .next()
         .expect("First block is always producing one segment; qed");
     let history_size = HistorySize::from(SegmentIndex::ZERO);
-    let mut sector = vec![0u8; sector_size(pieces_in_sector)];
-    let mut sector_metadata = vec![0u8; SectorMetadataChecksummed::encoded_size()];
+    let mut sector = Vec::new();
+    let mut sector_metadata = Vec::new();
     let sector_index = 0;
     let public_key = PublicKey::from(keypair.public.to_bytes());
     let farmer_protocol_info = FarmerProtocolInfo {

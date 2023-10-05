@@ -41,7 +41,6 @@ mod tests;
 
 extern crate alloc;
 
-use crate::crypto::kzg::{Commitment, Witness};
 use crate::crypto::{
     blake2b_256_hash, blake2b_256_hash_list, blake2b_256_hash_with_key, blake3_hash,
     blake3_hash_list, Scalar,
@@ -60,11 +59,13 @@ use derive_more::{Add, AsMut, AsRef, Deref, DerefMut, Display, Div, From, Into, 
 use num_traits::{WrappingAdd, WrappingSub};
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 pub use pieces::{
-    FlatPieces, Piece, PieceArray, PieceIndex, PieceOffset, RawRecord, Record, RecordCommitment,
-    RecordWitness, SBucket,
+    ChunkWitness, FlatPieces, Piece, PieceArray, PieceIndex, PieceOffset, RawRecord, Record,
+    RecordCommitment, RecordWitness, SBucket,
 };
 use scale_info::TypeInfo;
-pub use segments::{ArchivedHistorySegment, HistorySize, RecordedHistorySegment, SegmentIndex};
+pub use segments::{
+    ArchivedHistorySegment, HistorySize, RecordedHistorySegment, SegmentCommitment, SegmentIndex,
+};
 use uint::static_assertions::const_assert;
 
 // Refuse to compile on lower than 32-bit platforms
@@ -147,10 +148,6 @@ pub type SolutionRange = u64;
 ///
 /// The closer solution's tag is to the target, the heavier it is.
 pub type BlockWeight = u128;
-
-// TODO: New type
-/// Segment commitment type.
-pub type SegmentCommitment = Commitment;
 
 /// Length of public key in bytes.
 pub const PUBLIC_KEY_LENGTH: usize = 32;
@@ -642,13 +639,13 @@ pub struct Solution<PublicKey, RewardAddress> {
     /// Pieces offset within sector
     pub piece_offset: PieceOffset,
     /// Record commitment that can use used to verify that piece was included in blockchain history
-    pub record_commitment: Commitment,
+    pub record_commitment: RecordCommitment,
     /// Witness for above record commitment
-    pub record_witness: Witness,
+    pub record_witness: RecordWitness,
     /// Chunk at above offset
     pub chunk: Scalar,
     /// Witness for above chunk
-    pub chunk_witness: Witness,
+    pub chunk_witness: ChunkWitness,
     /// Audit chunk offset within above chunk
     pub audit_chunk_offset: u8,
     /// Proof of space for piece offset
@@ -703,10 +700,10 @@ impl<PublicKey, RewardAddress> Solution<PublicKey, RewardAddress> {
             sector_index: 0,
             history_size: HistorySize::from(SegmentIndex::ZERO),
             piece_offset: PieceOffset::default(),
-            record_commitment: Commitment::default(),
-            record_witness: Witness::default(),
+            record_commitment: RecordCommitment::default(),
+            record_witness: RecordWitness::default(),
             chunk: Scalar::default(),
-            chunk_witness: Witness::default(),
+            chunk_witness: ChunkWitness::default(),
             audit_chunk_offset: 0,
             proof_of_space: PosProof::default(),
         }
@@ -1067,7 +1064,7 @@ impl SectorId {
 
         let input_hash = U256::from_le_bytes(blake2b_256_hash_list(&[
             &self.0,
-            &sector_expiration_check_segment_commitment.to_bytes(),
+            sector_expiration_check_segment_commitment.as_ref(),
         ]));
 
         let last_possible_expiration =

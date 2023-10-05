@@ -17,6 +17,9 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+#[cfg(test)]
+mod tests;
+
 pub use pallet::*;
 
 #[frame_support::pallet]
@@ -28,7 +31,7 @@ mod pallet {
     pub trait Config: frame_system::Config {}
 
     #[pallet::storage]
-    pub(super) type SelfDomainId<T> = StorageValue<_, DomainId, ValueQuery>;
+    pub(super) type SelfDomainId<T> = StorageValue<_, DomainId, OptionQuery>;
 
     /// Pallet domain-id to store self domain id.
     #[pallet::pallet]
@@ -47,16 +50,16 @@ mod pallet {
     #[pallet::genesis_build]
     impl<T: Config> BuildGenesisConfig for GenesisConfig<T> {
         fn build(&self) {
-            SelfDomainId::<T>::set(
-                self.domain_id
-                    .expect("Genesis config of pallet-domain-id must be set"),
-            );
+            // NOTE: the domain id of a domain instance is allocated during instantiation and can not
+            // be known ahead of time, thus the value in the `RuntimeGenesisConfig` of chain spec can
+            // be arbitrary and is ignored, it will be reset to the correct id during domain instantiation.
+            SelfDomainId::<T>::set(self.domain_id);
         }
     }
 
     impl<T: Config> Pallet<T> {
         pub fn self_domain_id() -> DomainId {
-            SelfDomainId::<T>::get()
+            SelfDomainId::<T>::get().expect("Domain ID must be set during domain instantiation")
         }
     }
 }
