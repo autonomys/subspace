@@ -61,7 +61,28 @@ impl ReadAt for [u8] {
     }
 }
 
+impl ReadAt for &[u8] {
+    fn read_at(&self, buf: &mut [u8], offset: usize) -> io::Result<()> {
+        if buf.len() + offset > self.len() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Buffer length with offset exceeds own length",
+            ));
+        }
+
+        buf.copy_from_slice(&self[offset..][..buf.len()]);
+
+        Ok(())
+    }
+}
+
 impl ReadAt for Vec<u8> {
+    fn read_at(&self, buf: &mut [u8], offset: usize) -> io::Result<()> {
+        self.as_slice().read_at(buf, offset)
+    }
+}
+
+impl ReadAt for &Vec<u8> {
     fn read_at(&self, buf: &mut [u8], offset: usize) -> io::Result<()> {
         self.as_slice().read_at(buf, offset)
     }
@@ -80,12 +101,22 @@ impl ReadAt for &File {
 }
 
 /// Reader with fixed offset added to all attempted reads
+#[derive(Debug, Copy, Clone)]
 pub struct ReadAtOffset<T> {
     inner: T,
     offset: usize,
 }
 
 impl<T> ReadAt for ReadAtOffset<T>
+where
+    T: ReadAt,
+{
+    fn read_at(&self, buf: &mut [u8], offset: usize) -> io::Result<()> {
+        self.inner.read_at(buf, offset + self.offset)
+    }
+}
+
+impl<T> ReadAt for &ReadAtOffset<T>
 where
     T: ReadAt,
 {

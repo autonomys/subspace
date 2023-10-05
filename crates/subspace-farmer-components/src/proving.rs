@@ -82,20 +82,20 @@ struct WinningChunk {
 #[derive(Debug)]
 pub struct SolutionCandidates<'a, Sector>
 where
-    Sector: ?Sized,
+    Sector: 'a,
 {
     public_key: &'a PublicKey,
     sector_index: SectorIndex,
     sector_id: SectorId,
     s_bucket: SBucket,
-    sector: &'a Sector,
+    sector: Sector,
     sector_metadata: &'a SectorMetadataChecksummed,
     chunk_candidates: VecDeque<ChunkCandidate>,
 }
 
 impl<'a, Sector> Clone for SolutionCandidates<'a, Sector>
 where
-    Sector: ?Sized,
+    Sector: Clone + 'a,
 {
     fn clone(&self) -> Self {
         Self {
@@ -103,7 +103,7 @@ where
             sector_index: self.sector_index,
             sector_id: self.sector_id,
             s_bucket: self.s_bucket,
-            sector: self.sector,
+            sector: self.sector.clone(),
             sector_metadata: self.sector_metadata,
             chunk_candidates: self.chunk_candidates.clone(),
         }
@@ -112,14 +112,14 @@ where
 
 impl<'a, Sector> SolutionCandidates<'a, Sector>
 where
-    Sector: ReadAt + ?Sized,
+    Sector: ReadAt + 'a,
 {
     pub(crate) fn new(
         public_key: &'a PublicKey,
         sector_index: SectorIndex,
         sector_id: SectorId,
         s_bucket: SBucket,
-        sector: &'a Sector,
+        sector: Sector,
         sector_metadata: &'a SectorMetadataChecksummed,
         chunk_candidates: VecDeque<ChunkCandidate>,
     ) -> Self {
@@ -189,7 +189,7 @@ struct ChunkCache {
 
 struct SolutionsIterator<'a, RewardAddress, Sector, PosTable, TableGenerator>
 where
-    Sector: ?Sized,
+    Sector: 'a,
     PosTable: Table,
     TableGenerator: (FnMut(&PosSeed) -> PosTable) + 'a,
 {
@@ -203,7 +203,7 @@ where
     kzg: &'a Kzg,
     erasure_coding: &'a ErasureCoding,
     sector_contents_map: SectorContentsMap,
-    sector: &'a Sector,
+    sector: Sector,
     winning_chunks: VecDeque<WinningChunk>,
     count: usize,
     chunk_cache: Option<ChunkCache>,
@@ -216,7 +216,7 @@ impl<'a, RewardAddress, Sector, PosTable, TableGenerator> Iterator
     for SolutionsIterator<'a, RewardAddress, Sector, PosTable, TableGenerator>
 where
     RewardAddress: Copy,
-    Sector: ReadAt + ?Sized,
+    Sector: ReadAt + 'a,
     PosTable: Table,
     TableGenerator: (FnMut(&PosSeed) -> PosTable) + 'a,
 {
@@ -262,7 +262,7 @@ where
                         &self.s_bucket_offsets,
                         &self.sector_contents_map,
                         &pos_table,
-                        self.sector,
+                        &self.sector,
                     )?;
 
                     let chunk = sector_record_chunks
@@ -284,7 +284,7 @@ where
                     let record_metadata = read_record_metadata(
                         piece_offset,
                         self.sector_metadata.pieces_in_sector,
-                        self.sector,
+                        &self.sector,
                     )?;
 
                     let record_commitment = Commitment::try_from_bytes(&record_metadata.commitment)
@@ -379,7 +379,7 @@ impl<'a, RewardAddress, Sector, PosTable, TableGenerator> ExactSizeIterator
     for SolutionsIterator<'a, RewardAddress, Sector, PosTable, TableGenerator>
 where
     RewardAddress: Copy,
-    Sector: ReadAt + ?Sized,
+    Sector: ReadAt + 'a,
     PosTable: Table,
     TableGenerator: (FnMut(&PosSeed) -> PosTable) + 'a,
 {
@@ -389,7 +389,7 @@ impl<'a, RewardAddress, Sector, PosTable, TableGenerator> ProvableSolutions
     for SolutionsIterator<'a, RewardAddress, Sector, PosTable, TableGenerator>
 where
     RewardAddress: Copy,
-    Sector: ReadAt + ?Sized,
+    Sector: ReadAt + 'a,
     PosTable: Table,
     TableGenerator: (FnMut(&PosSeed) -> PosTable) + 'a,
 {
@@ -401,7 +401,7 @@ where
 impl<'a, RewardAddress, Sector, PosTable, TableGenerator>
     SolutionsIterator<'a, RewardAddress, Sector, PosTable, TableGenerator>
 where
-    Sector: ReadAt + ?Sized,
+    Sector: ReadAt + 'a,
     PosTable: Table,
     TableGenerator: (FnMut(&PosSeed) -> PosTable) + 'a,
 {
@@ -412,7 +412,7 @@ where
         sector_index: SectorIndex,
         sector_id: SectorId,
         s_bucket: SBucket,
-        sector: &'a Sector,
+        sector: Sector,
         sector_metadata: &'a SectorMetadataChecksummed,
         kzg: &'a Kzg,
         erasure_coding: &'a ErasureCoding,
