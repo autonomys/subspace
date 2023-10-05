@@ -14,7 +14,7 @@ pub use crate::single_disk_farm::plotting::PlottingError;
 use crate::single_disk_farm::plotting::{
     plotting, plotting_scheduler, PlottingOptions, PlottingSchedulerOptions,
 };
-use crate::utils::JoinOnDrop;
+use crate::utils::{tokio_rayon_spawn_handler, JoinOnDrop};
 use derive_more::{Display, From};
 use event_listener_primitives::{Bag, HandlerId};
 use futures::channel::{mpsc, oneshot};
@@ -24,7 +24,7 @@ use futures::StreamExt;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::{Mutex, RwLock};
 use rayon::prelude::*;
-use rayon::ThreadPool;
+use rayon::{ThreadPool, ThreadPoolBuilder};
 use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
 use std::fs::{File, OpenOptions};
@@ -965,44 +965,71 @@ impl SingleDiskFarm {
 
                 move || {
                     let _tokio_handle_guard = handle.enter();
-                    let _span_guard = span.enter();
 
-                    let farming_fut = async move {
-                        if start_receiver.recv().await.is_err() {
-                            // Dropped before starting
-                            return Ok(());
+                    let thread_pool = match ThreadPoolBuilder::new()
+                        .thread_name(move |thread_index| {
+                            format!("farming-{disk_farm_index}.{thread_index}")
+                        })
+                        .num_threads(farming_thread_pool_size)
+                        .spawn_handler(tokio_rayon_spawn_handler())
+                        .build()
+                        .map_err(FarmingError::FailedToCreateThreadPool)
+                    {
+                        Ok(thread_pool) => thread_pool,
+                        Err(error) => {
+                            if let Some(error_sender) = error_sender.lock().take() {
+                                if let Err(error) = error_sender.send(error.into()) {
+                                    error!(
+                                        %error,
+                                        "Farming failed to send error to background task",
+                                    );
+                                }
+                            }
+                            return;
                         }
-
-                        let farming_options = FarmingOptions {
-                            disk_farm_index,
-                            public_key,
-                            reward_address,
-                            node_client,
-                            sector_size,
-                            plot_file: &plot_file,
-                            sectors_metadata,
-                            kzg,
-                            erasure_coding,
-                            handlers,
-                            modifying_sector_index,
-                            slot_info_notifications: slot_info_forwarder_receiver,
-                            thread_pool_size: farming_thread_pool_size,
-                        };
-                        farming::<PosTable, _>(farming_options).await
                     };
 
-                    let farming_result = handle.block_on(select(
-                        Box::pin(farming_fut),
-                        Box::pin(stop_receiver.recv()),
-                    ));
+                    thread_pool.install(move || {
+                        let _span_guard = span.enter();
 
-                    if let Either::Left((Err(error), _)) = farming_result {
-                        if let Some(error_sender) = error_sender.lock().take() {
-                            if let Err(error) = error_sender.send(error.into()) {
-                                error!(%error, "Farming failed to send error to background task");
+                        let farming_fut = async move {
+                            if start_receiver.recv().await.is_err() {
+                                // Dropped before starting
+                                return Ok(());
+                            }
+
+                            let farming_options = FarmingOptions {
+                                public_key,
+                                reward_address,
+                                node_client,
+                                sector_size,
+                                plot_file: &plot_file,
+                                sectors_metadata,
+                                kzg,
+                                erasure_coding,
+                                handlers,
+                                modifying_sector_index,
+                                slot_info_notifications: slot_info_forwarder_receiver,
+                            };
+                            farming::<PosTable, _>(farming_options).await
+                        };
+
+                        let farming_result = handle.block_on(select(
+                            Box::pin(farming_fut),
+                            Box::pin(stop_receiver.recv()),
+                        ));
+
+                        if let Either::Left((Err(error), _)) = farming_result {
+                            if let Some(error_sender) = error_sender.lock().take() {
+                                if let Err(error) = error_sender.send(error.into()) {
+                                    error!(
+                                        %error,
+                                        "Farming failed to send error to background task",
+                                    );
+                                }
                             }
                         }
-                    }
+                    })
                 }
             })?;
 
