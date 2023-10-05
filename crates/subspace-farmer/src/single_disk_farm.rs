@@ -44,7 +44,7 @@ use subspace_core_primitives::{
     SegmentIndex,
 };
 use subspace_erasure_coding::ErasureCoding;
-use subspace_farmer_components::file_ext::FileExt;
+use subspace_farmer_components::file_ext::{FileExt, OpenOptionsExt};
 use subspace_farmer_components::plotting::{PieceGetter, PlottedSector};
 use subspace_farmer_components::sector::{sector_size, SectorMetadata, SectorMetadataChecksummed};
 use subspace_farmer_components::FarmerProtocolInfo;
@@ -748,6 +748,7 @@ impl SingleDiskFarm {
             .read(true)
             .write(true)
             .create(true)
+            .advise_random_access()
             .open(directory.join(Self::METADATA_FILE))?;
 
         metadata_file.advise_random_access()?;
@@ -823,6 +824,7 @@ impl SingleDiskFarm {
                 .read(true)
                 .write(true)
                 .create(true)
+                .advise_random_access()
                 .open(directory.join(Self::PLOT_FILE))?,
         );
 
