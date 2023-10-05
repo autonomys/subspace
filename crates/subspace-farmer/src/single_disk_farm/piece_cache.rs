@@ -5,7 +5,7 @@ use std::sync::Arc;
 use std::{fs, io, mem};
 use subspace_core_primitives::crypto::blake3_hash_list;
 use subspace_core_primitives::{Blake3Hash, Piece, PieceIndex};
-use subspace_farmer_components::file_ext::FileExt;
+use subspace_farmer_components::file_ext::{FileExt, OpenOptionsExt};
 use thiserror::Error;
 use tracing::{debug, info, warn};
 
@@ -63,6 +63,7 @@ impl DiskPieceCache {
             .read(true)
             .write(true)
             .create(true)
+            .advise_random_access()
             .open(directory.join(Self::FILE_NAME))?;
 
         file.advise_random_access()?;
