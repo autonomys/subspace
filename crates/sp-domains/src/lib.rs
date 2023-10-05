@@ -365,7 +365,7 @@ pub struct ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance> {
     /// The block hash corresponding to `consensus_block_number`.
     pub consensus_block_hash: Hash,
     /// All the bundles that being included in the consensus block.
-    pub bundles: Vec<InboxedBundle>,
+    pub inboxed_bundles: Vec<InboxedBundle>,
     /// The final state root for the current domain block reflected by this ER.
     ///
     /// Used for verifying storage proofs for domains.
@@ -384,11 +384,14 @@ impl<Number, Hash, DomainNumber, DomainHash, Balance>
     ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance>
 {
     pub fn bundles_extrinsics_roots(&self) -> Vec<&ExtrinsicsRoot> {
-        self.bundles.iter().map(|b| &b.extrinsics_root).collect()
+        self.inboxed_bundles
+            .iter()
+            .map(|b| &b.extrinsics_root)
+            .collect()
     }
 
     pub fn valid_bundle_digests(&self) -> Vec<H256> {
-        self.bundles
+        self.inboxed_bundles
             .iter()
             .filter_map(|b| match b.bundle {
                 BundleValidity::Valid(bundle_digest_hash) => Some(bundle_digest_hash),
@@ -398,7 +401,7 @@ impl<Number, Hash, DomainNumber, DomainHash, Balance>
     }
 
     pub fn valid_bundle_indexes(&self) -> Vec<u32> {
-        self.bundles
+        self.inboxed_bundles
             .iter()
             .enumerate()
             .filter_map(|(index, b)| match b.bundle {
@@ -430,7 +433,7 @@ impl<
             parent_domain_block_receipt_hash: Default::default(),
             consensus_block_hash: consensus_genesis_hash,
             consensus_block_number: Zero::zero(),
-            bundles: Vec::new(),
+            inboxed_bundles: Vec::new(),
             final_state_root: genesis_state_root.clone(),
             execution_trace: sp_std::vec![genesis_state_root],
             execution_trace_root: Default::default(),
@@ -463,7 +466,7 @@ impl<
             parent_domain_block_receipt_hash,
             consensus_block_number,
             consensus_block_hash,
-            bundles: sp_std::vec![InboxedBundle::dummy(Default::default())],
+            inboxed_bundles: sp_std::vec![InboxedBundle::dummy(Default::default())],
             final_state_root: Default::default(),
             execution_trace,
             execution_trace_root,
@@ -761,7 +764,7 @@ impl InvalidBundleType {
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub enum BundleValidity {
     // The invalid bundle was originally included in the consensus block but subsequently
-    // excluded from execution due to being flagged as invalid of `InvalidBundleType`
+    // excluded from execution as invalid and holds the `InvalidBundleType`
     Invalid(InvalidBundleType),
     // The valid bundle's hash of `Vec<(tx_signer, tx_hash)>` of all domain extrinsic being
     // included in the bundle.

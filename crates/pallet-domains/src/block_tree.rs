@@ -123,7 +123,7 @@ pub(crate) fn verify_execution_receipt<T: Config>(
         consensus_block_number,
         consensus_block_hash,
         domain_block_number,
-        bundles,
+        inboxed_bundles,
         parent_domain_block_receipt_hash,
         execution_trace,
         execution_trace_root,
@@ -138,7 +138,8 @@ pub(crate) fn verify_execution_receipt<T: Config>(
             Error::BadGenesisReceipt
         );
     } else {
-        let bundles_extrinsics_roots: Vec<_> = bundles.iter().map(|b| b.extrinsics_root).collect();
+        let bundles_extrinsics_roots: Vec<_> =
+            inboxed_bundles.iter().map(|b| b.extrinsics_root).collect();
         let execution_inbox =
             ExecutionInbox::<T>::get((domain_id, domain_block_number, consensus_block_number));
         let expected_extrinsics_roots: Vec<_> =
@@ -299,7 +300,7 @@ pub(crate) fn process_execution_receipt<T: Config>(
                     if let Some(bundle_author) = InboxedBundleAuthor::<T>::take(bd.header_hash) {
                         // It is okay to index `ER::bundles` here since `verify_execution_receipt` have checked
                         // the `ER::bundles` have the same length of `ExecutionInbox`
-                        if execution_receipt.bundles[index].is_invalid() {
+                        if execution_receipt.inboxed_bundles[index].is_invalid() {
                             invalid_bundle_authors.push(bundle_author);
                         }
                     }
@@ -740,7 +741,7 @@ mod tests {
                     future_receipt.consensus_block_number,
                 ),
                 future_receipt
-                    .bundles
+                    .inboxed_bundles
                     .clone()
                     .into_iter()
                     .map(|b| BundleDigest {
@@ -773,7 +774,7 @@ mod tests {
 
             // Receipt with unknown extrinsics roots
             let mut unknown_extrinsics_roots_receipt = current_head_receipt.clone();
-            unknown_extrinsics_roots_receipt.bundles =
+            unknown_extrinsics_roots_receipt.inboxed_bundles =
                 vec![InboxedBundle::valid(H256::random(), H256::random())];
             assert_err!(
                 verify_execution_receipt::<Test>(domain_id, &unknown_extrinsics_roots_receipt),
@@ -912,7 +913,7 @@ mod tests {
                     bundles.push(InboxedBundle::valid(H256::random(), extrinsics_root));
                 }
             }
-            target_receipt.bundles = bundles;
+            target_receipt.inboxed_bundles = bundles;
 
             // Run into next block
             run_to_block::<Test>(

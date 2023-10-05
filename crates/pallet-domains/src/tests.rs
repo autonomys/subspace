@@ -305,7 +305,7 @@ pub(crate) fn create_dummy_receipt(
             .into();
         (execution_trace, execution_trace_root)
     };
-    let bundles = block_extrinsics_roots
+    let inboxed_bundles = block_extrinsics_roots
         .into_iter()
         .map(InboxedBundle::dummy)
         .collect();
@@ -316,7 +316,7 @@ pub(crate) fn create_dummy_receipt(
         parent_domain_block_receipt_hash,
         consensus_block_number: block_number,
         consensus_block_hash,
-        bundles,
+        inboxed_bundles,
         final_state_root: Default::default(),
         execution_trace,
         execution_trace_root,
@@ -882,7 +882,7 @@ fn test_invalid_domain_extrinsic_root_proof() {
         }];
         let mut domain_block = get_block_tree_node_at::<Test>(domain_id, bad_receipt_at).unwrap();
         let bad_receipt = &mut domain_block.execution_receipt;
-        bad_receipt.bundles = {
+        bad_receipt.inboxed_bundles = {
             valid_bundle_digests
                 .iter()
                 .map(|vbd| {

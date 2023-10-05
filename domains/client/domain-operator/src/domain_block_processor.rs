@@ -375,7 +375,7 @@ where
             parent_domain_block_receipt_hash: parent_receipt.hash(),
             consensus_block_number,
             consensus_block_hash,
-            bundles,
+            inboxed_bundles: bundles,
             final_state_root: state_root,
             execution_trace: trace,
             execution_trace_root: sp_core::H256(trace_root),
@@ -556,14 +556,15 @@ where
     Block: BlockT,
     CBlock: BlockT,
 {
-    if local_receipt.bundles == external_receipt.bundles {
+    if local_receipt.inboxed_bundles == external_receipt.inboxed_bundles {
         return Ok(None);
     }
 
     // The `bundles_extrinsics_roots` should be checked in the runtime when the consensus block is
     // constructed/imported thus the `external_receipt` must have the same `bundles_extrinsics_roots`
     //
-    // NOTE: this also check `local_receipt.bundles` and `external_receipt.bundles` have the same length
+    // NOTE: this also check `local_receipt.inboxed_bundles` and `external_receipt.inboxed_bundles`
+    // have the same length
     if local_receipt.bundles_extrinsics_roots() != external_receipt.bundles_extrinsics_roots() {
         return Err(sp_blockchain::Error::Application(format!(
             "Found mismatch of `ER::bundles_extrinsics_roots`, this should not happen, local: {:?}, external: {:?}",
@@ -574,13 +575,13 @@ where
 
     // Get the first mismatch of `ER::bundles`
     let (bundle_index, (local_bundle, external_bundle)) = local_receipt
-        .bundles
+        .inboxed_bundles
         .iter()
-        .zip(external_receipt.bundles.iter())
+        .zip(external_receipt.inboxed_bundles.iter())
         .enumerate()
         .find(|(_, (local_bundle, external_bundle))| local_bundle != external_bundle)
         .expect(
-            "The `local_receipt.bundles` and `external_receipt.bundles` are checked to have the \
+            "The `local_receipt.inboxed_bundles` and `external_receipt.inboxed_bundles` are checked to have the \
             same length and being non-equal; qed",
         );
 
@@ -975,7 +976,7 @@ mod tests {
     use subspace_test_runtime::Block as CBlock;
 
     fn create_test_execution_receipt(
-        bundles: Vec<InboxedBundle>,
+        inboxed_bundles: Vec<InboxedBundle>,
     ) -> ExecutionReceiptFor<Block, CBlock>
     where
         Block: BlockT,
@@ -988,7 +989,7 @@ mod tests {
             parent_domain_block_receipt_hash: Default::default(),
             consensus_block_hash: Default::default(),
             consensus_block_number: Zero::zero(),
-            bundles,
+            inboxed_bundles,
             final_state_root: Default::default(),
             execution_trace: sp_std::vec![],
             execution_trace_root: Default::default(),
