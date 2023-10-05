@@ -1016,6 +1016,7 @@ impl_runtime_apis! {
 
         fn is_inherent(ext: &<Block as BlockT>::Extrinsic) -> bool {
             match &ext.function {
+                RuntimeCall::Domains(call) => Domains::is_inherent(call),
                 RuntimeCall::Subspace(call) => Subspace::is_inherent(call),
                 RuntimeCall::Timestamp(call) => Timestamp::is_inherent(call),
                 _ => false,
