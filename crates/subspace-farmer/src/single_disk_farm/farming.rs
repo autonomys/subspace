@@ -159,8 +159,6 @@ where
 
                     Some((sector_index, audit_results.solution_candidates))
                 })
-                .collect::<Vec<_>>()
-                .into_iter()
                 .filter_map(|(sector_index, solution_candidates)| {
                     let sector_solutions = match solution_candidates.into_solutions(
                         &reward_address,
