@@ -10,31 +10,31 @@ Below are some examples of how to install these dependencies on different operat
 sudo apt-get install llvm clang cmake
 ```
 
-### macOS M1
+### macOS
 
 1. Install via Homebrew:
 
-   ```sh
-   $ brew install llvm@15 clang cmake
-   ```
+```bash
+brew install llvm@15 clang cmake
+```
 
 2. Add `llvm` to your `~/.zshrc` or `~/.bashrc`:
 
-   ```sh
-   export PATH="/opt/homebrew/opt/llvm@15/bin:$PATH"
-   ```
+```bash
+export PATH="/opt/homebrew/opt/llvm@15/bin:$PATH"
+```
 
 3. Activate the changes:
 
-   ```sh
-   $ source ~/.zshrc
-   ```
+```bash
+source ~/.zshrc
+```
 
 4. Verify that `llvm` is installed:
 
-   ```sh
-   $ llvm-config --version
-   ```
+```bash
+llvm-config --version
+```
 
 ## To Farm By Yourself (Offline)
 
