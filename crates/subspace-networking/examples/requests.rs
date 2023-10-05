@@ -4,7 +4,7 @@ use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use std::sync::Arc;
 use std::time::Duration;
-use subspace_networking::{Config, GenericRequest, GenericRequestHandler};
+use subspace_networking::{Config, GenericRequest, GenericRequestHandler, RateLimiterHint};
 use tokio::time::sleep;
 
 #[derive(Encode, Decode)]
@@ -84,7 +84,11 @@ async fn main() {
 
     tokio::spawn(async move {
         let resp = node_2
-            .send_generic_request(node_1.id(), ExampleRequest)
+            .send_generic_request(
+                node_1.id(),
+                ExampleRequest,
+                RateLimiterHint::IndependentOperation,
+            )
             .await
             .unwrap();
 

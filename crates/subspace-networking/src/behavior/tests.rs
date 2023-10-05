@@ -1,5 +1,6 @@
 use super::persistent_parameters::remove_known_peer_addresses_internal;
 use crate::behavior::persistent_parameters::{append_p2p_suffix, remove_p2p_suffix};
+use crate::utils::rate_limiter::RateLimiterHint;
 use crate::{Config, GenericRequest, GenericRequestHandler};
 use futures::channel::oneshot;
 use futures::future::pending;
@@ -246,7 +247,11 @@ async fn test_async_handler_works_with_pending_internal_future() {
     });
 
     let resp = node_2
-        .send_generic_request(node_1.id(), ExampleRequest)
+        .send_generic_request(
+            node_1.id(),
+            ExampleRequest,
+            RateLimiterHint::IndependentOperation,
+        )
         .await
         .unwrap();
 

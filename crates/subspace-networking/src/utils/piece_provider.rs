@@ -1,6 +1,7 @@
 //! Provides methods to retrieve pieces from DSN.
 
 use crate::utils::multihash::ToMultihash;
+use crate::utils::rate_limiter::RateLimiterHint;
 use crate::{Node, PieceByIndexRequest, PieceByIndexResponse};
 use async_trait::async_trait;
 use backoff::future::retry;
@@ -87,7 +88,11 @@ where
 
                     let request_result = self
                         .node
-                        .send_generic_request(provider_id, PieceByIndexRequest { piece_index })
+                        .send_generic_request(
+                            provider_id,
+                            PieceByIndexRequest { piece_index },
+                            RateLimiterHint::KademliaDependentOperation,
+                        )
                         .await;
 
                     match request_result {
@@ -182,7 +187,11 @@ where
     ) -> Option<Piece> {
         let request_result = self
             .node
-            .send_generic_request(peer_id, PieceByIndexRequest { piece_index })
+            .send_generic_request(
+                peer_id,
+                PieceByIndexRequest { piece_index },
+                RateLimiterHint::IndependentOperation,
+            )
             .await;
 
         match request_result {

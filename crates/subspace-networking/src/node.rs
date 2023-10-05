@@ -3,7 +3,7 @@ use crate::protocols::request_response::request_response_factory;
 pub use crate::shared::NewPeerInfo;
 use crate::shared::{Command, CreatedSubscription, Shared};
 use crate::utils::multihash::Multihash;
-use crate::utils::rate_limiter::RateLimiterPermit;
+use crate::utils::rate_limiter::{RateLimiterHint, RateLimiterPermit};
 use crate::utils::HandlerFn;
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;
@@ -309,7 +309,11 @@ impl Node {
 
     /// Subcribe to some topic on the DSN.
     pub async fn subscribe(&self, topic: Sha256Topic) -> Result<TopicSubscription, SubscribeError> {
-        let permit = self.shared.rate_limiter.acquire_regular_permit().await;
+        let permit = self
+            .shared
+            .rate_limiter
+            .acquire_regular_permit(RateLimiterHint::IndependentOperation)
+            .await;
         let (result_sender, result_receiver) = oneshot::channel();
 
         self.shared
@@ -337,7 +341,11 @@ impl Node {
 
     /// Subcribe a messgo to some topic on the DSN.
     pub async fn publish(&self, topic: Sha256Topic, message: Vec<u8>) -> Result<(), PublishError> {
-        let _permit = self.shared.rate_limiter.acquire_regular_permit().await;
+        let _permit = self
+            .shared
+            .rate_limiter
+            .acquire_regular_permit(RateLimiterHint::IndependentOperation)
+            .await;
         let (result_sender, result_receiver) = oneshot::channel();
 
         self.shared
@@ -358,11 +366,16 @@ impl Node {
         &self,
         peer_id: PeerId,
         request: Request,
+        rate_limiter_hint: RateLimiterHint,
     ) -> Result<Request::Response, SendRequestError>
     where
         Request: GenericRequest,
     {
-        let _permit = self.shared.rate_limiter.acquire_regular_permit().await;
+        let _permit = self
+            .shared
+            .rate_limiter
+            .acquire_regular_permit(rate_limiter_hint)
+            .await;
         let (result_sender, result_receiver) = oneshot::channel();
         let command = Command::GenericRequest {
             peer_id,

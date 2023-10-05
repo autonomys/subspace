@@ -3,7 +3,7 @@ use std::collections::{BTreeMap, BTreeSet, HashMap};
 use std::error::Error;
 use subspace_core_primitives::{SegmentHeader, SegmentIndex};
 use subspace_networking::libp2p::PeerId;
-use subspace_networking::{Node, SegmentHeaderRequest, SegmentHeaderResponse};
+use subspace_networking::{Node, RateLimiterHint, SegmentHeaderRequest, SegmentHeaderResponse};
 use tracing::{debug, error, trace, warn};
 
 const SEGMENT_HEADER_NUMBER_PER_REQUEST: u64 = 1000;
@@ -132,6 +132,7 @@ impl<'a> SegmentHeaderDownloader<'a> {
                                 // segment header was just produced and not all nodes have it
                                 segment_header_number: 2,
                             },
+                            RateLimiterHint::IndependentOperation,
                         )
                         .await;
 
@@ -304,6 +305,7 @@ impl<'a> SegmentHeaderDownloader<'a> {
                     SegmentHeaderRequest::SegmentIndexes {
                         segment_indexes: segment_indexes.clone(),
                     },
+                    RateLimiterHint::IndependentOperation,
                 )
                 .await;
 
