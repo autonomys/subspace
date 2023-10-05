@@ -34,6 +34,9 @@ pub(crate) const REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER: usize = 25;
 /// Defines the minimum size of the "connection limit semaphore".
 const MINIMUM_CONNECTIONS_SEMAPHORE_SIZE: usize = 3;
 
+/// Empiric parameter for connection timeout and retry parameters (total retries and backoff time).
+const CONNECTION_TIMEOUT_PARAMETER: usize = 9;
+
 /// A hint for [`RateLimiter`]. It indicates whether an operation follows the Kademlia requests and
 /// assumes that the connection to the peer already exists. It will prevent the [`RateLimiter`] to
 /// obtain a semaphore permit from the connection related semaphore.
@@ -102,10 +105,8 @@ impl RateLimiter {
         }
         // Number of "in-flight" parallel requests for each query
         let kademlia_parallelism_level = libp2p::kad::ALPHA_VALUE.get();
-        // Empiric parameter for connection timeout and retry parameters (total retries and backoff time).
-        let connection_timeout_parameter = 10;
 
-        let result = connections / (kademlia_parallelism_level * connection_timeout_parameter);
+        let result = connections / (kademlia_parallelism_level * CONNECTION_TIMEOUT_PARAMETER);
 
         result.max(MINIMUM_CONNECTIONS_SEMAPHORE_SIZE)
     }
