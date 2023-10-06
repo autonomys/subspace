@@ -667,7 +667,7 @@ fn extract_xdm_proof_state_roots(
 fn extract_signer_inner<Lookup>(
     ext: &UncheckedExtrinsic,
     lookup: &Lookup,
-) -> Option<opaque::AccountId>
+) -> Option<Result<AccountId, TransactionValidityError>>
 where
     Lookup: sp_runtime::traits::Lookup<Source = Address, Target = AccountId>,
 {
@@ -675,14 +675,20 @@ where
         ext.0
             .function
             .check_self_contained()
-            .and_then(|signed_info| signed_info.ok())
-            .map(|account| account.encode())
+            .map(|signed_info| signed_info.map(|signer| signer.into()))
     } else {
         ext.0
             .signature
             .as_ref()
-            .and_then(|(signed, _, _)| lookup.lookup(*signed).ok().map(|account| account.encode()))
+            .map(|(signed, _, _)| lookup.lookup(*signed).map_err(|e| e.into()))
     }
+}
+
+fn flatten_and_encode_signer_extraction(
+    signer_extraction_result: Option<Result<AccountId, TransactionValidityError>>,
+) -> Option<opaque::AccountId> {
+    signer_extraction_result
+        .and_then(|account_result| account_result.map_or(None, |account| Some(account.encode())))
 }
 
 pub fn extract_signer(
@@ -693,7 +699,8 @@ pub fn extract_signer(
     extrinsics
         .into_iter()
         .map(|extrinsic| {
-            let maybe_signer = extract_signer_inner(&extrinsic, &lookup);
+            let maybe_signer =
+                flatten_and_encode_signer_extraction(extract_signer_inner(&extrinsic, &lookup));
             (maybe_signer, extrinsic)
         })
         .collect()
@@ -820,7 +827,7 @@ impl_runtime_apis! {
             use subspace_core_primitives::crypto::blake2b_256_hash;
 
             let lookup = frame_system::ChainContext::<Runtime>::default();
-            if let Some(signer) = extract_signer_inner(extrinsic, &lookup) {
+            if let Some(signer) = flatten_and_encode_signer_extraction(extract_signer_inner(extrinsic, &lookup)) {
                 // Check if the signer Id hash is within the tx range
                 let signer_id_hash = U256::from_be_bytes(blake2b_256_hash(&signer.encode()));
                 sp_domains::signer_in_tx_range(bundle_vrf_hash, &signer_id_hash, tx_range)
@@ -856,11 +863,35 @@ impl_runtime_apis! {
         }
 
         fn check_transaction_validity(
-            _uxt: &<Block as BlockT>::Extrinsic,
-            _block_hash: <Block as BlockT>::Hash,
+            uxt: &<Block as BlockT>::Extrinsic,
+            block_hash: <Block as BlockT>::Hash,
         ) -> Result<(), domain_runtime_primitives::CheckTxValidityError> {
-            // TODO: check transaction fee to core-evm
-            Ok(())
+            let lookup = frame_system::ChainContext::<Runtime>::default();
+            let maybe_signer_info = extract_signer_inner(uxt, &lookup);
+
+            if let Some(signer_info) = maybe_signer_info {
+                let signer = signer_info.map_err(|tx_validity_error| {
+                    domain_runtime_primitives::CheckTxValidityError::InvalidTransaction {
+                        error: tx_validity_error,
+                        storage_keys: vec![],
+                    }
+                })?;
+                let tx_validity =
+                    Executive::validate_transaction(TransactionSource::External, uxt.clone(), block_hash);
+
+                tx_validity.map(|_| ()).map_err(|tx_validity_error| {
+                    let storage_keys = sp_std::vec![
+                        frame_system::Account::<Runtime>::hashed_key_for(signer),
+                        pallet_transaction_payment::NextFeeMultiplier::<Runtime>::hashed_key().to_vec(),
+                    ];
+                    domain_runtime_primitives::CheckTxValidityError::InvalidTransaction {
+                        error: tx_validity_error,
+                        storage_keys,
+                    }
+                })
+            } else {
+                Ok(())
+            }
         }
 
         fn storage_keys_for_verifying_transaction_validity(
