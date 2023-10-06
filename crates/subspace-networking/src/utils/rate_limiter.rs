@@ -37,35 +37,13 @@ const MINIMUM_CONNECTIONS_SEMAPHORE_SIZE: usize = 3;
 /// Empiric parameter for connection timeout and retry parameters (total retries and backoff time).
 const CONNECTION_TIMEOUT_PARAMETER: usize = 9;
 
-/// A hint for [`RateLimiter`]. It indicates whether an operation follows the Kademlia requests and
-/// assumes that the connection to the peer already exists. It will prevent the [`RateLimiter`] to
-/// obtain a semaphore permit from the connection related semaphore.
-/// It mostly relates to `get-providers` Kademlia request and not for `get-closest-peers` because
-/// in our configuration `get-providers` is guaranteed to return providers from the exact peer and
-/// a connection to the peer will last at least `connection timeout` seconds.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum RateLimiterHint {
-    /// The previous operation was Kademlia request and the connection to the peer is likely already
-    /// established. The connection permit will NOT be required  for [`RateLimiter`].
-    KademliaDependentOperation,
-    /// There are no previous Kademlia requests like `get-providers` that opens a connection to the
-    /// peer. The connection permit will be required  for [`RateLimiter`].
-    IndependentOperation,
-}
-
-impl RateLimiterHint {
-    fn is_independent_operation(&self) -> bool {
-        *self == RateLimiterHint::IndependentOperation
-    }
-}
-
 #[derive(Debug)]
 pub(crate) struct RateLimiterPermit {
     /// Limits Kademlia substreams.
     _substream_limit_permit: ResizableSemaphorePermit,
 
     /// Limits outgoing connections.
-    _connection_limit_permit: Option<ResizableSemaphorePermit>,
+    _connection_limit_permit: ResizableSemaphorePermit,
 }
 
 #[derive(Debug)]
@@ -113,13 +91,8 @@ impl RateLimiter {
             .max(minimum_semaphore_size)
     }
 
-    pub(crate) async fn acquire_regular_permit(&self, hint: RateLimiterHint) -> RateLimiterPermit {
-        let connections_permit = if hint.is_independent_operation() {
-            Some(self.connections_semaphore.acquire().await)
-        } else {
-            None
-        };
-
+    pub(crate) async fn acquire_regular_permit(&self) -> RateLimiterPermit {
+        let connections_permit = self.connections_semaphore.acquire().await;
         let substream_permit = self.regular_tasks_semaphore.acquire().await;
 
         RateLimiterPermit {
@@ -145,7 +118,7 @@ impl RateLimiter {
         let substream_permit = self.kademlia_tasks_semaphore.acquire().await;
 
         RateLimiterPermit {
-            _connection_limit_permit: Some(connections_permit),
+            _connection_limit_permit: connections_permit,
             _substream_limit_permit: substream_permit,
         }
     }

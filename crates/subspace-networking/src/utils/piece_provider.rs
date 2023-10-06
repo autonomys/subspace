@@ -1,7 +1,6 @@
 //! Provides methods to retrieve pieces from DSN.
 
 use crate::utils::multihash::ToMultihash;
-use crate::utils::rate_limiter::RateLimiterHint;
 use crate::{Node, PieceByIndexRequest, PieceByIndexResponse};
 use async_trait::async_trait;
 use backoff::future::retry;
@@ -79,20 +78,16 @@ where
     async fn get_piece_from_cache(&self, piece_index: PieceIndex) -> Option<Piece> {
         let key = piece_index.to_multihash();
 
-        let get_providers_result = self.node.get_providers(key).await;
+        let mut request_batch = self.node.get_requests_batch_handle().await;
+        let get_providers_result = request_batch.get_providers(key).await;
 
         match get_providers_result {
             Ok(mut get_providers_stream) => {
                 while let Some(provider_id) = get_providers_stream.next().await {
                     trace!(%piece_index, %provider_id, "get_providers returned an item");
 
-                    let request_result = self
-                        .node
-                        .send_generic_request(
-                            provider_id,
-                            PieceByIndexRequest { piece_index },
-                            RateLimiterHint::KademliaDependentOperation,
-                        )
+                    let request_result = request_batch
+                        .send_generic_request(provider_id, PieceByIndexRequest { piece_index })
                         .await;
 
                     match request_result {
@@ -187,11 +182,7 @@ where
     ) -> Option<Piece> {
         let request_result = self
             .node
-            .send_generic_request(
-                peer_id,
-                PieceByIndexRequest { piece_index },
-                RateLimiterHint::IndependentOperation,
-            )
+            .send_generic_request(peer_id, PieceByIndexRequest { piece_index })
             .await;
 
         match request_result {
