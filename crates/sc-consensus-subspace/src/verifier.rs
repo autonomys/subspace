@@ -302,11 +302,21 @@ where
             // justifications
             let verification_results = FuturesUnordered::new();
             for checkpoints in &checkpoints {
-                verification_results.push(self.pot_verifier.verify_checkpoints(
-                    seed,
-                    slot_iterations,
-                    checkpoints,
-                ));
+                if full_pot_verification {
+                    verification_results.push(self.pot_verifier.verify_checkpoints(
+                        seed,
+                        slot_iterations,
+                        checkpoints,
+                    ));
+                } else {
+                    // We inject verified checkpoints in order to avoid full proving when votes
+                    // included in the block will inevitably be verified during block execution
+                    self.pot_verifier.inject_verified_checkpoints(
+                        seed,
+                        slot_iterations,
+                        *checkpoints,
+                    );
+                }
 
                 let pot_input = PotNextSlotInput::derive(
                     slot_iterations,
@@ -322,15 +332,14 @@ where
                 seed = pot_input.seed;
             }
             // Try to find invalid checkpoints
-            if full_pot_verification
-                && verification_results
-                    // TODO: Ideally we'd use `find` here instead, but it does not yet exist:
-                    //  https://github.com/rust-lang/futures-rs/issues/2705
-                    .filter(|&success| async move { !success })
-                    .boxed()
-                    .next()
-                    .await
-                    .is_some()
+            if verification_results
+                // TODO: Ideally we'd use `find` here instead, but it does not yet exist:
+                //  https://github.com/rust-lang/futures-rs/issues/2705
+                .filter(|&success| async move { !success })
+                .boxed()
+                .next()
+                .await
+                .is_some()
             {
                 return Err(VerificationError::InvalidProofOfTime);
             }
