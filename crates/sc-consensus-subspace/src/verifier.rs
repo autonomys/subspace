@@ -340,20 +340,20 @@ where
             // verification
         }
 
-        let pot_input = PotNextSlotInput::derive(
-            subspace_digest_items.pot_slot_iterations,
-            slot,
-            pre_digest.pot_info().proof_of_time(),
-            &subspace_digest_items.pot_parameters_change,
-        );
-
         // Check proof of time between slot of the block and future proof of time.
         //
         // Here during stateless verification we do not have access to parent block, thus only
         // verify proofs after proof of time of at current slot up until future proof of time
         // (inclusive), during block import we verify the rest.
-        if full_pot_verification
-            && !self
+        if full_pot_verification {
+            let pot_input = PotNextSlotInput::derive(
+                subspace_digest_items.pot_slot_iterations,
+                slot,
+                pre_digest.pot_info().proof_of_time(),
+                &subspace_digest_items.pot_parameters_change,
+            );
+
+            if !self
                 .pot_verifier
                 .is_output_valid(
                     pot_input,
@@ -362,8 +362,9 @@ where
                     subspace_digest_items.pot_parameters_change,
                 )
                 .await
-        {
-            return Err(VerificationError::InvalidProofOfTime);
+            {
+                return Err(VerificationError::InvalidProofOfTime);
+            }
         }
 
         // Verify that block is signed properly
