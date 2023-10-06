@@ -302,11 +302,21 @@ where
             // justifications
             let verification_results = FuturesUnordered::new();
             for checkpoints in &checkpoints {
-                verification_results.push(self.pot_verifier.verify_checkpoints(
-                    seed,
-                    slot_iterations,
-                    checkpoints,
-                ));
+                if full_pot_verification {
+                    verification_results.push(self.pot_verifier.verify_checkpoints(
+                        seed,
+                        slot_iterations,
+                        checkpoints,
+                    ));
+                } else {
+                    // We inject verified checkpoints in order to avoid full proving when votes
+                    // included in the block will inevitably be verified during block execution
+                    self.pot_verifier.inject_verified_checkpoints(
+                        seed,
+                        slot_iterations,
+                        *checkpoints,
+                    );
+                }
 
                 let pot_input = PotNextSlotInput::derive(
                     slot_iterations,
@@ -322,15 +332,14 @@ where
                 seed = pot_input.seed;
             }
             // Try to find invalid checkpoints
-            if full_pot_verification
-                && verification_results
-                    // TODO: Ideally we'd use `find` here instead, but it does not yet exist:
-                    //  https://github.com/rust-lang/futures-rs/issues/2705
-                    .filter(|&success| async move { !success })
-                    .boxed()
-                    .next()
-                    .await
-                    .is_some()
+            if verification_results
+                // TODO: Ideally we'd use `find` here instead, but it does not yet exist:
+                //  https://github.com/rust-lang/futures-rs/issues/2705
+                .filter(|&success| async move { !success })
+                .boxed()
+                .next()
+                .await
+                .is_some()
             {
                 return Err(VerificationError::InvalidProofOfTime);
             }
@@ -340,20 +349,20 @@ where
             // verification
         }
 
-        let pot_input = PotNextSlotInput::derive(
-            subspace_digest_items.pot_slot_iterations,
-            slot,
-            pre_digest.pot_info().proof_of_time(),
-            &subspace_digest_items.pot_parameters_change,
-        );
-
         // Check proof of time between slot of the block and future proof of time.
         //
         // Here during stateless verification we do not have access to parent block, thus only
         // verify proofs after proof of time of at current slot up until future proof of time
         // (inclusive), during block import we verify the rest.
-        if full_pot_verification
-            && !self
+        if full_pot_verification {
+            let pot_input = PotNextSlotInput::derive(
+                subspace_digest_items.pot_slot_iterations,
+                slot,
+                pre_digest.pot_info().proof_of_time(),
+                &subspace_digest_items.pot_parameters_change,
+            );
+
+            if !self
                 .pot_verifier
                 .is_output_valid(
                     pot_input,
@@ -362,8 +371,9 @@ where
                     subspace_digest_items.pot_parameters_change,
                 )
                 .await
-        {
-            return Err(VerificationError::InvalidProofOfTime);
+            {
+                return Err(VerificationError::InvalidProofOfTime);
+            }
         }
 
         // Verify that block is signed properly
