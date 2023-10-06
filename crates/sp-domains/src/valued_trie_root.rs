@@ -4,8 +4,8 @@ use sp_std::cmp::max;
 use sp_std::vec::Vec;
 use trie_db::node::Value;
 use trie_db::{
-    nibble_ops, ChildReference, NibbleSlice, NodeCodec, ProcessEncodedNode, TrieHash, TrieLayout,
-    TrieRoot,
+    nibble_ops, ChildReference, DBValue, NibbleSlice, NodeCodec, ProcessEncodedNode,
+    TrieDBMutBuilder, TrieHash, TrieLayout, TrieMut, TrieRoot,
 };
 
 macro_rules! exponential_out {
@@ -245,11 +245,65 @@ where
     }
 }
 
+type MemoryDB<T> = memory_db::MemoryDB<
+    <T as TrieLayout>::Hash,
+    memory_db::HashKey<<T as TrieLayout>::Hash>,
+    DBValue,
+>;
+
+/// Gnenerate a proof-of-inclusion of the value at the given `input[index]`
+///
+/// Return `None` if the given `index` out of range or fail to generate the proof
+pub fn generate_proof<Layout: TrieLayout>(input: &[Vec<u8>], index: u32) -> Option<Vec<Vec<u8>>> {
+    if input.len() <= index as usize {
+        return None;
+    }
+
+    let input: Vec<_> = input
+        .iter()
+        .enumerate()
+        .map(|(i, v)| (Compact(i as u32).encode(), v))
+        .collect();
+
+    let (db, root) = {
+        let mut db = <MemoryDB<Layout>>::default();
+        let mut root = Default::default();
+        {
+            let mut trie = <TrieDBMutBuilder<Layout>>::new(&mut db, &mut root).build();
+            for (key, value) in input.iter() {
+                trie.insert(key, value).ok()?;
+            }
+        }
+        (db, root)
+    };
+
+    let key = Compact(index).encode();
+    let proof = trie_db::proof::generate_proof::<_, Layout, _, _>(&db, &root, &[key]).ok()?;
+
+    Some(proof)
+}
+
+/// Verify the proof-of-inclusion of the `data` at the `index` of the merkle root `root`
+pub fn verify_proof<Layout>(
+    proof: &[Vec<u8>],
+    root: &<<Layout as TrieLayout>::Hash as Hasher>::Out,
+    data: Vec<u8>,
+    index: u32,
+) -> bool
+where
+    Layout: TrieLayout,
+{
+    let key = Compact(index).encode();
+    trie_db::proof::verify_proof::<Layout, _, _, _>(root, proof, sp_std::vec![&(key, Some(data))])
+        .is_ok()
+}
+
 #[cfg(test)]
 mod test {
-    use crate::valued_trie_root::valued_ordered_trie_root;
+    use crate::valued_trie_root::{generate_proof, valued_ordered_trie_root, verify_proof};
     use rand::rngs::StdRng;
     use rand::{Rng, SeedableRng};
+    use sp_core::H256;
     use sp_runtime::traits::{BlakeTwo256, Hash};
     use sp_trie::LayoutV1;
     use trie_db::node::Value;
@@ -272,7 +326,7 @@ mod test {
             exts_hashed.push(hashed);
         }
 
-        let exts_values = exts_hashed
+        let exts_values: Vec<_> = exts_hashed
             .iter()
             .zip(exts_length)
             .map(|(ext_hashed, ext_length)| {
@@ -285,8 +339,39 @@ mod test {
             })
             .collect();
 
-        let root = BlakeTwo256::ordered_trie_root(exts, sp_core::storage::StateVersion::V1);
+        let root = BlakeTwo256::ordered_trie_root(exts.clone(), sp_core::storage::StateVersion::V1);
         let got_root = valued_ordered_trie_root::<LayoutV1<BlakeTwo256>>(exts_values);
-        assert_eq!(root, got_root)
+        assert_eq!(root, got_root);
+
+        for (i, ext) in exts.clone().into_iter().enumerate() {
+            // Gnenerate a proof-of-inclusion and verify it with the above `root`
+            let proof = generate_proof::<LayoutV1<BlakeTwo256>>(&exts, i as u32).unwrap();
+            assert!(verify_proof::<LayoutV1<BlakeTwo256>>(
+                &proof,
+                &root,
+                ext.clone(),
+                i as u32,
+            ));
+
+            // Verifying the proof with a wrong root/ext/index will fail
+            assert!(!verify_proof::<LayoutV1<BlakeTwo256>>(
+                &proof,
+                &H256::random(),
+                ext.clone(),
+                i as u32,
+            ));
+            assert!(!verify_proof::<LayoutV1<BlakeTwo256>>(
+                &proof,
+                &root,
+                vec![i as u8; ext.len()],
+                i as u32,
+            ));
+            assert!(!verify_proof::<LayoutV1<BlakeTwo256>>(
+                &proof,
+                &root,
+                ext,
+                i as u32 + 1,
+            ));
+        }
     }
 }
