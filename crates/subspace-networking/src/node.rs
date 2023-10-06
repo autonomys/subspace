@@ -568,7 +568,7 @@ impl Node {
 
     /// Returns the request batch handle with common "connection permit" slot from the shared pool.
     pub async fn get_requests_batch_handle(&self) -> NodeRequestsBatchHandle {
-        let _permit = self.shared.rate_limiter.acquire_regular_permit().await;
+        let _permit = self.shared.rate_limiter.acquire_kademlia_permit().await;
 
         NodeRequestsBatchHandle {
             _permit,
