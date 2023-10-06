@@ -260,8 +260,13 @@ async fn main() -> anyhow::Result<()> {
     tracing_subscriber::registry()
         .with(
             fmt::layer()
-                // TODO: Workaround for https://github.com/tokio-rs/tracing/issues/2214
-                .with_ansi(supports_color::on(supports_color::Stream::Stderr).is_some())
+                // TODO: Workaround for https://github.com/tokio-rs/tracing/issues/2214, also on
+                //  Windows terminal doesn't support the same colors as bash does
+                .with_ansi(if cfg!(windows) {
+                    false
+                } else {
+                    supports_color::on(supports_color::Stream::Stderr).is_some()
+                })
                 .with_filter(
                     EnvFilter::builder()
                         .with_default_directive(LevelFilter::INFO.into())
