@@ -4,7 +4,8 @@
 use crate::protocols::peer_info::PeerInfo;
 use crate::protocols::request_response::request_response_factory::RequestFailure;
 use crate::utils::multihash::Multihash;
-use crate::utils::{Handler, ResizableSemaphore, ResizableSemaphorePermit};
+use crate::utils::rate_limiter::{RateLimiter, RateLimiterPermit};
+use crate::utils::Handler;
 use bytes::Bytes;
 use futures::channel::{mpsc, oneshot};
 use libp2p::gossipsub::{PublishError, Sha256Topic, SubscriptionError};
@@ -27,13 +28,13 @@ pub(crate) enum Command {
     GetValue {
         key: Multihash,
         result_sender: mpsc::UnboundedSender<PeerRecord>,
-        permit: ResizableSemaphorePermit,
+        permit: RateLimiterPermit,
     },
     PutValue {
         key: Multihash,
         value: Vec<u8>,
         result_sender: mpsc::UnboundedSender<()>,
-        permit: ResizableSemaphorePermit,
+        permit: RateLimiterPermit,
     },
     Subscribe {
         topic: Sha256Topic,
@@ -51,7 +52,7 @@ pub(crate) enum Command {
     GetClosestPeers {
         key: Multihash,
         result_sender: mpsc::UnboundedSender<PeerId>,
-        permit: ResizableSemaphorePermit,
+        permit: RateLimiterPermit,
     },
     GenericRequest {
         peer_id: PeerId,
@@ -62,7 +63,7 @@ pub(crate) enum Command {
     GetProviders {
         key: Multihash,
         result_sender: mpsc::UnboundedSender<PeerId>,
-        permit: ResizableSemaphorePermit,
+        permit: Option<RateLimiterPermit>,
     },
     BanPeer {
         peer_id: PeerId,
@@ -108,16 +109,14 @@ pub(crate) struct Shared {
     pub(crate) num_established_peer_connections: Arc<AtomicUsize>,
     /// Sender end of the channel for sending commands to the swarm.
     pub(crate) command_sender: mpsc::Sender<Command>,
-    pub(crate) kademlia_tasks_semaphore: ResizableSemaphore,
-    pub(crate) regular_tasks_semaphore: ResizableSemaphore,
+    pub(crate) rate_limiter: RateLimiter,
 }
 
 impl Shared {
     pub(crate) fn new(
         id: PeerId,
         command_sender: mpsc::Sender<Command>,
-        kademlia_tasks_semaphore: ResizableSemaphore,
-        regular_tasks_semaphore: ResizableSemaphore,
+        rate_limiter: RateLimiter,
     ) -> Self {
         Self {
             handlers: Handlers::default(),
@@ -126,8 +125,7 @@ impl Shared {
             external_addresses: Mutex::default(),
             num_established_peer_connections: Arc::new(AtomicUsize::new(0)),
             command_sender,
-            kademlia_tasks_semaphore,
-            regular_tasks_semaphore,
+            rate_limiter,
         }
     }
 }

@@ -22,7 +22,7 @@ const WORKER_CHANNEL_CAPACITY: usize = 100;
 /// this number defines an interval in pieces after which cache is updated
 const INTERMEDIATE_CACHE_UPDATE_INTERVAL: usize = 100;
 /// Get piece retry attempts number.
-const PIECE_GETTER_RETRY_NUMBER: NonZeroU16 = NonZeroU16::new(3).expect("Not zero; qed");
+const PIECE_GETTER_RETRY_NUMBER: NonZeroU16 = NonZeroU16::new(4).expect("Not zero; qed");
 
 #[derive(Debug, Clone)]
 struct DiskPieceCacheState {
