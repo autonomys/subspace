@@ -72,7 +72,7 @@ enum QueryResultSender {
     Providers {
         sender: mpsc::UnboundedSender<PeerId>,
         // Just holding onto permit while data structure is not dropped
-        _permit: RateLimiterPermit,
+        _permit: Option<RateLimiterPermit>,
     },
     PutValue {
         sender: mpsc::UnboundedSender<()>,

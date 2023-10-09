@@ -133,13 +133,13 @@ where
     } = fraud_proof;
 
     let mut bundle_extrinsics_digests = Vec::new();
-    for (valid_bundle, bundle_digest) in bad_receipt
-        .valid_bundles
+    for (bad_receipt_valid_bundle_digest, bundle_digest) in bad_receipt
+        .valid_bundle_digests()
         .into_iter()
         .zip(valid_bundle_digests)
     {
         let bundle_digest_hash = BlakeTwo256::hash_of(&bundle_digest.bundle_digest);
-        if bundle_digest_hash != valid_bundle.bundle_digest_hash {
+        if bundle_digest_hash != bad_receipt_valid_bundle_digest {
             return Err(VerificationError::InvalidBundleDigest);
         }
 

@@ -34,6 +34,9 @@ pub(crate) const REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER: usize = 25;
 /// Defines the minimum size of the "connection limit semaphore".
 const MINIMUM_CONNECTIONS_SEMAPHORE_SIZE: usize = 3;
 
+/// Empiric parameter for connection timeout and retry parameters (total retries and backoff time).
+const CONNECTION_TIMEOUT_PARAMETER: usize = 9;
+
 #[derive(Debug)]
 pub(crate) struct RateLimiterPermit {
     /// Limits Kademlia substreams.
@@ -62,9 +65,7 @@ impl RateLimiter {
         Self {
             kademlia_tasks_semaphore: ResizableSemaphore::new(KADEMLIA_BASE_CONCURRENT_TASKS),
             regular_tasks_semaphore: ResizableSemaphore::new(REGULAR_BASE_CONCURRENT_TASKS),
-            connections_semaphore: ResizableSemaphore::new(
-                NonZeroUsize::new(permits).expect("Manual setting."),
-            ),
+            connections_semaphore: ResizableSemaphore::new(permits),
         }
     }
 
@@ -73,19 +74,21 @@ impl RateLimiter {
     fn calculate_connection_semaphore_size(
         out_connections: usize,
         pending_out_connections: usize,
-    ) -> usize {
+    ) -> NonZeroUsize {
         let connections = out_connections.min(pending_out_connections);
-        if connections == 0 {
-            return 0;
-        }
+
         // Number of "in-flight" parallel requests for each query
         let kademlia_parallelism_level = libp2p::kad::ALPHA_VALUE.get();
-        // Empiric parameter for connection timeout and retry parameters (total retries and backoff time).
-        let connection_timeout_parameter = 10;
 
-        let result = connections / (kademlia_parallelism_level * connection_timeout_parameter);
+        let permits_number =
+            (connections / (kademlia_parallelism_level * CONNECTION_TIMEOUT_PARAMETER)).max(1);
 
-        result.max(MINIMUM_CONNECTIONS_SEMAPHORE_SIZE)
+        let minimum_semaphore_size =
+            NonZeroUsize::new(MINIMUM_CONNECTIONS_SEMAPHORE_SIZE).expect("Manual setting");
+
+        NonZeroUsize::new(permits_number)
+            .expect("The value is at least 1")
+            .max(minimum_semaphore_size)
     }
 
     pub(crate) async fn acquire_regular_permit(&self) -> RateLimiterPermit {
