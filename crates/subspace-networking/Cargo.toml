@@ -63,15 +63,13 @@ features = [
     "noise",
     "ping",
     "plaintext",
+    "quic",
     "request-response",
     "serde",
     "tcp",
     "tokio",
     "yamux",
 ]
-[dependencies.libp2p-quic]
-version = "0.9.2"
-features = ["tokio"]
 
 # Remove after this patch goes to the release branch
 [dependencies.libp2p-kad]
