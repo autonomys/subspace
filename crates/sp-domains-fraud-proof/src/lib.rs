@@ -20,13 +20,14 @@
 #[cfg(feature = "std")]
 mod host_functions;
 mod runtime_interface;
+pub mod verification;
 
 use codec::{Decode, Encode};
 #[cfg(feature = "std")]
 pub use host_functions::{
     FraudProofExtension, FraudProofHostFunctions, FraudProofHostFunctionsImpl,
 };
-pub use runtime_interface::fraud_proof_runtime_interface::get_invalid_domain_extrinsic_root_info;
+pub use runtime_interface::fraud_proof_runtime_interface;
 #[cfg(feature = "std")]
 pub use runtime_interface::fraud_proof_runtime_interface::HostFunctions;
 use sp_api::scale_info::TypeInfo;

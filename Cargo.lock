@@ -7246,6 +7246,7 @@ dependencies = [
  "scale-info",
  "sp-core",
  "sp-domains",
+ "sp-domains-fraud-proof",
  "sp-externalities",
  "sp-io",
  "sp-runtime",
@@ -10843,7 +10844,6 @@ dependencies = [
 name = "sp-domains"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "blake2",
  "domain-runtime-primitives",
  "frame-support",
@@ -10861,10 +10861,8 @@ dependencies = [
  "sp-blockchain",
  "sp-consensus-slots",
  "sp-core",
- "sp-externalities",
- "sp-inherents",
- "sp-keystore",
  "sp-runtime",
+ "sp-runtime-interface",
  "sp-state-machine",
  "sp-std",
  "sp-trie",
@@ -10879,16 +10877,21 @@ dependencies = [
 name = "sp-domains-fraud-proof"
 version = "0.1.0"
 dependencies = [
+ "domain-block-preprocessor",
+ "hash-db 0.16.0",
  "parity-scale-codec",
  "scale-info",
  "sp-api",
  "sp-blockchain",
  "sp-core",
+ "sp-domains",
  "sp-externalities",
  "sp-runtime",
  "sp-runtime-interface",
  "sp-std",
+ "sp-trie",
  "subspace-core-primitives",
+ "trie-db",
 ]
 
 [[package]]

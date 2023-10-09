@@ -46,14 +46,14 @@ use scale_info::TypeInfo;
 use sp_core::H256;
 use sp_domains::bundle_producer_election::{is_below_threshold, BundleProducerElectionParams};
 use sp_domains::fraud_proof::{FraudProof, InvalidTotalRewardsProof};
-use sp_domains::verification::{
-    verify_invalid_domain_extrinsics_root_fraud_proof, verify_invalid_total_rewards_fraud_proof,
-};
+use sp_domains::verification::verify_invalid_total_rewards_fraud_proof;
 use sp_domains::{
     DomainBlockLimit, DomainId, DomainInstanceData, ExecutionReceipt, OpaqueBundle, OperatorId,
     OperatorPublicKey, ProofOfElection, RuntimeId, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT,
     EMPTY_EXTRINSIC_ROOT,
 };
+use sp_domains_fraud_proof::fraud_proof_runtime_interface::get_invalid_domain_extrinsic_root_info;
+use sp_domains_fraud_proof::verification::verify_invalid_domain_extrinsics_root_fraud_proof;
 use sp_runtime::traits::{BlakeTwo256, CheckedSub, Hash, One, Zero};
 use sp_runtime::{RuntimeAppPublic, SaturatedConversion, Saturating};
 use sp_std::boxed::Box;
@@ -141,7 +141,7 @@ mod pallet {
     use frame_support::{Identity, PalletError};
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
-    use sp_domains::fraud_proof::{DeriveExtrinsics, FraudProof, StorageKeys};
+    use sp_domains::fraud_proof::FraudProof;
     use sp_domains::transaction::InvalidTransactionCode;
     use sp_domains::{
         BundleDigest, DomainId, EpochIndex, GenesisDomain, OperatorId, ReceiptHash, RuntimeId,
@@ -159,7 +159,6 @@ mod pallet {
     use sp_std::vec;
     use sp_std::vec::Vec;
     use subspace_core_primitives::U256;
-    use subspace_runtime_primitives::Moment;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -287,12 +286,6 @@ mod pallet {
 
         /// Randomness source.
         type Randomness: RandomnessT<Self::Hash, BlockNumberFor<Self>>;
-
-        /// Trait impl to fetch storage keys.
-        type StorageKeys: StorageKeys;
-
-        /// Derive extrinsics trait impl.
-        type DeriveExtrinsics: DeriveExtrinsics<Moment>;
     }
 
     #[pallet::pallet]
@@ -590,10 +583,10 @@ mod pallet {
         DescendantsOfFraudulentERNotPruned,
         /// Invalid fraud proof since total rewards are not mismatched.
         InvalidTotalRewardsFraudProof(sp_domains::verification::VerificationError),
-        /// Missing state root for a given consensus block
-        MissingConsensusStateRoot,
         /// Invalid domain extrinsic fraud proof
         InvalidExtrinsicRootFraudProof(sp_domains::verification::VerificationError),
+        /// Failed to get invalid domain extrinsic verification info.
+        FailedToGetInvalidDomainExtrinsicRootVerificationInfo,
     }
 
     impl<T> From<FraudProofError> for Error<T> {
@@ -1497,11 +1490,12 @@ impl<T: Config> Pallet<T> {
                 .map_err(FraudProofError::InvalidTotalRewardsFraudProof)?;
             }
             FraudProof::InvalidExtrinsicsRoot(proof) => {
-                let consensus_state_root = ConsensusBlockHash::<T>::get(
+                let consensus_block_hash = bad_receipt.consensus_block_hash;
+                let verification_info = get_invalid_domain_extrinsic_root_info(
+                    H256::from_slice(consensus_block_hash.as_ref()),
                     proof.domain_id,
-                    bad_receipt.consensus_block_number,
                 )
-                .ok_or(FraudProofError::MissingConsensusStateRoot)?;
+                .ok_or(FraudProofError::FailedToGetInvalidDomainExtrinsicRootVerificationInfo)?;
 
                 verify_invalid_domain_extrinsics_root_fraud_proof::<
                     T::Block,
@@ -1509,9 +1503,8 @@ impl<T: Config> Pallet<T> {
                     T::DomainHash,
                     BalanceOf<T>,
                     T::Hashing,
-                    T::StorageKeys,
-                    T::DeriveExtrinsics,
-                >(consensus_state_root, bad_receipt, proof)
+                    T::DomainHashing,
+                >(bad_receipt, proof, verification_info)
                 .map_err(FraudProofError::InvalidExtrinsicRootFraudProof)?;
             }
             _ => {}

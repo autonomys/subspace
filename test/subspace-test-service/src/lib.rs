@@ -20,6 +20,7 @@
 
 use codec::{Decode, Encode};
 use cross_domain_message_gossip::GossipWorkerBuilder;
+use domain_runtime_primitives::opaque::Block as DomainBlock;
 use domain_runtime_primitives::BlockNumber as DomainNumber;
 use futures::channel::mpsc;
 use futures::{select, FutureExt, StreamExt};
@@ -56,9 +57,9 @@ use sp_consensus::{BlockOrigin, Error as ConsensusError};
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest, PreDigestPotInfo};
 use sp_consensus_subspace::FarmerPublicKey;
-use sp_core::traits::SpawnEssentialNamed;
+use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
 use sp_core::H256;
-use sp_domains::OpaqueBundle;
+use sp_domains::{DomainsApi, OpaqueBundle};
 use sp_domains_fraud_proof::{FraudProofExtension, FraudProofHostFunctionsImpl};
 use sp_externalities::Extensions;
 use sp_inherents::{InherentData, InherentDataProvider};
@@ -175,15 +176,31 @@ type StorageChanges = sp_api::StorageChanges<Block>;
 
 type TxPreValidator = ConsensusChainTxPreValidator<Block, Client, FraudProofVerifier>;
 
-struct MockExtensionsFactory<Client> {
+struct MockExtensionsFactory<Client, DomainBlock, Executor> {
     consensus_client: Arc<Client>,
+    executor: Arc<Executor>,
+    _phantom: PhantomData<DomainBlock>,
 }
 
-impl<Block, Client> ExtensionsFactory<Block> for MockExtensionsFactory<Client>
+impl<Client, DomainBlock, Executor> MockExtensionsFactory<Client, DomainBlock, Executor> {
+    fn new(consensus_client: Arc<Client>, executor: Arc<Executor>) -> Self {
+        Self {
+            consensus_client,
+            executor,
+            _phantom: Default::default(),
+        }
+    }
+}
+
+impl<Block, Client, DomainBlock, Executor> ExtensionsFactory<Block>
+    for MockExtensionsFactory<Client, DomainBlock, Executor>
 where
     Block: BlockT,
     Block::Hash: From<H256>,
-    Client: HeaderBackend<Block> + 'static,
+    DomainBlock: BlockT,
+    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + 'static,
+    Client::Api: DomainsApi<Block, NumberFor<DomainBlock>, DomainBlock::Hash>,
+    Executor: CodeExecutor,
 {
     fn extensions_for(
         &self,
@@ -192,7 +209,10 @@ where
     ) -> Extensions {
         let mut exts = Extensions::new();
         exts.register(FraudProofExtension::new(Arc::new(
-            FraudProofHostFunctionsImpl::new(self.consensus_client.clone()),
+            FraudProofHostFunctionsImpl::<_, _, DomainBlock, Executor>::new(
+                self.consensus_client.clone(),
+                self.executor.clone(),
+            ),
         )));
         exts
     }
@@ -269,9 +289,10 @@ impl MockConsensusNode {
         let client = Arc::new(client);
         client
             .execution_extensions()
-            .set_extensions_factory(MockExtensionsFactory {
-                consensus_client: client.clone(),
-            });
+            .set_extensions_factory(MockExtensionsFactory::<_, DomainBlock, _>::new(
+                client.clone(),
+                Arc::new(executor.clone()),
+            ));
 
         let select_chain = sc_consensus::LongestChain::new(backend.clone());
 

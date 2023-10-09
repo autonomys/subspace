@@ -7,7 +7,6 @@ use crate::{
 };
 use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::dispatch::RawOrigin;
-use frame_support::storage::generator::StorageValue;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, Currency, Hooks};
 use frame_support::weights::Weight;
 use frame_support::{assert_err, assert_ok, parameter_types, PalletId};
@@ -27,10 +26,14 @@ use sp_domains::{
     OperatorId, OperatorPair, ProofOfElection, ReceiptHash, RuntimeType, SealedBundleHeader,
     StakingHoldIdentifier,
 };
+use sp_domains_fraud_proof::{
+    FraudProofExtension, FraudProofHostFunctions, InvalidDomainExtrinsicRootInfo,
+};
 use sp_runtime::traits::{AccountIdConversion, BlakeTwo256, Hash as HashT, IdentityLookup, Zero};
 use sp_runtime::{BuildStorage, OpaqueExtrinsic};
 use sp_state_machine::backend::AsTrieBackend;
 use sp_state_machine::{prove_read, Backend, TrieBackendBuilder};
+use sp_std::sync::Arc;
 use sp_trie::trie_types::TrieDBMutBuilderV1;
 use sp_trie::{PrefixedMemoryDB, StorageProof, TrieMut};
 use sp_version::RuntimeVersion;
@@ -193,20 +196,6 @@ impl frame_support::traits::Randomness<Hash, BlockNumber> for MockRandomness {
     }
 }
 
-pub struct StorageKeys;
-impl sp_domains::fraud_proof::StorageKeys for StorageKeys {
-    fn block_randomness_storage_key() -> StorageKey {
-        StorageKey(
-            frame_support::storage::storage_prefix("Subspace".as_ref(), "BlockRandomness".as_ref())
-                .to_vec(),
-        )
-    }
-
-    fn timestamp_storage_key() -> StorageKey {
-        StorageKey(pallet_timestamp::pallet::Now::<Test>::storage_value_final_key().to_vec())
-    }
-}
-
 const SLOT_DURATION: u64 = 1000;
 impl pallet_timestamp::Config for Test {
     /// A timestamp: milliseconds since the unix epoch.
@@ -214,14 +203,6 @@ impl pallet_timestamp::Config for Test {
     type OnTimestampSet = ();
     type MinimumPeriod = ConstU64<{ SLOT_DURATION / 2 }>;
     type WeightInfo = ();
-}
-
-pub struct DeriveExtrinsics;
-impl sp_domains::fraud_proof::DeriveExtrinsics<Moment> for DeriveExtrinsics {
-    fn derive_timestamp_extrinsic(now: Moment) -> Vec<u8> {
-        UncheckedExtrinsic::new_unsigned(pallet_timestamp::Call::<Test>::set { now }.into())
-            .encode()
-    }
 }
 
 impl pallet_domains::Config for Test {
@@ -249,8 +230,6 @@ impl pallet_domains::Config for Test {
     type TreasuryAccount = TreasuryAccount;
     type MaxPendingStakingOperation = MaxPendingStakingOperation;
     type Randomness = MockRandomness;
-    type StorageKeys = StorageKeys;
-    type DeriveExtrinsics = DeriveExtrinsics;
 }
 
 pub(crate) fn new_test_ext() -> sp_io::TestExternalities {
@@ -259,6 +238,24 @@ pub(crate) fn new_test_ext() -> sp_io::TestExternalities {
         .unwrap();
 
     t.into()
+}
+
+pub(crate) struct MockDomainFraudProofExtension(Randomness, Moment);
+
+impl FraudProofHostFunctions for MockDomainFraudProofExtension {
+    fn get_invalid_domain_extrinsic_root_info(
+        &self,
+        _consensus_block_hash: H256,
+        _domain_id: DomainId,
+    ) -> Option<InvalidDomainExtrinsicRootInfo> {
+        Some(InvalidDomainExtrinsicRootInfo {
+            block_randomness: self.0,
+            timestamp_extrinsic: UncheckedExtrinsic::new_unsigned(
+                pallet_timestamp::Call::<Test>::set { now: self.1 }.into(),
+            )
+            .encode(),
+        })
+    }
 }
 
 pub(crate) fn new_test_ext_with_extensions() -> sp_io::TestExternalities {
@@ -844,13 +841,12 @@ fn storage_proof_for_key<T: Config, B: Backend<T::Hashing> + AsTrieBackend<T::Ha
 }
 
 #[test]
-#[ignore]
 fn test_invalid_domain_extrinsic_root_proof() {
     let creator = 0u64;
     let operator_id = 1u64;
     let head_domain_number = 10;
     let mut ext = new_test_ext_with_extensions();
-    ext.execute_with(|| {
+    let fraud_proof = ext.execute_with(|| {
         let domain_id = register_genesis_domain(creator, vec![operator_id]);
         extend_block_tree(domain_id, operator_id, head_domain_number + 1);
         assert_eq!(
@@ -876,60 +872,42 @@ fn test_invalid_domain_extrinsic_root_proof() {
         bad_receipt.domain_block_extrinsic_root = H256::random();
 
         let bad_receipt_hash = bad_receipt.hash();
-        let (fraud_proof, _root) = generate_invalid_domain_extrinsic_root_fraud_proof::<Test>(
-            domain_id,
-            bad_receipt_hash,
-            valid_bundle_digests,
-            Randomness::from([1u8; 32]),
-            1000,
-        );
+        let fraud_proof =
+            generate_invalid_domain_extrinsic_root_fraud_proof::<Test>(domain_id, bad_receipt_hash);
         let (consensus_block_number, consensus_block_hash) = (
             bad_receipt.consensus_block_number,
             bad_receipt.consensus_block_hash,
         );
         ConsensusBlockHash::<Test>::insert(domain_id, consensus_block_number, consensus_block_hash);
         DomainBlocks::<Test>::insert(bad_receipt_hash, domain_block);
-        assert_ok!(Domains::validate_fraud_proof(&fraud_proof),);
+        fraud_proof
     });
+
+    let fraud_proof_ext = FraudProofExtension::new(Arc::new(MockDomainFraudProofExtension(
+        Randomness::from([1u8; 32]),
+        1000,
+    )));
+    ext.register_extension(fraud_proof_ext);
+
+    ext.execute_with(|| {
+        assert_ok!(Domains::validate_fraud_proof(&fraud_proof),);
+    })
 }
 
 fn generate_invalid_domain_extrinsic_root_fraud_proof<T: Config + pallet_timestamp::Config>(
     domain_id: DomainId,
     bad_receipt_hash: ReceiptHash,
-    valid_bundle_digests: Vec<ValidBundleDigest>,
-    randomness: Randomness,
-    moment: Moment,
-) -> (FraudProof<BlockNumberFor<T>, T::Hash>, T::Hash) {
-    let randomness_storage_key =
-        frame_support::storage::storage_prefix("Subspace".as_ref(), "BlockRandomness".as_ref())
-            .to_vec();
-    let timestamp_storage_key =
-        pallet_timestamp::pallet::Now::<T>::storage_value_final_key().to_vec();
-    let mut root = T::Hash::default();
-    let mut mdb = PrefixedMemoryDB::<T::Hashing>::default();
-    {
-        let mut trie = TrieDBMutBuilderV1::new(&mut mdb, &mut root).build();
-        trie.insert(&randomness_storage_key, &randomness.encode())
-            .unwrap();
-        trie.insert(&timestamp_storage_key, &moment.encode())
-            .unwrap();
-    };
+) -> FraudProof<BlockNumberFor<T>, T::Hash> {
+    let valid_bundle_digests = vec![ValidBundleDigest {
+        bundle_index: 0,
+        bundle_digest: vec![(Some(vec![1, 2, 3]), ExtrinsicDigest::Data(vec![4, 5, 6]))],
+    }];
 
-    let backend = TrieBackendBuilder::new(mdb, root).build();
-    let (_, randomness_storage_proof) =
-        storage_proof_for_key::<T, _>(backend.clone(), StorageKey(randomness_storage_key));
-    let (root, timestamp_storage_proof) =
-        storage_proof_for_key::<T, _>(backend, StorageKey(timestamp_storage_key));
-    (
-        FraudProof::InvalidExtrinsicsRoot(InvalidExtrinsicsRootProof {
-            domain_id,
-            bad_receipt_hash,
-            randomness_storage_proof,
-            valid_bundle_digests,
-            timestamp_storage_proof,
-        }),
-        root,
-    )
+    FraudProof::InvalidExtrinsicsRoot(InvalidExtrinsicsRootProof {
+        domain_id,
+        bad_receipt_hash,
+        valid_bundle_digests,
+    })
 }
 
 #[test]

@@ -26,7 +26,7 @@ pub trait InherentExtrinsicConstructor<Block: BlockT> {
         &self,
         at: Block::Hash,
         moment: subspace_runtime_primitives::Moment,
-    ) -> Result<Option<Block::Extrinsic>, ApiError>;
+    ) -> Result<Block::Extrinsic, ApiError>;
 }
 
 /// Trait to wrap the new domain runtime as an extrinsic of
