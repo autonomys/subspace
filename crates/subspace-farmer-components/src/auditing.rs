@@ -3,7 +3,7 @@ use crate::sector::{SectorContentsMap, SectorMetadataChecksummed};
 use crate::ReadAt;
 use std::mem;
 use subspace_core_primitives::crypto::Scalar;
-use subspace_core_primitives::{Blake2b256Hash, PublicKey, SectorId, SectorIndex, SolutionRange};
+use subspace_core_primitives::{Blake3Hash, PublicKey, SectorId, SectorIndex, SolutionRange};
 use subspace_verification::is_within_solution_range;
 use tracing::warn;
 
@@ -44,7 +44,7 @@ pub(crate) struct ChunkCandidate {
 pub fn audit_sector<'a, Sector>(
     public_key: &'a PublicKey,
     sector_index: SectorIndex,
-    global_challenge: &Blake2b256Hash,
+    global_challenge: &Blake3Hash,
     solution_range: SolutionRange,
     sector: Sector,
     sector_metadata: &'a SectorMetadataChecksummed,

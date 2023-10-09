@@ -260,7 +260,7 @@ fn create_content_feed(object: Object, kind: MockFeedProcessorKind, contents: Ve
                 content
             );
 
-            assert_eq!(mappings[i].key, crypto::blake2b_256_hash(&content));
+            assert_eq!(mappings[i].key, crypto::blake3_hash(&content));
         })
     });
 }
@@ -290,7 +290,7 @@ fn create_custom_content_feed(
             // key should match the feed name spaced key
             assert_eq!(
                 mappings[i].key,
-                crypto::blake2b_256_hash_list(&[&FEED_ID.encode(), key.as_slice()])
+                crypto::blake3_hash_list(&[&FEED_ID.encode(), key.as_slice()])
             );
         });
 

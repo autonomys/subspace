@@ -2,8 +2,8 @@
 
 use crate::{PosTableType, Quality, Table, TableGenerator};
 use core::iter;
-use subspace_core_primitives::crypto::blake2b_256_hash;
-use subspace_core_primitives::{Blake2b256Hash, PosProof, PosQualityBytes, PosSeed, U256};
+use subspace_core_primitives::crypto::blake3_hash;
+use subspace_core_primitives::{Blake3Hash, PosProof, PosQualityBytes, PosSeed, U256};
 
 /// Abstraction that represents quality of the solution in the table.
 ///
@@ -12,7 +12,7 @@ use subspace_core_primitives::{Blake2b256Hash, PosProof, PosQualityBytes, PosSee
 #[must_use]
 pub struct ShimQuality<'a> {
     seed: &'a PosSeed,
-    quality: Blake2b256Hash,
+    quality: Blake3Hash,
 }
 
 impl<'a> Quality for ShimQuality<'a> {
@@ -89,7 +89,7 @@ impl Table for ShimTable {
 }
 
 fn find_quality(seed: &PosSeed, challenge_index: u32) -> Option<ShimQuality<'_>> {
-    let quality = blake2b_256_hash(&challenge_index.to_le_bytes());
+    let quality = blake3_hash(&challenge_index.to_le_bytes());
     (U256::from_le_bytes(quality) % U256::from(3u32) > U256::zero())
         .then_some(ShimQuality { seed, quality })
 }

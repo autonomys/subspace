@@ -30,12 +30,12 @@ use parity_scale_codec::{Compact, CompactLen, Decode, Encode, Input, Output};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use subspace_core_primitives::crypto::kzg::{Commitment, Kzg, Witness};
-use subspace_core_primitives::crypto::{blake2b_256_254_hash_to_scalar, Scalar};
+use subspace_core_primitives::crypto::{blake3_254_hash_to_scalar, Scalar};
 use subspace_core_primitives::objects::{
     BlockObject, BlockObjectMapping, PieceObject, PieceObjectMapping,
 };
 use subspace_core_primitives::{
-    ArchivedBlockProgress, ArchivedHistorySegment, Blake2b256Hash, BlockNumber, LastArchivedBlock,
+    ArchivedBlockProgress, ArchivedHistorySegment, Blake3Hash, BlockNumber, LastArchivedBlock,
     PieceArray, RawRecord, RecordWitness, RecordedHistorySegment, SegmentCommitment, SegmentHeader,
     SegmentIndex,
 };
@@ -238,7 +238,7 @@ pub struct Archiver {
     /// An index of the current segment
     segment_index: SegmentIndex,
     /// Hash of the segment header of the previous segment
-    prev_segment_header_hash: Blake2b256Hash,
+    prev_segment_header_hash: Blake3Hash,
     /// Last archived block
     last_archived_block: LastArchivedBlock,
 }
@@ -267,7 +267,7 @@ impl Archiver {
             erasure_coding,
             kzg,
             segment_index: SegmentIndex::ZERO,
-            prev_segment_header_hash: Blake2b256Hash::default(),
+            prev_segment_header_hash: Blake3Hash::default(),
             last_archived_block: INITIAL_LAST_ARCHIVED_BLOCK,
         })
     }
@@ -780,7 +780,7 @@ impl Archiver {
             .poly(
                 &record_commitments
                     .iter()
-                    .map(|commitment| blake2b_256_254_hash_to_scalar(&commitment.to_bytes()))
+                    .map(|commitment| blake3_254_hash_to_scalar(&commitment.to_bytes()))
                     .collect::<Vec<_>>(),
             )
             .expect("Internally produced values must never fail; qed");
@@ -890,7 +890,7 @@ pub fn is_piece_valid(
         return false;
     };
 
-    let commitment_hash = blake2b_256_254_hash_to_scalar(commitment.as_ref());
+    let commitment_hash = blake3_254_hash_to_scalar(commitment.as_ref());
 
     kzg.verify(
         &segment_commitment,

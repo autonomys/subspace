@@ -22,7 +22,7 @@
 
 #[cfg(not(feature = "std"))]
 extern crate alloc;
-use crate::{Blake2b256Hash, PieceIndex};
+use crate::{Blake3Hash, PieceIndex};
 #[cfg(not(feature = "std"))]
 use alloc::vec::Vec;
 use parity_scale_codec::{Decode, Encode};
@@ -40,7 +40,7 @@ pub enum BlockObject {
     #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
     V0 {
         /// Object hash
-        hash: Blake2b256Hash,
+        hash: Blake3Hash,
         /// Offset of object in the encoded block.
         offset: u32,
     },
@@ -48,7 +48,7 @@ pub enum BlockObject {
 
 impl BlockObject {
     /// Object hash
-    pub fn hash(&self) -> Blake2b256Hash {
+    pub fn hash(&self) -> Blake3Hash {
         match self {
             Self::V0 { hash, .. } => *hash,
         }
@@ -90,7 +90,7 @@ pub enum PieceObject {
     #[cfg_attr(feature = "serde", serde(rename_all = "camelCase"))]
     V0 {
         /// Object hash
-        hash: Blake2b256Hash,
+        hash: Blake3Hash,
         // TODO: This is a raw record offset, not a regular one
         /// Offset of the object
         offset: u32,
@@ -99,7 +99,7 @@ pub enum PieceObject {
 
 impl PieceObject {
     /// Object hash
-    pub fn hash(&self) -> Blake2b256Hash {
+    pub fn hash(&self) -> Blake3Hash {
         match self {
             Self::V0 { hash, .. } => *hash,
         }

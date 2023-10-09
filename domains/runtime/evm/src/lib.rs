@@ -817,12 +817,12 @@ impl_runtime_apis! {
             tx_range: &subspace_core_primitives::U256
         ) -> bool {
             use subspace_core_primitives::U256;
-            use subspace_core_primitives::crypto::blake2b_256_hash;
+            use subspace_core_primitives::crypto::blake3_hash;
 
             let lookup = frame_system::ChainContext::<Runtime>::default();
             if let Some(signer) = extract_signer_inner(extrinsic, &lookup) {
                 // Check if the signer Id hash is within the tx range
-                let signer_id_hash = U256::from_be_bytes(blake2b_256_hash(&signer.encode()));
+                let signer_id_hash = U256::from_be_bytes(blake3_hash(&signer.encode()));
                 sp_domains::signer_in_tx_range(bundle_vrf_hash, &signer_id_hash, tx_range)
             } else {
                 // Unsigned transactions are always in the range.

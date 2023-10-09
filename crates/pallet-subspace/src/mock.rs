@@ -47,7 +47,7 @@ use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::{
-    ArchivedBlockProgress, ArchivedHistorySegment, Blake2b256Hash, BlockNumber, HistorySize,
+    ArchivedBlockProgress, ArchivedHistorySegment, Blake3Hash, BlockNumber, HistorySize,
     LastArchivedBlock, Piece, PieceOffset, PosSeed, PotOutput, PublicKey, Record,
     RecordedHistorySegment, SegmentCommitment, SegmentHeader, SegmentIndex, SlotNumber, Solution,
     SolutionRange, REWARD_SIGNING_CONTEXT,
@@ -392,7 +392,7 @@ pub fn create_segment_header(segment_index: SegmentIndex) -> SegmentHeader {
     SegmentHeader::V0 {
         segment_index,
         segment_commitment: SegmentCommitment::default(),
-        prev_segment_header_hash: Blake2b256Hash::default(),
+        prev_segment_header_hash: Blake3Hash::default(),
         last_archived_block: LastArchivedBlock {
             number: 0,
             archived_progress: ArchivedBlockProgress::Complete,

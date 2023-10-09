@@ -22,7 +22,7 @@ mod benchmarks {
     use sp_std::vec;
     use sp_std::vec::Vec;
     use subspace_core_primitives::{
-        ArchivedBlockProgress, Blake2b256Hash, LastArchivedBlock, PotOutput, SegmentHeader,
+        ArchivedBlockProgress, Blake3Hash, LastArchivedBlock, PotOutput, SegmentHeader,
         SegmentIndex, Solution, SolutionRange,
     };
 
@@ -154,7 +154,7 @@ mod benchmarks {
         SegmentHeader::V0 {
             segment_index,
             segment_commitment: subspace_core_primitives::SegmentCommitment::default(),
-            prev_segment_header_hash: Blake2b256Hash::default(),
+            prev_segment_header_hash: Blake3Hash::default(),
             last_archived_block: LastArchivedBlock {
                 number: 0,
                 archived_progress: ArchivedBlockProgress::Complete,
