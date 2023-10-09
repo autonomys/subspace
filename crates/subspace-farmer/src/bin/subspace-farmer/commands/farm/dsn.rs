@@ -8,14 +8,14 @@ use subspace_farmer::piece_cache::PieceCache;
 use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
 use subspace_farmer::{NodeClient, NodeRpcClient};
 use subspace_networking::libp2p::identity::Keypair;
-use subspace_networking::libp2p::kad::RecordKey;
+use subspace_networking::libp2p::kad::{Mode, RecordKey};
 use subspace_networking::libp2p::metrics::Metrics;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::utils::strip_peer_id;
 use subspace_networking::{
-    construct, Config, NetworkingParametersManager, Node, NodeRunner, PeerInfo, PeerInfoProvider,
-    PieceByIndexRequest, PieceByIndexRequestHandler, PieceByIndexResponse,
+    construct, Config, KademliaMode, NetworkingParametersManager, Node, NodeRunner, PeerInfo,
+    PeerInfoProvider, PieceByIndexRequest, PieceByIndexRequestHandler, PieceByIndexResponse,
     SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
 };
 use subspace_rpc_primitives::MAX_SEGMENT_HEADERS_PER_REQUEST;
@@ -189,6 +189,9 @@ pub(super) fn configure_dsn(
             !PeerInfo::is_farmer(peer_info)
         })),
         bootstrap_addresses: bootstrap_nodes,
+        kademlia_mode: KademliaMode::Dynamic {
+            initial_mode: Mode::Client,
+        },
         external_addresses,
         metrics,
         ..default_config
