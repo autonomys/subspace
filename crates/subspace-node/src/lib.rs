@@ -224,7 +224,7 @@ pub struct Cli {
 
     /// Where local DSN node will listen for incoming connections.
     // TODO: Add more DSN-related parameters
-    #[arg(long, default_value = "/ip4/0.0.0.0/tcp/30433")]
+    #[arg(long, default_value = "/ip4/0.0.0.0/udp/30433/quic-v1")]
     pub dsn_listen_on: Vec<Multiaddr>,
 
     /// Bootstrap nodes for DSN.

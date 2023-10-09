@@ -125,7 +125,7 @@ struct DsnArgs {
     bootstrap_nodes: Vec<Multiaddr>,
     /// Multiaddr to listen on for subspace networking, for instance `/ip4/0.0.0.0/tcp/0`,
     /// multiple are supported.
-    #[arg(long, default_value = "/ip4/0.0.0.0/tcp/30533")]
+    #[arg(long, default_value = "/ip4/0.0.0.0/udp/30533/quic-v1")]
     listen_on: Vec<Multiaddr>,
     /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses in
     /// Kademlia DHT.

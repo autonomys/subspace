@@ -33,7 +33,7 @@ enum Command {
         #[clap(long)]
         keypair: String,
         /// Multiaddr to listen on for subspace networking, multiple are supported
-        #[clap(long, default_value = "/ip4/0.0.0.0/tcp/0")]
+        #[clap(long, default_value = "/ip4/0.0.0.0/udp/0/quic-v1")]
         listen_on: Vec<Multiaddr>,
         /// Multiaddresses of reserved peers to maintain connections to, multiple are supported
         #[arg(long, alias = "reserved-peer")]
