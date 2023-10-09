@@ -67,7 +67,6 @@ features = [
     "serde",
     "tcp",
     "tokio",
-    "websocket",
     "yamux",
 ]
 [dependencies.libp2p-quic]

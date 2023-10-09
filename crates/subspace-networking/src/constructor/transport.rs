@@ -8,7 +8,6 @@ use libp2p::core::Transport;
 use libp2p::dns::TokioDnsConfig;
 use libp2p::tcp::tokio::Transport as TokioTcpTransport;
 use libp2p::tcp::Config as GenTcpConfig;
-use libp2p::websocket::WsConfig;
 use libp2p::yamux::Config as YamuxConfig;
 use libp2p::{core, identity, noise, PeerId};
 use libp2p_quic::tokio::Transport as QuicTransport;
@@ -29,28 +28,21 @@ pub(super) fn build_transport(
     timeout: Duration,
     yamux_config: YamuxConfig,
 ) -> Result<Boxed<(PeerId, StreamMuxerBox)>, CreationError> {
-    let wrapped_tcp_ws = {
+    let wrapped_tcp = {
         let tcp_config = GenTcpConfig::default().nodelay(true);
-        let wrapped_tcp = CustomTransportWrapper::new(
+
+        CustomTransportWrapper::new(
             TokioTcpTransport::new(tcp_config.clone()),
             allow_non_global_addresses_in_dht,
             temporary_bans.clone(),
-        );
-
-        let wrapped_ws = WsConfig::new(CustomTransportWrapper::new(
-            TokioTcpTransport::new(tcp_config),
-            allow_non_global_addresses_in_dht,
-            temporary_bans.clone(),
-        ));
-
-        wrapped_tcp.or_transport(wrapped_ws)
+        )
     };
 
-    let tcp_ws_upgraded = {
+    let tcp_upgraded = {
         let noise =
             noise::Config::new(keypair).expect("Signing libp2p-noise static DH keypair failed.");
 
-        wrapped_tcp_ws
+        wrapped_tcp
             .upgrade(core::upgrade::Version::V1Lazy)
             .authenticate(noise)
             .multiplex(yamux_config)
@@ -64,16 +56,16 @@ pub(super) fn build_transport(
     let wrapped_quic =
         CustomTransportWrapper::new(quic, allow_non_global_addresses_in_dht, temporary_bans);
 
-    let tcp_ws_quic = tcp_ws_upgraded
+    let tcp_quic = tcp_upgraded
         .or_transport(wrapped_quic)
         .map(|either, _| match either {
             Either::Left((peer_id, muxer)) => (peer_id, muxer),
             Either::Right((peer_id, muxer)) => (peer_id, muxer),
         });
 
-    let dns_wrapped_upgraded_tcp_ws_quic = TokioDnsConfig::system(tcp_ws_quic)?;
+    let dns_wrapped_upgraded_tcp_quic = TokioDnsConfig::system(tcp_quic)?;
 
-    Ok(dns_wrapped_upgraded_tcp_ws_quic.boxed())
+    Ok(dns_wrapped_upgraded_tcp_quic.boxed())
 }
 
 #[derive(Debug, Clone)]
