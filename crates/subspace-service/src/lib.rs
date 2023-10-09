@@ -535,7 +535,6 @@ where
                         .expect("Parent header must always exist when block is created; qed");
 
                     let parent_block_number = parent_header.number;
-                    let parent_state_root = parent_header.state_root;
 
                     let subspace_inherents =
                         sp_consensus_subspace::inherents::InherentDataProvider::from_timestamp_and_slot_duration(
@@ -544,10 +543,7 @@ where
                             subspace_link.segment_headers_for_block(parent_block_number + 1),
                         );
 
-                    let domain_inherents =
-                        sp_domains::inherents::InherentDataProvider::new(parent_state_root);
-
-                    Ok((timestamp, subspace_inherents, domain_inherents))
+                    Ok((timestamp, subspace_inherents))
                 }
             }
         },
@@ -1005,7 +1001,6 @@ where
                             .expect("Parent header must always exist when block is created; qed");
 
                         let parent_block_number = parent_header.number;
-                        let parent_state_root = parent_header.state_root;
 
                         let subspace_inherents =
                             sp_consensus_subspace::inherents::InherentDataProvider::from_timestamp_and_slot_duration(
@@ -1014,10 +1009,7 @@ where
                                 subspace_link.segment_headers_for_block(parent_block_number + 1),
                             );
 
-                        let domain_inherents =
-                            sp_domains::inherents::InherentDataProvider::new(parent_state_root);
-
-                        Ok((subspace_inherents, timestamp, domain_inherents))
+                        Ok((subspace_inherents, timestamp))
                     }
                 }
             },

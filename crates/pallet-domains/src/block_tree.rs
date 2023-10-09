@@ -2,7 +2,7 @@
 
 use crate::pallet::StateRoots;
 use crate::{
-    BalanceOf, BlockTree, Config, ConsensusBlockInfo, DomainBlockDescendants, DomainBlocks,
+    BalanceOf, BlockTree, Config, ConsensusBlockHash, DomainBlockDescendants, DomainBlocks,
     ExecutionInbox, ExecutionReceiptOf, HeadReceiptNumber, InboxedBundleAuthor,
 };
 use codec::{Decode, Encode};
@@ -169,8 +169,8 @@ pub(crate) fn verify_execution_receipt<T: Config>(
         );
 
         let excepted_consensus_block_hash =
-            match ConsensusBlockInfo::<T>::get(domain_id, consensus_block_number) {
-                Some((hash, _)) => hash,
+            match ConsensusBlockHash::<T>::get(domain_id, consensus_block_number) {
+                Some(hash) => hash,
                 // The `initialize_block` of non-system pallets is skipped in the `validate_transaction`,
                 // thus the hash of best block, which is recorded in the this pallet's `on_initialize` hook,
                 // is unavailable at this point.
@@ -310,7 +310,7 @@ pub(crate) fn process_execution_receipt<T: Config>(
                 // its receipt's `extrinsics_root` anymore.
                 let _ = ExecutionInbox::<T>::clear_prefix((domain_id, to_prune), u32::MAX, None);
 
-                ConsensusBlockInfo::<T>::remove(
+                ConsensusBlockHash::<T>::remove(
                     domain_id,
                     execution_receipt.consensus_block_number,
                 );
@@ -469,11 +469,8 @@ mod tests {
                 if block_number != 1 {
                     // `ConsensusBlockHash` should be set to `Some` since last consensus block contains bundle
                     assert_eq!(
-                        ConsensusBlockInfo::<Test>::get(domain_id, block_number - 1),
-                        Some((
-                            frame_system::Pallet::<Test>::block_hash(block_number - 1),
-                            H256::default()
-                        ))
+                        ConsensusBlockHash::<Test>::get(domain_id, block_number - 1),
+                        Some(frame_system::Pallet::<Test>::block_hash(block_number - 1))
                     );
                     // ER point to last consensus block should have `NewHead` type
                     assert_eq!(
@@ -554,7 +551,7 @@ mod tests {
                 verify_execution_receipt::<Test>(domain_id, &pruned_receipt),
                 Error::InvalidExtrinsicsRoots
             );
-            assert!(ConsensusBlockInfo::<Test>::get(
+            assert!(ConsensusBlockHash::<Test>::get(
                 domain_id,
                 pruned_receipt.consensus_block_number,
             )
@@ -760,10 +757,10 @@ mod tests {
                 verify_execution_receipt::<Test>(domain_id, &future_receipt),
                 Error::UnavailableConsensusBlockHash
             );
-            ConsensusBlockInfo::<Test>::insert(
+            ConsensusBlockHash::<Test>::insert(
                 domain_id,
                 future_receipt.consensus_block_number,
-                (future_receipt.consensus_block_hash, H256::default()),
+                future_receipt.consensus_block_hash,
             );
 
             // Return `UnknownParentBlockReceipt` error as its parent receipt is missing from the block tree
