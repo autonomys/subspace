@@ -10876,6 +10876,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "sp-domains-fraud-proof"
+version = "0.1.0"
+dependencies = [
+ "parity-scale-codec",
+ "scale-info",
+ "sp-api",
+ "sp-blockchain",
+ "sp-core",
+ "sp-externalities",
+ "sp-runtime",
+ "sp-runtime-interface",
+ "sp-std",
+ "subspace-core-primitives",
+]
+
+[[package]]
 name = "sp-externalities"
 version = "0.19.0"
 source = "git+https://github.com/subspace/polkadot-sdk?rev=c90d6edfd8c63168eff0dce6f2ace4d66dd139f7#c90d6edfd8c63168eff0dce6f2ace4d66dd139f7"
@@ -11748,6 +11764,7 @@ dependencies = [
  "sp-core",
  "sp-domain-digests",
  "sp-domains",
+ "sp-domains-fraud-proof",
  "sp-io",
  "sp-messenger",
  "sp-runtime",
@@ -11921,6 +11938,7 @@ dependencies = [
  "sp-consensus-subspace",
  "sp-core",
  "sp-domains",
+ "sp-domains-fraud-proof",
  "sp-externalities",
  "sp-objects",
  "sp-offchain",
@@ -11963,6 +11981,7 @@ dependencies = [
  "sp-consensus-subspace",
  "sp-core",
  "sp-domains",
+ "sp-domains-fraud-proof",
  "sp-runtime",
  "subspace-archiving",
  "subspace-core-primitives",
@@ -12041,6 +12060,7 @@ dependencies = [
  "parking_lot 0.12.1",
  "rand 0.8.5",
  "sc-block-builder",
+ "sc-client-api",
  "sc-consensus",
  "sc-consensus-fraud-proof",
  "sc-executor",
@@ -12059,6 +12079,8 @@ dependencies = [
  "sp-consensus-subspace",
  "sp-core",
  "sp-domains",
+ "sp-domains-fraud-proof",
+ "sp-externalities",
  "sp-inherents",
  "sp-keyring",
  "sp-runtime",

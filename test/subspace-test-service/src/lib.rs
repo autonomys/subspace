@@ -26,6 +26,8 @@ use futures::{select, FutureExt, StreamExt};
 use jsonrpsee::RpcModule;
 use parking_lot::Mutex;
 use sc_block_builder::BlockBuilderProvider;
+use sc_client_api::execution_extensions::ExtensionsFactory;
+use sc_client_api::ExecutorProvider;
 use sc_consensus::block_import::{
     BlockCheckParams, BlockImportParams, ForkChoiceStrategy, ImportResult,
 };
@@ -57,6 +59,8 @@ use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_core::H256;
 use sp_domains::OpaqueBundle;
+use sp_domains_fraud_proof::{FraudProofExtension, FraudProofHostFunctionsImpl};
+use sp_externalities::Extensions;
 use sp_inherents::{InherentData, InherentDataProvider};
 use sp_keyring::Sr25519Keyring;
 use sp_runtime::generic::{BlockId, Digest};
@@ -171,6 +175,28 @@ type StorageChanges = sp_api::StorageChanges<Block>;
 
 type TxPreValidator = ConsensusChainTxPreValidator<Block, Client, FraudProofVerifier>;
 
+struct MockExtensionsFactory<Client> {
+    consensus_client: Arc<Client>,
+}
+
+impl<Block, Client> ExtensionsFactory<Block> for MockExtensionsFactory<Client>
+where
+    Block: BlockT,
+    Block::Hash: From<H256>,
+    Client: HeaderBackend<Block> + 'static,
+{
+    fn extensions_for(
+        &self,
+        _block_hash: Block::Hash,
+        _block_number: NumberFor<Block>,
+    ) -> Extensions {
+        let mut exts = Extensions::new();
+        exts.register(FraudProofExtension::new(Arc::new(
+            FraudProofHostFunctionsImpl::new(self.consensus_client.clone()),
+        )));
+        exts
+    }
+}
 /// A mock Subspace consensus node instance used for testing.
 pub struct MockConsensusNode {
     /// `TaskManager`'s instance.
@@ -241,6 +267,11 @@ impl MockConsensusNode {
                 .expect("Fail to new full parts");
 
         let client = Arc::new(client);
+        client
+            .execution_extensions()
+            .set_extensions_factory(MockExtensionsFactory {
+                consensus_client: client.clone(),
+            });
 
         let select_chain = sc_consensus::LongestChain::new(backend.clone());
 

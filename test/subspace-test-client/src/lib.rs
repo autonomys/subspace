@@ -53,7 +53,10 @@ const MAX_PIECES_IN_SECTOR: u16 = 32;
 pub struct TestExecutorDispatch;
 
 impl sc_executor::NativeExecutionDispatch for TestExecutorDispatch {
-    type ExtendHostFunctions = sp_consensus_subspace::consensus::HostFunctions;
+    type ExtendHostFunctions = (
+        sp_consensus_subspace::consensus::HostFunctions,
+        sp_domains_fraud_proof::HostFunctions,
+    );
 
     fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
         subspace_test_runtime::api::dispatch(method, data)

@@ -78,8 +78,10 @@ use sp_consensus_subspace::{
     FarmerPublicKey, KzgExtension, PosExtension, PotExtension, PotNextSlotInput, SubspaceApi,
 };
 use sp_core::traits::SpawnEssentialNamed;
+use sp_core::H256;
 use sp_domains::transaction::PreValidationObjectApi;
 use sp_domains::DomainsApi;
+use sp_domains_fraud_proof::{FraudProofExtension, FraudProofHostFunctionsImpl};
 use sp_externalities::Extensions;
 use sp_objects::ObjectsApi;
 use sp_offchain::OffchainWorkerApi;
@@ -238,6 +240,7 @@ impl<PosTable, Block, Client> ExtensionsFactory<Block>
 where
     PosTable: Table,
     Block: BlockT,
+    Block::Hash: From<H256>,
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + 'static,
     Client::Api: SubspaceApi<Block, FarmerPublicKey>,
 {
@@ -352,6 +355,11 @@ where
                 }
             })
         }));
+
+        exts.register(FraudProofExtension::new(Arc::new(
+            FraudProofHostFunctionsImpl::new(self.client.clone()),
+        )));
+
         exts
     }
 }
