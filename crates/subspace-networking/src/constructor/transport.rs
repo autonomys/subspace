@@ -56,16 +56,16 @@ pub(super) fn build_transport(
     let wrapped_quic =
         CustomTransportWrapper::new(quic, allow_non_global_addresses_in_dht, temporary_bans);
 
-    let tcp_quic = tcp_upgraded
-        .or_transport(wrapped_quic)
+    let quic_tcp = wrapped_quic
+        .or_transport(tcp_upgraded)
         .map(|either, _| match either {
             Either::Left((peer_id, muxer)) => (peer_id, muxer),
             Either::Right((peer_id, muxer)) => (peer_id, muxer),
         });
 
-    let dns_wrapped_upgraded_tcp_quic = TokioDnsConfig::system(tcp_quic)?;
+    let dns_wrapped_upgraded_quic_tcp = TokioDnsConfig::system(quic_tcp)?;
 
-    Ok(dns_wrapped_upgraded_tcp_quic.boxed())
+    Ok(dns_wrapped_upgraded_quic_tcp.boxed())
 }
 
 #[derive(Debug, Clone)]
