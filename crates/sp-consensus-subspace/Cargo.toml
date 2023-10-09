@@ -56,8 +56,6 @@ std = [
 	"sp-timestamp/std",
 	"subspace-archiving/std",
 	"subspace-core-primitives/std",
-	"subspace-proof-of-space/chia",
-	"subspace-proof-of-space/shim",
 	"subspace-proof-of-space/std",
 	"subspace-verification/std",
 	"thiserror",

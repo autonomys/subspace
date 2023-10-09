@@ -13,11 +13,10 @@ use alloc::vec::Vec;
 use chacha20::cipher::{KeyIvInit, StreamCipher, StreamCipherSeek};
 use chacha20::{ChaCha8, Key, Nonce};
 use core::mem;
-use core::simd::Simd;
+use core::simd::{Simd, SimdUint};
 #[cfg(any(feature = "parallel", test))]
 use rayon::prelude::*;
 use seq_macro::seq;
-use std::simd::SimdUint;
 #[cfg(any(feature = "parallel", test))]
 use std::sync::mpsc;
 use subspace_core_primitives::crypto::{blake3_hash, blake3_hash_list};
