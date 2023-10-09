@@ -1,7 +1,6 @@
 use crate::node_client;
 use crate::node_client::NodeClient;
 use crate::single_disk_farm::Handlers;
-use crate::utils::AsyncJoinOnDrop;
 use async_lock::RwLock;
 use futures::channel::mpsc;
 use futures::StreamExt;
@@ -218,9 +217,6 @@ where
             sectors_solutions
         };
 
-        // Holds futures such that this function doesn't exit until all solutions were sent out
-        let mut sending_solutions = Vec::new();
-
         'solutions_processing: for (sector_index, sector_solutions) in sectors_solutions {
             for maybe_solution in sector_solutions {
                 let solution = match maybe_solution {
@@ -237,6 +233,11 @@ where
                 trace!(?solution, "Solution found");
 
                 if start.elapsed() >= farming_timeout {
+                    warn!(
+                        %slot,
+                        %sector_index,
+                        "Proving for solution skipped due to farming time limit",
+                    );
                     break 'solutions_processing;
                 }
 
@@ -247,17 +248,15 @@ where
 
                 handlers.solution.call_simple(&response);
 
-                let sending_solution = tokio::task::spawn({
-                    let node_client = node_client.clone();
-
-                    async move {
-                        if let Err(error) = node_client.submit_solution_response(response).await {
-                            warn!(%error, "Failed to submit solutions response");
-                        }
-                    }
-                });
-
-                sending_solutions.push(AsyncJoinOnDrop::new(sending_solution));
+                if let Err(error) = node_client.submit_solution_response(response).await {
+                    warn!(
+                        %slot,
+                        %sector_index,
+                        %error,
+                        "Failed to send solution to node, skipping further proving for this slot",
+                    );
+                    break 'solutions_processing;
+                }
             }
         }
     }
