@@ -9,7 +9,7 @@ use libp2p::swarm::{NetworkBehaviour, SwarmBuilder, SwarmEvent};
 use libp2p::{yamux, Swarm};
 use libp2p_swarm_test::SwarmExt;
 use std::time::Duration;
-use tokio::time::sleep;
+use tokio::sync;
 
 #[derive(Debug, Clone)]
 struct ConnectedPeersInstance;
@@ -24,6 +24,30 @@ const LONG_DELAY: Duration = Duration::from_millis(1000);
 const DECISION_TIMEOUT: Duration = Duration::from_millis(900);
 #[cfg(windows)]
 const LONG_DELAY: Duration = Duration::from_millis(3000);
+
+#[cfg(not(windows))]
+fn get_delay_signal_channel() -> sync::mpsc::UnboundedReceiver<()> {
+    let (tx, rx) = sync::mpsc::unbounded_channel::<()>();
+    tokio::spawn(async move {
+        // send a signal after the waiting
+        tokio::time::sleep(LONG_DELAY).await;
+        tx.send(()).unwrap();
+    });
+
+    rx
+}
+
+#[cfg(windows)]
+fn get_delay_signal_channel() -> sync::mpsc::UnboundedReceiver<()> {
+    let (tx, rx) = sync::mpsc::unbounded_channel::<()>();
+
+    std::thread::spawn(move || {
+        std::thread::sleep(LONG_DELAY);
+        tx.send(()).unwrap();
+    });
+
+    rx
+}
 
 #[tokio::test()]
 async fn test_connection_breaks_after_timeout_without_decision() {
@@ -46,11 +70,13 @@ async fn test_connection_breaks_after_timeout_without_decision() {
     peer2.listen().await;
     peer1.connect(&mut peer2).await;
 
+    let mut delay_signal = get_delay_signal_channel();
+
     loop {
         select! {
             _ = peer1.next_swarm_event().fuse() => {},
             _ = peer2.next_swarm_event().fuse() => {},
-            _ = sleep(LONG_DELAY).fuse() => {
+            _ = delay_signal.recv().fuse() => {
                 break;
             }
         }
@@ -89,11 +115,13 @@ async fn test_connection_decision() {
         .behaviour_mut()
         .update_keep_alive_status(*peer1.local_peer_id(), true);
 
+    let mut delay_signal = get_delay_signal_channel();
+
     loop {
         select! {
             _ = peer1.next_swarm_event().fuse() => {},
             _ = peer2.next_swarm_event().fuse() => {},
-            _ = sleep(LONG_DELAY).fuse() => {
+            _ = delay_signal.recv().fuse() => {
                 break;
             }
         }
@@ -132,11 +160,13 @@ async fn test_connection_decision_symmetry() {
         .behaviour_mut()
         .update_keep_alive_status(*peer1.local_peer_id(), false);
 
+    let mut delay_signal = get_delay_signal_channel();
+
     loop {
         select! {
             _ = peer1.next_swarm_event().fuse() => {},
             _ = peer2.next_swarm_event().fuse() => {},
-            _ = sleep(LONG_DELAY).fuse() => {
+            _ = delay_signal.recv().fuse() => {
                 break;
             }
         }
@@ -161,6 +191,8 @@ async fn test_new_peer_request() {
 
     peer1.listen().await;
 
+    let mut delay_signal = get_delay_signal_channel();
+
     loop {
         select! {
             event = peer1.next_swarm_event().fuse() => {
@@ -168,7 +200,7 @@ async fn test_new_peer_request() {
                     break;
                 }
             },
-            _ = sleep(LONG_DELAY).fuse() => {
+            _ = delay_signal.recv().fuse() => {
                 panic!("No new peers requests.");
             }
         }
@@ -237,12 +269,14 @@ async fn test_target_connected_peer_limit_number() {
         .behaviour_mut()
         .update_keep_alive_status(*peer2.local_peer_id(), true);
 
+    let mut delay_signal = get_delay_signal_channel();
+
     loop {
         select! {
             _ = peer1.next_swarm_event().fuse() => {},
             _ = peer2.next_swarm_event().fuse() => {},
             _ = peer3.next_swarm_event().fuse() => {},
-            _ = sleep(LONG_DELAY).fuse() => {
+            _ = delay_signal.recv().fuse() => {
                 break;
             }
         }
