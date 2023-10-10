@@ -229,27 +229,18 @@ where
                 mock_consensus_node.transaction_pool.clone(),
             ),
             consensus_network_sync_oracle: mock_consensus_node.sync_service.clone(),
-            select_chain: mock_consensus_node.select_chain.clone(),
             operator_streams,
             gossip_message_sink: gossip_msg_sink,
             domain_message_receiver,
             provider: DefaultProvider,
         };
 
-        let domain_node = domain_service::new_full::<
-            _,
-            _,
-            _,
-            _,
-            _,
-            _,
-            RuntimeApi,
-            ExecutorDispatch,
-            AccountId,
-            _,
-        >(domain_params)
-        .await
-        .expect("failed to build domain node");
+        let domain_node =
+            domain_service::new_full::<_, _, _, _, _, RuntimeApi, ExecutorDispatch, AccountId, _>(
+                domain_params,
+            )
+            .await
+            .expect("failed to build domain node");
 
         let domain_service::NewFull {
             task_manager,

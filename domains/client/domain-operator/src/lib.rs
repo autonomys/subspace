@@ -82,21 +82,19 @@ pub use self::bootstrapper::{BootstrapResult, Bootstrapper};
 pub use self::operator::Operator;
 pub use self::parent_chain::DomainParentChain;
 pub use self::utils::{DomainBlockImportNotification, DomainImportNotifications};
-use crate::utils::BlockInfo;
 use futures::channel::mpsc;
 use futures::Stream;
 use sc_client_api::{AuxStore, BlockImportNotification};
 use sc_consensus::SharedBlockImport;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::TracingUnboundedSender;
-use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
-use sp_consensus::{SelectChain, SyncOracle};
+use sp_consensus::SyncOracle;
 use sp_consensus_slots::Slot;
 use sp_domain_digests::AsPredigest;
 use sp_domains::{Bundle, DomainId, ExecutionReceipt};
 use sp_keystore::KeystorePtr;
-use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor, One, Saturating, Zero};
+use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use sp_runtime::DigestItem;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -175,67 +173,6 @@ pub struct OperatorParams<
     pub operator_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS>,
     pub domain_confirmation_depth: NumberFor<Block>,
     pub block_import: SharedBlockImport<Block>,
-}
-
-/// Returns the active leaves the operator should start with.
-///
-/// The longest chain is used as the fork choice for the leaves as the consensus block's fork choice
-/// is only available in the imported consensus block notifications.
-async fn active_leaves<CBlock, CClient, SC>(
-    client: &CClient,
-    select_chain: &SC,
-) -> Result<Vec<BlockInfo<CBlock>>, sp_consensus::Error>
-where
-    CBlock: BlockT,
-    CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock> + 'static,
-    SC: SelectChain<CBlock>,
-{
-    let best_block = select_chain.best_chain().await?;
-
-    // No leaves if starting from the genesis.
-    if best_block.number().is_zero() {
-        return Ok(Vec::new());
-    }
-
-    let mut leaves = select_chain
-        .leaves()
-        .await
-        .unwrap_or_default()
-        .into_iter()
-        .filter_map(|hash| {
-            let number = client.number(hash).ok()??;
-
-            // Only consider leaves that are in maximum an uncle of the best block.
-            if number < best_block.number().saturating_sub(One::one()) || hash == best_block.hash()
-            {
-                return None;
-            };
-
-            let parent_hash = *client.header(hash).ok()??.parent_hash();
-
-            Some(BlockInfo {
-                hash,
-                parent_hash,
-                number,
-                is_new_best: false,
-            })
-        })
-        .collect::<Vec<_>>();
-
-    // Sort by block number and get the maximum number of leaves
-    leaves.sort_by_key(|b| b.number);
-
-    leaves.push(BlockInfo {
-        hash: best_block.hash(),
-        parent_hash: *best_block.parent_hash(),
-        number: *best_block.number(),
-        is_new_best: true,
-    });
-
-    /// The maximum number of active leaves we forward to the [`Operator`] on startup.
-    const MAX_ACTIVE_LEAVES: usize = 4;
-
-    Ok(leaves.into_iter().rev().take(MAX_ACTIVE_LEAVES).collect())
 }
 
 pub(crate) fn load_execution_receipt_by_domain_hash<Block, CBlock, Client>(

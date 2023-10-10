@@ -18,7 +18,7 @@ use crate::bundle_processor::BundleProcessor;
 use crate::domain_bundle_producer::DomainBundleProducer;
 use crate::domain_worker::{handle_block_import_notifications, handle_slot_notifications};
 use crate::parent_chain::DomainParentChain;
-use crate::utils::{BlockInfo, OperatorSlotInfo};
+use crate::utils::OperatorSlotInfo;
 use crate::{NewSlotNotification, OperatorStreams};
 use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
 use futures::channel::mpsc;
@@ -55,7 +55,6 @@ pub(super) async fn start_worker<
     spawn_essential: Box<dyn SpawnEssentialNamed>,
     consensus_client: Arc<CClient>,
     consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory<CBlock>,
-    client: Arc<Client>,
     is_authority: bool,
     bundle_producer: DomainBundleProducer<
         Block,
@@ -68,7 +67,6 @@ pub(super) async fn start_worker<
     >,
     bundle_processor: BundleProcessor<Block, CBlock, Client, CClient, Backend, E>,
     operator_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS>,
-    active_leaves: Vec<BlockInfo<CBlock>>,
 ) where
     Block: BlockT,
     Block::Hash: Into<H256>,
@@ -118,7 +116,6 @@ pub(super) async fn start_worker<
         handle_block_import_notifications::<Block, _, _, _, _, _>(
             spawn_essential,
             consensus_client.as_ref(),
-            client.info().best_number,
             {
                 let span = span.clone();
 
@@ -130,17 +127,6 @@ pub(super) async fn start_worker<
                         .boxed()
                 }
             },
-            active_leaves
-                .into_iter()
-                .map(
-                    |BlockInfo {
-                         hash,
-                         parent_hash: _,
-                         number,
-                         is_new_best,
-                     }| (hash, number, is_new_best),
-                )
-                .collect(),
             Box::pin(block_importing_notification_stream),
             Box::pin(imported_block_notification_stream),
             consensus_block_import_throttling_buffer_size,

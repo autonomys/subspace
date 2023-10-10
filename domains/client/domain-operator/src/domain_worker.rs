@@ -1,6 +1,6 @@
 //! Shared domain worker functions.
 
-use crate::utils::{to_number_primitive, BlockInfo, OperatorSlotInfo};
+use crate::utils::{BlockInfo, OperatorSlotInfo};
 use futures::channel::mpsc;
 use futures::{SinkExt, Stream, StreamExt};
 use sc_client_api::{BlockBackend, BlockImportNotification, BlockchainEvents};
@@ -9,9 +9,7 @@ use sp_api::{ApiError, ApiExt, BlockT, ProvideRuntimeApi};
 use sp_blockchain::{HashAndNumber, HeaderBackend};
 use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::{DomainsApi, OpaqueBundle};
-use sp_runtime::traits::{Header as HeaderT, NumberFor, One, Saturating};
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
+use sp_runtime::traits::{Header as HeaderT, NumberFor};
 use std::future::Future;
 use std::pin::Pin;
 use subspace_runtime_primitives::Balance;
@@ -74,9 +72,7 @@ pub(crate) async fn handle_block_import_notifications<
 >(
     spawn_essential: Box<dyn SpawnEssentialNamed>,
     consensus_client: &CClient,
-    best_domain_number: NumberFor<Block>,
     processor: ProcessorFn,
-    mut leaves: Vec<(CBlock::Hash, NumberFor<CBlock>, bool)>,
     mut blocks_importing: BlocksImporting,
     mut blocks_imported: BlocksImported,
     consensus_block_import_throttling_buffer_size: u32,
@@ -97,30 +93,13 @@ pub(crate) async fn handle_block_import_notifications<
     BlocksImporting: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Unpin,
     BlocksImported: Stream<Item = BlockImportNotification<CBlock>> + Unpin,
 {
-    let mut active_leaves = HashMap::with_capacity(leaves.len());
-
-    let best_domain_number = to_number_primitive(best_domain_number);
-
-    // Notify about active leaves on startup before starting the loop
-    for (hash, number, is_new_best) in std::mem::take(&mut leaves) {
-        let _ = active_leaves.insert(hash, number);
-        // Skip the blocks that have been processed by the execution chain.
-        if number > best_domain_number.into() {
-            if let Err(error) = processor((hash, number, is_new_best)).await {
-                tracing::error!(?error, "Failed to process consensus block on startup");
-                // Bring down the service as bundles processor is an essential task.
-                // TODO: more graceful shutdown.
-                return;
-            }
-        }
-    }
-
     // The consensus chain can be ahead of the domain by up to `block_import_throttling_buffer_size/2`
     // blocks, for there are two notifications per block sent to this buffer (one will be actually
     // consumed by the domain processor, the other from `sc-consensus-subspace` is used to discontinue
     // the consensus block import in case the consensus chain runs much faster than the domain.).
-    let (mut block_info_sender, mut block_info_receiver) =
-        mpsc::channel(consensus_block_import_throttling_buffer_size as usize);
+    let (mut block_info_sender, mut block_info_receiver) = mpsc::channel::<Option<BlockInfo<CBlock>>>(
+        consensus_block_import_throttling_buffer_size as usize,
+    );
 
     // Run the actual processor in a dedicated task, otherwise `tokio::select!` might hang forever
     // when the throttling buffer is full.
@@ -131,7 +110,7 @@ pub(crate) async fn handle_block_import_notifications<
             while let Some(maybe_block_info) = block_info_receiver.next().await {
                 if let Some(block_info) = maybe_block_info {
                     if let Err(error) =
-                        block_imported::<CBlock, _>(&processor, &mut active_leaves, block_info)
+                        processor((block_info.hash, block_info.number, block_info.is_new_best))
                             .await
                     {
                         tracing::error!(?error, "Failed to process consensus block");
@@ -175,7 +154,6 @@ pub(crate) async fn handle_block_import_notifications<
                 };
                 let block_info = BlockInfo {
                     hash: header.hash(),
-                    parent_hash: *header.parent_hash(),
                     number: *header.number(),
                     is_new_best: block_imported.is_new_best,
                 };
@@ -239,36 +217,6 @@ where
         consensus_offchain_tx_pool_factory.offchain_transaction_pool(best_hash),
     );
     runtime_api.submit_bundle_unsigned(best_hash, opaque_bundle)?;
-
-    Ok(())
-}
-
-async fn block_imported<CBlock, ProcessorFn>(
-    processor: &ProcessorFn,
-    active_leaves: &mut HashMap<CBlock::Hash, NumberFor<CBlock>>,
-    block_info: BlockInfo<CBlock>,
-) -> Result<(), ApiError>
-where
-    CBlock: BlockT,
-    ProcessorFn: Fn(
-            (CBlock::Hash, NumberFor<CBlock>, bool),
-        ) -> Pin<Box<dyn Future<Output = Result<(), sp_blockchain::Error>> + Send>>
-        + Send
-        + Sync,
-{
-    match active_leaves.entry(block_info.hash) {
-        Entry::Vacant(entry) => entry.insert(block_info.number),
-        Entry::Occupied(entry) => {
-            debug_assert_eq!(*entry.get(), block_info.number);
-            return Ok(());
-        }
-    };
-
-    if let Some(number) = active_leaves.remove(&block_info.parent_hash) {
-        debug_assert_eq!(block_info.number.saturating_sub(One::one()), number);
-    }
-
-    processor((block_info.hash, block_info.number, block_info.is_new_best)).await?;
 
     Ok(())
 }
