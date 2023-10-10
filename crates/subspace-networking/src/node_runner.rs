@@ -1195,7 +1195,7 @@ where
         if let AutonatEvent::StatusChanged { old, new } = event {
             info!(?old, ?new, "Public address status changed.");
 
-            if let KademliaMode::Dynamic { .. } = self.kademlia_mode {
+            if matches!(self.kademlia_mode, KademliaMode::Dynamic { .. }) {
                 let mode = match &new {
                     NatStatus::Public(address) => {
                         if is_global_address_or_dns(address)

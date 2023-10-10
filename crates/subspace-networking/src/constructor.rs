@@ -235,7 +235,9 @@ pub struct Config<LocalRecordProvider> {
     pub special_target_connections: u32,
     /// Addresses to bootstrap Kademlia network
     pub bootstrap_addresses: Vec<Multiaddr>,
-    /// Kademlia mode.
+    /// Kademlia mode. The default value is set to Static(Client). The peer won't add its address
+    /// to other peers` Kademlia routing table. Changing this behaviour implies that a peer can
+    /// provide pieces to others.
     pub kademlia_mode: KademliaMode,
     /// Known external addresses to the local peer. The addresses will be added on the swarm start
     /// and enable peer to notify others about its reachable address.
