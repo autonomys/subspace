@@ -1,4 +1,5 @@
-//! Shim proof of space implementation
+//! Shim proof of space implementation that works much faster than Chia and can be used for testing
+//! purposes to reduce memory and CPU usage
 
 use crate::{PosTableType, Quality, Table, TableGenerator};
 use core::iter;

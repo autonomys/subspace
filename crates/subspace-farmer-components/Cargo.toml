@@ -47,7 +47,7 @@ winapi = "0.3.9"
 criterion = "0.5.1"
 futures = "0.3.28"
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
-subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space", features = ["chia"] }
+subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space" }
 
 [[bench]]
 name = "plotting"

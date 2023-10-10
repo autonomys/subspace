@@ -43,7 +43,7 @@ subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-farmer-components = { version = "0.1.0", path = "../subspace-farmer-components" }
 subspace-erasure-coding = { version = "0.1.0", path = "../subspace-erasure-coding" }
-subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space", features = ["shim"] }
+subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space" }
 
 [features]
 default = ["std"]
