@@ -543,6 +543,16 @@ pub enum OperatorAllowList<AccountId: Ord> {
     Operators(BTreeSet<AccountId>),
 }
 
+impl<AccountId: Ord> OperatorAllowList<AccountId> {
+    /// Returns true if the allow list is either `Anyone` or the operator is part of the allowed operator list.
+    pub fn is_operator_allowed(&self, operator: &AccountId) -> bool {
+        match self {
+            OperatorAllowList::Anyone => true,
+            OperatorAllowList::Operators(allowed_operators) => allowed_operators.contains(operator),
+        }
+    }
+}
+
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GenesisDomain<AccountId: Ord> {
     // Domain runtime items

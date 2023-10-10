@@ -14,10 +14,7 @@ use frame_support::traits::tokens::{Fortitude, Preservation};
 use frame_support::{ensure, PalletError};
 use scale_info::TypeInfo;
 use sp_core::Get;
-use sp_domains::{
-    DomainId, EpochIndex, OperatorAllowList, OperatorId, OperatorPublicKey,
-    ZERO_OPERATOR_SIGNING_KEY,
-};
+use sp_domains::{DomainId, EpochIndex, OperatorId, OperatorPublicKey, ZERO_OPERATOR_SIGNING_KEY};
 use sp_runtime::traits::{CheckedAdd, CheckedSub, One, Zero};
 use sp_runtime::{Perbill, Percent};
 use sp_std::collections::btree_map::BTreeMap;
@@ -144,13 +141,13 @@ pub(crate) fn do_register_operator<T: Config>(
         );
 
         let domain_obj = DomainRegistry::<T>::get(domain_id).ok_or(Error::DomainNotInitialized)?;
-        let operator_allowed = match domain_obj.domain_config.operator_allow_list {
-            OperatorAllowList::Anyone => true,
-            OperatorAllowList::Operators(allowed_operators) => {
-                allowed_operators.contains(&operator_owner)
-            }
-        };
-        ensure!(operator_allowed, Error::OperatorNotAllowed);
+        ensure!(
+            domain_obj
+                .domain_config
+                .operator_allow_list
+                .is_operator_allowed(&operator_owner),
+            Error::OperatorNotAllowed
+        );
 
         let operator_id = NextOperatorId::<T>::get();
         let next_operator_id = operator_id.checked_add(1).ok_or(Error::MaximumOperatorId)?;
@@ -260,13 +257,13 @@ pub(crate) fn do_switch_operator_domain<T: Config>(
     new_domain_id: DomainId,
 ) -> Result<DomainId, Error> {
     let domain_obj = DomainRegistry::<T>::get(new_domain_id).ok_or(Error::DomainNotInitialized)?;
-    let operator_allowed = match domain_obj.domain_config.operator_allow_list {
-        OperatorAllowList::Anyone => true,
-        OperatorAllowList::Operators(allowed_operators) => {
-            allowed_operators.contains(&operator_owner)
-        }
-    };
-    ensure!(operator_allowed, Error::OperatorNotAllowed);
+    ensure!(
+        domain_obj
+            .domain_config
+            .operator_allow_list
+            .is_operator_allowed(&operator_owner),
+        Error::OperatorNotAllowed
+    );
 
     ensure!(
         OperatorIdOwner::<T>::get(operator_id) == Some(operator_owner),
