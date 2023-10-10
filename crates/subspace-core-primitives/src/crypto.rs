@@ -19,13 +19,10 @@ extern crate alloc;
 
 pub mod kzg;
 
-use crate::{Blake2b256Hash, Blake3Hash};
+use crate::Blake3Hash;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
-use blake2::digest::typenum::U32;
-use blake2::digest::{FixedOutput, Update};
-use blake2::{Blake2b, Blake2bMac, Digest};
 use blst_rust::types::fr::FsFr;
 use core::cmp::Ordering;
 use core::hash::{Hash, Hasher};
@@ -33,56 +30,6 @@ use core::mem;
 use derive_more::{AsMut, AsRef, Deref, DerefMut, From, Into};
 use parity_scale_codec::{Decode, Encode, EncodeLike, Input, MaxEncodedLen};
 use scale_info::{Type, TypeInfo};
-
-/// BLAKE2b-256 hashing of a single value.
-pub fn blake2b_256_hash(data: &[u8]) -> Blake2b256Hash {
-    let mut state = Blake2b::<U32>::new();
-    Update::update(&mut state, data);
-    state.finalize_fixed().into()
-}
-
-/// BLAKE2b-256 hashing of a single value truncated to 254 bits.
-///
-/// TODO: We probably wouldn't need this eventually
-pub fn blake2b_256_254_hash(data: &[u8]) -> Blake2b256Hash {
-    let mut hash = blake2b_256_hash(data);
-    // Erase last 2 bits to effectively truncate the hash (number is interpreted as little-endian)
-    hash[31] &= 0b00111111;
-    hash
-}
-
-/// BLAKE2b-256 hashing of a single value truncated to 254 bits.
-///
-/// TODO: We probably wouldn't need this eventually
-pub fn blake2b_256_254_hash_to_scalar(data: &[u8]) -> Scalar {
-    let mut hash = blake2b_256_hash(data);
-    // Erase last 2 bits to effectively truncate the hash (number is interpreted as little-endian)
-    hash[31] &= 0b00111111;
-    Scalar::try_from(hash)
-        .expect("Last bit erased, thus hash is guaranteed to fit into scalar; qed")
-}
-
-/// BLAKE2b-256 keyed hashing of a single value.
-///
-/// PANIC: Panics if key is longer than 64 bytes.
-pub fn blake2b_256_hash_with_key(key: &[u8], data: &[u8]) -> Blake2b256Hash {
-    let mut state = Blake2bMac::<U32>::new_with_salt_and_personal(key, &[], &[])
-        .expect("Only panics when key is over 64 bytes as specified in function description");
-    Update::update(&mut state, data);
-    state.finalize_fixed().into()
-}
-
-/// BLAKE2b-256 hashing of a list of values.
-pub fn blake2b_256_hash_list(data: &[&[u8]]) -> Blake2b256Hash {
-    let mut state = Blake2b::<U32>::new();
-    for d in data {
-        Update::update(&mut state, d);
-    }
-    state
-        .finalize()
-        .try_into()
-        .expect("Initialized with correct length; qed")
-}
 
 /// BLAKE3 hashing of a single value.
 pub fn blake3_hash(data: &[u8]) -> Blake3Hash {
@@ -97,6 +44,11 @@ pub fn blake3_hash_parallel(data: &[u8]) -> Blake3Hash {
     *state.finalize().as_bytes()
 }
 
+/// BLAKE3 keyed hashing of a single value.
+pub fn blake3_hash_with_key(key: &[u8; 32], data: &[u8]) -> Blake3Hash {
+    *blake3::keyed_hash(key, data).as_bytes()
+}
+
 /// BLAKE3 hashing of a list of values.
 pub fn blake3_hash_list(data: &[&[u8]]) -> Blake3Hash {
     let mut state = blake3::Hasher::new();
@@ -104,6 +56,17 @@ pub fn blake3_hash_list(data: &[&[u8]]) -> Blake3Hash {
         state.update(d);
     }
     *state.finalize().as_bytes()
+}
+
+/// BLAKE3 hashing of a single value truncated to 254 bits.
+///
+/// TODO: We probably wouldn't need this eventually
+pub fn blake3_254_hash_to_scalar(data: &[u8]) -> Scalar {
+    let mut hash = blake3_hash(data);
+    // Erase last 2 bits to effectively truncate the hash (number is interpreted as little-endian)
+    hash[31] &= 0b00111111;
+    Scalar::try_from(hash)
+        .expect("Last bit erased, thus hash is guaranteed to fit into scalar; qed")
 }
 
 /// Representation of a single BLS12-381 scalar value.

@@ -19,7 +19,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    Blake2b256Hash, HistorySize, PieceOffset, PublicKey, SectorId, SectorIndex, SegmentHeader,
+    Blake3Hash, HistorySize, PieceOffset, PublicKey, SectorId, SectorIndex, SegmentHeader,
     SegmentIndex,
 };
 use subspace_erasure_coding::ErasureCoding;
@@ -286,7 +286,7 @@ where
 }
 
 pub(super) struct PlottingSchedulerOptions<NC> {
-    pub(super) public_key_hash: Blake2b256Hash,
+    pub(super) public_key_hash: Blake3Hash,
     pub(super) sectors_indices_left_to_plot: Range<SectorIndex>,
     pub(super) target_sector_count: SectorIndex,
     pub(super) last_archived_segment_index: SegmentIndex,
@@ -482,7 +482,7 @@ where
 
 #[allow(clippy::too_many_arguments)]
 async fn send_plotting_notifications<NC>(
-    public_key_hash: Blake2b256Hash,
+    public_key_hash: Blake3Hash,
     sectors_indices_left_to_plot: Range<SectorIndex>,
     target_sector_count: SectorIndex,
     min_sector_lifetime: HistorySize,

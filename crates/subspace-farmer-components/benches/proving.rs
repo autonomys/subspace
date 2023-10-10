@@ -11,7 +11,7 @@ use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    Blake2b256Hash, HistorySize, PosSeed, PublicKey, Record, RecordedHistorySegment, SectorId,
+    Blake3Hash, HistorySize, PosSeed, PublicKey, Record, RecordedHistorySegment, SectorId,
     SolutionRange,
 };
 use subspace_erasure_coding::ErasureCoding;
@@ -149,7 +149,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
     println!("Searching for solutions");
     let global_challenge = loop {
-        let mut global_challenge = Blake2b256Hash::default();
+        let mut global_challenge = Blake3Hash::default();
         rng.fill_bytes(&mut global_challenge);
 
         let maybe_audit_result = audit_sector(

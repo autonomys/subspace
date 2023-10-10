@@ -50,8 +50,8 @@ use sp_runtime::traits::{
 use sp_runtime::{DigestItem, OpaqueExtrinsic, Percent};
 use sp_std::vec::Vec;
 use sp_weights::Weight;
-use subspace_core_primitives::crypto::blake2b_256_hash;
-use subspace_core_primitives::{bidirectional_distance, Blake2b256Hash, Randomness, U256};
+use subspace_core_primitives::crypto::blake3_hash;
+use subspace_core_primitives::{bidirectional_distance, Blake3Hash, Randomness, U256};
 use subspace_runtime_primitives::{Balance, Moment};
 
 /// Key type for Operator.
@@ -505,10 +505,10 @@ impl ProofOfElection {
     }
 
     /// Computes the VRF hash.
-    pub fn vrf_hash(&self) -> Blake2b256Hash {
+    pub fn vrf_hash(&self) -> Blake3Hash {
         let mut bytes = self.vrf_signature.output.encode();
         bytes.append(&mut self.vrf_signature.proof.encode());
-        blake2b_256_hash(&bytes)
+        blake3_hash(&bytes)
     }
 }
 

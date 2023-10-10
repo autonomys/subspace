@@ -20,7 +20,7 @@ use codec::{Compact, CompactLen, Decode, Encode};
 use sp_runtime::{DispatchError, DispatchResult};
 use sp_std::vec;
 use sp_std::vec::Vec;
-use subspace_core_primitives::Blake2b256Hash;
+use subspace_core_primitives::Blake3Hash;
 
 /// Holds the offset to some portion of data within/or the object
 #[derive(Debug)]
@@ -35,7 +35,7 @@ pub enum FeedObjectMapping {
 }
 
 impl FeedObjectMapping {
-    pub(crate) fn try_into_call_object<FeedID: Encode, Hasher: Fn(&[u8]) -> Blake2b256Hash>(
+    pub(crate) fn try_into_call_object<FeedID: Encode, Hasher: Fn(&[u8]) -> Blake3Hash>(
         self,
         feed_id: FeedID,
         object: &[u8],

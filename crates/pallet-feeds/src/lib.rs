@@ -23,7 +23,7 @@ use core::mem;
 pub use pallet::*;
 use sp_std::vec;
 use sp_std::vec::Vec;
-use subspace_core_primitives::{crypto, Blake2b256Hash};
+use subspace_core_primitives::{crypto, Blake3Hash};
 
 pub mod feed_processor;
 #[cfg(all(feature = "std", test))]
@@ -366,7 +366,7 @@ mod pallet {
 #[derive(Debug)]
 pub struct CallObject {
     /// Key to the object located at the offset.
-    pub key: Blake2b256Hash,
+    pub key: Blake3Hash,
     /// Offset of object in the encoded call.
     pub offset: u32,
 }
@@ -398,7 +398,7 @@ impl<T: Config> Call<T> {
                         let mut co = object_mapping.try_into_call_object(
                             feed_id,
                             object.as_slice(),
-                            |data| crypto::blake2b_256_hash(data),
+                            |data| crypto::blake3_hash(data),
                         )?;
                         co.offset += base_offset;
                         Some(co)
