@@ -3,7 +3,6 @@ use hash_db::Hasher;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
-use sp_core::storage::StorageKey;
 use sp_core::H256;
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
 use sp_std::vec::Vec;
@@ -68,12 +67,6 @@ impl ExecutionPhase {
             }
         }
     }
-}
-
-/// Trait to derive domain extrinsics such as timestamp on Consensus chain.
-pub trait DeriveExtrinsics<Moment> {
-    /// Derives pallet_timestamp::set extrinsic.
-    fn derive_timestamp_extrinsic(moment: Moment) -> Vec<u8>;
 }
 
 /// Error type of fraud proof verification on consensus node.
@@ -436,11 +429,12 @@ pub enum ExtrinsicDigest {
 impl ExtrinsicDigest {
     pub fn new<Layout: TrieLayout>(ext: Vec<u8>) -> Self
     where
-        Layout::Hash: Hasher<Out = H256>,
+        Layout::Hash: Hasher,
+        <Layout::Hash as Hasher>::Out: Into<H256>,
     {
         if let Some(threshold) = Layout::MAX_INLINE_VALUE {
             if ext.len() >= threshold as usize {
-                ExtrinsicDigest::Hash(Layout::Hash::hash(&ext))
+                ExtrinsicDigest::Hash(Layout::Hash::hash(&ext).into())
             } else {
                 ExtrinsicDigest::Data(ext)
             }
@@ -471,10 +465,6 @@ pub struct InvalidExtrinsicsRootProof {
     pub bad_receipt_hash: ReceiptHash,
     /// Valid Bundle digests
     pub valid_bundle_digests: Vec<ValidBundleDigest>,
-    /// Randomness Storage proof
-    pub randomness_storage_proof: StorageProof,
-    /// Timestamp Storage proof
-    pub timestamp_storage_proof: StorageProof,
 }
 
 impl InvalidTotalRewardsProof {
@@ -485,12 +475,6 @@ impl InvalidTotalRewardsProof {
     pub(crate) fn bad_receipt_hash(&self) -> ReceiptHash {
         self.bad_receipt_hash
     }
-}
-
-/// Trait to get Storage keys.
-pub trait StorageKeys {
-    fn block_randomness_storage_key() -> StorageKey;
-    fn timestamp_storage_key() -> StorageKey;
 }
 
 /// This is a representation of actual Block Rewards storage in pallet-operator-rewards.

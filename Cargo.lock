@@ -7224,6 +7224,7 @@ dependencies = [
  "scale-info",
  "sp-core",
  "sp-domains",
+ "sp-domains-fraud-proof",
  "sp-externalities",
  "sp-io",
  "sp-runtime",
@@ -10821,7 +10822,6 @@ dependencies = [
 name = "sp-domains"
 version = "0.1.0"
 dependencies = [
- "async-trait",
  "blake2",
  "domain-runtime-primitives",
  "frame-support",
@@ -10839,10 +10839,8 @@ dependencies = [
  "sp-blockchain",
  "sp-consensus-slots",
  "sp-core",
- "sp-externalities",
- "sp-inherents",
- "sp-keystore",
  "sp-runtime",
+ "sp-runtime-interface",
  "sp-state-machine",
  "sp-std",
  "sp-trie",
@@ -10850,6 +10848,27 @@ dependencies = [
  "subspace-core-primitives",
  "subspace-runtime-primitives",
  "thiserror",
+ "trie-db",
+]
+
+[[package]]
+name = "sp-domains-fraud-proof"
+version = "0.1.0"
+dependencies = [
+ "domain-block-preprocessor",
+ "hash-db 0.16.0",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-api",
+ "sp-blockchain",
+ "sp-core",
+ "sp-domains",
+ "sp-externalities",
+ "sp-runtime",
+ "sp-runtime-interface",
+ "sp-std",
+ "sp-trie",
+ "subspace-core-primitives",
  "trie-db",
 ]
 
@@ -11725,6 +11744,7 @@ dependencies = [
  "sp-core",
  "sp-domain-digests",
  "sp-domains",
+ "sp-domains-fraud-proof",
  "sp-io",
  "sp-messenger",
  "sp-runtime",
@@ -11898,6 +11918,7 @@ dependencies = [
  "sp-consensus-subspace",
  "sp-core",
  "sp-domains",
+ "sp-domains-fraud-proof",
  "sp-externalities",
  "sp-objects",
  "sp-offchain",
@@ -11940,6 +11961,7 @@ dependencies = [
  "sp-consensus-subspace",
  "sp-core",
  "sp-domains",
+ "sp-domains-fraud-proof",
  "sp-runtime",
  "subspace-archiving",
  "subspace-core-primitives",
@@ -12018,6 +12040,7 @@ dependencies = [
  "parking_lot 0.12.1",
  "rand 0.8.5",
  "sc-block-builder",
+ "sc-client-api",
  "sc-consensus",
  "sc-consensus-fraud-proof",
  "sc-executor",
@@ -12036,6 +12059,8 @@ dependencies = [
  "sp-consensus-subspace",
  "sp-core",
  "sp-domains",
+ "sp-domains-fraud-proof",
+ "sp-externalities",
  "sp-inherents",
  "sp-keyring",
  "sp-runtime",

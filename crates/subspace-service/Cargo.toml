@@ -8,8 +8,8 @@ license = "GPL-3.0-or-later"
 homepage = "https://subspace.network"
 repository = "https://github.com/subspace/subspace"
 include = [
-	"/src",
-	"/Cargo.toml",
+    "/src",
+    "/Cargo.toml",
 ]
 
 [package.metadata.docs.rs]
@@ -61,6 +61,7 @@ sp-consensus-slots = { version = "0.10.0-dev", git = "https://github.com/subspac
 sp-consensus-subspace = { version = "0.1.0", path = "../sp-consensus-subspace" }
 sp-core = { version = "21.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7" }
 sp-domains = { version = "0.1.0", path = "../sp-domains" }
+sp-domains-fraud-proof = { version = "0.1.0", path = "../sp-domains-fraud-proof" }
 sp-externalities = { version = "0.19.0", git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7" }
 sp-objects = { version = "0.1.0", path = "../sp-objects" }
 sp-offchain = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7" }

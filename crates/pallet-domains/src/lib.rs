@@ -46,13 +46,16 @@ use scale_info::TypeInfo;
 use sp_core::H256;
 use sp_domains::bundle_producer_election::{is_below_threshold, BundleProducerElectionParams};
 use sp_domains::fraud_proof::{FraudProof, InvalidTotalRewardsProof};
-use sp_domains::verification::{
-    verify_invalid_domain_extrinsics_root_fraud_proof, verify_invalid_total_rewards_fraud_proof,
-};
+use sp_domains::verification::verify_invalid_total_rewards_fraud_proof;
 use sp_domains::{
     DomainBlockLimit, DomainId, DomainInstanceData, ExecutionReceipt, OpaqueBundle, OperatorId,
     OperatorPublicKey, ProofOfElection, RuntimeId, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT,
     EMPTY_EXTRINSIC_ROOT,
+};
+use sp_domains_fraud_proof::fraud_proof_runtime_interface::get_fraud_proof_verification_info;
+use sp_domains_fraud_proof::verification::verify_invalid_domain_extrinsics_root_fraud_proof;
+use sp_domains_fraud_proof::{
+    FraudProofVerificationInfoRequest, FraudProofVerificationInfoResponse,
 };
 use sp_runtime::traits::{BlakeTwo256, CheckedSub, Hash, One, Zero};
 use sp_runtime::{RuntimeAppPublic, SaturatedConversion, Saturating};
@@ -141,8 +144,7 @@ mod pallet {
     use frame_support::{Identity, PalletError};
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
-    use sp_domains::fraud_proof::{DeriveExtrinsics, FraudProof, StorageKeys};
-    use sp_domains::inherents::{InherentError, InherentType, INHERENT_IDENTIFIER};
+    use sp_domains::fraud_proof::FraudProof;
     use sp_domains::transaction::InvalidTransactionCode;
     use sp_domains::{
         BundleDigest, DomainId, EpochIndex, GenesisDomain, OperatorId, ReceiptHash, RuntimeId,
@@ -160,7 +162,6 @@ mod pallet {
     use sp_std::vec;
     use sp_std::vec::Vec;
     use subspace_core_primitives::U256;
-    use subspace_runtime_primitives::Moment;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -288,12 +289,6 @@ mod pallet {
 
         /// Randomness source.
         type Randomness: RandomnessT<Self::Hash, BlockNumberFor<Self>>;
-
-        /// Trait impl to fetch storage keys.
-        type StorageKeys: StorageKeys;
-
-        /// Derive extrinsics trait impl.
-        type DeriveExtrinsics: DeriveExtrinsics<Moment>;
     }
 
     #[pallet::pallet]
@@ -495,7 +490,7 @@ mod pallet {
         OptionQuery,
     >;
 
-    /// The consensus block hash and state root used to verify ER and storage proofs,
+    /// The consensus block hash used to verify ER,
     /// only store the consensus block hash for a domain
     /// if that consensus block contains bundle of the domain, the hash will be pruned when the ER
     /// that point to the consensus block is pruned.
@@ -504,15 +499,8 @@ mod pallet {
     /// for more details, this will be fixed once https://github.com/subspace/subspace/issues/1731 is implemented.
     #[pallet::storage]
     #[pallet::getter(fn consensus_block_info)]
-    pub type ConsensusBlockInfo<T: Config> = StorageDoubleMap<
-        _,
-        Identity,
-        DomainId,
-        Identity,
-        BlockNumberFor<T>,
-        (T::Hash, T::Hash),
-        OptionQuery,
-    >;
+    pub type ConsensusBlockHash<T: Config> =
+        StorageDoubleMap<_, Identity, DomainId, Identity, BlockNumberFor<T>, T::Hash, OptionQuery>;
 
     /// A set of `BundleDigest` from all bundles that successfully submitted to the consensus block,
     /// these bundles will be used to construct the domain block and `ExecutionInbox` is used to:
@@ -598,10 +586,14 @@ mod pallet {
         DescendantsOfFraudulentERNotPruned,
         /// Invalid fraud proof since total rewards are not mismatched.
         InvalidTotalRewardsFraudProof(sp_domains::verification::VerificationError),
-        /// Missing state root for a given consensus block
-        MissingConsensusStateRoot,
         /// Invalid domain extrinsic fraud proof
         InvalidExtrinsicRootFraudProof(sp_domains::verification::VerificationError),
+        /// Failed to get block randomness.
+        FailedToGetBlockRandomness,
+        /// Failed to get domain timestamp extrinsic.
+        FailedToGetDomainTimestampExtrinsic,
+        /// Received invalid Verification info from host function.
+        ReceivedInvalidVerificationInfo,
     }
 
     impl<T> From<FraudProofError> for Error<T> {
@@ -1134,27 +1126,6 @@ mod pallet {
 
             Ok(())
         }
-
-        /// Submit parent state root to the blockchain.
-        #[pallet::call_index(11)]
-        #[pallet::weight((Weight::from_all(10_000), DispatchClass::Mandatory, Pays::No))]
-        pub fn store_parent_state_root(
-            origin: OriginFor<T>,
-            parent_state_root: T::Hash,
-        ) -> DispatchResult {
-            ensure_none(origin)?;
-            let block_number = frame_system::Pallet::<T>::block_number();
-            let parent_number = block_number - One::one();
-
-            let domains_ids = DomainRegistry::<T>::iter_keys().collect::<Vec<DomainId>>();
-            for domain_id in domains_ids {
-                if let Some(info) = ConsensusBlockInfo::<T>::get(domain_id, parent_number) {
-                    let info = (info.0, parent_state_root);
-                    ConsensusBlockInfo::<T>::insert(domain_id, parent_number, info);
-                }
-            }
-            Ok(())
-        }
     }
 
     #[pallet::genesis_config]
@@ -1228,11 +1199,7 @@ mod pallet {
             let parent_number = block_number - One::one();
             let parent_hash = frame_system::Pallet::<T>::block_hash(parent_number);
             for (domain_id, _) in SuccessfulBundles::<T>::drain() {
-                ConsensusBlockInfo::<T>::insert(
-                    domain_id,
-                    parent_number,
-                    (parent_hash, T::Hash::default()),
-                );
+                ConsensusBlockHash::<T>::insert(domain_id, parent_number, parent_hash);
             }
 
             Weight::zero()
@@ -1254,42 +1221,6 @@ mod pallet {
             .build()
     }
 
-    #[pallet::inherent]
-    impl<T: Config> ProvideInherent for Pallet<T> {
-        type Call = Call<T>;
-        type Error = InherentError;
-        const INHERENT_IDENTIFIER: InherentIdentifier = INHERENT_IDENTIFIER;
-
-        fn create_inherent(data: &InherentData) -> Option<Self::Call> {
-            let inherent_data = data
-                .get_data::<InherentType<T::Hash>>(&INHERENT_IDENTIFIER)
-                .expect("Domains inherent data not correctly encoded")
-                .expect("Domains inherent data must be provided");
-
-            let parent_state_root = inherent_data.parent_state_root;
-            Some(Call::store_parent_state_root { parent_state_root })
-        }
-
-        fn check_inherent(call: &Self::Call, data: &InherentData) -> Result<(), Self::Error> {
-            if let Call::store_parent_state_root { parent_state_root } = call {
-                let inherent_data = data
-                    .get_data::<InherentType<T::Hash>>(&INHERENT_IDENTIFIER)
-                    .expect("Domains inherent data not correctly encoded")
-                    .expect("Domains inherent data must be provided");
-
-                if parent_state_root != &inherent_data.parent_state_root {
-                    return Err(InherentError::IncorrectParentStateRoot);
-                }
-            }
-
-            Ok(())
-        }
-
-        fn is_inherent(call: &Self::Call) -> bool {
-            matches!(call, Call::store_parent_state_root { .. })
-        }
-    }
-
     #[pallet::validate_unsigned]
     impl<T: Config> ValidateUnsigned for Pallet<T> {
         type Call = Call<T>;
@@ -1299,7 +1230,6 @@ mod pallet {
                     .map_err(|_| InvalidTransaction::Call.into()),
                 Call::submit_fraud_proof { fraud_proof } => Self::validate_fraud_proof(fraud_proof)
                     .map_err(|_| InvalidTransaction::Call.into()),
-                Call::store_parent_state_root { .. } => Ok(()),
                 _ => Err(InvalidTransaction::Call.into()),
             }
         }
@@ -1339,13 +1269,6 @@ mod pallet {
 
                     // TODO: proper tag value.
                     unsigned_validity("SubspaceSubmitFraudProof", fraud_proof)
-                }
-                Call::store_parent_state_root { .. } => {
-                    ValidTransaction::with_tag_prefix("Domain Parent State root Inherent")
-                        .priority(TransactionPriority::MAX)
-                        .longevity(0)
-                        .propagate(false)
-                        .build()
                 }
 
                 _ => InvalidTransaction::Call.into(),
@@ -1574,12 +1497,30 @@ impl<T: Config> Pallet<T> {
                 .map_err(FraudProofError::InvalidTotalRewardsFraudProof)?;
             }
             FraudProof::InvalidExtrinsicsRoot(proof) => {
-                let consensus_state_root = ConsensusBlockInfo::<T>::get(
-                    proof.domain_id,
-                    bad_receipt.consensus_block_number,
+                let consensus_block_hash = bad_receipt.consensus_block_hash;
+                let block_randomness = match get_fraud_proof_verification_info(
+                    H256::from_slice(consensus_block_hash.as_ref()),
+                    FraudProofVerificationInfoRequest::BlockRandomness,
                 )
-                .ok_or(FraudProofError::MissingConsensusStateRoot)?
-                .1;
+                .ok_or(FraudProofError::FailedToGetBlockRandomness)?
+                {
+                    FraudProofVerificationInfoResponse::BlockRandomness(randomness) => {
+                        Ok(randomness)
+                    }
+                    _ => Err(FraudProofError::ReceivedInvalidVerificationInfo),
+                }?;
+
+                let domain_timestamp_extrinsic = match get_fraud_proof_verification_info(
+                    H256::from_slice(consensus_block_hash.as_ref()),
+                    FraudProofVerificationInfoRequest::DomainTimestampExtrinsic(proof.domain_id),
+                )
+                .ok_or(FraudProofError::FailedToGetDomainTimestampExtrinsic)?
+                {
+                    FraudProofVerificationInfoResponse::DomainTimestampExtrinsic(
+                        domain_timestamp_extrinsic,
+                    ) => Ok(domain_timestamp_extrinsic),
+                    _ => Err(FraudProofError::ReceivedInvalidVerificationInfo),
+                }?;
 
                 verify_invalid_domain_extrinsics_root_fraud_proof::<
                     T::Block,
@@ -1587,9 +1528,13 @@ impl<T: Config> Pallet<T> {
                     T::DomainHash,
                     BalanceOf<T>,
                     T::Hashing,
-                    T::StorageKeys,
-                    T::DeriveExtrinsics,
-                >(consensus_state_root, bad_receipt, proof)
+                    T::DomainHashing,
+                >(
+                    bad_receipt,
+                    proof,
+                    block_randomness,
+                    domain_timestamp_extrinsic,
+                )
                 .map_err(FraudProofError::InvalidExtrinsicRootFraudProof)?;
             }
             _ => {}

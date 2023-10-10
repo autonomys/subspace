@@ -203,6 +203,6 @@ sp_api::decl_runtime_apis! {
     /// Api that construct inherent extrinsics.
     pub trait InherentExtrinsicApi {
         /// Api to construct inherent timestamp extrinsic from given time
-        fn construct_inherent_timestamp_extrinsic(moment: Moment) -> Option<Block::Extrinsic>;
+        fn construct_inherent_timestamp_extrinsic(moment: Moment) -> Block::Extrinsic;
     }
 }
