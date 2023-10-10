@@ -31,12 +31,30 @@ pub use runtime_interface::fraud_proof_runtime_interface;
 #[cfg(feature = "std")]
 pub use runtime_interface::fraud_proof_runtime_interface::HostFunctions;
 use sp_api::scale_info::TypeInfo;
+use sp_domains::DomainId;
+use sp_runtime_interface::pass_by;
+use sp_runtime_interface::pass_by::PassBy;
 use sp_std::vec::Vec;
 use subspace_core_primitives::Randomness;
 
-/// Type to hold required information to verify invalid domain extrinsics root.
+/// Request type to fetch required verification information for fraud proof through Host function.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct InvalidDomainExtrinsicRootInfo {
-    pub block_randomness: Randomness,
-    pub timestamp_extrinsic: Vec<u8>,
+pub enum FraudProofVerificationInfoRequest {
+    /// Block randomness at a given consensus block hash.
+    BlockRandomness,
+    /// Domain timestamp extrinsic using the timestamp at a given consensus block hash.
+    DomainTimestampExtrinsic(DomainId),
+}
+
+impl PassBy for FraudProofVerificationInfoRequest {
+    type PassBy = pass_by::Codec<Self>;
+}
+
+/// Response holds required verification information for fraud proof from Host function.
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub enum FraudProofVerificationInfoResponse {
+    /// Block randomness fetched from consensus state at a specific block hash.
+    BlockRandomness(Randomness),
+    /// Encoded domain timestamp extrinsic using the timestamp from consensus state at a specific block hash.
+    DomainTimestampExtrinsic(Vec<u8>),
 }

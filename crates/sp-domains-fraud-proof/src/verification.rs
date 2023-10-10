@@ -1,4 +1,3 @@
-use crate::InvalidDomainExtrinsicRootInfo;
 use hash_db::Hasher;
 use sp_core::H256;
 use sp_domains::fraud_proof::{ExtrinsicDigest, InvalidExtrinsicsRootProof};
@@ -29,7 +28,8 @@ pub fn verify_invalid_domain_extrinsics_root_fraud_proof<
         Balance,
     >,
     fraud_proof: &InvalidExtrinsicsRootProof,
-    verification_info: InvalidDomainExtrinsicRootInfo,
+    block_randomness: Randomness,
+    domain_timestamp_extrinsic: Vec<u8>,
 ) -> Result<(), VerificationError>
 where
     CBlock: Block,
@@ -41,11 +41,6 @@ where
         valid_bundle_digests,
         ..
     } = fraud_proof;
-
-    let InvalidDomainExtrinsicRootInfo {
-        block_randomness,
-        timestamp_extrinsic,
-    } = verification_info;
 
     let mut bundle_extrinsics_digests = Vec::new();
     for (bad_receipt_valid_bundle_digest, bundle_digest) in bad_receipt
@@ -69,7 +64,8 @@ where
         Randomness::from(shuffling_seed.to_fixed_bytes()),
     );
 
-    let timestamp_extrinsic = ExtrinsicDigest::new::<LayoutV1<DomainHashing>>(timestamp_extrinsic);
+    let timestamp_extrinsic =
+        ExtrinsicDigest::new::<LayoutV1<DomainHashing>>(domain_timestamp_extrinsic);
     ordered_extrinsics.insert(0, timestamp_extrinsic);
 
     let ordered_trie_node_values = ordered_extrinsics

@@ -27,7 +27,8 @@ use sp_domains::{
     StakingHoldIdentifier,
 };
 use sp_domains_fraud_proof::{
-    FraudProofExtension, FraudProofHostFunctions, InvalidDomainExtrinsicRootInfo,
+    FraudProofExtension, FraudProofHostFunctions, FraudProofVerificationInfoRequest,
+    FraudProofVerificationInfoResponse,
 };
 use sp_runtime::traits::{AccountIdConversion, BlakeTwo256, Hash as HashT, IdentityLookup, Zero};
 use sp_runtime::{BuildStorage, OpaqueExtrinsic};
@@ -240,21 +241,35 @@ pub(crate) fn new_test_ext() -> sp_io::TestExternalities {
     t.into()
 }
 
-pub(crate) struct MockDomainFraudProofExtension(Randomness, Moment);
+pub(crate) struct MockDomainFraudProofExtension {
+    block_randomness: Randomness,
+    timestamp: Moment,
+}
 
 impl FraudProofHostFunctions for MockDomainFraudProofExtension {
-    fn get_invalid_domain_extrinsic_root_info(
+    fn get_fraud_proof_verification_info(
         &self,
         _consensus_block_hash: H256,
-        _domain_id: DomainId,
-    ) -> Option<InvalidDomainExtrinsicRootInfo> {
-        Some(InvalidDomainExtrinsicRootInfo {
-            block_randomness: self.0,
-            timestamp_extrinsic: UncheckedExtrinsic::new_unsigned(
-                pallet_timestamp::Call::<Test>::set { now: self.1 }.into(),
-            )
-            .encode(),
-        })
+        fraud_proof_verification_info_req: FraudProofVerificationInfoRequest,
+    ) -> Option<FraudProofVerificationInfoResponse> {
+        let response = match fraud_proof_verification_info_req {
+            FraudProofVerificationInfoRequest::BlockRandomness => {
+                FraudProofVerificationInfoResponse::BlockRandomness(self.block_randomness)
+            }
+            FraudProofVerificationInfoRequest::DomainTimestampExtrinsic(_) => {
+                FraudProofVerificationInfoResponse::DomainTimestampExtrinsic(
+                    UncheckedExtrinsic::new_unsigned(
+                        pallet_timestamp::Call::<Test>::set {
+                            now: self.timestamp,
+                        }
+                        .into(),
+                    )
+                    .encode(),
+                )
+            }
+        };
+
+        Some(response)
     }
 }
 
@@ -883,10 +898,10 @@ fn test_invalid_domain_extrinsic_root_proof() {
         fraud_proof
     });
 
-    let fraud_proof_ext = FraudProofExtension::new(Arc::new(MockDomainFraudProofExtension(
-        Randomness::from([1u8; 32]),
-        1000,
-    )));
+    let fraud_proof_ext = FraudProofExtension::new(Arc::new(MockDomainFraudProofExtension {
+        block_randomness: Randomness::from([1u8; 32]),
+        timestamp: 1000,
+    }));
     ext.register_extension(fraud_proof_ext);
 
     ext.execute_with(|| {
