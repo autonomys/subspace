@@ -16,13 +16,13 @@
 
 use crate::bundle_processor::BundleProcessor;
 use crate::domain_bundle_producer::DomainBundleProducer;
-use crate::domain_worker::{handle_block_import_notifications, handle_slot_notifications};
+use crate::domain_worker::{on_new_slot, throttling_block_import_notifications};
 use crate::parent_chain::DomainParentChain;
 use crate::utils::OperatorSlotInfo;
 use crate::{NewSlotNotification, OperatorStreams};
 use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
 use futures::channel::mpsc;
-use futures::{future, FutureExt, Stream, StreamExt, TryFutureExt};
+use futures::{FutureExt, SinkExt, Stream, StreamExt, TryFutureExt};
 use sc_client_api::{
     AuxStore, BlockBackend, BlockImportNotification, BlockchainEvents, Finalizer, ProofProvider,
 };
@@ -112,62 +112,98 @@ pub(super) async fn start_worker<
         _phantom,
     } = operator_streams;
 
-    let handle_block_import_notifications_fut =
-        handle_block_import_notifications::<Block, _, _, _, _, _>(
+    let mut throttled_block_import_notification_stream =
+        throttling_block_import_notifications::<Block, _, _, _, _>(
             spawn_essential,
-            consensus_client.as_ref(),
-            {
-                let span = span.clone();
-
-                move |consensus_block_info| {
-                    bundle_processor
-                        .clone()
-                        .process_bundles(consensus_block_info)
-                        .instrument(span.clone())
-                        .boxed()
-                }
-            },
+            consensus_client.clone(),
             Box::pin(block_importing_notification_stream),
             Box::pin(imported_block_notification_stream),
             consensus_block_import_throttling_buffer_size,
         );
-    let handle_slot_notifications_fut = handle_slot_notifications::<Block, CBlock, _, _>(
-        consensus_client.as_ref(),
-        &consensus_offchain_tx_pool_factory,
-        move |consensus_block_info, slot_info| {
-            bundle_producer
-                .clone()
-                .produce_bundle(consensus_block_info.clone(), slot_info)
-                .instrument(span.clone())
-                .unwrap_or_else(move |error| {
-                    tracing::error!(?consensus_block_info, ?error, "Error at producing bundle.");
-                    None
-                })
-                .boxed()
-        },
-        Box::pin(new_slot_notification_stream.map(
-            |(slot, global_randomness, acknowledgement_sender)| {
-                (
-                    OperatorSlotInfo {
-                        slot,
-                        global_randomness,
-                    },
-                    acknowledgement_sender,
-                )
-            },
-        )),
-    );
 
-    if is_authority {
-        info!("🧑‍🌾 Running as Operator...");
-        let _ = future::select(
-            Box::pin(handle_block_import_notifications_fut),
-            Box::pin(handle_slot_notifications_fut),
-        )
-        .await;
-    } else {
+    if !is_authority {
         info!("🧑‍ Running as Full node...");
-        drop(handle_slot_notifications_fut);
-        handle_block_import_notifications_fut.await
+        drop(new_slot_notification_stream);
+        while let Some(maybe_block_info) = throttled_block_import_notification_stream.next().await {
+            if let Some(block_info) = maybe_block_info {
+                if let Err(error) = bundle_processor
+                    .clone()
+                    .process_bundles((block_info.hash, block_info.number, block_info.is_new_best))
+                    .instrument(span.clone())
+                    .await
+                {
+                    tracing::error!(?error, "Failed to process consensus block");
+                    // Bring down the service as bundles processor is an essential task.
+                    // TODO: more graceful shutdown.
+                    break;
+                }
+            }
+        }
+    } else {
+        info!("🧑‍🌾 Running as Operator...");
+        let bundler_fn = {
+            let span = span.clone();
+            move |consensus_block_info: sp_blockchain::HashAndNumber<CBlock>, slot_info| {
+                bundle_producer
+                    .clone()
+                    .produce_bundle(consensus_block_info.clone(), slot_info)
+                    .instrument(span.clone())
+                    .unwrap_or_else(move |error| {
+                        tracing::error!(
+                            ?consensus_block_info,
+                            ?error,
+                            "Error at producing bundle."
+                        );
+                        None
+                    })
+                    .boxed()
+            }
+        };
+        let mut new_slot_notification_stream = Box::pin(new_slot_notification_stream);
+        loop {
+            tokio::select! {
+                Some(maybe_block_info) = throttled_block_import_notification_stream.next() => {
+                    if let Some(block_info) = maybe_block_info {
+                        if let Err(error) = bundle_processor
+                            .clone()
+                            .process_bundles((
+                                block_info.hash,
+                                block_info.number,
+                                block_info.is_new_best,
+                            ))
+                            .instrument(span.clone())
+                            .await
+                        {
+                            tracing::error!(?error, "Failed to process consensus block");
+                            // Bring down the service as bundles processor is an essential task.
+                            // TODO: more graceful shutdown.
+                            break;
+                        }
+                    }
+                }
+                Some((slot, global_randomness, acknowledgement_sender)) = new_slot_notification_stream.next() => {
+                    if let Err(error) = on_new_slot::<Block, CBlock, _, _>(
+                        consensus_client.as_ref(),
+                        consensus_offchain_tx_pool_factory.clone(),
+                        &bundler_fn,
+                        OperatorSlotInfo {
+                            slot,
+                            global_randomness,
+                        },
+                    )
+                    .await
+                    {
+                        tracing::error!(
+                            ?error,
+                            "Error occurred on producing a bundle at slot {slot}"
+                        );
+                        break;
+                    }
+                    if let Some(mut sender) = acknowledgement_sender {
+                        let _ = sender.send(()).await;
+                    }
+                }
+            }
+        }
     }
 }
