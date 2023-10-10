@@ -15,7 +15,7 @@
 // limitations under the License.
 #![doc = include_str!("../README.md")]
 #![cfg_attr(not(feature = "std"), no_std)]
-#![feature(assert_matches, const_option, let_chains)]
+#![feature(array_chunks, assert_matches, const_option, let_chains, portable_simd)]
 #![warn(unused_must_use, unsafe_code, unused_variables, unused_must_use)]
 
 extern crate alloc;
@@ -92,7 +92,9 @@ impl EraChangeTrigger for NormalEraChange {
 
 #[derive(Copy, Clone, Eq, PartialEq, Encode, Decode, MaxEncodedLen, TypeInfo)]
 struct VoteVerificationData {
+    /// Block solution range, vote must not reach it
     solution_range: SolutionRange,
+    vote_solution_range: SolutionRange,
     current_slot: Slot,
     parent_slot: Slot,
 }
@@ -1307,6 +1309,11 @@ fn current_vote_verification_data<T: Config>(is_block_initialized: bool) -> Vote
     let solution_ranges = SolutionRanges::<T>::get();
     VoteVerificationData {
         solution_range: if is_block_initialized {
+            solution_ranges.current
+        } else {
+            solution_ranges.next.unwrap_or(solution_ranges.current)
+        },
+        vote_solution_range: if is_block_initialized {
             solution_ranges.voting_current
         } else {
             solution_ranges
@@ -1339,6 +1346,7 @@ enum CheckVoteError {
     UnknownSegmentCommitment,
     InvalidHistorySize,
     InvalidSolution(String),
+    QualityTooHigh,
     InvalidProofOfTime,
     InvalidFutureProofOfTime,
     DuplicateVote,
@@ -1360,6 +1368,7 @@ impl From<CheckVoteError> for TransactionValidityError {
             CheckVoteError::UnknownSegmentCommitment => InvalidTransaction::Call,
             CheckVoteError::InvalidHistorySize => InvalidTransaction::Call,
             CheckVoteError::InvalidSolution(_) => InvalidTransaction::Call,
+            CheckVoteError::QualityTooHigh => InvalidTransaction::Call,
             CheckVoteError::InvalidProofOfTime => InvalidTransaction::Future,
             CheckVoteError::InvalidFutureProofOfTime => InvalidTransaction::Call,
             CheckVoteError::DuplicateVote => InvalidTransaction::Call,
@@ -1530,12 +1539,12 @@ fn check_vote<T: Config>(
             .segment_index(),
     );
 
-    if let Err(error) = verify_solution(
+    match verify_solution(
         solution.into(),
         slot.into(),
         (&VerifySolutionParams {
             proof_of_time: *proof_of_time,
-            solution_range: vote_verification_data.solution_range,
+            solution_range: vote_verification_data.vote_solution_range,
             piece_check_params: Some(PieceCheckParams {
                 max_pieces_in_sector: T::MaxPiecesInSector::get(),
                 segment_commitment,
@@ -1548,11 +1557,18 @@ fn check_vote<T: Config>(
         })
             .into(),
     ) {
-        debug!(
-            target: "runtime::subspace",
-            "Vote verification error: {error:?}"
-        );
-        return Err(CheckVoteError::InvalidSolution(error));
+        Ok(solution_distance) => {
+            if solution_distance <= vote_verification_data.solution_range {
+                return Err(CheckVoteError::QualityTooHigh);
+            }
+        }
+        Err(error) => {
+            debug!(
+                target: "runtime::subspace",
+                "Vote verification error: {error:?}"
+            );
+            return Err(CheckVoteError::InvalidSolution(error));
+        }
     }
 
     // Cheap proof of time verification is possible here because proof of time must have already
