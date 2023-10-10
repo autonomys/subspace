@@ -48,6 +48,7 @@ use sp_runtime::traits::{
     BlakeTwo256, Block as BlockT, CheckedAdd, Hash as HashT, NumberFor, Zero,
 };
 use sp_runtime::{DigestItem, OpaqueExtrinsic, Percent};
+use sp_std::collections::btree_set::BTreeSet;
 use sp_std::vec::Vec;
 use sp_weights::Weight;
 use subspace_core_primitives::crypto::blake3_hash;
@@ -531,8 +532,18 @@ impl ProofOfElection {
     }
 }
 
+/// Type that represents an operator allow list for Domains.
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct GenesisDomain<AccountId> {
+pub enum OperatorAllowList<AccountId: Ord> {
+    /// Anyone can operate for this domain.
+    Anyone,
+    /// Only the specific operators are allowed to operate the domain.
+    /// This essentially makes the domain permissioned.
+    Operators(BTreeSet<AccountId>),
+}
+
+#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GenesisDomain<AccountId: Ord> {
     // Domain runtime items
     pub runtime_name: String,
     pub runtime_type: RuntimeType,
@@ -546,6 +557,7 @@ pub struct GenesisDomain<AccountId> {
     pub max_block_weight: Weight,
     pub bundle_slot_probability: (u64, u64),
     pub target_bundles_per_block: u32,
+    pub operator_allow_list: OperatorAllowList<AccountId>,
 
     // Genesis operator
     pub signing_key: OperatorPublicKey,

@@ -15,7 +15,7 @@ use frame_support::{ensure, PalletError};
 use frame_system::pallet_prelude::*;
 use scale_info::TypeInfo;
 use sp_core::Get;
-use sp_domains::{DomainId, DomainsDigestItem, ReceiptHash, RuntimeId};
+use sp_domains::{DomainId, DomainsDigestItem, OperatorAllowList, ReceiptHash, RuntimeId};
 use sp_runtime::traits::{CheckedAdd, Zero};
 use sp_runtime::DigestItem;
 use sp_std::collections::btree_map::BTreeMap;
@@ -34,10 +34,12 @@ pub enum Error {
     DomainNameTooLong,
     BalanceFreeze,
     FailedToGenerateGenesisStateRoot,
+    DomainNotFound,
+    NotDomainOwner,
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
-pub struct DomainConfig {
+pub struct DomainConfig<AccountId: Ord> {
     /// A user defined name for this domain, should be a human-readable UTF-8 encoded string.
     pub domain_name: String,
     /// A pointer to the `RuntimeRegistry` entry for this domain.
@@ -51,10 +53,12 @@ pub struct DomainConfig {
     pub bundle_slot_probability: (u64, u64),
     /// The expected number of bundles for a domain block, must be `≥ 1` and `≤ MaxBundlesPerBlock`.
     pub target_bundles_per_block: u32,
+    /// Allowed operators to operate for this domain.
+    pub operator_allow_list: OperatorAllowList<AccountId>,
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
-pub struct DomainObject<Number, AccountId> {
+pub struct DomainObject<Number, AccountId: Ord> {
     /// The address of the domain creator, used to validate updating the domain config.
     pub owner_account_id: AccountId,
     /// The consensus chain block number when the domain first instantiated.
@@ -62,12 +66,12 @@ pub struct DomainObject<Number, AccountId> {
     /// The hash of the genesis execution receipt for this domain.
     pub genesis_receipt_hash: ReceiptHash,
     /// The domain config.
-    pub domain_config: DomainConfig,
+    pub domain_config: DomainConfig<AccountId>,
 }
 
 pub(crate) fn can_instantiate_domain<T: Config>(
     owner_account_id: &T::AccountId,
-    domain_config: &DomainConfig,
+    domain_config: &DomainConfig<T::AccountId>,
 ) -> Result<(), Error> {
     ensure!(
         domain_config.domain_name.len() as u32 <= T::MaxDomainNameLength::get(),
@@ -108,7 +112,7 @@ pub(crate) fn can_instantiate_domain<T: Config>(
 }
 
 pub(crate) fn do_instantiate_domain<T: Config>(
-    domain_config: DomainConfig,
+    domain_config: DomainConfig<T::AccountId>,
     owner_account_id: T::AccountId,
     created_at: BlockNumberFor<T>,
 ) -> Result<DomainId, Error> {
@@ -165,14 +169,33 @@ pub(crate) fn do_instantiate_domain<T: Config>(
     Ok(domain_id)
 }
 
+pub(crate) fn do_update_domain_allow_list<T: Config>(
+    domain_owner: T::AccountId,
+    domain_id: DomainId,
+    updated_operator_allow_list: OperatorAllowList<T::AccountId>,
+) -> Result<(), Error> {
+    DomainRegistry::<T>::try_mutate(domain_id, |maybe_domain_object| {
+        let domain_obj = maybe_domain_object.as_mut().ok_or(Error::DomainNotFound)?;
+        ensure!(
+            domain_obj.owner_account_id == domain_owner,
+            Error::NotDomainOwner
+        );
+
+        domain_obj.domain_config.operator_allow_list = updated_operator_allow_list;
+        Ok(())
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::pallet::{DomainRegistry, NextDomainId, RuntimeRegistry};
     use crate::runtime_registry::RuntimeObject;
     use crate::tests::{new_test_ext, Test};
+    use frame_support::assert_ok;
     use frame_support::traits::Currency;
     use sp_domains::storage::RawGenesis;
+    use sp_std::collections::btree_set::BTreeSet;
     use sp_std::vec;
     use sp_version::RuntimeVersion;
 
@@ -190,6 +213,7 @@ mod tests {
             max_block_weight: Weight::MAX,
             bundle_slot_probability: (0, 0),
             target_bundles_per_block: 0,
+            operator_allow_list: OperatorAllowList::Anyone,
         };
 
         let mut ext = new_test_ext();
@@ -307,10 +331,24 @@ mod tests {
             assert_eq!(Balances::usable_balance(creator), Zero::zero());
 
             // cannot use the locked funds to create a new domain instance
-            assert!(
-                do_instantiate_domain::<Test>(domain_config, creator, created_at)
-                    == Err(Error::InsufficientFund)
-            )
+            assert_eq!(
+                do_instantiate_domain::<Test>(domain_config, creator, created_at),
+                Err(Error::InsufficientFund)
+            );
+
+            // update operator allow list
+            let updated_operator_allow_list =
+                OperatorAllowList::Operators(BTreeSet::from_iter(vec![1, 2, 3]));
+            assert_ok!(do_update_domain_allow_list::<Test>(
+                creator,
+                domain_id,
+                updated_operator_allow_list.clone()
+            ));
+            let domain_obj = DomainRegistry::<Test>::get(domain_id).unwrap();
+            assert_eq!(
+                domain_obj.domain_config.operator_allow_list,
+                updated_operator_allow_list
+            );
         });
     }
 }

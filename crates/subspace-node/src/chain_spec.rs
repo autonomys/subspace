@@ -25,7 +25,7 @@ use sc_telemetry::TelemetryEndpoints;
 use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::crypto::{Ss58Codec, UncheckedFrom};
 use sp_domains::storage::RawGenesis;
-use sp_domains::RuntimeType;
+use sp_domains::{OperatorAllowList, RuntimeType};
 use sp_runtime::{BuildStorage, Percent};
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
@@ -472,6 +472,7 @@ fn subspace_genesis_config(
                 max_block_weight: MaxDomainBlockWeight::get(),
                 bundle_slot_probability: (1, 1),
                 target_bundles_per_block: 10,
+                operator_allow_list: OperatorAllowList::Anyone,
                 signing_key: genesis_domain_params.operator_signing_key,
                 nomination_tax: Percent::from_percent(5),
                 minimum_nominator_stake: 100 * SSC,
