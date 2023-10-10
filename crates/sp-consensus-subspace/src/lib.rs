@@ -132,6 +132,13 @@ impl SubspaceJustification {
         (*consensus_engine_id == SUBSPACE_ENGINE_ID)
             .then(|| Self::decode(&mut encoded_justification.as_slice()))
     }
+
+    /// Returns `true` if justification must be archived, implies that it is canonical
+    pub fn must_be_archived(&self) -> bool {
+        match self {
+            SubspaceJustification::PotCheckpoints { .. } => true,
+        }
+    }
 }
 
 /// An equivocation proof for multiple block authorships on the same slot (i.e. double vote).

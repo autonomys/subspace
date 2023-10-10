@@ -20,9 +20,10 @@ use futures::StreamExt;
 use sc_client_api::{AuxStore, BlockBackend, HeaderBackend};
 use sc_consensus::import_queue::ImportQueueService;
 use sc_consensus::IncomingBlock;
-use sc_consensus_subspace::archiver::SegmentHeadersStore;
+use sc_consensus_subspace::archiver::{decode_block, encode_block, SegmentHeadersStore};
 use sc_tracing::tracing::{debug, trace};
 use sp_consensus::BlockOrigin;
+use sp_runtime::generic::SignedBlock;
 use sp_runtime::traits::{Block as BlockT, Header, NumberFor, One};
 use sp_runtime::Saturating;
 use std::num::NonZeroU16;
@@ -149,10 +150,9 @@ where
                             .hash(block_number)?
                             .expect("Block before best block number must always be found; qed"),
                     )?
-                    .expect("Block before best block number must always be found; qed")
-                    .block;
+                    .expect("Block before best block number must always be found; qed");
 
-                if block.encode() != block_bytes {
+                if encode_block(block) != block_bytes {
                     return Err(sc_service::Error::Other(
                         "Wrong genesis block, block import failed".to_string(),
                     ));
@@ -180,18 +180,22 @@ where
                 best_block_number = client.info().best_number;
             }
 
-            let block =
-                Block::decode(&mut block_bytes.as_slice()).map_err(|error| error.to_string())?;
+            let signed_block =
+                decode_block::<Block>(&block_bytes).map_err(|error| error.to_string())?;
 
             *last_processed_block_number = last_archived_block;
 
             // No need to import blocks that are already present, if block is not present it might
             // correspond to a short fork, so we need to import it even if we already have another
             // block at this height
-            if client.expect_header(block.hash()).is_ok() {
+            if client.expect_header(signed_block.block.hash()).is_ok() {
                 continue;
             }
 
+            let SignedBlock {
+                block,
+                justifications,
+            } = signed_block;
             let (header, extrinsics) = block.deconstruct();
             let hash = header.hash();
 
@@ -200,7 +204,7 @@ where
                 header: Some(header),
                 body: Some(extrinsics),
                 indexed_body: None,
-                justifications: None,
+                justifications,
                 origin: None,
                 allow_missing_state: false,
                 import_existing: false,

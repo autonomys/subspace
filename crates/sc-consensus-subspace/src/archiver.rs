@@ -37,10 +37,11 @@ use sc_utils::mpsc::tracing_unbounded;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::SyncOracle;
-use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
+use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi, SubspaceJustification};
 use sp_objects::ObjectsApi;
+use sp_runtime::generic::SignedBlock;
 use sp_runtime::traits::{Block as BlockT, CheckedSub, Header, NumberFor, One, Zero};
-use sp_runtime::Saturating;
+use sp_runtime::{Justifications, Saturating};
 use std::error::Error;
 use std::future::Future;
 use std::slice;
@@ -211,7 +212,7 @@ fn find_last_archived_block<Block, Client, AS>(
     client: &Client,
     segment_headers_store: &SegmentHeadersStore<AS>,
     best_block_to_archive: NumberFor<Block>,
-) -> sp_blockchain::Result<Option<(SegmentHeader, Block, BlockObjectMapping)>>
+) -> sp_blockchain::Result<Option<(SegmentHeader, SignedBlock<Block>, BlockObjectMapping)>>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + HeaderBackend<Block>,
@@ -248,16 +249,15 @@ where
 
         let last_archived_block = client
             .block(last_archived_block_hash)?
-            .expect("Last archived block must always be retrievable; qed")
-            .block;
+            .expect("Last archived block must always be retrievable; qed");
 
         let block_object_mappings = client
             .runtime_api()
             .validated_object_call_hashes(last_archived_block_hash)
             .and_then(|calls| {
                 client.runtime_api().extract_block_object_mapping(
-                    *last_archived_block.header().parent_hash(),
-                    last_archived_block.clone(),
+                    *last_archived_block.block.header().parent_hash(),
+                    last_archived_block.block.clone(),
                     calls,
                 )
             })
@@ -287,21 +287,20 @@ where
     let Some(block) = client.block(genesis_hash)? else {
         return Ok(None);
     };
-    let block = block.block;
 
     let block_object_mappings = client
         .runtime_api()
         .validated_object_call_hashes(genesis_hash)
         .and_then(|calls| {
             client.runtime_api().extract_block_object_mapping(
-                *block.header().parent_hash(),
-                block.clone(),
+                *block.block.header().parent_hash(),
+                block.block.clone(),
                 calls,
             )
         })
         .unwrap_or_default();
 
-    let encoded_block = encode_genesis_block(&block);
+    let encoded_block = encode_block(block);
 
     let new_archived_segment = Archiver::new(kzg)?
         .add_block(encoded_block, block_object_mappings, false)
@@ -322,32 +321,71 @@ where
     best_archived_block: (Block::Hash, NumberFor<Block>),
 }
 
-fn encode_genesis_block<Block>(block: &Block) -> Vec<u8>
+/// Encode block for archiving purposes
+pub fn encode_block<Block>(mut block: SignedBlock<Block>) -> Vec<u8>
 where
     Block: BlockT,
 {
-    let mut encoded_block = block.encode();
-    let encoded_block_length = encoded_block.len();
+    if block.block.header().number().is_zero() {
+        let mut encoded_block = block.encode();
 
-    // We extend encoding of genesis block with extra data such that the very first
-    // archived segment can be produced right away, bootstrapping the farming
-    // process.
-    //
-    // Note: we add it to the end of the encoded block, so during decoding it'll
-    // actually be ignored (unless `DecodeAll::decode_all()` is used) even though it
-    // is technically present in encoded form.
-    encoded_block.resize(RecordedHistorySegment::SIZE, 0);
-    let mut rng = ChaCha8Rng::from_seed(
-        block
-            .header()
-            .state_root()
-            .as_ref()
-            .try_into()
-            .expect("State root in Subspace must be 32 bytes, panic otherwise; qed"),
-    );
-    rng.fill(&mut encoded_block[encoded_block_length..]);
+        let encoded_block_length = encoded_block.len();
 
-    encoded_block
+        // We extend encoding of genesis block with extra data such that the very first archived
+        // segment can be produced right away, bootstrapping the farming process.
+        //
+        // Note: we add it to the end of the encoded block, so during decoding it'll actually be
+        // ignored (unless `DecodeAll::decode_all()` is used) even though it is technically present
+        // in encoded form.
+        encoded_block.resize(RecordedHistorySegment::SIZE, 0);
+        let mut rng = ChaCha8Rng::from_seed(
+            block
+                .block
+                .header()
+                .state_root()
+                .as_ref()
+                .try_into()
+                .expect("State root in Subspace must be 32 bytes, panic otherwise; qed"),
+        );
+        rng.fill(&mut encoded_block[encoded_block_length..]);
+
+        encoded_block
+    } else {
+        // Filter out non-canonical justifications
+        if let Some(justifications) = block.justifications.take() {
+            let mut filtered_justifications = justifications.into_iter().filter(|justification| {
+                // Only Subspace justifications are to be archived
+                let Some(subspace_justification) =
+                    SubspaceJustification::try_from_justification(justification)
+                        .and_then(|subspace_justification| subspace_justification.ok())
+                else {
+                    return false;
+                };
+
+                subspace_justification.must_be_archived()
+            });
+
+            if let Some(first_justification) = filtered_justifications.next() {
+                let mut justifications = Justifications::from(first_justification);
+
+                for justification in filtered_justifications {
+                    justifications.append(justification);
+                }
+
+                block.justifications = Some(justifications);
+            }
+        }
+
+        block.encode()
+    }
+}
+
+/// Symmetrical to [`encode_block()`], used to decode previously encoded blocks
+pub fn decode_block<Block>(mut encoded_block: &[u8]) -> Result<SignedBlock<Block>, codec::Error>
+where
+    Block: BlockT,
+{
+    SignedBlock::<Block>::decode(&mut encoded_block)
 }
 
 fn initialize_archiver<Block, Client, AS>(
@@ -393,15 +431,11 @@ where
             // Set initial value, this is needed in case only genesis block was archived and there
             // is nothing else available
             best_archived_block.replace((
-                last_archived_block.hash(),
-                *last_archived_block.header().number(),
+                last_archived_block.block.hash(),
+                *last_archived_block.block.header().number(),
             ));
 
-            let last_archived_block_encoded = if last_archived_block.header().number().is_zero() {
-                encode_genesis_block(&last_archived_block)
-            } else {
-                last_archived_block.encode()
-            };
+            let last_archived_block_encoded = encode_block(last_archived_block);
 
             Archiver::with_initial_state(
                 subspace_link.kzg().clone(),
@@ -471,15 +505,14 @@ where
 
                             let block = client
                                 .block(block_hash)?
-                                .expect("All blocks since last archived must be present; qed")
-                                .block;
+                                .expect("All blocks since last archived must be present; qed");
 
                             let block_object_mappings = runtime_api
                                 .validated_object_call_hashes(block_hash)
                                 .and_then(|calls| {
                                     client.runtime_api().extract_block_object_mapping(
-                                        *block.header().parent_hash(),
-                                        block.clone(),
+                                        *block.block.header().parent_hash(),
+                                        block.block.clone(),
                                         calls,
                                     )
                                 })
@@ -491,18 +524,17 @@ where
                     .collect::<sp_blockchain::Result<Vec<_>>>()
             })?;
 
-            best_archived_block = blocks_to_archive
-                .last()
-                .map(|(block, _block_object_mappings)| (block.hash(), *block.header().number()));
+            best_archived_block =
+                blocks_to_archive
+                    .last()
+                    .map(|(block, _block_object_mappings)| {
+                        (block.block.hash(), *block.block.header().number())
+                    });
 
             for (block, block_object_mappings) in blocks_to_archive {
-                let block_number_to_archive = *block.header().number();
+                let block_number_to_archive = *block.block.header().number();
 
-                let encoded_block = if block_number_to_archive.is_zero() {
-                    encode_genesis_block(&block)
-                } else {
-                    block.encode()
-                };
+                let encoded_block = encode_block(block);
 
                 debug!(
                     target: "subspace",
@@ -668,11 +700,10 @@ where
                         .hash(block_number_to_archive)?
                         .expect("Older block by number must always exist"),
                 )?
-                .expect("Older block by number must always exist")
-                .block;
+                .expect("Older block by number must always exist");
 
-            let parent_block_hash = *block.header().parent_hash();
-            let block_hash_to_archive = block.hash();
+            let parent_block_hash = *block.block.header().parent_hash();
+            let block_hash_to_archive = block.block.hash();
 
             debug!(
                 target: "subspace",
@@ -700,7 +731,7 @@ where
                 .and_then(|calls| {
                     client.runtime_api().extract_block_object_mapping(
                         parent_block_hash,
-                        block.clone(),
+                        block.block.clone(),
                         calls,
                     )
                 })
@@ -710,7 +741,7 @@ where
                     )
                 })?;
 
-            let encoded_block = block.encode();
+            let encoded_block = encode_block(block);
             debug!(
                 target: "subspace",
                 "Encoded block {} has size of {:.2} kiB",
