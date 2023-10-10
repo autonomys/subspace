@@ -343,6 +343,8 @@ where
                 %slot,
                 "Solution was ignored, likely because farmer was too slow"
             );
+
+            return Err(JsonRpseeError::Custom("Solution was ignored".to_string()));
         }
 
         Ok(())

@@ -15,6 +15,7 @@ use crate::single_disk_farm::plotting::{
     plotting, plotting_scheduler, PlottingOptions, PlottingSchedulerOptions,
 };
 use crate::utils::{tokio_rayon_spawn_handler, JoinOnDrop};
+use async_lock::RwLock;
 use derive_more::{Display, From};
 use event_listener_primitives::{Bag, HandlerId};
 use futures::channel::{mpsc, oneshot};
@@ -22,7 +23,7 @@ use futures::future::{select, Either};
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use parity_scale_codec::{Decode, Encode};
-use parking_lot::{Mutex, RwLock};
+use parking_lot::Mutex;
 use rayon::prelude::*;
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use serde::{Deserialize, Serialize};
@@ -1111,18 +1112,20 @@ impl SingleDiskFarm {
     }
 
     /// Number of sectors successfully plotted so far
-    pub fn plotted_sectors_count(&self) -> usize {
-        self.sectors_metadata.read().len()
+    pub async fn plotted_sectors_count(&self) -> usize {
+        self.sectors_metadata.read().await.len()
     }
 
     /// Read information about sectors plotted so far
-    pub fn plotted_sectors(
+    pub async fn plotted_sectors(
         &self,
     ) -> impl Iterator<Item = Result<PlottedSector, parity_scale_codec::Error>> + '_ {
         let public_key = self.single_disk_farm_info.public_key();
+        let sectors_metadata = self.sectors_metadata.read().await.clone();
 
-        (0..).zip(self.sectors_metadata.read().clone()).map(
-            move |(sector_index, sector_metadata)| {
+        (0..)
+            .zip(sectors_metadata)
+            .map(move |(sector_index, sector_metadata)| {
                 let sector_id = SectorId::new(public_key.hash(), sector_index);
 
                 let mut piece_indexes = Vec::with_capacity(usize::from(self.pieces_in_sector));
@@ -1145,8 +1148,7 @@ impl SingleDiskFarm {
                     sector_metadata,
                     piece_indexes,
                 })
-            },
-        )
+            })
     }
 
     /// Get piece cache instance

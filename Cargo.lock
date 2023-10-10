@@ -11530,6 +11530,7 @@ name = "subspace-farmer"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "async-lock",
  "async-trait",
  "atomic",
  "backoff",
