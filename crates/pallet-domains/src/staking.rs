@@ -14,7 +14,10 @@ use frame_support::traits::tokens::{Fortitude, Preservation};
 use frame_support::{ensure, PalletError};
 use scale_info::TypeInfo;
 use sp_core::Get;
-use sp_domains::{DomainId, EpochIndex, OperatorAllowList, OperatorId, OperatorPublicKey};
+use sp_domains::{
+    DomainId, EpochIndex, OperatorAllowList, OperatorId, OperatorPublicKey,
+    ZERO_OPERATOR_SIGNING_KEY,
+};
 use sp_runtime::traits::{CheckedAdd, CheckedSub, One, Zero};
 use sp_runtime::{Perbill, Percent};
 use sp_std::collections::btree_map::BTreeMap;
@@ -108,6 +111,7 @@ pub enum Error {
     TryWithdrawWithPendingDeposit,
     TooManyPendingStakingOperation,
     OperatorNotAllowed,
+    InvalidOperatorSigningKey,
 }
 
 // Increase `PendingStakingOperationCount` by one and check if the `MaxPendingStakingOperation`
@@ -134,6 +138,11 @@ pub(crate) fn do_register_operator<T: Config>(
     note_pending_staking_operation::<T>(domain_id)?;
 
     DomainStakingSummary::<T>::try_mutate(domain_id, |maybe_domain_stake_summary| {
+        ensure!(
+            config.signing_key != OperatorPublicKey::from(ZERO_OPERATOR_SIGNING_KEY),
+            Error::InvalidOperatorSigningKey
+        );
+
         let domain_obj = DomainRegistry::<T>::get(domain_id).ok_or(Error::DomainNotInitialized)?;
         let operator_allowed = match domain_obj.domain_config.operator_allow_list {
             OperatorAllowList::Anyone => true,
@@ -622,7 +631,10 @@ pub(crate) mod tests {
     use frame_support::weights::Weight;
     use frame_support::{assert_err, assert_ok};
     use sp_core::{Pair, U256};
-    use sp_domains::{DomainId, OperatorAllowList, OperatorId, OperatorPair, OperatorPublicKey};
+    use sp_domains::{
+        DomainId, OperatorAllowList, OperatorId, OperatorPair, OperatorPublicKey,
+        ZERO_OPERATOR_SIGNING_KEY,
+    };
     use sp_runtime::traits::Zero;
     use std::collections::{BTreeMap, BTreeSet};
     use std::vec;
@@ -706,6 +718,32 @@ pub(crate) mod tests {
         }
 
         (operator_id, operator_config)
+    }
+
+    #[test]
+    fn test_register_operator_invalid_signing_key() {
+        let domain_id = DomainId::new(0);
+        let operator_account = 1;
+
+        let mut ext = new_test_ext();
+        ext.execute_with(|| {
+            let operator_config = OperatorConfig {
+                signing_key: OperatorPublicKey::from(ZERO_OPERATOR_SIGNING_KEY),
+                minimum_nominator_stake: Default::default(),
+                nomination_tax: Default::default(),
+            };
+
+            let res = Domains::register_operator(
+                RuntimeOrigin::signed(operator_account),
+                domain_id,
+                Default::default(),
+                operator_config,
+            );
+            assert_err!(
+                res,
+                Error::<Test>::Staking(StakingError::InvalidOperatorSigningKey)
+            );
+        });
     }
 
     #[test]

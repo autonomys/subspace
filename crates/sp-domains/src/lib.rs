@@ -38,6 +38,7 @@ use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
 use sp_api::RuntimeVersion;
+use sp_application_crypto::sr25519;
 use sp_core::crypto::KeyTypeId;
 use sp_core::sr25519::vrf::VrfSignature;
 #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
@@ -782,10 +783,15 @@ impl InboxedBundle {
     }
 }
 
-/// Empty extrinsics root
+/// Empty extrinsics root.
 pub const EMPTY_EXTRINSIC_ROOT: ExtrinsicsRoot = ExtrinsicsRoot {
     0: hex!("03170a2e7597b7b7e3d84c05391d139a62b157e78786d8c082f29dcf4c111314"),
 };
+
+/// Zero operator signing key.
+pub const ZERO_OPERATOR_SIGNING_KEY: sr25519::Public = sr25519::Public(hex!(
+    "0000000000000000000000000000000000000000000000000000000000000000"
+));
 
 sp_api::decl_runtime_apis! {
     /// API necessary for domains pallet.
