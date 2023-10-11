@@ -23,8 +23,8 @@ use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::storage::RawGenesis;
 use sp_domains::{
     BundleHeader, DomainId, DomainsHoldIdentifier, ExecutionReceipt, InboxedBundle, OpaqueBundle,
-    OperatorId, OperatorPair, ProofOfElection, ReceiptHash, RuntimeType, SealedBundleHeader,
-    StakingHoldIdentifier,
+    OperatorAllowList, OperatorId, OperatorPair, ProofOfElection, ReceiptHash, RuntimeType,
+    SealedBundleHeader, StakingHoldIdentifier,
 };
 use sp_domains_fraud_proof::{
     FraudProofExtension, FraudProofHostFunctions, FraudProofVerificationInfoRequest,
@@ -417,6 +417,7 @@ pub(crate) fn register_genesis_domain(creator: u64, operator_ids: Vec<OperatorId
             max_block_weight: Weight::from_parts(1, 0),
             bundle_slot_probability: (1, 1),
             target_bundles_per_block: 1,
+            operator_allow_list: OperatorAllowList::Anyone,
         },
     )
     .unwrap();
@@ -675,6 +676,7 @@ fn test_bundle_fromat_verification() {
             max_block_weight: Weight::MAX,
             bundle_slot_probability: (1, 1),
             target_bundles_per_block: 1,
+            operator_allow_list: OperatorAllowList::Anyone,
         };
         let domain_obj = DomainObject {
             owner_account_id: Default::default(),

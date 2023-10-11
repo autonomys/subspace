@@ -5,7 +5,7 @@ use codec::Encode;
 use sc_chain_spec::ChainType;
 use sp_core::{sr25519, Pair, Public};
 use sp_domains::storage::RawGenesis;
-use sp_domains::{GenesisDomain, OperatorPublicKey, RuntimeType};
+use sp_domains::{GenesisDomain, OperatorAllowList, OperatorPublicKey, RuntimeType};
 use sp_runtime::traits::{IdentifyAccount, Verify};
 use sp_runtime::{BuildStorage, Percent};
 use std::marker::PhantomData;
@@ -123,6 +123,7 @@ fn create_genesis_config(
                 max_block_weight: MaxDomainBlockWeight::get(),
                 bundle_slot_probability: (1, 1),
                 target_bundles_per_block: 10,
+                operator_allow_list: OperatorAllowList::Anyone,
 
                 signing_key: get_from_seed::<OperatorPublicKey>("Alice"),
                 minimum_nominator_stake: 100 * SSC,

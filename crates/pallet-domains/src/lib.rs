@@ -111,7 +111,8 @@ mod pallet {
         ReceiptType,
     };
     use crate::domain_registry::{
-        do_instantiate_domain, DomainConfig, DomainObject, Error as DomainRegistryError,
+        do_instantiate_domain, do_update_domain_allow_list, DomainConfig, DomainObject,
+        Error as DomainRegistryError,
     };
     use crate::runtime_registry::{
         do_register_runtime, do_schedule_runtime_upgrade, do_upgrade_runtimes,
@@ -147,8 +148,8 @@ mod pallet {
     use sp_domains::fraud_proof::FraudProof;
     use sp_domains::transaction::InvalidTransactionCode;
     use sp_domains::{
-        BundleDigest, DomainId, EpochIndex, GenesisDomain, OperatorId, ReceiptHash, RuntimeId,
-        RuntimeType,
+        BundleDigest, DomainId, EpochIndex, GenesisDomain, OperatorAllowList, OperatorId,
+        ReceiptHash, RuntimeId, RuntimeType,
     };
     use sp_runtime::traits::{
         AtLeast32BitUnsigned, BlockNumberProvider, Bounded, CheckEqual, CheckedAdd, Hash,
@@ -706,6 +707,9 @@ mod pallet {
             domain_id: DomainId,
             new_head_receipt_number: Option<T::DomainNumber>,
         },
+        DomainOperatorAllowListUpdated {
+            domain_id: DomainId,
+        },
     }
 
     /// Per-domain state for tx range calculation.
@@ -1041,7 +1045,7 @@ mod pallet {
         #[pallet::weight(T::WeightInfo::instantiate_domain())]
         pub fn instantiate_domain(
             origin: OriginFor<T>,
-            domain_config: DomainConfig,
+            domain_config: DomainConfig<T::AccountId>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
@@ -1126,6 +1130,27 @@ mod pallet {
 
             Ok(())
         }
+
+        /// Extrinsic to update domain's operator allow list.
+        /// Note:
+        /// - If the previous allowed list is set to specific operators and new allow list is set
+        ///   to `Anyone`, then domain will become permissioned to open for all operators.
+        /// - If the previous allowed list is set to `Anyone` or specific operators and the new
+        ///   allow list is set to specific operators, then all the registered not allowed operators
+        ///   will continue to operate until they de-register themselves.
+        #[pallet::call_index(12)]
+        #[pallet::weight(Weight::from_all(10_000))]
+        pub fn update_domain_operator_allow_list(
+            origin: OriginFor<T>,
+            domain_id: DomainId,
+            operator_allow_list: OperatorAllowList<T::AccountId>,
+        ) -> DispatchResult {
+            let who = ensure_signed(origin)?;
+            do_update_domain_allow_list::<T>(who, domain_id, operator_allow_list)
+                .map_err(Error::<T>::from)?;
+            Self::deposit_event(crate::pallet::Event::DomainOperatorAllowListUpdated { domain_id });
+            Ok(())
+        }
     }
 
     #[pallet::genesis_config]
@@ -1163,6 +1188,7 @@ mod pallet {
                     max_block_weight: genesis_domain.max_block_weight,
                     bundle_slot_probability: genesis_domain.bundle_slot_probability,
                     target_bundles_per_block: genesis_domain.target_bundles_per_block,
+                    operator_allow_list: genesis_domain.operator_allow_list,
                 };
                 let domain_owner = genesis_domain.owner_account_id;
                 let domain_id =
