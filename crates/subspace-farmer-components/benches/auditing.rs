@@ -10,7 +10,7 @@ use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    Blake2b256Hash, HistorySize, PublicKey, Record, RecordedHistorySegment, SectorId, SectorIndex,
+    Blake3Hash, HistorySize, PublicKey, Record, RecordedHistorySegment, SectorId, SectorIndex,
     SolutionRange,
 };
 use subspace_erasure_coding::ErasureCoding;
@@ -75,7 +75,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         ),
         min_sector_lifetime: HistorySize::from(NonZeroU64::new(4).unwrap()),
     };
-    let global_challenge = Blake2b256Hash::default();
+    let global_challenge = Blake3Hash::default();
     let solution_range = SolutionRange::MAX;
 
     let sector_size = sector_size(pieces_in_sector);

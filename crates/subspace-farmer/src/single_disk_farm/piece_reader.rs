@@ -1,6 +1,6 @@
+use async_lock::RwLock;
 use futures::channel::{mpsc, oneshot};
 use futures::{SinkExt, StreamExt};
-use parking_lot::RwLock;
 use std::fs::File;
 use std::future::Future;
 use std::sync::Arc;
@@ -104,7 +104,7 @@ async fn read_pieces<PosTable>(
             continue;
         }
 
-        let modifying_sector_guard = modifying_sector_index.read();
+        let modifying_sector_guard = modifying_sector_index.read().await;
 
         if *modifying_sector_guard == Some(sector_index) {
             // Skip sector that is being modified right now
@@ -112,7 +112,7 @@ async fn read_pieces<PosTable>(
         }
 
         let (sector_metadata, sector_count) = {
-            let sectors_metadata = sectors_metadata.read();
+            let sectors_metadata = sectors_metadata.read().await;
 
             let sector_count = sectors_metadata.len() as SectorIndex;
 

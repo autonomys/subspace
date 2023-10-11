@@ -20,12 +20,15 @@
 
 use codec::{Decode, Encode};
 use cross_domain_message_gossip::GossipWorkerBuilder;
+use domain_runtime_primitives::opaque::Block as DomainBlock;
 use domain_runtime_primitives::BlockNumber as DomainNumber;
 use futures::channel::mpsc;
 use futures::{select, FutureExt, StreamExt};
 use jsonrpsee::RpcModule;
 use parking_lot::Mutex;
 use sc_block_builder::BlockBuilderProvider;
+use sc_client_api::execution_extensions::ExtensionsFactory;
+use sc_client_api::ExecutorProvider;
 use sc_consensus::block_import::{
     BlockCheckParams, BlockImportParams, ForkChoiceStrategy, ImportResult,
 };
@@ -54,9 +57,11 @@ use sp_consensus::{BlockOrigin, Error as ConsensusError};
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest, PreDigestPotInfo};
 use sp_consensus_subspace::FarmerPublicKey;
-use sp_core::traits::SpawnEssentialNamed;
+use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
 use sp_core::H256;
-use sp_domains::OpaqueBundle;
+use sp_domains::{DomainsApi, OpaqueBundle};
+use sp_domains_fraud_proof::{FraudProofExtension, FraudProofHostFunctionsImpl};
+use sp_externalities::Extensions;
 use sp_inherents::{InherentData, InherentDataProvider};
 use sp_keyring::Sr25519Keyring;
 use sp_runtime::generic::{BlockId, Digest};
@@ -171,6 +176,47 @@ type StorageChanges = sp_api::StorageChanges<Block>;
 
 type TxPreValidator = ConsensusChainTxPreValidator<Block, Client, FraudProofVerifier>;
 
+struct MockExtensionsFactory<Client, DomainBlock, Executor> {
+    consensus_client: Arc<Client>,
+    executor: Arc<Executor>,
+    _phantom: PhantomData<DomainBlock>,
+}
+
+impl<Client, DomainBlock, Executor> MockExtensionsFactory<Client, DomainBlock, Executor> {
+    fn new(consensus_client: Arc<Client>, executor: Arc<Executor>) -> Self {
+        Self {
+            consensus_client,
+            executor,
+            _phantom: Default::default(),
+        }
+    }
+}
+
+impl<Block, Client, DomainBlock, Executor> ExtensionsFactory<Block>
+    for MockExtensionsFactory<Client, DomainBlock, Executor>
+where
+    Block: BlockT,
+    Block::Hash: From<H256>,
+    DomainBlock: BlockT,
+    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + 'static,
+    Client::Api: DomainsApi<Block, NumberFor<DomainBlock>, DomainBlock::Hash>,
+    Executor: CodeExecutor,
+{
+    fn extensions_for(
+        &self,
+        _block_hash: Block::Hash,
+        _block_number: NumberFor<Block>,
+    ) -> Extensions {
+        let mut exts = Extensions::new();
+        exts.register(FraudProofExtension::new(Arc::new(
+            FraudProofHostFunctionsImpl::<_, _, DomainBlock, Executor>::new(
+                self.consensus_client.clone(),
+                self.executor.clone(),
+            ),
+        )));
+        exts
+    }
+}
 /// A mock Subspace consensus node instance used for testing.
 pub struct MockConsensusNode {
     /// `TaskManager`'s instance.
@@ -241,6 +287,12 @@ impl MockConsensusNode {
                 .expect("Fail to new full parts");
 
         let client = Arc::new(client);
+        client
+            .execution_extensions()
+            .set_extensions_factory(MockExtensionsFactory::<_, DomainBlock, _>::new(
+                client.clone(),
+                Arc::new(executor.clone()),
+            ));
 
         let select_chain = sc_consensus::LongestChain::new(backend.clone());
 
@@ -547,19 +599,14 @@ impl MockConsensusNode {
         extrinsics
     }
 
-    async fn mock_inherent_data(
-        slot: Slot,
-        parent_state_root: <Block as BlockT>::Hash,
-    ) -> Result<InherentData, Box<dyn Error>> {
+    async fn mock_inherent_data(slot: Slot) -> Result<InherentData, Box<dyn Error>> {
         let timestamp = sp_timestamp::InherentDataProvider::new(Timestamp::new(
             <Slot as Into<u64>>::into(slot) * SLOT_DURATION,
         ));
         let subspace_inherents =
             sp_consensus_subspace::inherents::InherentDataProvider::new(slot, vec![]);
 
-        let domain_inherents = sp_domains::inherents::InherentDataProvider::new(parent_state_root);
-
-        let inherent_data = (subspace_inherents, timestamp, domain_inherents)
+        let inherent_data = (subspace_inherents, timestamp)
             .create_inherent_data()
             .await?;
 
@@ -588,9 +635,8 @@ impl MockConsensusNode {
         extrinsics: Vec<<Block as BlockT>::Extrinsic>,
     ) -> Result<(Block, StorageChanges), Box<dyn Error>> {
         let digest = self.mock_subspace_digest(slot);
-        let parent_state_root = self.client.header(parent_hash)?.unwrap().state_root;
 
-        let inherent_data = Self::mock_inherent_data(slot, parent_state_root).await?;
+        let inherent_data = Self::mock_inherent_data(slot).await?;
 
         let mut block_builder = self.client.new_block_at(parent_hash, digest, false)?;
 

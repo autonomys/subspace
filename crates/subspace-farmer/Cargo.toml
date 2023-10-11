@@ -13,6 +13,7 @@ include = [
 
 [dependencies]
 anyhow = "1.0.75"
+async-lock = "2.8.0"
 async-trait = "0.1.73"
 atomic = "0.5.3"
 backoff = { version = "0.4.0", features = ["futures", "tokio"] }
@@ -45,7 +46,7 @@ subspace-farmer-components = { version = "0.1.0", path = "../subspace-farmer-com
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-metrics = { version = "0.1.0", path = "../../shared/subspace-metrics" }
 subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
-subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space", features = ["chia"] }
+subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space" }
 subspace-rpc-primitives = { version = "0.1.0", path = "../subspace-rpc-primitives" }
 substrate-bip39 = "0.4.4"
 supports-color = "2.0.0"

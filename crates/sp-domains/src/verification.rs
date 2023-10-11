@@ -1,7 +1,3 @@
-use crate::fraud_proof::{
-    DeriveExtrinsics, ExtrinsicDigest, InvalidExtrinsicsRootProof, StorageKeys,
-};
-use crate::valued_trie_root::valued_ordered_trie_root;
 use crate::{ExecutionReceipt, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT};
 use domain_runtime_primitives::opaque::AccountId;
 use frame_support::PalletError;
@@ -12,8 +8,7 @@ use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
 use scale_info::TypeInfo;
 use sp_core::storage::StorageKey;
-use sp_core::H256;
-use sp_runtime::traits::{BlakeTwo256, Block, Hash, NumberFor};
+use sp_runtime::traits::{Block, NumberFor};
 use sp_state_machine::trace;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::vec_deque::VecDeque;
@@ -22,8 +17,6 @@ use sp_std::marker::PhantomData;
 use sp_std::vec::Vec;
 use sp_trie::{read_trie_value, LayoutV1, StorageProof};
 use subspace_core_primitives::Randomness;
-use subspace_runtime_primitives::Moment;
-use trie_db::node::Value;
 
 /// Verification error.
 #[derive(Debug, PartialEq, Eq, Encode, Decode, PalletError, TypeInfo)]
@@ -100,98 +93,7 @@ where
     Ok(())
 }
 
-pub fn verify_invalid_domain_extrinsics_root_fraud_proof<
-    CBlock,
-    DomainNumber,
-    DomainHash,
-    Balance,
-    Hashing,
-    SK,
-    DE,
->(
-    consensus_state_root: CBlock::Hash,
-    bad_receipt: ExecutionReceipt<
-        NumberFor<CBlock>,
-        CBlock::Hash,
-        DomainNumber,
-        DomainHash,
-        Balance,
-    >,
-    fraud_proof: &InvalidExtrinsicsRootProof,
-) -> Result<(), VerificationError>
-where
-    CBlock: Block,
-    Hashing: Hasher<Out = CBlock::Hash>,
-    SK: StorageKeys,
-    DE: DeriveExtrinsics<Moment>,
-{
-    let InvalidExtrinsicsRootProof {
-        valid_bundle_digests,
-        randomness_storage_proof,
-        timestamp_storage_proof,
-        ..
-    } = fraud_proof;
-
-    let mut bundle_extrinsics_digests = Vec::new();
-    for (bad_receipt_valid_bundle_digest, bundle_digest) in bad_receipt
-        .valid_bundle_digests()
-        .into_iter()
-        .zip(valid_bundle_digests)
-    {
-        let bundle_digest_hash = BlakeTwo256::hash_of(&bundle_digest.bundle_digest);
-        if bundle_digest_hash != bad_receipt_valid_bundle_digest {
-            return Err(VerificationError::InvalidBundleDigest);
-        }
-
-        bundle_extrinsics_digests.extend(bundle_digest.bundle_digest.clone());
-    }
-
-    let block_randomness = StorageProofVerifier::<Hashing>::verify_and_get_value::<Randomness>(
-        &consensus_state_root,
-        randomness_storage_proof.clone(),
-        SK::block_randomness_storage_key(),
-    )
-    .map_err(|_| VerificationError::InvalidProof)?;
-
-    let timestamp = StorageProofVerifier::<Hashing>::verify_and_get_value::<Moment>(
-        &consensus_state_root,
-        timestamp_storage_proof.clone(),
-        SK::timestamp_storage_key(),
-    )
-    .map_err(|_| VerificationError::InvalidProof)?;
-
-    let shuffling_seed =
-        H256::decode(&mut extrinsics_shuffling_seed::<Hashing>(block_randomness).as_ref())
-            .map_err(|_| VerificationError::FailedToDecode)?;
-
-    let mut ordered_extrinsics = deduplicate_and_shuffle_extrinsics(
-        bundle_extrinsics_digests,
-        Randomness::from(shuffling_seed.to_fixed_bytes()),
-    );
-
-    let timestamp_extrinsic =
-        ExtrinsicDigest::new::<LayoutV1<BlakeTwo256>>(DE::derive_timestamp_extrinsic(timestamp));
-    ordered_extrinsics.insert(0, timestamp_extrinsic);
-
-    let ordered_trie_node_values = ordered_extrinsics
-        .iter()
-        .map(|ext_digest| match ext_digest {
-            ExtrinsicDigest::Data(data) => Value::Inline(data),
-            ExtrinsicDigest::Hash(hash) => Value::Node(hash.0.as_slice()),
-        })
-        .collect();
-
-    // TODO: domain runtime upgrade extrinsic
-    let extrinsics_root =
-        valued_ordered_trie_root::<LayoutV1<BlakeTwo256>>(ordered_trie_node_values);
-    if bad_receipt.domain_block_extrinsic_root == extrinsics_root {
-        return Err(VerificationError::InvalidProof);
-    }
-
-    Ok(())
-}
-
-fn extrinsics_shuffling_seed<Hashing>(block_randomness: Randomness) -> Hashing::Out
+pub fn extrinsics_shuffling_seed<Hashing>(block_randomness: Randomness) -> Hashing::Out
 where
     Hashing: Hasher,
 {
@@ -246,10 +148,7 @@ pub fn shuffle_extrinsics<Extrinsic: Debug, AccountId: Ord + Clone>(
     let mut grouped_extrinsics: BTreeMap<Option<AccountId>, VecDeque<_>> = extrinsics
         .into_iter()
         .fold(BTreeMap::new(), |mut groups, (maybe_signer, tx)| {
-            groups
-                .entry(maybe_signer)
-                .or_insert_with(VecDeque::new)
-                .push_back(tx);
+            groups.entry(maybe_signer).or_default().push_back(tx);
             groups
         });
 

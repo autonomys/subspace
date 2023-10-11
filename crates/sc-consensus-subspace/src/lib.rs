@@ -83,9 +83,6 @@ use subspace_verification::{
     VerifySolutionParams,
 };
 
-const SUBSPACE_FULL_POT_VERIFICATION_INTERMEDIATE: &[u8] =
-    b"subspace_full_pot_verification_intermediate";
-
 /// Information about new slot that just arrived
 #[derive(Debug, Copy, Clone)]
 pub struct NewSlotInfo {
@@ -170,6 +167,9 @@ pub enum Error<Header: HeaderT> {
     /// Bad reward signature
     #[error("Bad reward signature on {0:?}")]
     BadRewardSignature(Header::Hash),
+    /// Missing Subspace justification
+    #[error("Missing Subspace justification")]
+    MissingSubspaceJustification,
     /// Invalid Subspace justification
     #[error("Invalid Subspace justification: {0}")]
     InvalidSubspaceJustification(codec::Error),
@@ -281,6 +281,7 @@ where
             VerificationError::BadRewardSignature(block_hash) => {
                 Error::BadRewardSignature(block_hash)
             }
+            VerificationError::MissingSubspaceJustification => Error::MissingSubspaceJustification,
             VerificationError::InvalidSubspaceJustification(error) => {
                 Error::InvalidSubspaceJustification(error)
             }
@@ -679,7 +680,6 @@ where
             FarmerPublicKey,
             FarmerSignature,
         >,
-        full_pot_verification: bool,
         justifications: &Option<Justifications>,
         skip_runtime_access: bool,
     ) -> Result<(), Error<Block::Header>> {
@@ -726,18 +726,9 @@ where
         let parent_slot = extract_pre_digest(&parent_header).map(|d| d.slot())?;
 
         // Make sure that slot number is strictly increasing
-        let slots_since_parent = match pre_digest.slot().checked_sub(*parent_slot) {
-            Some(slots_since_parent) => {
-                if slots_since_parent > 0 {
-                    Slot::from(slots_since_parent)
-                } else {
-                    return Err(Error::SlotMustIncrease(parent_slot, pre_digest.slot()));
-                }
-            }
-            None => {
-                return Err(Error::SlotMustIncrease(parent_slot, pre_digest.slot()));
-            }
-        };
+        if pre_digest.slot() <= parent_slot {
+            return Err(Error::SlotMustIncrease(parent_slot, pre_digest.slot()));
+        }
 
         let parent_subspace_digest_items = if block_number.is_one() {
             None
@@ -767,16 +758,21 @@ where
             return Err(Error::InvalidSolutionRange(block_hash));
         }
 
-        // The case where we have justifications is a happy case because we only need to check the
-        // seed and number of checkpoints. But justifications are not always available, so fallback
-        // is still needed.
-        if let Some(subspace_justification) = justifications.as_ref().and_then(|justifications| {
-            justifications
-                .iter()
-                .find_map(SubspaceJustification::try_from_justification)
-        }) {
-            let subspace_justification =
-                subspace_justification.map_err(Error::InvalidSubspaceJustification)?;
+        // For PoT justifications we only need to check the seed and number of checkpoints, the rest
+        // was already checked during stateless block verification.
+        {
+            let Some(subspace_justification) = justifications
+                .as_ref()
+                .and_then(|justifications| {
+                    justifications
+                        .iter()
+                        .find_map(SubspaceJustification::try_from_justification)
+                })
+                .transpose()
+                .map_err(Error::InvalidSubspaceJustification)?
+            else {
+                return Err(Error::MissingSubspaceJustification);
+            };
 
             let SubspaceJustification::PotCheckpoints { seed, checkpoints } =
                 subspace_justification;
@@ -818,54 +814,6 @@ where
                 if checkpoints.len() as u64 != (*future_slot - *parent_future_slot) {
                     return Err(Error::InvalidSubspaceJustificationContents);
                 }
-            }
-        } else {
-            let pot_input = if block_number.is_one() {
-                PotNextSlotInput {
-                    slot: parent_slot + Slot::from(1),
-                    // Genesis block doesn't contain usual digest items, we need to query runtime
-                    // API instead
-                    slot_iterations: self
-                        .client
-                        .runtime_api()
-                        .pot_parameters(parent_hash)?
-                        .slot_iterations(),
-                    seed: self.pot_verifier.genesis_seed(),
-                }
-            } else {
-                let parent_subspace_digest_items = parent_subspace_digest_items
-                    .as_ref()
-                    .expect("Always Some for non-first block; qed");
-
-                PotNextSlotInput::derive(
-                    subspace_digest_items.pot_slot_iterations,
-                    parent_slot,
-                    parent_subspace_digest_items
-                        .pre_digest
-                        .pot_info()
-                        .proof_of_time(),
-                    &subspace_digest_items.pot_parameters_change,
-                )
-            };
-
-            // Here we check that there is continuity from parent block's proof of time (but not future
-            // entropy since this block may be produced before slot corresponding to parent block's
-            // future proof of time) to current block's proof of time. During stateless verification we
-            // do not have access to parent block, thus only verify proofs after proof of time of at
-            // current slot up until future proof of time (inclusive), here during block import we
-            // verify the rest.
-            if full_pot_verification
-                && !self
-                    .pot_verifier
-                    .is_output_valid(
-                        pot_input,
-                        slots_since_parent,
-                        subspace_digest_items.pre_digest.pot_info().proof_of_time(),
-                        subspace_digest_items.pot_parameters_change,
-                    )
-                    .await
-            {
-                return Err(Error::InvalidProofOfTime);
             }
         }
 
@@ -1000,11 +948,6 @@ where
         &mut self,
         mut block: BlockImportParams<Block>,
     ) -> Result<ImportResult, Self::Error> {
-        let full_pot_verification = block
-            .intermediates
-            .remove(SUBSPACE_FULL_POT_VERIFICATION_INTERMEDIATE)
-            .and_then(|full_pot_verification| full_pot_verification.downcast_ref().copied())
-            .unwrap_or(true);
         let block_hash = block.post_hash();
         let block_number = *block.header.number();
 
@@ -1035,7 +978,6 @@ where
             block.body.clone(),
             &root_plot_public_key,
             &subspace_digest_items,
-            full_pot_verification,
             &block.justifications,
             skip_execution_checks,
         )

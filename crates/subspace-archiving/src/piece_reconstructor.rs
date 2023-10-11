@@ -6,7 +6,7 @@ use core::num::NonZeroUsize;
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
 use subspace_core_primitives::crypto::kzg::{Commitment, Kzg, Polynomial};
-use subspace_core_primitives::crypto::{blake2b_256_254_hash_to_scalar, Scalar};
+use subspace_core_primitives::crypto::{blake3_254_hash_to_scalar, Scalar};
 use subspace_core_primitives::{ArchivedHistorySegment, Piece, RawRecord};
 use subspace_erasure_coding::ErasureCoding;
 
@@ -177,7 +177,7 @@ impl PiecesReconstructor {
                 reconstructed_piece
                     .commitment_mut()
                     .copy_from_slice(&commitment_bytes);
-                blake2b_256_254_hash_to_scalar(&commitment_bytes)
+                blake3_254_hash_to_scalar(&commitment_bytes)
             })
             .collect::<Vec<_>>();
 

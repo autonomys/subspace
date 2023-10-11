@@ -13,11 +13,8 @@
     step_trait
 )]
 
-#[cfg(feature = "chia")]
 pub mod chia;
-#[cfg(feature = "chia")]
 pub mod chiapos;
-#[cfg(feature = "shim")]
 pub mod shim;
 
 use core::fmt;
@@ -36,10 +33,8 @@ pub trait Quality {
 #[derive(Debug, Clone, Copy)]
 pub enum PosTableType {
     /// Chia table
-    #[cfg(feature = "chia")]
     Chia,
     /// Shim table
-    #[cfg(feature = "shim")]
     Shim,
 }
 

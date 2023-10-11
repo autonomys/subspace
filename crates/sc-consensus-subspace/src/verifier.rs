@@ -1,6 +1,6 @@
 //! Subspace block import implementation
 
-use crate::{Error, SUBSPACE_FULL_POT_VERIFICATION_INTERMEDIATE};
+use crate::Error;
 use futures::lock::Mutex;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
@@ -52,6 +52,9 @@ pub enum VerificationError<Header: HeaderT> {
     /// Bad reward signature
     #[error("Bad reward signature on {0:?}")]
     BadRewardSignature(Header::Hash),
+    /// Missing Subspace justification
+    #[error("Missing Subspace justification")]
+    MissingSubspaceJustification,
     /// Invalid Subspace justification
     #[error("Invalid Subspace justification: {0}")]
     InvalidSubspaceJustification(codec::Error),
@@ -259,16 +262,22 @@ where
         // The pre-hash of the header doesn't include the seal and that's what we sign
         let pre_hash = header.hash();
 
-        // The case where we have justifications is a happy case because we can verify most things
-        // right away and more efficiently than without justifications. But justifications are not
-        // always available, so fallback is still needed.
-        if let Some(subspace_justification) = justifications.as_ref().and_then(|justifications| {
-            justifications
-                .iter()
-                .find_map(SubspaceJustification::try_from_justification)
-        }) {
-            let subspace_justification =
-                subspace_justification.map_err(VerificationError::InvalidSubspaceJustification)?;
+        // With justifications we can verify PoT checkpoints quickly and efficiently, the only check
+        // that will remain is to ensure that seed and number of iterations (inputs) is correct
+        // during block import.
+        {
+            let Some(subspace_justification) = justifications
+                .as_ref()
+                .and_then(|justifications| {
+                    justifications
+                        .iter()
+                        .find_map(SubspaceJustification::try_from_justification)
+                })
+                .transpose()
+                .map_err(VerificationError::InvalidSubspaceJustification)?
+            else {
+                return Err(VerificationError::MissingSubspaceJustification);
+            };
 
             let SubspaceJustification::PotCheckpoints {
                 mut seed,
@@ -340,37 +349,6 @@ where
                 .next()
                 .await
                 .is_some()
-            {
-                return Err(VerificationError::InvalidProofOfTime);
-            }
-
-            // Below verification that doesn't depend on justifications will be running more
-            // efficient due to correct checkpoints cached as the result of justification
-            // verification
-        }
-
-        // Check proof of time between slot of the block and future proof of time.
-        //
-        // Here during stateless verification we do not have access to parent block, thus only
-        // verify proofs after proof of time of at current slot up until future proof of time
-        // (inclusive), during block import we verify the rest.
-        if full_pot_verification {
-            let pot_input = PotNextSlotInput::derive(
-                subspace_digest_items.pot_slot_iterations,
-                slot,
-                pre_digest.pot_info().proof_of_time(),
-                &subspace_digest_items.pot_parameters_change,
-            );
-
-            if !self
-                .pot_verifier
-                .is_output_valid(
-                    pot_input,
-                    self.chain_constants.block_authoring_delay(),
-                    pre_digest.pot_info().future_proof_of_time(),
-                    subspace_digest_items.pot_parameters_change,
-                )
-                .await
             {
                 return Err(VerificationError::InvalidProofOfTime);
             }
@@ -574,11 +552,6 @@ where
             )
             .await
             .map_err(Error::<Block::Header>::from)?;
-
-        block.intermediates.insert(
-            SUBSPACE_FULL_POT_VERIFICATION_INTERMEDIATE.into(),
-            Box::new(full_pot_verification),
-        );
 
         let CheckedHeader {
             pre_header,

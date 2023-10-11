@@ -18,7 +18,7 @@
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
 use subspace_core_primitives::{
-    Blake2b256Hash, PublicKey, RewardSignature, SlotNumber, Solution, SolutionRange,
+    Blake3Hash, PublicKey, RewardSignature, SlotNumber, Solution, SolutionRange,
 };
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_networking::libp2p::Multiaddr;
@@ -48,7 +48,7 @@ pub struct SlotInfo {
     /// Slot number
     pub slot_number: SlotNumber,
     /// Global slot challenge
-    pub global_challenge: Blake2b256Hash,
+    pub global_challenge: Blake3Hash,
     /// Acceptable solution range for block authoring
     pub solution_range: SolutionRange,
     /// Acceptable solution range for voting

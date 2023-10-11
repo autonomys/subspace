@@ -29,12 +29,12 @@ use sp_arithmetic::traits::SaturatedConversion;
 use subspace_archiving::archiver;
 use subspace_core_primitives::crypto::kzg::{Commitment, Kzg, Witness};
 use subspace_core_primitives::crypto::{
-    blake2b_256_254_hash_to_scalar, blake2b_256_hash_with_key, blake3_hash_list, Scalar,
+    blake3_254_hash_to_scalar, blake3_hash_list, blake3_hash_with_key, Scalar,
 };
 use subspace_core_primitives::{
-    Blake2b256Hash, Blake3Hash, BlockNumber, BlockWeight, HistorySize, PotOutput, PublicKey,
-    Record, RewardSignature, SectorId, SectorSlotChallenge, SegmentCommitment, SlotNumber,
-    Solution, SolutionRange,
+    Blake3Hash, BlockNumber, BlockWeight, HistorySize, PotOutput, PublicKey, Record,
+    RewardSignature, SectorId, SectorSlotChallenge, SegmentCommitment, SlotNumber, Solution,
+    SolutionRange,
 };
 use subspace_proof_of_space::Table;
 
@@ -104,7 +104,7 @@ pub fn check_reward_signature(
 /// Calculates solution distance for given parameters, is used as a primitive to check whether
 /// solution distance is within solution range (see [`is_within_solution_range()`]).
 fn calculate_solution_distance(
-    global_challenge: &Blake2b256Hash,
+    global_challenge: &Blake3Hash,
     audit_chunk: SolutionRange,
     sector_slot_challenge: &SectorSlotChallenge,
 ) -> SolutionRange {
@@ -115,13 +115,13 @@ fn calculate_solution_distance(
             .expect("Solution range is smaller in size than global challenge; qed"),
     );
     let sector_slot_challenge_with_audit_chunk =
-        blake2b_256_hash_with_key(sector_slot_challenge.as_ref(), &audit_chunk.to_le_bytes());
+        blake3_hash_with_key(sector_slot_challenge, &audit_chunk.to_le_bytes());
     let sector_slot_challenge_with_audit_chunk_as_solution_range: SolutionRange =
         SolutionRange::from_le_bytes(
             *sector_slot_challenge_with_audit_chunk
                 .array_chunks::<{ mem::size_of::<SolutionRange>() }>()
                 .next()
-                .expect("Solution range is smaller in size than blake2b-256 hash; qed"),
+                .expect("Solution range is smaller in size than blake3 hash; qed"),
         );
     subspace_core_primitives::bidirectional_distance(
         &global_challenge_as_solution_range,
@@ -132,7 +132,7 @@ fn calculate_solution_distance(
 /// Returns `Some(solution_distance)` if solution distance is within the solution range for provided
 /// parameters.
 pub fn is_within_solution_range(
-    global_challenge: &Blake2b256Hash,
+    global_challenge: &Blake3Hash,
     audit_chunk: SolutionRange,
     sector_slot_challenge: &SectorSlotChallenge,
     solution_range: SolutionRange,
@@ -308,7 +308,7 @@ where
         // Check that piece is part of the blockchain history
         if !archiver::is_record_commitment_hash_valid(
             kzg,
-            &blake2b_256_254_hash_to_scalar(solution.record_commitment.as_ref()),
+            &blake3_254_hash_to_scalar(solution.record_commitment.as_ref()),
             segment_commitment,
             &solution.record_witness,
             position,

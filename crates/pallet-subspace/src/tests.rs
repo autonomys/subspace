@@ -605,6 +605,7 @@ fn vote_block_listed() {
             Default::default(),
             &archived_segment.pieces,
             1,
+            SolutionRange::MIN,
             SolutionRange::MAX,
         );
 
@@ -631,6 +632,7 @@ fn vote_after_genesis() {
             Default::default(),
             &archived_segment.pieces,
             1,
+            SolutionRange::MIN,
             SolutionRange::MAX,
         );
 
@@ -661,6 +663,7 @@ fn vote_too_low_height() {
                 Default::default(),
                 &archived_segment.pieces,
                 1,
+                SolutionRange::MIN,
                 SolutionRange::MAX,
             );
 
@@ -691,6 +694,7 @@ fn vote_past_future_height() {
                 Default::default(),
                 &archived_segment.pieces,
                 1,
+                SolutionRange::MIN,
                 SolutionRange::MAX,
             );
 
@@ -711,6 +715,7 @@ fn vote_past_future_height() {
                 Default::default(),
                 &archived_segment.pieces,
                 1,
+                SolutionRange::MIN,
                 SolutionRange::MAX,
             );
 
@@ -740,6 +745,7 @@ fn vote_wrong_parent() {
             Default::default(),
             &archived_segment.pieces,
             1,
+            SolutionRange::MIN,
             SolutionRange::MAX,
         );
 
@@ -779,6 +785,7 @@ fn vote_past_future_slot() {
                 Default::default(),
                 &archived_segment.pieces,
                 1,
+                SolutionRange::MIN,
                 SolutionRange::MAX,
             );
 
@@ -803,6 +810,7 @@ fn vote_past_future_slot() {
                 Default::default(),
                 &archived_segment.pieces,
                 1,
+                SolutionRange::MIN,
                 SolutionRange::MAX,
             );
 
@@ -826,6 +834,7 @@ fn vote_past_future_slot() {
                 Default::default(),
                 &archived_segment.pieces,
                 1,
+                SolutionRange::MIN,
                 SolutionRange::MAX,
             );
 
@@ -866,6 +875,7 @@ fn vote_same_slot() {
                 Default::default(),
                 &archived_segment.pieces,
                 1,
+                SolutionRange::MIN,
                 SolutionRange::MAX,
             );
 
@@ -885,6 +895,7 @@ fn vote_same_slot() {
                 Default::default(),
                 &archived_segment.pieces,
                 1,
+                SolutionRange::MIN,
                 SolutionRange::MAX,
             );
 
@@ -914,6 +925,7 @@ fn vote_bad_reward_signature() {
             Default::default(),
             &archived_segment.pieces,
             1,
+            SolutionRange::MIN,
             SolutionRange::MAX,
         );
 
@@ -944,6 +956,7 @@ fn vote_unknown_segment_commitment() {
             Default::default(),
             &archived_segment.pieces,
             1,
+            SolutionRange::MIN,
             SolutionRange::MAX,
         );
 
@@ -977,6 +990,7 @@ fn vote_outside_of_solution_range() {
             Default::default(),
             &archived_segment.pieces,
             1,
+            SolutionRange::MIN,
             SolutionRange::MAX,
         );
 
@@ -985,6 +999,47 @@ fn vote_outside_of_solution_range() {
         if let Err(CheckVoteError::InvalidSolution(error)) = result {
             assert!(error.contains("is outside of solution range"));
         }
+    });
+}
+
+#[test]
+fn vote_solution_quality_too_high() {
+    new_test_ext(allow_all_pot_extension()).execute_with(|| {
+        let keypair = Keypair::generate();
+        let archived_segment = create_archived_segment();
+
+        progress_to_block(&keypair, 2, 1);
+
+        SegmentCommitment::<Test>::insert(
+            archived_segment.segment_header.segment_index(),
+            archived_segment.segment_header.segment_commitment(),
+        );
+
+        // Reset so that any solution works for votes, but also block solution range is almost the
+        // same, resulting in quality being too high
+        pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+            solution_ranges.current = u64::MAX - 1;
+            solution_ranges.voting_current = u64::MAX;
+        });
+
+        // Finally correct signature
+        let signed_vote = create_signed_vote(
+            &keypair,
+            2,
+            frame_system::Pallet::<Test>::block_hash(1),
+            Subspace::current_slot() + 1,
+            Default::default(),
+            Default::default(),
+            &archived_segment.pieces,
+            1,
+            SolutionRange::MIN,
+            SolutionRange::MAX,
+        );
+
+        assert_matches!(
+            super::check_vote::<Test>(&signed_vote, false),
+            Err(CheckVoteError::QualityTooHigh)
+        );
     });
 }
 
@@ -1038,6 +1093,7 @@ fn vote_invalid_proof_of_time() {
                 Default::default(),
                 &archived_segment.pieces,
                 1,
+                SolutionRange::MIN,
                 SolutionRange::MAX,
             );
 
@@ -1065,6 +1121,7 @@ fn vote_invalid_proof_of_time() {
                 Default::default(),
                 &archived_segment.pieces,
                 1,
+                SolutionRange::MIN,
                 SolutionRange::MAX,
             );
 
@@ -1082,6 +1139,7 @@ fn vote_invalid_proof_of_time() {
                 Default::default(),
                 &archived_segment.pieces,
                 1,
+                SolutionRange::MIN,
                 SolutionRange::MAX,
             );
 
@@ -1109,6 +1167,7 @@ fn vote_invalid_proof_of_time() {
                 Default::default(),
                 &archived_segment.pieces,
                 1,
+                SolutionRange::MIN,
                 SolutionRange::MAX,
             );
 
@@ -1136,6 +1195,7 @@ fn vote_invalid_proof_of_time() {
                 test_future_proof_of_time,
                 &archived_segment.pieces,
                 1,
+                SolutionRange::MIN,
                 SolutionRange::MAX,
             );
 
@@ -1172,6 +1232,7 @@ fn vote_correct_signature() {
             Default::default(),
             &archived_segment.pieces,
             1,
+            SolutionRange::MIN,
             SolutionRange::MAX,
         );
 
@@ -1209,6 +1270,7 @@ fn vote_equivocation_current_block_plus_vote() {
             Default::default(),
             &archived_segment.pieces,
             reward_address,
+            SolutionRange::MIN,
             SolutionRange::MAX,
         );
 
@@ -1264,6 +1326,7 @@ fn vote_equivocation_parent_block_plus_vote() {
             Default::default(),
             &archived_segment.pieces,
             reward_address,
+            SolutionRange::MIN,
             SolutionRange::MAX,
         );
 
@@ -1329,6 +1392,7 @@ fn vote_equivocation_current_voters_duplicate() {
             Default::default(),
             &archived_segment.pieces,
             reward_address,
+            SolutionRange::MIN,
             SolutionRange::MAX,
         );
 
@@ -1413,6 +1477,7 @@ fn vote_equivocation_parent_voters_duplicate() {
             Default::default(),
             &archived_segment.pieces,
             reward_address,
+            SolutionRange::MIN,
             SolutionRange::MAX,
         );
 

@@ -7,6 +7,7 @@ use futures::{select, FutureExt};
 use libp2p::identity::ed25519::Keypair;
 use libp2p::metrics::Metrics;
 use libp2p::{identity, Multiaddr, PeerId};
+use libp2p_kad::Mode;
 use prometheus_client::registry::Registry;
 use serde::{Deserialize, Serialize};
 use std::error::Error;
@@ -15,7 +16,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::libp2p::multiaddr::Protocol;
-use subspace_networking::{peer_id, Config};
+use subspace_networking::{peer_id, Config, KademliaMode};
 use tracing::{debug, info, Level};
 use tracing_subscriber::fmt::Subscriber;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -33,7 +34,10 @@ enum Command {
         #[clap(long)]
         keypair: String,
         /// Multiaddr to listen on for subspace networking, multiple are supported
-        #[clap(long, default_value = "/ip4/0.0.0.0/tcp/0")]
+        #[arg(long, default_values_t = [
+            "/ip4/0.0.0.0/udp/0/quic-v1".parse::<Multiaddr>().expect("Manual setting"),
+            "/ip4/0.0.0.0/tcp/0".parse::<Multiaddr>().expect("Manual setting"),
+        ])]
         listen_on: Vec<Multiaddr>,
         /// Multiaddresses of reserved peers to maintain connections to, multiple are supported
         #[arg(long, alias = "reserved-peer")]
@@ -163,6 +167,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 general_connected_peers_handler: None,
                 special_connected_peers_handler: None,
                 bootstrap_addresses: bootstrap_nodes,
+                kademlia_mode: KademliaMode::Static(Mode::Server),
                 external_addresses,
                 metrics,
 

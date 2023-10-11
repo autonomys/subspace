@@ -19,7 +19,6 @@
 
 pub mod bundle_producer_election;
 pub mod fraud_proof;
-pub mod inherents;
 pub mod merkle_tree;
 pub mod storage;
 #[cfg(test)]
@@ -48,10 +47,12 @@ use sp_runtime::traits::{
     BlakeTwo256, Block as BlockT, CheckedAdd, Hash as HashT, NumberFor, Zero,
 };
 use sp_runtime::{DigestItem, OpaqueExtrinsic, Percent};
+use sp_runtime_interface::pass_by;
+use sp_runtime_interface::pass_by::PassBy;
 use sp_std::vec::Vec;
 use sp_weights::Weight;
-use subspace_core_primitives::crypto::blake2b_256_hash;
-use subspace_core_primitives::{bidirectional_distance, Blake2b256Hash, Randomness, U256};
+use subspace_core_primitives::crypto::blake3_hash;
+use subspace_core_primitives::{bidirectional_distance, Blake3Hash, Randomness, U256};
 use subspace_runtime_primitives::{Balance, Moment};
 
 /// Key type for Operator.
@@ -162,6 +163,10 @@ impl DomainId {
     pub fn to_le_bytes(&self) -> [u8; 4] {
         self.0.to_le_bytes()
     }
+}
+
+impl PassBy for DomainId {
+    type PassBy = pass_by::Codec<Self>;
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
@@ -505,10 +510,10 @@ impl ProofOfElection {
     }
 
     /// Computes the VRF hash.
-    pub fn vrf_hash(&self) -> Blake2b256Hash {
+    pub fn vrf_hash(&self) -> Blake3Hash {
         let mut bytes = self.vrf_signature.output.encode();
         bytes.append(&mut self.vrf_signature.proof.encode());
-        blake2b_256_hash(&bytes)
+        blake3_hash(&bytes)
     }
 }
 
@@ -828,12 +833,6 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the chain state root at the given block.
         fn domain_state_root(domain_id: DomainId, number: DomainNumber, hash: DomainHash) -> Option<DomainHash>;
-
-        /// Returns the storage key for block randomness.
-        fn block_randomness_storage_key() -> Vec<u8>;
-
-        /// Returns the storage key for timestamp;
-        fn timestamp_storage_key() -> Vec<u8>;
     }
 
     pub trait BundleProducerElectionApi<Balance: Encode + Decode> {
