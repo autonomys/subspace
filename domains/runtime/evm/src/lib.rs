@@ -684,13 +684,6 @@ where
     }
 }
 
-fn flatten_and_encode_signer_extraction(
-    signer_extraction_result: Option<Result<AccountId, TransactionValidityError>>,
-) -> Option<opaque::AccountId> {
-    signer_extraction_result
-        .and_then(|account_result| account_result.map_or(None, |account| Some(account.encode())))
-}
-
 pub fn extract_signer(
     extrinsics: Vec<UncheckedExtrinsic>,
 ) -> Vec<(Option<opaque::AccountId>, UncheckedExtrinsic)> {
@@ -700,7 +693,9 @@ pub fn extract_signer(
         .into_iter()
         .map(|extrinsic| {
             let maybe_signer =
-                flatten_and_encode_signer_extraction(extract_signer_inner(&extrinsic, &lookup));
+                extract_signer_inner(&extrinsic, &lookup).and_then(|account_result| {
+                    account_result.ok().map(|account_id| account_id.encode())
+                });
             (maybe_signer, extrinsic)
         })
         .collect()
@@ -827,7 +822,9 @@ impl_runtime_apis! {
             use subspace_core_primitives::crypto::blake3_hash;
 
             let lookup = frame_system::ChainContext::<Runtime>::default();
-            if let Some(signer) = flatten_and_encode_signer_extraction(extract_signer_inner(extrinsic, &lookup)) {
+            if let Some(signer) = extract_signer_inner(extrinsic, &lookup).and_then(|account_result| {
+                    account_result.ok().map(|account_id| account_id.encode())
+                }) {
                 // Check if the signer Id hash is within the tx range
                 let signer_id_hash = U256::from_be_bytes(blake3_hash(&signer.encode()));
                 sp_domains::signer_in_tx_range(bundle_vrf_hash, &signer_id_hash, tx_range)
