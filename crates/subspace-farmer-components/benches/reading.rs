@@ -14,7 +14,9 @@ use subspace_core_primitives::{
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::file_ext::{FileExt, OpenOptionsExt};
-use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy, PlottedSector};
+use subspace_farmer_components::plotting::{
+    plot_sector, PieceGetterRetryPolicy, PlotSectorOptions, PlottedSector,
+};
 use subspace_farmer_components::reading::read_piece;
 use subspace_farmer_components::sector::{
     sector_size, SectorContentsMap, SectorMetadata, SectorMetadataChecksummed,
@@ -113,19 +115,19 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         let mut plotted_sector_bytes = Vec::new();
         let mut plotted_sector_metadata_bytes = Vec::new();
 
-        let plotted_sector = block_on(plot_sector::<_, PosTable>(
-            &public_key,
+        let plotted_sector = block_on(plot_sector::<PosTable, _>(PlotSectorOptions {
+            public_key: &public_key,
             sector_index,
-            &archived_history_segment,
-            PieceGetterRetryPolicy::default(),
-            &farmer_protocol_info,
-            &kzg,
-            &erasure_coding,
+            piece_getter: &archived_history_segment,
+            piece_getter_retry_policy: PieceGetterRetryPolicy::default(),
+            farmer_protocol_info: &farmer_protocol_info,
+            kzg: &kzg,
+            erasure_coding: &erasure_coding,
             pieces_in_sector,
-            &mut plotted_sector_bytes,
-            &mut plotted_sector_metadata_bytes,
-            &mut table_generator,
-        ))
+            sector_output: &mut plotted_sector_bytes,
+            sector_metadata_output: &mut plotted_sector_metadata_bytes,
+            table_generator: &mut table_generator,
+        }))
         .unwrap();
 
         (plotted_sector, plotted_sector_bytes)

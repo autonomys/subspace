@@ -151,34 +151,66 @@ pub enum PlottingError {
     },
 }
 
-/// Plot a single sector, where `sector` and `sector_metadata` must be positioned correctly at the
-/// beginning of the sector (seek to desired offset before calling this function and seek back
-/// afterwards if necessary).
+/// Options for plotting a sector.
 ///
 /// Sector output and sector metadata output should be either empty (in which case they'll be
 /// resized to correct size automatically) or correctly sized from the beginning or else error will
 /// be returned.
+pub struct PlotSectorOptions<'a, PosTable, PG>
+where
+    PosTable: Table,
+{
+    /// Public key corresponding to sector
+    pub public_key: &'a PublicKey,
+    /// Sector index
+    pub sector_index: SectorIndex,
+    /// Getter for pieces of archival history
+    pub piece_getter: &'a PG,
+    /// Retry policy for piece getter
+    pub piece_getter_retry_policy: PieceGetterRetryPolicy,
+    /// Farmer protocol info
+    pub farmer_protocol_info: &'a FarmerProtocolInfo,
+    /// KZG instance
+    pub kzg: &'a Kzg,
+    /// Erasure coding instance
+    pub erasure_coding: &'a ErasureCoding,
+    /// How many pieces should sector contain
+    pub pieces_in_sector: u16,
+    /// Where plotted sector should be written, vector must either be empty (in which case it'll be
+    /// resized to correct size automatically) or correctly sized from the beginning
+    pub sector_output: &'a mut Vec<u8>,
+    /// Where plotted sector metadata should be written, vector must either be empty (in which case
+    /// it'll be resized to correct size automatically) or correctly sized from the beginning
+    pub sector_metadata_output: &'a mut Vec<u8>,
+    /// Proof of space table generator
+    pub table_generator: &'a mut PosTable::Generator,
+}
+
+/// Plot a single sector.
 ///
 /// NOTE: Even though this function is async, it has blocking code inside and must be running in a
 /// separate thread in order to prevent blocking an executor.
-#[allow(clippy::too_many_arguments)]
-pub async fn plot_sector<PG, PosTable>(
-    public_key: &PublicKey,
-    sector_index: SectorIndex,
-    piece_getter: &PG,
-    piece_getter_retry_policy: PieceGetterRetryPolicy,
-    farmer_protocol_info: &FarmerProtocolInfo,
-    kzg: &Kzg,
-    erasure_coding: &ErasureCoding,
-    pieces_in_sector: u16,
-    sector_output: &mut Vec<u8>,
-    sector_metadata_output: &mut Vec<u8>,
-    table_generator: &mut PosTable::Generator,
+pub async fn plot_sector<PosTable, PG>(
+    options: PlotSectorOptions<'_, PosTable, PG>,
 ) -> Result<PlottedSector, PlottingError>
 where
-    PG: PieceGetter,
     PosTable: Table,
+    PG: PieceGetter,
 {
+    let PlotSectorOptions {
+        public_key,
+        sector_index,
+        piece_getter,
+        piece_getter_retry_policy,
+        farmer_protocol_info,
+        kzg,
+        erasure_coding,
+        pieces_in_sector,
+        sector_output,
+        sector_metadata_output,
+        table_generator,
+    } = options;
+
     if erasure_coding.max_shards() < Record::NUM_S_BUCKETS {
         return Err(PlottingError::InvalidErasureCodingInstance);
     }

@@ -27,7 +27,7 @@ use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::file_ext::FileExt;
 use subspace_farmer_components::plotting;
 use subspace_farmer_components::plotting::{
-    plot_sector, PieceGetter, PieceGetterRetryPolicy, PlottedSector,
+    plot_sector, PieceGetter, PieceGetterRetryPolicy, PlotSectorOptions, PlottedSector,
 };
 use subspace_farmer_components::sector::SectorMetadataChecksummed;
 use subspace_proof_of_space::Table;
@@ -214,19 +214,21 @@ where
 
             let plotting_fn = move || {
                 tokio::task::block_in_place(move || {
-                    let plot_sector_fut = plot_sector::<_, PosTable>(
-                        &public_key,
+                    let plot_sector_fut = plot_sector::<PosTable, _>(PlotSectorOptions {
+                        public_key: &public_key,
                         sector_index,
-                        &piece_getter,
-                        PieceGetterRetryPolicy::Limited(PIECE_GETTER_RETRY_NUMBER.get()),
-                        &farmer_app_info.protocol_info,
-                        &kzg,
-                        &erasure_coding,
+                        piece_getter: &piece_getter,
+                        piece_getter_retry_policy: PieceGetterRetryPolicy::Limited(
+                            PIECE_GETTER_RETRY_NUMBER.get(),
+                        ),
+                        farmer_protocol_info: &farmer_app_info.protocol_info,
+                        kzg: &kzg,
+                        erasure_coding: &erasure_coding,
                         pieces_in_sector,
-                        &mut sector,
-                        &mut sector_metadata,
-                        &mut table_generator,
-                    );
+                        sector_output: &mut sector,
+                        sector_metadata_output: &mut sector_metadata,
+                        table_generator: &mut table_generator,
+                    });
 
                     Handle::current()
                         .block_on(plot_sector_fut)
