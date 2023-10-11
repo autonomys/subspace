@@ -868,9 +868,8 @@ impl_runtime_apis! {
 
             if let Some(signer_info) = maybe_signer_info {
                 let signer = signer_info.map_err(|tx_validity_error| {
-                    domain_runtime_primitives::CheckTxValidityError::InvalidTransaction {
-                        error: tx_validity_error,
-                        storage_keys: vec![],
+                    domain_runtime_primitives::CheckTxValidityError::UnableToExtractSigner {
+                        error: tx_validity_error
                     }
                 })?;
                 let tx_validity =

@@ -135,6 +135,8 @@ pub mod opaque {
 pub enum CheckTxValidityError {
     /// Can not find the sender from address.
     Lookup,
+    /// Unable to extract signer from tx
+    UnableToExtractSigner { error: TransactionValidityError },
     /// Transaction is invalid.
     InvalidTransaction {
         /// Concrete transaction validity error type.
