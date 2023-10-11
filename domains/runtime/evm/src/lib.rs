@@ -363,7 +363,6 @@ impl pallet_transaction_payment::Config for Runtime {
 
 impl domain_pallet_executive::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type RuntimeCall = RuntimeCall;
 }
 
 impl pallet_sudo::Config for Runtime {
@@ -845,12 +844,9 @@ impl_runtime_apis! {
         }
 
         fn construct_set_code_extrinsic(code: Vec<u8>) -> Vec<u8> {
-            use codec::Encode;
-            let set_code_call = frame_system::Call::set_code { code };
             UncheckedExtrinsic::new_unsigned(
-                domain_pallet_executive::Call::sudo_unchecked_weight_unsigned {
-                    call: Box::new(set_code_call.into()),
-                    weight: Weight::from_parts(0, 0),
+                domain_pallet_executive::Call::set_code {
+                    code
                 }.into()
             ).encode()
         }
