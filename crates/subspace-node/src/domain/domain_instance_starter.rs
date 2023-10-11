@@ -91,7 +91,6 @@ impl DomainInstanceStarter {
                     (
                         slot_notification.new_slot_info.slot,
                         slot_notification.new_slot_info.global_randomness,
-                        None::<futures::channel::mpsc::Sender<()>>,
                     )
                 })
         };
@@ -102,6 +101,7 @@ impl DomainInstanceStarter {
             block_importing_notification_stream: block_importing_notification_stream(),
             imported_block_notification_stream,
             new_slot_notification_stream: new_slot_notification_stream(),
+            acknowledgement_sender_stream: futures::stream::empty(),
             _phantom: Default::default(),
         };
 
@@ -140,6 +140,7 @@ impl DomainInstanceStarter {
                 };
 
                 let mut domain_node = domain_service::new_full::<
+                    _,
                     _,
                     _,
                     _,

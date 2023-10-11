@@ -211,6 +211,7 @@ where
                 .block_importing_notification_stream(),
             imported_block_notification_stream,
             new_slot_notification_stream: mock_consensus_node.new_slot_notification_stream(),
+            acknowledgement_sender_stream: mock_consensus_node.new_acknowledgement_sender_stream(),
             _phantom: Default::default(),
         };
 
@@ -235,12 +236,20 @@ where
             provider: DefaultProvider,
         };
 
-        let domain_node =
-            domain_service::new_full::<_, _, _, _, _, RuntimeApi, ExecutorDispatch, AccountId, _>(
-                domain_params,
-            )
-            .await
-            .expect("failed to build domain node");
+        let domain_node = domain_service::new_full::<
+            _,
+            _,
+            _,
+            _,
+            _,
+            _,
+            RuntimeApi,
+            ExecutorDispatch,
+            AccountId,
+            _,
+        >(domain_params)
+        .await
+        .expect("failed to build domain node");
 
         let domain_service::NewFull {
             task_manager,

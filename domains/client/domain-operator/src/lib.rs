@@ -121,7 +121,7 @@ type BundleSender<Block, CBlock> = TracingUnboundedSender<
 >;
 
 /// Notification streams from the consensus chain driving the executor.
-pub struct OperatorStreams<CBlock, IBNS, CIBNS, NSNS> {
+pub struct OperatorStreams<CBlock, IBNS, CIBNS, NSNS, ASS> {
     /// Pause the consensus block import when the consensus chain client
     /// runs much faster than the domain client.
     pub consensus_block_import_throttling_buffer_size: u32,
@@ -135,10 +135,13 @@ pub struct OperatorStreams<CBlock, IBNS, CIBNS, NSNS> {
     pub imported_block_notification_stream: CIBNS,
     /// New slot arrives.
     pub new_slot_notification_stream: NSNS,
+    /// The acknowledgement sender only used in test to ensure all of
+    /// the operator's previous tasks are finished
+    pub acknowledgement_sender_stream: ASS,
     pub _phantom: PhantomData<CBlock>,
 }
 
-type NewSlotNotification = (Slot, Randomness, Option<mpsc::Sender<()>>);
+type NewSlotNotification = (Slot, Randomness);
 
 pub struct OperatorParams<
     Block,
@@ -151,12 +154,14 @@ pub struct OperatorParams<
     IBNS,
     CIBNS,
     NSNS,
+    ASS,
 > where
     Block: BlockT,
     CBlock: BlockT,
     IBNS: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Send + 'static,
     CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + 'static,
     NSNS: Stream<Item = NewSlotNotification> + Send + 'static,
+    ASS: Stream<Item = mpsc::Sender<()>> + Send + 'static,
 {
     pub domain_id: DomainId,
     pub domain_created_at: NumberFor<CBlock>,
@@ -170,7 +175,7 @@ pub struct OperatorParams<
     pub is_authority: bool,
     pub keystore: KeystorePtr,
     pub bundle_sender: Arc<BundleSender<Block, CBlock>>,
-    pub operator_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS>,
+    pub operator_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS, ASS>,
     pub domain_confirmation_depth: NumberFor<Block>,
     pub block_import: SharedBlockImport<Block>,
 }

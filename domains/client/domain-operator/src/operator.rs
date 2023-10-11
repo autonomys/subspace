@@ -93,7 +93,7 @@ where
     E: CodeExecutor,
 {
     /// Create a new instance.
-    pub async fn new<IBNS, CIBNS, NSNS>(
+    pub async fn new<IBNS, CIBNS, NSNS, ASS>(
         spawn_essential: Box<dyn SpawnEssentialNamed>,
         params: OperatorParams<
             Block,
@@ -106,12 +106,14 @@ where
             IBNS,
             CIBNS,
             NSNS,
+            ASS,
         >,
     ) -> Result<Self, sp_consensus::Error>
     where
         IBNS: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Send + 'static,
         CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + 'static,
         NSNS: Stream<Item = NewSlotNotification> + Send + 'static,
+        ASS: Stream<Item = mpsc::Sender<()>> + Send + 'static,
     {
         let parent_chain =
             DomainParentChain::new(params.domain_id, params.consensus_client.clone());

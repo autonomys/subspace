@@ -50,6 +50,7 @@ pub(super) async fn start_worker<
     IBNS,
     CIBNS,
     NSNS,
+    ASS,
     E,
 >(
     spawn_essential: Box<dyn SpawnEssentialNamed>,
@@ -66,7 +67,7 @@ pub(super) async fn start_worker<
         TransactionPool,
     >,
     bundle_processor: BundleProcessor<Block, CBlock, Client, CClient, Backend, E>,
-    operator_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS>,
+    operator_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS, ASS>,
 ) where
     Block: BlockT,
     Block::Hash: Into<H256>,
@@ -100,6 +101,7 @@ pub(super) async fn start_worker<
     IBNS: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Send + 'static,
     CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + 'static,
     NSNS: Stream<Item = NewSlotNotification> + Send + 'static,
+    ASS: Stream<Item = mpsc::Sender<()>> + Send + 'static,
     E: CodeExecutor,
 {
     let span = tracing::Span::current();
@@ -109,6 +111,7 @@ pub(super) async fn start_worker<
         block_importing_notification_stream,
         imported_block_notification_stream,
         new_slot_notification_stream,
+        acknowledgement_sender_stream,
         _phantom,
     } = operator_streams;
 
@@ -124,6 +127,7 @@ pub(super) async fn start_worker<
     if !is_authority {
         info!("🧑‍ Running as Full node...");
         drop(new_slot_notification_stream);
+        drop(acknowledgement_sender_stream);
         while let Some(maybe_block_info) = throttled_block_import_notification_stream.next().await {
             if let Some(block_info) = maybe_block_info {
                 if let Err(error) = bundle_processor
@@ -160,8 +164,32 @@ pub(super) async fn start_worker<
             }
         };
         let mut new_slot_notification_stream = Box::pin(new_slot_notification_stream);
+        let mut acknowledgement_sender_stream = Box::pin(acknowledgement_sender_stream);
         loop {
             tokio::select! {
+                // Ensure any new slot/block import must handle first before the `acknowledgement_sender_stream`
+                // NOTE: this is only necessary for the test.
+                biased;
+
+                Some((slot, global_randomness)) = new_slot_notification_stream.next() => {
+                    if let Err(error) = on_new_slot::<Block, CBlock, _, _>(
+                        consensus_client.as_ref(),
+                        consensus_offchain_tx_pool_factory.clone(),
+                        &bundler_fn,
+                        OperatorSlotInfo {
+                            slot,
+                            global_randomness,
+                        },
+                    )
+                    .await
+                    {
+                        tracing::error!(
+                            ?error,
+                            "Error occurred on producing a bundle at slot {slot}"
+                        );
+                        break;
+                    }
+                }
                 Some(maybe_block_info) = throttled_block_import_notification_stream.next() => {
                     if let Some(block_info) = maybe_block_info {
                         if let Err(error) = bundle_processor
@@ -181,26 +209,14 @@ pub(super) async fn start_worker<
                         }
                     }
                 }
-                Some((slot, global_randomness, acknowledgement_sender)) = new_slot_notification_stream.next() => {
-                    if let Err(error) = on_new_slot::<Block, CBlock, _, _>(
-                        consensus_client.as_ref(),
-                        consensus_offchain_tx_pool_factory.clone(),
-                        &bundler_fn,
-                        OperatorSlotInfo {
-                            slot,
-                            global_randomness,
-                        },
-                    )
-                    .await
-                    {
+                // In production the `acknowledgement_sender_stream` is an empty stream, it only set to
+                // real stream in test
+                Some(mut acknowledgement_sender) = acknowledgement_sender_stream.next() => {
+                    if let Err(err) = acknowledgement_sender.send(()).await {
                         tracing::error!(
-                            ?error,
-                            "Error occurred on producing a bundle at slot {slot}"
+                            ?err,
+                            "Failed to send acknowledgement"
                         );
-                        break;
-                    }
-                    if let Some(mut sender) = acknowledgement_sender {
-                        let _ = sender.send(()).await;
                     }
                 }
             }
