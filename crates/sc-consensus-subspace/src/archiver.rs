@@ -81,7 +81,7 @@ impl<AS> SegmentHeadersStore<AS>
 where
     AS: AuxStore,
 {
-    const KEY_PREFIX: &[u8] = b"segment-headers";
+    const KEY_PREFIX: &'static [u8] = b"segment-headers";
     const INITIAL_CACHE_CAPACITY: usize = 1_000;
 
     /// Create new instance

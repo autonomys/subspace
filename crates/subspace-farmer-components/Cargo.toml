@@ -16,6 +16,7 @@ include = [
 bench = false
 
 [dependencies]
+async-lock = "2.8.0"
 async-trait = "0.1.73"
 backoff = { version = "0.4.0", features = ["futures", "tokio"] }
 bitvec = "1.0.1"
@@ -25,7 +26,6 @@ hex = "0.4.3"
 libc = "0.2.146"
 lru = "0.11.0"
 parity-scale-codec = "3.6.5"
-parking_lot = "0.12.1"
 rand = "0.8.5"
 rayon = "1.7.0"
 schnorrkel = "0.9.1"
