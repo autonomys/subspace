@@ -148,10 +148,7 @@ pub fn shuffle_extrinsics<Extrinsic: Debug, AccountId: Ord + Clone>(
     let mut grouped_extrinsics: BTreeMap<Option<AccountId>, VecDeque<_>> = extrinsics
         .into_iter()
         .fold(BTreeMap::new(), |mut groups, (maybe_signer, tx)| {
-            groups
-                .entry(maybe_signer)
-                .or_insert_with(VecDeque::new)
-                .push_back(tx);
+            groups.entry(maybe_signer).or_default().push_back(tx);
             groups
         });
 

@@ -11578,6 +11578,7 @@ dependencies = [
 name = "subspace-farmer-components"
 version = "0.1.0"
 dependencies = [
+ "async-lock",
  "async-trait",
  "backoff",
  "bitvec",
@@ -11588,7 +11589,6 @@ dependencies = [
  "libc",
  "lru 0.11.1",
  "parity-scale-codec",
- "parking_lot 0.12.1",
  "rand 0.8.5",
  "rayon",
  "schnorrkel",

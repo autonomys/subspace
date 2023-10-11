@@ -4,13 +4,13 @@ use crate::sector::{
 };
 use crate::segment_reconstruction::recover_missing_piece;
 use crate::FarmerProtocolInfo;
+use async_lock::Mutex;
 use async_trait::async_trait;
 use backoff::future::retry;
 use backoff::{Error as BackoffError, ExponentialBackoff};
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use parity_scale_codec::Encode;
-use parking_lot::Mutex;
 use std::error::Error;
 use std::mem;
 use std::simd::Simd;
@@ -227,8 +227,8 @@ where
             Mutex::new(piece_indexes.iter().copied().map(Some).collect::<Vec<_>>());
 
         retry(default_backoff(), || async {
-            let mut raw_sector = raw_sector.lock();
-            let mut incremental_piece_indices = incremental_piece_indices.lock();
+            let mut raw_sector = raw_sector.lock().await;
+            let mut incremental_piece_indices = incremental_piece_indices.lock().await;
 
             if let Err(error) = download_sector(
                 &mut raw_sector,
