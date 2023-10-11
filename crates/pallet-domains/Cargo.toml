@@ -20,6 +20,7 @@ log = { version = "0.4.20", default-features = false }
 scale-info = { version = "2.7.0", default-features = false, features = ["derive"] }
 sp-core = { version = "21.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7" }
 sp-domains = { version = "0.1.0", default-features = false, path = "../sp-domains" }
+sp-domains-fraud-proof = { version = "0.1.0", default-features = false, path = "../sp-domains-fraud-proof" }
 sp-io = { version = "23.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7" }
 sp-runtime = { version = "24.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7" }
 sp-std = { version = "8.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7" }
@@ -45,6 +46,7 @@ std = [
     "scale-info/std",
     "sp-core/std",
     "sp-domains/std",
+    "sp-domains-fraud-proof/std",
     "sp-io/std",
     "sp-runtime/std",
     "sp-std/std",

@@ -63,7 +63,7 @@ where
             .block_body(incoming_block.hash)
             .ok()
             .flatten()
-            .unwrap_or(vec![]);
+            .unwrap_or_default();
         self.blocks.inc();
         self.extrinsics.inc_by(extrinsics.len() as u64);
         let total_size: usize = extrinsics

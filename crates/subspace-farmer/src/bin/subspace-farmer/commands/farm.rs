@@ -279,39 +279,36 @@ where
 
     // Collect already plotted pieces
     {
-        let mut readers_and_pieces = readers_and_pieces.lock();
-        let readers_and_pieces = readers_and_pieces.insert(ReadersAndPieces::new(piece_readers));
+        let mut future_readers_and_pieces = ReadersAndPieces::new(piece_readers);
 
-        single_disk_farms.iter().enumerate().try_for_each(
-            |(disk_farm_index, single_disk_farm)| {
-                let disk_farm_index = disk_farm_index.try_into().map_err(|_error| {
-                    anyhow!(
-                        "More than 256 plots are not supported, consider running multiple farmer \
-                        instances"
-                    )
-                })?;
+        for (disk_farm_index, single_disk_farm) in single_disk_farms.iter().enumerate() {
+            let disk_farm_index = disk_farm_index.try_into().map_err(|_error| {
+                anyhow!(
+                    "More than 256 plots are not supported, consider running multiple farmer \
+                    instances"
+                )
+            })?;
 
-                (0 as SectorIndex..)
-                    .zip(single_disk_farm.plotted_sectors())
-                    .for_each(
-                        |(sector_index, plotted_sector_result)| match plotted_sector_result {
-                            Ok(plotted_sector) => {
-                                readers_and_pieces.add_sector(disk_farm_index, &plotted_sector);
-                            }
-                            Err(error) => {
-                                error!(
-                                    %error,
-                                    %disk_farm_index,
-                                    %sector_index,
-                                    "Failed reading plotted sector on startup, skipping"
-                                );
-                            }
-                        },
-                    );
+            (0 as SectorIndex..)
+                .zip(single_disk_farm.plotted_sectors().await)
+                .for_each(
+                    |(sector_index, plotted_sector_result)| match plotted_sector_result {
+                        Ok(plotted_sector) => {
+                            future_readers_and_pieces.add_sector(disk_farm_index, &plotted_sector);
+                        }
+                        Err(error) => {
+                            error!(
+                                %error,
+                                %disk_farm_index,
+                                %sector_index,
+                                "Failed reading plotted sector on startup, skipping"
+                            );
+                        }
+                    },
+                );
+        }
 
-                Ok::<_, anyhow::Error>(())
-            },
-        )?;
+        readers_and_pieces.lock().replace(future_readers_and_pieces);
     }
 
     info!("Finished collecting already plotted pieces successfully");

@@ -2,12 +2,12 @@ use crate::single_disk_farm::{
     BackgroundTaskError, Handlers, PlotMetadataHeader, RESERVED_PLOT_METADATA,
 };
 use crate::{node_client, NodeClient};
+use async_lock::RwLock;
 use atomic::Atomic;
 use futures::channel::{mpsc, oneshot};
 use futures::{select, FutureExt, SinkExt, StreamExt};
 use lru::LruCache;
 use parity_scale_codec::Encode;
-use parking_lot::RwLock;
 use rayon::ThreadPool;
 use std::collections::HashMap;
 use std::fs::File;
@@ -135,7 +135,11 @@ where
     {
         trace!(%sector_index, "Preparing to plot sector");
 
-        let maybe_old_sector_metadata = sectors_metadata.read().get(sector_index as usize).cloned();
+        let maybe_old_sector_metadata = sectors_metadata
+            .read()
+            .await
+            .get(sector_index as usize)
+            .cloned();
         let replotting = maybe_old_sector_metadata.is_some();
 
         if replotting {
@@ -172,7 +176,7 @@ where
         };
 
         // Inform others that this sector is being modified
-        modifying_sector_index.write().replace(sector_index);
+        modifying_sector_index.write().await.replace(sector_index);
 
         let sector;
         let sector_metadata;
@@ -228,7 +232,7 @@ where
             metadata_file.write_all_at(&metadata_header.encode(), 0)?;
         }
         {
-            let mut sectors_metadata = sectors_metadata.write();
+            let mut sectors_metadata = sectors_metadata.write().await;
             // If exists then we're replotting, otherwise we create sector for the first time
             if let Some(existing_sector_metadata) = sectors_metadata.get_mut(sector_index as usize)
             {
@@ -265,7 +269,7 @@ where
         });
 
         // Inform others that this sector is no longer being modified
-        modifying_sector_index.write().take();
+        modifying_sector_index.write().await.take();
 
         if replotting {
             info!(%sector_index, "Sector replotted successfully");
@@ -528,6 +532,7 @@ where
         // right now. We copy data here because `.read()`'s guard is not `Send`.
         sectors_metadata
             .read()
+            .await
             .iter()
             .map(|sector_metadata| (sector_metadata.sector_index, sector_metadata.history_size))
             .collect_into(&mut sectors_to_check);

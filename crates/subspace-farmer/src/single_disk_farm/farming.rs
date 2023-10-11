@@ -1,12 +1,12 @@
 use crate::node_client;
 use crate::node_client::NodeClient;
 use crate::single_disk_farm::Handlers;
-use crate::utils::AsyncJoinOnDrop;
+use async_lock::RwLock;
 use futures::channel::mpsc;
 use futures::StreamExt;
 #[cfg(windows)]
 use memmap2::Mmap;
-use parking_lot::{Mutex, RwLock};
+use parking_lot::Mutex;
 use rayon::prelude::*;
 use rayon::ThreadPoolBuildError;
 use std::fs::File;
@@ -136,7 +136,7 @@ where
     while let Some(slot_info) = slot_info_notifications.next().await {
         let start = Instant::now();
         let slot = slot_info.slot_number;
-        let sectors_metadata = sectors_metadata.read();
+        let sectors_metadata = sectors_metadata.read().await;
         let sector_count = sectors_metadata.len();
 
         debug!(%slot, %sector_count, "Reading sectors");
@@ -152,7 +152,7 @@ where
         let sectors = plot_mmap.par_chunks_exact(sector_size);
 
         let sectors_solutions = {
-            let modifying_sector_guard = modifying_sector_index.read();
+            let modifying_sector_guard = modifying_sector_index.read().await;
             let maybe_sector_being_modified = modifying_sector_guard.as_ref().copied();
 
             let mut sectors_solutions = sectors_metadata
@@ -217,9 +217,6 @@ where
             sectors_solutions
         };
 
-        // Holds futures such that this function doesn't exit until all solutions were sent out
-        let mut sending_solutions = Vec::new();
-
         'solutions_processing: for (sector_index, sector_solutions) in sectors_solutions {
             for maybe_solution in sector_solutions {
                 let solution = match maybe_solution {
@@ -236,6 +233,11 @@ where
                 trace!(?solution, "Solution found");
 
                 if start.elapsed() >= farming_timeout {
+                    warn!(
+                        %slot,
+                        %sector_index,
+                        "Proving for solution skipped due to farming time limit",
+                    );
                     break 'solutions_processing;
                 }
 
@@ -246,17 +248,15 @@ where
 
                 handlers.solution.call_simple(&response);
 
-                let sending_solution = tokio::task::spawn({
-                    let node_client = node_client.clone();
-
-                    async move {
-                        if let Err(error) = node_client.submit_solution_response(response).await {
-                            warn!(%error, "Failed to submit solutions response");
-                        }
-                    }
-                });
-
-                sending_solutions.push(AsyncJoinOnDrop::new(sending_solution));
+                if let Err(error) = node_client.submit_solution_response(response).await {
+                    warn!(
+                        %slot,
+                        %sector_index,
+                        %error,
+                        "Failed to send solution to node, skipping further proving for this slot",
+                    );
+                    break 'solutions_processing;
+                }
             }
         }
     }

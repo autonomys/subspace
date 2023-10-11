@@ -39,18 +39,19 @@ use sp_runtime::testing::{Digest, DigestItem, Header, TestXt};
 use sp_runtime::traits::{Block as BlockT, Header as _, IdentityLookup};
 use sp_runtime::{BuildStorage, Perbill};
 use sp_weights::Weight;
-use std::iter;
 use std::marker::PhantomData;
 use std::num::{NonZeroU32, NonZeroU64, NonZeroUsize};
+use std::simd::Simd;
 use std::sync::{Once, OnceLock};
+use std::{iter, mem};
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::{
     ArchivedBlockProgress, ArchivedHistorySegment, Blake3Hash, BlockNumber, HistorySize,
     LastArchivedBlock, Piece, PieceOffset, PosSeed, PotOutput, PublicKey, Record,
-    RecordedHistorySegment, SegmentCommitment, SegmentHeader, SegmentIndex, SlotNumber, Solution,
-    SolutionRange, REWARD_SIGNING_CONTEXT,
+    RecordedHistorySegment, SectorId, SegmentCommitment, SegmentHeader, SegmentIndex, SlotNumber,
+    Solution, SolutionRange, REWARD_SIGNING_CONTEXT,
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector;
@@ -58,6 +59,7 @@ use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy};
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::shim::ShimTable;
 use subspace_proof_of_space::{Table, TableGenerator};
+use subspace_verification::is_within_solution_range;
 
 type PosTable = ShimTable;
 
@@ -427,6 +429,7 @@ pub fn create_signed_vote(
     archived_history_segment: &ArchivedHistorySegment,
     reward_address: <Test as frame_system::Config>::AccountId,
     solution_range: SolutionRange,
+    vote_solution_range: SolutionRange,
 ) -> SignedVote<u64, <Block as BlockT>::Hash, <Test as frame_system::Config>::AccountId> {
     let kzg = kzg_instance();
     let erasure_coding = erasure_coding_instance();
@@ -466,13 +469,15 @@ pub fn create_signed_vote(
         ))
         .unwrap();
 
+        let global_challenge = proof_of_time
+            .derive_global_randomness()
+            .derive_global_challenge(slot.into());
+
         let maybe_audit_result = audit_sector(
             &public_key,
             sector_index,
-            &proof_of_time
-                .derive_global_randomness()
-                .derive_global_challenge(slot.into()),
-            solution_range,
+            &global_challenge,
+            vote_solution_range,
             &plotted_sector_bytes,
             &plotted_sector.sector_metadata,
         );
@@ -491,6 +496,34 @@ pub fn create_signed_vote(
             .next()
             .unwrap()
             .unwrap();
+
+        let sector_id = SectorId::new(
+            PublicKey::from(keypair.public.to_bytes()).hash(),
+            solution.sector_index,
+        );
+        let sector_slot_challenge = sector_id.derive_sector_slot_challenge(&global_challenge);
+        let masked_chunk = (Simd::from(solution.chunk.to_bytes())
+            ^ Simd::from(solution.proof_of_space.hash()))
+        .to_array();
+        // Extract audit chunk from masked chunk
+        let audit_chunk = SolutionRange::from_le_bytes(
+            *masked_chunk
+                .array_chunks::<{ mem::size_of::<SolutionRange>() }>()
+                .nth(usize::from(solution.audit_chunk_offset))
+                .unwrap(),
+        );
+
+        // Check that solution quality is not too high
+        if is_within_solution_range(
+            &global_challenge,
+            audit_chunk,
+            &sector_slot_challenge,
+            solution_range,
+        )
+        .is_some()
+        {
+            continue;
+        }
 
         let vote = Vote::<u64, <Block as BlockT>::Hash, _>::V0 {
             height,

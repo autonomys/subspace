@@ -132,6 +132,13 @@ impl SubspaceJustification {
         (*consensus_engine_id == SUBSPACE_ENGINE_ID)
             .then(|| Self::decode(&mut encoded_justification.as_slice()))
     }
+
+    /// Returns `true` if justification must be archived, implies that it is canonical
+    pub fn must_be_archived(&self) -> bool {
+        match self {
+            SubspaceJustification::PotCheckpoints { .. } => true,
+        }
+    }
 }
 
 /// An equivocation proof for multiple block authorships on the same slot (i.e. double vote).
@@ -587,13 +594,14 @@ impl PotExtension {
 /// Consensus-related runtime interface
 #[runtime_interface]
 pub trait Consensus {
-    /// Verify whether solution is valid.
+    /// Verify whether solution is valid, returns solution distance that is `<= solution_range/2` on
+    /// success.
     fn verify_solution(
         &mut self,
         solution: WrappedSolution,
         slot: SlotNumber,
         params: WrappedVerifySolutionParams<'_>,
-    ) -> Result<(), String> {
+    ) -> Result<SolutionRange, String> {
         use sp_externalities::ExternalitiesExt;
         use subspace_proof_of_space::PosTableType;
 
@@ -608,27 +616,21 @@ pub trait Consensus {
             .0;
 
         match pos_table_type {
-            PosTableType::Chia => {
-                subspace_verification::verify_solution::<ChiaTable, _, _>(
-                    &solution.0,
-                    slot,
-                    &params.0,
-                    kzg,
-                )
-                .map_err(|error| error.to_string())?;
-            }
-            PosTableType::Shim => {
-                subspace_verification::verify_solution::<ShimTable, _, _>(
-                    &solution.0,
-                    slot,
-                    &params.0,
-                    kzg,
-                )
-                .map_err(|error| error.to_string())?;
-            }
+            PosTableType::Chia => subspace_verification::verify_solution::<ChiaTable, _, _>(
+                &solution.0,
+                slot,
+                &params.0,
+                kzg,
+            )
+            .map_err(|error| error.to_string()),
+            PosTableType::Shim => subspace_verification::verify_solution::<ShimTable, _, _>(
+                &solution.0,
+                slot,
+                &params.0,
+                kzg,
+            )
+            .map_err(|error| error.to_string()),
         }
-
-        Ok(())
     }
 
     /// Verify whether `proof_of_time` is valid at specified `slot` if built on top of `parent_hash`

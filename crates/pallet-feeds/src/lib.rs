@@ -398,7 +398,7 @@ impl<T: Config> Call<T> {
                         let mut co = object_mapping.try_into_call_object(
                             feed_id,
                             object.as_slice(),
-                            |data| crypto::blake3_hash(data),
+                            crypto::blake3_hash,
                         )?;
                         co.offset += base_offset;
                         Some(co)

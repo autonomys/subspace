@@ -24,6 +24,7 @@ pub mod domain_chain_spec;
 use futures::executor::block_on;
 use futures::StreamExt;
 use sc_client_api::{BlockBackend, HeaderBackend};
+use sc_consensus_subspace::archiver::encode_block;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{NewSlotNotification, RewardSigningNotification};
 use sp_api::ProvideRuntimeApi;
@@ -53,7 +54,10 @@ const MAX_PIECES_IN_SECTOR: u16 = 32;
 pub struct TestExecutorDispatch;
 
 impl sc_executor::NativeExecutionDispatch for TestExecutorDispatch {
-    type ExtendHostFunctions = sp_consensus_subspace::consensus::HostFunctions;
+    type ExtendHostFunctions = (
+        sp_consensus_subspace::consensus::HostFunctions,
+        sp_domains_fraud_proof::HostFunctions,
+    );
 
     fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
         subspace_test_runtime::api::dispatch(method, data)
@@ -226,13 +230,13 @@ where
     let mut archiver = subspace_archiving::archiver::Archiver::new(kzg.clone())
         .expect("Incorrect parameters for archiver");
 
-    let genesis_block = client
-        .block(client.info().genesis_hash)
-        .unwrap()
-        .unwrap()
-        .block;
+    let genesis_block = client.block(client.info().genesis_hash).unwrap().unwrap();
     let archived_segment = archiver
-        .add_block(genesis_block.encode(), BlockObjectMapping::default(), true)
+        .add_block(
+            encode_block(genesis_block),
+            BlockObjectMapping::default(),
+            true,
+        )
         .into_iter()
         .next()
         .expect("First block is always producing one segment; qed");

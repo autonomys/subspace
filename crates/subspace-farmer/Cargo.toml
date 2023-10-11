@@ -13,6 +13,7 @@ include = [
 
 [dependencies]
 anyhow = "1.0.75"
+async-lock = "2.8.0"
 async-trait = "0.1.73"
 atomic = "0.5.3"
 backoff = { version = "0.4.0", features = ["futures", "tokio"] }

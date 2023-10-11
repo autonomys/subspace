@@ -35,6 +35,7 @@ use crate::metrics::NodeMetrics;
 use crate::tx_pre_validator::ConsensusChainTxPreValidator;
 use core::sync::atomic::{AtomicU32, Ordering};
 use cross_domain_message_gossip::cdm_gossip_peers_set_config;
+use domain_runtime_primitives::opaque::Block as DomainBlock;
 use domain_runtime_primitives::{BlockNumber as DomainNumber, Hash as DomainHash};
 pub use dsn::DsnConfig;
 use frame_system_rpc_runtime_api::AccountNonceApi;
@@ -77,9 +78,11 @@ use sp_consensus_subspace::digests::extract_pre_digest;
 use sp_consensus_subspace::{
     FarmerPublicKey, KzgExtension, PosExtension, PotExtension, PotNextSlotInput, SubspaceApi,
 };
-use sp_core::traits::SpawnEssentialNamed;
+use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
+use sp_core::H256;
 use sp_domains::transaction::PreValidationObjectApi;
 use sp_domains::DomainsApi;
+use sp_domains_fraud_proof::{FraudProofExtension, FraudProofHostFunctionsImpl};
 use sp_externalities::Extensions;
 use sp_objects::ObjectsApi;
 use sp_offchain::OffchainWorkerApi;
@@ -226,20 +229,25 @@ pub struct SubspaceConfiguration {
     pub timekeeper_cpu_cores: HashSet<usize>,
 }
 
-struct SubspaceExtensionsFactory<PosTable, Client> {
+struct SubspaceExtensionsFactory<PosTable, Client, DomainBlock, ExecutorDispatch> {
     kzg: Kzg,
     client: Arc<Client>,
     pot_verifier: PotVerifier,
-    _pos_table: PhantomData<PosTable>,
+    executor: Arc<ExecutorDispatch>,
+    _pos_table: PhantomData<(PosTable, DomainBlock)>,
 }
 
-impl<PosTable, Block, Client> ExtensionsFactory<Block>
-    for SubspaceExtensionsFactory<PosTable, Client>
+impl<PosTable, Block, Client, DomainBlock, ExecutorDispatch> ExtensionsFactory<Block>
+    for SubspaceExtensionsFactory<PosTable, Client, DomainBlock, ExecutorDispatch>
 where
     PosTable: Table,
     Block: BlockT,
+    Block::Hash: From<H256>,
+    DomainBlock: BlockT,
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + 'static,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
+    Client::Api: SubspaceApi<Block, FarmerPublicKey>
+        + DomainsApi<Block, NumberFor<DomainBlock>, DomainBlock::Hash>,
+    ExecutorDispatch: CodeExecutor,
 {
     fn extensions_for(
         &self,
@@ -352,6 +360,14 @@ where
                 }
             })
         }));
+
+        exts.register(FraudProofExtension::new(Arc::new(
+            FraudProofHostFunctionsImpl::<_, _, DomainBlock, ExecutorDispatch>::new(
+                self.client.clone(),
+                self.executor.clone(),
+            ),
+        )));
+
         exts
     }
 }
@@ -448,14 +464,24 @@ where
         PotSeed::from_genesis(client.info().genesis_hash.as_ref(), pot_external_entropy),
         POT_VERIFIER_CACHE_SIZE,
     );
-    client.execution_extensions().set_extensions_factory(
-        SubspaceExtensionsFactory::<PosTable, _> {
+
+    let invalid_state_transition_proof_verifier = InvalidStateTransitionProofVerifier::new(
+        client.clone(),
+        executor.clone(),
+        VerifierClient::new(client.clone()),
+    );
+
+    let executor = Arc::new(executor);
+
+    client
+        .execution_extensions()
+        .set_extensions_factory(SubspaceExtensionsFactory::<PosTable, _, DomainBlock, _> {
             kzg: kzg.clone(),
             client: Arc::clone(&client),
             pot_verifier: pot_verifier.clone(),
+            executor: executor.clone(),
             _pos_table: PhantomData,
-        },
-    );
+        });
 
     let telemetry = telemetry.map(|(worker, telemetry)| {
         task_manager
@@ -468,13 +494,7 @@ where
 
     let invalid_transaction_proof_verifier = InvalidTransactionProofVerifier::new(
         client.clone(),
-        Arc::new(executor.clone()),
-        VerifierClient::new(client.clone()),
-    );
-
-    let invalid_state_transition_proof_verifier = InvalidStateTransitionProofVerifier::new(
-        client.clone(),
-        executor,
+        executor.clone(),
         VerifierClient::new(client.clone()),
     );
 
@@ -527,7 +547,6 @@ where
                         .expect("Parent header must always exist when block is created; qed");
 
                     let parent_block_number = parent_header.number;
-                    let parent_state_root = parent_header.state_root;
 
                     let subspace_inherents =
                         sp_consensus_subspace::inherents::InherentDataProvider::from_timestamp_and_slot_duration(
@@ -536,10 +555,7 @@ where
                             subspace_link.segment_headers_for_block(parent_block_number + 1),
                         );
 
-                    let domain_inherents =
-                        sp_domains::inherents::InherentDataProvider::new(parent_state_root);
-
-                    Ok((timestamp, subspace_inherents, domain_inherents))
+                    Ok((timestamp, subspace_inherents))
                 }
             }
         },
@@ -997,7 +1013,6 @@ where
                             .expect("Parent header must always exist when block is created; qed");
 
                         let parent_block_number = parent_header.number;
-                        let parent_state_root = parent_header.state_root;
 
                         let subspace_inherents =
                             sp_consensus_subspace::inherents::InherentDataProvider::from_timestamp_and_slot_duration(
@@ -1006,10 +1021,7 @@ where
                                 subspace_link.segment_headers_for_block(parent_block_number + 1),
                             );
 
-                        let domain_inherents =
-                            sp_domains::inherents::InherentDataProvider::new(parent_state_root);
-
-                        Ok((subspace_inherents, timestamp, domain_inherents))
+                        Ok((subspace_inherents, timestamp))
                     }
                 }
             },

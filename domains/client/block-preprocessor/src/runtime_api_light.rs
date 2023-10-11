@@ -216,7 +216,7 @@ where
         &self,
         at: Block::Hash,
         moment: Moment,
-    ) -> Result<Option<Block::Extrinsic>, ApiError> {
+    ) -> Result<Block::Extrinsic, ApiError> {
         <Self as InherentExtrinsicApi<Block>>::construct_inherent_timestamp_extrinsic(
             self, at, moment,
         )

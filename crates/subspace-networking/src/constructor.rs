@@ -87,6 +87,20 @@ const TEMPORARY_BANS_DEFAULT_BACKOFF_RANDOMIZATION_FACTOR: f64 = 0.1;
 const TEMPORARY_BANS_DEFAULT_BACKOFF_MULTIPLIER: f64 = 1.5;
 const TEMPORARY_BANS_DEFAULT_MAX_INTERVAL: Duration = Duration::from_secs(30 * 60);
 
+/// Max confidence for autonat protocol. Could affect Kademlia mode change.
+pub(crate) const AUTONAT_MAX_CONFIDENCE: usize = 3;
+
+/// Defines Kademlia mode
+pub enum KademliaMode {
+    /// The Kademlia mode is static for the duration of the application.
+    Static(Mode),
+    /// Kademlia mode will be changed using Autonat protocol when max confidence reached.
+    Dynamic {
+        /// Defines initial Kademlia mode.
+        initial_mode: Mode,
+    },
+}
+
 /// Trait to be implemented on providers of local records
 pub trait LocalRecordProvider {
     /// Gets a provider record for key that is stored locally
@@ -221,8 +235,10 @@ pub struct Config<LocalRecordProvider> {
     pub special_target_connections: u32,
     /// Addresses to bootstrap Kademlia network
     pub bootstrap_addresses: Vec<Multiaddr>,
-    /// Kademlia mode. None means "automatic mode".
-    pub kademlia_mode: Option<Mode>,
+    /// Kademlia mode. The default value is set to Static(Client). The peer won't add its address
+    /// to other peers` Kademlia routing table. Changing this behaviour implies that a peer can
+    /// provide pieces to others.
+    pub kademlia_mode: KademliaMode,
     /// Known external addresses to the local peer. The addresses will be added on the swarm start
     /// and enable peer to notify others about its reachable address.
     pub external_addresses: Vec<Multiaddr>,
@@ -340,7 +356,7 @@ where
             general_target_connections: SWARM_TARGET_CONNECTION_NUMBER,
             special_target_connections: SWARM_TARGET_CONNECTION_NUMBER,
             bootstrap_addresses: Vec::new(),
-            kademlia_mode: Some(Mode::Server),
+            kademlia_mode: KademliaMode::Static(Mode::Client),
             external_addresses: Vec::new(),
             enable_autonat: true,
         }
@@ -468,6 +484,7 @@ where
         autonat: enable_autonat.then(|| AutonatConfig {
             use_connected: true,
             only_global_ips: !config.allow_non_global_addresses_in_dht,
+            confidence_max: AUTONAT_MAX_CONFIDENCE,
             ..Default::default()
         }),
     });

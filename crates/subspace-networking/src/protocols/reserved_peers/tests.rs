@@ -177,17 +177,14 @@ async fn test_reserved_peers_dial_event() {
 
     peer1.listen().await;
 
-    loop {
-        select! {
-            event = peer1.next_swarm_event().fuse() => {
-                if let SwarmEvent::Dialing{peer_id, ..} = event{
-                    assert_eq!(peer_id, Some(peer2_id));
-                }
-                break;
-            },
-            _ = sleep(long_delay).fuse() => {
-                panic!("No reserved peers dialing.");
+    select! {
+        event = peer1.next_swarm_event().fuse() => {
+            if let SwarmEvent::Dialing{peer_id, ..} = event{
+                assert_eq!(peer_id, Some(peer2_id));
             }
+        },
+        _ = sleep(long_delay).fuse() => {
+            panic!("No reserved peers dialing.");
         }
     }
 

@@ -7,8 +7,8 @@ license = "GPL-3.0-or-later"
 homepage = "https://subspace.network"
 repository = "https://github.com/subspace/subspace"
 include = [
-	"/src",
-	"/Cargo.toml",
+    "/src",
+    "/Cargo.toml",
 ]
 
 [package.metadata.docs.rs]
@@ -26,6 +26,7 @@ rand = "0.8.5"
 pallet-domains = { version = "0.1.0", path = "../../crates/pallet-domains" }
 parking_lot = "0.12.1"
 sc-block-builder = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7" }
+sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7" }
 sc-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7" }
 sc-executor = { git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7" }
 sc-consensus-fraud-proof = { version = "0.1.0", path = "../../crates/sc-consensus-fraud-proof" }
@@ -44,6 +45,8 @@ sp-consensus = { git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6e
 sp-consensus-subspace = { version = "0.1.0", path = "../../crates/sp-consensus-subspace" }
 sp-consensus-slots = { version = "0.10.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7" }
 sp-domains = { version = "0.1.0", path = "../../crates/sp-domains" }
+sp-domains-fraud-proof = { version = "0.1.0", path = "../../crates/sp-domains-fraud-proof" }
+sp-externalities = { version = "0.19.0", git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7" }
 sp-keyring = { git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7" }
 sp-timestamp = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7" }
 sp-inherents = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7" }
@@ -63,5 +66,5 @@ sp-keyring = { git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edf
 
 [features]
 do-not-enforce-cost-of-storage = [
-	"subspace-test-runtime/do-not-enforce-cost-of-storage",
+    "subspace-test-runtime/do-not-enforce-cost-of-storage",
 ]
