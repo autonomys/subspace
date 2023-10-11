@@ -525,8 +525,21 @@ type BackgroundTask = Pin<Box<dyn Future<Output = Result<(), BackgroundTaskError
 type HandlerFn<A> = Arc<dyn Fn(&A) + Send + Sync + 'static>;
 type Handler<A> = Bag<HandlerFn<A>, A>;
 
+/// Details about sector currently being plotted
+pub struct SectorPlottingDetails {
+    /// Sector index
+    pub sector_index: SectorIndex,
+    /// Progress so far in % (not including this sector)
+    pub progress: f32,
+    /// Whether sector is being replotted
+    pub replotting: bool,
+    /// Whether this is the last sector queued so far
+    pub last_queued: bool,
+}
+
 #[derive(Default, Debug)]
 struct Handlers {
+    sector_plotting: Handler<SectorPlottingDetails>,
     sector_plotted: Handler<(PlottedSector, Option<PlottedSector>)>,
     solution: Handler<SolutionResponse>,
 }
@@ -905,7 +918,6 @@ impl SingleDiskFarm {
                             erasure_coding,
                             handlers,
                             modifying_sector_index,
-                            target_sector_count,
                             sectors_to_plot_receiver,
                             plotting_thread_pool,
                             replotting_thread_pool,
@@ -1162,9 +1174,11 @@ impl SingleDiskFarm {
     }
 
     /// Subscribe to sector plotting notification
-    ///
-    /// Plotting permit is given such that it can be dropped later by the implementation is
-    /// throttling of the plotting process is desired.
+    pub fn on_sector_plotting(&self, callback: HandlerFn<SectorPlottingDetails>) -> HandlerId {
+        self.handlers.sector_plotting.add(callback)
+    }
+
+    /// Subscribe to notification about plotted sectors
     pub fn on_sector_plotted(
         &self,
         callback: HandlerFn<(PlottedSector, Option<PlottedSector>)>,
