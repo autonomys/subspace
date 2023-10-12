@@ -19,7 +19,7 @@ use sp_domains::{DomainInstanceData, RuntimeType};
 use std::sync::Arc;
 use subspace_runtime::RuntimeApi as CRuntimeApi;
 use subspace_runtime_primitives::opaque::Block as CBlock;
-use subspace_service::{FullClient as CFullClient, FullSelectChain};
+use subspace_service::FullClient as CFullClient;
 
 /// `DomainInstanceStarter` used to start a domain instance node based on the given
 /// bootstrap result
@@ -32,7 +32,6 @@ pub struct DomainInstanceStarter {
         SubspaceNotificationStream<BlockImportingNotification<CBlock>>,
     pub new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
     pub consensus_sync_service: Arc<sc_network_sync::SyncingService<CBlock>>,
-    pub select_chain: FullSelectChain,
     pub domain_message_receiver: TracingUnboundedReceiver<Vec<u8>>,
     pub gossip_message_sink: TracingUnboundedSender<Message>,
 }
@@ -61,7 +60,6 @@ impl DomainInstanceStarter {
             block_importing_notification_stream,
             new_slot_notification_stream,
             consensus_sync_service,
-            select_chain,
             domain_message_receiver,
             gossip_message_sink,
         } = self;
@@ -93,7 +91,6 @@ impl DomainInstanceStarter {
                     (
                         slot_notification.new_slot_info.slot,
                         slot_notification.new_slot_info.global_randomness,
-                        None::<futures::channel::mpsc::Sender<()>>,
                     )
                 })
         };
@@ -104,6 +101,7 @@ impl DomainInstanceStarter {
             block_importing_notification_stream: block_importing_notification_stream(),
             imported_block_notification_stream,
             new_slot_notification_stream: new_slot_notification_stream(),
+            acknowledgement_sender_stream: futures::stream::empty(),
             _phantom: Default::default(),
         };
 
@@ -135,7 +133,6 @@ impl DomainInstanceStarter {
                     consensus_client,
                     consensus_offchain_tx_pool_factory,
                     consensus_network_sync_oracle: consensus_sync_service.clone(),
-                    select_chain,
                     operator_streams,
                     gossip_message_sink,
                     domain_message_receiver,

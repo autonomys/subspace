@@ -14,15 +14,15 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3.6.5", features = ["derive"] }
-sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7" }
-sp-api = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7" }
-sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7" }
-sp-block-builder = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7" }
-sp-core = { version = "21.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7" }
-sp-inherents = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7" }
-sp-runtime = { version = "24.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7" }
-sp-state-machine = { version = "0.28.0", git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7" }
+sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
+sp-api = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
+sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
+sp-block-builder = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
+sp-core = { version = "21.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
+sp-inherents = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
+sp-runtime = { version = "24.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
+sp-state-machine = { version = "0.28.0", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
 tracing = "0.1.37"
 
 [dev-dependencies]
-substrate-test-runtime-client = { version = "2.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7" }
+substrate-test-runtime-client = { version = "2.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }

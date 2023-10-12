@@ -37,6 +37,7 @@ use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
 use sp_api::RuntimeVersion;
+use sp_application_crypto::sr25519;
 use sp_core::crypto::KeyTypeId;
 use sp_core::sr25519::vrf::VrfSignature;
 #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
@@ -49,6 +50,7 @@ use sp_runtime::traits::{
 use sp_runtime::{DigestItem, OpaqueExtrinsic, Percent};
 use sp_runtime_interface::pass_by;
 use sp_runtime_interface::pass_by::PassBy;
+use sp_std::collections::btree_set::BTreeSet;
 use sp_std::vec::Vec;
 use sp_weights::Weight;
 use subspace_core_primitives::crypto::blake3_hash;
@@ -536,8 +538,28 @@ impl ProofOfElection {
     }
 }
 
+/// Type that represents an operator allow list for Domains.
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct GenesisDomain<AccountId> {
+pub enum OperatorAllowList<AccountId: Ord> {
+    /// Anyone can operate for this domain.
+    Anyone,
+    /// Only the specific operators are allowed to operate the domain.
+    /// This essentially makes the domain permissioned.
+    Operators(BTreeSet<AccountId>),
+}
+
+impl<AccountId: Ord> OperatorAllowList<AccountId> {
+    /// Returns true if the allow list is either `Anyone` or the operator is part of the allowed operator list.
+    pub fn is_operator_allowed(&self, operator: &AccountId) -> bool {
+        match self {
+            OperatorAllowList::Anyone => true,
+            OperatorAllowList::Operators(allowed_operators) => allowed_operators.contains(operator),
+        }
+    }
+}
+
+#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GenesisDomain<AccountId: Ord> {
     // Domain runtime items
     pub runtime_name: String,
     pub runtime_type: RuntimeType,
@@ -551,6 +573,7 @@ pub struct GenesisDomain<AccountId> {
     pub max_block_weight: Weight,
     pub bundle_slot_probability: (u64, u64),
     pub target_bundles_per_block: u32,
+    pub operator_allow_list: OperatorAllowList<AccountId>,
 
     // Genesis operator
     pub signing_key: OperatorPublicKey,
@@ -775,10 +798,15 @@ impl InboxedBundle {
     }
 }
 
-/// Empty extrinsics root
+/// Empty extrinsics root.
 pub const EMPTY_EXTRINSIC_ROOT: ExtrinsicsRoot = ExtrinsicsRoot {
     0: hex!("03170a2e7597b7b7e3d84c05391d139a62b157e78786d8c082f29dcf4c111314"),
 };
+
+/// Zero operator signing key.
+pub const ZERO_OPERATOR_SIGNING_KEY: sr25519::Public = sr25519::Public(hex!(
+    "0000000000000000000000000000000000000000000000000000000000000000"
+));
 
 sp_api::decl_runtime_apis! {
     /// API necessary for domains pallet.

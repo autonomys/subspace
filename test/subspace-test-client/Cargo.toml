@@ -17,20 +17,20 @@ targets = ["x86_64-unknown-linux-gnu"]
 [dependencies]
 codec = { package = "parity-scale-codec", version = "3.6.5", features = [ "derive" ] }
 evm-domain-test-runtime = { version = "0.1.0", path = "../../domains/test/runtime/evm" }
-fp-evm = { version = "3.0.0-dev", git = "https://github.com/subspace/frontier", rev = "04f06279e7ec0b095b82be35f41d09d36f3290f5" }
+fp-evm = { version = "3.0.0-dev", git = "https://github.com/subspace/frontier", rev = "4873a02b4b420b70bd860877515e8d0f1aa82562" }
 futures = "0.3.28"
 schnorrkel = "0.9.1"
-sc-chain-spec = { git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7" }
-sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7" }
+sc-chain-spec = { git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
+sc-client-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
 sc-consensus-subspace = { version = "0.1.0", path = "../../crates/sc-consensus-subspace" }
-sc-executor = { git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7" }
-sc-service = { git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7", default-features = false }
-sp-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7" }
+sc-executor = { git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
+sc-service = { git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c", default-features = false }
+sp-api = { git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
 sp-consensus-subspace = { version = "0.1.0", path = "../../crates/sp-consensus-subspace" }
-sp-core = { git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7" }
+sp-core = { git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
 sp-domains = { version = "0.1.0", path = "../../crates/sp-domains" }
 sp-domains-fraud-proof = { version = "0.1.0", path = "../../crates/sp-domains-fraud-proof" }
-sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "c90d6edfd8c63168eff0dce6f2ace4d66dd139f7" }
+sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
 subspace-archiving = { path = "../../crates/subspace-archiving" }
 subspace-core-primitives = { path = "../../crates/subspace-core-primitives" }
 subspace-erasure-coding = { path = "../../crates/subspace-erasure-coding" }
