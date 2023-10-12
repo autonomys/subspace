@@ -23,6 +23,16 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+#[cfg(feature = "runtime-benchmarks")]
+mod benchmarking;
+
+#[cfg(test)]
+mod mock;
+#[cfg(test)]
+mod tests;
+
+pub mod weights;
+
 use codec::Codec;
 use frame_support::dispatch::{DispatchClass, DispatchInfo, GetDispatchInfo, PostDispatchInfo};
 use frame_support::traits::{
@@ -49,14 +59,16 @@ pub type OriginOf<E, C> = <CallOf<E, C> as Dispatchable>::RuntimeOrigin;
 // calculate the storage root outside the runtime after executing the extrinsic directly.
 #[frame_support::pallet]
 mod pallet {
+    use crate::weights::WeightInfo;
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
-    use frame_system::{SetCode, WeightInfo};
+    use frame_system::SetCode;
     use sp_std::vec::Vec;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
+        type WeightInfo: WeightInfo;
     }
 
     #[pallet::pallet]
@@ -68,7 +80,7 @@ mod pallet {
         /// Sets new runtime code after doing necessary checks.
         /// Same as frame_system::Call::set_code but without root origin.
         #[pallet::call_index(0)]
-        #[pallet::weight((<T as frame_system::Config>::SystemWeightInfo::set_code(), DispatchClass::Operational))]
+        #[pallet::weight((T::WeightInfo::set_code(), DispatchClass::Operational))]
         pub fn set_code(origin: OriginFor<T>, code: Vec<u8>) -> DispatchResultWithPostInfo {
             ensure_none(origin)?;
             <frame_system::pallet::Pallet<T>>::can_set_code(&code)?;

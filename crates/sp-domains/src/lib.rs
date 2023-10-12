@@ -792,7 +792,7 @@ impl InboxedBundle {
     #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
     pub fn dummy(extrinsics_root: ExtrinsicsRoot) -> Self {
         InboxedBundle {
-            bundle: BundleValidity::Valid(H256::random()),
+            bundle: BundleValidity::Valid(H256::default()),
             extrinsics_root,
         }
     }

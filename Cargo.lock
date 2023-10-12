@@ -2734,6 +2734,7 @@ dependencies = [
 name = "domain-pallet-executive"
 version = "0.1.0"
 dependencies = [
+ "frame-benchmarking",
  "frame-executive",
  "frame-support",
  "frame-system",
@@ -2744,6 +2745,7 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "sp-core",
+ "sp-externalities",
  "sp-inherents",
  "sp-io",
  "sp-runtime",
@@ -3286,6 +3288,7 @@ dependencies = [
  "sp-runtime",
  "sp-session",
  "sp-std",
+ "sp-storage",
  "sp-transaction-pool",
  "sp-version",
  "subspace-core-primitives",
