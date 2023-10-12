@@ -1018,28 +1018,49 @@ fn vote_solution_quality_too_high() {
         // Reset so that any solution works for votes, but also block solution range is almost the
         // same, resulting in quality being too high
         pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
-            solution_ranges.current = u64::MAX - 1;
+            solution_ranges.current = u64::MAX / 5;
             solution_ranges.voting_current = u64::MAX;
         });
 
-        // Finally correct signature
-        let signed_vote = create_signed_vote(
-            &keypair,
-            2,
-            frame_system::Pallet::<Test>::block_hash(1),
-            Subspace::current_slot() + 1,
-            Default::default(),
-            Default::default(),
-            &archived_segment.pieces,
-            1,
-            SolutionRange::MIN,
-            SolutionRange::MAX,
-        );
+        {
+            let signed_vote = create_signed_vote(
+                &keypair,
+                2,
+                frame_system::Pallet::<Test>::block_hash(1),
+                Subspace::current_slot() + 1,
+                Default::default(),
+                Default::default(),
+                &archived_segment.pieces,
+                1,
+                pallet::SolutionRanges::<Test>::get().current,
+                pallet::SolutionRanges::<Test>::get().voting_current,
+            );
 
-        assert_matches!(
-            super::check_vote::<Test>(&signed_vote, false),
-            Err(CheckVoteError::QualityTooHigh)
-        );
+            // Good solution quality
+            assert_ok!(super::check_vote::<Test>(&signed_vote, false));
+        }
+
+        {
+            let signed_vote = create_signed_vote(
+                &keypair,
+                2,
+                frame_system::Pallet::<Test>::block_hash(1),
+                Subspace::current_slot() + 1,
+                Default::default(),
+                Default::default(),
+                &archived_segment.pieces,
+                1,
+                SolutionRange::MIN,
+                // Create vote for block level of quality
+                pallet::SolutionRanges::<Test>::get().current,
+            );
+
+            // Quality is too high
+            assert_matches!(
+                super::check_vote::<Test>(&signed_vote, false),
+                Err(CheckVoteError::QualityTooHigh)
+            );
+        }
     });
 }
 
