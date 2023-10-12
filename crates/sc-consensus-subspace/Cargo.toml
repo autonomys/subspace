@@ -25,7 +25,7 @@ parking_lot = "0.12.1"
 prometheus-endpoint = { package = "substrate-prometheus-endpoint", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c", version = "0.10.0-dev" }
 rand = "0.8.5"
 rand_chacha = "0.3.1"
-rayon = "1.7.0"
+rayon = "1.8.0"
 schnorrkel = "0.9.1"
 sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
 sc-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
