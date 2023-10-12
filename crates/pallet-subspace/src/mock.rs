@@ -467,6 +467,8 @@ pub fn create_signed_vote(
             pieces_in_sector,
             sector_output: &mut plotted_sector_bytes,
             sector_metadata_output: &mut plotted_sector_metadata_bytes,
+            downloading_semaphore: None,
+            encoding_semaphore: None,
             table_generator: &mut table_generator,
         }))
         .unwrap();

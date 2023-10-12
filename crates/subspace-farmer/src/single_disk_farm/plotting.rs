@@ -33,6 +33,7 @@ use subspace_farmer_components::sector::SectorMetadataChecksummed;
 use subspace_proof_of_space::Table;
 use thiserror::Error;
 use tokio::runtime::Handle;
+use tokio::sync::Semaphore;
 use tracing::{debug, info, trace, warn};
 
 const FARMER_APP_INFO_RETRY_INTERVAL: Duration = Duration::from_millis(500);
@@ -101,6 +102,12 @@ pub(super) struct PlottingOptions<NC, PG> {
     pub(super) handlers: Arc<Handlers>,
     pub(super) modifying_sector_index: Arc<RwLock<Option<SectorIndex>>>,
     pub(super) sectors_to_plot_receiver: mpsc::Receiver<SectorToPlot>,
+    /// Semaphore for part of the plotting when farmer downloads new sector, allows to limit memory
+    /// usage of the plotting process, permit will be held until the end of the plotting process
+    pub(crate) downloading_semaphore: Arc<Semaphore>,
+    /// Semaphore for part of the plotting when farmer encodes downloaded sector, should typically
+    /// allow one permit at a time for efficient CPU utilization
+    pub(crate) encoding_semaphore: Arc<Semaphore>,
     pub(super) plotting_thread_pool: Arc<ThreadPool>,
     pub(super) replotting_thread_pool: Arc<ThreadPool>,
 }
@@ -133,6 +140,8 @@ where
         handlers,
         modifying_sector_index,
         mut sectors_to_plot_receiver,
+        downloading_semaphore,
+        encoding_semaphore,
         plotting_thread_pool,
         replotting_thread_pool,
     } = plotting_options;
@@ -211,6 +220,8 @@ where
             let piece_getter = piece_getter.clone();
             let kzg = kzg.clone();
             let erasure_coding = erasure_coding.clone();
+            let downloading_semaphore = Arc::clone(&downloading_semaphore);
+            let encoding_semaphore = Arc::clone(&encoding_semaphore);
 
             let plotting_fn = move || {
                 tokio::task::block_in_place(move || {
@@ -227,6 +238,8 @@ where
                         pieces_in_sector,
                         sector_output: &mut sector,
                         sector_metadata_output: &mut sector_metadata,
+                        downloading_semaphore: Some(&downloading_semaphore),
+                        encoding_semaphore: Some(&encoding_semaphore),
                         table_generator: &mut table_generator,
                     });
 

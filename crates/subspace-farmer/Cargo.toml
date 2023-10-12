@@ -38,7 +38,6 @@ schnorrkel = "0.9.1"
 serde = { version = "1.0.183", features = ["derive"] }
 serde_json = "1.0.106"
 static_assertions = "1.1.0"
-std-semaphore = "0.1.0"
 ss58-registry = "1.43.0"
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
 subspace-erasure-coding = { version = "0.1.0", path = "../subspace-erasure-coding" }

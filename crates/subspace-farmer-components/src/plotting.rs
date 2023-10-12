@@ -182,6 +182,12 @@ where
     /// Where plotted sector metadata should be written, vector must either be empty (in which case
     /// it'll be resized to correct size automatically) or correctly sized from the beginning
     pub sector_metadata_output: &'a mut Vec<u8>,
+    /// Semaphore for part of the plotting when farmer downloads new sector, allows to limit memory
+    /// usage of the plotting process, permit will be held until the end of the plotting process
+    pub downloading_semaphore: Option<&'a Semaphore>,
+    /// Semaphore for part of the plotting when farmer encodes downloaded sector, should typically
+    /// allow one permit at a time for efficient CPU utilization
+    pub encoding_semaphore: Option<&'a Semaphore>,
     /// Proof of space table generator
     pub table_generator: &'a mut PosTable::Generator,
 }
@@ -208,6 +214,8 @@ where
         pieces_in_sector,
         sector_output,
         sector_metadata_output,
+        downloading_semaphore,
+        encoding_semaphore,
         table_generator,
     } = options;
 
@@ -232,6 +240,11 @@ where
             expected: SectorMetadataChecksummed::encoded_size(),
         });
     }
+
+    let _downloading_permit = match downloading_semaphore {
+        Some(downloading_semaphore) => Some(downloading_semaphore.acquire().await),
+        None => None,
+    };
 
     let sector_id = SectorId::new(public_key.hash(), sector_index);
 
@@ -294,6 +307,11 @@ where
     }
 
     let mut raw_sector = raw_sector.into_inner();
+
+    let _encoding_permit = match encoding_semaphore {
+        Some(encoding_semaphore) => Some(encoding_semaphore.acquire().await),
+        None => None,
+    };
 
     let mut sector_contents_map = SectorContentsMap::new(pieces_in_sector);
 

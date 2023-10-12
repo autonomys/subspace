@@ -269,6 +269,8 @@ where
         pieces_in_sector,
         sector_output: &mut sector,
         sector_metadata_output: &mut sector_metadata,
+        downloading_semaphore: None,
+        encoding_semaphore: None,
         table_generator: &mut table_generator,
     })
     .await

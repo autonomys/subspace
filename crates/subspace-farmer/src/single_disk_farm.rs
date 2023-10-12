@@ -31,13 +31,12 @@ use static_assertions::const_assert;
 use std::fs::{File, OpenOptions};
 use std::future::Future;
 use std::io::{Seek, SeekFrom};
-use std::num::{NonZeroU16, NonZeroU8};
+use std::num::NonZeroU8;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::{fmt, fs, io, mem, thread};
-use std_semaphore::{Semaphore, SemaphoreGuard};
+use std::{fs, io, mem, thread};
 use subspace_core_primitives::crypto::blake3_hash;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
@@ -54,7 +53,7 @@ use subspace_proof_of_space::Table;
 use subspace_rpc_primitives::{FarmerAppInfo, SolutionResponse};
 use thiserror::Error;
 use tokio::runtime::Handle;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, Semaphore};
 use tracing::{debug, error, info, info_span, trace, warn, Instrument, Span};
 use ulid::Ulid;
 
@@ -66,35 +65,6 @@ const_assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<u64>());
 const RESERVED_PLOT_METADATA: u64 = 1024 * 1024;
 /// Reserve 1M of space for farm info (for potential future expansion)
 const RESERVED_FARM_INFO: u64 = 1024 * 1024;
-
-/// Semaphore that limits disk access concurrency in strategic places to the number specified during
-/// initialization
-#[derive(Clone)]
-pub struct SingleDiskSemaphore {
-    inner: Arc<Semaphore>,
-}
-
-impl fmt::Debug for SingleDiskSemaphore {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SingleDiskSemaphore").finish()
-    }
-}
-
-impl SingleDiskSemaphore {
-    /// Create new semaphore for limiting concurrency of the major processes working with the same
-    /// disk
-    pub fn new(concurrency: NonZeroU16) -> Self {
-        Self {
-            inner: Arc::new(Semaphore::new(concurrency.get() as isize)),
-        }
-    }
-
-    /// Acquire access, will block current thread until previously acquired guards are dropped and
-    /// access is released
-    pub fn acquire(&self) -> SemaphoreGuard<'_> {
-        self.inner.access()
-    }
-}
 
 /// An identifier for single disk farm, can be used for in logs, thread names, etc.
 #[derive(
@@ -286,6 +256,12 @@ pub struct SingleDiskFarmOptions<NC, PG> {
     pub erasure_coding: ErasureCoding,
     /// Percentage of allocated space dedicated for caching purposes
     pub cache_percentage: NonZeroU8,
+    /// Semaphore for part of the plotting when farmer downloads new sector, allows to limit memory
+    /// usage of the plotting process, permit will be held until the end of the plotting process
+    pub downloading_semaphore: Arc<Semaphore>,
+    /// Semaphore for part of the plotting when farmer encodes downloaded sector, should typically
+    /// allow one permit at a time for efficient CPU utilization
+    pub encoding_semaphore: Arc<Semaphore>,
     /// Thread pool size used for farming (mostly for blocking I/O, but also for some
     /// compute-intensive operations during proving)
     pub farming_thread_pool_size: usize,
@@ -609,16 +585,13 @@ impl SingleDiskFarm {
             kzg,
             erasure_coding,
             cache_percentage,
+            downloading_semaphore,
+            encoding_semaphore,
             farming_thread_pool_size,
             plotting_thread_pool,
             replotting_thread_pool,
         } = options;
         fs::create_dir_all(&directory)?;
-
-        // TODO: Parametrize concurrency, much higher default due to SSD focus
-        // TODO: Use this or remove
-        let _single_disk_semaphore =
-            SingleDiskSemaphore::new(NonZeroU16::new(10).expect("Not a zero; qed"));
 
         // TODO: Update `Identity` to use more specific error type and remove this `.unwrap()`
         let identity = Identity::open_or_create(&directory).unwrap();
@@ -919,6 +892,8 @@ impl SingleDiskFarm {
                             handlers,
                             modifying_sector_index,
                             sectors_to_plot_receiver,
+                            downloading_semaphore,
+                            encoding_semaphore,
                             plotting_thread_pool,
                             replotting_thread_pool,
                         };

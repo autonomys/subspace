@@ -78,6 +78,8 @@ fn criterion_benchmark(c: &mut Criterion) {
                 pieces_in_sector: black_box(pieces_in_sector),
                 sector_output: black_box(&mut sector_bytes),
                 sector_metadata_output: black_box(&mut sector_metadata_bytes),
+                downloading_semaphore: black_box(None),
+                encoding_semaphore: black_box(None),
                 table_generator: black_box(&mut table_generator),
             }))
             .unwrap();

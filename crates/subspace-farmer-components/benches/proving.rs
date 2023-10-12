@@ -132,6 +132,8 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             pieces_in_sector,
             sector_output: &mut plotted_sector_bytes,
             sector_metadata_output: &mut plotted_sector_metadata_bytes,
+            downloading_semaphore: black_box(None),
+            encoding_semaphore: black_box(None),
             table_generator: &mut table_generator,
         }))
         .unwrap();
