@@ -284,6 +284,9 @@ where
                 });
         });
 
+        // Store whatever correct pieces are immediately available after restart
+        *self.caches.write() = caches.clone();
+
         debug!(
             count = %piece_indices_to_store.len(),
             "Identified piece indices that should be cached",
