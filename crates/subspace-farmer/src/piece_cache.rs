@@ -1,6 +1,7 @@
 use crate::node_client::NodeClient;
 use crate::single_disk_farm::piece_cache::{DiskPieceCache, Offset};
 use crate::utils::AsyncJoinOnDrop;
+use futures::channel::oneshot;
 use futures::{select, FutureExt, StreamExt};
 use parking_lot::RwLock;
 use rayon::prelude::*;
@@ -33,8 +34,13 @@ struct DiskPieceCacheState {
 
 #[derive(Debug)]
 enum WorkerCommand {
-    ReplaceBackingCaches { new_caches: Vec<DiskPieceCache> },
-    ForgetKey { key: RecordKey },
+    ReplaceBackingCaches {
+        new_caches: Vec<DiskPieceCache>,
+        acknowledgement: oneshot::Sender<()>,
+    },
+    ForgetKey {
+        key: RecordKey,
+    },
 }
 
 #[derive(Debug)]
@@ -72,11 +78,15 @@ where
             .take()
             .expect("Always set during worker instantiation");
 
-        if let Some(WorkerCommand::ReplaceBackingCaches { new_caches }) =
-            worker_receiver.recv().await
+        if let Some(WorkerCommand::ReplaceBackingCaches {
+            new_caches,
+            acknowledgement,
+        }) = worker_receiver.recv().await
         {
             self.initialize(&piece_getter, &mut worker_state, new_caches)
                 .await;
+            // Doesn't matter if receiver is still waiting for acknowledgement
+            let _ = acknowledgement.send(());
         } else {
             // Piece cache is dropped before backing caches were sent
             return;
@@ -110,9 +120,14 @@ where
         PG: PieceGetter,
     {
         match command {
-            WorkerCommand::ReplaceBackingCaches { new_caches } => {
+            WorkerCommand::ReplaceBackingCaches {
+                new_caches,
+                acknowledgement,
+            } => {
                 self.initialize(piece_getter, worker_state, new_caches)
                     .await;
+                // Doesn't matter if receiver is still waiting for acknowledgement
+                let _ = acknowledgement.send(());
             }
             // TODO: Consider implementing optional re-sync of the piece instead of just forgetting
             WorkerCommand::ForgetKey { key } => {
@@ -656,14 +671,25 @@ impl PieceCache {
         }
     }
 
-    pub async fn replace_backing_caches(&self, new_caches: Vec<DiskPieceCache>) {
+    /// Initialize replacement of backing caches, returns acknowledgement receiver that can be used
+    /// to identify when cache initialization has finished
+    pub async fn replace_backing_caches(
+        &self,
+        new_caches: Vec<DiskPieceCache>,
+    ) -> oneshot::Receiver<()> {
+        let (sender, receiver) = oneshot::channel();
         if let Err(error) = self
             .worker_sender
-            .send(WorkerCommand::ReplaceBackingCaches { new_caches })
+            .send(WorkerCommand::ReplaceBackingCaches {
+                new_caches,
+                acknowledgement: sender,
+            })
             .await
         {
             warn!(%error, "Failed to replace backing caches, worker exited");
         }
+
+        receiver
     }
 }
 

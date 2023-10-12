@@ -5,6 +5,7 @@ use crate::commands::shared::print_disk_farm_info;
 use crate::utils::shutdown_signal;
 use crate::{DiskFarm, FarmingArgs};
 use anyhow::{anyhow, Result};
+use futures::channel::oneshot;
 use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use lru::LruCache;
@@ -212,11 +213,15 @@ where
     let downloading_semaphore = Arc::new(Semaphore::new(sector_downloading_concurrency.get()));
     let encoding_semaphore = Arc::new(Semaphore::new(sector_encoding_concurrency.get()));
 
+    let mut plotting_delay_senders = Vec::with_capacity(disk_farms.len());
+
     // TODO: Check plot and metadata sizes to ensure there is enough space for farmer to not
     //  fail later
     for (disk_farm_index, disk_farm) in disk_farms.into_iter().enumerate() {
         debug!(url = %node_rpc_url, %disk_farm_index, "Connecting to node RPC");
         let node_client = NodeRpcClient::new(&node_rpc_url).await?;
+        let (plotting_delay_sender, plotting_delay_receiver) = oneshot::channel();
+        plotting_delay_senders.push(plotting_delay_sender);
 
         let single_disk_farm_fut = SingleDiskFarm::new::<_, _, PosTable>(
             SingleDiskFarmOptions {
@@ -235,6 +240,7 @@ where
                 farming_thread_pool_size,
                 plotting_thread_pool: Arc::clone(&plotting_thread_pool),
                 replotting_thread_pool: Arc::clone(&replotting_thread_pool),
+                plotting_delay: Some(plotting_delay_receiver),
             },
             disk_farm_index,
         );
@@ -267,7 +273,7 @@ where
         single_disk_farms.push(single_disk_farm);
     }
 
-    piece_cache
+    let cache_acknowledgement_receiver = piece_cache
         .replace_backing_caches(
             single_disk_farms
                 .iter()
@@ -276,6 +282,16 @@ where
         )
         .await;
     drop(piece_cache);
+
+    // Wait for cache initialization before starting plotting
+    tokio::spawn(async move {
+        if cache_acknowledgement_receiver.await.is_ok() {
+            for plotting_delay_sender in plotting_delay_senders {
+                // Doesn't matter if receiver is gone
+                let _ = plotting_delay_sender.send(());
+            }
+        }
+    });
 
     // Store piece readers so we can reference them later
     let piece_readers = single_disk_farms
