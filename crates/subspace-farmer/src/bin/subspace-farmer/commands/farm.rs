@@ -383,9 +383,9 @@ where
     let farm_fut = run_future_in_dedicated_thread(
         Box::pin(async move {
             while let Some(result) = single_disk_farms_stream.next().await {
-                result?;
+                let id = result?;
 
-                info!("Farm exited successfully");
+                info!(%id, "Farm exited successfully");
             }
             anyhow::Ok(())
         }),

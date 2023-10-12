@@ -1178,7 +1178,7 @@ impl SingleDiskFarm {
     }
 
     /// Run and wait for background threads to exit or return an error
-    pub async fn run(mut self) -> anyhow::Result<()> {
+    pub async fn run(mut self) -> anyhow::Result<SingleDiskFarmId> {
         if let Some(start_sender) = self.start_sender.take() {
             // Do not care if anyone is listening on the other side
             let _ = start_sender.send(());
@@ -1188,7 +1188,7 @@ impl SingleDiskFarm {
             result?;
         }
 
-        Ok(())
+        Ok(*self.id())
     }
 
     /// Wipe everything that belongs to this single disk farm
