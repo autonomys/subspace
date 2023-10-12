@@ -768,7 +768,8 @@ fn vote_past_future_slot() {
         );
 
         // Reset so that any solution works for votes
-        crate::pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+        pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+            solution_ranges.current = u64::MIN;
             solution_ranges.voting_current = u64::MAX;
         });
 
@@ -785,8 +786,8 @@ fn vote_past_future_slot() {
                 Default::default(),
                 &archived_segment.pieces,
                 1,
-                SolutionRange::MIN,
-                SolutionRange::MAX,
+                pallet::SolutionRanges::<Test>::get().current,
+                pallet::SolutionRanges::<Test>::get().voting_current,
             );
 
             assert_err!(
@@ -810,8 +811,8 @@ fn vote_past_future_slot() {
                 Default::default(),
                 &archived_segment.pieces,
                 1,
-                SolutionRange::MIN,
-                SolutionRange::MAX,
+                pallet::SolutionRanges::<Test>::get().current,
+                pallet::SolutionRanges::<Test>::get().voting_current,
             );
 
             assert_err!(
@@ -834,8 +835,8 @@ fn vote_past_future_slot() {
                 Default::default(),
                 &archived_segment.pieces,
                 1,
-                SolutionRange::MIN,
-                SolutionRange::MAX,
+                pallet::SolutionRanges::<Test>::get().current,
+                pallet::SolutionRanges::<Test>::get().voting_current,
             );
 
             assert_ok!(super::check_vote::<Test>(&signed_vote, false));
@@ -860,6 +861,7 @@ fn vote_same_slot() {
 
         // Reset so that any solution works for votes
         pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+            solution_ranges.current = u64::MIN;
             solution_ranges.voting_current = u64::MAX;
         });
 
@@ -875,8 +877,8 @@ fn vote_same_slot() {
                 Default::default(),
                 &archived_segment.pieces,
                 1,
-                SolutionRange::MIN,
-                SolutionRange::MAX,
+                pallet::SolutionRanges::<Test>::get().current,
+                pallet::SolutionRanges::<Test>::get().voting_current,
             );
 
             assert_ok!(super::check_vote::<Test>(&signed_vote, true));
@@ -895,8 +897,8 @@ fn vote_same_slot() {
                 Default::default(),
                 &archived_segment.pieces,
                 1,
-                SolutionRange::MIN,
-                SolutionRange::MAX,
+                pallet::SolutionRanges::<Test>::get().current,
+                pallet::SolutionRanges::<Test>::get().voting_current,
             );
 
             assert_err!(
@@ -1091,6 +1093,7 @@ fn vote_invalid_proof_of_time() {
 
         // Reset so that any solution works for votes
         pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+            solution_ranges.current = u64::MIN;
             solution_ranges.voting_current = u64::MAX;
         });
 
@@ -1114,8 +1117,8 @@ fn vote_invalid_proof_of_time() {
                 Default::default(),
                 &archived_segment.pieces,
                 1,
-                SolutionRange::MIN,
-                SolutionRange::MAX,
+                pallet::SolutionRanges::<Test>::get().current,
+                pallet::SolutionRanges::<Test>::get().voting_current,
             );
 
             assert_err!(
@@ -1142,8 +1145,8 @@ fn vote_invalid_proof_of_time() {
                 Default::default(),
                 &archived_segment.pieces,
                 1,
-                SolutionRange::MIN,
-                SolutionRange::MAX,
+                pallet::SolutionRanges::<Test>::get().current,
+                pallet::SolutionRanges::<Test>::get().voting_current,
             );
 
             assert_ok!(super::check_vote::<Test>(&signed_vote, false));
@@ -1160,8 +1163,8 @@ fn vote_invalid_proof_of_time() {
                 Default::default(),
                 &archived_segment.pieces,
                 1,
-                SolutionRange::MIN,
-                SolutionRange::MAX,
+                pallet::SolutionRanges::<Test>::get().current,
+                pallet::SolutionRanges::<Test>::get().voting_current,
             );
 
             assert_err!(
@@ -1188,8 +1191,8 @@ fn vote_invalid_proof_of_time() {
                 Default::default(),
                 &archived_segment.pieces,
                 1,
-                SolutionRange::MIN,
-                SolutionRange::MAX,
+                pallet::SolutionRanges::<Test>::get().current,
+                pallet::SolutionRanges::<Test>::get().voting_current,
             );
 
             assert_err!(
@@ -1216,8 +1219,8 @@ fn vote_invalid_proof_of_time() {
                 test_future_proof_of_time,
                 &archived_segment.pieces,
                 1,
-                SolutionRange::MIN,
-                SolutionRange::MAX,
+                pallet::SolutionRanges::<Test>::get().current,
+                pallet::SolutionRanges::<Test>::get().voting_current,
             );
 
             assert_ok!(super::check_vote::<Test>(&signed_vote, true));
@@ -1240,6 +1243,7 @@ fn vote_correct_signature() {
 
         // Reset so that any solution works for votes
         pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+            solution_ranges.current = u64::MIN;
             solution_ranges.voting_current = u64::MAX;
         });
 
@@ -1253,8 +1257,8 @@ fn vote_correct_signature() {
             Default::default(),
             &archived_segment.pieces,
             1,
-            SolutionRange::MIN,
-            SolutionRange::MAX,
+            pallet::SolutionRanges::<Test>::get().current,
+            pallet::SolutionRanges::<Test>::get().voting_current,
         );
 
         assert_ok!(super::check_vote::<Test>(&signed_vote, false));
@@ -1276,6 +1280,7 @@ fn vote_equivocation_current_block_plus_vote() {
 
         // Reset so that any solution works for votes
         pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+            solution_ranges.current = u64::MIN;
             solution_ranges.voting_current = u64::MAX;
         });
 
@@ -1291,8 +1296,8 @@ fn vote_equivocation_current_block_plus_vote() {
             Default::default(),
             &archived_segment.pieces,
             reward_address,
-            SolutionRange::MIN,
-            SolutionRange::MAX,
+            pallet::SolutionRanges::<Test>::get().current,
+            pallet::SolutionRanges::<Test>::get().voting_current,
         );
 
         // Parent block author + sector index + chunk + audit chunk index + slot matches that of the
@@ -1332,6 +1337,7 @@ fn vote_equivocation_parent_block_plus_vote() {
 
         // Reset so that any solution works for votes
         pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+            solution_ranges.current = u64::MIN;
             solution_ranges.voting_current = u64::MAX;
         });
 
@@ -1347,8 +1353,8 @@ fn vote_equivocation_parent_block_plus_vote() {
             Default::default(),
             &archived_segment.pieces,
             reward_address,
-            SolutionRange::MIN,
-            SolutionRange::MAX,
+            pallet::SolutionRanges::<Test>::get().current,
+            pallet::SolutionRanges::<Test>::get().voting_current,
         );
 
         // Parent block author + sector index + chunk + audit chunk index + slot matches that of the
@@ -1396,6 +1402,7 @@ fn vote_equivocation_current_voters_duplicate() {
 
         // Reset so that any solution works for votes
         pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+            solution_ranges.current = u64::MIN;
             solution_ranges.voting_current = u64::MAX;
         });
 
@@ -1413,8 +1420,8 @@ fn vote_equivocation_current_voters_duplicate() {
             Default::default(),
             &archived_segment.pieces,
             reward_address,
-            SolutionRange::MIN,
-            SolutionRange::MAX,
+            pallet::SolutionRanges::<Test>::get().current,
+            pallet::SolutionRanges::<Test>::get().voting_current,
         );
 
         CurrentBlockVoters::<Test>::put({
@@ -1482,6 +1489,7 @@ fn vote_equivocation_parent_voters_duplicate() {
 
         // Reset so that any solution works for votes
         pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+            solution_ranges.current = u64::MIN;
             solution_ranges.voting_current = u64::MAX;
         });
 
@@ -1498,8 +1506,8 @@ fn vote_equivocation_parent_voters_duplicate() {
             Default::default(),
             &archived_segment.pieces,
             reward_address,
-            SolutionRange::MIN,
-            SolutionRange::MAX,
+            pallet::SolutionRanges::<Test>::get().current,
+            pallet::SolutionRanges::<Test>::get().voting_current,
         );
 
         ParentBlockVoters::<Test>::put({
