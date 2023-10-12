@@ -243,8 +243,10 @@ pub struct MockConsensusNode {
     next_slot: u64,
     /// The slot notification subscribers
     #[allow(clippy::type_complexity)]
-    new_slot_notification_subscribers:
-        Vec<TracingUnboundedSender<(Slot, Randomness, Option<mpsc::Sender<()>>)>>,
+    new_slot_notification_subscribers: Vec<TracingUnboundedSender<(Slot, Randomness)>>,
+    /// The acknowledgement sender subscribers
+    #[allow(clippy::type_complexity)]
+    acknowledgement_sender_subscribers: Vec<TracingUnboundedSender<mpsc::Sender<()>>>,
     /// Block import pipeline
     #[allow(clippy::type_complexity)]
     block_import: MockBlockImport<
@@ -384,6 +386,7 @@ impl MockConsensusNode {
             network_starter: Some(network_starter),
             next_slot: 1,
             new_slot_notification_subscribers: Vec::new(),
+            acknowledgement_sender_subscribers: Vec::new(),
             block_import,
             xdm_gossip_worker_builder: Some(GossipWorkerBuilder::new()),
             mock_solution,
@@ -445,33 +448,11 @@ impl MockConsensusNode {
         &mut self,
         slot: Slot,
     ) -> Option<OpaqueBundle<NumberFor<Block>, Hash, DomainNumber, H256, Balance>> {
-        let (slot_acknowledgement_sender, mut slot_acknowledgement_receiver) = mpsc::channel(0);
+        let value = (slot, Randomness::from(Hash::random().to_fixed_bytes()));
+        self.new_slot_notification_subscribers
+            .retain(|subscriber| subscriber.unbounded_send(value).is_ok());
 
-        // Must drop `slot_acknowledgement_sender` after the notification otherwise the receiver
-        // will block forever as there is still a sender not closed.
-        {
-            let value = (
-                slot,
-                Randomness::from(Hash::random().to_fixed_bytes()),
-                Some(slot_acknowledgement_sender),
-            );
-            self.new_slot_notification_subscribers
-                .retain(|subscriber| subscriber.unbounded_send(value.clone()).is_ok());
-        }
-
-        // Wait for all the acknowledgements to progress and proactively drop closed subscribers.
-        loop {
-            select! {
-                res = slot_acknowledgement_receiver.next() => if res.is_none() {
-                    break;
-                },
-                // TODO: Workaround for https://github.com/smol-rs/async-channel/issues/23, remove once fix is released
-                _ = futures_timer::Delay::new(time::Duration::from_millis(500)).fuse() => {
-                    self.new_slot_notification_subscribers.retain(|subscriber| !subscriber.is_closed());
-                }
-            }
-        }
-
+        self.confirm_acknowledgement().await;
         self.get_bundle_from_tx_pool(slot.into())
     }
 
@@ -490,12 +471,52 @@ impl MockConsensusNode {
     }
 
     /// Subscribe the new slot notification
-    pub fn new_slot_notification_stream(
-        &mut self,
-    ) -> TracingUnboundedReceiver<(Slot, Randomness, Option<mpsc::Sender<()>>)> {
+    pub fn new_slot_notification_stream(&mut self) -> TracingUnboundedReceiver<(Slot, Randomness)> {
         let (tx, rx) = tracing_unbounded("subspace_new_slot_notification_stream", 100);
         self.new_slot_notification_subscribers.push(tx);
         rx
+    }
+
+    /// Subscribe the acknowledgement sender stream
+    pub fn new_acknowledgement_sender_stream(
+        &mut self,
+    ) -> TracingUnboundedReceiver<mpsc::Sender<()>> {
+        let (tx, rx) = tracing_unbounded("subspace_acknowledgement_sender_stream", 100);
+        self.acknowledgement_sender_subscribers.push(tx);
+        rx
+    }
+
+    /// Wait for all the acknowledgements before return
+    ///
+    /// It is used to wait for the acknowledgement of the domain worker to ensure it have
+    /// finish all the previous tasks before return
+    pub async fn confirm_acknowledgement(&mut self) {
+        let (acknowledgement_sender, mut acknowledgement_receiver) = mpsc::channel(0);
+
+        // Must drop `acknowledgement_sender` after the notification otherwise the receiver
+        // will block forever as there is still a sender not closed.
+        {
+            self.acknowledgement_sender_subscribers
+                .retain(|subscriber| {
+                    subscriber
+                        .unbounded_send(acknowledgement_sender.clone())
+                        .is_ok()
+                });
+            drop(acknowledgement_sender);
+        }
+
+        // Wait for all the acknowledgements to progress and proactively drop closed subscribers.
+        loop {
+            select! {
+                res = acknowledgement_receiver.next() => if res.is_none() {
+                    break;
+                },
+                // TODO: Workaround for https://github.com/smol-rs/async-channel/issues/23, remove once fix is released
+                _ = futures_timer::Delay::new(time::Duration::from_millis(500)).fuse() => {
+                    self.acknowledgement_sender_subscribers.retain(|subscriber| !subscriber.is_closed());
+                }
+            }
+        }
     }
 
     /// Subscribe the block importing notification
@@ -711,7 +732,7 @@ impl MockConsensusNode {
 
         log_new_block(&block, block_timer.elapsed().as_millis());
 
-        match self.import_block(block, Some(storage_changes)).await {
+        let res = match self.import_block(block, Some(storage_changes)).await {
             Ok(hash) => {
                 // Remove the tx of the imported block from the tx pool incase re-include them
                 // in the future block by accident.
@@ -719,7 +740,9 @@ impl MockConsensusNode {
                 Ok(hash)
             }
             err => err,
-        }
+        };
+        self.confirm_acknowledgement().await;
+        res
     }
 
     /// Produce a new block on top of the current best block, with the extrinsics collected from
@@ -929,7 +952,7 @@ macro_rules! produce_blocks {
             async {
                 let domain_fut = {
                     let mut futs: Vec<std::pin::Pin<Box<dyn futures::Future<Output = ()>>>> = Vec::new();
-                    futs.push(Box::pin($operator_node.wait_for_blocks(1)));
+                    futs.push(Box::pin($operator_node.wait_for_blocks($count)));
                     $( futs.push( Box::pin( $domain_node.wait_for_blocks($count) ) ); )*
                     futures::future::join_all(futs)
                 };

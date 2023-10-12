@@ -22,8 +22,6 @@ where
 {
     /// hash of the block.
     pub hash: Block::Hash,
-    /// hash of the parent block.
-    pub parent_hash: Block::Hash,
     /// block's number.
     pub number: NumberFor<Block>,
     /// Is this the new best block.
