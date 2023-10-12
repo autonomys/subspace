@@ -175,7 +175,7 @@ fn valid_header(
         let mut plotted_sector_bytes = Vec::new();
         let mut plotted_sector_metadata_bytes = Vec::new();
 
-        let plotted_sector = block_on(plot_sector::<_, PosTable>(
+        let plotted_sector = block_on(plot_sector::<PosTable, _>(
             &public_key,
             sector_index,
             &archived_segment.pieces,
