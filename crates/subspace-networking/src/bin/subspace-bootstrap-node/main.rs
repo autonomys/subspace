@@ -5,9 +5,9 @@
 use clap::Parser;
 use futures::{select, FutureExt};
 use libp2p::identity::ed25519::Keypair;
+use libp2p::kad::Mode;
 use libp2p::metrics::Metrics;
 use libp2p::{identity, Multiaddr, PeerId};
-use libp2p_kad::Mode;
 use prometheus_client::registry::Registry;
 use serde::{Deserialize, Serialize};
 use std::error::Error;

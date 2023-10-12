@@ -15,8 +15,6 @@ include = [
 async-trait = { version = "0.1.57" }
 codec = { package = "parity-scale-codec", version = "3.6.5", features = [ "derive" ] }
 domain-runtime-primitives = { version = "0.1.0", path = "../../primitives/runtime" }
-rand = "0.8.5"
-rand_chacha = "0.3.1"
 sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
 sc-executor = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
 sc-executor-common = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }

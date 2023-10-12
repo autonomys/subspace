@@ -14,7 +14,6 @@ targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
 async-trait = "0.1.73"
-clap = { version = "4.4.3", features = ["derive"] }
 cross-domain-message-gossip = { version = "0.1.0", path = "../client/cross-domain-message-gossip" }
 domain-client-block-preprocessor = { package = "domain-block-preprocessor", version = "0.1.0", path = "../client/block-preprocessor" }
 domain-client-consensus-relay-chain = { version = "0.1.0", path = "../client/consensus-relay-chain" }
@@ -22,11 +21,7 @@ domain-client-message-relayer = { version = "0.1.0", path = "../client/relayer" 
 domain-client-operator = { version = "0.1.0", path = "../client/domain-operator" }
 domain-client-subnet-gossip = { version = "0.1.0", path = "../client/subnet-gossip" }
 domain-runtime-primitives = { version = "0.1.0", path = "../primitives/runtime" }
-frame-benchmarking = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
-frame-benchmarking-cli = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c", default-features = false }
-frame-support = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
 futures = "0.3.28"
-hex-literal = "0.4.1"
 jsonrpsee = { version = "0.16.3", features = ["server"] }
 log = "0.4.20"
 pallet-transaction-payment-rpc = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
@@ -55,15 +50,12 @@ sp-consensus = { version = "0.10.0-dev", git = "https://github.com/subspace/polk
 sp-consensus-slots = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
 sp-core = { version = "21.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
 sp-domains = { version = "0.1.0", path = "../../crates/sp-domains" }
-sp-inherents = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
-sp-keystore = { version = "0.27.0", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
 sp-messenger = { version = "0.1.0", path = "../../domains/primitives/messenger" }
 sp-offchain = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
 sp-runtime = { version = "24.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
 sp-session = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
 sp-transaction-pool = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
 subspace-core-primitives = { version = "0.1.0", path = "../../crates/subspace-core-primitives" }
-subspace-fraud-proof = { version = "0.1.0", path = "../../crates/subspace-fraud-proof" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../../crates/subspace-runtime-primitives" }
 subspace-transaction-pool = { version = "0.1.0", path = "../../crates/subspace-transaction-pool" }
 substrate-frame-rpc-system = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }

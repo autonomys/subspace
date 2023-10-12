@@ -28,14 +28,14 @@ use libp2p::gossipsub::{
 use libp2p::identify::Config as IdentifyConfig;
 use libp2p::kad::store::RecordStore;
 use libp2p::kad::{
-    store, KademliaBucketInserts, KademliaConfig, KademliaStoreInserts, ProviderRecord, Record,
+    store, KademliaBucketInserts, KademliaConfig, KademliaStoreInserts, Mode, ProviderRecord,
+    Record, RecordKey,
 };
 use libp2p::metrics::Metrics;
 use libp2p::multiaddr::Protocol;
 use libp2p::swarm::SwarmBuilder;
 use libp2p::yamux::Config as YamuxConfig;
 use libp2p::{identity, Multiaddr, PeerId, StreamProtocol, TransportError};
-use libp2p_kad::{Mode, RecordKey};
 use parking_lot::Mutex;
 use std::borrow::Cow;
 use std::iter::Empty;

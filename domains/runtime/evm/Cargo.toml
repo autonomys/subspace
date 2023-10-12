@@ -21,7 +21,6 @@ codec = { package = "parity-scale-codec", version = "3.2.1", default-features = 
 domain-pallet-executive = { version = "0.1.0", path = "../../pallets/executive", default-features = false }
 domain-runtime-primitives = { version = "0.1.0", path = "../../primitives/runtime", default-features = false }
 fp-account = { version = "1.0.0-dev", default-features = false, features = ["serde"], git = "https://github.com/subspace/frontier", rev = "4873a02b4b420b70bd860877515e8d0f1aa82562" }
-fp-evm = { version = "3.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier", rev = "4873a02b4b420b70bd860877515e8d0f1aa82562" }
 fp-rpc = { version = "3.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier", rev = "4873a02b4b420b70bd860877515e8d0f1aa82562" }
 fp-self-contained = { version = "1.0.0-dev", default-features = false, features = ["serde"], git = "https://github.com/subspace/frontier", rev = "4873a02b4b420b70bd860877515e8d0f1aa82562" }
 frame-benchmarking = { version = "4.0.0-dev", default-features = false, optional = true, git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
@@ -30,7 +29,6 @@ frame-system = { version = "4.0.0-dev", default-features = false, git = "https:/
 frame-system-benchmarking = { version = "4.0.0-dev", default-features = false, optional = true, git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
 frame-system-rpc-runtime-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
 hex-literal = { version = '0.4.0', optional = true }
-log = { version = "0.4.20", default-features = false }
 pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
 pallet-base-fee = { version = "1.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier", rev = "4873a02b4b420b70bd860877515e8d0f1aa82562" }
 pallet-domain-id = { version = "0.1.0", path = "../../pallets/domain-id", default-features = false }
@@ -53,7 +51,6 @@ sp-block-builder = { version = "4.0.0-dev", default-features = false, git = "htt
 sp-core = { version = "21.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
 sp-domains = { version = "0.1.0", path = "../../../crates/sp-domains", default-features = false }
 sp-inherents = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
-sp-io = { version = "23.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
 sp-messenger = { version = "0.1.0", default-features = false, path = "../../primitives/messenger" }
 sp-offchain = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
 sp-runtime = { version = "24.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
@@ -76,13 +73,11 @@ std = [
 	"domain-pallet-executive/std",
 	"domain-runtime-primitives/std",
 	"fp-account/std",
-	"fp-evm/std",
 	"fp-rpc/std",
 	"fp-self-contained/std",
 	"frame-support/std",
 	"frame-system/std",
 	"frame-system-rpc-runtime-api/std",
-	"log/std",
 	"pallet-balances/std",
 	"pallet-base-fee/std",
 	"pallet-domain-id/std",
@@ -106,7 +101,6 @@ std = [
 	"sp-domains/std",
 	"sp-session/std",
 	"sp-inherents/std",
-	"sp-io/std",
 	"sp-messenger/std",
 	"sp-offchain/std",
 	"sp-runtime/std",

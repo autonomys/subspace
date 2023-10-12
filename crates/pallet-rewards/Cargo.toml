@@ -22,7 +22,6 @@ codec = { package = "parity-scale-codec", version = "3.6.5", default-features = 
 frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
 frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
 scale-info = { version = "2.7.0", default-features = false, features = ["derive"] }
-sp-std = { version = "8.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
 subspace-runtime-primitives = { version = "0.1.0", default-features = false, path = "../subspace-runtime-primitives" }
 
 [features]
@@ -32,7 +31,6 @@ std = [
   "frame-support/std",
   "frame-system/std",
   "scale-info/std",
-  "sp-std/std",
   "subspace-runtime-primitives/std",
 ]
 try-runtime = ["frame-support/try-runtime"]
