@@ -20,15 +20,16 @@ extern crate alloc;
 pub mod kzg;
 
 use crate::Blake3Hash;
+use ::kzg::Fr;
 use alloc::format;
 use alloc::string::String;
 use alloc::vec::Vec;
-use blst_rust::types::fr::FsFr;
 use core::cmp::Ordering;
 use core::hash::{Hash, Hasher};
 use core::mem;
 use derive_more::{AsMut, AsRef, Deref, DerefMut, From, Into};
 use parity_scale_codec::{Decode, Encode, EncodeLike, Input, MaxEncodedLen};
+use rust_kzg_blst::types::fr::FsFr;
 use scale_info::{Type, TypeInfo};
 
 /// BLAKE3 hashing of a single value.
@@ -204,18 +205,14 @@ impl TryFrom<[u8; Self::FULL_BYTES]> for Scalar {
 
     #[inline]
     fn try_from(value: [u8; Self::FULL_BYTES]) -> Result<Self, Self::Error> {
-        FsFr::from_scalar(value)
-            .map_err(|error_code| {
-                format!("Failed to create scalar from bytes with code: {error_code}")
-            })
-            .map(Scalar)
+        FsFr::from_bytes(&value).map(Scalar)
     }
 }
 
 impl From<&Scalar> for [u8; Scalar::FULL_BYTES] {
     #[inline]
     fn from(value: &Scalar) -> Self {
-        value.0.to_scalar()
+        value.0.to_bytes()
     }
 }
 

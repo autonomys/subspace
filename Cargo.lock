@@ -1224,28 +1224,13 @@ dependencies = [
 
 [[package]]
 name = "blst"
-version = "0.3.10"
-source = "git+https://github.com/subspace/blst.git?rev=017edf9d7b943813b9ba2804a9eda20607b48139#017edf9d7b943813b9ba2804a9eda20607b48139"
+version = "0.3.11"
+source = "git+https://github.com/supranational/blst.git#3f3457c04ec0bdf8de51b16a2092e349fdd9d8ef"
 dependencies = [
  "cc",
  "glob",
  "threadpool",
  "zeroize",
-]
-
-[[package]]
-name = "blst_rust"
-version = "0.1.0"
-source = "git+https://github.com/subspace/rust-kzg?rev=1058cc8c8af8461b490dc212c41d7d506a746577#1058cc8c8af8461b490dc212c41d7d506a746577"
-dependencies = [
- "blst",
- "kzg",
- "libc",
- "num_cpus",
- "once_cell",
- "rand 0.8.5",
- "rayon",
- "smallvec",
 ]
 
 [[package]]
@@ -2676,16 +2661,21 @@ dependencies = [
 name = "domain-pallet-executive"
 version = "0.1.0"
 dependencies = [
+ "frame-benchmarking",
  "frame-executive",
  "frame-support",
  "frame-system",
  "log",
+ "pallet-balances",
  "parity-scale-codec",
  "scale-info",
+ "sp-core",
+ "sp-externalities",
  "sp-io",
  "sp-runtime",
  "sp-std",
  "sp-tracing",
+ "sp-version",
 ]
 
 [[package]]
@@ -3163,7 +3153,6 @@ dependencies = [
  "frame-system",
  "frame-system-benchmarking",
  "frame-system-rpc-runtime-api",
- "hex-literal",
  "pallet-balances",
  "pallet-base-fee",
  "pallet-domain-id",
@@ -3192,6 +3181,7 @@ dependencies = [
  "sp-runtime",
  "sp-session",
  "sp-std",
+ "sp-storage",
  "sp-transaction-pool",
  "sp-version",
  "subspace-core-primitives",
@@ -3209,12 +3199,9 @@ dependencies = [
  "fp-account",
  "fp-rpc",
  "fp-self-contained",
- "frame-benchmarking",
  "frame-support",
  "frame-system",
- "frame-system-benchmarking",
  "frame-system-rpc-runtime-api",
- "hex-literal",
  "pallet-balances",
  "pallet-base-fee",
  "pallet-domain-id",
@@ -5124,7 +5111,7 @@ dependencies = [
 [[package]]
 name = "kzg"
 version = "0.1.0"
-source = "git+https://github.com/subspace/rust-kzg?rev=1058cc8c8af8461b490dc212c41d7d506a746577#1058cc8c8af8461b490dc212c41d7d506a746577"
+source = "git+https://github.com/sifraitech/rust-kzg?rev=c34b73916af9b8a699a74bd0186f82f25e72861c#c34b73916af9b8a699a74bd0186f82f25e72861c"
 dependencies = [
  "blst",
  "sha2 0.10.7",
@@ -5147,6 +5134,16 @@ name = "libc"
 version = "0.2.147"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b4668fb0ea861c1df094127ac5f1da3409a82116a4ba74fca2e58ef927159bb3"
+
+[[package]]
+name = "libmimalloc-sys"
+version = "0.1.35"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3979b5c37ece694f1f5e51e7ecc871fdb0f517ed04ee45f88d15d6d553cb9664"
+dependencies = [
+ "cc",
+ "libc",
+]
 
 [[package]]
 name = "libp2p"
@@ -6441,6 +6438,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "mimalloc"
+version = "0.1.39"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fa01922b5ea280a911e323e4d2fd24b7fe5cc4042e0d2cda3c40775cdc4bdc9c"
+dependencies = [
+ "libmimalloc-sys",
+]
+
+[[package]]
 name = "mime"
 version = "0.3.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7516,9 +7522,9 @@ dependencies = [
 
 [[package]]
 name = "parity-db"
-version = "0.4.9"
+version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0dab3ac198341b2f0fec6e7f8a6eeed07a41201d98a124260611598c142e76df"
+checksum = "59e9ab494af9e6e813c72170f0d3c1de1500990d62c97cc05cc7576f91aa402f"
 dependencies = [
  "blake2",
  "crc32fast",
@@ -8648,6 +8654,22 @@ dependencies = [
  "serde",
  "thiserror",
  "webrtc-util",
+]
+
+[[package]]
+name = "rust-kzg-blst"
+version = "0.1.0"
+source = "git+https://github.com/sifraitech/rust-kzg?rev=c34b73916af9b8a699a74bd0186f82f25e72861c#c34b73916af9b8a699a74bd0186f82f25e72861c"
+dependencies = [
+ "blst",
+ "hex",
+ "kzg",
+ "libc",
+ "num_cpus",
+ "once_cell",
+ "rand 0.8.5",
+ "rayon",
+ "smallvec",
 ]
 
 [[package]]
@@ -11343,7 +11365,6 @@ name = "subspace-core-primitives"
 version = "0.1.0"
 dependencies = [
  "blake3",
- "blst_rust",
  "criterion",
  "derive_more",
  "hex",
@@ -11354,6 +11375,7 @@ dependencies = [
  "rand 0.8.5",
  "rand_core 0.6.4",
  "rayon",
+ "rust-kzg-blst",
  "scale-info",
  "serde",
  "serde_arrays",
@@ -11367,10 +11389,10 @@ dependencies = [
 name = "subspace-erasure-coding"
 version = "0.1.0"
 dependencies = [
- "blst_rust",
  "criterion",
  "kzg",
  "rand 0.8.5",
+ "rust-kzg-blst",
  "subspace-core-primitives",
 ]
 
@@ -11395,6 +11417,7 @@ dependencies = [
  "jsonrpsee",
  "lru 0.11.1",
  "memmap2 0.9.0",
+ "mimalloc",
  "parity-scale-codec",
  "parking_lot 0.12.1",
  "prometheus-client 0.21.2",
@@ -11555,7 +11578,7 @@ dependencies = [
  "hex",
  "hex-literal",
  "log",
- "parity-db",
+ "mimalloc",
  "parity-scale-codec",
  "sc-chain-spec",
  "sc-cli",
@@ -11682,7 +11705,6 @@ dependencies = [
  "static_assertions",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
- "subspace-verification",
  "substrate-wasm-builder",
 ]
 
@@ -12706,7 +12728,7 @@ checksum = "97fee6b57c6a41524a810daee9286c02d7752c4253064d0b05472833a438f675"
 dependencies = [
  "cfg-if",
  "digest 0.10.7",
- "rand 0.8.5",
+ "rand 0.7.3",
  "static_assertions",
 ]
 

@@ -17,9 +17,12 @@ pub type TestExternalities = sp_state_machine::TestExternalities<BlakeTwo256>;
 
 macro_rules! impl_runtime {
     ($runtime:ty, $chain_id:literal) => {
-        use crate::mock::{AccountId, Balance, MessageId, MockEndpoint, TestExternalities};
+        #[cfg(not(feature = "runtime-benchmarks"))]
+        use crate::mock::MockEndpoint;
+        use crate::mock::{AccountId, Balance, MessageId, TestExternalities};
         use codec::{Decode, Encode};
         use domain_runtime_primitives::{MultiAccountId, TryConvertBack};
+        #[cfg(not(feature = "runtime-benchmarks"))]
         use frame_support::pallet_prelude::*;
         use frame_support::parameter_types;
         use pallet_balances::AccountData;
@@ -98,7 +101,7 @@ macro_rules! impl_runtime {
             type OnXDMRewards = ();
             /// function to fetch endpoint response handler by Endpoint.
             fn get_endpoint_handler(
-                endpoint: &Endpoint,
+                #[allow(unused_variables)] endpoint: &Endpoint,
             ) -> Option<Box<dyn EndpointHandler<MessageId>>> {
                 // Return a dummy handler for benchmark to observe the outer weight when processing cross chain
                 // message (i.e. updating the `next_nonce` of the channel, assigning msg to the relayer, etc.)
@@ -106,6 +109,8 @@ macro_rules! impl_runtime {
                 {
                     return Some(Box::new(sp_messenger::endpoint::BenchmarkEndpointHandler));
                 }
+
+                #[cfg(not(feature = "runtime-benchmarks"))]
                 match endpoint {
                     Endpoint::Id(id) => match id {
                         100 => Some(Box::new(pallet_transporter::EndpointHandler(

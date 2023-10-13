@@ -16,6 +16,9 @@
 
 //! Subspace node implementation.
 
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 use cross_domain_message_gossip::GossipWorkerBuilder;
 use domain_client_operator::Bootstrapper;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
@@ -363,7 +366,9 @@ fn main() -> Result<(), Error> {
                         cli.run
                             .base_path()?
                             .map(|base_path| base_path.path().to_path_buf()),
-                        cli.domain_args.into_iter(),
+                        // pass the domain-id manually for benchmark since this is 
+                        // not possible through cli commands at this moment.
+                        vec!["--domain-id".to_owned(), "0".to_owned()].into_iter(),
                     );
                     let domain_config = domain_cli
                         .create_domain_configuration(consensus_chain_config.tokio_handle)
