@@ -14,7 +14,7 @@ use sp_domains::{
     SealedBundleHeader,
 };
 use sp_keystore::KeystorePtr;
-use sp_runtime::traits::{Block as BlockT, One, Saturating, Zero};
+use sp_runtime::traits::{Block as BlockT, Zero};
 use sp_runtime::RuntimeAppPublic;
 use std::convert::{AsRef, Into};
 use std::marker::PhantomData;
@@ -149,26 +149,7 @@ where
             global_randomness,
         } = slot_info;
 
-        let best_receipt_is_written = crate::aux_schema::latest_consensus_block_hash_for::<
-            _,
-            _,
-            CBlock::Hash,
-        >(&*self.client, &self.client.info().best_hash)?
-        .is_some();
-
-        // TODO: remove once the receipt generation can be done before the domain block is
-        // committed to the database, in other words, only when the receipt of block N+1 has
-        // been generated can the `client.info().best_number` be updated from N to N+1.
-        //
-        // This requires:
-        // 1. Reimplement `runtime_api.intermediate_roots()` on the client side.
-        // 2. Add a hook before the upstream `client.commit_operation(op)`.
-        let domain_best_number = if best_receipt_is_written {
-            self.client.info().best_number
-        } else {
-            self.client.info().best_number.saturating_sub(One::one())
-        };
-
+        let domain_best_number = self.client.info().best_number;
         let parent_chain_best_hash = self.parent_chain.best_hash();
         let should_skip_slot = {
             let head_receipt_number = self

@@ -55,7 +55,9 @@ use subspace_core_primitives::{
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector;
-use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy};
+use subspace_farmer_components::plotting::{
+    plot_sector, PieceGetterRetryPolicy, PlotSectorOptions,
+};
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::shim::ShimTable;
 use subspace_proof_of_space::{Table, TableGenerator};
@@ -454,19 +456,21 @@ pub fn create_signed_vote(
         let mut plotted_sector_bytes = Vec::new();
         let mut plotted_sector_metadata_bytes = Vec::new();
 
-        let plotted_sector = block_on(plot_sector::<_, PosTable>(
-            &public_key,
+        let plotted_sector = block_on(plot_sector::<PosTable, _>(PlotSectorOptions {
+            public_key: &public_key,
             sector_index,
-            archived_history_segment,
-            PieceGetterRetryPolicy::default(),
-            &farmer_protocol_info,
+            piece_getter: archived_history_segment,
+            piece_getter_retry_policy: PieceGetterRetryPolicy::default(),
+            farmer_protocol_info: &farmer_protocol_info,
             kzg,
             erasure_coding,
             pieces_in_sector,
-            &mut plotted_sector_bytes,
-            &mut plotted_sector_metadata_bytes,
-            &mut table_generator,
-        ))
+            sector_output: &mut plotted_sector_bytes,
+            sector_metadata_output: &mut plotted_sector_metadata_bytes,
+            downloading_semaphore: None,
+            encoding_semaphore: None,
+            table_generator: &mut table_generator,
+        }))
         .unwrap();
 
         let global_challenge = proof_of_time

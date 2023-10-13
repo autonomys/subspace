@@ -4,7 +4,7 @@ use crate::domain_bundle_producer::DomainBundleProducer;
 use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::fraud_proof::FraudProofGenerator;
 use crate::parent_chain::DomainParentChain;
-use crate::{active_leaves, DomainImportNotifications, NewSlotNotification, OperatorParams};
+use crate::{DomainImportNotifications, NewSlotNotification, OperatorParams};
 use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
 use futures::channel::mpsc;
 use futures::{FutureExt, Stream};
@@ -14,7 +14,6 @@ use sc_client_api::{
 use sc_utils::mpsc::tracing_unbounded;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
-use sp_consensus::SelectChain;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
 use sp_core::H256;
 use sp_domains::{BundleProducerElectionApi, DomainsApi};
@@ -94,9 +93,8 @@ where
     E: CodeExecutor,
 {
     /// Create a new instance.
-    pub async fn new<SC, IBNS, CIBNS, NSNS>(
+    pub async fn new<IBNS, CIBNS, NSNS, ASS>(
         spawn_essential: Box<dyn SpawnEssentialNamed>,
-        select_chain: &SC,
         params: OperatorParams<
             Block,
             CBlock,
@@ -108,16 +106,15 @@ where
             IBNS,
             CIBNS,
             NSNS,
+            ASS,
         >,
     ) -> Result<Self, sp_consensus::Error>
     where
-        SC: SelectChain<CBlock>,
         IBNS: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Send + 'static,
         CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + 'static,
         NSNS: Stream<Item = NewSlotNotification> + Send + 'static,
+        ASS: Stream<Item = mpsc::Sender<()>> + Send + 'static,
     {
-        let active_leaves = active_leaves(params.consensus_client.as_ref(), select_chain).await?;
-
         let parent_chain =
             DomainParentChain::new(params.domain_id, params.consensus_client.clone());
 
@@ -182,12 +179,10 @@ where
                 spawn_essential.clone(),
                 params.consensus_client.clone(),
                 params.consensus_offchain_tx_pool_factory.clone(),
-                params.client.clone(),
                 params.is_authority,
                 bundle_producer,
                 bundle_processor.clone(),
                 params.operator_streams,
-                active_leaves,
             )
             .boxed(),
         );

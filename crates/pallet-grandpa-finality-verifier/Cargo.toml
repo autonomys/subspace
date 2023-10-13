@@ -25,7 +25,6 @@ sp-consensus-grandpa = { git = "https://github.com/subspace/polkadot-sdk", rev =
 sp-core = { git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c", default-features = false }
 sp-runtime = { git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c", default-features = false }
 sp-std = { git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c", default-features = false }
-sp-trie = { git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c", default-features = false }
 
 [dev-dependencies]
 ed25519-dalek = { version = "1.0", default-features = false, features = ["u64_backend"] }
@@ -47,5 +46,4 @@ std = [
 	"sp-core/std",
 	"sp-runtime/std",
 	"sp-std/std",
-	"sp-trie/std",
 ]

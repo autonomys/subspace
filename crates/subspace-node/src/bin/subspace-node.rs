@@ -634,7 +634,6 @@ fn main() -> Result<(), Error> {
                             .new_slot_notification_stream
                             .clone(),
                         consensus_sync_service: consensus_chain_node.sync_service.clone(),
-                        select_chain: consensus_chain_node.select_chain.clone(),
                         domain_message_receiver,
                         gossip_message_sink: xdm_gossip_worker_builder.gossip_msg_sink(),
                     };

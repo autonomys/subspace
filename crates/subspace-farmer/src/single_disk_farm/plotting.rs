@@ -27,12 +27,13 @@ use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::file_ext::FileExt;
 use subspace_farmer_components::plotting;
 use subspace_farmer_components::plotting::{
-    plot_sector, PieceGetter, PieceGetterRetryPolicy, PlottedSector,
+    plot_sector, PieceGetter, PieceGetterRetryPolicy, PlotSectorOptions, PlottedSector,
 };
 use subspace_farmer_components::sector::SectorMetadataChecksummed;
 use subspace_proof_of_space::Table;
 use thiserror::Error;
 use tokio::runtime::Handle;
+use tokio::sync::Semaphore;
 use tracing::{debug, info, trace, warn};
 
 const FARMER_APP_INFO_RETRY_INTERVAL: Duration = Duration::from_millis(500);
@@ -101,6 +102,12 @@ pub(super) struct PlottingOptions<NC, PG> {
     pub(super) handlers: Arc<Handlers>,
     pub(super) modifying_sector_index: Arc<RwLock<Option<SectorIndex>>>,
     pub(super) sectors_to_plot_receiver: mpsc::Receiver<SectorToPlot>,
+    /// Semaphore for part of the plotting when farmer downloads new sector, allows to limit memory
+    /// usage of the plotting process, permit will be held until the end of the plotting process
+    pub(crate) downloading_semaphore: Arc<Semaphore>,
+    /// Semaphore for part of the plotting when farmer encodes downloaded sector, should typically
+    /// allow one permit at a time for efficient CPU utilization
+    pub(crate) encoding_semaphore: Arc<Semaphore>,
     pub(super) plotting_thread_pool: Arc<ThreadPool>,
     pub(super) replotting_thread_pool: Arc<ThreadPool>,
 }
@@ -133,6 +140,8 @@ where
         handlers,
         modifying_sector_index,
         mut sectors_to_plot_receiver,
+        downloading_semaphore,
+        encoding_semaphore,
         plotting_thread_pool,
         replotting_thread_pool,
     } = plotting_options;
@@ -211,22 +220,28 @@ where
             let piece_getter = piece_getter.clone();
             let kzg = kzg.clone();
             let erasure_coding = erasure_coding.clone();
+            let downloading_semaphore = Arc::clone(&downloading_semaphore);
+            let encoding_semaphore = Arc::clone(&encoding_semaphore);
 
             let plotting_fn = move || {
                 tokio::task::block_in_place(move || {
-                    let plot_sector_fut = plot_sector::<_, PosTable>(
-                        &public_key,
+                    let plot_sector_fut = plot_sector::<PosTable, _>(PlotSectorOptions {
+                        public_key: &public_key,
                         sector_index,
-                        &piece_getter,
-                        PieceGetterRetryPolicy::Limited(PIECE_GETTER_RETRY_NUMBER.get()),
-                        &farmer_app_info.protocol_info,
-                        &kzg,
-                        &erasure_coding,
+                        piece_getter: &piece_getter,
+                        piece_getter_retry_policy: PieceGetterRetryPolicy::Limited(
+                            PIECE_GETTER_RETRY_NUMBER.get(),
+                        ),
+                        farmer_protocol_info: &farmer_app_info.protocol_info,
+                        kzg: &kzg,
+                        erasure_coding: &erasure_coding,
                         pieces_in_sector,
-                        &mut sector,
-                        &mut sector_metadata,
-                        &mut table_generator,
-                    );
+                        sector_output: &mut sector,
+                        sector_metadata_output: &mut sector_metadata,
+                        downloading_semaphore: Some(&downloading_semaphore),
+                        encoding_semaphore: Some(&encoding_semaphore),
+                        table_generator: &mut table_generator,
+                    });
 
                     Handle::current()
                         .block_on(plot_sector_fut)

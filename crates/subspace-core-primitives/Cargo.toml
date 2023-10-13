@@ -26,21 +26,19 @@ kzg = { git = "https://github.com/subspace/rust-kzg", rev = "1058cc8c8af8461b490
 num-traits = { version = "0.2.16", default-features = false }
 parity-scale-codec = { version = "3.6.5", default-features = false, features = ["derive", "max-encoded-len"] }
 parking_lot = { version = "0.12.1", optional = true }
-rayon = { version = "1.7.0", optional = true }
+rayon = { version = "1.8.0", optional = true }
 scale-info = { version = "2.7.0", default-features = false, features = ["derive"] }
 serde = { version = "1.0.183", optional = true, features = ["alloc", "derive"] }
 serde_arrays = { version = "0.1.0", optional = true }
 # Replacement for `parking_lot` in `no_std` environment
 spin = "0.9.7"
 static_assertions = "1.1.0"
-thiserror = { version = "1.0.48", optional = true }
 tracing = { version = "0.1.37", default-features = false }
 uint = { version = "0.9.5", default-features = false }
 
 [dev-dependencies]
 criterion = "0.5.1"
 rand = { version = "0.8.5", features = ["min_const_gen"] }
-rand_chacha = "0.3.1"
 rand_core = "0.6.4"
 
 [features]
@@ -74,7 +72,6 @@ std = [
     "parking_lot",
     "scale-info/std",
     "serde?/std",
-    "thiserror",
     "tracing/std",
     "uint/std",
 ]

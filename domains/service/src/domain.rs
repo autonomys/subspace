@@ -24,7 +24,7 @@ use serde::de::DeserializeOwned;
 use sp_api::{ApiExt, BlockT, ConstructRuntimeApi, Metadata, NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
-use sp_consensus::{SelectChain, SyncOracle};
+use sp_consensus::SyncOracle;
 use sp_consensus_slots::Slot;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_core::{Decode, Encode};
@@ -233,7 +233,7 @@ where
     Ok(params)
 }
 
-pub struct DomainParams<CBlock, CClient, SC, IBNS, CIBNS, NSNS, Provider>
+pub struct DomainParams<CBlock, CClient, IBNS, CIBNS, NSNS, ASS, Provider>
 where
     CBlock: BlockT,
 {
@@ -243,8 +243,7 @@ where
     pub consensus_client: Arc<CClient>,
     pub consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory<CBlock>,
     pub consensus_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
-    pub select_chain: SC,
-    pub operator_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS>,
+    pub operator_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS, ASS>,
     pub gossip_message_sink: GossipMessageSink,
     pub domain_message_receiver: TracingUnboundedReceiver<Vec<u8>>,
     pub provider: Provider,
@@ -254,16 +253,16 @@ where
 pub async fn new_full<
     CBlock,
     CClient,
-    SC,
     IBNS,
     CIBNS,
     NSNS,
+    ASS,
     RuntimeApi,
     ExecutorDispatch,
     AccountId,
     Provider,
 >(
-    domain_params: DomainParams<CBlock, CClient, SC, IBNS, CIBNS, NSNS, Provider>,
+    domain_params: DomainParams<CBlock, CClient, IBNS, CIBNS, NSNS, ASS, Provider>,
 ) -> sc_service::error::Result<
     NewFull<
         Arc<FullClient<Block, RuntimeApi, ExecutorDispatch>>,
@@ -293,10 +292,10 @@ where
         + RelayerApi<CBlock, NumberFor<CBlock>>
         + MessengerApi<CBlock, NumberFor<CBlock>>
         + BundleProducerElectionApi<CBlock, subspace_runtime_primitives::Balance>,
-    SC: SelectChain<CBlock>,
     IBNS: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Send + 'static,
     CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + 'static,
-    NSNS: Stream<Item = (Slot, Randomness, Option<mpsc::Sender<()>>)> + Send + 'static,
+    NSNS: Stream<Item = (Slot, Randomness)> + Send + 'static,
+    ASS: Stream<Item = mpsc::Sender<()>> + Send + 'static,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>
         + Send
         + Sync
@@ -346,7 +345,6 @@ where
         consensus_client,
         consensus_offchain_tx_pool_factory,
         consensus_network_sync_oracle,
-        select_chain,
         operator_streams,
         gossip_message_sink,
         domain_message_receiver,
@@ -455,7 +453,6 @@ where
 
     let operator = Operator::new(
         Box::new(spawn_essential.clone()),
-        &select_chain,
         OperatorParams {
             domain_id,
             domain_created_at,

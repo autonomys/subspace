@@ -39,7 +39,9 @@ use subspace_core_primitives::{
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector;
-use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy, PlottedSector};
+use subspace_farmer_components::plotting::{
+    plot_sector, PieceGetterRetryPolicy, PlotSectorOptions, PlottedSector,
+};
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_runtime_primitives::opaque::Block;
@@ -256,19 +258,21 @@ where
         min_sector_lifetime: HistorySize::from(NonZeroU64::new(4).unwrap()),
     };
 
-    let plotted_sector = plot_sector::<_, PosTable>(
-        &public_key,
+    let plotted_sector = plot_sector::<PosTable, _>(PlotSectorOptions {
+        public_key: &public_key,
         sector_index,
-        &archived_segment.pieces,
-        PieceGetterRetryPolicy::default(),
-        &farmer_protocol_info,
-        &kzg,
+        piece_getter: &archived_segment.pieces,
+        piece_getter_retry_policy: PieceGetterRetryPolicy::default(),
+        farmer_protocol_info: &farmer_protocol_info,
+        kzg: &kzg,
         erasure_coding,
         pieces_in_sector,
-        &mut sector,
-        &mut sector_metadata,
-        &mut table_generator,
-    )
+        sector_output: &mut sector,
+        sector_metadata_output: &mut sector_metadata,
+        downloading_semaphore: None,
+        encoding_semaphore: None,
+        table_generator: &mut table_generator,
+    })
     .await
     .expect("Plotting one sector in memory must not fail");
 

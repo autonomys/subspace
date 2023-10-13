@@ -31,6 +31,7 @@ use subspace_networking::libp2p::identity::{ed25519, Keypair};
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
 use tempfile::TempDir;
+use tokio::sync::Semaphore;
 use tracing::{debug, error, info, info_span, warn};
 use zeroize::Zeroizing;
 
@@ -55,6 +56,8 @@ where
         tmp,
         mut disk_farms,
         metrics_endpoints,
+        sector_downloading_concurrency,
+        sector_encoding_concurrency,
         farming_thread_pool_size,
         plotting_thread_pool_size,
         replotting_thread_pool_size,
@@ -206,6 +209,9 @@ where
             .build()?,
     );
 
+    let downloading_semaphore = Arc::new(Semaphore::new(sector_downloading_concurrency.get()));
+    let encoding_semaphore = Arc::new(Semaphore::new(sector_encoding_concurrency.get()));
+
     // TODO: Check plot and metadata sizes to ensure there is enough space for farmer to not
     //  fail later
     for (disk_farm_index, disk_farm) in disk_farms.into_iter().enumerate() {
@@ -224,6 +230,8 @@ where
                 erasure_coding: erasure_coding.clone(),
                 piece_getter: piece_getter.clone(),
                 cache_percentage,
+                downloading_semaphore: Arc::clone(&downloading_semaphore),
+                encoding_semaphore: Arc::clone(&encoding_semaphore),
                 farming_thread_pool_size,
                 plotting_thread_pool: Arc::clone(&plotting_thread_pool),
                 replotting_thread_pool: Arc::clone(&replotting_thread_pool),

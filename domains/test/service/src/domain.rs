@@ -211,6 +211,7 @@ where
                 .block_importing_notification_stream(),
             imported_block_notification_stream,
             new_slot_notification_stream: mock_consensus_node.new_slot_notification_stream(),
+            acknowledgement_sender_stream: mock_consensus_node.new_acknowledgement_sender_stream(),
             _phantom: Default::default(),
         };
 
@@ -229,7 +230,6 @@ where
                 mock_consensus_node.transaction_pool.clone(),
             ),
             consensus_network_sync_oracle: mock_consensus_node.sync_service.clone(),
-            select_chain: mock_consensus_node.select_chain.clone(),
             operator_streams,
             gossip_message_sink: gossip_msg_sink,
             domain_message_receiver,

@@ -1558,7 +1558,11 @@ fn check_vote<T: Config>(
             .into(),
     ) {
         Ok(solution_distance) => {
-            if solution_distance <= vote_verification_data.solution_range {
+            if solution_distance <= vote_verification_data.solution_range / 2 {
+                debug!(
+                    target: "runtime::subspace",
+                    "Vote quality is too high"
+                );
                 return Err(CheckVoteError::QualityTooHigh);
             }
         }

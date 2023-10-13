@@ -15,31 +15,8 @@ include = [
 ]
 
 [dependencies]
-async-mutex = "1.4.0"
 actix-web = "4.3.1"
 parking_lot = "0.12.1"
 prometheus = { version = "0.13.0", default-features = false }
 prometheus-client = "0.21.2"
 tracing = "0.1.37"
-
-[dependencies.libp2p]
-version = "0.52.2"
-default-features = false
-features = [
-    "autonat",
-    "dns",
-    "gossipsub",
-    "identify",
-    "kad",
-    "macros",
-    "metrics",
-    "noise",
-    "ping",
-    "plaintext",
-    "request-response",
-    "serde",
-    "tcp",
-    "tokio",
-    "websocket",
-    "yamux",
-]
