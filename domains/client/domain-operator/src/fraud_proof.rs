@@ -13,7 +13,8 @@ use sp_core::H256;
 use sp_domains::fraud_proof::{
     ExecutionPhase, ExtrinsicDigest, FraudProof, InvalidBundlesFraudProof,
     InvalidExtrinsicsRootProof, InvalidStateTransitionProof, InvalidTotalRewardsProof,
-    MissingInvalidBundleEntryFraudProof, ValidAsInvalidBundleEntryFraudProof, ValidBundleDigest,
+    MissingInvalidBundleEntryFraudProof, StorageWitness, ValidAsInvalidBundleEntryFraudProof,
+    ValidBundleDigest, MAX_STORAGE_PROOF_SIZE,
 };
 use sp_domains::{DomainId, DomainsApi};
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashingFor, Header as HeaderT, NumberFor};
@@ -310,7 +311,7 @@ where
                 consensus_parent_hash,
                 pre_state_root,
                 post_state_root,
-                proof,
+                proof: storage_witness(proof),
                 execution_phase,
             }
         } else if local_trace_index as usize == local_receipt.execution_trace.len() - 1 {
@@ -352,7 +353,7 @@ where
                 consensus_parent_hash,
                 pre_state_root,
                 post_state_root,
-                proof,
+                proof: storage_witness(proof),
                 execution_phase,
             }
         } else {
@@ -377,7 +378,7 @@ where
                 consensus_parent_hash,
                 pre_state_root,
                 post_state_root,
-                proof,
+                proof: storage_witness(proof),
                 execution_phase,
             }
         };
@@ -468,4 +469,13 @@ pub(crate) fn find_trace_mismatch<Hash: Copy + Eq>(
                 None
             }
         })
+}
+
+/// Builds the storage witness from the proof.
+fn storage_witness(proof: StorageProof) -> StorageWitness {
+    if proof.encoded_size() <= MAX_STORAGE_PROOF_SIZE {
+        StorageWitness::Proof(proof)
+    } else {
+        StorageWitness::SizeExceeded((&proof).into())
+    }
 }

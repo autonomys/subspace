@@ -16,7 +16,7 @@ use sp_api::ProvideRuntimeApi;
 use sp_core::H256;
 use sp_domain_digests::AsPredigest;
 use sp_domains::fraud_proof::{
-    ExecutionPhase, FraudProof, InvalidStateTransitionProof, VerificationError,
+    ExecutionPhase, FraudProof, InvalidStateTransitionProof, StorageWitness, VerificationError,
 };
 use sp_domains::DomainId;
 use sp_runtime::generic::{Digest, DigestItem};
@@ -283,7 +283,7 @@ async fn execution_proof_creation_and_verification_should_work() {
         consensus_parent_hash,
         pre_state_root: *parent_header.state_root(),
         post_state_root: intermediate_roots[0].into(),
-        proof: storage_proof,
+        proof: StorageWitness::Proof(storage_proof),
         execution_phase,
     };
     let fraud_proof = FraudProof::InvalidStateTransition(invalid_state_transition_proof);
@@ -340,7 +340,7 @@ async fn execution_proof_creation_and_verification_should_work() {
             consensus_parent_hash,
             pre_state_root: intermediate_roots[target_extrinsic_index].into(),
             post_state_root: intermediate_roots[target_extrinsic_index + 1].into(),
-            proof: storage_proof,
+            proof: StorageWitness::Proof(storage_proof),
             execution_phase,
         };
         let fraud_proof = FraudProof::InvalidStateTransition(invalid_state_transition_proof);
@@ -393,7 +393,7 @@ async fn execution_proof_creation_and_verification_should_work() {
         consensus_parent_hash,
         pre_state_root: intermediate_roots.last().unwrap().into(),
         post_state_root: post_execution_root,
-        proof: storage_proof,
+        proof: StorageWitness::Proof(storage_proof),
         execution_phase,
     };
     let fraud_proof = FraudProof::InvalidStateTransition(invalid_state_transition_proof);
@@ -570,7 +570,7 @@ async fn invalid_execution_proof_should_not_work() {
         consensus_parent_hash,
         pre_state_root: post_delta_root0,
         post_state_root: post_delta_root1,
-        proof: proof1,
+        proof: StorageWitness::Proof(proof1),
         execution_phase: execution_phase0.clone(),
     };
     let fraud_proof = FraudProof::InvalidStateTransition(invalid_state_transition_proof);
@@ -583,7 +583,7 @@ async fn invalid_execution_proof_should_not_work() {
         consensus_parent_hash,
         pre_state_root: post_delta_root0,
         post_state_root: post_delta_root1,
-        proof: proof0.clone(),
+        proof: StorageWitness::Proof(proof0.clone()),
         execution_phase: execution_phase1,
     };
     let fraud_proof = FraudProof::InvalidStateTransition(invalid_state_transition_proof);
@@ -596,7 +596,7 @@ async fn invalid_execution_proof_should_not_work() {
         consensus_parent_hash,
         pre_state_root: post_delta_root0,
         post_state_root: post_delta_root1,
-        proof: proof0,
+        proof: StorageWitness::Proof(proof0),
         execution_phase: execution_phase0,
     };
     let fraud_proof = FraudProof::InvalidStateTransition(invalid_state_transition_proof);

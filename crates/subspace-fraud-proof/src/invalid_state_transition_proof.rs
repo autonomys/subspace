@@ -13,7 +13,9 @@ use sc_client_api::backend;
 use sp_api::{ProvideRuntimeApi, StorageProof};
 use sp_core::traits::{CodeExecutor, RuntimeCode};
 use sp_core::H256;
-use sp_domains::fraud_proof::{ExecutionPhase, InvalidStateTransitionProof, VerificationError};
+use sp_domains::fraud_proof::{
+    ExecutionPhase, InvalidStateTransitionProof, StorageWitness, VerificationError,
+};
 use sp_domains::DomainsApi;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashingFor, Header as HeaderT, NumberFor};
 use sp_runtime::Digest;
@@ -283,6 +285,17 @@ where
                 Vec::new()
             }
             ExecutionPhase::FinalizeBlock { .. } => Vec::new(),
+        };
+
+        let proof = match proof {
+            StorageWitness::Proof(proof) => proof,
+            StorageWitness::SizeExceeded(_) => {
+                // TODO: idea is to recreate the storage proof locally,
+                // and verify that the proof size indeed exceeds the threshold
+                // and matches the summary. To be determined: if all the
+                // info is available to recreate the storage proof locally.
+                return Ok(());
+            }
         };
 
         let execution_result = sp_state_machine::execution_proof_check::<BlakeTwo256, _>(

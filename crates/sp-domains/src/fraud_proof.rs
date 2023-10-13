@@ -11,6 +11,10 @@ use subspace_core_primitives::BlockNumber;
 use subspace_runtime_primitives::{AccountId, Balance};
 use trie_db::TrieLayout;
 
+/// Maximum encoded size of storage proof.
+/// TODO: fill the right size.
+pub const MAX_STORAGE_PROOF_SIZE: usize = 64_000_000;
+
 /// A phase of a block's execution, carrying necessary information needed for verifying the
 /// invalid state transition proof.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
@@ -231,6 +235,38 @@ impl InvalidBundlesFraudProof {
     }
 }
 
+/// State of the storage witness needed for verifying this proof.
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub enum StorageWitness {
+    /// The storage proof included in the fraud proof.
+    Proof(StorageProof),
+
+    /// The storage proof size exceeded the max limit.
+    /// So instead of the storage proof, the summary is
+    /// included in the fraud proof.
+    SizeExceeded(StorageProofSummary),
+}
+
+/// Summary of the storage proof
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub struct StorageProofSummary {
+    /// Encoded size of the storage proof.
+    proof_size: u64,
+
+    /// Hash of the storage proof.
+    proof_hash: H256,
+}
+
+impl From<&StorageProof> for StorageProofSummary {
+    fn from(proof: &StorageProof) -> Self {
+        let encoded = proof.encode();
+        Self {
+            proof_size: encoded.len() as u64,
+            proof_hash: BlakeTwo256::hash_of(&encoded),
+        }
+    }
+}
+
 /// Fraud proof.
 // TODO: Revisit when fraud proof v2 is implemented.
 #[allow(clippy::large_enum_variant)]
@@ -329,7 +365,7 @@ pub struct InvalidStateTransitionProof {
     /// State root after the fraudulent transaction.
     pub post_state_root: H256,
     /// Proof recorded during the computation.
-    pub proof: StorageProof,
+    pub proof: StorageWitness,
     /// Execution phase.
     pub execution_phase: ExecutionPhase,
 }
@@ -345,7 +381,7 @@ pub fn dummy_invalid_state_transition_proof(
         consensus_parent_hash: H256::default(),
         pre_state_root: H256::default(),
         post_state_root: H256::default(),
-        proof: StorageProof::empty(),
+        proof: StorageWitness::Proof(StorageProof::empty()),
         execution_phase: ExecutionPhase::ApplyExtrinsic(0),
     }
 }

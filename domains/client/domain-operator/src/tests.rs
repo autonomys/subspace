@@ -19,7 +19,7 @@ use sp_core::Pair;
 use sp_domain_digests::AsPredigest;
 use sp_domains::fraud_proof::{
     ExecutionPhase, FraudProof, InvalidExtrinsicsRootProof, InvalidStateTransitionProof,
-    InvalidTotalRewardsProof,
+    InvalidTotalRewardsProof, StorageWitness,
 };
 use sp_domains::transaction::InvalidTransactionCode;
 use sp_domains::{Bundle, DomainId, DomainsApi};
@@ -1212,7 +1212,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
         consensus_parent_hash: parent_hash_ferdie,
         pre_state_root: *parent_header.state_root(),
         post_state_root: intermediate_roots[0].into(),
-        proof: storage_proof,
+        proof: StorageWitness::Proof(storage_proof),
         execution_phase,
     };
     let valid_fraud_proof =
