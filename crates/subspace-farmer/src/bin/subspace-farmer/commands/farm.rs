@@ -135,14 +135,16 @@ where
         )?
     };
 
-    if metrics_endpoints_are_specified {
+    let prometheus_worker = if metrics_endpoints_are_specified {
         let prometheus_task = start_prometheus_metrics_server(
             metrics_endpoints,
             RegistryAdapter::Libp2p(metrics_registry),
         )?;
 
-        let _prometheus_worker = tokio::spawn(prometheus_task);
-    }
+        Some(tokio::spawn(prometheus_task))
+    } else {
+        None
+    };
 
     let kzg = Kzg::new(embedded_kzg_settings());
     let erasure_coding = ErasureCoding::new(
@@ -397,6 +399,11 @@ where
             info!("Node runner exited.")
         },
     );
+
+    if let Some(prometheus_worker) = prometheus_worker {
+        debug!("Aborting prometheus worker...");
+        prometheus_worker.abort();
+    }
 
     anyhow::Ok(())
 }
