@@ -20,6 +20,7 @@
 
 use codec::{Decode, Encode};
 use cross_domain_message_gossip::GossipWorkerBuilder;
+use domain_runtime_primitives::opaque::Block as DomainBlock;
 use domain_runtime_primitives::BlockNumber as DomainNumber;
 use futures::channel::mpsc;
 use futures::{select, FutureExt, StreamExt};
@@ -31,7 +32,9 @@ use sc_client_api::ExecutorProvider;
 use sc_consensus::block_import::{
     BlockCheckParams, BlockImportParams, ForkChoiceStrategy, ImportResult,
 };
-use sc_consensus::{BasicQueue, BlockImport, StateAction, Verifier as VerifierT};
+use sc_consensus::{
+    BasicQueue, BlockImport, SharedBlockImport, StateAction, Verifier as VerifierT,
+};
 use sc_consensus_fraud_proof::FraudProofBlockImport;
 use sc_executor::NativeElseWasmExecutor;
 use sc_network::config::{NetworkConfiguration, TransportConfig};
@@ -52,13 +55,12 @@ use sp_application_crypto::UncheckedFrom;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::{BlockOrigin, Error as ConsensusError};
 use sp_consensus_slots::Slot;
-#[cfg(feature = "pot")]
-use sp_consensus_subspace::digests::PreDigestPotInfo;
-use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest};
+use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest, PreDigestPotInfo};
 use sp_consensus_subspace::FarmerPublicKey;
-use sp_core::traits::SpawnEssentialNamed;
+use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
 use sp_core::H256;
-use sp_domains::{GenerateGenesisStateRoot, GenesisReceiptExtension, OpaqueBundle};
+use sp_domains::{DomainsApi, OpaqueBundle};
+use sp_domains_fraud_proof::{FraudProofExtension, FraudProofHostFunctionsImpl};
 use sp_externalities::Extensions;
 use sp_inherents::{InherentData, InherentDataProvider};
 use sp_keyring::Sr25519Keyring;
@@ -74,7 +76,6 @@ use subspace_core_primitives::{Randomness, Solution};
 use subspace_fraud_proof::invalid_state_transition_proof::InvalidStateTransitionProofVerifier;
 use subspace_fraud_proof::invalid_transaction_proof::InvalidTransactionProofVerifier;
 use subspace_fraud_proof::verifier_api::VerifierClient;
-use subspace_node::domain::DomainGenesisBlockBuilder;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash};
 use subspace_service::tx_pre_validator::ConsensusChainTxPreValidator;
@@ -175,11 +176,31 @@ type StorageChanges = sp_api::StorageChanges<Block>;
 
 type TxPreValidator = ConsensusChainTxPreValidator<Block, Client, FraudProofVerifier>;
 
-struct MockExtensionsFactory(Arc<dyn GenerateGenesisStateRoot>);
+struct MockExtensionsFactory<Client, DomainBlock, Executor> {
+    consensus_client: Arc<Client>,
+    executor: Arc<Executor>,
+    _phantom: PhantomData<DomainBlock>,
+}
 
-impl<Block> ExtensionsFactory<Block> for MockExtensionsFactory
+impl<Client, DomainBlock, Executor> MockExtensionsFactory<Client, DomainBlock, Executor> {
+    fn new(consensus_client: Arc<Client>, executor: Arc<Executor>) -> Self {
+        Self {
+            consensus_client,
+            executor,
+            _phantom: Default::default(),
+        }
+    }
+}
+
+impl<Block, Client, DomainBlock, Executor> ExtensionsFactory<Block>
+    for MockExtensionsFactory<Client, DomainBlock, Executor>
 where
     Block: BlockT,
+    Block::Hash: From<H256>,
+    DomainBlock: BlockT,
+    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + 'static,
+    Client::Api: DomainsApi<Block, NumberFor<DomainBlock>, DomainBlock::Hash>,
+    Executor: CodeExecutor,
 {
     fn extensions_for(
         &self,
@@ -187,11 +208,15 @@ where
         _block_number: NumberFor<Block>,
     ) -> Extensions {
         let mut exts = Extensions::new();
-        exts.register(GenesisReceiptExtension::new(self.0.clone()));
+        exts.register(FraudProofExtension::new(Arc::new(
+            FraudProofHostFunctionsImpl::<_, _, DomainBlock, Executor>::new(
+                self.consensus_client.clone(),
+                self.executor.clone(),
+            ),
+        )));
         exts
     }
 }
-
 /// A mock Subspace consensus node instance used for testing.
 pub struct MockConsensusNode {
     /// `TaskManager`'s instance.
@@ -218,8 +243,10 @@ pub struct MockConsensusNode {
     next_slot: u64,
     /// The slot notification subscribers
     #[allow(clippy::type_complexity)]
-    new_slot_notification_subscribers:
-        Vec<TracingUnboundedSender<(Slot, Randomness, Option<mpsc::Sender<()>>)>>,
+    new_slot_notification_subscribers: Vec<TracingUnboundedSender<(Slot, Randomness)>>,
+    /// The acknowledgement sender subscribers
+    #[allow(clippy::type_complexity)]
+    acknowledgement_sender_subscribers: Vec<TracingUnboundedSender<mpsc::Sender<()>>>,
     /// Block import pipeline
     #[allow(clippy::type_complexity)]
     block_import: MockBlockImport<
@@ -261,13 +288,13 @@ impl MockConsensusNode {
             sc_service::new_full_parts::<Block, RuntimeApi, _>(&config, None, executor.clone())
                 .expect("Fail to new full parts");
 
+        let client = Arc::new(client);
         client
             .execution_extensions()
-            .set_extensions_factory(MockExtensionsFactory(Arc::new(
-                DomainGenesisBlockBuilder::new(backend.clone(), executor.clone()),
-            )));
-
-        let client = Arc::new(client);
+            .set_extensions_factory(MockExtensionsFactory::<_, DomainBlock, _>::new(
+                client.clone(),
+                Arc::new(executor.clone()),
+            ));
 
         let select_chain = sc_consensus::LongestChain::new(backend.clone());
 
@@ -359,6 +386,7 @@ impl MockConsensusNode {
             network_starter: Some(network_starter),
             next_slot: 1,
             new_slot_notification_subscribers: Vec::new(),
+            acknowledgement_sender_subscribers: Vec::new(),
             block_import,
             xdm_gossip_worker_builder: Some(GossipWorkerBuilder::new()),
             mock_solution,
@@ -420,33 +448,11 @@ impl MockConsensusNode {
         &mut self,
         slot: Slot,
     ) -> Option<OpaqueBundle<NumberFor<Block>, Hash, DomainNumber, H256, Balance>> {
-        let (slot_acknowledgement_sender, mut slot_acknowledgement_receiver) = mpsc::channel(0);
+        let value = (slot, Randomness::from(Hash::random().to_fixed_bytes()));
+        self.new_slot_notification_subscribers
+            .retain(|subscriber| subscriber.unbounded_send(value).is_ok());
 
-        // Must drop `slot_acknowledgement_sender` after the notification otherwise the receiver
-        // will block forever as there is still a sender not closed.
-        {
-            let value = (
-                slot,
-                Randomness::from(Hash::random().to_fixed_bytes()),
-                Some(slot_acknowledgement_sender),
-            );
-            self.new_slot_notification_subscribers
-                .retain(|subscriber| subscriber.unbounded_send(value.clone()).is_ok());
-        }
-
-        // Wait for all the acknowledgements to progress and proactively drop closed subscribers.
-        loop {
-            select! {
-                res = slot_acknowledgement_receiver.next() => if res.is_none() {
-                    break;
-                },
-                // TODO: Workaround for https://github.com/smol-rs/async-channel/issues/23, remove once fix is released
-                _ = futures_timer::Delay::new(time::Duration::from_millis(500)).fuse() => {
-                    self.new_slot_notification_subscribers.retain(|subscriber| !subscriber.is_closed());
-                }
-            }
-        }
-
+        self.confirm_acknowledgement().await;
         self.get_bundle_from_tx_pool(slot.into())
     }
 
@@ -465,12 +471,52 @@ impl MockConsensusNode {
     }
 
     /// Subscribe the new slot notification
-    pub fn new_slot_notification_stream(
-        &mut self,
-    ) -> TracingUnboundedReceiver<(Slot, Randomness, Option<mpsc::Sender<()>>)> {
+    pub fn new_slot_notification_stream(&mut self) -> TracingUnboundedReceiver<(Slot, Randomness)> {
         let (tx, rx) = tracing_unbounded("subspace_new_slot_notification_stream", 100);
         self.new_slot_notification_subscribers.push(tx);
         rx
+    }
+
+    /// Subscribe the acknowledgement sender stream
+    pub fn new_acknowledgement_sender_stream(
+        &mut self,
+    ) -> TracingUnboundedReceiver<mpsc::Sender<()>> {
+        let (tx, rx) = tracing_unbounded("subspace_acknowledgement_sender_stream", 100);
+        self.acknowledgement_sender_subscribers.push(tx);
+        rx
+    }
+
+    /// Wait for all the acknowledgements before return
+    ///
+    /// It is used to wait for the acknowledgement of the domain worker to ensure it have
+    /// finish all the previous tasks before return
+    pub async fn confirm_acknowledgement(&mut self) {
+        let (acknowledgement_sender, mut acknowledgement_receiver) = mpsc::channel(0);
+
+        // Must drop `acknowledgement_sender` after the notification otherwise the receiver
+        // will block forever as there is still a sender not closed.
+        {
+            self.acknowledgement_sender_subscribers
+                .retain(|subscriber| {
+                    subscriber
+                        .unbounded_send(acknowledgement_sender.clone())
+                        .is_ok()
+                });
+            drop(acknowledgement_sender);
+        }
+
+        // Wait for all the acknowledgements to progress and proactively drop closed subscribers.
+        loop {
+            select! {
+                res = acknowledgement_receiver.next() => if res.is_none() {
+                    break;
+                },
+                // TODO: Workaround for https://github.com/smol-rs/async-channel/issues/23, remove once fix is released
+                _ = futures_timer::Delay::new(time::Duration::from_millis(500)).fuse() => {
+                    self.acknowledgement_sender_subscribers.retain(|subscriber| !subscriber.is_closed());
+                }
+            }
+        }
     }
 
     /// Subscribe the block importing notification
@@ -592,7 +638,6 @@ impl MockConsensusNode {
         let pre_digest: PreDigest<FarmerPublicKey, AccountId> = PreDigest::V0 {
             slot,
             solution: self.mock_solution.clone(),
-            #[cfg(feature = "pot")]
             pot_info: PreDigestPotInfo::V0 {
                 proof_of_time: Default::default(),
                 future_proof_of_time: Default::default(),
@@ -611,6 +656,7 @@ impl MockConsensusNode {
         extrinsics: Vec<<Block as BlockT>::Extrinsic>,
     ) -> Result<(Block, StorageChanges), Box<dyn Error>> {
         let digest = self.mock_subspace_digest(slot);
+
         let inherent_data = Self::mock_inherent_data(slot).await?;
 
         let mut block_builder = self.client.new_block_at(parent_hash, digest, false)?;
@@ -686,7 +732,7 @@ impl MockConsensusNode {
 
         log_new_block(&block, block_timer.elapsed().as_millis());
 
-        match self.import_block(block, Some(storage_changes)).await {
+        let res = match self.import_block(block, Some(storage_changes)).await {
             Ok(hash) => {
                 // Remove the tx of the imported block from the tx pool incase re-include them
                 // in the future block by accident.
@@ -694,7 +740,9 @@ impl MockConsensusNode {
                 Ok(hash)
             }
             err => err,
-        }
+        };
+        self.confirm_acknowledgement().await;
+        res
     }
 
     /// Produce a new block on top of the current best block, with the extrinsics collected from
@@ -754,7 +802,7 @@ where
 {
     BasicQueue::new(
         MockVerifier::default(),
-        Box::new(block_import),
+        SharedBlockImport::new(block_import),
         None,
         spawner,
         None,
@@ -779,7 +827,7 @@ where
     Block: BlockT,
 {
     async fn verify(
-        &mut self,
+        &self,
         block_params: BlockImportParams<Block>,
     ) -> Result<BlockImportParams<Block>, String> {
         Ok(block_params)
@@ -887,7 +935,7 @@ where
     }
 
     async fn check_block(
-        &mut self,
+        &self,
         block: BlockCheckParams<Block>,
     ) -> Result<ImportResult, Self::Error> {
         self.inner.check_block(block).await.map_err(Into::into)
@@ -903,7 +951,7 @@ macro_rules! produce_blocks {
             async {
                 let domain_fut = {
                     let mut futs: Vec<std::pin::Pin<Box<dyn futures::Future<Output = ()>>>> = Vec::new();
-                    futs.push(Box::pin($operator_node.wait_for_blocks(1)));
+                    futs.push(Box::pin($operator_node.wait_for_blocks($count)));
                     $( futs.push( Box::pin( $domain_node.wait_for_blocks($count) ) ); )*
                     futures::future::join_all(futs)
                 };

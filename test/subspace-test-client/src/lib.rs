@@ -24,6 +24,7 @@ pub mod domain_chain_spec;
 use futures::executor::block_on;
 use futures::StreamExt;
 use sc_client_api::{BlockBackend, HeaderBackend};
+use sc_consensus_subspace::archiver::encode_block;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::{NewSlotNotification, RewardSigningNotification};
 use sp_api::ProvideRuntimeApi;
@@ -33,17 +34,19 @@ use std::num::{NonZeroU64, NonZeroUsize};
 use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::{HistorySize, PublicKey, Record, SegmentIndex, Solution};
+use subspace_core_primitives::{
+    HistorySize, PosSeed, PublicKey, Record, SegmentIndex, Solution, REWARD_SIGNING_CONTEXT,
+};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector;
-use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy, PlottedSector};
-use subspace_farmer_components::sector::{sector_size, SectorMetadataChecksummed};
+use subspace_farmer_components::plotting::{
+    plot_sector, PieceGetterRetryPolicy, PlotSectorOptions, PlottedSector,
+};
 use subspace_farmer_components::FarmerProtocolInfo;
-use subspace_proof_of_space::Table;
+use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_service::tx_pre_validator::ConsensusChainTxPreValidator;
 use subspace_service::{FullClient, NewFull};
-use subspace_solving::REWARD_SIGNING_CONTEXT;
 use zeroize::Zeroizing;
 
 // Smaller value for testing purposes
@@ -55,7 +58,7 @@ pub struct TestExecutorDispatch;
 impl sc_executor::NativeExecutionDispatch for TestExecutorDispatch {
     type ExtendHostFunctions = (
         sp_consensus_subspace::consensus::HostFunctions,
-        sp_domains::domain::HostFunctions,
+        sp_domains_fraud_proof::HostFunctions,
     );
 
     fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
@@ -185,7 +188,7 @@ async fn start_farming<PosTable, Client>(
             let global_challenge = new_slot_info
                 .global_randomness
                 .derive_global_challenge(new_slot_info.slot.into());
-            let solution_candidates = audit_sector(
+            let audit_result = audit_sector(
                 &public_key,
                 sector_index,
                 &global_challenge,
@@ -195,8 +198,11 @@ async fn start_farming<PosTable, Client>(
             )
             .expect("With max solution range there must be a sector eligible; qed");
 
-            let solution = solution_candidates
-                .into_iter::<_, PosTable>(&public_key, &kzg, &erasure_coding, &mut table_generator)
+            let solution = audit_result
+                .solution_candidates
+                .into_solutions(&public_key, &kzg, &erasure_coding, |seed: &PosSeed| {
+                    table_generator.generate_parallel(seed)
+                })
                 .unwrap()
                 .next()
                 .expect("With max solution range there must be a solution; qed")
@@ -226,19 +232,19 @@ where
     let mut archiver = subspace_archiving::archiver::Archiver::new(kzg.clone())
         .expect("Incorrect parameters for archiver");
 
-    let genesis_block = client
-        .block(client.info().genesis_hash)
-        .unwrap()
-        .unwrap()
-        .block;
+    let genesis_block = client.block(client.info().genesis_hash).unwrap().unwrap();
     let archived_segment = archiver
-        .add_block(genesis_block.encode(), BlockObjectMapping::default(), true)
+        .add_block(
+            encode_block(genesis_block),
+            BlockObjectMapping::default(),
+            true,
+        )
         .into_iter()
         .next()
         .expect("First block is always producing one segment; qed");
     let history_size = HistorySize::from(SegmentIndex::ZERO);
-    let mut sector = vec![0u8; sector_size(pieces_in_sector)];
-    let mut sector_metadata = vec![0u8; SectorMetadataChecksummed::encoded_size()];
+    let mut sector = Vec::new();
+    let mut sector_metadata = Vec::new();
     let sector_index = 0;
     let public_key = PublicKey::from(keypair.public.to_bytes());
     let farmer_protocol_info = FarmerProtocolInfo {
@@ -252,19 +258,21 @@ where
         min_sector_lifetime: HistorySize::from(NonZeroU64::new(4).unwrap()),
     };
 
-    let plotted_sector = plot_sector::<_, PosTable>(
-        &public_key,
+    let plotted_sector = plot_sector::<PosTable, _>(PlotSectorOptions {
+        public_key: &public_key,
         sector_index,
-        &archived_segment.pieces,
-        PieceGetterRetryPolicy::default(),
-        &farmer_protocol_info,
-        &kzg,
+        piece_getter: &archived_segment.pieces,
+        piece_getter_retry_policy: PieceGetterRetryPolicy::default(),
+        farmer_protocol_info: &farmer_protocol_info,
+        kzg: &kzg,
         erasure_coding,
         pieces_in_sector,
-        &mut sector,
-        &mut sector_metadata,
-        &mut table_generator,
-    )
+        sector_output: &mut sector,
+        sector_metadata_output: &mut sector_metadata,
+        downloading_semaphore: None,
+        encoding_semaphore: None,
+        table_generator: &mut table_generator,
+    })
     .await
     .expect("Plotting one sector in memory must not fail");
 

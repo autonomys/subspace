@@ -8,9 +8,9 @@ repository = "https://github.com/subspace/subspace/"
 edition = "2021"
 description = "Subspace EVM domain runtime"
 include = [
-	"/src",
-	"/build.rs",
-	"/Cargo.toml",
+    "/src",
+    "/build.rs",
+    "/Cargo.toml",
 ]
 
 [package.metadata.docs.rs]
@@ -21,115 +21,94 @@ codec = { package = "parity-scale-codec", version = "3.2.1", default-features = 
 domain-pallet-executive = { version = "0.1.0", path = "../../../pallets/executive", default-features = false }
 domain-test-primitives = { version = "0.1.0", path = "../../primitives", default-features = false }
 domain-runtime-primitives = { version = "0.1.0", path = "../../../primitives/runtime", default-features = false }
-fp-account = { version = "1.0.0-dev", default-features = false, features = ["serde"], git = "https://github.com/subspace/frontier", rev = "e74fdd2de2a1d5749c067d6fd8e244e405b256e1" }
-fp-evm = { version = "3.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier", rev = "e74fdd2de2a1d5749c067d6fd8e244e405b256e1" }
-fp-rpc = { version = "3.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier", rev = "e74fdd2de2a1d5749c067d6fd8e244e405b256e1" }
-fp-self-contained = { version = "1.0.0-dev", default-features = false, features = ["serde"], git = "https://github.com/subspace/frontier", rev = "e74fdd2de2a1d5749c067d6fd8e244e405b256e1" }
-frame-benchmarking = { version = "4.0.0-dev", default-features = false, optional = true, git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef" }
-frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef" }
-frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef" }
-frame-system-benchmarking = { version = "4.0.0-dev", default-features = false, optional = true, git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef" }
-frame-system-rpc-runtime-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef" }
-hex-literal = { version = '0.4.0', optional = true }
-log = { version = "0.4.20", default-features = false }
-pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef" }
-pallet-base-fee = { version = "1.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier", rev = "e74fdd2de2a1d5749c067d6fd8e244e405b256e1" }
+fp-account = { version = "1.0.0-dev", default-features = false, features = ["serde"], git = "https://github.com/subspace/frontier", rev = "4873a02b4b420b70bd860877515e8d0f1aa82562" }
+fp-rpc = { version = "3.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier", rev = "4873a02b4b420b70bd860877515e8d0f1aa82562" }
+fp-self-contained = { version = "1.0.0-dev", default-features = false, features = ["serde"], git = "https://github.com/subspace/frontier", rev = "4873a02b4b420b70bd860877515e8d0f1aa82562" }
+frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
+frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
+frame-system-rpc-runtime-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
+pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
+pallet-base-fee = { version = "1.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier", rev = "4873a02b4b420b70bd860877515e8d0f1aa82562" }
 pallet-domain-id = { version = "0.1.0", path = "../../../pallets/domain-id", default-features = false }
 pallet-operator-rewards = { version = "0.1.0", path = "../../../pallets/operator-rewards", default-features = false }
-pallet-ethereum = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier", rev = "e74fdd2de2a1d5749c067d6fd8e244e405b256e1" }
-pallet-evm = { version = "6.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier", rev = "e74fdd2de2a1d5749c067d6fd8e244e405b256e1" }
-pallet-evm-chain-id = { version = "1.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier", rev = "e74fdd2de2a1d5749c067d6fd8e244e405b256e1" }
-pallet-evm-precompile-modexp = { version = "2.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier", rev = "e74fdd2de2a1d5749c067d6fd8e244e405b256e1" }
-pallet-evm-precompile-sha3fips = { version = "2.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier", rev = "e74fdd2de2a1d5749c067d6fd8e244e405b256e1" }
-pallet-evm-precompile-simple = { version = "2.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier", rev = "e74fdd2de2a1d5749c067d6fd8e244e405b256e1" }
+pallet-ethereum = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier", rev = "4873a02b4b420b70bd860877515e8d0f1aa82562" }
+pallet-evm = { version = "6.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier", rev = "4873a02b4b420b70bd860877515e8d0f1aa82562" }
+pallet-evm-chain-id = { version = "1.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier", rev = "4873a02b4b420b70bd860877515e8d0f1aa82562" }
+pallet-evm-precompile-modexp = { version = "2.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier", rev = "4873a02b4b420b70bd860877515e8d0f1aa82562" }
+pallet-evm-precompile-sha3fips = { version = "2.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier", rev = "4873a02b4b420b70bd860877515e8d0f1aa82562" }
+pallet-evm-precompile-simple = { version = "2.0.0-dev", default-features = false, git = "https://github.com/subspace/frontier", rev = "4873a02b4b420b70bd860877515e8d0f1aa82562" }
 pallet-messenger = { version = "0.1.0", path = "../../../pallets/messenger", default-features = false }
-pallet-sudo = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef" }
-pallet-timestamp = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef" }
-pallet-transaction-payment = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef" }
-pallet-transaction-payment-rpc-runtime-api = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef" }
+pallet-sudo = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
+pallet-timestamp = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
+pallet-transaction-payment = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
+pallet-transaction-payment-rpc-runtime-api = { default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
 pallet-transporter = { version = "0.1.0", path = "../../../pallets/transporter", default-features = false }
 scale-info = { version = "2.7.0", default-features = false, features = ["derive"] }
-sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef" }
-sp-block-builder = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef" }
-sp-core = { version = "21.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef" }
+sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
+sp-block-builder = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
+sp-core = { version = "21.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
 sp-domains = { version = "0.1.0", path = "../../../../crates/sp-domains", default-features = false }
-sp-inherents = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef" }
-sp-io = { version = "23.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef" }
+sp-inherents = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
 sp-messenger = { version = "0.1.0", default-features = false, path = "../../../primitives/messenger" }
-sp-offchain = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef" }
-sp-runtime = { version = "24.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef" }
-sp-session = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef" }
-sp-std = { version = "8.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef" }
-sp-transaction-pool = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef" }
-sp-version = { version = "22.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef" }
+sp-offchain = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
+sp-runtime = { version = "24.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
+sp-session = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
+sp-std = { version = "8.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
+sp-transaction-pool = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
+sp-version = { version = "22.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
 subspace-core-primitives = { version = "0.1.0", path = "../../../../crates/subspace-core-primitives", default-features = false }
 subspace-runtime-primitives = { version = "0.1.0", path = "../../../../crates/subspace-runtime-primitives", default-features = false }
 
 [build-dependencies]
-substrate-wasm-builder = { version = "5.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "20be5f33a3d2b3f4b31a894f9829184b29fba3ef", optional = true }
+substrate-wasm-builder = { version = "5.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c", optional = true }
 
 [features]
 default = [
-	"std",
+    "std",
 ]
 std = [
-	"codec/std",
-	"domain-pallet-executive/std",
-	"domain-runtime-primitives/std",
-	"domain-test-primitives/std",
-	"fp-account/std",
-	"fp-evm/std",
-	"fp-rpc/std",
-	"fp-self-contained/std",
-	"frame-support/std",
-	"frame-system/std",
-	"frame-system-rpc-runtime-api/std",
-	"log/std",
-	"pallet-balances/std",
-	"pallet-base-fee/std",
-	"pallet-domain-id/std",
-	"pallet-operator-rewards/std",
-	"pallet-ethereum/std",
-	"pallet-evm/std",
-	"pallet-evm-chain-id/std",
-	"pallet-evm-precompile-modexp/std",
-	"pallet-evm-precompile-sha3fips/std",
-	"pallet-evm-precompile-simple/std",
-	"pallet-messenger/std",
-	"pallet-sudo/std",
-	"pallet-timestamp/std",
-	"pallet-transaction-payment-rpc-runtime-api/std",
-	"pallet-transaction-payment/std",
-	"pallet-transporter/std",
-	"scale-info/std",
-	"sp-api/std",
-	"sp-block-builder/std",
-	"sp-core/std",
-	"sp-domains/std",
-	"sp-session/std",
-	"sp-inherents/std",
-	"sp-io/std",
-	"sp-messenger/std",
-	"sp-offchain/std",
-	"sp-runtime/std",
-	"sp-std/std",
-	"sp-transaction-pool/std",
-	"sp-version/std",
-	"subspace-core-primitives/std",
-	"subspace-runtime-primitives/std",
-	"substrate-wasm-builder",
+    "codec/std",
+    "domain-pallet-executive/std",
+    "domain-runtime-primitives/std",
+    "domain-test-primitives/std",
+    "fp-account/std",
+    "fp-rpc/std",
+    "fp-self-contained/std",
+    "frame-support/std",
+    "frame-system/std",
+    "frame-system-rpc-runtime-api/std",
+    "pallet-balances/std",
+    "pallet-base-fee/std",
+    "pallet-domain-id/std",
+    "pallet-operator-rewards/std",
+    "pallet-ethereum/std",
+    "pallet-evm/std",
+    "pallet-evm-chain-id/std",
+    "pallet-evm-precompile-modexp/std",
+    "pallet-evm-precompile-sha3fips/std",
+    "pallet-evm-precompile-simple/std",
+    "pallet-messenger/std",
+    "pallet-sudo/std",
+    "pallet-timestamp/std",
+    "pallet-transaction-payment-rpc-runtime-api/std",
+    "pallet-transaction-payment/std",
+    "pallet-transporter/std",
+    "scale-info/std",
+    "sp-api/std",
+    "sp-block-builder/std",
+    "sp-core/std",
+    "sp-domains/std",
+    "sp-session/std",
+    "sp-inherents/std",
+    "sp-messenger/std",
+    "sp-offchain/std",
+    "sp-runtime/std",
+    "sp-std/std",
+    "sp-transaction-pool/std",
+    "sp-version/std",
+    "subspace-core-primitives/std",
+    "subspace-runtime-primitives/std",
+    "substrate-wasm-builder",
 ]
 # Internal implementation detail, enabled during building of wasm blob.
 wasm-builder = []
-runtime-benchmarks = [
-	'hex-literal',
-	"sp-runtime/runtime-benchmarks",
-	"frame-benchmarking",
-	"frame-system-benchmarking",
-	"frame-system-benchmarking/runtime-benchmarks",
-	"frame-support/runtime-benchmarks",
-	"frame-system/runtime-benchmarks",
-	"pallet-balances/runtime-benchmarks",
-	"pallet-ethereum/runtime-benchmarks",
-	"pallet-evm/runtime-benchmarks",
-]

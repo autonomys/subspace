@@ -22,17 +22,17 @@
 
 pub mod archiver;
 pub mod aux_schema;
-pub mod import_queue;
 pub mod notification;
 mod slot_worker;
 #[cfg(test)]
 mod tests;
+pub mod verifier;
 
 use crate::archiver::{SegmentHeadersStore, FINALIZATION_DEPTH_IN_SEGMENTS};
-use crate::import_queue::VerificationError;
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use crate::slot_worker::SubspaceSlotWorker;
 pub use crate::slot_worker::SubspaceSyncOracle;
+use crate::verifier::VerificationError;
 use futures::channel::mpsc;
 use futures::StreamExt;
 use log::{debug, info, warn};
@@ -43,11 +43,9 @@ use sc_client_api::{BlockBackend, BlockchainEvents, ProvideUncles, UsageProvider
 use sc_consensus::block_import::{
     BlockCheckParams, BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult,
 };
-use sc_consensus::JustificationSyncLink;
+use sc_consensus::{JustificationSyncLink, SharedBlockImport};
 use sc_consensus_slots::{BackoffAuthoringBlocksStrategy, InherentDataProviderExt, SlotProportion};
-#[cfg(feature = "pot")]
 use sc_proof_of_time::source::PotSlotInfoStream;
-#[cfg(feature = "pot")]
 use sc_proof_of_time::verifier::PotVerifier;
 use sc_telemetry::TelemetryHandle;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
@@ -60,10 +58,14 @@ use sp_consensus_slots::{Slot, SlotDuration};
 use sp_consensus_subspace::digests::{
     extract_pre_digest, extract_subspace_digest_items, Error as DigestError, SubspaceDigestItems,
 };
-use sp_consensus_subspace::{ChainConstants, FarmerPublicKey, FarmerSignature, SubspaceApi};
+use sp_consensus_subspace::{
+    ChainConstants, FarmerPublicKey, FarmerSignature, PotNextSlotInput, SubspaceApi,
+    SubspaceJustification,
+};
 use sp_core::H256;
 use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
 use sp_runtime::traits::One;
+use sp_runtime::Justifications;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
@@ -73,10 +75,9 @@ use subspace_archiving::archiver::NewArchivedSegment;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
     BlockNumber, HistorySize, PublicKey, Randomness, SectorId, SegmentHeader, SegmentIndex,
-    Solution, SolutionRange,
+    Solution, SolutionRange, REWARD_SIGNING_CONTEXT,
 };
 use subspace_proof_of_space::Table;
-use subspace_solving::REWARD_SIGNING_CONTEXT;
 use subspace_verification::{
     calculate_block_weight, Error as VerificationPrimitiveError, PieceCheckParams,
     VerifySolutionParams,
@@ -148,10 +149,6 @@ pub enum Error<Header: HeaderT> {
     /// Error during digest item extraction
     #[error("Digest item error: {0}")]
     DigestItemError(#[from] DigestError),
-    /// Header rejected: too far in the future
-    #[error("Header {0:?} rejected: too far in the future")]
-    #[cfg(not(feature = "pot"))]
-    TooFarInFuture(Header::Hash),
     /// Parent unavailable. Cannot import
     #[error("Parent ({0}) of {1} unavailable. Cannot import")]
     ParentUnavailable(Header::Hash, Header::Hash),
@@ -170,8 +167,16 @@ pub enum Error<Header: HeaderT> {
     /// Bad reward signature
     #[error("Bad reward signature on {0:?}")]
     BadRewardSignature(Header::Hash),
+    /// Missing Subspace justification
+    #[error("Missing Subspace justification")]
+    MissingSubspaceJustification,
+    /// Invalid Subspace justification
+    #[error("Invalid Subspace justification: {0}")]
+    InvalidSubspaceJustification(codec::Error),
+    /// Invalid Subspace justification contents
+    #[error("Invalid Subspace justification contents")]
+    InvalidSubspaceJustificationContents,
     /// Invalid proof of time
-    #[cfg(feature = "pot")]
     #[error("Invalid proof of time")]
     InvalidProofOfTime,
     /// Solution is outside of solution range
@@ -212,10 +217,6 @@ pub enum Error<Header: HeaderT> {
     /// Parent block has no associated weight
     #[error("Parent block of {0} has no associated weight")]
     ParentBlockNoAssociatedWeight(Header::Hash),
-    /// Block has invalid associated global randomness
-    #[cfg(not(feature = "pot"))]
-    #[error("Invalid global randomness for block {0}")]
-    InvalidGlobalRandomness(Header::Hash),
     /// Block has invalid associated solution range
     #[error("Invalid solution range for block {0}")]
     InvalidSolutionRange(Header::Hash),
@@ -280,7 +281,13 @@ where
             VerificationError::BadRewardSignature(block_hash) => {
                 Error::BadRewardSignature(block_hash)
             }
-            #[cfg(feature = "pot")]
+            VerificationError::MissingSubspaceJustification => Error::MissingSubspaceJustification,
+            VerificationError::InvalidSubspaceJustification(error) => {
+                Error::InvalidSubspaceJustification(error)
+            }
+            VerificationError::InvalidSubspaceJustificationContents => {
+                Error::InvalidSubspaceJustificationContents
+            }
             VerificationError::InvalidProofOfTime => Error::InvalidProofOfTime,
             VerificationError::VerificationError(slot, error) => match error {
                 VerificationPrimitiveError::InvalidPieceOffset {
@@ -346,7 +353,7 @@ where
 }
 
 /// Parameters for Subspace.
-pub struct SubspaceParams<Block, Client, SC, E, I, SO, L, CIDP, BS, AS>
+pub struct SubspaceParams<Block, Client, SC, E, SO, L, CIDP, BS, AS>
 where
     Block: BlockT,
     SO: SyncOracle + Send + Sync,
@@ -363,7 +370,7 @@ where
     /// The underlying block-import object to supply our produced blocks to.
     /// This must be a `SubspaceBlockImport` or a wrapper of it, otherwise
     /// critical consensus logic will be omitted.
-    pub block_import: I,
+    pub block_import: SharedBlockImport<Block>,
 
     /// A sync oracle
     pub sync_oracle: SubspaceSyncOracle<SO>,
@@ -406,16 +413,14 @@ where
     pub offchain_tx_pool_factory: OffchainTransactionPoolFactory<Block>,
 
     /// Proof of time verifier
-    #[cfg(feature = "pot")]
     pub pot_verifier: PotVerifier,
 
     /// Stream with proof of time slots.
-    #[cfg(feature = "pot")]
     pub pot_slot_info_stream: PotSlotInfoStream,
 }
 
 /// Start the Subspace worker.
-pub fn start_subspace<PosTable, Block, Client, SC, E, I, SO, CIDP, BS, L, AS, Error>(
+pub fn start_subspace<PosTable, Block, Client, SC, E, SO, CIDP, BS, L, AS, Error>(
     SubspaceParams {
         client,
         select_chain,
@@ -432,11 +437,9 @@ pub fn start_subspace<PosTable, Block, Client, SC, E, I, SO, CIDP, BS, L, AS, Er
         max_block_proposal_slot_portion,
         telemetry,
         offchain_tx_pool_factory,
-        #[cfg(feature = "pot")]
         pot_verifier,
-        #[cfg(feature = "pot")]
         pot_slot_info_stream,
-    }: SubspaceParams<Block, Client, SC, E, I, SO, L, CIDP, BS, AS>,
+    }: SubspaceParams<Block, Client, SC, E, SO, L, CIDP, BS, AS>,
 ) -> Result<SubspaceWorker, sp_consensus::Error>
 where
     PosTable: Table,
@@ -454,14 +457,13 @@ where
     SC: SelectChain<Block> + 'static,
     E: Environment<Block, Error = Error> + Send + Sync + 'static,
     E::Proposer: Proposer<Block, Error = Error>,
-    I: BlockImport<Block, Error = ConsensusError> + Send + Sync + 'static,
     SO: SyncOracle + Send + Sync + Clone + 'static,
     L: JustificationSyncLink<Block> + 'static,
     CIDP: CreateInherentDataProviders<Block, ()> + Send + Sync + 'static,
     CIDP::InherentDataProviders: InherentDataProviderExt + Send,
     BS: BackoffAuthoringBlocksStrategy<NumberFor<Block>> + Send + Sync + 'static,
     AS: AuxStore + Send + Sync + 'static,
-    Error: std::error::Error + Send + From<ConsensusError> + From<I::Error> + 'static,
+    Error: std::error::Error + Send + From<ConsensusError> + 'static,
     BlockNumber: From<<<Block as BlockT>::Header as HeaderT>::Number>,
 {
     let worker = SubspaceSlotWorker {
@@ -478,28 +480,18 @@ where
         max_block_proposal_slot_portion,
         telemetry,
         offchain_tx_pool_factory,
-        chain_constants: get_chain_constants(client.as_ref())
-            .map_err(|error| sp_consensus::Error::Other(error.into()))?,
+        chain_constants: client
+            .runtime_api()
+            .chain_constants(client.info().best_hash)
+            .map_err(|error| sp_consensus::Error::ChainLookup(error.to_string()))?,
         segment_headers_store,
-        #[cfg(feature = "pot")]
         pending_solutions: Default::default(),
-        #[cfg(feature = "pot")]
         pot_checkpoints: Default::default(),
-        #[cfg(feature = "pot")]
         pot_verifier,
         _pos_table: PhantomData::<PosTable>,
     };
 
     info!(target: "subspace", "🧑‍🌾 Starting Subspace Authorship worker");
-    #[cfg(not(feature = "pot"))]
-    let inner = sc_consensus_slots::start_slot_worker(
-        subspace_link.slot_duration(),
-        select_chain,
-        sc_consensus_slots::SimpleSlotWorkerToSlotWorker(worker),
-        sync_oracle,
-        create_inherent_data_providers,
-    );
-    #[cfg(feature = "pot")]
     let inner = sc_proof_of_time::start_slot_worker(
         subspace_link.slot_duration(),
         client,
@@ -615,7 +607,6 @@ where
     create_inherent_data_providers: CIDP,
     chain_constants: ChainConstants,
     segment_headers_store: SegmentHeadersStore<AS>,
-    #[cfg(feature = "pot")]
     pot_verifier: PotVerifier,
     _pos_table: PhantomData<PosTable>,
 }
@@ -635,7 +626,6 @@ where
             create_inherent_data_providers: self.create_inherent_data_providers.clone(),
             chain_constants: self.chain_constants,
             segment_headers_store: self.segment_headers_store.clone(),
-            #[cfg(feature = "pot")]
             pot_verifier: self.pot_verifier.clone(),
             _pos_table: PhantomData,
         }
@@ -659,7 +649,7 @@ where
         create_inherent_data_providers: CIDP,
         chain_constants: ChainConstants,
         segment_headers_store: SegmentHeadersStore<AS>,
-        #[cfg(feature = "pot")] pot_verifier: PotVerifier,
+        pot_verifier: PotVerifier,
     ) -> Self {
         Self {
             client,
@@ -668,7 +658,6 @@ where
             create_inherent_data_providers,
             chain_constants,
             segment_headers_store,
-            #[cfg(feature = "pot")]
             pot_verifier,
             _pos_table: PhantomData,
         }
@@ -686,6 +675,7 @@ where
             FarmerPublicKey,
             FarmerSignature,
         >,
+        justifications: &Option<Justifications>,
         skip_runtime_access: bool,
     ) -> Result<(), Error<Block::Header>> {
         let block_number = *header.number();
@@ -700,7 +690,6 @@ where
         }
 
         // Check if farmer's plot is burned.
-        // TODO: Add to header and store in aux storage?
         if self
             .client
             .runtime_api()
@@ -732,123 +721,95 @@ where
         let parent_slot = extract_pre_digest(&parent_header).map(|d| d.slot())?;
 
         // Make sure that slot number is strictly increasing
-        #[cfg_attr(not(feature = "pot"), allow(unused_variables))]
-        let slots_since_parent = match pre_digest.slot().checked_sub(*parent_slot) {
-            Some(slots_since_parent) => {
-                if slots_since_parent > 0 {
-                    Slot::from(slots_since_parent)
-                } else {
-                    return Err(Error::SlotMustIncrease(parent_slot, pre_digest.slot()));
-                }
-            }
-            None => {
-                return Err(Error::SlotMustIncrease(parent_slot, pre_digest.slot()));
-            }
-        };
+        if pre_digest.slot() <= parent_slot {
+            return Err(Error::SlotMustIncrease(parent_slot, pre_digest.slot()));
+        }
 
-        #[cfg(not(feature = "pot"))]
-        let correct_global_randomness;
-        #[cfg(feature = "pot")]
-        let pot_seed;
-        #[cfg(feature = "pot")]
-        let slot_iterations;
-        let correct_solution_range;
-
-        if block_number.is_one() {
-            // Genesis block doesn't contain usual digest items, we need to query runtime API
-            // instead
-            #[cfg(not(feature = "pot"))]
-            {
-                correct_global_randomness = slot_worker::extract_global_randomness_for_block(
-                    self.client.as_ref(),
-                    parent_hash,
-                )?;
-            }
-            #[cfg(feature = "pot")]
-            {
-                slot_iterations = self
-                    .client
-                    .runtime_api()
-                    .pot_parameters(parent_hash)?
-                    .slot_iterations();
-                pot_seed = self.pot_verifier.genesis_seed();
-            }
-
-            correct_solution_range =
-                slot_worker::extract_solution_ranges_for_block(self.client.as_ref(), parent_hash)?
-                    .0;
+        let parent_subspace_digest_items = if block_number.is_one() {
+            None
         } else {
-            let parent_subspace_digest_items = extract_subspace_digest_items::<
+            Some(extract_subspace_digest_items::<
                 _,
                 FarmerPublicKey,
                 FarmerPublicKey,
                 FarmerSignature,
-            >(&parent_header)?;
+            >(&parent_header)?)
+        };
 
-            #[cfg(not(feature = "pot"))]
-            {
-                correct_global_randomness =
-                    match parent_subspace_digest_items.next_global_randomness {
-                        Some(global_randomness) => global_randomness,
-                        None => parent_subspace_digest_items.global_randomness,
-                    };
-            }
-            #[cfg(feature = "pot")]
-            // In case parameters change in the very first slot after slot of the parent block,
-            // account for them
-            if let Some(parameters_change) = subspace_digest_items.pot_parameters_change
-                && parameters_change.slot == (parent_slot + Slot::from(1))
-            {
-                slot_iterations = parameters_change.slot_iterations;
-                pot_seed = parent_subspace_digest_items
-                    .pre_digest
-                    .pot_info()
-                    .proof_of_time()
-                    .seed_with_entropy(&parameters_change.entropy);
-            } else {
-                slot_iterations = subspace_digest_items.pot_slot_iterations;
-                pot_seed = parent_subspace_digest_items
-                    .pre_digest
-                    .pot_info()
-                    .proof_of_time()
-                    .seed();
-            }
+        let correct_solution_range = if block_number.is_one() {
+            slot_worker::extract_solution_ranges_for_block(self.client.as_ref(), parent_hash)?.0
+        } else {
+            let parent_subspace_digest_items = parent_subspace_digest_items
+                .as_ref()
+                .expect("Always Some for non-first block; qed");
 
-            correct_solution_range = match parent_subspace_digest_items.next_solution_range {
+            match parent_subspace_digest_items.next_solution_range {
                 Some(solution_range) => solution_range,
                 None => parent_subspace_digest_items.solution_range,
-            };
-        }
-
-        #[cfg(not(feature = "pot"))]
-        if subspace_digest_items.global_randomness != correct_global_randomness {
-            return Err(Error::InvalidGlobalRandomness(block_hash));
-        }
-        #[cfg(feature = "pot")]
-        // TODO: Extend/optimize this check once we have checkpoints in justifications
-        // Here we check that there is continuity from parent block's proof of time (but not future
-        // entropy since this block may be produced before slot corresponding to parent block's
-        // future proof of time) to current block's proof of time. During stateless verification we
-        // do not have access to parent block, thus only verify proofs after proof of time of at
-        // current slot up until future proof of time (inclusive), here during block import we
-        // verify the rest.
-        if !self
-            .pot_verifier
-            .is_output_valid(
-                parent_slot + Slot::from(1),
-                pot_seed,
-                slot_iterations,
-                slots_since_parent,
-                subspace_digest_items.pre_digest.pot_info().proof_of_time(),
-                subspace_digest_items.pot_parameters_change,
-            )
-            .await
-        {
-            return Err(Error::InvalidProofOfTime);
-        }
+            }
+        };
 
         if subspace_digest_items.solution_range != correct_solution_range {
             return Err(Error::InvalidSolutionRange(block_hash));
+        }
+
+        // For PoT justifications we only need to check the seed and number of checkpoints, the rest
+        // was already checked during stateless block verification.
+        {
+            let Some(subspace_justification) = justifications
+                .as_ref()
+                .and_then(|justifications| {
+                    justifications
+                        .iter()
+                        .find_map(SubspaceJustification::try_from_justification)
+                })
+                .transpose()
+                .map_err(Error::InvalidSubspaceJustification)?
+            else {
+                return Err(Error::MissingSubspaceJustification);
+            };
+
+            let SubspaceJustification::PotCheckpoints { seed, checkpoints } =
+                subspace_justification;
+
+            let future_slot = pre_digest.slot() + self.chain_constants.block_authoring_delay();
+
+            if block_number.is_one() {
+                // In case of first block seed must match genesis seed
+                if seed != self.pot_verifier.genesis_seed() {
+                    return Err(Error::InvalidSubspaceJustificationContents);
+                }
+
+                // Number of checkpoints must match future slot number
+                if checkpoints.len() as u64 != *future_slot {
+                    return Err(Error::InvalidSubspaceJustificationContents);
+                }
+            } else {
+                let parent_subspace_digest_items = parent_subspace_digest_items
+                    .as_ref()
+                    .expect("Always Some for non-first block; qed");
+
+                let parent_future_slot = parent_slot + self.chain_constants.block_authoring_delay();
+
+                let correct_input_parameters = PotNextSlotInput::derive(
+                    subspace_digest_items.pot_slot_iterations,
+                    parent_future_slot,
+                    parent_subspace_digest_items
+                        .pre_digest
+                        .pot_info()
+                        .future_proof_of_time(),
+                    &subspace_digest_items.pot_parameters_change,
+                );
+
+                if seed != correct_input_parameters.seed {
+                    return Err(Error::InvalidSubspaceJustificationContents);
+                }
+
+                // Number of checkpoints must match number of proofs that were not yet seen on chain
+                if checkpoints.len() as u64 != (*future_slot - *parent_future_slot) {
+                    return Err(Error::InvalidSubspaceJustificationContents);
+                }
+            }
         }
 
         let sector_id = SectorId::new(
@@ -898,9 +859,6 @@ where
             // Slot was already checked during initial block verification
             pre_digest.slot().into(),
             &VerifySolutionParams {
-                #[cfg(not(feature = "pot"))]
-                global_randomness: subspace_digest_items.global_randomness,
-                #[cfg(feature = "pot")]
                 proof_of_time: subspace_digest_items.pre_digest.pot_info().proof_of_time(),
                 solution_range: subspace_digest_items.solution_range,
                 piece_check_params: Some(PieceCheckParams {
@@ -1015,6 +973,7 @@ where
             block.body.clone(),
             &root_plot_public_key,
             &subspace_digest_items,
+            &block.justifications,
             skip_execution_checks,
         )
         .await
@@ -1108,44 +1067,10 @@ where
     }
 
     async fn check_block(
-        &mut self,
+        &self,
         block: BlockCheckParams<Block>,
     ) -> Result<ImportResult, Self::Error> {
         self.inner.check_block(block).await.map_err(Into::into)
-    }
-}
-
-/// Get chain constant configurations
-pub fn get_chain_constants<Block, Client>(
-    client: &Client,
-) -> Result<ChainConstants, Error<Block::Header>>
-where
-    Block: BlockT,
-    Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + AuxStore,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
-{
-    match aux_schema::load_chain_constants(client)? {
-        Some(chain_constants) => Ok(chain_constants),
-        None => {
-            // This is only called on the very first block for which we always have runtime
-            // storage access
-            let chain_constants = client
-                .runtime_api()
-                .chain_constants(client.info().best_hash)
-                .map_err(Error::<Block::Header>::RuntimeApi)?;
-
-            aux_schema::write_chain_constants(&chain_constants, |values| {
-                client.insert_aux(
-                    &values
-                        .iter()
-                        .map(|(key, value)| (key.as_slice(), *value))
-                        .collect::<Vec<_>>(),
-                    &[],
-                )
-            })?;
-
-            Ok(chain_constants)
-        }
     }
 }
 
@@ -1161,7 +1086,7 @@ pub fn block_import<PosTable, Client, Block, I, CIDP, AS>(
     kzg: Kzg,
     create_inherent_data_providers: CIDP,
     segment_headers_store: SegmentHeadersStore<AS>,
-    #[cfg(feature = "pot")] pot_verifier: PotVerifier,
+    pot_verifier: PotVerifier,
 ) -> Result<
     (
         SubspaceBlockImport<PosTable, Block, Client, I, CIDP, AS>,
@@ -1187,8 +1112,9 @@ where
     let (block_importing_notification_sender, block_importing_notification_stream) =
         notification::channel("subspace_block_importing_notification_stream");
 
-    let chain_constants = get_chain_constants(client.as_ref())
-        .map_err(|error| sp_blockchain::Error::Application(error.into()))?;
+    let chain_constants = client
+        .runtime_api()
+        .chain_constants(client.info().best_hash)?;
 
     let link = SubspaceLink {
         slot_duration,
@@ -1218,7 +1144,6 @@ where
         create_inherent_data_providers,
         chain_constants,
         segment_headers_store,
-        #[cfg(feature = "pot")]
         pot_verifier,
     );
 

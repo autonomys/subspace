@@ -22,22 +22,18 @@ use crate::xdm_verifier::is_valid_xdm;
 use codec::{Decode, Encode};
 use domain_runtime_primitives::opaque::AccountId;
 use domain_runtime_primitives::DomainCoreApi;
-use rand::seq::SliceRandom;
-use rand::SeedableRng;
-use rand_chacha::ChaCha8Rng;
 use runtime_api::InherentExtrinsicConstructor;
 use sc_client_api::BlockBackend;
 use sp_api::{HashT, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
+use sp_domains::verification::deduplicate_and_shuffle_extrinsics;
 use sp_domains::{
-    BundleValidity, DomainId, DomainsApi, DomainsDigestItem, ExecutionReceipt, ExtrinsicsRoot,
-    InvalidBundle, InvalidBundleType, OpaqueBundle, OpaqueBundles, ReceiptValidity, ValidBundle,
+    DomainId, DomainsApi, DomainsDigestItem, ExecutionReceipt, InboxedBundle, InvalidBundleType,
+    OpaqueBundle, OpaqueBundles, ReceiptValidity,
 };
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Header as HeaderT, NumberFor};
 use std::borrow::Cow;
-use std::collections::{BTreeMap, VecDeque};
-use std::fmt::Debug;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::{Randomness, U256};
@@ -50,6 +46,11 @@ type DomainBlockElements<CBlock> = (
     Randomness,
     MaybeNewRuntime,
 );
+
+enum BundleValidity<Extrinsic> {
+    Valid(Vec<Extrinsic>),
+    Invalid(InvalidBundleType),
+}
 
 /// Extracts the raw materials for building a new domain block from the primary block.
 fn prepare_domain_block_elements<Block, CBlock, CClient>(
@@ -108,86 +109,9 @@ where
     Ok((extrinsics, shuffling_seed, maybe_new_runtime))
 }
 
-fn deduplicate_and_shuffle_extrinsics<Block>(
-    mut extrinsics: Vec<(Option<AccountId>, Block::Extrinsic)>,
-    shuffling_seed: Randomness,
-) -> Result<Vec<Block::Extrinsic>, sp_blockchain::Error>
-where
-    Block: BlockT,
-{
-    let mut seen = Vec::new();
-    extrinsics.retain(|(_, uxt)| match seen.contains(uxt) {
-        true => {
-            tracing::trace!(extrinsic = ?uxt, "Duplicated extrinsic");
-            false
-        }
-        false => {
-            seen.push(uxt.clone());
-            true
-        }
-    });
-    drop(seen);
-
-    tracing::trace!(?extrinsics, "Origin deduplicated extrinsics");
-
-    let extrinsics =
-        shuffle_extrinsics::<<Block as BlockT>::Extrinsic, AccountId>(extrinsics, shuffling_seed);
-
-    Ok(extrinsics)
-}
-
-/// Shuffles the extrinsics in a deterministic way.
-///
-/// The extrinsics are grouped by the signer. The extrinsics without a signer, i.e., unsigned
-/// extrinsics, are considered as a special group. The items in different groups are cross shuffled,
-/// while the order of items inside the same group is still maintained.
-fn shuffle_extrinsics<Extrinsic: Debug, AccountId: Ord + Clone>(
-    extrinsics: Vec<(Option<AccountId>, Extrinsic)>,
-    shuffling_seed: Randomness,
-) -> Vec<Extrinsic> {
-    let mut rng = ChaCha8Rng::from_seed(*shuffling_seed);
-
-    let mut positions = extrinsics
-        .iter()
-        .map(|(maybe_signer, _)| maybe_signer)
-        .cloned()
-        .collect::<Vec<_>>();
-
-    // Shuffles the positions using Fisher–Yates algorithm.
-    positions.shuffle(&mut rng);
-
-    let mut grouped_extrinsics: BTreeMap<Option<AccountId>, VecDeque<_>> = extrinsics
-        .into_iter()
-        .fold(BTreeMap::new(), |mut groups, (maybe_signer, tx)| {
-            groups
-                .entry(maybe_signer)
-                .or_insert_with(VecDeque::new)
-                .push_back(tx);
-            groups
-        });
-
-    // The relative ordering for the items in the same group does not change.
-    let shuffled_extrinsics = positions
-        .into_iter()
-        .map(|maybe_signer| {
-            grouped_extrinsics
-                .get_mut(&maybe_signer)
-                .expect("Extrinsics are grouped correctly; qed")
-                .pop_front()
-                .expect("Extrinsic definitely exists as it's correctly grouped above; qed")
-        })
-        .collect::<Vec<_>>();
-
-    tracing::trace!(?shuffled_extrinsics, "Shuffled extrinsics");
-
-    shuffled_extrinsics
-}
-
 pub struct PreprocessResult<Block: BlockT> {
     pub extrinsics: Vec<Block::Extrinsic>,
-    pub extrinsics_roots: Vec<ExtrinsicsRoot>,
-    pub valid_bundles: Vec<ValidBundle>,
-    pub invalid_bundles: Vec<InvalidBundle>,
+    pub bundles: Vec<InboxedBundle>,
 }
 
 pub struct DomainBlockPreprocessor<Block, CBlock, Client, CClient, RuntimeApi, ReceiptValidator> {
@@ -292,21 +216,18 @@ where
             return Ok(None);
         }
 
-        let extrinsics_roots = bundles
-            .iter()
-            .map(|bundle| bundle.extrinsics_root())
-            .collect();
-
         let tx_range = self
             .consensus_client
             .runtime_api()
             .domain_tx_range(consensus_block_hash, self.domain_id)?;
 
-        let (valid_bundles, invalid_bundles, extrinsics) =
+        let (inboxed_bundles, extrinsics) =
             self.compile_bundles_to_extrinsics(bundles, tx_range, domain_hash)?;
 
-        let extrinsics_in_bundle =
-            deduplicate_and_shuffle_extrinsics::<Block>(extrinsics, shuffling_seed)?;
+        let extrinsics_in_bundle = deduplicate_and_shuffle_extrinsics::<<Block as BlockT>::Extrinsic>(
+            extrinsics,
+            shuffling_seed,
+        );
 
         // Fetch inherent extrinsics
         let mut extrinsics = construct_inherent_extrinsics(
@@ -332,9 +253,7 @@ where
         }
         Ok(Some(PreprocessResult {
             extrinsics,
-            extrinsics_roots,
-            valid_bundles,
-            invalid_bundles,
+            bundles: inboxed_bundles,
         }))
     }
 
@@ -347,15 +266,14 @@ where
         tx_range: U256,
         at: Block::Hash,
     ) -> sp_blockchain::Result<(
-        Vec<ValidBundle>,
-        Vec<InvalidBundle>,
+        Vec<InboxedBundle>,
         Vec<(Option<AccountId>, Block::Extrinsic)>,
     )> {
-        let mut invalid_bundles = Vec::with_capacity(bundles.len());
-        let mut valid_bundles = Vec::with_capacity(bundles.len());
+        let mut inboxed_bundles = Vec::with_capacity(bundles.len());
         let mut valid_extrinsics = Vec::new();
 
-        for (index, bundle) in bundles.into_iter().enumerate() {
+        for bundle in bundles {
+            let extrinsic_root = bundle.extrinsics_root();
             match self.check_bundle_validity(&bundle, &tx_range, at)? {
                 BundleValidity::Valid(extrinsics) => {
                     let extrinsics: Vec<_> = match self.runtime_api.extract_signer(at, extrinsics) {
@@ -369,22 +287,20 @@ where
                         .iter()
                         .map(|(signer, tx)| (signer.clone(), BlakeTwo256::hash_of(tx)))
                         .collect();
-                    valid_bundles.push(ValidBundle {
-                        bundle_index: index as u32,
-                        bundle_digest: BlakeTwo256::hash_of(&bundle_digest),
-                    });
+                    inboxed_bundles.push(InboxedBundle::valid(
+                        BlakeTwo256::hash_of(&bundle_digest),
+                        extrinsic_root,
+                    ));
                     valid_extrinsics.extend(extrinsics);
                 }
                 BundleValidity::Invalid(invalid_bundle_type) => {
-                    invalid_bundles.push(InvalidBundle {
-                        bundle_index: index as u32,
-                        invalid_bundle_type,
-                    });
+                    inboxed_bundles
+                        .push(InboxedBundle::invalid(invalid_bundle_type, extrinsic_root));
                 }
             }
         }
 
-        Ok((valid_bundles, invalid_bundles, valid_extrinsics))
+        Ok((inboxed_bundles, valid_extrinsics))
     }
 
     fn check_bundle_validity(
@@ -399,21 +315,15 @@ where
         tx_range: &U256,
         at: Block::Hash,
     ) -> sp_blockchain::Result<BundleValidity<Block::Extrinsic>> {
-        // Bundles with incorrect ER are considered invalid.
-        if let ReceiptValidity::Invalid(invalid_receipt) =
-            self.receipt_validator.validate_receipt(bundle.receipt())?
-        {
-            return Ok(BundleValidity::Invalid(InvalidBundleType::InvalidReceipt(
-                invalid_receipt,
-            )));
-        }
-
         let bundle_vrf_hash =
             U256::from_be_bytes(bundle.sealed_header.header.proof_of_election.vrf_hash());
 
         let mut extrinsics = Vec::with_capacity(bundle.extrinsics.len());
 
-        for opaque_extrinsic in &bundle.extrinsics {
+        // Check the validity of each extrinsic
+        //
+        // NOTE: for each extrinsic the checking order must follow `InvalidBundleType::checking_order`
+        for (index, opaque_extrinsic) in bundle.extrinsics.iter().enumerate() {
             let Ok(extrinsic) =
                 <<Block as BlockT>::Extrinsic>::decode(&mut opaque_extrinsic.encode().as_slice())
             else {
@@ -422,7 +332,9 @@ where
                     "Undecodable extrinsic in bundle({})",
                     bundle.hash()
                 );
-                return Ok(BundleValidity::Invalid(InvalidBundleType::UndecodableTx));
+                return Ok(BundleValidity::Invalid(InvalidBundleType::UndecodableTx(
+                    index as u32,
+                )));
             };
 
             let is_within_tx_range = self.client.runtime_api().is_within_tx_range(
@@ -434,7 +346,9 @@ where
 
             if !is_within_tx_range {
                 // TODO: Generate a fraud proof for this invalid bundle
-                return Ok(BundleValidity::Invalid(InvalidBundleType::OutOfRangeTx));
+                return Ok(BundleValidity::Invalid(InvalidBundleType::OutOfRangeTx(
+                    index as u32,
+                )));
             }
 
             // TODO: the `check_transaction_validity` is unimplemented
@@ -446,7 +360,9 @@ where
 
             if !is_legal_tx {
                 // TODO: Generate a fraud proof for this invalid bundle
-                return Ok(BundleValidity::Invalid(InvalidBundleType::IllegalTx));
+                return Ok(BundleValidity::Invalid(InvalidBundleType::IllegalTx(
+                    index as u32,
+                )));
             }
 
             // TODO: the behavior is changed, as before invalid XDM will be dropped silently,
@@ -459,7 +375,9 @@ where
                 &extrinsic,
             )? {
                 // TODO: Generate a fraud proof for this invalid bundle
-                return Ok(BundleValidity::Invalid(InvalidBundleType::InvalidXDM));
+                return Ok(BundleValidity::Invalid(InvalidBundleType::InvalidXDM(
+                    index as u32,
+                )));
             }
 
             extrinsics.push(extrinsic);
@@ -471,7 +389,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::shuffle_extrinsics;
+    use sp_domains::verification::shuffle_extrinsics;
     use sp_keyring::sr25519::Keyring;
     use sp_runtime::traits::{BlakeTwo256, Hash as HashT};
     use subspace_core_primitives::Randomness;

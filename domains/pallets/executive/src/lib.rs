@@ -23,6 +23,16 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+#[cfg(feature = "runtime-benchmarks")]
+mod benchmarking;
+
+#[cfg(test)]
+mod mock;
+#[cfg(test)]
+mod tests;
+
+pub mod weights;
+
 use codec::Codec;
 use frame_support::dispatch::{DispatchClass, DispatchInfo, GetDispatchInfo, PostDispatchInfo};
 use frame_support::traits::{
@@ -49,19 +59,16 @@ pub type OriginOf<E, C> = <CallOf<E, C> as Dispatchable>::RuntimeOrigin;
 // calculate the storage root outside the runtime after executing the extrinsic directly.
 #[frame_support::pallet]
 mod pallet {
-    use frame_support::dispatch::GetDispatchInfo;
+    use crate::weights::WeightInfo;
     use frame_support::pallet_prelude::*;
-    use frame_support::traits::UnfilteredDispatchable;
     use frame_system::pallet_prelude::*;
-    use sp_std::boxed::Box;
+    use frame_system::SetCode;
     use sp_std::vec::Vec;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
-        type RuntimeCall: Parameter
-            + UnfilteredDispatchable<RuntimeOrigin = Self::RuntimeOrigin>
-            + GetDispatchInfo;
+        type WeightInfo: WeightInfo;
     }
 
     #[pallet::pallet]
@@ -70,31 +77,21 @@ mod pallet {
 
     #[pallet::call]
     impl<T: Config> Pallet<T> {
-        // TODO: this call may be moved to other places if this pallet is no longer necessary.
-        /// Unsigned version of `frame_sudo::sudo_unchecked_weight`.
-        #[allow(clippy::boxed_local)]
+        /// Sets new runtime code after doing necessary checks.
+        /// Same as frame_system::Call::set_code but without root origin.
         #[pallet::call_index(0)]
-        #[pallet::weight((*_weight, call.get_dispatch_info().class, Pays::No))]
-        pub fn sudo_unchecked_weight_unsigned(
-            origin: OriginFor<T>,
-            call: Box<<T as Config>::RuntimeCall>,
-            _weight: Weight,
-        ) -> DispatchResult {
+        #[pallet::weight((T::WeightInfo::set_code(), DispatchClass::Operational))]
+        pub fn set_code(origin: OriginFor<T>, code: Vec<u8>) -> DispatchResultWithPostInfo {
             ensure_none(origin)?;
-            let res = call.dispatch_bypass_filter(frame_system::RawOrigin::Root.into());
-            Self::deposit_event(Event::Sudid {
-                sudo_result: res.map(|_| ()).map_err(|e| e.error),
-            });
-            Ok(())
+            <frame_system::pallet::Pallet<T>>::can_set_code(&code)?;
+            <T as frame_system::Config>::OnSetCode::set_code(code)?;
+            // consume the rest of the block to prevent further transactions
+            Ok(Some(T::BlockWeights::get().max_block).into())
         }
     }
 
     #[pallet::event]
-    #[pallet::generate_deposit(pub(super) fn deposit_event)]
-    pub enum Event<T: Config> {
-        /// A sudo just took place.
-        Sudid { sudo_result: DispatchResult },
-    }
+    pub enum Event<T: Config> {}
 
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {

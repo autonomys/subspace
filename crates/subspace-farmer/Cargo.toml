@@ -13,9 +13,9 @@ include = [
 
 [dependencies]
 anyhow = "1.0.75"
+async-lock = "2.8.0"
 async-trait = "0.1.73"
 atomic = "0.5.3"
-backoff = { version = "0.4.0", features = ["futures", "tokio"] }
 base58 = "0.2.0"
 blake2 = "0.10.6"
 blake3 = { version = "1.4.1", default-features = false }
@@ -28,26 +28,23 @@ futures = "0.3.28"
 hex = { version = "0.4.3", features = ["serde"] }
 jsonrpsee = { version = "0.16.3", features = ["client"] }
 lru = "0.11.0"
-memmap2 = "0.7.1"
 parity-scale-codec = "3.6.5"
 parking_lot = "0.12.1"
 prometheus-client = "0.21.2"
 rand = "0.8.5"
-rayon = "1.7.0"
+rayon = "1.8.0"
 schnorrkel = "0.9.1"
 serde = { version = "1.0.183", features = ["derive"] }
 serde_json = "1.0.106"
 static_assertions = "1.1.0"
-std-semaphore = "0.1.0"
 ss58-registry = "1.43.0"
 subspace-archiving = { version = "0.1.0", path = "../subspace-archiving" }
 subspace-erasure-coding = { version = "0.1.0", path = "../subspace-erasure-coding" }
 subspace-farmer-components = { version = "0.1.0", path = "../subspace-farmer-components" }
-subspace-solving = { version = "0.1.0", path = "../subspace-solving" }
 subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primitives" }
 subspace-metrics = { version = "0.1.0", path = "../../shared/subspace-metrics" }
 subspace-networking = { version = "0.1.0", path = "../subspace-networking" }
-subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space", features = ["chia"] }
+subspace-proof-of-space = { version = "0.1.0", path = "../subspace-proof-of-space" }
 subspace-rpc-primitives = { version = "0.1.0", path = "../subspace-rpc-primitives" }
 substrate-bip39 = "0.4.4"
 supports-color = "2.0.0"
@@ -58,3 +55,6 @@ tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
 ulid = { version = "1.0.0", features = ["serde"] }
 zeroize = "1.6.0"
+
+[target.'cfg(windows)'.dependencies]
+memmap2 = "0.9.0"

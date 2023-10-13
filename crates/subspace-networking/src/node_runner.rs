@@ -7,26 +7,22 @@ use crate::behavior::{
 };
 use crate::constructor;
 use crate::constructor::temporary_bans::TemporaryBans;
-use crate::constructor::{
-    ConnectedPeersHandler, LocalOnlyRecordStore, KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER,
-    REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER,
-};
+use crate::constructor::{ConnectedPeersHandler, KademliaMode, LocalOnlyRecordStore};
 use crate::protocols::connected_peers::Event as ConnectedPeersEvent;
 use crate::protocols::peer_info::{Event as PeerInfoEvent, PeerInfoSuccess};
 use crate::protocols::request_response::request_response_factory::{
     Event as RequestResponseEvent, IfDisconnected,
 };
-use crate::shared::{Command, CreatedSubscription, NewPeerInfo, Shared};
-use crate::utils::{
-    is_global_address_or_dns, strip_peer_id, PeerAddress, ResizableSemaphorePermit,
-};
+use crate::shared::{Command, CreatedSubscription, NewPeerInfo, PeerDiscovered, Shared};
+use crate::utils::rate_limiter::RateLimiterPermit;
+use crate::utils::{is_global_address_or_dns, strip_peer_id, PeerAddress};
 use async_mutex::Mutex as AsyncMutex;
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;
 use futures::channel::mpsc;
 use futures::future::Fuse;
 use futures::{FutureExt, StreamExt};
-use libp2p::autonat::Event as AutonatEvent;
+use libp2p::autonat::{Event as AutonatEvent, NatStatus};
 use libp2p::core::{address_translation, ConnectedPoint};
 use libp2p::gossipsub::{Event as GossipsubEvent, TopicHash};
 use libp2p::identify::Event as IdentifyEvent;
@@ -66,22 +62,22 @@ enum QueryResultSender {
     Value {
         sender: mpsc::UnboundedSender<PeerRecord>,
         // Just holding onto permit while data structure is not dropped
-        _permit: ResizableSemaphorePermit,
+        _permit: RateLimiterPermit,
     },
     ClosestPeers {
         sender: mpsc::UnboundedSender<PeerId>,
         // Just holding onto permit while data structure is not dropped
-        _permit: ResizableSemaphorePermit,
+        _permit: RateLimiterPermit,
     },
     Providers {
         sender: mpsc::UnboundedSender<PeerId>,
         // Just holding onto permit while data structure is not dropped
-        _permit: ResizableSemaphorePermit,
+        _permit: Option<RateLimiterPermit>,
     },
     PutValue {
         sender: mpsc::UnboundedSender<()>,
         // Just holding onto permit while data structure is not dropped
-        _permit: ResizableSemaphorePermit,
+        _permit: RateLimiterPermit,
     },
     Bootstrap {
         sender: mpsc::UnboundedSender<()>,
@@ -141,8 +137,8 @@ where
     bootstrap_addresses: Vec<Multiaddr>,
     /// Ensures a single bootstrap on run() invocation.
     bootstrap_command_state: Arc<AsyncMutex<BootstrapCommandState>>,
-    /// Kademlia mode. None means "automatic mode".
-    kademlia_mode: Option<Mode>,
+    /// Kademlia mode.
+    kademlia_mode: KademliaMode,
     /// Known external addresses to the local peer. The addresses are added on the swarm start
     /// and enable peer to notify others about its reachable address.
     external_addresses: Vec<Multiaddr>,
@@ -171,7 +167,7 @@ where
     pub(crate) general_connection_decision_handler: Option<ConnectedPeersHandler>,
     pub(crate) special_connection_decision_handler: Option<ConnectedPeersHandler>,
     pub(crate) bootstrap_addresses: Vec<Multiaddr>,
-    pub(crate) kademlia_mode: Option<Mode>,
+    pub(crate) kademlia_mode: KademliaMode,
     pub(crate) external_addresses: Vec<Multiaddr>,
 }
 
@@ -322,11 +318,17 @@ where
 
         debug!("Bootstrap started.");
 
+        let initial_mode = match self.kademlia_mode {
+            KademliaMode::Static(mode) => mode,
+            KademliaMode::Dynamic { initial_mode } => initial_mode,
+        };
+
         self.swarm
             .behaviour_mut()
             .kademlia
-            .set_mode(self.kademlia_mode);
-        debug!("Kademlia mode set: {:?}.", self.kademlia_mode);
+            .set_mode(Some(initial_mode));
+
+        debug!("Kademlia mode set: {:?}.", initial_mode);
 
         let mut bootstrap_step = 0;
         loop {
@@ -482,16 +484,10 @@ where
                     + 1;
                 if num_established_peer_connections > CONCURRENT_TASKS_BOOST_PEERS_THRESHOLD.get() {
                     // The peer count exceeded the threshold, bump up the quota.
-                    if let Err(error) = shared
-                        .kademlia_tasks_semaphore
-                        .expand(KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER)
-                    {
+                    if let Err(error) = shared.rate_limiter.expand_kademlia_semaphore() {
                         warn!(%error, "Failed to expand Kademlia concurrent tasks");
                     }
-                    if let Err(error) = shared
-                        .regular_tasks_semaphore
-                        .expand(REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER)
-                    {
+                    if let Err(error) = shared.rate_limiter.expand_regular_semaphore() {
                         warn!(%error, "Failed to expand regular concurrent tasks");
                     }
                 }
@@ -549,16 +545,10 @@ where
                 if num_established_peer_connections == CONCURRENT_TASKS_BOOST_PEERS_THRESHOLD.get()
                 {
                     // The previous peer count was over the threshold, reclaim the quota.
-                    if let Err(error) = shared
-                        .kademlia_tasks_semaphore
-                        .shrink(KADEMLIA_CONCURRENT_TASKS_BOOST_PER_PEER)
-                    {
+                    if let Err(error) = shared.rate_limiter.shrink_kademlia_semaphore() {
                         warn!(%error, "Failed to shrink Kademlia concurrent tasks");
                     }
-                    if let Err(error) = shared
-                        .regular_tasks_semaphore
-                        .shrink(REGULAR_CONCURRENT_TASKS_BOOST_PER_PEER)
-                    {
+                    if let Err(error) = shared.rate_limiter.shrink_regular_semaphore() {
                         warn!(%error, "Failed to shrink regular concurrent tasks");
                     }
                 }
@@ -814,6 +804,39 @@ where
                 debug!("Unroutable peer detected: {:?}", peer);
 
                 self.swarm.behaviour_mut().kademlia.remove_peer(&peer);
+
+                if let Some(shared) = self.shared_weak.upgrade() {
+                    shared
+                        .handlers
+                        .peer_discovered
+                        .call_simple(&PeerDiscovered::UnroutablePeer { peer_id: peer });
+                }
+            }
+            KademliaEvent::RoutablePeer { peer, address } => {
+                debug!(?address, "Routable peer detected: {:?}", peer);
+
+                if let Some(shared) = self.shared_weak.upgrade() {
+                    shared
+                        .handlers
+                        .peer_discovered
+                        .call_simple(&PeerDiscovered::RoutablePeer {
+                            peer_id: peer,
+                            address,
+                        });
+                }
+            }
+            KademliaEvent::PendingRoutablePeer { peer, address } => {
+                debug!(?address, "Pending routable peer detected: {:?}", peer);
+
+                if let Some(shared) = self.shared_weak.upgrade() {
+                    shared
+                        .handlers
+                        .peer_discovered
+                        .call_simple(&PeerDiscovered::RoutablePeer {
+                            peer_id: peer,
+                            address,
+                        });
+                }
             }
             KademliaEvent::OutboundQueryProgressed {
                 step: ProgressStep { last, .. },
@@ -1169,7 +1192,34 @@ where
         }
 
         if let AutonatEvent::StatusChanged { old, new } = event {
-            info!(?old, ?new, "Public address status changed.")
+            info!(?old, ?new, "Public address status changed.");
+
+            if matches!(self.kademlia_mode, KademliaMode::Dynamic { .. }) {
+                let mode = match &new {
+                    NatStatus::Public(address) => {
+                        if is_global_address_or_dns(address)
+                            || self.allow_non_global_addresses_in_dht
+                        {
+                            Mode::Server
+                        } else {
+                            debug!(
+                                ?old,
+                                ?new,
+                                ?address,
+                                non_global_addresses=%self.allow_non_global_addresses_in_dht,
+                                "Kademlia mode wasn't set."
+                            );
+                            Mode::Client
+                        }
+                    }
+                    NatStatus::Private => Mode::Client,
+                    NatStatus::Unknown => Mode::Client,
+                };
+
+                self.swarm.behaviour_mut().kademlia.set_mode(Some(mode));
+
+                debug!("Kademlia mode set: {:?}.", mode);
+            };
         }
     }
 

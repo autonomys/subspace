@@ -1,4 +1,4 @@
-use crate::aux_schema::ReceiptMismatchInfo;
+use crate::aux_schema::{BundleMismatchType, ReceiptMismatchInfo};
 use crate::fraud_proof::{find_trace_mismatch, FraudProofGenerator};
 use crate::parent_chain::ParentChainInterface;
 use crate::utils::{DomainBlockImportNotification, DomainImportNotificationSinks};
@@ -9,15 +9,17 @@ use domain_block_preprocessor::PreprocessResult;
 use domain_runtime_primitives::DomainCoreApi;
 use sc_client_api::{AuxStore, BlockBackend, Finalizer, ProofProvider};
 use sc_consensus::{
-    BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult, StateAction, StorageChanges,
+    BlockImportParams, ForkChoiceStrategy, ImportResult, SharedBlockImport, StateAction,
+    StorageChanges,
 };
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HashAndNumber, HeaderBackend, HeaderMetadata};
 use sp_consensus::{BlockOrigin, SyncOracle};
 use sp_core::traits::CodeExecutor;
+use sp_core::H256;
 use sp_domains::fraud_proof::FraudProof;
 use sp_domains::merkle_tree::MerkleTree;
-use sp_domains::{DomainId, DomainsApi, ExecutionReceipt};
+use sp_domains::{BundleValidity, DomainId, DomainsApi, ExecutionReceipt};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, One, Zero};
 use sp_runtime::Digest;
 use std::cmp::Ordering;
@@ -44,7 +46,7 @@ where
 }
 
 /// An abstracted domain block processor.
-pub(crate) struct DomainBlockProcessor<Block, CBlock, Client, CClient, Backend, BI>
+pub(crate) struct DomainBlockProcessor<Block, CBlock, Client, CClient, Backend>
 where
     Block: BlockT,
     CBlock: BlockT,
@@ -55,12 +57,12 @@ where
     pub(crate) consensus_client: Arc<CClient>,
     pub(crate) backend: Arc<Backend>,
     pub(crate) domain_confirmation_depth: NumberFor<Block>,
-    pub(crate) block_import: Arc<BI>,
+    pub(crate) block_import: SharedBlockImport<Block>,
     pub(crate) import_notification_sinks: DomainImportNotificationSinks<Block, CBlock>,
 }
 
-impl<Block, CBlock, Client, CClient, Backend, BI> Clone
-    for DomainBlockProcessor<Block, CBlock, Client, CClient, Backend, BI>
+impl<Block, CBlock, Client, CClient, Backend> Clone
+    for DomainBlockProcessor<Block, CBlock, Client, CClient, Backend>
 where
     Block: BlockT,
     CBlock: BlockT,
@@ -93,12 +95,13 @@ pub(crate) struct PendingConsensusBlocks<Block: BlockT, CBlock: BlockT> {
     pub consensus_imports: Vec<HashAndNumber<CBlock>>,
 }
 
-impl<Block, CBlock, Client, CClient, Backend, BI>
-    DomainBlockProcessor<Block, CBlock, Client, CClient, Backend, BI>
+impl<Block, CBlock, Client, CClient, Backend>
+    DomainBlockProcessor<Block, CBlock, Client, CClient, Backend>
 where
     Block: BlockT,
     CBlock: BlockT,
     NumberFor<CBlock>: Into<NumberFor<Block>>,
+    Block::Hash: Into<H256>,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + AuxStore
@@ -107,7 +110,6 @@ where
         + 'static,
     Client::Api:
         DomainCoreApi<Block> + sp_block_builder::BlockBuilder<Block> + sp_api::ApiExt<Block>,
-    for<'b> &'b BI: BlockImport<Block, Error = sp_consensus::Error>,
     CClient: HeaderBackend<CBlock>
         + HeaderMetadata<CBlock, Error = sp_blockchain::Error>
         + BlockBackend<CBlock>
@@ -273,9 +275,7 @@ where
     ) -> Result<DomainBlockResult<Block, CBlock>, sp_blockchain::Error> {
         let PreprocessResult {
             extrinsics,
-            extrinsics_roots,
-            valid_bundles,
-            invalid_bundles,
+            bundles,
         } = preprocess_result;
 
         // Although the domain block intuitively ought to use the same fork choice
@@ -352,10 +352,7 @@ where
                     "Domain block header for #{genesis_hash:?} not found",
                 ))
             })?;
-            ExecutionReceipt::genesis(
-                self.consensus_client.info().genesis_hash,
-                *genesis_header.state_root(),
-            )
+            ExecutionReceipt::genesis(*genesis_header.state_root())
         } else {
             crate::load_execution_receipt_by_domain_hash::<Block, CBlock, _>(
                 &*self.client,
@@ -371,13 +368,11 @@ where
         let execution_receipt = ExecutionReceipt {
             domain_block_number: header_number,
             domain_block_hash: header_hash,
-            domain_block_extrinsic_root: extrinsics_root,
+            domain_block_extrinsic_root: extrinsics_root.into(),
             parent_domain_block_receipt_hash: parent_receipt.hash(),
             consensus_block_number,
             consensus_block_hash,
-            valid_bundles,
-            invalid_bundles,
-            block_extrinsics_roots: extrinsics_roots,
+            inboxed_bundles: bundles,
             final_state_root: state_root,
             execution_trace: trace,
             execution_trace_root: sp_core::H256(trace_root),
@@ -449,7 +444,9 @@ where
             *block_import_params.header.parent_hash(),
         );
 
-        let import_result = (&*self.block_import)
+        let import_result = (*self.block_import)
+            .write()
+            .await
             .import_block(block_import_params)
             .await?;
 
@@ -547,6 +544,89 @@ where
     }
 }
 
+// Find the first mismatch of the `InboxedBundle` in the `ER::bundles` list
+pub(crate) fn find_inboxed_bundles_mismatch<Block, CBlock>(
+    local_receipt: &ExecutionReceiptFor<Block, CBlock>,
+    external_receipt: &ExecutionReceiptFor<Block, CBlock>,
+) -> Result<Option<ReceiptMismatchInfo<CBlock::Hash>>, sp_blockchain::Error>
+where
+    Block: BlockT,
+    CBlock: BlockT,
+{
+    if local_receipt.inboxed_bundles == external_receipt.inboxed_bundles {
+        return Ok(None);
+    }
+
+    // The `bundles_extrinsics_roots` should be checked in the runtime when the consensus block is
+    // constructed/imported thus the `external_receipt` must have the same `bundles_extrinsics_roots`
+    //
+    // NOTE: this also check `local_receipt.inboxed_bundles` and `external_receipt.inboxed_bundles`
+    // have the same length
+    if local_receipt.bundles_extrinsics_roots() != external_receipt.bundles_extrinsics_roots() {
+        return Err(sp_blockchain::Error::Application(format!(
+            "Found mismatch of `ER::bundles_extrinsics_roots`, this should not happen, local: {:?}, external: {:?}",
+            local_receipt.bundles_extrinsics_roots(),
+            external_receipt.bundles_extrinsics_roots(),
+        ).into()));
+    }
+
+    // Get the first mismatch of `ER::bundles`
+    let (bundle_index, (local_bundle, external_bundle)) = local_receipt
+        .inboxed_bundles
+        .iter()
+        .zip(external_receipt.inboxed_bundles.iter())
+        .enumerate()
+        .find(|(_, (local_bundle, external_bundle))| local_bundle != external_bundle)
+        .expect(
+            "The `local_receipt.inboxed_bundles` and `external_receipt.inboxed_bundles` are checked to have the \
+            same length and being non-equal; qed",
+        );
+
+    // The `local_bundle` and `external_bundle` are checked to have the same `extrinsic_root`
+    // thus they must being mismatch due to bundle validity
+    let mismatch_type = match (local_bundle.bundle.clone(), external_bundle.bundle.clone()) {
+        (
+            BundleValidity::Invalid(local_invalid_type),
+            BundleValidity::Invalid(external_invalid_type),
+        ) => {
+            match local_invalid_type
+                .extrinsic_index()
+                .cmp(&external_invalid_type.extrinsic_index())
+            {
+                // A bundle can contains multiple invalid extrinsics thus consider the first invalid extrinsic
+                // as the mismatch.
+                Ordering::Less => BundleMismatchType::TrueInvalid(local_invalid_type),
+                Ordering::Greater => BundleMismatchType::FalseInvalid(external_invalid_type),
+                // If both the `local_invalid_type` and `external_invalid_type` point to the same extrinsic,
+                // the extrinsic can be considered as invalid due to multiple `invalid_type` (i.e. an extrinsic
+                // can be `OutOfRangeTx` and `InvalidXDM` at the same time) thus use the checking order and
+                // consider the first check as the mismatch.
+                Ordering::Equal => match local_invalid_type.checking_order().cmp(&external_invalid_type.checking_order()) {
+                    Ordering::Less => BundleMismatchType::TrueInvalid(local_invalid_type),
+                    Ordering::Greater => BundleMismatchType::FalseInvalid(external_invalid_type),
+                    Ordering::Equal => unreachable!(
+                        "bundle validity must be different as the local/external bundle are checked to be different \
+                        and they have the same `extrinsic_root`"
+                    ),
+                },
+            }
+        }
+        (BundleValidity::Valid(_), BundleValidity::Valid(_)) => BundleMismatchType::Valid,
+        (BundleValidity::Valid(_), BundleValidity::Invalid(invalid_type)) => {
+            BundleMismatchType::FalseInvalid(invalid_type)
+        }
+        (BundleValidity::Invalid(invalid_type), BundleValidity::Valid(_)) => {
+            BundleMismatchType::TrueInvalid(invalid_type)
+        }
+    };
+
+    Ok(Some(ReceiptMismatchInfo::Bundles {
+        mismatch_type,
+        bundle_index: bundle_index as u32,
+        consensus_block_hash: local_receipt.consensus_block_hash,
+    }))
+}
+
 pub(crate) struct ReceiptsChecker<
     Block,
     Client,
@@ -601,7 +681,11 @@ where
         + 'static,
     Client::Api:
         DomainCoreApi<Block> + sp_block_builder::BlockBuilder<Block> + sp_api::ApiExt<Block>,
-    CClient: HeaderBackend<CBlock> + BlockBackend<CBlock> + ProvideRuntimeApi<CBlock> + 'static,
+    CClient: HeaderBackend<CBlock>
+        + BlockBackend<CBlock>
+        + ProofProvider<CBlock>
+        + ProvideRuntimeApi<CBlock>
+        + 'static,
     CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
     Backend: sc_client_api::Backend<Block> + 'static,
     E: CodeExecutor,
@@ -676,6 +760,33 @@ where
                 execution_receipt.consensus_block_number
             )))?;
 
+            if let Some(receipt_mismatch_info) = find_inboxed_bundles_mismatch::<
+                Block,
+                ParentChainBlock,
+            >(&local_receipt, execution_receipt)?
+            {
+                bad_receipts_to_write.push((
+                    execution_receipt.consensus_block_number,
+                    execution_receipt.hash(),
+                    receipt_mismatch_info,
+                ));
+
+                continue;
+            }
+
+            if execution_receipt.domain_block_extrinsic_root
+                != local_receipt.domain_block_extrinsic_root
+            {
+                bad_receipts_to_write.push((
+                    execution_receipt.consensus_block_number,
+                    execution_receipt.hash(),
+                    ReceiptMismatchInfo::DomainExtrinsicsRoot {
+                        consensus_block_hash,
+                    },
+                ));
+                continue;
+            }
+
             if let Some(trace_mismatch_index) = find_trace_mismatch(
                 &local_receipt.execution_trace,
                 &execution_receipt.execution_trace,
@@ -692,7 +803,7 @@ where
                 bad_receipts_to_write.push((
                     execution_receipt.consensus_block_number,
                     execution_receipt.hash(),
-                    ReceiptMismatchInfo::TotalRewardsMismatch {
+                    ReceiptMismatchInfo::TotalRewards {
                         consensus_block_hash,
                     },
                 ));
@@ -781,7 +892,7 @@ where
             })?;
 
             let fraud_proof = match mismatch_info {
-                ReceiptMismatchInfo::TraceMismatch { trace_index, .. } => self
+                ReceiptMismatchInfo::Trace { trace_index, .. } => self
                     .fraud_proof_generator
                     .generate_invalid_state_transition_proof::<ParentChainBlock>(
                         self.domain_id,
@@ -794,7 +905,7 @@ where
                             "Failed to generate fraud proof: {err}"
                         )))
                     })?,
-                ReceiptMismatchInfo::TotalRewardsMismatch { .. } => self
+                ReceiptMismatchInfo::TotalRewards { .. } => self
                     .fraud_proof_generator
                     .generate_invalid_total_rewards_proof::<ParentChainBlock>(
                         self.domain_id,
@@ -806,11 +917,285 @@ where
                             "Failed to generate invalid block rewards fraud proof: {err}"
                         )))
                     })?,
+                ReceiptMismatchInfo::Bundles {
+                    mismatch_type,
+                    bundle_index,
+                    ..
+                } => {
+                    match mismatch_type {
+                        BundleMismatchType::Valid => {
+                            // TODO: generate valid bundle fraud proof
+                            return Ok(None);
+                        }
+                        _ => self
+                            .fraud_proof_generator
+                            .generate_invalid_bundle_field_proof::<ParentChainBlock>(
+                                self.domain_id,
+                                &local_receipt,
+                                mismatch_type,
+                                bundle_index,
+                                bad_receipt_hash,
+                            )
+                            .map_err(|err| {
+                                sp_blockchain::Error::Application(Box::from(format!(
+                                    "Failed to generate invalid bundles field fraud proof: {err}"
+                                )))
+                            })?,
+                    }
+                }
+                ReceiptMismatchInfo::DomainExtrinsicsRoot { .. } => self
+                    .fraud_proof_generator
+                    .generate_invalid_domain_extrinsics_root_proof::<ParentChainBlock>(
+                        self.domain_id,
+                        &local_receipt,
+                        bad_receipt_hash,
+                    )
+                    .map_err(|err| {
+                        sp_blockchain::Error::Application(Box::from(format!(
+                            "Failed to generate invalid domain extrinsics root fraud proof: {err}"
+                        )))
+                    })?,
             };
 
             return Ok(Some(fraud_proof));
         }
 
         Ok(None)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use domain_test_service::evm_domain_test_runtime::Block;
+    use sp_core::{sp_std, H256};
+    use sp_domains::{ExecutionReceipt, InboxedBundle, InvalidBundleType};
+    use subspace_test_runtime::Block as CBlock;
+
+    fn create_test_execution_receipt(
+        inboxed_bundles: Vec<InboxedBundle>,
+    ) -> ExecutionReceiptFor<Block, CBlock>
+    where
+        Block: BlockT,
+        CBlock: BlockT,
+    {
+        ExecutionReceipt {
+            domain_block_number: Zero::zero(),
+            domain_block_hash: Default::default(),
+            domain_block_extrinsic_root: Default::default(),
+            parent_domain_block_receipt_hash: Default::default(),
+            consensus_block_hash: Default::default(),
+            consensus_block_number: Zero::zero(),
+            inboxed_bundles,
+            final_state_root: Default::default(),
+            execution_trace: sp_std::vec![],
+            execution_trace_root: Default::default(),
+            total_rewards: Zero::zero(),
+        }
+    }
+
+    #[test]
+    fn er_bundles_mismatch_detection() {
+        // If empty invalid receipt field on both should result in no fraud proof
+        assert_eq!(
+            find_inboxed_bundles_mismatch::<Block, CBlock>(
+                &create_test_execution_receipt(vec![]),
+                &create_test_execution_receipt(vec![]),
+            )
+            .unwrap(),
+            None
+        );
+
+        assert_eq!(
+            find_inboxed_bundles_mismatch::<Block, CBlock>(
+                &create_test_execution_receipt(vec![InboxedBundle::invalid(
+                    InvalidBundleType::UndecodableTx(0),
+                    Default::default()
+                )]),
+                &create_test_execution_receipt(vec![InboxedBundle::invalid(
+                    InvalidBundleType::UndecodableTx(0),
+                    Default::default()
+                )]),
+            )
+            .unwrap(),
+            None
+        );
+
+        // Mismatch in valid bundle
+        assert_eq!(
+            find_inboxed_bundles_mismatch::<Block, CBlock>(
+                &create_test_execution_receipt(vec![
+                    InboxedBundle::invalid(InvalidBundleType::UndecodableTx(0), Default::default()),
+                    InboxedBundle::valid(H256::random(), Default::default()),
+                ]),
+                &create_test_execution_receipt(vec![
+                    InboxedBundle::invalid(InvalidBundleType::UndecodableTx(0), Default::default()),
+                    InboxedBundle::valid(H256::random(), Default::default()),
+                ]),
+            )
+            .unwrap(),
+            Some(ReceiptMismatchInfo::Bundles {
+                mismatch_type: BundleMismatchType::Valid,
+                bundle_index: 1,
+                consensus_block_hash: Default::default()
+            })
+        );
+
+        // Mismatch in invalid extrinsic index
+        assert_eq!(
+            find_inboxed_bundles_mismatch::<Block, CBlock>(
+                &create_test_execution_receipt(vec![
+                    InboxedBundle::valid(Default::default(), Default::default()),
+                    InboxedBundle::invalid(InvalidBundleType::UndecodableTx(1), Default::default()),
+                ]),
+                &create_test_execution_receipt(vec![
+                    InboxedBundle::valid(Default::default(), Default::default()),
+                    InboxedBundle::invalid(InvalidBundleType::UndecodableTx(2), Default::default()),
+                ]),
+            )
+            .unwrap(),
+            Some(ReceiptMismatchInfo::Bundles {
+                mismatch_type: BundleMismatchType::TrueInvalid(InvalidBundleType::UndecodableTx(1)),
+                bundle_index: 1,
+                consensus_block_hash: Default::default()
+            })
+        );
+        assert_eq!(
+            find_inboxed_bundles_mismatch::<Block, CBlock>(
+                &create_test_execution_receipt(vec![
+                    InboxedBundle::valid(Default::default(), Default::default()),
+                    InboxedBundle::invalid(InvalidBundleType::UndecodableTx(4), Default::default()),
+                ]),
+                &create_test_execution_receipt(vec![
+                    InboxedBundle::valid(Default::default(), Default::default()),
+                    InboxedBundle::invalid(InvalidBundleType::UndecodableTx(3), Default::default()),
+                ]),
+            )
+            .unwrap(),
+            Some(ReceiptMismatchInfo::Bundles {
+                mismatch_type: BundleMismatchType::FalseInvalid(InvalidBundleType::UndecodableTx(
+                    3
+                )),
+                bundle_index: 1,
+                consensus_block_hash: Default::default()
+            })
+        );
+        // Even the invalid type is mismatch, the extrinsic index mismatch should be considered first
+        assert_eq!(
+            find_inboxed_bundles_mismatch::<Block, CBlock>(
+                &create_test_execution_receipt(vec![
+                    InboxedBundle::valid(Default::default(), Default::default()),
+                    InboxedBundle::invalid(InvalidBundleType::UndecodableTx(4), Default::default()),
+                ]),
+                &create_test_execution_receipt(vec![
+                    InboxedBundle::valid(Default::default(), Default::default()),
+                    InboxedBundle::invalid(InvalidBundleType::IllegalTx(3), Default::default()),
+                ]),
+            )
+            .unwrap(),
+            Some(ReceiptMismatchInfo::Bundles {
+                mismatch_type: BundleMismatchType::FalseInvalid(InvalidBundleType::IllegalTx(3)),
+                bundle_index: 1,
+                consensus_block_hash: Default::default()
+            })
+        );
+
+        // Mismatch in invalid type
+        assert_eq!(
+            find_inboxed_bundles_mismatch::<Block, CBlock>(
+                &create_test_execution_receipt(vec![
+                    InboxedBundle::valid(Default::default(), Default::default()),
+                    InboxedBundle::invalid(InvalidBundleType::IllegalTx(3), Default::default()),
+                ]),
+                &create_test_execution_receipt(vec![
+                    InboxedBundle::valid(Default::default(), Default::default()),
+                    InboxedBundle::invalid(InvalidBundleType::InvalidXDM(3), Default::default()),
+                ]),
+            )
+            .unwrap(),
+            Some(ReceiptMismatchInfo::Bundles {
+                mismatch_type: BundleMismatchType::TrueInvalid(InvalidBundleType::IllegalTx(3)),
+                bundle_index: 1,
+                consensus_block_hash: Default::default()
+            })
+        );
+        assert_eq!(
+            find_inboxed_bundles_mismatch::<Block, CBlock>(
+                &create_test_execution_receipt(vec![
+                    InboxedBundle::valid(Default::default(), Default::default()),
+                    InboxedBundle::invalid(InvalidBundleType::InvalidXDM(3), Default::default()),
+                ]),
+                &create_test_execution_receipt(vec![
+                    InboxedBundle::valid(Default::default(), Default::default()),
+                    InboxedBundle::invalid(InvalidBundleType::IllegalTx(3), Default::default()),
+                ]),
+            )
+            .unwrap(),
+            Some(ReceiptMismatchInfo::Bundles {
+                mismatch_type: BundleMismatchType::FalseInvalid(InvalidBundleType::IllegalTx(3)),
+                bundle_index: 1,
+                consensus_block_hash: Default::default()
+            })
+        );
+
+        // Only first mismatch is detected
+        assert_eq!(
+            find_inboxed_bundles_mismatch::<Block, CBlock>(
+                &create_test_execution_receipt(vec![
+                    InboxedBundle::valid(H256::random(), Default::default()),
+                    InboxedBundle::invalid(InvalidBundleType::InvalidXDM(3), Default::default()),
+                ]),
+                &create_test_execution_receipt(vec![
+                    InboxedBundle::valid(H256::random(), Default::default()),
+                    InboxedBundle::invalid(InvalidBundleType::IllegalTx(3), Default::default()),
+                ]),
+            )
+            .unwrap(),
+            Some(ReceiptMismatchInfo::Bundles {
+                mismatch_type: BundleMismatchType::Valid,
+                bundle_index: 0,
+                consensus_block_hash: Default::default()
+            })
+        );
+
+        // Taking valid bundle as invalid
+        assert_eq!(
+            find_inboxed_bundles_mismatch::<Block, CBlock>(
+                &create_test_execution_receipt(vec![InboxedBundle::valid(
+                    H256::random(),
+                    Default::default()
+                ),]),
+                &create_test_execution_receipt(vec![InboxedBundle::invalid(
+                    InvalidBundleType::IllegalTx(3),
+                    Default::default()
+                ),]),
+            )
+            .unwrap(),
+            Some(ReceiptMismatchInfo::Bundles {
+                mismatch_type: BundleMismatchType::FalseInvalid(InvalidBundleType::IllegalTx(3)),
+                bundle_index: 0,
+                consensus_block_hash: Default::default()
+            })
+        );
+
+        // Taking invalid as valid
+        assert_eq!(
+            find_inboxed_bundles_mismatch::<Block, CBlock>(
+                &create_test_execution_receipt(vec![InboxedBundle::invalid(
+                    InvalidBundleType::IllegalTx(3),
+                    Default::default()
+                ),]),
+                &create_test_execution_receipt(vec![InboxedBundle::valid(
+                    H256::random(),
+                    Default::default()
+                ),]),
+            )
+            .unwrap(),
+            Some(ReceiptMismatchInfo::Bundles {
+                mismatch_type: BundleMismatchType::TrueInvalid(InvalidBundleType::IllegalTx(3)),
+                bundle_index: 0,
+                consensus_block_hash: Default::default()
+            })
+        );
     }
 }

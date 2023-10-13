@@ -79,7 +79,7 @@
 //     ArchivedHistorySegment, FlatPieces, HistorySize, Piece, PieceIndex, PieceOffset, Solution,
 // };
 // use subspace_proof_of_space::shim::ShimTable;
-// use subspace_solving::REWARD_SIGNING_CONTEXT;
+// use subspace_core_primitives::REWARD_SIGNING_CONTEXT;
 // use substrate_test_runtime::{Block as TestBlock, Hash};
 // use tokio::runtime::{Handle, Runtime};
 //

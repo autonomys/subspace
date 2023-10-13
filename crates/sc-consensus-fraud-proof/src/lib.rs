@@ -63,15 +63,15 @@ where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + Send + Sync + 'static,
     Client::Api: DomainsApi<Block, DomainNumber, DomainHash>,
-    Inner: BlockImport<Block, Error = ConsensusError> + Send,
-    Verifier: VerifyFraudProof<Block> + Send,
-    DomainNumber: Encode + Decode + Send,
-    DomainHash: Encode + Decode + Send,
+    Inner: BlockImport<Block, Error = ConsensusError> + Send + Sync,
+    Verifier: VerifyFraudProof<Block> + Send + Sync,
+    DomainNumber: Encode + Decode + Send + Sync,
+    DomainHash: Encode + Decode + Send + Sync,
 {
     type Error = ConsensusError;
 
     async fn check_block(
-        &mut self,
+        &self,
         block: BlockCheckParams<Block>,
     ) -> Result<ImportResult, Self::Error> {
         self.inner.check_block(block).await.map_err(Into::into)

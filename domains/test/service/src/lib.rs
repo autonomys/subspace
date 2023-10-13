@@ -215,7 +215,7 @@ where
     >::from_raw(
         function.clone(),
         extra.clone(),
-        ((), 0, 0, genesis_block, current_block_hash, (), (), ()),
+        ((), 1, 0, genesis_block, current_block_hash, (), (), ()),
     );
     let signature = raw_payload.using_encoded(|e| caller.sign(e));
     UncheckedExtrinsicFor::<Runtime>::new_signed(

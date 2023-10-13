@@ -14,23 +14,31 @@ use tokio::time::sleep;
 #[derive(Debug, Clone)]
 struct ConnectedPeersInstance;
 
+#[cfg(not(windows))]
+const DECISION_TIMEOUT: Duration = Duration::from_millis(300);
+#[cfg(not(windows))]
+const LONG_DELAY: Duration = Duration::from_millis(1000);
+
+// Windows implementation seems to require greater delays.
+#[cfg(windows)]
+const DECISION_TIMEOUT: Duration = Duration::from_millis(900);
+#[cfg(windows)]
+const LONG_DELAY: Duration = Duration::from_millis(3000);
+
 #[tokio::test()]
 async fn test_connection_breaks_after_timeout_without_decision() {
-    let decision_timeout = Duration::from_millis(300);
-    let long_delay = Duration::from_millis(1000);
-
     let mut peer1 = new_ephemeral(
-        decision_timeout,
+        DECISION_TIMEOUT,
         Behaviour::<ConnectedPeersInstance>::new(Config {
-            decision_timeout,
+            decision_timeout: DECISION_TIMEOUT,
             ..Default::default()
         }),
     );
 
     let mut peer2 = new_ephemeral(
-        decision_timeout,
+        DECISION_TIMEOUT,
         Behaviour::<ConnectedPeersInstance>::new(Config {
-            decision_timeout,
+            decision_timeout: DECISION_TIMEOUT,
             ..Default::default()
         }),
     );
@@ -42,7 +50,7 @@ async fn test_connection_breaks_after_timeout_without_decision() {
         select! {
             _ = peer1.next_swarm_event().fuse() => {},
             _ = peer2.next_swarm_event().fuse() => {},
-            _ = sleep(long_delay).fuse() => {
+            _ = sleep(LONG_DELAY).fuse() => {
                 break;
             }
         }
@@ -55,21 +63,18 @@ async fn test_connection_breaks_after_timeout_without_decision() {
 
 #[tokio::test()]
 async fn test_connection_decision() {
-    let decision_timeout = Duration::from_millis(300);
-    let long_delay = Duration::from_millis(1000);
-
     let mut peer1 = new_ephemeral(
-        decision_timeout,
+        DECISION_TIMEOUT,
         Behaviour::<ConnectedPeersInstance>::new(Config {
-            decision_timeout,
+            decision_timeout: DECISION_TIMEOUT,
             ..Default::default()
         }),
     );
 
     let mut peer2 = new_ephemeral(
-        decision_timeout,
+        DECISION_TIMEOUT,
         Behaviour::<ConnectedPeersInstance>::new(Config {
-            decision_timeout,
+            decision_timeout: DECISION_TIMEOUT,
             ..Default::default()
         }),
     );
@@ -88,7 +93,7 @@ async fn test_connection_decision() {
         select! {
             _ = peer1.next_swarm_event().fuse() => {},
             _ = peer2.next_swarm_event().fuse() => {},
-            _ = sleep(long_delay).fuse() => {
+            _ = sleep(LONG_DELAY).fuse() => {
                 break;
             }
         }
@@ -101,21 +106,18 @@ async fn test_connection_decision() {
 
 #[tokio::test()]
 async fn test_connection_decision_symmetry() {
-    let decision_timeout = Duration::from_millis(300);
-    let long_delay = Duration::from_millis(1000);
-
     let mut peer1 = new_ephemeral(
-        decision_timeout,
+        DECISION_TIMEOUT,
         Behaviour::<ConnectedPeersInstance>::new(Config {
-            decision_timeout,
+            decision_timeout: DECISION_TIMEOUT,
             ..Default::default()
         }),
     );
 
     let mut peer2 = new_ephemeral(
-        decision_timeout,
+        DECISION_TIMEOUT,
         Behaviour::<ConnectedPeersInstance>::new(Config {
-            decision_timeout,
+            decision_timeout: DECISION_TIMEOUT,
             ..Default::default()
         }),
     );
@@ -134,7 +136,7 @@ async fn test_connection_decision_symmetry() {
         select! {
             _ = peer1.next_swarm_event().fuse() => {},
             _ = peer2.next_swarm_event().fuse() => {},
-            _ = sleep(long_delay).fuse() => {
+            _ = sleep(LONG_DELAY).fuse() => {
                 break;
             }
         }
@@ -147,8 +149,7 @@ async fn test_connection_decision_symmetry() {
 
 #[tokio::test()]
 async fn test_new_peer_request() {
-    let dialing_interval = Duration::from_millis(300);
-    let long_delay = Duration::from_millis(1000);
+    let dialing_interval = DECISION_TIMEOUT;
 
     let mut peer1 = new_ephemeral(
         dialing_interval,
@@ -167,7 +168,7 @@ async fn test_new_peer_request() {
                     break;
                 }
             },
-            _ = sleep(long_delay).fuse() => {
+            _ = sleep(LONG_DELAY).fuse() => {
                 panic!("No new peers requests.");
             }
         }
@@ -178,33 +179,31 @@ async fn test_new_peer_request() {
 
 #[tokio::test()]
 async fn test_target_connected_peer_limit_number() {
-    let decision_timeout = Duration::from_millis(300);
-    let long_delay = Duration::from_millis(1000);
     let target_connected_peers = 1;
 
     let mut peer1 = new_ephemeral(
-        decision_timeout,
+        DECISION_TIMEOUT,
         Behaviour::<ConnectedPeersInstance>::new(Config {
-            decision_timeout,
+            decision_timeout: DECISION_TIMEOUT,
             target_connected_peers,
             ..Default::default()
         }),
     );
 
     let mut peer2 = new_ephemeral(
-        decision_timeout,
+        DECISION_TIMEOUT,
         Behaviour::<ConnectedPeersInstance>::new(Config {
             target_connected_peers,
-            decision_timeout,
+            decision_timeout: DECISION_TIMEOUT,
             ..Default::default()
         }),
     );
 
     let mut peer3 = new_ephemeral(
-        decision_timeout,
+        DECISION_TIMEOUT,
         Behaviour::<ConnectedPeersInstance>::new(Config {
             target_connected_peers,
-            decision_timeout,
+            decision_timeout: DECISION_TIMEOUT,
             ..Default::default()
         }),
     );
@@ -243,7 +242,7 @@ async fn test_target_connected_peer_limit_number() {
             _ = peer1.next_swarm_event().fuse() => {},
             _ = peer2.next_swarm_event().fuse() => {},
             _ = peer3.next_swarm_event().fuse() => {},
-            _ = sleep(long_delay).fuse() => {
+            _ = sleep(LONG_DELAY).fuse() => {
                 break;
             }
         }

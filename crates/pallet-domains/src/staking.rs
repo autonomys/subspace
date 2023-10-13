@@ -1,10 +1,10 @@
 //! Staking for domains
 
 use crate::pallet::{
-    DomainStakingSummary, NextOperatorId, Nominators, OperatorIdOwner, Operators, PendingDeposits,
-    PendingNominatorUnlocks, PendingOperatorDeregistrations, PendingOperatorSwitches,
-    PendingOperatorUnlocks, PendingSlashes, PendingStakingOperationCount, PendingWithdrawals,
-    PreferredOperator,
+    DomainRegistry, DomainStakingSummary, NextOperatorId, Nominators, OperatorIdOwner, Operators,
+    PendingDeposits, PendingNominatorUnlocks, PendingOperatorDeregistrations,
+    PendingOperatorSwitches, PendingOperatorUnlocks, PendingSlashes, PendingStakingOperationCount,
+    PendingWithdrawals, PreferredOperator,
 };
 use crate::staking_epoch::{mint_funds, PendingNominatorUnlock, PendingOperatorSlashInfo};
 use crate::{BalanceOf, Config, Event, HoldIdentifier, NominatorId, Pallet};
@@ -14,7 +14,7 @@ use frame_support::traits::tokens::{Fortitude, Preservation};
 use frame_support::{ensure, PalletError};
 use scale_info::TypeInfo;
 use sp_core::Get;
-use sp_domains::{DomainId, EpochIndex, OperatorId, OperatorPublicKey};
+use sp_domains::{DomainId, EpochIndex, OperatorId, OperatorPublicKey, ZERO_OPERATOR_SIGNING_KEY};
 use sp_runtime::traits::{CheckedAdd, CheckedSub, One, Zero};
 use sp_runtime::{Perbill, Percent};
 use sp_std::collections::btree_map::BTreeMap;
@@ -107,6 +107,8 @@ pub enum Error {
     TryDepositWithPendingWithdraw,
     TryWithdrawWithPendingDeposit,
     TooManyPendingStakingOperation,
+    OperatorNotAllowed,
+    InvalidOperatorSigningKey,
 }
 
 // Increase `PendingStakingOperationCount` by one and check if the `MaxPendingStakingOperation`
@@ -133,6 +135,20 @@ pub(crate) fn do_register_operator<T: Config>(
     note_pending_staking_operation::<T>(domain_id)?;
 
     DomainStakingSummary::<T>::try_mutate(domain_id, |maybe_domain_stake_summary| {
+        ensure!(
+            config.signing_key != OperatorPublicKey::from(ZERO_OPERATOR_SIGNING_KEY),
+            Error::InvalidOperatorSigningKey
+        );
+
+        let domain_obj = DomainRegistry::<T>::get(domain_id).ok_or(Error::DomainNotInitialized)?;
+        ensure!(
+            domain_obj
+                .domain_config
+                .operator_allow_list
+                .is_operator_allowed(&operator_owner),
+            Error::OperatorNotAllowed
+        );
+
         let operator_id = NextOperatorId::<T>::get();
         let next_operator_id = operator_id.checked_add(1).ok_or(Error::MaximumOperatorId)?;
         NextOperatorId::<T>::set(next_operator_id);
@@ -240,6 +256,15 @@ pub(crate) fn do_switch_operator_domain<T: Config>(
     operator_id: OperatorId,
     new_domain_id: DomainId,
 ) -> Result<DomainId, Error> {
+    let domain_obj = DomainRegistry::<T>::get(new_domain_id).ok_or(Error::DomainNotInitialized)?;
+    ensure!(
+        domain_obj
+            .domain_config
+            .operator_allow_list
+            .is_operator_allowed(&operator_owner),
+        Error::OperatorNotAllowed
+    );
+
     ensure!(
         OperatorIdOwner::<T>::get(operator_id) == Some(operator_owner),
         Error::NotOperatorOwner
@@ -581,11 +606,12 @@ pub(crate) fn do_slash_operators<T: Config, Iter: Iterator<Item = OperatorId>>(
 
 #[cfg(test)]
 pub(crate) mod tests {
+    use crate::domain_registry::{DomainConfig, DomainObject};
     use crate::pallet::{
-        Config, DomainStakingSummary, NextOperatorId, OperatorIdOwner, Operators, PendingDeposits,
-        PendingNominatorUnlocks, PendingOperatorDeregistrations, PendingOperatorSwitches,
-        PendingSlashes, PendingStakingOperationCount, PendingUnlocks, PendingWithdrawals,
-        PreferredOperator,
+        Config, DomainRegistry, DomainStakingSummary, NextOperatorId, OperatorIdOwner, Operators,
+        PendingDeposits, PendingNominatorUnlocks, PendingOperatorDeregistrations,
+        PendingOperatorSwitches, PendingSlashes, PendingStakingOperationCount, PendingUnlocks,
+        PendingWithdrawals, PreferredOperator,
     };
     use crate::staking::{
         do_nominate_operator, do_reward_operators, do_slash_operators, do_withdraw_stake,
@@ -599,9 +625,13 @@ pub(crate) mod tests {
     use crate::{BalanceOf, Error, NominatorId};
     use frame_support::traits::fungible::Mutate;
     use frame_support::traits::Currency;
+    use frame_support::weights::Weight;
     use frame_support::{assert_err, assert_ok};
     use sp_core::{Pair, U256};
-    use sp_domains::{DomainId, OperatorId, OperatorPair, OperatorPublicKey};
+    use sp_domains::{
+        DomainId, OperatorAllowList, OperatorId, OperatorPair, OperatorPublicKey,
+        ZERO_OPERATOR_SIGNING_KEY,
+    };
     use sp_runtime::traits::Zero;
     use std::collections::{BTreeMap, BTreeSet};
     use std::vec;
@@ -625,6 +655,25 @@ pub(crate) mod tests {
             assert_eq!(Balances::usable_balance(nominator.0), nominator.1 .0);
         }
         nominators.remove(&operator_account);
+
+        let domain_config = DomainConfig {
+            domain_name: String::from_utf8(vec![0; 1024]).unwrap(),
+            runtime_id: 0,
+            max_block_size: u32::MAX,
+            max_block_weight: Weight::MAX,
+            bundle_slot_probability: (0, 0),
+            target_bundles_per_block: 0,
+            operator_allow_list: OperatorAllowList::Anyone,
+        };
+
+        let domain_obj = DomainObject {
+            owner_account_id: 0,
+            created_at: 0,
+            genesis_receipt_hash: Default::default(),
+            domain_config,
+        };
+
+        DomainRegistry::<Test>::insert(domain_id, domain_obj);
 
         DomainStakingSummary::<Test>::insert(
             domain_id,
@@ -666,6 +715,32 @@ pub(crate) mod tests {
         }
 
         (operator_id, operator_config)
+    }
+
+    #[test]
+    fn test_register_operator_invalid_signing_key() {
+        let domain_id = DomainId::new(0);
+        let operator_account = 1;
+
+        let mut ext = new_test_ext();
+        ext.execute_with(|| {
+            let operator_config = OperatorConfig {
+                signing_key: OperatorPublicKey::from(ZERO_OPERATOR_SIGNING_KEY),
+                minimum_nominator_stake: Default::default(),
+                nomination_tax: Default::default(),
+            };
+
+            let res = Domains::register_operator(
+                RuntimeOrigin::signed(operator_account),
+                domain_id,
+                Default::default(),
+                operator_config,
+            );
+            assert_err!(
+                res,
+                Error::<Test>::Staking(StakingError::InvalidOperatorSigningKey)
+            );
+        });
     }
 
     #[test]
@@ -799,6 +874,25 @@ pub(crate) mod tests {
                 BTreeMap::new(),
             );
 
+            let domain_config = DomainConfig {
+                domain_name: String::from_utf8(vec![0; 1024]).unwrap(),
+                runtime_id: 0,
+                max_block_size: u32::MAX,
+                max_block_weight: Weight::MAX,
+                bundle_slot_probability: (0, 0),
+                target_bundles_per_block: 0,
+                operator_allow_list: OperatorAllowList::Anyone,
+            };
+
+            let domain_obj = DomainObject {
+                owner_account_id: 0,
+                created_at: 0,
+                genesis_receipt_hash: Default::default(),
+                domain_config,
+            };
+
+            DomainRegistry::<Test>::insert(new_domain_id, domain_obj);
+
             DomainStakingSummary::<Test>::insert(
                 new_domain_id,
                 StakingSummary {
@@ -885,6 +979,24 @@ pub(crate) mod tests {
 
             // domain switch will not work since the operator is frozen
             let new_domain_id = DomainId::new(1);
+            let domain_config = DomainConfig {
+                domain_name: String::from_utf8(vec![0; 1024]).unwrap(),
+                runtime_id: 0,
+                max_block_size: u32::MAX,
+                max_block_weight: Weight::MAX,
+                bundle_slot_probability: (0, 0),
+                target_bundles_per_block: 0,
+                operator_allow_list: OperatorAllowList::Anyone,
+            };
+
+            let domain_obj = DomainObject {
+                owner_account_id: 0,
+                created_at: 0,
+                genesis_receipt_hash: Default::default(),
+                domain_config,
+            };
+
+            DomainRegistry::<Test>::insert(new_domain_id, domain_obj);
             DomainStakingSummary::<Test>::insert(
                 new_domain_id,
                 StakingSummary {

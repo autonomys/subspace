@@ -72,7 +72,6 @@ pub type DomainOperator<RuntimeApi, ExecutorDispatch> = domain_service::DomainOp
     subspace_test_client::Client,
     RuntimeApi,
     ExecutorDispatch,
-    Arc<Client<RuntimeApi, ExecutorDispatch>>,
 >;
 
 /// A generic domain node instance used for testing.
@@ -183,7 +182,7 @@ where
                 .await
                 .expect("Failed to get domain instance data")
         };
-        let chain_spec = create_domain_spec(domain_id, domain_instance_data);
+        let chain_spec = create_domain_spec(domain_instance_data.raw_genesis);
         let domain_config = node_config(
             domain_id,
             tokio_handle.clone(),
@@ -212,6 +211,7 @@ where
                 .block_importing_notification_stream(),
             imported_block_notification_stream,
             new_slot_notification_stream: mock_consensus_node.new_slot_notification_stream(),
+            acknowledgement_sender_stream: mock_consensus_node.new_acknowledgement_sender_stream(),
             _phantom: Default::default(),
         };
 
@@ -230,7 +230,6 @@ where
                 mock_consensus_node.transaction_pool.clone(),
             ),
             consensus_network_sync_oracle: mock_consensus_node.sync_service.clone(),
-            select_chain: mock_consensus_node.select_chain.clone(),
             operator_streams,
             gossip_message_sink: gossip_msg_sink,
             domain_message_receiver,

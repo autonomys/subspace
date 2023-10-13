@@ -58,7 +58,7 @@ where
         &self,
         at: Block::Hash,
         moment: Moment,
-    ) -> Result<Option<Block::Extrinsic>, ApiError> {
+    ) -> Result<Block::Extrinsic, ApiError> {
         let api = self.client.runtime_api();
         api.construct_inherent_timestamp_extrinsic(at, moment)
     }

@@ -5,13 +5,14 @@ on:
     branches:
       - main
     paths-ignore:
-      - '**.md'
-      - '.github/CODEOWNERS'
+      - "**.md"
+      - ".github/CODEOWNERS"
   pull_request:
     paths-ignore:
-      - '**.md'
-      - '.github/CODEOWNERS'
+      - "**.md"
+      - ".github/CODEOWNERS"
   workflow_dispatch:
+  merge_group:
 
 concurrency:
   group: rust-${{ github.workflow }}-${{ github.ref }}
@@ -43,7 +44,7 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Configure cache
-        uses: actions/cache@9b0c1fce7a93df8e3bb8926b0d6e9d89e92f20a7 # @v3.0.11
+        uses: actions/cache@704facf57e6136b1bc63b828d79edcd491f0ee84 # @v3.3.2
         with:
           path: |
             ~/.cargo/registry
@@ -98,18 +99,18 @@ jobs:
         continue-on-error: true
 
       - name: Configure cache
-        uses: actions/cache@9b0c1fce7a93df8e3bb8926b0d6e9d89e92f20a7 # @v3.0.11
+        uses: actions/cache@9b0c1fce7a93df8e3bb8926b0d6e9d89e92f20a7 # @v3.3.2
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ matrix.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
 
       - name: cargo clippy
         uses: actions-rs/clippy-check@b5b5f21f4797c02da247df37026fcd0a5024aa4d # @v1.0.7
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          args: --locked --all-targets -- -D warnings
+          args: --locked --all-targets --features "runtime-benchmarks" -- -D warnings
 
   cargo-docs:
     runs-on: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "ubuntu-20.04-x86-64"]' || 'ubuntu-22.04') }}
@@ -123,12 +124,12 @@ jobs:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Configure cache
-        uses: actions/cache@9b0c1fce7a93df8e3bb8926b0d6e9d89e92f20a7 # @v3.0.11
+        uses: actions/cache@9b0c1fce7a93df8e3bb8926b0d6e9d89e92f20a7 # @v3.3.2
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ matrix.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
 
       - name: Check Documentation
         run: cargo doc --locked --all --no-deps --lib
@@ -182,12 +183,12 @@ jobs:
           tool: cargo-nextest
 
       - name: Configure cache
-        uses: actions/cache@9b0c1fce7a93df8e3bb8926b0d6e9d89e92f20a7 # @v3.0.11
+        uses: actions/cache@9b0c1fce7a93df8e3bb8926b0d6e9d89e92f20a7 # @v3.3.2
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: ${{ matrix.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
 
       - name: cargo nextest run --locked
         uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b # @v1.0.1

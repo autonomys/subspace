@@ -1,6 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use futures::executor::block_on;
-use memmap2::Mmap;
 use rand::prelude::*;
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -14,13 +13,15 @@ use subspace_core_primitives::{
     HistorySize, PieceOffset, PublicKey, Record, RecordedHistorySegment, SectorId,
 };
 use subspace_erasure_coding::ErasureCoding;
-use subspace_farmer_components::file_ext::FileExt;
-use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy, PlottedSector};
+use subspace_farmer_components::file_ext::{FileExt, OpenOptionsExt};
+use subspace_farmer_components::plotting::{
+    plot_sector, PieceGetterRetryPolicy, PlotSectorOptions, PlottedSector,
+};
 use subspace_farmer_components::reading::read_piece;
 use subspace_farmer_components::sector::{
     sector_size, SectorContentsMap, SectorMetadata, SectorMetadataChecksummed,
 };
-use subspace_farmer_components::FarmerProtocolInfo;
+use subspace_farmer_components::{FarmerProtocolInfo, ReadAt};
 use subspace_proof_of_space::chia::ChiaTable;
 use subspace_proof_of_space::Table;
 
@@ -111,22 +112,24 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     } else {
         println!("Plotting one sector...");
 
-        let mut plotted_sector_bytes = vec![0; sector_size];
-        let mut plotted_sector_metadata_bytes = vec![0; SectorMetadataChecksummed::encoded_size()];
+        let mut plotted_sector_bytes = Vec::new();
+        let mut plotted_sector_metadata_bytes = Vec::new();
 
-        let plotted_sector = block_on(plot_sector::<_, PosTable>(
-            &public_key,
+        let plotted_sector = block_on(plot_sector::<PosTable, _>(PlotSectorOptions {
+            public_key: &public_key,
             sector_index,
-            &archived_history_segment,
-            PieceGetterRetryPolicy::default(),
-            &farmer_protocol_info,
-            &kzg,
-            &erasure_coding,
+            piece_getter: &archived_history_segment,
+            piece_getter_retry_policy: PieceGetterRetryPolicy::default(),
+            farmer_protocol_info: &farmer_protocol_info,
+            kzg: &kzg,
+            erasure_coding: &erasure_coding,
             pieces_in_sector,
-            &mut plotted_sector_bytes,
-            &mut plotted_sector_metadata_bytes,
-            &mut table_generator,
-        ))
+            sector_output: &mut plotted_sector_bytes,
+            sector_metadata_output: &mut plotted_sector_metadata_bytes,
+            downloading_semaphore: black_box(None),
+            encoding_semaphore: black_box(None),
+            table_generator: &mut table_generator,
+        }))
         .unwrap();
 
         (plotted_sector, plotted_sector_bytes)
@@ -148,7 +151,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     group.throughput(Throughput::Elements(1));
     group.bench_function("piece/memory", |b| {
         b.iter(|| {
-            read_piece::<PosTable>(
+            read_piece::<PosTable, _>(
                 black_box(piece_offset),
                 black_box(&plotted_sector.sector_id),
                 black_box(&plotted_sector.sector_metadata),
@@ -169,6 +172,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             .write(true)
             .create(true)
             .truncate(true)
+            .advise_random_access()
             .open(&plot_file_path)
             .unwrap();
 
@@ -183,24 +187,18 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                 .unwrap();
         }
 
-        let plot_mmap = unsafe { Mmap::map(&plot_file).unwrap() };
-
-        #[cfg(unix)]
-        {
-            plot_mmap.advise(memmap2::Advice::Random).unwrap();
-        }
-
         group.throughput(Throughput::Elements(sectors_count));
-        group.bench_function("piece/disk", move |b| {
+        group.bench_function("piece/disk", |b| {
             b.iter_custom(|iters| {
                 let start = Instant::now();
                 for _i in 0..iters {
-                    for sector in plot_mmap.chunks_exact(sector_size) {
-                        read_piece::<PosTable>(
+                    for sector_index in 0..sectors_count as usize {
+                        let sector = plot_file.offset(sector_index * sector_size);
+                        read_piece::<PosTable, _>(
                             black_box(piece_offset),
                             black_box(&plotted_sector.sector_id),
                             black_box(&plotted_sector.sector_metadata),
-                            black_box(sector),
+                            black_box(&sector),
                             black_box(&erasure_coding),
                             black_box(&mut table_generator),
                         )

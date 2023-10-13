@@ -35,6 +35,7 @@ use pallet_evm::{
 use pallet_transporter::EndpointHandler;
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
+use sp_core::storage::StateVersion;
 use sp_core::{Get, OpaqueMetadata, H160, H256, U256};
 use sp_domains::DomainId;
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
@@ -244,6 +245,7 @@ parameter_types! {
         })
         .avg_block_initialization(AVERAGE_ON_INITIALIZE_RATIO)
         .build_or_panic();
+    pub const ExtrinsicsRootStateVersion: StateVersion = StateVersion::V1;
 }
 
 impl frame_system::Config for Runtime {
@@ -291,6 +293,7 @@ impl frame_system::Config for Runtime {
     /// The action to take on a Runtime Upgrade
     type OnSetCode = ();
     type MaxConsumers = ConstU32<16>;
+    type ExtrinsicsRootStateVersion = ExtrinsicsRootStateVersion;
 }
 
 impl pallet_timestamp::Config for Runtime {
@@ -360,7 +363,7 @@ impl pallet_transaction_payment::Config for Runtime {
 
 impl domain_pallet_executive::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type RuntimeCall = RuntimeCall;
+    type WeightInfo = domain_pallet_executive::weights::SubstrateWeight<Runtime>;
 }
 
 impl pallet_sudo::Config for Runtime {
@@ -474,18 +477,7 @@ parameter_types! {
     pub WeightPerGas: Weight = Weight::from_parts(WEIGHT_PER_GAS, 0);
 }
 
-// `BaseFeeHandler` is used to handle the base fee of the evm extrinsic separately, this is necessary
-// because `InnerEVMCurrencyAdapter::pallet_operator_rewards` only return the tip of the evm extrinsic.
-struct BaseFeeHandler;
-
-impl OnUnbalanced<NegativeImbalance> for BaseFeeHandler {
-    fn on_nonzero_unbalanced(base_fee: NegativeImbalance) {
-        // Record the evm transaction base fee
-        OperatorRewards::note_operator_rewards(base_fee.peek())
-    }
-}
-
-type InnerEVMCurrencyAdapter = pallet_evm::EVMCurrencyAdapter<Balances, BaseFeeHandler>;
+type InnerEVMCurrencyAdapter = pallet_evm::EVMCurrencyAdapter<Balances, ()>;
 
 // Implementation of [`pallet_transaction_payment::OnChargeTransaction`] that charges evm transaction
 // fees from the transaction sender and collect all the fees (including both the base fee and tip) in
@@ -508,15 +500,14 @@ impl pallet_evm::OnChargeEVMTransaction<Runtime> for EVMCurrencyAdapter {
         base_fee: U256,
         already_withdrawn: Self::LiquidityInfo,
     ) -> Self::LiquidityInfo {
-        let tip =
-            <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<
-                Runtime,
-            >>::correct_and_deposit_fee(who, corrected_fee, base_fee, already_withdrawn);
-        if let Some(t) = tip.as_ref() {
-            // Record the evm transaction tip
-            OperatorRewards::note_operator_rewards(t.peek())
+        if already_withdrawn.is_some() {
+            // Record the evm actual transaction fee
+            OperatorRewards::note_operator_rewards(corrected_fee.as_u128());
         }
-        tip
+
+        <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<
+            Runtime,
+        >>::correct_and_deposit_fee(who, corrected_fee, base_fee, already_withdrawn)
     }
 
     fn pay_priority_fee(tip: Self::LiquidityInfo) {
@@ -600,6 +591,9 @@ construct_runtime!(
     pub struct Runtime {
         // System support stuff.
         System: frame_system = 0,
+        // Note: Ensure index of the timestamp matches with the index of timestamp on Consensus
+        //  so that consensus can constructed encoded extrinsic that matches with Domain encoded
+        //  extrinsic.
         Timestamp: pallet_timestamp = 1,
         ExecutivePallet: domain_pallet_executive = 2,
 
@@ -703,6 +697,15 @@ pub fn extract_signer(
             (maybe_signer, extrinsic)
         })
         .collect()
+}
+
+#[cfg(feature = "runtime-benchmarks")]
+mod benches {
+    frame_benchmarking::define_benchmarks!(
+        [frame_benchmarking, BaselineBench::<Runtime>]
+        [frame_system, SystemBench::<Runtime>]
+        [domain_pallet_executive, ExecutivePallet]
+    );
 }
 
 impl_runtime_apis! {
@@ -823,12 +826,12 @@ impl_runtime_apis! {
             tx_range: &subspace_core_primitives::U256
         ) -> bool {
             use subspace_core_primitives::U256;
-            use subspace_core_primitives::crypto::blake2b_256_hash;
+            use subspace_core_primitives::crypto::blake3_hash;
 
             let lookup = frame_system::ChainContext::<Runtime>::default();
             if let Some(signer) = extract_signer_inner(extrinsic, &lookup) {
                 // Check if the signer Id hash is within the tx range
-                let signer_id_hash = U256::from_be_bytes(blake2b_256_hash(&signer.encode()));
+                let signer_id_hash = U256::from_be_bytes(blake3_hash(&signer.encode()));
                 sp_domains::signer_in_tx_range(bundle_vrf_hash, &signer_id_hash, tx_range)
             } else {
                 // Unsigned transactions are always in the range.
@@ -851,12 +854,9 @@ impl_runtime_apis! {
         }
 
         fn construct_set_code_extrinsic(code: Vec<u8>) -> Vec<u8> {
-            use codec::Encode;
-            let set_code_call = frame_system::Call::set_code { code };
             UncheckedExtrinsic::new_unsigned(
-                domain_pallet_executive::Call::sudo_unchecked_weight_unsigned {
-                    call: Box::new(set_code_call.into()),
-                    weight: Weight::from_parts(0, 0),
+                domain_pallet_executive::Call::set_code {
+                    code
                 }.into()
             ).encode()
         }
@@ -890,12 +890,10 @@ impl_runtime_apis! {
     }
 
     impl domain_runtime_primitives::InherentExtrinsicApi<Block> for Runtime {
-        fn construct_inherent_timestamp_extrinsic(moment: Moment) -> Option<<Block as BlockT>::Extrinsic> {
-             Some(
-                UncheckedExtrinsic::new_unsigned(
-                    pallet_timestamp::Call::set{ now: moment }.into()
-                )
-             )
+        fn construct_inherent_timestamp_extrinsic(moment: Moment) -> <Block as BlockT>::Extrinsic {
+            UncheckedExtrinsic::new_unsigned(
+                pallet_timestamp::Call::set{ now: moment }.into()
+            )
         }
     }
 
@@ -1128,13 +1126,14 @@ impl_runtime_apis! {
             Vec<frame_benchmarking::BenchmarkList>,
             Vec<frame_support::traits::StorageInfo>,
         ) {
-            use frame_benchmarking::{Benchmarking, BenchmarkList, list_benchmark};
+            use frame_benchmarking::{baseline, Benchmarking, BenchmarkList};
             use frame_support::traits::StorageInfoTrait;
             use frame_system_benchmarking::Pallet as SystemBench;
+            use baseline::Pallet as BaselineBench;
 
             let mut list = Vec::<BenchmarkList>::new();
 
-            list_benchmark!(list, extra, frame_system, SystemBench::<Runtime>);
+            list_benchmarks!(list, extra);
 
             let storage_info = AllPalletsWithSystem::storage_info();
 
@@ -1144,28 +1143,21 @@ impl_runtime_apis! {
         fn dispatch_benchmark(
             config: frame_benchmarking::BenchmarkConfig
         ) -> Result<Vec<frame_benchmarking::BenchmarkBatch>, sp_runtime::RuntimeString> {
-            use frame_benchmarking::{Benchmarking, BenchmarkBatch, TrackedStorageKey, add_benchmark};
-
+            use frame_benchmarking::{baseline, Benchmarking, BenchmarkBatch};
+            use sp_storage::TrackedStorageKey;
             use frame_system_benchmarking::Pallet as SystemBench;
-            impl frame_system_benchmarking::Config for Runtime {}
+            use frame_support::traits::WhitelistedStorageKeys;
+            use baseline::Pallet as BaselineBench;
 
-            let whitelist: Vec<TrackedStorageKey> = vec![
-                // Block Number
-                hex_literal::hex!("26aa394eea5630e07c48ae0c9558cef702a5c1b19ab7a04f536c519aca4983ac").to_vec().into(),
-                // Total Issuance
-                hex_literal::hex!("c2261276cc9d1f8598ea4b6a74b15c2f57c875e4cff74148e4628f264b974c80").to_vec().into(),
-                // Execution Phase
-                hex_literal::hex!("26aa394eea5630e07c48ae0c9558cef7ff553b5a9862a516939d82b3d3d8661a").to_vec().into(),
-                // RuntimeEvent Count
-                hex_literal::hex!("26aa394eea5630e07c48ae0c9558cef70a98fdbe9ce6c55837576c60c7af3850").to_vec().into(),
-                // System Events
-                hex_literal::hex!("26aa394eea5630e07c48ae0c9558cef780d41e5e16056765bc8461851072c9d7").to_vec().into(),
-            ];
+            impl frame_system_benchmarking::Config for Runtime {}
+            impl baseline::Config for Runtime {}
+
+            let whitelist: Vec<TrackedStorageKey> = AllPalletsWithSystem::whitelisted_storage_keys();
 
             let mut batches = Vec::<BenchmarkBatch>::new();
             let params = (&config, &whitelist);
 
-            add_benchmark!(params, batches, frame_system, SystemBench::<Runtime>);
+            add_benchmarks!(params, batches);
 
             if batches.is_empty() { return Err("Benchmark not found for this pallet.".into()) }
             Ok(batches)

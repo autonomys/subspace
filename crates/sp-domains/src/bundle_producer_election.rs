@@ -4,12 +4,12 @@ use scale_info::TypeInfo;
 use sp_core::crypto::{VrfPublic, Wraps};
 use sp_core::sr25519::vrf::{VrfOutput, VrfSignature, VrfTranscript};
 use sp_std::vec::Vec;
-use subspace_core_primitives::Blake2b256Hash;
+use subspace_core_primitives::Blake3Hash;
 
 const VRF_TRANSCRIPT_LABEL: &[u8] = b"bundle_producer_election";
 
 /// Generates a domain-specific vrf transcript from given global_challenge.
-pub fn make_transcript(domain_id: DomainId, global_challenge: &Blake2b256Hash) -> VrfTranscript {
+pub fn make_transcript(domain_id: DomainId, global_challenge: &Blake3Hash) -> VrfTranscript {
     VrfTranscript::new(
         VRF_TRANSCRIPT_LABEL,
         &[
@@ -70,7 +70,7 @@ pub(crate) fn verify_vrf_signature(
     domain_id: DomainId,
     public_key: &OperatorPublicKey,
     vrf_signature: &VrfSignature,
-    global_challenge: &Blake2b256Hash,
+    global_challenge: &Blake3Hash,
 ) -> Result<(), VrfProofError> {
     if !public_key.as_inner_ref().vrf_verify(
         &make_transcript(domain_id, global_challenge).into(),

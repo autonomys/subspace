@@ -4,7 +4,7 @@ use crate::{PosTableType, Quality, Table, TableGenerator};
 use core::mem;
 use subspace_core_primitives::{PosProof, PosQualityBytes, PosSeed};
 
-const K: u8 = 17;
+const K: u8 = 20;
 
 /// Abstraction that represents quality of the solution in the table.
 ///
@@ -121,7 +121,7 @@ mod tests {
         assert!(table_parallel.find_quality(1232460437).is_none());
 
         {
-            let challenge_index = 124537303;
+            let challenge_index = 600426542;
             let quality = table.find_quality(challenge_index).unwrap();
             assert_eq!(
                 quality.to_bytes(),

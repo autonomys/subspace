@@ -1,6 +1,5 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use futures::executor::block_on;
-use memmap2::Mmap;
 use rand::prelude::*;
 use schnorrkel::Keypair;
 use std::fs::OpenOptions;
@@ -12,18 +11,21 @@ use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    Blake2b256Hash, HistorySize, PublicKey, Record, RecordedHistorySegment, SectorId, SolutionRange,
+    Blake3Hash, HistorySize, PosSeed, PublicKey, Record, RecordedHistorySegment, SectorId,
+    SolutionRange,
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector;
-use subspace_farmer_components::file_ext::FileExt;
-use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy, PlottedSector};
+use subspace_farmer_components::file_ext::{FileExt, OpenOptionsExt};
+use subspace_farmer_components::plotting::{
+    plot_sector, PieceGetterRetryPolicy, PlotSectorOptions, PlottedSector,
+};
 use subspace_farmer_components::sector::{
     sector_size, SectorContentsMap, SectorMetadata, SectorMetadataChecksummed,
 };
-use subspace_farmer_components::FarmerProtocolInfo;
+use subspace_farmer_components::{FarmerProtocolInfo, ReadAt};
 use subspace_proof_of_space::chia::ChiaTable;
-use subspace_proof_of_space::Table;
+use subspace_proof_of_space::{Table, TableGenerator};
 
 type PosTable = ChiaTable;
 
@@ -116,22 +118,24 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     } else {
         println!("Plotting one sector...");
 
-        let mut plotted_sector_bytes = vec![0; sector_size];
-        let mut plotted_sector_metadata_bytes = vec![0; SectorMetadataChecksummed::encoded_size()];
+        let mut plotted_sector_bytes = Vec::new();
+        let mut plotted_sector_metadata_bytes = Vec::new();
 
-        let plotted_sector = block_on(plot_sector::<_, PosTable>(
-            &public_key,
+        let plotted_sector = block_on(plot_sector::<PosTable, _>(PlotSectorOptions {
+            public_key: &public_key,
             sector_index,
-            &archived_history_segment,
-            PieceGetterRetryPolicy::default(),
-            &farmer_protocol_info,
-            &kzg,
-            &erasure_coding,
+            piece_getter: &archived_history_segment,
+            piece_getter_retry_policy: PieceGetterRetryPolicy::default(),
+            farmer_protocol_info: &farmer_protocol_info,
+            kzg: &kzg,
+            erasure_coding: &erasure_coding,
             pieces_in_sector,
-            &mut plotted_sector_bytes,
-            &mut plotted_sector_metadata_bytes,
-            &mut table_generator,
-        ))
+            sector_output: &mut plotted_sector_bytes,
+            sector_metadata_output: &mut plotted_sector_metadata_bytes,
+            downloading_semaphore: black_box(None),
+            encoding_semaphore: black_box(None),
+            table_generator: &mut table_generator,
+        }))
         .unwrap();
 
         (plotted_sector, plotted_sector_bytes)
@@ -149,10 +153,10 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
     println!("Searching for solutions");
     let global_challenge = loop {
-        let mut global_challenge = Blake2b256Hash::default();
+        let mut global_challenge = Blake3Hash::default();
         rng.fill_bytes(&mut global_challenge);
 
-        let maybe_solution_candidates = audit_sector(
+        let maybe_audit_result = audit_sector(
             &public_key,
             sector_index,
             &global_challenge,
@@ -161,8 +165,8 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             &plotted_sector.sector_metadata,
         );
 
-        let solution_candidates = match maybe_solution_candidates {
-            Some(solution_candidates) => solution_candidates,
+        let solution_candidates = match maybe_audit_result {
+            Some(audit_result) => audit_result.solution_candidates,
             None => {
                 continue;
             }
@@ -170,7 +174,9 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
         let num_actual_solutions = solution_candidates
             .clone()
-            .into_iter::<_, PosTable>(&reward_address, &kzg, &erasure_coding, &mut table_generator)
+            .into_solutions(&reward_address, &kzg, &erasure_coding, |seed: &PosSeed| {
+                table_generator.generate_parallel(seed)
+            })
             .unwrap()
             .len();
 
@@ -189,18 +195,19 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             &plotted_sector_bytes,
             &plotted_sector.sector_metadata,
         )
-        .unwrap();
+        .unwrap()
+        .solution_candidates;
 
         group.throughput(Throughput::Elements(1));
         group.bench_function("memory", |b| {
             b.iter(|| {
                 solution_candidates
                     .clone()
-                    .into_iter::<_, PosTable>(
+                    .into_solutions(
                         black_box(&reward_address),
                         black_box(&kzg),
                         black_box(&erasure_coding),
-                        black_box(&mut table_generator),
+                        black_box(|seed: &PosSeed| table_generator.generate_parallel(seed)),
                     )
                     .unwrap()
                     // Process just one solution
@@ -220,6 +227,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             .write(true)
             .create(true)
             .truncate(true)
+            .advise_random_access()
             .open(&plot_file_path)
             .unwrap();
 
@@ -234,15 +242,12 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                 .unwrap();
         }
 
-        let plot_mmap = unsafe { Mmap::map(&plot_file).unwrap() };
+        let sectors = (0..sectors_count as usize)
+            .map(|sector_offset| plot_file.offset(sector_offset * sector_size))
+            .collect::<Vec<_>>();
 
-        #[cfg(unix)]
-        {
-            plot_mmap.advise(memmap2::Advice::Random).unwrap();
-        }
-
-        let solution_candidates = plot_mmap
-            .chunks_exact(sector_size)
+        let solution_candidates = sectors
+            .iter()
             .map(|sector| {
                 audit_sector(
                     &public_key,
@@ -253,6 +258,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                     &plotted_sector.sector_metadata,
                 )
                 .unwrap()
+                .solution_candidates
             })
             .collect::<Vec<_>>();
 
@@ -263,11 +269,11 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                 for _i in 0..iters {
                     for solution_candidates in solution_candidates.clone() {
                         solution_candidates
-                            .into_iter::<_, PosTable>(
+                            .into_solutions(
                                 black_box(&reward_address),
                                 black_box(&kzg),
                                 black_box(&erasure_coding),
-                                black_box(&mut table_generator),
+                                black_box(|seed: &PosSeed| table_generator.generate_parallel(seed)),
                             )
                             .unwrap()
                             // Process just one solution

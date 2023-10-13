@@ -9,6 +9,7 @@ use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use lru::LruCache;
 use parking_lot::Mutex;
+use rayon::ThreadPoolBuilder;
 use std::fs;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -22,7 +23,7 @@ use subspace_farmer::single_disk_farm::{
 use subspace_farmer::utils::farmer_piece_getter::FarmerPieceGetter;
 use subspace_farmer::utils::piece_validator::SegmentCommitmentPieceValidator;
 use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
-use subspace_farmer::utils::run_future_in_dedicated_thread;
+use subspace_farmer::utils::{run_future_in_dedicated_thread, tokio_rayon_spawn_handler};
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_farmer_components::plotting::PlottedSector;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
@@ -30,6 +31,7 @@ use subspace_networking::libp2p::identity::{ed25519, Keypair};
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
 use tempfile::TempDir;
+use tokio::sync::Semaphore;
 use tracing::{debug, error, info, info_span, warn};
 use zeroize::Zeroizing;
 
@@ -54,6 +56,11 @@ where
         tmp,
         mut disk_farms,
         metrics_endpoints,
+        sector_downloading_concurrency,
+        sector_encoding_concurrency,
+        farming_thread_pool_size,
+        plotting_thread_pool_size,
+        replotting_thread_pool_size,
     } = farming_args;
 
     // Override the `--enable_private_ips` flag with `--dev`
@@ -187,6 +194,24 @@ where
         None => farmer_app_info.protocol_info.max_pieces_in_sector,
     };
 
+    let plotting_thread_pool = Arc::new(
+        ThreadPoolBuilder::new()
+            .thread_name(move |thread_index| format!("plotting#{thread_index}"))
+            .num_threads(plotting_thread_pool_size)
+            .spawn_handler(tokio_rayon_spawn_handler())
+            .build()?,
+    );
+    let replotting_thread_pool = Arc::new(
+        ThreadPoolBuilder::new()
+            .thread_name(move |thread_index| format!("replotting#{thread_index}"))
+            .num_threads(replotting_thread_pool_size)
+            .spawn_handler(tokio_rayon_spawn_handler())
+            .build()?,
+    );
+
+    let downloading_semaphore = Arc::new(Semaphore::new(sector_downloading_concurrency.get()));
+    let encoding_semaphore = Arc::new(Semaphore::new(sector_encoding_concurrency.get()));
+
     // TODO: Check plot and metadata sizes to ensure there is enough space for farmer to not
     //  fail later
     for (disk_farm_index, disk_farm) in disk_farms.into_iter().enumerate() {
@@ -205,6 +230,11 @@ where
                 erasure_coding: erasure_coding.clone(),
                 piece_getter: piece_getter.clone(),
                 cache_percentage,
+                downloading_semaphore: Arc::clone(&downloading_semaphore),
+                encoding_semaphore: Arc::clone(&encoding_semaphore),
+                farming_thread_pool_size,
+                plotting_thread_pool: Arc::clone(&plotting_thread_pool),
+                replotting_thread_pool: Arc::clone(&replotting_thread_pool),
             },
             disk_farm_index,
         );
@@ -257,39 +287,36 @@ where
 
     // Collect already plotted pieces
     {
-        let mut readers_and_pieces = readers_and_pieces.lock();
-        let readers_and_pieces = readers_and_pieces.insert(ReadersAndPieces::new(piece_readers));
+        let mut future_readers_and_pieces = ReadersAndPieces::new(piece_readers);
 
-        single_disk_farms.iter().enumerate().try_for_each(
-            |(disk_farm_index, single_disk_farm)| {
-                let disk_farm_index = disk_farm_index.try_into().map_err(|_error| {
-                    anyhow!(
-                        "More than 256 plots are not supported, consider running multiple farmer \
-                        instances"
-                    )
-                })?;
+        for (disk_farm_index, single_disk_farm) in single_disk_farms.iter().enumerate() {
+            let disk_farm_index = disk_farm_index.try_into().map_err(|_error| {
+                anyhow!(
+                    "More than 256 plots are not supported, consider running multiple farmer \
+                    instances"
+                )
+            })?;
 
-                (0 as SectorIndex..)
-                    .zip(single_disk_farm.plotted_sectors())
-                    .for_each(
-                        |(sector_index, plotted_sector_result)| match plotted_sector_result {
-                            Ok(plotted_sector) => {
-                                readers_and_pieces.add_sector(disk_farm_index, &plotted_sector);
-                            }
-                            Err(error) => {
-                                error!(
-                                    %error,
-                                    %disk_farm_index,
-                                    %sector_index,
-                                    "Failed reading plotted sector on startup, skipping"
-                                );
-                            }
-                        },
-                    );
+            (0 as SectorIndex..)
+                .zip(single_disk_farm.plotted_sectors().await)
+                .for_each(
+                    |(sector_index, plotted_sector_result)| match plotted_sector_result {
+                        Ok(plotted_sector) => {
+                            future_readers_and_pieces.add_sector(disk_farm_index, &plotted_sector);
+                        }
+                        Err(error) => {
+                            error!(
+                                %error,
+                                %disk_farm_index,
+                                %sector_index,
+                                "Failed reading plotted sector on startup, skipping"
+                            );
+                        }
+                    },
+                );
+        }
 
-                Ok::<_, anyhow::Error>(())
-            },
-        )?;
+        readers_and_pieces.lock().replace(future_readers_and_pieces);
     }
 
     info!("Finished collecting already plotted pieces successfully");

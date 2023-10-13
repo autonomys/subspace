@@ -1,30 +1,31 @@
 use crate::node_client;
 use crate::node_client::NodeClient;
 use crate::single_disk_farm::Handlers;
+use async_lock::RwLock;
 use futures::channel::mpsc;
 use futures::StreamExt;
+#[cfg(windows)]
 use memmap2::Mmap;
-use parking_lot::RwLock;
+use parking_lot::Mutex;
 use rayon::prelude::*;
-use rayon::{ThreadPoolBuildError, ThreadPoolBuilder};
+use rayon::ThreadPoolBuildError;
+use std::fs::File;
 use std::io;
 use std::sync::Arc;
+use std::time::Instant;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::{PublicKey, SectorIndex, Solution};
+use subspace_core_primitives::{PosSeed, PublicKey, SectorIndex, SolutionRange};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector;
 use subspace_farmer_components::proving;
+use subspace_farmer_components::proving::ProvableSolutions;
 use subspace_farmer_components::sector::SectorMetadataChecksummed;
-use subspace_proof_of_space::Table;
+#[cfg(not(windows))]
+use subspace_farmer_components::ReadAt;
+use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_rpc_primitives::{SlotInfo, SolutionResponse};
 use thiserror::Error;
-use tracing::{debug, error, trace};
-
-/// Self-imposed limit for number of solutions that farmer will not go over per challenge.
-///
-/// Only useful for initial network bootstrapping where due to initial plot size there might be too
-/// many solutions.
-const SOLUTIONS_LIMIT: usize = 1;
+use tracing::{debug, error, info, trace, warn};
 
 /// Errors that happen during farming
 #[derive(Debug, Error)]
@@ -41,18 +42,6 @@ pub enum FarmingError {
         /// Lower-level error
         error: node_client::Error,
     },
-    /// Failed to create memory mapping for metadata
-    #[error("Failed to create memory mapping for metadata: {error}")]
-    FailedToMapMetadata {
-        /// Lower-level error
-        error: io::Error,
-    },
-    /// Failed to submit solutions response
-    #[error("Failed to submit solutions response: {error}")]
-    FailedToSubmitSolutionsResponse {
-        /// Lower-level error
-        error: node_client::Error,
-    },
     /// Low-level proving error
     #[error("Low-level proving error: {0}")]
     LowLevelProving(#[from] proving::ProvingError),
@@ -64,51 +53,111 @@ pub enum FarmingError {
     FailedToCreateThreadPool(#[from] ThreadPoolBuildError),
 }
 
+pub(super) async fn slot_notification_forwarder<NC>(
+    node_client: &NC,
+    mut slot_info_forwarder_sender: mpsc::Sender<SlotInfo>,
+) -> Result<(), FarmingError>
+where
+    NC: NodeClient,
+{
+    info!("Subscribing to slot info notifications");
+
+    let mut slot_info_notifications = node_client
+        .subscribe_slot_info()
+        .await
+        .map_err(|error| FarmingError::FailedToSubscribeSlotInfo { error })?;
+
+    while let Some(slot_info) = slot_info_notifications.next().await {
+        debug!(?slot_info, "New slot");
+
+        let slot = slot_info.slot_number;
+
+        // Error means farmer is still solving for previous slot, which is too late and
+        // we need to skip this slot
+        if slot_info_forwarder_sender.try_send(slot_info).is_err() {
+            debug!(%slot, "Slow farming, skipping slot");
+        }
+    }
+
+    Ok(())
+}
+
+pub(super) struct FarmingOptions<'a, NC> {
+    pub(super) public_key: PublicKey,
+    pub(super) reward_address: PublicKey,
+    pub(super) node_client: NC,
+    pub(super) sector_size: usize,
+    pub(super) plot_file: &'a File,
+    pub(super) sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
+    pub(super) kzg: Kzg,
+    pub(super) erasure_coding: ErasureCoding,
+    pub(super) handlers: Arc<Handlers>,
+    pub(super) modifying_sector_index: Arc<RwLock<Option<SectorIndex>>>,
+    pub(super) slot_info_notifications: mpsc::Receiver<SlotInfo>,
+}
+
 /// Starts farming process.
 ///
 /// NOTE: Returned future is async, but does blocking operations and should be running in dedicated
 /// thread.
-// False-positive, we do drop lock before .await
-#[allow(clippy::await_holding_lock)]
-#[allow(clippy::too_many_arguments)]
-pub(super) async fn farming<NC, PosTable>(
-    disk_farm_index: usize,
-    public_key: PublicKey,
-    reward_address: PublicKey,
-    node_client: NC,
-    sector_size: usize,
-    plot_mmap: Mmap,
-    sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
-    kzg: Kzg,
-    erasure_coding: ErasureCoding,
-    handlers: Arc<Handlers>,
-    modifying_sector_index: Arc<RwLock<Option<SectorIndex>>>,
-    mut slot_info_notifications: mpsc::Receiver<SlotInfo>,
+pub(super) async fn farming<PosTable, NC>(
+    farming_options: FarmingOptions<'_, NC>,
 ) -> Result<(), FarmingError>
 where
-    NC: NodeClient,
     PosTable: Table,
+    NC: NodeClient,
 {
-    let mut table_generator = PosTable::generator();
-    let thread_pool = ThreadPoolBuilder::new()
-        .thread_name(move |thread_index| format!("farming-{disk_farm_index}.{thread_index}"))
-        .build()?;
+    let FarmingOptions {
+        public_key,
+        reward_address,
+        node_client,
+        sector_size,
+        plot_file,
+        sectors_metadata,
+        kzg,
+        erasure_coding,
+        handlers,
+        modifying_sector_index,
+        mut slot_info_notifications,
+    } = farming_options;
+
+    let farmer_app_info = node_client
+        .farmer_app_info()
+        .await
+        .map_err(|error| FarmingError::FailedToGetFarmerInfo { error })?;
+
+    // We assume that each slot is one second
+    let farming_timeout = farmer_app_info.farming_timeout;
+
+    #[cfg(windows)]
+    let plot_mmap = unsafe { Mmap::map(plot_file)? };
+    let table_generator = Arc::new(Mutex::new(PosTable::generator()));
 
     while let Some(slot_info) = slot_info_notifications.next().await {
+        let start = Instant::now();
         let slot = slot_info.slot_number;
-        let sectors_metadata = sectors_metadata.read();
+        let sectors_metadata = sectors_metadata.read().await;
         let sector_count = sectors_metadata.len();
 
         debug!(%slot, %sector_count, "Reading sectors");
 
-        let modifying_sector_guard = modifying_sector_index.read();
-        let maybe_sector_being_modified = modifying_sector_guard.as_ref().copied();
-        let mut solutions = Vec::<Solution<PublicKey, PublicKey>>::new();
+        #[cfg(not(windows))]
+        let sectors = (0..sector_count)
+            .into_par_iter()
+            .map(|sector_index| plot_file.offset(sector_index * sector_size));
+        // On Windows random read is horrible in terms of performance, memory-mapped I/O helps
+        // TODO: Remove this once https://internals.rust-lang.org/t/introduce-write-all-at-read-exact-at-on-windows/19649
+        //  or similar exists in standard library
+        #[cfg(windows)]
+        let sectors = plot_mmap.par_chunks_exact(sector_size);
 
-        let solution_candidates = thread_pool.install(|| {
-            sectors_metadata
+        let sectors_solutions = {
+            let modifying_sector_guard = modifying_sector_index.read().await;
+            let maybe_sector_being_modified = modifying_sector_guard.as_ref().copied();
+
+            let mut sectors_solutions = sectors_metadata
                 .par_iter()
-                .zip(plot_mmap.par_chunks_exact(sector_size))
+                .zip(sectors)
                 .enumerate()
                 .filter_map(|(sector_index, (sector_metadata, sector))| {
                     let sector_index = sector_index as u16;
@@ -118,7 +167,7 @@ where
                     }
                     trace!(%slot, %sector_index, "Auditing sector");
 
-                    let solution_candidates = audit_sector(
+                    let audit_results = audit_sector(
                         &public_key,
                         sector_index,
                         &slot_info.global_challenge,
@@ -127,24 +176,55 @@ where
                         sector_metadata,
                     )?;
 
-                    Some((sector_index, solution_candidates))
+                    Some((sector_index, audit_results.solution_candidates))
                 })
-                .collect::<Vec<_>>()
-        });
+                .filter_map(|(sector_index, solution_candidates)| {
+                    let sector_solutions = match solution_candidates.into_solutions(
+                        &reward_address,
+                        &kzg,
+                        &erasure_coding,
+                        |seed: &PosSeed| table_generator.lock().generate_parallel(seed),
+                    ) {
+                        Ok(solutions) => solutions,
+                        Err(error) => {
+                            warn!(
+                                %error,
+                                %sector_index,
+                                "Failed to turn solution candidates into solutions",
+                            );
 
-        for (sector_index, solution_candidates) in solution_candidates {
-            for maybe_solution in solution_candidates.into_iter::<_, PosTable>(
-                &reward_address,
-                &kzg,
-                &erasure_coding,
-                &mut table_generator,
-            )? {
+                            return None;
+                        }
+                    };
+
+                    if sector_solutions.len() == 0 {
+                        return None;
+                    }
+
+                    Some((sector_index, sector_solutions))
+                })
+                .collect::<Vec<_>>();
+
+            sectors_solutions.sort_by(|a, b| {
+                let a_solution_distance =
+                    a.1.best_solution_distance().unwrap_or(SolutionRange::MAX);
+                let b_solution_distance =
+                    b.1.best_solution_distance().unwrap_or(SolutionRange::MAX);
+
+                a_solution_distance.cmp(&b_solution_distance)
+            });
+
+            sectors_solutions
+        };
+
+        'solutions_processing: for (sector_index, sector_solutions) in sectors_solutions {
+            for maybe_solution in sector_solutions {
                 let solution = match maybe_solution {
                     Ok(solution) => solution,
                     Err(error) => {
                         error!(%slot, %sector_index, %error, "Failed to prove");
-                        // Do not error completely on disk corruption or other
-                        // reasons why proving might fail
+                        // Do not error completely as disk corruption or other reasons why
+                        // proving might fail
                         continue;
                     }
                 };
@@ -152,37 +232,33 @@ where
                 debug!(%slot, %sector_index, "Solution found");
                 trace!(?solution, "Solution found");
 
-                solutions.push(solution);
+                if start.elapsed() >= farming_timeout {
+                    warn!(
+                        %slot,
+                        %sector_index,
+                        "Proving for solution skipped due to farming time limit",
+                    );
+                    break 'solutions_processing;
+                }
 
-                if solutions.len() >= SOLUTIONS_LIMIT {
-                    break;
+                let response = SolutionResponse {
+                    slot_number: slot_info.slot_number,
+                    solution,
+                };
+
+                handlers.solution.call_simple(&response);
+
+                if let Err(error) = node_client.submit_solution_response(response).await {
+                    warn!(
+                        %slot,
+                        %sector_index,
+                        %error,
+                        "Failed to send solution to node, skipping further proving for this slot",
+                    );
+                    break 'solutions_processing;
                 }
             }
-
-            if solutions.len() >= SOLUTIONS_LIMIT {
-                break;
-            }
-            // TODO: It is known that decoding is slow now and we'll only be
-            //  able to decode a single sector within time slot reliably, in the
-            //  future we may want allow more than one sector to be valid within
-            //  the same disk plot.
-            if !solutions.is_empty() {
-                break;
-            }
         }
-
-        drop(sectors_metadata);
-        drop(modifying_sector_guard);
-
-        let response = SolutionResponse {
-            slot_number: slot_info.slot_number,
-            solutions,
-        };
-        handlers.solution.call_simple(&response);
-        node_client
-            .submit_solution_response(response)
-            .await
-            .map_err(|error| FarmingError::FailedToSubmitSolutionsResponse { error })?;
     }
 
     Ok(())

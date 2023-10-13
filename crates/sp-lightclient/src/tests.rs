@@ -1,4 +1,4 @@
-use crate::mock::{new_test_ext, Header, MockStorage, PosTable};
+use crate::mock::{kzg_instance, new_test_ext, Header, MockStorage, PosTable};
 use crate::{
     ChainConstants, DigestError, HashOf, HeaderExt, HeaderImporter, ImportError, NextDigestItems,
     NumberOf, Storage, StorageBound,
@@ -22,14 +22,13 @@ use sp_runtime::traits::Header as HeaderT;
 use sp_runtime::{Digest, DigestItem};
 use std::iter;
 use std::num::{NonZeroU64, NonZeroUsize};
+use std::sync::OnceLock;
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
-use subspace_core_primitives::crypto::kzg;
-use subspace_core_primitives::crypto::kzg::Kzg;
 #[cfg(feature = "pot")]
 use subspace_core_primitives::PotOutput;
 use subspace_core_primitives::{
     BlockWeight, HistorySize, PublicKey, Randomness, Record, RecordedHistorySegment,
-    SegmentCommitment, SegmentIndex, SlotNumber, Solution, SolutionRange,
+    SegmentCommitment, SegmentIndex, SlotNumber, Solution, SolutionRange, REWARD_SIGNING_CONTEXT,
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector;
@@ -37,10 +36,20 @@ use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy};
 use subspace_farmer_components::sector::{sector_size, SectorMetadataChecksummed};
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::Table;
-use subspace_solving::REWARD_SIGNING_CONTEXT;
 #[cfg(not(feature = "pot"))]
 use subspace_verification::derive_randomness;
 use subspace_verification::{calculate_block_weight, verify_solution, VerifySolutionParams};
+
+fn erasure_coding_instance() -> &'static ErasureCoding {
+    static ERASURE_CODING: OnceLock<ErasureCoding> = OnceLock::new();
+
+    ERASURE_CODING.get_or_init(|| {
+        ErasureCoding::new(
+            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
+        )
+        .unwrap()
+    })
+}
 
 #[cfg(not(feature = "pot"))]
 fn default_randomness() -> Randomness {
@@ -72,36 +81,31 @@ fn default_test_constants() -> ChainConstants<Header> {
     }
 }
 
-fn archived_segment(kzg: Kzg) -> NewArchivedSegment {
-    // we don't care about the block data
-    let mut rng = StdRng::seed_from_u64(0);
-    let mut block = vec![0u8; RecordedHistorySegment::SIZE];
-    rng.fill(block.as_mut_slice());
+fn archived_segment() -> &'static NewArchivedSegment {
+    static ARCHIVED_SEGMENT: OnceLock<NewArchivedSegment> = OnceLock::new();
 
-    let mut archiver = Archiver::new(kzg).unwrap();
+    ARCHIVED_SEGMENT.get_or_init(|| {
+        // we don't care about the block data
+        let mut rng = StdRng::seed_from_u64(0);
+        let mut block = vec![0u8; RecordedHistorySegment::SIZE];
+        rng.fill(block.as_mut_slice());
 
-    archiver
-        .add_block(block, Default::default(), true)
-        .into_iter()
-        .next()
-        .unwrap()
+        let mut archiver = Archiver::new(kzg_instance().clone()).unwrap();
+
+        archiver
+            .add_block(block, Default::default(), true)
+            .into_iter()
+            .next()
+            .unwrap()
+    })
 }
 
 struct FarmerParameters {
-    kzg: Kzg,
-    erasure_coding: ErasureCoding,
-    archived_segment: NewArchivedSegment,
     farmer_protocol_info: FarmerProtocolInfo,
 }
 
 impl FarmerParameters {
     fn new() -> Self {
-        let kzg = Kzg::new(kzg::embedded_kzg_settings());
-        let erasure_coding = ErasureCoding::new(
-            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
-        )
-        .unwrap();
-        let archived_segment = archived_segment(kzg.clone());
         let farmer_protocol_info = FarmerProtocolInfo {
             history_size: HistorySize::from(SegmentIndex::ZERO),
             max_pieces_in_sector: 1,
@@ -114,9 +118,6 @@ impl FarmerParameters {
         };
 
         Self {
-            kzg,
-            erasure_coding,
-            archived_segment,
             farmer_protocol_info,
         }
     }
@@ -159,14 +160,10 @@ fn valid_header(
         farmer_parameters,
     } = params;
 
-    let segment_index = farmer_parameters
-        .archived_segment
-        .segment_header
-        .segment_index();
-    let segment_commitment = farmer_parameters
-        .archived_segment
-        .segment_header
-        .segment_commitment();
+    let archived_segment = archived_segment();
+
+    let segment_index = archived_segment.segment_header.segment_index();
+    let segment_commitment = archived_segment.segment_header.segment_commitment();
     let public_key = PublicKey::from(keypair.public.to_bytes());
 
     let pieces_in_sector = farmer_parameters.farmer_protocol_info.max_pieces_in_sector;
@@ -175,17 +172,17 @@ fn valid_header(
     let mut table_generator = PosTable::generator();
 
     for sector_index in iter::from_fn(|| Some(rand::random())) {
-        let mut plotted_sector_bytes = vec![0; sector_size];
-        let mut plotted_sector_metadata_bytes = vec![0; SectorMetadataChecksummed::encoded_size()];
+        let mut plotted_sector_bytes = Vec::new();
+        let mut plotted_sector_metadata_bytes = Vec::new();
 
-        let plotted_sector = block_on(plot_sector::<_, PosTable>(
+        let plotted_sector = block_on(plot_sector::<PosTable, _>(
             &public_key,
             sector_index,
-            &farmer_parameters.archived_segment.pieces,
+            &archived_segment.pieces,
             PieceGetterRetryPolicy::default(),
             &farmer_parameters.farmer_protocol_info,
-            &farmer_parameters.kzg,
-            &farmer_parameters.erasure_coding,
+            kzg_instance(),
+            erasure_coding_instance(),
             pieces_in_sector,
             &mut plotted_sector_bytes,
             &mut plotted_sector_metadata_bytes,
@@ -214,8 +211,8 @@ fn valid_header(
         let solution = solution_candidates
             .into_iter::<_, PosTable>(
                 &public_key,
-                &farmer_parameters.kzg,
-                &farmer_parameters.erasure_coding,
+                kzg_instance(),
+                erasure_coding_instance(),
                 &mut table_generator,
             )
             .unwrap()
@@ -248,7 +245,7 @@ fn valid_header(
                 solution_range: SolutionRange::MAX,
                 piece_check_params: None,
             },
-            &farmer_parameters.kzg,
+            kzg_instance(),
         )
         .unwrap();
         let solution_range = solution_distance * 2;

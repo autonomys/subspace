@@ -42,12 +42,9 @@ where
         .runtime_api()
         .timestamp(consensus_block_hash)?;
 
-    let mut inherent_exts = vec![];
-    if let Some(inherent_timestamp) =
-        domain_runtime_api.construct_timestamp_inherent_extrinsic(domain_parent_hash, moment)?
-    {
-        inherent_exts.push(inherent_timestamp)
-    }
+    let inherent_exts =
+        vec![domain_runtime_api
+            .construct_timestamp_inherent_extrinsic(domain_parent_hash, moment)?];
 
     Ok(inherent_exts)
 }

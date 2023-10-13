@@ -6,35 +6,37 @@ mod plotting;
 use crate::identity::{Identity, IdentityError};
 use crate::node_client::NodeClient;
 use crate::reward_signing::reward_signing;
-use crate::single_disk_farm::farming::farming;
 pub use crate::single_disk_farm::farming::FarmingError;
+use crate::single_disk_farm::farming::{farming, slot_notification_forwarder, FarmingOptions};
 use crate::single_disk_farm::piece_cache::{DiskPieceCache, DiskPieceCacheError};
 use crate::single_disk_farm::piece_reader::PieceReader;
 pub use crate::single_disk_farm::plotting::PlottingError;
-use crate::single_disk_farm::plotting::{plotting, plotting_scheduler};
-use crate::utils::JoinOnDrop;
+use crate::single_disk_farm::plotting::{
+    plotting, plotting_scheduler, PlottingOptions, PlottingSchedulerOptions,
+};
+use crate::utils::{tokio_rayon_spawn_handler, JoinOnDrop};
+use async_lock::RwLock;
 use derive_more::{Display, From};
 use event_listener_primitives::{Bag, HandlerId};
 use futures::channel::{mpsc, oneshot};
 use futures::future::{select, Either};
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
-use memmap2::{Mmap, MmapOptions};
 use parity_scale_codec::{Decode, Encode};
-use parking_lot::{Mutex, RwLock};
+use parking_lot::Mutex;
 use rayon::prelude::*;
+use rayon::{ThreadPool, ThreadPoolBuilder};
 use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
 use std::fs::{File, OpenOptions};
 use std::future::Future;
 use std::io::{Seek, SeekFrom};
-use std::num::{NonZeroU16, NonZeroU8};
+use std::num::NonZeroU8;
 use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::{fmt, fs, io, mem, thread};
-use std_semaphore::{Semaphore, SemaphoreGuard};
+use std::{fs, io, mem, thread};
 use subspace_core_primitives::crypto::blake3_hash;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
@@ -42,7 +44,7 @@ use subspace_core_primitives::{
     SegmentIndex,
 };
 use subspace_erasure_coding::ErasureCoding;
-use subspace_farmer_components::file_ext::FileExt;
+use subspace_farmer_components::file_ext::{FileExt, OpenOptionsExt};
 use subspace_farmer_components::plotting::{PieceGetter, PlottedSector};
 use subspace_farmer_components::sector::{sector_size, SectorMetadata, SectorMetadataChecksummed};
 use subspace_farmer_components::FarmerProtocolInfo;
@@ -51,7 +53,7 @@ use subspace_proof_of_space::Table;
 use subspace_rpc_primitives::{FarmerAppInfo, SolutionResponse};
 use thiserror::Error;
 use tokio::runtime::Handle;
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, Semaphore};
 use tracing::{debug, error, info, info_span, trace, warn, Instrument, Span};
 use ulid::Ulid;
 
@@ -63,35 +65,6 @@ const_assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<u64>());
 const RESERVED_PLOT_METADATA: u64 = 1024 * 1024;
 /// Reserve 1M of space for farm info (for potential future expansion)
 const RESERVED_FARM_INFO: u64 = 1024 * 1024;
-
-/// Semaphore that limits disk access concurrency in strategic places to the number specified during
-/// initialization
-#[derive(Clone)]
-pub struct SingleDiskSemaphore {
-    inner: Arc<Semaphore>,
-}
-
-impl fmt::Debug for SingleDiskSemaphore {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("SingleDiskSemaphore").finish()
-    }
-}
-
-impl SingleDiskSemaphore {
-    /// Create new semaphore for limiting concurrency of the major processes working with the same
-    /// disk
-    pub fn new(concurrency: NonZeroU16) -> Self {
-        Self {
-            inner: Arc::new(Semaphore::new(concurrency.get() as isize)),
-        }
-    }
-
-    /// Acquire access, will block current thread until previously acquired guards are dropped and
-    /// access is released
-    pub fn acquire(&self) -> SemaphoreGuard<'_> {
-        self.inner.access()
-    }
-}
 
 /// An identifier for single disk farm, can be used for in logs, thread names, etc.
 #[derive(
@@ -283,6 +256,20 @@ pub struct SingleDiskFarmOptions<NC, PG> {
     pub erasure_coding: ErasureCoding,
     /// Percentage of allocated space dedicated for caching purposes
     pub cache_percentage: NonZeroU8,
+    /// Semaphore for part of the plotting when farmer downloads new sector, allows to limit memory
+    /// usage of the plotting process, permit will be held until the end of the plotting process
+    pub downloading_semaphore: Arc<Semaphore>,
+    /// Semaphore for part of the plotting when farmer encodes downloaded sector, should typically
+    /// allow one permit at a time for efficient CPU utilization
+    pub encoding_semaphore: Arc<Semaphore>,
+    /// Thread pool size used for farming (mostly for blocking I/O, but also for some
+    /// compute-intensive operations during proving)
+    pub farming_thread_pool_size: usize,
+    /// Thread pool used for plotting
+    pub plotting_thread_pool: Arc<ThreadPool>,
+    /// Thread pool used for replotting, typically smaller pool than for plotting to not affect
+    /// farming as much
+    pub replotting_thread_pool: Arc<ThreadPool>,
 }
 
 /// Errors happening when trying to create/open single disk farm
@@ -514,8 +501,21 @@ type BackgroundTask = Pin<Box<dyn Future<Output = Result<(), BackgroundTaskError
 type HandlerFn<A> = Arc<dyn Fn(&A) + Send + Sync + 'static>;
 type Handler<A> = Bag<HandlerFn<A>, A>;
 
+/// Details about sector currently being plotted
+pub struct SectorPlottingDetails {
+    /// Sector index
+    pub sector_index: SectorIndex,
+    /// Progress so far in % (not including this sector)
+    pub progress: f32,
+    /// Whether sector is being replotted
+    pub replotting: bool,
+    /// Whether this is the last sector queued so far
+    pub last_queued: bool,
+}
+
 #[derive(Default, Debug)]
 struct Handlers {
+    sector_plotting: Handler<SectorPlottingDetails>,
     sector_plotted: Handler<(PlottedSector, Option<PlottedSector>)>,
     solution: Handler<SolutionResponse>,
 }
@@ -569,7 +569,7 @@ impl SingleDiskFarm {
     ) -> Result<Self, SingleDiskFarmError>
     where
         NC: NodeClient,
-        PG: PieceGetter + Send + 'static,
+        PG: PieceGetter + Clone + Send + 'static,
         PosTable: Table,
     {
         let handle = Handle::current();
@@ -585,13 +585,13 @@ impl SingleDiskFarm {
             kzg,
             erasure_coding,
             cache_percentage,
+            downloading_semaphore,
+            encoding_semaphore,
+            farming_thread_pool_size,
+            plotting_thread_pool,
+            replotting_thread_pool,
         } = options;
         fs::create_dir_all(&directory)?;
-
-        // TODO: Parametrize concurrency, much higher default due to SSD focus
-        // TODO: Use this or remove
-        let _single_disk_semaphore =
-            SingleDiskSemaphore::new(NonZeroU16::new(10).expect("Not a zero; qed"));
 
         // TODO: Update `Identity` to use more specific error type and remove this `.unwrap()`
         let identity = Identity::open_or_create(&directory).unwrap();
@@ -735,12 +735,15 @@ impl SingleDiskFarm {
             .read(true)
             .write(true)
             .create(true)
+            .advise_random_access()
             .open(directory.join(Self::METADATA_FILE))?;
+
+        metadata_file.advise_random_access()?;
 
         let metadata_size = metadata_file.seek(SeekFrom::End(0))?;
         let expected_metadata_size =
             RESERVED_PLOT_METADATA + sector_metadata_size as u64 * u64::from(target_sector_count);
-        let (metadata_header, metadata_header_mmap) = if metadata_size == 0 {
+        let metadata_header = if metadata_size == 0 {
             let metadata_header = PlotMetadataHeader {
                 version: 0,
                 plotted_sector_count: 0,
@@ -751,13 +754,7 @@ impl SingleDiskFarm {
                 .map_err(SingleDiskFarmError::CantPreallocateMetadataFile)?;
             metadata_file.write_all_at(metadata_header.encode().as_slice(), 0)?;
 
-            let metadata_header_mmap = unsafe {
-                MmapOptions::new()
-                    .len(PlotMetadataHeader::encoded_size())
-                    .map_mut(&metadata_file)?
-            };
-
-            (metadata_header, metadata_header_mmap)
+            metadata_header
         } else {
             if metadata_size != expected_metadata_size {
                 // Allocating the whole file (`set_len` below can create a sparse file, which will
@@ -768,14 +765,12 @@ impl SingleDiskFarm {
                 // Truncating file (if necessary)
                 metadata_file.set_len(expected_metadata_size)?;
             }
-            let mut metadata_header_mmap = unsafe {
-                MmapOptions::new()
-                    .len(PlotMetadataHeader::encoded_size())
-                    .map_mut(&metadata_file)?
-            };
+
+            let mut metadata_header_bytes = vec![0; PlotMetadataHeader::encoded_size()];
+            metadata_file.read_exact_at(&mut metadata_header_bytes, 0)?;
 
             let mut metadata_header =
-                PlotMetadataHeader::decode(&mut metadata_header_mmap.as_ref())
+                PlotMetadataHeader::decode(&mut metadata_header_bytes.as_ref())
                     .map_err(SingleDiskFarmError::FailedToDecodeMetadataHeader)?;
 
             if metadata_header.version != Self::SUPPORTED_PLOT_VERSION {
@@ -786,29 +781,24 @@ impl SingleDiskFarm {
 
             if metadata_header.plotted_sector_count > target_sector_count {
                 metadata_header.plotted_sector_count = target_sector_count;
-                metadata_header.encode_to(&mut metadata_header_mmap.as_mut());
+                metadata_file.write_all_at(&metadata_header.encode(), 0)?;
             }
 
-            (metadata_header, metadata_header_mmap)
+            metadata_header
         };
 
         let sectors_metadata = {
-            let metadata_mmap = unsafe {
-                MmapOptions::new()
-                    .offset(RESERVED_PLOT_METADATA)
-                    .len(sector_metadata_size * usize::from(target_sector_count))
-                    .map(&metadata_file)?
-            };
-
             let mut sectors_metadata =
                 Vec::<SectorMetadataChecksummed>::with_capacity(usize::from(target_sector_count));
 
-            for mut sector_metadata_bytes in metadata_mmap
-                .chunks_exact(sector_metadata_size)
-                .take(metadata_header.plotted_sector_count as usize)
-            {
+            let mut sector_metadata_bytes = vec![0; sector_metadata_size];
+            for sector_index in 0..metadata_header.plotted_sector_count {
+                metadata_file.read_exact_at(
+                    &mut sector_metadata_bytes,
+                    RESERVED_PLOT_METADATA + sector_metadata_size as u64 * u64::from(sector_index),
+                )?;
                 sectors_metadata.push(
-                    SectorMetadataChecksummed::decode(&mut sector_metadata_bytes)
+                    SectorMetadataChecksummed::decode(&mut sector_metadata_bytes.as_ref())
                         .map_err(SingleDiskFarmError::FailedToDecodeSectorMetadata)?,
                 );
             }
@@ -821,8 +811,11 @@ impl SingleDiskFarm {
                 .read(true)
                 .write(true)
                 .create(true)
+                .advise_random_access()
                 .open(directory.join(Self::PLOT_FILE))?,
         );
+
+        plot_file.advise_random_access()?;
 
         // Allocating the whole file (`set_len` below can create a sparse file, which will cause
         // writes to fail later)
@@ -883,14 +876,13 @@ impl SingleDiskFarm {
                             return Ok(());
                         }
 
-                        plotting::<_, _, PosTable>(
+                        let plotting_options = PlottingOptions {
                             public_key,
                             node_client,
                             pieces_in_sector,
                             sector_size,
                             sector_metadata_size,
                             metadata_header,
-                            metadata_header_mmap,
                             plot_file,
                             metadata_file,
                             sectors_metadata,
@@ -899,10 +891,13 @@ impl SingleDiskFarm {
                             erasure_coding,
                             handlers,
                             modifying_sector_index,
-                            target_sector_count,
                             sectors_to_plot_receiver,
-                        )
-                        .await
+                            downloading_semaphore,
+                            encoding_semaphore,
+                            plotting_thread_pool,
+                            replotting_thread_pool,
+                        };
+                        plotting::<_, _, PosTable>(plotting_options).await
                     };
 
                     let initial_plotting_result = handle.block_on(select(
@@ -920,55 +915,34 @@ impl SingleDiskFarm {
                 }
             })?;
 
-        tasks.push(Box::pin(plotting_scheduler(
-            public_key.hash(),
+        let plotting_scheduler_options = PlottingSchedulerOptions {
+            public_key_hash: public_key.hash(),
             sectors_indices_left_to_plot,
             target_sector_count,
-            farmer_app_info.protocol_info.history_size.segment_index(),
-            farmer_app_info.protocol_info.min_sector_lifetime,
-            node_client.clone(),
-            Arc::clone(&sectors_metadata),
+            last_archived_segment_index: farmer_app_info.protocol_info.history_size.segment_index(),
+            min_sector_lifetime: farmer_app_info.protocol_info.min_sector_lifetime,
+            node_client: node_client.clone(),
+            sectors_metadata: Arc::clone(&sectors_metadata),
             sectors_to_plot_sender,
-        )));
+        };
+        tasks.push(Box::pin(plotting_scheduler(plotting_scheduler_options)));
 
-        let (mut slot_info_forwarder_sender, slot_info_forwarder_receiver) = mpsc::channel(0);
+        let (slot_info_forwarder_sender, slot_info_forwarder_receiver) = mpsc::channel(0);
 
         tasks.push(Box::pin({
             let node_client = node_client.clone();
 
             async move {
-                info!("Subscribing to slot info notifications");
-
-                let mut slot_info_notifications = node_client
-                    .subscribe_slot_info()
+                slot_notification_forwarder(&node_client, slot_info_forwarder_sender)
                     .await
-                    .map_err(|error| FarmingError::FailedToSubscribeSlotInfo { error })?;
-
-                while let Some(slot_info) = slot_info_notifications.next().await {
-                    debug!(?slot_info, "New slot");
-
-                    let slot = slot_info.slot_number;
-
-                    // Error means farmer is still solving for previous slot, which is too late and
-                    // we need to skip this slot
-                    if slot_info_forwarder_sender.try_send(slot_info).is_err() {
-                        debug!(%slot, "Slow farming, skipping slot");
-                    }
-                }
-
-                Ok(())
+                    .map_err(BackgroundTaskError::Farming)
             }
         }));
 
         let farming_join_handle = thread::Builder::new()
             .name(format!("farming-{disk_farm_index}"))
             .spawn({
-                let plot_mmap = unsafe { Mmap::map(&*plot_file)? };
-                #[cfg(unix)]
-                {
-                    plot_mmap.advise(memmap2::Advice::Random)?;
-                }
-
+                let plot_file = Arc::clone(&plot_file);
                 let handle = handle.clone();
                 let erasure_coding = erasure_coding.clone();
                 let handlers = Arc::clone(&handlers);
@@ -981,50 +955,78 @@ impl SingleDiskFarm {
 
                 move || {
                     let _tokio_handle_guard = handle.enter();
-                    let _span_guard = span.enter();
 
-                    let farming_fut = async move {
-                        if start_receiver.recv().await.is_err() {
-                            // Dropped before starting
-                            return Ok(());
+                    let thread_pool = match ThreadPoolBuilder::new()
+                        .thread_name(move |thread_index| {
+                            format!("farming-{disk_farm_index}.{thread_index}")
+                        })
+                        .num_threads(farming_thread_pool_size)
+                        .spawn_handler(tokio_rayon_spawn_handler())
+                        .build()
+                        .map_err(FarmingError::FailedToCreateThreadPool)
+                    {
+                        Ok(thread_pool) => thread_pool,
+                        Err(error) => {
+                            if let Some(error_sender) = error_sender.lock().take() {
+                                if let Err(error) = error_sender.send(error.into()) {
+                                    error!(
+                                        %error,
+                                        "Farming failed to send error to background task",
+                                    );
+                                }
+                            }
+                            return;
                         }
-
-                        farming::<_, PosTable>(
-                            disk_farm_index,
-                            public_key,
-                            reward_address,
-                            node_client,
-                            sector_size,
-                            plot_mmap,
-                            sectors_metadata,
-                            kzg,
-                            erasure_coding,
-                            handlers,
-                            modifying_sector_index,
-                            slot_info_forwarder_receiver,
-                        )
-                        .await
                     };
 
-                    let farming_result = handle.block_on(select(
-                        Box::pin(farming_fut),
-                        Box::pin(stop_receiver.recv()),
-                    ));
+                    thread_pool.install(move || {
+                        let _span_guard = span.enter();
 
-                    if let Either::Left((Err(error), _)) = farming_result {
-                        if let Some(error_sender) = error_sender.lock().take() {
-                            if let Err(error) = error_sender.send(error.into()) {
-                                error!(%error, "Farming failed to send error to background task");
+                        let farming_fut = async move {
+                            if start_receiver.recv().await.is_err() {
+                                // Dropped before starting
+                                return Ok(());
+                            }
+
+                            let farming_options = FarmingOptions {
+                                public_key,
+                                reward_address,
+                                node_client,
+                                sector_size,
+                                plot_file: &plot_file,
+                                sectors_metadata,
+                                kzg,
+                                erasure_coding,
+                                handlers,
+                                modifying_sector_index,
+                                slot_info_notifications: slot_info_forwarder_receiver,
+                            };
+                            farming::<PosTable, _>(farming_options).await
+                        };
+
+                        let farming_result = handle.block_on(select(
+                            Box::pin(farming_fut),
+                            Box::pin(stop_receiver.recv()),
+                        ));
+
+                        if let Either::Left((Err(error), _)) = farming_result {
+                            if let Some(error_sender) = error_sender.lock().take() {
+                                if let Err(error) = error_sender.send(error.into()) {
+                                    error!(
+                                        %error,
+                                        "Farming failed to send error to background task",
+                                    );
+                                }
                             }
                         }
-                    }
+                    })
                 }
             })?;
 
         let (piece_reader, reading_fut) = PieceReader::new::<PosTable>(
             public_key,
             pieces_in_sector,
-            unsafe { Mmap::map(&*plot_file)? },
+            plot_file,
             Arc::clone(&sectors_metadata),
             erasure_coding,
             modifying_sector_index,
@@ -1097,18 +1099,20 @@ impl SingleDiskFarm {
     }
 
     /// Number of sectors successfully plotted so far
-    pub fn plotted_sectors_count(&self) -> usize {
-        self.sectors_metadata.read().len()
+    pub async fn plotted_sectors_count(&self) -> usize {
+        self.sectors_metadata.read().await.len()
     }
 
     /// Read information about sectors plotted so far
-    pub fn plotted_sectors(
+    pub async fn plotted_sectors(
         &self,
     ) -> impl Iterator<Item = Result<PlottedSector, parity_scale_codec::Error>> + '_ {
         let public_key = self.single_disk_farm_info.public_key();
+        let sectors_metadata = self.sectors_metadata.read().await.clone();
 
-        (0..).zip(self.sectors_metadata.read().clone()).map(
-            move |(sector_index, sector_metadata)| {
+        (0..)
+            .zip(sectors_metadata)
+            .map(move |(sector_index, sector_metadata)| {
                 let sector_id = SectorId::new(public_key.hash(), sector_index);
 
                 let mut piece_indexes = Vec::with_capacity(usize::from(self.pieces_in_sector));
@@ -1131,8 +1135,7 @@ impl SingleDiskFarm {
                     sector_metadata,
                     piece_indexes,
                 })
-            },
-        )
+            })
     }
 
     /// Get piece cache instance
@@ -1146,9 +1149,11 @@ impl SingleDiskFarm {
     }
 
     /// Subscribe to sector plotting notification
-    ///
-    /// Plotting permit is given such that it can be dropped later by the implementation is
-    /// throttling of the plotting process is desired.
+    pub fn on_sector_plotting(&self, callback: HandlerFn<SectorPlottingDetails>) -> HandlerId {
+        self.handlers.sector_plotting.add(callback)
+    }
+
+    /// Subscribe to notification about plotted sectors
     pub fn on_sector_plotted(
         &self,
         callback: HandlerFn<(PlottedSector, Option<PlottedSector>)>,
@@ -1198,20 +1203,26 @@ impl SingleDiskFarm {
 
         {
             let plot = directory.join(Self::PLOT_FILE);
-            info!("Deleting plot file at {}", plot.display());
-            fs::remove_file(plot)?;
+            if plot.exists() {
+                info!("Deleting plot file at {}", plot.display());
+                fs::remove_file(plot)?;
+            }
         }
         {
             let metadata = directory.join(Self::METADATA_FILE);
-            info!("Deleting metadata file at {}", metadata.display());
-            fs::remove_file(metadata)?;
+            if metadata.exists() {
+                info!("Deleting metadata file at {}", metadata.display());
+                fs::remove_file(metadata)?;
+            }
         }
         // TODO: Identity should be able to wipe itself instead of assuming a specific file name
         //  here
         {
             let identity = directory.join("identity.bin");
-            info!("Deleting identity file at {}", identity.display());
-            fs::remove_file(identity)?;
+            if identity.exists() {
+                info!("Deleting identity file at {}", identity.display());
+                fs::remove_file(identity)?;
+            }
         }
 
         DiskPieceCache::wipe(directory)?;

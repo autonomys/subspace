@@ -15,17 +15,16 @@
 // limitations under the License.
 #![doc = include_str!("../README.md")]
 #![cfg_attr(not(feature = "std"), no_std)]
-#![feature(assert_matches, const_option, let_chains)]
+#![feature(array_chunks, assert_matches, const_option, let_chains, portable_simd)]
 #![warn(unused_must_use, unsafe_code, unused_variables, unused_must_use)]
 
 extern crate alloc;
 
 pub mod equivocation;
 
-// TODO: Unlock tests for PoT as well once PoT implementation settled
-#[cfg(all(test, not(feature = "pot")))]
+#[cfg(test)]
 mod mock;
-#[cfg(all(test, not(feature = "pot")))]
+#[cfg(test)]
 mod tests;
 
 #[cfg(feature = "runtime-benchmarks")]
@@ -39,8 +38,6 @@ use core::num::NonZeroU64;
 use equivocation::{HandleEquivocation, SubspaceEquivocationOffence};
 use frame_support::dispatch::{DispatchResult, DispatchResultWithPostInfo, Pays};
 use frame_support::traits::Get;
-#[cfg(not(feature = "pot"))]
-use frame_support::traits::OnTimestampSet;
 use frame_system::offchain::{SendTransactionTypes, SubmitTransaction};
 use frame_system::pallet_prelude::*;
 use log::{debug, error, warn};
@@ -48,22 +45,15 @@ pub use pallet::*;
 use scale_info::TypeInfo;
 use schnorrkel::SignatureError;
 use sp_consensus_slots::Slot;
-#[cfg(feature = "pot")]
-use sp_consensus_subspace::consensus::is_proof_of_time_valid;
-use sp_consensus_subspace::consensus::verify_solution;
+use sp_consensus_subspace::consensus::{is_proof_of_time_valid, verify_solution};
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::offence::{OffenceDetails, OffenceError, OnOffenceHandler};
 use sp_consensus_subspace::{
-    ChainConstants, EquivocationProof, FarmerPublicKey, FarmerSignature, SignedVote, Vote,
+    ChainConstants, EquivocationProof, FarmerPublicKey, FarmerSignature, PotParameters,
+    PotParametersChange, SignedVote, Vote, WrappedPotOutput,
 };
-#[cfg(feature = "pot")]
-use sp_consensus_subspace::{PotParameters, PotParametersChange, WrappedPotOutput};
 use sp_runtime::generic::DigestItem;
-#[cfg(feature = "pot")]
-use sp_runtime::traits::CheckedSub;
-use sp_runtime::traits::{BlockNumberProvider, Hash, One, Zero};
-#[cfg(not(feature = "pot"))]
-use sp_runtime::traits::{SaturatedConversion, Saturating};
+use sp_runtime::traits::{BlockNumberProvider, CheckedSub, Hash, One, Zero};
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionPriority, TransactionSource, TransactionValidity,
     TransactionValidityError, ValidTransaction,
@@ -72,41 +62,15 @@ use sp_runtime::DispatchError;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::prelude::*;
 use subspace_core_primitives::crypto::Scalar;
-#[cfg(feature = "pot")]
-use subspace_core_primitives::BlockHash;
 use subspace_core_primitives::{
-    ArchivedHistorySegment, HistorySize, PublicKey, Randomness, RewardSignature, SectorId,
-    SectorIndex, SegmentHeader, SegmentIndex, SlotNumber, SolutionRange,
+    ArchivedHistorySegment, BlockHash, HistorySize, PieceOffset, PublicKey, RewardSignature,
+    SectorId, SectorIndex, SegmentHeader, SegmentIndex, SlotNumber, SolutionRange,
+    REWARD_SIGNING_CONTEXT,
 };
-use subspace_solving::REWARD_SIGNING_CONTEXT;
-#[cfg(feature = "pot")]
-use subspace_verification::derive_pot_entropy;
-#[cfg(not(feature = "pot"))]
-use subspace_verification::derive_randomness;
 use subspace_verification::{
-    check_reward_signature, derive_next_solution_range, PieceCheckParams, VerifySolutionParams,
+    check_reward_signature, derive_next_solution_range, derive_pot_entropy, PieceCheckParams,
+    VerifySolutionParams,
 };
-
-/// Trigger global randomness every interval.
-pub trait GlobalRandomnessIntervalTrigger {
-    /// Trigger a global randomness update. This should be called during every block, after
-    /// initialization is done.
-    fn trigger<T: Config>(block_number: BlockNumberFor<T>, block_randomness: Randomness);
-}
-
-/// A type signifying to Subspace that it should perform a global randomness update with an internal
-/// trigger.
-// TODO: Remove when switching to PoT by default
-pub struct NormalGlobalRandomnessInterval;
-
-// TODO: Remove when switching to PoT by default
-impl GlobalRandomnessIntervalTrigger for NormalGlobalRandomnessInterval {
-    fn trigger<T: Config>(block_number: BlockNumberFor<T>, block_randomness: Randomness) {
-        if <Pallet<T>>::should_update_global_randomness(block_number) {
-            <Pallet<T>>::enact_update_global_randomness(block_number, block_randomness);
-        }
-    }
-}
 
 /// Trigger an era change, if any should take place.
 pub trait EraChangeTrigger {
@@ -128,9 +92,9 @@ impl EraChangeTrigger for NormalEraChange {
 
 #[derive(Copy, Clone, Eq, PartialEq, Encode, Decode, MaxEncodedLen, TypeInfo)]
 struct VoteVerificationData {
-    #[cfg(not(feature = "pot"))]
-    global_randomness: Randomness,
+    /// Block solution range, vote must not reach it
     solution_range: SolutionRange,
+    vote_solution_range: SolutionRange,
     current_slot: Slot,
     parent_slot: Slot,
 }
@@ -142,10 +106,8 @@ struct VoteVerificationData {
 struct AuditChunkOffset(u8);
 
 #[frame_support::pallet]
-mod pallet {
-    use super::{
-        AuditChunkOffset, EraChangeTrigger, GlobalRandomnessIntervalTrigger, VoteVerificationData,
-    };
+pub mod pallet {
+    use super::{AuditChunkOffset, EraChangeTrigger, VoteVerificationData};
     use crate::equivocation::HandleEquivocation;
     use crate::weights::WeightInfo;
     use frame_support::pallet_prelude::*;
@@ -160,7 +122,7 @@ mod pallet {
     use sp_std::prelude::*;
     use subspace_core_primitives::crypto::Scalar;
     use subspace_core_primitives::{
-        Blake3Hash, HistorySize, Randomness, SectorIndex, SegmentHeader, SegmentIndex,
+        Blake3Hash, HistorySize, PieceOffset, Randomness, SectorIndex, SegmentHeader, SegmentIndex,
         SolutionRange,
     };
 
@@ -200,14 +162,9 @@ mod pallet {
 
     #[pallet::config]
     #[pallet::disable_frame_system_supertrait_check]
-    pub trait Config: pallet_timestamp::Config {
+    pub trait Config: frame_system::Config {
         /// The overarching event type.
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
-
-        /// The amount of time, in blocks, between updates of global randomness.
-        #[pallet::constant]
-        // TODO: Remove when switching to PoT by default
-        type GlobalRandomnessUpdateInterval: Get<BlockNumberFor<Self>>;
 
         /// Number of slots between slot arrival and when corresponding block can be produced.
         ///
@@ -246,13 +203,6 @@ mod pallet {
         #[pallet::constant]
         type SlotProbability: Get<(u64, u64)>;
 
-        /// The expected average block time at which Subspace should be creating blocks. Since
-        /// Subspace is probabilistic it is not trivial to figure out what the expected average
-        /// block time should be based on the slot duration and the security parameter `c` (where
-        /// `1 - c` represents the probability of a slot being empty).
-        #[pallet::constant]
-        type ExpectedBlockTime: Get<Self::Moment>;
-
         /// Depth `K` after which a block enters the recorded history (a global constant, as opposed
         /// to the client-dependent transaction confirmation depth `k`).
         #[pallet::constant]
@@ -281,10 +231,6 @@ mod pallet {
         type MaxPiecesInSector: Get<u16>;
 
         type ShouldAdjustSolutionRange: Get<bool>;
-
-        /// Subspace requires periodic global randomness update.
-        type GlobalRandomnessIntervalTrigger: GlobalRandomnessIntervalTrigger;
-
         /// Subspace requires some logic to be triggered on every block to query for whether an era
         /// has ended and to perform the transition to the next era.
         ///
@@ -395,6 +341,7 @@ mod pallet {
         RewardsAlreadyEnabled,
     }
 
+    // TODO: Remove genesis slot
     /// The slot at which the first block was created. This is 0 until the first block of the chain.
     #[pallet::storage]
     #[pallet::getter(fn genesis_slot)]
@@ -404,13 +351,6 @@ mod pallet {
     #[pallet::storage]
     #[pallet::getter(fn current_slot)]
     pub type CurrentSlot<T> = StorageValue<_, Slot, ValueQuery>;
-
-    /// Global randomnesses derived from from PoR signature and used for deriving global challenges.
-    #[pallet::storage]
-    #[pallet::getter(fn global_randomnesses)]
-    #[cfg(not(feature = "pot"))]
-    pub(super) type GlobalRandomnesses<T> =
-        StorageValue<_, sp_consensus_subspace::GlobalRandomnesses, ValueQuery>;
 
     // TODO: Clarify when this value is updated (when it is updated, right now it is not)
     /// Number of iterations for proof of time per slot
@@ -461,8 +401,17 @@ mod pallet {
 
     /// Parent block author information.
     #[pallet::storage]
-    pub(super) type ParentBlockAuthorInfo<T> =
-        StorageValue<_, (FarmerPublicKey, SectorIndex, Scalar, AuditChunkOffset, Slot)>;
+    pub(super) type ParentBlockAuthorInfo<T> = StorageValue<
+        _,
+        (
+            FarmerPublicKey,
+            SectorIndex,
+            PieceOffset,
+            Scalar,
+            AuditChunkOffset,
+            Slot,
+        ),
+    >;
 
     /// Enable rewards since specified block number.
     #[pallet::storage]
@@ -475,6 +424,7 @@ mod pallet {
         (
             FarmerPublicKey,
             SectorIndex,
+            PieceOffset,
             Scalar,
             AuditChunkOffset,
             Slot,
@@ -487,7 +437,14 @@ mod pallet {
     pub(super) type ParentBlockVoters<T: Config> = StorageValue<
         _,
         BTreeMap<
-            (FarmerPublicKey, SectorIndex, Scalar, AuditChunkOffset, Slot),
+            (
+                FarmerPublicKey,
+                SectorIndex,
+                PieceOffset,
+                Scalar,
+                AuditChunkOffset,
+                Slot,
+            ),
             (T::AccountId, FarmerSignature),
         >,
         ValueQuery,
@@ -498,7 +455,14 @@ mod pallet {
     pub(super) type CurrentBlockVoters<T: Config> = StorageValue<
         _,
         BTreeMap<
-            (FarmerPublicKey, SectorIndex, Scalar, AuditChunkOffset, Slot),
+            (
+                FarmerPublicKey,
+                SectorIndex,
+                PieceOffset,
+                Scalar,
+                AuditChunkOffset,
+                Slot,
+            ),
             (T::AccountId, FarmerSignature),
         >,
     >;
@@ -512,7 +476,7 @@ mod pallet {
     /// The current block randomness, updated at block initialization. When the proof of time feature
     /// is enabled it derived from PoT otherwise PoR.
     #[pallet::storage]
-    pub(super) type BlockRandomness<T> = StorageValue<_, Randomness>;
+    pub type BlockRandomness<T> = StorageValue<_, Randomness>;
 
     /// Enable storage access for all users.
     #[pallet::storage]
@@ -740,14 +704,6 @@ mod pallet {
 }
 
 impl<T: Config> Pallet<T> {
-    /// Determine the Subspace slot duration based on the Timestamp module configuration.
-    #[cfg(not(feature = "pot"))]
-    pub fn slot_duration() -> T::Moment {
-        // we double the minimum block-period so each author can always propose within
-        // the majority of their slot.
-        <T as pallet_timestamp::Config>::MinimumPeriod::get().saturating_mul(2u32.into())
-    }
-
     /// Total number of pieces in the blockchain
     pub fn history_size() -> HistorySize {
         // Chain starts with one segment plotted, even if it is not recorded in the runtime yet
@@ -755,31 +711,10 @@ impl<T: Config> Pallet<T> {
         HistorySize::from(NonZeroU64::new(number_of_segments).expect("Not zero; qed"))
     }
 
-    /// Determine whether a randomness update should take place at this block.
-    /// Assumes that initialization has already taken place.
-    // TODO: Remove when switching to PoT by default
-    fn should_update_global_randomness(block_number: BlockNumberFor<T>) -> bool {
-        block_number % T::GlobalRandomnessUpdateInterval::get() == Zero::zero()
-    }
-
     /// Determine whether an era change should take place at this block.
     /// Assumes that initialization has already taken place.
     fn should_era_change(block_number: BlockNumberFor<T>) -> bool {
         block_number % T::EraDuration::get() == Zero::zero()
-    }
-
-    /// DANGEROUS: Enact update of global randomness. Should be done on every block where `should_update_global_randomness`
-    /// has returned `true`, and the caller is the only caller of this function.
-    // TODO: Remove when switching to PoT by default
-    #[cfg_attr(feature = "pot", allow(unused_variables))]
-    fn enact_update_global_randomness(
-        _block_number: BlockNumberFor<T>,
-        block_randomness: Randomness,
-    ) {
-        #[cfg(not(feature = "pot"))]
-        GlobalRandomnesses::<T>::mutate(|global_randomnesses| {
-            global_randomnesses.next = Some(block_randomness);
-        });
     }
 
     /// DANGEROUS: Enact era change. Should be done on every block where `should_era_change` has
@@ -868,12 +803,14 @@ impl<T: Config> Pallet<T> {
             let key = (
                 farmer_public_key,
                 pre_digest.solution().sector_index,
+                pre_digest.solution().piece_offset,
                 pre_digest.solution().chunk,
                 AuditChunkOffset(pre_digest.solution().audit_chunk_offset),
                 pre_digest.slot(),
             );
             if ParentBlockVoters::<T>::get().contains_key(&key) {
-                let (public_key, _sector_index, _chunk, _audit_chunk_offset, slot) = key;
+                let (public_key, _sector_index, _piece_offset, _chunk, _audit_chunk_offset, slot) =
+                    key;
 
                 let offence = SubspaceEquivocationOffence {
                     slot,
@@ -890,11 +827,12 @@ impl<T: Config> Pallet<T> {
                     );
                 }
             } else {
-                let (public_key, sector_index, chunk, audit_chunk_offset, slot) = key;
+                let (public_key, sector_index, piece_offset, chunk, audit_chunk_offset, slot) = key;
 
                 CurrentBlockAuthorInfo::<T>::put((
                     public_key,
                     sector_index,
+                    piece_offset,
                     chunk,
                     audit_chunk_offset,
                     slot,
@@ -903,18 +841,16 @@ impl<T: Config> Pallet<T> {
             }
         }
         CurrentBlockVoters::<T>::put(BTreeMap::<
-            (FarmerPublicKey, SectorIndex, Scalar, AuditChunkOffset, Slot),
+            (
+                FarmerPublicKey,
+                SectorIndex,
+                PieceOffset,
+                Scalar,
+                AuditChunkOffset,
+                Slot,
+            ),
             (T::AccountId, FarmerSignature),
         >::default());
-
-        // If global randomness was updated in previous block, set it as current.
-        #[cfg(not(feature = "pot"))]
-        if let Some(next_randomness) = GlobalRandomnesses::<T>::get().next {
-            GlobalRandomnesses::<T>::put(sp_consensus_subspace::GlobalRandomnesses {
-                current: next_randomness,
-                next: None,
-            });
-        }
 
         // If solution range was updated in previous block, set it as current.
         if let sp_consensus_subspace::SolutionRanges {
@@ -931,12 +867,6 @@ impl<T: Config> Pallet<T> {
             });
         }
 
-        // Extract PoR randomness from pre-digest.
-        #[cfg(not(feature = "pot"))]
-        let block_randomness =
-            derive_randomness(pre_digest.solution(), SlotNumber::from(pre_digest.slot()));
-
-        #[cfg(feature = "pot")]
         let block_randomness = pre_digest
             .pot_info()
             .proof_of_time()
@@ -945,31 +875,14 @@ impl<T: Config> Pallet<T> {
         // Update the block randomness.
         BlockRandomness::<T>::put(block_randomness);
 
-        // Deposit global randomness data such that light client can validate blocks later.
-        #[cfg(not(feature = "pot"))]
-        frame_system::Pallet::<T>::deposit_log(DigestItem::global_randomness(
-            GlobalRandomnesses::<T>::get().current,
-        ));
         // Deposit solution range data such that light client can validate blocks later.
         frame_system::Pallet::<T>::deposit_log(DigestItem::solution_range(
             SolutionRanges::<T>::get().current,
         ));
 
-        // Enact global randomness update, if necessary.
-        #[cfg(not(feature = "pot"))]
-        T::GlobalRandomnessIntervalTrigger::trigger::<T>(block_number, block_randomness);
         // Enact era change, if necessary.
         T::EraChangeTrigger::trigger::<T>(block_number);
 
-        #[cfg(not(feature = "pot"))]
-        if let Some(next_global_randomness) = GlobalRandomnesses::<T>::get().next {
-            // Deposit next global randomness data such that light client can validate blocks later.
-            frame_system::Pallet::<T>::deposit_log(DigestItem::next_global_randomness(
-                next_global_randomness,
-            ));
-        }
-
-        #[cfg(feature = "pot")]
         {
             let pot_slot_iterations =
                 PotSlotIterations::<T>::get().expect("Always initialized during genesis; qed");
@@ -1065,12 +978,20 @@ impl<T: Config> Pallet<T> {
             ));
         }
 
-        if let Some((public_key, sector_index, scalar, audit_chunk_offset, slot, _reward_address)) =
-            CurrentBlockAuthorInfo::<T>::take()
+        if let Some((
+            public_key,
+            sector_index,
+            piece_offset,
+            scalar,
+            audit_chunk_offset,
+            slot,
+            _reward_address,
+        )) = CurrentBlockAuthorInfo::<T>::take()
         {
             ParentBlockAuthorInfo::<T>::put((
                 public_key,
                 sector_index,
+                piece_offset,
                 scalar,
                 audit_chunk_offset,
                 slot,
@@ -1206,7 +1127,6 @@ impl<T: Config> Pallet<T> {
     }
 
     /// Proof of time parameters
-    #[cfg(feature = "pot")]
     pub fn pot_parameters() -> PotParameters {
         let block_number = frame_system::Pallet::<T>::block_number();
         let pot_slot_iterations =
@@ -1266,11 +1186,6 @@ impl<T: Config> Pallet<T> {
             confirmation_depth_k: T::ConfirmationDepthK::get()
                 .try_into()
                 .unwrap_or_else(|_| panic!("Block number always fits in BlockNumber; qed")),
-            #[cfg(not(feature = "pot"))]
-            global_randomness_interval: T::GlobalRandomnessUpdateInterval::get()
-                .try_into()
-                .unwrap_or_else(|_| panic!("Block number always fits in BlockNumber; qed")),
-            #[cfg(feature = "pot")]
             block_authoring_delay: T::BlockAuthoringDelay::get(),
             era_duration: T::EraDuration::get()
                 .try_into()
@@ -1391,19 +1306,14 @@ impl<T: Config> Pallet<T> {
 /// initialization has already happened) or from `validate_unsigned` by transaction pool (meaning
 /// block initialization didn't happen yet).
 fn current_vote_verification_data<T: Config>(is_block_initialized: bool) -> VoteVerificationData {
-    #[cfg(not(feature = "pot"))]
-    let global_randomnesses = GlobalRandomnesses::<T>::get();
     let solution_ranges = SolutionRanges::<T>::get();
     VoteVerificationData {
-        #[cfg(not(feature = "pot"))]
-        global_randomness: if is_block_initialized {
-            global_randomnesses.current
-        } else {
-            global_randomnesses
-                .next
-                .unwrap_or(global_randomnesses.current)
-        },
         solution_range: if is_block_initialized {
+            solution_ranges.current
+        } else {
+            solution_ranges.next.unwrap_or(solution_ranges.current)
+        },
+        vote_solution_range: if is_block_initialized {
             solution_ranges.voting_current
         } else {
             solution_ranges
@@ -1436,9 +1346,8 @@ enum CheckVoteError {
     UnknownSegmentCommitment,
     InvalidHistorySize,
     InvalidSolution(String),
-    #[cfg(feature = "pot")]
+    QualityTooHigh,
     InvalidProofOfTime,
-    #[cfg(feature = "pot")]
     InvalidFutureProofOfTime,
     DuplicateVote,
     Equivocated(SubspaceEquivocationOffence<FarmerPublicKey>),
@@ -1459,9 +1368,8 @@ impl From<CheckVoteError> for TransactionValidityError {
             CheckVoteError::UnknownSegmentCommitment => InvalidTransaction::Call,
             CheckVoteError::InvalidHistorySize => InvalidTransaction::Call,
             CheckVoteError::InvalidSolution(_) => InvalidTransaction::Call,
-            #[cfg(feature = "pot")]
+            CheckVoteError::QualityTooHigh => InvalidTransaction::Call,
             CheckVoteError::InvalidProofOfTime => InvalidTransaction::Future,
-            #[cfg(feature = "pot")]
             CheckVoteError::InvalidFutureProofOfTime => InvalidTransaction::Call,
             CheckVoteError::DuplicateVote => InvalidTransaction::Call,
             CheckVoteError::Equivocated(_) => InvalidTransaction::BadSigner,
@@ -1478,9 +1386,7 @@ fn check_vote<T: Config>(
         parent_hash,
         slot,
         solution,
-        #[cfg(feature = "pot")]
         proof_of_time,
-        #[cfg(feature = "pot")]
         future_proof_of_time,
     } = &signed_vote.vote;
     let height = *height;
@@ -1633,15 +1539,12 @@ fn check_vote<T: Config>(
             .segment_index(),
     );
 
-    if let Err(error) = verify_solution(
+    match verify_solution(
         solution.into(),
         slot.into(),
         (&VerifySolutionParams {
-            #[cfg(not(feature = "pot"))]
-            global_randomness: vote_verification_data.global_randomness,
-            #[cfg(feature = "pot")]
             proof_of_time: *proof_of_time,
-            solution_range: vote_verification_data.solution_range,
+            solution_range: vote_verification_data.vote_solution_range,
             piece_check_params: Some(PieceCheckParams {
                 max_pieces_in_sector: T::MaxPiecesInSector::get(),
                 segment_commitment,
@@ -1654,16 +1557,26 @@ fn check_vote<T: Config>(
         })
             .into(),
     ) {
-        debug!(
-            target: "runtime::subspace",
-            "Vote verification error: {error:?}"
-        );
-        return Err(CheckVoteError::InvalidSolution(error));
+        Ok(solution_distance) => {
+            if solution_distance <= vote_verification_data.solution_range / 2 {
+                debug!(
+                    target: "runtime::subspace",
+                    "Vote quality is too high"
+                );
+                return Err(CheckVoteError::QualityTooHigh);
+            }
+        }
+        Err(error) => {
+            debug!(
+                target: "runtime::subspace",
+                "Vote verification error: {error:?}"
+            );
+            return Err(CheckVoteError::InvalidSolution(error));
+        }
     }
 
     // Cheap proof of time verification is possible here because proof of time must have already
     // been seen by this node due to votes requiring the same authoring delay as blocks
-    #[cfg(feature = "pot")]
     if !is_proof_of_time_valid(
         BlockHash::try_from(parent_hash.as_ref())
             .expect("Must be able to convert to block hash type"),
@@ -1679,7 +1592,6 @@ fn check_vote<T: Config>(
 
     // During pre-dispatch we have already verified proofs of time up to future proof of time of
     // current block, which vote can't exceed, this must be possible to verify cheaply
-    #[cfg(feature = "pot")]
     if pre_dispatch
         && !is_proof_of_time_valid(
             BlockHash::try_from(parent_hash.as_ref())
@@ -1697,6 +1609,7 @@ fn check_vote<T: Config>(
     let key = (
         solution.public_key.clone(),
         solution.sector_index,
+        solution.piece_offset,
         solution.chunk,
         AuditChunkOffset(solution.audit_chunk_offset),
         slot,
@@ -1709,8 +1622,23 @@ fn check_vote<T: Config>(
     let mut is_equivocating = ParentBlockAuthorInfo::<T>::get().as_ref() == Some(&key)
         || CurrentBlockAuthorInfo::<T>::get()
             .map(
-                |(public_key, sector_index, chunk, audit_chunk_offset, slot, _reward_address)| {
-                    (public_key, sector_index, chunk, audit_chunk_offset, slot)
+                |(
+                    public_key,
+                    sector_index,
+                    piece_offset,
+                    chunk,
+                    audit_chunk_offset,
+                    slot,
+                    _reward_address,
+                )| {
+                    (
+                        public_key,
+                        sector_index,
+                        piece_offset,
+                        chunk,
+                        audit_chunk_offset,
+                        slot,
+                    )
                 },
             )
             .as_ref()
@@ -1748,7 +1676,7 @@ fn check_vote<T: Config>(
             }
         });
 
-        let (public_key, _sector_index, _chunk, _audit_chunk_offset, _slot) = key;
+        let (public_key, _sector_index, _piece_offset, _chunk, _audit_chunk_offset, _slot) = key;
 
         return Err(CheckVoteError::Equivocated(SubspaceEquivocationOffence {
             slot,
@@ -1823,30 +1751,18 @@ fn check_segment_headers<T: Config>(
     Ok(())
 }
 
-#[cfg(not(feature = "pot"))]
-impl<T: Config> OnTimestampSet<T::Moment> for Pallet<T> {
-    fn on_timestamp_set(moment: T::Moment) {
-        let slot_duration = Self::slot_duration();
-        assert!(
-            !slot_duration.is_zero(),
-            "Subspace slot duration cannot be zero."
-        );
-
-        let timestamp_slot = moment / slot_duration;
-        let timestamp_slot = Slot::from(timestamp_slot.saturated_into::<u64>());
-
-        assert_eq!(
-            Self::current_slot(),
-            timestamp_slot,
-            "Timestamp slot must match `CurrentSlot`",
-        );
-    }
-}
-
 impl<T: Config> subspace_runtime_primitives::FindBlockRewardAddress<T::AccountId> for Pallet<T> {
     fn find_block_reward_address() -> Option<T::AccountId> {
         CurrentBlockAuthorInfo::<T>::get().and_then(
-            |(public_key, _sector_index, _chunk, _audit_chunk_offset, _slot, reward_address)| {
+            |(
+                public_key,
+                _sector_index,
+                _piece_offset,
+                _chunk,
+                _audit_chunk_offset,
+                _slot,
+                reward_address,
+            )| {
                 // Equivocation might have happened in this block, if so - no reward for block
                 // author
                 if !BlockList::<T>::contains_key(public_key) {

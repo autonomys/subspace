@@ -16,8 +16,9 @@
 //! Primitives for Subspace RPC.
 
 use serde::{Deserialize, Serialize};
+use std::time::Duration;
 use subspace_core_primitives::{
-    Blake2b256Hash, PublicKey, RewardSignature, SlotNumber, Solution, SolutionRange,
+    Blake3Hash, PublicKey, RewardSignature, SlotNumber, Solution, SolutionRange,
 };
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_networking::libp2p::Multiaddr;
@@ -32,8 +33,10 @@ pub struct FarmerAppInfo {
     /// Genesis hash of the chain
     #[serde(with = "hex::serde")]
     pub genesis_hash: [u8; 32],
-    /// Bootstrap nodes for DSN.
+    /// Bootstrap nodes for DSN
     pub dsn_bootstrap_nodes: Vec<Multiaddr>,
+    /// How much time farmer has to audit sectors and generate a solution
+    pub farming_timeout: Duration,
     /// Protocol info for farmer
     pub protocol_info: FarmerProtocolInfo,
 }
@@ -45,7 +48,7 @@ pub struct SlotInfo {
     /// Slot number
     pub slot_number: SlotNumber,
     /// Global slot challenge
-    pub global_challenge: Blake2b256Hash,
+    pub global_challenge: Blake3Hash,
     /// Acceptable solution range for block authoring
     pub solution_range: SolutionRange,
     /// Acceptable solution range for voting
@@ -62,7 +65,7 @@ pub struct SolutionResponse {
     /// Solution farmer has for the challenge.
     ///
     /// Corresponds to `slot_number` above.
-    pub solutions: Vec<Solution<PublicKey, PublicKey>>,
+    pub solution: Solution<PublicKey, PublicKey>,
 }
 
 /// Reward info that needs to be signed.

@@ -13,11 +13,10 @@ use alloc::vec::Vec;
 use chacha20::cipher::{KeyIvInit, StreamCipher, StreamCipherSeek};
 use chacha20::{ChaCha8, Key, Nonce};
 use core::mem;
-use core::simd::Simd;
+use core::simd::{Simd, SimdUint};
 #[cfg(any(feature = "parallel", test))]
 use rayon::prelude::*;
 use seq_macro::seq;
-use std::simd::SimdUint;
 #[cfg(any(feature = "parallel", test))]
 use std::sync::mpsc;
 use subspace_core_primitives::crypto::{blake3_hash, blake3_hash_list};
@@ -195,7 +194,7 @@ pub(super) fn compute_f1_simd<const K: u8>(
 ) -> [Y; COMPUTE_F1_SIMD_FACTOR] {
     // Each element contains `K` desired bits of `partial_ys` in the final offset of eventual `ys`
     // with the rest of bits being in undefined state
-    let pre_ys_bytes = Simd::from(seq!(N in 0..8 {
+    let pre_ys_bytes: Simd<_, COMPUTE_F1_SIMD_FACTOR> = Simd::from(seq!(N in 0..8 {
         [
         #(
         {
@@ -213,7 +212,7 @@ pub(super) fn compute_f1_simd<const K: u8>(
         )*
         ]
     }));
-    let pre_ys_right_offset = Simd::from(seq!(N in 0..8 {
+    let pre_ys_right_offset: Simd<_, COMPUTE_F1_SIMD_FACTOR> = Simd::from(seq!(N in 0..8 {
         [
         #(
         {
@@ -516,7 +515,7 @@ where
                 .array_chunks::<{ K as usize * COMPUTE_F1_SIMD_FACTOR / u8::BITS as usize }>()
                 .copied(),
         ) {
-            let xs = seq!(N in 0..8 {
+            let xs: [_; COMPUTE_F1_SIMD_FACTOR] = seq!(N in 0..8 {
                 [
                 #(
                 #[allow(clippy::erasing_op, clippy::identity_op)]
@@ -552,7 +551,7 @@ where
                 .array_chunks::<{ K as usize * COMPUTE_F1_SIMD_FACTOR / u8::BITS as usize }>()
                 .copied(),
         ) {
-            let xs = seq!(N in 0..8 {
+            let xs: [_; COMPUTE_F1_SIMD_FACTOR] = seq!(N in 0..8 {
                 [
                 #(
                 #[allow(clippy::erasing_op, clippy::identity_op)]

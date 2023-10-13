@@ -6,13 +6,13 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::{SegmentHeader, SegmentIndex};
-use subspace_networking::libp2p::kad::Mode as KademliaMode;
+use subspace_networking::libp2p::kad::Mode;
 use subspace_networking::libp2p::metrics::Metrics;
 use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::utils::strip_peer_id;
 use subspace_networking::{
-    CreationError, NetworkParametersPersistenceError, NetworkingParametersManager, Node,
-    NodeRunner, PeerInfoProvider, PieceByIndexRequestHandler,
+    CreationError, KademliaMode, NetworkParametersPersistenceError, NetworkingParametersManager,
+    Node, NodeRunner, PeerInfoProvider, PieceByIndexRequestHandler,
     SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
 };
 use thiserror::Error;
@@ -183,7 +183,7 @@ where
         general_connected_peers_handler: Some(Arc::new(|_| true)),
         bootstrap_addresses: dsn_config.bootstrap_nodes,
         external_addresses: dsn_config.external_addresses,
-        kademlia_mode: Some(KademliaMode::Client),
+        kademlia_mode: KademliaMode::Static(Mode::Client),
         metrics,
 
         ..default_networking_config

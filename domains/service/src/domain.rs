@@ -2,7 +2,6 @@ use crate::providers::{BlockImportProvider, RpcProvider};
 use crate::{FullBackend, FullClient};
 use domain_client_block_preprocessor::inherents::CreateInherentDataProvider;
 use domain_client_block_preprocessor::runtime_api_full::RuntimeApiFull;
-use domain_client_consensus_relay_chain::DomainBlockImport;
 use domain_client_message_relayer::GossipMessageSink;
 use domain_client_operator::{Operator, OperatorParams, OperatorStreams};
 use domain_runtime_primitives::opaque::Block;
@@ -11,6 +10,7 @@ use futures::channel::mpsc;
 use futures::Stream;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
 use sc_client_api::{BlockBackend, BlockImportNotification, BlockchainEvents, ProofProvider};
+use sc_consensus::SharedBlockImport;
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_rpc_api::DenyUnsafe;
 use sc_service::{
@@ -24,7 +24,7 @@ use serde::de::DeserializeOwned;
 use sp_api::{ApiExt, BlockT, ConstructRuntimeApi, Metadata, NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
-use sp_consensus::{SelectChain, SyncOracle};
+use sp_consensus::SyncOracle;
 use sp_consensus_slots::Slot;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_core::{Decode, Encode};
@@ -43,9 +43,7 @@ use subspace_runtime_primitives::Nonce;
 use subspace_transaction_pool::FullChainApiWrapper;
 use substrate_frame_rpc_system::AccountNonceApi;
 
-type BlockImportOf<Block, Client, Provider> = <Provider as BlockImportProvider<Block, Client>>::BI;
-
-pub type DomainOperator<Block, CBlock, CClient, RuntimeApi, ExecutorDispatch, BI> = Operator<
+pub type DomainOperator<Block, CBlock, CClient, RuntimeApi, ExecutorDispatch> = Operator<
     Block,
     CBlock,
     FullClient<Block, RuntimeApi, ExecutorDispatch>,
@@ -53,11 +51,10 @@ pub type DomainOperator<Block, CBlock, CClient, RuntimeApi, ExecutorDispatch, BI
     FullPool<CBlock, CClient, RuntimeApi, ExecutorDispatch>,
     FullBackend<Block>,
     NativeElseWasmExecutor<ExecutorDispatch>,
-    DomainBlockImport<BI>,
 >;
 
 /// Domain full node along with some other components.
-pub struct NewFull<C, CodeExecutor, CBlock, CClient, RuntimeApi, ExecutorDispatch, AccountId, BI>
+pub struct NewFull<C, CodeExecutor, CBlock, CClient, RuntimeApi, ExecutorDispatch, AccountId>
 where
     Block: BlockT,
     CBlock: BlockT,
@@ -105,7 +102,7 @@ where
     /// Network starter.
     pub network_starter: NetworkStarter,
     /// Operator.
-    pub operator: DomainOperator<Block, CBlock, CClient, RuntimeApi, ExecutorDispatch, BI>,
+    pub operator: DomainOperator<Block, CBlock, CClient, RuntimeApi, ExecutorDispatch>,
     _phantom_data: PhantomData<AccountId>,
 }
 
@@ -143,7 +140,7 @@ fn new_partial<RuntimeApi, ExecutorDispatch, CBlock, CClient, BIMP>(
             Option<Telemetry>,
             Option<TelemetryWorkerHandle>,
             NativeElseWasmExecutor<ExecutorDispatch>,
-            Arc<DomainBlockImport<BIMP::BI>>,
+            SharedBlockImport<Block>,
         ),
     >,
     sc_service::Error,
@@ -212,10 +209,10 @@ where
         domain_tx_pre_validator,
     );
 
-    let block_import = Arc::new(DomainBlockImport::new(BlockImportProvider::block_import(
+    let block_import = SharedBlockImport::new(BlockImportProvider::block_import(
         block_import_provider,
         client.clone(),
-    )));
+    ));
     let import_queue = domain_client_consensus_relay_chain::import_queue(
         block_import.clone(),
         &task_manager.spawn_essential_handle(),
@@ -236,7 +233,7 @@ where
     Ok(params)
 }
 
-pub struct DomainParams<CBlock, CClient, SC, IBNS, CIBNS, NSNS, Provider>
+pub struct DomainParams<CBlock, CClient, IBNS, CIBNS, NSNS, ASS, Provider>
 where
     CBlock: BlockT,
 {
@@ -246,8 +243,7 @@ where
     pub consensus_client: Arc<CClient>,
     pub consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory<CBlock>,
     pub consensus_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
-    pub select_chain: SC,
-    pub operator_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS>,
+    pub operator_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS, ASS>,
     pub gossip_message_sink: GossipMessageSink,
     pub domain_message_receiver: TracingUnboundedReceiver<Vec<u8>>,
     pub provider: Provider,
@@ -257,16 +253,16 @@ where
 pub async fn new_full<
     CBlock,
     CClient,
-    SC,
     IBNS,
     CIBNS,
     NSNS,
+    ASS,
     RuntimeApi,
     ExecutorDispatch,
     AccountId,
     Provider,
 >(
-    domain_params: DomainParams<CBlock, CClient, SC, IBNS, CIBNS, NSNS, Provider>,
+    domain_params: DomainParams<CBlock, CClient, IBNS, CIBNS, NSNS, ASS, Provider>,
 ) -> sc_service::error::Result<
     NewFull<
         Arc<FullClient<Block, RuntimeApi, ExecutorDispatch>>,
@@ -276,7 +272,6 @@ pub async fn new_full<
         RuntimeApi,
         ExecutorDispatch,
         AccountId,
-        BlockImportOf<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>, Provider>,
     >,
 >
 where
@@ -297,10 +292,10 @@ where
         + RelayerApi<CBlock, NumberFor<CBlock>>
         + MessengerApi<CBlock, NumberFor<CBlock>>
         + BundleProducerElectionApi<CBlock, subspace_runtime_primitives::Balance>,
-    SC: SelectChain<CBlock>,
     IBNS: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Send + 'static,
     CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + 'static,
-    NSNS: Stream<Item = (Slot, Randomness, Option<mpsc::Sender<()>>)> + Send + 'static,
+    NSNS: Stream<Item = (Slot, Randomness)> + Send + 'static,
+    ASS: Stream<Item = mpsc::Sender<()>> + Send + 'static,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>
         + Send
         + Sync
@@ -350,7 +345,6 @@ where
         consensus_client,
         consensus_offchain_tx_pool_factory,
         consensus_network_sync_oracle,
-        select_chain,
         operator_streams,
         gossip_message_sink,
         domain_message_receiver,
@@ -459,7 +453,6 @@ where
 
     let operator = Operator::new(
         Box::new(spawn_essential.clone()),
-        &select_chain,
         OperatorParams {
             domain_id,
             domain_created_at,

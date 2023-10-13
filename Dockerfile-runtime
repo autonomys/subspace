@@ -1,6 +1,6 @@
 FROM ubuntu:20.04
 
-ARG RUSTC_VERSION=nightly-2023-07-21
+ARG RUSTC_VERSION=nightly-2023-10-11
 ARG PROFILE=production
 ARG RUSTFLAGS
 # Workaround for https://github.com/rust-lang/cargo/issues/10583
@@ -31,18 +31,17 @@ COPY rust-toolchain.toml /code/rust-toolchain.toml
 COPY crates /code/crates
 COPY domains /code/domains
 COPY orml /code/orml
+COPY shared /code/shared
 COPY test /code/test
 
 # Up until this line all Rust images in this repo should be the same to share the same layers
 
-# TODO: Re-enable cost of storage in future
 RUN \
     /root/.cargo/bin/cargo build \
         --locked \
         -Z build-std \
         --profile $PROFILE \
         --package subspace-runtime \
-        --features=subspace-runtime/do-not-enforce-cost-of-storage \
         --target x86_64-unknown-linux-gnu && \
     mv \
       target/*/*/wbuild/subspace-runtime/subspace_runtime.compact.compressed.wasm \

@@ -1,16 +1,11 @@
 #![feature(const_trait_impl)]
 
-#[cfg(any(feature = "chia", feature = "shim"))]
-use criterion::black_box;
-use criterion::{criterion_group, criterion_main, Criterion};
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
 #[cfg(feature = "parallel")]
 use rayon::ThreadPoolBuilder;
-#[cfg(any(feature = "chia", feature = "shim"))]
 use subspace_core_primitives::PosSeed;
-#[cfg(any(feature = "chia", feature = "shim"))]
 use subspace_proof_of_space::{Quality, Table, TableGenerator};
 
-#[cfg(any(feature = "chia", feature = "shim"))]
 fn pos_bench<PosTable>(
     c: &mut Criterion,
     name: &'static str,
@@ -91,17 +86,11 @@ fn pos_bench<PosTable>(
 }
 
 pub fn criterion_benchmark(c: &mut Criterion) {
-    #[cfg(not(any(feature = "chia", feature = "shim")))]
-    {
-        let _ = c;
-        panic!(r#"Enable "chia" and/or "shim" feature to run benches"#);
-    }
-    #[cfg(feature = "chia")]
     {
         // This challenge index with above seed is known to not have a solution
         let challenge_index_without_solution = 1232460437;
         // This challenge index with above seed is known to have a solution
-        let challenge_index_with_solution = 124537303;
+        let challenge_index_with_solution = 600426542;
 
         pos_bench::<subspace_proof_of_space::chia::ChiaTable>(
             c,
@@ -110,7 +99,6 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             challenge_index_with_solution,
         )
     }
-    #[cfg(feature = "shim")]
     {
         // This challenge index with above seed is known to not have a solution
         let challenge_index_without_solution = 0;

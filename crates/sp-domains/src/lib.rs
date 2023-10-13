@@ -20,17 +20,24 @@
 pub mod bundle_producer_election;
 pub mod fraud_proof;
 pub mod merkle_tree;
+pub mod storage;
 #[cfg(test)]
 mod tests;
 pub mod transaction;
+pub mod valued_trie_root;
 pub mod verification;
 
+extern crate alloc;
+
+use crate::storage::{RawGenesis, StorageKey};
+use alloc::string::String;
 use bundle_producer_election::{BundleProducerElectionParams, VrfProofError};
 use hexlit::hex;
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
 use sp_api::RuntimeVersion;
+use sp_application_crypto::sr25519;
 use sp_core::crypto::KeyTypeId;
 use sp_core::sr25519::vrf::VrfSignature;
 #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
@@ -41,16 +48,20 @@ use sp_runtime::traits::{
     BlakeTwo256, Block as BlockT, CheckedAdd, Hash as HashT, NumberFor, Zero,
 };
 use sp_runtime::{DigestItem, OpaqueExtrinsic, Percent};
+use sp_runtime_interface::pass_by;
 use sp_runtime_interface::pass_by::PassBy;
-use sp_runtime_interface::{pass_by, runtime_interface};
+use sp_std::collections::btree_set::BTreeSet;
 use sp_std::vec::Vec;
 use sp_weights::Weight;
-use subspace_core_primitives::crypto::blake2b_256_hash;
-use subspace_core_primitives::{bidirectional_distance, Blake2b256Hash, Randomness, U256};
+use subspace_core_primitives::crypto::blake3_hash;
+use subspace_core_primitives::{bidirectional_distance, Blake3Hash, Randomness, U256};
 use subspace_runtime_primitives::{Balance, Moment};
 
 /// Key type for Operator.
 const KEY_TYPE: KeyTypeId = KeyTypeId(*b"oper");
+
+/// Extrinsics shuffling seed
+pub const DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT: &[u8] = b"extrinsics-shuffling-seed";
 
 mod app {
     use super::KEY_TYPE;
@@ -108,10 +119,6 @@ pub type ExtrinsicsRoot = H256;
 )]
 pub struct DomainId(u32);
 
-impl PassBy for DomainId {
-    type PassBy = pass_by::Codec<Self>;
-}
-
 impl From<u32> for DomainId {
     #[inline]
     fn from(x: u32) -> Self {
@@ -158,6 +165,10 @@ impl DomainId {
     pub fn to_le_bytes(&self) -> [u8; 4] {
         self.0.to_le_bytes()
     }
+}
+
+impl PassBy for DomainId {
+    type PassBy = pass_by::Codec<Self>;
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
@@ -351,7 +362,7 @@ pub struct ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance> {
     /// The block hash corresponding to `domain_block_number`.
     pub domain_block_hash: DomainHash,
     /// Extrinsic root field of the header of domain block referenced by this ER.
-    pub domain_block_extrinsic_root: DomainHash,
+    pub domain_block_extrinsic_root: H256,
     /// The hash of the ER for the last domain block.
     pub parent_domain_block_receipt_hash: ReceiptHash,
     /// A pointer to the consensus block index which contains all of the bundles that were used to derive and
@@ -359,14 +370,8 @@ pub struct ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance> {
     pub consensus_block_number: Number,
     /// The block hash corresponding to `consensus_block_number`.
     pub consensus_block_hash: Hash,
-    /// All the bundles that are included in the domain block building.
-    pub valid_bundles: Vec<ValidBundle>,
-    /// Potential bundles that are excluded from the domain block building.
-    pub invalid_bundles: Vec<InvalidBundle>,
-    /// All `extrinsics_roots` for all bundles being executed by this block.
-    ///
-    /// Used to ensure these are contained within the state of the `execution_inbox`.
-    pub block_extrinsics_roots: Vec<ExtrinsicsRoot>,
+    /// All the bundles that being included in the consensus block.
+    pub inboxed_bundles: Vec<InboxedBundle>,
     /// The final state root for the current domain block reflected by this ER.
     ///
     /// Used for verifying storage proofs for domains.
@@ -379,6 +384,38 @@ pub struct ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance> {
     pub execution_trace_root: H256,
     /// All SSC rewards for this ER to be shared across operators.
     pub total_rewards: Balance,
+}
+
+impl<Number, Hash, DomainNumber, DomainHash, Balance>
+    ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance>
+{
+    pub fn bundles_extrinsics_roots(&self) -> Vec<&ExtrinsicsRoot> {
+        self.inboxed_bundles
+            .iter()
+            .map(|b| &b.extrinsics_root)
+            .collect()
+    }
+
+    pub fn valid_bundle_digests(&self) -> Vec<H256> {
+        self.inboxed_bundles
+            .iter()
+            .filter_map(|b| match b.bundle {
+                BundleValidity::Valid(bundle_digest_hash) => Some(bundle_digest_hash),
+                BundleValidity::Invalid(_) => None,
+            })
+            .collect()
+    }
+
+    pub fn valid_bundle_indexes(&self) -> Vec<u32> {
+        self.inboxed_bundles
+            .iter()
+            .enumerate()
+            .filter_map(|(index, b)| match b.bundle {
+                BundleValidity::Valid(_) => Some(index as u32),
+                BundleValidity::Invalid(_) => None,
+            })
+            .collect()
+    }
 }
 
 impl<
@@ -394,17 +431,15 @@ impl<
         BlakeTwo256::hash_of(self)
     }
 
-    pub fn genesis(consensus_genesis_hash: Hash, genesis_state_root: DomainHash) -> Self {
+    pub fn genesis(genesis_state_root: DomainHash) -> Self {
         ExecutionReceipt {
             domain_block_number: Zero::zero(),
             domain_block_hash: Default::default(),
             domain_block_extrinsic_root: Default::default(),
             parent_domain_block_receipt_hash: Default::default(),
-            consensus_block_hash: consensus_genesis_hash,
+            consensus_block_hash: Default::default(),
             consensus_block_number: Zero::zero(),
-            valid_bundles: Vec::new(),
-            invalid_bundles: Vec::new(),
-            block_extrinsics_roots: sp_std::vec![],
+            inboxed_bundles: Vec::new(),
             final_state_root: genesis_state_root.clone(),
             execution_trace: sp_std::vec![genesis_state_root],
             execution_trace_root: Default::default(),
@@ -437,9 +472,7 @@ impl<
             parent_domain_block_receipt_hash,
             consensus_block_number,
             consensus_block_hash,
-            valid_bundles: Vec::new(),
-            invalid_bundles: Vec::new(),
-            block_extrinsics_roots: sp_std::vec![Default::default()],
+            inboxed_bundles: sp_std::vec![InboxedBundle::dummy(Default::default())],
             final_state_root: Default::default(),
             execution_trace,
             execution_trace_root,
@@ -479,10 +512,10 @@ impl ProofOfElection {
     }
 
     /// Computes the VRF hash.
-    pub fn vrf_hash(&self) -> Blake2b256Hash {
+    pub fn vrf_hash(&self) -> Blake3Hash {
         let mut bytes = self.vrf_signature.output.encode();
         bytes.append(&mut self.vrf_signature.proof.encode());
-        blake2b_256_hash(&bytes)
+        blake3_hash(&bytes)
     }
 }
 
@@ -505,22 +538,42 @@ impl ProofOfElection {
     }
 }
 
+/// Type that represents an operator allow list for Domains.
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq, Serialize, Deserialize)]
-pub struct GenesisDomain<AccountId> {
+pub enum OperatorAllowList<AccountId: Ord> {
+    /// Anyone can operate for this domain.
+    Anyone,
+    /// Only the specific operators are allowed to operate the domain.
+    /// This essentially makes the domain permissioned.
+    Operators(BTreeSet<AccountId>),
+}
+
+impl<AccountId: Ord> OperatorAllowList<AccountId> {
+    /// Returns true if the allow list is either `Anyone` or the operator is part of the allowed operator list.
+    pub fn is_operator_allowed(&self, operator: &AccountId) -> bool {
+        match self {
+            OperatorAllowList::Anyone => true,
+            OperatorAllowList::Operators(allowed_operators) => allowed_operators.contains(operator),
+        }
+    }
+}
+
+#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GenesisDomain<AccountId: Ord> {
     // Domain runtime items
-    pub runtime_name: Vec<u8>,
+    pub runtime_name: String,
     pub runtime_type: RuntimeType,
     pub runtime_version: RuntimeVersion,
-    pub code: Vec<u8>,
+    pub raw_genesis_storage: Vec<u8>,
 
     // Domain config items
     pub owner_account_id: AccountId,
-    pub domain_name: Vec<u8>,
+    pub domain_name: String,
     pub max_block_size: u32,
     pub max_block_weight: Weight,
     pub bundle_slot_probability: (u64, u64),
     pub target_bundles_per_block: u32,
-    pub raw_genesis_config: Vec<u8>,
+    pub operator_allow_list: OperatorAllowList<AccountId>,
 
     // Genesis operator
     pub signing_key: OperatorPublicKey,
@@ -535,10 +588,6 @@ pub struct GenesisDomain<AccountId> {
 pub enum RuntimeType {
     #[default]
     Evm,
-}
-
-impl PassBy for RuntimeType {
-    type PassBy = pass_by::Codec<Self>;
 }
 
 /// Type representing the runtime ID.
@@ -612,61 +661,28 @@ impl DomainsDigestItem for DigestItem {
     }
 }
 
-/// `DomainInstanceData` is used to construct `RuntimeGenesisConfig` which will be further used
-/// to construct the genesis block
+/// The storage key of the `SelfDomainId` storage item in the `pallet-domain-id`
+///
+/// Any change to the storage item name or the `pallet-domain-id` name used in the `construct_runtime`
+/// macro must be reflected here.
+pub fn self_domain_id_storage_key() -> StorageKey {
+    StorageKey(
+        frame_support::storage::storage_prefix(
+            // This is the name used for the `pallet-domain-id` in the `construct_runtime` macro
+            // i.e. `SelfDomainId: pallet_domain_id = 90`
+            "SelfDomainId".as_bytes(),
+            // This is the storage item name used inside the `pallet-domain-id`
+            "SelfDomainId".as_bytes(),
+        )
+        .to_vec(),
+    )
+}
+
+/// `DomainInstanceData` is used to construct the genesis storage of domain instance chain
 #[derive(PartialEq, Eq, Clone, Encode, Decode, TypeInfo)]
 pub struct DomainInstanceData {
     pub runtime_type: RuntimeType,
-    pub runtime_code: Vec<u8>,
-    // The genesis config of the domain, encoded in json format.
-    //
-    // NOTE: the WASM code in the `system-pallet` genesis config should be empty to avoid
-    // redundancy with the `runtime_code` field.
-    pub raw_genesis_config: Option<Vec<u8>>,
-}
-
-impl PassBy for DomainInstanceData {
-    type PassBy = pass_by::Codec<Self>;
-}
-
-#[cfg(feature = "std")]
-pub trait GenerateGenesisStateRoot: Send + Sync {
-    /// Returns the state root of genesis block built from the runtime genesis config on success.
-    fn generate_genesis_state_root(
-        &self,
-        domain_id: DomainId,
-        domain_instance_data: DomainInstanceData,
-    ) -> Option<H256>;
-}
-
-#[cfg(feature = "std")]
-sp_externalities::decl_extension! {
-    /// A domain genesis receipt extension.
-    pub struct GenesisReceiptExtension(std::sync::Arc<dyn GenerateGenesisStateRoot>);
-}
-
-#[cfg(feature = "std")]
-impl GenesisReceiptExtension {
-    /// Create a new instance of [`GenesisReceiptExtension`].
-    pub fn new(inner: std::sync::Arc<dyn GenerateGenesisStateRoot>) -> Self {
-        Self(inner)
-    }
-}
-
-/// Domain-related runtime interface
-#[runtime_interface]
-pub trait Domain {
-    fn generate_genesis_state_root(
-        &mut self,
-        domain_id: DomainId,
-        domain_instance_data: DomainInstanceData,
-    ) -> Option<H256> {
-        use sp_externalities::ExternalitiesExt;
-
-        self.extension::<GenesisReceiptExtension>()
-            .expect("No `GenesisReceiptExtension` associated for the current context!")
-            .generate_genesis_state_root(domain_id, domain_instance_data)
-    }
+    pub raw_genesis: RawGenesis,
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, Clone)]
@@ -696,51 +712,101 @@ pub enum ReceiptValidity {
     Invalid(InvalidReceipt),
 }
 
-/// Bundle invalidity type.
+/// Bundle invalidity type
+///
+/// Each type contains the index of the first invalid extrinsic within the bundle
 #[derive(Debug, Decode, Encode, TypeInfo, Clone, PartialEq, Eq)]
 pub enum InvalidBundleType {
     /// Failed to decode the opaque extrinsic.
-    UndecodableTx,
+    UndecodableTx(u32),
     /// Transaction is out of the tx range.
-    OutOfRangeTx,
+    OutOfRangeTx(u32),
     /// Transaction is illegal (unable to pay the fee, etc).
-    IllegalTx,
+    IllegalTx(u32),
     /// Transaction is an invalid XDM
-    InvalidXDM,
-    /// Receipt is invalid.
-    InvalidReceipt(InvalidReceipt),
+    InvalidXDM(u32),
 }
 
-/// [`InvalidBundle`] represents a bundle that was originally included in the consensus
-/// block but subsequently excluded from the corresponding domain block by operator due
-/// to being flagged as invalid.
-#[derive(Debug, Decode, Encode, TypeInfo, Clone, PartialEq, Eq)]
-pub struct InvalidBundle {
-    /// Index of this bundle in the original list of bundles in the consensus block.
-    pub bundle_index: u32,
-    /// Specific type of invalidity.
-    pub invalid_bundle_type: InvalidBundleType,
+impl InvalidBundleType {
+    // Return the checking order of the invalid type
+    pub fn checking_order(&self) -> u8 {
+        // Use explicit number as the order instead of the enum discriminant
+        // to avoid chenging the order accidentally
+        match self {
+            Self::UndecodableTx(_) => 1,
+            Self::OutOfRangeTx(_) => 2,
+            Self::IllegalTx(_) => 3,
+            Self::InvalidXDM(_) => 4,
+        }
+    }
+
+    pub fn extrinsic_index(&self) -> u32 {
+        match self {
+            Self::UndecodableTx(i) => *i,
+            Self::OutOfRangeTx(i) => *i,
+            Self::IllegalTx(i) => *i,
+            Self::InvalidXDM(i) => *i,
+        }
+    }
 }
 
-/// [`ValidBundle`] represents a bundle that was used when building the domain block.
-#[derive(Debug, Decode, Encode, TypeInfo, Clone, PartialEq, Eq)]
-pub struct ValidBundle {
-    /// Index of this bundle in the original list of bundles in the consensus block.
-    pub bundle_index: u32,
-    /// Hash of `Vec<(tx_signer, tx_hash)>` of all domain extrinsic being included in the bundle.
-    pub bundle_digest: H256,
-}
-
-#[derive(Debug, Decode, Encode, TypeInfo, Clone, PartialEq, Eq)]
-pub enum BundleValidity<Extrinsic> {
-    Valid(Vec<Extrinsic>),
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub enum BundleValidity {
+    // The invalid bundle was originally included in the consensus block but subsequently
+    // excluded from execution as invalid and holds the `InvalidBundleType`
     Invalid(InvalidBundleType),
+    // The valid bundle's hash of `Vec<(tx_signer, tx_hash)>` of all domain extrinsic being
+    // included in the bundle.
+    Valid(H256),
 }
 
-/// Empty extrinsics root
+/// [`InboxedBundle`] represents a bundle that was successfully submitted to the consensus chain
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub struct InboxedBundle {
+    pub bundle: BundleValidity,
+    pub extrinsics_root: ExtrinsicsRoot,
+}
+
+impl InboxedBundle {
+    pub fn valid(bundle_digest_hash: H256, extrinsics_root: ExtrinsicsRoot) -> Self {
+        InboxedBundle {
+            bundle: BundleValidity::Valid(bundle_digest_hash),
+            extrinsics_root,
+        }
+    }
+
+    pub fn invalid(
+        invalid_bundle_type: InvalidBundleType,
+        extrinsics_root: ExtrinsicsRoot,
+    ) -> Self {
+        InboxedBundle {
+            bundle: BundleValidity::Invalid(invalid_bundle_type),
+            extrinsics_root,
+        }
+    }
+
+    pub fn is_invalid(&self) -> bool {
+        matches!(self.bundle, BundleValidity::Invalid(_))
+    }
+
+    #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
+    pub fn dummy(extrinsics_root: ExtrinsicsRoot) -> Self {
+        InboxedBundle {
+            bundle: BundleValidity::Valid(H256::default()),
+            extrinsics_root,
+        }
+    }
+}
+
+/// Empty extrinsics root.
 pub const EMPTY_EXTRINSIC_ROOT: ExtrinsicsRoot = ExtrinsicsRoot {
     0: hex!("03170a2e7597b7b7e3d84c05391d139a62b157e78786d8c082f29dcf4c111314"),
 };
+
+/// Zero operator signing key.
+pub const ZERO_OPERATOR_SIGNING_KEY: sr25519::Public = sr25519::Public(hex!(
+    "0000000000000000000000000000000000000000000000000000000000000000"
+));
 
 sp_api::decl_runtime_apis! {
     /// API necessary for domains pallet.

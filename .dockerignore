@@ -2,6 +2,7 @@
 !/crates
 !/domains
 !/orml
+!/shared
 !/test
 !/Cargo.lock
 !/Cargo.toml

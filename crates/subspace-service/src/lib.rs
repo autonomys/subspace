@@ -33,12 +33,13 @@ pub mod tx_pre_validator;
 use crate::dsn::{create_dsn_instance, DsnConfigurationError};
 use crate::metrics::NodeMetrics;
 use crate::tx_pre_validator::ConsensusChainTxPreValidator;
+use core::sync::atomic::{AtomicU32, Ordering};
 use cross_domain_message_gossip::cdm_gossip_peers_set_config;
+use domain_runtime_primitives::opaque::Block as DomainBlock;
 use domain_runtime_primitives::{BlockNumber as DomainNumber, Hash as DomainHash};
 pub use dsn::DsnConfig;
 use frame_system_rpc_runtime_api::AccountNonceApi;
 use futures::channel::oneshot;
-#[cfg(feature = "pot")]
 use futures::executor::block_on;
 use futures::FutureExt;
 use jsonrpsee::RpcModule;
@@ -48,21 +49,19 @@ use prometheus_client::registry::Registry;
 use sc_basic_authorship::ProposerFactory;
 use sc_client_api::execution_extensions::ExtensionsFactory;
 use sc_client_api::{Backend, BlockBackend, BlockchainEvents, ExecutorProvider, HeaderBackend};
-use sc_consensus::{BlockImport, DefaultImportQueue, ImportQueue};
+use sc_consensus::{BasicQueue, DefaultImportQueue, ImportQueue, SharedBlockImport};
 use sc_consensus_slots::SlotProportion;
 use sc_consensus_subspace::archiver::{create_subspace_archiver, SegmentHeadersStore};
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
+use sc_consensus_subspace::verifier::{SubspaceVerifier, SubspaceVerifierOptions};
 use sc_consensus_subspace::{
     ArchivedSegmentNotification, BlockImportingNotification, NewSlotNotification,
     RewardSigningNotification, SubspaceLink, SubspaceParams, SubspaceSyncOracle,
 };
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
-#[cfg(feature = "pot")]
 use sc_proof_of_time::source::gossip::pot_gossip_peers_set_config;
-#[cfg(feature = "pot")]
 use sc_proof_of_time::source::PotSourceWorker;
-#[cfg(feature = "pot")]
 use sc_proof_of_time::verifier::PotVerifier;
 use sc_service::error::Error as ServiceError;
 use sc_service::{Configuration, NetworkStarter, SpawnTasksParams, TaskManager};
@@ -74,32 +73,30 @@ use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderMetadata;
-use sp_consensus::Error as ConsensusError;
 use sp_consensus_slots::Slot;
-#[cfg(feature = "pot")]
 use sp_consensus_subspace::digests::extract_pre_digest;
-#[cfg(feature = "pot")]
-use sp_consensus_subspace::PotExtension;
-use sp_consensus_subspace::{FarmerPublicKey, KzgExtension, PosExtension, SubspaceApi};
-use sp_core::traits::SpawnEssentialNamed;
+use sp_consensus_subspace::{
+    FarmerPublicKey, KzgExtension, PosExtension, PotExtension, PotNextSlotInput, SubspaceApi,
+};
+use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
+use sp_core::H256;
 use sp_domains::transaction::PreValidationObjectApi;
-use sp_domains::{DomainsApi, GenerateGenesisStateRoot, GenesisReceiptExtension};
+use sp_domains::DomainsApi;
+use sp_domains_fraud_proof::{FraudProofExtension, FraudProofHostFunctionsImpl};
 use sp_externalities::Extensions;
 use sp_objects::ObjectsApi;
 use sp_offchain::OffchainWorkerApi;
-use sp_runtime::traits::{Block as BlockT, BlockIdTo, NumberFor};
-#[cfg(feature = "pot")]
-use sp_runtime::traits::{Header, Zero};
+use sp_runtime::traits::{Block as BlockT, BlockIdTo, Header, NumberFor, Zero};
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use static_assertions::const_assert;
+use std::collections::HashSet;
 use std::marker::PhantomData;
-#[cfg(feature = "pot")]
 use std::num::NonZeroUsize;
 use std::sync::Arc;
+use std::time::Duration;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
-#[cfg(feature = "pot")]
-use subspace_core_primitives::PotSeed;
+use subspace_core_primitives::{PotSeed, REWARD_SIGNING_CONTEXT};
 use subspace_fraud_proof::verifier_api::VerifierClient;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::libp2p::multiaddr::Protocol;
@@ -117,8 +114,8 @@ const_assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<u64>());
 
 /// This is over 15 minutes of slots assuming there are no forks, should be both sufficient and not
 /// too large to handle
-#[cfg(feature = "pot")]
 const POT_VERIFIER_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(10_000).expect("Not zero; qed");
+const SYNC_TARGET_UPDATE_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Error type for Subspace service.
 #[derive(thiserror::Error, Debug)]
@@ -227,27 +224,30 @@ pub struct SubspaceConfiguration {
     /// instead of the default substrate handler.
     pub enable_subspace_block_relay: bool,
     /// Is this node a Timekeeper
-    #[cfg(feature = "pot")]
     pub is_timekeeper: bool,
+    /// CPU cores that timekeeper can use
+    pub timekeeper_cpu_cores: HashSet<usize>,
 }
 
-struct SubspaceExtensionsFactory<PosTable, Client> {
+struct SubspaceExtensionsFactory<PosTable, Client, DomainBlock, ExecutorDispatch> {
     kzg: Kzg,
-    #[cfg_attr(not(feature = "pot"), allow(dead_code))]
     client: Arc<Client>,
-    #[cfg(feature = "pot")]
     pot_verifier: PotVerifier,
-    domain_genesis_receipt_ext: Option<Arc<dyn GenerateGenesisStateRoot>>,
-    _pos_table: PhantomData<PosTable>,
+    executor: Arc<ExecutorDispatch>,
+    _pos_table: PhantomData<(PosTable, DomainBlock)>,
 }
 
-impl<PosTable, Block, Client> ExtensionsFactory<Block>
-    for SubspaceExtensionsFactory<PosTable, Client>
+impl<PosTable, Block, Client, DomainBlock, ExecutorDispatch> ExtensionsFactory<Block>
+    for SubspaceExtensionsFactory<PosTable, Client, DomainBlock, ExecutorDispatch>
 where
     PosTable: Table,
     Block: BlockT,
+    Block::Hash: From<H256>,
+    DomainBlock: BlockT,
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + 'static,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
+    Client::Api: SubspaceApi<Block, FarmerPublicKey>
+        + DomainsApi<Block, NumberFor<DomainBlock>, DomainBlock::Hash>,
+    ExecutorDispatch: CodeExecutor,
 {
     fn extensions_for(
         &self,
@@ -257,7 +257,6 @@ where
         let mut exts = Extensions::new();
         exts.register(KzgExtension::new(self.kzg.clone()));
         exts.register(PosExtension::new::<PosTable>());
-        #[cfg(feature = "pot")]
         exts.register(PotExtension::new({
             let client = Arc::clone(&self.client);
             let pot_verifier = self.pot_verifier.clone();
@@ -324,37 +323,21 @@ where
                     }
                 };
 
-                let slot_iterations;
-                let pot_seed;
-                let after_parent_slot = parent_slot + Slot::from(1);
-
-                if parent_header.number().is_zero() {
-                    slot_iterations = pot_parameters.slot_iterations();
-                    pot_seed = pot_verifier.genesis_seed();
+                let pot_input = if parent_header.number().is_zero() {
+                    PotNextSlotInput {
+                        slot: parent_slot + Slot::from(1),
+                        slot_iterations: pot_parameters.slot_iterations(),
+                        seed: pot_verifier.genesis_seed(),
+                    }
                 } else {
                     let pot_info = parent_pre_digest.pot_info();
-                    // The change to number of iterations might have happened before
-                    // `after_parent_slot`
-                    if let Some(parameters_change) = pot_parameters.next_parameters_change()
-                        && parameters_change.slot <= after_parent_slot
-                    {
-                        slot_iterations = parameters_change.slot_iterations;
-                        // Only if entropy injection happens exactly after parent slot we need to \
-                        // mix it in
-                        if parameters_change.slot == after_parent_slot {
-                            pot_seed = pot_info
-                                .proof_of_time()
-                                .seed_with_entropy(&parameters_change.entropy);
-                        } else {
-                            pot_seed = pot_info
-                                .proof_of_time().seed();
-                        }
-                    } else {
-                        slot_iterations = pot_parameters.slot_iterations();
-                        pot_seed = pot_info
-                            .proof_of_time()
-                            .seed();
-                    }
+
+                    PotNextSlotInput::derive(
+                        pot_parameters.slot_iterations(),
+                        parent_slot,
+                        pot_info.proof_of_time(),
+                        &pot_parameters.next_parameters_change(),
+                    )
                 };
 
                 // Ensure proof of time and future proof of time included in upcoming block are
@@ -362,18 +345,14 @@ where
 
                 if quick_verification {
                     block_on(pot_verifier.try_is_output_valid(
-                        after_parent_slot,
-                        pot_seed,
-                        slot_iterations,
+                        pot_input,
                         Slot::from(slot - u64::from(parent_slot)),
                         proof_of_time,
                         pot_parameters.next_parameters_change(),
                     ))
                 } else {
                     block_on(pot_verifier.is_output_valid(
-                        after_parent_slot,
-                        pot_seed,
-                        slot_iterations,
+                        pot_input,
                         Slot::from(slot - u64::from(parent_slot)),
                         proof_of_time,
                         pot_parameters.next_parameters_change(),
@@ -381,9 +360,14 @@ where
                 }
             })
         }));
-        if let Some(ext) = self.domain_genesis_receipt_ext.clone() {
-            exts.register(GenesisReceiptExtension::new(ext));
-        }
+
+        exts.register(FraudProofExtension::new(Arc::new(
+            FraudProofHostFunctionsImpl::<_, _, DomainBlock, ExecutorDispatch>::new(
+                self.client.clone(),
+                self.executor.clone(),
+            ),
+        )));
+
         exts
     }
 }
@@ -398,14 +382,15 @@ where
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
     /// Subspace block import
-    pub block_import: Box<dyn BlockImport<Block, Error = ConsensusError> + Send + Sync>,
+    pub block_import: SharedBlockImport<Block>,
     /// Subspace link
     pub subspace_link: SubspaceLink<Block>,
     /// Segment headers store
     pub segment_headers_store: SegmentHeadersStore<FullClient<RuntimeApi, ExecutorDispatch>>,
     /// Proof of time verifier
-    #[cfg(feature = "pot")]
     pub pot_verifier: PotVerifier,
+    /// Approximate target block number for syncing purposes
+    pub sync_target_block_number: Arc<AtomicU32>,
     /// Telemetry
     pub telemetry: Option<Telemetry>,
 }
@@ -431,13 +416,7 @@ type PartialComponents<RuntimeApi, ExecutorDispatch> = sc_service::PartialCompon
 #[allow(clippy::type_complexity)]
 pub fn new_partial<PosTable, RuntimeApi, ExecutorDispatch>(
     config: &Configuration,
-    construct_domain_genesis_block_builder: Option<
-        &dyn Fn(
-            Arc<FullBackend>,
-            NativeElseWasmExecutor<ExecutorDispatch>,
-        ) -> Arc<dyn GenerateGenesisStateRoot>,
-    >,
-    #[cfg(feature = "pot")] pot_external_entropy: &[u8],
+    pot_external_entropy: &[u8],
 ) -> Result<PartialComponents<RuntimeApi, ExecutorDispatch>, ServiceError>
 where
     PosTable: Table,
@@ -479,26 +458,30 @@ where
 
     let kzg = Kzg::new(embedded_kzg_settings());
 
-    let domain_genesis_receipt_ext =
-        construct_domain_genesis_block_builder.map(|f| f(backend.clone(), executor.clone()));
-
     let client = Arc::new(client);
 
-    #[cfg(feature = "pot")]
     let pot_verifier = PotVerifier::new(
         PotSeed::from_genesis(client.info().genesis_hash.as_ref(), pot_external_entropy),
         POT_VERIFIER_CACHE_SIZE,
     );
-    client.execution_extensions().set_extensions_factory(
-        SubspaceExtensionsFactory::<PosTable, _> {
+
+    let invalid_state_transition_proof_verifier = InvalidStateTransitionProofVerifier::new(
+        client.clone(),
+        executor.clone(),
+        VerifierClient::new(client.clone()),
+    );
+
+    let executor = Arc::new(executor);
+
+    client
+        .execution_extensions()
+        .set_extensions_factory(SubspaceExtensionsFactory::<PosTable, _, DomainBlock, _> {
             kzg: kzg.clone(),
             client: Arc::clone(&client),
-            #[cfg(feature = "pot")]
             pot_verifier: pot_verifier.clone(),
-            domain_genesis_receipt_ext,
+            executor: executor.clone(),
             _pos_table: PhantomData,
-        },
-    );
+        });
 
     let telemetry = telemetry.map(|(worker, telemetry)| {
         task_manager
@@ -511,13 +494,7 @@ where
 
     let invalid_transaction_proof_verifier = InvalidTransactionProofVerifier::new(
         client.clone(),
-        Arc::new(executor.clone()),
-        VerifierClient::new(client.clone()),
-    );
-
-    let invalid_state_transition_proof_verifier = InvalidStateTransitionProofVerifier::new(
-        client.clone(),
-        executor,
+        executor.clone(),
         VerifierClient::new(client.clone()),
     );
 
@@ -565,10 +542,11 @@ where
                     let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
 
                     // TODO: Would be nice if the whole header was passed in here
-                    let parent_block_number = client
+                    let parent_header = client
                         .header(parent_hash)?
-                        .expect("Parent header must always exist when block is created; qed")
-                        .number;
+                        .expect("Parent header must always exist when block is created; qed");
+
+                    let parent_block_number = parent_header.number;
 
                     let subspace_inherents =
                         sp_consensus_subspace::inherents::InherentDataProvider::from_timestamp_and_slot_duration(
@@ -582,38 +560,44 @@ where
             }
         },
         segment_headers_store.clone(),
-        #[cfg(feature = "pot")]
         pot_verifier.clone(),
     )?;
 
     let slot_duration = subspace_link.slot_duration();
-    let import_queue = sc_consensus_subspace::import_queue::import_queue::<PosTable, _, _, _, _, _>(
-        block_import.clone(),
-        None,
-        client.clone(),
+    let sync_target_block_number = Arc::new(AtomicU32::new(0));
+    let verifier = SubspaceVerifier::<PosTable, _, _, _, _>::new(SubspaceVerifierOptions {
+        client: client.clone(),
         kzg,
-        select_chain.clone(),
+        select_chain: select_chain.clone(),
         // TODO: Remove use current best slot known from PoT verifier in PoT case
-        move || {
+        slot_now: move || {
             let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
 
             Slot::from_timestamp(*timestamp, slot_duration)
         },
+        telemetry: telemetry.as_ref().map(|x| x.handle()),
+        offchain_tx_pool_factory: OffchainTransactionPoolFactory::new(transaction_pool.clone()),
+        reward_signing_context: schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT),
+        sync_target_block_number: Arc::clone(&sync_target_block_number),
+        is_authoring_blocks: config.role.is_authority(),
+        pot_verifier: pot_verifier.clone(),
+    })?;
+
+    let block_import = SharedBlockImport::new(block_import);
+    let import_queue = BasicQueue::new(
+        verifier,
+        block_import.clone(),
+        None,
         &task_manager.spawn_essential_handle(),
         config.prometheus_registry(),
-        telemetry.as_ref().map(|x| x.handle()),
-        OffchainTransactionPoolFactory::new(transaction_pool.clone()),
-        config.role.is_authority(),
-        #[cfg(feature = "pot")]
-        pot_verifier.clone(),
-    )?;
+    );
 
     let other = OtherPartialComponents {
-        block_import: Box::new(block_import),
+        block_import,
         subspace_link,
         segment_headers_store,
-        #[cfg(feature = "pot")]
         pot_verifier,
+        sync_target_block_number,
         telemetry,
     };
 
@@ -723,8 +707,8 @@ where
         block_import,
         subspace_link,
         segment_headers_store,
-        #[cfg(feature = "pot")]
         pot_verifier,
+        sync_target_block_number,
         mut telemetry,
     } = other;
 
@@ -841,7 +825,6 @@ where
     };
     let mut net_config = sc_network::config::FullNetworkConfiguration::new(&config.base.network);
     net_config.add_notification_protocol(cdm_gossip_peers_set_config());
-    #[cfg(feature = "pot")]
     net_config.add_notification_protocol(pot_gossip_peers_set_config());
     let sync_mode = Arc::clone(&net_config.network_config.sync_mode);
     let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
@@ -857,6 +840,27 @@ where
             block_relay,
         })?;
 
+    task_manager.spawn_handle().spawn(
+        "sync-target-follower",
+        None,
+        Box::pin({
+            let sync_service = sync_service.clone();
+
+            async move {
+                loop {
+                    let best_seen_block = sync_service
+                        .status()
+                        .await
+                        .map(|status| status.best_seen_block.unwrap_or_default())
+                        .unwrap_or_default();
+                    sync_target_block_number.store(best_seen_block, Ordering::Relaxed);
+
+                    tokio::time::sleep(SYNC_TARGET_UPDATE_INTERVAL).await;
+                }
+            }
+        }),
+    );
+
     let sync_oracle = SubspaceSyncOracle::new(config.base.force_authoring, sync_service.clone());
 
     let subspace_archiver = create_subspace_archiver(
@@ -865,11 +869,20 @@ where
         client.clone(),
         sync_oracle.clone(),
         telemetry.as_ref().map(|telemetry| telemetry.handle()),
-    );
+    )
+    .map_err(ServiceError::Client)?;
 
     task_manager
         .spawn_essential_handle()
-        .spawn_essential_blocking("subspace-archiver", None, Box::pin(subspace_archiver));
+        .spawn_essential_blocking(
+            "subspace-archiver",
+            None,
+            Box::pin(async move {
+                if let Err(error) = subspace_archiver.await {
+                    error!(%error, "Archiver exited with error");
+                }
+            }),
+        );
 
     if config.enable_subspace_block_relay {
         network_wrapper.set(network_service.clone());
@@ -903,7 +916,7 @@ where
     if let Some(registry) = config.base.prometheus_registry() {
         match NodeMetrics::new(
             client.clone(),
-            client.import_notification_stream(),
+            client.every_import_notification_stream(),
             registry,
         ) {
             Ok(node_metrics) => {
@@ -949,23 +962,23 @@ where
     let block_importing_notification_stream = subspace_link.block_importing_notification_stream();
     let archived_segment_notification_stream = subspace_link.archived_segment_notification_stream();
 
-    #[cfg(feature = "pot")]
-    let pot_slot_info_stream = {
-        let (pot_source_worker, pot_gossip_worker, pot_slot_info_stream) = PotSourceWorker::new(
-            config.is_timekeeper,
-            client.clone(),
-            pot_verifier.clone(),
-            network_service.clone(),
-            sync_service.clone(),
-        )
-        .map_err(|error| Error::Other(error.into()))?;
-        let spawn_essential_handle = task_manager.spawn_essential_handle();
+    let (pot_source_worker, pot_gossip_worker, pot_slot_info_stream) = PotSourceWorker::new(
+        config.is_timekeeper,
+        config.timekeeper_cpu_cores,
+        client.clone(),
+        pot_verifier.clone(),
+        network_service.clone(),
+        sync_service.clone(),
+        sync_oracle.clone(),
+    )
+    .map_err(|error| Error::Other(error.into()))?;
 
-        spawn_essential_handle.spawn("pot-source", Some("pot"), pot_source_worker.run());
-        spawn_essential_handle.spawn_blocking("pot-gossip", Some("pot"), pot_gossip_worker.run());
-
-        pot_slot_info_stream
-    };
+    task_manager
+        .spawn_essential_handle()
+        .spawn("pot-source", Some("pot"), pot_source_worker.run());
+    task_manager
+        .spawn_essential_handle()
+        .spawn("pot-gossip", Some("pot"), pot_gossip_worker.run());
 
     if config.base.role.is_authority() || config.force_new_slot_notifications {
         let proposer_factory = ProposerFactory::new(
@@ -995,10 +1008,11 @@ where
                         let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
 
                         // TODO: Would be nice if the whole header was passed in here
-                        let parent_block_number = client
+                        let parent_header = client
                             .header(parent_hash)?
-                            .expect("Parent header must always exist when block is created; qed")
-                            .number;
+                            .expect("Parent header must always exist when block is created; qed");
+
+                        let parent_block_number = parent_header.number;
 
                         let subspace_inherents =
                             sp_consensus_subspace::inherents::InherentDataProvider::from_timestamp_and_slot_duration(
@@ -1019,14 +1033,12 @@ where
             max_block_proposal_slot_portion: None,
             telemetry: telemetry.as_ref().map(|x| x.handle()),
             offchain_tx_pool_factory,
-            #[cfg(feature = "pot")]
             pot_verifier,
-            #[cfg(feature = "pot")]
             pot_slot_info_stream,
         };
 
         let subspace =
-            sc_consensus_subspace::start_subspace::<PosTable, _, _, _, _, _, _, _, _, _, _, _>(
+            sc_consensus_subspace::start_subspace::<PosTable, _, _, _, _, _, _, _, _, _, _>(
                 subspace_config,
             )?;
 

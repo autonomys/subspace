@@ -59,6 +59,7 @@ pub(crate) fn do_finalize_domain_current_epoch<T: Config>(
 }
 
 /// Unlocks any operators who are de-registering or nominators who are withdrawing staked funds.
+#[cfg(any(not(feature = "runtime-benchmarks"), test))]
 pub(crate) fn do_unlock_pending_withdrawals<T: Config>(
     domain_id: DomainId,
     domain_block_number: T::DomainNumber,
@@ -206,6 +207,7 @@ fn do_finalize_operator_deregistrations<T: Config>(
     Ok(())
 }
 
+#[cfg(any(not(feature = "runtime-benchmarks"), test))]
 fn unlock_operator<T: Config>(operator_id: OperatorId) -> Result<(), Error> {
     Operators::<T>::try_mutate_exists(operator_id, |maybe_operator| {
         // take the operator so this operator info is removed once we unlock the operator.
@@ -288,6 +290,7 @@ fn release_pending_deposits<T: Config>(operator_id: OperatorId) -> Result<(), Tr
     Ok(())
 }
 
+#[cfg(any(not(feature = "runtime-benchmarks"), test))]
 fn unlock_nominator_withdrawals<T: Config>(
     operator_id: OperatorId,
     domain_block_number: T::DomainNumber,
@@ -737,10 +740,11 @@ pub struct PendingOperatorSlashInfo<NominatorId, Balance> {
 
 #[cfg(test)]
 mod tests {
+    use crate::domain_registry::{DomainConfig, DomainObject};
     use crate::pallet::{
-        DomainStakingSummary, LastEpochStakingDistribution, Nominators, OperatorIdOwner, Operators,
-        PendingDeposits, PendingOperatorSwitches, PendingOperatorUnlocks, PendingUnlocks,
-        PendingWithdrawals, PreferredOperator,
+        DomainRegistry, DomainStakingSummary, LastEpochStakingDistribution, Nominators,
+        OperatorIdOwner, Operators, PendingDeposits, PendingOperatorSwitches,
+        PendingOperatorUnlocks, PendingUnlocks, PendingWithdrawals, PreferredOperator,
     };
     use crate::staking::tests::register_operator;
     use crate::staking::{
@@ -756,8 +760,9 @@ mod tests {
     use crate::{BalanceOf, Config, HoldIdentifier as FreezeIdentifierT, NominatorId};
     use frame_support::assert_ok;
     use frame_support::traits::fungible::InspectHold;
+    use frame_support::weights::Weight;
     use sp_core::{Pair, U256};
-    use sp_domains::{DomainId, OperatorPair};
+    use sp_domains::{DomainId, OperatorAllowList, OperatorPair};
     use sp_runtime::traits::Zero;
     use sp_runtime::Percent;
     use std::collections::{BTreeMap, BTreeSet};
@@ -786,6 +791,25 @@ mod tests {
                 pair.public(),
                 BTreeMap::new(),
             );
+
+            let domain_config = DomainConfig {
+                domain_name: String::from_utf8(vec![0; 1024]).unwrap(),
+                runtime_id: 0,
+                max_block_size: u32::MAX,
+                max_block_weight: Weight::MAX,
+                bundle_slot_probability: (0, 0),
+                target_bundles_per_block: 0,
+                operator_allow_list: OperatorAllowList::Anyone,
+            };
+
+            let domain_obj = DomainObject {
+                owner_account_id: 0,
+                created_at: 0,
+                genesis_receipt_hash: Default::default(),
+                domain_config,
+            };
+
+            DomainRegistry::<Test>::insert(new_domain_id, domain_obj);
 
             DomainStakingSummary::<Test>::insert(
                 new_domain_id,

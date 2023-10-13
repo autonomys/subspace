@@ -9,7 +9,7 @@ use sp_api::{HeaderT, NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_domains::{BundleHeader, ExecutionReceipt, ProofOfElection};
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, One, Saturating, Zero};
+use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, One, Zero};
 use sp_weights::Weight;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -153,7 +153,7 @@ where
             sp_core::storage::StateVersion::V1,
         );
 
-        let receipt = self.load_bundle_receipt(parent_number, parent_hash, parent_chain)?;
+        let receipt = self.load_bundle_receipt(parent_number, parent_chain)?;
 
         let header = BundleHeader {
             proof_of_election,
@@ -170,7 +170,6 @@ where
     fn load_bundle_receipt<ParentChain, ParentChainBlock>(
         &self,
         header_number: NumberFor<Block>,
-        header_hash: Block::Hash,
         parent_chain: ParentChain,
     ) -> sp_blockchain::Result<ExecutionReceiptFor<Block, CBlock>>
     where
@@ -179,36 +178,14 @@ where
     {
         let parent_chain_block_hash = parent_chain.best_hash();
         let head_receipt_number = parent_chain.head_receipt_number(parent_chain_block_hash)?;
-        let max_drift = parent_chain.block_tree_pruning_depth(parent_chain_block_hash)?;
+        let receipt_number = (head_receipt_number + One::one()).min(header_number);
 
         tracing::trace!(
             ?header_number,
             ?head_receipt_number,
-            ?max_drift,
+            ?receipt_number,
             "Collecting receipts at {parent_chain_block_hash:?}"
         );
-
-        let header_block_receipt_is_written = crate::aux_schema::latest_consensus_block_hash_for::<
-            _,
-            _,
-            CBlock::Hash,
-        >(&*self.client, &header_hash)?
-        .is_some();
-
-        // TODO: remove once the receipt generation can be done before the domain block is
-        // committed to the database, in other words, only when the receipt of block N+1 has
-        // been generated can the `client.info().best_number` be updated from N to N+1.
-        //
-        // This requires:
-        // 1. Reimplement `runtime_api.intermediate_roots()` on the client side.
-        // 2. Add a hook before the upstream `client.commit_operation(op)`.
-        let available_best_receipt_number = if header_block_receipt_is_written {
-            header_number
-        } else {
-            header_number.saturating_sub(One::one())
-        };
-
-        let receipt_number = (head_receipt_number + One::one()).min(available_best_receipt_number);
 
         if receipt_number.is_zero() {
             let genesis_hash = self.client.info().genesis_hash;
@@ -217,10 +194,7 @@ where
                     "Domain block header for #{genesis_hash:?} not found",
                 ))
             })?;
-            return Ok(ExecutionReceipt::genesis(
-                self.consensus_client.info().genesis_hash,
-                *genesis_header.state_root(),
-            ));
+            return Ok(ExecutionReceipt::genesis(*genesis_header.state_root()));
         }
 
         // Get the domain block hash corresponding to `receipt_number` in the domain canonical chain

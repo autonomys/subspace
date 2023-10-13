@@ -3,7 +3,7 @@
 use crate::pallet::StateRoots;
 use crate::{
     BalanceOf, BlockTree, Config, ConsensusBlockHash, DomainBlockDescendants, DomainBlocks,
-    ExecutionInbox, ExecutionReceiptOf, HeadReceiptNumber, InboxedBundle,
+    ExecutionInbox, ExecutionReceiptOf, HeadReceiptNumber, InboxedBundleAuthor,
 };
 use codec::{Decode, Encode};
 use frame_support::{ensure, PalletError};
@@ -123,7 +123,7 @@ pub(crate) fn verify_execution_receipt<T: Config>(
         consensus_block_number,
         consensus_block_hash,
         domain_block_number,
-        block_extrinsics_roots,
+        inboxed_bundles,
         parent_domain_block_receipt_hash,
         execution_trace,
         execution_trace_root,
@@ -138,15 +138,15 @@ pub(crate) fn verify_execution_receipt<T: Config>(
             Error::BadGenesisReceipt
         );
     } else {
+        let bundles_extrinsics_roots: Vec<_> =
+            inboxed_bundles.iter().map(|b| b.extrinsics_root).collect();
         let execution_inbox =
             ExecutionInbox::<T>::get((domain_id, domain_block_number, consensus_block_number));
-        let expected_extrinsics_roots: Vec<_> = execution_inbox
-            .into_iter()
-            .map(|b| b.extrinsics_root)
-            .collect();
+        let expected_extrinsics_roots: Vec<_> =
+            execution_inbox.iter().map(|b| b.extrinsics_root).collect();
         ensure!(
-            !block_extrinsics_roots.is_empty()
-                && *block_extrinsics_roots == expected_extrinsics_roots,
+            !bundles_extrinsics_roots.is_empty()
+                && bundles_extrinsics_roots == expected_extrinsics_roots,
             Error::InvalidExtrinsicsRoots
         );
 
@@ -297,12 +297,10 @@ pub(crate) fn process_execution_receipt<T: Config>(
                     execution_receipt.consensus_block_number,
                 ));
                 for (index, bd) in bundle_digests.into_iter().enumerate() {
-                    if let Some(bundle_author) = InboxedBundle::<T>::take(bd.header_hash) {
-                        if execution_receipt
-                            .invalid_bundles
-                            .iter()
-                            .any(|ib| ib.bundle_index == index as u32)
-                        {
+                    if let Some(bundle_author) = InboxedBundleAuthor::<T>::take(bd.header_hash) {
+                        // It is okay to index `ER::bundles` here since `verify_execution_receipt` have checked
+                        // the `ER::bundles` have the same length of `ExecutionInbox`
+                        if execution_receipt.inboxed_bundles[index].is_invalid() {
                             invalid_bundle_authors.push(bundle_author);
                         }
                     }
@@ -409,7 +407,7 @@ mod tests {
     use frame_support::dispatch::RawOrigin;
     use frame_support::{assert_err, assert_ok};
     use sp_core::H256;
-    use sp_domains::{BundleDigest, InvalidBundle, InvalidBundleType};
+    use sp_domains::{BundleDigest, InboxedBundle, InvalidBundleType};
     use sp_runtime::traits::BlockNumberProvider;
 
     #[test]
@@ -503,7 +501,9 @@ mod tests {
                         extrinsics_root: bundle_extrinsics_root,
                     }]
                 );
-                assert!(InboxedBundle::<Test>::contains_key(bundle_header_hash));
+                assert!(InboxedBundleAuthor::<Test>::contains_key(
+                    bundle_header_hash
+                ));
 
                 // Head receipt number should be updated
                 let head_receipt_number = HeadReceiptNumber::<Test>::get(domain_id);
@@ -542,7 +542,7 @@ mod tests {
             let pruned_bundle = bundle_header_hash_of_block_1.unwrap();
             assert!(BlockTree::<Test>::get(domain_id, 1).is_empty());
             assert!(ExecutionInbox::<Test>::get((domain_id, 1, 1)).is_empty());
-            assert!(!InboxedBundle::<Test>::contains_key(pruned_bundle));
+            assert!(!InboxedBundleAuthor::<Test>::contains_key(pruned_bundle));
             assert_eq!(
                 execution_receipt_type::<Test>(domain_id, &pruned_receipt),
                 ReceiptType::Rejected(RejectedReceiptType::Pruned)
@@ -738,12 +738,12 @@ mod tests {
                     future_receipt.consensus_block_number,
                 ),
                 future_receipt
-                    .block_extrinsics_roots
+                    .inboxed_bundles
                     .clone()
                     .into_iter()
-                    .map(|er| BundleDigest {
+                    .map(|b| BundleDigest {
                         header_hash: H256::random(),
-                        extrinsics_root: er,
+                        extrinsics_root: b.extrinsics_root,
                     })
                     .collect::<Vec<_>>(),
             );
@@ -771,7 +771,8 @@ mod tests {
 
             // Receipt with unknown extrinsics roots
             let mut unknown_extrinsics_roots_receipt = current_head_receipt.clone();
-            unknown_extrinsics_roots_receipt.block_extrinsics_roots = vec![H256::random()];
+            unknown_extrinsics_roots_receipt.inboxed_bundles =
+                vec![InboxedBundle::valid(H256::random(), H256::random())];
             assert_err!(
                 verify_execution_receipt::<Test>(domain_id, &unknown_extrinsics_roots_receipt),
                 Error::InvalidExtrinsicsRoots
@@ -878,36 +879,38 @@ mod tests {
             let head_node = get_block_tree_node_at::<Test>(domain_id, head_receipt_number).unwrap();
             assert_eq!(head_node.operator_ids, operator_set);
 
-            // Prepare the inbainvalid bundles and bundle authors
-            let invalid_bundle_authors: Vec<_> = operator_set
-                .clone()
-                .into_iter()
-                .filter(|i| i % 2 == 0)
-                .collect();
-            let invalid_bundles = invalid_bundle_authors
-                .iter()
-                .map(|i| InvalidBundle {
-                    // operator id start at 1 while bundle_index start at 0, thus minus 1 here
-                    bundle_index: *i as u32 - 1,
-                    invalid_bundle_type: InvalidBundleType::OutOfRangeTx,
-                })
-                .collect();
-
-            // Get the `bunde_extrinsics_roots` that contains all the submitted bundles
+            // Get the `bundles_extrinsics_roots` that contains all the submitted bundles
             let current_block_number = frame_system::Pallet::<Test>::current_block_number();
             let execution_inbox = ExecutionInbox::<Test>::get((
                 domain_id,
                 current_block_number,
                 current_block_number,
             ));
-            let bunde_extrinsics_roots: Vec<_> = execution_inbox
+            let bundles_extrinsics_roots: Vec<_> = execution_inbox
                 .into_iter()
                 .map(|b| b.extrinsics_root)
                 .collect();
-            assert_eq!(bunde_extrinsics_roots.len(), operator_set.len());
+            assert_eq!(bundles_extrinsics_roots.len(), operator_set.len());
 
-            target_receipt.invalid_bundles = invalid_bundles;
-            target_receipt.block_extrinsics_roots = bunde_extrinsics_roots;
+            // Prepare the invalid bundles and invalid bundle authors
+            let mut bundles = vec![];
+            let mut invalid_bundle_authors = vec![];
+            for (i, (operator, extrinsics_root)) in operator_set
+                .iter()
+                .zip(bundles_extrinsics_roots)
+                .enumerate()
+            {
+                if i % 2 == 0 {
+                    invalid_bundle_authors.push(*operator);
+                    bundles.push(InboxedBundle::invalid(
+                        InvalidBundleType::OutOfRangeTx(0),
+                        extrinsics_root,
+                    ));
+                } else {
+                    bundles.push(InboxedBundle::valid(H256::random(), extrinsics_root));
+                }
+            }
+            target_receipt.inboxed_bundles = bundles;
 
             // Run into next block
             run_to_block::<Test>(

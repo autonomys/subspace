@@ -41,11 +41,7 @@ mod tests;
 
 extern crate alloc;
 
-use crate::crypto::kzg::{Commitment, Witness};
-use crate::crypto::{
-    blake2b_256_hash, blake2b_256_hash_list, blake2b_256_hash_with_key, blake3_hash,
-    blake3_hash_list, Scalar,
-};
+use crate::crypto::{blake3_hash, blake3_hash_list, blake3_hash_with_key, Scalar};
 #[cfg(feature = "serde")]
 use ::serde::{Deserialize, Serialize};
 use alloc::boxed::Box;
@@ -60,24 +56,23 @@ use derive_more::{Add, AsMut, AsRef, Deref, DerefMut, Display, Div, From, Into, 
 use num_traits::{WrappingAdd, WrappingSub};
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 pub use pieces::{
-    FlatPieces, Piece, PieceArray, PieceIndex, PieceOffset, RawRecord, Record, RecordCommitment,
-    RecordWitness, SBucket,
+    ChunkWitness, FlatPieces, Piece, PieceArray, PieceIndex, PieceOffset, RawRecord, Record,
+    RecordCommitment, RecordWitness, SBucket,
 };
 use scale_info::TypeInfo;
-pub use segments::{ArchivedHistorySegment, HistorySize, RecordedHistorySegment, SegmentIndex};
+pub use segments::{
+    ArchivedHistorySegment, HistorySize, RecordedHistorySegment, SegmentCommitment, SegmentIndex,
+};
 use uint::static_assertions::const_assert;
 
 // Refuse to compile on lower than 32-bit platforms
 const_assert!(core::mem::size_of::<usize>() >= core::mem::size_of::<u32>());
 
+/// Signing context used for creating reward signatures by farmers.
+pub const REWARD_SIGNING_CONTEXT: &[u8] = b"subspace_reward";
+
 /// Byte length of a randomness type.
 pub const RANDOMNESS_LENGTH: usize = 32;
-
-/// Size of BLAKE2b-256 hash output (in bytes).
-pub const BLAKE2B_256_HASH_SIZE: usize = 32;
-
-/// BLAKE2b-256 hash output
-pub type Blake2b256Hash = [u8; BLAKE2B_256_HASH_SIZE];
 
 /// Size of BLAKE3 hash output (in bytes).
 pub const BLAKE3_HASH_SIZE: usize = 32;
@@ -123,8 +118,8 @@ impl AsMut<[u8]> for Randomness {
 impl Randomness {
     /// Derive global slot challenge from global randomness.
     // TODO: Separate type for global challenge
-    pub fn derive_global_challenge(&self, slot: SlotNumber) -> Blake2b256Hash {
-        blake2b_256_hash_list(&[&self.0, &slot.to_le_bytes()])
+    pub fn derive_global_challenge(&self, slot: SlotNumber) -> Blake3Hash {
+        blake3_hash_list(&[&self.0, &slot.to_le_bytes()])
     }
 }
 
@@ -144,10 +139,6 @@ pub type SolutionRange = u64;
 ///
 /// The closer solution's tag is to the target, the heavier it is.
 pub type BlockWeight = u128;
-
-// TODO: New type
-/// Segment commitment type.
-pub type SegmentCommitment = Commitment;
 
 /// Length of public key in bytes.
 pub const PUBLIC_KEY_LENGTH: usize = 32;
@@ -230,11 +221,11 @@ impl Default for PosProof {
 
 impl PosProof {
     /// Size of proof of space proof in bytes.
-    pub const SIZE: usize = 17 * 8;
+    pub const SIZE: usize = 20 * 8;
 
     /// Proof hash.
-    pub fn hash(&self) -> Blake2b256Hash {
-        blake2b_256_hash(&self.0)
+    pub fn hash(&self) -> Blake3Hash {
+        blake3_hash(&self.0)
     }
 }
 
@@ -340,6 +331,7 @@ impl PotSeed {
     Clone,
     Eq,
     PartialEq,
+    Hash,
     From,
     AsRef,
     AsMut,
@@ -366,7 +358,7 @@ impl PotOutput {
     /// Derives the global randomness from the output
     #[inline]
     pub fn derive_global_randomness(&self) -> Randomness {
-        Randomness::from(blake2b_256_hash(&self.0))
+        Randomness::from(blake3_hash(&self.0))
     }
 
     /// Derive seed from proof of time in case entropy injection is not needed
@@ -393,6 +385,7 @@ impl PotOutput {
     Clone,
     Eq,
     PartialEq,
+    Hash,
     Deref,
     DerefMut,
     Encode,
@@ -451,8 +444,8 @@ impl AsRef<[u8]> for PublicKey {
 
 impl PublicKey {
     /// Public key hash.
-    pub fn hash(&self) -> Blake2b256Hash {
-        blake2b_256_hash(&self.0)
+    pub fn hash(&self) -> Blake3Hash {
+        blake3_hash(&self.0)
     }
 }
 
@@ -568,7 +561,7 @@ pub enum SegmentHeader {
         /// Root of commitments of all records in a segment.
         segment_commitment: SegmentCommitment,
         /// Hash of the segment header of the previous segment
-        prev_segment_header_hash: Blake2b256Hash,
+        prev_segment_header_hash: Blake3Hash,
         /// Last archived block
         last_archived_block: LastArchivedBlock,
     },
@@ -576,8 +569,8 @@ pub enum SegmentHeader {
 
 impl SegmentHeader {
     /// Hash of the whole segment header
-    pub fn hash(&self) -> Blake2b256Hash {
-        blake2b_256_hash(&self.encode())
+    pub fn hash(&self) -> Blake3Hash {
+        blake3_hash(&self.encode())
     }
 
     /// Segment index
@@ -597,7 +590,7 @@ impl SegmentHeader {
     }
 
     /// Hash of the segment header of the previous segment
-    pub fn prev_segment_header_hash(&self) -> Blake2b256Hash {
+    pub fn prev_segment_header_hash(&self) -> Blake3Hash {
         match self {
             Self::V0 {
                 prev_segment_header_hash,
@@ -637,13 +630,13 @@ pub struct Solution<PublicKey, RewardAddress> {
     /// Pieces offset within sector
     pub piece_offset: PieceOffset,
     /// Record commitment that can use used to verify that piece was included in blockchain history
-    pub record_commitment: Commitment,
+    pub record_commitment: RecordCommitment,
     /// Witness for above record commitment
-    pub record_witness: Witness,
+    pub record_witness: RecordWitness,
     /// Chunk at above offset
     pub chunk: Scalar,
     /// Witness for above chunk
-    pub chunk_witness: Witness,
+    pub chunk_witness: ChunkWitness,
     /// Audit chunk offset within above chunk
     pub audit_chunk_offset: u8,
     /// Proof of space for piece offset
@@ -698,10 +691,10 @@ impl<PublicKey, RewardAddress> Solution<PublicKey, RewardAddress> {
             sector_index: 0,
             history_size: HistorySize::from(SegmentIndex::ZERO),
             piece_offset: PieceOffset::default(),
-            record_commitment: Commitment::default(),
-            record_witness: Witness::default(),
+            record_commitment: RecordCommitment::default(),
+            record_witness: RecordWitness::default(),
             chunk: Scalar::default(),
-            chunk_witness: Witness::default(),
+            chunk_witness: ChunkWitness::default(),
             audit_chunk_offset: 0,
             proof_of_space: PosProof::default(),
         }
@@ -945,7 +938,7 @@ impl Default for U256 {
 
 /// Challenge used for a particular sector for particular slot
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Deref)]
-pub struct SectorSlotChallenge(Blake2b256Hash);
+pub struct SectorSlotChallenge(Blake3Hash);
 
 impl SectorSlotChallenge {
     /// Index of s-bucket within sector to be audited
@@ -964,7 +957,7 @@ impl SectorSlotChallenge {
 /// Data structure representing sector ID in farmer's plot
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash, Encode, Decode, TypeInfo)]
 #[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub struct SectorId(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] Blake2b256Hash);
+pub struct SectorId(#[cfg_attr(feature = "serde", serde(with = "hex::serde"))] Blake3Hash);
 
 impl AsRef<[u8]> for SectorId {
     #[inline]
@@ -975,8 +968,8 @@ impl AsRef<[u8]> for SectorId {
 
 impl SectorId {
     /// Create new sector ID by deriving it from public key and sector index
-    pub fn new(public_key_hash: Blake2b256Hash, sector_index: SectorIndex) -> Self {
-        Self(blake2b_256_hash_with_key(
+    pub fn new(public_key_hash: Blake3Hash, sector_index: SectorIndex) -> Self {
+        Self(blake3_hash_with_key(
             &public_key_hash,
             &sector_index.to_le_bytes(),
         ))
@@ -998,8 +991,12 @@ impl SectorId {
         let min_history_size_in_pieces = recent_segments_in_pieces
             * recent_history_fraction.1.in_pieces().get()
             / recent_history_fraction.0.in_pieces().get();
-        let input_hash =
-            U256::from_le_bytes(blake2b_256_hash_with_key(&piece_offset.to_bytes(), &self.0));
+        let input_hash = {
+            let piece_offset_bytes = piece_offset.to_bytes();
+            let mut key = [0; 32];
+            key[..piece_offset_bytes.len()].copy_from_slice(&piece_offset_bytes);
+            U256::from_le_bytes(blake3_hash_with_key(&key, &self.0))
+        };
         let history_size_in_pieces = history_size.in_pieces().get();
         let num_interleaved_pieces = 1.max(
             u64::from(max_pieces_in_sector) * recent_history_fraction.0.in_pieces().get()
@@ -1027,7 +1024,7 @@ impl SectorId {
     /// Derive sector slot challenge for this sector from provided global challenge
     pub fn derive_sector_slot_challenge(
         &self,
-        global_challenge: &Blake2b256Hash,
+        global_challenge: &Blake3Hash,
     ) -> SectorSlotChallenge {
         let sector_slot_challenge = Simd::from(self.0) ^ Simd::from(*global_challenge);
         SectorSlotChallenge(sector_slot_challenge.to_array())
@@ -1039,7 +1036,7 @@ impl SectorId {
         piece_offset: PieceOffset,
         history_size: HistorySize,
     ) -> PosSeed {
-        let evaluation_seed = blake2b_256_hash_list(&[
+        let evaluation_seed = blake3_hash_list(&[
             &self.0,
             &piece_offset.to_bytes(),
             &history_size.get().to_le_bytes(),
@@ -1060,9 +1057,9 @@ impl SectorId {
         let sector_expiration_check_history_size =
             history_size.sector_expiration_check(min_sector_lifetime)?;
 
-        let input_hash = U256::from_le_bytes(blake2b_256_hash_list(&[
+        let input_hash = U256::from_le_bytes(blake3_hash_list(&[
             &self.0,
-            &sector_expiration_check_segment_commitment.to_bytes(),
+            sector_expiration_check_segment_commitment.as_ref(),
         ]));
 
         let last_possible_expiration =

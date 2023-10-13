@@ -8,8 +8,10 @@ use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{HistorySize, PublicKey, Record, RecordedHistorySegment};
 use subspace_erasure_coding::ErasureCoding;
-use subspace_farmer_components::plotting::{plot_sector, PieceGetterRetryPolicy};
-use subspace_farmer_components::sector::{sector_size, SectorMetadataChecksummed};
+use subspace_farmer_components::plotting::{
+    plot_sector, PieceGetterRetryPolicy, PlotSectorOptions,
+};
+use subspace_farmer_components::sector::sector_size;
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::chia::ChiaTable;
 use subspace_proof_of_space::Table;
@@ -58,26 +60,28 @@ fn criterion_benchmark(c: &mut Criterion) {
     };
 
     let sector_size = sector_size(pieces_in_sector);
-    let mut sector_bytes = vec![0; sector_size];
-    let mut sector_metadata_bytes = vec![0; SectorMetadataChecksummed::encoded_size()];
+    let mut sector_bytes = Vec::new();
+    let mut sector_metadata_bytes = Vec::new();
 
     let mut group = c.benchmark_group("plotting");
     group.throughput(Throughput::Bytes(sector_size as u64));
     group.bench_function("in-memory", |b| {
         b.iter(|| {
-            block_on(plot_sector::<_, PosTable>(
-                black_box(&public_key),
-                black_box(sector_index),
-                black_box(&archived_history_segment),
-                black_box(PieceGetterRetryPolicy::default()),
-                black_box(&farmer_protocol_info),
-                black_box(&kzg),
-                black_box(&erasure_coding),
-                black_box(pieces_in_sector),
-                black_box(&mut sector_bytes),
-                black_box(&mut sector_metadata_bytes),
-                black_box(&mut table_generator),
-            ))
+            block_on(plot_sector::<PosTable, _>(PlotSectorOptions {
+                public_key: black_box(&public_key),
+                sector_index: black_box(sector_index),
+                piece_getter: black_box(&archived_history_segment),
+                piece_getter_retry_policy: black_box(PieceGetterRetryPolicy::default()),
+                farmer_protocol_info: black_box(&farmer_protocol_info),
+                kzg: black_box(&kzg),
+                erasure_coding: black_box(&erasure_coding),
+                pieces_in_sector: black_box(pieces_in_sector),
+                sector_output: black_box(&mut sector_bytes),
+                sector_metadata_output: black_box(&mut sector_metadata_bytes),
+                downloading_semaphore: black_box(None),
+                encoding_semaphore: black_box(None),
+                table_generator: black_box(&mut table_generator),
+            }))
             .unwrap();
         })
     });

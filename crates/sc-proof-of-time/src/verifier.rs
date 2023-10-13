@@ -8,8 +8,7 @@ use futures::channel::oneshot;
 use lru::LruCache;
 use parking_lot::Mutex;
 use sp_consensus_slots::Slot;
-#[cfg(feature = "pot")]
-use sp_consensus_subspace::PotParametersChange;
+use sp_consensus_subspace::{PotNextSlotInput, PotParametersChange};
 use std::num::{NonZeroU32, NonZeroUsize};
 use std::sync::Arc;
 use subspace_core_primitives::{PotCheckpoints, PotOutput, PotSeed};
@@ -64,10 +63,40 @@ impl PotVerifier {
         self.genesis_seed
     }
 
-    pub fn get_checkpoints(
+    /// Try to get checkpoints for provided seed and slot iterations, returns `None` if proving
+    /// fails internally.
+    pub async fn get_checkpoints(
         &self,
-        seed: PotSeed,
         slot_iterations: NonZeroU32,
+        seed: PotSeed,
+    ) -> Option<PotCheckpoints> {
+        // TODO: This "proxy" is a workaround for https://github.com/rust-lang/rust/issues/57478
+        let (result_sender, result_receiver) = oneshot::channel();
+        tokio::task::spawn_blocking({
+            let verifier = self.clone();
+
+            move || {
+                futures::executor::block_on({
+                    async move {
+                        // Result doesn't matter here
+                        let _ = result_sender.send(
+                            verifier
+                                .calculate_checkpoints(slot_iterations, seed, true)
+                                .await,
+                        );
+                    }
+                });
+            }
+        });
+
+        result_receiver.await.unwrap_or_default()
+    }
+
+    /// Try to get checkpoints quickly without waiting for potentially locked async mutex or proving
+    pub fn try_get_checkpoints(
+        &self,
+        slot_iterations: NonZeroU32,
+        seed: PotSeed,
     ) -> Option<PotCheckpoints> {
         let cache_key = CacheKey {
             seed,
@@ -76,7 +105,7 @@ impl PotVerifier {
 
         self.cache
             .lock()
-            .peek(&cache_key)
+            .get(&cache_key)
             .and_then(|value| value.checkpoints.try_lock()?.as_ref().copied())
     }
 
@@ -91,25 +120,13 @@ impl PotVerifier {
     /// whenever possible.
     pub async fn is_output_valid(
         &self,
-        #[cfg(feature = "pot")] slot: Slot,
-        seed: PotSeed,
-        #[cfg_attr(not(feature = "pot"), allow(unused_mut))] slot_iterations: NonZeroU32,
+        input: PotNextSlotInput,
         slots: Slot,
         output: PotOutput,
-        #[cfg(feature = "pot")] maybe_parameters_change: Option<PotParametersChange>,
+        maybe_parameters_change: Option<PotParametersChange>,
     ) -> bool {
-        self.is_output_valid_internal(
-            #[cfg(feature = "pot")]
-            slot,
-            seed,
-            slot_iterations,
-            slots,
-            output,
-            #[cfg(feature = "pot")]
-            maybe_parameters_change,
-            true,
-        )
-        .await
+        self.is_output_valid_internal(input, slots, output, maybe_parameters_change, true)
+            .await
     }
 
     /// Does the same verification as [`Self::is_output_valid()`] except it relies on proofs being
@@ -117,36 +134,21 @@ impl PotVerifier {
     /// be a quick and cheap version of the function.
     pub async fn try_is_output_valid(
         &self,
-        #[cfg(feature = "pot")] slot: Slot,
-        seed: PotSeed,
-        #[cfg_attr(not(feature = "pot"), allow(unused_mut))] slot_iterations: NonZeroU32,
+        input: PotNextSlotInput,
         slots: Slot,
         output: PotOutput,
-        #[cfg(feature = "pot")] maybe_parameters_change: Option<PotParametersChange>,
+        maybe_parameters_change: Option<PotParametersChange>,
     ) -> bool {
-        self.is_output_valid_internal(
-            #[cfg(feature = "pot")]
-            slot,
-            seed,
-            slot_iterations,
-            slots,
-            output,
-            #[cfg(feature = "pot")]
-            maybe_parameters_change,
-            false,
-        )
-        .await
+        self.is_output_valid_internal(input, slots, output, maybe_parameters_change, false)
+            .await
     }
 
-    #[allow(clippy::too_many_arguments)]
     async fn is_output_valid_internal(
         &self,
-        #[cfg(feature = "pot")] mut slot: Slot,
-        mut seed: PotSeed,
-        #[cfg_attr(not(feature = "pot"), allow(unused_mut))] mut slot_iterations: NonZeroU32,
+        mut input: PotNextSlotInput,
         slots: Slot,
         output: PotOutput,
-        #[cfg(feature = "pot")] mut maybe_parameters_change: Option<PotParametersChange>,
+        maybe_parameters_change: Option<PotParametersChange>,
         do_proving_if_necessary: bool,
     ) -> bool {
         let mut slots = u64::from(slots);
@@ -154,7 +156,7 @@ impl PotVerifier {
         loop {
             // TODO: This "proxy" is a workaround for https://github.com/rust-lang/rust/issues/57478
             let (result_sender, result_receiver) = oneshot::channel();
-            std::thread::spawn({
+            tokio::task::spawn_blocking({
                 let verifier = self.clone();
 
                 move || {
@@ -163,9 +165,9 @@ impl PotVerifier {
                             // Result doesn't matter here
                             let _ = result_sender.send(
                                 verifier
-                                    .calculate_output(
-                                        seed,
-                                        slot_iterations,
+                                    .calculate_checkpoints(
+                                        input.slot_iterations,
+                                        input.seed,
                                         do_proving_if_necessary,
                                     )
                                     .await,
@@ -175,35 +177,23 @@ impl PotVerifier {
                 }
             });
 
-            let Ok(Some(calculated_proof)) = result_receiver.await else {
+            let Ok(Some(calculated_checkpoints)) = result_receiver.await else {
                 return false;
             };
+            let calculated_output = calculated_checkpoints.output();
 
             slots -= 1;
 
             if slots == 0 {
-                return output == calculated_proof;
+                return output == calculated_output;
             }
 
-            #[cfg(feature = "pot")]
-            {
-                slot = slot + Slot::from(1);
-            }
-
-            #[cfg(feature = "pot")]
-            if let Some(parameters_change) = maybe_parameters_change
-                && parameters_change.slot == slot
-            {
-                slot_iterations = parameters_change.slot_iterations;
-                seed = calculated_proof.seed_with_entropy(&parameters_change.entropy);
-                maybe_parameters_change.take();
-            } else {
-                seed = calculated_proof.seed();
-            }
-            #[cfg(not(feature = "pot"))]
-            {
-                seed = calculated_proof.seed();
-            }
+            input = PotNextSlotInput::derive(
+                input.slot_iterations,
+                input.slot,
+                calculated_output,
+                &maybe_parameters_change,
+            );
         }
     }
 
@@ -211,12 +201,12 @@ impl PotVerifier {
     // TODO: False-positive, lock is not actually held over await point, remove suppression once
     //  fixed upstream
     #[allow(clippy::await_holding_lock)]
-    async fn calculate_output(
+    async fn calculate_checkpoints(
         &self,
-        seed: PotSeed,
         slot_iterations: NonZeroU32,
+        seed: PotSeed,
         do_proving_if_necessary: bool,
-    ) -> Option<PotOutput> {
+    ) -> Option<PotCheckpoints> {
         let cache_key = CacheKey {
             seed,
             slot_iterations,
@@ -224,12 +214,12 @@ impl PotVerifier {
 
         loop {
             let mut cache = self.cache.lock();
-            let maybe_cache_value = cache.peek(&cache_key).cloned();
+            let maybe_cache_value = cache.get(&cache_key).cloned();
             if let Some(cache_value) = maybe_cache_value {
                 drop(cache);
                 let correct_checkpoints = cache_value.checkpoints.lock().await;
-                if let Some(correct_checkpoints) = correct_checkpoints.as_ref() {
-                    return Some(correct_checkpoints.output());
+                if let Some(correct_checkpoints) = *correct_checkpoints {
+                    return Some(correct_checkpoints);
                 }
 
                 // There was another verification for these inputs and it wasn't successful, retry
@@ -282,17 +272,45 @@ impl PotVerifier {
                 return None;
             };
 
-            let proof = generated_checkpoints.output();
             checkpoints.replace(generated_checkpoints);
-            return Some(proof);
+            return Some(generated_checkpoints);
         }
     }
 
     /// Verify proof of time checkpoints
+    pub async fn verify_checkpoints(
+        &self,
+        seed: PotSeed,
+        slot_iterations: NonZeroU32,
+        checkpoints: &PotCheckpoints,
+    ) -> bool {
+        // TODO: This "proxy" is a workaround for https://github.com/rust-lang/rust/issues/57478
+        let (result_sender, result_receiver) = oneshot::channel();
+        tokio::task::spawn_blocking({
+            let verifier = self.clone();
+            let checkpoints = *checkpoints;
+
+            move || {
+                futures::executor::block_on({
+                    async move {
+                        // Result doesn't matter here
+                        let _ = result_sender.send(
+                            verifier
+                                .verify_checkpoints_internal(seed, slot_iterations, &checkpoints)
+                                .await,
+                        );
+                    }
+                });
+            }
+        });
+
+        result_receiver.await.unwrap_or_default()
+    }
+
     // TODO: False-positive, lock is not actually held over await point, remove suppression once
     //  fixed upstream
     #[allow(clippy::await_holding_lock)]
-    pub async fn verify_checkpoints(
+    async fn verify_checkpoints_internal(
         &self,
         seed: PotSeed,
         slot_iterations: NonZeroU32,
@@ -305,7 +323,7 @@ impl PotVerifier {
 
         loop {
             let mut cache = self.cache.lock();
-            if let Some(cache_value) = cache.peek(&cache_key).cloned() {
+            if let Some(cache_value) = cache.get(&cache_key).cloned() {
                 drop(cache);
                 let correct_checkpoints = cache_value.checkpoints.lock().await;
                 if let Some(correct_checkpoints) = correct_checkpoints.as_ref() {

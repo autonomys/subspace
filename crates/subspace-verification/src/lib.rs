@@ -27,15 +27,14 @@ use schnorrkel::context::SigningContext;
 use schnorrkel::SignatureError;
 use sp_arithmetic::traits::SaturatedConversion;
 use subspace_archiving::archiver;
-use subspace_core_primitives::crypto::kzg::Kzg;
+use subspace_core_primitives::crypto::kzg::{Commitment, Kzg, Witness};
 use subspace_core_primitives::crypto::{
-    blake2b_256_254_hash_to_scalar, blake2b_256_hash_list, blake2b_256_hash_with_key,
-    blake3_hash_list, Scalar,
+    blake3_254_hash_to_scalar, blake3_hash_list, blake3_hash_with_key, Scalar,
 };
 use subspace_core_primitives::{
-    Blake2b256Hash, Blake3Hash, BlockNumber, BlockWeight, HistorySize, PotOutput, PublicKey,
-    Randomness, Record, RewardSignature, SectorId, SectorSlotChallenge, SegmentCommitment,
-    SlotNumber, Solution, SolutionRange,
+    Blake3Hash, BlockNumber, BlockWeight, HistorySize, PotOutput, PublicKey, Record,
+    RewardSignature, SectorId, SectorSlotChallenge, SegmentCommitment, SlotNumber, Solution,
+    SolutionRange,
 };
 use subspace_proof_of_space::Table;
 
@@ -105,7 +104,7 @@ pub fn check_reward_signature(
 /// Calculates solution distance for given parameters, is used as a primitive to check whether
 /// solution distance is within solution range (see [`is_within_solution_range()`]).
 fn calculate_solution_distance(
-    global_challenge: &Blake2b256Hash,
+    global_challenge: &Blake3Hash,
     audit_chunk: SolutionRange,
     sector_slot_challenge: &SectorSlotChallenge,
 ) -> SolutionRange {
@@ -116,13 +115,13 @@ fn calculate_solution_distance(
             .expect("Solution range is smaller in size than global challenge; qed"),
     );
     let sector_slot_challenge_with_audit_chunk =
-        blake2b_256_hash_with_key(sector_slot_challenge.as_ref(), &audit_chunk.to_le_bytes());
+        blake3_hash_with_key(sector_slot_challenge, &audit_chunk.to_le_bytes());
     let sector_slot_challenge_with_audit_chunk_as_solution_range: SolutionRange =
         SolutionRange::from_le_bytes(
             *sector_slot_challenge_with_audit_chunk
                 .array_chunks::<{ mem::size_of::<SolutionRange>() }>()
                 .next()
-                .expect("Solution range is smaller in size than blake2b-256 hash; qed"),
+                .expect("Solution range is smaller in size than blake3 hash; qed"),
         );
     subspace_core_primitives::bidirectional_distance(
         &global_challenge_as_solution_range,
@@ -130,15 +129,17 @@ fn calculate_solution_distance(
     )
 }
 
-/// Returns true if solution distance is within the solution range for provided parameters.
+/// Returns `Some(solution_distance)` if solution distance is within the solution range for provided
+/// parameters.
 pub fn is_within_solution_range(
-    global_challenge: &Blake2b256Hash,
+    global_challenge: &Blake3Hash,
     audit_chunk: SolutionRange,
     sector_slot_challenge: &SectorSlotChallenge,
     solution_range: SolutionRange,
-) -> bool {
-    calculate_solution_distance(global_challenge, audit_chunk, sector_slot_challenge)
-        <= solution_range / 2
+) -> Option<SolutionRange> {
+    let solution_distance =
+        calculate_solution_distance(global_challenge, audit_chunk, sector_slot_challenge);
+    (solution_distance <= solution_range / 2).then_some(solution_distance)
 }
 
 /// Parameters for checking piece validity
@@ -163,11 +164,7 @@ pub struct PieceCheckParams {
 /// Parameters for solution verification
 #[derive(Debug, Clone, Encode, Decode, MaxEncodedLen)]
 pub struct VerifySolutionParams {
-    /// Global randomness
-    #[cfg(not(feature = "pot"))]
-    pub global_randomness: Randomness,
     /// Proof of time for which solution is built
-    #[cfg(feature = "pot")]
     pub proof_of_time: PotOutput,
     /// Solution range
     pub solution_range: SolutionRange,
@@ -195,9 +192,6 @@ where
     PublicKey: From<&'a FarmerPublicKey>,
 {
     let VerifySolutionParams {
-        #[cfg(not(feature = "pot"))]
-        global_randomness,
-        #[cfg(feature = "pot")]
         proof_of_time,
         solution_range,
         piece_check_params,
@@ -208,7 +202,6 @@ where
         solution.sector_index,
     );
 
-    #[cfg(feature = "pot")]
     let global_randomness = proof_of_time.derive_global_randomness();
     let global_challenge = global_randomness.derive_global_challenge(slot);
     let sector_slot_challenge = sector_id.derive_sector_slot_challenge(&global_challenge);
@@ -252,11 +245,12 @@ where
 
     // Check that chunk belongs to the record
     if !kzg.verify(
-        &solution.record_commitment,
+        &Commitment::try_from(solution.record_commitment)
+            .map_err(|_error| Error::InvalidChunkWitness)?,
         Record::NUM_S_BUCKETS,
         s_bucket_audit_index.into(),
         &solution.chunk,
-        &solution.chunk_witness,
+        &Witness::try_from(solution.chunk_witness).map_err(|_error| Error::InvalidChunkWitness)?,
     ) {
         return Err(Error::InvalidChunkWitness);
     }
@@ -314,7 +308,7 @@ where
         // Check that piece is part of the blockchain history
         if !archiver::is_record_commitment_hash_valid(
             kzg,
-            &blake2b_256_254_hash_to_scalar(&solution.record_commitment.to_bytes()),
+            &blake3_254_hash_to_scalar(solution.record_commitment.as_ref()),
             segment_commitment,
             &solution.record_witness,
             position,
@@ -324,18 +318,6 @@ where
     }
 
     Ok(solution_distance)
-}
-
-/// Derive on-chain randomness from solution.
-// TODO: Remove once PoT is enabled by default
-pub fn derive_randomness<PublicKey, RewardAddress>(
-    solution: &Solution<PublicKey, RewardAddress>,
-    slot: SlotNumber,
-) -> Randomness {
-    Randomness::from(blake2b_256_hash_list(&[
-        &solution.chunk.to_bytes(),
-        &slot.to_le_bytes(),
-    ]))
 }
 
 /// Derive proof of time entropy from chunk and proof of time for injection purposes.

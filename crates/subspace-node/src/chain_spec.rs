@@ -18,13 +18,15 @@
 
 use crate::chain_spec_utils::{chain_spec_properties, get_account_id_from_seed};
 use crate::domain::evm_chain_spec::{self, SpecId};
+use parity_scale_codec::Encode;
 use sc_service::{ChainType, NoExtension};
 use sc_subspace_chain_specs::ConsensusChainSpec;
 use sc_telemetry::TelemetryEndpoints;
 use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::crypto::{Ss58Codec, UncheckedFrom};
-use sp_domains::RuntimeType;
-use sp_runtime::Percent;
+use sp_domains::storage::RawGenesis;
+use sp_domains::{OperatorAllowList, RuntimeType};
+use sp_runtime::{BuildStorage, Percent};
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use subspace_core_primitives::PotKey;
@@ -85,7 +87,7 @@ struct GenesisParams {
     allow_authoring_by: AllowAuthoringBy,
     pot_slot_iterations: NonZeroU32,
     enable_domains: bool,
-    enable_transfer: bool,
+    enable_balance_transfers: bool,
     confirmation_depth_k: u32,
 }
 
@@ -155,7 +157,7 @@ pub fn gemini_3f_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, 
                     // TODO: Adjust once we bench PoT on faster hardware
                     pot_slot_iterations: NonZeroU32::new(183_270_000).expect("Not zero; qed"),
                     enable_domains: true,
-                    enable_transfer: false,
+                    enable_balance_transfers: true,
                     confirmation_depth_k: 100, // TODO: Proper value here
                 },
             )
@@ -253,7 +255,7 @@ pub fn devnet_config_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfi
                     allow_authoring_by: AllowAuthoringBy::FirstFarmer,
                     pot_slot_iterations: NonZeroU32::new(150_000_000).expect("Not zero; qed"),
                     enable_domains: true,
-                    enable_transfer: true,
+                    enable_balance_transfers: true,
                     confirmation_depth_k: 100, // TODO: Proper value here
                 },
             )
@@ -311,7 +313,7 @@ pub fn dev_config() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String> 
                     allow_authoring_by: AllowAuthoringBy::Anyone,
                     pot_slot_iterations: NonZeroU32::new(100_000_000).expect("Not zero; qed"),
                     enable_domains: true,
-                    enable_transfer: true,
+                    enable_balance_transfers: true,
                     confirmation_depth_k: 5,
                 },
             )
@@ -374,7 +376,7 @@ pub fn local_config() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String
                     allow_authoring_by: AllowAuthoringBy::Anyone,
                     pot_slot_iterations: NonZeroU32::new(100_000_000).expect("Not zero; qed"),
                     enable_domains: true,
-                    enable_transfer: true,
+                    enable_balance_transfers: true,
                     confirmation_depth_k: 1,
                 },
             )
@@ -416,16 +418,20 @@ fn subspace_genesis_config(
         allow_authoring_by,
         pot_slot_iterations,
         enable_domains,
-        enable_transfer,
+        enable_balance_transfers,
         confirmation_depth_k,
     } = genesis_params;
 
-    let (mut domain_genesis_config, genesis_domain_params) =
+    let (domain_genesis_config, genesis_domain_params) =
         evm_chain_spec::get_testnet_genesis_by_spec_id(spec_id);
-    // Clear the WASM code of the genesis config since it is duplicated with `GenesisDomain::code`
-    domain_genesis_config.system.code = Default::default();
-    let raw_domain_genesis_config = serde_json::to_vec(&domain_genesis_config)
-        .expect("Genesis config serialization never fails; qed");
+
+    let raw_genesis_storage = {
+        let storage = domain_genesis_config
+            .build_storage()
+            .expect("Failed to build genesis storage from genesis runtime config");
+        let raw_genesis = RawGenesis::from_storage(storage);
+        raw_genesis.encode()
+    };
 
     RuntimeGenesisConfig {
         system: SystemConfig {
@@ -449,26 +455,24 @@ fn subspace_genesis_config(
         vesting: VestingConfig { vesting },
         runtime_configs: RuntimeConfigsConfig {
             enable_domains,
-            enable_transfer,
+            enable_balance_transfers,
             confirmation_depth_k,
         },
         domains: DomainsConfig {
             genesis_domain: Some(sp_domains::GenesisDomain {
-                runtime_name: b"evm".to_vec(),
+                runtime_name: "evm".to_owned(),
                 runtime_type: RuntimeType::Evm,
                 runtime_version: evm_domain_runtime::VERSION,
-                code: evm_domain_runtime::WASM_BINARY
-                    .unwrap_or_else(|| panic!("EVM domain runtime not available"))
-                    .to_owned(),
+                raw_genesis_storage,
 
                 // Domain config, mainly for placeholder the concrete value TBD
                 owner_account_id: sudo_account,
-                domain_name: b"evm-domain".to_vec(),
+                domain_name: "evm-domain".to_owned(),
                 max_block_size: MaxDomainBlockSize::get(),
                 max_block_weight: MaxDomainBlockWeight::get(),
                 bundle_slot_probability: (1, 1),
                 target_bundles_per_block: 10,
-                raw_genesis_config: raw_domain_genesis_config,
+                operator_allow_list: OperatorAllowList::Anyone,
                 signing_key: genesis_domain_params.operator_signing_key,
                 nomination_tax: Percent::from_percent(5),
                 minimum_nominator_stake: 100 * SSC,

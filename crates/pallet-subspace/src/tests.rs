@@ -17,10 +17,10 @@
 //! Consensus extension module tests for Subspace consensus.
 
 use crate::mock::{
-    create_archived_segment, create_segment_header, create_signed_vote,
-    generate_equivocation_proof, go_to_block, new_test_ext, progress_to_block,
-    GlobalRandomnessUpdateInterval, ReportLongevity, RuntimeEvent, RuntimeOrigin, Subspace, System,
-    Test, INITIAL_SOLUTION_RANGE, SLOT_PROBABILITY,
+    allow_all_pot_extension, create_archived_segment, create_segment_header, create_signed_vote,
+    generate_equivocation_proof, go_to_block, new_test_ext, progress_to_block, BlockAuthoringDelay,
+    ReportLongevity, RuntimeEvent, RuntimeOrigin, Subspace, System, Test, INITIAL_SOLUTION_RANGE,
+    SLOT_PROBABILITY,
 };
 use crate::{
     pallet, AllowAuthoringByAnyone, AuditChunkOffset, BlockList, Call, CheckVoteError, Config,
@@ -31,11 +31,10 @@ use codec::Encode;
 use frame_support::dispatch::{GetDispatchInfo, Pays};
 use frame_support::{assert_err, assert_ok};
 use frame_system::{EventRecord, Phase};
+use rand::prelude::*;
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
-#[cfg(not(feature = "pot"))]
-use sp_consensus_subspace::GlobalRandomnesses;
-use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SolutionRanges};
+use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, PotExtension, SolutionRanges};
 use sp_core::crypto::UncheckedFrom;
 use sp_runtime::traits::{BlockNumberProvider, Header};
 use sp_runtime::transaction_validity::{
@@ -44,16 +43,14 @@ use sp_runtime::transaction_validity::{
 use sp_runtime::DispatchError;
 use std::assert_matches::assert_matches;
 use std::collections::BTreeMap;
-use std::num::NonZeroUsize;
-use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
+use std::sync::{Arc, Mutex};
 use subspace_core_primitives::crypto::Scalar;
-use subspace_core_primitives::{Record, SegmentIndex, SolutionRange};
-use subspace_erasure_coding::ErasureCoding;
+use subspace_core_primitives::{PieceOffset, PotOutput, SegmentIndex, SolutionRange};
 use subspace_runtime_primitives::{FindBlockRewardAddress, FindVotingRewardAddresses};
 
 #[test]
 fn genesis_slot_is_correct() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(allow_all_pot_extension()).execute_with(|| {
         let keypair = Keypair::generate();
 
         // this sets the genesis slot to 6;
@@ -63,45 +60,8 @@ fn genesis_slot_is_correct() {
 }
 
 #[test]
-fn can_update_global_randomness() {
-    new_test_ext().execute_with(|| {
-        let keypair = Keypair::generate();
-
-        assert_eq!(<Test as Config>::GlobalRandomnessUpdateInterval::get(), 10);
-
-        let initial_randomnesses = GlobalRandomnesses {
-            current: Default::default(),
-            next: None,
-        };
-        assert_eq!(Subspace::global_randomnesses(), initial_randomnesses);
-
-        // Progress to almost interval edge
-        progress_to_block(&keypair, 9, 1);
-        // Still no randomness update
-        assert_eq!(Subspace::global_randomnesses(), initial_randomnesses);
-
-        // Global randomness update interval edge
-        progress_to_block(&keypair, 10, 1);
-        // Next randomness should be updated, but current is still unchanged
-        let updated_randomnesses = Subspace::global_randomnesses();
-        assert_eq!(updated_randomnesses.current, initial_randomnesses.current);
-        assert!(updated_randomnesses.next.is_some());
-
-        progress_to_block(&keypair, 11, 1);
-        // Next randomness should become current
-        assert_eq!(
-            Subspace::global_randomnesses(),
-            GlobalRandomnesses {
-                current: updated_randomnesses.next.unwrap(),
-                next: None
-            }
-        );
-    })
-}
-
-#[test]
 fn can_update_solution_range_on_era_change() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(allow_all_pot_extension()).execute_with(|| {
         let keypair = Keypair::generate();
 
         assert_eq!(<Test as Config>::EraDuration::get(), 4);
@@ -173,7 +133,7 @@ fn can_update_solution_range_on_era_change() {
 
 #[test]
 fn can_override_solution_range_update() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(allow_all_pot_extension()).execute_with(|| {
         let keypair = Keypair::generate();
 
         assert_eq!(
@@ -223,7 +183,7 @@ fn can_override_solution_range_update() {
 
 #[test]
 fn solution_range_should_not_update_when_disabled() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(allow_all_pot_extension()).execute_with(|| {
         let keypair = Keypair::generate();
 
         assert_eq!(<Test as Config>::EraDuration::get(), 4);
@@ -289,7 +249,7 @@ fn solution_range_should_not_update_when_disabled() {
 
 #[test]
 fn report_equivocation_current_session_works() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(allow_all_pot_extension()).execute_with(|| {
         let keypair = Keypair::generate();
 
         progress_to_block(&keypair, 1, 1);
@@ -314,7 +274,7 @@ fn report_equivocation_current_session_works() {
 
 #[test]
 fn report_equivocation_old_session_works() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(allow_all_pot_extension()).execute_with(|| {
         let keypair = Keypair::generate();
 
         progress_to_block(&keypair, 1, 1);
@@ -342,7 +302,7 @@ fn report_equivocation_old_session_works() {
 
 #[test]
 fn report_equivocation_invalid_equivocation_proof() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(allow_all_pot_extension()).execute_with(|| {
         let keypair = Keypair::generate();
 
         progress_to_block(&keypair, 1, 1);
@@ -412,7 +372,7 @@ fn report_equivocation_invalid_equivocation_proof() {
 
 #[test]
 fn report_equivocation_validate_unsigned_prevents_duplicates() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(allow_all_pot_extension()).execute_with(|| {
         let keypair = Keypair::generate();
 
         progress_to_block(&keypair, 1, 1);
@@ -475,7 +435,7 @@ fn report_equivocation_validate_unsigned_prevents_duplicates() {
 
 #[test]
 fn valid_equivocation_reports_dont_pay_fees() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(allow_all_pot_extension()).execute_with(|| {
         let keypair = Keypair::generate();
 
         progress_to_block(&keypair, 1, 1);
@@ -520,7 +480,7 @@ fn valid_equivocation_reports_dont_pay_fees() {
 
 #[test]
 fn store_segment_header_works() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(allow_all_pot_extension()).execute_with(|| {
         let keypair = Keypair::generate();
 
         progress_to_block(&keypair, 1, 1);
@@ -547,7 +507,7 @@ fn store_segment_header_works() {
 
 #[test]
 fn store_segment_header_validate_unsigned_prevents_duplicates() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(allow_all_pot_extension()).execute_with(|| {
         let keypair = Keypair::generate();
 
         progress_to_block(&keypair, 1, 1);
@@ -626,31 +586,26 @@ fn store_segment_header_validate_unsigned_prevents_duplicates() {
 
 #[test]
 fn vote_block_listed() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(allow_all_pot_extension()).execute_with(|| {
         let keypair = Keypair::generate();
-        let kzg = Kzg::new(embedded_kzg_settings());
-        let erasure_coding = ErasureCoding::new(
-            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
-        )
-        .unwrap();
-        let archived_segment = create_archived_segment(kzg.clone());
+        let archived_segment = create_archived_segment();
 
         BlockList::<Test>::insert(
             FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
             (),
         );
 
-        // Can't submit vote right after genesis block
+        // Vote author is in block list
         let signed_vote = create_signed_vote(
             &keypair,
             0,
             <Test as frame_system::Config>::Hash::default(),
             Subspace::current_slot() + 1,
-            &Subspace::global_randomnesses().current,
+            Default::default(),
+            Default::default(),
             &archived_segment.pieces,
             1,
-            &kzg,
-            &erasure_coding,
+            SolutionRange::MIN,
             SolutionRange::MAX,
         );
 
@@ -663,14 +618,9 @@ fn vote_block_listed() {
 
 #[test]
 fn vote_after_genesis() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(allow_all_pot_extension()).execute_with(|| {
         let keypair = Keypair::generate();
-        let kzg = Kzg::new(embedded_kzg_settings());
-        let erasure_coding = ErasureCoding::new(
-            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
-        )
-        .unwrap();
-        let archived_segment = create_archived_segment(kzg.clone());
+        let archived_segment = create_archived_segment();
 
         // Can't submit vote right after genesis block
         let signed_vote = create_signed_vote(
@@ -678,11 +628,11 @@ fn vote_after_genesis() {
             0,
             <Test as frame_system::Config>::Hash::default(),
             Subspace::current_slot() + 1,
-            &Subspace::global_randomnesses().current,
+            Default::default(),
+            Default::default(),
             &archived_segment.pieces,
             1,
-            &kzg,
-            &erasure_coding,
+            SolutionRange::MIN,
             SolutionRange::MAX,
         );
 
@@ -695,14 +645,9 @@ fn vote_after_genesis() {
 
 #[test]
 fn vote_too_low_height() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(allow_all_pot_extension()).execute_with(|| {
         let keypair = Keypair::generate();
-        let kzg = Kzg::new(embedded_kzg_settings());
-        let erasure_coding = ErasureCoding::new(
-            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
-        )
-        .unwrap();
-        let archived_segment = create_archived_segment(kzg.clone());
+        let archived_segment = create_archived_segment();
 
         progress_to_block(&keypair, 1, 1);
 
@@ -714,11 +659,11 @@ fn vote_too_low_height() {
                 height,
                 <Test as frame_system::Config>::Hash::default(),
                 Subspace::current_slot() + 1,
-                &Subspace::global_randomnesses().current,
+                Default::default(),
+                Default::default(),
                 &archived_segment.pieces,
                 1,
-                &kzg,
-                &erasure_coding,
+                SolutionRange::MIN,
                 SolutionRange::MAX,
             );
 
@@ -732,14 +677,9 @@ fn vote_too_low_height() {
 
 #[test]
 fn vote_past_future_height() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(allow_all_pot_extension()).execute_with(|| {
         let keypair = Keypair::generate();
-        let kzg = Kzg::new(embedded_kzg_settings());
-        let erasure_coding = ErasureCoding::new(
-            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
-        )
-        .unwrap();
-        let archived_segment = create_archived_segment(kzg.clone());
+        let archived_segment = create_archived_segment();
 
         progress_to_block(&keypair, 4, 1);
 
@@ -750,11 +690,11 @@ fn vote_past_future_height() {
                 5,
                 <Test as frame_system::Config>::Hash::default(),
                 Subspace::current_slot() + 1,
-                &Subspace::global_randomnesses().current,
+                Default::default(),
+                Default::default(),
                 &archived_segment.pieces,
                 1,
-                &kzg,
-                &erasure_coding,
+                SolutionRange::MIN,
                 SolutionRange::MAX,
             );
 
@@ -771,11 +711,11 @@ fn vote_past_future_height() {
                 2,
                 <Test as frame_system::Config>::Hash::default(),
                 Subspace::current_slot() + 1,
-                &Subspace::global_randomnesses().current,
+                Default::default(),
+                Default::default(),
                 &archived_segment.pieces,
                 1,
-                &kzg,
-                &erasure_coding,
+                SolutionRange::MIN,
                 SolutionRange::MAX,
             );
 
@@ -789,14 +729,9 @@ fn vote_past_future_height() {
 
 #[test]
 fn vote_wrong_parent() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(allow_all_pot_extension()).execute_with(|| {
         let keypair = Keypair::generate();
-        let kzg = Kzg::new(embedded_kzg_settings());
-        let erasure_coding = ErasureCoding::new(
-            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
-        )
-        .unwrap();
-        let archived_segment = create_archived_segment(kzg.clone());
+        let archived_segment = create_archived_segment();
 
         progress_to_block(&keypair, 2, 1);
 
@@ -806,11 +741,11 @@ fn vote_wrong_parent() {
             2,
             <Test as frame_system::Config>::Hash::default(),
             Subspace::current_slot() + 1,
-            &Subspace::global_randomnesses().current,
+            Default::default(),
+            Default::default(),
             &archived_segment.pieces,
             1,
-            &kzg,
-            &erasure_coding,
+            SolutionRange::MIN,
             SolutionRange::MAX,
         );
 
@@ -823,14 +758,9 @@ fn vote_wrong_parent() {
 
 #[test]
 fn vote_past_future_slot() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(allow_all_pot_extension()).execute_with(|| {
         let keypair = Keypair::generate();
-        let kzg = Kzg::new(embedded_kzg_settings());
-        let erasure_coding = ErasureCoding::new(
-            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
-        )
-        .unwrap();
-        let archived_segment = create_archived_segment(kzg.clone());
+        let archived_segment = create_archived_segment();
 
         SegmentCommitment::<Test>::insert(
             archived_segment.segment_header.segment_index(),
@@ -838,7 +768,8 @@ fn vote_past_future_slot() {
         );
 
         // Reset so that any solution works for votes
-        crate::pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+        pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+            solution_ranges.current = u64::MIN;
             solution_ranges.voting_current = u64::MAX;
         });
 
@@ -851,12 +782,12 @@ fn vote_past_future_slot() {
                 3,
                 frame_system::Pallet::<Test>::block_hash(2),
                 2.into(),
-                &Subspace::global_randomnesses().current,
+                Default::default(),
+                Default::default(),
                 &archived_segment.pieces,
                 1,
-                &kzg,
-                &erasure_coding,
-                SolutionRange::MAX,
+                pallet::SolutionRanges::<Test>::get().current,
+                pallet::SolutionRanges::<Test>::get().voting_current,
             );
 
             assert_err!(
@@ -876,12 +807,12 @@ fn vote_past_future_slot() {
                 3,
                 frame_system::Pallet::<Test>::block_hash(2),
                 4.into(),
-                &Subspace::global_randomnesses().current,
+                Default::default(),
+                Default::default(),
                 &archived_segment.pieces,
                 1,
-                &kzg,
-                &erasure_coding,
-                SolutionRange::MAX,
+                pallet::SolutionRanges::<Test>::get().current,
+                pallet::SolutionRanges::<Test>::get().voting_current,
             );
 
             assert_err!(
@@ -900,12 +831,12 @@ fn vote_past_future_slot() {
                 2,
                 frame_system::Pallet::<Test>::block_hash(1),
                 2.into(),
-                &Subspace::global_randomnesses().current,
+                Default::default(),
+                Default::default(),
                 &archived_segment.pieces,
                 1,
-                &kzg,
-                &erasure_coding,
-                SolutionRange::MAX,
+                pallet::SolutionRanges::<Test>::get().current,
+                pallet::SolutionRanges::<Test>::get().voting_current,
             );
 
             assert_ok!(super::check_vote::<Test>(&signed_vote, false));
@@ -916,14 +847,9 @@ fn vote_past_future_slot() {
 
 #[test]
 fn vote_same_slot() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(allow_all_pot_extension()).execute_with(|| {
         let block_keypair = Keypair::generate();
-        let kzg = Kzg::new(embedded_kzg_settings());
-        let erasure_coding = ErasureCoding::new(
-            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
-        )
-        .unwrap();
-        let archived_segment = create_archived_segment(kzg.clone());
+        let archived_segment = create_archived_segment();
 
         // Move to the block 3, but time slot 4, but in two time slots
         go_to_block(&block_keypair, 3, 4, 1);
@@ -935,6 +861,7 @@ fn vote_same_slot() {
 
         // Reset so that any solution works for votes
         pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+            solution_ranges.current = u64::MIN;
             solution_ranges.voting_current = u64::MAX;
         });
 
@@ -946,12 +873,12 @@ fn vote_same_slot() {
                 3,
                 frame_system::Pallet::<Test>::block_hash(2),
                 Subspace::current_slot(),
-                &Subspace::global_randomnesses().current,
+                Default::default(),
+                Default::default(),
                 &archived_segment.pieces,
                 1,
-                &kzg,
-                &erasure_coding,
-                SolutionRange::MAX,
+                pallet::SolutionRanges::<Test>::get().current,
+                pallet::SolutionRanges::<Test>::get().voting_current,
             );
 
             assert_ok!(super::check_vote::<Test>(&signed_vote, true));
@@ -966,12 +893,12 @@ fn vote_same_slot() {
                 2,
                 frame_system::Pallet::<Test>::block_hash(1),
                 Subspace::current_slot(),
-                &Subspace::global_randomnesses().current,
+                Default::default(),
+                Default::default(),
                 &archived_segment.pieces,
                 1,
-                &kzg,
-                &erasure_coding,
-                SolutionRange::MAX,
+                pallet::SolutionRanges::<Test>::get().current,
+                pallet::SolutionRanges::<Test>::get().voting_current,
             );
 
             assert_err!(
@@ -984,14 +911,9 @@ fn vote_same_slot() {
 
 #[test]
 fn vote_bad_reward_signature() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(allow_all_pot_extension()).execute_with(|| {
         let keypair = Keypair::generate();
-        let kzg = Kzg::new(embedded_kzg_settings());
-        let erasure_coding = ErasureCoding::new(
-            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
-        )
-        .unwrap();
-        let archived_segment = create_archived_segment(kzg.clone());
+        let archived_segment = create_archived_segment();
 
         progress_to_block(&keypair, 2, 1);
 
@@ -1001,11 +923,11 @@ fn vote_bad_reward_signature() {
             2,
             frame_system::Pallet::<Test>::block_hash(1),
             Subspace::current_slot() + 1,
-            &Subspace::global_randomnesses().current,
+            Default::default(),
+            Default::default(),
             &archived_segment.pieces,
             1,
-            &kzg,
-            &erasure_coding,
+            SolutionRange::MIN,
             SolutionRange::MAX,
         );
 
@@ -1020,14 +942,9 @@ fn vote_bad_reward_signature() {
 
 #[test]
 fn vote_unknown_segment_commitment() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(allow_all_pot_extension()).execute_with(|| {
         let keypair = Keypair::generate();
-        let kzg = Kzg::new(embedded_kzg_settings());
-        let erasure_coding = ErasureCoding::new(
-            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
-        )
-        .unwrap();
-        let archived_segment = create_archived_segment(kzg.clone());
+        let archived_segment = create_archived_segment();
 
         progress_to_block(&keypair, 2, 1);
 
@@ -1037,11 +954,11 @@ fn vote_unknown_segment_commitment() {
             2,
             frame_system::Pallet::<Test>::block_hash(1),
             Subspace::current_slot() + 1,
-            &Subspace::global_randomnesses().current,
+            Default::default(),
+            Default::default(),
             &archived_segment.pieces,
             1,
-            &kzg,
-            &erasure_coding,
+            SolutionRange::MIN,
             SolutionRange::MAX,
         );
 
@@ -1054,14 +971,9 @@ fn vote_unknown_segment_commitment() {
 
 #[test]
 fn vote_outside_of_solution_range() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(allow_all_pot_extension()).execute_with(|| {
         let keypair = Keypair::generate();
-        let kzg = Kzg::new(embedded_kzg_settings());
-        let erasure_coding = ErasureCoding::new(
-            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
-        )
-        .unwrap();
-        let archived_segment = create_archived_segment(kzg.clone());
+        let archived_segment = create_archived_segment();
 
         progress_to_block(&keypair, 2, 1);
 
@@ -1076,11 +988,11 @@ fn vote_outside_of_solution_range() {
             2,
             frame_system::Pallet::<Test>::block_hash(1),
             Subspace::current_slot() + 1,
-            &Subspace::global_randomnesses().current,
+            Default::default(),
+            Default::default(),
             &archived_segment.pieces,
             1,
-            &kzg,
-            &erasure_coding,
+            SolutionRange::MIN,
             SolutionRange::MAX,
         );
 
@@ -1093,15 +1005,84 @@ fn vote_outside_of_solution_range() {
 }
 
 #[test]
-fn vote_correct_signature() {
-    new_test_ext().execute_with(|| {
+fn vote_solution_quality_too_high() {
+    new_test_ext(allow_all_pot_extension()).execute_with(|| {
         let keypair = Keypair::generate();
-        let kzg = Kzg::new(embedded_kzg_settings());
-        let erasure_coding = ErasureCoding::new(
-            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
-        )
-        .unwrap();
-        let archived_segment = create_archived_segment(kzg.clone());
+        let archived_segment = create_archived_segment();
+
+        progress_to_block(&keypair, 2, 1);
+
+        SegmentCommitment::<Test>::insert(
+            archived_segment.segment_header.segment_index(),
+            archived_segment.segment_header.segment_commitment(),
+        );
+
+        // Reset so that any solution works for votes, but also block solution range is almost the
+        // same, resulting in quality being too high
+        pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+            solution_ranges.current = u64::MAX / 5;
+            solution_ranges.voting_current = u64::MAX;
+        });
+
+        {
+            let signed_vote = create_signed_vote(
+                &keypair,
+                2,
+                frame_system::Pallet::<Test>::block_hash(1),
+                Subspace::current_slot() + 1,
+                Default::default(),
+                Default::default(),
+                &archived_segment.pieces,
+                1,
+                pallet::SolutionRanges::<Test>::get().current,
+                pallet::SolutionRanges::<Test>::get().voting_current,
+            );
+
+            // Good solution quality
+            assert_ok!(super::check_vote::<Test>(&signed_vote, false));
+        }
+
+        {
+            let signed_vote = create_signed_vote(
+                &keypair,
+                2,
+                frame_system::Pallet::<Test>::block_hash(1),
+                Subspace::current_slot() + 1,
+                Default::default(),
+                Default::default(),
+                &archived_segment.pieces,
+                1,
+                SolutionRange::MIN,
+                // Create vote for block level of quality
+                pallet::SolutionRanges::<Test>::get().current,
+            );
+
+            // Quality is too high
+            assert_matches!(
+                super::check_vote::<Test>(&signed_vote, false),
+                Err(CheckVoteError::QualityTooHigh)
+            );
+        }
+    });
+}
+
+#[test]
+fn vote_invalid_proof_of_time() {
+    let correct_proofs_of_time = Arc::new(Mutex::new(Vec::new()));
+    let pot_extension = PotExtension::new(Box::new({
+        let correct_proofs_of_time = Arc::clone(&correct_proofs_of_time);
+        move |parent_hash, slot, proof_of_time, quick_verification| {
+            correct_proofs_of_time.lock().unwrap().contains(&(
+                parent_hash,
+                slot,
+                proof_of_time,
+                quick_verification,
+            ))
+        }
+    }));
+    new_test_ext(pot_extension).execute_with(|| {
+        let keypair = Keypair::generate();
+        let archived_segment = create_archived_segment();
 
         progress_to_block(&keypair, 2, 1);
 
@@ -1112,6 +1093,157 @@ fn vote_correct_signature() {
 
         // Reset so that any solution works for votes
         pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+            solution_ranges.current = u64::MIN;
+            solution_ranges.voting_current = u64::MAX;
+        });
+
+        let current_block_number = frame_system::Pallet::<Test>::current_block_number();
+        let block_one_hash = frame_system::Pallet::<Test>::block_hash(1);
+        let slot = Subspace::current_slot();
+
+        let mut test_proof_of_time = PotOutput::default();
+        rand::thread_rng().fill(test_proof_of_time.as_mut_slice());
+        let mut test_future_proof_of_time = PotOutput::default();
+        rand::thread_rng().fill(test_future_proof_of_time.as_mut_slice());
+
+        // Proof of time not valid yet for votes before block is produced
+        {
+            let signed_vote = create_signed_vote(
+                &keypair,
+                current_block_number,
+                block_one_hash,
+                slot + 1,
+                test_proof_of_time,
+                Default::default(),
+                &archived_segment.pieces,
+                1,
+                pallet::SolutionRanges::<Test>::get().current,
+                pallet::SolutionRanges::<Test>::get().voting_current,
+            );
+
+            assert_err!(
+                super::check_vote::<Test>(&signed_vote, false),
+                CheckVoteError::InvalidProofOfTime
+            );
+        }
+
+        correct_proofs_of_time.lock().unwrap().push((
+            block_one_hash.into(),
+            *slot + 1,
+            test_proof_of_time,
+            true,
+        ));
+
+        // Proof of time is valid for votes before block is produced
+        {
+            let signed_vote = create_signed_vote(
+                &keypair,
+                current_block_number,
+                block_one_hash,
+                slot + 1,
+                test_proof_of_time,
+                Default::default(),
+                &archived_segment.pieces,
+                1,
+                pallet::SolutionRanges::<Test>::get().current,
+                pallet::SolutionRanges::<Test>::get().voting_current,
+            );
+
+            assert_ok!(super::check_vote::<Test>(&signed_vote, false));
+        }
+
+        // Proof of time not valid yet during pre-dispatch
+        {
+            let signed_vote = create_signed_vote(
+                &keypair,
+                current_block_number,
+                block_one_hash,
+                slot,
+                test_proof_of_time,
+                Default::default(),
+                &archived_segment.pieces,
+                1,
+                pallet::SolutionRanges::<Test>::get().current,
+                pallet::SolutionRanges::<Test>::get().voting_current,
+            );
+
+            assert_err!(
+                super::check_vote::<Test>(&signed_vote, true),
+                CheckVoteError::InvalidProofOfTime
+            );
+        }
+
+        correct_proofs_of_time.lock().unwrap().push((
+            block_one_hash.into(),
+            *slot,
+            test_proof_of_time,
+            false,
+        ));
+
+        // Proof of time is valid during pre-dispatch, but not future proof of time yet
+        {
+            let signed_vote = create_signed_vote(
+                &keypair,
+                current_block_number,
+                block_one_hash,
+                slot,
+                test_proof_of_time,
+                Default::default(),
+                &archived_segment.pieces,
+                1,
+                pallet::SolutionRanges::<Test>::get().current,
+                pallet::SolutionRanges::<Test>::get().voting_current,
+            );
+
+            assert_err!(
+                super::check_vote::<Test>(&signed_vote, true),
+                CheckVoteError::InvalidFutureProofOfTime
+            );
+        }
+
+        correct_proofs_of_time.lock().unwrap().push((
+            block_one_hash.into(),
+            *slot + BlockAuthoringDelay::get(),
+            test_future_proof_of_time,
+            false,
+        ));
+
+        // Both proof of time and future proof of time are valid during pre-dispatch
+        {
+            let signed_vote = create_signed_vote(
+                &keypair,
+                current_block_number,
+                block_one_hash,
+                slot,
+                test_proof_of_time,
+                test_future_proof_of_time,
+                &archived_segment.pieces,
+                1,
+                pallet::SolutionRanges::<Test>::get().current,
+                pallet::SolutionRanges::<Test>::get().voting_current,
+            );
+
+            assert_ok!(super::check_vote::<Test>(&signed_vote, true));
+        }
+    });
+}
+
+#[test]
+fn vote_correct_signature() {
+    new_test_ext(allow_all_pot_extension()).execute_with(|| {
+        let keypair = Keypair::generate();
+        let archived_segment = create_archived_segment();
+
+        progress_to_block(&keypair, 2, 1);
+
+        SegmentCommitment::<Test>::insert(
+            archived_segment.segment_header.segment_index(),
+            archived_segment.segment_header.segment_commitment(),
+        );
+
+        // Reset so that any solution works for votes
+        pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+            solution_ranges.current = u64::MIN;
             solution_ranges.voting_current = u64::MAX;
         });
 
@@ -1121,56 +1253,12 @@ fn vote_correct_signature() {
             2,
             frame_system::Pallet::<Test>::block_hash(1),
             Subspace::current_slot() + 1,
-            &Subspace::global_randomnesses().current,
+            Default::default(),
+            Default::default(),
             &archived_segment.pieces,
             1,
-            &kzg,
-            &erasure_coding,
-            SolutionRange::MAX,
-        );
-
-        assert_ok!(super::check_vote::<Test>(&signed_vote, false));
-    });
-}
-
-#[test]
-fn vote_randomness_update() {
-    new_test_ext().execute_with(|| {
-        let keypair = Keypair::generate();
-        let kzg = Kzg::new(embedded_kzg_settings());
-        let erasure_coding = ErasureCoding::new(
-            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
-        )
-        .unwrap();
-        let archived_segment = create_archived_segment(kzg.clone());
-
-        SegmentCommitment::<Test>::insert(
-            archived_segment.segment_header.segment_index(),
-            archived_segment.segment_header.segment_commitment(),
-        );
-
-        progress_to_block(&keypair, GlobalRandomnessUpdateInterval::get(), 1);
-
-        // Reset so that any solution works for votes
-        pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
-            solution_ranges.voting_current = u64::MAX;
-        });
-
-        // TODO: This must fail, but currently doesn't. Once fixed must include  both success and
-        //  failure cases
-        // On the edge of change of global randomness or solution range vote must be validated
-        // with correct data (in this test case randomness just updated)
-        let signed_vote = create_signed_vote(
-            &keypair,
-            GlobalRandomnessUpdateInterval::get(),
-            frame_system::Pallet::<Test>::block_hash(GlobalRandomnessUpdateInterval::get() - 1),
-            Subspace::current_slot() + 1,
-            &Subspace::global_randomnesses().next.unwrap(),
-            &archived_segment.pieces,
-            1,
-            &kzg,
-            &erasure_coding,
-            SolutionRange::MAX,
+            pallet::SolutionRanges::<Test>::get().current,
+            pallet::SolutionRanges::<Test>::get().voting_current,
         );
 
         assert_ok!(super::check_vote::<Test>(&signed_vote, false));
@@ -1179,14 +1267,9 @@ fn vote_randomness_update() {
 
 #[test]
 fn vote_equivocation_current_block_plus_vote() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(allow_all_pot_extension()).execute_with(|| {
         let keypair = Keypair::generate();
-        let kzg = Kzg::new(embedded_kzg_settings());
-        let erasure_coding = ErasureCoding::new(
-            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
-        )
-        .unwrap();
-        let archived_segment = create_archived_segment(kzg.clone());
+        let archived_segment = create_archived_segment();
 
         progress_to_block(&keypair, 2, 1);
 
@@ -1197,6 +1280,7 @@ fn vote_equivocation_current_block_plus_vote() {
 
         // Reset so that any solution works for votes
         pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+            solution_ranges.current = u64::MIN;
             solution_ranges.voting_current = u64::MAX;
         });
 
@@ -1208,12 +1292,12 @@ fn vote_equivocation_current_block_plus_vote() {
             2,
             frame_system::Pallet::<Test>::block_hash(1),
             slot,
-            &Subspace::global_randomnesses().current,
+            Default::default(),
+            Default::default(),
             &archived_segment.pieces,
             reward_address,
-            &kzg,
-            &erasure_coding,
-            SolutionRange::MAX,
+            pallet::SolutionRanges::<Test>::get().current,
+            pallet::SolutionRanges::<Test>::get().voting_current,
         );
 
         // Parent block author + sector index + chunk + audit chunk index + slot matches that of the
@@ -1221,6 +1305,7 @@ fn vote_equivocation_current_block_plus_vote() {
         CurrentBlockAuthorInfo::<Test>::put((
             FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
             signed_vote.vote.solution().sector_index,
+            signed_vote.vote.solution().piece_offset,
             signed_vote.vote.solution().chunk,
             AuditChunkOffset(signed_vote.vote.solution().audit_chunk_offset),
             slot,
@@ -1239,14 +1324,9 @@ fn vote_equivocation_current_block_plus_vote() {
 
 #[test]
 fn vote_equivocation_parent_block_plus_vote() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(allow_all_pot_extension()).execute_with(|| {
         let keypair = Keypair::generate();
-        let kzg = Kzg::new(embedded_kzg_settings());
-        let erasure_coding = ErasureCoding::new(
-            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
-        )
-        .unwrap();
-        let archived_segment = create_archived_segment(kzg.clone());
+        let archived_segment = create_archived_segment();
 
         progress_to_block(&keypair, 2, 1);
 
@@ -1257,6 +1337,7 @@ fn vote_equivocation_parent_block_plus_vote() {
 
         // Reset so that any solution works for votes
         pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+            solution_ranges.current = u64::MIN;
             solution_ranges.voting_current = u64::MAX;
         });
 
@@ -1268,12 +1349,12 @@ fn vote_equivocation_parent_block_plus_vote() {
             2,
             frame_system::Pallet::<Test>::block_hash(1),
             slot,
-            &Subspace::global_randomnesses().current,
+            Default::default(),
+            Default::default(),
             &archived_segment.pieces,
             reward_address,
-            &kzg,
-            &erasure_coding,
-            SolutionRange::MAX,
+            pallet::SolutionRanges::<Test>::get().current,
+            pallet::SolutionRanges::<Test>::get().voting_current,
         );
 
         // Parent block author + sector index + chunk + audit chunk index + slot matches that of the
@@ -1281,6 +1362,7 @@ fn vote_equivocation_parent_block_plus_vote() {
         ParentBlockAuthorInfo::<Test>::put((
             FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
             signed_vote.vote.solution().sector_index,
+            signed_vote.vote.solution().piece_offset,
             signed_vote.vote.solution().chunk,
             AuditChunkOffset(signed_vote.vote.solution().audit_chunk_offset),
             slot,
@@ -1308,13 +1390,8 @@ fn vote_equivocation_parent_block_plus_vote() {
 
 #[test]
 fn vote_equivocation_current_voters_duplicate() {
-    new_test_ext().execute_with(|| {
-        let kzg = Kzg::new(embedded_kzg_settings());
-        let erasure_coding = ErasureCoding::new(
-            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
-        )
-        .unwrap();
-        let archived_segment = create_archived_segment(kzg.clone());
+    new_test_ext(allow_all_pot_extension()).execute_with(|| {
+        let archived_segment = create_archived_segment();
 
         progress_to_block(&Keypair::generate(), 2, 1);
 
@@ -1325,6 +1402,7 @@ fn vote_equivocation_current_voters_duplicate() {
 
         // Reset so that any solution works for votes
         pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+            solution_ranges.current = u64::MIN;
             solution_ranges.voting_current = u64::MAX;
         });
 
@@ -1338,12 +1416,12 @@ fn vote_equivocation_current_voters_duplicate() {
             2,
             frame_system::Pallet::<Test>::block_hash(1),
             slot,
-            &Subspace::global_randomnesses().current,
+            Default::default(),
+            Default::default(),
             &archived_segment.pieces,
             reward_address,
-            &kzg,
-            &erasure_coding,
-            SolutionRange::MAX,
+            pallet::SolutionRanges::<Test>::get().current,
+            pallet::SolutionRanges::<Test>::get().voting_current,
         );
 
         CurrentBlockVoters::<Test>::put({
@@ -1352,6 +1430,7 @@ fn vote_equivocation_current_voters_duplicate() {
                 (
                     FarmerPublicKey::unchecked_from(voter_keypair.public.to_bytes()),
                     signed_vote.vote.solution().sector_index,
+                    signed_vote.vote.solution().piece_offset,
                     signed_vote.vote.solution().chunk,
                     AuditChunkOffset(signed_vote.vote.solution().audit_chunk_offset),
                     slot,
@@ -1373,6 +1452,7 @@ fn vote_equivocation_current_voters_duplicate() {
                 (
                     FarmerPublicKey::unchecked_from(voter_keypair.public.to_bytes()),
                     signed_vote.vote.solution().sector_index,
+                    signed_vote.vote.solution().piece_offset,
                     signed_vote.vote.solution().chunk,
                     AuditChunkOffset(signed_vote.vote.solution().audit_chunk_offset),
                     slot,
@@ -1396,14 +1476,9 @@ fn vote_equivocation_current_voters_duplicate() {
 
 #[test]
 fn vote_equivocation_parent_voters_duplicate() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(allow_all_pot_extension()).execute_with(|| {
         let keypair = Keypair::generate();
-        let kzg = Kzg::new(embedded_kzg_settings());
-        let erasure_coding = ErasureCoding::new(
-            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
-        )
-        .unwrap();
-        let archived_segment = create_archived_segment(kzg.clone());
+        let archived_segment = create_archived_segment();
 
         progress_to_block(&keypair, 2, 1);
 
@@ -1414,6 +1489,7 @@ fn vote_equivocation_parent_voters_duplicate() {
 
         // Reset so that any solution works for votes
         pallet::SolutionRanges::<Test>::mutate(|solution_ranges| {
+            solution_ranges.current = u64::MIN;
             solution_ranges.voting_current = u64::MAX;
         });
 
@@ -1426,12 +1502,12 @@ fn vote_equivocation_parent_voters_duplicate() {
             2,
             frame_system::Pallet::<Test>::block_hash(1),
             slot,
-            &Subspace::global_randomnesses().current,
+            Default::default(),
+            Default::default(),
             &archived_segment.pieces,
             reward_address,
-            &kzg,
-            &erasure_coding,
-            SolutionRange::MAX,
+            pallet::SolutionRanges::<Test>::get().current,
+            pallet::SolutionRanges::<Test>::get().voting_current,
         );
 
         ParentBlockVoters::<Test>::put({
@@ -1440,6 +1516,7 @@ fn vote_equivocation_parent_voters_duplicate() {
                 (
                     FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
                     signed_vote.vote.solution().sector_index,
+                    signed_vote.vote.solution().piece_offset,
                     signed_vote.vote.solution().chunk,
                     AuditChunkOffset(signed_vote.vote.solution().audit_chunk_offset),
                     slot,
@@ -1461,6 +1538,7 @@ fn vote_equivocation_parent_voters_duplicate() {
                 (
                     FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
                     signed_vote.vote.solution().sector_index,
+                    signed_vote.vote.solution().piece_offset,
                     signed_vote.vote.solution().chunk,
                     AuditChunkOffset(signed_vote.vote.solution().audit_chunk_offset),
                     slot,
@@ -1492,6 +1570,7 @@ fn enabling_block_rewards_works() {
         CurrentBlockAuthorInfo::<Test>::put((
             FarmerPublicKey::unchecked_from(Keypair::generate().public.to_bytes()),
             0,
+            PieceOffset::ZERO,
             Scalar::default(),
             AuditChunkOffset(0),
             Subspace::current_slot(),
@@ -1503,6 +1582,7 @@ fn enabling_block_rewards_works() {
                 (
                     FarmerPublicKey::unchecked_from(Keypair::generate().public.to_bytes()),
                     0,
+                    PieceOffset::ZERO,
                     Scalar::default(),
                     AuditChunkOffset(0),
                     Subspace::current_slot(),
@@ -1512,7 +1592,7 @@ fn enabling_block_rewards_works() {
             map
         });
     }
-    new_test_ext().execute_with(|| {
+    new_test_ext(allow_all_pot_extension()).execute_with(|| {
         let keypair = Keypair::generate();
 
         progress_to_block(&keypair, 1, 1);
@@ -1550,7 +1630,7 @@ fn enabling_block_rewards_works() {
 
 #[test]
 fn allow_authoring_by_anyone_works() {
-    new_test_ext().execute_with(|| {
+    new_test_ext(allow_all_pot_extension()).execute_with(|| {
         let keypair1 = Keypair::generate();
         let keypair2 = Keypair::generate();
 

@@ -1,5 +1,8 @@
+use crate::crypto::kzg::Commitment;
 use crate::pieces::{FlatPieces, Piece, PieceIndex, RawRecord};
 use alloc::boxed::Box;
+use alloc::string::String;
+use core::array::TryFromSliceError;
 use core::iter::Step;
 use core::mem;
 use core::num::NonZeroU64;
@@ -105,6 +108,89 @@ impl SegmentIndex {
             });
 
         source_first_piece_indices
+    }
+}
+
+/// Segment commitment contained within segment header.
+#[derive(
+    Debug,
+    Copy,
+    Clone,
+    Eq,
+    PartialEq,
+    Hash,
+    Deref,
+    DerefMut,
+    From,
+    Into,
+    Encode,
+    Decode,
+    TypeInfo,
+    MaxEncodedLen,
+)]
+#[repr(transparent)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
+pub struct SegmentCommitment(
+    #[cfg_attr(feature = "serde", serde(with = "hex::serde"))] [u8; SegmentCommitment::SIZE],
+);
+
+impl Default for SegmentCommitment {
+    #[inline]
+    fn default() -> Self {
+        Self([0; Self::SIZE])
+    }
+}
+
+impl TryFrom<&[u8]> for SegmentCommitment {
+    type Error = TryFromSliceError;
+
+    #[inline]
+    fn try_from(slice: &[u8]) -> Result<Self, Self::Error> {
+        <[u8; Self::SIZE]>::try_from(slice).map(Self)
+    }
+}
+
+impl AsRef<[u8]> for SegmentCommitment {
+    #[inline]
+    fn as_ref(&self) -> &[u8] {
+        &self.0
+    }
+}
+
+impl AsMut<[u8]> for SegmentCommitment {
+    #[inline]
+    fn as_mut(&mut self) -> &mut [u8] {
+        &mut self.0
+    }
+}
+
+impl SegmentCommitment {
+    /// Size of segment commitment in bytes.
+    pub const SIZE: usize = 48;
+}
+
+impl From<Commitment> for SegmentCommitment {
+    #[inline]
+    fn from(commitment: Commitment) -> Self {
+        Self(commitment.to_bytes())
+    }
+}
+
+impl TryFrom<&SegmentCommitment> for Commitment {
+    type Error = String;
+
+    #[inline]
+    fn try_from(commitment: &SegmentCommitment) -> Result<Self, Self::Error> {
+        Commitment::try_from(&commitment.0)
+    }
+}
+
+impl TryFrom<SegmentCommitment> for Commitment {
+    type Error = String;
+
+    #[inline]
+    fn try_from(commitment: SegmentCommitment) -> Result<Self, Self::Error> {
+        Commitment::try_from(commitment.0)
     }
 }
 

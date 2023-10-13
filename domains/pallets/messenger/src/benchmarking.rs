@@ -113,14 +113,15 @@ mod benchmarks {
         };
         Inbox::<T>::put(msg);
 
-        let xdm: CrossDomainMessage<T::BlockNumber, T::Hash, StateRootOf<T>> = CrossDomainMessage {
-            src_chain_id: dst_chain_id,
-            dst_chain_id: T::SelfChainId::get(),
-            channel_id,
-            nonce: channel.next_inbox_nonce,
-            proof: Proof::dummy(),
-            weight_tag: MessageWeightTag::EndpointRequest(endpoint),
-        };
+        let xdm: CrossDomainMessage<BlockNumberFor<T>, T::Hash, StateRootOf<T>> =
+            CrossDomainMessage {
+                src_chain_id: dst_chain_id,
+                dst_chain_id: T::SelfChainId::get(),
+                channel_id,
+                nonce: channel.next_inbox_nonce,
+                proof: Proof::dummy(),
+                weight_tag: MessageWeightTag::EndpointRequest(endpoint),
+            };
 
         #[extrinsic_call]
         _(RawOrigin::None, xdm);
@@ -180,14 +181,15 @@ mod benchmarks {
         };
         OutboxResponses::<T>::put(resp_msg);
 
-        let xdm: CrossDomainMessage<T::BlockNumber, T::Hash, StateRootOf<T>> = CrossDomainMessage {
-            src_chain_id: dst_chain_id,
-            dst_chain_id: T::SelfChainId::get(),
-            channel_id,
-            nonce: resp_nonce,
-            proof: Proof::dummy(),
-            weight_tag: MessageWeightTag::EndpointResponse(endpoint),
-        };
+        let xdm: CrossDomainMessage<BlockNumberFor<T>, T::Hash, StateRootOf<T>> =
+            CrossDomainMessage {
+                src_chain_id: dst_chain_id,
+                dst_chain_id: T::SelfChainId::get(),
+                channel_id,
+                nonce: resp_nonce,
+                proof: Proof::dummy(),
+                weight_tag: MessageWeightTag::EndpointResponse(endpoint),
+            };
 
         #[extrinsic_call]
         _(RawOrigin::None, xdm);

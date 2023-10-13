@@ -1,7 +1,5 @@
 //! Tools for KZG commitment scheme
 
-#[cfg(feature = "serde")]
-mod serde;
 #[cfg(test)]
 mod tests;
 
@@ -13,26 +11,21 @@ use alloc::collections::BTreeMap;
 use alloc::string::{String, ToString};
 use alloc::sync::Arc;
 use alloc::vec::Vec;
-use blst_rust::types::fft_settings::FsFFTSettings;
-use blst_rust::types::g1::FsG1;
-use blst_rust::types::g2::FsG2;
-use blst_rust::types::kzg_settings::FsKZGSettings;
-use blst_rust::types::poly::FsPoly;
-use core::hash::{Hash, Hasher};
 use core::mem;
 use derive_more::{AsMut, AsRef, Deref, DerefMut, From, Into};
 use kzg::eip_4844::{BYTES_PER_G1, BYTES_PER_G2};
-use kzg::{FFTFr, FFTSettings, Fr, KZGSettings};
-use parity_scale_codec::{Decode, Encode, EncodeLike, Input, MaxEncodedLen};
+use kzg::{FFTFr, FFTSettings, Fr, KZGSettings, G1, G2};
 #[cfg(feature = "std")]
 use parking_lot::Mutex;
-use scale_info::{Type, TypeInfo};
+use rust_kzg_blst::types::fft_settings::FsFFTSettings;
+use rust_kzg_blst::types::g1::FsG1;
+use rust_kzg_blst::types::g2::FsG2;
+use rust_kzg_blst::types::kzg_settings::FsKZGSettings;
+use rust_kzg_blst::types::poly::FsPoly;
 #[cfg(not(feature = "std"))]
 use spin::Mutex;
 use tracing::debug;
 
-// TODO: Update with final Ethereum parameters once KZG Summoning Ceremony is finished:
-//  https://ceremony.ethereum.org/
 /// Embedded KZG settings as bytes, too big for `no_std` in most cases
 /// Generated with with following command (using current Ethereum KZG Summoning Ceremony):
 /// ```bash
@@ -60,23 +53,11 @@ pub fn bytes_to_kzg_settings(
     let (secret_g1_bytes, secret_g2_bytes) = bytes.split_at(BYTES_PER_G1 * num_g1_powers);
     let secret_g1 = secret_g1_bytes
         .chunks_exact(BYTES_PER_G1)
-        .map(|bytes| {
-            FsG1::from_bytes(
-                bytes
-                    .try_into()
-                    .expect("Chunked into correct number of bytes above; qed"),
-            )
-        })
+        .map(FsG1::from_bytes)
         .collect::<Result<Vec<_>, _>>()?;
     let secret_g2 = secret_g2_bytes
         .chunks_exact(BYTES_PER_G2)
-        .map(|bytes| {
-            FsG2::from_bytes(
-                bytes
-                    .try_into()
-                    .expect("Chunked into correct number of bytes above; qed"),
-            )
-        })
+        .map(FsG2::from_bytes)
         .collect::<Result<Vec<_>, _>>()?;
 
     let fft_settings = FsFFTSettings::new(
@@ -281,12 +262,6 @@ impl Commitment {
     }
 }
 
-impl Hash for Commitment {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.to_bytes().hash(state);
-    }
-}
-
 impl From<Commitment> for [u8; Commitment::SIZE] {
     #[inline]
     fn from(commitment: Commitment) -> Self {
@@ -316,63 +291,6 @@ impl TryFrom<[u8; Self::SIZE]> for Commitment {
     #[inline]
     fn try_from(bytes: [u8; Self::SIZE]) -> Result<Self, Self::Error> {
         Self::try_from(&bytes)
-    }
-}
-
-impl Encode for Commitment {
-    #[inline]
-    fn size_hint(&self) -> usize {
-        Self::SIZE
-    }
-
-    fn using_encoded<R, F: FnOnce(&[u8]) -> R>(&self, f: F) -> R {
-        f(&self.to_bytes())
-    }
-
-    #[inline]
-    fn encoded_size(&self) -> usize {
-        Self::SIZE
-    }
-}
-
-impl EncodeLike for Commitment {}
-
-impl MaxEncodedLen for Commitment {
-    #[inline]
-    fn max_encoded_len() -> usize {
-        Self::SIZE
-    }
-}
-
-impl Decode for Commitment {
-    fn decode<I: Input>(input: &mut I) -> Result<Self, parity_scale_codec::Error> {
-        Self::try_from_bytes(&Decode::decode(input)?).map_err(|error| {
-            parity_scale_codec::Error::from("Failed to decode from bytes")
-                .chain(alloc::format!("{error:?}"))
-        })
-    }
-
-    #[inline]
-    fn encoded_fixed_size() -> Option<usize> {
-        Some(Self::SIZE)
-    }
-}
-
-impl TypeInfo for Commitment {
-    type Identity = Self;
-
-    fn type_info() -> Type {
-        Type::builder()
-            .path(scale_info::Path::new(
-                stringify!(Commitment),
-                module_path!(),
-            ))
-            .docs(&["Commitment to polynomial"])
-            .composite(scale_info::build::Fields::named().field(|f| {
-                f.ty::<[u8; Self::SIZE]>()
-                    .name(stringify!(inner))
-                    .type_name("G1Affine")
-            }))
     }
 }
 
@@ -425,59 +343,6 @@ impl TryFrom<[u8; Self::SIZE]> for Witness {
     #[inline]
     fn try_from(bytes: [u8; Self::SIZE]) -> Result<Self, Self::Error> {
         Self::try_from(&bytes)
-    }
-}
-
-impl Encode for Witness {
-    fn size_hint(&self) -> usize {
-        Self::SIZE
-    }
-
-    fn using_encoded<R, F: FnOnce(&[u8]) -> R>(&self, f: F) -> R {
-        f(&self.to_bytes())
-    }
-
-    #[inline]
-    fn encoded_size(&self) -> usize {
-        Self::SIZE
-    }
-}
-
-impl EncodeLike for Witness {}
-
-impl MaxEncodedLen for Witness {
-    #[inline]
-    fn max_encoded_len() -> usize {
-        Self::SIZE
-    }
-}
-
-impl Decode for Witness {
-    fn decode<I: Input>(input: &mut I) -> Result<Self, parity_scale_codec::Error> {
-        Self::try_from_bytes(&Decode::decode(input)?).map_err(|error| {
-            parity_scale_codec::Error::from("Failed to decode from bytes")
-                .chain(alloc::format!("{error:?}"))
-        })
-    }
-
-    #[inline]
-    fn encoded_fixed_size() -> Option<usize> {
-        Some(Self::SIZE)
-    }
-}
-
-impl TypeInfo for Witness {
-    type Identity = Self;
-
-    fn type_info() -> Type {
-        Type::builder()
-            .path(scale_info::Path::new(stringify!(Witness), module_path!()))
-            .docs(&["Witness for polynomial evaluation"])
-            .composite(scale_info::build::Fields::named().field(|f| {
-                f.ty::<[u8; Self::SIZE]>()
-                    .name(stringify!(inner))
-                    .type_name("G1Affine")
-            }))
     }
 }
 

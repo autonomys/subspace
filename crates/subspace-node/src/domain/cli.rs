@@ -17,6 +17,7 @@
 use crate::domain::evm_chain_spec::{self, SpecId};
 use clap::Parser;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
+use parity_scale_codec::Encode;
 use sc_cli::{
     BlockNumberOrHash, ChainSpec, CliConfiguration, DefaultConfigurationValues, ImportParams,
     KeystoreParams, NetworkParams, Result, Role, RunCmd as SubstrateRunCmd, SharedParams,
@@ -27,10 +28,11 @@ use sc_service::config::PrometheusConfig;
 use sc_service::{BasePath, Configuration};
 use sp_blockchain::HeaderBackend;
 use sp_domain_digests::AsPredigest;
+use sp_domains::storage::RawGenesis;
 use sp_domains::DomainId;
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::Header;
-use sp_runtime::DigestItem;
+use sp_runtime::{BuildStorage, DigestItem};
 use std::io::Write;
 use std::net::SocketAddr;
 use std::num::ParseIntError;
@@ -51,8 +53,8 @@ pub enum Subcommand {
     #[clap(subcommand)]
     Benchmark(frame_benchmarking_cli::BenchmarkCmd),
 
-    /// Build the genesis config of the evm domain chain in json format
-    BuildGenesisConfig(BuildGenesisConfigCmd),
+    /// Build the genesis storage of the evm domain chain in json format
+    BuildGenesisStorage(BuildGenesisStorageCmd),
 
     /// The `export-execution-receipt` command used to get the ER from the auxiliary storage of the operator client
     ExportExecutionReceipt(ExportExecutionReceiptCmd),
@@ -276,24 +278,20 @@ impl CliConfiguration<Self> for DomainCli {
 }
 
 // TODO: make the command generic over different runtime type instead of just the evm domain runtime
-/// The `build-genesis-config` command used to build the genesis config of the evm domain chain.
+/// The `build-genesis-storage` command used to build the genesis storage of the evm domain chain.
 #[derive(Debug, Clone, Parser)]
-pub struct BuildGenesisConfigCmd {
-    /// Whether output the WASM runtime code
-    #[arg(long, default_value_t = false)]
-    pub with_wasm_code: bool,
-
-    /// The base struct of the build-genesis-config command.
+pub struct BuildGenesisStorageCmd {
+    /// The base struct of the build-genesis-storage command.
     #[clap(flatten)]
     pub shared_params: SharedParams,
 }
 
-impl BuildGenesisConfigCmd {
-    /// Run the build-genesis-config command
+impl BuildGenesisStorageCmd {
+    /// Run the build-genesis-storage command
     pub fn run(&self) -> sc_cli::Result<()> {
         let is_dev = self.shared_params.is_dev();
         let chain_id = self.shared_params.chain_id(is_dev);
-        let mut domain_genesis_config = match chain_id.as_str() {
+        let domain_genesis_config = match chain_id.as_str() {
             "gemini-3f" => evm_chain_spec::get_testnet_genesis_by_spec_id(SpecId::Gemini).0,
             "devnet" => evm_chain_spec::get_testnet_genesis_by_spec_id(SpecId::DevNet).0,
             "dev" => evm_chain_spec::get_testnet_genesis_by_spec_id(SpecId::Dev).0,
@@ -306,15 +304,16 @@ impl BuildGenesisConfigCmd {
             }
         };
 
-        if !self.with_wasm_code {
-            // Clear the WASM code of the genesis config
-            domain_genesis_config.system.code = Default::default();
-        }
-        let raw_domain_genesis_config = serde_json::to_vec(&domain_genesis_config)
-            .expect("Genesis config serialization never fails; qed");
+        let raw_genesis_storage = {
+            let storage = domain_genesis_config
+                .build_storage()
+                .expect("Failed to build genesis storage from genesis runtime config");
+            let raw_genesis = RawGenesis::from_storage(storage);
+            raw_genesis.encode()
+        };
 
         if std::io::stdout()
-            .write_all(raw_domain_genesis_config.as_ref())
+            .write_all(raw_genesis_storage.as_ref())
             .is_err()
         {
             let _ = std::io::stderr().write_all(b"Error writing to stdout\n");

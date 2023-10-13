@@ -29,14 +29,15 @@ use core::num::NonZeroUsize;
 use parity_scale_codec::{Compact, CompactLen, Decode, Encode, Input, Output};
 #[cfg(feature = "parallel")]
 use rayon::prelude::*;
-use subspace_core_primitives::crypto::kzg::{Kzg, Witness};
-use subspace_core_primitives::crypto::{blake2b_256_254_hash_to_scalar, Scalar};
+use subspace_core_primitives::crypto::kzg::{Commitment, Kzg, Witness};
+use subspace_core_primitives::crypto::{blake3_254_hash_to_scalar, Scalar};
 use subspace_core_primitives::objects::{
     BlockObject, BlockObjectMapping, PieceObject, PieceObjectMapping,
 };
 use subspace_core_primitives::{
-    ArchivedBlockProgress, ArchivedHistorySegment, Blake2b256Hash, BlockNumber, LastArchivedBlock,
-    PieceArray, RawRecord, RecordedHistorySegment, SegmentCommitment, SegmentHeader, SegmentIndex,
+    ArchivedBlockProgress, ArchivedHistorySegment, Blake3Hash, BlockNumber, LastArchivedBlock,
+    PieceArray, RawRecord, RecordWitness, RecordedHistorySegment, SegmentCommitment, SegmentHeader,
+    SegmentIndex,
 };
 use subspace_erasure_coding::ErasureCoding;
 
@@ -237,7 +238,7 @@ pub struct Archiver {
     /// An index of the current segment
     segment_index: SegmentIndex,
     /// Hash of the segment header of the previous segment
-    prev_segment_header_hash: Blake2b256Hash,
+    prev_segment_header_hash: Blake3Hash,
     /// Last archived block
     last_archived_block: LastArchivedBlock,
 }
@@ -266,7 +267,7 @@ impl Archiver {
             erasure_coding,
             kzg,
             segment_index: SegmentIndex::ZERO,
-            prev_segment_header_hash: Blake2b256Hash::default(),
+            prev_segment_header_hash: Blake3Hash::default(),
             last_archived_block: INITIAL_LAST_ARCHIVED_BLOCK,
         })
     }
@@ -779,15 +780,16 @@ impl Archiver {
             .poly(
                 &record_commitments
                     .iter()
-                    .map(|commitment| blake2b_256_254_hash_to_scalar(&commitment.to_bytes()))
+                    .map(|commitment| blake3_254_hash_to_scalar(&commitment.to_bytes()))
                     .collect::<Vec<_>>(),
             )
             .expect("Internally produced values must never fail; qed");
 
-        let segment_commitment = self
-            .kzg
-            .commit(&polynomial)
-            .expect("Internally produced values must never fail; qed");
+        let segment_commitment = SegmentCommitment::from(
+            self.kzg
+                .commit(&polynomial)
+                .expect("Internally produced values must never fail; qed"),
+        );
 
         // Create witness for every record and write it to corresponding piece.
         pieces
@@ -884,10 +886,14 @@ pub fn is_piece_valid(
         return false;
     }
 
-    let commitment_hash = blake2b_256_254_hash_to_scalar(commitment.as_ref());
+    let Ok(segment_commitment) = Commitment::try_from(segment_commitment) else {
+        return false;
+    };
+
+    let commitment_hash = blake3_254_hash_to_scalar(commitment.as_ref());
 
     kzg.verify(
-        segment_commitment,
+        &segment_commitment,
         ArchivedHistorySegment::NUM_PIECES,
         position,
         &commitment_hash,
@@ -900,14 +906,21 @@ pub fn is_record_commitment_hash_valid(
     kzg: &Kzg,
     record_commitment_hash: &Scalar,
     commitment: &SegmentCommitment,
-    witness: &Witness,
+    witness: &RecordWitness,
     position: u32,
 ) -> bool {
+    let Ok(commitment) = Commitment::try_from(commitment) else {
+        return false;
+    };
+    let Ok(witness) = Witness::try_from(witness) else {
+        return false;
+    };
+
     kzg.verify(
-        commitment,
+        &commitment,
         ArchivedHistorySegment::NUM_PIECES,
         position,
         record_commitment_hash,
-        witness,
+        &witness,
     )
 }

@@ -6,6 +6,7 @@ use sc_client_api::backend::AuxStore;
 use sc_client_api::HeaderBackend;
 use sp_blockchain::{Error as ClientError, Result as ClientResult};
 use sp_core::H256;
+use sp_domains::InvalidBundleType;
 use sp_runtime::traits::{Block as BlockT, NumberFor, One, SaturatedConversion};
 use subspace_core_primitives::BlockNumber;
 
@@ -231,19 +232,38 @@ pub(super) fn target_receipt_is_pruned(
 }
 
 #[derive(Encode, Decode, Debug, PartialEq)]
+pub(super) enum BundleMismatchType {
+    // The invalid bundle is mismatch
+    // For `TrueInvalid`, the fraud proof need to prove the bundle is indees invalid due to `InvalidBundleType`
+    // For `FalseInvalid`, the fraud proof need to prove the bundle is not invalid due to `InvalidBundleType`
+    TrueInvalid(InvalidBundleType),
+    FalseInvalid(InvalidBundleType),
+    // The valid bundle is mismatch
+    Valid,
+}
+
+#[derive(Encode, Decode, Debug, PartialEq)]
 pub(super) enum ReceiptMismatchInfo<CHash> {
-    TotalRewardsMismatch {
+    TotalRewards {
         consensus_block_hash: CHash,
     },
-    TraceMismatch {
+    Trace {
         trace_index: u32,
+        consensus_block_hash: CHash,
+    },
+    DomainExtrinsicsRoot {
+        consensus_block_hash: CHash,
+    },
+    Bundles {
+        mismatch_type: BundleMismatchType,
+        bundle_index: u32,
         consensus_block_hash: CHash,
     },
 }
 
 impl<CHash> From<(u32, CHash)> for ReceiptMismatchInfo<CHash> {
     fn from(value: (u32, CHash)) -> Self {
-        ReceiptMismatchInfo::TraceMismatch {
+        ReceiptMismatchInfo::Trace {
             trace_index: value.0,
             consensus_block_hash: value.1,
         }
@@ -253,12 +273,19 @@ impl<CHash> From<(u32, CHash)> for ReceiptMismatchInfo<CHash> {
 impl<CHash: Clone> ReceiptMismatchInfo<CHash> {
     pub(super) fn consensus_hash(&self) -> CHash {
         match self {
-            ReceiptMismatchInfo::TotalRewardsMismatch {
+            ReceiptMismatchInfo::TotalRewards {
                 consensus_block_hash,
             } => consensus_block_hash.clone(),
-            ReceiptMismatchInfo::TraceMismatch {
+            ReceiptMismatchInfo::Trace {
                 consensus_block_hash,
                 ..
+            } => consensus_block_hash.clone(),
+            ReceiptMismatchInfo::Bundles {
+                consensus_block_hash,
+                ..
+            } => consensus_block_hash.clone(),
+            ReceiptMismatchInfo::DomainExtrinsicsRoot {
+                consensus_block_hash,
             } => consensus_block_hash.clone(),
         }
     }
@@ -493,9 +520,7 @@ mod tests {
             parent_domain_block_receipt_hash: H256::random(),
             consensus_block_number,
             consensus_block_hash: H256::random(),
-            valid_bundles: Vec::new(),
-            invalid_bundles: Vec::new(),
-            block_extrinsics_roots: Default::default(),
+            inboxed_bundles: Vec::new(),
             final_state_root: Default::default(),
             execution_trace: Default::default(),
             execution_trace_root: Default::default(),

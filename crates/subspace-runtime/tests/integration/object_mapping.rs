@@ -4,7 +4,7 @@ use sp_objects::runtime_decl_for_objects_api::ObjectsApiV1;
 use sp_runtime::traits::{BlakeTwo256, Hash as HashT};
 use sp_runtime::BuildStorage;
 use subspace_core_primitives::objects::BlockObjectMapping;
-use subspace_core_primitives::{crypto, Blake2b256Hash};
+use subspace_core_primitives::{crypto, Blake3Hash};
 use subspace_runtime::{
     Block, FeedProcessorKind, Feeds, Header, Runtime, RuntimeCall, RuntimeOrigin, System,
     UncheckedExtrinsic,
@@ -114,13 +114,13 @@ fn object_mapping() {
     assert_eq!(objects.len(), 7);
 
     // Hashes should be computed correctly.
-    assert_eq!(objects[0].hash(), crypto::blake2b_256_hash(&data0));
-    assert_eq!(objects[1].hash(), crypto::blake2b_256_hash(&data1));
-    assert_eq!(objects[2].hash(), crypto::blake2b_256_hash(&data2));
-    assert_eq!(objects[3].hash(), crypto::blake2b_256_hash(&data3));
-    assert_eq!(objects[4].hash(), crypto::blake2b_256_hash(&data0));
-    assert_eq!(objects[5].hash(), crypto::blake2b_256_hash(&data2));
-    assert_eq!(objects[6].hash(), crypto::blake2b_256_hash(&data3));
+    assert_eq!(objects[0].hash(), crypto::blake3_hash(&data0));
+    assert_eq!(objects[1].hash(), crypto::blake3_hash(&data1));
+    assert_eq!(objects[2].hash(), crypto::blake3_hash(&data2));
+    assert_eq!(objects[3].hash(), crypto::blake3_hash(&data3));
+    assert_eq!(objects[4].hash(), crypto::blake3_hash(&data0));
+    assert_eq!(objects[5].hash(), crypto::blake3_hash(&data2));
+    assert_eq!(objects[6].hash(), crypto::blake3_hash(&data3));
 
     // Offsets for mapped objects should be correct
     assert_eq!(
@@ -183,8 +183,8 @@ fn get_successful_calls(block: Block) -> Vec<Hash> {
         .collect()
 }
 
-fn key(feed_id: u64, data: &[u8]) -> Blake2b256Hash {
-    crypto::blake2b_256_hash_list(&[&feed_id.encode(), data])
+fn key(feed_id: u64, data: &[u8]) -> Blake3Hash {
+    crypto::blake3_hash_list(&[&feed_id.encode(), data])
 }
 
 #[test]
@@ -251,7 +251,7 @@ fn new_test_ext() -> sp_io::TestExternalities {
 }
 
 // returns init data, encoded signed block with finality verification, and the block hash
-fn get_encoded_blocks() -> (Vec<u8>, Vec<Blake2b256Hash>, Vec<u8>) {
+fn get_encoded_blocks() -> (Vec<u8>, Vec<Blake3Hash>, Vec<u8>) {
     let init_data = vec![
         157, 3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,

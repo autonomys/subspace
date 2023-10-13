@@ -1,6 +1,7 @@
 //! Benchmarking for `pallet-domains`.
 
 use super::*;
+use crate::alloc::borrow::ToOwned;
 use crate::domain_registry::DomainConfig;
 use crate::staking::{do_reward_operators, OperatorConfig, OperatorStatus, Withdraw};
 use crate::staking_epoch::{do_finalize_domain_current_epoch, do_finalize_domain_staking};
@@ -13,7 +14,8 @@ use frame_support::weights::Weight;
 use frame_system::{Pallet as System, RawOrigin};
 use sp_core::crypto::UncheckedFrom;
 use sp_domains::{
-    dummy_opaque_bundle, DomainId, ExecutionReceipt, OperatorId, OperatorPublicKey, RuntimeType,
+    dummy_opaque_bundle, DomainId, ExecutionReceipt, OperatorAllowList, OperatorId,
+    OperatorPublicKey, RuntimeType,
 };
 use sp_runtime::traits::{BlockNumberProvider, CheckedAdd, One, SaturatedConversion};
 
@@ -22,6 +24,7 @@ const SEED: u32 = 0;
 #[benchmarks]
 mod benchmarks {
     use super::*;
+    use sp_std::vec;
 
     /// Benchmark `submit_bundle` extrinsic with the worst possible conditions:
     /// - The bundle is the first bundle of the consensus block
@@ -164,13 +167,13 @@ mod benchmarks {
         #[extrinsic_call]
         _(
             RawOrigin::Root,
-            b"evm-domain".to_vec(),
+            "evm-domain".to_owned(),
             RuntimeType::Evm,
             runtime_blob,
         );
 
         let runtime_obj = RuntimeRegistry::<T>::get(runtime_id).expect("runtime object must exist");
-        assert_eq!(runtime_obj.runtime_name, b"evm-domain".to_vec());
+        assert_eq!(runtime_obj.runtime_name, "evm-domain".to_owned());
         assert_eq!(runtime_obj.runtime_type, RuntimeType::Evm);
         assert_eq!(runtime_obj.hash, runtime_hash);
         assert_eq!(NextRuntimeId::<T>::get(), runtime_id + 1);
@@ -186,7 +189,7 @@ mod benchmarks {
         // version to 0 to bypass the `can_upgrade_code` check when calling `upgrade_domain_runtime`
         assert_ok!(Domains::<T>::register_domain_runtime(
             RawOrigin::Root.into(),
-            b"evm-domain".to_vec(),
+            "evm-domain".to_owned(),
             RuntimeType::Evm,
             runtime_blob.clone()
         ));
@@ -206,7 +209,10 @@ mod benchmarks {
         let scheduled_upgrade = ScheduledRuntimeUpgrades::<T>::get(scheduled_at, runtime_id)
             .expect("scheduled upgrade must exist");
         assert_eq!(scheduled_upgrade.version.spec_version, 1);
-        assert_eq!(scheduled_upgrade.code, runtime_blob);
+        assert_eq!(
+            scheduled_upgrade.raw_genesis.get_runtime_code().unwrap(),
+            runtime_blob
+        );
     }
 
     #[benchmark]
@@ -220,20 +226,17 @@ mod benchmarks {
         let runtime_id = register_runtime::<T>();
         let domain_id = NextDomainId::<T>::get();
         let domain_config = DomainConfig {
-            domain_name: b"evm-domain".to_vec(),
+            domain_name: "evm-domain".to_owned(),
             runtime_id,
             max_block_size: 1024,
             max_block_weight: Weight::from_parts(1, 0),
             bundle_slot_probability: (1, 1),
             target_bundles_per_block: 10,
+            operator_allow_list: OperatorAllowList::Anyone,
         };
 
         #[extrinsic_call]
-        _(
-            RawOrigin::Signed(creator.clone()),
-            domain_config.clone(),
-            vec![],
-        );
+        _(RawOrigin::Signed(creator.clone()), domain_config.clone());
 
         let domain_obj = DomainRegistry::<T>::get(domain_id).expect("domain object must exist");
         assert_eq!(domain_obj.domain_config, domain_config);
@@ -452,7 +455,7 @@ mod benchmarks {
 
         assert_ok!(Domains::<T>::register_domain_runtime(
             RawOrigin::Root.into(),
-            b"evm-domain".to_vec(),
+            "evm-domain".to_owned(),
             RuntimeType::Evm,
             runtime_blob,
         ));
@@ -474,18 +477,18 @@ mod benchmarks {
         let runtime_id = register_runtime::<T>();
         let domain_id = NextDomainId::<T>::get();
         let domain_config = DomainConfig {
-            domain_name: b"evm-domain".to_vec(),
+            domain_name: "evm-domain".to_owned(),
             runtime_id,
             max_block_size: 1024,
             max_block_weight: Weight::from_parts(1, 0),
             bundle_slot_probability: (1, 1),
             target_bundles_per_block: 10,
+            operator_allow_list: OperatorAllowList::Anyone,
         };
 
         assert_ok!(Domains::<T>::instantiate_domain(
             RawOrigin::Signed(creator.clone()).into(),
             domain_config.clone(),
-            vec![]
         ));
 
         let domain_obj = DomainRegistry::<T>::get(domain_id).expect("domain object must exist");
@@ -529,10 +532,10 @@ mod benchmarks {
         (operator_account, operator_id)
     }
 
-    fn run_to_block<T: Config>(block_number: T::BlockNumber, parent_hash: T::Hash) {
+    fn run_to_block<T: Config>(block_number: BlockNumberFor<T>, parent_hash: T::Hash) {
         System::<T>::set_block_number(block_number);
         System::<T>::initialize(&block_number, &parent_hash, &Default::default());
-        <Domains<T> as Hooks<T::BlockNumber>>::on_initialize(block_number);
+        <Domains<T> as Hooks<BlockNumberFor<T>>>::on_initialize(block_number);
         System::<T>::finalize();
     }
 

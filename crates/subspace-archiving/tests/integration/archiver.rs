@@ -7,12 +7,12 @@ use std::io::Write;
 use std::iter;
 use subspace_archiving::archiver;
 use subspace_archiving::archiver::{Archiver, ArchiverInstantiationError, SegmentItem};
-use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Commitment, Kzg};
+use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping, PieceObject};
 use subspace_core_primitives::{
-    ArchivedBlockProgress, ArchivedHistorySegment, Blake2b256Hash, LastArchivedBlock, PieceArray,
-    Record, RecordedHistorySegment, SegmentHeader, SegmentIndex, BLAKE2B_256_HASH_SIZE,
+    ArchivedBlockProgress, ArchivedHistorySegment, Blake3Hash, LastArchivedBlock, PieceArray,
+    Record, RecordedHistorySegment, SegmentCommitment, SegmentHeader, SegmentIndex,
 };
 
 fn extract_data<O: Into<u64>>(data: &[u8], offset: O) -> &[u8] {
@@ -81,11 +81,11 @@ fn archiver() {
         let object_mapping = BlockObjectMapping {
             objects: vec![
                 BlockObject::V0 {
-                    hash: Blake2b256Hash::default(),
+                    hash: Blake3Hash::default(),
                     offset: 0u32,
                 },
                 BlockObject::V0 {
-                    hash: Blake2b256Hash::default(),
+                    hash: Blake3Hash::default(),
                     offset: RecordedHistorySegment::SIZE as u32 / 3,
                 },
             ],
@@ -117,15 +117,15 @@ fn archiver() {
         let object_mapping = BlockObjectMapping {
             objects: vec![
                 BlockObject::V0 {
-                    hash: Blake2b256Hash::default(),
+                    hash: Blake3Hash::default(),
                     offset: RecordedHistorySegment::SIZE as u32 / 6,
                 },
                 BlockObject::V0 {
-                    hash: Blake2b256Hash::default(),
+                    hash: Blake3Hash::default(),
                     offset: RecordedHistorySegment::SIZE as u32 / 5,
                 },
                 BlockObject::V0 {
-                    hash: Blake2b256Hash::default(),
+                    hash: Blake3Hash::default(),
                     offset: RecordedHistorySegment::SIZE as u32 / 3 * 2 - 200,
                 },
             ],
@@ -150,7 +150,7 @@ fn archiver() {
         first_archived_segment
             .segment_header
             .prev_segment_header_hash(),
-        [0u8; BLAKE2B_256_HASH_SIZE]
+        Blake3Hash::default(),
     );
     {
         let last_archived_block = first_archived_segment.segment_header.last_archived_block();
@@ -396,8 +396,8 @@ fn invalid_usage() {
             kzg.clone(),
             SegmentHeader::V0 {
                 segment_index: SegmentIndex::ZERO,
-                segment_commitment: Commitment::default(),
-                prev_segment_header_hash: Blake2b256Hash::default(),
+                segment_commitment: SegmentCommitment::default(),
+                prev_segment_header_hash: Blake3Hash::default(),
                 last_archived_block: LastArchivedBlock {
                     number: 0,
                     archived_progress: ArchivedBlockProgress::Partial(10),
@@ -422,8 +422,8 @@ fn invalid_usage() {
             kzg,
             SegmentHeader::V0 {
                 segment_index: SegmentIndex::ZERO,
-                segment_commitment: Commitment::default(),
-                prev_segment_header_hash: Blake2b256Hash::default(),
+                segment_commitment: SegmentCommitment::default(),
+                prev_segment_header_hash: Blake3Hash::default(),
                 last_archived_block: LastArchivedBlock {
                     number: 0,
                     archived_progress: ArchivedBlockProgress::Partial(10),
@@ -520,7 +520,7 @@ fn spill_over_edge_case() {
         vec![0u8; RecordedHistorySegment::SIZE],
         BlockObjectMapping {
             objects: vec![BlockObject::V0 {
-                hash: Blake2b256Hash::default(),
+                hash: Blake3Hash::default(),
                 offset: 0,
             }],
         },
@@ -565,7 +565,7 @@ fn object_on_the_edge_of_segment() {
 
     let mut second_block = vec![0u8; RecordedHistorySegment::SIZE * 2];
     let object_mapping = BlockObject::V0 {
-        hash: Blake2b256Hash::default(),
+        hash: Blake3Hash::default(),
         // Offset is designed to fall exactly on the edge of the segment
         offset: RecordedHistorySegment::SIZE as u32
             // Segment enum variant

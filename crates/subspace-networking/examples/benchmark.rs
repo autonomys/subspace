@@ -4,7 +4,6 @@ use futures::future::pending;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use libp2p::identity::Keypair;
-use libp2p::kad::Mode;
 use libp2p::multiaddr::Protocol;
 use libp2p::Multiaddr;
 use parking_lot::Mutex;
@@ -273,7 +272,6 @@ pub async fn configure_dsn(
     let config = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_global_addresses_in_dht: enable_private_ips,
-        kademlia_mode: Some(Mode::Client),
         request_response_protocols: vec![PieceByIndexRequestHandler::create(|_, _| async { None })],
         bootstrap_addresses,
         enable_autonat: false,

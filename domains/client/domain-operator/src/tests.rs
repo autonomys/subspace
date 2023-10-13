@@ -8,6 +8,7 @@ use domain_test_service::Sr25519Keyring::{self, Ferdie};
 use domain_test_service::GENESIS_DOMAIN_ID;
 use futures::StreamExt;
 use sc_client_api::{Backend, BlockBackend, HeaderBackend};
+use sc_consensus::SharedBlockImport;
 use sc_service::{BasePath, Role};
 use sc_transaction_pool_api::error::Error as TxPoolError;
 use sc_transaction_pool_api::TransactionPool;
@@ -17,7 +18,8 @@ use sp_core::traits::FetchRuntimeCode;
 use sp_core::Pair;
 use sp_domain_digests::AsPredigest;
 use sp_domains::fraud_proof::{
-    ExecutionPhase, FraudProof, InvalidStateTransitionProof, InvalidTotalRewardsProof,
+    ExecutionPhase, FraudProof, InvalidExtrinsicsRootProof, InvalidStateTransitionProof,
+    InvalidTotalRewardsProof,
 };
 use sp_domains::transaction::InvalidTransactionCode;
 use sp_domains::{Bundle, DomainId, DomainsApi};
@@ -56,9 +58,6 @@ async fn test_domain_instance_bootstrapper() {
         Ferdie,
         BasePath::new(directory.path().join("ferdie")),
     );
-
-    // Produce 1 consensus block to initialize genesis domain
-    ferdie.produce_block_with_slot(1.into()).await.unwrap();
 
     let expected_genesis_state_root = ferdie
         .client
@@ -106,8 +105,6 @@ async fn test_domain_block_production() {
         Ferdie,
         BasePath::new(directory.path().join("ferdie")),
     );
-    // Produce 1 consensus block to initialize genesis domain
-    ferdie.produce_block_with_slot(1.into()).await.unwrap();
 
     // Run Alice (a evm domain authority node)
     let mut alice = domain_test_service::DomainNodeBuilder::new(
@@ -135,7 +132,7 @@ async fn test_domain_block_production() {
             .unwrap();
     }
     // Domain block only produced when there is bundle contains in the primary block
-    assert_eq!(ferdie.client.info().best_number, 51);
+    assert_eq!(ferdie.client.info().best_number, 50);
     assert_eq!(alice.client.info().best_number, 25);
 
     let consensus_block_hash = ferdie.client.info().best_hash;
@@ -220,8 +217,6 @@ async fn test_processing_empty_consensus_block() {
         Ferdie,
         BasePath::new(directory.path().join("ferdie")),
     );
-    // Produce 1 consensus block to initialize genesis domain
-    ferdie.produce_block_with_slot(1.into()).await.unwrap();
 
     // Run Alice (a evm domain authority node)
     let mut alice = domain_test_service::DomainNodeBuilder::new(
@@ -239,7 +234,7 @@ async fn test_processing_empty_consensus_block() {
         consensus_client: ferdie.client.clone(),
         backend: alice.backend.clone(),
         domain_confirmation_depth: 256u32,
-        block_import: alice.client.clone(),
+        block_import: SharedBlockImport::new(alice.client.clone()),
         import_notification_sinks: Default::default(),
     };
 
@@ -280,7 +275,7 @@ async fn test_processing_empty_consensus_block() {
         }
     }
     // The domain chain is not progressed as all the consensus blocks are empty
-    assert_eq!(ferdie.client.info().best_number, 11);
+    assert_eq!(ferdie.client.info().best_number, 10);
     assert_eq!(alice.client.info().best_number, 0);
 
     // To process non-empty consensus blocks and produce domain blocks
@@ -304,8 +299,6 @@ async fn test_domain_block_deriving_from_multiple_bundles() {
         Ferdie,
         BasePath::new(directory.path().join("ferdie")),
     );
-    // Produce 1 consensus block to initialize genesis domain
-    ferdie.produce_block_with_slot(1.into()).await.unwrap();
 
     // Run Alice (a evm domain authority node)
     let mut alice = domain_test_service::DomainNodeBuilder::new(
@@ -380,11 +373,6 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
         Ferdie,
         BasePath::new(directory.path().join("ferdie")),
     );
-    // Produce 1 consensus block to initialize genesis domain
-    consensus_node
-        .produce_block_with_slot(1.into())
-        .await
-        .unwrap();
 
     // Run Alice (a evm domain authority node)
     let mut alice = domain_test_service::DomainNodeBuilder::new(
@@ -401,7 +389,7 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
 
     let best_consensus_hash = consensus_node.client.info().best_hash;
     let best_consensus_number = consensus_node.client.info().best_number;
-    assert_eq!(best_consensus_number, 4);
+    assert_eq!(best_consensus_number, 3);
 
     assert_eq!(alice.client.info().best_number, 3);
     let domain_block_2_hash = *alice
@@ -419,32 +407,25 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
 
     let parent_hash = *best_header.parent_hash();
 
-    // Domain chain forks:
+    // Consensus chain forks:
     //      3
     //   /
     // 2 -- 3a
     //   \
     //      3b -- 4
-
-    // Consensus chain forks (it has 1 more block compare to the domain chain):
-    //      4
-    //   /
-    // 3 -- 4a
-    //   \
-    //      4b -- 5
     let slot = consensus_node.produce_slot();
-    let fork_block_hash_4a = consensus_node
+    let fork_block_hash_3a = consensus_node
         .produce_block_with_slot_at(slot, parent_hash, Some(vec![]))
         .await
-        .expect("Produced first consensus fork block 4a at height #4");
-    // A fork block 4a at #4 produced.
-    assert_eq!(number_of(&consensus_node, fork_block_hash_4a), 4);
-    assert_ne!(fork_block_hash_4a, best_consensus_hash);
+        .expect("Produced first consensus fork block 3a at height #3");
+    // A fork block 3a at #3 produced.
+    assert_eq!(number_of(&consensus_node, fork_block_hash_3a), 3);
+    assert_ne!(fork_block_hash_3a, best_consensus_hash);
     // Best hash unchanged due to the longest chain fork choice.
     assert_eq!(consensus_node.client.info().best_hash, best_consensus_hash);
-    // Hash of block number #4 unchanged.
+    // Hash of block number #3 unchanged.
     assert_eq!(
-        consensus_node.client.hash(4).unwrap().unwrap(),
+        consensus_node.client.hash(3).unwrap().unwrap(),
         best_consensus_hash
     );
 
@@ -458,7 +439,7 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
             )
         };
 
-    // Produce a bundle after the fork block #4a has been produced.
+    // Produce a bundle after the fork block #3a has been produced.
     let signed_bundle = consensus_node
         .notify_new_slot_and_wait_for_bundle(slot)
         .await;
@@ -477,18 +458,18 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
     );
 
     let slot = consensus_node.produce_slot();
-    let fork_block_hash_4b = consensus_node
+    let fork_block_hash_3b = consensus_node
         .produce_block_with_slot_at(slot, parent_hash, Some(vec![]))
         .await
         .expect("Produced second consensus fork block 3b at height #3");
-    // Another fork block 3b at #4 produced,
-    assert_eq!(number_of(&consensus_node, fork_block_hash_4b), 4);
-    assert_ne!(fork_block_hash_4b, best_consensus_hash);
+    // Another fork block 3b at #3 produced,
+    assert_eq!(number_of(&consensus_node, fork_block_hash_3b), 3);
+    assert_ne!(fork_block_hash_3b, best_consensus_hash);
     // Best hash unchanged due to the longest chain fork choice.
     assert_eq!(consensus_node.client.info().best_hash, best_consensus_hash);
-    // Hash of block number #4 unchanged.
+    // Hash of block number #3 unchanged.
     assert_eq!(
-        consensus_node.client.hash(4).unwrap().unwrap(),
+        consensus_node.client.hash(3).unwrap().unwrap(),
         best_consensus_hash
     );
 
@@ -502,27 +483,27 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
         expected_receipts_consensus_info
     );
 
-    // Produce a new tip at #5.
+    // Produce a new tip at #4.
     let slot = consensus_node.produce_slot();
     produce_block_with!(
-        consensus_node.produce_block_with_slot_at(slot, fork_block_hash_4b, Some(vec![])),
+        consensus_node.produce_block_with_slot_at(slot, fork_block_hash_3b, Some(vec![])),
         alice
     )
     .await
-    .expect("Produce a new block on top of the second fork block at height #4");
+    .expect("Produce a new block on top of the second fork block at height #3");
     let new_best_hash = consensus_node.client.info().best_hash;
     let new_best_number = consensus_node.client.info().best_number;
-    assert_eq!(new_best_number, 5);
+    assert_eq!(new_best_number, 4);
 
-    // The domain best block should be reverted to #2 because the primary block #4b and #5 do
+    // The domain best block should be reverted to #2 because the primary block #3b and #4 do
     // not contains any bundles
     assert_eq!(alice.client.info().best_number, 2);
     assert_eq!(alice.client.info().best_hash, domain_block_2_hash);
 
-    // Hash of block number #4 is updated to the second fork block 4b.
+    // Hash of block number #3 is updated to the second fork block 3b.
     assert_eq!(
-        consensus_node.client.hash(4).unwrap().unwrap(),
-        fork_block_hash_4b
+        consensus_node.client.hash(3).unwrap().unwrap(),
+        fork_block_hash_3b
     );
 
     let new_best_header = consensus_node
@@ -531,20 +512,20 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
         .unwrap()
         .unwrap();
 
-    assert_eq!(*new_best_header.parent_hash(), fork_block_hash_4b);
+    assert_eq!(*new_best_header.parent_hash(), fork_block_hash_3b);
 
-    // Produce a bundle after the new block #5 has been produced.
+    // Produce a bundle after the new block #4 has been produced.
     let (_slot, signed_bundle) = consensus_node
         .produce_slot_and_wait_for_bundle_submission()
         .await;
 
-    // In the new best fork, the receipt header number is 2 thus it produce the receipt
-    // of next block namely block 3
-    let hash_3 = consensus_node.client.hash(3).unwrap().unwrap();
-    let header_3 = consensus_node.client.header(hash_3).unwrap().unwrap();
+    // In the new best fork, the receipt header number is 1 thus it produce the receipt
+    // of next block namely block 2
+    let hash_2 = consensus_node.client.hash(2).unwrap().unwrap();
+    let header_2 = consensus_node.client.header(hash_2).unwrap().unwrap();
     assert_eq!(
         receipts_consensus_info(signed_bundle.unwrap()),
-        consensus_block_info(header_3)
+        consensus_block_info(header_2)
     );
 }
 
@@ -564,8 +545,6 @@ async fn test_domain_tx_propagate() {
         Ferdie,
         BasePath::new(directory.path().join("ferdie")),
     );
-    // Produce 1 consensus block to initialize genesis domain
-    ferdie.produce_block_with_slot(1.into()).await.unwrap();
 
     // Run Alice (a evm domain authority node)
     let mut alice = domain_test_service::DomainNodeBuilder::new(
@@ -692,8 +671,6 @@ async fn test_executor_inherent_timestamp_is_set() {
         Ferdie,
         BasePath::new(directory.path().join("ferdie")),
     );
-    // Produce 1 consensus block to initialize genesis domain
-    ferdie.produce_block_with_slot(1.into()).await.unwrap();
 
     // Run Alice (a evm domain authority node)
     let mut alice = domain_test_service::DomainNodeBuilder::new(
@@ -774,8 +751,6 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
         Ferdie,
         BasePath::new(directory.path().join("ferdie")),
     );
-    // Produce 1 consensus block to initialize genesis domain
-    ferdie.produce_block_with_slot(1.into()).await.unwrap();
 
     // Run Alice (a evm domain authority node)
     let mut alice = domain_test_service::DomainNodeBuilder::new(
@@ -1000,7 +975,7 @@ async fn test_invalid_total_rewards_proof_creation() {
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
-async fn fraud_proof_verification_in_tx_pool_should_work() {
+async fn test_invalid_domain_extrinsics_root_proof_creation() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
     let mut builder = sc_cli::LoggerBuilder::new("");
@@ -1017,6 +992,122 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
     );
     // Produce 1 consensus block to initialize genesis domain
     ferdie.produce_block_with_slot(1.into()).await.unwrap();
+
+    // Run Alice (a evm domain authority node)
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .await;
+
+    let bundle_to_tx = |opaque_bundle| {
+        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+            pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
+        )
+        .into()
+    };
+
+    produce_blocks!(ferdie, alice, 5).await.unwrap();
+
+    alice
+        .construct_and_send_extrinsic(pallet_balances::Call::transfer_allow_death {
+            dest: Bob.to_account_id(),
+            value: 1,
+        })
+        .await
+        .expect("Failed to send extrinsic");
+
+    // Produce a bundle that contains the previously sent extrinsic and record that bundle for later use
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let target_bundle = bundle.unwrap();
+    assert_eq!(target_bundle.extrinsics.len(), 1);
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+
+    // Get a bundle from the txn pool and modify the receipt of the target bundle to an invalid one
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let original_submit_bundle_tx = bundle_to_tx(bundle.clone().unwrap());
+    let bad_submit_bundle_tx = {
+        let mut opaque_bundle = bundle.unwrap();
+        let receipt = &mut opaque_bundle.sealed_header.header.receipt;
+        receipt.domain_block_extrinsic_root = Default::default();
+        opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
+            .pair()
+            .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
+            .into();
+        bundle_to_tx(opaque_bundle)
+    };
+
+    // Replace `original_submit_bundle_tx` with `bad_submit_bundle_tx` in the tx pool
+    ferdie
+        .prune_tx_from_pool(&original_submit_bundle_tx)
+        .await
+        .unwrap();
+    assert!(ferdie.get_bundle_from_tx_pool(slot.into()).is_none());
+
+    ferdie
+        .submit_transaction(bad_submit_bundle_tx)
+        .await
+        .unwrap();
+
+    // Produce a consensus block that contains the `bad_submit_bundle_tx`
+    let mut import_tx_stream = ferdie.transaction_pool.import_notification_stream();
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+
+    // When the domain node operator process the primary block that contains the `bad_submit_bundle_tx`,
+    // it will generate and submit a fraud proof
+    let mut fraud_proof_submitted = false;
+    while let Some(ready_tx_hash) = import_tx_stream.next().await {
+        let ready_tx = ferdie
+            .transaction_pool
+            .ready_transaction(&ready_tx_hash)
+            .unwrap();
+        let ext = subspace_test_runtime::UncheckedExtrinsic::decode(
+            &mut ready_tx.data.encode().as_slice(),
+        )
+        .unwrap();
+        if let subspace_test_runtime::RuntimeCall::Domains(
+            pallet_domains::Call::submit_fraud_proof { fraud_proof },
+        ) = ext.function
+        {
+            if let FraudProof::InvalidExtrinsicsRoot(InvalidExtrinsicsRootProof { .. }) =
+                *fraud_proof
+            {
+                fraud_proof_submitted = true;
+                break;
+            }
+        }
+    }
+
+    assert!(fraud_proof_submitted, "Fraud proof must be submitted");
+
+    // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified on
+    // on the runtime itself
+    ferdie.produce_blocks(1).await.unwrap();
+}
+
+#[tokio::test(flavor = "multi_thread")]
+#[ignore]
+async fn fraud_proof_verification_in_tx_pool_should_work() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
 
     // Run Alice (a evm domain authority node)
     let mut alice = domain_test_service::DomainNodeBuilder::new(
@@ -1189,8 +1280,6 @@ async fn set_new_code_should_work() {
         Ferdie,
         BasePath::new(directory.path().join("ferdie")),
     );
-    // Produce 1 consensus block to initialize genesis domain
-    ferdie.produce_block_with_slot(1.into()).await.unwrap();
 
     // Run Alice (a evm domain authority node)
     let mut alice = domain_test_service::DomainNodeBuilder::new(
@@ -1262,8 +1351,6 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
         Ferdie,
         BasePath::new(directory.path().join("ferdie")),
     );
-    // Produce 1 consensus block to initialize genesis domain
-    ferdie.produce_block_with_slot(1.into()).await.unwrap();
 
     // Run Alice (a evm domain authority node)
     let mut alice = domain_test_service::DomainNodeBuilder::new(
@@ -1362,8 +1449,6 @@ async fn duplicated_and_stale_bundle_should_be_rejected() {
         Ferdie,
         BasePath::new(directory.path().join("ferdie")),
     );
-    // Produce 1 consensus block to initialize genesis domain
-    ferdie.produce_block_with_slot(1.into()).await.unwrap();
 
     // Run Alice (a evm domain authority node)
     let mut alice = domain_test_service::DomainNodeBuilder::new(
@@ -1435,8 +1520,6 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
         Ferdie,
         BasePath::new(directory.path().join("ferdie")),
     );
-    // Produce 1 consensus block to initialize genesis domain
-    ferdie.produce_block_with_slot(1.into()).await.unwrap();
 
     // Run Alice (a evm domain authority node)
     let mut alice = domain_test_service::DomainNodeBuilder::new(
@@ -1884,9 +1967,6 @@ async fn test_restart_domain_operator() {
         BasePath::new(directory.path().join("ferdie")),
     );
 
-    // Produce 1 consensus block to initialize genesis domain
-    ferdie.produce_block_with_slot(1.into()).await.unwrap();
-
     // Run Alice (a evm domain authority node)
     let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
@@ -1932,7 +2012,7 @@ async fn test_restart_domain_operator() {
     produce_blocks!(ferdie, alice, 5).await.unwrap();
 
     // Chain should progress base on previous run
-    assert_eq!(ferdie.client.info().best_number, 11);
+    assert_eq!(ferdie.client.info().best_number, 10);
     assert_eq!(alice.client.info().best_number, 10);
 }
 
@@ -1952,9 +2032,6 @@ async fn test_domain_transaction_fee_and_operator_reward() {
         Ferdie,
         BasePath::new(directory.path().join("ferdie")),
     );
-
-    // Produce 1 consensus block to initialize genesis domain
-    ferdie.produce_block_with_slot(1.into()).await.unwrap();
 
     // Run Alice (a evm domain authority node)
     let mut alice = domain_test_service::DomainNodeBuilder::new(
@@ -2021,9 +2098,6 @@ async fn test_multiple_consensus_blocks_derive_similar_domain_block() {
         Ferdie,
         BasePath::new(directory.path().join("ferdie")),
     );
-
-    // Produce 1 consensus block to initialize genesis domain
-    ferdie.produce_block_with_slot(1.into()).await.unwrap();
 
     // Run Alice (a evm domain authority node)
     let mut alice = domain_test_service::DomainNodeBuilder::new(

@@ -20,7 +20,6 @@
 use codec::{Decode, Encode};
 use sc_client_api::backend::AuxStore;
 use sp_blockchain::{Error as ClientError, Result as ClientResult};
-use sp_consensus_subspace::ChainConstants;
 use subspace_core_primitives::BlockWeight;
 
 fn load_decode<B, T>(backend: &B, key: &[u8]) -> ClientResult<Option<T>>
@@ -61,28 +60,4 @@ pub(crate) fn load_block_weight<H: Encode, B: AuxStore>(
     block_hash: H,
 ) -> ClientResult<Option<BlockWeight>> {
     load_decode(backend, block_weight_key(block_hash).as_slice())
-}
-
-/// The aux storage key used to store the chain constants.
-fn chain_constants_key() -> Vec<u8> {
-    b"chain_constants".encode()
-}
-
-/// Write chain constants to aux storage.
-pub(crate) fn write_chain_constants<F, R>(chain_constants: &ChainConstants, write_aux: F) -> R
-where
-    F: FnOnce(&[(Vec<u8>, &[u8])]) -> R,
-{
-    let key = chain_constants_key();
-    chain_constants.using_encoded(|s| write_aux(&[(key, s)]))
-}
-
-/// Load chain constants.
-pub(crate) fn load_chain_constants<Backend>(
-    backend: &Backend,
-) -> ClientResult<Option<ChainConstants>>
-where
-    Backend: AuxStore,
-{
-    load_decode(backend, chain_constants_key().as_slice())
 }
