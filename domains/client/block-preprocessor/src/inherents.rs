@@ -12,7 +12,7 @@
 //! Deriving these extrinsics during fraud proof verification should be possible since
 //! verification environment will have access to consensus chain.
 
-use crate::runtime_api::InherentExtrinsicConstructor;
+use crate::runtime_api::TimestampExtrinsicConstructor;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_domains::DomainsApi;
@@ -36,15 +36,14 @@ where
     CBlock: BlockT,
     CClient: ProvideRuntimeApi<CBlock>,
     CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
-    DomainRuntimeApi: InherentExtrinsicConstructor<Block>,
+    DomainRuntimeApi: TimestampExtrinsicConstructor<Block>,
 {
     let moment = consensus_client
         .runtime_api()
         .timestamp(consensus_block_hash)?;
 
     let inherent_exts =
-        vec![domain_runtime_api
-            .construct_timestamp_inherent_extrinsic(domain_parent_hash, moment)?];
+        vec![domain_runtime_api.construct_timestamp_extrinsic(domain_parent_hash, moment)?];
 
     Ok(inherent_exts)
 }

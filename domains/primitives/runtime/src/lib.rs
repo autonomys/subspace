@@ -182,6 +182,9 @@ sp_api::decl_runtime_apis! {
         /// Returns an encoded extrinsic aiming to upgrade the runtime using given code.
         fn construct_set_code_extrinsic(code: Vec<u8>) -> Vec<u8>;
 
+        /// Returns an encoded extrinsic to set timestamp.
+        fn construct_timestamp_extrinsic(moment: Moment) -> Block::Extrinsic;
+
         /// Checks the validity of extrinsic in a bundle.
         fn check_transaction_validity(
             uxt: &<Block as BlockT>::Extrinsic,
@@ -198,11 +201,5 @@ sp_api::decl_runtime_apis! {
 
         /// The accumulated transaction fee of all transactions included in the block
         fn block_rewards() -> Balance;
-    }
-
-    /// Api that construct inherent extrinsics.
-    pub trait InherentExtrinsicApi {
-        /// Api to construct inherent timestamp extrinsic from given time
-        fn construct_inherent_timestamp_extrinsic(moment: Moment) -> Block::Extrinsic;
     }
 }

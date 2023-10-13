@@ -848,6 +848,12 @@ impl_runtime_apis! {
             ).encode()
         }
 
+        fn construct_timestamp_extrinsic(moment: Moment) -> <Block as BlockT>::Extrinsic {
+            UncheckedExtrinsic::new_unsigned(
+                pallet_timestamp::Call::set{ now: moment }.into()
+            )
+        }
+
         fn check_transaction_validity(
             _uxt: &<Block as BlockT>::Extrinsic,
             _block_hash: <Block as BlockT>::Hash,
@@ -873,14 +879,6 @@ impl_runtime_apis! {
 
         fn block_rewards() -> Balance {
             OperatorRewards::block_rewards()
-        }
-    }
-
-    impl domain_runtime_primitives::InherentExtrinsicApi<Block> for Runtime {
-        fn construct_inherent_timestamp_extrinsic(moment: Moment) -> <Block as BlockT>::Extrinsic {
-            UncheckedExtrinsic::new_unsigned(
-                pallet_timestamp::Call::set{ now: moment }.into()
-            )
         }
     }
 

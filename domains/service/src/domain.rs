@@ -5,7 +5,7 @@ use domain_client_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_client_message_relayer::GossipMessageSink;
 use domain_client_operator::{Operator, OperatorParams, OperatorStreams};
 use domain_runtime_primitives::opaque::Block;
-use domain_runtime_primitives::{Balance, BlockNumber, DomainCoreApi, Hash, InherentExtrinsicApi};
+use domain_runtime_primitives::{Balance, BlockNumber, DomainCoreApi, Hash};
 use futures::channel::mpsc;
 use futures::Stream;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
@@ -307,7 +307,6 @@ where
         + SessionKeys<Block>
         + DomainCoreApi<Block>
         + MessengerApi<Block, NumberFor<Block>>
-        + InherentExtrinsicApi<Block>
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>

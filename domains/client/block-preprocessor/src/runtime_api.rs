@@ -19,10 +19,10 @@ pub trait StateRootExtractor<Block: BlockT> {
     ) -> Result<ExtractedStateRoots<Block>, ApiError>;
 }
 
-/// Trait to construct inherent extrinsics
-pub trait InherentExtrinsicConstructor<Block: BlockT> {
-    /// Returns Inherent timestamp extrinsic if the Runtime implements the API.
-    fn construct_timestamp_inherent_extrinsic(
+/// Trait to construct timestamp extrinsic.
+pub trait TimestampExtrinsicConstructor<Block: BlockT> {
+    /// Returns encoded timestamp extrinsic for the given time.
+    fn construct_timestamp_extrinsic(
         &self,
         at: Block::Hash,
         moment: subspace_runtime_primitives::Moment,

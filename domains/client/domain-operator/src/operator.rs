@@ -5,7 +5,7 @@ use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::fraud_proof::FraudProofGenerator;
 use crate::parent_chain::DomainParentChain;
 use crate::{DomainImportNotifications, NewSlotNotification, OperatorParams};
-use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
+use domain_runtime_primitives::DomainCoreApi;
 use futures::channel::mpsc;
 use futures::{FutureExt, Stream};
 use sc_client_api::{
@@ -72,7 +72,6 @@ where
         + Finalizer<Block, Backend>
         + 'static,
     Client::Api: DomainCoreApi<Block>
-        + InherentExtrinsicApi<Block>
         + MessengerApi<Block, NumberFor<Block>>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<Block>,

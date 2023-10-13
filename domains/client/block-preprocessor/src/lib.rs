@@ -22,7 +22,7 @@ use crate::xdm_verifier::is_valid_xdm;
 use codec::{Decode, Encode};
 use domain_runtime_primitives::opaque::AccountId;
 use domain_runtime_primitives::DomainCoreApi;
-use runtime_api::InherentExtrinsicConstructor;
+use runtime_api::TimestampExtrinsicConstructor;
 use sc_client_api::BlockBackend;
 use sp_api::{HashT, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
@@ -165,7 +165,7 @@ where
     RuntimeApi: SignerExtractor<Block>
         + StateRootExtractor<Block>
         + SetCodeConstructor<Block>
-        + InherentExtrinsicConstructor<Block>,
+        + TimestampExtrinsicConstructor<Block>,
     Client: ProvideRuntimeApi<Block> + 'static,
     Client::Api: DomainCoreApi<Block>,
     CClient: HeaderBackend<CBlock>
