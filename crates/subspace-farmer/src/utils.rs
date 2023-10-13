@@ -138,3 +138,46 @@ pub fn tokio_rayon_spawn_handler() -> impl FnMut(ThreadBuilder) -> io::Result<()
         Ok(())
     }
 }
+
+/// Wraps prometheus task in a wrapper that help early task termination.
+pub struct PrometheusTaskDropHelper {
+    task: task::JoinHandle<Result<(), io::Error>>,
+    exit_rx: oneshot::Receiver<()>,
+    exit_tx: Option<oneshot::Sender<()>>,
+}
+
+impl Drop for PrometheusTaskDropHelper {
+    fn drop(&mut self) {
+        if let Some(exit_tx) = self.exit_tx.take() {
+            self.task.abort();
+
+            // Error can happen on dropped channel only.
+            let _ = exit_tx.send(());
+        }
+    }
+}
+
+impl PrometheusTaskDropHelper {
+    /// Create new instance for prometheus task drop helper.
+    pub fn new(handle: task::JoinHandle<Result<(), io::Error>>) -> Self {
+        let (tx, rx) = oneshot::channel();
+        Self {
+            task: handle,
+            exit_rx: rx,
+            exit_tx: Some(tx),
+        }
+    }
+}
+
+impl Future for PrometheusTaskDropHelper {
+    type Output = Result<Result<(), io::Error>, task::JoinError>;
+
+    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
+        match Pin::new(&mut self.exit_rx).poll(cx) {
+            Poll::Ready(_) => return Poll::Ready(Ok(Ok(()))),
+            Poll::Pending => {}
+        }
+
+        Pin::new(&mut self.task).poll(cx)
+    }
+}

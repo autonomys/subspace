@@ -23,7 +23,9 @@ use subspace_farmer::single_disk_farm::{
 use subspace_farmer::utils::farmer_piece_getter::FarmerPieceGetter;
 use subspace_farmer::utils::piece_validator::SegmentCommitmentPieceValidator;
 use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
-use subspace_farmer::utils::{run_future_in_dedicated_thread, tokio_rayon_spawn_handler};
+use subspace_farmer::utils::{
+    run_future_in_dedicated_thread, tokio_rayon_spawn_handler, PrometheusTaskDropHelper,
+};
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_farmer_components::plotting::PlottedSector;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
@@ -135,13 +137,14 @@ where
         )?
     };
 
-    let prometheus_worker = if metrics_endpoints_are_specified {
+    let _prometheus_worker = if metrics_endpoints_are_specified {
         let prometheus_task = start_prometheus_metrics_server(
             metrics_endpoints,
             RegistryAdapter::Libp2p(metrics_registry),
         )?;
 
-        Some(tokio::spawn(prometheus_task))
+        let join_handle = tokio::spawn(prometheus_task);
+        Some(PrometheusTaskDropHelper::new(join_handle))
     } else {
         None
     };
@@ -399,11 +402,6 @@ where
             info!("Node runner exited.")
         },
     );
-
-    if let Some(prometheus_worker) = prometheus_worker {
-        debug!("Aborting prometheus worker...");
-        prometheus_worker.abort();
-    }
 
     anyhow::Ok(())
 }
