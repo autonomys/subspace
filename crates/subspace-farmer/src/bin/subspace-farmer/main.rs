@@ -21,6 +21,9 @@ use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::{fmt, EnvFilter};
 
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 type PosTable = ChiaTable;
 
 fn available_parallelism() -> usize {

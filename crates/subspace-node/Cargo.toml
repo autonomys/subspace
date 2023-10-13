@@ -37,6 +37,7 @@ futures = "0.3.28"
 hex = "0.4.3"
 hex-literal = "0.4.1"
 log = "0.4.20"
+mimalloc = "0.1.39"
 parity-scale-codec = "3.6.5"
 sc-chain-spec = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
 sc-cli = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c", default-features = false }
