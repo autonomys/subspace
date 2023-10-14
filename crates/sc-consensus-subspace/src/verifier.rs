@@ -2,8 +2,6 @@
 
 use crate::Error;
 use futures::lock::Mutex;
-use futures::stream::FuturesUnordered;
-use futures::StreamExt;
 use log::{debug, info, trace, warn};
 use rand::prelude::*;
 use sc_client_api::backend::AuxStore;
@@ -309,14 +307,15 @@ where
 
             // All checkpoints must be valid, at least according to the seed included in
             // justifications
-            let verification_results = FuturesUnordered::new();
             for checkpoints in &checkpoints {
                 if full_pot_verification {
-                    verification_results.push(self.pot_verifier.verify_checkpoints(
-                        seed,
-                        slot_iterations,
-                        checkpoints,
-                    ));
+                    // Try to find invalid checkpoints
+                    if !self
+                        .pot_verifier
+                        .verify_checkpoints(seed, slot_iterations, checkpoints)
+                    {
+                        return Err(VerificationError::InvalidProofOfTime);
+                    }
                 } else {
                     // We inject verified checkpoints in order to avoid full proving when votes
                     // included in the block will inevitably be verified during block execution
@@ -339,18 +338,6 @@ where
                 slot_to_check = pot_input.slot;
                 slot_iterations = pot_input.slot_iterations;
                 seed = pot_input.seed;
-            }
-            // Try to find invalid checkpoints
-            if verification_results
-                // TODO: Ideally we'd use `find` here instead, but it does not yet exist:
-                //  https://github.com/rust-lang/futures-rs/issues/2705
-                .filter(|&success| async move { !success })
-                .boxed()
-                .next()
-                .await
-                .is_some()
-            {
-                return Err(VerificationError::InvalidProofOfTime);
             }
         }
 
