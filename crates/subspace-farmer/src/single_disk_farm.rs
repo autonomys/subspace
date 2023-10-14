@@ -567,7 +567,7 @@ impl SingleDiskFarm {
 
     /// Create new single disk farm instance
     ///
-    /// NOTE: Thought this function is async, it will do some blocking I/O.
+    /// NOTE: Though this function is async, it will do some blocking I/O.
     pub async fn new<NC, PG, PosTable>(
         options: SingleDiskFarmOptions<NC, PG>,
         disk_farm_index: usize,
