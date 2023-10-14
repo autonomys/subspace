@@ -12,12 +12,9 @@ use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use parity_scale_codec::Encode;
 use std::error::Error;
-use std::future::Future;
 use std::mem;
-use std::pin::Pin;
 use std::simd::Simd;
 use std::sync::Arc;
-use std::task::{Context, Poll};
 use std::time::Duration;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::crypto::{blake3_hash, blake3_hash_parallel, Scalar};
@@ -29,6 +26,7 @@ use subspace_erasure_coding::ErasureCoding;
 use subspace_proof_of_space::{Quality, Table, TableGenerator};
 use thiserror::Error;
 use tokio::sync::Semaphore;
+use tokio::task::yield_now;
 use tracing::{debug, trace, warn};
 
 const RECONSTRUCTION_CONCURRENCY_LIMIT: usize = 1;
@@ -193,33 +191,6 @@ where
     pub encoding_semaphore: Option<&'a Semaphore>,
     /// Proof of space table generator
     pub table_generator: &'a mut PosTable::Generator,
-}
-
-/// A future that will always `yield` on the first call of `poll` but schedules the current task for
-/// re-execution.
-///
-/// This is done by getting the waker and calling `wake_by_ref` followed by returning `Pending`. The
-/// next time the `poll` is called, it will return `Ready`.
-struct Yield(bool);
-
-impl Yield {
-    fn new() -> Self {
-        Self(false)
-    }
-}
-
-impl Future for Yield {
-    type Output = ();
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<()> {
-        if !self.0 {
-            self.0 = true;
-            cx.waker().wake_by_ref();
-            Poll::Pending
-        } else {
-            Poll::Ready(())
-        }
-    }
 }
 
 /// Plot a single sector.
@@ -423,7 +394,7 @@ where
             });
 
         // Give a chance to interrupt plotting if necessary in between pieces
-        Yield::new().await
+        yield_now().await
     }
 
     sector_output.resize(sector_size, 0);
