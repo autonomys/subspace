@@ -88,7 +88,6 @@ panic = "unwind"
 [profile.production]
 inherits = "release"
 lto = "fat"
-codegen-units = 1
 
 # Reason: We need to patch substrate dependency of frontier to our fork
 # TODO: Remove if/when we are using upstream substrate instead of fork
