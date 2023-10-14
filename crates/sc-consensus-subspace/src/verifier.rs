@@ -27,8 +27,10 @@ use sp_consensus_subspace::{
 use sp_runtime::traits::NumberFor;
 use sp_runtime::{DigestItem, Justifications};
 use std::marker::PhantomData;
+use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
+use std::thread::available_parallelism;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{BlockNumber, PublicKey, RewardSignature};
 use subspace_proof_of_space::Table;
@@ -448,8 +450,16 @@ where
     SelectChain: sp_consensus::SelectChain<Block>,
     SN: Fn() -> Slot + Send + Sync + 'static,
 {
-    fn supports_stateless_verification(&self) -> bool {
-        true
+    fn verification_concurrency(&self) -> NonZeroUsize {
+        available_parallelism()
+            .ok()
+            .and_then(|concurrency| {
+                // Multiply by two because with optimistic verification we will not actually spend a
+                // lot of CPU time verifying blocks, increasing this will help with CPU utilization
+                // and will make sync faster
+                concurrency.checked_mul(NonZeroUsize::new(2).expect("Not zero; qed"))
+            })
+            .unwrap_or(NonZeroUsize::new(1).expect("Not zero; qed"))
     }
 
     async fn verify(
