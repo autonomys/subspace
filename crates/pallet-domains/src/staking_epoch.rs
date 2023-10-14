@@ -1,10 +1,11 @@
 //! Staking epoch transition for domain
 
 use crate::pallet::{
-    DomainStakingSummary, LastEpochStakingDistribution, Nominators, OperatorIdOwner, Operators,
-    PendingDeposits, PendingNominatorUnlocks, PendingOperatorDeregistrations,
-    PendingOperatorSwitches, PendingOperatorUnlocks, PendingSlashes, PendingStakingOperationCount,
-    PendingUnlocks, PendingWithdrawals, PreferredOperator,
+    DomainStakingSummary, LastEpochStakingDistribution, NominatorCount, Nominators,
+    OperatorIdOwner, Operators, PendingDeposits, PendingNominatorUnlocks,
+    PendingOperatorDeregistrations, PendingOperatorSwitches, PendingOperatorUnlocks,
+    PendingSlashes, PendingStakingOperationCount, PendingUnlocks, PendingWithdrawals,
+    PreferredOperator,
 };
 use crate::staking::{Error as TransitionError, Nominator, OperatorStatus, Withdraw};
 use crate::{
@@ -269,6 +270,9 @@ fn unlock_operator<T: Config>(operator_id: OperatorId) -> Result<(), Error> {
 
         // remove OperatorOwner Details
         OperatorIdOwner::<T>::remove(operator_id);
+
+        // remove nominator count for this operator.
+        NominatorCount::<T>::remove(operator_id);
 
         Ok(())
     })
@@ -742,8 +746,8 @@ pub struct PendingOperatorSlashInfo<NominatorId, Balance> {
 mod tests {
     use crate::domain_registry::{DomainConfig, DomainObject};
     use crate::pallet::{
-        DomainRegistry, DomainStakingSummary, LastEpochStakingDistribution, Nominators,
-        OperatorIdOwner, Operators, PendingDeposits, PendingOperatorSwitches,
+        DomainRegistry, DomainStakingSummary, LastEpochStakingDistribution, NominatorCount,
+        Nominators, OperatorIdOwner, Operators, PendingDeposits, PendingOperatorSwitches,
         PendingOperatorUnlocks, PendingUnlocks, PendingWithdrawals, PreferredOperator,
     };
     use crate::staking::tests::register_operator;
@@ -938,7 +942,8 @@ mod tests {
 
             assert_eq!(Operators::<Test>::get(operator_id), None);
             assert_eq!(OperatorIdOwner::<Test>::get(operator_id), None);
-            assert!(PendingOperatorUnlocks::<Test>::get().is_empty())
+            assert!(PendingOperatorUnlocks::<Test>::get().is_empty());
+            assert_eq!(NominatorCount::<Test>::get(operator_id), 0);
         });
     }
 
