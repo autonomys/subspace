@@ -103,6 +103,12 @@ struct FarmingArgs {
     /// more than 1 because it will most likely result in slower plotting overall
     #[arg(long, default_value = "1")]
     sector_encoding_concurrency: NonZeroUsize,
+    /// Allows to enable farming during initial plotting. Not used by default because plotting is so
+    /// intense on CPU and memory that farming will likely not work properly, yet it will
+    /// significantly impact plotting speed, delaying the time when farming can actually work
+    /// properly.
+    #[arg(long)]
+    farm_during_initial_plotting: bool,
     /// Size of PER FARM thread pool used for farming (mostly for blocking I/O, but also for some
     /// compute-intensive operations during proving), defaults to number of CPU cores available in
     /// the system

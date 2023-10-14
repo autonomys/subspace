@@ -337,6 +337,7 @@ pub(super) struct PlottingSchedulerOptions<NC> {
     pub(super) node_client: NC,
     pub(super) sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
     pub(super) sectors_to_plot_sender: mpsc::Sender<SectorToPlot>,
+    pub(super) initial_plotting_finished: Option<oneshot::Sender<()>>,
 }
 
 pub(super) async fn plotting_scheduler<NC>(
@@ -354,6 +355,7 @@ where
         node_client,
         sectors_metadata,
         sectors_to_plot_sender,
+        initial_plotting_finished,
     } = plotting_scheduler_options;
 
     // Create a proxy channel with atomically updatable last archived segment that
@@ -400,6 +402,7 @@ where
         &last_archived_segment,
         archived_segments_receiver,
         sectors_to_plot_proxy_sender,
+        initial_plotting_finished,
     );
 
     select! {
@@ -534,6 +537,7 @@ async fn send_plotting_notifications<NC>(
     last_archived_segment: &Atomic<SegmentHeader>,
     mut archived_segments_receiver: mpsc::Receiver<()>,
     mut sectors_to_plot_sender: mpsc::Sender<SectorToPlot>,
+    initial_plotting_finished: Option<oneshot::Sender<()>>,
 ) -> Result<(), BackgroundTaskError>
 where
     NC: NodeClient,
@@ -556,6 +560,11 @@ where
 
         // We do not care if message was sent back or sender was just dropped
         let _ = acknowledgement_receiver.await;
+    }
+
+    if let Some(initial_plotting_finished) = initial_plotting_finished {
+        // Doesn't matter if receiver is still around
+        let _ = initial_plotting_finished.send(());
     }
 
     let mut sectors_expire_at = HashMap::with_capacity(usize::from(target_sector_count));

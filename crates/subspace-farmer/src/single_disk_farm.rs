@@ -273,6 +273,8 @@ pub struct SingleDiskFarmOptions<NC, PG> {
     /// Notification for plotter to start, can be used to delay plotting until some initialization
     /// has happened externally
     pub plotting_delay: Option<oneshot::Receiver<()>>,
+    /// Whether to farm during initial plotting
+    pub farm_during_initial_plotting: bool,
 }
 
 /// Errors happening when trying to create/open single disk farm
@@ -565,7 +567,7 @@ impl SingleDiskFarm {
 
     /// Create new single disk farm instance
     ///
-    /// NOTE: Thought this function is async, it will do some blocking I/O.
+    /// NOTE: Though this function is async, it will do some blocking I/O.
     pub async fn new<NC, PG, PosTable>(
         options: SingleDiskFarmOptions<NC, PG>,
         disk_farm_index: usize,
@@ -594,6 +596,7 @@ impl SingleDiskFarm {
             plotting_thread_pool,
             replotting_thread_pool,
             plotting_delay,
+            farm_during_initial_plotting,
         } = options;
         fs::create_dir_all(&directory)?;
 
@@ -853,6 +856,13 @@ impl SingleDiskFarm {
         let sectors_indices_left_to_plot =
             metadata_header.plotted_sector_count..target_sector_count;
 
+        let (farming_delay_sender, delay_farmer_receiver) = if farm_during_initial_plotting {
+            (None, None)
+        } else {
+            let (sender, receiver) = oneshot::channel();
+            (Some(sender), Some(receiver))
+        };
+
         let span = info_span!("single_disk_farm", %disk_farm_index);
 
         let plotting_join_handle = thread::Builder::new()
@@ -935,6 +945,7 @@ impl SingleDiskFarm {
             node_client: node_client.clone(),
             sectors_metadata: Arc::clone(&sectors_metadata),
             sectors_to_plot_sender,
+            initial_plotting_finished: farming_delay_sender,
         };
         tasks.push(Box::pin(plotting_scheduler(plotting_scheduler_options)));
 
@@ -997,6 +1008,13 @@ impl SingleDiskFarm {
                             if start_receiver.recv().await.is_err() {
                                 // Dropped before starting
                                 return Ok(());
+                            }
+
+                            if let Some(farming_delay) = delay_farmer_receiver {
+                                if farming_delay.await.is_err() {
+                                    // Dropped before resolving
+                                    return Ok(());
+                                }
                             }
 
                             let farming_options = FarmingOptions {
