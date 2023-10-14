@@ -59,6 +59,7 @@ where
         metrics_endpoints,
         sector_downloading_concurrency,
         sector_encoding_concurrency,
+        farm_during_initial_plotting,
         farming_thread_pool_size,
         plotting_thread_pool_size,
         replotting_thread_pool_size,
@@ -241,6 +242,7 @@ where
                 plotting_thread_pool: Arc::clone(&plotting_thread_pool),
                 replotting_thread_pool: Arc::clone(&replotting_thread_pool),
                 plotting_delay: Some(plotting_delay_receiver),
+                farm_during_initial_plotting,
             },
             disk_farm_index,
         );
