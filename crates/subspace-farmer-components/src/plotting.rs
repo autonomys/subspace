@@ -11,6 +11,7 @@ use backoff::{Error as BackoffError, ExponentialBackoff};
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
 use parity_scale_codec::Encode;
+use rayon::prelude::*;
 use std::error::Error;
 use std::mem;
 use std::simd::Simd;
@@ -315,6 +316,7 @@ where
     };
 
     let mut sector_contents_map = SectorContentsMap::new(pieces_in_sector);
+    let mut chunks_scratch = Vec::with_capacity(Record::NUM_S_BUCKETS);
 
     for ((piece_offset, record), mut encoded_chunks_used) in (PieceOffset::ZERO..)
         .zip(raw_sector.records.iter_mut())
@@ -342,22 +344,31 @@ where
 
         // For every erasure coded chunk check if there is quality present, if so then encode
         // with PoSpace quality bytes and set corresponding `quality_present` bit to `true`
-        let num_successfully_encoded_chunks = (SBucket::ZERO..=SBucket::MAX)
+        (u16::from(SBucket::ZERO)..=u16::from(SBucket::MAX))
+            .into_par_iter()
+            .map(SBucket::from)
             .zip(
                 source_record_chunks
-                    .iter()
-                    .zip(&parity_record_chunks)
-                    .flat_map(|(a, b)| [a, b]),
+                    .par_iter()
+                    .interleave(&parity_record_chunks),
             )
-            .zip(encoded_chunks_used.iter_mut())
-            .filter_map(|((s_bucket, record_chunk), mut encoded_chunk_used)| {
+            .map(|(s_bucket, record_chunk)| {
                 let quality = pos_table.find_quality(s_bucket.into())?;
-
-                *encoded_chunk_used = true;
 
                 Some(
                     Simd::from(record_chunk.to_bytes()) ^ Simd::from(quality.create_proof().hash()),
                 )
+            })
+            .collect_into_vec(&mut chunks_scratch);
+        let num_successfully_encoded_chunks = chunks_scratch
+            .drain(..)
+            .zip(encoded_chunks_used.iter_mut())
+            .filter_map(|(maybe_encoded_chunk, mut encoded_chunk_used)| {
+                let encoded_chunk = maybe_encoded_chunk?;
+
+                *encoded_chunk_used = true;
+
+                Some(encoded_chunk)
             })
             // Make sure above filter function (and corresponding `encoded_chunk_used` update)
             // happen at most as many times as there is number of chunks in the record,
