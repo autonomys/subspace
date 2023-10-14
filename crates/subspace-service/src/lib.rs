@@ -113,7 +113,7 @@ const_assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<u64>());
 
 /// This is over 15 minutes of slots assuming there are no forks, should be both sufficient and not
 /// too large to handle
-const POT_VERIFIER_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(10_000).expect("Not zero; qed");
+const POT_VERIFIER_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(30_000).expect("Not zero; qed");
 const SYNC_TARGET_UPDATE_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Error type for Subspace service.
