@@ -3,8 +3,6 @@
 #[cfg(test)]
 mod tests;
 
-use async_lock::Mutex as AsyncMutex;
-use futures::channel::oneshot;
 use lru::LruCache;
 use parking_lot::Mutex;
 use sp_consensus_slots::Slot;
@@ -12,8 +10,6 @@ use sp_consensus_subspace::{PotNextSlotInput, PotParametersChange};
 use std::num::{NonZeroU32, NonZeroUsize};
 use std::sync::Arc;
 use subspace_core_primitives::{PotCheckpoints, PotOutput, PotSeed};
-use tokio::runtime::Handle;
-use tracing::trace;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
 struct CacheKey {
@@ -23,7 +19,7 @@ struct CacheKey {
 
 #[derive(Debug, Clone)]
 struct CacheValue {
-    checkpoints: Arc<AsyncMutex<Option<PotCheckpoints>>>,
+    checkpoints: Arc<Mutex<Option<PotCheckpoints>>>,
 }
 
 /// Verifier data structure that verifies and caches results of PoT verification
@@ -54,7 +50,7 @@ impl PotVerifier {
                 slot_iterations,
             },
             CacheValue {
-                checkpoints: Arc::new(AsyncMutex::new(Some(checkpoints))),
+                checkpoints: Arc::new(Mutex::new(Some(checkpoints))),
             },
         );
     }
@@ -66,28 +62,15 @@ impl PotVerifier {
 
     /// Try to get checkpoints for provided seed and slot iterations, returns `None` if proving
     /// fails internally.
-    pub async fn get_checkpoints(
+    pub fn get_checkpoints(
         &self,
         slot_iterations: NonZeroU32,
         seed: PotSeed,
     ) -> Option<PotCheckpoints> {
-        // TODO: This "proxy" is a workaround for https://github.com/rust-lang/rust/issues/57478
-        let result_fut = tokio::task::spawn_blocking({
-            let verifier = self.clone();
-
-            move || {
-                Handle::current().block_on(verifier.calculate_checkpoints(
-                    slot_iterations,
-                    seed,
-                    true,
-                ))
-            }
-        });
-
-        result_fut.await.unwrap_or_default()
+        self.calculate_checkpoints(slot_iterations, seed, true)
     }
 
-    /// Try to get checkpoints quickly without waiting for potentially locked async mutex or proving
+    /// Try to get checkpoints quickly without waiting for potentially locked mutex or proving
     pub fn try_get_checkpoints(
         &self,
         slot_iterations: NonZeroU32,
@@ -113,7 +96,7 @@ impl PotVerifier {
     ///
     /// NOTE: Potentially much slower than checkpoints, prefer [`Self::verify_checkpoints()`]
     /// whenever possible.
-    pub async fn is_output_valid(
+    pub fn is_output_valid(
         &self,
         input: PotNextSlotInput,
         slots: Slot,
@@ -121,13 +104,12 @@ impl PotVerifier {
         maybe_parameters_change: Option<PotParametersChange>,
     ) -> bool {
         self.is_output_valid_internal(input, slots, output, maybe_parameters_change, true)
-            .await
     }
 
     /// Does the same verification as [`Self::is_output_valid()`] except it relies on proofs being
     /// pre-validated before and will return `false` in case proving is necessary, this is meant to
     /// be a quick and cheap version of the function.
-    pub async fn try_is_output_valid(
+    pub fn try_is_output_valid(
         &self,
         input: PotNextSlotInput,
         slots: Slot,
@@ -135,10 +117,9 @@ impl PotVerifier {
         maybe_parameters_change: Option<PotParametersChange>,
     ) -> bool {
         self.is_output_valid_internal(input, slots, output, maybe_parameters_change, false)
-            .await
     }
 
-    async fn is_output_valid_internal(
+    fn is_output_valid_internal(
         &self,
         mut input: PotNextSlotInput,
         slots: Slot,
@@ -149,19 +130,13 @@ impl PotVerifier {
         let mut slots = u64::from(slots);
 
         loop {
-            let maybe_calculated_checkpoints_fut = tokio::task::spawn_blocking({
-                let verifier = self.clone();
+            let maybe_calculated_checkpoints = self.calculate_checkpoints(
+                input.slot_iterations,
+                input.seed,
+                do_proving_if_necessary,
+            );
 
-                move || {
-                    Handle::current().block_on(verifier.calculate_checkpoints(
-                        input.slot_iterations,
-                        input.seed,
-                        do_proving_if_necessary,
-                    ))
-                }
-            });
-
-            let Ok(Some(calculated_checkpoints)) = maybe_calculated_checkpoints_fut.await else {
+            let Some(calculated_checkpoints) = maybe_calculated_checkpoints else {
                 return false;
             };
             let calculated_output = calculated_checkpoints.output();
@@ -182,10 +157,7 @@ impl PotVerifier {
     }
 
     /// Derive next seed, proving might be used if necessary
-    // TODO: False-positive, lock is not actually held over await point, remove suppression once
-    //  fixed upstream
-    #[allow(clippy::await_holding_lock)]
-    async fn calculate_checkpoints(
+    fn calculate_checkpoints(
         &self,
         slot_iterations: NonZeroU32,
         seed: PotSeed,
@@ -201,7 +173,7 @@ impl PotVerifier {
             let maybe_cache_value = cache.get(&cache_key).cloned();
             if let Some(cache_value) = maybe_cache_value {
                 drop(cache);
-                let correct_checkpoints = cache_value.checkpoints.lock().await;
+                let correct_checkpoints = cache_value.checkpoints.lock();
                 if let Some(correct_checkpoints) = *correct_checkpoints {
                     return Some(correct_checkpoints);
                 }
@@ -228,17 +200,9 @@ impl PotVerifier {
             // Cache lock is no longer necessary, other callers should be able to access cache too
             drop(cache);
 
-            let (result_sender, result_receiver) = oneshot::channel();
+            let proving_result = subspace_proof_of_time::prove(seed, slot_iterations);
 
-            rayon::spawn(move || {
-                let result = subspace_proof_of_time::prove(seed, slot_iterations);
-
-                if let Err(_error) = result_sender.send(result) {
-                    trace!("Verification result receiver is gone before result was sent");
-                }
-            });
-
-            let Ok(Ok(generated_checkpoints)) = result_receiver.await else {
+            let Ok(generated_checkpoints) = proving_result else {
                 // Avoid deadlock when taking a lock below
                 drop(checkpoints);
 
@@ -247,8 +211,7 @@ impl PotVerifier {
                 if let Some(removed_cache_value) = maybe_removed_cache_value {
                     // It is possible that we have removed a verified value that we have not
                     // inserted, check for this and restore if that was the case
-                    let removed_verified_value =
-                        removed_cache_value.checkpoints.lock().await.is_some();
+                    let removed_verified_value = removed_cache_value.checkpoints.lock().is_some();
                     if removed_verified_value {
                         self.cache.lock().push(cache_key, removed_cache_value);
                     }
@@ -262,33 +225,16 @@ impl PotVerifier {
     }
 
     /// Verify proof of time checkpoints
-    pub async fn verify_checkpoints(
+    pub fn verify_checkpoints(
         &self,
         seed: PotSeed,
         slot_iterations: NonZeroU32,
         checkpoints: &PotCheckpoints,
     ) -> bool {
-        // TODO: This "proxy" is a workaround for https://github.com/rust-lang/rust/issues/57478
-        let result_fut = tokio::task::spawn_blocking({
-            let verifier = self.clone();
-            let checkpoints = *checkpoints;
-
-            move || {
-                Handle::current().block_on(verifier.verify_checkpoints_internal(
-                    seed,
-                    slot_iterations,
-                    &checkpoints,
-                ))
-            }
-        });
-
-        result_fut.await.unwrap_or_default()
+        self.verify_checkpoints_internal(seed, slot_iterations, checkpoints)
     }
 
-    // TODO: False-positive, lock is not actually held over await point, remove suppression once
-    //  fixed upstream
-    #[allow(clippy::await_holding_lock)]
-    async fn verify_checkpoints_internal(
+    fn verify_checkpoints_internal(
         &self,
         seed: PotSeed,
         slot_iterations: NonZeroU32,
@@ -303,7 +249,7 @@ impl PotVerifier {
             let mut cache = self.cache.lock();
             if let Some(cache_value) = cache.get(&cache_key).cloned() {
                 drop(cache);
-                let correct_checkpoints = cache_value.checkpoints.lock().await;
+                let correct_checkpoints = cache_value.checkpoints.lock();
                 if let Some(correct_checkpoints) = correct_checkpoints.as_ref() {
                     return checkpoints == correct_checkpoints;
                 }
@@ -325,20 +271,11 @@ impl PotVerifier {
             // Cache lock is no longer necessary, other callers should be able to access cache too
             drop(cache);
 
-            let (result_sender, result_receiver) = oneshot::channel();
+            let verified_successfully =
+                subspace_proof_of_time::verify(seed, slot_iterations, checkpoints.as_slice())
+                    .unwrap_or_default();
 
-            let checkpoints = *checkpoints;
-            rayon::spawn(move || {
-                let result =
-                    subspace_proof_of_time::verify(seed, slot_iterations, checkpoints.as_slice())
-                        .unwrap_or_default();
-
-                if let Err(_error) = result_sender.send(result) {
-                    trace!("Verification result receiver is gone before result was sent");
-                }
-            });
-
-            if !result_receiver.await.unwrap_or_default() {
+            if !verified_successfully {
                 // Avoid deadlock when taking a lock below
                 drop(correct_checkpoints);
 
@@ -347,8 +284,7 @@ impl PotVerifier {
                 if let Some(removed_cache_value) = maybe_removed_cache_value {
                     // It is possible that we have removed a verified value that we have not
                     // inserted, check for this and restore if that was the case
-                    let removed_verified_value =
-                        removed_cache_value.checkpoints.lock().await.is_some();
+                    let removed_verified_value = removed_cache_value.checkpoints.lock().is_some();
                     if removed_verified_value {
                         self.cache.lock().push(cache_key, removed_cache_value);
                     }
@@ -357,7 +293,7 @@ impl PotVerifier {
             }
 
             // Store known good checkpoints in cache
-            correct_checkpoints.replace(checkpoints);
+            correct_checkpoints.replace(*checkpoints);
 
             return true;
         }

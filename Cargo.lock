@@ -9501,7 +9501,6 @@ dependencies = [
 name = "sc-proof-of-time"
 version = "0.1.0"
 dependencies = [
- "async-lock",
  "atomic",
  "core_affinity",
  "derive_more",
@@ -9523,7 +9522,6 @@ dependencies = [
  "sp-runtime",
  "subspace-core-primitives",
  "subspace-proof-of-time",
- "tokio",
  "tracing",
 ]
 

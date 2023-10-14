@@ -105,7 +105,6 @@ use subspace_proof_of_space::Table;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash, Nonce};
 use subspace_transaction_pool::{FullPool, PreValidateTransaction};
-use tokio::runtime::Handle;
 use tracing::{debug, error, info, Instrument};
 
 // There are multiple places where it is assumed that node is running on 64-bit system, refuse to
@@ -114,7 +113,7 @@ const_assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<u64>());
 
 /// This is over 15 minutes of slots assuming there are no forks, should be both sufficient and not
 /// too large to handle
-const POT_VERIFIER_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(10_000).expect("Not zero; qed");
+const POT_VERIFIER_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(30_000).expect("Not zero; qed");
 const SYNC_TARGET_UPDATE_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Error type for Subspace service.
@@ -345,23 +344,19 @@ where
                     // valid
 
                     if quick_verification {
-                        tokio::task::block_in_place(|| {
-                            Handle::current().block_on(pot_verifier.try_is_output_valid(
-                                pot_input,
-                                Slot::from(slot - u64::from(parent_slot)),
-                                proof_of_time,
-                                pot_parameters.next_parameters_change(),
-                            ))
-                        })
+                        pot_verifier.try_is_output_valid(
+                            pot_input,
+                            Slot::from(slot - u64::from(parent_slot)),
+                            proof_of_time,
+                            pot_parameters.next_parameters_change(),
+                        )
                     } else {
-                        tokio::task::block_in_place(|| {
-                            Handle::current().block_on(pot_verifier.is_output_valid(
-                                pot_input,
-                                Slot::from(slot - u64::from(parent_slot)),
-                                proof_of_time,
-                                pot_parameters.next_parameters_change(),
-                            ))
-                        })
+                        pot_verifier.is_output_valid(
+                            pot_input,
+                            Slot::from(slot - u64::from(parent_slot)),
+                            proof_of_time,
+                            pot_parameters.next_parameters_change(),
+                        )
                     }
                 },
             )
