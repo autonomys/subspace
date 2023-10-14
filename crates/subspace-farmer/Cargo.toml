@@ -28,6 +28,7 @@ futures = "0.3.28"
 hex = { version = "0.4.3", features = ["serde"] }
 jsonrpsee = { version = "0.16.3", features = ["client"] }
 lru = "0.11.0"
+mimalloc = "0.1.39"
 parity-scale-codec = "3.6.5"
 parking_lot = "0.12.1"
 prometheus-client = "0.21.2"

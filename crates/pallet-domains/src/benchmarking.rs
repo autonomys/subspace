@@ -1,6 +1,7 @@
 //! Benchmarking for `pallet-domains`.
 
 use super::*;
+use crate::alloc::borrow::ToOwned;
 use crate::domain_registry::DomainConfig;
 use crate::staking::{do_reward_operators, OperatorConfig, OperatorStatus, Withdraw};
 use crate::staking_epoch::{do_finalize_domain_current_epoch, do_finalize_domain_staking};
@@ -13,7 +14,8 @@ use frame_support::weights::Weight;
 use frame_system::{Pallet as System, RawOrigin};
 use sp_core::crypto::UncheckedFrom;
 use sp_domains::{
-    dummy_opaque_bundle, DomainId, ExecutionReceipt, OperatorId, OperatorPublicKey, RuntimeType,
+    dummy_opaque_bundle, DomainId, ExecutionReceipt, OperatorAllowList, OperatorId,
+    OperatorPublicKey, RuntimeType,
 };
 use sp_runtime::traits::{BlockNumberProvider, CheckedAdd, One, SaturatedConversion};
 
@@ -207,7 +209,10 @@ mod benchmarks {
         let scheduled_upgrade = ScheduledRuntimeUpgrades::<T>::get(scheduled_at, runtime_id)
             .expect("scheduled upgrade must exist");
         assert_eq!(scheduled_upgrade.version.spec_version, 1);
-        assert_eq!(scheduled_upgrade.code, runtime_blob);
+        assert_eq!(
+            scheduled_upgrade.raw_genesis.get_runtime_code().unwrap(),
+            runtime_blob
+        );
     }
 
     #[benchmark]
@@ -227,14 +232,11 @@ mod benchmarks {
             max_block_weight: Weight::from_parts(1, 0),
             bundle_slot_probability: (1, 1),
             target_bundles_per_block: 10,
+            operator_allow_list: OperatorAllowList::Anyone,
         };
 
         #[extrinsic_call]
-        _(
-            RawOrigin::Signed(creator.clone()),
-            domain_config.clone(),
-            vec![],
-        );
+        _(RawOrigin::Signed(creator.clone()), domain_config.clone());
 
         let domain_obj = DomainRegistry::<T>::get(domain_id).expect("domain object must exist");
         assert_eq!(domain_obj.domain_config, domain_config);
@@ -481,12 +483,12 @@ mod benchmarks {
             max_block_weight: Weight::from_parts(1, 0),
             bundle_slot_probability: (1, 1),
             target_bundles_per_block: 10,
+            operator_allow_list: OperatorAllowList::Anyone,
         };
 
         assert_ok!(Domains::<T>::instantiate_domain(
             RawOrigin::Signed(creator.clone()).into(),
             domain_config.clone(),
-            vec![]
         ));
 
         let domain_obj = DomainRegistry::<T>::get(domain_id).expect("domain object must exist");

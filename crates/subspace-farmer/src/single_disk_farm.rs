@@ -269,6 +269,9 @@ pub struct SingleDiskFarmOptions<NC, PG> {
     /// Thread pool used for replotting, typically smaller pool than for plotting to not affect
     /// farming as much
     pub replotting_thread_pool: Arc<ThreadPool>,
+    /// Notification for plotter to start, can be used to delay plotting until some initialization
+    /// has happened externally
+    pub plotting_delay: Option<oneshot::Receiver<()>>,
 }
 
 /// Errors happening when trying to create/open single disk farm
@@ -589,6 +592,7 @@ impl SingleDiskFarm {
             farming_thread_pool_size,
             plotting_thread_pool,
             replotting_thread_pool,
+            plotting_delay,
         } = options;
         fs::create_dir_all(&directory)?;
 
@@ -872,6 +876,13 @@ impl SingleDiskFarm {
                         if start_receiver.recv().await.is_err() {
                             // Dropped before starting
                             return;
+                        }
+
+                        if let Some(plotting_delay) = plotting_delay {
+                            if plotting_delay.await.is_err() {
+                                // Dropped before resolving
+                                return;
+                            }
                         }
 
                         let plotting_options = PlottingOptions {
@@ -1182,7 +1193,7 @@ impl SingleDiskFarm {
     }
 
     /// Run and wait for background threads to exit or return an error
-    pub async fn run(mut self) -> anyhow::Result<()> {
+    pub async fn run(mut self) -> anyhow::Result<SingleDiskFarmId> {
         if let Some(start_sender) = self.start_sender.take() {
             // Do not care if anyone is listening on the other side
             let _ = start_sender.send(());
@@ -1192,7 +1203,7 @@ impl SingleDiskFarm {
             result?;
         }
 
-        Ok(())
+        Ok(*self.id())
     }
 
     /// Wipe everything that belongs to this single disk farm
