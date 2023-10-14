@@ -12,6 +12,7 @@ use sp_consensus_subspace::{PotNextSlotInput, PotParametersChange};
 use std::num::{NonZeroU32, NonZeroUsize};
 use std::sync::Arc;
 use subspace_core_primitives::{PotCheckpoints, PotOutput, PotSeed};
+use tokio::runtime::Handle;
 use tracing::trace;
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Hash)]
@@ -71,25 +72,19 @@ impl PotVerifier {
         seed: PotSeed,
     ) -> Option<PotCheckpoints> {
         // TODO: This "proxy" is a workaround for https://github.com/rust-lang/rust/issues/57478
-        let (result_sender, result_receiver) = oneshot::channel();
-        tokio::task::spawn_blocking({
+        let result_fut = tokio::task::spawn_blocking({
             let verifier = self.clone();
 
             move || {
-                futures::executor::block_on({
-                    async move {
-                        // Result doesn't matter here
-                        let _ = result_sender.send(
-                            verifier
-                                .calculate_checkpoints(slot_iterations, seed, true)
-                                .await,
-                        );
-                    }
-                });
+                Handle::current().block_on(verifier.calculate_checkpoints(
+                    slot_iterations,
+                    seed,
+                    true,
+                ))
             }
         });
 
-        result_receiver.await.unwrap_or_default()
+        result_fut.await.unwrap_or_default()
     }
 
     /// Try to get checkpoints quickly without waiting for potentially locked async mutex or proving
@@ -154,30 +149,19 @@ impl PotVerifier {
         let mut slots = u64::from(slots);
 
         loop {
-            // TODO: This "proxy" is a workaround for https://github.com/rust-lang/rust/issues/57478
-            let (result_sender, result_receiver) = oneshot::channel();
-            tokio::task::spawn_blocking({
+            let maybe_calculated_checkpoints_fut = tokio::task::spawn_blocking({
                 let verifier = self.clone();
 
                 move || {
-                    futures::executor::block_on({
-                        async move {
-                            // Result doesn't matter here
-                            let _ = result_sender.send(
-                                verifier
-                                    .calculate_checkpoints(
-                                        input.slot_iterations,
-                                        input.seed,
-                                        do_proving_if_necessary,
-                                    )
-                                    .await,
-                            );
-                        }
-                    });
+                    Handle::current().block_on(verifier.calculate_checkpoints(
+                        input.slot_iterations,
+                        input.seed,
+                        do_proving_if_necessary,
+                    ))
                 }
             });
 
-            let Ok(Some(calculated_checkpoints)) = result_receiver.await else {
+            let Ok(Some(calculated_checkpoints)) = maybe_calculated_checkpoints_fut.await else {
                 return false;
             };
             let calculated_output = calculated_checkpoints.output();
@@ -285,26 +269,20 @@ impl PotVerifier {
         checkpoints: &PotCheckpoints,
     ) -> bool {
         // TODO: This "proxy" is a workaround for https://github.com/rust-lang/rust/issues/57478
-        let (result_sender, result_receiver) = oneshot::channel();
-        tokio::task::spawn_blocking({
+        let result_fut = tokio::task::spawn_blocking({
             let verifier = self.clone();
             let checkpoints = *checkpoints;
 
             move || {
-                futures::executor::block_on({
-                    async move {
-                        // Result doesn't matter here
-                        let _ = result_sender.send(
-                            verifier
-                                .verify_checkpoints_internal(seed, slot_iterations, &checkpoints)
-                                .await,
-                        );
-                    }
-                });
+                Handle::current().block_on(verifier.verify_checkpoints_internal(
+                    seed,
+                    slot_iterations,
+                    &checkpoints,
+                ))
             }
         });
 
-        result_receiver.await.unwrap_or_default()
+        result_fut.await.unwrap_or_default()
     }
 
     // TODO: False-positive, lock is not actually held over await point, remove suppression once
