@@ -105,7 +105,9 @@ pub fn start_prometheus_metrics_server(
                 endpoint.set_port(0);
             });
 
-            let result = HttpServer::new(app_factory).bind(endpoints.as_slice());
+            let result = HttpServer::new(app_factory)
+                .workers(2)
+                .bind(endpoints.as_slice());
 
             match result {
                 Ok(server) => server,
