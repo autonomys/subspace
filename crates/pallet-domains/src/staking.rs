@@ -109,6 +109,7 @@ pub enum Error {
     TooManyPendingStakingOperation,
     OperatorNotAllowed,
     InvalidOperatorSigningKey,
+    MaximumNominators,
 }
 
 // Increase `PendingStakingOperationCount` by one and check if the `MaxPendingStakingOperation`
@@ -226,6 +227,7 @@ pub(crate) fn do_nominate_operator<T: Config>(
 
     // if not a nominator, then ensure
     // - amount >= operator's minimum nominator stake amount.
+    // - nominator count does not exceed max nominators.
     // - if first nomination, then increment the nominator count.
     if !Nominators::<T>::contains_key(operator_id, nominator_id.clone()) {
         ensure!(
@@ -234,9 +236,11 @@ pub(crate) fn do_nominate_operator<T: Config>(
         );
 
         if first_nomination {
-            NominatorCount::<T>::mutate(operator_id, |count| {
+            NominatorCount::<T>::try_mutate(operator_id, |count| {
                 *count += 1;
-            });
+                ensure!(*count <= T::MaxNominators::get(), Error::MaximumNominators);
+                Ok(())
+            })?;
         }
     }
 
@@ -882,6 +886,55 @@ pub(crate) mod tests {
 
             let nominator_count = NominatorCount::<Test>::get(operator_id);
             assert_eq!(nominator_count, 1);
+        });
+    }
+
+    #[test]
+    fn nominate_operator_max_nominators() {
+        let domain_id = DomainId::new(0);
+        let operator_account = 0;
+        let operator_free_balance = 1500 * SSC;
+        let operator_stake = 1000 * SSC;
+        let pair = OperatorPair::from_seed(&U256::from(0u32).into());
+
+        let nominator_account = 7;
+        let nominator_free_balance = 150 * SSC;
+        let nominator_stake = 100 * SSC;
+
+        let mut ext = new_test_ext();
+        ext.execute_with(|| {
+            let (operator_id, _) = register_operator(
+                domain_id,
+                operator_account,
+                operator_free_balance,
+                operator_stake,
+                10 * SSC,
+                pair.public(),
+                BTreeMap::from_iter(vec![
+                    (1, (nominator_free_balance, nominator_stake)),
+                    (2, (nominator_free_balance, nominator_stake)),
+                    (3, (nominator_free_balance, nominator_stake)),
+                    (4, (nominator_free_balance, nominator_stake)),
+                    (5, (nominator_free_balance, nominator_stake)),
+                ]),
+            );
+
+            Balances::set_balance(&nominator_account, nominator_free_balance);
+            let nominator_count = NominatorCount::<Test>::get(operator_id);
+
+            // nomination should fail since Max nominators number has reached.
+            let res = Domains::nominate_operator(
+                RuntimeOrigin::signed(nominator_account),
+                operator_id,
+                40 * SSC,
+            );
+            assert_err!(
+                res,
+                Error::<Test>::Staking(crate::staking::Error::MaximumNominators)
+            );
+
+            // should not update nominator count.
+            assert_eq!(nominator_count, NominatorCount::<Test>::get(operator_id));
         });
     }
 

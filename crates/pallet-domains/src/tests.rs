@@ -187,7 +187,7 @@ parameter_types! {
     pub TreasuryAccount: u64 = PalletId(*b"treasury").into_account_truncating();
     pub const BlockReward: Balance = 10 * SSC;
     pub const MaxPendingStakingOperation: u32 = 100;
-    pub const MaxNominators: u32 = 10;
+    pub const MaxNominators: u32 = 5;
 }
 
 pub struct MockRandomness;

@@ -1,11 +1,10 @@
 //! Staking epoch transition for domain
 
 use crate::pallet::{
-    DomainStakingSummary, LastEpochStakingDistribution, NominatorCount, Nominators,
-    OperatorIdOwner, Operators, PendingDeposits, PendingNominatorUnlocks,
-    PendingOperatorDeregistrations, PendingOperatorSwitches, PendingOperatorUnlocks,
-    PendingSlashes, PendingStakingOperationCount, PendingUnlocks, PendingWithdrawals,
-    PreferredOperator,
+    DomainStakingSummary, LastEpochStakingDistribution, Nominators, OperatorIdOwner, Operators,
+    PendingDeposits, PendingNominatorUnlocks, PendingOperatorDeregistrations,
+    PendingOperatorSwitches, PendingOperatorUnlocks, PendingSlashes, PendingStakingOperationCount,
+    PendingUnlocks, PendingWithdrawals, PreferredOperator,
 };
 use crate::staking::{Error as TransitionError, Nominator, OperatorStatus, Withdraw};
 use crate::{
@@ -210,6 +209,7 @@ fn do_finalize_operator_deregistrations<T: Config>(
 
 #[cfg(any(not(feature = "runtime-benchmarks"), test))]
 fn unlock_operator<T: Config>(operator_id: OperatorId) -> Result<(), Error> {
+    use crate::pallet::NominatorCount;
     Operators::<T>::try_mutate_exists(operator_id, |maybe_operator| {
         // take the operator so this operator info is removed once we unlock the operator.
         let operator = maybe_operator
