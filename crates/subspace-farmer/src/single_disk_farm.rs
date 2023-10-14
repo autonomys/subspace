@@ -19,9 +19,8 @@ use async_lock::RwLock;
 use derive_more::{Display, From};
 use event_listener_primitives::{Bag, HandlerId};
 use futures::channel::{mpsc, oneshot};
-use futures::future::{select, Either};
 use futures::stream::FuturesUnordered;
-use futures::StreamExt;
+use futures::{select, FutureExt, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use rayon::prelude::*;
@@ -883,17 +882,16 @@ impl SingleDiskFarm {
                     let _tokio_handle_guard = handle.enter();
                     let _span_guard = span.enter();
 
-                    // Initial plotting
-                    let initial_plotting_fut = async move {
+                    let plotting_fut = async move {
                         if start_receiver.recv().await.is_err() {
                             // Dropped before starting
-                            return Ok(());
+                            return;
                         }
 
                         if let Some(plotting_delay) = plotting_delay {
                             if plotting_delay.await.is_err() {
                                 // Dropped before resolving
-                                return Ok(());
+                                return;
                             }
                         }
 
@@ -917,22 +915,30 @@ impl SingleDiskFarm {
                             encoding_semaphore,
                             plotting_thread_pool,
                             replotting_thread_pool,
+                            stop_receiver: stop_receiver.resubscribe(),
                         };
-                        plotting::<_, _, PosTable>(plotting_options).await
-                    };
 
-                    let initial_plotting_result = handle.block_on(select(
-                        Box::pin(initial_plotting_fut),
-                        Box::pin(stop_receiver.recv()),
-                    ));
+                        let plotting_fut = plotting::<_, _, PosTable>(plotting_options);
 
-                    if let Either::Left((Err(error), _)) = initial_plotting_result {
-                        if let Some(error_sender) = error_sender.lock().take() {
-                            if let Err(error) = error_sender.send(error.into()) {
-                                error!(%error, "Plotting failed to send error to background task");
+                        select! {
+                            plotting_result = plotting_fut.fuse() => {
+                                if let Err(error) = plotting_result
+                                    && let Some(error_sender) = error_sender.lock().take()
+                                    && let Err(error) = error_sender.send(error.into())
+                                {
+                                    error!(
+                                        %error,
+                                        "Plotting failed to send error to background task"
+                                    );
+                                }
+                            }
+                            _ = stop_receiver.recv().fuse() => {
+                                // Nothing, just exit
                             }
                         }
-                    }
+                    };
+
+                    handle.block_on(plotting_fut);
                 }
             })?;
 
@@ -1033,21 +1039,24 @@ impl SingleDiskFarm {
                             farming::<PosTable, _>(farming_options).await
                         };
 
-                        let farming_result = handle.block_on(select(
-                            Box::pin(farming_fut),
-                            Box::pin(stop_receiver.recv()),
-                        ));
-
-                        if let Either::Left((Err(error), _)) = farming_result {
-                            if let Some(error_sender) = error_sender.lock().take() {
-                                if let Err(error) = error_sender.send(error.into()) {
-                                    error!(
-                                        %error,
-                                        "Farming failed to send error to background task",
-                                    );
+                        handle.block_on(async {
+                            select! {
+                                farming_result = farming_fut.fuse() => {
+                                    if let Err(error) = farming_result
+                                        && let Some(error_sender) = error_sender.lock().take()
+                                        && let Err(error) = error_sender.send(error.into())
+                                    {
+                                        error!(
+                                            %error,
+                                            "Farming failed to send error to background task",
+                                        );
+                                    }
+                                }
+                                _ = stop_receiver.recv().fuse() => {
+                                    // Nothing, just exit
                                 }
                             }
-                        }
+                        });
                     })
                 }
             })?;
@@ -1070,10 +1079,16 @@ impl SingleDiskFarm {
                 move || {
                     let _tokio_handle_guard = handle.enter();
 
-                    handle.block_on(select(
-                        Box::pin(reading_fut),
-                        Box::pin(stop_receiver.recv()),
-                    ));
+                    handle.block_on(async {
+                        select! {
+                            _ = reading_fut.fuse() => {
+                                // Nothing, just exit
+                            }
+                            _ = stop_receiver.recv().fuse() => {
+                                // Nothing, just exit
+                            }
+                        }
+                    });
                 }
             })?;
 
