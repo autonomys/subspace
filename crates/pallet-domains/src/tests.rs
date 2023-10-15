@@ -211,6 +211,7 @@ impl pallet_domains::Config for Test {
     type DomainNumber = BlockNumber;
     type DomainHash = sp_core::H256;
     type DomainHashing = BlakeTwo256;
+    type DomainHeader = sp_runtime::generic::Header<BlockNumber, BlakeTwo256>;
     type ConfirmationDepthK = ConfirmationDepthK;
     type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
     type Currency = Balances;

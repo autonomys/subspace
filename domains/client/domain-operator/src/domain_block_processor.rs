@@ -352,7 +352,11 @@ where
                     "Domain block header for #{genesis_hash:?} not found",
                 ))
             })?;
-            ExecutionReceipt::genesis(*genesis_header.state_root())
+            ExecutionReceipt::genesis(
+                *genesis_header.state_root(),
+                (*genesis_header.extrinsics_root()).into(),
+                genesis_hash,
+            )
         } else {
             crate::load_execution_receipt_by_domain_hash::<Block, CBlock, _>(
                 &*self.client,

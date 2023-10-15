@@ -431,11 +431,15 @@ impl<
         BlakeTwo256::hash_of(self)
     }
 
-    pub fn genesis(genesis_state_root: DomainHash) -> Self {
+    pub fn genesis(
+        genesis_state_root: DomainHash,
+        genesis_extrinsic_root: H256,
+        genesis_domain_block_hash: DomainHash,
+    ) -> Self {
         ExecutionReceipt {
             domain_block_number: Zero::zero(),
-            domain_block_hash: Default::default(),
-            domain_block_extrinsic_root: Default::default(),
+            domain_block_hash: genesis_domain_block_hash,
+            domain_block_extrinsic_root: genesis_extrinsic_root,
             parent_domain_block_receipt_hash: Default::default(),
             consensus_block_hash: Default::default(),
             consensus_block_number: Zero::zero(),

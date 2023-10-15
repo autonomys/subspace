@@ -1,6 +1,6 @@
 //! Domain registry for domains
 
-use crate::block_tree::import_genesis_receipt;
+use crate::block_tree::{derive_domain_block_hash, import_genesis_receipt};
 use crate::pallet::DomainStakingSummary;
 use crate::staking::StakingSummary;
 use crate::{
@@ -127,8 +127,19 @@ pub(crate) fn do_instantiate_domain<T: Config>(
         let state_version = runtime_obj.version.state_version();
         let raw_genesis = runtime_obj.into_complete_raw_genesis(domain_id);
         let state_root = raw_genesis.state_root::<T::DomainHashing>(state_version);
+        let genesis_block_hash = derive_domain_block_hash::<T>(
+            Zero::zero(),
+            sp_domains::EMPTY_EXTRINSIC_ROOT.into(),
+            state_root,
+            Default::default(),
+            Default::default(),
+        );
 
-        ExecutionReceiptOf::<T>::genesis(state_root)
+        ExecutionReceiptOf::<T>::genesis(
+            state_root,
+            sp_domains::EMPTY_EXTRINSIC_ROOT,
+            genesis_block_hash,
+        )
     };
     let genesis_receipt_hash = genesis_receipt.hash();
 

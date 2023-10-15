@@ -153,7 +153,7 @@ mod pallet {
     };
     use sp_runtime::traits::{
         AtLeast32BitUnsigned, BlockNumberProvider, Bounded, CheckEqual, CheckedAdd, Hash,
-        MaybeDisplay, One, SimpleBitOps, Zero,
+        Header as HeaderT, MaybeDisplay, One, SimpleBitOps, Zero,
     };
     use sp_runtime::SaturatedConversion;
     use sp_std::boxed::Box;
@@ -203,6 +203,13 @@ mod pallet {
 
         /// The domain hashing algorithm.
         type DomainHashing: Hash<Output = Self::DomainHash> + TypeInfo;
+
+        /// The domain header type.
+        type DomainHeader: HeaderT<
+            Number = Self::DomainNumber,
+            Hash = Self::DomainHash,
+            Hashing = Self::DomainHashing,
+        >;
 
         /// Same with `pallet_subspace::Config::ConfirmationDepthK`.
         #[pallet::constant]

@@ -11,7 +11,8 @@ use scale_info::TypeInfo;
 use sp_core::Get;
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{DomainId, ExecutionReceipt, OperatorId};
-use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Saturating, Zero};
+use sp_runtime::traits::{BlockNumberProvider, CheckedSub, Header, One, Saturating, Zero};
+use sp_runtime::Digest;
 use sp_std::cmp::Ordering;
 use sp_std::vec::Vec;
 
@@ -215,6 +216,24 @@ pub(crate) fn verify_execution_receipt<T: Config>(
         }
         ReceiptType::Accepted(_) | ReceiptType::Stale => Ok(()),
     }
+}
+
+pub(crate) fn derive_domain_block_hash<T: Config>(
+    domain_block_number: T::DomainNumber,
+    extrinsics_root: T::DomainHash,
+    state_root: T::DomainHash,
+    parent_domain_block_hash: T::DomainHash,
+    digest: Digest,
+) -> T::DomainHash {
+    let domain_header = T::DomainHeader::new(
+        domain_block_number,
+        extrinsics_root,
+        state_root,
+        parent_domain_block_hash,
+        digest,
+    );
+
+    domain_header.hash()
 }
 
 /// Details of the confirmed domain block such as operators, rewards they would receive.
