@@ -59,7 +59,7 @@ where
     let sender = <RuntimeApiLight<Exec> as DomainCoreApi<Block>>::extract_signer(
         &runtime_api_light,
         Default::default(),
-        vec![extrinsic],
+        vec![extrinsic.clone()],
     )?
     .into_iter()
     .next()
@@ -152,7 +152,7 @@ where
     ) -> Result<(), VerificationError> {
         let InvalidTransactionProof {
             domain_id,
-            block_number,
+            domain_block_number,
             domain_block_hash,
             invalid_extrinsic,
             storage_proof,
@@ -163,7 +163,7 @@ where
         // - Bundle is valid and is produced by a legit executor.
         // - Bundle author, who will be slashed, can be extracted in runtime.
 
-        let header = self.fetch_consensus_block_header(*domain_id, *block_number)?;
+        let header = self.fetch_consensus_block_header(*domain_id, *domain_block_number)?;
         let consensus_parent_hash = *header.parent_hash();
 
         let domain_runtime_code = retrieve_domain_runtime_code(
@@ -178,9 +178,11 @@ where
         // verifiable way.
         let extrinsic = OpaqueExtrinsic::from_bytes(invalid_extrinsic)?;
 
-        let state_root =
-            self.verifier_client
-                .state_root(*domain_id, *block_number, *domain_block_hash)?;
+        let state_root = self.verifier_client.state_root(
+            *domain_id,
+            *domain_block_number,
+            *domain_block_hash,
+        )?;
 
         let runtime_api_light = create_runtime_api_light(
             storage_proof.clone(),
