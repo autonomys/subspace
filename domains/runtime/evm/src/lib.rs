@@ -17,7 +17,7 @@ use fp_self_contained::SelfContainedCall;
 use frame_support::dispatch::{DispatchClass, GetDispatchInfo};
 use frame_support::traits::{
     ConstU16, ConstU32, ConstU64, Currency, Everything, FindAuthor, Imbalance, OnFinalize,
-    OnUnbalanced,
+    OnUnbalanced, PalletInfoAccess,
 };
 use frame_support::weights::constants::{
     BlockExecutionWeight, ExtrinsicBaseWeight, ParityDbWeight, WEIGHT_REF_TIME_PER_MILLIS,
@@ -43,6 +43,7 @@ use sp_messenger::messages::{
     BlockInfo, BlockMessagesWithStorageKey, ChainId, CrossDomainMessage,
     ExtractedStateRootsFromProof, MessageId,
 };
+use sp_runtime::generic::Era;
 use sp_runtime::traits::{
     BlakeTwo256, Block as BlockT, Convert, DispatchInfoOf, Dispatchable, IdentifyAccount,
     IdentityLookup, PostDispatchInfoOf, UniqueSaturatedInto, Verify,
@@ -53,7 +54,7 @@ use sp_runtime::transaction_validity::{
 use sp_runtime::{
     create_runtime_str, generic, impl_opaque_keys, ApplyExtrinsicResult, ConsensusEngineId,
 };
-pub use sp_runtime::{MultiAddress, Perbill, Permill};
+pub use sp_runtime::{MultiAddress, Perbill, Permill, SaturatedConversion};
 use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
 #[cfg(feature = "std")]
@@ -701,6 +702,17 @@ pub fn extract_signer(
         .collect()
 }
 
+fn storage_value_key(pallet_prefix: &str, value_name: &str) -> Vec<u8> {
+    let pallet_hash = sp_io::hashing::twox_128(pallet_prefix.as_bytes());
+    let storage_hash = sp_io::hashing::twox_128(value_name.as_bytes());
+
+    let mut final_key = vec![0u8; 32];
+    final_key[..16].copy_from_slice(&pallet_hash);
+    final_key[16..].copy_from_slice(&storage_hash);
+
+    final_key
+}
+
 impl_runtime_apis! {
     impl sp_api::Core<Block> for Runtime {
         fn version() -> RuntimeVersion {
@@ -861,7 +873,8 @@ impl_runtime_apis! {
 
         fn check_transaction_validity(
             uxt: &<Block as BlockT>::Extrinsic,
-            block_hash: <Block as BlockT>::Hash,
+            block_number: BlockNumber,
+            block_hash: <Block as BlockT>::Hash
         ) -> Result<(), domain_runtime_primitives::CheckTxValidityError> {
             let lookup = frame_system::ChainContext::<Runtime>::default();
             let maybe_signer_info = extract_signer_inner(uxt, &lookup);
@@ -872,14 +885,27 @@ impl_runtime_apis! {
                         error: tx_validity_error
                     }
                 })?;
+
                 let tx_validity =
                     Executive::validate_transaction(TransactionSource::External, uxt.clone(), block_hash);
 
                 tx_validity.map(|_| ()).map_err(|tx_validity_error| {
-                    let storage_keys = sp_std::vec![
+                    let era_in_tx = Self::extrinsic_era(uxt).expect("we already checked existence of signature during signer extraction above; qed");
+
+                    let mut storage_keys = sp_std::vec![
+                        frame_system::BlockHash::<Runtime>::hashed_key_for(BlockNumber::from(0u32)),
+                        storage_value_key(System::name(), "Number"),
                         frame_system::Account::<Runtime>::hashed_key_for(signer),
-                        pallet_transaction_payment::NextFeeMultiplier::<Runtime>::hashed_key().to_vec(),
+                        pallet_transaction_payment::NextFeeMultiplier::<Runtime>::hashed_key().to_vec()
                     ];
+
+                    match era_in_tx {
+                        Era::Immortal => {},
+                        Era::Mortal {..} => {
+                            let birth_number = era_in_tx.birth(block_number.saturated_into::<u64>()).saturated_into::<BlockNumber>();
+                            storage_keys.push(frame_system::BlockHash::<Runtime>::hashed_key_for(birth_number));
+                        }
+                    }
                     domain_runtime_primitives::CheckTxValidityError::InvalidTransaction {
                         error: tx_validity_error,
                         storage_keys,
@@ -892,13 +918,33 @@ impl_runtime_apis! {
 
         fn storage_keys_for_verifying_transaction_validity(
             who: opaque::AccountId,
+            block_number: BlockNumber,
+            maybe_tx_era: Option<Era>
         ) -> Result<Vec<Vec<u8>>, domain_runtime_primitives::VerifyTxValidityError> {
             let sender = AccountId::decode(&mut who.as_slice())
                 .map_err(|_| domain_runtime_primitives::VerifyTxValidityError::FailedToDecodeAccountId)?;
-            Ok(sp_std::vec![
+
+            let mut storage_keys = sp_std::vec![
+                frame_system::BlockHash::<Runtime>::hashed_key_for(BlockNumber::from(0u32)),
+                storage_value_key(System::name(), "Number"),
                 frame_system::Account::<Runtime>::hashed_key_for(sender),
-                pallet_transaction_payment::NextFeeMultiplier::<Runtime>::hashed_key().to_vec(),
-            ])
+                pallet_transaction_payment::NextFeeMultiplier::<Runtime>::hashed_key().to_vec()
+            ];
+
+            match maybe_tx_era {
+                None | Some(Era::Immortal) => Ok(storage_keys),
+                Some(mortal_era) => {
+                    let birth_number = mortal_era.birth(block_number.saturated_into::<u64>()).saturated_into::<BlockNumber>();
+                    storage_keys.push(frame_system::BlockHash::<Runtime>::hashed_key_for(birth_number));
+                    Ok(storage_keys)
+                }
+            }
+        }
+
+        fn extrinsic_era(
+          extrinsic: &<Block as BlockT>::Extrinsic
+        ) -> Option<Era> {
+            extrinsic.0.signature.as_ref().map(|(_, _, extra)| extra.4.0)
         }
 
         fn extrinsic_weight(ext: &<Block as BlockT>::Extrinsic) -> Weight {

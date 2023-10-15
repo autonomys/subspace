@@ -45,6 +45,7 @@ where
 }
 
 fn create_runtime_api_light<Exec>(
+    domain_block_number: u32,
     storage_proof: StorageProof,
     state_root: &Hash,
     executor: Arc<Exec>,
@@ -66,10 +67,18 @@ where
     .and_then(|(maybe_signer, _)| maybe_signer)
     .ok_or(VerificationError::SignerNotFound)?;
 
+    let maybe_era = <RuntimeApiLight<Exec> as DomainCoreApi<Block>>::extrinsic_era(
+        &runtime_api_light,
+        Default::default(),
+        &extrinsic,
+    )?;
+
     let storage_keys = <RuntimeApiLight<Exec> as DomainCoreApi<Block>>::storage_keys_for_verifying_transaction_validity(
         &runtime_api_light,
         Default::default(),
-        sender
+        sender,
+        domain_block_number,
+        maybe_era
     )?
     .map_err(|e| {
         sp_api::ApiError::Application(Box::from(format!(
@@ -185,6 +194,7 @@ where
         )?;
 
         let runtime_api_light = create_runtime_api_light(
+            *domain_block_number,
             storage_proof.clone(),
             &state_root,
             self.executor.clone(),
@@ -197,6 +207,7 @@ where
                 &runtime_api_light,
                 Default::default(), // Unused for stateless runtime api.
                 &extrinsic,
+                *domain_block_number,
                 *domain_block_hash,
             )?;
 
