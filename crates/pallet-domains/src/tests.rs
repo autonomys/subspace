@@ -2,8 +2,9 @@ use crate::block_tree::DomainBlock;
 use crate::domain_registry::{DomainConfig, DomainObject};
 use crate::{
     self as pallet_domains, BalanceOf, BlockTree, BundleError, Config, ConsensusBlockHash,
-    DomainBlocks, DomainRegistry, ExecutionInbox, ExecutionReceiptOf, FraudProofError,
-    FungibleHoldId, HeadReceiptNumber, NextDomainId, Operator, OperatorStatus, Operators,
+    DomainBlockNumberFor, DomainBlocks, DomainRegistry, ExecutionInbox, ExecutionReceiptOf,
+    FraudProofError, FungibleHoldId, HeadReceiptNumber, NextDomainId, Operator, OperatorStatus,
+    Operators,
 };
 use codec::{Decode, Encode, MaxEncodedLen};
 use frame_support::dispatch::RawOrigin;
@@ -208,9 +209,7 @@ impl pallet_timestamp::Config for Test {
 
 impl pallet_domains::Config for Test {
     type RuntimeEvent = RuntimeEvent;
-    type DomainNumber = BlockNumber;
     type DomainHash = sp_core::H256;
-    type DomainHashing = BlakeTwo256;
     type DomainHeader = sp_runtime::generic::Header<BlockNumber, BlakeTwo256>;
     type ConfirmationDepthK = ConfirmationDepthK;
     type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
@@ -490,8 +489,10 @@ pub(crate) fn extend_block_tree(
 #[allow(clippy::type_complexity)]
 pub(crate) fn get_block_tree_node_at<T: Config>(
     domain_id: DomainId,
-    block_number: T::DomainNumber,
-) -> Option<DomainBlock<BlockNumberFor<T>, T::Hash, T::DomainNumber, T::DomainHash, BalanceOf<T>>> {
+    block_number: DomainBlockNumberFor<T>,
+) -> Option<
+    DomainBlock<BlockNumberFor<T>, T::Hash, DomainBlockNumberFor<T>, T::DomainHash, BalanceOf<T>>,
+> {
     BlockTree::<T>::get(domain_id, block_number)
         .first()
         .and_then(DomainBlocks::<T>::get)

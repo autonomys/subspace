@@ -620,9 +620,7 @@ parameter_types! {
 
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type DomainNumber = DomainNumber;
     type DomainHash = DomainHash;
-    type DomainHashing = BlakeTwo256;
     type DomainHeader = sp_runtime::generic::Header<DomainNumber, BlakeTwo256>;
     type ConfirmationDepthK = ConfirmationDepthK;
     type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;

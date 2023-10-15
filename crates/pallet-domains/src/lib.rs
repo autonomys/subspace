@@ -57,7 +57,7 @@ use sp_domains_fraud_proof::verification::verify_invalid_domain_extrinsics_root_
 use sp_domains_fraud_proof::{
     FraudProofVerificationInfoRequest, FraudProofVerificationInfoResponse,
 };
-use sp_runtime::traits::{BlakeTwo256, CheckedSub, Hash, One, Zero};
+use sp_runtime::traits::{BlakeTwo256, CheckedSub, Hash, Header, One, Zero};
 use sp_runtime::{RuntimeAppPublic, SaturatedConversion, Saturating};
 use sp_std::boxed::Box;
 use sp_std::collections::btree_map::BTreeMap;
@@ -82,7 +82,7 @@ pub trait HoldIdentifier<T: Config> {
 pub type ExecutionReceiptOf<T> = ExecutionReceipt<
     BlockNumberFor<T>,
     <T as frame_system::Config>::Hash,
-    <T as Config>::DomainNumber,
+    DomainBlockNumberFor<T>,
     <T as Config>::DomainHash,
     BalanceOf<T>,
 >;
@@ -90,7 +90,7 @@ pub type ExecutionReceiptOf<T> = ExecutionReceipt<
 pub type OpaqueBundleOf<T> = OpaqueBundle<
     BlockNumberFor<T>,
     <T as frame_system::Config>::Hash,
-    <T as Config>::DomainNumber,
+    DomainBlockNumberFor<T>,
     <T as Config>::DomainHash,
     BalanceOf<T>,
 >;
@@ -101,6 +101,9 @@ pub(crate) struct ElectionVerificationParams<Balance> {
     operators: BTreeMap<OperatorId, Balance>,
     total_domain_stake: Balance,
 }
+
+pub type DomainBlockNumberFor<T> = <<T as Config>::DomainHeader as Header>::Number;
+pub type DomainHashingFor<T> = <<T as Config>::DomainHeader as Header>::Hashing;
 
 #[frame_support::pallet]
 mod pallet {
@@ -134,7 +137,8 @@ mod pallet {
     };
     use crate::weights::WeightInfo;
     use crate::{
-        BalanceOf, ElectionVerificationParams, HoldIdentifier, NominatorId, OpaqueBundleOf,
+        BalanceOf, DomainBlockNumberFor, ElectionVerificationParams, HoldIdentifier, NominatorId,
+        OpaqueBundleOf,
     };
     use alloc::string::String;
     use codec::FullCodec;
@@ -152,8 +156,8 @@ mod pallet {
         ReceiptHash, RuntimeId, RuntimeType,
     };
     use sp_runtime::traits::{
-        AtLeast32BitUnsigned, BlockNumberProvider, Bounded, CheckEqual, CheckedAdd, Hash,
-        Header as HeaderT, MaybeDisplay, One, SimpleBitOps, Zero,
+        AtLeast32BitUnsigned, BlockNumberProvider, CheckEqual, CheckedAdd, Header as HeaderT,
+        MaybeDisplay, One, SimpleBitOps, Zero,
     };
     use sp_runtime::SaturatedConversion;
     use sp_std::boxed::Box;
@@ -167,21 +171,6 @@ mod pallet {
     #[pallet::config]
     pub trait Config: frame_system::Config {
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
-
-        /// Domain block number type.
-        type DomainNumber: Parameter
-            + Member
-            + MaybeSerializeDeserialize
-            + Debug
-            + MaybeDisplay
-            + AtLeast32BitUnsigned
-            + Default
-            + Bounded
-            + Copy
-            + sp_std::hash::Hash
-            + sp_std::str::FromStr
-            + MaxEncodedLen
-            + TypeInfo;
 
         /// Domain block hash type.
         type DomainHash: Parameter
@@ -201,15 +190,8 @@ mod pallet {
             + Into<H256>
             + From<H256>;
 
-        /// The domain hashing algorithm.
-        type DomainHashing: Hash<Output = Self::DomainHash> + TypeInfo;
-
         /// The domain header type.
-        type DomainHeader: HeaderT<
-            Number = Self::DomainNumber,
-            Hash = Self::DomainHash,
-            Hashing = Self::DomainHashing,
-        >;
+        type DomainHeader: HeaderT<Hash = Self::DomainHash>;
 
         /// Same with `pallet_subspace::Config::ConfirmationDepthK`.
         #[pallet::constant]
@@ -242,7 +224,7 @@ mod pallet {
 
         /// The block tree pruning depth.
         #[pallet::constant]
-        type BlockTreePruningDepth: Get<Self::DomainNumber>;
+        type BlockTreePruningDepth: Get<DomainBlockNumberFor<Self>>;
 
         /// The maximum block size limit for all domain.
         #[pallet::constant]
@@ -281,11 +263,11 @@ mod pallet {
 
         /// Minimum number of blocks after which any finalized withdrawals are released to nominators.
         #[pallet::constant]
-        type StakeWithdrawalLockingPeriod: Get<Self::DomainNumber>;
+        type StakeWithdrawalLockingPeriod: Get<DomainBlockNumberFor<Self>>;
 
         /// Domain epoch transition interval
         #[pallet::constant]
-        type StakeEpochDuration: Get<Self::DomainNumber>;
+        type StakeEpochDuration: Get<DomainBlockNumberFor<Self>>;
 
         /// Treasury account.
         #[pallet::constant]
@@ -409,7 +391,7 @@ mod pallet {
         Identity,
         OperatorId,
         Identity,
-        T::DomainNumber,
+        DomainBlockNumberFor<T>,
         Vec<PendingNominatorUnlock<NominatorId<T>, BalanceOf<T>>>,
         OptionQuery,
     >;
@@ -417,8 +399,13 @@ mod pallet {
     /// A list of operators that are either unregistering or one more of the nominators
     /// are withdrawing some staked funds.
     #[pallet::storage]
-    pub(super) type PendingUnlocks<T: Config> =
-        StorageMap<_, Identity, (DomainId, T::DomainNumber), BTreeSet<OperatorId>, OptionQuery>;
+    pub(super) type PendingUnlocks<T: Config> = StorageMap<
+        _,
+        Identity,
+        (DomainId, DomainBlockNumberFor<T>),
+        BTreeSet<OperatorId>,
+        OptionQuery,
+    >;
 
     /// A list operators who were slashed during the current epoch associated with the domain.
     /// When the epoch for a given domain is complete, operator total stake is moved to treasury and
@@ -460,7 +447,7 @@ mod pallet {
         Identity,
         DomainId,
         Identity,
-        T::DomainNumber,
+        DomainBlockNumberFor<T>,
         BTreeSet<ReceiptHash>,
         ValueQuery,
     >;
@@ -471,7 +458,13 @@ mod pallet {
         _,
         Identity,
         ReceiptHash,
-        DomainBlock<BlockNumberFor<T>, T::Hash, T::DomainNumber, T::DomainHash, BalanceOf<T>>,
+        DomainBlock<
+            BlockNumberFor<T>,
+            T::Hash,
+            DomainBlockNumberFor<T>,
+            T::DomainHash,
+            BalanceOf<T>,
+        >,
         OptionQuery,
     >;
 
@@ -485,7 +478,7 @@ mod pallet {
     /// The head receipt number of each domain
     #[pallet::storage]
     pub(super) type HeadReceiptNumber<T: Config> =
-        StorageMap<_, Identity, DomainId, T::DomainNumber, ValueQuery>;
+        StorageMap<_, Identity, DomainId, DomainBlockNumberFor<T>, ValueQuery>;
 
     /// State root mapped again each domain (block, hash)
     /// This acts as an index for other protocols like XDM to fetch state roots faster.
@@ -493,7 +486,7 @@ mod pallet {
     pub(super) type StateRoots<T: Config> = StorageMap<
         _,
         Identity,
-        (DomainId, T::DomainNumber, T::DomainHash),
+        (DomainId, DomainBlockNumberFor<T>, T::DomainHash),
         T::DomainHash,
         OptionQuery,
     >;
@@ -520,7 +513,7 @@ mod pallet {
         _,
         (
             NMapKey<Identity, DomainId>,
-            NMapKey<Identity, T::DomainNumber>,
+            NMapKey<Identity, DomainBlockNumberFor<T>>,
             NMapKey<Identity, BlockNumberFor<T>>,
         ),
         Vec<BundleDigest>,
@@ -540,7 +533,7 @@ mod pallet {
     /// domain block, also used as a mapping of consensus block number to domain block number.
     #[pallet::storage]
     pub(super) type HeadDomainNumber<T: Config> =
-        StorageMap<_, Identity, DomainId, T::DomainNumber, ValueQuery>;
+        StorageMap<_, Identity, DomainId, DomainBlockNumberFor<T>, ValueQuery>;
 
     /// A temporary storage to hold any previous epoch details for a given domain
     /// if the epoch transitioned in this block so that all the submitted bundles
@@ -712,7 +705,7 @@ mod pallet {
         },
         FraudProofProcessed {
             domain_id: DomainId,
-            new_head_receipt_number: Option<T::DomainNumber>,
+            new_head_receipt_number: Option<DomainBlockNumberFor<T>>,
         },
         DomainOperatorAllowListUpdated {
             domain_id: DomainId,
@@ -1320,13 +1313,13 @@ impl<T: Config> Pallet<T> {
             .and_then(|mut runtime_object| runtime_object.raw_genesis.take_runtime_code())
     }
 
-    pub fn domain_best_number(domain_id: DomainId) -> Option<T::DomainNumber> {
+    pub fn domain_best_number(domain_id: DomainId) -> Option<DomainBlockNumberFor<T>> {
         Some(HeadDomainNumber::<T>::get(domain_id))
     }
 
     pub fn domain_state_root(
         domain_id: DomainId,
-        domain_block_number: T::DomainNumber,
+        domain_block_number: DomainBlockNumberFor<T>,
         domain_block_hash: T::DomainHash,
     ) -> Option<T::DomainHash> {
         StateRoots::<T>::get((domain_id, domain_block_number, domain_block_hash))
@@ -1354,7 +1347,7 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn genesis_state_root(domain_id: DomainId) -> Option<H256> {
-        BlockTree::<T>::get(domain_id, T::DomainNumber::zero())
+        BlockTree::<T>::get(domain_id, DomainBlockNumberFor::<T>::zero())
             .first()
             .and_then(DomainBlocks::<T>::get)
             .map(|block| block.execution_receipt.final_state_root.into())
@@ -1522,7 +1515,7 @@ impl<T: Config> Pallet<T> {
             FraudProof::InvalidTotalRewards(InvalidTotalRewardsProof { storage_proof, .. }) => {
                 verify_invalid_total_rewards_fraud_proof::<
                     T::Block,
-                    T::DomainNumber,
+                    DomainBlockNumberFor<T>,
                     T::DomainHash,
                     BalanceOf<T>,
                     T::Hashing,
@@ -1557,11 +1550,11 @@ impl<T: Config> Pallet<T> {
 
                 verify_invalid_domain_extrinsics_root_fraud_proof::<
                     T::Block,
-                    T::DomainNumber,
+                    DomainBlockNumberFor<T>,
                     T::DomainHash,
                     BalanceOf<T>,
                     T::Hashing,
-                    T::DomainHashing,
+                    DomainHashingFor<T>,
                 >(
                     bad_receipt,
                     proof,
@@ -1676,17 +1669,17 @@ impl<T: Config> Pallet<T> {
     }
 
     /// Returns the best execution chain number.
-    pub fn head_receipt_number(domain_id: DomainId) -> T::DomainNumber {
+    pub fn head_receipt_number(domain_id: DomainId) -> DomainBlockNumberFor<T> {
         HeadReceiptNumber::<T>::get(domain_id)
     }
 
     /// Returns the block number of oldest execution receipt.
-    pub fn oldest_receipt_number(domain_id: DomainId) -> T::DomainNumber {
+    pub fn oldest_receipt_number(domain_id: DomainId) -> DomainBlockNumberFor<T> {
         Self::head_receipt_number(domain_id).saturating_sub(Self::block_tree_pruning_depth())
     }
 
     /// Returns the block tree pruning depth.
-    pub fn block_tree_pruning_depth() -> T::DomainNumber {
+    pub fn block_tree_pruning_depth() -> DomainBlockNumberFor<T> {
         T::BlockTreePruningDepth::get()
     }
 
@@ -1717,7 +1710,7 @@ impl<T: Config> Pallet<T> {
     /// Returns if there are any ERs in the challenge period that have non empty extrinsics.
     /// Note that Genesis ER is also considered special and hence non empty
     pub fn non_empty_er_exists(domain_id: DomainId) -> bool {
-        if BlockTree::<T>::contains_key(domain_id, T::DomainNumber::zero()) {
+        if BlockTree::<T>::contains_key(domain_id, DomainBlockNumberFor::<T>::zero()) {
             return true;
         }
 
