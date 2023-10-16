@@ -616,6 +616,7 @@ parameter_types! {
     pub const StakeEpochDuration: DomainNumber = 100;
     pub TreasuryAccount: AccountId = PalletId(*b"treasury").into_account_truncating();
     pub const MaxPendingStakingOperation: u32 = 100;
+    pub const MaxNominators: u32 = 100;
 }
 
 impl pallet_domains::Config for Runtime {
@@ -642,6 +643,7 @@ impl pallet_domains::Config for Runtime {
     type StakeEpochDuration = StakeEpochDuration;
     type TreasuryAccount = TreasuryAccount;
     type MaxPendingStakingOperation = MaxPendingStakingOperation;
+    type MaxNominators = MaxNominators;
     type Randomness = Subspace;
 }
 
