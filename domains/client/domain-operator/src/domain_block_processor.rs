@@ -812,6 +812,16 @@ where
                     },
                 ));
             }
+
+            if execution_receipt.domain_block_hash != local_receipt.domain_block_hash {
+                bad_receipts_to_write.push((
+                    execution_receipt.consensus_block_number,
+                    execution_receipt.hash(),
+                    ReceiptMismatchInfo::DomainBlockHash {
+                        consensus_block_hash,
+                    },
+                ));
+            }
         }
 
         let bad_receipts_to_delete = fraud_proofs
@@ -919,6 +929,18 @@ where
                     .map_err(|err| {
                         sp_blockchain::Error::Application(Box::from(format!(
                             "Failed to generate invalid block rewards fraud proof: {err}"
+                        )))
+                    })?,
+                ReceiptMismatchInfo::DomainBlockHash { .. } => self
+                    .fraud_proof_generator
+                    .generate_invalid_domain_block_hash_proof::<ParentChainBlock>(
+                        self.domain_id,
+                        &local_receipt,
+                        bad_receipt_hash,
+                    )
+                    .map_err(|err| {
+                        sp_blockchain::Error::Application(Box::from(format!(
+                            "Failed to generate invalid domain block hash fraud proof: {err}"
                         )))
                     })?,
                 ReceiptMismatchInfo::Bundles {
