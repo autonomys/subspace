@@ -44,6 +44,8 @@ pub enum FraudProofVerificationInfoRequest {
     BlockRandomness,
     /// Domain timestamp extrinsic using the timestamp at a given consensus block hash.
     DomainTimestampExtrinsic(DomainId),
+    /// The domain runtime code
+    DomainRuntimeCode(DomainId),
 }
 
 impl PassBy for FraudProofVerificationInfoRequest {
@@ -57,4 +59,15 @@ pub enum FraudProofVerificationInfoResponse {
     BlockRandomness(Randomness),
     /// Encoded domain timestamp extrinsic using the timestamp from consensus state at a specific block hash.
     DomainTimestampExtrinsic(Vec<u8>),
+    /// The domain runtime code
+    DomainRuntimeCode(Vec<u8>),
+}
+
+impl FraudProofVerificationInfoResponse {
+    pub fn into_domain_runtime_code(self) -> Option<Vec<u8>> {
+        match self {
+            Self::DomainRuntimeCode(c) => Some(c),
+            _ => None,
+        }
+    }
 }
