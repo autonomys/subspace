@@ -80,7 +80,8 @@ fn erasure_coding_instance() -> &'static ErasureCoding {
 
     ERASURE_CODING.get_or_init(|| {
         ErasureCoding::new(
-            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
+            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
+                .expect("Not zero; qed"),
         )
         .unwrap()
     })
