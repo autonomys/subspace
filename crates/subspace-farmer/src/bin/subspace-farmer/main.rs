@@ -74,6 +74,23 @@ async fn main() -> anyhow::Result<()> {
     let command = Command::parse();
 
     match command {
+        Command::Farm(farming_args) => {
+            commands::farm::farm::<PosTable>(farming_args).await?;
+        }
+        Command::Info { disk_farms } => {
+            if disk_farms.is_empty() {
+                info!("No farm was specified, so there is nothing to do");
+            } else {
+                commands::info(disk_farms);
+            }
+        }
+        Command::Scrub { disk_farms } => {
+            if disk_farms.is_empty() {
+                info!("No farm was specified, so there is nothing to do");
+            } else {
+                commands::scrub(&disk_farms);
+            }
+        }
         Command::Wipe { disk_farms } => {
             for disk_farm in &disk_farms {
                 if !disk_farm.exists() {
@@ -96,23 +113,6 @@ async fn main() -> anyhow::Result<()> {
                 info!("No farm was specified, so there is nothing to do");
             } else {
                 info!("Done");
-            }
-        }
-        Command::Farm(farming_args) => {
-            commands::farm::farm::<PosTable>(farming_args).await?;
-        }
-        Command::Info { disk_farms } => {
-            if disk_farms.is_empty() {
-                info!("No farm was specified, so there is nothing to do");
-            } else {
-                commands::info(disk_farms);
-            }
-        }
-        Command::Scrub { disk_farms } => {
-            if disk_farms.is_empty() {
-                info!("No farm was specified, so there is nothing to do");
-            } else {
-                commands::scrub(&disk_farms);
             }
         }
     }
