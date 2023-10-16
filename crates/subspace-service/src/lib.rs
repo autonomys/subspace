@@ -172,19 +172,9 @@ pub type InvalidTransactionProofVerifier<RuntimeApi, ExecutorDispatch> =
         VerifierClient<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
     >;
 
-pub type InvalidStateTransitionProofVerifier<RuntimeApi, ExecutorDispatch> =
-    subspace_fraud_proof::invalid_state_transition_proof::InvalidStateTransitionProofVerifier<
-        Block,
-        FullClient<RuntimeApi, ExecutorDispatch>,
-        NativeElseWasmExecutor<ExecutorDispatch>,
-        Hash,
-        VerifierClient<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
-    >;
-
 pub type FraudProofVerifier<RuntimeApi, ExecutorDispatch> = subspace_fraud_proof::ProofVerifier<
     Block,
     InvalidTransactionProofVerifier<RuntimeApi, ExecutorDispatch>,
-    InvalidStateTransitionProofVerifier<RuntimeApi, ExecutorDispatch>,
 >;
 
 /// Subspace networking instantiation variant
@@ -466,12 +456,6 @@ where
         POT_VERIFIER_CACHE_SIZE,
     );
 
-    let invalid_state_transition_proof_verifier = InvalidStateTransitionProofVerifier::new(
-        client.clone(),
-        executor.clone(),
-        VerifierClient::new(client.clone()),
-    );
-
     let executor = Arc::new(executor);
 
     client
@@ -499,10 +483,8 @@ where
         VerifierClient::new(client.clone()),
     );
 
-    let proof_verifier = subspace_fraud_proof::ProofVerifier::new(
-        Arc::new(invalid_transaction_proof_verifier),
-        Arc::new(invalid_state_transition_proof_verifier),
-    );
+    let proof_verifier =
+        subspace_fraud_proof::ProofVerifier::new(Arc::new(invalid_transaction_proof_verifier));
 
     let tx_pre_validator = ConsensusChainTxPreValidator::new(
         client.clone(),

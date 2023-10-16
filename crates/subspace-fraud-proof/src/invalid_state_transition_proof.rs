@@ -5,18 +5,14 @@
 //! block execution, block execution hooks (`initialize_block` and `finalize_block`) and any
 //! specific extrinsic execution are supported.
 
-use crate::verifier_api::VerifierApi;
-use codec::{Codec, Decode, Encode};
-use domain_runtime_primitives::opaque::Block;
+use codec::Codec;
 use hash_db::{HashDB, Hasher, Prefix};
 use sc_client_api::backend;
-use sp_api::{ProvideRuntimeApi, StorageProof};
-use sp_core::traits::{CodeExecutor, RuntimeCode};
+use sp_api::StorageProof;
+use sp_core::traits::CodeExecutor;
 use sp_core::H256;
-use sp_domains::fraud_proof::{ExecutionPhase, InvalidStateTransitionProof, VerificationError};
-use sp_domains::DomainsApi;
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashingFor, Header as HeaderT, NumberFor};
-use sp_runtime::Digest;
+use sp_domains::fraud_proof::ExecutionPhase;
+use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashingFor};
 use sp_state_machine::backend::AsTrieBackend;
 use sp_state_machine::{TrieBackend, TrieBackendBuilder, TrieBackendStorage};
 use sp_trie::DBValue;
@@ -174,92 +170,5 @@ where
             Some(v) => Ok(Some(v)),
             None => Ok(self.backend.get(key, prefix)?),
         }
-    }
-}
-
-/// Invalid state transition proof verifier.
-pub struct InvalidStateTransitionProofVerifier<CBlock, CClient, Exec, Hash, VerifierClient> {
-    consensus_client: Arc<CClient>,
-    executor: Exec,
-    verifier_client: VerifierClient,
-    _phantom: PhantomData<(CBlock, Hash)>,
-}
-
-impl<CBlock, CClient, Exec, Hash, VerifierClient> Clone
-    for InvalidStateTransitionProofVerifier<CBlock, CClient, Exec, Hash, VerifierClient>
-where
-    Exec: Clone,
-    VerifierClient: Clone,
-{
-    fn clone(&self) -> Self {
-        Self {
-            consensus_client: self.consensus_client.clone(),
-            executor: self.executor.clone(),
-            verifier_client: self.verifier_client.clone(),
-            _phantom: self._phantom,
-        }
-    }
-}
-
-impl<CBlock, CClient, Exec, Hash, VerifierClient>
-    InvalidStateTransitionProofVerifier<CBlock, CClient, Exec, Hash, VerifierClient>
-where
-    CBlock: BlockT,
-    H256: Into<CBlock::Hash>,
-    CClient: ProvideRuntimeApi<CBlock> + Send + Sync,
-    CClient::Api: DomainsApi<CBlock, domain_runtime_primitives::BlockNumber, Hash>,
-    Exec: CodeExecutor + Clone + 'static,
-    Hash: Encode + Decode,
-    VerifierClient: VerifierApi,
-{
-    /// Constructs a new instance of [`InvalidStateTransitionProofVerifier`].
-    pub fn new(
-        consensus_client: Arc<CClient>,
-        executor: Exec,
-        verifier_client: VerifierClient,
-    ) -> Self {
-        Self {
-            consensus_client,
-            executor,
-            verifier_client,
-            _phantom: PhantomData::<(CBlock, Hash)>,
-        }
-    }
-
-    /// Verifies the invalid state transition proof.
-    pub fn verify(
-        &self,
-        invalid_state_transition_proof: &InvalidStateTransitionProof,
-    ) -> Result<(), VerificationError> {
-        // TODO: remove the whole InvalidStateTransitionProofVerifier
-        Ok(())
-    }
-}
-
-/// Verifies invalid state transition proof.
-pub trait VerifyInvalidStateTransitionProof {
-    /// Returns `Ok(())` if given `invalid_state_transition_proof` is legitimate.
-    fn verify_invalid_state_transition_proof(
-        &self,
-        invalid_state_transition_proof: &InvalidStateTransitionProof,
-    ) -> Result<(), VerificationError>;
-}
-
-impl<CBlock, C, Exec, Hash, VerifierClient> VerifyInvalidStateTransitionProof
-    for InvalidStateTransitionProofVerifier<CBlock, C, Exec, Hash, VerifierClient>
-where
-    CBlock: BlockT,
-    H256: Into<CBlock::Hash>,
-    C: ProvideRuntimeApi<CBlock> + Send + Sync,
-    C::Api: DomainsApi<CBlock, domain_runtime_primitives::BlockNumber, Hash>,
-    Exec: CodeExecutor + Clone + 'static,
-    Hash: Encode + Decode,
-    VerifierClient: VerifierApi,
-{
-    fn verify_invalid_state_transition_proof(
-        &self,
-        invalid_state_transition_proof: &InvalidStateTransitionProof,
-    ) -> Result<(), VerificationError> {
-        self.verify(invalid_state_transition_proof)
     }
 }

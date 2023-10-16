@@ -1,4 +1,4 @@
-use crate::invalid_state_transition_proof::{ExecutionProver, InvalidStateTransitionProofVerifier};
+use crate::invalid_state_transition_proof::ExecutionProver;
 use crate::invalid_transaction_proof::InvalidTransactionProofVerifier;
 use crate::verifier_api::VerifierApi;
 use crate::ProofVerifier;
@@ -89,8 +89,8 @@ impl VerifierApi for TestVerifierClient {
     }
 }
 
-// Use the system domain id for testing
-const TEST_DOMAIN_ID: DomainId = DomainId::new(3u32);
+// Use the genesis domain/runtime id for testing
+const TEST_DOMAIN_ID: DomainId = DomainId::new(0u32);
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
@@ -255,25 +255,14 @@ async fn execution_proof_creation_and_verification_should_work() {
         .unwrap();
     assert_eq!(post_execution_root, intermediate_roots[0].into());
 
-    let invalid_state_transition_proof_verifier = InvalidStateTransitionProofVerifier::new(
-        ferdie.client.clone(),
-        ferdie.executor.clone(),
-        TestVerifierClient::new(ferdie.client.clone(), alice.client.clone()),
-    );
-
     let invalid_transaction_proof_verifier = InvalidTransactionProofVerifier::new(
         ferdie.client.clone(),
         Arc::new(ferdie.executor.clone()),
         TestVerifierClient::new(ferdie.client.clone(), alice.client.clone()),
     );
 
-    let proof_verifier = ProofVerifier::<Block, _, _>::new(
-        Arc::new(invalid_transaction_proof_verifier),
-        Arc::new(invalid_state_transition_proof_verifier),
-    );
-
-    let parent_number_alice = *parent_header.number();
-    let consensus_parent_hash = ferdie.client.hash(parent_number_alice).unwrap().unwrap();
+    let proof_verifier =
+        ProofVerifier::<Block, _>::new(Arc::new(invalid_transaction_proof_verifier));
 
     let invalid_state_transition_proof = InvalidStateTransitionProof {
         domain_id: TEST_DOMAIN_ID,
@@ -553,25 +542,14 @@ async fn invalid_execution_proof_should_not_work() {
     assert!(check_proof_executor(post_delta_root0, proof0.clone()).is_ok());
     assert!(check_proof_executor(post_delta_root1, proof1.clone()).is_ok());
 
-    let invalid_state_transition_proof_verifier = InvalidStateTransitionProofVerifier::new(
-        ferdie.client.clone(),
-        ferdie.executor.clone(),
-        TestVerifierClient::new(ferdie.client.clone(), alice.client.clone()),
-    );
-
     let invalid_transaction_proof_verifier = InvalidTransactionProofVerifier::new(
         ferdie.client.clone(),
         Arc::new(ferdie.executor.clone()),
         TestVerifierClient::new(ferdie.client.clone(), alice.client.clone()),
     );
 
-    let proof_verifier = ProofVerifier::<Block, _, _>::new(
-        Arc::new(invalid_transaction_proof_verifier),
-        Arc::new(invalid_state_transition_proof_verifier),
-    );
-
-    let parent_number_alice = *parent_header.number();
-    let consensus_parent_hash = ferdie.client.hash(parent_number_alice).unwrap().unwrap();
+    let proof_verifier =
+        ProofVerifier::<Block, _>::new(Arc::new(invalid_transaction_proof_verifier));
 
     let invalid_state_transition_proof = InvalidStateTransitionProof {
         domain_id: TEST_DOMAIN_ID,
