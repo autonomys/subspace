@@ -62,6 +62,11 @@ This will connect to local node and will try to solve on every slot notification
 
 *NOTE: You need to have a `subspace-node` running before starting farmer, otherwise it will not be able to start*
 
+### Benchmark auditing
+```
+target/production/subspace-farmer benchmark audit /path/to/farm
+```
+
 ### Show information about the farm
 ```
 target/production/subspace-farmer info /path/to/farm

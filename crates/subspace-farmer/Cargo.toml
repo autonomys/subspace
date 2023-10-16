@@ -21,6 +21,7 @@ blake2 = "0.10.6"
 blake3 = { version = "1.4.1", default-features = false }
 bytesize = "1.3.0"
 clap = { version = "4.4.3", features = ["color", "derive"] }
+criterion = { version = "0.5.1", default-features = false, features = ["rayon", "async"] }
 derive_more = "0.99.17"
 event-listener-primitives = "2.0.1"
 fdlimit = "0.2"
