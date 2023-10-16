@@ -9,7 +9,7 @@ use clap::{Parser, ValueHint};
 use ss58::parse_ss58_reward_address;
 use std::fs;
 use std::net::SocketAddr;
-use std::num::NonZeroU8;
+use std::num::{NonZeroU8, NonZeroUsize};
 use std::path::PathBuf;
 use std::str::FromStr;
 use subspace_core_primitives::PublicKey;
@@ -20,6 +20,9 @@ use tracing::{info, warn};
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::{fmt, EnvFilter};
+
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 
 type PosTable = ChiaTable;
 
@@ -91,6 +94,21 @@ struct FarmingArgs {
     /// one specified endpoint. Format: 127.0.0.1:8080
     #[arg(long, alias = "metrics-endpoint")]
     metrics_endpoints: Vec<SocketAddr>,
+    /// Defines how many sectors farmer will download concurrently, allows to limit memory usage of
+    /// the plotting process, increasing beyond 2 makes practical sense due to limited networking
+    /// concurrency and will likely result in slower plotting overall
+    #[arg(long, default_value = "2")]
+    sector_downloading_concurrency: NonZeroUsize,
+    /// Defines how many sectors farmer will encode concurrently, should generally never be set to
+    /// more than 1 because it will most likely result in slower plotting overall
+    #[arg(long, default_value = "1")]
+    sector_encoding_concurrency: NonZeroUsize,
+    /// Allows to enable farming during initial plotting. Not used by default because plotting is so
+    /// intense on CPU and memory that farming will likely not work properly, yet it will
+    /// significantly impact plotting speed, delaying the time when farming can actually work
+    /// properly.
+    #[arg(long)]
+    farm_during_initial_plotting: bool,
     /// Size of PER FARM thread pool used for farming (mostly for blocking I/O, but also for some
     /// compute-intensive operations during proving), defaults to number of CPU cores available in
     /// the system

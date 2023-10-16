@@ -1,6 +1,6 @@
 use crate::ErasureCoding;
-use blst_rust::types::g1::FsG1;
 use kzg::G1;
+use rust_kzg_blst::types::g1::FsG1;
 use std::iter;
 use std::num::NonZeroUsize;
 use subspace_core_primitives::crypto::kzg::Commitment;

@@ -28,13 +28,12 @@ use libp2p::gossipsub::{Event as GossipsubEvent, TopicHash};
 use libp2p::identify::Event as IdentifyEvent;
 use libp2p::kad::{
     BootstrapOk, GetClosestPeersError, GetClosestPeersOk, GetProvidersError, GetProvidersOk,
-    GetRecordError, GetRecordOk, InboundRequest, Kademlia, KademliaEvent, PeerRecord, ProgressStep,
-    PutRecordOk, QueryId, QueryResult, Quorum, Record,
+    GetRecordError, GetRecordOk, InboundRequest, Kademlia, KademliaEvent, Mode, PeerRecord,
+    ProgressStep, PutRecordOk, QueryId, QueryResult, Quorum, Record,
 };
 use libp2p::metrics::{Metrics, Recorder};
 use libp2p::swarm::{DialError, SwarmEvent};
 use libp2p::{futures, Multiaddr, PeerId, Swarm, TransportError};
-use libp2p_kad::Mode;
 use nohash_hasher::IntMap;
 use parking_lot::Mutex;
 use rand::rngs::StdRng;

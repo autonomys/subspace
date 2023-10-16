@@ -24,7 +24,6 @@ use std::hash::{Hash, Hasher};
 use std::num::{NonZeroU32, NonZeroUsize};
 use std::sync::{atomic, Arc};
 use subspace_core_primitives::{PotCheckpoints, PotSeed, SlotNumber};
-use tokio::runtime::Handle;
 use tracing::{debug, error, trace, warn};
 
 /// How many slots can proof be before it is too far
@@ -280,11 +279,11 @@ where
             }
         }
 
-        if self
-            .pot_verifier
-            .verify_checkpoints(proof.seed, proof.slot_iterations, &proof.checkpoints)
-            .await
-        {
+        if self.pot_verifier.verify_checkpoints(
+            proof.seed,
+            proof.slot_iterations,
+            &proof.checkpoints,
+        ) {
             debug!(%sender, slot = %proof.slot, "Full verification succeeded");
 
             self.engine
@@ -385,7 +384,6 @@ where
         }
 
         // Avoid blocking gossip for too long
-        let handle = Handle::current();
         rayon::spawn({
             let engine = Arc::clone(&self.engine);
             let pot_verifier = self.pot_verifier.clone();
@@ -393,19 +391,19 @@ where
             let topic = self.topic;
 
             move || {
-                handle.block_on(Self::handle_potentially_matching_proofs(
+                Self::handle_potentially_matching_proofs(
                     next_slot_input,
                     potentially_matching_proofs,
                     engine,
                     &pot_verifier,
                     from_gossip_sender,
                     topic,
-                ));
+                );
             }
         });
     }
 
-    async fn handle_potentially_matching_proofs(
+    fn handle_potentially_matching_proofs(
         next_slot_input: PotNextSlotInput,
         potentially_matching_proofs: Vec<(GossipProof, Vec<PeerId>)>,
         engine: Arc<Mutex<GossipEngine<Block>>>,
@@ -425,10 +423,11 @@ where
 
             // Verify all proofs
             for (proof, _senders) in &potentially_matching_proofs {
-                if pot_verifier
-                    .verify_checkpoints(proof.seed, proof.slot_iterations, &proof.checkpoints)
-                    .await
-                {
+                if pot_verifier.verify_checkpoints(
+                    proof.seed,
+                    proof.slot_iterations,
+                    &proof.checkpoints,
+                ) {
                     correct_proof.replace(*proof);
                     break;
                 }
@@ -468,15 +467,17 @@ where
                     }
                     sent = true;
 
-                    if let Err(error) = from_gossip_sender.send((sender, proof)).await {
+                    engine.lock().gossip_message(topic, proof.encode(), false);
+
+                    if let Err(error) =
+                        futures::executor::block_on(from_gossip_sender.send((sender, proof)))
+                    {
                         warn!(
                             %error,
                             slot = %proof.slot,
                             "Failed to send future proof",
                         );
                     }
-
-                    engine.lock().gossip_message(topic, proof.encode(), false);
                 }
             } else {
                 let engine = engine.lock();

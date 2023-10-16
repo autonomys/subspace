@@ -1,6 +1,9 @@
 use crate::node_client::NodeClient;
 use crate::single_disk_farm::piece_cache::{DiskPieceCache, Offset};
 use crate::utils::AsyncJoinOnDrop;
+use event_listener_primitives::{Bag, HandlerId};
+use futures::channel::oneshot;
+use futures::stream::FuturesUnordered;
 use futures::{select, FutureExt, StreamExt};
 use parking_lot::RwLock;
 use rayon::prelude::*;
@@ -18,11 +21,20 @@ use tokio::sync::mpsc;
 use tracing::{debug, error, info, trace, warn};
 
 const WORKER_CHANNEL_CAPACITY: usize = 100;
+const CONCURRENT_PIECES_TO_DOWNLOAD: usize = 1_000;
 /// Make caches available as they are building without waiting for the initialization to finish,
 /// this number defines an interval in pieces after which cache is updated
 const INTERMEDIATE_CACHE_UPDATE_INTERVAL: usize = 100;
 /// Get piece retry attempts number.
 const PIECE_GETTER_RETRY_NUMBER: NonZeroU16 = NonZeroU16::new(4).expect("Not zero; qed");
+
+type HandlerFn<A> = Arc<dyn Fn(&A) + Send + Sync + 'static>;
+type Handler<A> = Bag<HandlerFn<A>, A>;
+
+#[derive(Default, Debug)]
+struct Handlers {
+    progress: Handler<f32>,
+}
 
 #[derive(Debug, Clone)]
 struct DiskPieceCacheState {
@@ -33,8 +45,13 @@ struct DiskPieceCacheState {
 
 #[derive(Debug)]
 enum WorkerCommand {
-    ReplaceBackingCaches { new_caches: Vec<DiskPieceCache> },
-    ForgetKey { key: RecordKey },
+    ReplaceBackingCaches {
+        new_caches: Vec<DiskPieceCache>,
+        acknowledgement: oneshot::Sender<()>,
+    },
+    ForgetKey {
+        key: RecordKey,
+    },
 }
 
 #[derive(Debug)]
@@ -49,6 +66,7 @@ pub struct CacheWorker<NC> {
     peer_id: PeerId,
     node_client: NC,
     caches: Arc<RwLock<Vec<DiskPieceCacheState>>>,
+    handlers: Arc<Handlers>,
     worker_receiver: Option<mpsc::Receiver<WorkerCommand>>,
 }
 
@@ -72,11 +90,15 @@ where
             .take()
             .expect("Always set during worker instantiation");
 
-        if let Some(WorkerCommand::ReplaceBackingCaches { new_caches }) =
-            worker_receiver.recv().await
+        if let Some(WorkerCommand::ReplaceBackingCaches {
+            new_caches,
+            acknowledgement,
+        }) = worker_receiver.recv().await
         {
             self.initialize(&piece_getter, &mut worker_state, new_caches)
                 .await;
+            // Doesn't matter if receiver is still waiting for acknowledgement
+            let _ = acknowledgement.send(());
         } else {
             // Piece cache is dropped before backing caches were sent
             return;
@@ -110,9 +132,14 @@ where
         PG: PieceGetter,
     {
         match command {
-            WorkerCommand::ReplaceBackingCaches { new_caches } => {
+            WorkerCommand::ReplaceBackingCaches {
+                new_caches,
+                acknowledgement,
+            } => {
                 self.initialize(piece_getter, worker_state, new_caches)
                     .await;
+                // Doesn't matter if receiver is still waiting for acknowledgement
+                let _ = acknowledgement.send(());
             }
             // TODO: Consider implementing optional re-sync of the piece instead of just forgetting
             WorkerCommand::ForgetKey { key } => {
@@ -198,7 +225,7 @@ where
             })
             .collect::<Vec<_>>();
 
-        info!("Synchronizing cache");
+        info!("Synchronizing piece cache");
 
         // TODO: Query from the DSN too such that we don't build outdated cache at start if node is
         //  not synced fully
@@ -257,13 +284,17 @@ where
                 });
         });
 
+        // Store whatever correct pieces are immediately available after restart
+        *self.caches.write() = caches.clone();
+
         debug!(
             count = %piece_indices_to_store.len(),
             "Identified piece indices that should be cached",
         );
 
-        // TODO: Can probably do concurrency here
-        for (index, piece_index) in piece_indices_to_store.into_values().enumerate() {
+        let mut piece_indices_to_store = piece_indices_to_store.into_values();
+
+        let download_piece = |piece_index| async move {
             trace!(%piece_index, "Downloading piece");
 
             let result = piece_getter
@@ -273,20 +304,35 @@ where
                 )
                 .await;
 
-            let piece = match result {
+            match result {
                 Ok(Some(piece)) => {
                     trace!(%piece_index, "Downloaded piece successfully");
 
-                    piece
+                    Some((piece_index, piece))
                 }
                 Ok(None) => {
                     debug!(%piece_index, "Couldn't find piece");
-                    continue;
+                    None
                 }
                 Err(error) => {
                     debug!(%error, %piece_index, "Failed to get piece for piece cache");
-                    continue;
+                    None
                 }
+            }
+        };
+
+        let pieces_to_download_total = piece_indices_to_store.len();
+        let mut downloading_pieces = piece_indices_to_store
+            .by_ref()
+            .take(CONCURRENT_PIECES_TO_DOWNLOAD)
+            .map(download_piece)
+            .collect::<FuturesUnordered<_>>();
+
+        let mut downloaded_pieces_count = 0;
+        self.handlers.progress.call_simple(&0.0);
+        while let Some(maybe_piece) = downloading_pieces.next().await {
+            let Some((piece_index, piece)) = maybe_piece else {
+                continue;
             };
 
             // Find plot in which there is a place for new piece to be stored
@@ -310,15 +356,27 @@ where
                     .insert(RecordKey::from(piece_index.to_multihash()), offset);
             }
 
-            if (index + 1) % INTERMEDIATE_CACHE_UPDATE_INTERVAL == 0 {
+            downloaded_pieces_count += 1;
+            if downloaded_pieces_count % INTERMEDIATE_CACHE_UPDATE_INTERVAL == 0 {
+                let progress =
+                    downloaded_pieces_count as f32 / pieces_to_download_total as f32 * 100.0;
                 *self.caches.write() = caches.clone();
+
+                info!("Piece cache sync {progress:.2}% complete");
+                self.handlers.progress.call_simple(&progress);
+            }
+
+            // Push another piece to download
+            if let Some(piece_index_to_download) = piece_indices_to_store.next() {
+                downloading_pieces.push(download_piece(piece_index_to_download));
             }
         }
 
         *self.caches.write() = caches;
+        self.handlers.progress.call_simple(&100.0);
         worker_state.last_segment_index = last_segment_index;
 
-        info!("Finished cache initialization");
+        info!("Finished piece cache synchronization");
     }
 
     async fn keep_up_sync<PG>(&self, piece_getter: &PG, worker_state: &mut CacheWorkerState)
@@ -575,6 +633,7 @@ pub struct PieceCache {
     peer_id: PeerId,
     /// Individual disk caches where pieces are stored
     caches: Arc<RwLock<Vec<DiskPieceCacheState>>>,
+    handlers: Arc<Handlers>,
     // We do not want to increase capacity unnecessarily on clone
     worker_sender: mpsc::Sender<WorkerCommand>,
 }
@@ -590,16 +649,19 @@ impl PieceCache {
     {
         let caches = Arc::default();
         let (worker_sender, worker_receiver) = mpsc::channel(WORKER_CHANNEL_CAPACITY);
+        let handlers = Arc::new(Handlers::default());
 
         let instance = Self {
             peer_id,
             caches: Arc::clone(&caches),
+            handlers: Arc::clone(&handlers),
             worker_sender,
         };
         let worker = CacheWorker {
             peer_id,
             node_client,
             caches,
+            handlers,
             worker_receiver: Some(worker_receiver),
         };
 
@@ -656,14 +718,30 @@ impl PieceCache {
         }
     }
 
-    pub async fn replace_backing_caches(&self, new_caches: Vec<DiskPieceCache>) {
+    /// Initialize replacement of backing caches, returns acknowledgement receiver that can be used
+    /// to identify when cache initialization has finished
+    pub async fn replace_backing_caches(
+        &self,
+        new_caches: Vec<DiskPieceCache>,
+    ) -> oneshot::Receiver<()> {
+        let (sender, receiver) = oneshot::channel();
         if let Err(error) = self
             .worker_sender
-            .send(WorkerCommand::ReplaceBackingCaches { new_caches })
+            .send(WorkerCommand::ReplaceBackingCaches {
+                new_caches,
+                acknowledgement: sender,
+            })
             .await
         {
             warn!(%error, "Failed to replace backing caches, worker exited");
         }
+
+        receiver
+    }
+
+    /// Subscribe to cache sync notifications
+    pub fn on_sync_progress(&self, callback: HandlerFn<f32>) -> HandlerId {
+        self.handlers.progress.add(callback)
     }
 }
 

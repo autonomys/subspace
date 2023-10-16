@@ -27,12 +27,13 @@ use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::file_ext::FileExt;
 use subspace_farmer_components::plotting;
 use subspace_farmer_components::plotting::{
-    plot_sector, PieceGetter, PieceGetterRetryPolicy, PlottedSector,
+    plot_sector, PieceGetter, PieceGetterRetryPolicy, PlotSectorOptions, PlottedSector,
 };
 use subspace_farmer_components::sector::SectorMetadataChecksummed;
 use subspace_proof_of_space::Table;
 use thiserror::Error;
 use tokio::runtime::Handle;
+use tokio::sync::{broadcast, Semaphore};
 use tracing::{debug, info, trace, warn};
 
 const FARMER_APP_INFO_RETRY_INTERVAL: Duration = Duration::from_millis(500);
@@ -77,6 +78,9 @@ pub enum PlottingError {
         /// Lower-level error
         error: node_client::Error,
     },
+    /// Farm is shutting down
+    #[error("Farm is shutting down")]
+    FarmIsShuttingDown,
     /// I/O error occurred
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),
@@ -101,8 +105,15 @@ pub(super) struct PlottingOptions<NC, PG> {
     pub(super) handlers: Arc<Handlers>,
     pub(super) modifying_sector_index: Arc<RwLock<Option<SectorIndex>>>,
     pub(super) sectors_to_plot_receiver: mpsc::Receiver<SectorToPlot>,
+    /// Semaphore for part of the plotting when farmer downloads new sector, allows to limit memory
+    /// usage of the plotting process, permit will be held until the end of the plotting process
+    pub(crate) downloading_semaphore: Arc<Semaphore>,
+    /// Semaphore for part of the plotting when farmer encodes downloaded sector, should typically
+    /// allow one permit at a time for efficient CPU utilization
+    pub(crate) encoding_semaphore: Arc<Semaphore>,
     pub(super) plotting_thread_pool: Arc<ThreadPool>,
     pub(super) replotting_thread_pool: Arc<ThreadPool>,
+    pub(super) stop_receiver: broadcast::Receiver<()>,
 }
 
 /// Starts plotting process.
@@ -133,8 +144,11 @@ where
         handlers,
         modifying_sector_index,
         mut sectors_to_plot_receiver,
+        downloading_semaphore,
+        encoding_semaphore,
         plotting_thread_pool,
         replotting_thread_pool,
+        stop_receiver,
     } = plotting_options;
 
     let mut table_generator = PosTable::generator();
@@ -211,36 +225,56 @@ where
             let piece_getter = piece_getter.clone();
             let kzg = kzg.clone();
             let erasure_coding = erasure_coding.clone();
+            let downloading_semaphore = Arc::clone(&downloading_semaphore);
+            let encoding_semaphore = Arc::clone(&encoding_semaphore);
+            let mut stop_receiver = stop_receiver.resubscribe();
 
             let plotting_fn = move || {
                 tokio::task::block_in_place(move || {
-                    let plot_sector_fut = plot_sector::<_, PosTable>(
-                        &public_key,
+                    let plot_sector_fut = plot_sector::<PosTable, _>(PlotSectorOptions {
+                        public_key: &public_key,
                         sector_index,
-                        &piece_getter,
-                        PieceGetterRetryPolicy::Limited(PIECE_GETTER_RETRY_NUMBER.get()),
-                        &farmer_app_info.protocol_info,
-                        &kzg,
-                        &erasure_coding,
+                        piece_getter: &piece_getter,
+                        piece_getter_retry_policy: PieceGetterRetryPolicy::Limited(
+                            PIECE_GETTER_RETRY_NUMBER.get(),
+                        ),
+                        farmer_protocol_info: &farmer_app_info.protocol_info,
+                        kzg: &kzg,
+                        erasure_coding: &erasure_coding,
                         pieces_in_sector,
-                        &mut sector,
-                        &mut sector_metadata,
-                        &mut table_generator,
-                    );
+                        sector_output: &mut sector,
+                        sector_metadata_output: &mut sector_metadata,
+                        downloading_semaphore: Some(&downloading_semaphore),
+                        encoding_semaphore: Some(&encoding_semaphore),
+                        table_generator: &mut table_generator,
+                    });
 
-                    Handle::current()
-                        .block_on(plot_sector_fut)
-                        .map(|plotted_sector| {
-                            (sector, sector_metadata, table_generator, plotted_sector)
-                        })
+                    let plotted_sector = Handle::current().block_on(async {
+                        select! {
+                            plotting_result = Box::pin(plot_sector_fut).fuse() => {
+                                plotting_result.map_err(PlottingError::from)
+                            }
+                            _ = stop_receiver.recv().fuse() => {
+                                Err(PlottingError::FarmIsShuttingDown)
+                            }
+                        }
+                    })?;
+
+                    Ok((sector, sector_metadata, table_generator, plotted_sector))
                 })
             };
 
-            if replotting {
-                replotting_thread_pool.install(plotting_fn)?
+            let plotting_result = if replotting {
+                replotting_thread_pool.install(plotting_fn)
             } else {
-                plotting_thread_pool.install(plotting_fn)?
+                plotting_thread_pool.install(plotting_fn)
+            };
+
+            if matches!(plotting_result, Err(PlottingError::FarmIsShuttingDown)) {
+                return Ok(());
             }
+
+            plotting_result?
         };
 
         plot_file.write_all_at(&sector, (sector_index as usize * sector_size) as u64)?;
@@ -322,6 +356,7 @@ pub(super) struct PlottingSchedulerOptions<NC> {
     pub(super) node_client: NC,
     pub(super) sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
     pub(super) sectors_to_plot_sender: mpsc::Sender<SectorToPlot>,
+    pub(super) initial_plotting_finished: Option<oneshot::Sender<()>>,
 }
 
 pub(super) async fn plotting_scheduler<NC>(
@@ -339,6 +374,7 @@ where
         node_client,
         sectors_metadata,
         sectors_to_plot_sender,
+        initial_plotting_finished,
     } = plotting_scheduler_options;
 
     // Create a proxy channel with atomically updatable last archived segment that
@@ -385,6 +421,7 @@ where
         &last_archived_segment,
         archived_segments_receiver,
         sectors_to_plot_proxy_sender,
+        initial_plotting_finished,
     );
 
     select! {
@@ -519,6 +556,7 @@ async fn send_plotting_notifications<NC>(
     last_archived_segment: &Atomic<SegmentHeader>,
     mut archived_segments_receiver: mpsc::Receiver<()>,
     mut sectors_to_plot_sender: mpsc::Sender<SectorToPlot>,
+    initial_plotting_finished: Option<oneshot::Sender<()>>,
 ) -> Result<(), BackgroundTaskError>
 where
     NC: NodeClient,
@@ -541,6 +579,11 @@ where
 
         // We do not care if message was sent back or sender was just dropped
         let _ = acknowledgement_receiver.await;
+    }
+
+    if let Some(initial_plotting_finished) = initial_plotting_finished {
+        // Doesn't matter if receiver is still around
+        let _ = initial_plotting_finished.send(());
     }
 
     let mut sectors_expire_at = HashMap::with_capacity(usize::from(target_sector_count));
