@@ -49,7 +49,6 @@ sp-block-builder = { version = "4.0.0-dev", default-features = false, git = "htt
 sp-core = { version = "21.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "74509ce016358e7f56ed2825fd75c324f8c22ef9" }
 sp-domains = { version = "0.1.0", path = "../../../../crates/sp-domains", default-features = false }
 sp-inherents = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "74509ce016358e7f56ed2825fd75c324f8c22ef9" }
-sp-io = { version = "23.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "74509ce016358e7f56ed2825fd75c324f8c22ef9" }
 sp-messenger = { version = "0.1.0", default-features = false, path = "../../../primitives/messenger" }
 sp-offchain = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "74509ce016358e7f56ed2825fd75c324f8c22ef9" }
 sp-runtime = { version = "24.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "74509ce016358e7f56ed2825fd75c324f8c22ef9" }

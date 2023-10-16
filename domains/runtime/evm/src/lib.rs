@@ -702,17 +702,6 @@ pub fn extract_signer(
         .collect()
 }
 
-fn storage_value_key(pallet_prefix: &str, value_name: &str) -> Vec<u8> {
-    let pallet_hash = sp_io::hashing::twox_128(pallet_prefix.as_bytes());
-    let storage_hash = sp_io::hashing::twox_128(value_name.as_bytes());
-
-    let mut final_key = vec![0u8; 32];
-    final_key[..16].copy_from_slice(&pallet_hash);
-    final_key[16..].copy_from_slice(&storage_hash);
-
-    final_key
-}
-
 fn storage_keys_for_verifying_tx_validity_inner(
     sender: AccountId,
     block_number: BlockNumber,
@@ -720,7 +709,7 @@ fn storage_keys_for_verifying_tx_validity_inner(
 ) -> Vec<Vec<u8>> {
     let mut storage_keys = sp_std::vec![
         frame_system::BlockHash::<Runtime>::hashed_key_for(BlockNumber::from(0u32)),
-        storage_value_key(System::name(), "Number"),
+        frame_support::storage::storage_prefix(System::name().as_bytes(), b"Number").to_vec(),
         frame_system::Account::<Runtime>::hashed_key_for(sender),
         pallet_transaction_payment::NextFeeMultiplier::<Runtime>::hashed_key().to_vec()
     ];
