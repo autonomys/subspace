@@ -231,83 +231,8 @@ where
         &self,
         invalid_state_transition_proof: &InvalidStateTransitionProof,
     ) -> Result<(), VerificationError> {
-        self.verifier_client
-            .verify_pre_state_root(invalid_state_transition_proof)?;
-
-        self.verifier_client
-            .verify_post_state_root(invalid_state_transition_proof)?;
-
-        let InvalidStateTransitionProof {
-            domain_id,
-            parent_number,
-            consensus_parent_hash,
-            pre_state_root,
-            post_state_root,
-            proof,
-            execution_phase,
-            ..
-        } = invalid_state_transition_proof;
-
-        let domain_runtime_code = crate::domain_runtime_code::retrieve_domain_runtime_code(
-            *domain_id,
-            (*consensus_parent_hash).into(),
-            &self.consensus_client,
-        )?;
-
-        let runtime_code = RuntimeCode {
-            code_fetcher: &domain_runtime_code.as_runtime_code_fetcher(),
-            hash: b"Hash of the code does not matter in terms of the execution proof check"
-                .to_vec(),
-            heap_pages: None,
-        };
-
-        let call_data = match execution_phase {
-            ExecutionPhase::InitializeBlock { domain_parent_hash } => {
-                let parent_hash =
-                    <Block as BlockT>::Hash::decode(&mut domain_parent_hash.encode().as_slice())?;
-                let parent_number =
-                    <NumberFor<Block>>::decode(&mut parent_number.encode().as_slice())?;
-
-                let consensus_block_number = parent_number + 1;
-                let new_header = <Block as BlockT>::Header::new(
-                    consensus_block_number,
-                    Default::default(),
-                    Default::default(),
-                    parent_hash,
-                    Digest::default(),
-                );
-                new_header.encode()
-            }
-            ExecutionPhase::ApplyExtrinsic(_extrinsic_index) => {
-                // TODO: Provide the tx Merkle proof and get data from there
-                Vec::new()
-            }
-            ExecutionPhase::FinalizeBlock { .. } => Vec::new(),
-        };
-
-        let execution_result = sp_state_machine::execution_proof_check::<BlakeTwo256, _>(
-            *pre_state_root,
-            proof.clone(),
-            &mut Default::default(),
-            &self.executor,
-            execution_phase.verifying_method(),
-            &call_data,
-            &runtime_code,
-        )
-        .map_err(VerificationError::BadProof)?;
-
-        let new_post_state_root =
-            execution_phase.decode_execution_result::<CBlock::Header>(execution_result)?;
-        let new_post_state_root = H256::decode(&mut new_post_state_root.encode().as_slice())?;
-
-        if new_post_state_root == *post_state_root {
-            Ok(())
-        } else {
-            Err(VerificationError::BadPostStateRoot {
-                expected: new_post_state_root,
-                got: *post_state_root,
-            })
-        }
+        // TODO: remove the whole InvalidStateTransitionProofVerifier
+        Ok(())
     }
 }
 

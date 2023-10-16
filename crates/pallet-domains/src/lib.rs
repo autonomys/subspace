@@ -53,7 +53,9 @@ use sp_domains::{
     EMPTY_EXTRINSIC_ROOT,
 };
 use sp_domains_fraud_proof::fraud_proof_runtime_interface::get_fraud_proof_verification_info;
-use sp_domains_fraud_proof::verification::verify_invalid_domain_extrinsics_root_fraud_proof;
+use sp_domains_fraud_proof::verification::{
+    verify_invalid_domain_extrinsics_root_fraud_proof, verify_invalid_state_transition_fraud_proof,
+};
 use sp_domains_fraud_proof::{
     FraudProofVerificationInfoRequest, FraudProofVerificationInfoResponse,
 };
@@ -142,8 +144,8 @@ mod pallet {
     };
     use crate::weights::WeightInfo;
     use crate::{
-        BalanceOf, DomainHashOf, DomainHashingOf, DomainNumberOf, ElectionVerificationParams,
-        HoldIdentifier, NominatorId, OpaqueBundleOf,
+        BalanceOf, DomainHashOf, DomainNumberOf, ElectionVerificationParams, HoldIdentifier,
+        NominatorId, OpaqueBundleOf,
     };
     use alloc::string::String;
     use codec::FullCodec;
@@ -161,8 +163,8 @@ mod pallet {
         ReceiptHash, RuntimeId, RuntimeType,
     };
     use sp_runtime::traits::{
-        AtLeast32BitUnsigned, Block as BlockT, BlockNumberProvider, Bounded, CheckEqual,
-        CheckedAdd, Hash, Header, MaybeDisplay, One, SimpleBitOps, Zero,
+        AtLeast32BitUnsigned, Block as BlockT, BlockNumberProvider, CheckEqual, CheckedAdd,
+        MaybeDisplay, One, SimpleBitOps, Zero,
     };
     use sp_runtime::SaturatedConversion;
     use sp_std::boxed::Box;
@@ -578,6 +580,9 @@ mod pallet {
         /// The targetted bad receipt not found which may already pruned by other
         /// fraud proof or the fraud proof is submitted to the wrong fork.
         BadReceiptNotFound,
+        /// The targetted bad receipt's parent not found which may already pruned
+        /// by other fraud proof or the fraud proof is submitted to the wrong fork.
+        BadReceiptParentNotFound,
         /// The genesis receipt is unchallengeable.
         ChallengingGenesisReceipt,
         /// The descendants of the fraudulent ER is not pruned
@@ -586,6 +591,8 @@ mod pallet {
         InvalidTotalRewardsFraudProof(sp_domains::verification::VerificationError),
         /// Invalid domain extrinsic fraud proof
         InvalidExtrinsicRootFraudProof(sp_domains::verification::VerificationError),
+        /// Invalid state transition fraud proof
+        InvalidStateTransitionFraudProof,
         /// Failed to get block randomness.
         FailedToGetBlockRandomness,
         /// Failed to get domain timestamp extrinsic.
@@ -1559,6 +1566,19 @@ impl<T: Config> Pallet<T> {
                     domain_timestamp_extrinsic,
                 )
                 .map_err(FraudProofError::InvalidExtrinsicRootFraudProof)?;
+            }
+            FraudProof::InvalidStateTransition(proof) => {
+                let bad_receipt_parent =
+                    DomainBlocks::<T>::get(bad_receipt.parent_domain_block_receipt_hash)
+                        .ok_or(FraudProofError::BadReceiptParentNotFound)?
+                        .execution_receipt;
+
+                verify_invalid_state_transition_fraud_proof::<
+                    T::Block,
+                    T::DomainBlock,
+                    BalanceOf<T>,
+                >(bad_receipt, bad_receipt_parent, proof)
+                    .map_err(|_| FraudProofError::InvalidStateTransitionFraudProof)?;
             }
             _ => {}
         }

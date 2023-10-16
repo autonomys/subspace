@@ -29,6 +29,7 @@ sp-application-crypto = { version = "23.0.0", default-features = false, git = "h
 sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "74509ce016358e7f56ed2825fd75c324f8c22ef9", optional = true }
 sp-consensus-slots = { version = "0.10.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "74509ce016358e7f56ed2825fd75c324f8c22ef9" }
 sp-core = { version = "21.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "74509ce016358e7f56ed2825fd75c324f8c22ef9" }
+sp-domain-digests = { version = "0.1.0", default-features = false, path = "../../domains/primitives/digests" }
 sp-runtime = { version = "24.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "74509ce016358e7f56ed2825fd75c324f8c22ef9" }
 sp-runtime-interface = { version = "17.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "74509ce016358e7f56ed2825fd75c324f8c22ef9" }
 sp-state-machine = { version = "0.28.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "74509ce016358e7f56ed2825fd75c324f8c22ef9" }
@@ -62,6 +63,7 @@ std = [
     "sp-application-crypto/std",
     "sp-consensus-slots/std",
     "sp-core/std",
+    "sp-domain-digests/std",
     "sp-runtime/std",
     "sp-runtime-interface/std",
     "sp-state-machine/std",
