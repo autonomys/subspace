@@ -1,12 +1,10 @@
 #![feature(const_option, type_changing_struct_update)]
 
 mod commands;
-mod ss58;
 mod utils;
 
 use bytesize::ByteSize;
 use clap::{Parser, ValueHint};
-use ss58::parse_ss58_reward_address;
 use std::fs;
 use std::net::SocketAddr;
 use std::num::{NonZeroU8, NonZeroUsize};
@@ -14,6 +12,7 @@ use std::path::PathBuf;
 use std::str::FromStr;
 use subspace_core_primitives::PublicKey;
 use subspace_farmer::single_disk_farm::SingleDiskFarm;
+use subspace_farmer::utils::ss58::parse_ss58_reward_address;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_proof_of_space::chia::ChiaTable;
 use tracing::{info, warn};
