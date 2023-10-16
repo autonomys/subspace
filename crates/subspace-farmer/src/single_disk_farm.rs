@@ -1,4 +1,4 @@
-mod farming;
+pub mod farming;
 pub mod piece_cache;
 pub mod piece_reader;
 mod plotting;
