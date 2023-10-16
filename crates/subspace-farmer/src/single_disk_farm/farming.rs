@@ -31,7 +31,7 @@ use tracing::{debug, error, info, trace, warn};
 #[derive(Debug, Error)]
 pub enum FarmingError {
     /// Failed to subscribe to slot info notifications
-    #[error("Failed to substribe to slot info notifications: {error}")]
+    #[error("Failed to subscribe to slot info notifications: {error}")]
     FailedToSubscribeSlotInfo {
         /// Lower-level error
         error: node_client::Error,
