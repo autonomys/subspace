@@ -32,10 +32,13 @@ tracing = "0.1.37"
 
 [dev-dependencies]
 domain-block-builder = { version = "0.1.0", path = "../../domains/client/block-builder" }
+domain-block-preprocessor = { version = "0.1.0", path = "../../domains/client/block-preprocessor" }
 domain-test-service = { version = "0.1.0", path = "../../domains/test/service" }
+frame-system = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
 pallet-balances = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
 pallet-domains = { version = "0.1.0", path = "../../crates/pallet-domains" }
 sc-cli = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c", default-features = false }
+sc-executor = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c", default-features = false }
 sc-service = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c", default-features = false }
 sp-keyring = { version = "24.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
 subspace-test-client = { version = "0.1.0", path = "../../test/subspace-test-client" }
