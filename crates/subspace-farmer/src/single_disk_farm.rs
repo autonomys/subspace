@@ -560,8 +560,8 @@ impl Drop for SingleDiskFarm {
 }
 
 impl SingleDiskFarm {
-    const PLOT_FILE: &'static str = "plot.bin";
-    const METADATA_FILE: &'static str = "metadata.bin";
+    pub const PLOT_FILE: &'static str = "plot.bin";
+    pub const METADATA_FILE: &'static str = "metadata.bin";
     const SUPPORTED_PLOT_VERSION: u8 = 0;
 
     /// Create new single disk farm instance
@@ -1135,6 +1135,60 @@ impl SingleDiskFarm {
             info: single_disk_farm_info,
             directory,
         }
+    }
+
+    /// Read all sectors metadata
+    pub fn read_all_sectors_metadata(
+        directory: &Path,
+    ) -> io::Result<Vec<SectorMetadataChecksummed>> {
+        let mut metadata_file = OpenOptions::new()
+            .read(true)
+            .open(directory.join(Self::METADATA_FILE))?;
+
+        let metadata_size = metadata_file.seek(SeekFrom::End(0))?;
+        let sector_metadata_size = SectorMetadataChecksummed::encoded_size();
+
+        let mut metadata_header_bytes = vec![0; PlotMetadataHeader::encoded_size()];
+        metadata_file.read_exact_at(&mut metadata_header_bytes, 0)?;
+
+        let metadata_header = PlotMetadataHeader::decode(&mut metadata_header_bytes.as_ref())
+            .map_err(|error| {
+                io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("Failed to decode metadata header: {}", error),
+                )
+            })?;
+
+        if metadata_header.version != SingleDiskFarm::SUPPORTED_PLOT_VERSION {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("Unsupported metadata version {}", metadata_header.version),
+            ));
+        }
+
+        let mut sectors_metadata = Vec::<SectorMetadataChecksummed>::with_capacity(
+            ((metadata_size - RESERVED_PLOT_METADATA) / sector_metadata_size as u64) as usize,
+        );
+
+        let mut sector_metadata_bytes = vec![0; sector_metadata_size];
+        for sector_index in 0..metadata_header.plotted_sector_count {
+            metadata_file.read_exact_at(
+                &mut sector_metadata_bytes,
+                RESERVED_PLOT_METADATA + sector_metadata_size as u64 * u64::from(sector_index),
+            )?;
+            sectors_metadata.push(
+                SectorMetadataChecksummed::decode(&mut sector_metadata_bytes.as_ref()).map_err(
+                    |error| {
+                        io::Error::new(
+                            io::ErrorKind::Other,
+                            format!("Failed to decode sector metadata: {}", error),
+                        )
+                    },
+                )?,
+            );
+        }
+
+        Ok(sectors_metadata)
     }
 
     /// ID of this farm

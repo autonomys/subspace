@@ -24,6 +24,9 @@ type PosTable = ChiaTable;
 enum Command {
     /// Start a farmer, does plotting and farming
     Farm(commands::farm::FarmingArgs),
+    /// Run various benchmarks
+    #[clap(subcommand)]
+    Benchmark(commands::benchmark::BenchmarkArgs),
     /// Print information about farm and its content
     Info {
         /// One or more farm located at specified path.
@@ -76,6 +79,9 @@ async fn main() -> anyhow::Result<()> {
     match command {
         Command::Farm(farming_args) => {
             commands::farm::farm::<PosTable>(farming_args).await?;
+        }
+        Command::Benchmark(benchmark_args) => {
+            commands::benchmark::benchmark(benchmark_args).await?;
         }
         Command::Info { disk_farms } => {
             if disk_farms.is_empty() {
