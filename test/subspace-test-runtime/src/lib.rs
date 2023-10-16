@@ -25,6 +25,7 @@ include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use codec::{Compact, CompactLen, Decode, Encode, MaxEncodedLen};
 use core::num::NonZeroU64;
+use domain_runtime_primitives::opaque::Block as DomainBlock;
 use domain_runtime_primitives::{
     BlockNumber as DomainNumber, Hash as DomainHash, MultiAccountId, TryConvertBack,
 };
@@ -644,9 +645,8 @@ parameter_types! {
 
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type DomainNumber = DomainNumber;
     type DomainHash = DomainHash;
-    type DomainHashing = BlakeTwo256;
+    type DomainBlock = DomainBlock;
     type ConfirmationDepthK = ConfirmationDepthK;
     type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
     type Currency = Balances;

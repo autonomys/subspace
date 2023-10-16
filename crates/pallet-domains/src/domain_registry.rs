@@ -4,7 +4,8 @@ use crate::block_tree::import_genesis_receipt;
 use crate::pallet::DomainStakingSummary;
 use crate::staking::StakingSummary;
 use crate::{
-    Config, DomainRegistry, ExecutionReceiptOf, HoldIdentifier, NextDomainId, RuntimeRegistry,
+    Config, DomainHashingOf, DomainRegistry, ExecutionReceiptOf, HoldIdentifier, NextDomainId,
+    RuntimeRegistry,
 };
 use alloc::string::String;
 use codec::{Decode, Encode};
@@ -126,7 +127,7 @@ pub(crate) fn do_instantiate_domain<T: Config>(
 
         let state_version = runtime_obj.version.state_version();
         let raw_genesis = runtime_obj.into_complete_raw_genesis(domain_id);
-        let state_root = raw_genesis.state_root::<T::DomainHashing>(state_version);
+        let state_root = raw_genesis.state_root::<DomainHashingOf<T>>(state_version);
 
         ExecutionReceiptOf::<T>::genesis(state_root)
     };
