@@ -712,6 +712,32 @@ fn storage_value_key(pallet_prefix: &str, value_name: &str) -> Vec<u8> {
     final_key
 }
 
+fn storage_keys_for_verifying_tx_validity_inner(
+    sender: AccountId,
+    block_number: BlockNumber,
+    maybe_tx_era: Option<Era>,
+) -> Vec<Vec<u8>> {
+    let mut storage_keys = sp_std::vec![
+        frame_system::BlockHash::<Runtime>::hashed_key_for(BlockNumber::from(0u32)),
+        storage_value_key(System::name(), "Number"),
+        frame_system::Account::<Runtime>::hashed_key_for(sender),
+        pallet_transaction_payment::NextFeeMultiplier::<Runtime>::hashed_key().to_vec()
+    ];
+
+    match maybe_tx_era {
+        None => storage_keys,
+        Some(era) => {
+            let birth_number = era
+                .birth(block_number.saturated_into::<u64>())
+                .saturated_into::<BlockNumber>();
+            storage_keys.push(frame_system::BlockHash::<Runtime>::hashed_key_for(
+                birth_number,
+            ));
+            storage_keys
+        }
+    }
+}
+
 impl_runtime_apis! {
     impl sp_api::Core<Block> for Runtime {
         fn version() -> RuntimeVersion {
@@ -884,25 +910,9 @@ impl_runtime_apis! {
                     Executive::validate_transaction(TransactionSource::External, uxt.clone(), block_hash);
 
                 tx_validity.map(|_| ()).map_err(|tx_validity_error| {
-                    let era_in_tx = Self::extrinsic_era(uxt).expect("we already checked existence of signature during signer extraction above; qed");
-
-                    let mut storage_keys = sp_std::vec![
-                        frame_system::BlockHash::<Runtime>::hashed_key_for(BlockNumber::from(0u32)),
-                        storage_value_key(System::name(), "Number"),
-                        frame_system::Account::<Runtime>::hashed_key_for(signer),
-                        pallet_transaction_payment::NextFeeMultiplier::<Runtime>::hashed_key().to_vec()
-                    ];
-
-                    match era_in_tx {
-                        Era::Immortal => {},
-                        Era::Mortal {..} => {
-                            let birth_number = era_in_tx.birth(block_number.saturated_into::<u64>()).saturated_into::<BlockNumber>();
-                            storage_keys.push(frame_system::BlockHash::<Runtime>::hashed_key_for(birth_number));
-                        }
-                    }
                     domain_runtime_primitives::CheckTxValidityError::InvalidTransaction {
                         error: tx_validity_error,
-                        storage_keys,
+                        storage_keys: storage_keys_for_verifying_tx_validity_inner(signer, block_number, Self::extrinsic_era(uxt)),
                     }
                 })
             } else {
@@ -917,22 +927,7 @@ impl_runtime_apis! {
         ) -> Result<Vec<Vec<u8>>, domain_runtime_primitives::VerifyTxValidityError> {
             let sender = AccountId::decode(&mut who.as_slice())
                 .map_err(|_| domain_runtime_primitives::VerifyTxValidityError::FailedToDecodeAccountId)?;
-
-            let mut storage_keys = sp_std::vec![
-                frame_system::BlockHash::<Runtime>::hashed_key_for(BlockNumber::from(0u32)),
-                storage_value_key(System::name(), "Number"),
-                frame_system::Account::<Runtime>::hashed_key_for(sender),
-                pallet_transaction_payment::NextFeeMultiplier::<Runtime>::hashed_key().to_vec()
-            ];
-
-            match maybe_tx_era {
-                None | Some(Era::Immortal) => Ok(storage_keys),
-                Some(mortal_era) => {
-                    let birth_number = mortal_era.birth(block_number.saturated_into::<u64>()).saturated_into::<BlockNumber>();
-                    storage_keys.push(frame_system::BlockHash::<Runtime>::hashed_key_for(birth_number));
-                    Ok(storage_keys)
-                }
-            }
+            Ok(storage_keys_for_verifying_tx_validity_inner(sender, block_number, maybe_tx_era))
         }
 
         fn extrinsic_era(
