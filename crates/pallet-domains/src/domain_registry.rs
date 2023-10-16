@@ -1,6 +1,6 @@
 //! Domain registry for domains
 
-use crate::block_tree::{derive_domain_block_hash, import_genesis_receipt};
+use crate::block_tree::import_genesis_receipt;
 use crate::pallet::DomainStakingSummary;
 use crate::staking::StakingSummary;
 use crate::{
@@ -16,7 +16,10 @@ use frame_support::{ensure, PalletError};
 use frame_system::pallet_prelude::*;
 use scale_info::TypeInfo;
 use sp_core::Get;
-use sp_domains::{DomainId, DomainsDigestItem, OperatorAllowList, ReceiptHash, RuntimeId};
+use sp_domains::{
+    derive_domain_block_hash, DomainId, DomainsDigestItem, OperatorAllowList, ReceiptHash,
+    RuntimeId,
+};
 use sp_runtime::traits::{CheckedAdd, Zero};
 use sp_runtime::DigestItem;
 use sp_std::collections::btree_map::BTreeMap;
@@ -128,7 +131,7 @@ pub(crate) fn do_instantiate_domain<T: Config>(
         let state_version = runtime_obj.version.state_version();
         let raw_genesis = runtime_obj.into_complete_raw_genesis(domain_id);
         let state_root = raw_genesis.state_root::<DomainHashingFor<T>>(state_version);
-        let genesis_block_hash = derive_domain_block_hash::<T>(
+        let genesis_block_hash = derive_domain_block_hash::<T::DomainHeader>(
             Zero::zero(),
             sp_domains::EMPTY_EXTRINSIC_ROOT.into(),
             state_root,

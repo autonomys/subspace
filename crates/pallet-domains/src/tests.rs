@@ -17,8 +17,8 @@ use sp_core::crypto::Pair;
 use sp_core::storage::{StateVersion, StorageKey};
 use sp_core::{Get, H256, U256};
 use sp_domains::fraud_proof::{
-    ExtrinsicDigest, FraudProof, InvalidExtrinsicsRootProof, InvalidTotalRewardsProof,
-    ValidBundleDigest,
+    ExtrinsicDigest, FraudProof, InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof,
+    InvalidTotalRewardsProof, ValidBundleDigest,
 };
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::storage::RawGenesis;
@@ -32,7 +32,7 @@ use sp_domains_fraud_proof::{
     FraudProofVerificationInfoResponse,
 };
 use sp_runtime::traits::{AccountIdConversion, BlakeTwo256, Hash as HashT, IdentityLookup, Zero};
-use sp_runtime::{BuildStorage, OpaqueExtrinsic};
+use sp_runtime::{BuildStorage, Digest, OpaqueExtrinsic};
 use sp_state_machine::backend::AsTrieBackend;
 use sp_state_machine::{prove_read, Backend, TrieBackendBuilder};
 use sp_std::sync::Arc;
@@ -927,6 +927,62 @@ fn generate_invalid_domain_extrinsic_root_fraud_proof<T: Config + pallet_timesta
         bad_receipt_hash,
         valid_bundle_digests,
     })
+}
+
+#[test]
+fn test_invalid_domain_block_hash_fraud_proof() {
+    let creator = 0u64;
+    let operator_id = 1u64;
+    let head_domain_number = 10;
+    let mut ext = new_test_ext_with_extensions();
+    ext.execute_with(|| {
+        let domain_id = register_genesis_domain(creator, vec![operator_id]);
+        extend_block_tree(domain_id, operator_id, head_domain_number + 1);
+        assert_eq!(
+            HeadReceiptNumber::<Test>::get(domain_id),
+            head_domain_number
+        );
+
+        let bad_receipt_at = 8;
+        let mut domain_block = get_block_tree_node_at::<Test>(domain_id, bad_receipt_at).unwrap();
+
+        let bad_receipt_hash = domain_block.execution_receipt.hash();
+        let (fraud_proof, root) = generate_invalid_domain_block_hash_fraud_proof::<Test>(
+            domain_id,
+            bad_receipt_hash,
+            Digest::default(),
+        );
+        domain_block.execution_receipt.final_state_root = root;
+        domain_block.execution_receipt.domain_block_hash = H256::random();
+        DomainBlocks::<Test>::insert(bad_receipt_hash, domain_block);
+        assert_ok!(Domains::validate_fraud_proof(&fraud_proof),);
+    });
+}
+
+fn generate_invalid_domain_block_hash_fraud_proof<T: Config>(
+    domain_id: DomainId,
+    bad_receipt_hash: ReceiptHash,
+    digest: Digest,
+) -> (FraudProof<BlockNumberFor<T>, T::Hash>, T::Hash) {
+    let digest_storage_key = sp_domains::fraud_proof::system_digest_final_key();
+    let mut root = T::Hash::default();
+    let mut mdb = PrefixedMemoryDB::<T::Hashing>::default();
+    {
+        let mut trie = TrieDBMutBuilderV1::new(&mut mdb, &mut root).build();
+        trie.insert(&digest_storage_key, &digest.encode()).unwrap();
+    };
+
+    let backend = TrieBackendBuilder::new(mdb, root).build();
+    let (root, digest_storage_proof) =
+        storage_proof_for_key::<T, _>(backend, StorageKey(digest_storage_key));
+    (
+        FraudProof::InvalidDomainBlockHash(InvalidDomainBlockHashProof {
+            domain_id,
+            bad_receipt_hash,
+            digest_storage_proof,
+        }),
+        root,
+    )
 }
 
 #[test]

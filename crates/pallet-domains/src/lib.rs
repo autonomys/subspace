@@ -45,7 +45,7 @@ pub use pallet::*;
 use scale_info::TypeInfo;
 use sp_core::H256;
 use sp_domains::bundle_producer_election::{is_below_threshold, BundleProducerElectionParams};
-use sp_domains::fraud_proof::{FraudProof, InvalidTotalRewardsProof};
+use sp_domains::fraud_proof::{FraudProof, InvalidDomainBlockHashProof, InvalidTotalRewardsProof};
 use sp_domains::verification::verify_invalid_total_rewards_fraud_proof;
 use sp_domains::{
     DomainBlockLimit, DomainId, DomainInstanceData, ExecutionReceipt, OpaqueBundle, OperatorId,
@@ -53,7 +53,9 @@ use sp_domains::{
     EMPTY_EXTRINSIC_ROOT,
 };
 use sp_domains_fraud_proof::fraud_proof_runtime_interface::get_fraud_proof_verification_info;
-use sp_domains_fraud_proof::verification::verify_invalid_domain_extrinsics_root_fraud_proof;
+use sp_domains_fraud_proof::verification::{
+    verify_invalid_domain_block_hash_fraud_proof, verify_invalid_domain_extrinsics_root_fraud_proof,
+};
 use sp_domains_fraud_proof::{
     FraudProofVerificationInfoRequest, FraudProofVerificationInfoResponse,
 };
@@ -587,6 +589,8 @@ mod pallet {
         DescendantsOfFraudulentERNotPruned,
         /// Invalid fraud proof since total rewards are not mismatched.
         InvalidTotalRewardsFraudProof(sp_domains::verification::VerificationError),
+        /// Invalid fraud proof since domain block hash is not mismatched.
+        InvalidDomainBlockHashFraudProof(sp_domains::verification::VerificationError),
         /// Invalid domain extrinsic fraud proof
         InvalidExtrinsicRootFraudProof(sp_domains::verification::VerificationError),
         /// Failed to get block randomness.
@@ -1521,6 +1525,25 @@ impl<T: Config> Pallet<T> {
                     T::Hashing,
                 >(bad_receipt, storage_proof)
                 .map_err(FraudProofError::InvalidTotalRewardsFraudProof)?;
+            }
+            FraudProof::InvalidDomainBlockHash(InvalidDomainBlockHashProof {
+                digest_storage_proof,
+                ..
+            }) => {
+                let parent_receipt =
+                    DomainBlocks::<T>::get(bad_receipt.parent_domain_block_receipt_hash)
+                        .ok_or(FraudProofError::BadReceiptNotFound)?
+                        .execution_receipt;
+                verify_invalid_domain_block_hash_fraud_proof::<
+                    T::Block,
+                    BalanceOf<T>,
+                    T::DomainHeader,
+                >(
+                    bad_receipt,
+                    digest_storage_proof.clone(),
+                    parent_receipt.domain_block_hash,
+                )
+                .map_err(FraudProofError::InvalidDomainBlockHashFraudProof)?;
             }
             FraudProof::InvalidExtrinsicsRoot(proof) => {
                 let consensus_block_hash = bad_receipt.consensus_block_hash;
