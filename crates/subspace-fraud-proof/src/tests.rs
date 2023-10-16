@@ -21,6 +21,7 @@ use sp_domains::fraud_proof::{
 use sp_domains::DomainId;
 use sp_runtime::generic::{Digest, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
+use sp_trie::LayoutV1;
 use std::sync::Arc;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_test_client::Client;
@@ -224,9 +225,7 @@ async fn execution_proof_creation_and_verification_should_work() {
             ))],
         },
     );
-    let execution_phase = ExecutionPhase::InitializeBlock {
-        domain_parent_hash: parent_header.hash(),
-    };
+    let execution_phase = ExecutionPhase::InitializeBlock;
     let initialize_block_call_data = new_header.encode();
 
     let prover = ExecutionProver::new(alice.backend.clone(), alice.code_executor.clone());
@@ -279,10 +278,6 @@ async fn execution_proof_creation_and_verification_should_work() {
     let invalid_state_transition_proof = InvalidStateTransitionProof {
         domain_id: TEST_DOMAIN_ID,
         bad_receipt_hash: Hash::random(),
-        parent_number: parent_number_alice,
-        consensus_parent_hash,
-        pre_state_root: *parent_header.state_root(),
-        post_state_root: intermediate_roots[0].into(),
         proof: storage_proof,
         execution_phase,
     };
@@ -290,7 +285,8 @@ async fn execution_proof_creation_and_verification_should_work() {
     assert!(proof_verifier.verify(&fraud_proof).is_ok());
 
     // Test extrinsic execution.
-    for (target_extrinsic_index, xt) in test_txs.clone().into_iter().enumerate() {
+    let encoded_test_txs: Vec<_> = test_txs.iter().map(Encode::encode).collect();
+    for (target_extrinsic_index, encoded_tx) in encoded_test_txs.clone().into_iter().enumerate() {
         let storage_changes = create_block_builder()
             .prepare_storage_changes_before(target_extrinsic_index)
             .unwrap_or_else(|_| {
@@ -300,14 +296,25 @@ async fn execution_proof_creation_and_verification_should_work() {
         let delta = storage_changes.transaction;
         let post_delta_root = storage_changes.transaction_storage_root;
 
-        let execution_phase = ExecutionPhase::ApplyExtrinsic(target_extrinsic_index as u32);
-        let apply_extrinsic_call_data = xt.encode();
+        let execution_phase = {
+            let proof_of_inclusion = sp_domains::valued_trie_root::generate_proof::<
+                LayoutV1<BlakeTwo256>,
+            >(
+                encoded_test_txs.as_slice(), target_extrinsic_index as u32
+            )
+            .unwrap();
+            ExecutionPhase::ApplyExtrinsic {
+                proof_of_inclusion,
+                mismatch_index: target_extrinsic_index as u32,
+                extrinsic: encoded_tx.clone(),
+            }
+        };
 
         let storage_proof = prover
             .prove_execution(
                 parent_header.hash(),
                 &execution_phase,
-                &apply_extrinsic_call_data,
+                &encoded_tx,
                 Some((delta, post_delta_root)),
             )
             .expect("Create extrinsic execution proof");
@@ -320,7 +327,7 @@ async fn execution_proof_creation_and_verification_should_work() {
             .check_execution_proof(
                 parent_header.hash(),
                 &execution_phase,
-                &apply_extrinsic_call_data,
+                &encoded_tx,
                 post_delta_root,
                 storage_proof.clone(),
             )
@@ -336,10 +343,6 @@ async fn execution_proof_creation_and_verification_should_work() {
         let invalid_state_transition_proof = InvalidStateTransitionProof {
             domain_id: TEST_DOMAIN_ID,
             bad_receipt_hash: Hash::random(),
-            parent_number: parent_number_alice,
-            consensus_parent_hash,
-            pre_state_root: intermediate_roots[target_extrinsic_index].into(),
-            post_state_root: intermediate_roots[target_extrinsic_index + 1].into(),
             proof: storage_proof,
             execution_phase,
         };
@@ -357,9 +360,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 
     assert_eq!(post_delta_root, intermediate_roots.last().unwrap().into());
 
-    let execution_phase = ExecutionPhase::FinalizeBlock {
-        total_extrinsics: test_txs.len() as u32,
-    };
+    let execution_phase = ExecutionPhase::FinalizeBlock;
     let finalize_block_call_data = Vec::new();
 
     let storage_proof = prover
@@ -389,10 +390,6 @@ async fn execution_proof_creation_and_verification_should_work() {
     let invalid_state_transition_proof = InvalidStateTransitionProof {
         domain_id: TEST_DOMAIN_ID,
         bad_receipt_hash: Hash::random(),
-        parent_number: parent_number_alice,
-        consensus_parent_hash,
-        pre_state_root: intermediate_roots.last().unwrap().into(),
-        post_state_root: post_execution_root,
         proof: storage_proof,
         execution_phase,
     };
@@ -459,6 +456,7 @@ async fn invalid_execution_proof_should_not_work() {
         transfer_to_charlie.clone(),
         transfer_to_charlie_again.clone(),
     ];
+    let encoded_test_txs: Vec<_> = test_txs.iter().map(Encode::encode).collect();
 
     for tx in test_txs.iter() {
         alice
@@ -508,8 +506,20 @@ async fn invalid_execution_proof_should_not_work() {
         let delta = storage_changes.transaction;
         let post_delta_root = storage_changes.transaction_storage_root;
 
-        let execution_phase = ExecutionPhase::ApplyExtrinsic(extrinsic_index as u32);
-        let apply_extrinsic_call_data = test_txs[extrinsic_index].encode();
+        let execution_phase = {
+            let proof_of_inclusion = sp_domains::valued_trie_root::generate_proof::<
+                LayoutV1<BlakeTwo256>,
+            >(
+                encoded_test_txs.as_slice(), extrinsic_index as u32
+            )
+            .unwrap();
+            ExecutionPhase::ApplyExtrinsic {
+                proof_of_inclusion,
+                mismatch_index: extrinsic_index as u32,
+                extrinsic: encoded_test_txs[extrinsic_index].clone(),
+            }
+        };
+        let apply_extrinsic_call_data = encoded_test_txs[extrinsic_index].clone();
 
         let proof = prover
             .prove_execution(
@@ -527,7 +537,7 @@ async fn invalid_execution_proof_should_not_work() {
     let (proof1, post_delta_root1, execution_phase1) = create_extrinsic_proof(1);
 
     let check_proof_executor = |post_delta_root: Hash, proof: StorageProof| {
-        let execution_phase = ExecutionPhase::ApplyExtrinsic(1u32);
+        let execution_phase = create_extrinsic_proof(1).2;
         let apply_extrinsic_call_data = transfer_to_charlie_again.encode();
         prover.check_execution_proof(
             parent_header.hash(),
@@ -566,10 +576,6 @@ async fn invalid_execution_proof_should_not_work() {
     let invalid_state_transition_proof = InvalidStateTransitionProof {
         domain_id: TEST_DOMAIN_ID,
         bad_receipt_hash: Hash::random(),
-        parent_number: parent_number_alice,
-        consensus_parent_hash,
-        pre_state_root: post_delta_root0,
-        post_state_root: post_delta_root1,
         proof: proof1,
         execution_phase: execution_phase0.clone(),
     };
@@ -579,10 +585,6 @@ async fn invalid_execution_proof_should_not_work() {
     let invalid_state_transition_proof = InvalidStateTransitionProof {
         domain_id: TEST_DOMAIN_ID,
         bad_receipt_hash: Hash::random(),
-        parent_number: parent_number_alice,
-        consensus_parent_hash,
-        pre_state_root: post_delta_root0,
-        post_state_root: post_delta_root1,
         proof: proof0.clone(),
         execution_phase: execution_phase1,
     };
@@ -592,10 +594,6 @@ async fn invalid_execution_proof_should_not_work() {
     let invalid_state_transition_proof = InvalidStateTransitionProof {
         domain_id: TEST_DOMAIN_ID,
         bad_receipt_hash: Hash::random(),
-        parent_number: parent_number_alice,
-        consensus_parent_hash,
-        pre_state_root: post_delta_root0,
-        post_state_root: post_delta_root1,
         proof: proof0,
         execution_phase: execution_phase0,
     };

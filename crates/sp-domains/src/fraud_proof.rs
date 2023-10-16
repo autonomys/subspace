@@ -16,11 +16,15 @@ use trie_db::TrieLayout;
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub enum ExecutionPhase {
     /// Executes the `initialize_block` hook.
-    InitializeBlock { domain_parent_hash: H256 },
+    InitializeBlock,
     /// Executes some extrinsic.
-    ApplyExtrinsic(u32),
+    ApplyExtrinsic {
+        proof_of_inclusion: Vec<Vec<u8>>,
+        mismatch_index: u32,
+        extrinsic: Vec<u8>,
+    },
     /// Executes the `finalize_block` hook.
-    FinalizeBlock { total_extrinsics: u32 },
+    FinalizeBlock,
 }
 
 impl ExecutionPhase {
@@ -29,9 +33,9 @@ impl ExecutionPhase {
         match self {
             // TODO: Replace `DomainCoreApi_initialize_block_with_post_state_root` with `Core_initalize_block`
             // Should be a same issue with https://github.com/paritytech/substrate/pull/10922#issuecomment-1068997467
-            Self::InitializeBlock { .. } => "DomainCoreApi_initialize_block_with_post_state_root",
-            Self::ApplyExtrinsic(_) => "BlockBuilder_apply_extrinsic",
-            Self::FinalizeBlock { .. } => "BlockBuilder_finalize_block",
+            Self::InitializeBlock => "DomainCoreApi_initialize_block_with_post_state_root",
+            Self::ApplyExtrinsic { .. } => "BlockBuilder_apply_extrinsic",
+            Self::FinalizeBlock => "BlockBuilder_finalize_block",
         }
     }
 
@@ -42,9 +46,9 @@ impl ExecutionPhase {
     /// result of execution reported in [`FraudProof`] is expected or not.
     pub fn verifying_method(&self) -> &'static str {
         match self {
-            Self::InitializeBlock { .. } => "DomainCoreApi_initialize_block_with_post_state_root",
-            Self::ApplyExtrinsic(_) => "DomainCoreApi_apply_extrinsic_with_post_state_root",
-            Self::FinalizeBlock { .. } => "BlockBuilder_finalize_block",
+            Self::InitializeBlock => "DomainCoreApi_initialize_block_with_post_state_root",
+            Self::ApplyExtrinsic { .. } => "DomainCoreApi_apply_extrinsic_with_post_state_root",
+            Self::FinalizeBlock => "BlockBuilder_finalize_block",
         }
     }
 
@@ -54,13 +58,13 @@ impl ExecutionPhase {
         execution_result: Vec<u8>,
     ) -> Result<Header::Hash, VerificationError> {
         match self {
-            Self::InitializeBlock { .. } | Self::ApplyExtrinsic(_) => {
+            Self::InitializeBlock | Self::ApplyExtrinsic { .. } => {
                 let encoded_storage_root = Vec::<u8>::decode(&mut execution_result.as_slice())
                     .map_err(VerificationError::InitializeBlockOrApplyExtrinsicDecode)?;
                 Header::Hash::decode(&mut encoded_storage_root.as_slice())
                     .map_err(VerificationError::StorageRootDecode)
             }
-            Self::FinalizeBlock { .. } => {
+            Self::FinalizeBlock => {
                 let new_header = Header::decode(&mut execution_result.as_slice())
                     .map_err(VerificationError::HeaderDecode)?;
                 Ok(*new_header.state_root())
@@ -317,36 +321,18 @@ pub struct InvalidStateTransitionProof {
     pub domain_id: DomainId,
     /// Hash of the bad receipt in which an invalid trace occurred.
     pub bad_receipt_hash: H256,
-    /// Parent number.
-    pub parent_number: BlockNumber,
-    /// Hash of the consensus block corresponding to `parent_number`.
-    ///
-    /// Runtime code for the execution of the domain block that is being challenged
-    /// is retrieved on top of the consensus parent block from the consensus chain.
-    pub consensus_parent_hash: H256,
-    /// State root before the fraudulent transaction.
-    pub pre_state_root: H256,
-    /// State root after the fraudulent transaction.
-    pub post_state_root: H256,
     /// Proof recorded during the computation.
     pub proof: StorageProof,
     /// Execution phase.
     pub execution_phase: ExecutionPhase,
 }
 
-pub fn dummy_invalid_state_transition_proof(
-    domain_id: DomainId,
-    parent_number: u32,
-) -> InvalidStateTransitionProof {
+pub fn dummy_invalid_state_transition_proof(domain_id: DomainId) -> InvalidStateTransitionProof {
     InvalidStateTransitionProof {
         domain_id,
         bad_receipt_hash: H256::default(),
-        parent_number,
-        consensus_parent_hash: H256::default(),
-        pre_state_root: H256::default(),
-        post_state_root: H256::default(),
         proof: StorageProof::empty(),
-        execution_phase: ExecutionPhase::ApplyExtrinsic(0),
+        execution_phase: ExecutionPhase::InitializeBlock,
     }
 }
 

@@ -99,6 +99,10 @@ pub type ReceiptHash = H256;
 /// The Merkle root of all extrinsics included in a bundle.
 pub type ExtrinsicsRoot = H256;
 
+pub fn as_h256<T: Encode>(data: T) -> Option<H256> {
+    H256::decode(&mut data.encode().as_slice()).ok()
+}
+
 /// Unique identifier of a domain.
 #[derive(
     Clone,
