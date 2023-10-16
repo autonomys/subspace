@@ -49,8 +49,8 @@ use sp_domains::fraud_proof::{FraudProof, InvalidTotalRewardsProof};
 use sp_domains::verification::verify_invalid_total_rewards_fraud_proof;
 use sp_domains::{
     DomainBlockLimit, DomainId, DomainInstanceData, ExecutionReceipt, OpaqueBundle, OperatorId,
-    OperatorPublicKey, ProofOfElection, RuntimeId, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT,
-    EMPTY_EXTRINSIC_ROOT,
+    OperatorPublicKey, ProofOfElection, ReceiptHash, RuntimeId,
+    DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT, EMPTY_EXTRINSIC_ROOT,
 };
 use sp_domains_fraud_proof::fraud_proof_runtime_interface::get_fraud_proof_verification_info;
 use sp_domains_fraud_proof::verification::{
@@ -1755,6 +1755,10 @@ impl<T: Config> Pallet<T> {
         let seed = DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT;
         let (randomness, _) = T::Randomness::random(seed);
         randomness
+    }
+
+    pub fn execution_receipt(receipt_hash: ReceiptHash) -> Option<ExecutionReceiptOf<T>> {
+        DomainBlocks::<T>::get(receipt_hash).map(|db| db.execution_receipt)
     }
 }
 

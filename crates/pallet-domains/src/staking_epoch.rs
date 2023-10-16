@@ -8,8 +8,8 @@ use crate::pallet::{
 };
 use crate::staking::{Error as TransitionError, Nominator, OperatorStatus, Withdraw};
 use crate::{
-    BalanceOf, Config, DomainHashOf, DomainNumberOf, ElectionVerificationParams, FungibleHoldId,
-    HoldIdentifier, NominatorId,
+    BalanceOf, Config, DomainNumberOf, ElectionVerificationParams, FungibleHoldId, HoldIdentifier,
+    NominatorId,
 };
 use codec::{Decode, Encode};
 use frame_support::traits::fungible::{InspectHold, Mutate, MutateHold};

@@ -705,7 +705,7 @@ where
             .parent_chain
             .extract_fraud_proofs(parent_chain_block_hash, extrinsics)?;
 
-        self.check_receipts(receipts, fraud_proofs)?;
+        self.check_receipts(parent_chain_block_hash, receipts, fraud_proofs)?;
 
         Ok(())
     }
@@ -736,6 +736,7 @@ where
 
     fn check_receipts(
         &self,
+        parent_chain_block_hash: ParentChainBlock::Hash,
         receipts: Vec<ExecutionReceiptFor<Block, ParentChainBlock>>,
         fraud_proofs: Vec<FraudProof<NumberFor<ParentChainBlock>, ParentChainBlock::Hash>>,
     ) -> Result<(), sp_blockchain::Error> {
@@ -810,31 +811,30 @@ where
             }
         }
 
-        let bad_receipts_to_delete = fraud_proofs
-            .into_iter()
-            .filter_map(|fraud_proof| {
-                match fraud_proof {
-                    FraudProof::InvalidStateTransition(fraud_proof) => {
-                        let bad_receipt_number = fraud_proof.parent_number + 1;
-                        let bad_receipt_hash = fraud_proof.bad_receipt_hash;
-
-                        // In order to not delete a receipt which was just inserted, accumulate the write&delete operations
-                        // in case the bad receipt and corresponding fraud proof are included in the same block.
-                        if let Some(index) = bad_receipts_to_write
-                            .iter()
-                            .map(|(_, receipt_hash, _)| receipt_hash)
-                            .position(|v| *v == bad_receipt_hash)
-                        {
-                            bad_receipts_to_write.swap_remove(index);
-                            None
-                        } else {
-                            Some((bad_receipt_number, bad_receipt_hash))
-                        }
-                    }
-                    _ => None,
+        // Use the `parent_chain_parent_hash` to get the `bad_receipt` because fraud proof already pruned the bad
+        // receipt in `parent_chain_block_hash`
+        let parent_chain_parent_hash = self.parent_chain.parent_hash(parent_chain_block_hash)?;
+        let mut bad_receipts_to_delete = vec![];
+        for fraud_proof in fraud_proofs {
+            let bad_receipt_hash = fraud_proof.bad_receipt_hash();
+            if let Some(bad_receipt) = self
+                .parent_chain
+                .execution_receipt(parent_chain_parent_hash, bad_receipt_hash)?
+            {
+                // In order to not delete a receipt which was just inserted, accumulate the write&delete operations
+                // in case the bad receipt and corresponding fraud proof are included in the same block.
+                if let Some(index) = bad_receipts_to_write
+                    .iter()
+                    .map(|(_, receipt_hash, _)| receipt_hash)
+                    .position(|v| *v == bad_receipt_hash)
+                {
+                    bad_receipts_to_write.swap_remove(index);
+                } else {
+                    bad_receipts_to_delete
+                        .push((bad_receipt.consensus_block_number, bad_receipt_hash));
                 }
-            })
-            .collect::<Vec<_>>();
+            }
+        }
 
         for (bad_receipt_number, bad_receipt_hash, mismatch_info) in bad_receipts_to_write {
             crate::aux_schema::write_bad_receipt::<_, ParentChainBlock>(
@@ -846,7 +846,7 @@ where
         }
 
         for (bad_receipt_number, bad_receipt_hash) in bad_receipts_to_delete {
-            if let Err(e) = crate::aux_schema::delete_bad_receipt(
+            if let Err(e) = crate::aux_schema::delete_bad_receipt::<_, ParentChainBlock>(
                 &*self.client,
                 bad_receipt_number,
                 bad_receipt_hash,

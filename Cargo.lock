@@ -7103,6 +7103,7 @@ dependencies = [
 name = "pallet-domains"
 version = "0.1.0"
 dependencies = [
+ "domain-runtime-primitives",
  "frame-benchmarking",
  "frame-support",
  "frame-system",
@@ -10707,6 +10708,7 @@ dependencies = [
  "frame-support",
  "hash-db 0.16.0",
  "hexlit",
+ "memory-db",
  "num-traits",
  "parity-scale-codec",
  "rand 0.8.5",
@@ -10719,6 +10721,7 @@ dependencies = [
  "sp-blockchain",
  "sp-consensus-slots",
  "sp-core",
+ "sp-domain-digests",
  "sp-runtime",
  "sp-runtime-interface",
  "sp-state-machine",
@@ -10746,6 +10749,7 @@ dependencies = [
  "sp-externalities",
  "sp-runtime",
  "sp-runtime-interface",
+ "sp-state-machine",
  "sp-std",
  "sp-trie",
  "subspace-core-primitives",
