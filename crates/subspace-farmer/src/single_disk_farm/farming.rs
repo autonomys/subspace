@@ -282,25 +282,29 @@ where
     let mut sectors_solutions = sectors_metadata
         .par_iter()
         .zip(sectors)
-        .enumerate()
-        .filter_map(|(sector_index, (sector_metadata, sector))| {
-            let sector_index = sector_index as u16;
-            if maybe_sector_being_modified == Some(sector_index) {
+        .filter_map(|(sector_metadata, sector)| {
+            if maybe_sector_being_modified == Some(sector_metadata.sector_index) {
                 // Skip sector that is being modified right now
                 return None;
             }
-            trace!(slot = %slot_info.slot_number, %sector_index, "Auditing sector");
+            trace!(
+                slot = %slot_info.slot_number,
+                sector_index = %sector_metadata.sector_index,
+                "Auditing sector",
+            );
 
             let audit_results = audit_sector(
                 public_key,
-                sector_index,
                 &slot_info.global_challenge,
                 slot_info.voting_solution_range,
                 sector,
                 sector_metadata,
             )?;
 
-            Some((sector_index, audit_results.solution_candidates))
+            Some((
+                sector_metadata.sector_index,
+                audit_results.solution_candidates,
+            ))
         })
         .filter_map(|(sector_index, solution_candidates)| {
             let sector_solutions = match solution_candidates.into_solutions(

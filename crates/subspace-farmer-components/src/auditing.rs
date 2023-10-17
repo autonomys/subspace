@@ -3,7 +3,7 @@ use crate::sector::{SectorContentsMap, SectorMetadataChecksummed};
 use crate::ReadAt;
 use std::mem;
 use subspace_core_primitives::crypto::Scalar;
-use subspace_core_primitives::{Blake3Hash, PublicKey, SectorId, SectorIndex, SolutionRange};
+use subspace_core_primitives::{Blake3Hash, PublicKey, SectorId, SolutionRange};
 use subspace_verification::is_within_solution_range;
 use tracing::warn;
 
@@ -43,7 +43,6 @@ pub(crate) struct ChunkCandidate {
 /// and seek back afterwards if necessary).
 pub fn audit_sector<'a, Sector>(
     public_key: &'a PublicKey,
-    sector_index: SectorIndex,
     global_challenge: &Blake3Hash,
     solution_range: SolutionRange,
     sector: Sector,
@@ -52,7 +51,7 @@ pub fn audit_sector<'a, Sector>(
 where
     Sector: ReadAt + 'a,
 {
-    let sector_id = SectorId::new(public_key.hash(), sector_index);
+    let sector_id = SectorId::new(public_key.hash(), sector_metadata.sector_index);
 
     let sector_slot_challenge = sector_id.derive_sector_slot_challenge(global_challenge);
     let s_bucket_audit_index = sector_slot_challenge.s_bucket_audit_index();
@@ -74,7 +73,12 @@ where
 
     let mut s_bucket = vec![0; s_bucket_audit_size];
     if let Err(error) = sector.read_at(&mut s_bucket, s_bucket_audit_offset_in_sector) {
-        warn!(%error, %sector_index, %s_bucket_audit_index, "Failed read s-bucket");
+        warn!(
+            %error,
+            sector_index = %sector_metadata.sector_index,
+            %s_bucket_audit_index,
+            "Failed read s-bucket",
+        );
         return None;
     }
 
@@ -146,7 +150,6 @@ where
     Some(AuditResult {
         solution_candidates: SolutionCandidates::new(
             public_key,
-            sector_index,
             sector_id,
             s_bucket_audit_index,
             sector,

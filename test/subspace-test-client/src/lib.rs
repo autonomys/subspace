@@ -175,7 +175,6 @@ async fn start_farming<PosTable, Client>(
     });
 
     let (sector, plotted_sector, mut table_generator) = plotting_result_receiver.await.unwrap();
-    let sector_index = 0;
     let public_key = PublicKey::from(keypair.public.to_bytes());
 
     let mut new_slot_notification_stream = new_slot_notification_stream.subscribe();
@@ -191,7 +190,6 @@ async fn start_farming<PosTable, Client>(
                 .derive_global_challenge(new_slot_info.slot.into());
             let audit_result = audit_sector(
                 &public_key,
-                sector_index,
                 &global_challenge,
                 new_slot_info.solution_range,
                 &sector,

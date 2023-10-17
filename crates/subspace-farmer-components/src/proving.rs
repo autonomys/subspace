@@ -10,7 +10,7 @@ use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::{
     ChunkWitness, PieceOffset, PosProof, PosSeed, PublicKey, Record, RecordCommitment,
-    RecordWitness, SBucket, SectorId, SectorIndex, Solution, SolutionRange,
+    RecordWitness, SBucket, SectorId, Solution, SolutionRange,
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_proof_of_space::{Quality, Table};
@@ -77,7 +77,6 @@ where
     Sector: 'a,
 {
     public_key: &'a PublicKey,
-    sector_index: SectorIndex,
     sector_id: SectorId,
     s_bucket: SBucket,
     sector: Sector,
@@ -92,7 +91,6 @@ where
     fn clone(&self) -> Self {
         Self {
             public_key: self.public_key,
-            sector_index: self.sector_index,
             sector_id: self.sector_id,
             s_bucket: self.s_bucket,
             sector: self.sector.clone(),
@@ -108,7 +106,6 @@ where
 {
     pub(crate) fn new(
         public_key: &'a PublicKey,
-        sector_index: SectorIndex,
         sector_id: SectorId,
         s_bucket: SBucket,
         sector: Sector,
@@ -117,7 +114,6 @@ where
     ) -> Self {
         Self {
             public_key,
-            sector_index,
             sector_id,
             s_bucket,
             sector,
@@ -157,7 +153,6 @@ where
         SolutionsIterator::<'a, RewardAddress, Sector, PosTable, TableGenerator>::new(
             self.public_key,
             reward_address,
-            self.sector_index,
             self.sector_id,
             self.s_bucket,
             self.sector,
@@ -187,7 +182,6 @@ where
 {
     public_key: &'a PublicKey,
     reward_address: &'a RewardAddress,
-    sector_index: SectorIndex,
     sector_id: SectorId,
     s_bucket: SBucket,
     sector_metadata: &'a SectorMetadataChecksummed,
@@ -331,7 +325,7 @@ where
         Some(Ok(Solution {
             public_key: *self.public_key,
             reward_address: *self.reward_address,
-            sector_index: self.sector_index,
+            sector_index: self.sector_metadata.sector_index,
             history_size: self.sector_metadata.history_size,
             piece_offset,
             record_commitment: chunk_cache.record_commitment,
@@ -389,7 +383,6 @@ where
     fn new(
         public_key: &'a PublicKey,
         reward_address: &'a RewardAddress,
-        sector_index: SectorIndex,
         sector_id: SectorId,
         s_bucket: SBucket,
         sector: Sector,
@@ -450,7 +443,6 @@ where
         Ok(Self {
             public_key,
             reward_address,
-            sector_index,
             sector_id,
             s_bucket,
             sector_metadata,

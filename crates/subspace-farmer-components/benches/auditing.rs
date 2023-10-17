@@ -10,8 +10,7 @@ use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    Blake3Hash, HistorySize, PublicKey, Record, RecordedHistorySegment, SectorId, SectorIndex,
-    SolutionRange,
+    Blake3Hash, HistorySize, PublicKey, Record, RecordedHistorySegment, SectorId, SolutionRange,
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::auditing::audit_sector;
@@ -155,7 +154,6 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         b.iter(|| {
             audit_sector(
                 black_box(&public_key),
-                black_box(sector_index),
                 black_box(&global_challenge),
                 black_box(solution_range),
                 black_box(&plotted_sector_bytes),
@@ -197,7 +195,6 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                         let sector = plot_file.offset(sector_index * sector_size);
                         audit_sector(
                             black_box(&public_key),
-                            black_box(sector_index as SectorIndex),
                             black_box(&global_challenge),
                             black_box(solution_range),
                             black_box(&sector),

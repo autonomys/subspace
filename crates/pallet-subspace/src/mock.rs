@@ -480,7 +480,6 @@ pub fn create_signed_vote(
 
         let maybe_audit_result = audit_sector(
             &public_key,
-            sector_index,
             &global_challenge,
             vote_solution_range,
             &plotted_sector_bytes,

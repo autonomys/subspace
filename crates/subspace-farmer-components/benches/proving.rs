@@ -159,7 +159,6 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
         let maybe_audit_result = audit_sector(
             &public_key,
-            sector_index,
             &global_challenge,
             solution_range,
             &plotted_sector_bytes,
@@ -190,7 +189,6 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     {
         let solution_candidates = audit_sector(
             &public_key,
-            sector_index,
             &global_challenge,
             solution_range,
             &plotted_sector_bytes,
@@ -252,7 +250,6 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             .map(|sector| {
                 audit_sector(
                     &public_key,
-                    sector_index,
                     &global_challenge,
                     solution_range,
                     sector,
