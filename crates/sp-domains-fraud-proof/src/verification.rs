@@ -1,12 +1,16 @@
+use crate::{
+    fraud_proof_runtime_interface, FraudProofVerificationInfoRequest,
+    FraudProofVerificationInfoResponse,
+};
 use hash_db::Hasher;
 use sp_core::H256;
-use sp_domains::fraud_proof::{ExtrinsicDigest, InvalidExtrinsicsRootProof};
+use sp_domains::fraud_proof::{ExtrinsicDigest, InvalidExtrinsicsRootProof, ValidBundleProof};
 use sp_domains::valued_trie_root::valued_ordered_trie_root;
 use sp_domains::verification::{
     deduplicate_and_shuffle_extrinsics, extrinsics_shuffling_seed, VerificationError,
 };
 use sp_domains::ExecutionReceipt;
-use sp_runtime::traits::{BlakeTwo256, Block, Hash, NumberFor};
+use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash, NumberFor};
 use sp_std::vec::Vec;
 use sp_trie::LayoutV1;
 use subspace_core_primitives::Randomness;
@@ -32,7 +36,7 @@ pub fn verify_invalid_domain_extrinsics_root_fraud_proof<
     domain_timestamp_extrinsic: Vec<u8>,
 ) -> Result<(), VerificationError>
 where
-    CBlock: Block,
+    CBlock: BlockT,
     Hashing: Hasher<Out = CBlock::Hash>,
     DomainHashing: Hasher<Out = DomainHash>,
     DomainHash: Into<H256>,
@@ -84,4 +88,51 @@ where
     }
 
     Ok(())
+}
+
+pub fn verify_valid_bundle_fraud_proof<CBlock, DomainNumber, DomainHash, Balance>(
+    bad_receipt: ExecutionReceipt<
+        NumberFor<CBlock>,
+        CBlock::Hash,
+        DomainNumber,
+        DomainHash,
+        Balance,
+    >,
+    fraud_proof: &ValidBundleProof,
+) -> Result<(), VerificationError>
+where
+    CBlock: BlockT<Hash: Into<H256>>,
+{
+    let ValidBundleProof {
+        domain_id,
+        bundle_index,
+        ..
+    } = fraud_proof;
+
+    let bundle_body = fraud_proof_runtime_interface::get_fraud_proof_verification_info(
+        bad_receipt.consensus_block_hash.into(),
+        FraudProofVerificationInfoRequest::DomainBundleBody {
+            domain_id: *domain_id,
+            bundle_index: *bundle_index,
+        },
+    )
+    .and_then(FraudProofVerificationInfoResponse::into_bundle_body)
+    .ok_or(VerificationError::FailedToGetDomainBundleBody)?;
+
+    let valid_bundle_digest = fraud_proof_runtime_interface::derive_bundle_digest(
+        bad_receipt.consensus_block_hash.into(),
+        *domain_id,
+        bundle_body,
+    )
+    .ok_or(VerificationError::FailedToDeriveBundleDigest)?;
+
+    let bad_valid_bundle_digest = bad_receipt
+        .valid_bundle_digest_at(*bundle_index as usize)
+        .ok_or(VerificationError::TargetValidBundleNotFound)?;
+
+    if bad_valid_bundle_digest == valid_bundle_digest {
+        Err(VerificationError::InvalidProof)
+    } else {
+        Ok(())
+    }
 }

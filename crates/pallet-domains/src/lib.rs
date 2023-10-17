@@ -17,6 +17,7 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![feature(array_windows)]
+#![feature(associated_type_bounds)]
 
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
@@ -53,7 +54,9 @@ use sp_domains::{
     EMPTY_EXTRINSIC_ROOT,
 };
 use sp_domains_fraud_proof::fraud_proof_runtime_interface::get_fraud_proof_verification_info;
-use sp_domains_fraud_proof::verification::verify_invalid_domain_extrinsics_root_fraud_proof;
+use sp_domains_fraud_proof::verification::{
+    verify_invalid_domain_extrinsics_root_fraud_proof, verify_valid_bundle_fraud_proof,
+};
 use sp_domains_fraud_proof::{
     FraudProofVerificationInfoRequest, FraudProofVerificationInfoResponse,
 };
@@ -165,7 +168,7 @@ mod pallet {
     use subspace_core_primitives::U256;
 
     #[pallet::config]
-    pub trait Config: frame_system::Config {
+    pub trait Config: frame_system::Config<Hash: Into<H256>> {
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 
         /// Domain block number type.
@@ -603,6 +606,8 @@ mod pallet {
         InvalidTotalRewardsFraudProof(sp_domains::verification::VerificationError),
         /// Invalid domain extrinsic fraud proof
         InvalidExtrinsicRootFraudProof(sp_domains::verification::VerificationError),
+        /// Invalid/Bad valid bundle fraud proof
+        BadValidBundleFraudProof(sp_domains::verification::VerificationError),
         /// Failed to get block randomness.
         FailedToGetBlockRandomness,
         /// Failed to get domain timestamp extrinsic.
@@ -1577,6 +1582,13 @@ impl<T: Config> Pallet<T> {
                 )
                 .map_err(FraudProofError::InvalidExtrinsicRootFraudProof)?;
             }
+            FraudProof::ValidBundle(proof) => verify_valid_bundle_fraud_proof::<
+                T::Block,
+                T::DomainNumber,
+                T::DomainHash,
+                BalanceOf<T>,
+            >(bad_receipt, proof)
+            .map_err(FraudProofError::BadValidBundleFraudProof)?,
             _ => {}
         }
 

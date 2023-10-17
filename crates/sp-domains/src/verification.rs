@@ -29,6 +29,12 @@ pub enum VerificationError {
     FailedToDecode,
     /// Invalid bundle digest
     InvalidBundleDigest,
+    /// Failed to get the bundle body
+    FailedToGetDomainBundleBody,
+    /// Failed to derive bundle digest
+    FailedToDeriveBundleDigest,
+    /// The target valid bundle not found from the target bad receipt
+    TargetValidBundleNotFound,
 }
 
 pub struct StorageProofVerifier<H: Hasher>(PhantomData<H>);
