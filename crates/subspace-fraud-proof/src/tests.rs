@@ -115,9 +115,7 @@ fn generate_storage_proof_for_tx_validity(
         .unwrap()
 }
 
-// TODO: Enable this test when runtime_api_light is fixed
 #[tokio::test(flavor = "multi_thread")]
-#[ignore]
 async fn check_tx_validity_runtime_api_should_work() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 

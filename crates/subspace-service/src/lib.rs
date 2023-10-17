@@ -246,7 +246,7 @@ where
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + 'static,
     Client::Api: SubspaceApi<Block, FarmerPublicKey>
         + DomainsApi<Block, NumberFor<DomainBlock>, DomainBlock::Hash>,
-    ExecutorDispatch: CodeExecutor,
+    ExecutorDispatch: CodeExecutor + sc_executor::RuntimeVersionOf,
 {
     fn extensions_for(
         &self,

@@ -7,6 +7,7 @@ use domain_block_preprocessor::runtime_api_light::RuntimeApiLight;
 use domain_runtime_primitives::opaque::Block;
 use domain_runtime_primitives::{DomainCoreApi, Hash};
 use sc_client_api::StorageProof;
+use sc_executor::RuntimeVersionOf;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::CodeExecutor;
@@ -53,7 +54,7 @@ fn create_runtime_api_light<Exec>(
     extrinsic: OpaqueExtrinsic,
 ) -> Result<RuntimeApiLight<Exec>, VerificationError>
 where
-    Exec: CodeExecutor,
+    Exec: CodeExecutor + RuntimeVersionOf,
 {
     let mut runtime_api_light = RuntimeApiLight::new(executor, wasm_bundle);
 
@@ -116,7 +117,7 @@ where
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock> + Send + Sync,
     CClient::Api: DomainsApi<CBlock, domain_runtime_primitives::BlockNumber, Hash>,
     VerifierClient: VerifierApi,
-    Exec: CodeExecutor + 'static,
+    Exec: CodeExecutor + RuntimeVersionOf + 'static,
 {
     /// Constructs a new instance of [`InvalidTransactionProofVerifier`].
     pub fn new(
@@ -237,7 +238,7 @@ where
     Client: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock> + Send + Sync,
     Client::Api: DomainsApi<CBlock, domain_runtime_primitives::BlockNumber, Hash>,
     VerifierClient: VerifierApi,
-    Exec: CodeExecutor + 'static,
+    Exec: CodeExecutor + RuntimeVersionOf + 'static,
 {
     fn verify_invalid_transaction_proof(
         &self,
