@@ -269,9 +269,21 @@ impl FraudProofHostFunctions for MockDomainFraudProofExtension {
                     .encode(),
                 )
             }
+            FraudProofVerificationInfoRequest::DomainBundleBody { .. } => {
+                FraudProofVerificationInfoResponse::DomainBundleBody(Default::default())
+            }
         };
 
         Some(response)
+    }
+
+    fn derive_bundle_digest(
+        &self,
+        _consensus_block_hash: H256,
+        _domain_id: DomainId,
+        _bundle_body: Vec<OpaqueExtrinsic>,
+    ) -> Option<H256> {
+        Some(H256::random())
     }
 }
 

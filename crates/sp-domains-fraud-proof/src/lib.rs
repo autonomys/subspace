@@ -16,6 +16,7 @@
 
 //! Subspace fraud proof primitives for consensus chain.
 #![cfg_attr(not(feature = "std"), no_std)]
+#![feature(associated_type_bounds)]
 
 #[cfg(feature = "std")]
 mod host_functions;
@@ -32,6 +33,7 @@ pub use runtime_interface::fraud_proof_runtime_interface;
 pub use runtime_interface::fraud_proof_runtime_interface::HostFunctions;
 use sp_api::scale_info::TypeInfo;
 use sp_domains::DomainId;
+use sp_runtime::OpaqueExtrinsic;
 use sp_runtime_interface::pass_by;
 use sp_runtime_interface::pass_by::PassBy;
 use sp_std::vec::Vec;
@@ -44,6 +46,11 @@ pub enum FraudProofVerificationInfoRequest {
     BlockRandomness,
     /// Domain timestamp extrinsic using the timestamp at a given consensus block hash.
     DomainTimestampExtrinsic(DomainId),
+    /// The body of domain bundle included in a given consensus block at a given index
+    DomainBundleBody {
+        domain_id: DomainId,
+        bundle_index: u32,
+    },
 }
 
 impl PassBy for FraudProofVerificationInfoRequest {
@@ -57,4 +64,15 @@ pub enum FraudProofVerificationInfoResponse {
     BlockRandomness(Randomness),
     /// Encoded domain timestamp extrinsic using the timestamp from consensus state at a specific block hash.
     DomainTimestampExtrinsic(Vec<u8>),
+    /// Domain block body fetch from a specific consensus block body
+    DomainBundleBody(Vec<OpaqueExtrinsic>),
+}
+
+impl FraudProofVerificationInfoResponse {
+    pub fn into_bundle_body(self) -> Option<Vec<OpaqueExtrinsic>> {
+        match self {
+            Self::DomainBundleBody(bb) => Some(bb),
+            _ => None,
+        }
+    }
 }
