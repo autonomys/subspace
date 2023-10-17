@@ -89,6 +89,43 @@ impl ReadAtSync for ! {
     }
 }
 
+/// Container or asynchronously reading bytes using in [`ReadAtAsync`]
+#[repr(transparent)]
+pub struct AsyncReadBytes<B>(B)
+where
+    B: AsMut<[u8]> + Unpin + 'static;
+
+impl From<Vec<u8>> for AsyncReadBytes<Vec<u8>> {
+    fn from(value: Vec<u8>) -> Self {
+        Self(value)
+    }
+}
+
+impl From<Box<[u8]>> for AsyncReadBytes<Box<[u8]>> {
+    fn from(value: Box<[u8]>) -> Self {
+        Self(value)
+    }
+}
+
+impl<B> AsMut<[u8]> for AsyncReadBytes<B>
+where
+    B: AsMut<[u8]> + Unpin + 'static,
+{
+    fn as_mut(&mut self) -> &mut [u8] {
+        self.0.as_mut()
+    }
+}
+
+impl<B> AsyncReadBytes<B>
+where
+    B: AsMut<[u8]> + Unpin + 'static,
+{
+    /// Extract inner value
+    pub fn into_inner(self) -> B {
+        self.0
+    }
+}
+
 /// Async version of [`ReadAt`], it is neither [`Send`] nor [`Sync`] and is supposed to be used with
 /// concurrent async combinators
 pub trait ReadAtAsync {
@@ -103,12 +140,19 @@ pub trait ReadAtAsync {
         }
     }
 
-    /// Fill the buffer by reading bytes at a specific offset
-    fn read_at(&self, buf: &mut [u8], offset: usize) -> impl Future<Output = io::Result<()>>;
+    /// Fill the buffer by reading bytes at a specific offset and return the buffer back
+    fn read_at<B>(&self, buf: B, offset: usize) -> impl Future<Output = io::Result<B>>
+    where
+        AsyncReadBytes<B>: From<B>,
+        B: AsMut<[u8]> + Unpin + 'static;
 }
 
 impl ReadAtAsync for ! {
-    async fn read_at(&self, _buf: &mut [u8], _offset: usize) -> io::Result<()> {
+    async fn read_at<B>(&self, _buf: B, _offset: usize) -> io::Result<B>
+    where
+        AsyncReadBytes<B>: From<B>,
+        B: AsMut<[u8]> + Unpin + 'static,
+    {
         unreachable!("Is never called")
     }
 }
@@ -196,7 +240,11 @@ impl<T> ReadAtAsync for ReadAtOffset<'_, T>
 where
     T: ReadAtAsync,
 {
-    async fn read_at(&self, buf: &mut [u8], offset: usize) -> io::Result<()> {
+    async fn read_at<B>(&self, buf: B, offset: usize) -> io::Result<B>
+    where
+        AsyncReadBytes<B>: From<B>,
+        B: AsMut<[u8]> + Unpin + 'static,
+    {
         self.inner.read_at(buf, offset + self.offset).await
     }
 }
@@ -205,7 +253,11 @@ impl<T> ReadAtAsync for &ReadAtOffset<'_, T>
 where
     T: ReadAtAsync,
 {
-    async fn read_at(&self, buf: &mut [u8], offset: usize) -> io::Result<()> {
+    async fn read_at<B>(&self, buf: B, offset: usize) -> io::Result<B>
+    where
+        AsyncReadBytes<B>: From<B>,
+        B: AsMut<[u8]> + Unpin + 'static,
+    {
         self.inner.read_at(buf, offset + self.offset).await
     }
 }

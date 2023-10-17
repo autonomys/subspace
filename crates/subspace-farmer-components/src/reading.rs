@@ -177,17 +177,20 @@ where
                 .map(
                     |(maybe_record_chunk, chunk_location, encoded_chunk_used, s_bucket)| async move {
                         let mut record_chunk = [0; Scalar::FULL_BYTES];
-                        sector
-                            .read_at(
-                                &mut record_chunk,
-                                SectorContentsMap::encoded_size(pieces_in_sector)
-                                    + chunk_location * Scalar::FULL_BYTES,
-                            )
-                            .await
-                            .map_err(|error| ReadingError::FailedToReadChunk {
-                                chunk_location,
-                                error,
-                            })?;
+                        record_chunk.copy_from_slice(
+                            &sector
+                                .read_at(
+                                    vec![0; Scalar::FULL_BYTES],
+                                    SectorContentsMap::encoded_size(pieces_in_sector)
+                                        + chunk_location * Scalar::FULL_BYTES,
+                                )
+                                .await
+                                .map_err(|error| ReadingError::FailedToReadChunk {
+                                    chunk_location,
+                                    error,
+                                })?
+                        );
+
 
                         // Decode chunk if necessary
                         if encoded_chunk_used {
@@ -310,14 +313,14 @@ where
     let record_metadata_offset =
         sector_metadata_start + RecordMetadata::encoded_size() * usize::from(piece_offset);
 
-    let mut record_metadata_bytes = [0; RecordMetadata::encoded_size()];
+    let mut record_metadata_bytes = vec![0; RecordMetadata::encoded_size()];
     match sector {
         ReadAt::Sync(sector) => {
             sector.read_at(&mut record_metadata_bytes, record_metadata_offset)?;
         }
         ReadAt::Async(sector) => {
-            sector
-                .read_at(&mut record_metadata_bytes, record_metadata_offset)
+            record_metadata_bytes = sector
+                .read_at(record_metadata_bytes, record_metadata_offset)
                 .await?;
         }
     }
@@ -354,7 +357,7 @@ where
                 sector.read_at(&mut sector_contents_map_bytes, 0)?;
             }
             ReadAt::Async(sector) => {
-                sector.read_at(&mut sector_contents_map_bytes, 0).await?;
+                sector_contents_map_bytes = sector.read_at(sector_contents_map_bytes, 0).await?;
             }
         }
 

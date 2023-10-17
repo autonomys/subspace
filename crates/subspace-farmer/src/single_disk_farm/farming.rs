@@ -1,3 +1,8 @@
+#[cfg(target_os = "linux")]
+pub mod glommio;
+#[cfg(any(target_os = "linux", target_os = "macos"))]
+pub mod monoio;
+
 use crate::node_client;
 use crate::node_client::NodeClient;
 use crate::single_disk_farm::Handlers;
@@ -239,6 +244,7 @@ where
     pub table_generator: &'a Mutex<PosTable::Generator>,
 }
 
+/// Plot auditing, default synchronous implementation
 pub fn audit_plot<'a, PosTable, S>(
     options: PlotAuditOptions<'a, PosTable, S>,
 ) -> Vec<(
@@ -284,7 +290,7 @@ where
 
             let sector_solutions = match sector_solutions_fut
                 .now_or_never()
-                .expect("Implementation of the sector is currently synchronous; qed")
+                .expect("Implementation of the sector is synchronous here; qed")
             {
                 Ok(solutions) => solutions,
                 Err(error) => {
