@@ -234,7 +234,7 @@ pub(super) fn target_receipt_is_pruned(
 #[derive(Encode, Decode, Debug, PartialEq)]
 pub(super) enum BundleMismatchType {
     // The invalid bundle is mismatch
-    // For `TrueInvalid`, the fraud proof need to prove the bundle is indees invalid due to `InvalidBundleType`
+    // For `TrueInvalid`, the fraud proof need to prove the bundle is indeed invalid due to `InvalidBundleType`
     // For `FalseInvalid`, the fraud proof need to prove the bundle is not invalid due to `InvalidBundleType`
     TrueInvalid(InvalidBundleType),
     FalseInvalid(InvalidBundleType),

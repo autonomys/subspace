@@ -39,6 +39,16 @@ pub trait SetCodeConstructor<Block: BlockT> {
     ) -> Result<Vec<u8>, ApiError>;
 }
 
+/// Trait to wrap the new domain runtime as an extrinsic of
+/// `domain_pallet_executive::Call::sudo_unchecked_weight_unsigned`.
+pub trait IsInherentExtrinsic<Block: BlockT> {
+    fn is_inherent_extrinsic(
+        &self,
+        at: Block::Hash,
+        extrinsic: Vec<u8>,
+    ) -> Result<Option<bool>, ApiError>;
+}
+
 pub type ExtractSignerResult<Block> = Vec<(Option<AccountId>, <Block as BlockT>::Extrinsic)>;
 
 /// Trait to extract the signer of the extrinsic.

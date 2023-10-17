@@ -1,6 +1,6 @@
 use crate::runtime_api::{
-    ExtractSignerResult, ExtractedStateRoots, SetCodeConstructor, SignerExtractor,
-    StateRootExtractor, TimestampExtrinsicConstructor,
+    ExtractSignerResult, ExtractedStateRoots, IsInherentExtrinsic, SetCodeConstructor,
+    SignerExtractor, StateRootExtractor, TimestampExtrinsicConstructor,
 };
 use codec::Encode;
 use domain_runtime_primitives::DomainCoreApi;
@@ -93,5 +93,21 @@ where
     ) -> Result<Vec<u8>, ApiError> {
         let api = self.client.runtime_api();
         api.construct_set_code_extrinsic(at, runtime_code)
+    }
+}
+
+impl<Client, Block> IsInherentExtrinsic<Block> for RuntimeApiFull<Client>
+where
+    Block: BlockT,
+    Client: ProvideRuntimeApi<Block>,
+    Client::Api: DomainCoreApi<Block>,
+{
+    fn is_inherent_extrinsic(
+        &self,
+        at: Block::Hash,
+        extrinsic: Vec<u8>,
+    ) -> Result<Option<bool>, ApiError> {
+        let api = self.client.runtime_api();
+        api.is_inherent_extrinsic(at, extrinsic)
     }
 }

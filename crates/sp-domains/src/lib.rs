@@ -725,18 +725,21 @@ pub enum InvalidBundleType {
     IllegalTx(u32),
     /// Transaction is an invalid XDM
     InvalidXDM(u32),
+    /// Transaction is an inherent extrinsic.
+    InherentExtrinsic(u32),
 }
 
 impl InvalidBundleType {
     // Return the checking order of the invalid type
     pub fn checking_order(&self) -> u8 {
         // Use explicit number as the order instead of the enum discriminant
-        // to avoid chenging the order accidentally
+        // to avoid changing the order accidentally
         match self {
             Self::UndecodableTx(_) => 1,
             Self::OutOfRangeTx(_) => 2,
             Self::IllegalTx(_) => 3,
             Self::InvalidXDM(_) => 4,
+            Self::InherentExtrinsic(_) => 5,
         }
     }
 
@@ -746,6 +749,7 @@ impl InvalidBundleType {
             Self::OutOfRangeTx(i) => *i,
             Self::IllegalTx(i) => *i,
             Self::InvalidXDM(i) => *i,
+            Self::InherentExtrinsic(i) => *i,
         }
     }
 }

@@ -1,6 +1,6 @@
 use crate::runtime_api::{
-    ExtractSignerResult, ExtractedStateRoots, SetCodeConstructor, SignerExtractor,
-    StateRootExtractor, TimestampExtrinsicConstructor,
+    ExtractSignerResult, ExtractedStateRoots, IsInherentExtrinsic, SetCodeConstructor,
+    SignerExtractor, StateRootExtractor, TimestampExtrinsicConstructor,
 };
 use codec::{Codec, Encode};
 use domain_runtime_primitives::DomainCoreApi;
@@ -203,5 +203,19 @@ where
         moment: Moment,
     ) -> Result<Block::Extrinsic, ApiError> {
         <Self as DomainCoreApi<Block>>::construct_timestamp_extrinsic(self, at, moment)
+    }
+}
+
+impl<Executor, Block> IsInherentExtrinsic<Block> for RuntimeApiLight<Executor>
+where
+    Block: BlockT,
+    Executor: CodeExecutor,
+{
+    fn is_inherent_extrinsic(
+        &self,
+        at: Block::Hash,
+        extrinsic: Vec<u8>,
+    ) -> Result<Option<bool>, ApiError> {
+        <Self as DomainCoreApi<Block>>::is_inherent_extrinsic(self, at, extrinsic)
     }
 }

@@ -264,6 +264,7 @@ where
         // Check the validity of each extrinsic
         //
         // NOTE: for each extrinsic the checking order must follow `InvalidBundleType::checking_order`
+        let runtime_api = self.client.runtime_api();
         for (index, opaque_extrinsic) in bundle.extrinsics.iter().enumerate() {
             let Ok(extrinsic) =
                 <<Block as BlockT>::Extrinsic>::decode(&mut opaque_extrinsic.encode().as_slice())
@@ -278,12 +279,8 @@ where
                 )));
             };
 
-            let is_within_tx_range = self.client.runtime_api().is_within_tx_range(
-                at,
-                &extrinsic,
-                &bundle_vrf_hash,
-                tx_range,
-            )?;
+            let is_within_tx_range =
+                runtime_api.is_within_tx_range(at, &extrinsic, &bundle_vrf_hash, tx_range)?;
 
             if !is_within_tx_range {
                 // TODO: Generate a fraud proof for this invalid bundle
@@ -293,9 +290,7 @@ where
             }
 
             // TODO: the `check_transaction_validity` is unimplemented
-            let is_legal_tx = self
-                .client
-                .runtime_api()
+            let is_legal_tx = runtime_api
                 .check_transaction_validity(at, &extrinsic, at)?
                 .is_ok();
 
@@ -304,6 +299,19 @@ where
                 return Ok(BundleValidity::Invalid(InvalidBundleType::IllegalTx(
                     index as u32,
                 )));
+            }
+
+            // Check if this extrinsic is an inherent extrinsic.
+            // If so, this is an invalid bundle since these extrinsics should not be included in the
+            // bundle. Extrinsic is always decodable due to the check above.
+            let is_inherent_extrinsic = runtime_api
+                .is_inherent_extrinsic(at, extrinsic.encode())?
+                .unwrap_or(true);
+
+            if is_inherent_extrinsic {
+                return Ok(BundleValidity::Invalid(
+                    InvalidBundleType::InherentExtrinsic(index as u32),
+                ));
             }
 
             // TODO: the behavior is changed, as before invalid XDM will be dropped silently,
