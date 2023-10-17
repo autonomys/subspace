@@ -45,6 +45,7 @@ where
 }
 
 fn create_runtime_api_light<Exec>(
+    domain_block_number: u32,
     storage_proof: StorageProof,
     state_root: &Hash,
     executor: Arc<Exec>,
@@ -59,17 +60,25 @@ where
     let sender = <RuntimeApiLight<Exec> as DomainCoreApi<Block>>::extract_signer(
         &runtime_api_light,
         Default::default(),
-        vec![extrinsic],
+        vec![extrinsic.clone()],
     )?
     .into_iter()
     .next()
     .and_then(|(maybe_signer, _)| maybe_signer)
     .ok_or(VerificationError::SignerNotFound)?;
 
+    let maybe_era = <RuntimeApiLight<Exec> as DomainCoreApi<Block>>::extrinsic_era(
+        &runtime_api_light,
+        Default::default(),
+        &extrinsic,
+    )?;
+
     let storage_keys = <RuntimeApiLight<Exec> as DomainCoreApi<Block>>::storage_keys_for_verifying_transaction_validity(
         &runtime_api_light,
         Default::default(),
-        sender
+        sender,
+        domain_block_number,
+        maybe_era
     )?
     .map_err(|e| {
         sp_api::ApiError::Application(Box::from(format!(
@@ -152,7 +161,7 @@ where
     ) -> Result<(), VerificationError> {
         let InvalidTransactionProof {
             domain_id,
-            block_number,
+            domain_block_number,
             domain_block_hash,
             invalid_extrinsic,
             storage_proof,
@@ -163,7 +172,7 @@ where
         // - Bundle is valid and is produced by a legit executor.
         // - Bundle author, who will be slashed, can be extracted in runtime.
 
-        let header = self.fetch_consensus_block_header(*domain_id, *block_number)?;
+        let header = self.fetch_consensus_block_header(*domain_id, *domain_block_number)?;
         let consensus_parent_hash = *header.parent_hash();
 
         let domain_runtime_code = retrieve_domain_runtime_code(
@@ -178,11 +187,14 @@ where
         // verifiable way.
         let extrinsic = OpaqueExtrinsic::from_bytes(invalid_extrinsic)?;
 
-        let state_root =
-            self.verifier_client
-                .state_root(*domain_id, *block_number, *domain_block_hash)?;
+        let state_root = self.verifier_client.state_root(
+            *domain_id,
+            *domain_block_number,
+            *domain_block_hash,
+        )?;
 
         let runtime_api_light = create_runtime_api_light(
+            *domain_block_number,
             storage_proof.clone(),
             &state_root,
             self.executor.clone(),
@@ -195,6 +207,7 @@ where
                 &runtime_api_light,
                 Default::default(), // Unused for stateless runtime api.
                 &extrinsic,
+                *domain_block_number,
                 *domain_block_hash,
             )?;
 
