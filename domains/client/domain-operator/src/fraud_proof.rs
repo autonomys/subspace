@@ -14,6 +14,7 @@ use sp_domains::fraud_proof::{
     ExecutionPhase, ExtrinsicDigest, FraudProof, InvalidBundlesFraudProof,
     InvalidExtrinsicsRootProof, InvalidStateTransitionProof, InvalidTotalRewardsProof,
     MissingInvalidBundleEntryFraudProof, ValidAsInvalidBundleEntryFraudProof, ValidBundleDigest,
+    ValidBundleProof,
 };
 use sp_domains::{DomainId, DomainsApi};
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashingFor, Header as HeaderT, NumberFor};
@@ -99,6 +100,22 @@ where
             code_executor,
             _phantom: Default::default(),
         }
+    }
+
+    pub fn generate_bad_valid_bundle_proof<PCB>(
+        &self,
+        domain_id: DomainId,
+        bad_receipt_hash: H256,
+        bundle_index: u32,
+    ) -> FraudProof<NumberFor<PCB>, PCB::Hash>
+    where
+        PCB: BlockT,
+    {
+        FraudProof::ValidBundle(ValidBundleProof {
+            domain_id,
+            bad_receipt_hash,
+            bundle_index,
+        })
     }
 
     pub(crate) fn generate_invalid_total_rewards_proof<PCB>(
