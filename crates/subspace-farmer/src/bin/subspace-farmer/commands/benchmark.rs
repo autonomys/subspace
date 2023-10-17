@@ -89,7 +89,7 @@ async fn audit(disk_farm: PathBuf, sample_size: usize) -> anyhow::Result<()> {
             b.iter_batched(
                 rand::random,
                 |global_challenge| {
-                    let options = PlotAuditOptions::<PosTable> {
+                    let options = PlotAuditOptions::<PosTable, _> {
                         public_key: single_disk_farm_info.public_key(),
                         reward_address: single_disk_farm_info.public_key(),
                         sector_size,
@@ -105,9 +105,9 @@ async fn audit(disk_farm: PathBuf, sample_size: usize) -> anyhow::Result<()> {
                         kzg: &kzg,
                         erasure_coding: &erasure_coding,
                         #[cfg(not(windows))]
-                        plot_file: &plot_file,
+                        plot: &plot_file,
                         #[cfg(windows)]
-                        plot_mmap: &plot_mmap,
+                        plot: &plot_mmap,
                         maybe_sector_being_modified: None,
                         table_generator: &table_generator,
                     };

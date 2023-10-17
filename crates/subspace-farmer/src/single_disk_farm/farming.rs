@@ -142,11 +142,11 @@ where
 
         debug!(%slot, sector_count = %sectors_metadata.len(), "Reading sectors");
 
-        let sectors_solutions = {
+        let mut sectors_solutions = {
             let modifying_sector_guard = modifying_sector_index.read().await;
             let maybe_sector_being_modified = modifying_sector_guard.as_ref().copied();
 
-            plot_audit(PlotAuditOptions::<PosTable> {
+            plot_audit(PlotAuditOptions::<PosTable, _> {
                 public_key: &public_key,
                 reward_address: &reward_address,
                 sector_size,
@@ -155,13 +155,20 @@ where
                 kzg: &kzg,
                 erasure_coding: &erasure_coding,
                 #[cfg(not(windows))]
-                plot_file,
+                plot: plot_file,
                 #[cfg(windows)]
-                plot_mmap: &plot_mmap,
+                plot: &plot_mmap,
                 maybe_sector_being_modified,
                 table_generator: &table_generator,
             })
         };
+
+        sectors_solutions.sort_by(|a, b| {
+            let a_solution_distance = a.1.best_solution_distance().unwrap_or(SolutionRange::MAX);
+            let b_solution_distance = b.1.best_solution_distance().unwrap_or(SolutionRange::MAX);
+
+            a_solution_distance.cmp(&b_solution_distance)
+        });
 
         'solutions_processing: for (sector_index, mut sector_solutions) in sectors_solutions {
             while let Some(maybe_solution) = sector_solutions.next().await {
@@ -211,7 +218,7 @@ where
 }
 
 /// Plot audit options
-pub struct PlotAuditOptions<'a, PosTable>
+pub struct PlotAuditOptions<'a, PosTable, File>
 where
     PosTable: Table,
 {
@@ -232,11 +239,11 @@ where
     /// File corresponding to the plot, must have at least `sectors_metadata.len()` sectors of
     /// `sector_size` each
     #[cfg(not(windows))]
-    pub plot_file: &'a File,
+    pub plot: &'a File,
     /// Memory-mapped file corresponding to the plot, must have at least `sectors_metadata.len()`
     /// sectors of `sector_size` each
     #[cfg(windows)]
-    pub plot_mmap: &'a Mmap,
+    pub plot: &'a File,
     /// Optional sector that is currently being modified (for example replotted) and should not be
     /// audited
     pub maybe_sector_being_modified: Option<SectorIndex>,
@@ -245,7 +252,8 @@ where
 }
 
 pub fn plot_audit<PosTable>(
-    options: PlotAuditOptions<'_, PosTable>,
+    #[cfg(not(windows))] options: PlotAuditOptions<'_, PosTable, File>,
+    #[cfg(windows)] options: PlotAuditOptions<'_, PosTable, Mmap>,
 ) -> Vec<(
     SectorIndex,
     impl ProvableSolutions<Item = Result<Solution<PublicKey, PublicKey>, proving::ProvingError>> + '_,
@@ -261,10 +269,7 @@ where
         sectors_metadata,
         kzg,
         erasure_coding,
-        #[cfg(not(windows))]
-        plot_file,
-        #[cfg(windows)]
-        plot_mmap,
+        plot,
         maybe_sector_being_modified,
         table_generator,
     } = options;
@@ -272,14 +277,14 @@ where
     #[cfg(not(windows))]
     let sectors = (0..sectors_metadata.len())
         .into_par_iter()
-        .map(|sector_index| plot_file.offset(sector_index * sector_size));
+        .map(|sector_index| plot.offset(sector_index * sector_size));
     // On Windows random read is horrible in terms of performance, memory-mapped I/O helps
     // TODO: Remove this once https://internals.rust-lang.org/t/introduce-write-all-at-read-exact-at-on-windows/19649
     //  or similar exists in standard library
     #[cfg(windows)]
-    let sectors = plot_mmap.par_chunks_exact(sector_size);
+    let sectors = plot.par_chunks_exact(sector_size);
 
-    let mut sectors_solutions = sectors_metadata
+    sectors_metadata
         .par_iter()
         .zip(sectors)
         .filter_map(|(sector_metadata, sector)| {
@@ -342,14 +347,5 @@ where
 
             Some((sector_index, sector_solutions))
         })
-        .collect::<Vec<_>>();
-
-    sectors_solutions.sort_by(|a, b| {
-        let a_solution_distance = a.1.best_solution_distance().unwrap_or(SolutionRange::MAX);
-        let b_solution_distance = b.1.best_solution_distance().unwrap_or(SolutionRange::MAX);
-
-        a_solution_distance.cmp(&b_solution_distance)
-    });
-
-    sectors_solutions
+        .collect()
 }
