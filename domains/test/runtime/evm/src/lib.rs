@@ -15,6 +15,7 @@ use domain_runtime_primitives::{MultiAccountId, TryConvertBack, SLOT_DURATION};
 use fp_account::EthereumSignature;
 use fp_self_contained::SelfContainedCall;
 use frame_support::dispatch::{DispatchClass, GetDispatchInfo};
+use frame_support::inherent::ProvideInherent;
 use frame_support::traits::{
     ConstU16, ConstU32, ConstU64, Currency, Everything, FindAuthor, Imbalance, OnFinalize,
     OnUnbalanced,
@@ -662,6 +663,18 @@ fn extract_xdm_proof_state_roots(
     }
 }
 
+fn is_inherent_extrinsic_inner(encoded_ext: Vec<u8>) -> Option<bool> {
+    if let Ok(ext) = UncheckedExtrinsic::decode(&mut encoded_ext.as_slice()) {
+        Some(match ext.0.function {
+            RuntimeCall::Timestamp(call) => Timestamp::is_inherent(&call),
+            RuntimeCall::ExecutivePallet(call) => ExecutivePallet::is_inherent(&call),
+            _ => false,
+        })
+    } else {
+        None
+    }
+}
+
 fn extract_signer_inner<Lookup>(
     ext: &UncheckedExtrinsic,
     lookup: &Lookup,
@@ -852,6 +865,10 @@ impl_runtime_apis! {
             UncheckedExtrinsic::new_unsigned(
                 pallet_timestamp::Call::set{ now: moment }.into()
             )
+        }
+
+        fn is_inherent_extrinsic(extrinsic: Vec<u8>) -> Option<bool> {
+            is_inherent_extrinsic_inner(extrinsic)
         }
 
         fn check_transaction_validity(

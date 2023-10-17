@@ -33,8 +33,9 @@ mod tests;
 
 pub mod weights;
 
-use codec::Codec;
+use codec::{Codec, Decode, Encode};
 use frame_support::dispatch::{DispatchClass, DispatchInfo, GetDispatchInfo, PostDispatchInfo};
+use frame_support::inherent::{InherentIdentifier, IsFatalError};
 use frame_support::traits::{
     EnsureInherentsAreFirst, ExecuteBlock, Get, OffchainWorker, OnFinalize, OnIdle, OnInitialize,
     OnRuntimeUpgrade,
@@ -55,11 +56,31 @@ pub type CheckedOf<E, C> = <E as Checkable<C>>::Checked;
 pub type CallOf<E, C> = <CheckedOf<E, C> as Applyable>::Call;
 pub type OriginOf<E, C> = <CallOf<E, C> as Dispatchable>::RuntimeOrigin;
 
+pub const INHERENT_IDENTIFIER: InherentIdentifier = *b"executve";
+
+#[derive(Debug, Encode)]
+#[cfg_attr(feature = "std", derive(Decode))]
+pub enum InherentError {}
+
+impl IsFatalError for InherentError {
+    fn is_fatal_error(&self) -> bool {
+        true
+    }
+}
+
+/// The type of the Subspace inherent data.
+#[derive(Debug, Encode, Decode)]
+pub struct InherentType {
+    /// Upgraded runtime code.
+    pub code: Vec<u8>,
+}
+
 // TODO: not store the intermediate storage root in the state but
 // calculate the storage root outside the runtime after executing the extrinsic directly.
 #[frame_support::pallet]
 mod pallet {
     use crate::weights::WeightInfo;
+    use crate::{InherentError, InherentType, INHERENT_IDENTIFIER};
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
     use frame_system::SetCode;
@@ -80,13 +101,35 @@ mod pallet {
         /// Sets new runtime code after doing necessary checks.
         /// Same as frame_system::Call::set_code but without root origin.
         #[pallet::call_index(0)]
-        #[pallet::weight((T::WeightInfo::set_code(), DispatchClass::Operational))]
+        #[pallet::weight((T::WeightInfo::set_code(), DispatchClass::Mandatory))]
         pub fn set_code(origin: OriginFor<T>, code: Vec<u8>) -> DispatchResultWithPostInfo {
             ensure_none(origin)?;
             <frame_system::pallet::Pallet<T>>::can_set_code(&code)?;
             <T as frame_system::Config>::OnSetCode::set_code(code)?;
             // consume the rest of the block to prevent further transactions
             Ok(Some(T::BlockWeights::get().max_block).into())
+        }
+    }
+
+    #[pallet::inherent]
+    impl<T: Config> ProvideInherent for Pallet<T> {
+        type Call = Call<T>;
+        type Error = InherentError;
+        const INHERENT_IDENTIFIER: InherentIdentifier = INHERENT_IDENTIFIER;
+
+        fn create_inherent(data: &InherentData) -> Option<Self::Call> {
+            let inherent_data = data
+                .get_data::<InherentType>(&INHERENT_IDENTIFIER)
+                .expect("Executive inherent data not correctly encoded")
+                .expect("Executive inherent data must be provided");
+
+            Some(Call::set_code {
+                code: inherent_data.code,
+            })
+        }
+
+        fn is_inherent(call: &Self::Call) -> bool {
+            matches!(call, Call::set_code { .. })
         }
     }
 
