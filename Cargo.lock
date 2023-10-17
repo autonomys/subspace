@@ -9106,20 +9106,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "sc-consensus-fraud-proof"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "parity-scale-codec",
- "sc-consensus",
- "sp-api",
- "sp-consensus",
- "sp-domains",
- "sp-runtime",
- "subspace-fraud-proof",
-]
-
-[[package]]
 name = "sc-consensus-slots"
 version = "0.10.0-dev"
 source = "git+https://github.com/subspace/polkadot-sdk?rev=74509ce016358e7f56ed2825fd75c324f8c22ef9#74509ce016358e7f56ed2825fd75c324f8c22ef9"
@@ -11744,7 +11730,6 @@ dependencies = [
  "sc-chain-spec",
  "sc-client-api",
  "sc-consensus",
- "sc-consensus-fraud-proof",
  "sc-consensus-slots",
  "sc-consensus-subspace",
  "sc-consensus-subspace-rpc",
@@ -11892,7 +11877,6 @@ dependencies = [
  "sc-block-builder",
  "sc-client-api",
  "sc-consensus",
- "sc-consensus-fraud-proof",
  "sc-executor",
  "sc-network",
  "sc-network-sync",
