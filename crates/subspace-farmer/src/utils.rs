@@ -7,8 +7,7 @@ mod tests;
 
 use futures::channel::oneshot;
 use futures::channel::oneshot::Canceled;
-use futures::future::{Either, Fuse, FusedFuture};
-use futures::FutureExt;
+use futures::future::Either;
 use rayon::ThreadBuilder;
 use std::future::Future;
 use std::ops::Deref;
@@ -19,81 +18,35 @@ use tokio::runtime::Handle;
 use tokio::task;
 use tracing::debug;
 
-/// Wraps prometheus task in a wrapper that help early task termination.
-pub struct AbortTaskOnDrop<T> {
-    task: Option<task::JoinHandle<T>>,
-}
-
-impl<T> Drop for AbortTaskOnDrop<T> {
-    fn drop(&mut self) {
-        if let Some(task) = self.task.take() {
-            task.abort();
-        }
-    }
-}
-
-impl<T> AbortTaskOnDrop<T> {
-    /// Create new instance.
-    pub fn new(handle: task::JoinHandle<T>) -> Self {
-        Self { task: Some(handle) }
-    }
-}
-
-impl<T> Future for AbortTaskOnDrop<T> {
-    type Output = Result<T, task::JoinError>;
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        Pin::new(self.task.as_mut().expect("Only dropped in Drop impl; qed")).poll(cx)
-    }
-}
-
-/// Joins the future on drop
-pub struct AsyncJoinOnDropForFuture<T: Future>(Option<Fuse<T>>);
-
-impl<T: Future> Drop for AsyncJoinOnDropForFuture<T> {
-    fn drop(&mut self) {
-        let task = self.0.take().expect("Always called exactly once; qed");
-        if !task.is_terminated() {
-            task::block_in_place(move || {
-                let _ = Handle::current().block_on(task);
-            });
-        }
-    }
-}
-
-impl<T: Future> AsyncJoinOnDropForFuture<T> {
-    /// Create new instance.
-    pub fn new(fut: T) -> Self {
-        Self(Some(fut.fuse()))
-    }
-}
-
-impl<T: Future + Unpin> Future for AsyncJoinOnDropForFuture<T> {
-    type Output = T::Output;
-
-    fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        Pin::new(self.0.as_mut().expect("Only dropped in Drop impl; qed")).poll(cx)
-    }
-}
-
 /// Joins async join handle on drop
-pub(crate) struct AsyncJoinOnDrop<T>(Option<Fuse<task::JoinHandle<T>>>);
+pub struct AsyncJoinOnDrop<T> {
+    handle: Option<task::JoinHandle<T>>,
+    abort_on_drop: bool,
+}
 
 impl<T> Drop for AsyncJoinOnDrop<T> {
     fn drop(&mut self) {
-        let handle = self.0.take().expect("Always called exactly once; qed");
-        if !handle.is_terminated() {
-            task::block_in_place(move || {
-                let _ = Handle::current().block_on(handle);
-            });
+        if let Some(handle) = self.handle.take() {
+            if self.abort_on_drop {
+                handle.abort();
+            }
+
+            if !handle.is_finished() {
+                task::block_in_place(move || {
+                    let _ = Handle::current().block_on(handle);
+                });
+            }
         }
     }
 }
 
 impl<T> AsyncJoinOnDrop<T> {
-    // Create new instance
-    pub(crate) fn new(handle: task::JoinHandle<T>) -> Self {
-        Self(Some(handle.fuse()))
+    /// Create new instance.
+    pub fn new(handle: task::JoinHandle<T>, abort_on_drop: bool) -> Self {
+        Self {
+            handle: Some(handle),
+            abort_on_drop,
+        }
     }
 }
 
@@ -101,7 +54,12 @@ impl<T> Future for AsyncJoinOnDrop<T> {
     type Output = Result<T, task::JoinError>;
 
     fn poll(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
-        Pin::new(self.0.as_mut().expect("Only dropped in Drop impl; qed")).poll(cx)
+        Pin::new(
+            self.handle
+                .as_mut()
+                .expect("Only dropped in Drop impl; qed"),
+        )
+        .poll(cx)
     }
 }
 

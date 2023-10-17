@@ -709,7 +709,7 @@ impl PieceCache {
             }
         });
 
-        match AsyncJoinOnDrop::new(maybe_piece_fut).await {
+        match AsyncJoinOnDrop::new(maybe_piece_fut, false).await {
             Ok(maybe_piece) => maybe_piece,
             Err(error) => {
                 error!(%error, ?key, "Piece reading task failed");
