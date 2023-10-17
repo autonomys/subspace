@@ -29,7 +29,9 @@ use subspace_farmer::utils::farmer_piece_getter::FarmerPieceGetter;
 use subspace_farmer::utils::piece_validator::SegmentCommitmentPieceValidator;
 use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
 use subspace_farmer::utils::ss58::parse_ss58_reward_address;
-use subspace_farmer::utils::{run_future_in_dedicated_thread, tokio_rayon_spawn_handler};
+use subspace_farmer::utils::{
+    run_future_in_dedicated_thread, tokio_rayon_spawn_handler, AsyncJoinOnDrop,
+};
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_farmer_components::plotting::PlottedSector;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
@@ -358,14 +360,17 @@ where
         )?
     };
 
-    if metrics_endpoints_are_specified {
+    let _prometheus_worker = if metrics_endpoints_are_specified {
         let prometheus_task = start_prometheus_metrics_server(
             metrics_endpoints,
             RegistryAdapter::Libp2p(metrics_registry),
         )?;
 
-        let _prometheus_worker = tokio::spawn(prometheus_task);
-    }
+        let join_handle = tokio::spawn(prometheus_task);
+        Some(AsyncJoinOnDrop::new(join_handle, true))
+    } else {
+        None
+    };
 
     let kzg = Kzg::new(embedded_kzg_settings());
     let erasure_coding = ErasureCoding::new(
