@@ -1,13 +1,11 @@
 use crate::PosTable;
 use anyhow::anyhow;
 use clap::Subcommand;
-use criterion::async_executor::AsyncExecutor;
 use criterion::{black_box, BatchSize, Criterion, Throughput};
 #[cfg(windows)]
 use memmap2::Mmap;
 use parking_lot::Mutex;
 use std::fs::OpenOptions;
-use std::future::Future;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
@@ -18,21 +16,6 @@ use subspace_farmer::single_disk_farm::{SingleDiskFarm, SingleDiskFarmSummary};
 use subspace_farmer_components::sector::sector_size;
 use subspace_proof_of_space::Table;
 use subspace_rpc_primitives::SlotInfo;
-use tokio::runtime::Handle;
-
-struct TokioAsyncExecutor(Handle);
-
-impl AsyncExecutor for TokioAsyncExecutor {
-    fn block_on<T>(&self, future: impl Future<Output = T>) -> T {
-        tokio::task::block_in_place(|| self.0.block_on(future))
-    }
-}
-
-impl TokioAsyncExecutor {
-    fn new() -> Self {
-        Self(Handle::current())
-    }
-}
 
 /// Arguments for benchmark
 #[derive(Debug, Subcommand)]
@@ -103,7 +86,7 @@ async fn audit(disk_farm: PathBuf, sample_size: usize) -> anyhow::Result<()> {
             sector_size as u64 * sectors_metadata.len() as u64,
         ))
         .bench_function("plot", |b| {
-            b.to_async(TokioAsyncExecutor::new()).iter_batched(
+            b.iter_batched(
                 rand::random,
                 |global_challenge| {
                     let options = PlotAuditOptions::<PosTable> {

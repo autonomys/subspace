@@ -22,7 +22,7 @@ pub mod chain_spec;
 pub mod domain_chain_spec;
 
 use futures::executor::block_on;
-use futures::StreamExt;
+use futures::{FutureExt, StreamExt};
 use sc_client_api::{BlockBackend, HeaderBackend};
 use sc_consensus_subspace::archiver::encode_block;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
@@ -42,7 +42,7 @@ use subspace_farmer_components::auditing::audit_sector;
 use subspace_farmer_components::plotting::{
     plot_sector, PieceGetterRetryPolicy, PlotSectorOptions, PlottedSector,
 };
-use subspace_farmer_components::FarmerProtocolInfo;
+use subspace_farmer_components::{FarmerProtocolInfo, ReadAt};
 use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_service::tx_pre_validator::ConsensusChainTxPreValidator;
@@ -192,9 +192,10 @@ async fn start_farming<PosTable, Client>(
                 &public_key,
                 &global_challenge,
                 new_slot_info.solution_range,
-                &sector,
+                ReadAt::from_sync(&sector),
                 &plotted_sector.sector_metadata,
             )
+            .await
             .expect("With max solution range there must be a sector eligible; qed");
 
             let solution = audit_result
@@ -202,8 +203,12 @@ async fn start_farming<PosTable, Client>(
                 .into_solutions(&public_key, &kzg, &erasure_coding, |seed: &PosSeed| {
                     table_generator.generate_parallel(seed)
                 })
+                .now_or_never()
+                .expect("Implementation of the sector is synchronous here; qed")
                 .unwrap()
                 .next()
+                .now_or_never()
+                .expect("Implementation of the sector is synchronous here; qed")
                 .expect("With max solution range there must be a solution; qed")
                 .unwrap();
             // Lazy conversion to a different type of public key and reward address

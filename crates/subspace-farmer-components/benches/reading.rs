@@ -1,10 +1,11 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use futures::executor::block_on;
+use futures::FutureExt;
+use parking_lot::Mutex;
 use rand::prelude::*;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::num::{NonZeroU64, NonZeroUsize};
-use std::time::Instant;
 use std::{env, fs};
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
@@ -21,7 +22,7 @@ use subspace_farmer_components::reading::read_piece;
 use subspace_farmer_components::sector::{
     sector_size, SectorContentsMap, SectorMetadata, SectorMetadataChecksummed,
 };
-use subspace_farmer_components::{FarmerProtocolInfo, ReadAt};
+use subspace_farmer_components::{FarmerProtocolInfo, ReadAt, ReadAtSync};
 use subspace_proof_of_space::chia::ChiaTable;
 use subspace_proof_of_space::Table;
 
@@ -148,18 +149,22 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
     let piece_offset = PieceOffset::ZERO;
 
+    let table_generator = &Mutex::new(table_generator);
+
     let mut group = c.benchmark_group("reading");
     group.throughput(Throughput::Elements(1));
     group.bench_function("piece/memory", |b| {
         b.iter(|| {
-            read_piece::<PosTable, _>(
+            read_piece::<PosTable, _, _>(
                 black_box(piece_offset),
                 black_box(&plotted_sector.sector_id),
                 black_box(&plotted_sector.sector_metadata),
-                black_box(&plotted_sector_bytes),
+                black_box(&ReadAt::from_sync(&plotted_sector_bytes)),
                 black_box(&erasure_coding),
-                black_box(&mut table_generator),
+                black_box(&mut *table_generator.lock()),
             )
+            .now_or_never()
+            .unwrap()
             .unwrap();
         })
     });
@@ -190,23 +195,21 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
         group.throughput(Throughput::Elements(sectors_count));
         group.bench_function("piece/disk", |b| {
-            b.iter_custom(|iters| {
-                let start = Instant::now();
-                for _i in 0..iters {
-                    for sector_index in 0..sectors_count as usize {
-                        let sector = plot_file.offset(sector_index * sector_size);
-                        read_piece::<PosTable, _>(
-                            black_box(piece_offset),
-                            black_box(&plotted_sector.sector_id),
-                            black_box(&plotted_sector.sector_metadata),
-                            black_box(&sector),
-                            black_box(&erasure_coding),
-                            black_box(&mut table_generator),
-                        )
-                        .unwrap();
-                    }
+            b.iter(|| {
+                for sector_index in 0..sectors_count as usize {
+                    let sector = plot_file.offset(sector_index * sector_size);
+                    read_piece::<PosTable, _, _>(
+                        black_box(piece_offset),
+                        black_box(&plotted_sector.sector_id),
+                        black_box(&plotted_sector.sector_metadata),
+                        black_box(&ReadAt::from_sync(&sector)),
+                        black_box(&erasure_coding),
+                        black_box(&mut *table_generator.lock()),
+                    )
+                    .now_or_never()
+                    .unwrap()
+                    .unwrap();
                 }
-                start.elapsed()
             });
         });
 

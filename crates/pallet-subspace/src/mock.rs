@@ -24,6 +24,7 @@ use crate::{
 use frame_support::parameter_types;
 use frame_support::traits::{ConstU128, ConstU16, ConstU32, ConstU64, OnInitialize};
 use futures::executor::block_on;
+use futures::{FutureExt, StreamExt};
 use rand::Rng;
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
@@ -58,7 +59,7 @@ use subspace_farmer_components::auditing::audit_sector;
 use subspace_farmer_components::plotting::{
     plot_sector, PieceGetterRetryPolicy, PlotSectorOptions,
 };
-use subspace_farmer_components::FarmerProtocolInfo;
+use subspace_farmer_components::{FarmerProtocolInfo, ReadAt};
 use subspace_proof_of_space::shim::ShimTable;
 use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_verification::is_within_solution_range;
@@ -478,15 +479,15 @@ pub fn create_signed_vote(
             .derive_global_randomness()
             .derive_global_challenge(slot.into());
 
-        let maybe_audit_result = audit_sector(
+        let maybe_audit_result_fut = audit_sector(
             &public_key,
             &global_challenge,
             vote_solution_range,
-            &plotted_sector_bytes,
+            ReadAt::from_sync(&plotted_sector_bytes),
             &plotted_sector.sector_metadata,
         );
 
-        let Some(audit_result) = maybe_audit_result else {
+        let Some(audit_result) = maybe_audit_result_fut.now_or_never().unwrap() else {
             // Sector didn't have any solutions
             continue;
         };
@@ -496,8 +497,12 @@ pub fn create_signed_vote(
             .into_solutions(&reward_address, kzg, erasure_coding, |seed: &PosSeed| {
                 table_generator.generate_parallel(seed)
             })
+            .now_or_never()
+            .unwrap()
             .unwrap()
             .next()
+            .now_or_never()
+            .unwrap()
             .unwrap()
             .unwrap();
 

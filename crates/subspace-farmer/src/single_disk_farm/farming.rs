@@ -3,7 +3,7 @@ use crate::node_client::NodeClient;
 use crate::single_disk_farm::Handlers;
 use async_lock::RwLock;
 use futures::channel::mpsc;
-use futures::StreamExt;
+use futures::{FutureExt, StreamExt};
 #[cfg(windows)]
 use memmap2::Mmap;
 use parking_lot::Mutex;
@@ -22,6 +22,8 @@ use subspace_farmer_components::proving::ProvableSolutions;
 use subspace_farmer_components::sector::SectorMetadataChecksummed;
 #[cfg(not(windows))]
 use subspace_farmer_components::ReadAt;
+#[cfg(not(windows))]
+use subspace_farmer_components::ReadAtSync;
 use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_rpc_primitives::{SlotInfo, SolutionResponse};
 use thiserror::Error;
@@ -144,7 +146,7 @@ where
             let modifying_sector_guard = modifying_sector_index.read().await;
             let maybe_sector_being_modified = modifying_sector_guard.as_ref().copied();
 
-            let sectors_solutions_fut = plot_audit(PlotAuditOptions::<PosTable> {
+            plot_audit(PlotAuditOptions::<PosTable> {
                 public_key: &public_key,
                 reward_address: &reward_address,
                 sector_size,
@@ -158,13 +160,11 @@ where
                 plot_mmap: &plot_mmap,
                 maybe_sector_being_modified,
                 table_generator: &table_generator,
-            });
-
-            sectors_solutions_fut.await
+            })
         };
 
-        'solutions_processing: for (sector_index, sector_solutions) in sectors_solutions {
-            for maybe_solution in sector_solutions {
+        'solutions_processing: for (sector_index, mut sector_solutions) in sectors_solutions {
+            while let Some(maybe_solution) = sector_solutions.next().await {
                 let solution = match maybe_solution {
                     Ok(solution) => solution,
                     Err(error) => {
@@ -244,7 +244,7 @@ where
     pub table_generator: &'a Mutex<PosTable::Generator>,
 }
 
-pub async fn plot_audit<PosTable>(
+pub fn plot_audit<PosTable>(
     options: PlotAuditOptions<'_, PosTable>,
 ) -> Vec<(
     SectorIndex,
@@ -293,26 +293,37 @@ where
                 "Auditing sector",
             );
 
-            let audit_results = audit_sector(
+            let audit_results_fut = audit_sector(
                 public_key,
                 &slot_info.global_challenge,
                 slot_info.voting_solution_range,
-                sector,
+                ReadAt::from_sync(sector),
                 sector_metadata,
-            )?;
+            );
+
+            let audit_results = audit_results_fut
+                .now_or_never()
+                .expect("Implementation of the sector is currently synchronous; qed")?;
 
             Some((
                 sector_metadata.sector_index,
                 audit_results.solution_candidates,
             ))
         })
+        .collect::<Vec<_>>()
+        .into_iter()
         .filter_map(|(sector_index, solution_candidates)| {
-            let sector_solutions = match solution_candidates.into_solutions(
+            let sector_solutions_fut = solution_candidates.into_solutions(
                 reward_address,
                 kzg,
                 erasure_coding,
                 |seed: &PosSeed| table_generator.lock().generate_parallel(seed),
-            ) {
+            );
+
+            let sector_solutions = match sector_solutions_fut
+                .now_or_never()
+                .expect("Implementation of the sector is currently synchronous; qed")
+            {
                 Ok(solutions) => solutions,
                 Err(error) => {
                     warn!(

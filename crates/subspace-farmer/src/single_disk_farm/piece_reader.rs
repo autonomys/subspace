@@ -7,7 +7,7 @@ use std::sync::Arc;
 use subspace_core_primitives::{Piece, PieceOffset, PublicKey, SectorId, SectorIndex};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::sector::{sector_size, SectorMetadataChecksummed};
-use subspace_farmer_components::{reading, ReadAt};
+use subspace_farmer_components::{reading, ReadAt, ReadAtAsync, ReadAtSync};
 use subspace_proof_of_space::Table;
 use tracing::{error, warn};
 
@@ -159,44 +159,49 @@ async fn read_pieces<PosTable>(
         let sector_size = sector_size(pieces_in_sector);
         let sector = plot_file.offset(sector_index as usize * sector_size);
 
-        let maybe_piece = read_piece::<PosTable, _>(
+        let maybe_piece = read_piece::<PosTable, _, _>(
             &public_key,
             piece_offset,
             &sector_metadata,
-            &sector,
+            // TODO: Async
+            &ReadAt::from_sync(&sector),
             &erasure_coding,
             &mut table_generator,
-        );
+        )
+        .await;
 
         // Doesn't matter if receiver still cares about it
         let _ = response_sender.send(maybe_piece);
     }
 }
 
-fn read_piece<PosTable, Sector>(
+async fn read_piece<PosTable, S, A>(
     public_key: &PublicKey,
     piece_offset: PieceOffset,
     sector_metadata: &SectorMetadataChecksummed,
-    sector: &Sector,
+    sector: &ReadAt<S, A>,
     erasure_coding: &ErasureCoding,
     table_generator: &mut PosTable::Generator,
 ) -> Option<Piece>
 where
     PosTable: Table,
-    Sector: ReadAt + ?Sized,
+    S: ReadAtSync,
+    A: ReadAtAsync,
 {
     let sector_index = sector_metadata.sector_index;
 
     let sector_id = SectorId::new(public_key.hash(), sector_index);
 
-    let piece = match reading::read_piece::<PosTable, _>(
+    let piece = match reading::read_piece::<PosTable, _, _>(
         piece_offset,
         &sector_id,
         sector_metadata,
         sector,
         erasure_coding,
         table_generator,
-    ) {
+    )
+    .await
+    {
         Ok(piece) => piece,
         Err(error) => {
             error!(

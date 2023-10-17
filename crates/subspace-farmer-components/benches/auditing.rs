@@ -1,10 +1,10 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use futures::executor::block_on;
+use futures::FutureExt;
 use rand::prelude::*;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::num::{NonZeroU64, NonZeroUsize};
-use std::time::Instant;
 use std::{env, fs};
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
@@ -21,7 +21,7 @@ use subspace_farmer_components::plotting::{
 use subspace_farmer_components::sector::{
     sector_size, SectorContentsMap, SectorMetadata, SectorMetadataChecksummed,
 };
-use subspace_farmer_components::{FarmerProtocolInfo, ReadAt};
+use subspace_farmer_components::{FarmerProtocolInfo, ReadAt, ReadAtSync};
 use subspace_proof_of_space::chia::ChiaTable;
 use subspace_proof_of_space::Table;
 
@@ -44,7 +44,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         .map(|sectors_count| sectors_count.parse().unwrap())
         .unwrap_or(10);
 
-    let public_key = PublicKey::default();
+    let public_key = &PublicKey::default();
     let sector_index = 0;
     let mut input = RecordedHistorySegment::new_boxed();
     StdRng::seed_from_u64(42).fill(AsMut::<[u8]>::as_mut(input.as_mut()));
@@ -77,7 +77,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         ),
         min_sector_lifetime: HistorySize::from(NonZeroU64::new(4).unwrap()),
     };
-    let global_challenge = Blake3Hash::default();
+    let global_challenge = &Blake3Hash::default();
     let solution_range = SolutionRange::MAX;
 
     let sector_size = sector_size(pieces_in_sector);
@@ -119,7 +119,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         let mut plotted_sector_metadata_bytes = Vec::new();
 
         let plotted_sector = block_on(plot_sector::<PosTable, _>(PlotSectorOptions {
-            public_key: &public_key,
+            public_key,
             sector_index,
             piece_getter: &archived_history_segment,
             piece_getter_retry_policy: PieceGetterRetryPolicy::default(),
@@ -153,12 +153,14 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     group.bench_function("memory", |b| {
         b.iter(|| {
             audit_sector(
-                black_box(&public_key),
-                black_box(&global_challenge),
+                black_box(public_key),
+                black_box(global_challenge),
                 black_box(solution_range),
-                black_box(&plotted_sector_bytes),
+                black_box(ReadAt::from_sync(&plotted_sector_bytes)),
                 black_box(&plotted_sector.sector_metadata),
-            );
+            )
+            .now_or_never()
+            .unwrap();
         })
     });
 
@@ -188,21 +190,21 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
         group.throughput(Throughput::Elements(sectors_count));
         group.bench_function("disk", |b| {
-            b.iter_custom(|iters| {
-                let start = Instant::now();
-                for _i in 0..iters {
-                    for sector_index in 0..sectors_count as usize {
-                        let sector = plot_file.offset(sector_index * sector_size);
+            b.iter(|| {
+                for sector_index in 0..sectors_count as usize {
+                    let sector = plot_file.offset(sector_index * sector_size);
+                    black_box(
                         audit_sector(
-                            black_box(&public_key),
-                            black_box(&global_challenge),
+                            black_box(public_key),
+                            black_box(global_challenge),
                             black_box(solution_range),
-                            black_box(&sector),
+                            black_box(ReadAt::from_sync(sector)),
                             black_box(&plotted_sector.sector_metadata),
-                        );
-                    }
+                        )
+                        .now_or_never()
+                        .unwrap(),
+                    );
                 }
-                start.elapsed()
             });
         });
 

@@ -1,6 +1,6 @@
 use crate::proving::SolutionCandidates;
 use crate::sector::{SectorContentsMap, SectorMetadataChecksummed};
-use crate::ReadAt;
+use crate::{ReadAt, ReadAtAsync, ReadAtSync};
 use std::mem;
 use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::{Blake3Hash, PublicKey, SectorId, SolutionRange};
@@ -41,15 +41,16 @@ pub(crate) struct ChunkCandidate {
 /// Audit a single sector and generate a stream of solutions, where `sector` must be positioned
 /// correctly at the beginning of the sector (seek to desired offset before calling this function
 /// and seek back afterwards if necessary).
-pub fn audit_sector<'a, Sector>(
+pub async fn audit_sector<'a, S, A>(
     public_key: &'a PublicKey,
     global_challenge: &Blake3Hash,
     solution_range: SolutionRange,
-    sector: Sector,
+    sector: ReadAt<S, A>,
     sector_metadata: &'a SectorMetadataChecksummed,
-) -> Option<AuditResult<'a, Sector>>
+) -> Option<AuditResult<'a, ReadAt<S, A>>>
 where
-    Sector: ReadAt + 'a,
+    S: ReadAtSync + 'a,
+    A: ReadAtAsync + 'a,
 {
     let sector_id = SectorId::new(public_key.hash(), sector_metadata.sector_index);
 
@@ -72,7 +73,15 @@ where
     let s_bucket_audit_offset_in_sector = sector_contents_map_size + s_bucket_audit_offset;
 
     let mut s_bucket = vec![0; s_bucket_audit_size];
-    if let Err(error) = sector.read_at(&mut s_bucket, s_bucket_audit_offset_in_sector) {
+    let read_s_bucket_result = match &sector {
+        ReadAt::Sync(sector) => sector.read_at(&mut s_bucket, s_bucket_audit_offset_in_sector),
+        ReadAt::Async(sector) => {
+            sector
+                .read_at(&mut s_bucket, s_bucket_audit_offset_in_sector)
+                .await
+        }
+    };
+    if let Err(error) = read_s_bucket_result {
         warn!(
             %error,
             sector_index = %sector_metadata.sector_index,
