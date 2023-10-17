@@ -3,6 +3,7 @@ use crate::utils::to_number_primitive;
 use crate::ExecutionReceiptFor;
 use codec::{Decode, Encode};
 use domain_block_builder::{BlockBuilder, RecordProof};
+use domain_block_preprocessor::inherents::get_inherent_data;
 use domain_runtime_primitives::opaque::AccountId;
 use domain_runtime_primitives::DomainCoreApi;
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
@@ -227,7 +228,7 @@ where
         ))
     }
 
-    pub(crate) fn generate_invalid_state_transition_proof<PCB>(
+    pub(crate) async fn generate_invalid_state_transition_proof<PCB>(
         &self,
         domain_id: DomainId,
         local_trace_index: u32,
@@ -323,7 +324,13 @@ where
                 total_extrinsics: local_trace_index - 1,
             };
             let finalize_block_call_data = Vec::new();
-
+            let inherent_data = get_inherent_data::<_, _, Block>(
+                self.consensus_client.clone(),
+                local_receipt.consensus_block_hash,
+                parent_header.hash(),
+                domain_id,
+            )
+            .await?;
             let block_builder = BlockBuilder::new(
                 &*self.client,
                 parent_header.hash(),
@@ -331,7 +338,8 @@ where
                 RecordProof::No,
                 digest,
                 &*self.backend,
-                extrinsics,
+                extrinsics.into(),
+                inherent_data,
             )?;
             let storage_changes = block_builder.prepare_storage_changes_before_finalize_block()?;
 
@@ -361,13 +369,17 @@ where
                 as_h256(&local_receipt.execution_trace[local_trace_index as usize - 1])?;
             let post_state_root = as_h256(local_root)?;
 
-            let (proof, execution_phase) = self.create_extrinsic_execution_proof(
-                local_trace_index as usize - 1,
-                &parent_header,
-                block_hash,
-                &prover,
-                digest,
-            )?;
+            let (proof, execution_phase) = self
+                .create_extrinsic_execution_proof(
+                    domain_id,
+                    local_trace_index as usize - 1,
+                    local_receipt.consensus_block_hash,
+                    &parent_header,
+                    block_hash,
+                    &prover,
+                    digest,
+                )
+                .await?;
 
             // TODO: proof should be a CompactProof.
             InvalidStateTransitionProof {
@@ -399,9 +411,12 @@ where
         })
     }
 
-    fn create_extrinsic_execution_proof(
+    #[allow(clippy::too_many_arguments)]
+    async fn create_extrinsic_execution_proof(
         &self,
+        domain_id: DomainId,
         extrinsic_index: usize,
+        consensus_block_hash: CBlock::Hash,
         parent_header: &Block::Header,
         current_hash: Block::Hash,
         prover: &ExecutionProver<Block, Backend, E>,
@@ -423,7 +438,13 @@ where
                 .expect("extrinsic_index must fit into u32"),
         );
         let apply_extrinsic_call_data = encoded_extrinsic;
-
+        let inherent_data = get_inherent_data::<_, _, Block>(
+            self.consensus_client.clone(),
+            consensus_block_hash,
+            parent_header.hash(),
+            domain_id,
+        )
+        .await?;
         let block_builder = BlockBuilder::new(
             &*self.client,
             parent_header.hash(),
@@ -431,7 +452,8 @@ where
             RecordProof::No,
             digest,
             &*self.backend,
-            extrinsics,
+            extrinsics.into(),
+            inherent_data,
         )?;
         let storage_changes = block_builder.prepare_storage_changes_before(extrinsic_index)?;
 

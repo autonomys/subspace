@@ -2512,6 +2512,7 @@ dependencies = [
  "sp-blockchain",
  "sp-core",
  "sp-domains",
+ "sp-executive",
  "sp-inherents",
  "sp-keyring",
  "sp-messenger",
@@ -2587,6 +2588,7 @@ dependencies = [
  "sp-core",
  "sp-domain-digests",
  "sp-domains",
+ "sp-inherents",
  "sp-keystore",
  "sp-messenger",
  "sp-runtime",
@@ -2670,6 +2672,7 @@ dependencies = [
  "parity-scale-codec",
  "scale-info",
  "sp-core",
+ "sp-executive",
  "sp-externalities",
  "sp-io",
  "sp-runtime",
@@ -10733,6 +10736,16 @@ dependencies = [
  "sp-trie",
  "subspace-core-primitives",
  "trie-db",
+]
+
+[[package]]
+name = "sp-executive"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "parity-scale-codec",
+ "sp-inherents",
+ "sp-std",
 ]
 
 [[package]]

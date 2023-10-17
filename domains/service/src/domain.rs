@@ -403,8 +403,15 @@ where
             database_source: domain_config.database.clone(),
             task_spawner: task_manager.spawn_handle(),
             backend: backend.clone(),
+            // This is required by the eth rpc to create pending state using the underlying
+            // consensus provider. In our case, the consensus provider is empty and
+            // as a result this is not used at all. Providing this just to make the api
+            // compatible
             create_inherent_data_provider: CreateInherentDataProvider::new(
                 consensus_client.clone(),
+                // It is safe to pass empty consensus hash here as explained above
+                None,
+                domain_id,
             ),
         };
 
