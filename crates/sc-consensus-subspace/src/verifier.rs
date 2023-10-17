@@ -2,8 +2,6 @@
 
 use crate::Error;
 use futures::lock::Mutex;
-use futures::stream::FuturesUnordered;
-use futures::StreamExt;
 use log::{debug, info, trace, warn};
 use rand::prelude::*;
 use sc_client_api::backend::AuxStore;
@@ -29,8 +27,10 @@ use sp_consensus_subspace::{
 use sp_runtime::traits::NumberFor;
 use sp_runtime::{DigestItem, Justifications};
 use std::marker::PhantomData;
+use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
+use std::thread::available_parallelism;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{BlockNumber, PublicKey, RewardSignature};
 use subspace_proof_of_space::Table;
@@ -309,14 +309,15 @@ where
 
             // All checkpoints must be valid, at least according to the seed included in
             // justifications
-            let verification_results = FuturesUnordered::new();
             for checkpoints in &checkpoints {
                 if full_pot_verification {
-                    verification_results.push(self.pot_verifier.verify_checkpoints(
-                        seed,
-                        slot_iterations,
-                        checkpoints,
-                    ));
+                    // Try to find invalid checkpoints
+                    if !self
+                        .pot_verifier
+                        .verify_checkpoints(seed, slot_iterations, checkpoints)
+                    {
+                        return Err(VerificationError::InvalidProofOfTime);
+                    }
                 } else {
                     // We inject verified checkpoints in order to avoid full proving when votes
                     // included in the block will inevitably be verified during block execution
@@ -339,18 +340,6 @@ where
                 slot_to_check = pot_input.slot;
                 slot_iterations = pot_input.slot_iterations;
                 seed = pot_input.seed;
-            }
-            // Try to find invalid checkpoints
-            if verification_results
-                // TODO: Ideally we'd use `find` here instead, but it does not yet exist:
-                //  https://github.com/rust-lang/futures-rs/issues/2705
-                .filter(|&success| async move { !success })
-                .boxed()
-                .next()
-                .await
-                .is_some()
-            {
-                return Err(VerificationError::InvalidProofOfTime);
             }
         }
 
@@ -461,8 +450,16 @@ where
     SelectChain: sp_consensus::SelectChain<Block>,
     SN: Fn() -> Slot + Send + Sync + 'static,
 {
-    fn supports_stateless_verification(&self) -> bool {
-        true
+    fn verification_concurrency(&self) -> NonZeroUsize {
+        available_parallelism()
+            .ok()
+            .and_then(|concurrency| {
+                // Multiply by two because with optimistic verification we will not actually spend a
+                // lot of CPU time verifying blocks, increasing this will help with CPU utilization
+                // and will make sync faster
+                concurrency.checked_mul(NonZeroUsize::new(2).expect("Not zero; qed"))
+            })
+            .unwrap_or(NonZeroUsize::new(1).expect("Not zero; qed"))
     }
 
     async fn verify(

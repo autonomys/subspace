@@ -30,7 +30,7 @@ const CHECKSUM_LEN: usize = 2;
 
 /// An error type for SS58 decoding.
 #[derive(Debug, Error)]
-pub(crate) enum Ss58ParsingError {
+pub enum Ss58ParsingError {
     /// Base 58 requirement is violated
     #[error("Base 58 requirement is violated")]
     BadBase58,
@@ -49,7 +49,7 @@ pub(crate) enum Ss58ParsingError {
 }
 
 /// Some if the string is a properly encoded SS58Check address.
-pub(crate) fn parse_ss58_reward_address(s: &str) -> Result<PublicKey, Ss58ParsingError> {
+pub fn parse_ss58_reward_address(s: &str) -> Result<PublicKey, Ss58ParsingError> {
     let data = s.from_base58().map_err(|_| Ss58ParsingError::BadBase58)?;
     if data.len() < 2 {
         return Err(Ss58ParsingError::BadLength);

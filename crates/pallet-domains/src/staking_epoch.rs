@@ -209,6 +209,7 @@ fn do_finalize_operator_deregistrations<T: Config>(
 
 #[cfg(any(not(feature = "runtime-benchmarks"), test))]
 fn unlock_operator<T: Config>(operator_id: OperatorId) -> Result<(), Error> {
+    use crate::pallet::NominatorCount;
     Operators::<T>::try_mutate_exists(operator_id, |maybe_operator| {
         // take the operator so this operator info is removed once we unlock the operator.
         let operator = maybe_operator
@@ -269,6 +270,9 @@ fn unlock_operator<T: Config>(operator_id: OperatorId) -> Result<(), Error> {
 
         // remove OperatorOwner Details
         OperatorIdOwner::<T>::remove(operator_id);
+
+        // remove nominator count for this operator.
+        NominatorCount::<T>::remove(operator_id);
 
         Ok(())
     })
@@ -742,8 +746,8 @@ pub struct PendingOperatorSlashInfo<NominatorId, Balance> {
 mod tests {
     use crate::domain_registry::{DomainConfig, DomainObject};
     use crate::pallet::{
-        DomainRegistry, DomainStakingSummary, LastEpochStakingDistribution, Nominators,
-        OperatorIdOwner, Operators, PendingDeposits, PendingOperatorSwitches,
+        DomainRegistry, DomainStakingSummary, LastEpochStakingDistribution, NominatorCount,
+        Nominators, OperatorIdOwner, Operators, PendingDeposits, PendingOperatorSwitches,
         PendingOperatorUnlocks, PendingUnlocks, PendingWithdrawals, PreferredOperator,
     };
     use crate::staking::tests::register_operator;
@@ -938,7 +942,8 @@ mod tests {
 
             assert_eq!(Operators::<Test>::get(operator_id), None);
             assert_eq!(OperatorIdOwner::<Test>::get(operator_id), None);
-            assert!(PendingOperatorUnlocks::<Test>::get().is_empty())
+            assert!(PendingOperatorUnlocks::<Test>::get().is_empty());
+            assert_eq!(NominatorCount::<Test>::get(operator_id), 0);
         });
     }
 

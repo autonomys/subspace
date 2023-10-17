@@ -324,16 +324,12 @@ where
             };
 
             // Ensure proof of time is valid according to parent block
-            if !self
-                .pot_verifier
-                .is_output_valid(
-                    pot_input,
-                    Slot::from(u64::from(slot) - u64::from(parent_slot)),
-                    proof_of_time,
-                    parent_pot_parameters.next_parameters_change(),
-                )
-                .await
-            {
+            if !self.pot_verifier.is_output_valid(
+                pot_input,
+                Slot::from(u64::from(slot) - u64::from(parent_slot)),
+                proof_of_time,
+                parent_pot_parameters.next_parameters_change(),
+            ) {
                 warn!(
                     target: "subspace",
                     "Proof of time is invalid, skipping block authoring at slot {slot:?}"
@@ -363,11 +359,11 @@ where
 
             for slot in *parent_future_slot + 1..=*future_slot {
                 let slot = Slot::from(slot);
-                let maybe_slot_checkpoints_fut = self.pot_verifier.get_checkpoints(
+                let maybe_slot_checkpoints = self.pot_verifier.get_checkpoints(
                     checkpoints_pot_input.slot_iterations,
                     checkpoints_pot_input.seed,
                 );
-                let Some(slot_checkpoints) = maybe_slot_checkpoints_fut.await else {
+                let Some(slot_checkpoints) = maybe_slot_checkpoints else {
                     warn!("Proving failed during block authoring");
                     return None;
                 };

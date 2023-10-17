@@ -388,7 +388,7 @@ pub struct InvalidTransactionProof {
     /// Hash of the bad receipt this fraud proof targeted
     pub bad_receipt_hash: ReceiptHash,
     /// Number of the block at which the invalid transaction occurred.
-    pub block_number: u32,
+    pub domain_block_number: u32,
     /// Hash of the domain block corresponding to `block_number`.
     pub domain_block_hash: H256,
     // TODO: Verifiable invalid extrinsic.

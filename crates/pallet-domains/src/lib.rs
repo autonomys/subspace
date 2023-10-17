@@ -288,6 +288,10 @@ mod pallet {
         #[pallet::constant]
         type MaxPendingStakingOperation: Get<u32>;
 
+        /// The maximum number of nominators for given operator.
+        #[pallet::constant]
+        type MaxNominators: Get<u32>;
+
         /// Randomness source.
         type Randomness: RandomnessT<Self::Hash, BlockNumberFor<Self>>;
     }
@@ -352,6 +356,16 @@ mod pallet {
         Nominator<T::Share>,
         OptionQuery,
     >;
+
+    /// Tracks the nominator count under given operator.
+    /// This storage is necessary since CountedStorageNMap does not support prefix key count, so
+    /// cannot use that storage type for `Nominators` storage.
+    /// Note: The count is incremented for new nominators and decremented when the nominator withdraws
+    /// all the stake.
+    /// Since Operator themselves are first nominator, they are not counted.
+    #[pallet::storage]
+    pub(super) type NominatorCount<T: Config> =
+        StorageMap<_, Identity, OperatorId, u32, ValueQuery>;
 
     /// Deposits initiated a nominator under this operator.
     /// Will be stored temporarily until the current epoch is complete.

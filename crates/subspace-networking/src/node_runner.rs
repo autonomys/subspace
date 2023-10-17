@@ -1033,11 +1033,13 @@ where
                 }
             }
             KademliaEvent::OutboundQueryProgressed {
-                step: ProgressStep { last, .. },
+                step: ProgressStep { last, count },
                 id,
                 result: QueryResult::Bootstrap(result),
-                ..
+                stats,
             } => {
+                debug!(?stats, %last, %count, ?id, ?result, "Bootstrap OutboundQueryProgressed step.");
+
                 let mut cancelled = false;
                 if let Some(QueryResultSender::Bootstrap { sender }) =
                     self.query_id_receivers.get_mut(&id)
