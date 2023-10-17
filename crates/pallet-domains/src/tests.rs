@@ -945,25 +945,24 @@ fn test_invalid_domain_block_hash_fraud_proof() {
 
         let bad_receipt_at = 8;
         let mut domain_block = get_block_tree_node_at::<Test>(domain_id, bad_receipt_at).unwrap();
-
-        let bad_receipt_hash = domain_block.execution_receipt.hash();
-        let (fraud_proof, root) = generate_invalid_domain_block_hash_fraud_proof::<Test>(
-            domain_id,
-            bad_receipt_hash,
-            Digest::default(),
-        );
+        let (root, digest_storage_proof) =
+            generate_invalid_domain_block_hash_fraud_proof::<Test>(Digest::default());
         domain_block.execution_receipt.final_state_root = root;
         domain_block.execution_receipt.domain_block_hash = H256::random();
+        let bad_receipt_hash = domain_block.execution_receipt.hash();
         DomainBlocks::<Test>::insert(bad_receipt_hash, domain_block);
+        let fraud_proof = FraudProof::InvalidDomainBlockHash(InvalidDomainBlockHashProof {
+            domain_id,
+            bad_receipt_hash,
+            digest_storage_proof,
+        });
         assert_ok!(Domains::validate_fraud_proof(&fraud_proof),);
     });
 }
 
 fn generate_invalid_domain_block_hash_fraud_proof<T: Config>(
-    domain_id: DomainId,
-    bad_receipt_hash: ReceiptHash,
     digest: Digest,
-) -> (FraudProof<BlockNumberFor<T>, T::Hash>, T::Hash) {
+) -> (T::Hash, StorageProof) {
     let digest_storage_key = sp_domains::fraud_proof::system_digest_final_key();
     let mut root = T::Hash::default();
     let mut mdb = PrefixedMemoryDB::<T::Hashing>::default();
@@ -973,16 +972,7 @@ fn generate_invalid_domain_block_hash_fraud_proof<T: Config>(
     };
 
     let backend = TrieBackendBuilder::new(mdb, root).build();
-    let (root, digest_storage_proof) =
-        storage_proof_for_key::<T, _>(backend, StorageKey(digest_storage_key));
-    (
-        FraudProof::InvalidDomainBlockHash(InvalidDomainBlockHashProof {
-            domain_id,
-            bad_receipt_hash,
-            digest_storage_proof,
-        }),
-        root,
-    )
+    storage_proof_for_key::<T, _>(backend, StorageKey(digest_storage_key))
 }
 
 #[test]

@@ -589,7 +589,7 @@ mod pallet {
         DescendantsOfFraudulentERNotPruned,
         /// Invalid fraud proof since total rewards are not mismatched.
         InvalidTotalRewardsFraudProof(sp_domains::verification::VerificationError),
-        /// Invalid fraud proof since domain block hash is not mismatched.
+        /// Invalid domain block hash fraud proof.
         InvalidDomainBlockHashFraudProof(sp_domains::verification::VerificationError),
         /// Invalid domain extrinsic fraud proof
         InvalidExtrinsicRootFraudProof(sp_domains::verification::VerificationError),
@@ -599,6 +599,8 @@ mod pallet {
         FailedToGetDomainTimestampExtrinsic,
         /// Received invalid Verification info from host function.
         ReceivedInvalidVerificationInfo,
+        /// Parent receipt not found.
+        ParentReceiptNotFound,
     }
 
     impl<T> From<FraudProofError> for Error<T> {
@@ -1532,7 +1534,7 @@ impl<T: Config> Pallet<T> {
             }) => {
                 let parent_receipt =
                     DomainBlocks::<T>::get(bad_receipt.parent_domain_block_receipt_hash)
-                        .ok_or(FraudProofError::BadReceiptNotFound)?
+                        .ok_or(FraudProofError::ParentReceiptNotFound)?
                         .execution_receipt;
                 verify_invalid_domain_block_hash_fraud_proof::<
                     T::Block,
