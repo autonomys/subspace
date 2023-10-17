@@ -25,7 +25,8 @@ use subspace_farmer::utils::farmer_piece_getter::FarmerPieceGetter;
 use subspace_farmer::utils::piece_validator::SegmentCommitmentPieceValidator;
 use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
 use subspace_farmer::utils::{
-    run_future_in_dedicated_thread, tokio_rayon_spawn_handler, PrometheusTaskDropHelper,
+    run_future_in_dedicated_thread, tokio_rayon_spawn_handler, AbortTaskOnDrop,
+    AsyncJoinOnDropForFuture,
 };
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_farmer_components::plotting::PlottedSector;
@@ -145,7 +146,9 @@ where
         )?;
 
         let join_handle = tokio::spawn(prometheus_task);
-        Some(PrometheusTaskDropHelper::new(join_handle))
+        Some(AsyncJoinOnDropForFuture::new(AbortTaskOnDrop::new(
+            join_handle,
+        )))
     } else {
         None
     };
