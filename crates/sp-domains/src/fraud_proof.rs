@@ -242,6 +242,7 @@ pub enum FraudProof<Number, Hash> {
     ImproperTransactionSortition(ImproperTransactionSortitionProof),
     InvalidTotalRewards(InvalidTotalRewardsProof),
     InvalidExtrinsicsRoot(InvalidExtrinsicsRootProof),
+    InvalidDomainBlockHash(InvalidDomainBlockHashProof),
     // Dummy fraud proof only used in test and benchmark
     #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
     Dummy {
@@ -265,6 +266,7 @@ impl<Number, Hash> FraudProof<Number, Hash> {
             FraudProof::InvalidTotalRewards(proof) => proof.domain_id(),
             FraudProof::InvalidBundles(proof) => proof.domain_id(),
             FraudProof::InvalidExtrinsicsRoot(proof) => proof.domain_id,
+            FraudProof::InvalidDomainBlockHash(proof) => proof.domain_id,
         }
     }
 
@@ -285,6 +287,7 @@ impl<Number, Hash> FraudProof<Number, Hash> {
             // TODO: Remove default value when invalid bundle proofs are fully expanded
             FraudProof::InvalidBundles(_) => Default::default(),
             FraudProof::InvalidExtrinsicsRoot(proof) => proof.bad_receipt_hash,
+            FraudProof::InvalidDomainBlockHash(proof) => proof.bad_receipt_hash,
         }
     }
 
@@ -417,6 +420,17 @@ pub struct InvalidTotalRewardsProof {
     pub storage_proof: StorageProof,
 }
 
+/// Represents an invalid domain block hash fraud proof.
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+pub struct InvalidDomainBlockHashProof {
+    /// The id of the domain this fraud proof targeted
+    pub domain_id: DomainId,
+    /// Hash of the bad receipt this fraud proof targeted
+    pub bad_receipt_hash: ReceiptHash,
+    /// Digests storage proof that is used to derive Domain block hash.
+    pub digest_storage_proof: StorageProof,
+}
+
 /// Represents the extrinsic either as full data or hash of the data.
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
 pub enum ExtrinsicDigest {
@@ -477,9 +491,17 @@ impl InvalidTotalRewardsProof {
     }
 }
 
+//TODO: remove there key generations from here and instead use the fraud proof host function to fetch them
+
 /// This is a representation of actual Block Rewards storage in pallet-operator-rewards.
 /// Any change in key or value there should be changed here accordingly.
 pub fn operator_block_rewards_final_key() -> Vec<u8> {
     frame_support::storage::storage_prefix("OperatorRewards".as_ref(), "BlockRewards".as_ref())
         .to_vec()
+}
+
+/// Digest storage key in frame_system.
+/// Unfortunately, the digest storage is private and not possible to derive the key from it directly.
+pub fn system_digest_final_key() -> Vec<u8> {
+    frame_support::storage::storage_prefix("System".as_ref(), "Digest".as_ref()).to_vec()
 }
