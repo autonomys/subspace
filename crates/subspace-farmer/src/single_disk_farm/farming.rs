@@ -1,5 +1,3 @@
-#[cfg(target_os = "linux")]
-pub mod glommio;
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 pub mod monoio;
 
