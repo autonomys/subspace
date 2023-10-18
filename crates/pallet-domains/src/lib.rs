@@ -602,9 +602,6 @@ mod pallet {
         /// The targetted bad receipt not found which may already pruned by other
         /// fraud proof or the fraud proof is submitted to the wrong fork.
         BadReceiptNotFound,
-        /// The targetted bad receipt's parent not found which may already pruned
-        /// by other fraud proof or the fraud proof is submitted to the wrong fork.
-        BadReceiptParentNotFound,
         /// The genesis receipt is unchallengeable.
         ChallengingGenesisReceipt,
         /// The descendants of the fraudulent ER is not pruned
@@ -1615,7 +1612,7 @@ impl<T: Config> Pallet<T> {
             FraudProof::InvalidStateTransition(proof) => {
                 let bad_receipt_parent =
                     BlockTreeNodes::<T>::get(bad_receipt.parent_domain_block_receipt_hash)
-                        .ok_or(FraudProofError::BadReceiptParentNotFound)?
+                        .ok_or(FraudProofError::ParentReceiptNotFound)?
                         .execution_receipt;
 
                 verify_invalid_state_transition_fraud_proof::<

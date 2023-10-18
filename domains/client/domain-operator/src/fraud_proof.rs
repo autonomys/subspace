@@ -9,6 +9,7 @@ use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::CodeExecutor;
 use sp_core::H256;
+use sp_domain_digests::AsPredigest;
 use sp_domains::fraud_proof::{
     ExecutionPhase, ExtrinsicDigest, FraudProof, InvalidBundlesFraudProof,
     InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof, InvalidStateTransitionProof,
@@ -17,7 +18,7 @@ use sp_domains::fraud_proof::{
 };
 use sp_domains::{DomainId, DomainsApi};
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashingFor, Header as HeaderT, NumberFor};
-use sp_runtime::Digest;
+use sp_runtime::{Digest, DigestItem};
 use sp_trie::{LayoutV1, StorageProof};
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -265,7 +266,11 @@ where
 
         let prover = ExecutionProver::new(self.backend.clone(), self.code_executor.clone());
 
-        let digest = self.client.runtime_api().block_digest(block_hash)?;
+        let inherent_digests = Digest {
+            logs: vec![DigestItem::consensus_block_info(
+                local_receipt.consensus_block_hash,
+            )],
+        };
 
         let invalid_state_transition_proof = if local_trace_index == 0 {
             // `initialize_block` execution proof.
@@ -274,17 +279,9 @@ where
                 Default::default(),
                 Default::default(),
                 parent_header.hash(),
-                digest,
+                inherent_digests,
             );
-            let execution_phase = {
-                let digest_key = sp_domains::fraud_proof::system_digest_final_key();
-                let digest_storage_proof = self
-                    .client
-                    .read_proof(block_hash, &mut [digest_key.as_slice()].into_iter())?;
-                ExecutionPhase::InitializeBlock {
-                    digest_storage_proof,
-                }
-            };
+            let execution_phase = ExecutionPhase::InitializeBlock;
             let initialize_block_call_data = new_header.encode();
 
             let proof = prover.prove_execution::<sp_trie::PrefixedMemoryDB<HashingFor<Block>>>(
@@ -311,7 +308,7 @@ where
                 parent_header.hash(),
                 *parent_header.number(),
                 RecordProof::No,
-                digest,
+                inherent_digests,
                 &*self.backend,
                 extrinsics,
             )?;
@@ -340,7 +337,7 @@ where
                 &parent_header,
                 block_hash,
                 &prover,
-                digest,
+                inherent_digests,
             )?;
 
             // TODO: proof should be a CompactProof.

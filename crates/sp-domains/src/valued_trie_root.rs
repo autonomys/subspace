@@ -283,6 +283,7 @@ pub fn generate_proof<Layout: TrieLayout>(input: &[Vec<u8>], index: u32) -> Opti
     Some(proof)
 }
 
+// TODO: try using `StorageProofVerifier` to verify the proof-of-inclusion
 /// Verify the proof-of-inclusion of the `data` at the `index` of the merkle root `root`
 pub fn verify_proof<Layout>(
     proof: &[Vec<u8>],

@@ -1,15 +1,14 @@
-use crate::verification::StorageProofVerifier;
 use crate::{valued_trie_root, DomainId, ExecutionReceipt, ReceiptHash, SealedBundleHeader};
 use hash_db::Hasher;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
-use sp_core::storage::StorageKey;
 use sp_core::H256;
+use sp_domain_digests::AsPredigest;
 use sp_runtime::traits::{
     BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor,
 };
-use sp_runtime::Digest;
+use sp_runtime::{Digest, DigestItem};
 use sp_std::vec::Vec;
 use sp_trie::{LayoutV1, StorageProof};
 use subspace_runtime_primitives::{AccountId, Balance};
@@ -28,7 +27,7 @@ type ExecutionReceiptFor<DomainHeader, CBlock, Balance> = ExecutionReceipt<
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub enum ExecutionPhase {
     /// Executes the `initialize_block` hook.
-    InitializeBlock { digest_storage_proof: StorageProof },
+    InitializeBlock,
     /// Executes some extrinsic.
     ApplyExtrinsic {
         proof_of_inclusion: Vec<Vec<u8>>,
@@ -45,7 +44,7 @@ impl ExecutionPhase {
         match self {
             // TODO: Replace `DomainCoreApi_initialize_block_with_post_state_root` with `Core_initalize_block`
             // Should be a same issue with https://github.com/paritytech/substrate/pull/10922#issuecomment-1068997467
-            Self::InitializeBlock { .. } => "DomainCoreApi_initialize_block_with_post_state_root",
+            Self::InitializeBlock => "DomainCoreApi_initialize_block_with_post_state_root",
             Self::ApplyExtrinsic { .. } => "BlockBuilder_apply_extrinsic",
             Self::FinalizeBlock => "BlockBuilder_finalize_block",
         }
@@ -58,7 +57,7 @@ impl ExecutionPhase {
     /// result of execution reported in [`FraudProof`] is expected or not.
     pub fn verifying_method(&self) -> &'static str {
         match self {
-            Self::InitializeBlock { .. } => "DomainCoreApi_initialize_block_with_post_state_root",
+            Self::InitializeBlock => "DomainCoreApi_initialize_block_with_post_state_root",
             Self::ApplyExtrinsic { .. } => "DomainCoreApi_apply_extrinsic_with_post_state_root",
             Self::FinalizeBlock => "BlockBuilder_finalize_block",
         }
@@ -70,7 +69,7 @@ impl ExecutionPhase {
         execution_result: Vec<u8>,
     ) -> Result<Header::Hash, VerificationError> {
         match self {
-            Self::InitializeBlock { .. } | Self::ApplyExtrinsic { .. } => {
+            Self::InitializeBlock | Self::ApplyExtrinsic { .. } => {
                 let encoded_storage_root = Vec::<u8>::decode(&mut execution_result.as_slice())
                     .map_err(VerificationError::InitializeBlockOrApplyExtrinsicDecode)?;
                 Header::Hash::decode(&mut encoded_storage_root.as_slice())
@@ -98,7 +97,7 @@ impl ExecutionPhase {
             return Err(VerificationError::InvalidExecutionTrace);
         }
         let (pre, post) = match self {
-            ExecutionPhase::InitializeBlock { .. } => (
+            ExecutionPhase::InitializeBlock => (
                 bad_receipt_parent.final_state_root,
                 bad_receipt.execution_trace[0],
             ),
@@ -135,23 +134,19 @@ impl ExecutionPhase {
         DomainHeader::Hash: From<H256>,
     {
         Ok(match self {
-            ExecutionPhase::InitializeBlock {
-                digest_storage_proof,
-            } => {
-                let digest =
-                    StorageProofVerifier::<DomainHeader::Hashing>::verify_and_get_value::<Digest>(
-                        &bad_receipt.final_state_root,
-                        digest_storage_proof.clone(),
-                        StorageKey(system_digest_final_key()),
-                    )
-                    .map_err(|_| VerificationError::InvalidStorageProof)?;
+            ExecutionPhase::InitializeBlock => {
+                let inherent_digests = Digest {
+                    logs: sp_std::vec![DigestItem::consensus_block_info(
+                        bad_receipt.consensus_block_hash,
+                    )],
+                };
 
                 let new_header = DomainHeader::new(
                     bad_receipt.domain_block_number,
                     Default::default(),
                     Default::default(),
                     bad_receipt_parent.domain_block_hash,
-                    digest,
+                    inherent_digests,
                 );
                 new_header.encode()
             }

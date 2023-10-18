@@ -271,7 +271,7 @@ where
         (consensus_block_hash, consensus_block_number): (CBlock::Hash, NumberFor<CBlock>),
         (parent_hash, parent_number): (Block::Hash, NumberFor<Block>),
         preprocess_result: PreprocessResult<Block>,
-        digests: Digest,
+        inherent_digests: Digest,
     ) -> Result<DomainBlockResult<Block, CBlock>, sp_blockchain::Error> {
         let PreprocessResult {
             extrinsics,
@@ -294,7 +294,13 @@ where
             header_number,
             header_hash,
         } = self
-            .build_and_import_block(parent_hash, parent_number, extrinsics, fork_choice, digests)
+            .build_and_import_block(
+                parent_hash,
+                parent_number,
+                extrinsics,
+                fork_choice,
+                inherent_digests,
+            )
             .await?;
 
         tracing::debug!(
@@ -396,14 +402,14 @@ where
         parent_number: NumberFor<Block>,
         extrinsics: Vec<Block::Extrinsic>,
         fork_choice: ForkChoiceStrategy,
-        digests: Digest,
+        inherent_digests: Digest,
     ) -> Result<DomainBlockBuildResult<Block>, sp_blockchain::Error> {
         let block_builder = BlockBuilder::new(
             &*self.client,
             parent_hash,
             parent_number,
             RecordProof::No,
-            digests,
+            inherent_digests,
             &*self.backend,
             extrinsics,
         )?;

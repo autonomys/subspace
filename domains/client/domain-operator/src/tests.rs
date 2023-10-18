@@ -7,7 +7,7 @@ use domain_test_service::EcdsaKeyring::{Alice, Bob};
 use domain_test_service::Sr25519Keyring::{self, Ferdie};
 use domain_test_service::GENESIS_DOMAIN_ID;
 use futures::StreamExt;
-use sc_client_api::{Backend, BlockBackend, HeaderBackend, ProofProvider};
+use sc_client_api::{Backend, BlockBackend, HeaderBackend};
 use sc_consensus::SharedBlockImport;
 use sc_service::{BasePath, Role};
 use sc_transaction_pool_api::error::Error as TxPoolError;
@@ -841,7 +841,7 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
                 match mismatch_trace_index {
                     0 => assert!(matches!(
                         proof.execution_phase,
-                        ExecutionPhase::InitializeBlock { .. }
+                        ExecutionPhase::InitializeBlock
                     )),
                     1 => assert!(matches!(
                         proof.execution_phase,
@@ -1285,16 +1285,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
         parent_header.hash(),
         digest,
     );
-    let execution_phase = {
-        let digest_key = sp_domains::fraud_proof::system_digest_final_key();
-        let digest_storage_proof = alice
-            .client
-            .read_proof(header.hash(), &mut [digest_key.as_slice()].into_iter())
-            .unwrap();
-        ExecutionPhase::InitializeBlock {
-            digest_storage_proof,
-        }
-    };
+    let execution_phase = ExecutionPhase::InitializeBlock;
     let initialize_block_call_data = new_header.encode();
 
     let storage_proof = prover
