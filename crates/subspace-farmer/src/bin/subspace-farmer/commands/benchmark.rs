@@ -11,7 +11,7 @@ use std::path::PathBuf;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{Record, SolutionRange};
 use subspace_erasure_coding::ErasureCoding;
-use subspace_farmer::single_disk_farm::farming::{plot_audit, PlotAuditOptions};
+use subspace_farmer::single_disk_farm::farming::{audit_plot, PlotAuditOptions};
 use subspace_farmer::single_disk_farm::{SingleDiskFarm, SingleDiskFarmSummary};
 use subspace_farmer_components::sector::sector_size;
 use subspace_proof_of_space::Table;
@@ -86,13 +86,17 @@ async fn audit(disk_farm: PathBuf, sample_size: usize) -> anyhow::Result<()> {
             sector_size as u64 * sectors_metadata.len() as u64,
         ))
         .bench_function("plot", |b| {
+            #[cfg(not(windows))]
+            let plot = &plot_file;
+            #[cfg(windows)]
+            let plot = &&*plot_mmap;
+
             b.iter_batched(
                 rand::random,
                 |global_challenge| {
                     let options = PlotAuditOptions::<PosTable, _> {
                         public_key: single_disk_farm_info.public_key(),
                         reward_address: single_disk_farm_info.public_key(),
-                        sector_size,
                         slot_info: SlotInfo {
                             slot_number: 0,
                             global_challenge,
@@ -104,15 +108,12 @@ async fn audit(disk_farm: PathBuf, sample_size: usize) -> anyhow::Result<()> {
                         sectors_metadata: &sectors_metadata,
                         kzg: &kzg,
                         erasure_coding: &erasure_coding,
-                        #[cfg(not(windows))]
-                        plot: &plot_file,
-                        #[cfg(windows)]
-                        plot: &plot_mmap,
+                        plot,
                         maybe_sector_being_modified: None,
                         table_generator: &table_generator,
                     };
 
-                    black_box(plot_audit(black_box(options)))
+                    black_box(audit_plot(black_box(options)))
                 },
                 BatchSize::SmallInput,
             )

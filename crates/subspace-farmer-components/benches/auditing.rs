@@ -1,11 +1,10 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
 use futures::executor::block_on;
-use futures::FutureExt;
 use rand::prelude::*;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::num::{NonZeroU64, NonZeroUsize};
-use std::{env, fs};
+use std::{env, fs, slice};
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
@@ -13,7 +12,7 @@ use subspace_core_primitives::{
     Blake3Hash, HistorySize, PublicKey, Record, RecordedHistorySegment, SectorId, SolutionRange,
 };
 use subspace_erasure_coding::ErasureCoding;
-use subspace_farmer_components::auditing::audit_sector;
+use subspace_farmer_components::auditing::audit_plot_sync;
 use subspace_farmer_components::file_ext::{FileExt, OpenOptionsExt};
 use subspace_farmer_components::plotting::{
     plot_sector, PieceGetterRetryPolicy, PlotSectorOptions, PlottedSector,
@@ -21,7 +20,7 @@ use subspace_farmer_components::plotting::{
 use subspace_farmer_components::sector::{
     sector_size, SectorContentsMap, SectorMetadata, SectorMetadataChecksummed,
 };
-use subspace_farmer_components::{FarmerProtocolInfo, ReadAt, ReadAtSync};
+use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::chia::ChiaTable;
 use subspace_proof_of_space::Table;
 
@@ -150,17 +149,16 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("auditing");
     group.throughput(Throughput::Elements(1));
-    group.bench_function("memory", |b| {
-        b.iter(|| {
-            audit_sector(
+    group.bench_function("memory/sync", |b| {
+        b.iter(|| async {
+            black_box(audit_plot_sync(
                 black_box(public_key),
                 black_box(global_challenge),
                 black_box(solution_range),
-                black_box(ReadAt::from_sync(&plotted_sector_bytes)),
-                black_box(&plotted_sector.sector_metadata),
-            )
-            .now_or_never()
-            .unwrap();
+                black_box(&plotted_sector_bytes),
+                black_box(slice::from_ref(&plotted_sector.sector_metadata)),
+                black_box(None),
+            ));
         })
     });
 
@@ -188,23 +186,21 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                 .unwrap();
         }
 
+        let sectors_metadata = (0..sectors_count)
+            .map(|_| plotted_sector.sector_metadata.clone())
+            .collect::<Vec<_>>();
+
         group.throughput(Throughput::Elements(sectors_count));
-        group.bench_function("disk", |b| {
+        group.bench_function("disk/sync", |b| {
             b.iter(|| {
-                for sector_index in 0..sectors_count as usize {
-                    let sector = plot_file.offset(sector_index * sector_size);
-                    black_box(
-                        audit_sector(
-                            black_box(public_key),
-                            black_box(global_challenge),
-                            black_box(solution_range),
-                            black_box(ReadAt::from_sync(sector)),
-                            black_box(&plotted_sector.sector_metadata),
-                        )
-                        .now_or_never()
-                        .unwrap(),
-                    );
-                }
+                black_box(audit_plot_sync(
+                    black_box(public_key),
+                    black_box(global_challenge),
+                    black_box(solution_range),
+                    black_box(&plot_file),
+                    black_box(&sectors_metadata),
+                    black_box(None),
+                ));
             });
         });
 

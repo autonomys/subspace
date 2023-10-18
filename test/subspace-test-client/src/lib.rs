@@ -31,6 +31,7 @@ use sp_api::ProvideRuntimeApi;
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi};
 use sp_core::{Decode, Encode};
 use std::num::{NonZeroU64, NonZeroUsize};
+use std::slice;
 use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::objects::BlockObjectMapping;
@@ -38,11 +39,11 @@ use subspace_core_primitives::{
     HistorySize, PosSeed, PublicKey, Record, SegmentIndex, Solution, REWARD_SIGNING_CONTEXT,
 };
 use subspace_erasure_coding::ErasureCoding;
-use subspace_farmer_components::auditing::audit_sector;
+use subspace_farmer_components::auditing::audit_plot_sync;
 use subspace_farmer_components::plotting::{
     plot_sector, PieceGetterRetryPolicy, PlotSectorOptions, PlottedSector,
 };
-use subspace_farmer_components::{FarmerProtocolInfo, ReadAt};
+use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_service::tx_pre_validator::ConsensusChainTxPreValidator;
@@ -188,17 +189,19 @@ async fn start_farming<PosTable, Client>(
             let global_challenge = new_slot_info
                 .global_randomness
                 .derive_global_challenge(new_slot_info.slot.into());
-            let audit_result = audit_sector(
+            let audit_result = audit_plot_sync(
                 &public_key,
                 &global_challenge,
                 new_slot_info.solution_range,
-                ReadAt::from_sync(&sector),
-                &plotted_sector.sector_metadata,
-            )
-            .await
-            .expect("With max solution range there must be a sector eligible; qed");
+                &sector,
+                slice::from_ref(&plotted_sector.sector_metadata),
+                None,
+            );
 
             let solution = audit_result
+                .into_iter()
+                .next()
+                .unwrap()
                 .solution_candidates
                 .into_solutions(&public_key, &kzg, &erasure_coding, |seed: &PosSeed| {
                     table_generator.generate_parallel(seed)

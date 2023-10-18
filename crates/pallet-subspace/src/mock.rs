@@ -44,7 +44,7 @@ use std::marker::PhantomData;
 use std::num::{NonZeroU32, NonZeroU64, NonZeroUsize};
 use std::simd::Simd;
 use std::sync::{Once, OnceLock};
-use std::{iter, mem};
+use std::{iter, mem, slice};
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::crypto::Scalar;
@@ -55,11 +55,11 @@ use subspace_core_primitives::{
     Solution, SolutionRange, REWARD_SIGNING_CONTEXT,
 };
 use subspace_erasure_coding::ErasureCoding;
-use subspace_farmer_components::auditing::audit_sector;
+use subspace_farmer_components::auditing::audit_plot_sync;
 use subspace_farmer_components::plotting::{
     plot_sector, PieceGetterRetryPolicy, PlotSectorOptions,
 };
-use subspace_farmer_components::{FarmerProtocolInfo, ReadAt};
+use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::shim::ShimTable;
 use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_verification::is_within_solution_range;
@@ -479,15 +479,16 @@ pub fn create_signed_vote(
             .derive_global_randomness()
             .derive_global_challenge(slot.into());
 
-        let maybe_audit_result_fut = audit_sector(
+        let maybe_audit_result = audit_plot_sync(
             &public_key,
             &global_challenge,
             vote_solution_range,
-            ReadAt::from_sync(&plotted_sector_bytes),
-            &plotted_sector.sector_metadata,
+            &plotted_sector_bytes,
+            slice::from_ref(&plotted_sector.sector_metadata),
+            None,
         );
 
-        let Some(audit_result) = maybe_audit_result_fut.now_or_never().unwrap() else {
+        let Some(audit_result) = maybe_audit_result.into_iter().next() else {
             // Sector didn't have any solutions
             continue;
         };

@@ -7,7 +7,7 @@ use schnorrkel::Keypair;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::num::{NonZeroU64, NonZeroUsize};
-use std::{env, fs};
+use std::{env, fs, slice};
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
@@ -16,7 +16,7 @@ use subspace_core_primitives::{
     SolutionRange,
 };
 use subspace_erasure_coding::ErasureCoding;
-use subspace_farmer_components::auditing::audit_sector;
+use subspace_farmer_components::auditing::audit_plot_sync;
 use subspace_farmer_components::file_ext::{FileExt, OpenOptionsExt};
 use subspace_farmer_components::plotting::{
     plot_sector, PieceGetterRetryPolicy, PlotSectorOptions, PlottedSector,
@@ -25,7 +25,7 @@ use subspace_farmer_components::proving::ProvableSolutions;
 use subspace_farmer_components::sector::{
     sector_size, SectorContentsMap, SectorMetadata, SectorMetadataChecksummed,
 };
-use subspace_farmer_components::{FarmerProtocolInfo, ReadAt, ReadAtSync};
+use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::chia::ChiaTable;
 use subspace_proof_of_space::{Table, TableGenerator};
 
@@ -155,19 +155,20 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     }
 
     println!("Searching for solutions");
-    let global_challenge = &loop {
+    let (global_challenge, solution_candidates) = &loop {
         let mut global_challenge = Blake3Hash::default();
         rng.fill_bytes(&mut global_challenge);
 
-        let maybe_audit_result_fut = audit_sector(
+        let audit_results = audit_plot_sync(
             public_key,
             &global_challenge,
             solution_range,
-            ReadAt::from_sync(&plotted_sector_bytes),
-            &plotted_sector.sector_metadata,
+            &plotted_sector_bytes,
+            slice::from_ref(&plotted_sector.sector_metadata),
+            None,
         );
 
-        let solution_candidates = match maybe_audit_result_fut.now_or_never().unwrap() {
+        let solution_candidates = match audit_results.into_iter().next() {
             Some(audit_result) => audit_result.solution_candidates,
             None => {
                 continue;
@@ -184,7 +185,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             .unwrap()
             .is_empty()
         {
-            break global_challenge;
+            break (global_challenge, solution_candidates);
         }
     };
 
@@ -192,18 +193,6 @@ pub fn criterion_benchmark(c: &mut Criterion) {
 
     let mut group = c.benchmark_group("proving");
     {
-        let solution_candidates = audit_sector(
-            public_key,
-            global_challenge,
-            solution_range,
-            ReadAt::from_sync(&plotted_sector_bytes),
-            &plotted_sector.sector_metadata,
-        )
-        .now_or_never()
-        .unwrap()
-        .unwrap()
-        .solution_candidates;
-
         group.throughput(Throughput::Elements(1));
         group.bench_function("memory", |b| {
             b.iter(|| {
@@ -252,59 +241,56 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                 .unwrap();
         }
 
-        let sectors = (0..sectors_count as usize)
-            .map(|sector_offset| plot_file.offset(sector_offset * sector_size))
+        let sectors_metadata = (0..sectors_count)
+            .map(|_| plotted_sector.sector_metadata.clone())
             .collect::<Vec<_>>();
 
-        let sector_metadata = &plotted_sector.sector_metadata;
+        {
+            let plot_file = &plot_file;
 
-        let solution_candidates = sectors
-            .iter()
-            .map(ReadAt::from_sync)
-            .map(|sector| {
-                audit_sector(
-                    public_key,
-                    global_challenge,
-                    solution_range,
-                    sector,
-                    sector_metadata,
-                )
-                .now_or_never()
-                .unwrap()
-                .unwrap()
-                .solution_candidates
-            })
-            .collect::<Vec<_>>();
-
-        group.throughput(Throughput::Elements(sectors_count));
-        group.bench_function("disk", |b| {
-            b.iter_batched(
-                || solution_candidates.clone(),
-                |solution_candidates| {
-                    for solution_candidates in solution_candidates {
-                        solution_candidates
-                            .into_solutions(
-                                black_box(reward_address),
-                                black_box(kzg),
-                                black_box(erasure_coding),
-                                black_box(|seed: &PosSeed| {
-                                    table_generator.lock().generate_parallel(seed)
-                                }),
-                            )
-                            .now_or_never()
-                            .unwrap()
-                            .unwrap()
-                            // Process just one solution
-                            .next()
-                            .now_or_never()
-                            .unwrap()
-                            .unwrap()
-                            .unwrap();
-                    }
-                },
-                BatchSize::LargeInput,
+            let audit_results = audit_plot_sync(
+                public_key,
+                global_challenge,
+                solution_range,
+                &plot_file,
+                &sectors_metadata,
+                None,
             );
-        });
+            let solution_candidates = audit_results
+                .into_iter()
+                .map(|audit_result| audit_result.solution_candidates)
+                .collect::<Vec<_>>();
+
+            group.throughput(Throughput::Elements(sectors_count));
+            group.bench_function("disk", |b| {
+                b.iter_batched(
+                    || solution_candidates.clone(),
+                    |solution_candidates| {
+                        for solution_candidates in solution_candidates {
+                            solution_candidates
+                                .into_solutions(
+                                    black_box(reward_address),
+                                    black_box(kzg),
+                                    black_box(erasure_coding),
+                                    black_box(|seed: &PosSeed| {
+                                        table_generator.lock().generate_parallel(seed)
+                                    }),
+                                )
+                                .now_or_never()
+                                .unwrap()
+                                .unwrap()
+                                // Process just one solution
+                                .next()
+                                .now_or_never()
+                                .unwrap()
+                                .unwrap()
+                                .unwrap();
+                        }
+                    },
+                    BatchSize::LargeInput,
+                );
+            });
+        }
 
         drop(plot_file);
         fs::remove_file(plot_file_path).unwrap();

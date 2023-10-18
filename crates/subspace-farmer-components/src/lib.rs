@@ -68,7 +68,8 @@ where
 /// thread pool
 pub trait ReadAtSync: Send + Sync {
     /// Get implementation of [`ReadAtSync`] that add specified offset to all attempted reads
-    fn offset(&self, offset: usize) -> ReadAtOffset<&Self>
+    // TODO: Should offset and reads be in u64?
+    fn offset(&self, offset: usize) -> ReadAtOffset<'_, Self>
     where
         Self: Sized,
     {
@@ -92,7 +93,7 @@ impl ReadAtSync for ! {
 /// concurrent async combinators
 pub trait ReadAtAsync {
     /// Get implementation of [`ReadAtAsync`] that add specified offset to all attempted reads
-    fn offset(&self, offset: usize) -> ReadAtOffset<&Self>
+    fn offset(&self, offset: usize) -> ReadAtOffset<'_, Self>
     where
         Self: Sized,
     {
@@ -168,12 +169,12 @@ impl ReadAtSync for &File {
 
 /// Reader with fixed offset added to all attempted reads
 #[derive(Debug, Copy, Clone)]
-pub struct ReadAtOffset<T> {
-    inner: T,
+pub struct ReadAtOffset<'a, T> {
+    inner: &'a T,
     offset: usize,
 }
 
-impl<T> ReadAtSync for ReadAtOffset<T>
+impl<T> ReadAtSync for ReadAtOffset<'_, T>
 where
     T: ReadAtSync,
 {
@@ -182,7 +183,7 @@ where
     }
 }
 
-impl<T> ReadAtSync for &ReadAtOffset<T>
+impl<T> ReadAtSync for &ReadAtOffset<'_, T>
 where
     T: ReadAtSync,
 {
@@ -191,7 +192,7 @@ where
     }
 }
 
-impl<T> ReadAtAsync for ReadAtOffset<T>
+impl<T> ReadAtAsync for ReadAtOffset<'_, T>
 where
     T: ReadAtAsync,
 {
@@ -200,7 +201,7 @@ where
     }
 }
 
-impl<T> ReadAtAsync for &ReadAtOffset<T>
+impl<T> ReadAtAsync for &ReadAtOffset<'_, T>
 where
     T: ReadAtAsync,
 {

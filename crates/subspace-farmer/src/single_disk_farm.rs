@@ -1027,7 +1027,6 @@ impl SingleDiskFarm {
                                 public_key,
                                 reward_address,
                                 node_client,
-                                sector_size,
                                 plot_file: &plot_file,
                                 sectors_metadata,
                                 kzg,

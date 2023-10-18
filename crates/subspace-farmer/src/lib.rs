@@ -6,6 +6,7 @@
     int_roundings,
     iter_collect_into,
     let_chains,
+    never_type,
     trait_alias,
     try_blocks,
     type_alias_impl_trait,
