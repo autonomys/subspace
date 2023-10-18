@@ -1,12 +1,13 @@
 #[cfg(any(target_os = "linux", target_os = "macos"))]
 pub mod monoio;
+pub mod sync_fallback;
 
 use crate::node_client;
 use crate::node_client::NodeClient;
 use crate::single_disk_farm::Handlers;
 use async_lock::RwLock;
 use futures::channel::mpsc;
-use futures::{FutureExt, StreamExt};
+use futures::StreamExt;
 #[cfg(windows)]
 use memmap2::Mmap;
 use parking_lot::Mutex;
@@ -16,13 +17,12 @@ use std::io;
 use std::sync::Arc;
 use std::time::Instant;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::{PosSeed, PublicKey, SectorIndex, Solution, SolutionRange};
+use subspace_core_primitives::{PublicKey, SectorIndex, SolutionRange};
 use subspace_erasure_coding::ErasureCoding;
-use subspace_farmer_components::auditing::audit_plot_sync;
+use subspace_farmer_components::proving;
 use subspace_farmer_components::proving::ProvableSolutions;
 use subspace_farmer_components::sector::SectorMetadataChecksummed;
-use subspace_farmer_components::{proving, ReadAtSync};
-use subspace_proof_of_space::{Table, TableGenerator};
+use subspace_proof_of_space::Table;
 use subspace_rpc_primitives::{SlotInfo, SolutionResponse};
 use thiserror::Error;
 use tracing::{debug, error, info, trace, warn};
@@ -80,6 +80,32 @@ where
     }
 
     Ok(())
+}
+
+/// Plot audit options
+pub struct PlotAuditOptions<'a, PosTable, File>
+where
+    PosTable: Table,
+{
+    /// Public key of the farm
+    pub public_key: &'a PublicKey,
+    /// Reward address to use for solutions
+    pub reward_address: &'a PublicKey,
+    /// Slot info for the audit
+    pub slot_info: SlotInfo,
+    /// Metadata of all sectors plotted so far
+    pub sectors_metadata: &'a [SectorMetadataChecksummed],
+    /// Kzg instance
+    pub kzg: &'a Kzg,
+    /// Erasure coding instance
+    pub erasure_coding: &'a ErasureCoding,
+    /// File abstraction corresponding to the plot
+    pub plot: &'a File,
+    /// Optional sector that is currently being modified (for example replotted) and should not be
+    /// audited
+    pub maybe_sector_being_modified: Option<SectorIndex>,
+    /// Proof of space table generator
+    pub table_generator: &'a Mutex<PosTable::Generator>,
 }
 
 pub(super) struct FarmingOptions<'a, NC> {
@@ -149,7 +175,7 @@ where
             let modifying_sector_guard = modifying_sector_index.read().await;
             let maybe_sector_being_modified = modifying_sector_guard.as_ref().copied();
 
-            audit_plot(PlotAuditOptions::<PosTable, _> {
+            sync_fallback::audit_plot(PlotAuditOptions::<PosTable, _> {
                 public_key: &public_key,
                 reward_address: &reward_address,
                 slot_info,
@@ -214,99 +240,4 @@ where
     }
 
     Ok(())
-}
-
-/// Plot audit options
-pub struct PlotAuditOptions<'a, PosTable, File>
-where
-    PosTable: Table,
-{
-    /// Public key of the farm
-    pub public_key: &'a PublicKey,
-    /// Reward address to use for solutions
-    pub reward_address: &'a PublicKey,
-    /// Slot info for the audit
-    pub slot_info: SlotInfo,
-    /// Metadata of all sectors plotted so far
-    pub sectors_metadata: &'a [SectorMetadataChecksummed],
-    /// Kzg instance
-    pub kzg: &'a Kzg,
-    /// Erasure coding instance
-    pub erasure_coding: &'a ErasureCoding,
-    /// File abstraction corresponding to the plot
-    pub plot: &'a File,
-    /// Optional sector that is currently being modified (for example replotted) and should not be
-    /// audited
-    pub maybe_sector_being_modified: Option<SectorIndex>,
-    /// Proof of space table generator
-    pub table_generator: &'a Mutex<PosTable::Generator>,
-}
-
-/// Plot auditing, default synchronous implementation
-pub fn audit_plot<'a, PosTable, S>(
-    options: PlotAuditOptions<'a, PosTable, S>,
-) -> Vec<(
-    SectorIndex,
-    impl ProvableSolutions<Item = Result<Solution<PublicKey, PublicKey>, proving::ProvingError>> + 'a,
-)>
-where
-    PosTable: Table,
-    S: ReadAtSync + 'a,
-{
-    let PlotAuditOptions {
-        public_key,
-        reward_address,
-        slot_info,
-        sectors_metadata,
-        kzg,
-        erasure_coding,
-        plot,
-        maybe_sector_being_modified,
-        table_generator,
-    } = options;
-
-    let audit_results = audit_plot_sync(
-        public_key,
-        &slot_info.global_challenge,
-        slot_info.voting_solution_range,
-        plot,
-        sectors_metadata,
-        maybe_sector_being_modified,
-    );
-
-    audit_results
-        .into_iter()
-        .filter_map(|audit_results| {
-            let sector_index = audit_results.sector_index;
-
-            let sector_solutions_fut = audit_results.solution_candidates.into_solutions(
-                reward_address,
-                kzg,
-                erasure_coding,
-                |seed: &PosSeed| table_generator.lock().generate_parallel(seed),
-            );
-
-            let sector_solutions = match sector_solutions_fut
-                .now_or_never()
-                .expect("Implementation of the sector is synchronous here; qed")
-            {
-                Ok(solutions) => solutions,
-                Err(error) => {
-                    warn!(
-                        %error,
-                        %sector_index,
-                        "Failed to turn solution candidates into solutions",
-                    );
-
-                    return None;
-                }
-            };
-
-            if sector_solutions.len() == 0 {
-                return None;
-            }
-
-            Some((sector_index, sector_solutions))
-        })
-        .collect()
 }
