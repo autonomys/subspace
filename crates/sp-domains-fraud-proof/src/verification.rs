@@ -39,6 +39,7 @@ pub fn verify_invalid_domain_extrinsics_root_fraud_proof<
     fraud_proof: &InvalidExtrinsicsRootProof,
     block_randomness: Randomness,
     domain_timestamp_extrinsic: Vec<u8>,
+    maybe_domain_set_code_extrinsic: Option<Vec<u8>>,
 ) -> Result<(), sp_domains::verification::VerificationError>
 where
     CBlock: BlockT,
@@ -73,9 +74,15 @@ where
         Randomness::from(shuffling_seed.to_fixed_bytes()),
     );
 
+    if let Some(domain_set_code_extrinsic) = maybe_domain_set_code_extrinsic {
+        let domain_set_code_extrinsic =
+            ExtrinsicDigest::new::<LayoutV1<DomainHashing>>(domain_set_code_extrinsic);
+        ordered_extrinsics.push_front(domain_set_code_extrinsic);
+    }
+
     let timestamp_extrinsic =
         ExtrinsicDigest::new::<LayoutV1<DomainHashing>>(domain_timestamp_extrinsic);
-    ordered_extrinsics.insert(0, timestamp_extrinsic);
+    ordered_extrinsics.push_front(timestamp_extrinsic);
 
     let ordered_trie_node_values = ordered_extrinsics
         .iter()
@@ -85,7 +92,6 @@ where
         })
         .collect();
 
-    // TODO: domain runtime upgrade extrinsic
     let extrinsics_root =
         valued_ordered_trie_root::<LayoutV1<BlakeTwo256>>(ordered_trie_node_values);
     if bad_receipt.domain_block_extrinsic_root == extrinsics_root {

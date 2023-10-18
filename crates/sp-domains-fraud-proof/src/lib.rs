@@ -68,6 +68,20 @@ pub enum FraudProofVerificationInfoResponse {
 }
 
 impl FraudProofVerificationInfoResponse {
+    pub fn into_block_randomness(self) -> Option<Randomness> {
+        match self {
+            Self::BlockRandomness(randomness) => Some(randomness),
+            _ => None,
+        }
+    }
+
+    pub fn into_domain_timestamp_extrinsic(self) -> Option<Vec<u8>> {
+        match self {
+            Self::DomainTimestampExtrinsic(timestamp_extrinsic) => Some(timestamp_extrinsic),
+            _ => None,
+        }
+    }
+
     pub fn into_domain_runtime_code(self) -> Option<Vec<u8>> {
         match self {
             Self::DomainRuntimeCode(c) => Some(c),
