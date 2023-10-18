@@ -236,7 +236,7 @@ where
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + 'static,
     Client::Api: SubspaceApi<Block, FarmerPublicKey>
         + DomainsApi<Block, NumberFor<DomainBlock>, DomainBlock::Hash>,
-    ExecutorDispatch: CodeExecutor,
+    ExecutorDispatch: CodeExecutor + sc_executor::RuntimeVersionOf,
 {
     fn extensions_for(
         &self,
@@ -500,8 +500,6 @@ where
 
     let segment_headers_store = SegmentHeadersStore::new(client.clone())
         .map_err(|error| ServiceError::Application(error.into()))?;
-    let fraud_proof_block_import =
-        sc_consensus_fraud_proof::block_import(client.clone(), client.clone(), proof_verifier);
 
     let (block_import, subspace_link) = sc_consensus_subspace::block_import::<
         PosTable,
@@ -512,7 +510,7 @@ where
         _,
     >(
         sc_consensus_subspace::slot_duration(&*client)?,
-        fraud_proof_block_import,
+        client.clone(),
         client.clone(),
         kzg.clone(),
         {

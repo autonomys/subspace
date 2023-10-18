@@ -1,6 +1,4 @@
-use crate::{
-    as_h256, valued_trie_root, DomainId, ExecutionReceipt, ReceiptHash, SealedBundleHeader,
-};
+use crate::{valued_trie_root, DomainId, ExecutionReceipt, ReceiptHash, SealedBundleHeader};
 use hash_db::Hasher;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
@@ -16,11 +14,11 @@ use sp_trie::{LayoutV1, StorageProof};
 use subspace_runtime_primitives::{AccountId, Balance};
 use trie_db::TrieLayout;
 
-type ExecutionReceiptFor<DomainBlock, CBlock, Balance> = ExecutionReceipt<
+type ExecutionReceiptFor<DomainHeader, CBlock, Balance> = ExecutionReceipt<
     NumberFor<CBlock>,
     <CBlock as BlockT>::Hash,
-    NumberFor<DomainBlock>,
-    <DomainBlock as BlockT>::Hash,
+    <DomainHeader as HeaderT>::Number,
+    <DomainHeader as HeaderT>::Hash,
     Balance,
 >;
 
@@ -85,11 +83,16 @@ impl ExecutionPhase {
         }
     }
 
-    pub fn pre_post_state_root<CBlock: BlockT, DomainBlock: BlockT, Balance>(
+    pub fn pre_post_state_root<CBlock, DomainHeader, Balance>(
         &self,
-        bad_receipt: &ExecutionReceiptFor<DomainBlock, CBlock, Balance>,
-        bad_receipt_parent: &ExecutionReceiptFor<DomainBlock, CBlock, Balance>,
-    ) -> Result<(H256, H256), VerificationError> {
+        bad_receipt: &ExecutionReceiptFor<DomainHeader, CBlock, Balance>,
+        bad_receipt_parent: &ExecutionReceiptFor<DomainHeader, CBlock, Balance>,
+    ) -> Result<(H256, H256), VerificationError>
+    where
+        CBlock: BlockT,
+        DomainHeader: HeaderT,
+        DomainHeader::Hash: Into<H256>,
+    {
         if bad_receipt.execution_trace.len() < 2 {
             return Err(VerificationError::InvalidExecutionTrace);
         }
@@ -117,17 +120,13 @@ impl ExecutionPhase {
                 )
             }
         };
-        // TODO: avoid the encode & decode?
-        Ok((
-            as_h256(pre).ok_or(VerificationError::FailedToConvertH256)?,
-            as_h256(post).ok_or(VerificationError::FailedToConvertH256)?,
-        ))
+        Ok((pre.into(), post.into()))
     }
 
-    pub fn call_data<CBlock: BlockT, DomainBlock: BlockT, Balance>(
+    pub fn call_data<CBlock: BlockT, DomainHeader: HeaderT, Balance>(
         &self,
-        bad_receipt: &ExecutionReceiptFor<DomainBlock, CBlock, Balance>,
-        bad_receipt_parent: &ExecutionReceiptFor<DomainBlock, CBlock, Balance>,
+        bad_receipt: &ExecutionReceiptFor<DomainHeader, CBlock, Balance>,
+        bad_receipt_parent: &ExecutionReceiptFor<DomainHeader, CBlock, Balance>,
     ) -> Result<Vec<u8>, VerificationError> {
         Ok(match self {
             ExecutionPhase::InitializeBlock => {
@@ -136,7 +135,7 @@ impl ExecutionPhase {
                         bad_receipt.consensus_block_hash,
                     )],
                 };
-                let new_header = <DomainBlock as BlockT>::Header::new(
+                let new_header = <DomainHeader as HeaderT>::new(
                     bad_receipt.domain_block_number,
                     Default::default(),
                     Default::default(),
@@ -259,11 +258,6 @@ pub enum VerificationError {
         error("The receipt's execution_trace have less than 2 traces")
     )]
     InvalidExecutionTrace,
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Failed to convert block hash/state root to H256")
-    )]
-    FailedToConvertH256,
     #[cfg_attr(feature = "thiserror", error("Invalid ApplyExtrinsic trace index"))]
     InvalidApplyExtrinsicTraceIndex,
     #[cfg_attr(feature = "thiserror", error("Invalid ApplyExtrinsic call data"))]
@@ -329,6 +323,7 @@ pub enum FraudProof<Number, Hash> {
     ImproperTransactionSortition(ImproperTransactionSortitionProof),
     InvalidTotalRewards(InvalidTotalRewardsProof),
     InvalidExtrinsicsRoot(InvalidExtrinsicsRootProof),
+    InvalidDomainBlockHash(InvalidDomainBlockHashProof),
     // Dummy fraud proof only used in test and benchmark
     #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
     Dummy {
@@ -352,6 +347,7 @@ impl<Number, Hash> FraudProof<Number, Hash> {
             FraudProof::InvalidTotalRewards(proof) => proof.domain_id(),
             FraudProof::InvalidBundles(proof) => proof.domain_id(),
             FraudProof::InvalidExtrinsicsRoot(proof) => proof.domain_id,
+            FraudProof::InvalidDomainBlockHash(proof) => proof.domain_id,
         }
     }
 
@@ -372,6 +368,7 @@ impl<Number, Hash> FraudProof<Number, Hash> {
             // TODO: Remove default value when invalid bundle proofs are fully expanded
             FraudProof::InvalidBundles(_) => Default::default(),
             FraudProof::InvalidExtrinsicsRoot(proof) => proof.bad_receipt_hash,
+            FraudProof::InvalidDomainBlockHash(proof) => proof.bad_receipt_hash,
         }
     }
 
@@ -457,7 +454,7 @@ pub struct InvalidTransactionProof {
     /// Hash of the bad receipt this fraud proof targeted
     pub bad_receipt_hash: ReceiptHash,
     /// Number of the block at which the invalid transaction occurred.
-    pub block_number: u32,
+    pub domain_block_number: u32,
     /// Hash of the domain block corresponding to `block_number`.
     pub domain_block_hash: H256,
     // TODO: Verifiable invalid extrinsic.
@@ -484,6 +481,17 @@ pub struct InvalidTotalRewardsProof {
     pub bad_receipt_hash: ReceiptHash,
     /// Storage witness needed for verifying this proof.
     pub storage_proof: StorageProof,
+}
+
+/// Represents an invalid domain block hash fraud proof.
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+pub struct InvalidDomainBlockHashProof {
+    /// The id of the domain this fraud proof targeted
+    pub domain_id: DomainId,
+    /// Hash of the bad receipt this fraud proof targeted
+    pub bad_receipt_hash: ReceiptHash,
+    /// Digests storage proof that is used to derive Domain block hash.
+    pub digest_storage_proof: StorageProof,
 }
 
 /// Represents the extrinsic either as full data or hash of the data.
@@ -546,9 +554,17 @@ impl InvalidTotalRewardsProof {
     }
 }
 
+//TODO: remove there key generations from here and instead use the fraud proof host function to fetch them
+
 /// This is a representation of actual Block Rewards storage in pallet-operator-rewards.
 /// Any change in key or value there should be changed here accordingly.
 pub fn operator_block_rewards_final_key() -> Vec<u8> {
     frame_support::storage::storage_prefix("OperatorRewards".as_ref(), "BlockRewards".as_ref())
         .to_vec()
+}
+
+/// Digest storage key in frame_system.
+/// Unfortunately, the digest storage is private and not possible to derive the key from it directly.
+pub fn system_digest_final_key() -> Vec<u8> {
+    frame_support::storage::storage_prefix("System".as_ref(), "Digest".as_ref()).to_vec()
 }

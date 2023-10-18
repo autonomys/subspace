@@ -2,8 +2,8 @@
 
 use crate::pallet::StateRoots;
 use crate::{
-    BalanceOf, BlockTree, Config, ConsensusBlockHash, DomainBlockDescendants, DomainBlocks,
-    DomainNumberOf, ExecutionInbox, ExecutionReceiptOf, HeadReceiptNumber, InboxedBundleAuthor,
+    BalanceOf, BlockTree, Config, ConsensusBlockHash, DomainBlockDescendants, DomainBlockNumberFor,
+    DomainBlocks, ExecutionInbox, ExecutionReceiptOf, HeadReceiptNumber, InboxedBundleAuthor,
 };
 use codec::{Decode, Encode};
 use frame_support::{ensure, PalletError};
@@ -227,7 +227,7 @@ pub(crate) struct ConfirmedDomainBlockInfo<DomainNumber, Balance> {
 }
 
 pub(crate) type ProcessExecutionReceiptResult<T> =
-    Result<Option<ConfirmedDomainBlockInfo<DomainNumberOf<T>, BalanceOf<T>>>, Error>;
+    Result<Option<ConfirmedDomainBlockInfo<DomainBlockNumberFor<T>, BalanceOf<T>>>, Error>;
 
 /// Process the execution receipt to add it to the block tree
 /// Returns the domain block number that was pruned, if any

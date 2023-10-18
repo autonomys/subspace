@@ -37,7 +37,6 @@ use crate::signed_extensions::{CheckStorageAccess, DisablePallets};
 use codec::{Decode, Encode, MaxEncodedLen};
 use core::mem;
 use core::num::NonZeroU64;
-use domain_runtime_primitives::opaque::Block as DomainBlock;
 use domain_runtime_primitives::{
     BlockNumber as DomainNumber, Hash as DomainHash, MultiAccountId, TryConvertBack,
 };
@@ -617,12 +616,13 @@ parameter_types! {
     pub const StakeEpochDuration: DomainNumber = 100;
     pub TreasuryAccount: AccountId = PalletId(*b"treasury").into_account_truncating();
     pub const MaxPendingStakingOperation: u32 = 100;
+    pub const MaxNominators: u32 = 100;
 }
 
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type DomainHash = DomainHash;
-    type DomainBlock = DomainBlock;
+    type DomainHeader = sp_runtime::generic::Header<DomainNumber, BlakeTwo256>;
     type ConfirmationDepthK = ConfirmationDepthK;
     type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
     type Currency = Balances;
@@ -642,6 +642,7 @@ impl pallet_domains::Config for Runtime {
     type StakeEpochDuration = StakeEpochDuration;
     type TreasuryAccount = TreasuryAccount;
     type MaxPendingStakingOperation = MaxPendingStakingOperation;
+    type MaxNominators = MaxNominators;
     type Randomness = Subspace;
 }
 

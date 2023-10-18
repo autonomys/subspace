@@ -12,8 +12,9 @@ use sp_core::H256;
 use sp_domain_digests::AsPredigest;
 use sp_domains::fraud_proof::{
     ExecutionPhase, ExtrinsicDigest, FraudProof, InvalidBundlesFraudProof,
-    InvalidExtrinsicsRootProof, InvalidStateTransitionProof, InvalidTotalRewardsProof,
-    MissingInvalidBundleEntryFraudProof, ValidAsInvalidBundleEntryFraudProof, ValidBundleDigest,
+    InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof, InvalidStateTransitionProof,
+    InvalidTotalRewardsProof, MissingInvalidBundleEntryFraudProof,
+    ValidAsInvalidBundleEntryFraudProof, ValidBundleDigest,
 };
 use sp_domains::{DomainId, DomainsApi};
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashingFor, Header as HeaderT, NumberFor};
@@ -118,6 +119,29 @@ where
             bad_receipt_hash,
             storage_proof: proof,
         }))
+    }
+
+    pub(crate) fn generate_invalid_domain_block_hash_proof<PCB>(
+        &self,
+        domain_id: DomainId,
+        local_receipt: &ExecutionReceiptFor<Block, CBlock>,
+        bad_receipt_hash: H256,
+    ) -> Result<FraudProof<NumberFor<PCB>, PCB::Hash>, FraudProofError>
+    where
+        PCB: BlockT,
+    {
+        let block_hash = local_receipt.domain_block_hash;
+        let digest_key = sp_domains::fraud_proof::system_digest_final_key();
+        let digest_storage_proof = self
+            .client
+            .read_proof(block_hash, &mut [digest_key.as_slice()].into_iter())?;
+        Ok(FraudProof::InvalidDomainBlockHash(
+            InvalidDomainBlockHashProof {
+                domain_id,
+                bad_receipt_hash,
+                digest_storage_proof,
+            },
+        ))
     }
 
     pub(crate) fn generate_invalid_bundle_field_proof<PCB>(

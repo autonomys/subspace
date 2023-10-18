@@ -2,6 +2,7 @@ use crate::{FraudProofVerificationInfoRequest, FraudProofVerificationInfoRespons
 use codec::{Decode, Encode};
 use domain_block_preprocessor::runtime_api::InherentExtrinsicConstructor;
 use domain_block_preprocessor::runtime_api_light::RuntimeApiLight;
+use sc_executor::RuntimeVersionOf;
 use sp_api::{BlockT, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, FetchRuntimeCode, RuntimeCode};
@@ -81,7 +82,7 @@ where
     DomainBlock: BlockT,
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block>,
     Client::Api: DomainsApi<Block, NumberFor<DomainBlock>, DomainBlock::Hash>,
-    Executor: CodeExecutor,
+    Executor: CodeExecutor + RuntimeVersionOf,
 {
     fn get_block_randomness(&self, consensus_block_hash: H256) -> Option<Randomness> {
         let runtime_api = self.consensus_client.runtime_api();
@@ -145,7 +146,7 @@ where
     DomainBlock: BlockT,
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block>,
     Client::Api: DomainsApi<Block, NumberFor<DomainBlock>, DomainBlock::Hash>,
-    Executor: CodeExecutor,
+    Executor: CodeExecutor + RuntimeVersionOf,
 {
     fn get_fraud_proof_verification_info(
         &self,

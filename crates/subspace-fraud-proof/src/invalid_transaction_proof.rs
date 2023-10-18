@@ -7,6 +7,7 @@ use domain_block_preprocessor::runtime_api_light::RuntimeApiLight;
 use domain_runtime_primitives::opaque::Block;
 use domain_runtime_primitives::{DomainCoreApi, Hash};
 use sc_client_api::StorageProof;
+use sc_executor::RuntimeVersionOf;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::CodeExecutor;
@@ -45,6 +46,7 @@ where
 }
 
 fn create_runtime_api_light<Exec>(
+    domain_block_number: u32,
     storage_proof: StorageProof,
     state_root: &Hash,
     executor: Arc<Exec>,
@@ -52,24 +54,32 @@ fn create_runtime_api_light<Exec>(
     extrinsic: OpaqueExtrinsic,
 ) -> Result<RuntimeApiLight<Exec>, VerificationError>
 where
-    Exec: CodeExecutor,
+    Exec: CodeExecutor + RuntimeVersionOf,
 {
     let mut runtime_api_light = RuntimeApiLight::new(executor, wasm_bundle);
 
     let sender = <RuntimeApiLight<Exec> as DomainCoreApi<Block>>::extract_signer(
         &runtime_api_light,
         Default::default(),
-        vec![extrinsic],
+        vec![extrinsic.clone()],
     )?
     .into_iter()
     .next()
     .and_then(|(maybe_signer, _)| maybe_signer)
     .ok_or(VerificationError::SignerNotFound)?;
 
+    let maybe_era = <RuntimeApiLight<Exec> as DomainCoreApi<Block>>::extrinsic_era(
+        &runtime_api_light,
+        Default::default(),
+        &extrinsic,
+    )?;
+
     let storage_keys = <RuntimeApiLight<Exec> as DomainCoreApi<Block>>::storage_keys_for_verifying_transaction_validity(
         &runtime_api_light,
         Default::default(),
-        sender
+        sender,
+        domain_block_number,
+        maybe_era
     )?
     .map_err(|e| {
         sp_api::ApiError::Application(Box::from(format!(
@@ -107,7 +117,7 @@ where
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock> + Send + Sync,
     CClient::Api: DomainsApi<CBlock, domain_runtime_primitives::BlockNumber, Hash>,
     VerifierClient: VerifierApi,
-    Exec: CodeExecutor + 'static,
+    Exec: CodeExecutor + RuntimeVersionOf + 'static,
 {
     /// Constructs a new instance of [`InvalidTransactionProofVerifier`].
     pub fn new(
@@ -152,7 +162,7 @@ where
     ) -> Result<(), VerificationError> {
         let InvalidTransactionProof {
             domain_id,
-            block_number,
+            domain_block_number,
             domain_block_hash,
             invalid_extrinsic,
             storage_proof,
@@ -163,7 +173,7 @@ where
         // - Bundle is valid and is produced by a legit executor.
         // - Bundle author, who will be slashed, can be extracted in runtime.
 
-        let header = self.fetch_consensus_block_header(*domain_id, *block_number)?;
+        let header = self.fetch_consensus_block_header(*domain_id, *domain_block_number)?;
         let consensus_parent_hash = *header.parent_hash();
 
         let domain_runtime_code = retrieve_domain_runtime_code(
@@ -178,11 +188,14 @@ where
         // verifiable way.
         let extrinsic = OpaqueExtrinsic::from_bytes(invalid_extrinsic)?;
 
-        let state_root =
-            self.verifier_client
-                .state_root(*domain_id, *block_number, *domain_block_hash)?;
+        let state_root = self.verifier_client.state_root(
+            *domain_id,
+            *domain_block_number,
+            *domain_block_hash,
+        )?;
 
         let runtime_api_light = create_runtime_api_light(
+            *domain_block_number,
             storage_proof.clone(),
             &state_root,
             self.executor.clone(),
@@ -195,6 +208,7 @@ where
                 &runtime_api_light,
                 Default::default(), // Unused for stateless runtime api.
                 &extrinsic,
+                *domain_block_number,
                 *domain_block_hash,
             )?;
 
@@ -224,7 +238,7 @@ where
     Client: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock> + Send + Sync,
     Client::Api: DomainsApi<CBlock, domain_runtime_primitives::BlockNumber, Hash>,
     VerifierClient: VerifierApi,
-    Exec: CodeExecutor + 'static,
+    Exec: CodeExecutor + RuntimeVersionOf + 'static,
 {
     fn verify_invalid_transaction_proof(
         &self,

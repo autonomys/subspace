@@ -319,11 +319,12 @@ There are extra commands and parameters you can use on farmer or node, use the `
 
 Below are some helpful samples:
 
-- `./FARMER_FILE_NAME info PATH_TO_FARM` : show information about the farm at `PATH_TO_FARM`
-- `./FARMER_FILE_NAME scrub PATH_TO_FARM` : Scrub the farm to find and fix farm at `PATH_TO_FARM` corruption
-- `./FARMER_FILE_NAME wipe PATH_TO_FARM` : erases everything related to farmer if data were stored in `PATH_TO_FARM`
-- `./NODE_FILE_NAME --base-path NODE_DATA_PATH --chain gemini-3f ...` : start node and store data in `NODE_DATA_PATH` instead of default location
-- `./NODE_FILE_NAME purge-chain --base-path NODE_DATA_PATH --chain gemini-3f` : erases data related to the node if data were stored in `NODE_DATA_PATH`
+- `./FARMER_FILE_NAME benchmark audit PATH_TO_FARM`: benchmark auditing performance of the farm at `PATH_TO_FARM`
+- `./FARMER_FILE_NAME info PATH_TO_FARM`: show information about the farm at `PATH_TO_FARM`
+- `./FARMER_FILE_NAME scrub PATH_TO_FARM`: Scrub the farm to find and fix farm at `PATH_TO_FARM` corruption
+- `./FARMER_FILE_NAME wipe PATH_TO_FARM`: erases everything related to farmer if data were stored in `PATH_TO_FARM`
+- `./NODE_FILE_NAME --base-path NODE_DATA_PATH --chain gemini-3f ...`: start node and store data in `NODE_DATA_PATH` instead of default location
+- `./NODE_FILE_NAME purge-chain --base-path NODE_DATA_PATH --chain gemini-3f`: erases data related to the node if data were stored in `NODE_DATA_PATH`
 
 Examples:
 ```bash
