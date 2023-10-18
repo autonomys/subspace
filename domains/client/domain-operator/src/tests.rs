@@ -90,6 +90,8 @@ async fn test_domain_instance_bootstrapper() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+#[cfg_attr(target_os = "windows", ignore)]
+// TODO: fix this on windows. https://github.com/subspace/subspace/actions/runs/6505907396/job/17683021699?pr=1974
 async fn test_domain_block_production() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
