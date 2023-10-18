@@ -1,6 +1,7 @@
 use crate::{FraudProofVerificationInfoRequest, FraudProofVerificationInfoResponse};
 use codec::{Decode, Encode};
-use domain_block_preprocessor::runtime_api::TimestampExtrinsicConstructor;
+use domain_block_preprocessor::inherents::maybe_runtime_upgrade;
+use domain_block_preprocessor::runtime_api::{SetCodeConstructor, TimestampExtrinsicConstructor};
 use domain_block_preprocessor::runtime_api_light::RuntimeApiLight;
 use sc_executor::RuntimeVersionOf;
 use sp_api::{BlockT, ProvideRuntimeApi};
@@ -98,11 +99,8 @@ where
         domain_id: DomainId,
     ) -> Option<Vec<u8>> {
         let runtime_api = self.consensus_client.runtime_api();
-        let consensus_block_hash = consensus_block_hash.into();
-        let runtime_code = runtime_api
-            .domain_runtime_code(consensus_block_hash, domain_id)
-            .ok()??;
-        let timestamp = runtime_api.timestamp(consensus_block_hash).ok()?;
+        let runtime_code = self.get_domain_runtime_code(consensus_block_hash, domain_id)?;
+        let timestamp = runtime_api.timestamp(consensus_block_hash.into()).ok()?;
 
         let domain_runtime_api_light =
             RuntimeApiLight::new(self.executor.clone(), runtime_code.into());
@@ -116,6 +114,38 @@ where
         )
         .ok()
         .map(|ext| ext.encode())
+    }
+
+    fn derive_domain_set_code_extrinsic(
+        &self,
+        consensus_block_hash: H256,
+        domain_id: DomainId,
+    ) -> Option<Option<Vec<u8>>> {
+        let maybe_upgraded_runtime = maybe_runtime_upgrade::<_, _, DomainBlock>(
+            &self.consensus_client,
+            consensus_block_hash.into(),
+            domain_id,
+        )
+        .ok()
+        .flatten();
+
+        if let Some(upgraded_runtime) = maybe_upgraded_runtime {
+            let runtime_code = self.get_domain_runtime_code(consensus_block_hash, domain_id)?;
+            let domain_runtime_api_light =
+                RuntimeApiLight::new(self.executor.clone(), runtime_code.into());
+
+            SetCodeConstructor::<DomainBlock>::construct_set_code_extrinsic(
+                &domain_runtime_api_light,
+                // We do not care about the domain hash since this is stateless call into
+                // domain runtime,
+                Default::default(),
+                upgraded_runtime,
+            )
+            .ok()
+            .map(|ext| Some(ext.encode()))
+        } else {
+            Some(None)
+        }
     }
 
     fn get_domain_runtime_code(
@@ -160,8 +190,8 @@ where
                 .map(|block_randomness| {
                     FraudProofVerificationInfoResponse::BlockRandomness(block_randomness)
                 }),
-            FraudProofVerificationInfoRequest::DomainTimestampExtrinsic(doman_id) => self
-                .derive_domain_timestamp_extrinsic(consensus_block_hash, doman_id)
+            FraudProofVerificationInfoRequest::DomainTimestampExtrinsic(domain_id) => self
+                .derive_domain_timestamp_extrinsic(consensus_block_hash, domain_id)
                 .map(|domain_timestamp_extrinsic| {
                     FraudProofVerificationInfoResponse::DomainTimestampExtrinsic(
                         domain_timestamp_extrinsic,
@@ -171,6 +201,13 @@ where
                 .get_domain_runtime_code(consensus_block_hash, domain_id)
                 .map(|domain_runtime_code| {
                     FraudProofVerificationInfoResponse::DomainRuntimeCode(domain_runtime_code)
+                }),
+            FraudProofVerificationInfoRequest::DomainSetCodeExtrinsic(domain_id) => self
+                .derive_domain_set_code_extrinsic(consensus_block_hash, domain_id)
+                .map(|maybe_domain_set_code_extrinsic| {
+                    FraudProofVerificationInfoResponse::DomainSetCodeExtrinsic(
+                        maybe_domain_set_code_extrinsic,
+                    )
                 }),
         }
     }

@@ -87,7 +87,7 @@ where
         .any(|upgraded_runtime_id| upgraded_runtime_id == runtime_id))
 }
 
-fn maybe_runtime_upgrade<CClient, CBlock, Block>(
+pub fn maybe_runtime_upgrade<CClient, CBlock, Block>(
     consensus_client: &Arc<CClient>,
     consensus_block_hash: CBlock::Hash,
     domain_id: DomainId,

@@ -46,6 +46,8 @@ pub enum FraudProofVerificationInfoRequest {
     DomainTimestampExtrinsic(DomainId),
     /// The domain runtime code
     DomainRuntimeCode(DomainId),
+    /// Domain set_code extrinsic if there is a runtime upgrade at a given consensus block hash.
+    DomainSetCodeExtrinsic(DomainId),
 }
 
 impl PassBy for FraudProofVerificationInfoRequest {
@@ -61,12 +63,23 @@ pub enum FraudProofVerificationInfoResponse {
     DomainTimestampExtrinsic(Vec<u8>),
     /// The domain runtime code
     DomainRuntimeCode(Vec<u8>),
+    /// Encoded domain set_code extrinsic if there is a runtime upgrade at given consensus block hash.
+    DomainSetCodeExtrinsic(Option<Vec<u8>>),
 }
 
 impl FraudProofVerificationInfoResponse {
     pub fn into_domain_runtime_code(self) -> Option<Vec<u8>> {
         match self {
             Self::DomainRuntimeCode(c) => Some(c),
+            _ => None,
+        }
+    }
+
+    pub fn into_domain_set_code_extrinsic(self) -> Option<Vec<u8>> {
+        match self {
+            FraudProofVerificationInfoResponse::DomainSetCodeExtrinsic(
+                maybe_set_code_extrinsic,
+            ) => maybe_set_code_extrinsic,
             _ => None,
         }
     }
