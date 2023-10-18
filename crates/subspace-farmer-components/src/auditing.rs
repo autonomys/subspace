@@ -3,7 +3,9 @@ use crate::sector::{SectorContentsMap, SectorMetadataChecksummed};
 use crate::{ReadAt, ReadAtAsync, ReadAtSync};
 use std::mem;
 use subspace_core_primitives::crypto::Scalar;
-use subspace_core_primitives::{Blake3Hash, PublicKey, SectorId, SolutionRange};
+use subspace_core_primitives::{
+    Blake3Hash, PublicKey, SBucket, SectorId, SectorSlotChallenge, SolutionRange,
+};
 use subspace_verification::is_within_solution_range;
 use tracing::warn;
 
@@ -52,25 +54,13 @@ where
     S: ReadAtSync + 'a,
     A: ReadAtAsync + 'a,
 {
-    let sector_id = SectorId::new(public_key.hash(), sector_metadata.sector_index);
-
-    let sector_slot_challenge = sector_id.derive_sector_slot_challenge(global_challenge);
-    let s_bucket_audit_index = sector_slot_challenge.s_bucket_audit_index();
-    let s_bucket_audit_size = Scalar::FULL_BYTES
-        * usize::from(sector_metadata.s_bucket_sizes[usize::from(s_bucket_audit_index)]);
-    let s_bucket_audit_offset = Scalar::FULL_BYTES
-        * sector_metadata
-            .s_bucket_sizes
-            .iter()
-            .take(s_bucket_audit_index.into())
-            .copied()
-            .map(usize::from)
-            .sum::<usize>();
-
-    let sector_contents_map_size =
-        SectorContentsMap::encoded_size(sector_metadata.pieces_in_sector);
-
-    let s_bucket_audit_offset_in_sector = sector_contents_map_size + s_bucket_audit_offset;
+    let SectorAuditingDetails {
+        sector_id,
+        sector_slot_challenge,
+        s_bucket_audit_index,
+        s_bucket_audit_size,
+        s_bucket_audit_offset_in_sector,
+    } = collect_sector_auditing_details(public_key, global_challenge, sector_metadata);
 
     let mut s_bucket = vec![0; s_bucket_audit_size];
     let read_s_bucket_result = match &sector {
@@ -91,6 +81,77 @@ where
         return None;
     }
 
+    let (winning_chunks, best_solution_distance) = map_winning_chunks(
+        &s_bucket,
+        global_challenge,
+        &sector_slot_challenge,
+        solution_range,
+    )?;
+
+    Some(AuditResult {
+        solution_candidates: SolutionCandidates::new(
+            public_key,
+            sector_id,
+            s_bucket_audit_index,
+            sector,
+            sector_metadata,
+            winning_chunks.into(),
+        ),
+        best_solution_distance,
+    })
+}
+
+struct SectorAuditingDetails {
+    sector_id: SectorId,
+    sector_slot_challenge: SectorSlotChallenge,
+    s_bucket_audit_index: SBucket,
+    /// Size in bytes
+    s_bucket_audit_size: usize,
+    /// Offset in bytes
+    s_bucket_audit_offset_in_sector: usize,
+}
+
+fn collect_sector_auditing_details(
+    public_key: &PublicKey,
+    global_challenge: &Blake3Hash,
+    sector_metadata: &SectorMetadataChecksummed,
+) -> SectorAuditingDetails {
+    let sector_id = SectorId::new(public_key.hash(), sector_metadata.sector_index);
+
+    let sector_slot_challenge = sector_id.derive_sector_slot_challenge(global_challenge);
+    let s_bucket_audit_index = sector_slot_challenge.s_bucket_audit_index();
+    let s_bucket_audit_size = Scalar::FULL_BYTES
+        * usize::from(sector_metadata.s_bucket_sizes[usize::from(s_bucket_audit_index)]);
+    let s_bucket_audit_offset = Scalar::FULL_BYTES
+        * sector_metadata
+            .s_bucket_sizes
+            .iter()
+            .take(s_bucket_audit_index.into())
+            .copied()
+            .map(usize::from)
+            .sum::<usize>();
+
+    let sector_contents_map_size =
+        SectorContentsMap::encoded_size(sector_metadata.pieces_in_sector);
+
+    let s_bucket_audit_offset_in_sector = sector_contents_map_size + s_bucket_audit_offset;
+
+    SectorAuditingDetails {
+        sector_id,
+        sector_slot_challenge,
+        s_bucket_audit_index,
+        s_bucket_audit_size,
+        s_bucket_audit_offset_in_sector,
+    }
+}
+
+/// Map all winning chunks
+fn map_winning_chunks(
+    s_bucket: &[u8],
+    global_challenge: &Blake3Hash,
+    sector_slot_challenge: &SectorSlotChallenge,
+    solution_range: SolutionRange,
+) -> Option<(Vec<ChunkCandidate>, SolutionRange)> {
     // Map all winning chunks
     let mut winning_chunks = s_bucket
         .array_chunks::<{ Scalar::FULL_BYTES }>()
@@ -104,7 +165,7 @@ where
                     is_within_solution_range(
                         global_challenge,
                         SolutionRange::from_le_bytes(audit_chunk),
-                        &sector_slot_challenge,
+                        sector_slot_challenge,
                         solution_range,
                     )
                     .map(|solution_distance| AuditChunkCandidate {
@@ -156,15 +217,5 @@ where
         .expect("Lists of audit chunks are non-empty; qed")
         .solution_distance;
 
-    Some(AuditResult {
-        solution_candidates: SolutionCandidates::new(
-            public_key,
-            sector_id,
-            s_bucket_audit_index,
-            sector,
-            sector_metadata,
-            winning_chunks.into(),
-        ),
-        best_solution_distance,
-    })
+    Some((winning_chunks, best_solution_distance))
 }
