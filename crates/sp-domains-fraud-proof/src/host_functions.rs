@@ -8,7 +8,7 @@ use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, FetchRuntimeCode, RuntimeCode};
 use sp_core::H256;
 use sp_domains::{DomainId, DomainsApi};
-use sp_runtime::traits::{BlakeTwo256, Header as HeaderT, NumberFor};
+use sp_runtime::traits::{Header as HeaderT, NumberFor};
 use sp_trie::StorageProof;
 use std::borrow::Cow;
 use std::marker::PhantomData;
@@ -144,6 +144,7 @@ where
     Block: BlockT,
     Block::Hash: From<H256>,
     DomainBlock: BlockT,
+    DomainBlock::Hash: From<H256>,
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block>,
     Client::Api: DomainsApi<Block, NumberFor<DomainBlock>, DomainBlock::Hash>,
     Executor: CodeExecutor + RuntimeVersionOf,
@@ -192,8 +193,8 @@ where
             heap_pages: None,
         };
 
-        sp_state_machine::execution_proof_check::<BlakeTwo256, _>(
-            pre_state_root,
+        sp_state_machine::execution_proof_check::<<DomainBlock::Header as HeaderT>::Hashing, _>(
+            pre_state_root.into(),
             proof,
             &mut Default::default(),
             self.executor.as_ref(),

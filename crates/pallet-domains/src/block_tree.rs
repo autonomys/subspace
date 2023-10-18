@@ -2,8 +2,9 @@
 
 use crate::pallet::StateRoots;
 use crate::{
-    BalanceOf, BlockTree, Config, ConsensusBlockHash, DomainBlockDescendants, DomainBlockNumberFor,
-    DomainBlocks, ExecutionInbox, ExecutionReceiptOf, HeadReceiptNumber, InboxedBundleAuthor,
+    BalanceOf, BlockTree, BlockTreeNodes, Config, ConsensusBlockHash, DomainBlockDescendants,
+    DomainBlockNumberFor, ExecutionInbox, ExecutionReceiptOf, HeadReceiptNumber,
+    InboxedBundleAuthor,
 };
 use codec::{Decode, Encode};
 use frame_support::{ensure, PalletError};
@@ -280,7 +281,7 @@ pub(crate) fn process_execution_receipt<T: Config>(
                 let BlockTreeNode {
                     execution_receipt,
                     operator_ids,
-                } = DomainBlocks::<T>::take(receipt_hash).ok_or(Error::MissingDomainBlock)?;
+                } = BlockTreeNodes::<T>::take(receipt_hash).ok_or(Error::MissingDomainBlock)?;
 
                 _ = StateRoots::<T>::take((
                     domain_id,
@@ -326,11 +327,11 @@ pub(crate) fn process_execution_receipt<T: Config>(
         AcceptedReceiptType::CurrentHead => {
             // Add confirmation to the current head receipt
             let er_hash = execution_receipt.hash();
-            DomainBlocks::<T>::mutate(er_hash, |maybe_domain_block| {
-                let domain_block = maybe_domain_block.as_mut().expect(
+            BlockTreeNodes::<T>::mutate(er_hash, |maybe_node| {
+                let node = maybe_node.as_mut().expect(
                     "The domain block of `CurrentHead` receipt is checked to be exist in `execution_receipt_type`; qed"
                 );
-                domain_block.operator_ids.push(submitter);
+                node.operator_ids.push(submitter);
             });
         }
     }
@@ -363,11 +364,11 @@ fn add_new_receipt_to_block_tree<T: Config>(
             er_hashes.insert(er_hash);
         },
     );
-    let domain_block = BlockTreeNode {
+    let block_tree_node = BlockTreeNode {
         execution_receipt,
         operator_ids: sp_std::vec![submitter],
     };
-    DomainBlocks::<T>::insert(er_hash, domain_block);
+    BlockTreeNodes::<T>::insert(er_hash, block_tree_node);
 }
 
 /// Import the genesis receipt to the block tree
@@ -377,7 +378,7 @@ pub(crate) fn import_genesis_receipt<T: Config>(
 ) {
     let er_hash = genesis_receipt.hash();
     let domain_block_number = genesis_receipt.domain_block_number;
-    let domain_block = BlockTreeNode {
+    let block_tree_node = BlockTreeNode {
         execution_receipt: genesis_receipt,
         operator_ids: sp_std::vec![],
     };
@@ -389,11 +390,11 @@ pub(crate) fn import_genesis_receipt<T: Config>(
         (
             domain_id,
             domain_block_number,
-            domain_block.execution_receipt.domain_block_hash,
+            block_tree_node.execution_receipt.domain_block_hash,
         ),
-        domain_block.execution_receipt.final_state_root,
+        block_tree_node.execution_receipt.final_state_root,
     );
-    DomainBlocks::<T>::insert(er_hash, domain_block);
+    BlockTreeNodes::<T>::insert(er_hash, block_tree_node);
 }
 
 #[cfg(test)]
@@ -421,7 +422,7 @@ mod tests {
             assert_eq!(block_tree_node_at_0.len(), 1);
 
             let genesis_node =
-                DomainBlocks::<Test>::get(block_tree_node_at_0.first().unwrap()).unwrap();
+                BlockTreeNodes::<Test>::get(block_tree_node_at_0.first().unwrap()).unwrap();
             assert!(genesis_node.operator_ids.is_empty());
             assert_eq!(HeadReceiptNumber::<Test>::get(domain_id), 0);
 
@@ -516,7 +517,7 @@ mod tests {
 
                 // The submitter should be added to `operator_ids`
                 let parent_domain_block_receipt = parent_block_tree_nodes.first().unwrap();
-                let parent_node = DomainBlocks::<Test>::get(parent_domain_block_receipt).unwrap();
+                let parent_node = BlockTreeNodes::<Test>::get(parent_domain_block_receipt).unwrap();
                 assert_eq!(parent_node.operator_ids.len(), 1);
                 assert_eq!(parent_node.operator_ids[0], operator_id);
 
@@ -641,7 +642,7 @@ mod tests {
             ));
 
             assert_eq!(
-                DomainBlocks::<Test>::get(stale_receipt_hash)
+                BlockTreeNodes::<Test>::get(stale_receipt_hash)
                     .unwrap()
                     .operator_ids,
                 vec![operator_id1]
@@ -702,11 +703,11 @@ mod tests {
             let nodes = BlockTree::<Test>::get(domain_id, head_receipt_number);
             assert_eq!(nodes.len(), 2);
             for n in nodes.iter() {
-                let block = DomainBlocks::<Test>::get(n).unwrap();
+                let node = BlockTreeNodes::<Test>::get(n).unwrap();
                 if *n == new_branch_receipt_hash {
-                    assert_eq!(block.operator_ids, vec![operator_id2]);
+                    assert_eq!(node.operator_ids, vec![operator_id2]);
                 } else {
-                    assert_eq!(block.operator_ids, vec![operator_id1]);
+                    assert_eq!(node.operator_ids, vec![operator_id1]);
                 }
             }
         });

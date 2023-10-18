@@ -1,8 +1,8 @@
 use crate::block_tree::BlockTreeNode;
 use crate::domain_registry::{DomainConfig, DomainObject};
 use crate::{
-    self as pallet_domains, BalanceOf, BlockTree, BundleError, Config, ConsensusBlockHash,
-    DomainBlockNumberFor, DomainBlocks, DomainRegistry, ExecutionInbox, ExecutionReceiptOf,
+    self as pallet_domains, BalanceOf, BlockTree, BlockTreeNodes, BundleError, Config,
+    ConsensusBlockHash, DomainBlockNumberFor, DomainRegistry, ExecutionInbox, ExecutionReceiptOf,
     FraudProofError, FungibleHoldId, HeadReceiptNumber, NextDomainId, Operator, OperatorStatus,
     Operators,
 };
@@ -512,7 +512,7 @@ pub(crate) fn get_block_tree_node_at<T: Config>(
 > {
     BlockTree::<T>::get(domain_id, block_number)
         .first()
-        .and_then(DomainBlocks::<T>::get)
+        .and_then(BlockTreeNodes::<T>::get)
 }
 
 // TODO: Unblock once bundle producer election v2 is finished.
@@ -836,7 +836,7 @@ fn test_invalid_total_rewards_fraud_proof() {
             domain_block.execution_receipt.total_rewards + 1,
         );
         domain_block.execution_receipt.final_state_root = root;
-        DomainBlocks::<Test>::insert(bad_receipt_hash, domain_block);
+        BlockTreeNodes::<Test>::insert(bad_receipt_hash, domain_block);
         assert_ok!(Domains::validate_fraud_proof(&fraud_proof),);
     });
 }
@@ -915,7 +915,7 @@ fn test_invalid_domain_extrinsic_root_proof() {
             bad_receipt.consensus_block_hash,
         );
         ConsensusBlockHash::<Test>::insert(domain_id, consensus_block_number, consensus_block_hash);
-        DomainBlocks::<Test>::insert(bad_receipt_hash, domain_block);
+        BlockTreeNodes::<Test>::insert(bad_receipt_hash, domain_block);
         fraud_proof
     });
 
@@ -967,7 +967,7 @@ fn test_invalid_domain_block_hash_fraud_proof() {
         domain_block.execution_receipt.final_state_root = root;
         domain_block.execution_receipt.domain_block_hash = H256::random();
         let bad_receipt_hash = domain_block.execution_receipt.hash();
-        DomainBlocks::<Test>::insert(bad_receipt_hash, domain_block);
+        BlockTreeNodes::<Test>::insert(bad_receipt_hash, domain_block);
         let fraud_proof = FraudProof::InvalidDomainBlockHash(InvalidDomainBlockHashProof {
             domain_id,
             bad_receipt_hash,
@@ -1091,7 +1091,7 @@ fn test_fraud_proof_prune_fraudulent_branch_of_receipt() {
             bad_receipts.push(bad_receipt_hash);
 
             assert_eq!(BlockTree::<Test>::get(domain_id, bad_receipt_at).len(), 2);
-            assert!(DomainBlocks::<Test>::get(bad_receipt_hash).is_some());
+            assert!(BlockTreeNodes::<Test>::get(bad_receipt_hash).is_some());
         }
 
         // Construct and submit a fraud proof for the fraudulent branch of ER
@@ -1110,7 +1110,7 @@ fn test_fraud_proof_prune_fraudulent_branch_of_receipt() {
         for i in 0..3 {
             let bad_receipt_at = bad_receipt_start_at + i;
             assert_eq!(BlockTree::<Test>::get(domain_id, bad_receipt_at).len(), 1);
-            assert!(DomainBlocks::<Test>::get(bad_receipts[i as usize]).is_none());
+            assert!(BlockTreeNodes::<Test>::get(bad_receipts[i as usize]).is_none());
         }
     });
 }

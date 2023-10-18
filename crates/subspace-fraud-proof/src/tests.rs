@@ -431,7 +431,16 @@ async fn execution_proof_creation_and_verification_should_work() {
             ))],
         },
     );
-    let execution_phase = ExecutionPhase::InitializeBlock;
+    let execution_phase = {
+        let digest_key = sp_domains::fraud_proof::system_digest_final_key();
+        let digest_storage_proof = alice
+            .client
+            .read_proof(header.hash(), &mut [digest_key.as_slice()].into_iter())
+            .unwrap();
+        ExecutionPhase::InitializeBlock {
+            digest_storage_proof,
+        }
+    };
     let initialize_block_call_data = new_header.encode();
 
     let prover = ExecutionProver::new(alice.backend.clone(), alice.code_executor.clone());

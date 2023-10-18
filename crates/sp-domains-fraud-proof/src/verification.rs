@@ -116,7 +116,7 @@ where
     CBlock: BlockT,
     CBlock::Hash: Into<H256>,
     DomainHeader: HeaderT,
-    DomainHeader::Hash: Into<H256>,
+    DomainHeader::Hash: Into<H256> + From<H256>,
 {
     let InvalidStateTransitionProof {
         domain_id,

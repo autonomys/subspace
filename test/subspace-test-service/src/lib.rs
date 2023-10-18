@@ -196,6 +196,7 @@ where
     Block: BlockT,
     Block::Hash: From<H256>,
     DomainBlock: BlockT,
+    DomainBlock::Hash: From<H256>,
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + 'static,
     Client::Api: DomainsApi<Block, NumberFor<DomainBlock>, DomainBlock::Hash>,
     Executor: CodeExecutor + sc_executor::RuntimeVersionOf,

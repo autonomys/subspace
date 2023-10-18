@@ -460,8 +460,8 @@ mod pallet {
         OptionQuery,
     >;
 
-    /// The domain block tree, map (`domain_id`, `domain_block_number`) to the hash of a domain blocks,
-    /// which can be used get the domain block in `DomainBlocks`
+    /// The domain block tree, map (`domain_id`, `domain_block_number`) to the hash of ER,
+    /// which can be used get the block tree node in `BlockTreeNodes`
     #[pallet::storage]
     pub(super) type BlockTree<T: Config> = StorageDoubleMap<
         _,
@@ -473,9 +473,9 @@ mod pallet {
         ValueQuery,
     >;
 
-    /// Mapping of domain block hash to domain block
+    /// Mapping of block tree node hash to the node, each node represent a domain block
     #[pallet::storage]
-    pub(super) type DomainBlocks<T: Config> = StorageMap<
+    pub(super) type BlockTreeNodes<T: Config> = StorageMap<
         _,
         Identity,
         ReceiptHash,
@@ -904,7 +904,7 @@ mod pallet {
                 let BlockTreeNode {
                     execution_receipt,
                     operator_ids,
-                } = DomainBlocks::<T>::take(receipt_hash)
+                } = BlockTreeNodes::<T>::take(receipt_hash)
                     .ok_or::<Error<T>>(FraudProofError::BadReceiptNotFound.into())?;
 
                 BlockTree::<T>::mutate_exists(
@@ -1379,7 +1379,7 @@ impl<T: Config> Pallet<T> {
     pub fn genesis_state_root(domain_id: DomainId) -> Option<H256> {
         BlockTree::<T>::get(domain_id, DomainBlockNumberFor::<T>::zero())
             .first()
-            .and_then(DomainBlocks::<T>::get)
+            .and_then(BlockTreeNodes::<T>::get)
             .map(|block| block.execution_receipt.final_state_root.into())
     }
 
@@ -1532,7 +1532,7 @@ impl<T: Config> Pallet<T> {
     fn validate_fraud_proof(
         fraud_proof: &FraudProof<BlockNumberFor<T>, T::Hash>,
     ) -> Result<(), FraudProofError> {
-        let bad_receipt = DomainBlocks::<T>::get(fraud_proof.bad_receipt_hash())
+        let bad_receipt = BlockTreeNodes::<T>::get(fraud_proof.bad_receipt_hash())
             .ok_or(FraudProofError::BadReceiptNotFound)?
             .execution_receipt;
 
@@ -1557,7 +1557,7 @@ impl<T: Config> Pallet<T> {
                 ..
             }) => {
                 let parent_receipt =
-                    DomainBlocks::<T>::get(bad_receipt.parent_domain_block_receipt_hash)
+                    BlockTreeNodes::<T>::get(bad_receipt.parent_domain_block_receipt_hash)
                         .ok_or(FraudProofError::ParentReceiptNotFound)?
                         .execution_receipt;
                 verify_invalid_domain_block_hash_fraud_proof::<
@@ -1614,7 +1614,7 @@ impl<T: Config> Pallet<T> {
             }
             FraudProof::InvalidStateTransition(proof) => {
                 let bad_receipt_parent =
-                    DomainBlocks::<T>::get(bad_receipt.parent_domain_block_receipt_hash)
+                    BlockTreeNodes::<T>::get(bad_receipt.parent_domain_block_receipt_hash)
                         .ok_or(FraudProofError::BadReceiptParentNotFound)?
                         .execution_receipt;
 
@@ -1803,7 +1803,7 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn execution_receipt(receipt_hash: ReceiptHash) -> Option<ExecutionReceiptOf<T>> {
-        DomainBlocks::<T>::get(receipt_hash).map(|db| db.execution_receipt)
+        BlockTreeNodes::<T>::get(receipt_hash).map(|db| db.execution_receipt)
     }
 }
 
