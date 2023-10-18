@@ -2,6 +2,7 @@ use crate::PosTable;
 use anyhow::anyhow;
 use clap::Subcommand;
 use criterion::{black_box, BatchSize, Criterion, Throughput};
+use futures::FutureExt;
 #[cfg(windows)]
 use memmap2::Mmap;
 use parking_lot::Mutex;
@@ -11,8 +12,8 @@ use std::path::PathBuf;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{Record, SolutionRange};
 use subspace_erasure_coding::ErasureCoding;
-use subspace_farmer::single_disk_farm::farming::sync_fallback::audit_plot;
-use subspace_farmer::single_disk_farm::farming::PlotAuditOptions;
+use subspace_farmer::single_disk_farm::farming::sync_fallback::SyncPlotAudit;
+use subspace_farmer::single_disk_farm::farming::{PlotAudit, PlotAuditOptions};
 use subspace_farmer::single_disk_farm::{SingleDiskFarm, SingleDiskFarmSummary};
 use subspace_farmer_components::sector::sector_size;
 use subspace_proof_of_space::Table;
@@ -93,10 +94,12 @@ fn audit(disk_farm: PathBuf, sample_size: usize) -> anyhow::Result<()> {
                 #[cfg(windows)]
                 let plot = &*plot_mmap;
 
+                let sync_plot_audit = SyncPlotAudit::new(plot);
+
                 b.iter_batched(
                     rand::random,
                     |global_challenge| {
-                        let options = PlotAuditOptions::<PosTable, _> {
+                        let options = PlotAuditOptions::<PosTable> {
                             public_key: single_disk_farm_info.public_key(),
                             reward_address: single_disk_farm_info.public_key(),
                             slot_info: SlotInfo {
@@ -110,12 +113,16 @@ fn audit(disk_farm: PathBuf, sample_size: usize) -> anyhow::Result<()> {
                             sectors_metadata: &sectors_metadata,
                             kzg: &kzg,
                             erasure_coding: &erasure_coding,
-                            plot,
                             maybe_sector_being_modified: None,
                             table_generator: &table_generator,
                         };
 
-                        black_box(audit_plot(black_box(options)))
+                        black_box(
+                            sync_plot_audit
+                                .audit(black_box(options))
+                                .now_or_never()
+                                .unwrap(),
+                        )
                     },
                     BatchSize::SmallInput,
                 )
@@ -128,7 +135,7 @@ fn audit(disk_farm: PathBuf, sample_size: usize) -> anyhow::Result<()> {
             use std::cell::RefCell;
             use std::future::Future;
             use subspace_farmer::single_disk_farm::farming::monoio::{
-                audit_plot_monoio, build_monoio_runtime, MonoioFile, MonoioRuntime,
+                build_monoio_runtime, MonoioFile, MonoioPlotAudit, MonoioRuntime,
             };
 
             struct MonoioAsyncExecutor<'a>(&'a RefCell<MonoioRuntime>);
@@ -161,10 +168,12 @@ fn audit(disk_farm: PathBuf, sample_size: usize) -> anyhow::Result<()> {
             group.bench_function("plot/monoio", |b| {
                 let file = MonoioFile::new(&file, IO_CONCURRENCY);
 
+                let monoio_plot_audit = MonoioPlotAudit::new(file);
+
                 b.to_async(MonoioAsyncExecutor::new(&runtime)).iter_batched(
                     rand::random,
                     |global_challenge| {
-                        let options = PlotAuditOptions::<PosTable, _> {
+                        let options = PlotAuditOptions::<PosTable> {
                             public_key: single_disk_farm_info.public_key(),
                             reward_address: single_disk_farm_info.public_key(),
                             slot_info: SlotInfo {
@@ -178,12 +187,11 @@ fn audit(disk_farm: PathBuf, sample_size: usize) -> anyhow::Result<()> {
                             sectors_metadata: &sectors_metadata,
                             kzg: &kzg,
                             erasure_coding: &erasure_coding,
-                            plot: &file,
                             maybe_sector_being_modified: None,
                             table_generator: &table_generator,
                         };
 
-                        black_box(audit_plot_monoio(black_box(options)))
+                        black_box(monoio_plot_audit.audit(black_box(options)))
                     },
                     BatchSize::SmallInput,
                 )

@@ -1,4 +1,4 @@
-use crate::single_disk_farm::farming::PlotAuditOptions;
+use crate::single_disk_farm::farming::{PlotAudit, PlotAuditOptions};
 use async_lock::Semaphore;
 use futures::stream::FuturesUnordered;
 use futures::StreamExt;
@@ -9,8 +9,8 @@ use monoio::{LegacyDriver, RuntimeBuilder};
 use std::io;
 use subspace_core_primitives::{PosSeed, PublicKey, SectorIndex, Solution};
 use subspace_farmer_components::auditing::audit_plot_async;
-use subspace_farmer_components::proving::ProvableSolutions;
-use subspace_farmer_components::{proving, AsyncReadBytes, ReadAtAsync};
+use subspace_farmer_components::proving::{ProvableSolutions, ProvingError};
+use subspace_farmer_components::{AsyncReadBytes, ReadAtAsync};
 use subspace_proof_of_space::{Table, TableGenerator};
 use tracing::warn;
 
@@ -103,70 +103,82 @@ impl<'a> MonoioFile<'a> {
 }
 
 /// Plot auditing asynchronously using [`monoio`] runtime
-pub async fn audit_plot_monoio<'a, PosTable>(
-    options: PlotAuditOptions<'a, PosTable, MonoioFile<'a>>,
-) -> Vec<(
-    SectorIndex,
-    impl ProvableSolutions<Item = Result<Solution<PublicKey, PublicKey>, proving::ProvingError>> + 'a,
-)>
-where
-    PosTable: Table,
-{
-    let PlotAuditOptions {
-        public_key,
-        reward_address,
-        slot_info,
-        sectors_metadata,
-        kzg,
-        erasure_coding,
-        plot,
-        maybe_sector_being_modified,
-        table_generator,
-    } = options;
+pub struct MonoioPlotAudit<'f>(MonoioFile<'f>);
 
-    let audit_results_fut = audit_plot_async(
-        public_key,
-        &slot_info.global_challenge,
-        slot_info.voting_solution_range,
-        plot,
-        sectors_metadata,
-        maybe_sector_being_modified,
-    );
+impl<'f> PlotAudit<'f> for MonoioPlotAudit<'f> {
+    async fn audit<'a, PosTable>(
+        &'f self,
+        options: PlotAuditOptions<'a, PosTable>,
+    ) -> Vec<(
+        SectorIndex,
+        impl ProvableSolutions<Item = Result<Solution<PublicKey, PublicKey>, ProvingError>> + Unpin + 'a,
+    )>
+    where
+        'f: 'a,
+        PosTable: Table,
+    {
+        let PlotAuditOptions {
+            public_key,
+            reward_address,
+            slot_info,
+            sectors_metadata,
+            kzg,
+            erasure_coding,
+            maybe_sector_being_modified,
+            table_generator,
+        } = options;
 
-    audit_results_fut
-        .await
-        .into_iter()
-        .map(|audit_results| async move {
-            let sector_index = audit_results.sector_index;
+        let audit_results_fut = audit_plot_async(
+            public_key,
+            &slot_info.global_challenge,
+            slot_info.voting_solution_range,
+            &self.0,
+            sectors_metadata,
+            maybe_sector_being_modified,
+        );
 
-            let sector_solutions_fut = audit_results.solution_candidates.into_solutions(
-                reward_address,
-                kzg,
-                erasure_coding,
-                |seed: &PosSeed| table_generator.lock().generate_parallel(seed),
-            );
+        audit_results_fut
+            .await
+            .into_iter()
+            .map(|audit_results| async move {
+                let sector_index = audit_results.sector_index;
 
-            let sector_solutions = match sector_solutions_fut.await {
-                Ok(solutions) => solutions,
-                Err(error) => {
-                    warn!(
-                        %error,
-                        %sector_index,
-                        "Failed to turn solution candidates into solutions",
-                    );
+                let sector_solutions_fut = audit_results.solution_candidates.into_solutions(
+                    reward_address,
+                    kzg,
+                    erasure_coding,
+                    |seed: &PosSeed| table_generator.lock().generate_parallel(seed),
+                );
 
+                let sector_solutions = match sector_solutions_fut.await {
+                    Ok(solutions) => solutions,
+                    Err(error) => {
+                        warn!(
+                            %error,
+                            %sector_index,
+                            "Failed to turn solution candidates into solutions",
+                        );
+
+                        return None;
+                    }
+                };
+
+                if sector_solutions.len() == 0 {
                     return None;
                 }
-            };
 
-            if sector_solutions.len() == 0 {
-                return None;
-            }
+                Some((sector_index, sector_solutions))
+            })
+            .collect::<FuturesUnordered<_>>()
+            .filter_map(|value| async move { value })
+            .collect()
+            .await
+    }
+}
 
-            Some((sector_index, sector_solutions))
-        })
-        .collect::<FuturesUnordered<_>>()
-        .filter_map(|value| async move { value })
-        .collect()
-        .await
+impl<'f> MonoioPlotAudit<'f> {
+    /// Create new instance
+    pub fn new(file: MonoioFile<'f>) -> Self {
+        Self(file)
+    }
 }

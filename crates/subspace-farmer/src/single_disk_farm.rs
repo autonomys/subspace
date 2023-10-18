@@ -6,6 +6,7 @@ mod plotting;
 use crate::identity::{Identity, IdentityError};
 use crate::node_client::NodeClient;
 use crate::reward_signing::reward_signing;
+use crate::single_disk_farm::farming::sync_fallback::SyncPlotAudit;
 pub use crate::single_disk_farm::farming::FarmingError;
 use crate::single_disk_farm::farming::{farming, slot_notification_forwarder, FarmingOptions};
 use crate::single_disk_farm::piece_cache::{DiskPieceCache, DiskPieceCacheError};
@@ -1023,11 +1024,23 @@ impl SingleDiskFarm {
                                 }
                             }
 
+                            #[cfg(not(windows))]
+                            let plot_audit = &SyncPlotAudit::new(&*plot_file);
+                            #[cfg(windows)]
+                            let plot_mmap = unsafe {
+                                memmap2::Mmap::map(&*plot_file).map_err(FarmingError::from)?
+                            };
+                            // On Windows random read is horrible in terms of performance, memory-mapped I/O helps
+                            // TODO: Remove this once https://internals.rust-lang.org/t/introduce-write-all-at-read-exact-at-on-windows/19649
+                            //  or similar exists in standard library
+                            #[cfg(windows)]
+                            let plot_audit = &SyncPlotAudit::new(&*plot_mmap);
+
                             let farming_options = FarmingOptions {
                                 public_key,
                                 reward_address,
                                 node_client,
-                                plot_file: &plot_file,
+                                plot_audit,
                                 sectors_metadata,
                                 kzg,
                                 erasure_coding,
@@ -1035,7 +1048,7 @@ impl SingleDiskFarm {
                                 modifying_sector_index,
                                 slot_info_notifications: slot_info_forwarder_receiver,
                             };
-                            farming::<PosTable, _>(farming_options).await
+                            farming::<PosTable, _, _>(farming_options).await
                         };
 
                         handle.block_on(async {
