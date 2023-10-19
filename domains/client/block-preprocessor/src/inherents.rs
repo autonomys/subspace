@@ -182,6 +182,11 @@ where
         _parent: Block::Hash,
         _extra_args: (),
     ) -> Result<Self::InherentDataProviders, Box<dyn Error + Send + Sync>> {
+        // always prefer the consensus block hash that was given but eth_rpc
+        // uses this inherent provider to while fetching pending state
+        // https://github.com/paritytech/frontier/blob/master/client/rpc/src/eth/pending.rs#L70
+        // This is a non mutable call used by web3 api and using the best consensus block hash
+        // here is completely ok.
         let consensus_block_hash = self
             .maybe_consensus_block_hash
             .unwrap_or(self.consensus_client.info().best_hash);

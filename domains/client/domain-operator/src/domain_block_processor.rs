@@ -423,7 +423,7 @@ where
             inherent_digests,
             &*self.backend,
             extrinsics,
-            inherent_data,
+            Some(inherent_data),
         )?;
 
         let BuiltBlock {

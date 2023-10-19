@@ -157,7 +157,7 @@ where
         inherent_digests: Digest,
         backend: &'a B,
         mut extrinsics: VecDeque<Block::Extrinsic>,
-        inherent_data: sp_inherents::InherentData,
+        maybe_inherent_data: Option<sp_inherents::InherentData>,
     ) -> Result<Self, Error> {
         let header = <<Block as BlockT>::Header as HeaderT>::new(
             parent_number + One::one(),
@@ -177,16 +177,18 @@ where
 
         api.initialize_block(parent_hash, &header)?;
 
-        let mut inherent_extrinsics = Self::create_inherents(parent_hash, &api, inherent_data)?;
-        extrinsics.push_front(
-            inherent_extrinsics
-                .pop_front()
-                .expect("Timestamp inherent must always exist; qed"),
-        );
+        if let Some(inherent_data) = maybe_inherent_data {
+            let mut inherent_extrinsics = Self::create_inherents(parent_hash, &api, inherent_data)?;
+            extrinsics.push_front(
+                inherent_extrinsics
+                    .pop_front()
+                    .expect("Timestamp inherent must always exist; qed"),
+            );
 
-        // rest of the inherents, set_code if exists will go in the last
-        for inherent_extrinsic in inherent_extrinsics {
-            extrinsics.push_back(inherent_extrinsic)
+            // rest of the inherents, set_code if exists will go in the last
+            for inherent_extrinsic in inherent_extrinsics {
+                extrinsics.push_back(inherent_extrinsic)
+            }
         }
 
         Ok(Self {

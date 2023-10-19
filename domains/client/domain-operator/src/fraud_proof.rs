@@ -2,7 +2,6 @@ use crate::aux_schema::BundleMismatchType;
 use crate::ExecutionReceiptFor;
 use codec::{Decode, Encode};
 use domain_block_builder::{BlockBuilder, RecordProof};
-use domain_block_preprocessor::inherents::get_inherent_data;
 use domain_runtime_primitives::opaque::AccountId;
 use domain_runtime_primitives::DomainCoreApi;
 use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
@@ -303,13 +302,6 @@ where
             let extrinsics = self.block_body(block_hash)?;
             let execution_phase = ExecutionPhase::FinalizeBlock;
             let finalize_block_call_data = Vec::new();
-            let inherent_data = get_inherent_data::<_, _, Block>(
-                self.consensus_client.clone(),
-                local_receipt.consensus_block_hash,
-                parent_header.hash(),
-                domain_id,
-            )
-            .await?;
             let block_builder = BlockBuilder::new(
                 &*self.client,
                 parent_header.hash(),
@@ -318,7 +310,7 @@ where
                 inherent_digests,
                 &*self.backend,
                 extrinsics.into(),
-                inherent_data,
+                None,
             )?;
             let storage_changes = block_builder.prepare_storage_changes_before_finalize_block()?;
 
@@ -342,9 +334,7 @@ where
             // Regular extrinsic execution proof.
             let (proof, execution_phase) = self
                 .create_extrinsic_execution_proof(
-                    domain_id,
                     local_trace_index as usize - 1,
-                    local_receipt.consensus_block_hash,
                     &parent_header,
                     block_hash,
                     &prover,
@@ -381,9 +371,7 @@ where
     #[allow(clippy::too_many_arguments)]
     async fn create_extrinsic_execution_proof(
         &self,
-        domain_id: DomainId,
         extrinsic_index: usize,
-        consensus_block_hash: CBlock::Hash,
         parent_header: &Block::Header,
         current_hash: Block::Hash,
         prover: &ExecutionProver<Block, Backend, E>,
@@ -413,14 +401,6 @@ where
             }
         };
 
-        let inherent_data = get_inherent_data::<_, _, Block>(
-            self.consensus_client.clone(),
-            consensus_block_hash,
-            parent_header.hash(),
-            domain_id,
-        )
-        .await?;
-
         let block_builder = BlockBuilder::new(
             &*self.client,
             parent_header.hash(),
@@ -429,7 +409,7 @@ where
             digest,
             &*self.backend,
             extrinsics.into(),
-            inherent_data,
+            None,
         )?;
         let storage_changes = block_builder.prepare_storage_changes_before(extrinsic_index)?;
 
