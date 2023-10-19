@@ -19,6 +19,7 @@ use sp_domain_digests::AsPredigest;
 use sp_domains::fraud_proof::{
     ExecutionPhase, FraudProof, InvalidStateTransitionProof, VerificationError,
 };
+use sp_domains::valued_trie_root::StorageProofProvider;
 use sp_domains::{DomainId, DomainsApi};
 use sp_runtime::generic::{Digest, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
@@ -492,12 +493,11 @@ async fn execution_proof_creation_and_verification_should_work() {
         let post_delta_root = storage_changes.transaction_storage_root;
 
         let execution_phase = {
-            let proof_of_inclusion = sp_domains::valued_trie_root::generate_proof::<
+            let proof_of_inclusion = StorageProofProvider::<
                 LayoutV1<BlakeTwo256>,
-            >(
+            >::generate_enumerated_proof_of_inclusion(
                 encoded_test_txs.as_slice(), target_extrinsic_index as u32
-            )
-            .unwrap();
+            ).unwrap();
             ExecutionPhase::ApplyExtrinsic {
                 proof_of_inclusion,
                 mismatch_index: target_extrinsic_index as u32,
@@ -702,12 +702,11 @@ async fn invalid_execution_proof_should_not_work() {
         let post_delta_root = storage_changes.transaction_storage_root;
 
         let execution_phase = {
-            let proof_of_inclusion = sp_domains::valued_trie_root::generate_proof::<
+            let proof_of_inclusion = StorageProofProvider::<
                 LayoutV1<BlakeTwo256>,
-            >(
+            >::generate_enumerated_proof_of_inclusion(
                 encoded_test_txs.as_slice(), extrinsic_index as u32
-            )
-            .unwrap();
+            ).unwrap();
             ExecutionPhase::ApplyExtrinsic {
                 proof_of_inclusion,
                 mismatch_index: extrinsic_index as u32,

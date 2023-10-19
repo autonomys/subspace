@@ -191,7 +191,7 @@ fn test_storage_proof_verification_invalid() {
         message_proof: storage_proof,
     };
     let res: Result<Channel<Balance>, VerificationError> =
-        StorageProofVerifier::<Blake2Hasher>::verify_and_get_value(
+        StorageProofVerifier::<Blake2Hasher>::get_decoded_value(
             &proof.consensus_chain_state_root,
             proof.message_proof,
             StorageKey(vec![]),
@@ -218,7 +218,7 @@ fn test_storage_proof_verification_missing_value() {
         message_proof: storage_proof,
     };
     let res: Result<Channel<Balance>, VerificationError> =
-        StorageProofVerifier::<Blake2Hasher>::verify_and_get_value(
+        StorageProofVerifier::<Blake2Hasher>::get_decoded_value(
             &proof.consensus_chain_state_root,
             proof.message_proof,
             storage_key,
@@ -247,7 +247,7 @@ fn test_storage_proof_verification() {
         message_proof: storage_proof,
     };
     let res: Result<Channel<Balance>, VerificationError> =
-        StorageProofVerifier::<Blake2Hasher>::verify_and_get_value(
+        StorageProofVerifier::<Blake2Hasher>::get_decoded_value(
             &proof.consensus_chain_state_root,
             proof.message_proof,
             storage_key,
