@@ -45,6 +45,62 @@ pub(crate) struct ChunkCandidate {
     pub(crate) audit_chunks: Vec<AuditChunkCandidate>,
 }
 
+/// Audit a single sector and generate a stream of solutions.
+///
+/// This is primarily helpful in test environment, prefer [`audit_plot_sync`] and
+/// [`audit_plot_async`] for auditing real plots.
+pub fn audit_sector_sync<'a, Sector>(
+    public_key: &'a PublicKey,
+    global_challenge: &Blake3Hash,
+    solution_range: SolutionRange,
+    sector: Sector,
+    sector_metadata: &'a SectorMetadataChecksummed,
+) -> Option<AuditResult<'a, ReadAt<Sector, !>>>
+where
+    Sector: ReadAtSync + 'a,
+{
+    let SectorAuditingDetails {
+        sector_id,
+        sector_slot_challenge,
+        s_bucket_audit_index,
+        s_bucket_audit_size,
+        s_bucket_audit_offset_in_sector,
+    } = collect_sector_auditing_details(public_key, global_challenge, sector_metadata);
+
+    let mut s_bucket = vec![0; s_bucket_audit_size];
+    let read_s_bucket_result = sector.read_at(&mut s_bucket, s_bucket_audit_offset_in_sector);
+
+    if let Err(error) = read_s_bucket_result {
+        warn!(
+            %error,
+            sector_index = %sector_metadata.sector_index,
+            %s_bucket_audit_index,
+            "Failed read s-bucket",
+        );
+        return None;
+    }
+
+    let (winning_chunks, best_solution_distance) = map_winning_chunks(
+        &s_bucket,
+        global_challenge,
+        &sector_slot_challenge,
+        solution_range,
+    )?;
+
+    Some(AuditResult {
+        sector_index: sector_metadata.sector_index,
+        solution_candidates: SolutionCandidates::new(
+            public_key,
+            sector_id,
+            s_bucket_audit_index,
+            ReadAt::from_sync(sector),
+            sector_metadata,
+            winning_chunks.into(),
+        ),
+        best_solution_distance,
+    })
+}
+
 /// Audit the whole plot and generate streams of solutions
 pub fn audit_plot_sync<'a, Plot>(
     public_key: &'a PublicKey,

@@ -44,7 +44,7 @@ use std::marker::PhantomData;
 use std::num::{NonZeroU32, NonZeroU64, NonZeroUsize};
 use std::simd::Simd;
 use std::sync::{Once, OnceLock};
-use std::{iter, mem, slice};
+use std::{iter, mem};
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::crypto::Scalar;
@@ -55,7 +55,7 @@ use subspace_core_primitives::{
     Solution, SolutionRange, REWARD_SIGNING_CONTEXT,
 };
 use subspace_erasure_coding::ErasureCoding;
-use subspace_farmer_components::auditing::audit_plot_sync;
+use subspace_farmer_components::auditing::audit_sector_sync;
 use subspace_farmer_components::plotting::{
     plot_sector, PieceGetterRetryPolicy, PlotSectorOptions,
 };
@@ -479,16 +479,15 @@ pub fn create_signed_vote(
             .derive_global_randomness()
             .derive_global_challenge(slot.into());
 
-        let maybe_audit_result = audit_plot_sync(
+        let maybe_audit_result = audit_sector_sync(
             &public_key,
             &global_challenge,
             vote_solution_range,
             &plotted_sector_bytes,
-            slice::from_ref(&plotted_sector.sector_metadata),
-            None,
+            &plotted_sector.sector_metadata,
         );
 
-        let Some(audit_result) = maybe_audit_result.into_iter().next() else {
+        let Some(audit_result) = maybe_audit_result else {
             // Sector didn't have any solutions
             continue;
         };
