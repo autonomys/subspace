@@ -1,7 +1,12 @@
 use hash_db::Hasher;
-use parity_scale_codec::{Compact, Encode};
+use parity_scale_codec::{Codec, Compact, Encode};
+#[cfg(feature = "std")]
+use sp_state_machine::prove_read;
+use sp_state_machine::TrieBackendBuilder;
 use sp_std::cmp::max;
+use sp_std::marker::PhantomData;
 use sp_std::vec::Vec;
+use sp_trie::StorageProof;
 use trie_db::node::Value;
 use trie_db::{
     nibble_ops, ChildReference, DBValue, NibbleSlice, NodeCodec, ProcessEncodedNode,
@@ -251,59 +256,60 @@ type MemoryDB<T> = memory_db::MemoryDB<
     DBValue,
 >;
 
-/// Gnenerate a proof-of-inclusion of the value at the given `input[index]`
-///
-/// Return `None` if the given `index` out of range or fail to generate the proof
-pub fn generate_proof<Layout: TrieLayout>(input: &[Vec<u8>], index: u32) -> Option<Vec<Vec<u8>>> {
-    if input.len() <= index as usize {
-        return None;
-    }
+/// Type that provides utilities to generate the storage proof.
+pub struct StorageProofProvider<Layout>(PhantomData<Layout>);
 
-    let input: Vec<_> = input
-        .iter()
-        .enumerate()
-        .map(|(i, v)| (Compact(i as u32).encode(), v))
-        .collect();
-
-    let (db, root) = {
-        let mut db = <MemoryDB<Layout>>::default();
-        let mut root = Default::default();
-        {
-            let mut trie = <TrieDBMutBuilder<Layout>>::new(&mut db, &mut root).build();
-            for (key, value) in input.iter() {
-                trie.insert(key, value).ok()?;
-            }
-        }
-        (db, root)
-    };
-
-    let key = Compact(index).encode();
-    let proof = trie_db::proof::generate_proof::<_, Layout, _, _>(&db, &root, &[key]).ok()?;
-
-    Some(proof)
-}
-
-// TODO: try using `StorageProofVerifier` to verify the proof-of-inclusion
-/// Verify the proof-of-inclusion of the `data` at the `index` of the merkle root `root`
-pub fn verify_proof<Layout>(
-    proof: &[Vec<u8>],
-    root: &<<Layout as TrieLayout>::Hash as Hasher>::Out,
-    data: Vec<u8>,
-    index: u32,
-) -> bool
+impl<Layout> StorageProofProvider<Layout>
 where
     Layout: TrieLayout,
+    <Layout::Hash as Hasher>::Out: Codec,
 {
-    let key = Compact(index).encode();
-    trie_db::proof::verify_proof::<Layout, _, _, _>(root, proof, sp_std::vec![&(key, Some(data))])
-        .is_ok()
+    /// Generate storage proof for given index from the trie constructed from `input`.
+    ///
+    /// Returns `None` if the given `index` out of range or fail to generate the proof.
+    #[cfg(feature = "std")]
+    pub fn generate_enumerated_proof_of_inclusion(
+        input: &[Vec<u8>],
+        index: u32,
+    ) -> Option<StorageProof> {
+        if input.len() <= index as usize {
+            return None;
+        }
+
+        let input: Vec<_> = input
+            .iter()
+            .enumerate()
+            .map(|(i, v)| (Compact(i as u32).encode(), v))
+            .collect();
+
+        let (db, root) = {
+            let mut db = <MemoryDB<Layout>>::default();
+            let mut root = Default::default();
+            {
+                let mut trie = <TrieDBMutBuilder<Layout>>::new(&mut db, &mut root).build();
+                for (key, value) in input {
+                    trie.insert(&key, value).ok()?;
+                }
+            }
+            (db, root)
+        };
+
+        let backend = TrieBackendBuilder::new(db, root).build();
+        let key = Compact(index).encode();
+        Some(StorageProof::new(
+            prove_read(backend, &[key]).ok()?.iter_nodes().cloned(),
+        ))
+    }
 }
 
 #[cfg(test)]
 mod test {
-    use crate::valued_trie_root::{generate_proof, valued_ordered_trie_root, verify_proof};
+    use crate::valued_trie_root::{valued_ordered_trie_root, StorageProofProvider};
+    use crate::verification::StorageProofVerifier;
+    use parity_scale_codec::{Compact, Encode};
     use rand::rngs::StdRng;
     use rand::{Rng, SeedableRng};
+    use sp_core::storage::StorageKey;
     use sp_core::H256;
     use sp_runtime::traits::{BlakeTwo256, Hash};
     use sp_trie::LayoutV1;
@@ -345,34 +351,52 @@ mod test {
         assert_eq!(root, got_root);
 
         for (i, ext) in exts.clone().into_iter().enumerate() {
-            // Gnenerate a proof-of-inclusion and verify it with the above `root`
-            let proof = generate_proof::<LayoutV1<BlakeTwo256>>(&exts, i as u32).unwrap();
-            assert!(verify_proof::<LayoutV1<BlakeTwo256>>(
-                &proof,
+            // Generate a proof-of-inclusion and verify it with the above `root`
+            let storage_key = StorageKey(Compact(i as u32).encode());
+            let storage_proof =
+                StorageProofProvider::<LayoutV1<BlakeTwo256>>::generate_enumerated_proof_of_inclusion(
+                    &exts,
+                    i as u32,
+                )
+                .unwrap();
+
+            assert!(StorageProofVerifier::<BlakeTwo256>::verify_storage_proof(
+                storage_proof.clone(),
                 &root,
                 ext.clone(),
-                i as u32,
+                storage_key.clone(),
             ));
 
             // Verifying the proof with a wrong root/ext/index will fail
-            assert!(!verify_proof::<LayoutV1<BlakeTwo256>>(
-                &proof,
+            assert!(!StorageProofVerifier::<BlakeTwo256>::verify_storage_proof(
+                storage_proof.clone(),
                 &H256::random(),
                 ext.clone(),
-                i as u32,
+                storage_key.clone(),
             ));
-            assert!(!verify_proof::<LayoutV1<BlakeTwo256>>(
-                &proof,
+
+            assert!(!StorageProofVerifier::<BlakeTwo256>::verify_storage_proof(
+                storage_proof.clone(),
                 &root,
                 vec![i as u8; ext.len()],
-                i as u32,
+                storage_key,
             ));
-            assert!(!verify_proof::<LayoutV1<BlakeTwo256>>(
-                &proof,
+
+            let storage_key = StorageKey(Compact(i as u32 + 1).encode());
+            assert!(!StorageProofVerifier::<BlakeTwo256>::verify_storage_proof(
+                storage_proof,
                 &root,
                 ext,
-                i as u32 + 1,
+                storage_key,
             ));
         }
+
+        // fails to generate storage key for unknown index
+        assert!(
+            StorageProofProvider::<LayoutV1<BlakeTwo256>>::generate_enumerated_proof_of_inclusion(
+                &exts, 100,
+            )
+            .is_none()
+        );
     }
 }

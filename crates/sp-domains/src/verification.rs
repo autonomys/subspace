@@ -31,10 +31,11 @@ pub enum VerificationError {
     InvalidBundleDigest,
 }
 
+/// Type that provides utilities to verify the storage proof.
 pub struct StorageProofVerifier<H: Hasher>(PhantomData<H>);
 
 impl<H: Hasher> StorageProofVerifier<H> {
-    pub fn verify_and_get_value<V: Decode>(
+    pub fn get_decoded_value<V: Decode>(
         state_root: &H::Out,
         proof: StorageProof,
         key: StorageKey,
@@ -47,6 +48,35 @@ impl<H: Hasher> StorageProofVerifier<H> {
         let decoded = V::decode(&mut &val[..]).map_err(|_| VerificationError::FailedToDecode)?;
 
         Ok(decoded)
+    }
+
+    pub fn get_bare_value(
+        state_root: &H::Out,
+        proof: StorageProof,
+        key: StorageKey,
+    ) -> Result<Vec<u8>, VerificationError> {
+        let db = proof.into_memory_db::<H>();
+        let val = read_trie_value::<LayoutV1<H>, _>(&db, state_root, key.as_ref(), None, None)
+            .map_err(|_| VerificationError::InvalidProof)?
+            .ok_or(VerificationError::MissingValue)?;
+
+        Ok(val)
+    }
+
+    pub fn verify_storage_proof(
+        proof: StorageProof,
+        root: &H::Out,
+        expected_value: Vec<u8>,
+        storage_key: StorageKey,
+    ) -> bool
+    where
+        H: Hasher,
+    {
+        if let Ok(got_data) = StorageProofVerifier::<H>::get_bare_value(root, proof, storage_key) {
+            expected_value == got_data
+        } else {
+            false
+        }
     }
 }
 
@@ -78,7 +108,7 @@ where
     let storage_key = StorageKey(crate::fraud_proof::operator_block_rewards_final_key());
     let storage_proof = storage_proof.clone();
 
-    let total_rewards = StorageProofVerifier::<Hashing>::verify_and_get_value::<Balance>(
+    let total_rewards = StorageProofVerifier::<Hashing>::get_decoded_value::<Balance>(
         &state_root,
         storage_proof,
         storage_key,
