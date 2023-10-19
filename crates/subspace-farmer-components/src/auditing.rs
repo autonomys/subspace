@@ -219,12 +219,19 @@ where
     let reading_s_buckets_stream = audit_preparation
         .iter_mut()
         .map(
-            |(_sector_auditing_info, sector_metadata, s_bucket)| async move {
-                let offset = usize::from(sector_metadata.sector_index)
-                    * sector_size(sector_metadata.pieces_in_sector);
+            |(sector_auditing_info, sector_metadata, s_bucket)| async move {
+                let sector = plot.offset(
+                    usize::from(sector_metadata.sector_index)
+                        * sector_size(sector_metadata.pieces_in_sector),
+                );
 
                 mem::swap(
-                    &mut plot.read_at(mem::take(s_bucket), offset).await?,
+                    &mut sector
+                        .read_at(
+                            mem::take(s_bucket),
+                            sector_auditing_info.s_bucket_audit_offset_in_sector,
+                        )
+                        .await?,
                     s_bucket,
                 );
 
