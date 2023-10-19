@@ -35,7 +35,6 @@ use sc_consensus::block_import::{
 use sc_consensus::{
     BasicQueue, BlockImport, SharedBlockImport, StateAction, Verifier as VerifierT,
 };
-use sc_consensus_fraud_proof::FraudProofBlockImport;
 use sc_executor::NativeElseWasmExecutor;
 use sc_network::config::{NetworkConfiguration, TransportConfig};
 use sc_network::multiaddr;
@@ -73,7 +72,6 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time;
 use subspace_core_primitives::{Randomness, Solution};
-use subspace_fraud_proof::invalid_state_transition_proof::InvalidStateTransitionProofVerifier;
 use subspace_fraud_proof::invalid_transaction_proof::InvalidTransactionProofVerifier;
 use subspace_fraud_proof::verifier_api::VerifierClient;
 use subspace_runtime_primitives::opaque::Block;
@@ -198,9 +196,10 @@ where
     Block: BlockT,
     Block::Hash: From<H256>,
     DomainBlock: BlockT,
+    DomainBlock::Hash: From<H256>,
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + 'static,
     Client::Api: DomainsApi<Block, NumberFor<DomainBlock>, DomainBlock::Hash>,
-    Executor: CodeExecutor,
+    Executor: CodeExecutor + sc_executor::RuntimeVersionOf,
 {
     fn extensions_for(
         &self,
@@ -249,11 +248,7 @@ pub struct MockConsensusNode {
     acknowledgement_sender_subscribers: Vec<TracingUnboundedSender<mpsc::Sender<()>>>,
     /// Block import pipeline
     #[allow(clippy::type_complexity)]
-    block_import: MockBlockImport<
-        FraudProofBlockImport<Block, Client, Arc<Client>, FraudProofVerifier, DomainNumber, H256>,
-        Client,
-        Block,
-    >,
+    block_import: MockBlockImport<Client, Block>,
     xdm_gossip_worker_builder: Option<GossipWorkerBuilder>,
     /// Mock subspace solution used to mock the subspace `PreDigest`
     mock_solution: Solution<FarmerPublicKey, AccountId>,
@@ -304,16 +299,8 @@ impl MockConsensusNode {
             VerifierClient::new(client.clone()),
         );
 
-        let invalid_state_transition_proof_verifier = InvalidStateTransitionProofVerifier::new(
-            client.clone(),
-            executor.clone(),
-            VerifierClient::new(client.clone()),
-        );
-
-        let proof_verifier = subspace_fraud_proof::ProofVerifier::new(
-            Arc::new(invalid_transaction_proof_verifier),
-            Arc::new(invalid_state_transition_proof_verifier),
-        );
+        let proof_verifier =
+            subspace_fraud_proof::ProofVerifier::new(Arc::new(invalid_transaction_proof_verifier));
 
         let tx_pre_validator = ConsensusChainTxPreValidator::new(
             client.clone(),
@@ -328,10 +315,7 @@ impl MockConsensusNode {
             tx_pre_validator,
         );
 
-        let fraud_proof_block_import =
-            sc_consensus_fraud_proof::block_import(client.clone(), client.clone(), proof_verifier);
-
-        let block_import = MockBlockImport::<_, _, _>::new(fraud_proof_block_import);
+        let block_import = MockBlockImport::<_, _>::new(client.clone());
 
         let net_config = sc_network::config::FullNetworkConfiguration::new(&config.network);
 
@@ -837,19 +821,17 @@ where
 // `MockBlockImport` is mostly port from `sc-consensus-subspace::SubspaceBlockImport` with all
 // the consensus related logic removed.
 #[allow(clippy::type_complexity)]
-struct MockBlockImport<Inner, Client, Block: BlockT> {
-    inner: Inner,
+struct MockBlockImport<Client, Block: BlockT> {
+    inner: Arc<Client>,
     block_importing_notification_subscribers:
         Arc<Mutex<Vec<TracingUnboundedSender<(NumberFor<Block>, mpsc::Sender<()>)>>>>,
-    _phantom_data: PhantomData<Client>,
 }
 
-impl<Inner, Client, Block: BlockT> MockBlockImport<Inner, Client, Block> {
-    fn new(inner: Inner) -> Self {
+impl<Client, Block: BlockT> MockBlockImport<Client, Block> {
+    fn new(inner: Arc<Client>) -> Self {
         MockBlockImport {
             inner,
             block_importing_notification_subscribers: Arc::new(Mutex::new(Vec::new())),
-            _phantom_data: Default::default(),
         }
     }
 
@@ -865,24 +847,22 @@ impl<Inner, Client, Block: BlockT> MockBlockImport<Inner, Client, Block> {
     }
 }
 
-impl<Inner: Clone, Client, Block: BlockT> MockBlockImport<Inner, Client, Block> {
+impl<Client, Block: BlockT> MockBlockImport<Client, Block> {
     fn clone(&self) -> Self {
         MockBlockImport {
             inner: self.inner.clone(),
             block_importing_notification_subscribers: self
                 .block_importing_notification_subscribers
                 .clone(),
-            _phantom_data: Default::default(),
         }
     }
 }
 
 #[async_trait::async_trait]
-impl<Inner, Client, Block> BlockImport<Block> for MockBlockImport<Inner, Client, Block>
+impl<Client, Block> BlockImport<Block> for MockBlockImport<Client, Block>
 where
     Block: BlockT,
-    Inner: BlockImport<Block, Error = ConsensusError> + Send + Sync,
-    Inner::Error: Into<ConsensusError>,
+    for<'r> &'r Client: BlockImport<Block, Error = ConsensusError> + Send + Sync,
     Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + Send + Sync + 'static,
     Client::Api: ApiExt<Block>,
 {

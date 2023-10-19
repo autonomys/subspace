@@ -4,6 +4,7 @@
     const_trait_impl,
     int_roundings,
     iter_collect_into,
+    never_type,
     new_uninit,
     portable_simd,
     slice_flatten,
@@ -26,13 +27,49 @@ use crate::file_ext::FileExt;
 use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
 use std::fs::File;
+use std::future::Future;
 use std::io;
 use subspace_core_primitives::HistorySize;
 
-/// Trait for reading data at specific offset
-pub trait ReadAt: Send + Sync {
-    /// Get implementation of [`ReadAt`] that add specified offset to all attempted reads
-    fn offset(&self, offset: usize) -> ReadAtOffset<&Self>
+/// Enum to encapsulate the selection between [`ReadAtSync`] and [`ReadAtAsync]` variants
+#[derive(Copy, Clone)]
+pub enum ReadAt<S, A>
+where
+    S: ReadAtSync,
+    A: ReadAtAsync,
+{
+    /// Sync variant
+    Sync(S),
+    /// Async variant
+    Async(A),
+}
+
+impl<S> ReadAt<S, !>
+where
+    S: ReadAtSync,
+{
+    /// Instantiate [`ReadAt`] from some [`ReadAtSync`] implementation
+    pub fn from_sync(value: S) -> Self {
+        Self::Sync(value)
+    }
+}
+
+impl<A> ReadAt<!, A>
+where
+    A: ReadAtAsync,
+{
+    /// Instantiate [`ReadAt`] from some [`ReadAtAsync`] implementation
+    pub fn from_async(value: A) -> Self {
+        Self::Async(value)
+    }
+}
+
+/// Sync version of [`ReadAt`], it is both [`Send`] and [`Sync`] and is supposed to be used with a
+/// thread pool
+pub trait ReadAtSync: Send + Sync {
+    /// Get implementation of [`ReadAtSync`] that add specified offset to all attempted reads
+    // TODO: Should offset and reads be in u64?
+    fn offset(&self, offset: usize) -> ReadAtOffset<'_, Self>
     where
         Self: Sized,
     {
@@ -46,7 +83,37 @@ pub trait ReadAt: Send + Sync {
     fn read_at(&self, buf: &mut [u8], offset: usize) -> io::Result<()>;
 }
 
-impl ReadAt for [u8] {
+impl ReadAtSync for ! {
+    fn read_at(&self, _buf: &mut [u8], _offset: usize) -> io::Result<()> {
+        unreachable!("Is never called")
+    }
+}
+
+/// Async version of [`ReadAt`], it is neither [`Send`] nor [`Sync`] and is supposed to be used with
+/// concurrent async combinators
+pub trait ReadAtAsync {
+    /// Get implementation of [`ReadAtAsync`] that add specified offset to all attempted reads
+    fn offset(&self, offset: usize) -> ReadAtOffset<'_, Self>
+    where
+        Self: Sized,
+    {
+        ReadAtOffset {
+            inner: self,
+            offset,
+        }
+    }
+
+    /// Fill the buffer by reading bytes at a specific offset
+    fn read_at(&self, buf: &mut [u8], offset: usize) -> impl Future<Output = io::Result<()>>;
+}
+
+impl ReadAtAsync for ! {
+    async fn read_at(&self, _buf: &mut [u8], _offset: usize) -> io::Result<()> {
+        unreachable!("Is never called")
+    }
+}
+
+impl ReadAtSync for [u8] {
     fn read_at(&self, buf: &mut [u8], offset: usize) -> io::Result<()> {
         if buf.len() + offset > self.len() {
             return Err(io::Error::new(
@@ -61,7 +128,7 @@ impl ReadAt for [u8] {
     }
 }
 
-impl ReadAt for &[u8] {
+impl ReadAtSync for &[u8] {
     fn read_at(&self, buf: &mut [u8], offset: usize) -> io::Result<()> {
         if buf.len() + offset > self.len() {
             return Err(io::Error::new(
@@ -76,25 +143,25 @@ impl ReadAt for &[u8] {
     }
 }
 
-impl ReadAt for Vec<u8> {
+impl ReadAtSync for Vec<u8> {
     fn read_at(&self, buf: &mut [u8], offset: usize) -> io::Result<()> {
         self.as_slice().read_at(buf, offset)
     }
 }
 
-impl ReadAt for &Vec<u8> {
+impl ReadAtSync for &Vec<u8> {
     fn read_at(&self, buf: &mut [u8], offset: usize) -> io::Result<()> {
         self.as_slice().read_at(buf, offset)
     }
 }
 
-impl ReadAt for File {
+impl ReadAtSync for File {
     fn read_at(&self, buf: &mut [u8], offset: usize) -> io::Result<()> {
         self.read_exact_at(buf, offset as u64)
     }
 }
 
-impl ReadAt for &File {
+impl ReadAtSync for &File {
     fn read_at(&self, buf: &mut [u8], offset: usize) -> io::Result<()> {
         self.read_exact_at(buf, offset as u64)
     }
@@ -102,26 +169,44 @@ impl ReadAt for &File {
 
 /// Reader with fixed offset added to all attempted reads
 #[derive(Debug, Copy, Clone)]
-pub struct ReadAtOffset<T> {
-    inner: T,
+pub struct ReadAtOffset<'a, T> {
+    inner: &'a T,
     offset: usize,
 }
 
-impl<T> ReadAt for ReadAtOffset<T>
+impl<T> ReadAtSync for ReadAtOffset<'_, T>
 where
-    T: ReadAt,
+    T: ReadAtSync,
 {
     fn read_at(&self, buf: &mut [u8], offset: usize) -> io::Result<()> {
         self.inner.read_at(buf, offset + self.offset)
     }
 }
 
-impl<T> ReadAt for &ReadAtOffset<T>
+impl<T> ReadAtSync for &ReadAtOffset<'_, T>
 where
-    T: ReadAt,
+    T: ReadAtSync,
 {
     fn read_at(&self, buf: &mut [u8], offset: usize) -> io::Result<()> {
         self.inner.read_at(buf, offset + self.offset)
+    }
+}
+
+impl<T> ReadAtAsync for ReadAtOffset<'_, T>
+where
+    T: ReadAtAsync,
+{
+    async fn read_at(&self, buf: &mut [u8], offset: usize) -> io::Result<()> {
+        self.inner.read_at(buf, offset + self.offset).await
+    }
+}
+
+impl<T> ReadAtAsync for &ReadAtOffset<'_, T>
+where
+    T: ReadAtAsync,
+{
+    async fn read_at(&self, buf: &mut [u8], offset: usize) -> io::Result<()> {
+        self.inner.read_at(buf, offset + self.offset).await
     }
 }
 

@@ -40,7 +40,6 @@ use domain_runtime_primitives::{BlockNumber as DomainNumber, Hash as DomainHash}
 pub use dsn::DsnConfig;
 use frame_system_rpc_runtime_api::AccountNonceApi;
 use futures::channel::oneshot;
-use futures::executor::block_on;
 use futures::FutureExt;
 use jsonrpsee::RpcModule;
 use pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi;
@@ -114,7 +113,7 @@ const_assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<u64>());
 
 /// This is over 15 minutes of slots assuming there are no forks, should be both sufficient and not
 /// too large to handle
-const POT_VERIFIER_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(10_000).expect("Not zero; qed");
+const POT_VERIFIER_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(30_000).expect("Not zero; qed");
 const SYNC_TARGET_UPDATE_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Error type for Subspace service.
@@ -173,19 +172,9 @@ pub type InvalidTransactionProofVerifier<RuntimeApi, ExecutorDispatch> =
         VerifierClient<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
     >;
 
-pub type InvalidStateTransitionProofVerifier<RuntimeApi, ExecutorDispatch> =
-    subspace_fraud_proof::invalid_state_transition_proof::InvalidStateTransitionProofVerifier<
-        Block,
-        FullClient<RuntimeApi, ExecutorDispatch>,
-        NativeElseWasmExecutor<ExecutorDispatch>,
-        Hash,
-        VerifierClient<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
-    >;
-
 pub type FraudProofVerifier<RuntimeApi, ExecutorDispatch> = subspace_fraud_proof::ProofVerifier<
     Block,
     InvalidTransactionProofVerifier<RuntimeApi, ExecutorDispatch>,
-    InvalidStateTransitionProofVerifier<RuntimeApi, ExecutorDispatch>,
 >;
 
 /// Subspace networking instantiation variant
@@ -244,10 +233,11 @@ where
     Block: BlockT,
     Block::Hash: From<H256>,
     DomainBlock: BlockT,
+    DomainBlock::Hash: From<H256>,
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + 'static,
     Client::Api: SubspaceApi<Block, FarmerPublicKey>
         + DomainsApi<Block, NumberFor<DomainBlock>, DomainBlock::Hash>,
-    ExecutorDispatch: CodeExecutor,
+    ExecutorDispatch: CodeExecutor + sc_executor::RuntimeVersionOf,
 {
     fn extensions_for(
         &self,
@@ -261,104 +251,106 @@ where
             let client = Arc::clone(&self.client);
             let pot_verifier = self.pot_verifier.clone();
 
-            Box::new(move |parent_hash, slot, proof_of_time, quick_verification| {
-                let parent_hash = {
-                    let mut converted_parent_hash = Block::Hash::default();
-                    converted_parent_hash.as_mut().copy_from_slice(&parent_hash);
-                    converted_parent_hash
-                };
+            Box::new(
+                move |parent_hash, slot, proof_of_time, quick_verification| {
+                    let parent_hash = {
+                        let mut converted_parent_hash = Block::Hash::default();
+                        converted_parent_hash.as_mut().copy_from_slice(&parent_hash);
+                        converted_parent_hash
+                    };
 
-                let parent_header = match client.header(parent_hash) {
-                    Ok(Some(parent_header)) => parent_header,
-                    Ok(None) => {
-                        error!(
-                            %parent_hash,
-                            "Header not found during proof of time verification"
-                        );
+                    let parent_header = match client.header(parent_hash) {
+                        Ok(Some(parent_header)) => parent_header,
+                        Ok(None) => {
+                            error!(
+                                %parent_hash,
+                                "Header not found during proof of time verification"
+                            );
 
+                            return false;
+                        }
+                        Err(error) => {
+                            error!(
+                                %error,
+                                %parent_hash,
+                                "Failed to retrieve header during proof of time verification"
+                            );
+
+                            return false;
+                        }
+                    };
+                    let parent_pre_digest = match extract_pre_digest(&parent_header) {
+                        Ok(parent_pre_digest) => parent_pre_digest,
+                        Err(error) => {
+                            error!(
+                                %error,
+                                %parent_hash,
+                                parent_number = %parent_header.number(),
+                                "Failed to extract pre-digest from parent header during proof of \
+                                time verification, this must never happen"
+                            );
+
+                            return false;
+                        }
+                    };
+
+                    let parent_slot = parent_pre_digest.slot();
+                    if slot <= *parent_slot {
                         return false;
                     }
-                    Err(error) => {
-                        error!(
-                            %error,
-                            %parent_hash,
-                            "Failed to retrieve header during proof of time verification"
-                        );
 
-                        return false;
+                    let pot_parameters = match client.runtime_api().pot_parameters(parent_hash) {
+                        Ok(pot_parameters) => pot_parameters,
+                        Err(error) => {
+                            debug!(
+                                %error,
+                                %parent_hash,
+                                parent_number = %parent_header.number(),
+                                "Failed to retrieve proof of time parameters during proof of time \
+                                verification"
+                            );
+
+                            return false;
+                        }
+                    };
+
+                    let pot_input = if parent_header.number().is_zero() {
+                        PotNextSlotInput {
+                            slot: parent_slot + Slot::from(1),
+                            slot_iterations: pot_parameters.slot_iterations(),
+                            seed: pot_verifier.genesis_seed(),
+                        }
+                    } else {
+                        let pot_info = parent_pre_digest.pot_info();
+
+                        PotNextSlotInput::derive(
+                            pot_parameters.slot_iterations(),
+                            parent_slot,
+                            pot_info.proof_of_time(),
+                            &pot_parameters.next_parameters_change(),
+                        )
+                    };
+
+                    // Ensure proof of time and future proof of time included in upcoming block are
+                    // valid
+
+                    if quick_verification {
+                        pot_verifier.try_is_output_valid(
+                            pot_input,
+                            Slot::from(slot - u64::from(parent_slot)),
+                            proof_of_time,
+                            pot_parameters.next_parameters_change(),
+                        )
+                    } else {
+                        pot_verifier.is_output_valid(
+                            pot_input,
+                            Slot::from(slot - u64::from(parent_slot)),
+                            proof_of_time,
+                            pot_parameters.next_parameters_change(),
+                        )
                     }
-                };
-                let parent_pre_digest = match extract_pre_digest(&parent_header) {
-                    Ok(parent_pre_digest) => parent_pre_digest,
-                    Err(error) => {
-                        error!(
-                            %error,
-                            %parent_hash,
-                            parent_number = %parent_header.number(),
-                            "Failed to extract pre-digest from parent header during proof of time \
-                            verification, this must never happen"
-                        );
-
-                        return false;
-                    }
-                };
-
-                let parent_slot = parent_pre_digest.slot();
-                if slot <= *parent_slot {
-                    return false;
-                }
-
-                let pot_parameters = match client.runtime_api().pot_parameters(parent_hash) {
-                    Ok(pot_parameters) => pot_parameters,
-                    Err(error) => {
-                        debug!(
-                            %error,
-                            %parent_hash,
-                            parent_number = %parent_header.number(),
-                            "Failed to retieve proof of time parameters during proof of time \
-                            verification"
-                        );
-
-                        return false;
-                    }
-                };
-
-                let pot_input = if parent_header.number().is_zero() {
-                    PotNextSlotInput {
-                        slot: parent_slot + Slot::from(1),
-                        slot_iterations: pot_parameters.slot_iterations(),
-                        seed: pot_verifier.genesis_seed(),
-                    }
-                } else {
-                    let pot_info = parent_pre_digest.pot_info();
-
-                    PotNextSlotInput::derive(
-                        pot_parameters.slot_iterations(),
-                        parent_slot,
-                        pot_info.proof_of_time(),
-                        &pot_parameters.next_parameters_change(),
-                    )
-                };
-
-                // Ensure proof of time and future proof of time included in upcoming block are
-                // valid
-
-                if quick_verification {
-                    block_on(pot_verifier.try_is_output_valid(
-                        pot_input,
-                        Slot::from(slot - u64::from(parent_slot)),
-                        proof_of_time,
-                        pot_parameters.next_parameters_change(),
-                    ))
-                } else {
-                    block_on(pot_verifier.is_output_valid(
-                        pot_input,
-                        Slot::from(slot - u64::from(parent_slot)),
-                        proof_of_time,
-                        pot_parameters.next_parameters_change(),
-                    ))
-                }
-            })
+                },
+            )
         }));
 
         exts.register(FraudProofExtension::new(Arc::new(
@@ -465,12 +457,6 @@ where
         POT_VERIFIER_CACHE_SIZE,
     );
 
-    let invalid_state_transition_proof_verifier = InvalidStateTransitionProofVerifier::new(
-        client.clone(),
-        executor.clone(),
-        VerifierClient::new(client.clone()),
-    );
-
     let executor = Arc::new(executor);
 
     client
@@ -498,10 +484,8 @@ where
         VerifierClient::new(client.clone()),
     );
 
-    let proof_verifier = subspace_fraud_proof::ProofVerifier::new(
-        Arc::new(invalid_transaction_proof_verifier),
-        Arc::new(invalid_state_transition_proof_verifier),
-    );
+    let proof_verifier =
+        subspace_fraud_proof::ProofVerifier::new(Arc::new(invalid_transaction_proof_verifier));
 
     let tx_pre_validator = ConsensusChainTxPreValidator::new(
         client.clone(),
@@ -517,8 +501,6 @@ where
 
     let segment_headers_store = SegmentHeadersStore::new(client.clone())
         .map_err(|error| ServiceError::Application(error.into()))?;
-    let fraud_proof_block_import =
-        sc_consensus_fraud_proof::block_import(client.clone(), client.clone(), proof_verifier);
 
     let (block_import, subspace_link) = sc_consensus_subspace::block_import::<
         PosTable,
@@ -529,7 +511,7 @@ where
         _,
     >(
         sc_consensus_subspace::slot_duration(&*client)?,
-        fraud_proof_block_import,
+        client.clone(),
         client.clone(),
         kzg.clone(),
         {

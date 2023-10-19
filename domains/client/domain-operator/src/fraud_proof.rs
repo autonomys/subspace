@@ -1,5 +1,4 @@
 use crate::aux_schema::BundleMismatchType;
-use crate::utils::to_number_primitive;
 use crate::ExecutionReceiptFor;
 use codec::{Decode, Encode};
 use domain_block_builder::{BlockBuilder, RecordProof};
@@ -11,14 +10,16 @@ use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::CodeExecutor;
 use sp_core::H256;
+use sp_domain_digests::AsPredigest;
 use sp_domains::fraud_proof::{
     ExecutionPhase, ExtrinsicDigest, FraudProof, InvalidBundlesFraudProof,
-    InvalidExtrinsicsRootProof, InvalidStateTransitionProof, InvalidTotalRewardsProof,
-    MissingInvalidBundleEntryFraudProof, ValidAsInvalidBundleEntryFraudProof, ValidBundleDigest,
+    InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof, InvalidStateTransitionProof,
+    InvalidTotalRewardsProof, MissingInvalidBundleEntryFraudProof,
+    ValidAsInvalidBundleEntryFraudProof, ValidBundleDigest,
 };
 use sp_domains::{DomainId, DomainsApi};
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashingFor, Header as HeaderT, NumberFor};
-use sp_runtime::Digest;
+use sp_runtime::{Digest, DigestItem};
 use sp_trie::{LayoutV1, StorageProof};
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -27,10 +28,6 @@ use subspace_fraud_proof::invalid_state_transition_proof::ExecutionProver;
 /// Error type for fraud proof generation.
 #[derive(Debug, thiserror::Error)]
 pub enum FraudProofError {
-    #[error("State root not using H256")]
-    InvalidStateRootType,
-    #[error("Invalid trace index, got: {index}, max: {max}")]
-    InvalidTraceIndex { index: usize, max: usize },
     #[error("Invalid extrinsic index for creating the execution proof, got: {index}, max: {max}")]
     InvalidExtrinsicIndex { index: usize, max: usize },
     #[error(transparent)]
@@ -41,6 +38,8 @@ pub enum FraudProofError {
     MissingBundle { bundle_index: usize },
     #[error("Invalid bundle extrinsic at bundle index[{bundle_index}]")]
     InvalidBundleExtrinsic { bundle_index: usize },
+    #[error("Fail to generate the proof of inclusion")]
+    FailToGenerateProofOfInclusion,
 }
 
 pub struct FraudProofGenerator<Block, CBlock, Client, CClient, Backend, E> {
@@ -121,6 +120,29 @@ where
             bad_receipt_hash,
             storage_proof: proof,
         }))
+    }
+
+    pub(crate) fn generate_invalid_domain_block_hash_proof<PCB>(
+        &self,
+        domain_id: DomainId,
+        local_receipt: &ExecutionReceiptFor<Block, CBlock>,
+        bad_receipt_hash: H256,
+    ) -> Result<FraudProof<NumberFor<PCB>, PCB::Hash>, FraudProofError>
+    where
+        PCB: BlockT,
+    {
+        let block_hash = local_receipt.domain_block_hash;
+        let digest_key = sp_domains::fraud_proof::system_digest_final_key();
+        let digest_storage_proof = self
+            .client
+            .read_proof(block_hash, &mut [digest_key.as_slice()].into_iter())?;
+        Ok(FraudProof::InvalidDomainBlockHash(
+            InvalidDomainBlockHashProof {
+                domain_id,
+                bad_receipt_hash,
+                digest_storage_proof,
+            },
+        ))
     }
 
     pub(crate) fn generate_invalid_bundle_field_proof<PCB>(
@@ -239,62 +261,28 @@ where
         PCB: BlockT,
     {
         let block_hash = local_receipt.domain_block_hash;
-        let block_number = to_number_primitive(local_receipt.consensus_block_number);
-
+        let block_number = local_receipt.domain_block_number;
         let header = self.header(block_hash)?;
         let parent_header = self.header(*header.parent_hash())?;
 
-        // TODO: avoid the encode & decode?
-        let as_h256 = |state_root: &Block::Hash| {
-            H256::decode(&mut state_root.encode().as_slice())
-                .map_err(|_| FraudProofError::InvalidStateRootType)
-        };
-
         let prover = ExecutionProver::new(self.backend.clone(), self.code_executor.clone());
 
-        let parent_number = to_number_primitive(*parent_header.number());
-
-        let local_root = local_receipt
-            .execution_trace
-            .get(local_trace_index as usize)
-            .ok_or(FraudProofError::InvalidTraceIndex {
-                index: local_trace_index as usize,
-                max: local_receipt.execution_trace.len() - 1,
-            })?;
-
-        let consensus_parent_hash = H256::decode(
-            &mut self
-                .consensus_client
-                .header(local_receipt.consensus_block_hash)?
-                .ok_or_else(|| {
-                    sp_blockchain::Error::Backend(format!(
-                        "Header not found for consensus block {:?}",
-                        local_receipt.consensus_block_hash
-                    ))
-                })?
-                .parent_hash()
-                .encode()
-                .as_slice(),
-        )
-        .map_err(|_| FraudProofError::InvalidStateRootType)?;
-
-        let digest = Digest::default();
+        let inherent_digests = Digest {
+            logs: vec![DigestItem::consensus_block_info(
+                local_receipt.consensus_block_hash,
+            )],
+        };
 
         let invalid_state_transition_proof = if local_trace_index == 0 {
             // `initialize_block` execution proof.
-            let pre_state_root = as_h256(parent_header.state_root())?;
-            let post_state_root = as_h256(local_root)?;
-
             let new_header = Block::Header::new(
-                block_number.into(),
+                block_number,
                 Default::default(),
                 Default::default(),
                 parent_header.hash(),
-                digest,
+                inherent_digests,
             );
-            let execution_phase = ExecutionPhase::InitializeBlock {
-                domain_parent_hash: as_h256(&parent_header.hash())?,
-            };
+            let execution_phase = ExecutionPhase::InitializeBlock;
             let initialize_block_call_data = new_header.encode();
 
             let proof = prover.prove_execution::<sp_trie::PrefixedMemoryDB<HashingFor<Block>>>(
@@ -307,22 +295,13 @@ where
             InvalidStateTransitionProof {
                 domain_id,
                 bad_receipt_hash,
-                parent_number,
-                consensus_parent_hash,
-                pre_state_root,
-                post_state_root,
                 proof,
                 execution_phase,
             }
         } else if local_trace_index as usize == local_receipt.execution_trace.len() - 1 {
             // `finalize_block` execution proof.
-            let pre_state_root =
-                as_h256(&local_receipt.execution_trace[local_trace_index as usize - 1])?;
-            let post_state_root = as_h256(local_root)?;
             let extrinsics = self.block_body(block_hash)?;
-            let execution_phase = ExecutionPhase::FinalizeBlock {
-                total_extrinsics: local_trace_index - 1,
-            };
+            let execution_phase = ExecutionPhase::FinalizeBlock;
             let finalize_block_call_data = Vec::new();
             let inherent_data = get_inherent_data::<_, _, Block>(
                 self.consensus_client.clone(),
@@ -336,7 +315,7 @@ where
                 parent_header.hash(),
                 *parent_header.number(),
                 RecordProof::No,
-                digest,
+                inherent_digests,
                 &*self.backend,
                 extrinsics.into(),
                 inherent_data,
@@ -356,19 +335,11 @@ where
             InvalidStateTransitionProof {
                 domain_id,
                 bad_receipt_hash,
-                parent_number,
-                consensus_parent_hash,
-                pre_state_root,
-                post_state_root,
                 proof,
                 execution_phase,
             }
         } else {
             // Regular extrinsic execution proof.
-            let pre_state_root =
-                as_h256(&local_receipt.execution_trace[local_trace_index as usize - 1])?;
-            let post_state_root = as_h256(local_root)?;
-
             let (proof, execution_phase) = self
                 .create_extrinsic_execution_proof(
                     domain_id,
@@ -377,7 +348,7 @@ where
                     &parent_header,
                     block_hash,
                     &prover,
-                    digest,
+                    inherent_digests,
                 )
                 .await?;
 
@@ -385,10 +356,6 @@ where
             InvalidStateTransitionProof {
                 domain_id,
                 bad_receipt_hash,
-                parent_number,
-                consensus_parent_hash,
-                pre_state_root,
-                post_state_root,
                 proof,
                 execution_phase,
             }
@@ -423,21 +390,29 @@ where
         digest: Digest,
     ) -> Result<(StorageProof, ExecutionPhase), FraudProofError> {
         let extrinsics = self.block_body(current_hash)?;
+        let encoded_extrinsics: Vec<_> = extrinsics.iter().map(Encode::encode).collect();
 
-        let encoded_extrinsic = extrinsics
-            .get(extrinsic_index)
-            .ok_or(FraudProofError::InvalidExtrinsicIndex {
+        let target_extrinsic = encoded_extrinsics.get(extrinsic_index).ok_or(
+            FraudProofError::InvalidExtrinsicIndex {
                 index: extrinsic_index,
                 max: extrinsics.len() - 1,
-            })?
-            .encode();
+            },
+        )?;
 
-        let execution_phase = ExecutionPhase::ApplyExtrinsic(
-            extrinsic_index
-                .try_into()
-                .expect("extrinsic_index must fit into u32"),
-        );
-        let apply_extrinsic_call_data = encoded_extrinsic;
+        let execution_phase = {
+            let proof_of_inclusion = sp_domains::valued_trie_root::generate_proof::<
+                LayoutV1<BlakeTwo256>,
+            >(
+                encoded_extrinsics.as_slice(), extrinsic_index as u32
+            )
+            .ok_or(FraudProofError::FailToGenerateProofOfInclusion)?;
+            ExecutionPhase::ApplyExtrinsic {
+                proof_of_inclusion,
+                mismatch_index: extrinsic_index as u32,
+                extrinsic: target_extrinsic.clone(),
+            }
+        };
+
         let inherent_data = get_inherent_data::<_, _, Block>(
             self.consensus_client.clone(),
             consensus_block_hash,
@@ -445,6 +420,7 @@ where
             domain_id,
         )
         .await?;
+
         let block_builder = BlockBuilder::new(
             &*self.client,
             parent_header.hash(),
@@ -462,7 +438,7 @@ where
         let execution_proof = prover.prove_execution(
             parent_header.hash(),
             &execution_phase,
-            &apply_extrinsic_call_data,
+            target_extrinsic,
             Some((delta, post_delta_root)),
         )?;
 

@@ -1,29 +1,34 @@
-use crate::invalid_state_transition_proof::{ExecutionProver, InvalidStateTransitionProofVerifier};
+use crate::invalid_state_transition_proof::ExecutionProver;
 use crate::invalid_transaction_proof::InvalidTransactionProofVerifier;
 use crate::verifier_api::VerifierApi;
 use crate::ProofVerifier;
 use codec::Encode;
 use domain_block_builder::{BlockBuilder, RecordProof};
-use domain_runtime_primitives::{DomainCoreApi, Hash};
+use domain_block_preprocessor::runtime_api_light::RuntimeApiLight;
+use domain_runtime_primitives::{CheckTxValidityError, DomainCoreApi, Hash};
 use domain_test_service::domain::EvmDomainClient as DomainClient;
-use domain_test_service::evm_domain_test_runtime::Header;
+use domain_test_service::evm_domain_test_runtime::{Header, Runtime as TestRuntime};
 use domain_test_service::EcdsaKeyring::{Alice, Bob, Charlie, Dave};
 use domain_test_service::Sr25519Keyring::Ferdie;
-use domain_test_service::GENESIS_DOMAIN_ID;
-use sc_client_api::{HeaderBackend, StorageProof};
+use domain_test_service::{construct_extrinsic_generic, GENESIS_DOMAIN_ID};
+use sc_client_api::{HeaderBackend, ProofProvider, StorageProof};
 use sc_service::{BasePath, Role};
-use sp_api::ProvideRuntimeApi;
+use sp_api::{BlockT, ProvideRuntimeApi};
 use sp_core::H256;
 use sp_domain_digests::AsPredigest;
 use sp_domains::fraud_proof::{
     ExecutionPhase, FraudProof, InvalidStateTransitionProof, VerificationError,
 };
-use sp_domains::DomainId;
+use sp_domains::{DomainId, DomainsApi};
 use sp_runtime::generic::{Digest, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
+use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidityError};
+use sp_runtime::{OpaqueExtrinsic, Storage};
+use sp_trie::{read_trie_value, LayoutV1};
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use subspace_runtime_primitives::opaque::Block;
-use subspace_test_client::Client;
+use subspace_test_client::{Client, TestExecutorDispatch};
 use subspace_test_service::{produce_block_with, produce_blocks, MockConsensusNode};
 use tempfile::TempDir;
 
@@ -88,8 +93,210 @@ impl VerifierApi for TestVerifierClient {
     }
 }
 
-// Use the system domain id for testing
-const TEST_DOMAIN_ID: DomainId = DomainId::new(3u32);
+// Use the genesis domain/runtime id for testing
+const TEST_DOMAIN_ID: DomainId = DomainId::new(0u32);
+
+type HashFor<Block> = <<Block as BlockT>::Header as HeaderT>::Hash;
+
+fn generate_storage_proof_for_tx_validity(
+    block_hash: HashFor<Block>,
+    client: Arc<DomainClient>,
+    keys: Vec<Vec<u8>>,
+) -> StorageProof {
+    client
+        .read_proof(
+            block_hash,
+            &mut keys
+                .iter()
+                .map(|k| k.as_slice())
+                .collect::<Vec<&[u8]>>()
+                .into_iter(),
+        )
+        .unwrap()
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn check_tx_validity_runtime_api_should_work() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a evm domain authority node)
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .await;
+
+    // Run Bob (a evm domain full node)
+    let bob = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle,
+        Bob,
+        BasePath::new(directory.path().join("bob")),
+    )
+    .build_evm_node(Role::Full, GENESIS_DOMAIN_ID, &mut ferdie)
+    .await;
+
+    // Bob is able to sync blocks.
+    produce_blocks!(ferdie, alice, 1, bob).await.unwrap();
+
+    let bob_nonce = bob.account_nonce();
+    let transfer_to_charlie = construct_extrinsic_generic::<TestRuntime, _>(
+        &bob.client,
+        pallet_balances::Call::transfer_allow_death {
+            dest: Charlie.to_account_id(),
+            value: 8,
+        },
+        bob.key,
+        false,
+        bob_nonce + 1,
+        1,
+    );
+
+    produce_blocks!(ferdie, alice, 2, bob).await.unwrap();
+
+    let opaque_extrinsic = OpaqueExtrinsic::from_bytes(&transfer_to_charlie.encode()).unwrap();
+    let extrinsic_best_hash = bob.client.as_ref().info().best_hash;
+    let bob_account_id = Bob.to_account_id().encode();
+    let extrinsic_best_number = bob.client.as_ref().info().best_number;
+
+    let extrinsic_era = bob
+        .client
+        .runtime_api()
+        .extrinsic_era(bob.client.as_ref().info().best_hash, &opaque_extrinsic)
+        .unwrap();
+
+    let test_table = vec![
+        (
+            Some(4),
+            Some(TransactionValidityError::Invalid(
+                InvalidTransaction::AncientBirthBlock,
+            )),
+        ),
+        (
+            Some(2),
+            Some(TransactionValidityError::Invalid(
+                InvalidTransaction::Payment,
+            )),
+        ),
+        (
+            Some(1),
+            Some(TransactionValidityError::Invalid(
+                InvalidTransaction::BadProof,
+            )),
+        ),
+        (
+            Some(0),
+            Some(TransactionValidityError::Invalid(
+                InvalidTransaction::BadProof,
+            )),
+        ),
+        (None, None),
+    ];
+
+    for table_data in test_table {
+        let mut storage_keys_for_tx_validity = bob
+            .client
+            .runtime_api()
+            .storage_keys_for_verifying_transaction_validity(
+                extrinsic_best_hash,
+                bob_account_id.clone(),
+                extrinsic_best_number,
+                extrinsic_era,
+            )
+            .unwrap()
+            .unwrap();
+
+        let maybe_storage_key_to_remove = table_data.0;
+        let original_storage_keys_for_tx_validity = storage_keys_for_tx_validity.clone();
+
+        if let Some(storage_key_to_remove) = maybe_storage_key_to_remove {
+            storage_keys_for_tx_validity = storage_keys_for_tx_validity
+                .drain(..)
+                .enumerate()
+                .filter(|(i, _v)| *i != storage_key_to_remove)
+                .map(|(_i, v)| v)
+                .collect();
+        }
+
+        let maybe_error = table_data.1;
+
+        let expected_out = if let Some(err) = maybe_error {
+            let err_with_storage_keys = CheckTxValidityError::InvalidTransaction {
+                error: err,
+                storage_keys: original_storage_keys_for_tx_validity,
+            };
+            Err(err_with_storage_keys)
+        } else {
+            Ok(())
+        };
+
+        let storage_proof = generate_storage_proof_for_tx_validity(
+            bob.client.as_ref().info().best_hash,
+            bob.client.clone(),
+            storage_keys_for_tx_validity.clone(),
+        );
+
+        let header = bob
+            .client
+            .as_ref()
+            .header(bob.client.as_ref().info().best_hash);
+        let state_root = header.unwrap().unwrap().state_root;
+
+        let wasm_bundle = ferdie
+            .client
+            .runtime_api()
+            .domain_runtime_code(ferdie.client.as_ref().info().best_hash, GENESIS_DOMAIN_ID)
+            .unwrap()
+            .unwrap();
+
+        let mut runtime_api_light =
+            RuntimeApiLight::new(ferdie.executor.clone().into(), wasm_bundle.into());
+
+        let db = storage_proof.into_memory_db::<BlakeTwo256>();
+        let mut top_storage_map = BTreeMap::new();
+        for storage_key in storage_keys_for_tx_validity.iter() {
+            let storage_value = read_trie_value::<LayoutV1<BlakeTwo256>, _>(
+                &db,
+                &state_root,
+                storage_key,
+                None,
+                None,
+            )
+            .unwrap()
+            .unwrap();
+            top_storage_map.insert(storage_key.to_vec(), storage_value);
+        }
+
+        let storage = Storage {
+            top: top_storage_map,
+            children_default: Default::default(),
+        };
+
+        runtime_api_light.set_storage(storage);
+
+        assert_eq!(<RuntimeApiLight<sc_executor::NativeElseWasmExecutor<TestExecutorDispatch>> as DomainCoreApi<Block>>::check_transaction_validity(
+            &runtime_api_light,
+            Default::default(),
+            &opaque_extrinsic,
+            bob.client.as_ref().info().best_number,
+            bob.client.as_ref().info().best_hash
+        ).unwrap(), expected_out);
+    }
+}
 
 #[tokio::test(flavor = "multi_thread")]
 #[ignore]
@@ -225,9 +432,7 @@ async fn execution_proof_creation_and_verification_should_work() {
             ))],
         },
     );
-    let execution_phase = ExecutionPhase::InitializeBlock {
-        domain_parent_hash: parent_header.hash(),
-    };
+    let execution_phase = ExecutionPhase::InitializeBlock;
     let initialize_block_call_data = new_header.encode();
 
     let prover = ExecutionProver::new(alice.backend.clone(), alice.code_executor.clone());
@@ -257,33 +462,18 @@ async fn execution_proof_creation_and_verification_should_work() {
         .unwrap();
     assert_eq!(post_execution_root, intermediate_roots[0].into());
 
-    let invalid_state_transition_proof_verifier = InvalidStateTransitionProofVerifier::new(
-        ferdie.client.clone(),
-        ferdie.executor.clone(),
-        TestVerifierClient::new(ferdie.client.clone(), alice.client.clone()),
-    );
-
     let invalid_transaction_proof_verifier = InvalidTransactionProofVerifier::new(
         ferdie.client.clone(),
         Arc::new(ferdie.executor.clone()),
         TestVerifierClient::new(ferdie.client.clone(), alice.client.clone()),
     );
 
-    let proof_verifier = ProofVerifier::<Block, _, _>::new(
-        Arc::new(invalid_transaction_proof_verifier),
-        Arc::new(invalid_state_transition_proof_verifier),
-    );
-
-    let parent_number_alice = *parent_header.number();
-    let consensus_parent_hash = ferdie.client.hash(parent_number_alice).unwrap().unwrap();
+    let proof_verifier =
+        ProofVerifier::<Block, _>::new(Arc::new(invalid_transaction_proof_verifier));
 
     let invalid_state_transition_proof = InvalidStateTransitionProof {
         domain_id: TEST_DOMAIN_ID,
         bad_receipt_hash: Hash::random(),
-        parent_number: parent_number_alice,
-        consensus_parent_hash,
-        pre_state_root: *parent_header.state_root(),
-        post_state_root: intermediate_roots[0].into(),
         proof: storage_proof,
         execution_phase,
     };
@@ -291,7 +481,8 @@ async fn execution_proof_creation_and_verification_should_work() {
     assert!(proof_verifier.verify(&fraud_proof).is_ok());
 
     // Test extrinsic execution.
-    for (target_extrinsic_index, xt) in test_txs.clone().into_iter().enumerate() {
+    let encoded_test_txs: Vec<_> = test_txs.iter().map(Encode::encode).collect();
+    for (target_extrinsic_index, encoded_tx) in encoded_test_txs.clone().into_iter().enumerate() {
         let storage_changes = create_block_builder()
             .prepare_storage_changes_before(target_extrinsic_index)
             .unwrap_or_else(|_| {
@@ -301,14 +492,25 @@ async fn execution_proof_creation_and_verification_should_work() {
         let delta = storage_changes.transaction;
         let post_delta_root = storage_changes.transaction_storage_root;
 
-        let execution_phase = ExecutionPhase::ApplyExtrinsic(target_extrinsic_index as u32);
-        let apply_extrinsic_call_data = xt.encode();
+        let execution_phase = {
+            let proof_of_inclusion = sp_domains::valued_trie_root::generate_proof::<
+                LayoutV1<BlakeTwo256>,
+            >(
+                encoded_test_txs.as_slice(), target_extrinsic_index as u32
+            )
+            .unwrap();
+            ExecutionPhase::ApplyExtrinsic {
+                proof_of_inclusion,
+                mismatch_index: target_extrinsic_index as u32,
+                extrinsic: encoded_tx.clone(),
+            }
+        };
 
         let storage_proof = prover
             .prove_execution(
                 parent_header.hash(),
                 &execution_phase,
-                &apply_extrinsic_call_data,
+                &encoded_tx,
                 Some((delta, post_delta_root)),
             )
             .expect("Create extrinsic execution proof");
@@ -321,7 +523,7 @@ async fn execution_proof_creation_and_verification_should_work() {
             .check_execution_proof(
                 parent_header.hash(),
                 &execution_phase,
-                &apply_extrinsic_call_data,
+                &encoded_tx,
                 post_delta_root,
                 storage_proof.clone(),
             )
@@ -337,10 +539,6 @@ async fn execution_proof_creation_and_verification_should_work() {
         let invalid_state_transition_proof = InvalidStateTransitionProof {
             domain_id: TEST_DOMAIN_ID,
             bad_receipt_hash: Hash::random(),
-            parent_number: parent_number_alice,
-            consensus_parent_hash,
-            pre_state_root: intermediate_roots[target_extrinsic_index].into(),
-            post_state_root: intermediate_roots[target_extrinsic_index + 1].into(),
             proof: storage_proof,
             execution_phase,
         };
@@ -358,9 +556,7 @@ async fn execution_proof_creation_and_verification_should_work() {
 
     assert_eq!(post_delta_root, intermediate_roots.last().unwrap().into());
 
-    let execution_phase = ExecutionPhase::FinalizeBlock {
-        total_extrinsics: test_txs.len() as u32,
-    };
+    let execution_phase = ExecutionPhase::FinalizeBlock;
     let finalize_block_call_data = Vec::new();
 
     let storage_proof = prover
@@ -390,10 +586,6 @@ async fn execution_proof_creation_and_verification_should_work() {
     let invalid_state_transition_proof = InvalidStateTransitionProof {
         domain_id: TEST_DOMAIN_ID,
         bad_receipt_hash: Hash::random(),
-        parent_number: parent_number_alice,
-        consensus_parent_hash,
-        pre_state_root: intermediate_roots.last().unwrap().into(),
-        post_state_root: post_execution_root,
         proof: storage_proof,
         execution_phase,
     };
@@ -460,6 +652,7 @@ async fn invalid_execution_proof_should_not_work() {
         transfer_to_charlie.clone(),
         transfer_to_charlie_again.clone(),
     ];
+    let encoded_test_txs: Vec<_> = test_txs.iter().map(Encode::encode).collect();
 
     for tx in test_txs.iter() {
         alice
@@ -510,8 +703,20 @@ async fn invalid_execution_proof_should_not_work() {
         let delta = storage_changes.transaction;
         let post_delta_root = storage_changes.transaction_storage_root;
 
-        let execution_phase = ExecutionPhase::ApplyExtrinsic(extrinsic_index as u32);
-        let apply_extrinsic_call_data = test_txs[extrinsic_index].encode();
+        let execution_phase = {
+            let proof_of_inclusion = sp_domains::valued_trie_root::generate_proof::<
+                LayoutV1<BlakeTwo256>,
+            >(
+                encoded_test_txs.as_slice(), extrinsic_index as u32
+            )
+            .unwrap();
+            ExecutionPhase::ApplyExtrinsic {
+                proof_of_inclusion,
+                mismatch_index: extrinsic_index as u32,
+                extrinsic: encoded_test_txs[extrinsic_index].clone(),
+            }
+        };
+        let apply_extrinsic_call_data = encoded_test_txs[extrinsic_index].clone();
 
         let proof = prover
             .prove_execution(
@@ -529,7 +734,7 @@ async fn invalid_execution_proof_should_not_work() {
     let (proof1, post_delta_root1, execution_phase1) = create_extrinsic_proof(1);
 
     let check_proof_executor = |post_delta_root: Hash, proof: StorageProof| {
-        let execution_phase = ExecutionPhase::ApplyExtrinsic(1u32);
+        let execution_phase = create_extrinsic_proof(1).2;
         let apply_extrinsic_call_data = transfer_to_charlie_again.encode();
         prover.check_execution_proof(
             parent_header.hash(),
@@ -545,33 +750,18 @@ async fn invalid_execution_proof_should_not_work() {
     assert!(check_proof_executor(post_delta_root0, proof0.clone()).is_ok());
     assert!(check_proof_executor(post_delta_root1, proof1.clone()).is_ok());
 
-    let invalid_state_transition_proof_verifier = InvalidStateTransitionProofVerifier::new(
-        ferdie.client.clone(),
-        ferdie.executor.clone(),
-        TestVerifierClient::new(ferdie.client.clone(), alice.client.clone()),
-    );
-
     let invalid_transaction_proof_verifier = InvalidTransactionProofVerifier::new(
         ferdie.client.clone(),
         Arc::new(ferdie.executor.clone()),
         TestVerifierClient::new(ferdie.client.clone(), alice.client.clone()),
     );
 
-    let proof_verifier = ProofVerifier::<Block, _, _>::new(
-        Arc::new(invalid_transaction_proof_verifier),
-        Arc::new(invalid_state_transition_proof_verifier),
-    );
-
-    let parent_number_alice = *parent_header.number();
-    let consensus_parent_hash = ferdie.client.hash(parent_number_alice).unwrap().unwrap();
+    let proof_verifier =
+        ProofVerifier::<Block, _>::new(Arc::new(invalid_transaction_proof_verifier));
 
     let invalid_state_transition_proof = InvalidStateTransitionProof {
         domain_id: TEST_DOMAIN_ID,
         bad_receipt_hash: Hash::random(),
-        parent_number: parent_number_alice,
-        consensus_parent_hash,
-        pre_state_root: post_delta_root0,
-        post_state_root: post_delta_root1,
         proof: proof1,
         execution_phase: execution_phase0.clone(),
     };
@@ -581,10 +771,6 @@ async fn invalid_execution_proof_should_not_work() {
     let invalid_state_transition_proof = InvalidStateTransitionProof {
         domain_id: TEST_DOMAIN_ID,
         bad_receipt_hash: Hash::random(),
-        parent_number: parent_number_alice,
-        consensus_parent_hash,
-        pre_state_root: post_delta_root0,
-        post_state_root: post_delta_root1,
         proof: proof0.clone(),
         execution_phase: execution_phase1,
     };
@@ -594,10 +780,6 @@ async fn invalid_execution_proof_should_not_work() {
     let invalid_state_transition_proof = InvalidStateTransitionProof {
         domain_id: TEST_DOMAIN_ID,
         bad_receipt_hash: Hash::random(),
-        parent_number: parent_number_alice,
-        consensus_parent_hash,
-        pre_state_root: post_delta_root0,
-        post_state_root: post_delta_root1,
         proof: proof0,
         execution_phase: execution_phase0,
     };

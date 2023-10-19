@@ -45,9 +45,9 @@ use sp_core::sr25519::vrf::{VrfOutput, VrfProof};
 use sp_core::H256;
 use sp_runtime::generic::OpaqueDigestItemId;
 use sp_runtime::traits::{
-    BlakeTwo256, Block as BlockT, CheckedAdd, Hash as HashT, NumberFor, Zero,
+    BlakeTwo256, Block as BlockT, CheckedAdd, Hash as HashT, Header as HeaderT, NumberFor, Zero,
 };
-use sp_runtime::{DigestItem, OpaqueExtrinsic, Percent};
+use sp_runtime::{Digest, DigestItem, OpaqueExtrinsic, Percent};
 use sp_runtime_interface::pass_by;
 use sp_runtime_interface::pass_by::PassBy;
 use sp_std::collections::btree_set::BTreeSet;
@@ -431,11 +431,15 @@ impl<
         BlakeTwo256::hash_of(self)
     }
 
-    pub fn genesis(genesis_state_root: DomainHash) -> Self {
+    pub fn genesis(
+        genesis_state_root: DomainHash,
+        genesis_extrinsic_root: H256,
+        genesis_domain_block_hash: DomainHash,
+    ) -> Self {
         ExecutionReceipt {
             domain_block_number: Zero::zero(),
-            domain_block_hash: Default::default(),
-            domain_block_extrinsic_root: Default::default(),
+            domain_block_hash: genesis_domain_block_hash,
+            domain_block_extrinsic_root: genesis_extrinsic_root,
             parent_domain_block_receipt_hash: Default::default(),
             consensus_block_hash: Default::default(),
             consensus_block_number: Zero::zero(),
@@ -812,6 +816,24 @@ pub const ZERO_OPERATOR_SIGNING_KEY: sr25519::Public = sr25519::Public(hex!(
     "0000000000000000000000000000000000000000000000000000000000000000"
 ));
 
+pub fn derive_domain_block_hash<DomainHeader: HeaderT>(
+    domain_block_number: DomainHeader::Number,
+    extrinsics_root: DomainHeader::Hash,
+    state_root: DomainHeader::Hash,
+    parent_domain_block_hash: DomainHeader::Hash,
+    digest: Digest,
+) -> DomainHeader::Hash {
+    let domain_header = DomainHeader::new(
+        domain_block_number,
+        extrinsics_root,
+        state_root,
+        parent_domain_block_hash,
+        digest,
+    );
+
+    domain_header.hash()
+}
+
 sp_api::decl_runtime_apis! {
     /// API necessary for domains pallet.
     pub trait DomainsApi<DomainNumber: Encode + Decode, DomainHash: Encode + Decode> {
@@ -865,6 +887,10 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the chain state root at the given block.
         fn domain_state_root(domain_id: DomainId, number: DomainNumber, hash: DomainHash) -> Option<DomainHash>;
+
+        /// Returns the execution receipt
+        #[allow(clippy::type_complexity)]
+        fn execution_receipt(receipt_hash: ReceiptHash) -> Option<ExecutionReceipt<NumberFor<Block>, Block::Hash, DomainNumber, DomainHash, Balance>>;
     }
 
     pub trait BundleProducerElectionApi<Balance: Encode + Decode> {

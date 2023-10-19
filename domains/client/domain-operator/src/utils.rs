@@ -2,9 +2,8 @@ use parking_lot::Mutex;
 use sc_utils::mpsc::{TracingUnboundedReceiver, TracingUnboundedSender};
 use sp_consensus_slots::Slot;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
-use std::convert::TryInto;
 use std::sync::Arc;
-use subspace_core_primitives::{BlockNumber, Randomness};
+use subspace_core_primitives::Randomness;
 
 /// Data required to produce bundles on executor node.
 #[derive(PartialEq, Clone, Debug)]
@@ -26,16 +25,6 @@ where
     pub number: NumberFor<Block>,
     /// Is this the new best block.
     pub is_new_best: bool,
-}
-
-/// Converts a generic block number to a concrete primitive block number.
-pub(crate) fn to_number_primitive<N>(block_number: N) -> BlockNumber
-where
-    N: TryInto<BlockNumber>,
-{
-    block_number
-        .try_into()
-        .unwrap_or_else(|_| panic!("Block number must fit into u32; qed"))
 }
 
 pub type DomainImportNotificationSinks<Block, CBlock> =

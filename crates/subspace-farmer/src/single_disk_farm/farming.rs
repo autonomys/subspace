@@ -3,25 +3,22 @@ use crate::node_client::NodeClient;
 use crate::single_disk_farm::Handlers;
 use async_lock::RwLock;
 use futures::channel::mpsc;
-use futures::StreamExt;
+use futures::{FutureExt, StreamExt};
 #[cfg(windows)]
 use memmap2::Mmap;
 use parking_lot::Mutex;
-use rayon::prelude::*;
 use rayon::ThreadPoolBuildError;
 use std::fs::File;
 use std::io;
 use std::sync::Arc;
 use std::time::Instant;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::{PosSeed, PublicKey, SectorIndex, SolutionRange};
+use subspace_core_primitives::{PosSeed, PublicKey, SectorIndex, Solution, SolutionRange};
 use subspace_erasure_coding::ErasureCoding;
-use subspace_farmer_components::auditing::audit_sector;
-use subspace_farmer_components::proving;
+use subspace_farmer_components::auditing::audit_plot_sync;
 use subspace_farmer_components::proving::ProvableSolutions;
 use subspace_farmer_components::sector::SectorMetadataChecksummed;
-#[cfg(not(windows))]
-use subspace_farmer_components::ReadAt;
+use subspace_farmer_components::{proving, ReadAtSync};
 use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_rpc_primitives::{SlotInfo, SolutionResponse};
 use thiserror::Error;
@@ -31,7 +28,7 @@ use tracing::{debug, error, info, trace, warn};
 #[derive(Debug, Error)]
 pub enum FarmingError {
     /// Failed to subscribe to slot info notifications
-    #[error("Failed to substribe to slot info notifications: {error}")]
+    #[error("Failed to subscribe to slot info notifications: {error}")]
     FailedToSubscribeSlotInfo {
         /// Lower-level error
         error: node_client::Error,
@@ -86,7 +83,6 @@ pub(super) struct FarmingOptions<'a, NC> {
     pub(super) public_key: PublicKey,
     pub(super) reward_address: PublicKey,
     pub(super) node_client: NC,
-    pub(super) sector_size: usize,
     pub(super) plot_file: &'a File,
     pub(super) sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
     pub(super) kzg: Kzg,
@@ -111,7 +107,6 @@ where
         public_key,
         reward_address,
         node_client,
-        sector_size,
         plot_file,
         sectors_metadata,
         kzg,
@@ -129,96 +124,50 @@ where
     // We assume that each slot is one second
     let farming_timeout = farmer_app_info.farming_timeout;
 
+    #[cfg(not(windows))]
+    let plot = plot_file;
     #[cfg(windows)]
     let plot_mmap = unsafe { Mmap::map(plot_file)? };
+    // On Windows random read is horrible in terms of performance, memory-mapped I/O helps
+    // TODO: Remove this once https://internals.rust-lang.org/t/introduce-write-all-at-read-exact-at-on-windows/19649
+    //  or similar exists in standard library
+    #[cfg(windows)]
+    let plot = &&*plot_mmap;
     let table_generator = Arc::new(Mutex::new(PosTable::generator()));
 
     while let Some(slot_info) = slot_info_notifications.next().await {
         let start = Instant::now();
         let slot = slot_info.slot_number;
         let sectors_metadata = sectors_metadata.read().await;
-        let sector_count = sectors_metadata.len();
 
-        debug!(%slot, %sector_count, "Reading sectors");
+        debug!(%slot, sector_count = %sectors_metadata.len(), "Reading sectors");
 
-        #[cfg(not(windows))]
-        let sectors = (0..sector_count)
-            .into_par_iter()
-            .map(|sector_index| plot_file.offset(sector_index * sector_size));
-        // On Windows random read is horrible in terms of performance, memory-mapped I/O helps
-        // TODO: Remove this once https://internals.rust-lang.org/t/introduce-write-all-at-read-exact-at-on-windows/19649
-        //  or similar exists in standard library
-        #[cfg(windows)]
-        let sectors = plot_mmap.par_chunks_exact(sector_size);
-
-        let sectors_solutions = {
+        let mut sectors_solutions = {
             let modifying_sector_guard = modifying_sector_index.read().await;
             let maybe_sector_being_modified = modifying_sector_guard.as_ref().copied();
 
-            let mut sectors_solutions = sectors_metadata
-                .par_iter()
-                .zip(sectors)
-                .enumerate()
-                .filter_map(|(sector_index, (sector_metadata, sector))| {
-                    let sector_index = sector_index as u16;
-                    if maybe_sector_being_modified == Some(sector_index) {
-                        // Skip sector that is being modified right now
-                        return None;
-                    }
-                    trace!(%slot, %sector_index, "Auditing sector");
-
-                    let audit_results = audit_sector(
-                        &public_key,
-                        sector_index,
-                        &slot_info.global_challenge,
-                        slot_info.voting_solution_range,
-                        sector,
-                        sector_metadata,
-                    )?;
-
-                    Some((sector_index, audit_results.solution_candidates))
-                })
-                .filter_map(|(sector_index, solution_candidates)| {
-                    let sector_solutions = match solution_candidates.into_solutions(
-                        &reward_address,
-                        &kzg,
-                        &erasure_coding,
-                        |seed: &PosSeed| table_generator.lock().generate_parallel(seed),
-                    ) {
-                        Ok(solutions) => solutions,
-                        Err(error) => {
-                            warn!(
-                                %error,
-                                %sector_index,
-                                "Failed to turn solution candidates into solutions",
-                            );
-
-                            return None;
-                        }
-                    };
-
-                    if sector_solutions.len() == 0 {
-                        return None;
-                    }
-
-                    Some((sector_index, sector_solutions))
-                })
-                .collect::<Vec<_>>();
-
-            sectors_solutions.sort_by(|a, b| {
-                let a_solution_distance =
-                    a.1.best_solution_distance().unwrap_or(SolutionRange::MAX);
-                let b_solution_distance =
-                    b.1.best_solution_distance().unwrap_or(SolutionRange::MAX);
-
-                a_solution_distance.cmp(&b_solution_distance)
-            });
-
-            sectors_solutions
+            audit_plot(PlotAuditOptions::<PosTable, _> {
+                public_key: &public_key,
+                reward_address: &reward_address,
+                slot_info,
+                sectors_metadata: &sectors_metadata,
+                kzg: &kzg,
+                erasure_coding: &erasure_coding,
+                plot,
+                maybe_sector_being_modified,
+                table_generator: &table_generator,
+            })
         };
 
-        'solutions_processing: for (sector_index, sector_solutions) in sectors_solutions {
-            for maybe_solution in sector_solutions {
+        sectors_solutions.sort_by(|a, b| {
+            let a_solution_distance = a.1.best_solution_distance().unwrap_or(SolutionRange::MAX);
+            let b_solution_distance = b.1.best_solution_distance().unwrap_or(SolutionRange::MAX);
+
+            a_solution_distance.cmp(&b_solution_distance)
+        });
+
+        'solutions_processing: for (sector_index, mut sector_solutions) in sectors_solutions {
+            while let Some(maybe_solution) = sector_solutions.next().await {
                 let solution = match maybe_solution {
                     Ok(solution) => solution,
                     Err(error) => {
@@ -242,7 +191,7 @@ where
                 }
 
                 let response = SolutionResponse {
-                    slot_number: slot_info.slot_number,
+                    slot_number: slot,
                     solution,
                 };
 
@@ -262,4 +211,98 @@ where
     }
 
     Ok(())
+}
+
+/// Plot audit options
+pub struct PlotAuditOptions<'a, PosTable, File>
+where
+    PosTable: Table,
+{
+    /// Public key of the farm
+    pub public_key: &'a PublicKey,
+    /// Reward address to use for solutions
+    pub reward_address: &'a PublicKey,
+    /// Slot info for the audit
+    pub slot_info: SlotInfo,
+    /// Metadata of all sectors plotted so far
+    pub sectors_metadata: &'a [SectorMetadataChecksummed],
+    /// Kzg instance
+    pub kzg: &'a Kzg,
+    /// Erasure coding instance
+    pub erasure_coding: &'a ErasureCoding,
+    /// File abstraction corresponding to the plot
+    pub plot: &'a File,
+    /// Optional sector that is currently being modified (for example replotted) and should not be
+    /// audited
+    pub maybe_sector_being_modified: Option<SectorIndex>,
+    /// Proof of space table generator
+    pub table_generator: &'a Mutex<PosTable::Generator>,
+}
+
+pub fn audit_plot<'a, PosTable, S>(
+    options: PlotAuditOptions<'a, PosTable, S>,
+) -> Vec<(
+    SectorIndex,
+    impl ProvableSolutions<Item = Result<Solution<PublicKey, PublicKey>, proving::ProvingError>> + 'a,
+)>
+where
+    PosTable: Table,
+    S: ReadAtSync + 'a,
+{
+    let PlotAuditOptions {
+        public_key,
+        reward_address,
+        slot_info,
+        sectors_metadata,
+        kzg,
+        erasure_coding,
+        plot,
+        maybe_sector_being_modified,
+        table_generator,
+    } = options;
+
+    let audit_results = audit_plot_sync(
+        public_key,
+        &slot_info.global_challenge,
+        slot_info.voting_solution_range,
+        plot,
+        sectors_metadata,
+        maybe_sector_being_modified,
+    );
+
+    audit_results
+        .into_iter()
+        .filter_map(|audit_results| {
+            let sector_index = audit_results.sector_index;
+
+            let sector_solutions_fut = audit_results.solution_candidates.into_solutions(
+                reward_address,
+                kzg,
+                erasure_coding,
+                |seed: &PosSeed| table_generator.lock().generate_parallel(seed),
+            );
+
+            let sector_solutions = match sector_solutions_fut
+                .now_or_never()
+                .expect("Implementation of the sector is currently synchronous; qed")
+            {
+                Ok(solutions) => solutions,
+                Err(error) => {
+                    warn!(
+                        %error,
+                        %sector_index,
+                        "Failed to turn solution candidates into solutions",
+                    );
+
+                    return None;
+                }
+            };
+
+            if sector_solutions.len() == 0 {
+                return None;
+            }
+
+            Some((sector_index, sector_solutions))
+        })
+        .collect()
 }

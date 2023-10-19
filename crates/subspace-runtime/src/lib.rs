@@ -62,8 +62,8 @@ use sp_core::storage::StateVersion;
 use sp_core::{OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
-    DomainId, DomainInstanceData, DomainsHoldIdentifier, OperatorId, OperatorPublicKey,
-    StakingHoldIdentifier,
+    DomainId, DomainInstanceData, DomainsHoldIdentifier, ExecutionReceipt, OperatorId,
+    OperatorPublicKey, ReceiptHash, StakingHoldIdentifier,
 };
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
@@ -616,13 +616,13 @@ parameter_types! {
     pub const StakeEpochDuration: DomainNumber = 100;
     pub TreasuryAccount: AccountId = PalletId(*b"treasury").into_account_truncating();
     pub const MaxPendingStakingOperation: u32 = 100;
+    pub const MaxNominators: u32 = 100;
 }
 
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type DomainNumber = DomainNumber;
     type DomainHash = DomainHash;
-    type DomainHashing = BlakeTwo256;
+    type DomainHeader = sp_runtime::generic::Header<DomainNumber, BlakeTwo256>;
     type ConfirmationDepthK = ConfirmationDepthK;
     type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
     type Currency = Balances;
@@ -642,6 +642,7 @@ impl pallet_domains::Config for Runtime {
     type StakeEpochDuration = StakeEpochDuration;
     type TreasuryAccount = TreasuryAccount;
     type MaxPendingStakingOperation = MaxPendingStakingOperation;
+    type MaxNominators = MaxNominators;
     type Randomness = Subspace;
 }
 
@@ -1087,6 +1088,10 @@ impl_runtime_apis! {
 
         fn domain_state_root(domain_id: DomainId, number: DomainNumber, hash: DomainHash) -> Option<DomainHash>{
             Domains::domain_state_root(domain_id, number, hash)
+        }
+
+        fn execution_receipt(receipt_hash: ReceiptHash) -> Option<ExecutionReceipt<NumberFor<Block>, <Block as BlockT>::Hash, DomainNumber, DomainHash, Balance>> {
+            Domains::execution_receipt(receipt_hash)
         }
     }
 

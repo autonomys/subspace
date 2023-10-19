@@ -1,9 +1,9 @@
 use crate::ExecutionReceiptFor;
 use sc_client_api::BlockBackend;
-use sp_api::{ApiError, NumberFor, ProvideRuntimeApi};
+use sp_api::{ApiError, HeaderT, NumberFor, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_domains::fraud_proof::FraudProof;
-use sp_domains::{DomainBlockLimit, DomainId, DomainsApi};
+use sp_domains::{DomainBlockLimit, DomainId, DomainsApi, ReceiptHash};
 use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -15,6 +15,11 @@ type FraudProofFor<ParentChainBlock> =
 /// the necessary info from the parent chain or submit extrinsics to the parent chain.
 pub trait ParentChainInterface<Block: BlockT, ParentChainBlock: BlockT> {
     fn best_hash(&self) -> ParentChainBlock::Hash;
+
+    fn parent_hash(
+        &self,
+        hash: ParentChainBlock::Hash,
+    ) -> sp_blockchain::Result<ParentChainBlock::Hash>;
 
     fn block_body(
         &self,
@@ -63,6 +68,12 @@ pub trait ParentChainInterface<Block: BlockT, ParentChainBlock: BlockT> {
         at: ParentChainBlock::Hash,
         domain_id: DomainId,
     ) -> Result<bool, sp_api::ApiError>;
+
+    fn execution_receipt(
+        &self,
+        at: ParentChainBlock::Hash,
+        receipt_hash: ReceiptHash,
+    ) -> Result<Option<ExecutionReceiptFor<Block, ParentChainBlock>>, sp_api::ApiError>;
 }
 
 /// The parent chain of the domain.
@@ -103,6 +114,13 @@ where
 {
     fn best_hash(&self) -> CBlock::Hash {
         self.consensus_client.info().best_hash
+    }
+
+    fn parent_hash(&self, at: CBlock::Hash) -> sp_blockchain::Result<CBlock::Hash> {
+        let header = self.consensus_client.header(at)?.ok_or_else(|| {
+            sp_blockchain::Error::Backend(format!("Consensus block body for {at} not found"))
+        })?;
+        Ok(*header.parent_hash())
     }
 
     fn block_body(&self, at: CBlock::Hash) -> sp_blockchain::Result<Vec<CBlock::Extrinsic>> {
@@ -196,5 +214,15 @@ where
         self.consensus_client
             .runtime_api()
             .non_empty_er_exists(at, domain_id)
+    }
+
+    fn execution_receipt(
+        &self,
+        at: CBlock::Hash,
+        receipt_hash: ReceiptHash,
+    ) -> Result<Option<ExecutionReceiptFor<Block, CBlock>>, sp_api::ApiError> {
+        self.consensus_client
+            .runtime_api()
+            .execution_receipt(at, receipt_hash)
     }
 }

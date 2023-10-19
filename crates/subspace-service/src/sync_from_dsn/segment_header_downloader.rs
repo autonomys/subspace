@@ -186,7 +186,7 @@ impl<'a> SegmentHeaderDownloader<'a> {
                         %required_peers,
                         %retry_attempt,
                         "Segment headers consensus requires more peers, but result is the same as \
-                        last time, so continue with wht we've got"
+                        last time, so continue with what we've got"
                     );
                 }
             }

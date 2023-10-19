@@ -125,7 +125,7 @@ where
         + StateRootExtractor<Block>
         + SetCodeConstructor<Block>
         + TimestampExtrinsicConstructor<Block>,
-    Client: ProvideRuntimeApi<Block> + 'static,
+    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + 'static,
     Client::Api: DomainCoreApi<Block>,
     CClient: HeaderBackend<CBlock>
         + BlockBackend<CBlock>
@@ -261,6 +261,11 @@ where
 
         let mut extrinsics = Vec::with_capacity(bundle.extrinsics.len());
 
+        let domain_block_number = self
+            .client
+            .number(at)?
+            .ok_or(sp_blockchain::Error::MissingHeader(at.to_string()))?;
+
         // Check the validity of each extrinsic
         //
         // NOTE: for each extrinsic the checking order must follow `InvalidBundleType::checking_order`
@@ -289,9 +294,10 @@ where
                 )));
             }
 
-            // TODO: the `check_transaction_validity` is unimplemented
-            let is_legal_tx = runtime_api
-                .check_transaction_validity(at, &extrinsic, at)?
+            let is_legal_tx = self
+                .client
+                .runtime_api()
+                .check_transaction_validity(at, &extrinsic, domain_block_number, at)?
                 .is_ok();
 
             if !is_legal_tx {

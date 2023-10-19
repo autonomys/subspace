@@ -16,6 +16,9 @@
 
 //! Subspace node implementation.
 
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 use cross_domain_message_gossip::GossipWorkerBuilder;
 use domain_client_operator::Bootstrapper;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
