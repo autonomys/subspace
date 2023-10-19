@@ -296,9 +296,7 @@ where
 
         let backend = TrieBackendBuilder::new(db, root).build();
         let key = Compact(index).encode();
-        Some(StorageProof::new(
-            prove_read(backend, &[key]).ok()?.iter_nodes().cloned(),
-        ))
+        prove_read(backend, &[key]).ok()
     }
 }
 

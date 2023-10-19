@@ -2,7 +2,7 @@ use crate::{ExecutionReceipt, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT};
 use domain_runtime_primitives::opaque::AccountId;
 use frame_support::PalletError;
 use hash_db::Hasher;
-use parity_scale_codec::{Decode, Encode};
+use parity_scale_codec::{Compact, Decode, Encode};
 use rand::seq::SliceRandom;
 use rand::SeedableRng;
 use rand_chacha::ChaCha8Rng;
@@ -35,21 +35,19 @@ pub enum VerificationError {
 pub struct StorageProofVerifier<H: Hasher>(PhantomData<H>);
 
 impl<H: Hasher> StorageProofVerifier<H> {
+    /// Extracts the value against a given key and returns a decoded value.
     pub fn get_decoded_value<V: Decode>(
         state_root: &H::Out,
         proof: StorageProof,
         key: StorageKey,
     ) -> Result<V, VerificationError> {
-        let db = proof.into_memory_db::<H>();
-        let val = read_trie_value::<LayoutV1<H>, _>(&db, state_root, key.as_ref(), None, None)
-            .map_err(|_| VerificationError::InvalidProof)?
-            .ok_or(VerificationError::MissingValue)?;
-
+        let val = Self::get_bare_value(state_root, proof, key)?;
         let decoded = V::decode(&mut &val[..]).map_err(|_| VerificationError::FailedToDecode)?;
 
         Ok(decoded)
     }
 
+    /// Returns the value against a given key.
     pub fn get_bare_value(
         state_root: &H::Out,
         proof: StorageProof,
@@ -63,6 +61,7 @@ impl<H: Hasher> StorageProofVerifier<H> {
         Ok(val)
     }
 
+    /// Verifies the given storage proof and checks the expected_value matches the extracted value from the proof.
     pub fn verify_storage_proof(
         proof: StorageProof,
         root: &H::Out,
@@ -77,6 +76,11 @@ impl<H: Hasher> StorageProofVerifier<H> {
         } else {
             false
         }
+    }
+
+    /// Constructs the storage key from a given enumerated index.
+    pub fn enumerated_storage_key(index: u32) -> StorageKey {
+        StorageKey(Compact(index).encode())
     }
 }
 

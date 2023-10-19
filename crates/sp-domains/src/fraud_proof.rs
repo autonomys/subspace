@@ -1,10 +1,9 @@
 use crate::verification::StorageProofVerifier;
 use crate::{DomainId, ExecutionReceipt, ReceiptHash, SealedBundleHeader};
 use hash_db::Hasher;
-use parity_scale_codec::{Compact, Decode, Encode};
+use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
-use sp_core::storage::StorageKey;
 use sp_core::H256;
 use sp_domain_digests::AsPredigest;
 use sp_runtime::traits::{
@@ -157,11 +156,15 @@ impl ExecutionPhase {
                 mismatch_index,
                 extrinsic,
             } => {
+                let storage_key =
+                    StorageProofVerifier::<DomainHeader::Hashing>::enumerated_storage_key(
+                        *mismatch_index,
+                    );
                 if !StorageProofVerifier::<DomainHeader::Hashing>::verify_storage_proof(
                     proof_of_inclusion.clone(),
                     &bad_receipt.domain_block_extrinsic_root.into(),
                     extrinsic.clone(),
-                    StorageKey(Compact(*mismatch_index).encode()),
+                    storage_key,
                 ) {
                     return Err(VerificationError::InvalidApplyExtrinsicCallData);
                 }
