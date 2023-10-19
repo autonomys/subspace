@@ -195,14 +195,17 @@ where
     // Create auditing info for all sectors in parallel and allocate s-buckets
     let mut audit_preparation = sectors_metadata
         .par_iter()
-        .filter_map(|sector_metadata| {
+        .map(|sector_metadata| {
+            (
+                collect_sector_auditing_details(public_key, global_challenge, sector_metadata),
+                sector_metadata,
+            )
+        })
+        .filter_map(|(sector_auditing_info, sector_metadata)| {
             if maybe_sector_being_modified == Some(sector_metadata.sector_index) {
                 // Skip sector that is being modified right now
                 return None;
             }
-
-            let sector_auditing_info =
-                collect_sector_auditing_details(public_key, global_challenge, sector_metadata);
 
             if sector_auditing_info.s_bucket_audit_size == 0 {
                 // S-bucket is empty
