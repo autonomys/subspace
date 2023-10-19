@@ -289,7 +289,8 @@ where
                     sector.read_at(&mut sector_contents_map_bytes, 0)?;
                 }
                 ReadAt::Async(sector) => {
-                    sector.read_at(&mut sector_contents_map_bytes, 0).await?;
+                    sector_contents_map_bytes =
+                        sector.read_at(sector_contents_map_bytes, 0).await?;
                 }
             }
 
