@@ -23,7 +23,7 @@ use sp_domains::fraud_proof::{
 };
 use sp_domains::transaction::InvalidTransactionCode;
 use sp_domains::{Bundle, DomainId, DomainsApi};
-use sp_runtime::generic::{BlockId, Digest, DigestItem};
+use sp_runtime::generic::{BlockId, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Header as HeaderT};
 use sp_runtime::OpaqueExtrinsic;
 use subspace_fraud_proof::invalid_state_transition_proof::ExecutionProver;
@@ -841,15 +841,15 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
                 match mismatch_trace_index {
                     0 => assert!(matches!(
                         proof.execution_phase,
-                        ExecutionPhase::InitializeBlock { .. }
+                        ExecutionPhase::InitializeBlock
                     )),
                     1 => assert!(matches!(
                         proof.execution_phase,
-                        ExecutionPhase::ApplyExtrinsic(_)
+                        ExecutionPhase::ApplyExtrinsic { .. }
                     )),
                     2 => assert!(matches!(
                         proof.execution_phase,
-                        ExecutionPhase::FinalizeBlock { .. }
+                        ExecutionPhase::FinalizeBlock
                     )),
                     _ => unreachable!(),
                 }
@@ -1270,22 +1270,13 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
         .unwrap();
     let parent_header = alice.client.header(*header.parent_hash()).unwrap().unwrap();
 
-    let intermediate_roots = alice
-        .client
-        .runtime_api()
-        .intermediate_roots(header.hash())
-        .expect("Get intermediate roots");
-
     let prover = ExecutionProver::new(alice.backend.clone(), alice.code_executor.clone());
 
-    let digest = {
-        Digest {
-            logs: vec![DigestItem::consensus_block_info((
-                bad_receipt_number,
-                ferdie.client.hash(bad_receipt_number).unwrap().unwrap(),
-            ))],
-        }
-    };
+    let digest = alice
+        .client
+        .runtime_api()
+        .block_digest(header.hash())
+        .unwrap();
 
     let new_header = Header::new(
         *header.number(),
@@ -1294,9 +1285,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
         parent_header.hash(),
         digest,
     );
-    let execution_phase = ExecutionPhase::InitializeBlock {
-        domain_parent_hash: parent_header.hash(),
-    };
+    let execution_phase = ExecutionPhase::InitializeBlock;
     let initialize_block_call_data = new_header.encode();
 
     let storage_proof = prover
@@ -1308,26 +1297,9 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
         )
         .expect("Create `initialize_block` proof");
 
-    let header_ferdie = ferdie
-        .client
-        .header(ferdie.client.hash(bad_receipt_number).unwrap().unwrap())
-        .unwrap()
-        .unwrap();
-    let parent_header_ferdie = ferdie
-        .client
-        .header(*header_ferdie.parent_hash())
-        .unwrap()
-        .unwrap();
-    let parent_hash_ferdie = parent_header_ferdie.hash();
-    let parent_number_ferdie = *parent_header_ferdie.number();
-
     let good_invalid_state_transition_proof = InvalidStateTransitionProof {
         domain_id: DomainId::new(3u32),
         bad_receipt_hash: bad_receipt.hash(),
-        parent_number: parent_number_ferdie,
-        consensus_parent_hash: parent_hash_ferdie,
-        pre_state_root: *parent_header.state_root(),
-        post_state_root: intermediate_roots[0].into(),
         proof: storage_proof,
         execution_phase,
     };
@@ -1353,7 +1325,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
     ferdie.produce_blocks(1).await.unwrap();
 
     let bad_invalid_state_transition_proof = InvalidStateTransitionProof {
-        post_state_root: Hash::random(),
+        execution_phase: ExecutionPhase::FinalizeBlock,
         ..good_invalid_state_transition_proof
     };
     let invalid_fraud_proof =

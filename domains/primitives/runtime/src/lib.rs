@@ -24,7 +24,7 @@ use sp_runtime::traits::{
     Block as BlockT, Convert, IdentifyAccount, LookupError, NumberFor, Verify,
 };
 use sp_runtime::transaction_validity::TransactionValidityError;
-use sp_runtime::{MultiAddress, MultiSignature};
+use sp_runtime::{Digest, MultiAddress, MultiSignature};
 use sp_std::vec::Vec;
 use sp_weights::Weight;
 use subspace_core_primitives::U256;
@@ -210,6 +210,9 @@ sp_api::decl_runtime_apis! {
 
         /// The accumulated transaction fee of all transactions included in the block
         fn block_rewards() -> Balance;
+
+        /// Return the block digest
+        fn block_digest() -> Digest;
     }
 
     /// Api that construct inherent extrinsics.

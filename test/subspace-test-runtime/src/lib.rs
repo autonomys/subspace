@@ -58,7 +58,7 @@ use sp_domains::fraud_proof::FraudProof;
 use sp_domains::transaction::PreValidationObject;
 use sp_domains::{
     DomainId, DomainInstanceData, DomainsHoldIdentifier, ExecutionReceipt, OpaqueBundle,
-    OpaqueBundles, OperatorId, OperatorPublicKey, StakingHoldIdentifier,
+    OpaqueBundles, OperatorId, OperatorPublicKey, ReceiptHash, StakingHoldIdentifier,
 };
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
@@ -1377,6 +1377,10 @@ impl_runtime_apis! {
 
         fn domain_state_root(domain_id: DomainId, number: DomainNumber, hash: DomainHash) -> Option<DomainHash>{
             Domains::domain_state_root(domain_id, number, hash)
+        }
+
+        fn execution_receipt(receipt_hash: ReceiptHash) -> Option<ExecutionReceipt<NumberFor<Block>, <Block as BlockT>::Hash, DomainNumber, DomainHash, Balance>> {
+            Domains::execution_receipt(receipt_hash)
         }
     }
 

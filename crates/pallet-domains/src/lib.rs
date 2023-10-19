@@ -17,6 +17,7 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 #![feature(array_windows)]
+#![feature(associated_type_bounds)]
 
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
@@ -49,12 +50,13 @@ use sp_domains::fraud_proof::{FraudProof, InvalidDomainBlockHashProof, InvalidTo
 use sp_domains::verification::verify_invalid_total_rewards_fraud_proof;
 use sp_domains::{
     DomainBlockLimit, DomainId, DomainInstanceData, ExecutionReceipt, OpaqueBundle, OperatorId,
-    OperatorPublicKey, ProofOfElection, RuntimeId, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT,
-    EMPTY_EXTRINSIC_ROOT,
+    OperatorPublicKey, ProofOfElection, ReceiptHash, RuntimeId,
+    DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT, EMPTY_EXTRINSIC_ROOT,
 };
 use sp_domains_fraud_proof::fraud_proof_runtime_interface::get_fraud_proof_verification_info;
 use sp_domains_fraud_proof::verification::{
-    verify_invalid_domain_block_hash_fraud_proof, verify_invalid_domain_extrinsics_root_fraud_proof,
+    verify_invalid_domain_block_hash_fraud_proof,
+    verify_invalid_domain_extrinsics_root_fraud_proof, verify_invalid_state_transition_fraud_proof,
 };
 use sp_domains_fraud_proof::{
     FraudProofVerificationInfoRequest, FraudProofVerificationInfoResponse,
@@ -112,7 +114,7 @@ mod pallet {
     #![allow(clippy::large_enum_variant)]
 
     use crate::block_tree::{
-        execution_receipt_type, process_execution_receipt, DomainBlock, Error as BlockTreeError,
+        execution_receipt_type, process_execution_receipt, BlockTreeNode, Error as BlockTreeError,
         ReceiptType,
     };
     use crate::domain_registry::{
@@ -171,9 +173,12 @@ mod pallet {
     use subspace_core_primitives::U256;
 
     #[pallet::config]
-    pub trait Config: frame_system::Config {
+    pub trait Config: frame_system::Config<Hash: Into<H256>> {
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
 
+        // TODO: `DomainHash` can be derived from `DomainHeader`, it is still needed just for
+        // converting `DomainHash` to/from `H256` without encode/decode, remove it once we found
+        // other ways to do this.
         /// Domain block hash type.
         type DomainHash: Parameter
             + Member
@@ -455,8 +460,8 @@ mod pallet {
         OptionQuery,
     >;
 
-    /// The domain block tree, map (`domain_id`, `domain_block_number`) to the hash of a domain blocks,
-    /// which can be used get the domain block in `DomainBlocks`
+    /// The domain block tree, map (`domain_id`, `domain_block_number`) to the hash of ER,
+    /// which can be used get the block tree node in `BlockTreeNodes`
     #[pallet::storage]
     pub(super) type BlockTree<T: Config> = StorageDoubleMap<
         _,
@@ -468,13 +473,13 @@ mod pallet {
         ValueQuery,
     >;
 
-    /// Mapping of domain block hash to domain block
+    /// Mapping of block tree node hash to the node, each node represent a domain block
     #[pallet::storage]
-    pub(super) type DomainBlocks<T: Config> = StorageMap<
+    pub(super) type BlockTreeNodes<T: Config> = StorageMap<
         _,
         Identity,
         ReceiptHash,
-        DomainBlock<
+        BlockTreeNode<
             BlockNumberFor<T>,
             T::Hash,
             DomainBlockNumberFor<T>,
@@ -607,6 +612,8 @@ mod pallet {
         InvalidDomainBlockHashFraudProof(sp_domains::verification::VerificationError),
         /// Invalid domain extrinsic fraud proof
         InvalidExtrinsicRootFraudProof(sp_domains::verification::VerificationError),
+        /// Invalid state transition fraud proof
+        InvalidStateTransitionFraudProof,
         /// Failed to get block randomness.
         FailedToGetBlockRandomness,
         /// Failed to get domain timestamp extrinsic.
@@ -891,10 +898,10 @@ mod pallet {
             // Prune the bad ER and all of its descendants from the block tree. ER are pruning
             // with BFS order from lower height to higher height.
             while let Some(receipt_hash) = receipt_to_remove.pop() {
-                let DomainBlock {
+                let BlockTreeNode {
                     execution_receipt,
                     operator_ids,
-                } = DomainBlocks::<T>::take(receipt_hash)
+                } = BlockTreeNodes::<T>::take(receipt_hash)
                     .ok_or::<Error<T>>(FraudProofError::BadReceiptNotFound.into())?;
 
                 BlockTree::<T>::mutate_exists(
@@ -1369,7 +1376,7 @@ impl<T: Config> Pallet<T> {
     pub fn genesis_state_root(domain_id: DomainId) -> Option<H256> {
         BlockTree::<T>::get(domain_id, DomainBlockNumberFor::<T>::zero())
             .first()
-            .and_then(DomainBlocks::<T>::get)
+            .and_then(BlockTreeNodes::<T>::get)
             .map(|block| block.execution_receipt.final_state_root.into())
     }
 
@@ -1522,7 +1529,7 @@ impl<T: Config> Pallet<T> {
     fn validate_fraud_proof(
         fraud_proof: &FraudProof<BlockNumberFor<T>, T::Hash>,
     ) -> Result<(), FraudProofError> {
-        let bad_receipt = DomainBlocks::<T>::get(fraud_proof.bad_receipt_hash())
+        let bad_receipt = BlockTreeNodes::<T>::get(fraud_proof.bad_receipt_hash())
             .ok_or(FraudProofError::BadReceiptNotFound)?
             .execution_receipt;
 
@@ -1547,7 +1554,7 @@ impl<T: Config> Pallet<T> {
                 ..
             }) => {
                 let parent_receipt =
-                    DomainBlocks::<T>::get(bad_receipt.parent_domain_block_receipt_hash)
+                    BlockTreeNodes::<T>::get(bad_receipt.parent_domain_block_receipt_hash)
                         .ok_or(FraudProofError::ParentReceiptNotFound)?
                         .execution_receipt;
                 verify_invalid_domain_block_hash_fraud_proof::<
@@ -1601,6 +1608,19 @@ impl<T: Config> Pallet<T> {
                     domain_timestamp_extrinsic,
                 )
                 .map_err(FraudProofError::InvalidExtrinsicRootFraudProof)?;
+            }
+            FraudProof::InvalidStateTransition(proof) => {
+                let bad_receipt_parent =
+                    BlockTreeNodes::<T>::get(bad_receipt.parent_domain_block_receipt_hash)
+                        .ok_or(FraudProofError::ParentReceiptNotFound)?
+                        .execution_receipt;
+
+                verify_invalid_state_transition_fraud_proof::<
+                    T::Block,
+                    T::DomainHeader,
+                    BalanceOf<T>,
+                >(bad_receipt, bad_receipt_parent, proof)
+                .map_err(|_| FraudProofError::InvalidStateTransitionFraudProof)?;
             }
             _ => {}
         }
@@ -1777,6 +1797,10 @@ impl<T: Config> Pallet<T> {
         let seed = DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT;
         let (randomness, _) = T::Randomness::random(seed);
         randomness
+    }
+
+    pub fn execution_receipt(receipt_hash: ReceiptHash) -> Option<ExecutionReceiptOf<T>> {
+        BlockTreeNodes::<T>::get(receipt_hash).map(|db| db.execution_receipt)
     }
 }
 

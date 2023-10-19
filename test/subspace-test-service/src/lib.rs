@@ -72,7 +72,6 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time;
 use subspace_core_primitives::{Randomness, Solution};
-use subspace_fraud_proof::invalid_state_transition_proof::InvalidStateTransitionProofVerifier;
 use subspace_fraud_proof::invalid_transaction_proof::InvalidTransactionProofVerifier;
 use subspace_fraud_proof::verifier_api::VerifierClient;
 use subspace_runtime_primitives::opaque::Block;
@@ -197,6 +196,7 @@ where
     Block: BlockT,
     Block::Hash: From<H256>,
     DomainBlock: BlockT,
+    DomainBlock::Hash: From<H256>,
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + 'static,
     Client::Api: DomainsApi<Block, NumberFor<DomainBlock>, DomainBlock::Hash>,
     Executor: CodeExecutor + sc_executor::RuntimeVersionOf,
@@ -299,16 +299,8 @@ impl MockConsensusNode {
             VerifierClient::new(client.clone()),
         );
 
-        let invalid_state_transition_proof_verifier = InvalidStateTransitionProofVerifier::new(
-            client.clone(),
-            executor.clone(),
-            VerifierClient::new(client.clone()),
-        );
-
-        let proof_verifier = subspace_fraud_proof::ProofVerifier::new(
-            Arc::new(invalid_transaction_proof_verifier),
-            Arc::new(invalid_state_transition_proof_verifier),
-        );
+        let proof_verifier =
+            subspace_fraud_proof::ProofVerifier::new(Arc::new(invalid_transaction_proof_verifier));
 
         let tx_pre_validator = ConsensusChainTxPreValidator::new(
             client.clone(),

@@ -52,7 +52,7 @@ use sp_runtime::transaction_validity::{
     TransactionSource, TransactionValidity, TransactionValidityError,
 };
 use sp_runtime::{
-    create_runtime_str, generic, impl_opaque_keys, ApplyExtrinsicResult, ConsensusEngineId,
+    create_runtime_str, generic, impl_opaque_keys, ApplyExtrinsicResult, ConsensusEngineId, Digest,
 };
 pub use sp_runtime::{MultiAddress, Perbill, Permill, SaturatedConversion};
 use sp_std::marker::PhantomData;
@@ -943,6 +943,10 @@ impl_runtime_apis! {
 
         fn block_rewards() -> Balance {
             OperatorRewards::block_rewards()
+        }
+
+        fn block_digest() -> Digest {
+            System::digest()
         }
     }
 

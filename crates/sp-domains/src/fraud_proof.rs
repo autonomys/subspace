@@ -1,26 +1,41 @@
-use crate::{DomainId, ReceiptHash, SealedBundleHeader};
+use crate::{valued_trie_root, DomainId, ExecutionReceipt, ReceiptHash, SealedBundleHeader};
 use hash_db::Hasher;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
 use sp_core::H256;
-use sp_runtime::traits::{BlakeTwo256, Hash as HashT, Header as HeaderT};
+use sp_domain_digests::AsPredigest;
+use sp_runtime::traits::{
+    BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor,
+};
+use sp_runtime::{Digest, DigestItem};
 use sp_std::vec::Vec;
-use sp_trie::StorageProof;
-use subspace_core_primitives::BlockNumber;
+use sp_trie::{LayoutV1, StorageProof};
 use subspace_runtime_primitives::{AccountId, Balance};
 use trie_db::TrieLayout;
+
+type ExecutionReceiptFor<DomainHeader, CBlock, Balance> = ExecutionReceipt<
+    NumberFor<CBlock>,
+    <CBlock as BlockT>::Hash,
+    <DomainHeader as HeaderT>::Number,
+    <DomainHeader as HeaderT>::Hash,
+    Balance,
+>;
 
 /// A phase of a block's execution, carrying necessary information needed for verifying the
 /// invalid state transition proof.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub enum ExecutionPhase {
     /// Executes the `initialize_block` hook.
-    InitializeBlock { domain_parent_hash: H256 },
+    InitializeBlock,
     /// Executes some extrinsic.
-    ApplyExtrinsic(u32),
+    ApplyExtrinsic {
+        proof_of_inclusion: Vec<Vec<u8>>,
+        mismatch_index: u32,
+        extrinsic: Vec<u8>,
+    },
     /// Executes the `finalize_block` hook.
-    FinalizeBlock { total_extrinsics: u32 },
+    FinalizeBlock,
 }
 
 impl ExecutionPhase {
@@ -29,9 +44,9 @@ impl ExecutionPhase {
         match self {
             // TODO: Replace `DomainCoreApi_initialize_block_with_post_state_root` with `Core_initalize_block`
             // Should be a same issue with https://github.com/paritytech/substrate/pull/10922#issuecomment-1068997467
-            Self::InitializeBlock { .. } => "DomainCoreApi_initialize_block_with_post_state_root",
-            Self::ApplyExtrinsic(_) => "BlockBuilder_apply_extrinsic",
-            Self::FinalizeBlock { .. } => "BlockBuilder_finalize_block",
+            Self::InitializeBlock => "DomainCoreApi_initialize_block_with_post_state_root",
+            Self::ApplyExtrinsic { .. } => "BlockBuilder_apply_extrinsic",
+            Self::FinalizeBlock => "BlockBuilder_finalize_block",
         }
     }
 
@@ -42,9 +57,9 @@ impl ExecutionPhase {
     /// result of execution reported in [`FraudProof`] is expected or not.
     pub fn verifying_method(&self) -> &'static str {
         match self {
-            Self::InitializeBlock { .. } => "DomainCoreApi_initialize_block_with_post_state_root",
-            Self::ApplyExtrinsic(_) => "DomainCoreApi_apply_extrinsic_with_post_state_root",
-            Self::FinalizeBlock { .. } => "BlockBuilder_finalize_block",
+            Self::InitializeBlock => "DomainCoreApi_initialize_block_with_post_state_root",
+            Self::ApplyExtrinsic { .. } => "DomainCoreApi_apply_extrinsic_with_post_state_root",
+            Self::FinalizeBlock => "BlockBuilder_finalize_block",
         }
     }
 
@@ -54,64 +69,125 @@ impl ExecutionPhase {
         execution_result: Vec<u8>,
     ) -> Result<Header::Hash, VerificationError> {
         match self {
-            Self::InitializeBlock { .. } | Self::ApplyExtrinsic(_) => {
+            Self::InitializeBlock | Self::ApplyExtrinsic { .. } => {
                 let encoded_storage_root = Vec::<u8>::decode(&mut execution_result.as_slice())
                     .map_err(VerificationError::InitializeBlockOrApplyExtrinsicDecode)?;
                 Header::Hash::decode(&mut encoded_storage_root.as_slice())
                     .map_err(VerificationError::StorageRootDecode)
             }
-            Self::FinalizeBlock { .. } => {
+            Self::FinalizeBlock => {
                 let new_header = Header::decode(&mut execution_result.as_slice())
                     .map_err(VerificationError::HeaderDecode)?;
                 Ok(*new_header.state_root())
             }
         }
     }
+
+    pub fn pre_post_state_root<CBlock, DomainHeader, Balance>(
+        &self,
+        bad_receipt: &ExecutionReceiptFor<DomainHeader, CBlock, Balance>,
+        bad_receipt_parent: &ExecutionReceiptFor<DomainHeader, CBlock, Balance>,
+    ) -> Result<(H256, H256), VerificationError>
+    where
+        CBlock: BlockT,
+        DomainHeader: HeaderT,
+        DomainHeader::Hash: Into<H256>,
+    {
+        if bad_receipt.execution_trace.len() < 2 {
+            return Err(VerificationError::InvalidExecutionTrace);
+        }
+        let (pre, post) = match self {
+            ExecutionPhase::InitializeBlock => (
+                bad_receipt_parent.final_state_root,
+                bad_receipt.execution_trace[0],
+            ),
+            ExecutionPhase::ApplyExtrinsic { mismatch_index, .. } => {
+                if *mismatch_index == 0
+                    || *mismatch_index >= bad_receipt.execution_trace.len() as u32 - 1
+                {
+                    return Err(VerificationError::InvalidApplyExtrinsicTraceIndex);
+                }
+                (
+                    bad_receipt.execution_trace[*mismatch_index as usize - 1],
+                    bad_receipt.execution_trace[*mismatch_index as usize],
+                )
+            }
+            ExecutionPhase::FinalizeBlock => {
+                let mismatch_index = bad_receipt.execution_trace.len() - 1;
+                (
+                    bad_receipt.execution_trace[mismatch_index - 1],
+                    bad_receipt.execution_trace[mismatch_index],
+                )
+            }
+        };
+        Ok((pre.into(), post.into()))
+    }
+
+    pub fn call_data<CBlock, DomainHeader, Balance>(
+        &self,
+        bad_receipt: &ExecutionReceiptFor<DomainHeader, CBlock, Balance>,
+        bad_receipt_parent: &ExecutionReceiptFor<DomainHeader, CBlock, Balance>,
+    ) -> Result<Vec<u8>, VerificationError>
+    where
+        CBlock: BlockT,
+        DomainHeader: HeaderT,
+        DomainHeader::Hash: From<H256>,
+    {
+        Ok(match self {
+            ExecutionPhase::InitializeBlock => {
+                let inherent_digests = Digest {
+                    logs: sp_std::vec![DigestItem::consensus_block_info(
+                        bad_receipt.consensus_block_hash,
+                    )],
+                };
+
+                let new_header = DomainHeader::new(
+                    bad_receipt.domain_block_number,
+                    Default::default(),
+                    Default::default(),
+                    bad_receipt_parent.domain_block_hash,
+                    inherent_digests,
+                );
+                new_header.encode()
+            }
+            ExecutionPhase::ApplyExtrinsic {
+                proof_of_inclusion,
+                mismatch_index,
+                extrinsic,
+            } => {
+                if !valued_trie_root::verify_proof::<LayoutV1<DomainHeader::Hashing>>(
+                    proof_of_inclusion,
+                    &bad_receipt.domain_block_extrinsic_root.into(),
+                    extrinsic.clone(),
+                    *mismatch_index,
+                ) {
+                    return Err(VerificationError::InvalidApplyExtrinsicCallData);
+                }
+                extrinsic.clone()
+            }
+            ExecutionPhase::FinalizeBlock => Vec::new(),
+        })
+    }
 }
 
+// TODO: refactor the fraud proof verification error to merge this `VerificationError` and
+// `crate::verification::VerificationError` into one
 /// Error type of fraud proof verification on consensus node.
 #[derive(Debug)]
 #[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
 pub enum VerificationError {
-    /// `pre_state_root` in the invalid state transition proof is invalid.
-    #[cfg_attr(feature = "thiserror", error("invalid `pre_state_root`"))]
-    InvalidPreStateRoot,
     /// Hash of the consensus block being challenged not found.
     #[cfg_attr(feature = "thiserror", error("consensus block hash not found"))]
     ConsensusBlockHashNotFound,
-    /// `post_state_root` not found in the state.
-    #[cfg_attr(feature = "thiserror", error("`post_state_root` not found"))]
-    PostStateRootNotFound,
-    /// `post_state_root` is same as the one stored on chain.
-    #[cfg_attr(
-        feature = "thiserror",
-        error("`post_state_root` is same as the one on chain")
-    )]
-    SamePostStateRoot,
-    /// Domain extrinsic at given index not found.
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Domain extrinsic at index {0} not found")
-    )]
-    DomainExtrinsicNotFound(u32),
-    /// Error occurred while building the domain extrinsics.
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Failed to rebuild the domain extrinsic list")
-    )]
-    FailedToBuildDomainExtrinsics,
     /// Failed to pass the execution proof check.
     #[cfg_attr(
         feature = "thiserror",
         error("Failed to pass the execution proof check")
     )]
-    BadProof(sp_std::boxed::Box<dyn sp_state_machine::Error>),
-    /// The `post_state_root` calculated by farmer does not match the one declared in [`FraudProof`].
-    #[cfg_attr(
-        feature = "thiserror",
-        error("`post_state_root` mismatches, expected: {expected}, got: {got}")
-    )]
-    BadPostStateRoot { expected: H256, got: H256 },
+    BadExecutionProof,
+    /// The fraud proof prove nothing invalid
+    #[cfg_attr(feature = "thiserror", error("The fraud proof prove nothing invalid"))]
+    InvalidProof,
     /// Failed to decode the return value of `initialize_block` and `apply_extrinsic`.
     #[cfg_attr(
         feature = "thiserror",
@@ -156,7 +232,6 @@ pub enum VerificationError {
     #[cfg_attr(feature = "thiserror", error("Client error: {0}"))]
     Client(#[from] sp_blockchain::Error),
     /// Invalid storage proof.
-    #[cfg(feature = "std")]
     #[cfg_attr(feature = "thiserror", error("Invalid stroage proof"))]
     InvalidStorageProof,
     /// Can not find signer from the domain extrinsic.
@@ -175,12 +250,23 @@ pub enum VerificationError {
     #[cfg(feature = "std")]
     #[cfg_attr(feature = "thiserror", error("Failed to get runtime code: {0}"))]
     RuntimeCode(String),
+    #[cfg_attr(feature = "thiserror", error("Failed to get domain runtime code"))]
+    FailedToGetDomainRuntimeCode,
     #[cfg(feature = "std")]
     #[cfg_attr(
         feature = "thiserror",
         error("Oneshot error when verifying fraud proof in tx pool: {0}")
     )]
     Oneshot(String),
+    #[cfg_attr(
+        feature = "thiserror",
+        error("The receipt's execution_trace have less than 2 traces")
+    )]
+    InvalidExecutionTrace,
+    #[cfg_attr(feature = "thiserror", error("Invalid ApplyExtrinsic trace index"))]
+    InvalidApplyExtrinsicTraceIndex,
+    #[cfg_attr(feature = "thiserror", error("Invalid ApplyExtrinsic call data"))]
+    InvalidApplyExtrinsicCallData,
 }
 
 // TODO: Define rest of the fraud proof fields
@@ -320,36 +406,18 @@ pub struct InvalidStateTransitionProof {
     pub domain_id: DomainId,
     /// Hash of the bad receipt in which an invalid trace occurred.
     pub bad_receipt_hash: H256,
-    /// Parent number.
-    pub parent_number: BlockNumber,
-    /// Hash of the consensus block corresponding to `parent_number`.
-    ///
-    /// Runtime code for the execution of the domain block that is being challenged
-    /// is retrieved on top of the consensus parent block from the consensus chain.
-    pub consensus_parent_hash: H256,
-    /// State root before the fraudulent transaction.
-    pub pre_state_root: H256,
-    /// State root after the fraudulent transaction.
-    pub post_state_root: H256,
     /// Proof recorded during the computation.
     pub proof: StorageProof,
     /// Execution phase.
     pub execution_phase: ExecutionPhase,
 }
 
-pub fn dummy_invalid_state_transition_proof(
-    domain_id: DomainId,
-    parent_number: u32,
-) -> InvalidStateTransitionProof {
+pub fn dummy_invalid_state_transition_proof(domain_id: DomainId) -> InvalidStateTransitionProof {
     InvalidStateTransitionProof {
         domain_id,
         bad_receipt_hash: H256::default(),
-        parent_number,
-        consensus_parent_hash: H256::default(),
-        pre_state_root: H256::default(),
-        post_state_root: H256::default(),
         proof: StorageProof::empty(),
-        execution_phase: ExecutionPhase::ApplyExtrinsic(0),
+        execution_phase: ExecutionPhase::FinalizeBlock,
     }
 }
 

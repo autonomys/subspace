@@ -283,7 +283,7 @@ where
             return Ok(None);
         };
 
-        let digest = Digest {
+        let inherent_digests = Digest {
             logs: vec![DigestItem::consensus_block_info(consensus_block_hash)],
         };
 
@@ -293,7 +293,7 @@ where
                 (consensus_block_hash, consensus_block_number),
                 (parent_hash, parent_number),
                 preprocess_result,
-                digest,
+                inherent_digests,
             )
             .await?;
 

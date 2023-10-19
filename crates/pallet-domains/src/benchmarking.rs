@@ -39,7 +39,7 @@ mod benchmarks {
         let mut receipt =
             BlockTree::<T>::get::<_, DomainBlockNumberFor<T>>(domain_id, Zero::zero())
                 .first()
-                .and_then(DomainBlocks::<T>::get)
+                .and_then(BlockTreeNodes::<T>::get)
                 .expect("genesis receipt must exist")
                 .execution_receipt;
         for i in 1..=(block_tree_pruning_depth + 1) {

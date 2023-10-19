@@ -883,6 +883,10 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the chain state root at the given block.
         fn domain_state_root(domain_id: DomainId, number: DomainNumber, hash: DomainHash) -> Option<DomainHash>;
+
+        /// Returns the execution receipt
+        #[allow(clippy::type_complexity)]
+        fn execution_receipt(receipt_hash: ReceiptHash) -> Option<ExecutionReceipt<NumberFor<Block>, Block::Hash, DomainNumber, DomainHash, Balance>>;
     }
 
     pub trait BundleProducerElectionApi<Balance: Encode + Decode> {

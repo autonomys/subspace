@@ -5,18 +5,14 @@
 //! block execution, block execution hooks (`initialize_block` and `finalize_block`) and any
 //! specific extrinsic execution are supported.
 
-use crate::verifier_api::VerifierApi;
-use codec::{Codec, Decode, Encode};
-use domain_runtime_primitives::opaque::Block;
+use codec::Codec;
 use hash_db::{HashDB, Hasher, Prefix};
 use sc_client_api::backend;
-use sp_api::{ProvideRuntimeApi, StorageProof};
-use sp_core::traits::{CodeExecutor, RuntimeCode};
+use sp_api::StorageProof;
+use sp_core::traits::CodeExecutor;
 use sp_core::H256;
-use sp_domains::fraud_proof::{ExecutionPhase, InvalidStateTransitionProof, VerificationError};
-use sp_domains::DomainsApi;
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashingFor, Header as HeaderT, NumberFor};
-use sp_runtime::Digest;
+use sp_domains::fraud_proof::ExecutionPhase;
+use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashingFor};
 use sp_state_machine::backend::AsTrieBackend;
 use sp_state_machine::{TrieBackend, TrieBackendBuilder, TrieBackendStorage};
 use sp_trie::DBValue;
@@ -174,167 +170,5 @@ where
             Some(v) => Ok(Some(v)),
             None => Ok(self.backend.get(key, prefix)?),
         }
-    }
-}
-
-/// Invalid state transition proof verifier.
-pub struct InvalidStateTransitionProofVerifier<CBlock, CClient, Exec, Hash, VerifierClient> {
-    consensus_client: Arc<CClient>,
-    executor: Exec,
-    verifier_client: VerifierClient,
-    _phantom: PhantomData<(CBlock, Hash)>,
-}
-
-impl<CBlock, CClient, Exec, Hash, VerifierClient> Clone
-    for InvalidStateTransitionProofVerifier<CBlock, CClient, Exec, Hash, VerifierClient>
-where
-    Exec: Clone,
-    VerifierClient: Clone,
-{
-    fn clone(&self) -> Self {
-        Self {
-            consensus_client: self.consensus_client.clone(),
-            executor: self.executor.clone(),
-            verifier_client: self.verifier_client.clone(),
-            _phantom: self._phantom,
-        }
-    }
-}
-
-impl<CBlock, CClient, Exec, Hash, VerifierClient>
-    InvalidStateTransitionProofVerifier<CBlock, CClient, Exec, Hash, VerifierClient>
-where
-    CBlock: BlockT,
-    H256: Into<CBlock::Hash>,
-    CClient: ProvideRuntimeApi<CBlock> + Send + Sync,
-    CClient::Api: DomainsApi<CBlock, domain_runtime_primitives::BlockNumber, Hash>,
-    Exec: CodeExecutor + Clone + 'static,
-    Hash: Encode + Decode,
-    VerifierClient: VerifierApi,
-{
-    /// Constructs a new instance of [`InvalidStateTransitionProofVerifier`].
-    pub fn new(
-        consensus_client: Arc<CClient>,
-        executor: Exec,
-        verifier_client: VerifierClient,
-    ) -> Self {
-        Self {
-            consensus_client,
-            executor,
-            verifier_client,
-            _phantom: PhantomData::<(CBlock, Hash)>,
-        }
-    }
-
-    /// Verifies the invalid state transition proof.
-    pub fn verify(
-        &self,
-        invalid_state_transition_proof: &InvalidStateTransitionProof,
-    ) -> Result<(), VerificationError> {
-        self.verifier_client
-            .verify_pre_state_root(invalid_state_transition_proof)?;
-
-        self.verifier_client
-            .verify_post_state_root(invalid_state_transition_proof)?;
-
-        let InvalidStateTransitionProof {
-            domain_id,
-            parent_number,
-            consensus_parent_hash,
-            pre_state_root,
-            post_state_root,
-            proof,
-            execution_phase,
-            ..
-        } = invalid_state_transition_proof;
-
-        let domain_runtime_code = crate::domain_runtime_code::retrieve_domain_runtime_code(
-            *domain_id,
-            (*consensus_parent_hash).into(),
-            &self.consensus_client,
-        )?;
-
-        let runtime_code = RuntimeCode {
-            code_fetcher: &domain_runtime_code.as_runtime_code_fetcher(),
-            hash: b"Hash of the code does not matter in terms of the execution proof check"
-                .to_vec(),
-            heap_pages: None,
-        };
-
-        let call_data = match execution_phase {
-            ExecutionPhase::InitializeBlock { domain_parent_hash } => {
-                let parent_hash =
-                    <Block as BlockT>::Hash::decode(&mut domain_parent_hash.encode().as_slice())?;
-                let parent_number =
-                    <NumberFor<Block>>::decode(&mut parent_number.encode().as_slice())?;
-
-                let consensus_block_number = parent_number + 1;
-                let new_header = <Block as BlockT>::Header::new(
-                    consensus_block_number,
-                    Default::default(),
-                    Default::default(),
-                    parent_hash,
-                    Digest::default(),
-                );
-                new_header.encode()
-            }
-            ExecutionPhase::ApplyExtrinsic(_extrinsic_index) => {
-                // TODO: Provide the tx Merkle proof and get data from there
-                Vec::new()
-            }
-            ExecutionPhase::FinalizeBlock { .. } => Vec::new(),
-        };
-
-        let execution_result = sp_state_machine::execution_proof_check::<BlakeTwo256, _>(
-            *pre_state_root,
-            proof.clone(),
-            &mut Default::default(),
-            &self.executor,
-            execution_phase.verifying_method(),
-            &call_data,
-            &runtime_code,
-        )
-        .map_err(VerificationError::BadProof)?;
-
-        let new_post_state_root =
-            execution_phase.decode_execution_result::<CBlock::Header>(execution_result)?;
-        let new_post_state_root = H256::decode(&mut new_post_state_root.encode().as_slice())?;
-
-        if new_post_state_root == *post_state_root {
-            Ok(())
-        } else {
-            Err(VerificationError::BadPostStateRoot {
-                expected: new_post_state_root,
-                got: *post_state_root,
-            })
-        }
-    }
-}
-
-/// Verifies invalid state transition proof.
-pub trait VerifyInvalidStateTransitionProof {
-    /// Returns `Ok(())` if given `invalid_state_transition_proof` is legitimate.
-    fn verify_invalid_state_transition_proof(
-        &self,
-        invalid_state_transition_proof: &InvalidStateTransitionProof,
-    ) -> Result<(), VerificationError>;
-}
-
-impl<CBlock, C, Exec, Hash, VerifierClient> VerifyInvalidStateTransitionProof
-    for InvalidStateTransitionProofVerifier<CBlock, C, Exec, Hash, VerifierClient>
-where
-    CBlock: BlockT,
-    H256: Into<CBlock::Hash>,
-    C: ProvideRuntimeApi<CBlock> + Send + Sync,
-    C::Api: DomainsApi<CBlock, domain_runtime_primitives::BlockNumber, Hash>,
-    Exec: CodeExecutor + Clone + 'static,
-    Hash: Encode + Decode,
-    VerifierClient: VerifierApi,
-{
-    fn verify_invalid_state_transition_proof(
-        &self,
-        invalid_state_transition_proof: &InvalidStateTransitionProof,
-    ) -> Result<(), VerificationError> {
-        self.verify(invalid_state_transition_proof)
     }
 }
