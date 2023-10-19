@@ -42,8 +42,6 @@
 pub(crate) mod compact_block;
 
 use crate::types::RelayError;
-use crate::utils::NetworkPeerHandle;
-use async_trait::async_trait;
 use codec::{Decode, Encode};
 
 /// The resolved protocol unit related info
@@ -57,53 +55,6 @@ pub(crate) struct Resolved<ProtocolUnitId, ProtocolUnit> {
     /// If it was resolved locally, or if it had to be
     /// fetched from the server (local miss)
     pub(crate) locally_resolved: bool,
-}
-
-/// The client side of the relay protocol
-#[async_trait]
-pub(crate) trait ProtocolClient<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
-where
-    Self: Send + Sync,
-{
-    type Request: Send + Sync + Encode + Decode + 'static;
-    type Response: Send + Sync + Encode + Decode + 'static;
-
-    /// Builds the protocol portion of the initial request
-    fn build_initial_request(
-        &self,
-        backend: &dyn ClientBackend<ProtocolUnitId, ProtocolUnit>,
-    ) -> Self::Request;
-
-    /// Resolves the initial response to produce the protocol units.
-    async fn resolve_initial_response<Request>(
-        &self,
-        response: Self::Response,
-        network_peer_handle: &NetworkPeerHandle,
-        backend: &dyn ClientBackend<ProtocolUnitId, ProtocolUnit>,
-    ) -> Result<(DownloadUnitId, Vec<Resolved<ProtocolUnitId, ProtocolUnit>>), RelayError>
-    where
-        Request: From<Self::Request> + Encode + Send + Sync;
-}
-
-/// The server side of the relay protocol
-pub(crate) trait ProtocolServer<DownloadUnitId, ProtocolUnitId, ProtocolUnit> {
-    type Request: Encode + Decode;
-    type Response: Encode + Decode;
-
-    /// Builds the protocol response to the initial request
-    fn build_initial_response(
-        &self,
-        download_unit_id: &DownloadUnitId,
-        initial_request: Self::Request,
-        backend: &dyn ServerBackend<DownloadUnitId, ProtocolUnitId, ProtocolUnit>,
-    ) -> Result<Self::Response, RelayError>;
-
-    /// Handles the additional client messages during the reconcile phase
-    fn on_request(
-        &self,
-        request: Self::Request,
-        backend: &dyn ServerBackend<DownloadUnitId, ProtocolUnitId, ProtocolUnit>,
-    ) -> Result<Self::Response, RelayError>;
 }
 
 /// The relay user specific backend for the client side
