@@ -1,12 +1,13 @@
-use criterion::{black_box, criterion_group, criterion_main, Criterion, Throughput};
+use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion, Throughput};
 use futures::executor::block_on;
+use futures::{FutureExt, StreamExt};
+use parking_lot::Mutex;
 use rand::prelude::*;
 use schnorrkel::Keypair;
 use std::fs::OpenOptions;
 use std::io::Write;
 use std::num::{NonZeroU64, NonZeroUsize};
-use std::time::Instant;
-use std::{env, fs};
+use std::{env, fs, slice};
 use subspace_archiving::archiver::Archiver;
 use subspace_core_primitives::crypto::kzg;
 use subspace_core_primitives::crypto::kzg::Kzg;
@@ -15,15 +16,16 @@ use subspace_core_primitives::{
     SolutionRange,
 };
 use subspace_erasure_coding::ErasureCoding;
-use subspace_farmer_components::auditing::audit_sector;
+use subspace_farmer_components::auditing::audit_plot_sync;
 use subspace_farmer_components::file_ext::{FileExt, OpenOptionsExt};
 use subspace_farmer_components::plotting::{
     plot_sector, PieceGetterRetryPolicy, PlotSectorOptions, PlottedSector,
 };
+use subspace_farmer_components::proving::ProvableSolutions;
 use subspace_farmer_components::sector::{
     sector_size, SectorContentsMap, SectorMetadata, SectorMetadataChecksummed,
 };
-use subspace_farmer_components::{FarmerProtocolInfo, ReadAt};
+use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::chia::ChiaTable;
 use subspace_proof_of_space::{Table, TableGenerator};
 
@@ -47,14 +49,14 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         .unwrap_or(10);
 
     let keypair = Keypair::from_bytes(&[0; 96]).unwrap();
-    let public_key = PublicKey::from(keypair.public.to_bytes());
+    let public_key = &PublicKey::from(keypair.public.to_bytes());
     let sector_index = 0;
     let mut input = RecordedHistorySegment::new_boxed();
     let mut rng = StdRng::seed_from_u64(42);
     rng.fill(AsMut::<[u8]>::as_mut(input.as_mut()));
-    let kzg = Kzg::new(kzg::embedded_kzg_settings());
+    let kzg = &Kzg::new(kzg::embedded_kzg_settings());
     let mut archiver = Archiver::new(kzg.clone()).unwrap();
-    let erasure_coding = ErasureCoding::new(
+    let erasure_coding = &ErasureCoding::new(
         NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
             .expect("Not zero; qed"),
     )
@@ -82,7 +84,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         min_sector_lifetime: HistorySize::from(NonZeroU64::new(4).unwrap()),
     };
     let solution_range = SolutionRange::MAX;
-    let reward_address = PublicKey::default();
+    let reward_address = &PublicKey::default();
 
     let sector_size = sector_size(pieces_in_sector);
 
@@ -123,13 +125,13 @@ pub fn criterion_benchmark(c: &mut Criterion) {
         let mut plotted_sector_metadata_bytes = Vec::new();
 
         let plotted_sector = block_on(plot_sector::<PosTable, _>(PlotSectorOptions {
-            public_key: &public_key,
+            public_key,
             sector_index,
             piece_getter: &archived_history_segment,
             piece_getter_retry_policy: PieceGetterRetryPolicy::default(),
             farmer_protocol_info: &farmer_protocol_info,
-            kzg: &kzg,
-            erasure_coding: &erasure_coding,
+            kzg,
+            erasure_coding,
             pieces_in_sector,
             sector_output: &mut plotted_sector_bytes,
             sector_metadata_output: &mut plotted_sector_metadata_bytes,
@@ -153,66 +155,62 @@ pub fn criterion_benchmark(c: &mut Criterion) {
     }
 
     println!("Searching for solutions");
-    let global_challenge = loop {
+    let (global_challenge, solution_candidates) = &loop {
         let mut global_challenge = Blake3Hash::default();
         rng.fill_bytes(&mut global_challenge);
 
-        let maybe_audit_result = audit_sector(
-            &public_key,
-            sector_index,
+        let audit_results = audit_plot_sync(
+            public_key,
             &global_challenge,
             solution_range,
             &plotted_sector_bytes,
-            &plotted_sector.sector_metadata,
+            slice::from_ref(&plotted_sector.sector_metadata),
+            None,
         );
 
-        let solution_candidates = match maybe_audit_result {
+        let solution_candidates = match audit_results.into_iter().next() {
             Some(audit_result) => audit_result.solution_candidates,
             None => {
                 continue;
             }
         };
 
-        let num_actual_solutions = solution_candidates
+        if !solution_candidates
             .clone()
-            .into_solutions(&reward_address, &kzg, &erasure_coding, |seed: &PosSeed| {
+            .into_solutions(reward_address, kzg, erasure_coding, |seed: &PosSeed| {
                 table_generator.generate_parallel(seed)
             })
+            .now_or_never()
             .unwrap()
-            .len();
-
-        if num_actual_solutions > 0 {
-            break global_challenge;
+            .unwrap()
+            .is_empty()
+        {
+            break (global_challenge, solution_candidates);
         }
     };
 
+    let table_generator = &Mutex::new(table_generator);
+
     let mut group = c.benchmark_group("proving");
     {
-        let solution_candidates = audit_sector(
-            &public_key,
-            sector_index,
-            &global_challenge,
-            solution_range,
-            &plotted_sector_bytes,
-            &plotted_sector.sector_metadata,
-        )
-        .unwrap()
-        .solution_candidates;
-
         group.throughput(Throughput::Elements(1));
         group.bench_function("memory", |b| {
             b.iter(|| {
                 solution_candidates
                     .clone()
                     .into_solutions(
-                        black_box(&reward_address),
-                        black_box(&kzg),
-                        black_box(&erasure_coding),
-                        black_box(|seed: &PosSeed| table_generator.generate_parallel(seed)),
+                        black_box(reward_address),
+                        black_box(kzg),
+                        black_box(erasure_coding),
+                        black_box(|seed: &PosSeed| table_generator.lock().generate_parallel(seed)),
                     )
+                    .now_or_never()
+                    .unwrap()
                     .unwrap()
                     // Process just one solution
                     .next()
+                    .now_or_never()
+                    .unwrap()
                     .unwrap()
                     .unwrap();
             })
@@ -243,49 +241,56 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                 .unwrap();
         }
 
-        let sectors = (0..sectors_count as usize)
-            .map(|sector_offset| plot_file.offset(sector_offset * sector_size))
+        let sectors_metadata = (0..sectors_count)
+            .map(|_| plotted_sector.sector_metadata.clone())
             .collect::<Vec<_>>();
 
-        let solution_candidates = sectors
-            .iter()
-            .map(|sector| {
-                audit_sector(
-                    &public_key,
-                    sector_index,
-                    &global_challenge,
-                    solution_range,
-                    sector,
-                    &plotted_sector.sector_metadata,
-                )
-                .unwrap()
-                .solution_candidates
-            })
-            .collect::<Vec<_>>();
+        {
+            let plot_file = &plot_file;
 
-        group.throughput(Throughput::Elements(sectors_count));
-        group.bench_function("disk", |b| {
-            b.iter_custom(|iters| {
-                let start = Instant::now();
-                for _i in 0..iters {
-                    for solution_candidates in solution_candidates.clone() {
-                        solution_candidates
-                            .into_solutions(
-                                black_box(&reward_address),
-                                black_box(&kzg),
-                                black_box(&erasure_coding),
-                                black_box(|seed: &PosSeed| table_generator.generate_parallel(seed)),
-                            )
-                            .unwrap()
-                            // Process just one solution
-                            .next()
-                            .unwrap()
-                            .unwrap();
-                    }
-                }
-                start.elapsed()
+            let audit_results = audit_plot_sync(
+                public_key,
+                global_challenge,
+                solution_range,
+                &plot_file,
+                &sectors_metadata,
+                None,
+            );
+            let solution_candidates = audit_results
+                .into_iter()
+                .map(|audit_result| audit_result.solution_candidates)
+                .collect::<Vec<_>>();
+
+            group.throughput(Throughput::Elements(sectors_count));
+            group.bench_function("disk", |b| {
+                b.iter_batched(
+                    || solution_candidates.clone(),
+                    |solution_candidates| {
+                        for solution_candidates in solution_candidates {
+                            solution_candidates
+                                .into_solutions(
+                                    black_box(reward_address),
+                                    black_box(kzg),
+                                    black_box(erasure_coding),
+                                    black_box(|seed: &PosSeed| {
+                                        table_generator.lock().generate_parallel(seed)
+                                    }),
+                                )
+                                .now_or_never()
+                                .unwrap()
+                                .unwrap()
+                                // Process just one solution
+                                .next()
+                                .now_or_never()
+                                .unwrap()
+                                .unwrap()
+                                .unwrap();
+                        }
+                    },
+                    BatchSize::LargeInput,
+                );
             });
-        });
+        }
 
         drop(plot_file);
         fs::remove_file(plot_file_path).unwrap();

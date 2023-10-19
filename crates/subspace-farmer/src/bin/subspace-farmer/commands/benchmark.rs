@@ -1,38 +1,21 @@
 use crate::PosTable;
 use anyhow::anyhow;
 use clap::Subcommand;
-use criterion::async_executor::AsyncExecutor;
 use criterion::{black_box, BatchSize, Criterion, Throughput};
 #[cfg(windows)]
 use memmap2::Mmap;
 use parking_lot::Mutex;
 use std::fs::OpenOptions;
-use std::future::Future;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{Record, SolutionRange};
 use subspace_erasure_coding::ErasureCoding;
-use subspace_farmer::single_disk_farm::farming::{plot_audit, PlotAuditOptions};
+use subspace_farmer::single_disk_farm::farming::{audit_plot, PlotAuditOptions};
 use subspace_farmer::single_disk_farm::{SingleDiskFarm, SingleDiskFarmSummary};
 use subspace_farmer_components::sector::sector_size;
 use subspace_proof_of_space::Table;
 use subspace_rpc_primitives::SlotInfo;
-use tokio::runtime::Handle;
-
-struct TokioAsyncExecutor(Handle);
-
-impl AsyncExecutor for TokioAsyncExecutor {
-    fn block_on<T>(&self, future: impl Future<Output = T>) -> T {
-        tokio::task::block_in_place(|| self.0.block_on(future))
-    }
-}
-
-impl TokioAsyncExecutor {
-    fn new() -> Self {
-        Self(Handle::current())
-    }
-}
 
 /// Arguments for benchmark
 #[derive(Debug, Subcommand)]
@@ -103,13 +86,17 @@ async fn audit(disk_farm: PathBuf, sample_size: usize) -> anyhow::Result<()> {
             sector_size as u64 * sectors_metadata.len() as u64,
         ))
         .bench_function("plot", |b| {
-            b.to_async(TokioAsyncExecutor::new()).iter_batched(
+            #[cfg(not(windows))]
+            let plot = &plot_file;
+            #[cfg(windows)]
+            let plot = &&*plot_mmap;
+
+            b.iter_batched(
                 rand::random,
                 |global_challenge| {
-                    let options = PlotAuditOptions::<PosTable> {
+                    let options = PlotAuditOptions::<PosTable, _> {
                         public_key: single_disk_farm_info.public_key(),
                         reward_address: single_disk_farm_info.public_key(),
-                        sector_size,
                         slot_info: SlotInfo {
                             slot_number: 0,
                             global_challenge,
@@ -121,15 +108,12 @@ async fn audit(disk_farm: PathBuf, sample_size: usize) -> anyhow::Result<()> {
                         sectors_metadata: &sectors_metadata,
                         kzg: &kzg,
                         erasure_coding: &erasure_coding,
-                        #[cfg(not(windows))]
-                        plot_file: &plot_file,
-                        #[cfg(windows)]
-                        plot_mmap: &plot_mmap,
+                        plot,
                         maybe_sector_being_modified: None,
                         table_generator: &table_generator,
                     };
 
-                    black_box(plot_audit(black_box(options)))
+                    black_box(audit_plot(black_box(options)))
                 },
                 BatchSize::SmallInput,
             )

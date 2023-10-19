@@ -197,7 +197,6 @@ fn valid_header(
 
         let maybe_solution_candidates = audit_sector(
             &public_key,
-            sector_index,
             &global_challenge,
             SolutionRange::MAX,
             &plotted_sector_bytes,

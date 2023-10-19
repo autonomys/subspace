@@ -24,6 +24,7 @@ use crate::{
 use frame_support::parameter_types;
 use frame_support::traits::{ConstU128, ConstU16, ConstU32, ConstU64, OnInitialize};
 use futures::executor::block_on;
+use futures::{FutureExt, StreamExt};
 use rand::Rng;
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
@@ -54,7 +55,7 @@ use subspace_core_primitives::{
     Solution, SolutionRange, REWARD_SIGNING_CONTEXT,
 };
 use subspace_erasure_coding::ErasureCoding;
-use subspace_farmer_components::auditing::audit_sector;
+use subspace_farmer_components::auditing::audit_sector_sync;
 use subspace_farmer_components::plotting::{
     plot_sector, PieceGetterRetryPolicy, PlotSectorOptions,
 };
@@ -478,9 +479,8 @@ pub fn create_signed_vote(
             .derive_global_randomness()
             .derive_global_challenge(slot.into());
 
-        let maybe_audit_result = audit_sector(
+        let maybe_audit_result = audit_sector_sync(
             &public_key,
-            sector_index,
             &global_challenge,
             vote_solution_range,
             &plotted_sector_bytes,
@@ -497,8 +497,12 @@ pub fn create_signed_vote(
             .into_solutions(&reward_address, kzg, erasure_coding, |seed: &PosSeed| {
                 table_generator.generate_parallel(seed)
             })
+            .now_or_never()
+            .unwrap()
             .unwrap()
             .next()
+            .now_or_never()
+            .unwrap()
             .unwrap()
             .unwrap();
 
