@@ -66,7 +66,7 @@ where
         s_bucket_audit_index,
         s_bucket_audit_size,
         s_bucket_audit_offset_in_sector,
-    } = collect_sector_auditing_details(public_key, global_challenge, sector_metadata);
+    } = collect_sector_auditing_details(public_key.hash(), global_challenge, sector_metadata);
 
     let mut s_bucket = vec![0; s_bucket_audit_size];
     let read_s_bucket_result = sector.read_at(&mut s_bucket, s_bucket_audit_offset_in_sector);
@@ -114,12 +114,14 @@ pub fn audit_plot_sync<'a, Plot>(
 where
     Plot: ReadAtSync + 'a,
 {
+    let public_key_hash = public_key.hash();
+
     // Create auditing info for all sectors in parallel
     sectors_metadata
         .par_iter()
         .map(|sector_metadata| {
             (
-                collect_sector_auditing_details(public_key, global_challenge, sector_metadata),
+                collect_sector_auditing_details(public_key_hash, global_challenge, sector_metadata),
                 sector_metadata,
             )
         })
@@ -192,12 +194,14 @@ pub async fn audit_plot_async<'a, Plot>(
 where
     Plot: ReadAtAsync + 'a,
 {
+    let public_key_hash = public_key.hash();
+
     // Create auditing info for all sectors in parallel and allocate s-buckets
     let mut audit_preparation = sectors_metadata
         .par_iter()
         .map(|sector_metadata| {
             (
-                collect_sector_auditing_details(public_key, global_challenge, sector_metadata),
+                collect_sector_auditing_details(public_key_hash, global_challenge, sector_metadata),
                 sector_metadata,
             )
         })
@@ -318,11 +322,11 @@ struct SectorAuditingDetails {
 }
 
 fn collect_sector_auditing_details(
-    public_key: &PublicKey,
+    public_key_hash: Blake3Hash,
     global_challenge: &Blake3Hash,
     sector_metadata: &SectorMetadataChecksummed,
 ) -> SectorAuditingDetails {
-    let sector_id = SectorId::new(public_key.hash(), sector_metadata.sector_index);
+    let sector_id = SectorId::new(public_key_hash, sector_metadata.sector_index);
 
     let sector_slot_challenge = sector_id.derive_sector_slot_challenge(global_challenge);
     let s_bucket_audit_index = sector_slot_challenge.s_bucket_audit_index();
