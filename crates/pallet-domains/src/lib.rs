@@ -192,7 +192,6 @@ mod pallet {
             + AsRef<[u8]>
             + AsMut<[u8]>
             + MaxEncodedLen
-            + Into<Self::Hash>
             + Into<H256>
             + From<H256>;
 
@@ -1538,7 +1537,7 @@ impl<T: Config> Pallet<T> {
                     DomainBlockNumberFor<T>,
                     T::DomainHash,
                     BalanceOf<T>,
-                    T::Hashing,
+                    DomainHashingFor<T>,
                 >(bad_receipt, storage_proof)
                 .map_err(|err| {
                     log::error!(

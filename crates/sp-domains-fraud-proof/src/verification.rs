@@ -235,7 +235,7 @@ pub fn verify_invalid_total_rewards_fraud_proof<
     DomainNumber,
     DomainHash,
     Balance,
-    Hashing,
+    DomainHashing,
 >(
     bad_receipt: ExecutionReceipt<
         NumberFor<CBlock>,
@@ -249,15 +249,13 @@ pub fn verify_invalid_total_rewards_fraud_proof<
 where
     CBlock: Block,
     Balance: PartialEq + Decode,
-    Hashing: Hasher<Out = CBlock::Hash>,
-    DomainHash: Into<CBlock::Hash>,
+    DomainHashing: Hasher<Out = DomainHash>,
 {
-    let state_root = bad_receipt.final_state_root.into();
     let storage_key = StorageKey(crate::fraud_proof::operator_block_rewards_final_key());
     let storage_proof = storage_proof.clone();
 
-    let total_rewards = StorageProofVerifier::<Hashing>::get_decoded_value::<Balance>(
-        &state_root,
+    let total_rewards = StorageProofVerifier::<DomainHashing>::get_decoded_value::<Balance>(
+        &bad_receipt.final_state_root,
         storage_proof,
         storage_key,
     )
