@@ -6,13 +6,12 @@ use codec::{Decode, Encode};
 use hash_db::Hasher;
 use sp_core::storage::StorageKey;
 use sp_core::H256;
+use sp_domains::extrinsics::{deduplicate_and_shuffle_extrinsics, extrinsics_shuffling_seed};
 use sp_domains::fraud_proof::{
     ExtrinsicDigest, InvalidExtrinsicsRootProof, InvalidStateTransitionProof, VerificationError,
 };
 use sp_domains::valued_trie_root::valued_ordered_trie_root;
-use sp_domains::verification::{
-    deduplicate_and_shuffle_extrinsics, extrinsics_shuffling_seed, StorageProofVerifier,
-};
+use sp_domains::verification::StorageProofVerifier;
 use sp_domains::ExecutionReceipt;
 use sp_runtime::generic::Digest;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash, Header as HeaderT, NumberFor};
