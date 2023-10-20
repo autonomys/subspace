@@ -1,4 +1,5 @@
-use crate::{valued_trie_root, DomainId, ExecutionReceipt, ReceiptHash, SealedBundleHeader};
+use crate::verification::StorageProofVerifier;
+use crate::{DomainId, ExecutionReceipt, ReceiptHash, SealedBundleHeader};
 use hash_db::Hasher;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
@@ -10,7 +11,7 @@ use sp_runtime::traits::{
 };
 use sp_runtime::{Digest, DigestItem};
 use sp_std::vec::Vec;
-use sp_trie::{LayoutV1, StorageProof};
+use sp_trie::StorageProof;
 use subspace_runtime_primitives::{AccountId, Balance};
 use trie_db::TrieLayout;
 
@@ -30,7 +31,7 @@ pub enum ExecutionPhase {
     InitializeBlock,
     /// Executes some extrinsic.
     ApplyExtrinsic {
-        proof_of_inclusion: Vec<Vec<u8>>,
+        proof_of_inclusion: StorageProof,
         mismatch_index: u32,
         extrinsic: Vec<u8>,
     },
@@ -155,11 +156,15 @@ impl ExecutionPhase {
                 mismatch_index,
                 extrinsic,
             } => {
-                if !valued_trie_root::verify_proof::<LayoutV1<DomainHeader::Hashing>>(
-                    proof_of_inclusion,
+                let storage_key =
+                    StorageProofVerifier::<DomainHeader::Hashing>::enumerated_storage_key(
+                        *mismatch_index,
+                    );
+                if !StorageProofVerifier::<DomainHeader::Hashing>::verify_storage_proof(
+                    proof_of_inclusion.clone(),
                     &bad_receipt.domain_block_extrinsic_root.into(),
                     extrinsic.clone(),
-                    *mismatch_index,
+                    storage_key,
                 ) {
                     return Err(VerificationError::InvalidApplyExtrinsicCallData);
                 }

@@ -81,7 +81,7 @@ async fn main() -> anyhow::Result<()> {
             commands::farm::farm::<PosTable>(farming_args).await?;
         }
         Command::Benchmark(benchmark_args) => {
-            commands::benchmark::benchmark(benchmark_args).await?;
+            commands::benchmark::benchmark(benchmark_args)?;
         }
         Command::Info { disk_farms } => {
             if disk_farms.is_empty() {

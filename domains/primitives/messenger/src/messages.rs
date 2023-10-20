@@ -295,7 +295,7 @@ impl<BlockNumber, BlockHash, StateRoot> CrossDomainMessage<BlockNumber, BlockHas
                 );
 
                 let domain_state_root =
-                    match StorageProofVerifier::<Hashing>::verify_and_get_value::<StateRoot>(
+                    match StorageProofVerifier::<Hashing>::get_decoded_value::<StateRoot>(
                         &consensus_chain_state_root.into(),
                         domain_state_root_proof,
                         domain_state_root_key,

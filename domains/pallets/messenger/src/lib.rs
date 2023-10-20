@@ -865,17 +865,20 @@ mod pallet {
                 .unwrap_or(extracted_state_roots.consensus_chain_state_root);
 
             // verify and decode the message
-            let msg = StorageProofVerifier::<T::Hashing>::verify_and_get_value::<
-                Message<BalanceOf<T>>,
-            >(&state_root, xdm.proof.message_proof.clone(), storage_key)
-            .map_err(|err| {
-                log::error!(
-                    target: "runtime::messenger",
-                    "Failed to verify storage proof: {:?}",
-                    err
-                );
-                TransactionValidityError::Invalid(InvalidTransaction::BadProof)
-            })?;
+            let msg =
+                StorageProofVerifier::<T::Hashing>::get_decoded_value::<Message<BalanceOf<T>>>(
+                    &state_root,
+                    xdm.proof.message_proof.clone(),
+                    storage_key,
+                )
+                .map_err(|err| {
+                    log::error!(
+                        target: "runtime::messenger",
+                        "Failed to verify storage proof: {:?}",
+                        err
+                    );
+                    TransactionValidityError::Invalid(InvalidTransaction::BadProof)
+                })?;
 
             Ok(msg)
         }

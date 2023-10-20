@@ -16,6 +16,7 @@ use sp_domains::fraud_proof::{
     InvalidTotalRewardsProof, MissingInvalidBundleEntryFraudProof,
     ValidAsInvalidBundleEntryFraudProof, ValidBundleDigest,
 };
+use sp_domains::valued_trie_root::StorageProofProvider;
 use sp_domains::{DomainId, DomainsApi};
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashingFor, Header as HeaderT, NumberFor};
 use sp_runtime::{Digest, DigestItem};
@@ -388,10 +389,11 @@ where
         )?;
 
         let execution_phase = {
-            let proof_of_inclusion = sp_domains::valued_trie_root::generate_proof::<
-                LayoutV1<BlakeTwo256>,
-            >(
-                encoded_extrinsics.as_slice(), extrinsic_index as u32
+            let proof_of_inclusion = StorageProofProvider::<
+                LayoutV1<<Block::Header as HeaderT>::Hashing>,
+            >::generate_enumerated_proof_of_inclusion(
+                encoded_extrinsics.as_slice(),
+                extrinsic_index as u32,
             )
             .ok_or(FraudProofError::FailToGenerateProofOfInclusion)?;
             ExecutionPhase::ApplyExtrinsic {
