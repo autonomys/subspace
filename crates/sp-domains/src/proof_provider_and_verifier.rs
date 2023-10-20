@@ -1,14 +1,16 @@
-use crate::ExecutionReceipt;
 use frame_support::PalletError;
 use hash_db::Hasher;
-use parity_scale_codec::{Compact, Decode, Encode};
+use parity_scale_codec::{Codec, Compact, Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::storage::StorageKey;
-use sp_runtime::traits::{Block, NumberFor};
+#[cfg(feature = "std")]
+use sp_state_machine::prove_read;
+use sp_state_machine::TrieBackendBuilder;
 use sp_std::fmt::Debug;
 use sp_std::marker::PhantomData;
 use sp_std::vec::Vec;
 use sp_trie::{read_trie_value, LayoutV1, StorageProof};
+use trie_db::{DBValue, TrieDBMutBuilder, TrieLayout, TrieMut};
 
 /// Verification error.
 #[derive(Debug, PartialEq, Eq, Encode, Decode, PalletError, TypeInfo)]
@@ -76,45 +78,53 @@ impl<H: Hasher> StorageProofVerifier<H> {
     }
 }
 
-pub fn verify_invalid_total_rewards_fraud_proof<
-    CBlock,
-    DomainNumber,
-    DomainHash,
-    Balance,
-    Hashing,
->(
-    bad_receipt: ExecutionReceipt<
-        NumberFor<CBlock>,
-        CBlock::Hash,
-        DomainNumber,
-        DomainHash,
-        Balance,
-    >,
-    storage_proof: &StorageProof,
-) -> Result<(), VerificationError>
+type MemoryDB<T> = memory_db::MemoryDB<
+    <T as TrieLayout>::Hash,
+    memory_db::HashKey<<T as TrieLayout>::Hash>,
+    DBValue,
+>;
+
+/// Type that provides utilities to generate the storage proof.
+#[cfg(feature = "std")]
+pub struct StorageProofProvider<Layout>(PhantomData<Layout>);
+
+#[cfg(feature = "std")]
+impl<Layout> StorageProofProvider<Layout>
 where
-    CBlock: Block,
-    Balance: PartialEq + Decode,
-    Hashing: Hasher<Out = CBlock::Hash>,
-    DomainHash: Encode,
+    Layout: TrieLayout,
+    <Layout::Hash as Hasher>::Out: Codec,
 {
-    let state_root = bad_receipt.final_state_root.encode();
-    let state_root = CBlock::Hash::decode(&mut state_root.as_slice())
-        .map_err(|_| VerificationError::FailedToDecode)?;
-    let storage_key = StorageKey(crate::fraud_proof::operator_block_rewards_final_key());
-    let storage_proof = storage_proof.clone();
+    /// Generate storage proof for given index from the trie constructed from `input`.
+    ///
+    /// Returns `None` if the given `index` out of range or fail to generate the proof.
+    pub fn generate_enumerated_proof_of_inclusion(
+        input: &[Vec<u8>],
+        index: u32,
+    ) -> Option<StorageProof> {
+        if input.len() <= index as usize {
+            return None;
+        }
 
-    let total_rewards = StorageProofVerifier::<Hashing>::get_decoded_value::<Balance>(
-        &state_root,
-        storage_proof,
-        storage_key,
-    )
-    .map_err(|_| VerificationError::InvalidProof)?;
+        let input: Vec<_> = input
+            .iter()
+            .enumerate()
+            .map(|(i, v)| (Compact(i as u32).encode(), v))
+            .collect();
 
-    // if the rewards matches, then this is an invalid fraud proof since rewards must be different.
-    if bad_receipt.total_rewards == total_rewards {
-        return Err(VerificationError::InvalidProof);
+        let (db, root) = {
+            let mut db = <MemoryDB<Layout>>::default();
+            let mut root = Default::default();
+            {
+                let mut trie = <TrieDBMutBuilder<Layout>>::new(&mut db, &mut root).build();
+                for (key, value) in input {
+                    trie.insert(&key, value).ok()?;
+                }
+            }
+            (db, root)
+        };
+
+        let backend = TrieBackendBuilder::new(db, root).build();
+        let key = Compact(index).encode();
+        prove_read(backend, &[key]).ok()
     }
-
-    Ok(())
 }

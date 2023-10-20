@@ -13,7 +13,7 @@ use frame_support::{assert_err, assert_ok};
 use pallet_transporter::Location;
 use sp_core::storage::StorageKey;
 use sp_core::{Blake2Hasher, H256};
-use sp_domains::verification::{StorageProofVerifier, VerificationError};
+use sp_domains::proof_provider_and_verifier::{StorageProofVerifier, VerificationError};
 use sp_messenger::endpoint::{Endpoint, EndpointPayload, EndpointRequest, Sender};
 use sp_messenger::messages::{
     BlockInfo, ChainId, CrossDomainMessage, InitiateChannelParams, Payload, Proof,

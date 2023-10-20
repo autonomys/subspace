@@ -1,4 +1,4 @@
-use crate::verification::StorageProofVerifier;
+use crate::proof_provider_and_verifier::StorageProofVerifier;
 use crate::{DomainId, ExecutionReceipt, ReceiptHash, SealedBundleHeader};
 use hash_db::Hasher;
 use parity_scale_codec::{Decode, Encode};

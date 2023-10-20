@@ -9,8 +9,8 @@ use subspace_runtime_primitives::Balance;
 /// Custom invalid validity code for the extrinsics in pallet-domains.
 #[repr(u8)]
 pub enum InvalidTransactionCode {
-    BundleEquivicationProof = 101,
-    TrasactionProof = 102,
+    BundleEquivocationProof = 101,
+    TransactionProof = 102,
     ExecutionReceipt = 103,
     Bundle = 104,
     FraudProof = 105,

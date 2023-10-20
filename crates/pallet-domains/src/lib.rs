@@ -47,7 +47,6 @@ use scale_info::TypeInfo;
 use sp_core::H256;
 use sp_domains::bundle_producer_election::{is_below_threshold, BundleProducerElectionParams};
 use sp_domains::fraud_proof::{FraudProof, InvalidDomainBlockHashProof, InvalidTotalRewardsProof};
-use sp_domains::verification::verify_invalid_total_rewards_fraud_proof;
 use sp_domains::{
     DomainBlockLimit, DomainId, DomainInstanceData, ExecutionReceipt, OpaqueBundle, OperatorId,
     OperatorPublicKey, ProofOfElection, ReceiptHash, RuntimeId,
@@ -57,6 +56,7 @@ use sp_domains_fraud_proof::fraud_proof_runtime_interface::get_fraud_proof_verif
 use sp_domains_fraud_proof::verification::{
     verify_invalid_domain_block_hash_fraud_proof,
     verify_invalid_domain_extrinsics_root_fraud_proof, verify_invalid_state_transition_fraud_proof,
+    verify_invalid_total_rewards_fraud_proof,
 };
 use sp_domains_fraud_proof::FraudProofVerificationInfoRequest;
 use sp_runtime::traits::{BlakeTwo256, CheckedSub, Hash, Header, One, Zero};
@@ -605,11 +605,13 @@ mod pallet {
         /// The descendants of the fraudulent ER is not pruned
         DescendantsOfFraudulentERNotPruned,
         /// Invalid fraud proof since total rewards are not mismatched.
-        InvalidTotalRewardsFraudProof(sp_domains::verification::VerificationError),
+        InvalidTotalRewardsFraudProof(sp_domains::proof_provider_and_verifier::VerificationError),
         /// Invalid domain block hash fraud proof.
-        InvalidDomainBlockHashFraudProof(sp_domains::verification::VerificationError),
+        InvalidDomainBlockHashFraudProof(
+            sp_domains::proof_provider_and_verifier::VerificationError,
+        ),
         /// Invalid domain extrinsic fraud proof
-        InvalidExtrinsicRootFraudProof(sp_domains::verification::VerificationError),
+        InvalidExtrinsicRootFraudProof(sp_domains::proof_provider_and_verifier::VerificationError),
         /// Invalid state transition fraud proof
         InvalidStateTransitionFraudProof,
         /// Failed to get block randomness.

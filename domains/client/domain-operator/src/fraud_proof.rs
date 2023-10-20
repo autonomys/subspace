@@ -16,7 +16,7 @@ use sp_domains::fraud_proof::{
     InvalidTotalRewardsProof, MissingInvalidBundleEntryFraudProof,
     ValidAsInvalidBundleEntryFraudProof, ValidBundleDigest,
 };
-use sp_domains::valued_trie_root::StorageProofProvider;
+use sp_domains::proof_provider_and_verifier::StorageProofProvider;
 use sp_domains::{DomainId, DomainsApi};
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashingFor, Header as HeaderT, NumberFor};
 use sp_runtime::{Digest, DigestItem};

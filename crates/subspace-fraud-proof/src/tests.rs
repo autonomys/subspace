@@ -19,7 +19,7 @@ use sp_domain_digests::AsPredigest;
 use sp_domains::fraud_proof::{
     ExecutionPhase, FraudProof, InvalidStateTransitionProof, VerificationError,
 };
-use sp_domains::valued_trie_root::StorageProofProvider;
+use sp_domains::proof_provider_and_verifier::StorageProofProvider;
 use sp_domains::{DomainId, DomainsApi};
 use sp_runtime::generic::{Digest, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};

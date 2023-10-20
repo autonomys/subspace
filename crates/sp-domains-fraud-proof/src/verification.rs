@@ -10,16 +10,17 @@ use sp_domains::extrinsics::{deduplicate_and_shuffle_extrinsics, extrinsics_shuf
 use sp_domains::fraud_proof::{
     ExtrinsicDigest, InvalidExtrinsicsRootProof, InvalidStateTransitionProof, VerificationError,
 };
-use sp_domains::valued_trie_root::valued_ordered_trie_root;
-use sp_domains::verification::StorageProofVerifier;
+use sp_domains::proof_provider_and_verifier::StorageProofVerifier;
+use sp_domains::valued_trie::valued_ordered_trie_root;
 use sp_domains::ExecutionReceipt;
 use sp_runtime::generic::Digest;
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash, Header as HeaderT, NumberFor};
+use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Block, Hash, Header as HeaderT, NumberFor};
 use sp_std::vec::Vec;
 use sp_trie::{LayoutV1, StorageProof};
 use subspace_core_primitives::Randomness;
 use trie_db::node::Value;
 
+/// Verifies invalid domain extrinsic root fraud proof.
 pub fn verify_invalid_domain_extrinsics_root_fraud_proof<
     CBlock,
     DomainNumber,
@@ -39,7 +40,7 @@ pub fn verify_invalid_domain_extrinsics_root_fraud_proof<
     block_randomness: Randomness,
     domain_timestamp_extrinsic: Vec<u8>,
     maybe_domain_set_code_extrinsic: Option<Vec<u8>>,
-) -> Result<(), sp_domains::verification::VerificationError>
+) -> Result<(), sp_domains::proof_provider_and_verifier::VerificationError>
 where
     CBlock: BlockT,
     Hashing: Hasher<Out = CBlock::Hash>,
@@ -59,7 +60,9 @@ where
     {
         let bundle_digest_hash = BlakeTwo256::hash_of(&bundle_digest.bundle_digest);
         if bundle_digest_hash != bad_receipt_valid_bundle_digest {
-            return Err(sp_domains::verification::VerificationError::InvalidBundleDigest);
+            return Err(
+                sp_domains::proof_provider_and_verifier::VerificationError::InvalidBundleDigest,
+            );
         }
 
         bundle_extrinsics_digests.extend(bundle_digest.bundle_digest.clone());
@@ -94,12 +97,13 @@ where
     let extrinsics_root =
         valued_ordered_trie_root::<LayoutV1<BlakeTwo256>>(ordered_trie_node_values);
     if bad_receipt.domain_block_extrinsic_root == extrinsics_root {
-        return Err(sp_domains::verification::VerificationError::InvalidProof);
+        return Err(sp_domains::proof_provider_and_verifier::VerificationError::InvalidProof);
     }
 
     Ok(())
 }
 
+/// Verifies invalid state transition fraud proof.
 pub fn verify_invalid_state_transition_fraud_proof<CBlock, DomainHeader, Balance>(
     bad_receipt: ExecutionReceipt<
         NumberFor<CBlock>,
@@ -163,6 +167,7 @@ where
     }
 }
 
+/// Verifies invalid domain block hash fraud proof.
 pub fn verify_invalid_domain_block_hash_fraud_proof<CBlock, Balance, DomainHeader>(
     bad_receipt: ExecutionReceipt<
         NumberFor<CBlock>,
@@ -173,7 +178,7 @@ pub fn verify_invalid_domain_block_hash_fraud_proof<CBlock, Balance, DomainHeade
     >,
     digest_storage_proof: StorageProof,
     parent_domain_block_hash: DomainHeader::Hash,
-) -> Result<(), sp_domains::verification::VerificationError>
+) -> Result<(), sp_domains::proof_provider_and_verifier::VerificationError>
 where
     CBlock: BlockT,
     Balance: PartialEq + Decode,
@@ -188,7 +193,7 @@ where
         digest_storage_proof,
         digest_storage_key,
     )
-    .map_err(|_| sp_domains::verification::VerificationError::InvalidProof)?;
+    .map_err(|_| sp_domains::proof_provider_and_verifier::VerificationError::InvalidProof)?;
 
     let derived_domain_block_hash = sp_domains::derive_domain_block_hash::<DomainHeader>(
         bad_receipt.domain_block_number,
@@ -199,7 +204,51 @@ where
     );
 
     if bad_receipt.domain_block_hash == derived_domain_block_hash {
-        return Err(sp_domains::verification::VerificationError::InvalidProof);
+        return Err(sp_domains::proof_provider_and_verifier::VerificationError::InvalidProof);
+    }
+
+    Ok(())
+}
+
+/// Verifies invalid total rewards fraud proof.
+pub fn verify_invalid_total_rewards_fraud_proof<
+    CBlock,
+    DomainNumber,
+    DomainHash,
+    Balance,
+    Hashing,
+>(
+    bad_receipt: ExecutionReceipt<
+        NumberFor<CBlock>,
+        CBlock::Hash,
+        DomainNumber,
+        DomainHash,
+        Balance,
+    >,
+    storage_proof: &StorageProof,
+) -> Result<(), sp_domains::proof_provider_and_verifier::VerificationError>
+where
+    CBlock: Block,
+    Balance: PartialEq + Decode,
+    Hashing: Hasher<Out = CBlock::Hash>,
+    DomainHash: Encode,
+{
+    let state_root = bad_receipt.final_state_root.encode();
+    let state_root = CBlock::Hash::decode(&mut state_root.as_slice())
+        .map_err(|_| sp_domains::proof_provider_and_verifier::VerificationError::FailedToDecode)?;
+    let storage_key = StorageKey(sp_domains::fraud_proof::operator_block_rewards_final_key());
+    let storage_proof = storage_proof.clone();
+
+    let total_rewards = StorageProofVerifier::<Hashing>::get_decoded_value::<Balance>(
+        &state_root,
+        storage_proof,
+        storage_key,
+    )
+    .map_err(|_| sp_domains::proof_provider_and_verifier::VerificationError::InvalidProof)?;
+
+    // if the rewards matches, then this is an invalid fraud proof since rewards must be different.
+    if bad_receipt.total_rewards == total_rewards {
+        return Err(sp_domains::proof_provider_and_verifier::VerificationError::InvalidProof);
     }
 
     Ok(())
