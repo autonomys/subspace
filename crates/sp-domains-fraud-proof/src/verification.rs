@@ -1,6 +1,7 @@
 use crate::fraud_proof::{
     ExtrinsicDigest, InvalidExtrinsicsRootProof, InvalidStateTransitionProof, VerificationError,
 };
+use crate::fraud_proof_runtime_interface::get_fraud_proof_verification_info;
 use crate::{
     fraud_proof_runtime_interface, FraudProofVerificationInfoRequest,
     FraudProofVerificationInfoResponse,
@@ -37,10 +38,7 @@ pub fn verify_invalid_domain_extrinsics_root_fraud_proof<
         Balance,
     >,
     fraud_proof: &InvalidExtrinsicsRootProof,
-    block_randomness: Randomness,
-    domain_timestamp_extrinsic: Vec<u8>,
-    maybe_domain_set_code_extrinsic: Option<Vec<u8>>,
-) -> Result<(), sp_domains::proof_provider_and_verifier::VerificationError>
+) -> Result<(), VerificationError>
 where
     CBlock: BlockT,
     Hashing: Hasher<Out = CBlock::Hash>,
@@ -49,8 +47,31 @@ where
 {
     let InvalidExtrinsicsRootProof {
         valid_bundle_digests,
+        domain_id,
         ..
     } = fraud_proof;
+
+    let consensus_block_hash = bad_receipt.consensus_block_hash;
+    let block_randomness = get_fraud_proof_verification_info(
+        H256::from_slice(consensus_block_hash.as_ref()),
+        FraudProofVerificationInfoRequest::BlockRandomness,
+    )
+    .and_then(|resp| resp.into_block_randomness())
+    .ok_or(VerificationError::FailedToGetBlockRandomness)?;
+
+    let domain_timestamp_extrinsic = get_fraud_proof_verification_info(
+        H256::from_slice(consensus_block_hash.as_ref()),
+        FraudProofVerificationInfoRequest::DomainTimestampExtrinsic(*domain_id),
+    )
+    .and_then(|resp| resp.into_domain_timestamp_extrinsic())
+    .ok_or(VerificationError::FailedToDeriveDomainTimestampExtrinsic)?;
+
+    let maybe_domain_set_code_extrinsic = get_fraud_proof_verification_info(
+        H256::from_slice(consensus_block_hash.as_ref()),
+        FraudProofVerificationInfoRequest::DomainSetCodeExtrinsic(*domain_id),
+    )
+    .map(|resp| resp.into_domain_set_code_extrinsic())
+    .ok_or(VerificationError::FailedToDeriveDomainSetCodeExtrinsic)?;
 
     let mut bundle_extrinsics_digests = Vec::new();
     for (bad_receipt_valid_bundle_digest, bundle_digest) in bad_receipt
@@ -60,9 +81,7 @@ where
     {
         let bundle_digest_hash = BlakeTwo256::hash_of(&bundle_digest.bundle_digest);
         if bundle_digest_hash != bad_receipt_valid_bundle_digest {
-            return Err(
-                sp_domains::proof_provider_and_verifier::VerificationError::InvalidBundleDigest,
-            );
+            return Err(VerificationError::InvalidBundleDigest);
         }
 
         bundle_extrinsics_digests.extend(bundle_digest.bundle_digest.clone());
@@ -97,7 +116,7 @@ where
     let extrinsics_root =
         valued_ordered_trie_root::<LayoutV1<BlakeTwo256>>(ordered_trie_node_values);
     if bad_receipt.domain_block_extrinsic_root == extrinsics_root {
-        return Err(sp_domains::proof_provider_and_verifier::VerificationError::InvalidProof);
+        return Err(VerificationError::InvalidProof);
     }
 
     Ok(())
@@ -178,7 +197,7 @@ pub fn verify_invalid_domain_block_hash_fraud_proof<CBlock, Balance, DomainHeade
     >,
     digest_storage_proof: StorageProof,
     parent_domain_block_hash: DomainHeader::Hash,
-) -> Result<(), sp_domains::proof_provider_and_verifier::VerificationError>
+) -> Result<(), VerificationError>
 where
     CBlock: BlockT,
     Balance: PartialEq + Decode,
@@ -193,7 +212,7 @@ where
         digest_storage_proof,
         digest_storage_key,
     )
-    .map_err(|_| sp_domains::proof_provider_and_verifier::VerificationError::InvalidProof)?;
+    .map_err(|_| VerificationError::InvalidStorageProof)?;
 
     let derived_domain_block_hash = sp_domains::derive_domain_block_hash::<DomainHeader>(
         bad_receipt.domain_block_number,
@@ -204,7 +223,7 @@ where
     );
 
     if bad_receipt.domain_block_hash == derived_domain_block_hash {
-        return Err(sp_domains::proof_provider_and_verifier::VerificationError::InvalidProof);
+        return Err(VerificationError::InvalidProof);
     }
 
     Ok(())
@@ -226,16 +245,14 @@ pub fn verify_invalid_total_rewards_fraud_proof<
         Balance,
     >,
     storage_proof: &StorageProof,
-) -> Result<(), sp_domains::proof_provider_and_verifier::VerificationError>
+) -> Result<(), VerificationError>
 where
     CBlock: Block,
     Balance: PartialEq + Decode,
     Hashing: Hasher<Out = CBlock::Hash>,
-    DomainHash: Encode,
+    DomainHash: Into<CBlock::Hash>,
 {
-    let state_root = bad_receipt.final_state_root.encode();
-    let state_root = CBlock::Hash::decode(&mut state_root.as_slice())
-        .map_err(|_| sp_domains::proof_provider_and_verifier::VerificationError::FailedToDecode)?;
+    let state_root = bad_receipt.final_state_root.into();
     let storage_key = StorageKey(crate::fraud_proof::operator_block_rewards_final_key());
     let storage_proof = storage_proof.clone();
 
@@ -244,11 +261,11 @@ where
         storage_proof,
         storage_key,
     )
-    .map_err(|_| sp_domains::proof_provider_and_verifier::VerificationError::InvalidProof)?;
+    .map_err(|_| VerificationError::InvalidStorageProof)?;
 
     // if the rewards matches, then this is an invalid fraud proof since rewards must be different.
     if bad_receipt.total_rewards == total_rewards {
-        return Err(sp_domains::proof_provider_and_verifier::VerificationError::InvalidProof);
+        return Err(VerificationError::InvalidProof);
     }
 
     Ok(())

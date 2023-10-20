@@ -175,8 +175,6 @@ impl ExecutionPhase {
     }
 }
 
-// TODO: refactor the fraud proof verification error to merge this `VerificationError` and
-// `crate::verification::VerificationError` into one
 /// Error type of fraud proof verification on consensus node.
 #[derive(Debug)]
 #[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
@@ -272,6 +270,24 @@ pub enum VerificationError {
     InvalidApplyExtrinsicTraceIndex,
     #[cfg_attr(feature = "thiserror", error("Invalid ApplyExtrinsic call data"))]
     InvalidApplyExtrinsicCallData,
+    /// Invalid bundle digest
+    #[cfg_attr(feature = "thiserror", error("Invalid Bundle Digest"))]
+    InvalidBundleDigest,
+    /// Failed to get block randomness
+    #[cfg_attr(feature = "thiserror", error("Failed to get block randomness"))]
+    FailedToGetBlockRandomness,
+    /// Failed to derive domain timestamp extrinsic
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Failed to derive domain timestamp extrinsic")
+    )]
+    FailedToDeriveDomainTimestampExtrinsic,
+    /// Failed to derive domain set code extrinsic
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Failed to derive domain set code extrinsic")
+    )]
+    FailedToDeriveDomainSetCodeExtrinsic,
 }
 
 // TODO: Define rest of the fraud proof fields

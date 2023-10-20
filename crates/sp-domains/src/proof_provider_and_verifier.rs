@@ -21,8 +21,6 @@ pub enum VerificationError {
     MissingValue,
     /// Failed to decode value.
     FailedToDecode,
-    /// Invalid bundle digest
-    InvalidBundleDigest,
 }
 
 /// Type that provides utilities to verify the storage proof.
