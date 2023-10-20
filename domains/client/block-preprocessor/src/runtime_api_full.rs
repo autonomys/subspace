@@ -105,8 +105,8 @@ where
     fn is_inherent_extrinsic(
         &self,
         at: Block::Hash,
-        extrinsic: Vec<u8>,
-    ) -> Result<Option<bool>, ApiError> {
+        extrinsic: &<Block as BlockT>::Extrinsic,
+    ) -> Result<bool, ApiError> {
         let api = self.client.runtime_api();
         api.is_inherent_extrinsic(at, extrinsic)
     }

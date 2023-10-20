@@ -45,8 +45,8 @@ pub trait IsInherentExtrinsic<Block: BlockT> {
     fn is_inherent_extrinsic(
         &self,
         at: Block::Hash,
-        extrinsic: Vec<u8>,
-    ) -> Result<Option<bool>, ApiError>;
+        extrinsic: &<Block as BlockT>::Extrinsic,
+    ) -> Result<bool, ApiError>;
 }
 
 pub type ExtractSignerResult<Block> = Vec<(Option<AccountId>, <Block as BlockT>::Extrinsic)>;

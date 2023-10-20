@@ -665,18 +665,6 @@ fn extract_xdm_proof_state_roots(
     }
 }
 
-fn is_inherent_extrinsic_inner(encoded_ext: Vec<u8>) -> Option<bool> {
-    if let Ok(ext) = UncheckedExtrinsic::decode(&mut encoded_ext.as_slice()) {
-        Some(match ext.0.function {
-            RuntimeCall::Timestamp(call) => Timestamp::is_inherent(&call),
-            RuntimeCall::ExecutivePallet(call) => ExecutivePallet::is_inherent(&call),
-            _ => false,
-        })
-    } else {
-        None
-    }
-}
-
 fn extract_signer_inner<Lookup>(
     ext: &UncheckedExtrinsic,
     lookup: &Lookup,
@@ -899,8 +887,12 @@ impl_runtime_apis! {
             )
         }
 
-        fn is_inherent_extrinsic(extrinsic: Vec<u8>) -> Option<bool> {
-            is_inherent_extrinsic_inner(extrinsic)
+        fn is_inherent_extrinsic(extrinsic: &<Block as BlockT>::Extrinsic) -> bool {
+            match &extrinsic.0.function {
+                RuntimeCall::Timestamp(call) => Timestamp::is_inherent(call),
+                RuntimeCall::ExecutivePallet(call) => ExecutivePallet::is_inherent(call),
+                _ => false,
+            }
         }
 
         fn check_transaction_validity(

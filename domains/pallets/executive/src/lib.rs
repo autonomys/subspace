@@ -82,12 +82,11 @@ mod pallet {
         /// Same as frame_system::Call::set_code but without root origin.
         #[pallet::call_index(0)]
         #[pallet::weight((T::WeightInfo::set_code(), DispatchClass::Mandatory))]
-        pub fn set_code(origin: OriginFor<T>, code: Vec<u8>) -> DispatchResultWithPostInfo {
+        pub fn set_code(origin: OriginFor<T>, code: Vec<u8>) -> DispatchResult {
             ensure_none(origin)?;
             <frame_system::pallet::Pallet<T>>::can_set_code(&code)?;
             <T as frame_system::Config>::OnSetCode::set_code(code)?;
-            // consume the rest of the block to prevent further transactions
-            Ok(Some(T::BlockWeights::get().max_block).into())
+            Ok(())
         }
     }
 

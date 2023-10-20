@@ -310,11 +310,7 @@ where
             // Check if this extrinsic is an inherent extrinsic.
             // If so, this is an invalid bundle since these extrinsics should not be included in the
             // bundle. Extrinsic is always decodable due to the check above.
-            let is_inherent_extrinsic = runtime_api
-                .is_inherent_extrinsic(at, extrinsic.encode())?
-                .unwrap_or(true);
-
-            if is_inherent_extrinsic {
+            if runtime_api.is_inherent_extrinsic(at, &extrinsic)? {
                 return Ok(BundleValidity::Invalid(
                     InvalidBundleType::InherentExtrinsic(index as u32),
                 ));

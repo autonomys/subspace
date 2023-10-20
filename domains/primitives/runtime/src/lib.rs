@@ -190,7 +190,7 @@ sp_api::decl_runtime_apis! {
         fn construct_timestamp_extrinsic(moment: Moment) -> Block::Extrinsic;
 
         /// Returns true if the extrinsic is an inherent extrinsic.
-        fn is_inherent_extrinsic(extrinsic: Vec<u8>) -> Option<bool>;
+        fn is_inherent_extrinsic(extrinsic: &<Block as BlockT>::Extrinsic) -> bool;
 
         /// Checks the validity of extrinsic in a bundle.
         fn check_transaction_validity(
