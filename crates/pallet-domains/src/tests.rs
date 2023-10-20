@@ -30,7 +30,7 @@ use sp_domains_fraud_proof::fraud_proof::{
 };
 use sp_domains_fraud_proof::{
     FraudProofExtension, FraudProofHostFunctions, FraudProofVerificationInfoRequest,
-    FraudProofVerificationInfoResponse,
+    FraudProofVerificationInfoResponse, SetCodeExtrinsic,
 };
 use sp_runtime::traits::{AccountIdConversion, BlakeTwo256, Hash as HashT, IdentityLookup, Zero};
 use sp_runtime::{BuildStorage, Digest, OpaqueExtrinsic};
@@ -281,15 +281,17 @@ impl FraudProofHostFunctions for MockDomainFraudProofExtension {
                 FraudProofVerificationInfoResponse::DomainRuntimeCode(Default::default())
             }
             FraudProofVerificationInfoRequest::DomainSetCodeExtrinsic(_) => {
-                FraudProofVerificationInfoResponse::DomainSetCodeExtrinsic(Some(
-                    UncheckedExtrinsic::new_unsigned(
-                        domain_pallet_executive::Call::<Test>::set_code {
-                            code: self.runtime_code.clone(),
-                        }
-                        .into(),
-                    )
-                    .encode(),
-                ))
+                FraudProofVerificationInfoResponse::DomainSetCodeExtrinsic(
+                    SetCodeExtrinsic::EncodedExtrinsic(
+                        UncheckedExtrinsic::new_unsigned(
+                            domain_pallet_executive::Call::<Test>::set_code {
+                                code: self.runtime_code.clone(),
+                            }
+                            .into(),
+                        )
+                        .encode(),
+                    ),
+                )
             }
         };
 

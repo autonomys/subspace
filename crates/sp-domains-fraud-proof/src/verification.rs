@@ -4,7 +4,7 @@ use crate::fraud_proof::{
 use crate::fraud_proof_runtime_interface::get_fraud_proof_verification_info;
 use crate::{
     fraud_proof_runtime_interface, FraudProofVerificationInfoRequest,
-    FraudProofVerificationInfoResponse,
+    FraudProofVerificationInfoResponse, SetCodeExtrinsic,
 };
 use codec::{Decode, Encode};
 use hash_db::Hasher;
@@ -95,7 +95,9 @@ where
         Randomness::from(shuffling_seed.to_fixed_bytes()),
     );
 
-    if let Some(domain_set_code_extrinsic) = maybe_domain_set_code_extrinsic {
+    if let SetCodeExtrinsic::EncodedExtrinsic(domain_set_code_extrinsic) =
+        maybe_domain_set_code_extrinsic
+    {
         let domain_set_code_extrinsic =
             ExtrinsicDigest::new::<LayoutV1<DomainHashing>>(domain_set_code_extrinsic);
         ordered_extrinsics.push_front(domain_set_code_extrinsic);
