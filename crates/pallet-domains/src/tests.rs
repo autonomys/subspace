@@ -17,16 +17,16 @@ use scale_info::TypeInfo;
 use sp_core::crypto::Pair;
 use sp_core::storage::{StateVersion, StorageKey};
 use sp_core::{Get, H256, U256};
-use sp_domains::fraud_proof::{
-    ExtrinsicDigest, FraudProof, InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof,
-    InvalidTotalRewardsProof, ValidBundleDigest,
-};
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::storage::RawGenesis;
 use sp_domains::{
     BundleHeader, DomainId, DomainsHoldIdentifier, ExecutionReceipt, InboxedBundle, OpaqueBundle,
     OperatorAllowList, OperatorId, OperatorPair, ProofOfElection, ReceiptHash, RuntimeType,
     SealedBundleHeader, StakingHoldIdentifier,
+};
+use sp_domains_fraud_proof::fraud_proof::{
+    ExtrinsicDigest, FraudProof, InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof,
+    InvalidTotalRewardsProof, ValidBundleDigest,
 };
 use sp_domains_fraud_proof::{
     FraudProofExtension, FraudProofHostFunctions, FraudProofVerificationInfoRequest,
@@ -864,7 +864,7 @@ fn generate_invalid_total_rewards_fraud_proof<T: Config>(
     bad_receipt_hash: ReceiptHash,
     rewards: BalanceOf<T>,
 ) -> (FraudProof<BlockNumberFor<T>, T::Hash>, T::Hash) {
-    let storage_key = sp_domains::fraud_proof::operator_block_rewards_final_key();
+    let storage_key = sp_domains_fraud_proof::fraud_proof::operator_block_rewards_final_key();
     let mut root = T::Hash::default();
     let mut mdb = PrefixedMemoryDB::<T::Hashing>::default();
     {
@@ -999,7 +999,7 @@ fn test_invalid_domain_block_hash_fraud_proof() {
 fn generate_invalid_domain_block_hash_fraud_proof<T: Config>(
     digest: Digest,
 ) -> (T::Hash, StorageProof) {
-    let digest_storage_key = sp_domains::fraud_proof::system_digest_final_key();
+    let digest_storage_key = sp_domains_fraud_proof::fraud_proof::system_digest_final_key();
     let mut root = T::Hash::default();
     let mut mdb = PrefixedMemoryDB::<T::Hashing>::default();
     {

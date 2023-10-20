@@ -16,11 +16,11 @@ use sc_service::{BasePath, Role};
 use sp_api::{BlockT, ProvideRuntimeApi};
 use sp_core::H256;
 use sp_domain_digests::AsPredigest;
-use sp_domains::fraud_proof::{
-    ExecutionPhase, FraudProof, InvalidStateTransitionProof, VerificationError,
-};
 use sp_domains::proof_provider_and_verifier::StorageProofProvider;
 use sp_domains::{DomainId, DomainsApi};
+use sp_domains_fraud_proof::fraud_proof::{
+    ExecutionPhase, FraudProof, InvalidStateTransitionProof, VerificationError,
+};
 use sp_runtime::generic::{Digest, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidityError};

@@ -1,8 +1,8 @@
 use crate::{Balance, Block, BlockNumber, Domains, Hash, RuntimeCall, UncheckedExtrinsic};
 use domain_runtime_primitives::{BlockNumber as DomainNumber, Hash as DomainHash};
-use sp_domains::fraud_proof::FraudProof;
-use sp_domains::transaction::PreValidationObject;
 use sp_domains::{DomainId, ExecutionReceipt};
+use sp_domains_fraud_proof::fraud_proof::FraudProof;
+use sp_domains_fraud_proof::transaction::PreValidationObject;
 use sp_std::vec::Vec;
 
 pub(crate) fn extract_successful_bundles(

@@ -1,3 +1,6 @@
+use crate::fraud_proof::{
+    ExtrinsicDigest, InvalidExtrinsicsRootProof, InvalidStateTransitionProof, VerificationError,
+};
 use crate::{
     fraud_proof_runtime_interface, FraudProofVerificationInfoRequest,
     FraudProofVerificationInfoResponse,
@@ -7,9 +10,6 @@ use hash_db::Hasher;
 use sp_core::storage::StorageKey;
 use sp_core::H256;
 use sp_domains::extrinsics::{deduplicate_and_shuffle_extrinsics, extrinsics_shuffling_seed};
-use sp_domains::fraud_proof::{
-    ExtrinsicDigest, InvalidExtrinsicsRootProof, InvalidStateTransitionProof, VerificationError,
-};
 use sp_domains::proof_provider_and_verifier::StorageProofVerifier;
 use sp_domains::valued_trie::valued_ordered_trie_root;
 use sp_domains::ExecutionReceipt;
@@ -186,7 +186,7 @@ where
     DomainHeader::Hash: From<H256>,
 {
     let state_root = bad_receipt.final_state_root;
-    let digest_storage_key = StorageKey(sp_domains::fraud_proof::system_digest_final_key());
+    let digest_storage_key = StorageKey(crate::fraud_proof::system_digest_final_key());
 
     let digest = StorageProofVerifier::<DomainHeader::Hashing>::get_decoded_value::<Digest>(
         &state_root,
@@ -236,7 +236,7 @@ where
     let state_root = bad_receipt.final_state_root.encode();
     let state_root = CBlock::Hash::decode(&mut state_root.as_slice())
         .map_err(|_| sp_domains::proof_provider_and_verifier::VerificationError::FailedToDecode)?;
-    let storage_key = StorageKey(sp_domains::fraud_proof::operator_block_rewards_final_key());
+    let storage_key = StorageKey(crate::fraud_proof::operator_block_rewards_final_key());
     let storage_proof = storage_proof.clone();
 
     let total_rewards = StorageProofVerifier::<Hashing>::get_decoded_value::<Balance>(

@@ -54,12 +54,12 @@ use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::storage::StateVersion;
 use sp_core::{Hasher, OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
-use sp_domains::fraud_proof::FraudProof;
-use sp_domains::transaction::PreValidationObject;
 use sp_domains::{
     DomainId, DomainInstanceData, DomainsHoldIdentifier, ExecutionReceipt, OpaqueBundle,
     OpaqueBundles, OperatorId, OperatorPublicKey, ReceiptHash, StakingHoldIdentifier,
 };
+use sp_domains_fraud_proof::fraud_proof::FraudProof;
+use sp_domains_fraud_proof::transaction::PreValidationObject;
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
     BlockInfo, BlockMessagesWithStorageKey, ChainId, CrossDomainMessage,
@@ -1301,10 +1301,10 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_domains::transaction::PreValidationObjectApi<Block, DomainNumber, DomainHash> for Runtime {
+    impl sp_domains_fraud_proof::transaction::PreValidationObjectApi<Block, DomainNumber, DomainHash> for Runtime {
         fn extract_pre_validation_object(
             extrinsic: <Block as BlockT>::Extrinsic,
-        ) -> sp_domains::transaction::PreValidationObject<Block, DomainNumber, DomainHash> {
+        ) -> sp_domains_fraud_proof::transaction::PreValidationObject<Block, DomainNumber, DomainHash> {
             extract_pre_validation_object(extrinsic)
         }
     }

@@ -1012,10 +1012,10 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_domains::transaction::PreValidationObjectApi<Block, DomainNumber, DomainHash, > for Runtime {
+    impl sp_domains_fraud_proof::transaction::PreValidationObjectApi<Block, DomainNumber, DomainHash, > for Runtime {
         fn extract_pre_validation_object(
             extrinsic: <Block as BlockT>::Extrinsic,
-        ) -> sp_domains::transaction::PreValidationObject<Block, DomainNumber, DomainHash> {
+        ) -> sp_domains_fraud_proof::transaction::PreValidationObject<Block, DomainNumber, DomainHash> {
             crate::domains::extract_pre_validation_object(extrinsic)
         }
     }

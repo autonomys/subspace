@@ -11,7 +11,7 @@ use sc_client_api::backend;
 use sp_api::StorageProof;
 use sp_core::traits::CodeExecutor;
 use sp_core::H256;
-use sp_domains::fraud_proof::ExecutionPhase;
+use sp_domains_fraud_proof::fraud_proof::ExecutionPhase;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashingFor};
 use sp_state_machine::backend::AsTrieBackend;
 use sp_state_machine::{TrieBackend, TrieBackendBuilder, TrieBackendStorage};

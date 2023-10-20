@@ -1,11 +1,11 @@
-use crate::proof_provider_and_verifier::StorageProofVerifier;
-use crate::{DomainId, ExecutionReceipt, ReceiptHash, SealedBundleHeader};
+use codec::{Decode, Encode};
 use hash_db::Hasher;
-use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
 use sp_core::H256;
 use sp_domain_digests::AsPredigest;
+use sp_domains::proof_provider_and_verifier::StorageProofVerifier;
+use sp_domains::{DomainId, ExecutionReceipt, ReceiptHash, SealedBundleHeader};
 use sp_runtime::traits::{
     BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor,
 };
@@ -200,7 +200,7 @@ pub enum VerificationError {
             "Failed to decode the return value of `initialize_block` and `apply_extrinsic`: {0}"
         )
     )]
-    InitializeBlockOrApplyExtrinsicDecode(parity_scale_codec::Error),
+    InitializeBlockOrApplyExtrinsicDecode(codec::Error),
     /// Failed to decode the storage root produced by verifying `initialize_block` or `apply_extrinsic`.
     #[cfg_attr(
         feature = "thiserror",
@@ -208,13 +208,13 @@ pub enum VerificationError {
             "Failed to decode the storage root from verifying `initialize_block` and `apply_extrinsic`: {0}"
         )
     )]
-    StorageRootDecode(parity_scale_codec::Error),
+    StorageRootDecode(codec::Error),
     /// Failed to decode the header produced by `finalize_block`.
     #[cfg_attr(
         feature = "thiserror",
         error("Failed to decode the header from verifying `finalize_block`: {0}")
     )]
-    HeaderDecode(parity_scale_codec::Error),
+    HeaderDecode(codec::Error),
     /// Transaction validity check passes.
     #[cfg_attr(feature = "thiserror", error("Valid transaction"))]
     ValidTransaction,
@@ -227,7 +227,7 @@ pub enum VerificationError {
     /// Decode error.
     #[cfg(feature = "std")]
     #[cfg_attr(feature = "thiserror", error("Decode error: {0}"))]
-    Decode(#[from] parity_scale_codec::Error),
+    Decode(#[from] codec::Error),
     /// Runtime api error.
     #[cfg(feature = "std")]
     #[cfg_attr(feature = "thiserror", error("Runtime api error: {0}"))]

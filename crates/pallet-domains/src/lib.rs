@@ -46,11 +46,13 @@ pub use pallet::*;
 use scale_info::TypeInfo;
 use sp_core::H256;
 use sp_domains::bundle_producer_election::{is_below_threshold, BundleProducerElectionParams};
-use sp_domains::fraud_proof::{FraudProof, InvalidDomainBlockHashProof, InvalidTotalRewardsProof};
 use sp_domains::{
     DomainBlockLimit, DomainId, DomainInstanceData, ExecutionReceipt, OpaqueBundle, OperatorId,
     OperatorPublicKey, ProofOfElection, ReceiptHash, RuntimeId,
     DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT, EMPTY_EXTRINSIC_ROOT,
+};
+use sp_domains_fraud_proof::fraud_proof::{
+    FraudProof, InvalidDomainBlockHashProof, InvalidTotalRewardsProof,
 };
 use sp_domains_fraud_proof::fraud_proof_runtime_interface::get_fraud_proof_verification_info;
 use sp_domains_fraud_proof::verification::{
@@ -151,12 +153,12 @@ mod pallet {
     use frame_support::{Identity, PalletError};
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
-    use sp_domains::fraud_proof::FraudProof;
-    use sp_domains::transaction::InvalidTransactionCode;
     use sp_domains::{
         BundleDigest, DomainId, EpochIndex, GenesisDomain, OperatorAllowList, OperatorId,
         ReceiptHash, RuntimeId, RuntimeType,
     };
+    use sp_domains_fraud_proof::fraud_proof::FraudProof;
+    use sp_domains_fraud_proof::transaction::InvalidTransactionCode;
     use sp_runtime::traits::{
         AtLeast32BitUnsigned, BlockNumberProvider, CheckEqual, CheckedAdd, Header as HeaderT,
         MaybeDisplay, One, SimpleBitOps, Zero,
