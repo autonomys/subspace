@@ -1,6 +1,6 @@
 use crate::{
     fraud_proof_runtime_interface, FraudProofVerificationInfoRequest,
-    FraudProofVerificationInfoResponse,
+    FraudProofVerificationInfoResponse, SetCodeExtrinsic,
 };
 use codec::{Decode, Encode};
 use hash_db::Hasher;
@@ -39,7 +39,7 @@ pub fn verify_invalid_domain_extrinsics_root_fraud_proof<
     fraud_proof: &InvalidExtrinsicsRootProof,
     block_randomness: Randomness,
     domain_timestamp_extrinsic: Vec<u8>,
-    maybe_domain_set_code_extrinsic: Option<Vec<u8>>,
+    maybe_domain_set_code_extrinsic: SetCodeExtrinsic,
 ) -> Result<(), sp_domains::verification::VerificationError>
 where
     CBlock: BlockT,
@@ -74,7 +74,9 @@ where
         Randomness::from(shuffling_seed.to_fixed_bytes()),
     );
 
-    if let Some(domain_set_code_extrinsic) = maybe_domain_set_code_extrinsic {
+    if let SetCodeExtrinsic::EncodedExtrinsic(domain_set_code_extrinsic) =
+        maybe_domain_set_code_extrinsic
+    {
         let domain_set_code_extrinsic =
             ExtrinsicDigest::new::<LayoutV1<DomainHashing>>(domain_set_code_extrinsic);
         ordered_extrinsics.push_front(domain_set_code_extrinsic);

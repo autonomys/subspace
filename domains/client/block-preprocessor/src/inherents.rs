@@ -55,7 +55,7 @@ where
     Ok(inherent_data)
 }
 
-pub(crate) fn has_runtime_upgrade<CClient, CBlock, Block>(
+pub(crate) fn is_runtime_upgraded<CClient, CBlock, Block>(
     consensus_client: &Arc<CClient>,
     consensus_block_hash: CBlock::Hash,
     domain_id: DomainId,
@@ -87,7 +87,8 @@ where
         .any(|upgraded_runtime_id| upgraded_runtime_id == runtime_id))
 }
 
-pub fn maybe_runtime_upgrade<CClient, CBlock, Block>(
+/// Returns new upgraded runtime if upgraded did happen in the provided consensus block.
+pub fn extract_domain_runtime_upgrade_code<CClient, CBlock, Block>(
     consensus_client: &Arc<CClient>,
     consensus_block_hash: CBlock::Hash,
     domain_id: DomainId,
@@ -195,7 +196,7 @@ where
         let timestamp_provider =
             sp_timestamp::InherentDataProvider::new(InherentType::new(timestamp));
 
-        let maybe_runtime_upgrade_code = maybe_runtime_upgrade::<_, _, Block>(
+        let maybe_runtime_upgrade_code = extract_domain_runtime_upgrade_code::<_, _, Block>(
             &self.consensus_client,
             consensus_block_hash,
             self.domain_id,

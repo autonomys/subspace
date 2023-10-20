@@ -54,6 +54,15 @@ impl PassBy for FraudProofVerificationInfoRequest {
     type PassBy = pass_by::Codec<Self>;
 }
 
+/// Type that maybe holds an encoded set_code extrinsic with upgraded runtime
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub enum SetCodeExtrinsic {
+    /// No runtime upgrade.
+    None,
+    /// Holds an encoded set_code extrinsic with an upgraded runtime.
+    EncodedExtrinsic(Vec<u8>),
+}
+
 /// Response holds required verification information for fraud proof from Host function.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub enum FraudProofVerificationInfoResponse {
@@ -64,7 +73,7 @@ pub enum FraudProofVerificationInfoResponse {
     /// The domain runtime code
     DomainRuntimeCode(Vec<u8>),
     /// Encoded domain set_code extrinsic if there is a runtime upgrade at given consensus block hash.
-    DomainSetCodeExtrinsic(Option<Vec<u8>>),
+    DomainSetCodeExtrinsic(SetCodeExtrinsic),
 }
 
 impl FraudProofVerificationInfoResponse {
@@ -89,12 +98,12 @@ impl FraudProofVerificationInfoResponse {
         }
     }
 
-    pub fn into_domain_set_code_extrinsic(self) -> Option<Vec<u8>> {
+    pub fn into_domain_set_code_extrinsic(self) -> SetCodeExtrinsic {
         match self {
             FraudProofVerificationInfoResponse::DomainSetCodeExtrinsic(
                 maybe_set_code_extrinsic,
             ) => maybe_set_code_extrinsic,
-            _ => None,
+            _ => SetCodeExtrinsic::None,
         }
     }
 }

@@ -1,6 +1,8 @@
-use crate::{FraudProofVerificationInfoRequest, FraudProofVerificationInfoResponse};
+use crate::{
+    FraudProofVerificationInfoRequest, FraudProofVerificationInfoResponse, SetCodeExtrinsic,
+};
 use codec::{Decode, Encode};
-use domain_block_preprocessor::inherents::maybe_runtime_upgrade;
+use domain_block_preprocessor::inherents::extract_domain_runtime_upgrade_code;
 use domain_block_preprocessor::runtime_api::{SetCodeConstructor, TimestampExtrinsicConstructor};
 use domain_block_preprocessor::runtime_api_light::RuntimeApiLight;
 use sc_executor::RuntimeVersionOf;
@@ -120,8 +122,8 @@ where
         &self,
         consensus_block_hash: H256,
         domain_id: DomainId,
-    ) -> Option<Option<Vec<u8>>> {
-        let maybe_upgraded_runtime = maybe_runtime_upgrade::<_, _, DomainBlock>(
+    ) -> Option<SetCodeExtrinsic> {
+        let maybe_upgraded_runtime = extract_domain_runtime_upgrade_code::<_, _, DomainBlock>(
             &self.consensus_client,
             consensus_block_hash.into(),
             domain_id,
@@ -142,9 +144,9 @@ where
                 upgraded_runtime,
             )
             .ok()
-            .map(|ext| Some(ext.encode()))
+            .map(|ext| SetCodeExtrinsic::EncodedExtrinsic(ext.encode()))
         } else {
-            Some(None)
+            Some(SetCodeExtrinsic::None)
         }
     }
 
