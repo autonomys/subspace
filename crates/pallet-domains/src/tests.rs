@@ -30,7 +30,7 @@ use sp_domains::{
 };
 use sp_domains_fraud_proof::{
     FraudProofExtension, FraudProofHostFunctions, FraudProofVerificationInfoRequest,
-    FraudProofVerificationInfoResponse,
+    FraudProofVerificationInfoResponse, SetCodeExtrinsic,
 };
 use sp_runtime::traits::{AccountIdConversion, BlakeTwo256, Hash as HashT, IdentityLookup, Zero};
 use sp_runtime::{BuildStorage, Digest, OpaqueExtrinsic};
@@ -60,6 +60,7 @@ frame_support::construct_runtime!(
         Timestamp: pallet_timestamp,
         Balances: pallet_balances,
         Domains: pallet_domains,
+        DomainExecutive: domain_pallet_executive,
     }
 );
 
@@ -236,6 +237,11 @@ impl pallet_domains::Config for Test {
     type Randomness = MockRandomness;
 }
 
+impl domain_pallet_executive::Config for Test {
+    type RuntimeEvent = RuntimeEvent;
+    type WeightInfo = ();
+}
+
 pub(crate) fn new_test_ext() -> sp_io::TestExternalities {
     let t = frame_system::GenesisConfig::<Test>::default()
         .build_storage()
@@ -247,6 +253,7 @@ pub(crate) fn new_test_ext() -> sp_io::TestExternalities {
 pub(crate) struct MockDomainFraudProofExtension {
     block_randomness: Randomness,
     timestamp: Moment,
+    runtime_code: Vec<u8>,
 }
 
 impl FraudProofHostFunctions for MockDomainFraudProofExtension {
@@ -272,6 +279,19 @@ impl FraudProofHostFunctions for MockDomainFraudProofExtension {
             }
             FraudProofVerificationInfoRequest::DomainRuntimeCode(_) => {
                 FraudProofVerificationInfoResponse::DomainRuntimeCode(Default::default())
+            }
+            FraudProofVerificationInfoRequest::DomainSetCodeExtrinsic(_) => {
+                FraudProofVerificationInfoResponse::DomainSetCodeExtrinsic(
+                    SetCodeExtrinsic::EncodedExtrinsic(
+                        UncheckedExtrinsic::new_unsigned(
+                            domain_pallet_executive::Call::<Test>::set_code {
+                                code: self.runtime_code.clone(),
+                            }
+                            .into(),
+                        )
+                        .encode(),
+                    ),
+                )
             }
         };
 
@@ -922,6 +942,7 @@ fn test_invalid_domain_extrinsic_root_proof() {
     let fraud_proof_ext = FraudProofExtension::new(Arc::new(MockDomainFraudProofExtension {
         block_randomness: Randomness::from([1u8; 32]),
         timestamp: 1000,
+        runtime_code: vec![1, 2, 3, 4],
     }));
     ext.register_extension(fraud_proof_ext);
 

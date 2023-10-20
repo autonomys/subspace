@@ -58,9 +58,7 @@ use sp_domains_fraud_proof::verification::{
     verify_invalid_domain_block_hash_fraud_proof,
     verify_invalid_domain_extrinsics_root_fraud_proof, verify_invalid_state_transition_fraud_proof,
 };
-use sp_domains_fraud_proof::{
-    FraudProofVerificationInfoRequest, FraudProofVerificationInfoResponse,
-};
+use sp_domains_fraud_proof::FraudProofVerificationInfoRequest;
 use sp_runtime::traits::{BlakeTwo256, CheckedSub, Hash, Header, One, Zero};
 use sp_runtime::{RuntimeAppPublic, SaturatedConversion, Saturating};
 use sp_std::boxed::Box;
@@ -618,10 +616,10 @@ mod pallet {
         FailedToGetBlockRandomness,
         /// Failed to get domain timestamp extrinsic.
         FailedToGetDomainTimestampExtrinsic,
-        /// Received invalid Verification info from host function.
-        ReceivedInvalidVerificationInfo,
         /// Parent receipt not found.
         ParentReceiptNotFound,
+        /// Failed to get domain set code extrinsic.
+        FailedToGetDomainSetCodeExtrinsic,
     }
 
     impl<T> From<FraudProofError> for Error<T> {
@@ -1570,29 +1568,26 @@ impl<T: Config> Pallet<T> {
             }
             FraudProof::InvalidExtrinsicsRoot(proof) => {
                 let consensus_block_hash = bad_receipt.consensus_block_hash;
-                let block_randomness = match get_fraud_proof_verification_info(
+                let block_randomness = get_fraud_proof_verification_info(
                     H256::from_slice(consensus_block_hash.as_ref()),
                     FraudProofVerificationInfoRequest::BlockRandomness,
                 )
-                .ok_or(FraudProofError::FailedToGetBlockRandomness)?
-                {
-                    FraudProofVerificationInfoResponse::BlockRandomness(randomness) => {
-                        Ok(randomness)
-                    }
-                    _ => Err(FraudProofError::ReceivedInvalidVerificationInfo),
-                }?;
+                .and_then(|resp| resp.into_block_randomness())
+                .ok_or(FraudProofError::FailedToGetBlockRandomness)?;
 
-                let domain_timestamp_extrinsic = match get_fraud_proof_verification_info(
+                let domain_timestamp_extrinsic = get_fraud_proof_verification_info(
                     H256::from_slice(consensus_block_hash.as_ref()),
                     FraudProofVerificationInfoRequest::DomainTimestampExtrinsic(proof.domain_id),
                 )
-                .ok_or(FraudProofError::FailedToGetDomainTimestampExtrinsic)?
-                {
-                    FraudProofVerificationInfoResponse::DomainTimestampExtrinsic(
-                        domain_timestamp_extrinsic,
-                    ) => Ok(domain_timestamp_extrinsic),
-                    _ => Err(FraudProofError::ReceivedInvalidVerificationInfo),
-                }?;
+                .and_then(|resp| resp.into_domain_timestamp_extrinsic())
+                .ok_or(FraudProofError::FailedToGetDomainTimestampExtrinsic)?;
+
+                let maybe_domain_set_code_extrinsic = get_fraud_proof_verification_info(
+                    H256::from_slice(consensus_block_hash.as_ref()),
+                    FraudProofVerificationInfoRequest::DomainSetCodeExtrinsic(proof.domain_id),
+                )
+                .map(|resp| resp.into_domain_set_code_extrinsic())
+                .ok_or(FraudProofError::FailedToGetDomainSetCodeExtrinsic)?;
 
                 verify_invalid_domain_extrinsics_root_fraud_proof::<
                     T::Block,
@@ -1606,6 +1601,7 @@ impl<T: Config> Pallet<T> {
                     proof,
                     block_randomness,
                     domain_timestamp_extrinsic,
+                    maybe_domain_set_code_extrinsic,
                 )
                 .map_err(FraudProofError::InvalidExtrinsicRootFraudProof)?;
             }

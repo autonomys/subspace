@@ -16,7 +16,7 @@ pub mod runtime_api_full;
 pub mod runtime_api_light;
 pub mod xdm_verifier;
 
-use crate::inherents::has_runtime_upgrade;
+use crate::inherents::is_runtime_upgraded;
 use crate::runtime_api::{SetCodeConstructor, SignerExtractor, StateRootExtractor};
 use crate::xdm_verifier::is_valid_xdm;
 use codec::{Decode, Encode};
@@ -170,7 +170,7 @@ where
             .extract_successful_bundles(consensus_block_hash, self.domain_id, primary_extrinsics)?;
 
         if bundles.is_empty()
-            && !has_runtime_upgrade::<_, _, Block>(
+            && !is_runtime_upgraded::<_, _, Block>(
                 &self.consensus_client,
                 consensus_block_hash,
                 self.domain_id,

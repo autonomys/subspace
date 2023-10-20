@@ -46,10 +46,21 @@ pub enum FraudProofVerificationInfoRequest {
     DomainTimestampExtrinsic(DomainId),
     /// The domain runtime code
     DomainRuntimeCode(DomainId),
+    /// Domain set_code extrinsic if there is a runtime upgrade at a given consensus block hash.
+    DomainSetCodeExtrinsic(DomainId),
 }
 
 impl PassBy for FraudProofVerificationInfoRequest {
     type PassBy = pass_by::Codec<Self>;
+}
+
+/// Type that maybe holds an encoded set_code extrinsic with upgraded runtime
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub enum SetCodeExtrinsic {
+    /// No runtime upgrade.
+    None,
+    /// Holds an encoded set_code extrinsic with an upgraded runtime.
+    EncodedExtrinsic(Vec<u8>),
 }
 
 /// Response holds required verification information for fraud proof from Host function.
@@ -61,13 +72,38 @@ pub enum FraudProofVerificationInfoResponse {
     DomainTimestampExtrinsic(Vec<u8>),
     /// The domain runtime code
     DomainRuntimeCode(Vec<u8>),
+    /// Encoded domain set_code extrinsic if there is a runtime upgrade at given consensus block hash.
+    DomainSetCodeExtrinsic(SetCodeExtrinsic),
 }
 
 impl FraudProofVerificationInfoResponse {
+    pub fn into_block_randomness(self) -> Option<Randomness> {
+        match self {
+            Self::BlockRandomness(randomness) => Some(randomness),
+            _ => None,
+        }
+    }
+
+    pub fn into_domain_timestamp_extrinsic(self) -> Option<Vec<u8>> {
+        match self {
+            Self::DomainTimestampExtrinsic(timestamp_extrinsic) => Some(timestamp_extrinsic),
+            _ => None,
+        }
+    }
+
     pub fn into_domain_runtime_code(self) -> Option<Vec<u8>> {
         match self {
             Self::DomainRuntimeCode(c) => Some(c),
             _ => None,
+        }
+    }
+
+    pub fn into_domain_set_code_extrinsic(self) -> SetCodeExtrinsic {
+        match self {
+            FraudProofVerificationInfoResponse::DomainSetCodeExtrinsic(
+                maybe_set_code_extrinsic,
+            ) => maybe_set_code_extrinsic,
+            _ => SetCodeExtrinsic::None,
         }
     }
 }
