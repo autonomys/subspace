@@ -1,9 +1,9 @@
 use crate::runtime_api::{
-    ExtractSignerResult, ExtractedStateRoots, InherentExtrinsicConstructor, SetCodeConstructor,
-    SignerExtractor, StateRootExtractor,
+    ExtractSignerResult, ExtractedStateRoots, IsInherentExtrinsic, SetCodeConstructor,
+    SignerExtractor, StateRootExtractor, TimestampExtrinsicConstructor,
 };
 use codec::Encode;
-use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
+use domain_runtime_primitives::DomainCoreApi;
 use sp_api::{ApiError, BlockT, ProvideRuntimeApi};
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::NumberFor;
@@ -48,19 +48,19 @@ where
     }
 }
 
-impl<Block, Client> InherentExtrinsicConstructor<Block> for RuntimeApiFull<Client>
+impl<Block, Client> TimestampExtrinsicConstructor<Block> for RuntimeApiFull<Client>
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block>,
-    Client::Api: InherentExtrinsicApi<Block>,
+    Client::Api: DomainCoreApi<Block>,
 {
-    fn construct_timestamp_inherent_extrinsic(
+    fn construct_timestamp_extrinsic(
         &self,
         at: Block::Hash,
         moment: Moment,
     ) -> Result<Block::Extrinsic, ApiError> {
         let api = self.client.runtime_api();
-        api.construct_inherent_timestamp_extrinsic(at, moment)
+        api.construct_timestamp_extrinsic(at, moment)
     }
 }
 
@@ -93,5 +93,21 @@ where
     ) -> Result<Vec<u8>, ApiError> {
         let api = self.client.runtime_api();
         api.construct_set_code_extrinsic(at, runtime_code)
+    }
+}
+
+impl<Client, Block> IsInherentExtrinsic<Block> for RuntimeApiFull<Client>
+where
+    Block: BlockT,
+    Client: ProvideRuntimeApi<Block>,
+    Client::Api: DomainCoreApi<Block>,
+{
+    fn is_inherent_extrinsic(
+        &self,
+        at: Block::Hash,
+        extrinsic: &<Block as BlockT>::Extrinsic,
+    ) -> Result<bool, ApiError> {
+        let api = self.client.runtime_api();
+        api.is_inherent_extrinsic(at, extrinsic)
     }
 }

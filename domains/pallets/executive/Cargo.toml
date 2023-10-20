@@ -19,6 +19,7 @@ frame-support = { version = "4.0.0-dev", git = "https://github.com/subspace/polk
 frame-system = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "892bf8e938c6bd2b893d3827d1093cd81baa59a1", default-features = false }
 log = { version = "0.4.20", default-features = false }
 scale-info = { version = "2.7.0", default-features = false, features = ["derive"] }
+sp-executive = { version = "0.1.0", path = "../../primitives/executive", default-features = false }
 sp-io = { version = "23.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "892bf8e938c6bd2b893d3827d1093cd81baa59a1", default-features = false }
 sp-runtime = { version = "24.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "892bf8e938c6bd2b893d3827d1093cd81baa59a1", default-features = false }
 sp-std = { version = "8.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "892bf8e938c6bd2b893d3827d1093cd81baa59a1", default-features = false }
@@ -41,6 +42,7 @@ std = [
     "frame-system/std",
     "log/std",
     "scale-info/std",
+    "sp-executive/std",
     "sp-io/std",
     "sp-runtime/std",
     "sp-std/std",

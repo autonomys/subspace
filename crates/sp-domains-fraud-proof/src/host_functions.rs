@@ -1,6 +1,6 @@
 use crate::{FraudProofVerificationInfoRequest, FraudProofVerificationInfoResponse};
 use codec::{Decode, Encode};
-use domain_block_preprocessor::runtime_api::InherentExtrinsicConstructor;
+use domain_block_preprocessor::runtime_api::TimestampExtrinsicConstructor;
 use domain_block_preprocessor::runtime_api_light::RuntimeApiLight;
 use sc_executor::RuntimeVersionOf;
 use sp_api::{BlockT, ProvideRuntimeApi};
@@ -107,7 +107,7 @@ where
         let domain_runtime_api_light =
             RuntimeApiLight::new(self.executor.clone(), runtime_code.into());
 
-        InherentExtrinsicConstructor::<DomainBlock>::construct_timestamp_inherent_extrinsic(
+        TimestampExtrinsicConstructor::<DomainBlock>::construct_timestamp_extrinsic(
             &domain_runtime_api_light,
             // We do not care about the domain hash since this is stateless call into
             // domain runtime,

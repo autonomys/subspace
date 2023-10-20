@@ -5,7 +5,7 @@ use domain_client_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_client_message_relayer::GossipMessageSink;
 use domain_client_operator::{Operator, OperatorParams, OperatorStreams};
 use domain_runtime_primitives::opaque::Block;
-use domain_runtime_primitives::{Balance, BlockNumber, DomainCoreApi, Hash, InherentExtrinsicApi};
+use domain_runtime_primitives::{Balance, BlockNumber, DomainCoreApi, Hash};
 use futures::channel::mpsc;
 use futures::Stream;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
@@ -307,7 +307,6 @@ where
         + SessionKeys<Block>
         + DomainCoreApi<Block>
         + MessengerApi<Block, NumberFor<Block>>
-        + InherentExtrinsicApi<Block>
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
@@ -404,8 +403,15 @@ where
             database_source: domain_config.database.clone(),
             task_spawner: task_manager.spawn_handle(),
             backend: backend.clone(),
+            // This is required by the eth rpc to create pending state using the underlying
+            // consensus provider. In our case, the consensus provider is empty and
+            // as a result this is not used at all. Providing this just to make the api
+            // compatible
             create_inherent_data_provider: CreateInherentDataProvider::new(
                 consensus_client.clone(),
+                // It is safe to pass empty consensus hash here as explained above
+                None,
+                domain_id,
             ),
         };
 

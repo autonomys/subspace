@@ -250,7 +250,7 @@ where
         ))
     }
 
-    pub(crate) fn generate_invalid_state_transition_proof<PCB>(
+    pub(crate) async fn generate_invalid_state_transition_proof<PCB>(
         &self,
         domain_id: DomainId,
         local_trace_index: u32,
@@ -303,7 +303,6 @@ where
             let extrinsics = self.block_body(block_hash)?;
             let execution_phase = ExecutionPhase::FinalizeBlock;
             let finalize_block_call_data = Vec::new();
-
             let block_builder = BlockBuilder::new(
                 &*self.client,
                 parent_header.hash(),
@@ -311,7 +310,8 @@ where
                 RecordProof::No,
                 inherent_digests,
                 &*self.backend,
-                extrinsics,
+                extrinsics.into(),
+                None,
             )?;
             let storage_changes = block_builder.prepare_storage_changes_before_finalize_block()?;
 
@@ -333,13 +333,15 @@ where
             }
         } else {
             // Regular extrinsic execution proof.
-            let (proof, execution_phase) = self.create_extrinsic_execution_proof(
-                local_trace_index as usize - 1,
-                &parent_header,
-                block_hash,
-                &prover,
-                inherent_digests,
-            )?;
+            let (proof, execution_phase) = self
+                .create_extrinsic_execution_proof(
+                    local_trace_index as usize - 1,
+                    &parent_header,
+                    block_hash,
+                    &prover,
+                    inherent_digests,
+                )
+                .await?;
 
             // TODO: proof should be a CompactProof.
             InvalidStateTransitionProof {
@@ -367,7 +369,8 @@ where
         })
     }
 
-    fn create_extrinsic_execution_proof(
+    #[allow(clippy::too_many_arguments)]
+    async fn create_extrinsic_execution_proof(
         &self,
         extrinsic_index: usize,
         parent_header: &Block::Header,
@@ -407,7 +410,8 @@ where
             RecordProof::No,
             digest,
             &*self.backend,
-            extrinsics,
+            extrinsics.into(),
+            None,
         )?;
         let storage_changes = block_builder.prepare_storage_changes_before(extrinsic_index)?;
 

@@ -402,6 +402,7 @@ async fn execution_proof_creation_and_verification_should_work() {
             digest,
             &*alice.backend,
             test_txs.clone().into_iter().map(Into::into).collect(),
+            Default::default(),
         )
         .unwrap()
     };
@@ -687,6 +688,7 @@ async fn invalid_execution_proof_should_not_work() {
             },
             &*alice.backend,
             test_txs.clone().into_iter().map(Into::into).collect(),
+            Default::default(),
         )
         .unwrap()
     };
