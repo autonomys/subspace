@@ -1,7 +1,7 @@
 use crate::fraud_proof::FraudProof;
-use crate::OpaqueBundle;
-use parity_scale_codec::{Decode, Encode};
+use codec::{Decode, Encode};
 use scale_info::TypeInfo;
+use sp_domains::OpaqueBundle;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidity};
 use subspace_runtime_primitives::Balance;
@@ -9,8 +9,8 @@ use subspace_runtime_primitives::Balance;
 /// Custom invalid validity code for the extrinsics in pallet-domains.
 #[repr(u8)]
 pub enum InvalidTransactionCode {
-    BundleEquivicationProof = 101,
-    TrasactionProof = 102,
+    BundleEquivocationProof = 101,
+    TransactionProof = 102,
     ExecutionReceipt = 103,
     Bundle = 104,
     FraudProof = 105,

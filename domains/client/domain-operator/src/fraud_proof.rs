@@ -10,14 +10,14 @@ use sp_blockchain::HeaderBackend;
 use sp_core::traits::CodeExecutor;
 use sp_core::H256;
 use sp_domain_digests::AsPredigest;
-use sp_domains::fraud_proof::{
+use sp_domains::proof_provider_and_verifier::StorageProofProvider;
+use sp_domains::{DomainId, DomainsApi};
+use sp_domains_fraud_proof::fraud_proof::{
     ExecutionPhase, ExtrinsicDigest, FraudProof, InvalidBundlesFraudProof,
     InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof, InvalidStateTransitionProof,
     InvalidTotalRewardsProof, MissingInvalidBundleEntryFraudProof,
     ValidAsInvalidBundleEntryFraudProof, ValidBundleDigest,
 };
-use sp_domains::valued_trie_root::StorageProofProvider;
-use sp_domains::{DomainId, DomainsApi};
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashingFor, Header as HeaderT, NumberFor};
 use sp_runtime::{Digest, DigestItem};
 use sp_trie::{LayoutV1, StorageProof};
@@ -111,7 +111,7 @@ where
         PCB: BlockT,
     {
         let block_hash = local_receipt.domain_block_hash;
-        let key = sp_domains::fraud_proof::operator_block_rewards_final_key();
+        let key = sp_domains_fraud_proof::fraud_proof::operator_block_rewards_final_key();
         let proof = self
             .client
             .read_proof(block_hash, &mut [key.as_slice()].into_iter())?;
@@ -132,7 +132,7 @@ where
         PCB: BlockT,
     {
         let block_hash = local_receipt.domain_block_hash;
-        let digest_key = sp_domains::fraud_proof::system_digest_final_key();
+        let digest_key = sp_domains_fraud_proof::fraud_proof::system_digest_final_key();
         let digest_storage_proof = self
             .client
             .read_proof(block_hash, &mut [digest_key.as_slice()].into_iter())?;

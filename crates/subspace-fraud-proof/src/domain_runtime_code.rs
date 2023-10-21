@@ -1,8 +1,8 @@
 use codec::{Decode, Encode};
 use sp_api::ProvideRuntimeApi;
 use sp_core::traits::FetchRuntimeCode;
-use sp_domains::fraud_proof::VerificationError;
 use sp_domains::{DomainId, DomainsApi};
+use sp_domains_fraud_proof::fraud_proof::VerificationError;
 use sp_runtime::traits::Block as BlockT;
 use std::borrow::Cow;
 use std::sync::Arc;

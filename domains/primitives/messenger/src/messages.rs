@@ -5,7 +5,7 @@ use frame_support::Identity;
 use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
 use sp_core::storage::StorageKey;
-use sp_domains::verification::StorageProofVerifier;
+use sp_domains::proof_provider_and_verifier::StorageProofVerifier;
 use sp_domains::DomainId;
 use sp_runtime::app_crypto::sp_core::U256;
 use sp_runtime::{sp_std, DispatchError};

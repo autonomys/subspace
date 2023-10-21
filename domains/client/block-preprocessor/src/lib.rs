@@ -26,7 +26,7 @@ use runtime_api::TimestampExtrinsicConstructor;
 use sc_client_api::BlockBackend;
 use sp_api::{HashT, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
-use sp_domains::verification::deduplicate_and_shuffle_extrinsics;
+use sp_domains::extrinsics::deduplicate_and_shuffle_extrinsics;
 use sp_domains::{
     DomainId, DomainsApi, ExecutionReceipt, InboxedBundle, InvalidBundleType, OpaqueBundle,
     OpaqueBundles, ReceiptValidity,
@@ -340,7 +340,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use sp_domains::verification::shuffle_extrinsics;
+    use sp_domains::extrinsics::shuffle_extrinsics;
     use sp_keyring::sr25519::Keyring;
     use sp_runtime::traits::{BlakeTwo256, Hash as HashT};
     use subspace_core_primitives::Randomness;

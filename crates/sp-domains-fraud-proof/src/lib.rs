@@ -17,9 +17,11 @@
 //! Subspace fraud proof primitives for consensus chain.
 #![cfg_attr(not(feature = "std"), no_std)]
 
+pub mod fraud_proof;
 #[cfg(feature = "std")]
 mod host_functions;
 mod runtime_interface;
+pub mod transaction;
 pub mod verification;
 
 use codec::{Decode, Encode};

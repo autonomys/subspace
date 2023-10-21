@@ -1,16 +1,11 @@
 use hash_db::Hasher;
-use parity_scale_codec::{Codec, Compact, Encode};
-#[cfg(feature = "std")]
-use sp_state_machine::prove_read;
-use sp_state_machine::TrieBackendBuilder;
+use parity_scale_codec::{Compact, Encode};
 use sp_std::cmp::max;
-use sp_std::marker::PhantomData;
 use sp_std::vec::Vec;
-use sp_trie::StorageProof;
 use trie_db::node::Value;
 use trie_db::{
-    nibble_ops, ChildReference, DBValue, NibbleSlice, NodeCodec, ProcessEncodedNode,
-    TrieDBMutBuilder, TrieHash, TrieLayout, TrieMut, TrieRoot,
+    nibble_ops, ChildReference, NibbleSlice, NodeCodec, ProcessEncodedNode, TrieHash, TrieLayout,
+    TrieRoot,
 };
 
 macro_rules! exponential_out {
@@ -250,60 +245,10 @@ where
     }
 }
 
-type MemoryDB<T> = memory_db::MemoryDB<
-    <T as TrieLayout>::Hash,
-    memory_db::HashKey<<T as TrieLayout>::Hash>,
-    DBValue,
->;
-
-/// Type that provides utilities to generate the storage proof.
-pub struct StorageProofProvider<Layout>(PhantomData<Layout>);
-
-impl<Layout> StorageProofProvider<Layout>
-where
-    Layout: TrieLayout,
-    <Layout::Hash as Hasher>::Out: Codec,
-{
-    /// Generate storage proof for given index from the trie constructed from `input`.
-    ///
-    /// Returns `None` if the given `index` out of range or fail to generate the proof.
-    #[cfg(feature = "std")]
-    pub fn generate_enumerated_proof_of_inclusion(
-        input: &[Vec<u8>],
-        index: u32,
-    ) -> Option<StorageProof> {
-        if input.len() <= index as usize {
-            return None;
-        }
-
-        let input: Vec<_> = input
-            .iter()
-            .enumerate()
-            .map(|(i, v)| (Compact(i as u32).encode(), v))
-            .collect();
-
-        let (db, root) = {
-            let mut db = <MemoryDB<Layout>>::default();
-            let mut root = Default::default();
-            {
-                let mut trie = <TrieDBMutBuilder<Layout>>::new(&mut db, &mut root).build();
-                for (key, value) in input {
-                    trie.insert(&key, value).ok()?;
-                }
-            }
-            (db, root)
-        };
-
-        let backend = TrieBackendBuilder::new(db, root).build();
-        let key = Compact(index).encode();
-        prove_read(backend, &[key]).ok()
-    }
-}
-
 #[cfg(test)]
 mod test {
-    use crate::valued_trie_root::{valued_ordered_trie_root, StorageProofProvider};
-    use crate::verification::StorageProofVerifier;
+    use crate::proof_provider_and_verifier::{StorageProofProvider, StorageProofVerifier};
+    use crate::valued_trie::valued_ordered_trie_root;
     use parity_scale_codec::{Compact, Encode};
     use rand::rngs::StdRng;
     use rand::{Rng, SeedableRng};

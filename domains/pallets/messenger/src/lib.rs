@@ -105,7 +105,7 @@ mod pallet {
     use frame_support::weights::WeightToFee;
     use frame_system::pallet_prelude::*;
     use sp_core::storage::StorageKey;
-    use sp_domains::verification::{StorageProofVerifier, VerificationError};
+    use sp_domains::proof_provider_and_verifier::{StorageProofVerifier, VerificationError};
     use sp_domains::DomainId;
     use sp_messenger::endpoint::{DomainInfo, Endpoint, EndpointHandler, EndpointRequest, Sender};
     use sp_messenger::messages::{

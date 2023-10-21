@@ -13,7 +13,7 @@ use futures::channel::oneshot;
 use futures::FutureExt;
 use invalid_transaction_proof::VerifyInvalidTransactionProof;
 use sp_core::traits::SpawnNamed;
-use sp_domains::fraud_proof::{FraudProof, VerificationError};
+use sp_domains_fraud_proof::fraud_proof::{FraudProof, VerificationError};
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use std::marker::PhantomData;
 use std::sync::Arc;

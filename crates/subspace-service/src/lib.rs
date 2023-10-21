@@ -79,8 +79,8 @@ use sp_consensus_subspace::{
 };
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
 use sp_core::H256;
-use sp_domains::transaction::PreValidationObjectApi;
 use sp_domains::DomainsApi;
+use sp_domains_fraud_proof::transaction::PreValidationObjectApi;
 use sp_domains_fraud_proof::{FraudProofExtension, FraudProofHostFunctionsImpl};
 use sp_externalities::Extensions;
 use sp_objects::ObjectsApi;

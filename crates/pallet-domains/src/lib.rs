@@ -46,19 +46,19 @@ pub use pallet::*;
 use scale_info::TypeInfo;
 use sp_core::H256;
 use sp_domains::bundle_producer_election::{is_below_threshold, BundleProducerElectionParams};
-use sp_domains::fraud_proof::{FraudProof, InvalidDomainBlockHashProof, InvalidTotalRewardsProof};
-use sp_domains::verification::verify_invalid_total_rewards_fraud_proof;
 use sp_domains::{
     DomainBlockLimit, DomainId, DomainInstanceData, ExecutionReceipt, OpaqueBundle, OperatorId,
     OperatorPublicKey, ProofOfElection, ReceiptHash, RuntimeId,
     DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT, EMPTY_EXTRINSIC_ROOT,
 };
-use sp_domains_fraud_proof::fraud_proof_runtime_interface::get_fraud_proof_verification_info;
+use sp_domains_fraud_proof::fraud_proof::{
+    FraudProof, InvalidDomainBlockHashProof, InvalidTotalRewardsProof,
+};
 use sp_domains_fraud_proof::verification::{
     verify_invalid_domain_block_hash_fraud_proof,
     verify_invalid_domain_extrinsics_root_fraud_proof, verify_invalid_state_transition_fraud_proof,
+    verify_invalid_total_rewards_fraud_proof,
 };
-use sp_domains_fraud_proof::FraudProofVerificationInfoRequest;
 use sp_runtime::traits::{BlakeTwo256, CheckedSub, Hash, Header, One, Zero};
 use sp_runtime::{RuntimeAppPublic, SaturatedConversion, Saturating};
 use sp_std::boxed::Box;
@@ -151,12 +151,12 @@ mod pallet {
     use frame_support::{Identity, PalletError};
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
-    use sp_domains::fraud_proof::FraudProof;
-    use sp_domains::transaction::InvalidTransactionCode;
     use sp_domains::{
         BundleDigest, DomainId, EpochIndex, GenesisDomain, OperatorAllowList, OperatorId,
         ReceiptHash, RuntimeId, RuntimeType,
     };
+    use sp_domains_fraud_proof::fraud_proof::FraudProof;
+    use sp_domains_fraud_proof::transaction::InvalidTransactionCode;
     use sp_runtime::traits::{
         AtLeast32BitUnsigned, BlockNumberProvider, CheckEqual, CheckedAdd, Header as HeaderT,
         MaybeDisplay, One, SimpleBitOps, Zero,
@@ -597,7 +597,7 @@ mod pallet {
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum FraudProofError {
-        /// The targetted bad receipt not found which may already pruned by other
+        /// The targeted bad receipt not found which may already pruned by other
         /// fraud proof or the fraud proof is submitted to the wrong fork.
         BadReceiptNotFound,
         /// The genesis receipt is unchallengeable.
@@ -605,21 +605,15 @@ mod pallet {
         /// The descendants of the fraudulent ER is not pruned
         DescendantsOfFraudulentERNotPruned,
         /// Invalid fraud proof since total rewards are not mismatched.
-        InvalidTotalRewardsFraudProof(sp_domains::verification::VerificationError),
+        InvalidTotalRewardsFraudProof,
         /// Invalid domain block hash fraud proof.
-        InvalidDomainBlockHashFraudProof(sp_domains::verification::VerificationError),
+        InvalidDomainBlockHashFraudProof,
         /// Invalid domain extrinsic fraud proof
-        InvalidExtrinsicRootFraudProof(sp_domains::verification::VerificationError),
+        InvalidExtrinsicRootFraudProof,
         /// Invalid state transition fraud proof
         InvalidStateTransitionFraudProof,
-        /// Failed to get block randomness.
-        FailedToGetBlockRandomness,
-        /// Failed to get domain timestamp extrinsic.
-        FailedToGetDomainTimestampExtrinsic,
         /// Parent receipt not found.
         ParentReceiptNotFound,
-        /// Failed to get domain set code extrinsic.
-        FailedToGetDomainSetCodeExtrinsic,
     }
 
     impl<T> From<FraudProofError> for Error<T> {
@@ -1543,9 +1537,15 @@ impl<T: Config> Pallet<T> {
                     DomainBlockNumberFor<T>,
                     T::DomainHash,
                     BalanceOf<T>,
-                    T::Hashing,
+                    DomainHashingFor<T>,
                 >(bad_receipt, storage_proof)
-                .map_err(FraudProofError::InvalidTotalRewardsFraudProof)?;
+                .map_err(|err| {
+                    log::error!(
+                        target: "runtime::domains",
+                        "Total rewards proof verification failed: {err:?}"
+                    );
+                    FraudProofError::InvalidTotalRewardsFraudProof
+                })?;
             }
             FraudProof::InvalidDomainBlockHash(InvalidDomainBlockHashProof {
                 digest_storage_proof,
@@ -1564,31 +1564,15 @@ impl<T: Config> Pallet<T> {
                     digest_storage_proof.clone(),
                     parent_receipt.domain_block_hash,
                 )
-                .map_err(FraudProofError::InvalidDomainBlockHashFraudProof)?;
+                .map_err(|err| {
+                    log::error!(
+                        target: "runtime::domains",
+                        "Invalid Domain block hash proof verification failed: {err:?}"
+                    );
+                    FraudProofError::InvalidDomainBlockHashFraudProof
+                })?;
             }
             FraudProof::InvalidExtrinsicsRoot(proof) => {
-                let consensus_block_hash = bad_receipt.consensus_block_hash;
-                let block_randomness = get_fraud_proof_verification_info(
-                    H256::from_slice(consensus_block_hash.as_ref()),
-                    FraudProofVerificationInfoRequest::BlockRandomness,
-                )
-                .and_then(|resp| resp.into_block_randomness())
-                .ok_or(FraudProofError::FailedToGetBlockRandomness)?;
-
-                let domain_timestamp_extrinsic = get_fraud_proof_verification_info(
-                    H256::from_slice(consensus_block_hash.as_ref()),
-                    FraudProofVerificationInfoRequest::DomainTimestampExtrinsic(proof.domain_id),
-                )
-                .and_then(|resp| resp.into_domain_timestamp_extrinsic())
-                .ok_or(FraudProofError::FailedToGetDomainTimestampExtrinsic)?;
-
-                let maybe_domain_set_code_extrinsic = get_fraud_proof_verification_info(
-                    H256::from_slice(consensus_block_hash.as_ref()),
-                    FraudProofVerificationInfoRequest::DomainSetCodeExtrinsic(proof.domain_id),
-                )
-                .map(|resp| resp.into_domain_set_code_extrinsic())
-                .ok_or(FraudProofError::FailedToGetDomainSetCodeExtrinsic)?;
-
                 verify_invalid_domain_extrinsics_root_fraud_proof::<
                     T::Block,
                     DomainBlockNumberFor<T>,
@@ -1596,14 +1580,14 @@ impl<T: Config> Pallet<T> {
                     BalanceOf<T>,
                     T::Hashing,
                     DomainHashingFor<T>,
-                >(
-                    bad_receipt,
-                    proof,
-                    block_randomness,
-                    domain_timestamp_extrinsic,
-                    maybe_domain_set_code_extrinsic,
-                )
-                .map_err(FraudProofError::InvalidExtrinsicRootFraudProof)?;
+                >(bad_receipt, proof)
+                .map_err(|err| {
+                    log::error!(
+                        target: "runtime::domains",
+                        "Invalid Domain extrinsic root proof verification failed: {err:?}"
+                    );
+                    FraudProofError::InvalidExtrinsicRootFraudProof
+                })?;
             }
             FraudProof::InvalidStateTransition(proof) => {
                 let bad_receipt_parent =
@@ -1616,7 +1600,13 @@ impl<T: Config> Pallet<T> {
                     T::DomainHeader,
                     BalanceOf<T>,
                 >(bad_receipt, bad_receipt_parent, proof)
-                .map_err(|_| FraudProofError::InvalidStateTransitionFraudProof)?;
+                .map_err(|err| {
+                    log::error!(
+                        target: "runtime::domains",
+                        "Invalid State transition proof verification failed: {err:?}"
+                    );
+                    FraudProofError::InvalidStateTransitionFraudProof
+                })?;
             }
             _ => {}
         }

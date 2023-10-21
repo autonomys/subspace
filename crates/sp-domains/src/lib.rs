@@ -18,14 +18,13 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 pub mod bundle_producer_election;
-pub mod fraud_proof;
+pub mod extrinsics;
 pub mod merkle_tree;
+pub mod proof_provider_and_verifier;
 pub mod storage;
 #[cfg(test)]
 mod tests;
-pub mod transaction;
-pub mod valued_trie_root;
-pub mod verification;
+pub mod valued_trie;
 
 extern crate alloc;
 
