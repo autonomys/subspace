@@ -5,6 +5,7 @@ use codec::{Decode, Encode};
 use domain_block_preprocessor::inherents::extract_domain_runtime_upgrade_code;
 use domain_block_preprocessor::runtime_api::{SetCodeConstructor, TimestampExtrinsicConstructor};
 use domain_block_preprocessor::runtime_api_light::RuntimeApiLight;
+use sc_client_api::BlockBackend;
 use sc_executor::RuntimeVersionOf;
 use sp_api::{BlockT, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
@@ -12,11 +13,12 @@ use sp_core::traits::{CodeExecutor, FetchRuntimeCode, RuntimeCode};
 use sp_core::H256;
 use sp_domains::{DomainId, DomainsApi};
 use sp_runtime::traits::{Header as HeaderT, NumberFor};
+use sp_runtime::OpaqueExtrinsic;
 use sp_trie::StorageProof;
 use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subspace_core_primitives::Randomness;
+use subspace_core_primitives::{Randomness, U256};
 
 struct DomainRuntimeCodeFetcher(Vec<u8>);
 
@@ -83,7 +85,7 @@ where
     Block: BlockT,
     Block::Hash: From<H256>,
     DomainBlock: BlockT,
-    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block>,
+    Client: BlockBackend<Block> + HeaderBackend<Block> + ProvideRuntimeApi<Block>,
     Client::Api: DomainsApi<Block, NumberFor<DomainBlock>, DomainBlock::Hash>,
     Executor: CodeExecutor + RuntimeVersionOf,
 {
@@ -168,6 +170,60 @@ where
             .ok()
             .flatten()
     }
+
+    fn is_tx_in_range(
+        &self,
+        consensus_block_hash_with_bundle: H256,
+        consensus_block_hash_with_tx_range: H256,
+        domain_id: DomainId,
+        opaque_extrinsic: OpaqueExtrinsic,
+        bundle_index: u32,
+    ) -> Option<bool> {
+        let runtime_api = self.consensus_client.runtime_api();
+        let consensus_block_hash_with_tx_range = consensus_block_hash_with_tx_range.into();
+        let domain_tx_range = runtime_api
+            .domain_tx_range(consensus_block_hash_with_tx_range, domain_id)
+            .ok()?;
+
+        let runtime_code =
+            self.get_domain_runtime_code(consensus_block_hash_with_bundle, domain_id)?;
+
+        let consensus_block_hash_with_bundles = consensus_block_hash_with_bundle.into();
+        let consensus_extrinsics = self
+            .consensus_client
+            .block_body(consensus_block_hash_with_bundles)
+            .ok()??;
+        let bundles = self
+            .consensus_client
+            .runtime_api()
+            .extract_successful_bundles(
+                consensus_block_hash_with_bundles,
+                domain_id,
+                consensus_extrinsics,
+            )
+            .ok()?;
+
+        let bundle = bundles.get(bundle_index as usize)?;
+        let bundle_vrf_hash =
+            U256::from_be_bytes(bundle.sealed_header.header.proof_of_election.vrf_hash());
+
+        let domain_runtime_api_light =
+            RuntimeApiLight::new(self.executor.clone(), runtime_code.into());
+
+        let encoded_extrinsic = opaque_extrinsic.encode();
+        let extrinsic =
+            <DomainBlock as BlockT>::Extrinsic::decode(&mut encoded_extrinsic.as_slice()).ok()?;
+
+        <RuntimeApiLight<Executor> as domain_runtime_primitives::DomainCoreApi<
+            DomainBlock,
+        >>::is_within_tx_range(
+            &domain_runtime_api_light,
+            Default::default(), // Doesn't matter for RuntimeApiLight
+            &extrinsic,
+            &bundle_vrf_hash,
+            &domain_tx_range,
+        ).ok()
+    }
 }
 
 impl<Block, Client, DomainBlock, Executor> FraudProofHostFunctions
@@ -177,7 +233,7 @@ where
     Block::Hash: From<H256>,
     DomainBlock: BlockT,
     DomainBlock::Hash: From<H256>,
-    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block>,
+    Client: BlockBackend<Block> + HeaderBackend<Block> + ProvideRuntimeApi<Block>,
     Client::Api: DomainsApi<Block, NumberFor<DomainBlock>, DomainBlock::Hash>,
     Executor: CodeExecutor + RuntimeVersionOf,
 {
@@ -210,6 +266,23 @@ where
                     FraudProofVerificationInfoResponse::DomainSetCodeExtrinsic(
                         maybe_domain_set_code_extrinsic,
                     )
+                }),
+            FraudProofVerificationInfoRequest::TxRangeCheck {
+                consensus_block_hash_with_tx_range,
+                domain_id,
+                opaque_extrinsic,
+                bundle_index,
+                ..
+            } => self
+                .is_tx_in_range(
+                    consensus_block_hash,
+                    consensus_block_hash_with_tx_range,
+                    domain_id,
+                    opaque_extrinsic,
+                    bundle_index,
+                )
+                .map(|is_tx_in_range| {
+                    FraudProofVerificationInfoResponse::TxRangeCheck(is_tx_in_range)
                 }),
         }
     }

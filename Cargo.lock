@@ -10830,6 +10830,7 @@ dependencies = [
  "frame-support",
  "hash-db 0.16.0",
  "parity-scale-codec",
+ "sc-client-api",
  "sc-executor",
  "scale-info",
  "sp-api",

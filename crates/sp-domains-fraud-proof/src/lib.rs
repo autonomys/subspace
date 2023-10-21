@@ -33,7 +33,9 @@ pub use runtime_interface::fraud_proof_runtime_interface;
 #[cfg(feature = "std")]
 pub use runtime_interface::fraud_proof_runtime_interface::HostFunctions;
 use sp_api::scale_info::TypeInfo;
+use sp_core::H256;
 use sp_domains::DomainId;
+use sp_runtime::OpaqueExtrinsic;
 use sp_runtime_interface::pass_by;
 use sp_runtime_interface::pass_by::PassBy;
 use sp_std::vec::Vec;
@@ -50,6 +52,18 @@ pub enum FraudProofVerificationInfoRequest {
     DomainRuntimeCode(DomainId),
     /// Domain set_code extrinsic if there is a runtime upgrade at a given consensus block hash.
     DomainSetCodeExtrinsic(DomainId),
+    /// Request to check if particular extrinsic is in range for (domain, bundle) pair at given domain block
+    TxRangeCheck {
+        domain_id: DomainId,
+        /// Hash of the consensus block at which tx_range was queried
+        consensus_block_hash_with_tx_range: H256,
+        /// Runtime storage with proof required for executing tx range check. (Unused since currently api is stateless)
+        consensus_block_tx_range_storage_proof: Vec<Vec<u8>>,
+        /// Index of the bundle in which the extrinsic exists
+        bundle_index: u32,
+        /// Extrinsic for which we need to check the range
+        opaque_extrinsic: OpaqueExtrinsic,
+    },
 }
 
 impl PassBy for FraudProofVerificationInfoRequest {
@@ -76,6 +90,8 @@ pub enum FraudProofVerificationInfoResponse {
     DomainRuntimeCode(Vec<u8>),
     /// Encoded domain set_code extrinsic if there is a runtime upgrade at given consensus block hash.
     DomainSetCodeExtrinsic(SetCodeExtrinsic),
+    /// if particular extrinsic is in range for (domain, bundle) pair at given domain block
+    TxRangeCheck(bool),
 }
 
 impl FraudProofVerificationInfoResponse {
