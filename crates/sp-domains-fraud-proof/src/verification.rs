@@ -43,7 +43,7 @@ where
     CBlock: BlockT,
     Hashing: Hasher<Out = CBlock::Hash>,
     DomainHashing: Hasher<Out = DomainHash>,
-    DomainHash: Into<H256>,
+    DomainHash: Into<H256> + PartialEq,
 {
     let InvalidExtrinsicsRootProof {
         valid_bundle_digests,
@@ -116,7 +116,7 @@ where
         .collect();
 
     let extrinsics_root =
-        valued_ordered_trie_root::<LayoutV1<BlakeTwo256>>(ordered_trie_node_values);
+        valued_ordered_trie_root::<LayoutV1<DomainHashing>>(ordered_trie_node_values);
     if bad_receipt.domain_block_extrinsic_root == extrinsics_root {
         return Err(VerificationError::InvalidProof);
     }
@@ -204,7 +204,6 @@ where
     CBlock: BlockT,
     Balance: PartialEq + Decode,
     DomainHeader: HeaderT,
-    DomainHeader::Hash: From<H256>,
 {
     let state_root = bad_receipt.final_state_root;
     let digest_storage_key = StorageKey(crate::fraud_proof::system_digest_final_key());
@@ -218,7 +217,7 @@ where
 
     let derived_domain_block_hash = sp_domains::derive_domain_block_hash::<DomainHeader>(
         bad_receipt.domain_block_number,
-        bad_receipt.domain_block_extrinsic_root.into(),
+        bad_receipt.domain_block_extrinsic_root,
         state_root,
         parent_domain_block_hash,
         digest,

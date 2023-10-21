@@ -95,7 +95,7 @@ pub type StakeWeight = u128;
 /// The hash of a execution receipt.
 pub type ReceiptHash = H256;
 
-/// The Merkle root of all extrinsics included in a bundle.
+/// The Trie root of all extrinsics included in a bundle.
 pub type ExtrinsicsRoot = H256;
 
 /// Unique identifier of a domain.
@@ -361,7 +361,7 @@ pub struct ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance> {
     /// The block hash corresponding to `domain_block_number`.
     pub domain_block_hash: DomainHash,
     /// Extrinsic root field of the header of domain block referenced by this ER.
-    pub domain_block_extrinsic_root: H256,
+    pub domain_block_extrinsic_root: DomainHash,
     /// The hash of the ER for the last domain block.
     pub parent_domain_block_receipt_hash: ReceiptHash,
     /// A pointer to the consensus block index which contains all of the bundles that were used to derive and
@@ -432,7 +432,7 @@ impl<
 
     pub fn genesis(
         genesis_state_root: DomainHash,
-        genesis_extrinsic_root: H256,
+        genesis_extrinsic_root: DomainHash,
         genesis_domain_block_hash: DomainHash,
     ) -> Self {
         ExecutionReceipt {

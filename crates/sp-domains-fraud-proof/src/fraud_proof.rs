@@ -132,7 +132,6 @@ impl ExecutionPhase {
     where
         CBlock: BlockT,
         DomainHeader: HeaderT,
-        DomainHeader::Hash: From<H256>,
     {
         Ok(match self {
             ExecutionPhase::InitializeBlock => {
@@ -162,7 +161,7 @@ impl ExecutionPhase {
                     );
                 if !StorageProofVerifier::<DomainHeader::Hashing>::verify_storage_proof(
                     proof_of_inclusion.clone(),
-                    &bad_receipt.domain_block_extrinsic_root.into(),
+                    &bad_receipt.domain_block_extrinsic_root,
                     extrinsic.clone(),
                     storage_key,
                 ) {

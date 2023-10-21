@@ -277,7 +277,6 @@ pub async fn new_full<
 where
     CBlock: BlockT,
     NumberFor<CBlock>: From<NumberFor<Block>> + Into<u32>,
-    <Block as BlockT>::Hash: From<Hash>,
     CBlock::Hash: From<Hash> + Into<Hash>,
     CClient: HeaderBackend<CBlock>
         + HeaderMetadata<CBlock, Error = sp_blockchain::Error>

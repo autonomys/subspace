@@ -15,7 +15,6 @@ use sc_utils::mpsc::tracing_unbounded;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
-use sp_core::H256;
 use sp_domains::{BundleProducerElectionApi, DomainsApi};
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
@@ -63,7 +62,6 @@ where
     CBlock: BlockT,
     NumberFor<CBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
     CBlock::Hash: From<Block::Hash>,
-    Block::Hash: Into<H256>,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + AuxStore

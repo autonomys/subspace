@@ -9,7 +9,6 @@ use sc_client_api::{AuxStore, BlockBackend};
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{HashAndNumber, HeaderBackend};
-use sp_core::H256;
 use sp_domains::{
     Bundle, BundleProducerElectionApi, DomainId, DomainsApi, OperatorPublicKey, OperatorSignature,
     SealedBundleHeader,
@@ -96,7 +95,6 @@ impl<Block, CBlock, ParentChainBlock, Client, CClient, ParentChain, TransactionP
     >
 where
     Block: BlockT,
-    Block::Hash: Into<H256>,
     CBlock: BlockT,
     ParentChainBlock: BlockT,
     NumberFor<Block>: Into<NumberFor<CBlock>>,

@@ -141,7 +141,7 @@ pub(crate) fn do_instantiate_domain<T: Config>(
 
         ExecutionReceiptOf::<T>::genesis(
             state_root,
-            sp_domains::EMPTY_EXTRINSIC_ROOT,
+            sp_domains::EMPTY_EXTRINSIC_ROOT.into(),
             genesis_block_hash,
         )
     };
