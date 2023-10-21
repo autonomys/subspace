@@ -5,7 +5,10 @@ use sp_consensus_slots::Slot;
 use sp_core::H256;
 use sp_domain_digests::AsPredigest;
 use sp_domains::proof_provider_and_verifier::StorageProofVerifier;
-use sp_domains::{DomainId, ExecutionReceipt, ReceiptHash, SealedBundleHeader};
+use sp_domains::{
+    BundleValidity, DomainId, ExecutionReceipt, InboxedBundle, InvalidBundleType, ReceiptHash,
+    SealedBundleHeader,
+};
 use sp_runtime::traits::{
     BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor,
 };
@@ -288,6 +291,27 @@ pub enum VerificationError {
         error("Failed to derive domain set code extrinsic")
     )]
     FailedToDeriveDomainSetCodeExtrinsic,
+    /// Bundle with requested index not found in execution receipt
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Bundle with requested index not found in execution receipt")
+    )]
+    BundleNotFound,
+    /// Fraud proof mismatch with actual bundle entry
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Fraud proof mismatch with actual bundle entry")
+    )]
+    FraudProofMismatch,
+    /// Tx range host function returned err
+    #[cfg_attr(feature = "thiserror", error("Tx range host function returned err"))]
+    TxRangeHostFnFailed,
+    /// Unable to receive tx range from host function
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Unable to receive tx range from host function")
+    )]
+    ReceivedInvalidInfoFromHostFn,
 }
 
 // TODO: Define rest of the fraud proof fields
@@ -341,6 +365,20 @@ impl TrueInvalidBundleEntryFraudProof {
             extrinsic_inclusion_proof,
             proof_data,
         }
+    }
+
+    pub fn matches_with_bundle_entry(&self, inboxed_bundle_entry: &InboxedBundle) -> bool {
+        if !inboxed_bundle_entry.is_invalid() {
+            return true;
+        }
+
+        let expected_bundle_validity = match self.proof_data {
+            ProofDataPerExpectedInvalidBundle::OutOfRangeTx => BundleValidity::Invalid(
+                InvalidBundleType::OutOfRangeTx(self.mismatched_extrinsic_index),
+            ),
+        };
+
+        expected_bundle_validity == inboxed_bundle_entry.bundle
     }
 }
 

@@ -1,5 +1,6 @@
 use crate::fraud_proof::{
-    ExtrinsicDigest, InvalidExtrinsicsRootProof, InvalidStateTransitionProof, VerificationError,
+    ExtrinsicDigest, InvalidExtrinsicsRootProof, InvalidStateTransitionProof,
+    ProofDataPerExpectedInvalidBundle, TrueInvalidBundleEntryFraudProof, VerificationError,
 };
 use crate::fraud_proof_runtime_interface::get_fraud_proof_verification_info;
 use crate::{
@@ -16,6 +17,7 @@ use sp_domains::valued_trie::valued_ordered_trie_root;
 use sp_domains::ExecutionReceipt;
 use sp_runtime::generic::Digest;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Block, Hash, Header as HeaderT, NumberFor};
+use sp_std::vec;
 use sp_std::vec::Vec;
 use sp_trie::{LayoutV1, StorageProof};
 use subspace_core_primitives::Randomness;
@@ -269,4 +271,74 @@ where
     }
 
     Ok(())
+}
+
+pub fn verify_true_invalid_bundle_fraud_proof<CBlock, DomainNumber, DomainHash, Balance>(
+    bad_receipt: ExecutionReceipt<
+        NumberFor<CBlock>,
+        CBlock::Hash,
+        DomainNumber,
+        DomainHash,
+        Balance,
+    >,
+    true_invalid_fraud_proof: &TrueInvalidBundleEntryFraudProof,
+) -> Result<(), VerificationError>
+where
+    CBlock: BlockT,
+{
+    let true_invalid_bundle_entry = bad_receipt
+        .inboxed_bundles
+        .get(true_invalid_fraud_proof.bundle_index as usize)
+        .ok_or(VerificationError::BundleNotFound)?;
+
+    if !true_invalid_fraud_proof.matches_with_bundle_entry(true_invalid_bundle_entry) {
+        return Err(VerificationError::FraudProofMismatch);
+    }
+
+    let extrinsic = StorageProofVerifier::<BlakeTwo256>::get_decoded_value(
+        &true_invalid_bundle_entry.extrinsics_root,
+        StorageProof::new(
+            true_invalid_fraud_proof
+                .extrinsic_inclusion_proof
+                .clone()
+                .drain(..),
+        ),
+        StorageKey(
+            true_invalid_fraud_proof
+                .mismatched_extrinsic_index
+                .to_be_bytes()
+                .to_vec(),
+        ),
+    )
+    .map_err(|_e| VerificationError::InvalidProof)?;
+
+    match true_invalid_fraud_proof.proof_data {
+        ProofDataPerExpectedInvalidBundle::OutOfRangeTx => {
+            let fraud_proof_verification_response =
+                fraud_proof_runtime_interface::get_fraud_proof_verification_info(
+                    H256::from_slice(bad_receipt.consensus_block_hash.as_ref()),
+                    FraudProofVerificationInfoRequest::TxRangeCheck {
+                        domain_id: true_invalid_fraud_proof.domain_id,
+                        consensus_block_hash_with_tx_range: H256::from_slice(
+                            bad_receipt.consensus_block_hash.as_ref(),
+                        ), // TODO: Use correct consensus block hash when dynamic tx range is introduced
+                        consensus_block_tx_range_storage_proof: vec![], // Unused since currently api is stateless
+                        bundle_index: true_invalid_fraud_proof.bundle_index,
+                        opaque_extrinsic: extrinsic,
+                    },
+                )
+                .ok_or(VerificationError::TxRangeHostFnFailed)?;
+
+            let is_tx_in_range = match fraud_proof_verification_response {
+                FraudProofVerificationInfoResponse::TxRangeCheck(is_tx_in_range) => {
+                    Ok(is_tx_in_range)
+                }
+                _ => Err(VerificationError::ReceivedInvalidInfoFromHostFn),
+            }?;
+            if is_tx_in_range {
+                return Err(VerificationError::InvalidProof);
+            }
+            Ok(())
+        }
+    }
 }
