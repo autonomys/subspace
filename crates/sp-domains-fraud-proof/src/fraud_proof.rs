@@ -292,48 +292,78 @@ pub enum VerificationError {
 
 // TODO: Define rest of the fraud proof fields
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct MissingInvalidBundleEntryFraudProof {
-    domain_id: DomainId,
-    bundle_index: u32,
+pub struct FalseInvalidBundleEntryFraudProof {
+    pub bad_receipt_hash: ReceiptHash,
+    pub domain_id: DomainId,
+    pub bundle_index: u32,
 }
 
-impl MissingInvalidBundleEntryFraudProof {
-    pub fn new(domain_id: DomainId, bundle_index: u32) -> Self {
+impl FalseInvalidBundleEntryFraudProof {
+    pub fn new(bad_receipt_hash: ReceiptHash, domain_id: DomainId, bundle_index: u32) -> Self {
         Self {
+            bad_receipt_hash,
             domain_id,
             bundle_index,
         }
     }
 }
 
-// TODO: Define rest of the fraud proof fields
+/// Proof data specific to each *expected* invalid bundle type
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct ValidAsInvalidBundleEntryFraudProof {
-    domain_id: DomainId,
-    bundle_index: u32,
+pub enum ProofDataPerExpectedInvalidBundle {
+    OutOfRangeTx,
 }
 
-impl ValidAsInvalidBundleEntryFraudProof {
-    pub fn new(domain_id: DomainId, bundle_index: u32) -> Self {
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub struct TrueInvalidBundleEntryFraudProof {
+    pub bad_receipt_hash: ReceiptHash,
+    pub domain_id: DomainId,
+    pub bundle_index: u32,
+    pub mismatched_extrinsic_index: u32,
+    pub extrinsic_inclusion_proof: Vec<Vec<u8>>,
+    pub proof_data: ProofDataPerExpectedInvalidBundle,
+}
+
+impl TrueInvalidBundleEntryFraudProof {
+    pub fn new(
+        bad_receipt_hash: ReceiptHash,
+        domain_id: DomainId,
+        bundle_index: u32,
+        mismatched_extrinsic_index: u32,
+        extrinsic_inclusion_proof: Vec<Vec<u8>>,
+        proof_data: ProofDataPerExpectedInvalidBundle,
+    ) -> Self {
         Self {
+            bad_receipt_hash,
             domain_id,
             bundle_index,
+            mismatched_extrinsic_index,
+            extrinsic_inclusion_proof,
+            proof_data,
         }
     }
 }
 
-/// Fraud proof indicating that `invalid_bundles` field of the receipt is incorrect
+/// Fraud proof indicating that a bundle included in `inboxed_bundles` field has incorrect
+/// `bundle_validity` field
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub enum InvalidBundlesFraudProof {
-    MissingInvalidBundleEntry(MissingInvalidBundleEntryFraudProof),
-    ValidAsInvalid(ValidAsInvalidBundleEntryFraudProof),
+    TrueInvalid(TrueInvalidBundleEntryFraudProof),
+    FalseInvalid(FalseInvalidBundleEntryFraudProof),
 }
 
 impl InvalidBundlesFraudProof {
     pub fn domain_id(&self) -> DomainId {
         match self {
-            InvalidBundlesFraudProof::MissingInvalidBundleEntry(proof) => proof.domain_id,
-            InvalidBundlesFraudProof::ValidAsInvalid(proof) => proof.domain_id,
+            InvalidBundlesFraudProof::TrueInvalid(proof) => proof.domain_id,
+            InvalidBundlesFraudProof::FalseInvalid(proof) => proof.domain_id,
+        }
+    }
+
+    pub fn bad_receipt_hash(&self) -> ReceiptHash {
+        match self {
+            InvalidBundlesFraudProof::TrueInvalid(proof) => proof.bad_receipt_hash,
+            InvalidBundlesFraudProof::FalseInvalid(proof) => proof.bad_receipt_hash,
         }
     }
 }
@@ -392,7 +422,7 @@ impl<Number, Hash> FraudProof<Number, Hash> {
             } => *bad_receipt_hash,
             FraudProof::InvalidTotalRewards(proof) => proof.bad_receipt_hash(),
             // TODO: Remove default value when invalid bundle proofs are fully expanded
-            FraudProof::InvalidBundles(_) => Default::default(),
+            FraudProof::InvalidBundles(proof) => proof.bad_receipt_hash(),
             FraudProof::InvalidExtrinsicsRoot(proof) => proof.bad_receipt_hash,
             FraudProof::InvalidDomainBlockHash(proof) => proof.bad_receipt_hash,
         }
