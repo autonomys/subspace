@@ -14,7 +14,7 @@ use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, FetchRuntimeCode, RuntimeCode};
 use sp_core::H256;
 use sp_domains::{DomainId, DomainsApi};
-use sp_runtime::traits::{BlakeTwo256, Header as HeaderT, NumberFor};
+use sp_runtime::traits::{Header as HeaderT, NumberFor};
 use sp_runtime::OpaqueExtrinsic;
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
@@ -214,7 +214,7 @@ where
     Block: BlockT,
     Block::Hash: From<H256>,
     DomainBlock: BlockT,
-    DomainBlock::Hash: From<H256>,
+    DomainBlock::Hash: Into<H256> + From<H256>,
     Client: BlockBackend<Block> + HeaderBackend<Block> + ProvideRuntimeApi<Block>,
     Client::Api: DomainsApi<Block, NumberFor<DomainBlock>, DomainBlock::Hash>,
     Executor: CodeExecutor + RuntimeVersionOf,
@@ -266,14 +266,6 @@ where
         domain_id: DomainId,
         bundle_body: Vec<OpaqueExtrinsic>,
     ) -> Option<H256> {
-        let domain_runtime_code = {
-            let consensus_block_hash = consensus_block_hash.into();
-            self.consensus_client
-                .runtime_api()
-                .domain_runtime_code(consensus_block_hash, domain_id)
-                .ok()??
-        };
-
         let mut extrinsics = Vec::with_capacity(bundle_body.len());
         for opaque_extrinsic in bundle_body {
             let ext = <<DomainBlock as BlockT>::Extrinsic>::decode(
@@ -283,6 +275,7 @@ where
             extrinsics.push(ext);
         }
 
+        let domain_runtime_code = self.get_domain_runtime_code(consensus_block_hash, domain_id)?;
         let domain_runtime_api_light =
             RuntimeApiLight::new(self.executor.clone(), domain_runtime_code.into());
 
@@ -295,10 +288,15 @@ where
         )
         .ok()?
         .into_iter()
-        .map(|(signer, tx)| (signer, BlakeTwo256::hash_of(&tx)))
+        .map(|(signer, tx)| {
+            (
+                signer,
+                <DomainBlock::Header as HeaderT>::Hashing::hash_of(&tx),
+            )
+        })
         .collect();
 
-        Some(BlakeTwo256::hash_of(&ext_signers))
+        Some(<DomainBlock::Header as HeaderT>::Hashing::hash_of(&ext_signers).into())
     }
 
     fn execution_proof_check(

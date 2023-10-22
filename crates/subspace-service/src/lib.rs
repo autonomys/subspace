@@ -233,7 +233,7 @@ where
     Block: BlockT,
     Block::Hash: From<H256>,
     DomainBlock: BlockT,
-    DomainBlock::Hash: From<H256>,
+    DomainBlock::Hash: Into<H256> + From<H256>,
     Client: BlockBackend<Block>
         + HeaderBackend<Block>
         + ProvideRuntimeApi<Block>

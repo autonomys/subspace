@@ -20,7 +20,7 @@ use sp_core::traits::CodeExecutor;
 use sp_core::H256;
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{BundleValidity, DomainId, DomainsApi, ExecutionReceipt};
-use sp_domains_fraud_proof::fraud_proof::FraudProof;
+use sp_domains_fraud_proof::fraud_proof::{FraudProof, ValidBundleProof};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, One, Zero};
 use sp_runtime::Digest;
 use std::cmp::Ordering;
@@ -970,13 +970,11 @@ where
                     bundle_index,
                     ..
                 } => match mismatch_type {
-                    BundleMismatchType::Valid => self
-                        .fraud_proof_generator
-                        .generate_bad_valid_bundle_proof::<ParentChainBlock>(
-                            self.domain_id,
-                            local_receipt.hash(),
-                            bundle_index,
-                        ),
+                    BundleMismatchType::Valid => FraudProof::ValidBundle(ValidBundleProof {
+                        domain_id: self.domain_id,
+                        bad_receipt_hash: local_receipt.hash(),
+                        bundle_index,
+                    }),
                     _ => self
                         .fraud_proof_generator
                         .generate_invalid_bundle_field_proof::<ParentChainBlock>(

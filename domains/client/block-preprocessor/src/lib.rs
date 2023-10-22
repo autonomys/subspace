@@ -26,13 +26,14 @@ use runtime_api::TimestampExtrinsicConstructor;
 use sc_client_api::BlockBackend;
 use sp_api::{HashT, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
+use sp_core::H256;
 use sp_domains::extrinsics::deduplicate_and_shuffle_extrinsics;
 use sp_domains::{
     DomainId, DomainsApi, ExecutionReceipt, InboxedBundle, InvalidBundleType, OpaqueBundle,
     OpaqueBundles, ReceiptValidity,
 };
 use sp_messenger::MessengerApi;
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, NumberFor};
+use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use std::collections::VecDeque;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -118,6 +119,7 @@ impl<Block, CBlock, Client, CClient, RuntimeApi, ReceiptValidator>
     DomainBlockPreprocessor<Block, CBlock, Client, CClient, RuntimeApi, ReceiptValidator>
 where
     Block: BlockT,
+    Block::Hash: Into<H256>,
     CBlock: BlockT,
     CBlock::Hash: From<Block::Hash>,
     NumberFor<CBlock>: From<NumberFor<Block>>,
@@ -226,10 +228,15 @@ where
                     };
                     let bundle_digest: Vec<_> = extrinsics
                         .iter()
-                        .map(|(signer, tx)| (signer.clone(), BlakeTwo256::hash_of(tx)))
+                        .map(|(signer, tx)| {
+                            (
+                                signer.clone(),
+                                <Block::Header as HeaderT>::Hashing::hash_of(tx),
+                            )
+                        })
                         .collect();
                     inboxed_bundles.push(InboxedBundle::valid(
-                        BlakeTwo256::hash_of(&bundle_digest),
+                        <Block::Header as HeaderT>::Hashing::hash_of(&bundle_digest).into(),
                         extrinsic_root,
                     ));
                     valid_extrinsics.extend(extrinsics);

@@ -137,7 +137,8 @@ pub fn verify_valid_bundle_fraud_proof<CBlock, DomainNumber, DomainHash, Balance
     fraud_proof: &ValidBundleProof,
 ) -> Result<(), VerificationError>
 where
-    CBlock: BlockT<Hash: Into<H256>>,
+    CBlock: BlockT,
+    CBlock::Hash: Into<H256>,
 {
     let ValidBundleProof {
         domain_id,

@@ -16,7 +16,6 @@
 
 //! Subspace fraud proof primitives for consensus chain.
 #![cfg_attr(not(feature = "std"), no_std)]
-#![feature(associated_type_bounds)]
 
 pub mod fraud_proof;
 #[cfg(feature = "std")]
