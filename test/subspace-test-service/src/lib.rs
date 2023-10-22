@@ -45,6 +45,7 @@ use sc_service::{
     BasePath, BlocksPruning, Configuration, NetworkStarter, Role, SpawnTasksParams, TaskManager,
 };
 use sc_transaction_pool::error::Error as PoolError;
+use sc_transaction_pool::FullPool;
 use sc_transaction_pool_api::{InPoolTransaction, TransactionPool, TransactionSource};
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnboundedSender};
 use sp_api::{ApiExt, HashT, HeaderT, ProvideRuntimeApi};
@@ -75,7 +76,6 @@ use subspace_runtime_primitives::{AccountId, Balance, Hash};
 use subspace_service::FullSelectChain;
 use subspace_test_client::{chain_spec, Backend, Client, TestExecutorDispatch};
 use subspace_test_runtime::{RuntimeApi, RuntimeCall, UncheckedExtrinsic, SLOT_DURATION};
-use subspace_transaction_pool::{FullPool, NoopPreValidateTransaction};
 
 /// Create a Subspace `Configuration`.
 ///
@@ -220,7 +220,7 @@ pub struct MockConsensusNode {
     /// Code executor.
     pub executor: NativeElseWasmExecutor<TestExecutorDispatch>,
     /// Transaction pool.
-    pub transaction_pool: Arc<FullPool<Block, Client, NoopPreValidateTransaction<Block>>>,
+    pub transaction_pool: Arc<FullPool<Block, Client>>,
     /// The SelectChain Strategy
     pub select_chain: FullSelectChain,
     /// Network service.
@@ -286,11 +286,12 @@ impl MockConsensusNode {
 
         let select_chain = sc_consensus::LongestChain::new(backend.clone());
 
-        let transaction_pool = subspace_transaction_pool::new_full(
-            &config,
-            &task_manager,
+        let transaction_pool = sc_transaction_pool::BasicPool::new_full(
+            config.transaction_pool.clone(),
+            config.role.is_authority().into(),
+            config.prometheus_registry(),
+            task_manager.spawn_essential_handle(),
             client.clone(),
-            NoopPreValidateTransaction::default(),
         );
 
         let block_import = MockBlockImport::<_, _>::new(client.clone());

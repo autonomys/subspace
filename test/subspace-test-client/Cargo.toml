@@ -39,7 +39,6 @@ subspace-proof-of-space = { path = "../../crates/subspace-proof-of-space" }
 subspace-runtime-primitives = { path = "../../crates/subspace-runtime-primitives" }
 subspace-service = { path = "../../crates/subspace-service" }
 subspace-test-runtime = { version = "0.1.0", path = "../subspace-test-runtime" }
-subspace-transaction-pool = { version = "0.1.0", path = "../../crates/subspace-transaction-pool" }
 zeroize = "1.6.0"
 
 [features]

@@ -55,7 +55,6 @@ subspace-runtime-primitives = { path = "../../crates/subspace-runtime-primitives
 subspace-service = { path = "../../crates/subspace-service" }
 subspace-test-client = { path = "../subspace-test-client" }
 subspace-test-runtime = { version = "0.1.0", path = "../subspace-test-runtime" }
-subspace-transaction-pool = { path = "../../crates/subspace-transaction-pool" }
 tokio = "1.32.0"
 tracing = "0.1.37"
 

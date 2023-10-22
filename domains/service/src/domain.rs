@@ -1,7 +1,7 @@
 use crate::providers::{BlockImportProvider, RpcProvider};
+use crate::transaction_pool::FullChainApiWrapper;
 use crate::{FullBackend, FullClient};
 use domain_client_block_preprocessor::inherents::CreateInherentDataProvider;
-use domain_client_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_client_message_relayer::GossipMessageSink;
 use domain_client_operator::{Operator, OperatorParams, OperatorStreams};
 use domain_runtime_primitives::opaque::{Block, Header};
@@ -40,7 +40,6 @@ use std::str::FromStr;
 use std::sync::Arc;
 use subspace_core_primitives::Randomness;
 use subspace_runtime_primitives::Nonce;
-use subspace_transaction_pool::FullChainApiWrapper;
 use substrate_frame_rpc_system::AccountNonceApi;
 
 pub type DomainOperator<Block, CBlock, CClient, RuntimeApi, ExecutorDispatch> = Operator<
@@ -106,27 +105,18 @@ where
     _phantom_data: PhantomData<AccountId>,
 }
 
-type DomainTxPreValidator<CBlock, CClient, RuntimeApi, ExecutorDispatch> =
-    crate::domain_tx_pre_validator::DomainTxPreValidator<
-        Block,
-        CBlock,
-        FullClient<Block, RuntimeApi, ExecutorDispatch>,
-        CClient,
-        RuntimeApiFull<FullClient<Block, RuntimeApi, ExecutorDispatch>>,
-    >;
-
 pub type FullPool<CBlock, CClient, RuntimeApi, ExecutorDispatch> =
-    subspace_transaction_pool::FullPool<
+    crate::transaction_pool::FullPool<
+        CClient,
+        CBlock,
         Block,
         FullClient<Block, RuntimeApi, ExecutorDispatch>,
-        DomainTxPreValidator<CBlock, CClient, RuntimeApi, ExecutorDispatch>,
     >;
 
 /// Constructs a partial domain node.
 #[allow(clippy::type_complexity)]
 fn new_partial<RuntimeApi, ExecutorDispatch, CBlock, CClient, BIMP>(
     config: &ServiceConfiguration,
-    domain_id: DomainId,
     consensus_client: Arc<CClient>,
     block_import_provider: &BIMP,
 ) -> Result<
@@ -194,19 +184,11 @@ where
         telemetry
     });
 
-    let domain_tx_pre_validator = DomainTxPreValidator::new(
-        domain_id,
-        client.clone(),
-        Box::new(task_manager.spawn_handle()),
-        consensus_client,
-        RuntimeApiFull::new(client.clone()),
-    );
-
-    let transaction_pool = subspace_transaction_pool::new_full(
+    let transaction_pool = crate::transaction_pool::new_full(
         config,
         &task_manager,
         client.clone(),
-        domain_tx_pre_validator,
+        consensus_client.clone(),
     );
 
     let block_import = SharedBlockImport::new(BlockImportProvider::block_import(
@@ -326,9 +308,10 @@ where
             FullClient<Block, RuntimeApi, ExecutorDispatch>,
             FullPool<CBlock, CClient, RuntimeApi, ExecutorDispatch>,
             FullChainApiWrapper<
+                CClient,
+                CBlock,
                 Block,
                 FullClient<Block, RuntimeApi, ExecutorDispatch>,
-                DomainTxPreValidator<CBlock, CClient, RuntimeApi, ExecutorDispatch>,
             >,
             TFullBackend<Block>,
             AccountId,
@@ -352,12 +335,7 @@ where
     // TODO: Do we even need block announcement on domain node?
     // domain_config.announce_block = false;
 
-    let params = new_partial(
-        &domain_config,
-        domain_id,
-        consensus_client.clone(),
-        &provider,
-    )?;
+    let params = new_partial(&domain_config, consensus_client.clone(), &provider)?;
 
     let (mut telemetry, _telemetry_worker_handle, code_executor, block_import) = params.other;
 

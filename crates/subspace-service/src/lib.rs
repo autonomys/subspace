@@ -65,6 +65,7 @@ use sc_subspace_block_relay::{
     build_consensus_relay, BlockRelayConfigurationError, NetworkWrapper,
 };
 use sc_telemetry::{Telemetry, TelemetryWorker};
+use sc_transaction_pool::FullPool;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
@@ -99,7 +100,6 @@ use subspace_networking::Node;
 use subspace_proof_of_space::Table;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Nonce};
-use subspace_transaction_pool::{FullPool, NoopPreValidateTransaction, PreValidateTransaction};
 use tracing::{debug, error, info, Instrument};
 
 // There are multiple places where it is assumed that node is running on 64-bit system, refuse to
@@ -372,7 +372,7 @@ type PartialComponents<RuntimeApi, ExecutorDispatch> = sc_service::PartialCompon
     FullBackend,
     FullSelectChain,
     DefaultImportQueue<Block>,
-    FullPool<Block, FullClient<RuntimeApi, ExecutorDispatch>, NoopPreValidateTransaction<Block>>,
+    FullPool<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
     OtherPartialComponents<RuntimeApi, ExecutorDispatch>,
 >;
 
@@ -449,11 +449,12 @@ where
 
     let select_chain = sc_consensus::LongestChain::new(backend.clone());
 
-    let transaction_pool = subspace_transaction_pool::new_full(
-        config,
-        &task_manager,
+    let transaction_pool = sc_transaction_pool::BasicPool::new_full(
+        config.transaction_pool.clone(),
+        config.role.is_authority().into(),
+        config.prometheus_registry(),
+        task_manager.spawn_essential_handle(),
         client.clone(),
-        NoopPreValidateTransaction::<Block>::default(),
     );
 
     let segment_headers_store = SegmentHeadersStore::new(client.clone())
@@ -553,7 +554,7 @@ where
 }
 
 /// Full node along with some other components.
-pub struct NewFull<Client, TxPreValidator>
+pub struct NewFull<Client>
 where
     Client: ProvideRuntimeApi<Block>
         + BlockBackend<Block>
@@ -562,7 +563,6 @@ where
         + HeaderMetadata<Block, Error = sp_blockchain::Error>
         + 'static,
     Client::Api: TaggedTransactionQueue<Block> + DomainsApi<Block, DomainHeader>,
-    TxPreValidator: PreValidateTransaction<Block = Block> + Send + Sync + Clone + 'static,
 {
     /// Task manager.
     pub task_manager: TaskManager,
@@ -591,11 +591,10 @@ where
     /// Network starter.
     pub network_starter: NetworkStarter,
     /// Transaction pool.
-    pub transaction_pool: Arc<FullPool<Block, Client, TxPreValidator>>,
+    pub transaction_pool: Arc<FullPool<Block, Client>>,
 }
 
-type FullNode<RuntimeApi, ExecutorDispatch> =
-    NewFull<FullClient<RuntimeApi, ExecutorDispatch>, NoopPreValidateTransaction<Block>>;
+type FullNode<RuntimeApi, ExecutorDispatch> = NewFull<FullClient<RuntimeApi, ExecutorDispatch>>;
 
 /// Builds a new service for a full client.
 pub async fn new_full<PosTable, RuntimeApi, ExecutorDispatch>(

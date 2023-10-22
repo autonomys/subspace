@@ -46,7 +46,6 @@ use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_service::{FullClient, NewFull};
-use subspace_transaction_pool::NoopPreValidateTransaction;
 use zeroize::Zeroizing;
 
 // Smaller value for testing purposes
@@ -77,7 +76,7 @@ pub type Client = FullClient<subspace_test_runtime::RuntimeApi, TestExecutorDisp
 pub type Backend = sc_service::TFullBackend<Block>;
 
 /// Run a farmer.
-pub fn start_farmer<PosTable>(new_full: &NewFull<Client, NoopPreValidateTransaction<Block>>)
+pub fn start_farmer<PosTable>(new_full: &NewFull<Client>)
 where
     PosTable: Table,
 {

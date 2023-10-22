@@ -2756,7 +2756,6 @@ dependencies = [
  "sp-transaction-pool",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
- "subspace-transaction-pool",
  "substrate-build-script-utils",
  "substrate-frame-rpc-system",
  "substrate-prometheus-endpoint",
@@ -11872,7 +11871,6 @@ dependencies = [
  "subspace-networking",
  "subspace-proof-of-space",
  "subspace-runtime-primitives",
- "subspace-transaction-pool",
  "substrate-frame-rpc-system",
  "substrate-prometheus-endpoint",
  "thiserror",
@@ -11908,7 +11906,6 @@ dependencies = [
  "subspace-runtime-primitives",
  "subspace-service",
  "subspace-test-runtime",
- "subspace-transaction-pool",
  "zeroize",
 ]
 
@@ -12006,28 +12003,8 @@ dependencies = [
  "subspace-service",
  "subspace-test-client",
  "subspace-test-runtime",
- "subspace-transaction-pool",
  "tokio",
  "tracing",
-]
-
-[[package]]
-name = "subspace-transaction-pool"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "futures",
- "jsonrpsee",
- "sc-client-api",
- "sc-service",
- "sc-transaction-pool",
- "sc-transaction-pool-api",
- "sp-api",
- "sp-blockchain",
- "sp-core",
- "sp-runtime",
- "sp-transaction-pool",
- "substrate-prometheus-endpoint",
 ]
 
 [[package]]

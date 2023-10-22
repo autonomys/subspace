@@ -126,7 +126,7 @@ where
         + SetCodeConstructor<Block>
         + TimestampExtrinsicConstructor<Block>,
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + 'static,
-    Client::Api: DomainCoreApi<Block>,
+    Client::Api: DomainCoreApi<Block> + MessengerApi<Block, NumberFor<Block>>,
     CClient: HeaderBackend<CBlock>
         + BlockBackend<CBlock>
         + ProvideRuntimeApi<CBlock>
@@ -320,7 +320,7 @@ where
             if !is_valid_xdm::<CClient, CBlock, Block, _>(
                 &self.consensus_client,
                 at,
-                &self.runtime_api,
+                &self.client,
                 &extrinsic,
             )? {
                 // TODO: Generate a fraud proof for this invalid bundle
