@@ -34,4 +34,24 @@ pub trait FraudProofRuntimeInterface {
             .expect("No `FraudProofExtension` associated for the current context!")
             .derive_bundle_digest(consensus_block_hash, domain_id, bundle_body)
     }
+
+    /// Check the execution proof
+    fn execution_proof_check(
+        &mut self,
+        pre_state_root: H256,
+        encoded_proof: Vec<u8>,
+        verifying_method: &str,
+        call_data: &[u8],
+        domain_runtime_code: Vec<u8>,
+    ) -> Option<Vec<u8>> {
+        self.extension::<FraudProofExtension>()
+            .expect("No `FraudProofExtension` associated for the current context!")
+            .execution_proof_check(
+                pre_state_root,
+                encoded_proof,
+                verifying_method,
+                call_data,
+                domain_runtime_code,
+            )
+    }
 }

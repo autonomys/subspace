@@ -8,6 +8,7 @@ use sc_transaction_pool_api::InPoolTransaction;
 use sp_api::{HeaderT, NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
+use sp_core::H256;
 use sp_domains::{BundleHeader, ExecutionReceipt, ProofOfElection};
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, One, Zero};
 use sp_weights::Weight;
@@ -53,6 +54,7 @@ impl<Block, Client, CBlock, CClient, TransactionPool>
 where
     Block: BlockT,
     CBlock: BlockT,
+    Block::Hash: Into<H256>,
     NumberFor<Block>: Into<NumberFor<CBlock>>,
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
     Client::Api: BlockBuilder<Block> + DomainCoreApi<Block>,
@@ -194,7 +196,12 @@ where
                     "Domain block header for #{genesis_hash:?} not found",
                 ))
             })?;
-            return Ok(ExecutionReceipt::genesis(*genesis_header.state_root()));
+
+            return Ok(ExecutionReceipt::genesis(
+                *genesis_header.state_root(),
+                (*genesis_header.extrinsics_root()).into(),
+                genesis_hash,
+            ));
         }
 
         // Get the domain block hash corresponding to `receipt_number` in the domain canonical chain

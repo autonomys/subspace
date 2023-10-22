@@ -36,11 +36,12 @@ mod benchmarks {
         let (_, operator_id) =
             register_helper_operator::<T>(domain_id, T::Currency::minimum_balance());
 
-        let mut receipt = BlockTree::<T>::get::<_, T::DomainNumber>(domain_id, Zero::zero())
-            .first()
-            .and_then(DomainBlocks::<T>::get)
-            .expect("genesis receipt must exist")
-            .execution_receipt;
+        let mut receipt =
+            BlockTree::<T>::get::<_, DomainBlockNumberFor<T>>(domain_id, Zero::zero())
+                .first()
+                .and_then(BlockTreeNodes::<T>::get)
+                .expect("genesis receipt must exist")
+                .execution_receipt;
         for i in 1..=(block_tree_pruning_depth + 1) {
             let consensus_block_number = i.into();
             let domain_block_number = i.into();
@@ -243,7 +244,7 @@ mod benchmarks {
         assert_eq!(domain_obj.owner_account_id, creator);
         assert!(DomainStakingSummary::<T>::get(domain_id).is_some());
         assert_eq!(
-            BlockTree::<T>::get::<_, T::DomainNumber>(domain_id, Zero::zero()).len(),
+            BlockTree::<T>::get::<_, DomainBlockNumberFor<T>>(domain_id, Zero::zero()).len(),
             1
         );
         assert_eq!(NextDomainId::<T>::get(), domain_id + 1.into());

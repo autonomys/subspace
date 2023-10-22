@@ -1,31 +1,17 @@
 use codec::{Decode, Encode};
 use sp_api::ProvideRuntimeApi;
 use sp_core::traits::FetchRuntimeCode;
-use sp_domains::fraud_proof::VerificationError;
 use sp_domains::{DomainId, DomainsApi};
+use sp_domains_fraud_proof::fraud_proof::VerificationError;
 use sp_runtime::traits::Block as BlockT;
 use std::borrow::Cow;
 use std::sync::Arc;
 
-pub(crate) struct RuntimeCodeFetcher<'a> {
-    pub(crate) wasm_bundle: &'a [u8],
-}
+pub(crate) struct DomainRuntimeCodeFetcher(pub(crate) Vec<u8>);
 
-impl<'a> FetchRuntimeCode for RuntimeCodeFetcher<'a> {
+impl FetchRuntimeCode for DomainRuntimeCodeFetcher {
     fn fetch_runtime_code(&self) -> Option<Cow<[u8]>> {
-        Some(self.wasm_bundle.into())
-    }
-}
-
-pub(crate) struct DomainRuntimeCode {
-    pub(crate) wasm_bundle: Vec<u8>,
-}
-
-impl DomainRuntimeCode {
-    pub(crate) fn as_runtime_code_fetcher(&self) -> RuntimeCodeFetcher {
-        RuntimeCodeFetcher {
-            wasm_bundle: &self.wasm_bundle,
-        }
+        Some(Cow::Borrowed(self.0.as_ref()))
     }
 }
 
@@ -33,7 +19,7 @@ pub(crate) fn retrieve_domain_runtime_code<CBlock, CClient, Number, Hash>(
     domain_id: DomainId,
     at: CBlock::Hash,
     consensus_client: &Arc<CClient>,
-) -> Result<DomainRuntimeCode, VerificationError>
+) -> Result<DomainRuntimeCodeFetcher, VerificationError>
 where
     CBlock: BlockT,
     Number: Encode + Decode,
@@ -49,5 +35,5 @@ where
             VerificationError::RuntimeCode(format!("No runtime code for {domain_id:?}"))
         })?;
 
-    Ok(DomainRuntimeCode { wasm_bundle })
+    Ok(DomainRuntimeCodeFetcher(wasm_bundle))
 }

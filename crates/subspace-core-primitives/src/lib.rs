@@ -63,7 +63,7 @@ use scale_info::TypeInfo;
 pub use segments::{
     ArchivedHistorySegment, HistorySize, RecordedHistorySegment, SegmentCommitment, SegmentIndex,
 };
-use uint::static_assertions::const_assert;
+use static_assertions::{const_assert, const_assert_eq};
 
 // Refuse to compile on lower than 32-bit platforms
 const_assert!(core::mem::size_of::<usize>() >= core::mem::size_of::<u32>());
@@ -944,13 +944,10 @@ impl SectorSlotChallenge {
     /// Index of s-bucket within sector to be audited
     #[inline]
     pub fn s_bucket_audit_index(&self) -> SBucket {
-        SBucket::from(
-            u16::try_from(U256::from_le_bytes(self.0) % U256::from(Record::NUM_S_BUCKETS as u32))
-                .expect(
-                    "Remainder of division by Record::NUM_S_BUCKETS is statically guaranteed \
-                    to fit into SBucket; qed",
-                ),
-        )
+        // As long as number of s-buckets is 2^16, we can pick first two bytes instead of actually
+        // calculating `U256::from_le_bytes(self.0) % Record::NUM_S_BUCKETS)`
+        const_assert_eq!(Record::NUM_S_BUCKETS, 1 << u16::BITS as usize);
+        SBucket::from(u16::from_le_bytes([self.0[0], self.0[1]]))
     }
 }
 

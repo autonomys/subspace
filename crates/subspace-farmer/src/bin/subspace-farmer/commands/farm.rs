@@ -465,11 +465,11 @@ where
                 cache_percentage,
                 downloading_semaphore: Arc::clone(&downloading_semaphore),
                 encoding_semaphore: Arc::clone(&encoding_semaphore),
+                farm_during_initial_plotting,
                 farming_thread_pool_size,
                 plotting_thread_pool: Arc::clone(&plotting_thread_pool),
                 replotting_thread_pool: Arc::clone(&replotting_thread_pool),
                 plotting_delay: Some(plotting_delay_receiver),
-                farm_during_initial_plotting,
             },
             disk_farm_index,
         );

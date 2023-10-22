@@ -5,7 +5,7 @@ use frame_support::Identity;
 use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
 use sp_core::storage::StorageKey;
-use sp_domains::verification::StorageProofVerifier;
+use sp_domains::proof_provider_and_verifier::StorageProofVerifier;
 use sp_domains::DomainId;
 use sp_runtime::app_crypto::sp_core::U256;
 use sp_runtime::{sp_std, DispatchError};
@@ -295,7 +295,7 @@ impl<BlockNumber, BlockHash, StateRoot> CrossDomainMessage<BlockNumber, BlockHas
                 );
 
                 let domain_state_root =
-                    match StorageProofVerifier::<Hashing>::verify_and_get_value::<StateRoot>(
+                    match StorageProofVerifier::<Hashing>::get_decoded_value::<StateRoot>(
                         &consensus_chain_state_root.into(),
                         domain_state_root_proof,
                         domain_state_root_key,

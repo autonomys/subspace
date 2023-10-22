@@ -10,8 +10,10 @@ use domain_runtime_primitives::Hash;
 use sc_client_api::HeaderBackend;
 use sp_api::ProvideRuntimeApi;
 use sp_core::H256;
-use sp_domains::fraud_proof::{ExecutionPhase, InvalidStateTransitionProof, VerificationError};
 use sp_domains::{DomainId, DomainsApi};
+use sp_domains_fraud_proof::fraud_proof::{
+    ExecutionPhase, InvalidStateTransitionProof, VerificationError,
+};
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use std::marker::PhantomData;
 use std::sync::Arc;

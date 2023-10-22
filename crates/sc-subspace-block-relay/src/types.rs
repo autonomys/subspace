@@ -47,18 +47,6 @@ pub(crate) enum RelayError {
     #[error("Resolved entry not found: {0}")]
     ResolvedNotFound(usize),
 
-    #[error("Unexpected initial request")]
-    UnexpectedInitialRequest,
-
-    #[error("Unexpected initial response")]
-    UnexpectedInitialResponse,
-
-    #[error("Unexpected protocol request")]
-    UnexpectedProtocolRequest,
-
-    #[error("Unexpected protocol response")]
-    UnexpectedProtocolRespone,
-
     #[error("Request/response error: {0}")]
     RequestResponse(#[from] RequestResponseErr),
 }

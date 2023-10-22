@@ -15,6 +15,7 @@ use domain_runtime_primitives::{MultiAccountId, TryConvertBack, SLOT_DURATION};
 use fp_account::EthereumSignature;
 use fp_self_contained::SelfContainedCall;
 use frame_support::dispatch::{DispatchClass, GetDispatchInfo};
+use frame_support::inherent::ProvideInherent;
 use frame_support::traits::{
     ConstU16, ConstU32, ConstU64, Currency, Everything, FindAuthor, Imbalance, OnFinalize,
     OnUnbalanced, PalletInfoAccess,
@@ -52,7 +53,7 @@ use sp_runtime::transaction_validity::{
     TransactionSource, TransactionValidity, TransactionValidityError,
 };
 use sp_runtime::{
-    create_runtime_str, generic, impl_opaque_keys, ApplyExtrinsicResult, ConsensusEngineId,
+    create_runtime_str, generic, impl_opaque_keys, ApplyExtrinsicResult, ConsensusEngineId, Digest,
 };
 pub use sp_runtime::{MultiAddress, Perbill, Permill, SaturatedConversion};
 use sp_std::marker::PhantomData;
@@ -892,6 +893,20 @@ impl_runtime_apis! {
             ).encode()
         }
 
+        fn construct_timestamp_extrinsic(moment: Moment) -> <Block as BlockT>::Extrinsic {
+            UncheckedExtrinsic::new_unsigned(
+                pallet_timestamp::Call::set{ now: moment }.into()
+            )
+        }
+
+        fn is_inherent_extrinsic(extrinsic: &<Block as BlockT>::Extrinsic) -> bool {
+            match &extrinsic.0.function {
+                RuntimeCall::Timestamp(call) => Timestamp::is_inherent(call),
+                RuntimeCall::ExecutivePallet(call) => ExecutivePallet::is_inherent(call),
+                _ => false,
+            }
+        }
+
         fn check_transaction_validity(
             uxt: &<Block as BlockT>::Extrinsic,
             block_number: BlockNumber,
@@ -944,13 +959,9 @@ impl_runtime_apis! {
         fn block_rewards() -> Balance {
             OperatorRewards::block_rewards()
         }
-    }
 
-    impl domain_runtime_primitives::InherentExtrinsicApi<Block> for Runtime {
-        fn construct_inherent_timestamp_extrinsic(moment: Moment) -> <Block as BlockT>::Extrinsic {
-            UncheckedExtrinsic::new_unsigned(
-                pallet_timestamp::Call::set{ now: moment }.into()
-            )
+        fn block_digest() -> Digest {
+            System::digest()
         }
     }
 

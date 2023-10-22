@@ -42,7 +42,7 @@ pub struct FarmerAppInfo {
 }
 
 /// Information about new slot that just arrived
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Debug, Copy, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct SlotInfo {
     /// Slot number

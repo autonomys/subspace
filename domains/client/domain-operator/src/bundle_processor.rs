@@ -4,7 +4,7 @@ use crate::domain_block_processor::{
 use crate::{DomainParentChain, ExecutionReceiptFor};
 use domain_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_block_preprocessor::DomainBlockPreprocessor;
-use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
+use domain_runtime_primitives::DomainCoreApi;
 use sc_client_api::{AuxStore, BlockBackend, Finalizer, ProofProvider};
 use sc_consensus::{BlockImportParams, ForkChoiceStrategy, StateAction};
 use sp_api::{NumberFor, ProvideRuntimeApi};
@@ -139,7 +139,6 @@ where
         + 'static,
     Client::Api: DomainCoreApi<Block>
         + MessengerApi<Block, NumberFor<Block>>
-        + InherentExtrinsicApi<Block>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<Block>,
     CClient: HeaderBackend<CBlock>
@@ -283,7 +282,7 @@ where
             return Ok(None);
         };
 
-        let digest = Digest {
+        let inherent_digests = Digest {
             logs: vec![DigestItem::consensus_block_info(consensus_block_hash)],
         };
 
@@ -293,7 +292,7 @@ where
                 (consensus_block_hash, consensus_block_number),
                 (parent_hash, parent_number),
                 preprocess_result,
-                digest,
+                inherent_digests,
             )
             .await?;
 
@@ -319,7 +318,8 @@ where
             .check_state_transition(consensus_block_hash)?;
 
         self.domain_receipts_checker
-            .submit_fraud_proof(consensus_block_hash)?;
+            .submit_fraud_proof(consensus_block_hash)
+            .await?;
 
         Ok(Some(built_block_info))
     }

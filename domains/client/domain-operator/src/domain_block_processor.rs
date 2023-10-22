@@ -5,6 +5,7 @@ use crate::utils::{DomainBlockImportNotification, DomainImportNotificationSinks}
 use crate::ExecutionReceiptFor;
 use codec::{Decode, Encode};
 use domain_block_builder::{BlockBuilder, BuiltBlock, RecordProof};
+use domain_block_preprocessor::inherents::get_inherent_data;
 use domain_block_preprocessor::PreprocessResult;
 use domain_runtime_primitives::DomainCoreApi;
 use sc_client_api::{AuxStore, BlockBackend, Finalizer, ProofProvider};
@@ -17,12 +18,13 @@ use sp_blockchain::{HashAndNumber, HeaderBackend, HeaderMetadata};
 use sp_consensus::{BlockOrigin, SyncOracle};
 use sp_core::traits::CodeExecutor;
 use sp_core::H256;
-use sp_domains::fraud_proof::FraudProof;
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{BundleValidity, DomainId, DomainsApi, ExecutionReceipt};
+use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, One, Zero};
 use sp_runtime::Digest;
 use std::cmp::Ordering;
+use std::collections::VecDeque;
 use std::sync::Arc;
 
 struct DomainBlockBuildResult<Block>
@@ -271,7 +273,7 @@ where
         (consensus_block_hash, consensus_block_number): (CBlock::Hash, NumberFor<CBlock>),
         (parent_hash, parent_number): (Block::Hash, NumberFor<Block>),
         preprocess_result: PreprocessResult<Block>,
-        digests: Digest,
+        inherent_digests: Digest,
     ) -> Result<DomainBlockResult<Block, CBlock>, sp_blockchain::Error> {
         let PreprocessResult {
             extrinsics,
@@ -287,6 +289,13 @@ where
         // need to ensure the consensus block built from the latest consensus block is the
         // new best domain block after processing each imported consensus block.
         let fork_choice = ForkChoiceStrategy::LongestChain;
+        let inherent_data = get_inherent_data::<_, _, Block>(
+            self.consensus_client.clone(),
+            consensus_block_hash,
+            parent_hash,
+            self.domain_id,
+        )
+        .await?;
 
         let DomainBlockBuildResult {
             extrinsics_root,
@@ -294,7 +303,14 @@ where
             header_number,
             header_hash,
         } = self
-            .build_and_import_block(parent_hash, parent_number, extrinsics, fork_choice, digests)
+            .build_and_import_block(
+                parent_hash,
+                parent_number,
+                extrinsics,
+                fork_choice,
+                inherent_digests,
+                inherent_data,
+            )
             .await?;
 
         tracing::debug!(
@@ -352,7 +368,11 @@ where
                     "Domain block header for #{genesis_hash:?} not found",
                 ))
             })?;
-            ExecutionReceipt::genesis(*genesis_header.state_root())
+            ExecutionReceipt::genesis(
+                *genesis_header.state_root(),
+                (*genesis_header.extrinsics_root()).into(),
+                genesis_hash,
+            )
         } else {
             crate::load_execution_receipt_by_domain_hash::<Block, CBlock, _>(
                 &*self.client,
@@ -390,18 +410,20 @@ where
         &self,
         parent_hash: Block::Hash,
         parent_number: NumberFor<Block>,
-        extrinsics: Vec<Block::Extrinsic>,
+        extrinsics: VecDeque<Block::Extrinsic>,
         fork_choice: ForkChoiceStrategy,
-        digests: Digest,
+        inherent_digests: Digest,
+        inherent_data: sp_inherents::InherentData,
     ) -> Result<DomainBlockBuildResult<Block>, sp_blockchain::Error> {
         let block_builder = BlockBuilder::new(
             &*self.client,
             parent_hash,
             parent_number,
             RecordProof::No,
-            digests,
+            inherent_digests,
             &*self.backend,
             extrinsics,
+            Some(inherent_data),
         )?;
 
         let BuiltBlock {
@@ -705,12 +727,12 @@ where
             .parent_chain
             .extract_fraud_proofs(parent_chain_block_hash, extrinsics)?;
 
-        self.check_receipts(receipts, fraud_proofs)?;
+        self.check_receipts(parent_chain_block_hash, receipts, fraud_proofs)?;
 
         Ok(())
     }
 
-    pub(crate) fn submit_fraud_proof(
+    pub(crate) async fn submit_fraud_proof(
         &self,
         parent_chain_block_hash: ParentChainBlock::Hash,
     ) -> sp_blockchain::Result<()> {
@@ -727,7 +749,10 @@ where
             .oldest_receipt_number(parent_chain_block_hash)?;
         crate::aux_schema::prune_expired_bad_receipts(&*self.client, oldest_receipt_number)?;
 
-        if let Some(fraud_proof) = self.create_fraud_proof_for_first_unconfirmed_bad_receipt()? {
+        if let Some(fraud_proof) = self
+            .create_fraud_proof_for_first_unconfirmed_bad_receipt()
+            .await?
+        {
             self.parent_chain.submit_fraud_proof_unsigned(fraud_proof)?;
         }
 
@@ -736,6 +761,7 @@ where
 
     fn check_receipts(
         &self,
+        parent_chain_block_hash: ParentChainBlock::Hash,
         receipts: Vec<ExecutionReceiptFor<Block, ParentChainBlock>>,
         fraud_proofs: Vec<FraudProof<NumberFor<ParentChainBlock>, ParentChainBlock::Hash>>,
     ) -> Result<(), sp_blockchain::Error> {
@@ -808,33 +834,42 @@ where
                     },
                 ));
             }
+
+            if execution_receipt.domain_block_hash != local_receipt.domain_block_hash {
+                bad_receipts_to_write.push((
+                    execution_receipt.consensus_block_number,
+                    execution_receipt.hash(),
+                    ReceiptMismatchInfo::DomainBlockHash {
+                        consensus_block_hash,
+                    },
+                ));
+            }
         }
 
-        let bad_receipts_to_delete = fraud_proofs
-            .into_iter()
-            .filter_map(|fraud_proof| {
-                match fraud_proof {
-                    FraudProof::InvalidStateTransition(fraud_proof) => {
-                        let bad_receipt_number = fraud_proof.parent_number + 1;
-                        let bad_receipt_hash = fraud_proof.bad_receipt_hash;
-
-                        // In order to not delete a receipt which was just inserted, accumulate the write&delete operations
-                        // in case the bad receipt and corresponding fraud proof are included in the same block.
-                        if let Some(index) = bad_receipts_to_write
-                            .iter()
-                            .map(|(_, receipt_hash, _)| receipt_hash)
-                            .position(|v| *v == bad_receipt_hash)
-                        {
-                            bad_receipts_to_write.swap_remove(index);
-                            None
-                        } else {
-                            Some((bad_receipt_number, bad_receipt_hash))
-                        }
-                    }
-                    _ => None,
+        // Use the `parent_chain_parent_hash` to get the `bad_receipt` because fraud proof already pruned the bad
+        // receipt in `parent_chain_block_hash`
+        let parent_chain_parent_hash = self.parent_chain.parent_hash(parent_chain_block_hash)?;
+        let mut bad_receipts_to_delete = vec![];
+        for fraud_proof in fraud_proofs {
+            let bad_receipt_hash = fraud_proof.bad_receipt_hash();
+            if let Some(bad_receipt) = self
+                .parent_chain
+                .execution_receipt(parent_chain_parent_hash, bad_receipt_hash)?
+            {
+                // In order to not delete a receipt which was just inserted, accumulate the write&delete operations
+                // in case the bad receipt and corresponding fraud proof are included in the same block.
+                if let Some(index) = bad_receipts_to_write
+                    .iter()
+                    .map(|(_, receipt_hash, _)| receipt_hash)
+                    .position(|v| *v == bad_receipt_hash)
+                {
+                    bad_receipts_to_write.swap_remove(index);
+                } else {
+                    bad_receipts_to_delete
+                        .push((bad_receipt.consensus_block_number, bad_receipt_hash));
                 }
-            })
-            .collect::<Vec<_>>();
+            }
+        }
 
         for (bad_receipt_number, bad_receipt_hash, mismatch_info) in bad_receipts_to_write {
             crate::aux_schema::write_bad_receipt::<_, ParentChainBlock>(
@@ -846,7 +881,7 @@ where
         }
 
         for (bad_receipt_number, bad_receipt_hash) in bad_receipts_to_delete {
-            if let Err(e) = crate::aux_schema::delete_bad_receipt(
+            if let Err(e) = crate::aux_schema::delete_bad_receipt::<_, ParentChainBlock>(
                 &*self.client,
                 bad_receipt_number,
                 bad_receipt_hash,
@@ -863,7 +898,7 @@ where
         Ok(())
     }
 
-    fn create_fraud_proof_for_first_unconfirmed_bad_receipt(
+    async fn create_fraud_proof_for_first_unconfirmed_bad_receipt(
         &self,
     ) -> sp_blockchain::Result<
         Option<FraudProof<NumberFor<ParentChainBlock>, ParentChainBlock::Hash>>,
@@ -900,6 +935,7 @@ where
                         &local_receipt,
                         bad_receipt_hash,
                     )
+                    .await
                     .map_err(|err| {
                         sp_blockchain::Error::Application(Box::from(format!(
                             "Failed to generate fraud proof: {err}"
@@ -915,6 +951,18 @@ where
                     .map_err(|err| {
                         sp_blockchain::Error::Application(Box::from(format!(
                             "Failed to generate invalid block rewards fraud proof: {err}"
+                        )))
+                    })?,
+                ReceiptMismatchInfo::DomainBlockHash { .. } => self
+                    .fraud_proof_generator
+                    .generate_invalid_domain_block_hash_proof::<ParentChainBlock>(
+                        self.domain_id,
+                        &local_receipt,
+                        bad_receipt_hash,
+                    )
+                    .map_err(|err| {
+                        sp_blockchain::Error::Application(Box::from(format!(
+                            "Failed to generate invalid domain block hash fraud proof: {err}"
                         )))
                     })?,
                 ReceiptMismatchInfo::Bundles {

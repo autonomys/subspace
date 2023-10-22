@@ -20,7 +20,7 @@ use crate::domain_worker::{on_new_slot, throttling_block_import_notifications};
 use crate::parent_chain::DomainParentChain;
 use crate::utils::OperatorSlotInfo;
 use crate::{NewSlotNotification, OperatorStreams};
-use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
+use domain_runtime_primitives::DomainCoreApi;
 use futures::channel::mpsc;
 use futures::{FutureExt, SinkExt, Stream, StreamExt, TryFutureExt};
 use sc_client_api::{
@@ -83,7 +83,6 @@ pub(super) async fn start_worker<
         + 'static,
     Client::Api: DomainCoreApi<Block>
         + MessengerApi<Block, NumberFor<Block>>
-        + InherentExtrinsicApi<Block>
         + BlockBuilder<Block>
         + sp_api::ApiExt<Block>,
     CClient: HeaderBackend<CBlock>

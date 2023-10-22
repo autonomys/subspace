@@ -62,8 +62,8 @@ use sp_core::storage::StateVersion;
 use sp_core::{OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
-    DomainId, DomainInstanceData, DomainsHoldIdentifier, OperatorId, OperatorPublicKey,
-    StakingHoldIdentifier,
+    DomainId, DomainInstanceData, DomainsHoldIdentifier, ExecutionReceipt, OperatorId,
+    OperatorPublicKey, ReceiptHash, StakingHoldIdentifier,
 };
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
@@ -621,9 +621,8 @@ parameter_types! {
 
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type DomainNumber = DomainNumber;
     type DomainHash = DomainHash;
-    type DomainHashing = BlakeTwo256;
+    type DomainHeader = sp_runtime::generic::Header<DomainNumber, BlakeTwo256>;
     type ConfirmationDepthK = ConfirmationDepthK;
     type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
     type Currency = Balances;
@@ -1013,10 +1012,10 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_domains::transaction::PreValidationObjectApi<Block, DomainNumber, DomainHash, > for Runtime {
+    impl sp_domains_fraud_proof::transaction::PreValidationObjectApi<Block, DomainNumber, DomainHash, > for Runtime {
         fn extract_pre_validation_object(
             extrinsic: <Block as BlockT>::Extrinsic,
-        ) -> sp_domains::transaction::PreValidationObject<Block, DomainNumber, DomainHash> {
+        ) -> sp_domains_fraud_proof::transaction::PreValidationObject<Block, DomainNumber, DomainHash> {
             crate::domains::extract_pre_validation_object(extrinsic)
         }
     }
@@ -1089,6 +1088,10 @@ impl_runtime_apis! {
 
         fn domain_state_root(domain_id: DomainId, number: DomainNumber, hash: DomainHash) -> Option<DomainHash>{
             Domains::domain_state_root(domain_id, number, hash)
+        }
+
+        fn execution_receipt(receipt_hash: ReceiptHash) -> Option<ExecutionReceipt<NumberFor<Block>, <Block as BlockT>::Hash, DomainNumber, DomainHash, Balance>> {
+            Domains::execution_receipt(receipt_hash)
         }
     }
 

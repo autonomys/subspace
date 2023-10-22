@@ -22,7 +22,7 @@ pub mod chain_spec;
 pub mod domain_chain_spec;
 
 use futures::executor::block_on;
-use futures::StreamExt;
+use futures::{FutureExt, StreamExt};
 use sc_client_api::{BlockBackend, HeaderBackend};
 use sc_consensus_subspace::archiver::encode_block;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
@@ -38,7 +38,7 @@ use subspace_core_primitives::{
     HistorySize, PosSeed, PublicKey, Record, SegmentIndex, Solution, REWARD_SIGNING_CONTEXT,
 };
 use subspace_erasure_coding::ErasureCoding;
-use subspace_farmer_components::auditing::audit_sector;
+use subspace_farmer_components::auditing::audit_sector_sync;
 use subspace_farmer_components::plotting::{
     plot_sector, PieceGetterRetryPolicy, PlotSectorOptions, PlottedSector,
 };
@@ -175,7 +175,6 @@ async fn start_farming<PosTable, Client>(
     });
 
     let (sector, plotted_sector, mut table_generator) = plotting_result_receiver.await.unwrap();
-    let sector_index = 0;
     let public_key = PublicKey::from(keypair.public.to_bytes());
 
     let mut new_slot_notification_stream = new_slot_notification_stream.subscribe();
@@ -189,23 +188,26 @@ async fn start_farming<PosTable, Client>(
             let global_challenge = new_slot_info
                 .global_randomness
                 .derive_global_challenge(new_slot_info.slot.into());
-            let audit_result = audit_sector(
+            let audit_result = audit_sector_sync(
                 &public_key,
-                sector_index,
                 &global_challenge,
                 new_slot_info.solution_range,
                 &sector,
                 &plotted_sector.sector_metadata,
-            )
-            .expect("With max solution range there must be a sector eligible; qed");
+            );
 
             let solution = audit_result
+                .unwrap()
                 .solution_candidates
                 .into_solutions(&public_key, &kzg, &erasure_coding, |seed: &PosSeed| {
                     table_generator.generate_parallel(seed)
                 })
+                .now_or_never()
+                .expect("Implementation of the sector is synchronous here; qed")
                 .unwrap()
                 .next()
+                .now_or_never()
+                .expect("Implementation of the sector is synchronous here; qed")
                 .expect("With max solution range there must be a solution; qed")
                 .unwrap();
             // Lazy conversion to a different type of public key and reward address

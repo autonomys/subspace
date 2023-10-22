@@ -12,8 +12,8 @@ use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::CodeExecutor;
 use sp_core::H256;
-use sp_domains::fraud_proof::{InvalidTransactionProof, VerificationError};
 use sp_domains::{DomainId, DomainsApi};
+use sp_domains_fraud_proof::fraud_proof::{InvalidTransactionProof, VerificationError};
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Header as HeaderT};
 use sp_runtime::{OpaqueExtrinsic, Storage};
 use sp_trie::{read_trie_value, LayoutV1};
@@ -199,7 +199,7 @@ where
             storage_proof.clone(),
             &state_root,
             self.executor.clone(),
-            domain_runtime_code.wasm_bundle.into(),
+            domain_runtime_code.0.into(),
             extrinsic.clone(),
         )?;
 

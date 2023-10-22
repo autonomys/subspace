@@ -1,9 +1,9 @@
 use crate::runtime_api::{
-    ExtractSignerResult, ExtractedStateRoots, InherentExtrinsicConstructor, SetCodeConstructor,
-    SignerExtractor, StateRootExtractor,
+    ExtractSignerResult, ExtractedStateRoots, IsInherentExtrinsic, SetCodeConstructor,
+    SignerExtractor, StateRootExtractor, TimestampExtrinsicConstructor,
 };
 use codec::{Codec, Encode};
-use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
+use domain_runtime_primitives::DomainCoreApi;
 use sc_executor::RuntimeVersionOf;
 use sp_api::{ApiError, BlockT, Core, Hasher, RuntimeVersion};
 use sp_core::traits::{CallContext, CodeExecutor, FetchRuntimeCode, RuntimeCode};
@@ -161,21 +161,6 @@ where
     }
 }
 
-impl<Executor, Block> InherentExtrinsicApi<Block> for RuntimeApiLight<Executor>
-where
-    Block: BlockT,
-    Executor: CodeExecutor + RuntimeVersionOf,
-{
-    fn __runtime_api_internal_call_api_at(
-        &self,
-        _at: <Block as BlockT>::Hash,
-        params: Vec<u8>,
-        fn_name: &dyn Fn(RuntimeVersion) -> &'static str,
-    ) -> Result<Vec<u8>, ApiError> {
-        self.dispatch_call(fn_name, params)
-    }
-}
-
 impl<Executor, Block> SignerExtractor<Block> for RuntimeApiLight<Executor>
 where
     Block: BlockT,
@@ -204,18 +189,30 @@ where
     }
 }
 
-impl<Executor, Block> InherentExtrinsicConstructor<Block> for RuntimeApiLight<Executor>
+impl<Executor, Block> TimestampExtrinsicConstructor<Block> for RuntimeApiLight<Executor>
 where
     Block: BlockT,
     Executor: CodeExecutor + RuntimeVersionOf,
 {
-    fn construct_timestamp_inherent_extrinsic(
+    fn construct_timestamp_extrinsic(
         &self,
         at: Block::Hash,
         moment: Moment,
     ) -> Result<Block::Extrinsic, ApiError> {
-        <Self as InherentExtrinsicApi<Block>>::construct_inherent_timestamp_extrinsic(
-            self, at, moment,
-        )
+        <Self as DomainCoreApi<Block>>::construct_timestamp_extrinsic(self, at, moment)
+    }
+}
+
+impl<Executor, Block> IsInherentExtrinsic<Block> for RuntimeApiLight<Executor>
+where
+    Block: BlockT,
+    Executor: CodeExecutor + RuntimeVersionOf,
+{
+    fn is_inherent_extrinsic(
+        &self,
+        at: Block::Hash,
+        extrinsic: &<Block as BlockT>::Extrinsic,
+    ) -> Result<bool, ApiError> {
+        <Self as DomainCoreApi<Block>>::is_inherent_extrinsic(self, at, extrinsic)
     }
 }

@@ -4,7 +4,7 @@ use sc_transaction_pool_api::error::Error as TxPoolError;
 use sc_transaction_pool_api::TransactionSource;
 use sp_api::ProvideRuntimeApi;
 use sp_core::traits::SpawnNamed;
-use sp_domains::transaction::{
+use sp_domains_fraud_proof::transaction::{
     InvalidTransactionCode, PreValidationObject, PreValidationObjectApi,
 };
 use sp_runtime::traits::Block as BlockT;

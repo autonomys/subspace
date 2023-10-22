@@ -79,8 +79,8 @@ use sp_consensus_subspace::{
 };
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
 use sp_core::H256;
-use sp_domains::transaction::PreValidationObjectApi;
 use sp_domains::DomainsApi;
+use sp_domains_fraud_proof::transaction::PreValidationObjectApi;
 use sp_domains_fraud_proof::{FraudProofExtension, FraudProofHostFunctionsImpl};
 use sp_externalities::Extensions;
 use sp_objects::ObjectsApi;
@@ -172,19 +172,9 @@ pub type InvalidTransactionProofVerifier<RuntimeApi, ExecutorDispatch> =
         VerifierClient<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
     >;
 
-pub type InvalidStateTransitionProofVerifier<RuntimeApi, ExecutorDispatch> =
-    subspace_fraud_proof::invalid_state_transition_proof::InvalidStateTransitionProofVerifier<
-        Block,
-        FullClient<RuntimeApi, ExecutorDispatch>,
-        NativeElseWasmExecutor<ExecutorDispatch>,
-        Hash,
-        VerifierClient<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
-    >;
-
 pub type FraudProofVerifier<RuntimeApi, ExecutorDispatch> = subspace_fraud_proof::ProofVerifier<
     Block,
     InvalidTransactionProofVerifier<RuntimeApi, ExecutorDispatch>,
-    InvalidStateTransitionProofVerifier<RuntimeApi, ExecutorDispatch>,
 >;
 
 /// Subspace networking instantiation variant
@@ -243,6 +233,7 @@ where
     Block: BlockT,
     Block::Hash: From<H256>,
     DomainBlock: BlockT,
+    DomainBlock::Hash: From<H256>,
     Client: BlockBackend<Block>
         + HeaderBackend<Block>
         + ProvideRuntimeApi<Block>
@@ -471,12 +462,6 @@ where
         POT_VERIFIER_CACHE_SIZE,
     );
 
-    let invalid_state_transition_proof_verifier = InvalidStateTransitionProofVerifier::new(
-        client.clone(),
-        executor.clone(),
-        VerifierClient::new(client.clone()),
-    );
-
     let executor = Arc::new(executor);
 
     client
@@ -504,10 +489,8 @@ where
         VerifierClient::new(client.clone()),
     );
 
-    let proof_verifier = subspace_fraud_proof::ProofVerifier::new(
-        Arc::new(invalid_transaction_proof_verifier),
-        Arc::new(invalid_state_transition_proof_verifier),
-    );
+    let proof_verifier =
+        subspace_fraud_proof::ProofVerifier::new(Arc::new(invalid_transaction_proof_verifier));
 
     let tx_pre_validator = ConsensusChainTxPreValidator::new(
         client.clone(),
@@ -523,8 +506,6 @@ where
 
     let segment_headers_store = SegmentHeadersStore::new(client.clone())
         .map_err(|error| ServiceError::Application(error.into()))?;
-    let fraud_proof_block_import =
-        sc_consensus_fraud_proof::block_import(client.clone(), client.clone(), proof_verifier);
 
     let (block_import, subspace_link) = sc_consensus_subspace::block_import::<
         PosTable,
@@ -535,7 +516,7 @@ where
         _,
     >(
         sc_consensus_subspace::slot_duration(&*client)?,
-        fraud_proof_block_import,
+        client.clone(),
         client.clone(),
         kzg.clone(),
         {

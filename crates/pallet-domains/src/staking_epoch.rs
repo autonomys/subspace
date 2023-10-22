@@ -8,7 +8,8 @@ use crate::pallet::{
 };
 use crate::staking::{Error as TransitionError, Nominator, OperatorStatus, Withdraw};
 use crate::{
-    BalanceOf, Config, ElectionVerificationParams, FungibleHoldId, HoldIdentifier, NominatorId,
+    BalanceOf, Config, DomainBlockNumberFor, ElectionVerificationParams, FungibleHoldId,
+    HoldIdentifier, NominatorId,
 };
 use codec::{Decode, Encode};
 use frame_support::traits::fungible::{InspectHold, Mutate, MutateHold};
@@ -37,7 +38,7 @@ pub enum Error {
 /// Returns true of the epoch indeed was finished.
 pub(crate) fn do_finalize_domain_current_epoch<T: Config>(
     domain_id: DomainId,
-    domain_block_number: T::DomainNumber,
+    domain_block_number: DomainBlockNumberFor<T>,
 ) -> Result<EpochIndex, Error> {
     // Reset pending staking operation count to 0
     PendingStakingOperationCount::<T>::set(domain_id, 0);
@@ -62,7 +63,7 @@ pub(crate) fn do_finalize_domain_current_epoch<T: Config>(
 #[cfg(any(not(feature = "runtime-benchmarks"), test))]
 pub(crate) fn do_unlock_pending_withdrawals<T: Config>(
     domain_id: DomainId,
-    domain_block_number: T::DomainNumber,
+    domain_block_number: DomainBlockNumberFor<T>,
 ) -> Result<(), Error> {
     if let Some(operator_ids) = PendingUnlocks::<T>::take((domain_id, domain_block_number)) {
         PendingOperatorUnlocks::<T>::try_mutate(|unlocking_operator_ids| {
@@ -181,7 +182,7 @@ fn switch_operator<T: Config>(operator_id: OperatorId) -> Result<(), TransitionE
 
 fn do_finalize_operator_deregistrations<T: Config>(
     domain_id: DomainId,
-    domain_block_number: T::DomainNumber,
+    domain_block_number: DomainBlockNumberFor<T>,
 ) -> Result<(), Error> {
     let stake_withdrawal_locking_period = T::StakeWithdrawalLockingPeriod::get();
     let unlock_block_number = domain_block_number
@@ -297,7 +298,7 @@ fn release_pending_deposits<T: Config>(operator_id: OperatorId) -> Result<(), Tr
 #[cfg(any(not(feature = "runtime-benchmarks"), test))]
 fn unlock_nominator_withdrawals<T: Config>(
     operator_id: OperatorId,
-    domain_block_number: T::DomainNumber,
+    domain_block_number: DomainBlockNumberFor<T>,
 ) -> Result<(), Error> {
     let pending_unlock_hold_id = T::HoldIdentifier::staking_pending_unlock(operator_id);
     match PendingNominatorUnlocks::<T>::take(operator_id, domain_block_number) {
@@ -338,7 +339,7 @@ pub struct PendingNominatorUnlock<NominatorId, Balance> {
 
 pub(crate) fn do_finalize_domain_staking<T: Config>(
     domain_id: DomainId,
-    domain_block_number: T::DomainNumber,
+    domain_block_number: DomainBlockNumberFor<T>,
 ) -> Result<EpochIndex, Error> {
     DomainStakingSummary::<T>::try_mutate(domain_id, |maybe_stake_summary| {
         let stake_summary = maybe_stake_summary
@@ -381,7 +382,7 @@ pub(crate) fn do_finalize_domain_staking<T: Config>(
 
 fn finalize_operator_pending_transfers<T: Config>(
     operator_id: OperatorId,
-    domain_block_number: T::DomainNumber,
+    domain_block_number: DomainBlockNumberFor<T>,
 ) -> Result<BalanceOf<T>, TransitionError> {
     Operators::<T>::try_mutate(operator_id, |maybe_operator| {
         let operator = maybe_operator
@@ -422,7 +423,7 @@ fn finalize_pending_withdrawals<T: Config>(
     operator_id: OperatorId,
     total_stake: &mut BalanceOf<T>,
     total_shares: &mut T::Share,
-    domain_block_number: T::DomainNumber,
+    domain_block_number: DomainBlockNumberFor<T>,
 ) -> Result<(), TransitionError> {
     let staked_hold_id = T::HoldIdentifier::staking_staked(operator_id);
     let pending_unlock_hold_id = T::HoldIdentifier::staking_pending_unlock(operator_id);
@@ -477,7 +478,7 @@ fn finalize_nominator_withdrawal<T: Config>(
     withdraw: Withdraw<BalanceOf<T>>,
     total_stake: &mut BalanceOf<T>,
     total_shares: &mut T::Share,
-    unlock_at: T::DomainNumber,
+    unlock_at: DomainBlockNumberFor<T>,
 ) -> Result<(), TransitionError> {
     let (withdrew_stake, withdrew_shares) = match withdraw {
         Withdraw::All => {

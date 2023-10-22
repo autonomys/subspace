@@ -63,6 +63,7 @@ mod pallet {
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
     use frame_system::SetCode;
+    use sp_executive::{InherentError, InherentType, INHERENT_IDENTIFIER};
     use sp_std::vec::Vec;
 
     #[pallet::config]
@@ -80,13 +81,64 @@ mod pallet {
         /// Sets new runtime code after doing necessary checks.
         /// Same as frame_system::Call::set_code but without root origin.
         #[pallet::call_index(0)]
-        #[pallet::weight((T::WeightInfo::set_code(), DispatchClass::Operational))]
-        pub fn set_code(origin: OriginFor<T>, code: Vec<u8>) -> DispatchResultWithPostInfo {
+        #[pallet::weight((T::WeightInfo::set_code(), DispatchClass::Mandatory))]
+        pub fn set_code(origin: OriginFor<T>, code: Vec<u8>) -> DispatchResult {
             ensure_none(origin)?;
             <frame_system::pallet::Pallet<T>>::can_set_code(&code)?;
             <T as frame_system::Config>::OnSetCode::set_code(code)?;
-            // consume the rest of the block to prevent further transactions
-            Ok(Some(T::BlockWeights::get().max_block).into())
+            Ok(())
+        }
+    }
+
+    #[pallet::inherent]
+    impl<T: Config> ProvideInherent for Pallet<T> {
+        type Call = Call<T>;
+        type Error = InherentError;
+        const INHERENT_IDENTIFIER: InherentIdentifier = INHERENT_IDENTIFIER;
+
+        fn create_inherent(data: &InherentData) -> Option<Self::Call> {
+            let inherent_data = data
+                .get_data::<InherentType>(&INHERENT_IDENTIFIER)
+                .expect("Executive inherent data not correctly encoded")
+                .expect("Executive inherent data must be provided");
+
+            inherent_data.maybe_code.map(|code| Call::set_code { code })
+        }
+
+        fn is_inherent_required(data: &InherentData) -> Result<Option<Self::Error>, Self::Error> {
+            let inherent_data = data
+                .get_data::<InherentType>(&INHERENT_IDENTIFIER)
+                .expect("Executive inherent data not correctly encoded")
+                .expect("Executive inherent data must be provided");
+
+            Ok(if inherent_data.maybe_code.is_none() {
+                None
+            } else {
+                Some(InherentError::MissingRuntimeCode)
+            })
+        }
+
+        fn check_inherent(call: &Self::Call, data: &InherentData) -> Result<(), Self::Error> {
+            let inherent_data = data
+                .get_data::<InherentType>(&INHERENT_IDENTIFIER)
+                .expect("Executive inherent data not correctly encoded")
+                .expect("Executive inherent data must be provided");
+
+            if let Some(provided_code) = inherent_data.maybe_code {
+                if let Call::set_code { code } = call {
+                    if code != &provided_code {
+                        return Err(InherentError::IncorrectRuntimeCode);
+                    }
+                }
+            } else {
+                return Err(InherentError::MissingRuntimeCode);
+            }
+
+            Ok(())
+        }
+
+        fn is_inherent(call: &Self::Call) -> bool {
+            matches!(call, Call::set_code { .. })
         }
     }
 

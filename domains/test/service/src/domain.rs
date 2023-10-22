@@ -5,7 +5,7 @@ use crate::chain_spec::create_domain_spec;
 use crate::{construct_extrinsic_generic, node_config, EcdsaKeyring, UncheckedExtrinsicFor};
 use domain_client_operator::{BootstrapResult, Bootstrapper, OperatorStreams};
 use domain_runtime_primitives::opaque::Block;
-use domain_runtime_primitives::{Balance, DomainCoreApi, InherentExtrinsicApi};
+use domain_runtime_primitives::{Balance, DomainCoreApi};
 use domain_service::providers::DefaultProvider;
 use domain_service::FullClient;
 use domain_test_primitives::OnchainStateApi;
@@ -142,7 +142,6 @@ where
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
-        + InherentExtrinsicApi<Block>
         + MessengerApi<Block, NumberFor<Block>>
         + RelayerApi<Block, NumberFor<Block>>
         + OnchainStateApi<Block, AccountId, Balance>

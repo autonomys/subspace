@@ -3,6 +3,7 @@
 use std::fs::{File, OpenOptions};
 use std::io::Result;
 
+/// Extension convenience trait that allows setting some file opening options in cross-platform way
 pub trait OpenOptionsExt {
     /// Advise OS/file system that file will use random access and read-ahead behavior is
     /// undesirable, only has impact on Windows, for other operating systems see [`FileExt`]
