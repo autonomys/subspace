@@ -37,6 +37,7 @@ use crate::signed_extensions::{CheckStorageAccess, DisablePallets};
 use codec::{Decode, Encode, MaxEncodedLen};
 use core::mem;
 use core::num::NonZeroU64;
+use domain_runtime_primitives::opaque::Header as DomainHeader;
 use domain_runtime_primitives::{
     BlockNumber as DomainNumber, Hash as DomainHash, MultiAccountId, TryConvertBack,
 };
@@ -1012,17 +1013,17 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_domains_fraud_proof::transaction::PreValidationObjectApi<Block, DomainNumber, DomainHash, > for Runtime {
+    impl sp_domains_fraud_proof::transaction::PreValidationObjectApi<Block, DomainHeader> for Runtime {
         fn extract_pre_validation_object(
             extrinsic: <Block as BlockT>::Extrinsic,
-        ) -> sp_domains_fraud_proof::transaction::PreValidationObject<Block, DomainNumber, DomainHash> {
+        ) -> sp_domains_fraud_proof::transaction::PreValidationObject<Block, DomainHeader> {
             crate::domains::extract_pre_validation_object(extrinsic)
         }
     }
 
-    impl sp_domains::DomainsApi<Block, DomainNumber, DomainHash> for Runtime {
+    impl sp_domains::DomainsApi<Block, DomainHeader> for Runtime {
         fn submit_bundle_unsigned(
-            opaque_bundle: sp_domains::OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainNumber, DomainHash, Balance>,
+            opaque_bundle: sp_domains::OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, Balance>,
         ) {
             Domains::submit_bundle_unsigned(opaque_bundle)
         }
@@ -1030,7 +1031,7 @@ impl_runtime_apis! {
         fn extract_successful_bundles(
             domain_id: DomainId,
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> sp_domains::OpaqueBundles<Block, DomainNumber, DomainHash, Balance> {
+        ) -> sp_domains::OpaqueBundles<Block, DomainHeader, Balance> {
             crate::domains::extract_successful_bundles(domain_id, extrinsics)
         }
 

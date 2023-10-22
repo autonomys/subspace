@@ -1,4 +1,4 @@
-use domain_runtime_primitives::{BlockNumber as DomainNumber, Hash as DomainHash};
+use domain_runtime_primitives::opaque::Header as DomainHeader;
 use sc_transaction_pool::error::Result as TxPoolResult;
 use sc_transaction_pool_api::error::Error as TxPoolError;
 use sc_transaction_pool_api::TransactionSource;
@@ -55,8 +55,8 @@ impl<Block, Client, Verifier> PreValidateTransaction
 where
     Block: BlockT,
     Client: ProvideRuntimeApi<Block> + Send + Sync,
-    Client::Api: PreValidationObjectApi<Block, DomainNumber, DomainHash>,
-    Verifier: VerifyFraudProof<Block> + Clone + Send + Sync + 'static,
+    Client::Api: PreValidationObjectApi<Block, DomainHeader>,
+    Verifier: VerifyFraudProof<Block, DomainHeader> + Clone + Send + Sync + 'static,
 {
     type Block = Block;
     async fn pre_validate_transaction(

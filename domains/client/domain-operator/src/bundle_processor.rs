@@ -145,9 +145,8 @@ where
         + ProofProvider<CBlock>
         + ProvideRuntimeApi<CBlock>
         + 'static,
-    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>
-        + MessengerApi<CBlock, NumberFor<CBlock>>
-        + 'static,
+    CClient::Api:
+        DomainsApi<CBlock, Block::Header> + MessengerApi<CBlock, NumberFor<CBlock>> + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
     E: CodeExecutor,
 {

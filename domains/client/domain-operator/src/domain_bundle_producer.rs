@@ -25,8 +25,7 @@ use tracing::info;
 type OpaqueBundle<Block, CBlock> = sp_domains::OpaqueBundle<
     NumberFor<CBlock>,
     <CBlock as BlockT>::Hash,
-    NumberFor<Block>,
-    <Block as BlockT>::Hash,
+    <Block as BlockT>::Header,
     Balance,
 >;
 
@@ -102,8 +101,7 @@ where
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
     Client::Api: BlockBuilder<Block> + DomainCoreApi<Block>,
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock>,
-    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>
-        + BundleProducerElectionApi<CBlock, Balance>,
+    CClient::Api: DomainsApi<CBlock, Block::Header> + BundleProducerElectionApi<CBlock, Balance>,
     ParentChain: ParentChainInterface<Block, ParentChainBlock> + Clone,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {

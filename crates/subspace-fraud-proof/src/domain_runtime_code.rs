@@ -1,5 +1,4 @@
-use codec::{Decode, Encode};
-use sp_api::ProvideRuntimeApi;
+use sp_api::{HeaderT, ProvideRuntimeApi};
 use sp_core::traits::FetchRuntimeCode;
 use sp_domains::{DomainId, DomainsApi};
 use sp_domains_fraud_proof::fraud_proof::VerificationError;
@@ -15,17 +14,16 @@ impl FetchRuntimeCode for DomainRuntimeCodeFetcher {
     }
 }
 
-pub(crate) fn retrieve_domain_runtime_code<CBlock, CClient, Number, Hash>(
+pub(crate) fn retrieve_domain_runtime_code<CBlock, CClient, DomainHeader>(
     domain_id: DomainId,
     at: CBlock::Hash,
     consensus_client: &Arc<CClient>,
 ) -> Result<DomainRuntimeCodeFetcher, VerificationError>
 where
     CBlock: BlockT,
-    Number: Encode + Decode,
-    Hash: Encode + Decode,
+    DomainHeader: HeaderT,
     CClient: ProvideRuntimeApi<CBlock>,
-    CClient::Api: DomainsApi<CBlock, Number, Hash>,
+    CClient::Api: DomainsApi<CBlock, DomainHeader>,
 {
     let wasm_bundle = consensus_client
         .runtime_api()

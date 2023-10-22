@@ -12,6 +12,7 @@ pub mod verifier_api;
 use futures::channel::oneshot;
 use futures::FutureExt;
 use invalid_transaction_proof::VerifyInvalidTransactionProof;
+use sp_api::HeaderT;
 use sp_core::traits::SpawnNamed;
 use sp_domains_fraud_proof::fraud_proof::{FraudProof, VerificationError};
 use sp_runtime::traits::{Block as BlockT, NumberFor};
@@ -21,21 +22,23 @@ use std::sync::Arc;
 /// Verify fraud proof.
 ///
 /// Verifier is either the primary chain client or the system domain client.
-pub trait VerifyFraudProof<VerifierBlock: BlockT> {
+pub trait VerifyFraudProof<VerifierBlock: BlockT, DomainHeader: HeaderT> {
     /// Verifies fraud proof.
     fn verify_fraud_proof(
         &self,
-        proof: &FraudProof<NumberFor<VerifierBlock>, VerifierBlock::Hash>,
+        proof: &FraudProof<NumberFor<VerifierBlock>, VerifierBlock::Hash, DomainHeader>,
     ) -> Result<(), VerificationError>;
 }
 
 /// Fraud proof verifier.
-pub struct ProofVerifier<VerifierBlock, ITPVerifier> {
+pub struct ProofVerifier<VerifierBlock, ITPVerifier, DomainHeader> {
     invalid_transaction_proof_verifier: Arc<ITPVerifier>,
-    _phantom: PhantomData<VerifierBlock>,
+    _phantom: PhantomData<(VerifierBlock, DomainHeader)>,
 }
 
-impl<VerifierBlock, ITPVerifier> Clone for ProofVerifier<VerifierBlock, ITPVerifier> {
+impl<VerifierBlock, ITPVerifier, DomainHeader> Clone
+    for ProofVerifier<VerifierBlock, ITPVerifier, DomainHeader>
+{
     fn clone(&self) -> Self {
         Self {
             invalid_transaction_proof_verifier: self.invalid_transaction_proof_verifier.clone(),
@@ -44,10 +47,12 @@ impl<VerifierBlock, ITPVerifier> Clone for ProofVerifier<VerifierBlock, ITPVerif
     }
 }
 
-impl<VerifierBlock, ITPVerifier> ProofVerifier<VerifierBlock, ITPVerifier>
+impl<VerifierBlock, ITPVerifier, DomainHeader>
+    ProofVerifier<VerifierBlock, ITPVerifier, DomainHeader>
 where
     VerifierBlock: BlockT,
     ITPVerifier: VerifyInvalidTransactionProof,
+    DomainHeader: HeaderT,
 {
     /// Constructs a new instance of [`ProofVerifier`].
     pub fn new(invalid_transaction_proof_verifier: Arc<ITPVerifier>) -> Self {
@@ -60,7 +65,7 @@ where
     /// Verifies the fraud proof.
     pub fn verify(
         &self,
-        fraud_proof: &FraudProof<NumberFor<VerifierBlock>, VerifierBlock::Hash>,
+        fraud_proof: &FraudProof<NumberFor<VerifierBlock>, VerifierBlock::Hash, DomainHeader>,
     ) -> Result<(), VerificationError> {
         match fraud_proof {
             // The invalid state transition proof is verified in the consensus runtime
@@ -73,29 +78,31 @@ where
     }
 }
 
-impl<VerifierBlock, ITPVerifier> VerifyFraudProof<VerifierBlock>
-    for ProofVerifier<VerifierBlock, ITPVerifier>
+impl<VerifierBlock, ITPVerifier, DomainHeader> VerifyFraudProof<VerifierBlock, DomainHeader>
+    for ProofVerifier<VerifierBlock, ITPVerifier, DomainHeader>
 where
     VerifierBlock: BlockT,
     ITPVerifier: VerifyInvalidTransactionProof,
+    DomainHeader: HeaderT,
 {
     fn verify_fraud_proof(
         &self,
-        proof: &FraudProof<NumberFor<VerifierBlock>, VerifierBlock::Hash>,
+        proof: &FraudProof<NumberFor<VerifierBlock>, VerifierBlock::Hash, DomainHeader>,
     ) -> Result<(), VerificationError> {
         self.verify(proof)
     }
 }
 
 /// Verifies the fraud proof extracted from extrinsic in the transaction pool.
-pub async fn validate_fraud_proof_in_tx_pool<Block, Verifier>(
+pub async fn validate_fraud_proof_in_tx_pool<Block, Verifier, DomainHeader>(
     spawner: &dyn SpawnNamed,
     fraud_proof_verifier: Verifier,
-    fraud_proof: FraudProof<NumberFor<Block>, Block::Hash>,
+    fraud_proof: FraudProof<NumberFor<Block>, Block::Hash, DomainHeader>,
 ) -> Result<(), VerificationError>
 where
     Block: BlockT,
-    Verifier: VerifyFraudProof<Block> + Send + 'static,
+    DomainHeader: HeaderT,
+    Verifier: VerifyFraudProof<Block, DomainHeader> + Send + 'static,
 {
     let (verified_result_sender, verified_result_receiver) = oneshot::channel();
 

@@ -20,8 +20,7 @@
 
 use codec::{Decode, Encode};
 use cross_domain_message_gossip::GossipWorkerBuilder;
-use domain_runtime_primitives::opaque::Block as DomainBlock;
-use domain_runtime_primitives::BlockNumber as DomainNumber;
+use domain_runtime_primitives::opaque::{Block as DomainBlock, Header as DomainHeader};
 use futures::channel::mpsc;
 use futures::{select, FutureExt, StreamExt};
 use jsonrpsee::RpcModule;
@@ -198,7 +197,7 @@ where
     DomainBlock: BlockT,
     DomainBlock::Hash: From<H256>,
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + 'static,
-    Client::Api: DomainsApi<Block, NumberFor<DomainBlock>, DomainBlock::Hash>,
+    Client::Api: DomainsApi<Block, DomainBlock::Header>,
     Executor: CodeExecutor + sc_executor::RuntimeVersionOf,
 {
     fn extensions_for(
@@ -431,7 +430,7 @@ impl MockConsensusNode {
     pub async fn notify_new_slot_and_wait_for_bundle(
         &mut self,
         slot: Slot,
-    ) -> Option<OpaqueBundle<NumberFor<Block>, Hash, DomainNumber, H256, Balance>> {
+    ) -> Option<OpaqueBundle<NumberFor<Block>, Hash, DomainHeader, Balance>> {
         let value = (slot, Randomness::from(Hash::random().to_fixed_bytes()));
         self.new_slot_notification_subscribers
             .retain(|subscriber| subscriber.unbounded_send(value).is_ok());
@@ -445,7 +444,7 @@ impl MockConsensusNode {
         &mut self,
     ) -> (
         Slot,
-        Option<OpaqueBundle<NumberFor<Block>, Hash, DomainNumber, H256, Balance>>,
+        Option<OpaqueBundle<NumberFor<Block>, Hash, DomainHeader, Balance>>,
     ) {
         let slot = self.produce_slot();
 
@@ -514,7 +513,7 @@ impl MockConsensusNode {
     pub fn get_bundle_from_tx_pool(
         &self,
         slot: u64,
-    ) -> Option<OpaqueBundle<NumberFor<Block>, Hash, DomainNumber, H256, Balance>> {
+    ) -> Option<OpaqueBundle<NumberFor<Block>, Hash, DomainHeader, Balance>> {
         for ready_tx in self.transaction_pool.ready() {
             let ext = UncheckedExtrinsic::decode(&mut ready_tx.data.encode().as_slice())
                 .expect("should be able to decode");

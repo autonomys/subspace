@@ -15,13 +15,8 @@ use std::pin::Pin;
 use std::sync::Arc;
 use subspace_runtime_primitives::Balance;
 
-type OpaqueBundleFor<Block, CBlock> = OpaqueBundle<
-    NumberFor<CBlock>,
-    <CBlock as BlockT>::Hash,
-    NumberFor<Block>,
-    <Block as BlockT>::Hash,
-    Balance,
->;
+type OpaqueBundleFor<Block, CBlock> =
+    OpaqueBundle<NumberFor<CBlock>, <CBlock as BlockT>::Hash, <Block as BlockT>::Header, Balance>;
 
 /// Throttle the consensus block import notification based on the `consensus_block_import_throttling_buffer_size`
 /// to pause the consensus block import in case the consensus chain runs much faster than the domain.
@@ -49,7 +44,7 @@ where
         + ProvideRuntimeApi<CBlock>
         + BlockchainEvents<CBlock>
         + 'static,
-    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
+    CClient::Api: DomainsApi<CBlock, Block::Header>,
     BlocksImporting: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Unpin + Send + 'static,
     BlocksImported: Stream<Item = BlockImportNotification<CBlock>> + Unpin + Send + 'static,
 {
@@ -132,7 +127,7 @@ where
     Block: BlockT,
     CBlock: BlockT,
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock>,
-    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
+    CClient::Api: DomainsApi<CBlock, Block::Header>,
     BundlerFn: Fn(
             HashAndNumber<CBlock>,
             OperatorSlotInfo,

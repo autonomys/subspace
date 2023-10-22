@@ -64,6 +64,9 @@ impl<Block, CBlock, Client, CClient, Backend, E> Clone
     }
 }
 
+type FraudProofFor<PCB, DomainHeader> =
+    FraudProof<NumberFor<PCB>, <PCB as BlockT>::Hash, DomainHeader>;
+
 impl<Block, CBlock, Client, CClient, Backend, E>
     FraudProofGenerator<Block, CBlock, Client, CClient, Backend, E>
 where
@@ -82,7 +85,7 @@ where
         + ProvideRuntimeApi<CBlock>
         + ProofProvider<CBlock>
         + 'static,
-    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
+    CClient::Api: DomainsApi<CBlock, Block::Header>,
     Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
     E: CodeExecutor,
 {
@@ -106,7 +109,7 @@ where
         domain_id: DomainId,
         local_receipt: &ExecutionReceiptFor<Block, CBlock>,
         bad_receipt_hash: H256,
-    ) -> Result<FraudProof<NumberFor<PCB>, PCB::Hash>, FraudProofError>
+    ) -> Result<FraudProofFor<PCB, Block::Header>, FraudProofError>
     where
         PCB: BlockT,
     {
@@ -127,7 +130,7 @@ where
         domain_id: DomainId,
         local_receipt: &ExecutionReceiptFor<Block, CBlock>,
         bad_receipt_hash: H256,
-    ) -> Result<FraudProof<NumberFor<PCB>, PCB::Hash>, FraudProofError>
+    ) -> Result<FraudProofFor<PCB, Block::Header>, FraudProofError>
     where
         PCB: BlockT,
     {
@@ -152,7 +155,7 @@ where
         mismatch_type: BundleMismatchType,
         bundle_index: u32,
         _bad_receipt_hash: H256,
-    ) -> Result<FraudProof<NumberFor<PCB>, PCB::Hash>, FraudProofError>
+    ) -> Result<FraudProofFor<PCB, Block::Header>, FraudProofError>
     where
         PCB: BlockT,
     {
@@ -184,7 +187,7 @@ where
         domain_id: DomainId,
         local_receipt: &ExecutionReceiptFor<Block, CBlock>,
         bad_receipt_hash: H256,
-    ) -> Result<FraudProof<NumberFor<PCB>, PCB::Hash>, FraudProofError>
+    ) -> Result<FraudProofFor<PCB, Block::Header>, FraudProofError>
     where
         PCB: BlockT,
     {
@@ -256,7 +259,7 @@ where
         local_trace_index: u32,
         local_receipt: &ExecutionReceiptFor<Block, CBlock>,
         bad_receipt_hash: H256,
-    ) -> Result<FraudProof<NumberFor<PCB>, PCB::Hash>, FraudProofError>
+    ) -> Result<FraudProofFor<PCB, Block::Header>, FraudProofError>
     where
         PCB: BlockT,
     {

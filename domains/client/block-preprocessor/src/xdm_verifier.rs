@@ -19,8 +19,7 @@ pub fn is_valid_xdm<CClient, CBlock, Block, SRE>(
 ) -> Result<bool, Error>
 where
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock> + 'static,
-    CClient::Api:
-        DomainsApi<CBlock, NumberFor<Block>, Block::Hash> + MessengerApi<CBlock, NumberFor<CBlock>>,
+    CClient::Api: DomainsApi<CBlock, Block::Header> + MessengerApi<CBlock, NumberFor<CBlock>>,
     Block: BlockT,
     CBlock: BlockT,
     NumberFor<CBlock>: From<NumberFor<Block>>,

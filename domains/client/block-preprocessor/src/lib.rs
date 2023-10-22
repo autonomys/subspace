@@ -28,11 +28,11 @@ use sp_api::{HashT, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_domains::extrinsics::deduplicate_and_shuffle_extrinsics;
 use sp_domains::{
-    DomainId, DomainsApi, ExecutionReceipt, InboxedBundle, InvalidBundleType, OpaqueBundle,
-    OpaqueBundles, ReceiptValidity,
+    DomainId, DomainsApi, ExecutionReceipt, HeaderHashingFor, InboxedBundle, InvalidBundleType,
+    OpaqueBundle, OpaqueBundles, ReceiptValidity,
 };
 use sp_messenger::MessengerApi;
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, NumberFor};
+use sp_runtime::traits::{Block as BlockT, NumberFor};
 use std::collections::VecDeque;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -55,7 +55,7 @@ where
     Block: BlockT,
     CBlock: BlockT,
     CClient: HeaderBackend<CBlock> + BlockBackend<CBlock> + ProvideRuntimeApi<CBlock> + Send + Sync,
-    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
+    CClient::Api: DomainsApi<CBlock, Block::Header>,
 {
     let extrinsics = consensus_client.block_body(block_hash)?.ok_or_else(|| {
         sp_blockchain::Error::Backend(format!("BlockBody of {block_hash:?} unavailable"))
@@ -70,7 +70,7 @@ where
 
 pub struct PreprocessResult<Block: BlockT> {
     pub extrinsics: VecDeque<Block::Extrinsic>,
-    pub bundles: Vec<InboxedBundle>,
+    pub bundles: Vec<InboxedBundle<Block::Hash>>,
 }
 
 pub struct DomainBlockPreprocessor<Block, CBlock, Client, CClient, RuntimeApi, ReceiptValidator> {
@@ -133,8 +133,7 @@ where
         + Send
         + Sync
         + 'static,
-    CClient::Api:
-        DomainsApi<CBlock, NumberFor<Block>, Block::Hash> + MessengerApi<CBlock, NumberFor<CBlock>>,
+    CClient::Api: DomainsApi<CBlock, Block::Header> + MessengerApi<CBlock, NumberFor<CBlock>>,
     ReceiptValidator: ValidateReceipt<Block, CBlock>,
 {
     pub fn new(
@@ -203,11 +202,11 @@ where
     #[allow(clippy::type_complexity)]
     fn compile_bundles_to_extrinsics(
         &self,
-        bundles: OpaqueBundles<CBlock, NumberFor<Block>, Block::Hash, Balance>,
+        bundles: OpaqueBundles<CBlock, Block::Header, Balance>,
         tx_range: U256,
         at: Block::Hash,
     ) -> sp_blockchain::Result<(
-        Vec<InboxedBundle>,
+        Vec<InboxedBundle<Block::Hash>>,
         Vec<(Option<AccountId>, Block::Extrinsic)>,
     )> {
         let mut inboxed_bundles = Vec::with_capacity(bundles.len());
@@ -226,10 +225,15 @@ where
                     };
                     let bundle_digest: Vec<_> = extrinsics
                         .iter()
-                        .map(|(signer, tx)| (signer.clone(), BlakeTwo256::hash_of(tx)))
+                        .map(|(signer, tx)| {
+                            (
+                                signer.clone(),
+                                HeaderHashingFor::<Block::Header>::hash_of(tx),
+                            )
+                        })
                         .collect();
                     inboxed_bundles.push(InboxedBundle::valid(
-                        BlakeTwo256::hash_of(&bundle_digest),
+                        HeaderHashingFor::<Block::Header>::hash_of(&bundle_digest),
                         extrinsic_root,
                     ));
                     valid_extrinsics.extend(extrinsics);
@@ -246,13 +250,7 @@ where
 
     fn check_bundle_validity(
         &self,
-        bundle: &OpaqueBundle<
-            NumberFor<CBlock>,
-            CBlock::Hash,
-            NumberFor<Block>,
-            Block::Hash,
-            Balance,
-        >,
+        bundle: &OpaqueBundle<NumberFor<CBlock>, CBlock::Hash, Block::Header, Balance>,
         tx_range: &U256,
         at: Block::Hash,
     ) -> sp_blockchain::Result<BundleValidity<Block::Extrinsic>> {

@@ -1,14 +1,13 @@
 use codec::{Decode, Encode};
-use hash_db::Hasher;
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
 use sp_core::H256;
 use sp_domain_digests::AsPredigest;
 use sp_domains::proof_provider_and_verifier::StorageProofVerifier;
-use sp_domains::{DomainId, ExecutionReceipt, ReceiptHash, SealedBundleHeader};
-use sp_runtime::traits::{
-    BlakeTwo256, Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor,
+use sp_domains::{
+    DomainId, ExecutionReceipt, HeaderHashFor, HeaderHashingFor, ReceiptHash, SealedBundleHeader,
 };
+use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor};
 use sp_runtime::{Digest, DigestItem};
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
@@ -341,10 +340,10 @@ impl InvalidBundlesFraudProof {
 // TODO: Revisit when fraud proof v2 is implemented.
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub enum FraudProof<Number, Hash> {
+pub enum FraudProof<Number, Hash, DomainHeader: HeaderT> {
     InvalidStateTransition(InvalidStateTransitionProof),
     InvalidTransaction(InvalidTransactionProof),
-    BundleEquivocation(BundleEquivocationProof<Number, Hash>),
+    BundleEquivocation(BundleEquivocationProof<Number, Hash, DomainHeader>),
     ImproperTransactionSortition(ImproperTransactionSortitionProof),
     InvalidTotalRewards(InvalidTotalRewardsProof),
     InvalidExtrinsicsRoot(InvalidExtrinsicsRootProof),
@@ -360,7 +359,7 @@ pub enum FraudProof<Number, Hash> {
     InvalidBundles(InvalidBundlesFraudProof),
 }
 
-impl<Number, Hash> FraudProof<Number, Hash> {
+impl<Number, Hash, DomainHeader: HeaderT> FraudProof<Number, Hash, DomainHeader> {
     pub fn domain_id(&self) -> DomainId {
         match self {
             Self::InvalidStateTransition(proof) => proof.domain_id,
@@ -401,7 +400,7 @@ impl<Number, Hash> FraudProof<Number, Hash> {
     pub fn dummy_fraud_proof(
         domain_id: DomainId,
         bad_receipt_hash: ReceiptHash,
-    ) -> FraudProof<Number, Hash> {
+    ) -> FraudProof<Number, Hash, DomainHeader> {
         FraudProof::Dummy {
             domain_id,
             bad_receipt_hash,
@@ -409,13 +408,13 @@ impl<Number, Hash> FraudProof<Number, Hash> {
     }
 }
 
-impl<Number, Hash> FraudProof<Number, Hash>
+impl<Number, Hash, DomainHeader: HeaderT> FraudProof<Number, Hash, DomainHeader>
 where
     Number: Encode,
     Hash: Encode,
 {
-    pub fn hash(&self) -> H256 {
-        <BlakeTwo256 as HashT>::hash(&self.encode())
+    pub fn hash(&self) -> HeaderHashFor<DomainHeader> {
+        HeaderHashingFor::<DomainHeader>::hash(&self.encode())
     }
 }
 
@@ -446,7 +445,7 @@ pub fn dummy_invalid_state_transition_proof(domain_id: DomainId) -> InvalidState
 /// are the given distinct bundle headers that were signed by the validator and which
 /// include the slot number.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct BundleEquivocationProof<Number, Hash> {
+pub struct BundleEquivocationProof<Number, Hash, DomainHeader: HeaderT> {
     /// The id of the domain this fraud proof targeted
     pub domain_id: DomainId,
     /// The authority id of the equivocator.
@@ -457,17 +456,20 @@ pub struct BundleEquivocationProof<Number, Hash> {
     // TODO: `SealedBundleHeader` contains `ExecutionReceipt` which make the size of the proof
     // large, revisit when proceeding to fraud proof v2.
     /// The first header involved in the equivocation.
-    pub first_header: SealedBundleHeader<Number, Hash, Number, H256, Balance>,
+    pub first_header: SealedBundleHeader<Number, Hash, DomainHeader, Balance>,
     /// The second header involved in the equivocation.
-    pub second_header: SealedBundleHeader<Number, Hash, Number, H256, Balance>,
+    pub second_header: SealedBundleHeader<Number, Hash, DomainHeader, Balance>,
 }
 
-impl<Number: Clone + From<u32> + Encode, Hash: Clone + Default + Encode>
-    BundleEquivocationProof<Number, Hash>
+impl<Number, Hash, DomainHeader> BundleEquivocationProof<Number, Hash, DomainHeader>
+where
+    Number: Clone + From<u32> + Encode,
+    Hash: Clone + Default + Encode,
+    DomainHeader: HeaderT,
 {
     /// Returns the hash of this bundle equivocation proof.
-    pub fn hash(&self) -> H256 {
-        BlakeTwo256::hash_of(self)
+    pub fn hash(&self) -> HeaderHashFor<DomainHeader> {
+        HeaderHashingFor::<DomainHeader>::hash_of(self)
     }
 }
 
@@ -531,8 +533,8 @@ pub enum ExtrinsicDigest {
 impl ExtrinsicDigest {
     pub fn new<Layout: TrieLayout>(ext: Vec<u8>) -> Self
     where
-        Layout::Hash: Hasher,
-        <Layout::Hash as Hasher>::Out: Into<H256>,
+        Layout::Hash: HashT,
+        <Layout::Hash as HashT>::Output: Into<H256>,
     {
         if let Some(threshold) = Layout::MAX_INLINE_VALUE {
             if ext.len() >= threshold as usize {

@@ -4,7 +4,7 @@ use crate::domain_runtime_code::retrieve_domain_runtime_code;
 use crate::verifier_api::VerifierApi;
 use codec::{Decode, Encode};
 use domain_block_preprocessor::runtime_api_light::RuntimeApiLight;
-use domain_runtime_primitives::opaque::Block;
+use domain_runtime_primitives::opaque::{Block, Header};
 use domain_runtime_primitives::{DomainCoreApi, Hash};
 use sc_client_api::StorageProof;
 use sc_executor::RuntimeVersionOf;
@@ -115,7 +115,7 @@ where
     Hash: Encode + Decode,
     H256: Into<CBlock::Hash>,
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock> + Send + Sync,
-    CClient::Api: DomainsApi<CBlock, domain_runtime_primitives::BlockNumber, Hash>,
+    CClient::Api: DomainsApi<CBlock, Header>,
     VerifierClient: VerifierApi,
     Exec: CodeExecutor + RuntimeVersionOf + 'static,
 {
@@ -236,7 +236,7 @@ where
     Hash: Encode + Decode,
     H256: Into<CBlock::Hash>,
     Client: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock> + Send + Sync,
-    Client::Api: DomainsApi<CBlock, domain_runtime_primitives::BlockNumber, Hash>,
+    Client::Api: DomainsApi<CBlock, Header>,
     VerifierClient: VerifierApi,
     Exec: CodeExecutor + RuntimeVersionOf + 'static,
 {

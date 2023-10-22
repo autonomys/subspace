@@ -35,8 +35,7 @@ use crate::metrics::NodeMetrics;
 use crate::tx_pre_validator::ConsensusChainTxPreValidator;
 use core::sync::atomic::{AtomicU32, Ordering};
 use cross_domain_message_gossip::cdm_gossip_peers_set_config;
-use domain_runtime_primitives::opaque::Block as DomainBlock;
-use domain_runtime_primitives::{BlockNumber as DomainNumber, Hash as DomainHash};
+use domain_runtime_primitives::opaque::{Block as DomainBlock, Header as DomainHeader};
 pub use dsn::DsnConfig;
 use frame_system_rpc_runtime_api::AccountNonceApi;
 use futures::channel::oneshot;
@@ -175,6 +174,7 @@ pub type InvalidTransactionProofVerifier<RuntimeApi, ExecutorDispatch> =
 pub type FraudProofVerifier<RuntimeApi, ExecutorDispatch> = subspace_fraud_proof::ProofVerifier<
     Block,
     InvalidTransactionProofVerifier<RuntimeApi, ExecutorDispatch>,
+    DomainHeader,
 >;
 
 /// Subspace networking instantiation variant
@@ -235,8 +235,7 @@ where
     DomainBlock: BlockT,
     DomainBlock::Hash: From<H256>,
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + 'static,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey>
-        + DomainsApi<Block, NumberFor<DomainBlock>, DomainBlock::Hash>,
+    Client::Api: SubspaceApi<Block, FarmerPublicKey> + DomainsApi<Block, DomainBlock::Header>,
     ExecutorDispatch: CodeExecutor + sc_executor::RuntimeVersionOf,
 {
     fn extensions_for(
@@ -423,9 +422,9 @@ where
         + SessionKeys<Block>
         + TaggedTransactionQueue<Block>
         + SubspaceApi<Block, FarmerPublicKey>
-        + DomainsApi<Block, DomainNumber, DomainHash>
+        + DomainsApi<Block, DomainHeader>
         + ObjectsApi<Block>
-        + PreValidationObjectApi<Block, DomainNumber, DomainHash>,
+        + PreValidationObjectApi<Block, DomainHeader>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
     let telemetry = config
@@ -605,8 +604,8 @@ where
         + HeaderMetadata<Block, Error = sp_blockchain::Error>
         + 'static,
     Client::Api: TaggedTransactionQueue<Block>
-        + DomainsApi<Block, DomainNumber, DomainHash>
-        + PreValidationObjectApi<Block, DomainNumber, DomainHash>,
+        + DomainsApi<Block, DomainHeader>
+        + PreValidationObjectApi<Block, DomainHeader>,
     TxPreValidator: PreValidateTransaction<Block = Block> + Send + Sync + Clone + 'static,
 {
     /// Task manager.
@@ -670,9 +669,9 @@ where
         + TaggedTransactionQueue<Block>
         + TransactionPaymentApi<Block, Balance>
         + SubspaceApi<Block, FarmerPublicKey>
-        + DomainsApi<Block, DomainNumber, DomainHash>
+        + DomainsApi<Block, DomainHeader>
         + ObjectsApi<Block>
-        + PreValidationObjectApi<Block, DomainNumber, DomainHash>,
+        + PreValidationObjectApi<Block, DomainHeader>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
     let PartialComponents {

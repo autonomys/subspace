@@ -8,8 +8,8 @@ use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
 use std::sync::Arc;
 
-type FraudProofFor<ParentChainBlock> =
-    FraudProof<NumberFor<ParentChainBlock>, <ParentChainBlock as BlockT>::Hash>;
+type FraudProofFor<ParentChainBlock, DomainHeader> =
+    FraudProof<NumberFor<ParentChainBlock>, <ParentChainBlock as BlockT>::Hash, DomainHeader>;
 
 /// Trait for interacting between the domain and its corresponding parent chain, i.e. retrieving
 /// the necessary info from the parent chain or submit extrinsics to the parent chain.
@@ -56,11 +56,11 @@ pub trait ParentChainInterface<Block: BlockT, ParentChainBlock: BlockT> {
         &self,
         at: ParentChainBlock::Hash,
         extrinsics: Vec<ParentChainBlock::Extrinsic>,
-    ) -> Result<Vec<FraudProofFor<ParentChainBlock>>, sp_api::ApiError>;
+    ) -> Result<Vec<FraudProofFor<ParentChainBlock, Block::Header>>, sp_api::ApiError>;
 
     fn submit_fraud_proof_unsigned(
         &self,
-        fraud_proof: FraudProof<NumberFor<ParentChainBlock>, ParentChainBlock::Hash>,
+        fraud_proof: FraudProof<NumberFor<ParentChainBlock>, ParentChainBlock::Hash, Block::Header>,
     ) -> Result<(), sp_api::ApiError>;
 
     fn non_empty_er_exists(
@@ -110,7 +110,7 @@ where
     CBlock: BlockT,
     NumberFor<CBlock>: Into<NumberFor<Block>>,
     CClient: HeaderBackend<CBlock> + BlockBackend<CBlock> + ProvideRuntimeApi<CBlock>,
-    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
+    CClient::Api: DomainsApi<CBlock, Block::Header>,
 {
     fn best_hash(&self) -> CBlock::Hash {
         self.consensus_client.info().best_hash
@@ -190,7 +190,7 @@ where
         &self,
         _at: CBlock::Hash,
         _extrinsics: Vec<CBlock::Extrinsic>,
-    ) -> Result<Vec<FraudProofFor<CBlock>>, sp_api::ApiError> {
+    ) -> Result<Vec<FraudProofFor<CBlock, Block::Header>>, sp_api::ApiError> {
         // TODO: Implement when proceeding to fraud proof v2.
         Ok(Vec::new())
         // self.consensus_client
@@ -200,7 +200,7 @@ where
 
     fn submit_fraud_proof_unsigned(
         &self,
-        _fraud_proof: FraudProof<NumberFor<CBlock>, CBlock::Hash>,
+        _fraud_proof: FraudProof<NumberFor<CBlock>, CBlock::Hash, Block::Header>,
     ) -> Result<(), sp_api::ApiError> {
         // TODO: Implement when proceeding to fraud proof v2.
         // let at = self.consensus_client.info().best_hash;

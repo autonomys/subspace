@@ -275,7 +275,7 @@ where
         NumberFor<CCBlock>: Into<NumberFor<Block>>,
         CCBlock::Hash: Into<Block::Hash>,
         CCC: HeaderBackend<CCBlock> + ProvideRuntimeApi<CCBlock> + ProofProvider<CCBlock>,
-        CCC::Api: DomainsApi<CCBlock, NumberFor<Block>, Block::Hash>,
+        CCC::Api: DomainsApi<CCBlock, Block::Header>,
     {
         let chain_id = Self::chain_id(domain_client)?;
         let ChainId::Domain(domain_id) = chain_id else {

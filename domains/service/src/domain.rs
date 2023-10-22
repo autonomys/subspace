@@ -4,8 +4,8 @@ use domain_client_block_preprocessor::inherents::CreateInherentDataProvider;
 use domain_client_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_client_message_relayer::GossipMessageSink;
 use domain_client_operator::{Operator, OperatorParams, OperatorStreams};
-use domain_runtime_primitives::opaque::Block;
-use domain_runtime_primitives::{Balance, BlockNumber, DomainCoreApi, Hash};
+use domain_runtime_primitives::opaque::{Block, Header};
+use domain_runtime_primitives::{Balance, DomainCoreApi, Hash};
 use futures::channel::mpsc;
 use futures::Stream;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
@@ -66,7 +66,7 @@ where
         + Send
         + Sync
         + 'static,
-    CClient::Api: DomainsApi<CBlock, BlockNumber, Hash> + MessengerApi<CBlock, NumberFor<CBlock>>,
+    CClient::Api: DomainsApi<CBlock, Header> + MessengerApi<CBlock, NumberFor<CBlock>>,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>
         + Send
         + Sync
@@ -155,7 +155,7 @@ where
         + Send
         + Sync
         + 'static,
-    CClient::Api: DomainsApi<CBlock, BlockNumber, Hash> + MessengerApi<CBlock, NumberFor<CBlock>>,
+    CClient::Api: DomainsApi<CBlock, Header> + MessengerApi<CBlock, NumberFor<CBlock>>,
     RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>
         + Send
         + Sync
@@ -287,7 +287,7 @@ where
         + Send
         + Sync
         + 'static,
-    CClient::Api: DomainsApi<CBlock, BlockNumber, Hash>
+    CClient::Api: DomainsApi<CBlock, Header>
         + RelayerApi<CBlock, NumberFor<CBlock>>
         + MessengerApi<CBlock, NumberFor<CBlock>>
         + BundleProducerElectionApi<CBlock, subspace_runtime_primitives::Balance>,

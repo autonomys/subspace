@@ -1,4 +1,5 @@
 use crate::{Balance, Block, BlockNumber, Domains, Hash, RuntimeCall, UncheckedExtrinsic};
+use domain_runtime_primitives::opaque::Header as DomainHeader;
 use domain_runtime_primitives::{BlockNumber as DomainNumber, Hash as DomainHash};
 use sp_domains::{DomainId, ExecutionReceipt};
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
@@ -8,7 +9,7 @@ use sp_std::vec::Vec;
 pub(crate) fn extract_successful_bundles(
     domain_id: DomainId,
     extrinsics: Vec<UncheckedExtrinsic>,
-) -> sp_domains::OpaqueBundles<Block, DomainNumber, DomainHash, Balance> {
+) -> sp_domains::OpaqueBundles<Block, DomainHeader, Balance> {
     let successful_bundles = Domains::successful_bundles(domain_id);
     extrinsics
         .into_iter()
@@ -50,7 +51,7 @@ pub(crate) fn extract_receipts(
 pub(crate) fn extract_fraud_proofs(
     extrinsics: Vec<UncheckedExtrinsic>,
     domain_id: DomainId,
-) -> Vec<FraudProof<BlockNumber, Hash>> {
+) -> Vec<FraudProof<BlockNumber, Hash, DomainHeader>> {
     // TODO: Ensure fraud proof extrinsic is infallible.
     extrinsics
         .into_iter()
@@ -67,7 +68,7 @@ pub(crate) fn extract_fraud_proofs(
 
 pub(crate) fn extract_pre_validation_object(
     extrinsic: UncheckedExtrinsic,
-) -> PreValidationObject<Block, DomainNumber, DomainHash> {
+) -> PreValidationObject<Block, DomainHeader> {
     match extrinsic.function {
         RuntimeCall::Domains(pallet_domains::Call::submit_fraud_proof { fraud_proof }) => {
             PreValidationObject::FraudProof(*fraud_proof)

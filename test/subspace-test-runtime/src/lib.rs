@@ -25,6 +25,7 @@ include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use codec::{Compact, CompactLen, Decode, Encode, MaxEncodedLen};
 use core::num::NonZeroU64;
+use domain_runtime_primitives::opaque::Header as DomainHeader;
 use domain_runtime_primitives::{
     BlockNumber as DomainNumber, Hash as DomainHash, MultiAccountId, TryConvertBack,
 };
@@ -646,7 +647,7 @@ parameter_types! {
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type DomainHash = DomainHash;
-    type DomainHeader = sp_runtime::generic::Header<DomainNumber, BlakeTwo256>;
+    type DomainHeader = DomainHeader;
     type ConfirmationDepthK = ConfirmationDepthK;
     type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
     type Currency = Balances;
@@ -1045,7 +1046,7 @@ fn extract_block_object_mapping(block: Block, successful_calls: Vec<Hash>) -> Bl
 fn extract_successful_bundles(
     domain_id: DomainId,
     extrinsics: Vec<UncheckedExtrinsic>,
-) -> OpaqueBundles<Block, DomainNumber, DomainHash, Balance> {
+) -> OpaqueBundles<Block, DomainHeader, Balance> {
     let successful_bundles = Domains::successful_bundles(domain_id);
     extrinsics
         .into_iter()
@@ -1087,7 +1088,7 @@ fn extract_receipts(
 fn extract_fraud_proofs(
     extrinsics: Vec<UncheckedExtrinsic>,
     domain_id: DomainId,
-) -> Vec<FraudProof<NumberFor<Block>, Hash>> {
+) -> Vec<FraudProof<NumberFor<Block>, Hash, DomainHeader>> {
     // TODO: Ensure fraud proof extrinsic is infallible.
     extrinsics
         .into_iter()
@@ -1104,7 +1105,7 @@ fn extract_fraud_proofs(
 
 fn extract_pre_validation_object(
     extrinsic: UncheckedExtrinsic,
-) -> PreValidationObject<Block, DomainNumber, DomainHash> {
+) -> PreValidationObject<Block, DomainHeader> {
     match extrinsic.function {
         RuntimeCall::Domains(pallet_domains::Call::submit_fraud_proof { fraud_proof }) => {
             PreValidationObject::FraudProof(*fraud_proof)
@@ -1301,17 +1302,17 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_domains_fraud_proof::transaction::PreValidationObjectApi<Block, DomainNumber, DomainHash> for Runtime {
+    impl sp_domains_fraud_proof::transaction::PreValidationObjectApi<Block, DomainHeader> for Runtime {
         fn extract_pre_validation_object(
             extrinsic: <Block as BlockT>::Extrinsic,
-        ) -> sp_domains_fraud_proof::transaction::PreValidationObject<Block, DomainNumber, DomainHash> {
+        ) -> sp_domains_fraud_proof::transaction::PreValidationObject<Block, DomainHeader> {
             extract_pre_validation_object(extrinsic)
         }
     }
 
-    impl sp_domains::DomainsApi<Block, DomainNumber, DomainHash> for Runtime {
+    impl sp_domains::DomainsApi<Block, DomainHeader> for Runtime {
         fn submit_bundle_unsigned(
-            opaque_bundle: OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainNumber, DomainHash, Balance>,
+            opaque_bundle: OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, Balance>,
         ) {
             Domains::submit_bundle_unsigned(opaque_bundle)
         }
@@ -1319,7 +1320,7 @@ impl_runtime_apis! {
         fn extract_successful_bundles(
             domain_id: DomainId,
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> OpaqueBundles<Block, DomainNumber, DomainHash, Balance> {
+        ) -> OpaqueBundles<Block, DomainHeader, Balance> {
             extract_successful_bundles(domain_id, extrinsics)
         }
 

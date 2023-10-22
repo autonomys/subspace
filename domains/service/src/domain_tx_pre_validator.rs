@@ -70,8 +70,7 @@ where
     NumberFor<CBlock>: From<NumberFor<Block>>,
     Client: ProvideRuntimeApi<Block> + Send + Sync,
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock> + 'static,
-    CClient::Api:
-        DomainsApi<CBlock, NumberFor<Block>, Block::Hash> + MessengerApi<CBlock, NumberFor<CBlock>>,
+    CClient::Api: DomainsApi<CBlock, Block::Header> + MessengerApi<CBlock, NumberFor<CBlock>>,
     SRE: StateRootExtractor<Block> + Send + Sync,
 {
     type Block = Block;

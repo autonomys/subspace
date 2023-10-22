@@ -16,7 +16,7 @@ use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_domains::{DomainId, DomainsApi, DomainsDigestItem};
 use sp_inherents::{CreateInherentDataProviders, InherentData, InherentDataProvider};
-use sp_runtime::traits::{Block as BlockT, Header, NumberFor};
+use sp_runtime::traits::{Block as BlockT, Header};
 use sp_timestamp::InherentType;
 use std::error::Error;
 use std::sync::Arc;
@@ -31,7 +31,7 @@ where
     CBlock: BlockT,
     Block: BlockT,
     CClient: ProvideRuntimeApi<CBlock> + HeaderBackend<CBlock>,
-    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
+    CClient::Api: DomainsApi<CBlock, Block::Header>,
 {
     let create_inherent_data_providers =
         CreateInherentDataProvider::new(consensus_client, Some(consensus_block_hash), domain_id);
@@ -62,7 +62,7 @@ pub(crate) fn is_runtime_upgraded<CClient, CBlock, Block>(
 ) -> Result<bool, sp_blockchain::Error>
 where
     CClient: ProvideRuntimeApi<CBlock> + HeaderBackend<CBlock>,
-    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
+    CClient::Api: DomainsApi<CBlock, Block::Header>,
     CBlock: BlockT,
     Block: BlockT,
 {
@@ -95,7 +95,7 @@ pub fn extract_domain_runtime_upgrade_code<CClient, CBlock, Block>(
 ) -> Result<Option<Vec<u8>>, sp_blockchain::Error>
 where
     CClient: ProvideRuntimeApi<CBlock> + HeaderBackend<CBlock>,
-    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
+    CClient::Api: DomainsApi<CBlock, Block::Header>,
     CBlock: BlockT,
     Block: BlockT,
 {
@@ -171,7 +171,7 @@ where
     Block: BlockT,
     CBlock: BlockT,
     CClient: ProvideRuntimeApi<CBlock> + HeaderBackend<CBlock>,
-    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
+    CClient::Api: DomainsApi<CBlock, Block::Header>,
 {
     type InherentDataProviders = (
         sp_timestamp::InherentDataProvider,

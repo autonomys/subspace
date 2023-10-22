@@ -90,7 +90,7 @@ pub(super) async fn start_worker<
         + ProvideRuntimeApi<CBlock>
         + BlockchainEvents<CBlock>
         + 'static,
-    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>
+    CClient::Api: DomainsApi<CBlock, Block::Header>
         + MessengerApi<CBlock, NumberFor<CBlock>>
         + BundleProducerElectionApi<CBlock, Balance>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,

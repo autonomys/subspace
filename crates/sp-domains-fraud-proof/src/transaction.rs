@@ -1,6 +1,7 @@
 use crate::fraud_proof::FraudProof;
 use codec::{Decode, Encode};
 use scale_info::TypeInfo;
+use sp_api::HeaderT;
 use sp_domains::OpaqueBundle;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidity};
@@ -35,21 +36,21 @@ impl From<InvalidTransactionCode> for TransactionValidity {
 // TODO: Revisit
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub enum PreValidationObject<Block, DomainNumber, DomainHash>
+pub enum PreValidationObject<Block, DomainHeader: HeaderT>
 where
     Block: BlockT,
 {
     Null,
-    FraudProof(FraudProof<NumberFor<Block>, Block::Hash>),
-    Bundle(OpaqueBundle<NumberFor<Block>, Block::Hash, DomainNumber, DomainHash, Balance>),
+    FraudProof(FraudProof<NumberFor<Block>, Block::Hash, DomainHeader>),
+    Bundle(OpaqueBundle<NumberFor<Block>, Block::Hash, DomainHeader, Balance>),
 }
 
 sp_api::decl_runtime_apis! {
     /// API for extracting the pre-validation objects in the primary chain transaction pool wrapper.
-    pub trait PreValidationObjectApi<DomainNumber: Encode + Decode, DomainHash: Encode + Decode> {
+    pub trait PreValidationObjectApi<DomainHeader: HeaderT> {
         /// Extract the pre-validation object from the given extrinsic.
         fn extract_pre_validation_object(
             extrinsics: Block::Extrinsic,
-        ) -> PreValidationObject<Block, DomainNumber, DomainHash>;
+        ) -> PreValidationObject<Block, DomainHeader>;
     }
 }
