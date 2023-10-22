@@ -1,17 +1,15 @@
-//! Invalid state transition proof
-//!
 //! This module provides the feature of generating and verifying the execution proof used in
 //! the Subspace fraud proof mechanism. The execution is more fine-grained than the entire
 //! block execution, block execution hooks (`initialize_block` and `finalize_block`) and any
 //! specific extrinsic execution are supported.
 
+use crate::fraud_proof::ExecutionPhase;
 use codec::Codec;
 use hash_db::{HashDB, Hasher, Prefix};
-use sc_client_api::backend;
+use sc_client_api::backend::Backend;
 use sp_api::StorageProof;
 use sp_core::traits::CodeExecutor;
 use sp_core::H256;
-use sp_domains_fraud_proof::fraud_proof::ExecutionPhase;
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashingFor};
 use sp_state_machine::backend::AsTrieBackend;
 use sp_state_machine::{TrieBackend, TrieBackendBuilder, TrieBackendStorage};
@@ -29,7 +27,7 @@ pub struct ExecutionProver<Block, B, Exec> {
 impl<Block, B, Exec> ExecutionProver<Block, B, Exec>
 where
     Block: BlockT,
-    B: backend::Backend<Block>,
+    B: Backend<Block>,
     Exec: CodeExecutor + 'static,
 {
     /// Constructs a new instance of [`ExecutionProver`].

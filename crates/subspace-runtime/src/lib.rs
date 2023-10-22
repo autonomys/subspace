@@ -1013,14 +1013,6 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_domains_fraud_proof::transaction::PreValidationObjectApi<Block, DomainHeader> for Runtime {
-        fn extract_pre_validation_object(
-            extrinsic: <Block as BlockT>::Extrinsic,
-        ) -> sp_domains_fraud_proof::transaction::PreValidationObject<Block, DomainHeader> {
-            crate::domains::extract_pre_validation_object(extrinsic)
-        }
-    }
-
     impl sp_domains::DomainsApi<Block, DomainHeader> for Runtime {
         fn submit_bundle_unsigned(
             opaque_bundle: sp_domains::OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, Balance>,

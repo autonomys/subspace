@@ -18,15 +18,15 @@ use sp_core::traits::FetchRuntimeCode;
 use sp_core::Pair;
 use sp_domain_digests::AsPredigest;
 use sp_domains::{Bundle, DomainId, DomainsApi};
+use sp_domains_fraud_proof::execution_prover::ExecutionProver;
 use sp_domains_fraud_proof::fraud_proof::{
     ExecutionPhase, FraudProof, InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof,
     InvalidStateTransitionProof, InvalidTotalRewardsProof,
 };
-use sp_domains_fraud_proof::transaction::InvalidTransactionCode;
+use sp_domains_fraud_proof::InvalidTransactionCode;
 use sp_runtime::generic::{BlockId, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Header as HeaderT};
 use sp_runtime::OpaqueExtrinsic;
-use subspace_fraud_proof::invalid_state_transition_proof::ExecutionProver;
 use subspace_runtime_primitives::opaque::Block as CBlock;
 use subspace_runtime_primitives::Balance;
 use subspace_test_service::{

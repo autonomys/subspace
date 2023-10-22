@@ -21,6 +21,7 @@ use sp_runtime::traits::{Block as BlockT, BlockIdTo, NumberFor, SaturatedConvers
 use sp_runtime::transaction_validity::{TransactionValidity, TransactionValidityError};
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::collections::HashMap;
+use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
 use substrate_prometheus_endpoint::Registry as PrometheusRegistry;
@@ -111,6 +112,30 @@ pub trait PreValidateTransaction {
         source: TransactionSource,
         uxt: <Self::Block as BlockT>::Extrinsic,
     ) -> TxPoolResult<()>;
+}
+
+/// No-op PreValidate transaction.
+#[derive(Clone)]
+pub struct NoopPreValidateTransaction<Block>(PhantomData<Block>);
+
+impl<Block> Default for NoopPreValidateTransaction<Block> {
+    fn default() -> Self {
+        Self(PhantomData)
+    }
+}
+
+#[async_trait::async_trait]
+impl<Block: BlockT> PreValidateTransaction for NoopPreValidateTransaction<Block> {
+    type Block = Block;
+
+    async fn pre_validate_transaction(
+        &self,
+        _at: <Self::Block as BlockT>::Hash,
+        _source: TransactionSource,
+        _uxt: <Self::Block as BlockT>::Extrinsic,
+    ) -> TxPoolResult<()> {
+        Ok(())
+    }
 }
 
 pub type ValidationFuture = Pin<Box<dyn Future<Output = TxPoolResult<TransactionValidity>> + Send>>;

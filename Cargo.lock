@@ -2609,7 +2609,6 @@ dependencies = [
  "sp-trie",
  "sp-weights",
  "subspace-core-primitives",
- "subspace-fraud-proof",
  "subspace-runtime-primitives",
  "subspace-test-runtime",
  "subspace-test-service",
@@ -10825,12 +10824,19 @@ dependencies = [
 name = "sp-domains-fraud-proof"
 version = "0.1.0"
 dependencies = [
+ "domain-block-builder",
  "domain-block-preprocessor",
  "domain-runtime-primitives",
+ "domain-test-service",
  "frame-support",
+ "futures",
  "hash-db 0.16.0",
+ "pallet-balances",
  "parity-scale-codec",
+ "sc-cli",
+ "sc-client-api",
  "sc-executor",
+ "sc-service",
  "scale-info",
  "sp-api",
  "sp-blockchain",
@@ -10846,7 +10852,11 @@ dependencies = [
  "sp-trie",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
+ "subspace-test-client",
+ "subspace-test-service",
+ "tempfile",
  "thiserror",
+ "tokio",
  "trie-db",
 ]
 
@@ -11588,38 +11598,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "subspace-fraud-proof"
-version = "0.1.0"
-dependencies = [
- "domain-block-builder",
- "domain-block-preprocessor",
- "domain-runtime-primitives",
- "domain-test-service",
- "futures",
- "hash-db 0.16.0",
- "pallet-balances",
- "parity-scale-codec",
- "sc-cli",
- "sc-client-api",
- "sc-executor",
- "sc-service",
- "sp-api",
- "sp-blockchain",
- "sp-core",
- "sp-domain-digests",
- "sp-domains",
- "sp-domains-fraud-proof",
- "sp-runtime",
- "sp-state-machine",
- "sp-trie",
- "subspace-runtime-primitives",
- "subspace-test-client",
- "subspace-test-service",
- "tempfile",
- "tokio",
-]
-
-[[package]]
 name = "subspace-metrics"
 version = "0.1.0"
 dependencies = [
@@ -11890,7 +11868,6 @@ dependencies = [
  "static_assertions",
  "subspace-archiving",
  "subspace-core-primitives",
- "subspace-fraud-proof",
  "subspace-metrics",
  "subspace-networking",
  "subspace-proof-of-space",
@@ -11931,6 +11908,7 @@ dependencies = [
  "subspace-runtime-primitives",
  "subspace-service",
  "subspace-test-runtime",
+ "subspace-transaction-pool",
  "zeroize",
 ]
 
@@ -12024,7 +12002,6 @@ dependencies = [
  "sp-runtime",
  "sp-timestamp",
  "subspace-core-primitives",
- "subspace-fraud-proof",
  "subspace-runtime-primitives",
  "subspace-service",
  "subspace-test-client",

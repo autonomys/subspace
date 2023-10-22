@@ -60,7 +60,6 @@ use sp_domains::{
     OpaqueBundles, OperatorId, OperatorPublicKey, ReceiptHash, StakingHoldIdentifier,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
-use sp_domains_fraud_proof::transaction::PreValidationObject;
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
     BlockInfo, BlockMessagesWithStorageKey, ChainId, CrossDomainMessage,
@@ -1103,20 +1102,6 @@ fn extract_fraud_proofs(
         .collect()
 }
 
-fn extract_pre_validation_object(
-    extrinsic: UncheckedExtrinsic,
-) -> PreValidationObject<Block, DomainHeader> {
-    match extrinsic.function {
-        RuntimeCall::Domains(pallet_domains::Call::submit_fraud_proof { fraud_proof }) => {
-            PreValidationObject::FraudProof(*fraud_proof)
-        }
-        RuntimeCall::Domains(pallet_domains::Call::submit_bundle { opaque_bundle }) => {
-            PreValidationObject::Bundle(opaque_bundle)
-        }
-        _ => PreValidationObject::Null,
-    }
-}
-
 struct RewardAddress([u8; 32]);
 
 impl From<FarmerPublicKey> for RewardAddress {
@@ -1299,14 +1284,6 @@ impl_runtime_apis! {
 
         fn chain_constants() -> ChainConstants {
             Subspace::chain_constants()
-        }
-    }
-
-    impl sp_domains_fraud_proof::transaction::PreValidationObjectApi<Block, DomainHeader> for Runtime {
-        fn extract_pre_validation_object(
-            extrinsic: <Block as BlockT>::Extrinsic,
-        ) -> sp_domains_fraud_proof::transaction::PreValidationObject<Block, DomainHeader> {
-            extract_pre_validation_object(extrinsic)
         }
     }
 

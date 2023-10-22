@@ -1,7 +1,6 @@
-use crate::verifier_api::VerifierApi;
 use codec::Encode;
 use domain_block_preprocessor::runtime_api_light::RuntimeApiLight;
-use domain_runtime_primitives::{CheckTxValidityError, DomainCoreApi, Hash};
+use domain_runtime_primitives::{CheckTxValidityError, DomainCoreApi};
 use domain_test_service::domain::EvmDomainClient as DomainClient;
 use domain_test_service::evm_domain_test_runtime::Runtime as TestRuntime;
 use domain_test_service::EcdsaKeyring::{Alice, Bob, Charlie};
@@ -10,9 +9,7 @@ use domain_test_service::{construct_extrinsic_generic, GENESIS_DOMAIN_ID};
 use sc_client_api::{HeaderBackend, ProofProvider, StorageProof};
 use sc_service::{BasePath, Role};
 use sp_api::{BlockT, ProvideRuntimeApi};
-use sp_core::H256;
-use sp_domains::{DomainId, DomainsApi};
-use sp_domains_fraud_proof::fraud_proof::{InvalidStateTransitionProof, VerificationError};
+use sp_domains::DomainsApi;
 use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidityError};
 use sp_runtime::{OpaqueExtrinsic, Storage};
@@ -20,75 +17,9 @@ use sp_trie::{read_trie_value, LayoutV1};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use subspace_runtime_primitives::opaque::Block;
-use subspace_test_client::{Client, TestExecutorDispatch};
+use subspace_test_client::TestExecutorDispatch;
 use subspace_test_service::{produce_blocks, MockConsensusNode};
 use tempfile::TempDir;
-
-struct TestVerifierClient {
-    consensus_client: Arc<Client>,
-    domain_client: Arc<DomainClient>,
-}
-
-impl TestVerifierClient {
-    #[allow(dead_code)]
-    fn new(consensus_client: Arc<Client>, domain_client: Arc<DomainClient>) -> Self {
-        Self {
-            consensus_client,
-            domain_client,
-        }
-    }
-}
-
-impl VerifierApi for TestVerifierClient {
-    fn verify_pre_state_root(
-        &self,
-        _invalid_state_transition_proof: &InvalidStateTransitionProof,
-    ) -> Result<(), VerificationError> {
-        Ok(())
-    }
-
-    fn verify_post_state_root(
-        &self,
-        _invalid_state_transition_proof: &InvalidStateTransitionProof,
-    ) -> Result<(), VerificationError> {
-        Ok(())
-    }
-
-    fn primary_hash(
-        &self,
-        _domain_id: DomainId,
-        domain_block_number: u32,
-    ) -> Result<H256, VerificationError> {
-        // TODO: remove this workaround impl once the following tests are improved/superseded by
-        // something close to the real work flow in production.
-        //
-        // This is retrieved from the `PrimaryBlockHash` state on the parent chain in
-        // production, we retrieve it from the primary chain client in test for simplicity.
-        Ok(self
-            .consensus_client
-            .hash(domain_block_number)
-            .unwrap()
-            .unwrap())
-    }
-
-    fn state_root(
-        &self,
-        _domain_id: DomainId,
-        _domain_block_number: u32,
-        domain_block_hash: H256,
-    ) -> Result<Hash, VerificationError> {
-        Ok(*self
-            .domain_client
-            .header(domain_block_hash)
-            .unwrap()
-            .unwrap()
-            .state_root())
-    }
-}
-
-// Use the genesis domain/runtime id for testing
-#[allow(dead_code)]
-const TEST_DOMAIN_ID: DomainId = DomainId::new(0u32);
 
 type HashFor<Block> = <<Block as BlockT>::Header as HeaderT>::Hash;
 
