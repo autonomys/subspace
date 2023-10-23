@@ -18,7 +18,6 @@ use scale_info::TypeInfo;
 use sp_core::crypto::Pair;
 use sp_core::storage::{StateVersion, StorageKey};
 use sp_core::{Get, H256, U256};
-use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::storage::RawGenesis;
 use sp_domains::{
     BundleHeader, DomainId, DomainsHoldIdentifier, ExecutionReceipt, InboxedBundle, OpaqueBundle,
@@ -352,14 +351,8 @@ pub(crate) fn create_dummy_receipt(
         (Vec::new(), Default::default())
     } else {
         let execution_trace = vec![H256::random(), H256::random()];
-        let trace: Vec<[u8; 32]> = execution_trace
-            .iter()
-            .map(|r| r.encode().try_into().expect("H256 must fit into [u8; 32]"))
-            .collect();
-        let execution_trace_root = MerkleTree::from_leaves(trace.as_slice())
-            .root()
-            .expect("Compute merkle root of trace should success")
-            .into();
+        let trace: Vec<Vec<u8>> = execution_trace.iter().map(|r| r.encode()).collect();
+        let execution_trace_root = BlakeTwo256::ordered_trie_root(trace, StateVersion::V1);
         (execution_trace, execution_trace_root)
     };
     let inboxed_bundles = block_extrinsics_roots

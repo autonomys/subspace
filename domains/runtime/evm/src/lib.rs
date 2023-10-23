@@ -871,7 +871,7 @@ impl_runtime_apis! {
             }
         }
 
-        fn intermediate_roots() -> Vec<[u8; 32]> {
+        fn intermediate_roots() -> Vec<Vec<u8>> {
             ExecutivePallet::intermediate_roots()
         }
 

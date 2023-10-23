@@ -19,7 +19,6 @@
 
 pub mod bundle_producer_election;
 pub mod extrinsics;
-pub mod merkle_tree;
 pub mod proof_provider_and_verifier;
 pub mod storage;
 #[cfg(test)]
@@ -41,6 +40,7 @@ use sp_core::crypto::KeyTypeId;
 use sp_core::sr25519::vrf::VrfSignature;
 #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
 use sp_core::sr25519::vrf::{VrfOutput, VrfProof};
+use sp_core::storage::StateVersion;
 use sp_core::H256;
 use sp_runtime::generic::OpaqueDigestItemId;
 use sp_runtime::traits::{
@@ -398,10 +398,10 @@ pub struct ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance> {
     pub final_state_root: DomainHash,
     /// List of storage roots collected during the domain block execution.
     pub execution_trace: Vec<DomainHash>,
-    /// The Merkle root of the execution trace for the current domain block.
+    /// The trie root of the execution trace for the current domain block.
     ///
     /// Used for verifying fraud proofs.
-    pub execution_trace_root: H256,
+    pub execution_trace_root: DomainHash,
     /// All SSC rewards for this ER to be shared across operators.
     pub total_rewards: Balance,
 }
@@ -485,23 +485,21 @@ impl<
     }
 
     #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
-    pub fn dummy(
+    pub fn dummy<DomainHashing>(
         consensus_block_number: Number,
         consensus_block_hash: Hash,
         domain_block_number: DomainNumber,
         parent_domain_block_receipt_hash: ReceiptHash,
-    ) -> ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance> {
+    ) -> ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance>
+    where
+        DomainHashing: HashT<Output = DomainHash>,
+    {
         let execution_trace = sp_std::vec![Default::default(), Default::default()];
-        let execution_trace_root = {
-            let trace: Vec<[u8; 32]> = execution_trace
-                .iter()
-                .map(|r: &DomainHash| r.encode().try_into().expect("H256 must fit into [u8; 32]"))
-                .collect();
-            crate::merkle_tree::MerkleTree::from_leaves(trace.as_slice())
-                .root()
-                .expect("Compute merkle root of trace should success")
-                .into()
-        };
+        let trace: Vec<Vec<u8>> = execution_trace
+            .iter()
+            .map(|r: &DomainHash| r.encode())
+            .collect();
+        let execution_trace_root = DomainHashing::ordered_trie_root(trace, StateVersion::V1);
         ExecutionReceipt {
             domain_block_number,
             domain_block_hash: Default::default(),

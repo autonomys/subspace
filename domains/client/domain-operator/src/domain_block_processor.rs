@@ -13,12 +13,12 @@ use sc_consensus::{
     BlockImportParams, ForkChoiceStrategy, ImportResult, SharedBlockImport, StateAction,
     StorageChanges,
 };
-use sp_api::{NumberFor, ProvideRuntimeApi};
+use sp_api::{HashT, NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HashAndNumber, HeaderBackend, HeaderMetadata};
 use sp_consensus::{BlockOrigin, SyncOracle};
+use sp_core::storage::StateVersion;
 use sp_core::traits::CodeExecutor;
-use sp_domains::merkle_tree::MerkleTree;
-use sp_domains::{BundleValidity, DomainId, DomainsApi, ExecutionReceipt};
+use sp_domains::{BundleValidity, DomainId, DomainsApi, ExecutionReceipt, HeaderHashingFor};
 use sp_domains_fraud_proof::fraud_proof::{FraudProof, ValidBundleProof};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, One, Zero};
 use sp_runtime::Digest;
@@ -335,16 +335,12 @@ where
 
         let mut roots = self.client.runtime_api().intermediate_roots(header_hash)?;
 
-        let encoded_state_root = state_root
-            .encode()
-            .try_into()
-            .expect("State root uses the same Block hash type which must fit into [u8; 32]; qed");
+        let encoded_state_root = state_root.encode();
 
         roots.push(encoded_state_root);
 
-        let trace_root = MerkleTree::from_leaves(&roots).root().ok_or_else(|| {
-            sp_blockchain::Error::Application(Box::from("Failed to get merkle root of trace"))
-        })?;
+        let trace_root =
+            HeaderHashingFor::<Block::Header>::ordered_trie_root(roots.clone(), StateVersion::V1);
         let trace: Vec<<Block as BlockT>::Hash> = roots
             .into_iter()
             .map(|r| {
@@ -393,7 +389,7 @@ where
             inboxed_bundles: bundles,
             final_state_root: state_root,
             execution_trace: trace,
-            execution_trace_root: sp_core::H256(trace_root),
+            execution_trace_root: trace_root,
             total_rewards,
         };
 

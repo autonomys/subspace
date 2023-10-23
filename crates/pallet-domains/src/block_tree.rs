@@ -3,16 +3,16 @@
 use crate::pallet::StateRoots;
 use crate::{
     BalanceOf, BlockTree, BlockTreeNodes, Config, ConsensusBlockHash, DomainBlockDescendants,
-    DomainBlockNumberFor, ExecutionInbox, ExecutionReceiptOf, HeadReceiptNumber,
+    DomainBlockNumberFor, DomainHashingFor, ExecutionInbox, ExecutionReceiptOf, HeadReceiptNumber,
     InboxedBundleAuthor,
 };
 use codec::{Decode, Encode};
 use frame_support::{ensure, PalletError};
 use scale_info::TypeInfo;
 use sp_core::Get;
-use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{DomainId, ExecutionReceipt, OperatorId};
-use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Saturating, Zero};
+use sp_runtime::traits::{BlockNumberProvider, CheckedSub, Hash, One, Saturating, Zero};
+use sp_runtime::StateVersion;
 use sp_std::cmp::Ordering;
 use sp_std::vec::Vec;
 
@@ -153,17 +153,10 @@ pub(crate) fn verify_execution_receipt<T: Config>(
 
         let mut trace = Vec::with_capacity(execution_trace.len());
         for root in execution_trace {
-            trace.push(
-                root.encode()
-                    .try_into()
-                    .map_err(|_| Error::InvalidTraceRoot)?,
-            );
+            trace.push(root.encode());
         }
-        let expected_execution_trace_root: sp_core::H256 =
-            MerkleTree::from_leaves(trace.as_slice())
-                .root()
-                .ok_or(Error::InvalidTraceRoot)?
-                .into();
+        let expected_execution_trace_root =
+            DomainHashingFor::<T>::ordered_trie_root(trace, StateVersion::V1);
         ensure!(
             expected_execution_trace_root == *execution_trace_root,
             Error::InvalidTraceRoot

@@ -8700,15 +8700,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "rs_merkle"
-version = "1.4.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "05225752ca6ede4cb1b73aa37ce3904affd042e98f28246f56f438ebfd47a810"
-dependencies = [
- "sha2 0.10.7",
-]
-
-[[package]]
 name = "rtcp"
 version = "0.7.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -10802,7 +10793,6 @@ dependencies = [
  "parity-scale-codec",
  "rand 0.8.5",
  "rand_chacha 0.3.1",
- "rs_merkle",
  "scale-info",
  "serde",
  "sp-api",
