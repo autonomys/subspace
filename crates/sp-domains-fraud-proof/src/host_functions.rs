@@ -14,7 +14,7 @@ use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, FetchRuntimeCode, RuntimeCode};
 use sp_core::H256;
 use sp_domains::{DomainId, DomainsApi};
-use sp_runtime::traits::{Header as HeaderT, NumberFor};
+use sp_runtime::traits::Header as HeaderT;
 use sp_runtime::OpaqueExtrinsic;
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
@@ -98,7 +98,7 @@ where
     Block::Hash: From<H256>,
     DomainBlock: BlockT,
     Client: BlockBackend<Block> + HeaderBackend<Block> + ProvideRuntimeApi<Block>,
-    Client::Api: DomainsApi<Block, NumberFor<DomainBlock>, DomainBlock::Hash>,
+    Client::Api: DomainsApi<Block, DomainBlock::Header>,
     Executor: CodeExecutor + RuntimeVersionOf,
 {
     fn get_block_randomness(&self, consensus_block_hash: H256) -> Option<Randomness> {
@@ -214,9 +214,9 @@ where
     Block: BlockT,
     Block::Hash: From<H256>,
     DomainBlock: BlockT,
-    DomainBlock::Hash: Into<H256> + From<H256>,
+    DomainBlock::Hash: From<H256> + Into<H256>,
     Client: BlockBackend<Block> + HeaderBackend<Block> + ProvideRuntimeApi<Block>,
-    Client::Api: DomainsApi<Block, NumberFor<DomainBlock>, DomainBlock::Hash>,
+    Client::Api: DomainsApi<Block, DomainBlock::Header>,
     Executor: CodeExecutor + RuntimeVersionOf,
 {
     fn get_fraud_proof_verification_info(

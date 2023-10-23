@@ -12,6 +12,7 @@ use sp_core::H256;
 use sp_domain_digests::AsPredigest;
 use sp_domains::proof_provider_and_verifier::StorageProofProvider;
 use sp_domains::{DomainId, DomainsApi};
+use sp_domains_fraud_proof::execution_prover::ExecutionProver;
 use sp_domains_fraud_proof::fraud_proof::{
     ExecutionPhase, ExtrinsicDigest, FraudProof, InvalidBundlesFraudProof,
     InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof, InvalidStateTransitionProof,
@@ -23,7 +24,6 @@ use sp_runtime::{Digest, DigestItem};
 use sp_trie::{LayoutV1, StorageProof};
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subspace_fraud_proof::invalid_state_transition_proof::ExecutionProver;
 
 /// Error type for fraud proof generation.
 #[derive(Debug, thiserror::Error)]
@@ -64,6 +64,9 @@ impl<Block, CBlock, Client, CClient, Backend, E> Clone
     }
 }
 
+type FraudProofFor<PCB, DomainHeader> =
+    FraudProof<NumberFor<PCB>, <PCB as BlockT>::Hash, DomainHeader>;
+
 impl<Block, CBlock, Client, CClient, Backend, E>
     FraudProofGenerator<Block, CBlock, Client, CClient, Backend, E>
 where
@@ -82,7 +85,7 @@ where
         + ProvideRuntimeApi<CBlock>
         + ProofProvider<CBlock>
         + 'static,
-    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
+    CClient::Api: DomainsApi<CBlock, Block::Header>,
     Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
     E: CodeExecutor,
 {
@@ -106,7 +109,7 @@ where
         domain_id: DomainId,
         local_receipt: &ExecutionReceiptFor<Block, CBlock>,
         bad_receipt_hash: H256,
-    ) -> Result<FraudProof<NumberFor<PCB>, PCB::Hash>, FraudProofError>
+    ) -> Result<FraudProofFor<PCB, Block::Header>, FraudProofError>
     where
         PCB: BlockT,
     {
@@ -127,7 +130,7 @@ where
         domain_id: DomainId,
         local_receipt: &ExecutionReceiptFor<Block, CBlock>,
         bad_receipt_hash: H256,
-    ) -> Result<FraudProof<NumberFor<PCB>, PCB::Hash>, FraudProofError>
+    ) -> Result<FraudProofFor<PCB, Block::Header>, FraudProofError>
     where
         PCB: BlockT,
     {
@@ -152,7 +155,7 @@ where
         mismatch_type: BundleMismatchType,
         bundle_index: u32,
         _bad_receipt_hash: H256,
-    ) -> Result<FraudProof<NumberFor<PCB>, PCB::Hash>, FraudProofError>
+    ) -> Result<FraudProofFor<PCB, Block::Header>, FraudProofError>
     where
         PCB: BlockT,
     {
@@ -184,7 +187,7 @@ where
         domain_id: DomainId,
         local_receipt: &ExecutionReceiptFor<Block, CBlock>,
         bad_receipt_hash: H256,
-    ) -> Result<FraudProof<NumberFor<PCB>, PCB::Hash>, FraudProofError>
+    ) -> Result<FraudProofFor<PCB, Block::Header>, FraudProofError>
     where
         PCB: BlockT,
     {
@@ -256,7 +259,7 @@ where
         local_trace_index: u32,
         local_receipt: &ExecutionReceiptFor<Block, CBlock>,
         bad_receipt_hash: H256,
-    ) -> Result<FraudProof<NumberFor<PCB>, PCB::Hash>, FraudProofError>
+    ) -> Result<FraudProofFor<PCB, Block::Header>, FraudProofError>
     where
         PCB: BlockT,
     {

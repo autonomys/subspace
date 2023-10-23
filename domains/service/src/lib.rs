@@ -1,9 +1,9 @@
 //! Service and ServiceFactory implementation. Specialized wrapper over substrate service.
 
 mod domain;
-mod domain_tx_pre_validator;
 pub mod providers;
 pub mod rpc;
+mod transaction_pool;
 
 pub use self::domain::{new_full, DomainOperator, DomainParams, FullPool, NewFull};
 use futures::channel::oneshot;

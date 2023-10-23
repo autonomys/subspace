@@ -18,15 +18,15 @@ use sp_core::traits::FetchRuntimeCode;
 use sp_core::{Pair, H256};
 use sp_domain_digests::AsPredigest;
 use sp_domains::{Bundle, BundleValidity, DomainId, DomainsApi};
+use sp_domains_fraud_proof::execution_prover::ExecutionProver;
 use sp_domains_fraud_proof::fraud_proof::{
     ExecutionPhase, FraudProof, InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof,
     InvalidStateTransitionProof, InvalidTotalRewardsProof,
 };
-use sp_domains_fraud_proof::transaction::InvalidTransactionCode;
+use sp_domains_fraud_proof::InvalidTransactionCode;
 use sp_runtime::generic::{BlockId, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Header as HeaderT};
 use sp_runtime::OpaqueExtrinsic;
-use subspace_fraud_proof::invalid_state_transition_proof::ExecutionProver;
 use subspace_runtime_primitives::opaque::Block as CBlock;
 use subspace_runtime_primitives::Balance;
 use subspace_test_service::{
@@ -434,7 +434,7 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
     let consensus_block_info =
         |best_header: Header| -> (u32, Hash) { (*best_header.number(), best_header.hash()) };
     let receipts_consensus_info =
-        |bundle: Bundle<OpaqueExtrinsic, u32, sp_core::H256, u32, sp_core::H256, Balance>| {
+        |bundle: Bundle<OpaqueExtrinsic, u32, sp_core::H256, Header, Balance>| {
             (
                 bundle.receipt().consensus_block_number,
                 bundle.receipt().consensus_block_hash,

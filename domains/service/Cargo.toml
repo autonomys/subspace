@@ -57,7 +57,6 @@ sp-session = { version = "4.0.0-dev", git = "https://github.com/subspace/polkado
 sp-transaction-pool = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "892bf8e938c6bd2b893d3827d1093cd81baa59a1" }
 subspace-core-primitives = { version = "0.1.0", path = "../../crates/subspace-core-primitives" }
 subspace-runtime-primitives = { version = "0.1.0", path = "../../crates/subspace-runtime-primitives" }
-subspace-transaction-pool = { version = "0.1.0", path = "../../crates/subspace-transaction-pool" }
 substrate-frame-rpc-system = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "892bf8e938c6bd2b893d3827d1093cd81baa59a1" }
 substrate-prometheus-endpoint = { git = "https://github.com/subspace/polkadot-sdk", rev = "892bf8e938c6bd2b893d3827d1093cd81baa59a1" }
 tracing = "0.1.37"

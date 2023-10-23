@@ -7,6 +7,7 @@ use crate::{
     Operators,
 };
 use codec::{Decode, Encode, MaxEncodedLen};
+use domain_runtime_primitives::opaque::Header as DomainHeader;
 use domain_runtime_primitives::BlockNumber as DomainBlockNumber;
 use frame_support::dispatch::RawOrigin;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, Currency, Hooks};
@@ -213,7 +214,7 @@ impl pallet_timestamp::Config for Test {
 impl pallet_domains::Config for Test {
     type RuntimeEvent = RuntimeEvent;
     type DomainHash = sp_core::H256;
-    type DomainHeader = sp_runtime::generic::Header<DomainBlockNumber, BlakeTwo256>;
+    type DomainHeader = DomainHeader;
     type ConfirmationDepthK = ConfirmationDepthK;
     type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
     type Currency = Balances;
@@ -384,7 +385,7 @@ fn create_dummy_bundle(
     domain_id: DomainId,
     block_number: BlockNumber,
     consensus_block_hash: Hash,
-) -> OpaqueBundle<BlockNumber, Hash, DomainBlockNumber, H256, u128> {
+) -> OpaqueBundle<BlockNumber, Hash, DomainHeader, u128> {
     let execution_receipt = create_dummy_receipt(
         block_number,
         consensus_block_hash,
@@ -404,10 +405,10 @@ pub(crate) fn create_dummy_bundle_with_receipts(
     operator_id: OperatorId,
     bundle_extrinsics_root: H256,
     receipt: ExecutionReceipt<BlockNumber, Hash, DomainBlockNumber, H256, u128>,
-) -> OpaqueBundle<BlockNumber, Hash, DomainBlockNumber, H256, u128> {
+) -> OpaqueBundle<BlockNumber, Hash, DomainHeader, u128> {
     let pair = OperatorPair::from_seed(&U256::from(0u32).into());
 
-    let header = BundleHeader {
+    let header = BundleHeader::<_, _, DomainHeader, _> {
         proof_of_election: ProofOfElection::dummy(domain_id, operator_id),
         receipt,
         bundle_size: 0u32,
@@ -873,11 +874,14 @@ fn test_invalid_total_rewards_fraud_proof() {
     });
 }
 
+type FraudProofFor<T> =
+    FraudProof<BlockNumberFor<T>, <T as frame_system::Config>::Hash, <T as Config>::DomainHeader>;
+
 fn generate_invalid_total_rewards_fraud_proof<T: Config>(
     domain_id: DomainId,
     bad_receipt_hash: ReceiptHash,
     rewards: BalanceOf<T>,
-) -> (FraudProof<BlockNumberFor<T>, T::Hash>, T::Hash) {
+) -> (FraudProofFor<T>, T::Hash) {
     let storage_key = sp_domains_fraud_proof::fraud_proof::operator_block_rewards_final_key();
     let mut root = T::Hash::default();
     let mut mdb = PrefixedMemoryDB::<T::Hashing>::default();
@@ -966,7 +970,7 @@ fn test_invalid_domain_extrinsic_root_proof() {
 fn generate_invalid_domain_extrinsic_root_fraud_proof<T: Config + pallet_timestamp::Config>(
     domain_id: DomainId,
     bad_receipt_hash: ReceiptHash,
-) -> FraudProof<BlockNumberFor<T>, T::Hash> {
+) -> FraudProof<BlockNumberFor<T>, T::Hash, T::DomainHeader> {
     let valid_bundle_digests = vec![ValidBundleDigest {
         bundle_index: 0,
         bundle_digest: vec![(Some(vec![1, 2, 3]), ExtrinsicDigest::Data(vec![4, 5, 6]))],

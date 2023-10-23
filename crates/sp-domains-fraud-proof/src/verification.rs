@@ -14,28 +14,21 @@ use sp_core::H256;
 use sp_domains::extrinsics::{deduplicate_and_shuffle_extrinsics, extrinsics_shuffling_seed};
 use sp_domains::proof_provider_and_verifier::StorageProofVerifier;
 use sp_domains::valued_trie::valued_ordered_trie_root;
-use sp_domains::ExecutionReceipt;
+use sp_domains::{ExecutionReceipt, HeaderHashFor, HeaderHashingFor, HeaderNumberFor};
 use sp_runtime::generic::Digest;
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Block, Hash, Header as HeaderT, NumberFor};
+use sp_runtime::traits::{Block as BlockT, Hash, Header as HeaderT, NumberFor};
 use sp_std::vec::Vec;
 use sp_trie::{LayoutV1, StorageProof};
 use subspace_core_primitives::Randomness;
 use trie_db::node::Value;
 
 /// Verifies invalid domain extrinsic root fraud proof.
-pub fn verify_invalid_domain_extrinsics_root_fraud_proof<
-    CBlock,
-    DomainNumber,
-    DomainHash,
-    Balance,
-    Hashing,
-    DomainHashing,
->(
+pub fn verify_invalid_domain_extrinsics_root_fraud_proof<CBlock, Balance, Hashing, DomainHeader>(
     bad_receipt: ExecutionReceipt<
         NumberFor<CBlock>,
         CBlock::Hash,
-        DomainNumber,
-        DomainHash,
+        HeaderNumberFor<DomainHeader>,
+        HeaderHashFor<DomainHeader>,
         Balance,
     >,
     fraud_proof: &InvalidExtrinsicsRootProof,
@@ -43,8 +36,8 @@ pub fn verify_invalid_domain_extrinsics_root_fraud_proof<
 where
     CBlock: BlockT,
     Hashing: Hasher<Out = CBlock::Hash>,
-    DomainHashing: Hasher<Out = DomainHash>,
-    DomainHash: Into<H256>,
+    DomainHeader: HeaderT,
+    DomainHeader::Hash: Into<H256> + PartialEq + Copy,
 {
     let InvalidExtrinsicsRootProof {
         valid_bundle_digests,
@@ -80,7 +73,8 @@ where
         .into_iter()
         .zip(valid_bundle_digests)
     {
-        let bundle_digest_hash = BlakeTwo256::hash_of(&bundle_digest.bundle_digest);
+        let bundle_digest_hash =
+            HeaderHashingFor::<DomainHeader>::hash_of(&bundle_digest.bundle_digest);
         if bundle_digest_hash != bad_receipt_valid_bundle_digest {
             return Err(VerificationError::InvalidBundleDigest);
         }
@@ -99,13 +93,15 @@ where
     if let SetCodeExtrinsic::EncodedExtrinsic(domain_set_code_extrinsic) =
         maybe_domain_set_code_extrinsic
     {
-        let domain_set_code_extrinsic =
-            ExtrinsicDigest::new::<LayoutV1<DomainHashing>>(domain_set_code_extrinsic);
+        let domain_set_code_extrinsic = ExtrinsicDigest::new::<
+            LayoutV1<HeaderHashingFor<DomainHeader>>,
+        >(domain_set_code_extrinsic);
         ordered_extrinsics.push_front(domain_set_code_extrinsic);
     }
 
-    let timestamp_extrinsic =
-        ExtrinsicDigest::new::<LayoutV1<DomainHashing>>(domain_timestamp_extrinsic);
+    let timestamp_extrinsic = ExtrinsicDigest::new::<LayoutV1<HeaderHashingFor<DomainHeader>>>(
+        domain_timestamp_extrinsic,
+    );
     ordered_extrinsics.push_front(timestamp_extrinsic);
 
     let ordered_trie_node_values = ordered_extrinsics
@@ -116,8 +112,9 @@ where
         })
         .collect();
 
-    let extrinsics_root =
-        valued_ordered_trie_root::<LayoutV1<BlakeTwo256>>(ordered_trie_node_values);
+    let extrinsics_root = valued_ordered_trie_root::<LayoutV1<HeaderHashingFor<DomainHeader>>>(
+        ordered_trie_node_values,
+    );
     if bad_receipt.domain_block_extrinsic_root == extrinsics_root {
         return Err(VerificationError::InvalidProof);
     }
@@ -139,6 +136,7 @@ pub fn verify_valid_bundle_fraud_proof<CBlock, DomainNumber, DomainHash, Balance
 where
     CBlock: BlockT,
     CBlock::Hash: Into<H256>,
+    DomainHash: Copy + Into<H256>,
 {
     let ValidBundleProof {
         domain_id,
@@ -167,7 +165,7 @@ where
         .valid_bundle_digest_at(*bundle_index as usize)
         .ok_or(VerificationError::TargetValidBundleNotFound)?;
 
-    if bad_valid_bundle_digest == valid_bundle_digest {
+    if bad_valid_bundle_digest.into() == valid_bundle_digest {
         Err(VerificationError::InvalidProof)
     } else {
         Ok(())
@@ -254,7 +252,6 @@ where
     CBlock: BlockT,
     Balance: PartialEq + Decode,
     DomainHeader: HeaderT,
-    DomainHeader::Hash: From<H256>,
 {
     let state_root = bad_receipt.final_state_root;
     let digest_storage_key = StorageKey(crate::fraud_proof::system_digest_final_key());
@@ -268,7 +265,7 @@ where
 
     let derived_domain_block_hash = sp_domains::derive_domain_block_hash::<DomainHeader>(
         bad_receipt.domain_block_number,
-        bad_receipt.domain_block_extrinsic_root.into(),
+        bad_receipt.domain_block_extrinsic_root,
         state_root,
         parent_domain_block_hash,
         digest,
@@ -299,7 +296,7 @@ pub fn verify_invalid_total_rewards_fraud_proof<
     storage_proof: &StorageProof,
 ) -> Result<(), VerificationError>
 where
-    CBlock: Block,
+    CBlock: BlockT,
     Balance: PartialEq + Decode,
     DomainHashing: Hasher<Out = DomainHash>,
 {

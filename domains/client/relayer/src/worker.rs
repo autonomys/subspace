@@ -75,7 +75,7 @@ pub async fn relay_domain_messages<CCC, DC, CCBlock, Block, SO>(
         + ProvideRuntimeApi<Block>,
     DC::Api: RelayerApi<Block, NumberFor<Block>>,
     CCC: HeaderBackend<CCBlock> + ProvideRuntimeApi<CCBlock> + ProofProvider<CCBlock>,
-    CCC::Api: DomainsApi<CCBlock, NumberFor<Block>, Block::Hash>,
+    CCC::Api: DomainsApi<CCBlock, Block::Header>,
     SO: SyncOracle + Send,
 {
     let relay_confirmation_depth = match Relayer::relay_confirmation_depth(&domain_client) {

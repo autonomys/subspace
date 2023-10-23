@@ -17,7 +17,6 @@ use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HashAndNumber, HeaderBackend, HeaderMetadata};
 use sp_consensus::{BlockOrigin, SyncOracle};
 use sp_core::traits::CodeExecutor;
-use sp_core::H256;
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{BundleValidity, DomainId, DomainsApi, ExecutionReceipt};
 use sp_domains_fraud_proof::fraud_proof::{FraudProof, ValidBundleProof};
@@ -103,7 +102,6 @@ where
     Block: BlockT,
     CBlock: BlockT,
     NumberFor<CBlock>: Into<NumberFor<Block>>,
-    Block::Hash: Into<H256>,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + AuxStore
@@ -117,7 +115,7 @@ where
         + BlockBackend<CBlock>
         + ProvideRuntimeApi<CBlock>
         + 'static,
-    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash> + 'static,
+    CClient::Api: DomainsApi<CBlock, Block::Header> + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
 {
     /// Returns a list of consensus blocks waiting to be processed if any.
@@ -370,7 +368,7 @@ where
             })?;
             ExecutionReceipt::genesis(
                 *genesis_header.state_root(),
-                (*genesis_header.extrinsics_root()).into(),
+                *genesis_header.extrinsics_root(),
                 genesis_hash,
             )
         } else {
@@ -388,7 +386,7 @@ where
         let execution_receipt = ExecutionReceipt {
             domain_block_number: header_number,
             domain_block_hash: header_hash,
-            domain_block_extrinsic_root: extrinsics_root.into(),
+            domain_block_extrinsic_root: extrinsics_root,
             parent_domain_block_receipt_hash: parent_receipt.hash(),
             consensus_block_number,
             consensus_block_hash,
@@ -708,7 +706,7 @@ where
         + ProofProvider<CBlock>
         + ProvideRuntimeApi<CBlock>
         + 'static,
-    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
+    CClient::Api: DomainsApi<CBlock, Block::Header>,
     Backend: sc_client_api::Backend<Block> + 'static,
     E: CodeExecutor,
     ParentChain: ParentChainInterface<Block, ParentChainBlock>,
@@ -763,7 +761,9 @@ where
         &self,
         parent_chain_block_hash: ParentChainBlock::Hash,
         receipts: Vec<ExecutionReceiptFor<Block, ParentChainBlock>>,
-        fraud_proofs: Vec<FraudProof<NumberFor<ParentChainBlock>, ParentChainBlock::Hash>>,
+        fraud_proofs: Vec<
+            FraudProof<NumberFor<ParentChainBlock>, ParentChainBlock::Hash, Block::Header>,
+        >,
     ) -> Result<(), sp_blockchain::Error> {
         let mut bad_receipts_to_write = vec![];
 
@@ -901,7 +901,7 @@ where
     async fn create_fraud_proof_for_first_unconfirmed_bad_receipt(
         &self,
     ) -> sp_blockchain::Result<
-        Option<FraudProof<NumberFor<ParentChainBlock>, ParentChainBlock::Hash>>,
+        Option<FraudProof<NumberFor<ParentChainBlock>, ParentChainBlock::Hash, Block::Header>>,
     > {
         if let Some((bad_receipt_hash, mismatch_info)) =
             crate::aux_schema::find_first_unconfirmed_bad_receipt_info::<_, Block, CBlock, _>(
@@ -1020,7 +1020,7 @@ mod tests {
     use subspace_test_runtime::Block as CBlock;
 
     fn create_test_execution_receipt(
-        inboxed_bundles: Vec<InboxedBundle>,
+        inboxed_bundles: Vec<InboxedBundle<<Block as BlockT>::Hash>>,
     ) -> ExecutionReceiptFor<Block, CBlock>
     where
         Block: BlockT,

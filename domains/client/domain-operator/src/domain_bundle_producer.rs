@@ -9,7 +9,6 @@ use sc_client_api::{AuxStore, BlockBackend};
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{HashAndNumber, HeaderBackend};
-use sp_core::H256;
 use sp_domains::{
     Bundle, BundleProducerElectionApi, DomainId, DomainsApi, OperatorPublicKey, OperatorSignature,
     SealedBundleHeader,
@@ -26,8 +25,7 @@ use tracing::info;
 type OpaqueBundle<Block, CBlock> = sp_domains::OpaqueBundle<
     NumberFor<CBlock>,
     <CBlock as BlockT>::Hash,
-    NumberFor<Block>,
-    <Block as BlockT>::Hash,
+    <Block as BlockT>::Header,
     Balance,
 >;
 
@@ -96,7 +94,6 @@ impl<Block, CBlock, ParentChainBlock, Client, CClient, ParentChain, TransactionP
     >
 where
     Block: BlockT,
-    Block::Hash: Into<H256>,
     CBlock: BlockT,
     ParentChainBlock: BlockT,
     NumberFor<Block>: Into<NumberFor<CBlock>>,
@@ -104,8 +101,7 @@ where
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
     Client::Api: BlockBuilder<Block> + DomainCoreApi<Block>,
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock>,
-    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>
-        + BundleProducerElectionApi<CBlock, Balance>,
+    CClient::Api: DomainsApi<CBlock, Block::Header> + BundleProducerElectionApi<CBlock, Balance>,
     ParentChain: ParentChainInterface<Block, ParentChainBlock> + Clone,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {

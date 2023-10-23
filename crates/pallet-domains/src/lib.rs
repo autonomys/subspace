@@ -59,7 +59,7 @@ use sp_domains_fraud_proof::verification::{
     verify_invalid_domain_extrinsics_root_fraud_proof, verify_invalid_state_transition_fraud_proof,
     verify_invalid_total_rewards_fraud_proof, verify_valid_bundle_fraud_proof,
 };
-use sp_runtime::traits::{BlakeTwo256, CheckedSub, Hash, Header, One, Zero};
+use sp_runtime::traits::{CheckedSub, Hash, Header, One, Zero};
 use sp_runtime::{RuntimeAppPublic, SaturatedConversion, Saturating};
 use sp_std::boxed::Box;
 use sp_std::collections::btree_map::BTreeMap;
@@ -92,8 +92,7 @@ pub type ExecutionReceiptOf<T> = ExecutionReceipt<
 pub type OpaqueBundleOf<T> = OpaqueBundle<
     BlockNumberFor<T>,
     <T as frame_system::Config>::Hash,
-    DomainBlockNumberFor<T>,
-    <T as Config>::DomainHash,
+    <T as Config>::DomainHeader,
     BalanceOf<T>,
 >;
 
@@ -156,7 +155,7 @@ mod pallet {
         ReceiptHash, RuntimeId, RuntimeType,
     };
     use sp_domains_fraud_proof::fraud_proof::FraudProof;
-    use sp_domains_fraud_proof::transaction::InvalidTransactionCode;
+    use sp_domains_fraud_proof::InvalidTransactionCode;
     use sp_runtime::traits::{
         AtLeast32BitUnsigned, BlockNumberProvider, CheckEqual, CheckedAdd, Header as HeaderT,
         MaybeDisplay, One, SimpleBitOps, Zero,
@@ -535,7 +534,7 @@ mod pallet {
             NMapKey<Identity, DomainBlockNumberFor<T>>,
             NMapKey<Identity, BlockNumberFor<T>>,
         ),
-        Vec<BundleDigest>,
+        Vec<BundleDigest<T::DomainHash>>,
         ValueQuery,
     >;
 
@@ -544,7 +543,7 @@ mod pallet {
     /// slash malicious operator who have submitted invalid bundle.
     #[pallet::storage]
     pub(super) type InboxedBundleAuthor<T: Config> =
-        StorageMap<_, Identity, H256, OperatorId, OptionQuery>;
+        StorageMap<_, Identity, T::DomainHash, OperatorId, OptionQuery>;
 
     /// The block number of the best domain block, increase by one when the first bundle of the domain is
     /// successfully submitted to current consensus block, which mean a new domain block with this block
@@ -878,7 +877,7 @@ mod pallet {
         #[pallet::weight((Weight::from_all(10_000), Pays::No))]
         pub fn submit_fraud_proof(
             origin: OriginFor<T>,
-            fraud_proof: Box<FraudProof<BlockNumberFor<T>, T::Hash>>,
+            fraud_proof: Box<FraudProof<BlockNumberFor<T>, T::Hash, T::DomainHeader>>,
         ) -> DispatchResult {
             ensure_none(origin)?;
 
@@ -1432,7 +1431,7 @@ impl<T: Config> Pallet<T> {
     }
 
     fn check_extrinsics_root(opaque_bundle: &OpaqueBundleOf<T>) -> Result<(), BundleError> {
-        let expected_extrinsics_root = BlakeTwo256::ordered_trie_root(
+        let expected_extrinsics_root = <T::DomainHeader as Header>::Hashing::ordered_trie_root(
             opaque_bundle
                 .extrinsics
                 .iter()
@@ -1521,7 +1520,7 @@ impl<T: Config> Pallet<T> {
     }
 
     fn validate_fraud_proof(
-        fraud_proof: &FraudProof<BlockNumberFor<T>, T::Hash>,
+        fraud_proof: &FraudProof<BlockNumberFor<T>, T::Hash, T::DomainHeader>,
     ) -> Result<(), FraudProofError> {
         let bad_receipt = BlockTreeNodes::<T>::get(fraud_proof.bad_receipt_hash())
             .ok_or(FraudProofError::BadReceiptNotFound)?
@@ -1577,11 +1576,9 @@ impl<T: Config> Pallet<T> {
             FraudProof::InvalidExtrinsicsRoot(proof) => {
                 verify_invalid_domain_extrinsics_root_fraud_proof::<
                     T::Block,
-                    DomainBlockNumberFor<T>,
-                    T::DomainHash,
                     BalanceOf<T>,
                     T::Hashing,
-                    DomainHashingFor<T>,
+                    T::DomainHeader,
                 >(bad_receipt, proof)
                 .map_err(|err| {
                     log::error!(
@@ -1783,7 +1780,7 @@ impl<T: Config> Pallet<T> {
             if !ExecutionInbox::<T>::iter_prefix_values((domain_id, to_check)).all(|digests| {
                 digests
                     .iter()
-                    .all(|digest| digest.extrinsics_root == EMPTY_EXTRINSIC_ROOT)
+                    .all(|digest| digest.extrinsics_root == EMPTY_EXTRINSIC_ROOT.into())
             }) {
                 return true;
             }
@@ -1830,7 +1827,9 @@ where
     }
 
     /// Submits an unsigned extrinsic [`Call::submit_fraud_proof`].
-    pub fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<BlockNumberFor<T>, T::Hash>) {
+    pub fn submit_fraud_proof_unsigned(
+        fraud_proof: FraudProof<BlockNumberFor<T>, T::Hash, T::DomainHeader>,
+    ) {
         let call = Call::submit_fraud_proof {
             fraud_proof: Box::new(fraud_proof),
         };

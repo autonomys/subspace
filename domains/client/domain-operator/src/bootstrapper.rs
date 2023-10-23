@@ -37,7 +37,7 @@ where
         + Send
         + Sync
         + 'static,
-    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
+    CClient::Api: DomainsApi<CBlock, Block::Header>,
 {
     pub fn new(consensus_client: Arc<CClient>) -> Self {
         Bootstrapper {

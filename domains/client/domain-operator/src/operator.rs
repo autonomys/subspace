@@ -60,10 +60,10 @@ impl<Block, CBlock, Client, CClient, TransactionPool, Backend, E>
     Operator<Block, CBlock, Client, CClient, TransactionPool, Backend, E>
 where
     Block: BlockT,
+    Block::Hash: Into<H256>,
     CBlock: BlockT,
     NumberFor<CBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
     CBlock::Hash: From<Block::Hash>,
-    Block::Hash: Into<H256>,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + AuxStore
@@ -84,7 +84,7 @@ where
         + Send
         + Sync
         + 'static,
-    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>
+    CClient::Api: DomainsApi<CBlock, Block::Header>
         + MessengerApi<CBlock, NumberFor<CBlock>>
         + BundleProducerElectionApi<CBlock, Balance>,
     Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
