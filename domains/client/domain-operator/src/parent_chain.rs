@@ -2,7 +2,7 @@ use crate::ExecutionReceiptFor;
 use sc_client_api::BlockBackend;
 use sp_api::{ApiError, HeaderT, NumberFor, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
-use sp_domains::{DomainBlockLimit, DomainId, DomainsApi, ReceiptHash};
+use sp_domains::{DomainBlockLimit, DomainId, DomainsApi};
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_runtime::traits::Block as BlockT;
 use std::marker::PhantomData;
@@ -72,7 +72,7 @@ pub trait ParentChainInterface<Block: BlockT, ParentChainBlock: BlockT> {
     fn execution_receipt(
         &self,
         at: ParentChainBlock::Hash,
-        receipt_hash: ReceiptHash,
+        receipt_hash: Block::Hash,
     ) -> Result<Option<ExecutionReceiptFor<Block, ParentChainBlock>>, sp_api::ApiError>;
 }
 
@@ -219,7 +219,7 @@ where
     fn execution_receipt(
         &self,
         at: CBlock::Hash,
-        receipt_hash: ReceiptHash,
+        receipt_hash: Block::Hash,
     ) -> Result<Option<ExecutionReceiptFor<Block, CBlock>>, sp_api::ApiError> {
         self.consensus_client
             .runtime_api()

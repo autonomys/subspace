@@ -62,7 +62,7 @@ mod benchmarks {
                 .first()
                 .cloned()
                 .expect("parent receipt must exist");
-            receipt = ExecutionReceipt::dummy(
+            receipt = ExecutionReceipt::dummy::<DomainHashingFor<T>>(
                 consensus_block_number,
                 frame_system::Pallet::<T>::block_hash(consensus_block_number),
                 domain_block_number,

@@ -4,9 +4,7 @@ use sp_consensus_slots::Slot;
 use sp_core::H256;
 use sp_domain_digests::AsPredigest;
 use sp_domains::proof_provider_and_verifier::StorageProofVerifier;
-use sp_domains::{
-    DomainId, ExecutionReceipt, HeaderHashFor, HeaderHashingFor, ReceiptHash, SealedBundleHeader,
-};
+use sp_domains::{DomainId, ExecutionReceipt, HeaderHashFor, HeaderHashingFor, SealedBundleHeader};
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor};
 use sp_runtime::{Digest, DigestItem};
 use sp_std::vec::Vec;
@@ -353,21 +351,21 @@ impl InvalidBundlesFraudProof {
 #[allow(clippy::large_enum_variant)]
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub enum FraudProof<Number, Hash, DomainHeader: HeaderT> {
-    InvalidStateTransition(InvalidStateTransitionProof),
-    InvalidTransaction(InvalidTransactionProof),
+    InvalidStateTransition(InvalidStateTransitionProof<HeaderHashFor<DomainHeader>>),
+    InvalidTransaction(InvalidTransactionProof<HeaderHashFor<DomainHeader>>),
     BundleEquivocation(BundleEquivocationProof<Number, Hash, DomainHeader>),
-    ImproperTransactionSortition(ImproperTransactionSortitionProof),
-    InvalidTotalRewards(InvalidTotalRewardsProof),
-    InvalidExtrinsicsRoot(InvalidExtrinsicsRootProof),
-    ValidBundle(ValidBundleProof),
-    InvalidDomainBlockHash(InvalidDomainBlockHashProof),
+    ImproperTransactionSortition(ImproperTransactionSortitionProof<HeaderHashFor<DomainHeader>>),
+    InvalidTotalRewards(InvalidTotalRewardsProof<HeaderHashFor<DomainHeader>>),
+    InvalidExtrinsicsRoot(InvalidExtrinsicsRootProof<HeaderHashFor<DomainHeader>>),
+    ValidBundle(ValidBundleProof<HeaderHashFor<DomainHeader>>),
+    InvalidDomainBlockHash(InvalidDomainBlockHashProof<HeaderHashFor<DomainHeader>>),
     // Dummy fraud proof only used in test and benchmark
     #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
     Dummy {
         /// Id of the domain this fraud proof targeted
         domain_id: DomainId,
         /// Hash of the bad receipt this fraud proof targeted
-        bad_receipt_hash: ReceiptHash,
+        bad_receipt_hash: HeaderHashFor<DomainHeader>,
     },
     InvalidBundles(InvalidBundlesFraudProof),
 }
@@ -389,7 +387,7 @@ impl<Number, Hash, DomainHeader: HeaderT> FraudProof<Number, Hash, DomainHeader>
         }
     }
 
-    pub fn bad_receipt_hash(&self) -> ReceiptHash {
+    pub fn bad_receipt_hash(&self) -> HeaderHashFor<DomainHeader> {
         match self {
             Self::InvalidStateTransition(proof) => proof.bad_receipt_hash,
             Self::InvalidTransaction(proof) => proof.bad_receipt_hash,
@@ -414,7 +412,7 @@ impl<Number, Hash, DomainHeader: HeaderT> FraudProof<Number, Hash, DomainHeader>
     #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
     pub fn dummy_fraud_proof(
         domain_id: DomainId,
-        bad_receipt_hash: ReceiptHash,
+        bad_receipt_hash: HeaderHashFor<DomainHeader>,
     ) -> FraudProof<Number, Hash, DomainHeader> {
         FraudProof::Dummy {
             domain_id,
@@ -435,21 +433,23 @@ where
 
 /// Proves an invalid state transition by challenging the trace at specific index in a bad receipt.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct InvalidStateTransitionProof {
+pub struct InvalidStateTransitionProof<ReceiptHash> {
     /// The id of the domain this fraud proof targeted
     pub domain_id: DomainId,
     /// Hash of the bad receipt in which an invalid trace occurred.
-    pub bad_receipt_hash: H256,
+    pub bad_receipt_hash: ReceiptHash,
     /// Proof recorded during the computation.
     pub proof: StorageProof,
     /// Execution phase.
     pub execution_phase: ExecutionPhase,
 }
 
-pub fn dummy_invalid_state_transition_proof(domain_id: DomainId) -> InvalidStateTransitionProof {
+pub fn dummy_invalid_state_transition_proof<ReceiptHash: Default>(
+    domain_id: DomainId,
+) -> InvalidStateTransitionProof<ReceiptHash> {
     InvalidStateTransitionProof {
         domain_id,
-        bad_receipt_hash: H256::default(),
+        bad_receipt_hash: ReceiptHash::default(),
         proof: StorageProof::empty(),
         execution_phase: ExecutionPhase::FinalizeBlock,
     }
@@ -490,15 +490,15 @@ where
 
 /// Represents an invalid transaction proof.
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
-pub struct InvalidTransactionProof {
+pub struct InvalidTransactionProof<DomainHash> {
     /// The id of the domain this fraud proof targeted
     pub domain_id: DomainId,
     /// Hash of the bad receipt this fraud proof targeted
-    pub bad_receipt_hash: ReceiptHash,
+    pub bad_receipt_hash: DomainHash,
     /// Number of the block at which the invalid transaction occurred.
     pub domain_block_number: u32,
     /// Hash of the domain block corresponding to `block_number`.
-    pub domain_block_hash: H256,
+    pub domain_block_hash: DomainHash,
     // TODO: Verifiable invalid extrinsic.
     pub invalid_extrinsic: Vec<u8>,
     /// Storage witness needed for verifying this proof.
@@ -507,7 +507,7 @@ pub struct InvalidTransactionProof {
 
 /// Represents an invalid transaction proof.
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
-pub struct ImproperTransactionSortitionProof {
+pub struct ImproperTransactionSortitionProof<ReceiptHash> {
     /// The id of the domain this fraud proof targeted
     pub domain_id: DomainId,
     /// Hash of the bad receipt this fraud proof targeted
@@ -516,7 +516,7 @@ pub struct ImproperTransactionSortitionProof {
 
 /// Represents an invalid total rewards proof.
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
-pub struct InvalidTotalRewardsProof {
+pub struct InvalidTotalRewardsProof<ReceiptHash> {
     /// The id of the domain this fraud proof targeted
     pub domain_id: DomainId,
     /// Hash of the bad receipt this fraud proof targeted
@@ -527,7 +527,7 @@ pub struct InvalidTotalRewardsProof {
 
 /// Represents an invalid domain block hash fraud proof.
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
-pub struct InvalidDomainBlockHashProof {
+pub struct InvalidDomainBlockHashProof<ReceiptHash> {
     /// The id of the domain this fraud proof targeted
     pub domain_id: DomainId,
     /// Hash of the bad receipt this fraud proof targeted
@@ -577,7 +577,7 @@ pub struct ValidBundleDigest {
 
 /// Represents an Invalid domain extrinsics root proof with necessary info for verification.
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
-pub struct InvalidExtrinsicsRootProof {
+pub struct InvalidExtrinsicsRootProof<ReceiptHash> {
     /// The id of the domain this fraud proof targeted
     pub domain_id: DomainId,
     /// Hash of the bad receipt this fraud proof targeted
@@ -586,7 +586,7 @@ pub struct InvalidExtrinsicsRootProof {
     pub valid_bundle_digests: Vec<ValidBundleDigest>,
 }
 
-impl InvalidTotalRewardsProof {
+impl<ReceiptHash: Copy> InvalidTotalRewardsProof<ReceiptHash> {
     pub(crate) fn domain_id(&self) -> DomainId {
         self.domain_id
     }
@@ -607,11 +607,11 @@ pub fn operator_block_rewards_final_key() -> Vec<u8> {
 
 /// Fraud proof for the valid bundles in `ExecutionReceipt::inboxed_bundles`
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
-pub struct ValidBundleProof {
+pub struct ValidBundleProof<ReceiptHash> {
     /// The id of the domain this fraud proof targeted
     pub domain_id: DomainId,
     /// The targetted bad receipt
-    pub bad_receipt_hash: H256,
+    pub bad_receipt_hash: ReceiptHash,
     /// The index of the targetted bundle
     pub bundle_index: u32,
 }

@@ -3,7 +3,7 @@
 use crate::pallet::StateRoots;
 use crate::{
     BalanceOf, BlockTree, BlockTreeNodes, Config, ConsensusBlockHash, DomainBlockDescendants,
-    DomainBlockNumberFor, ExecutionInbox, ExecutionReceiptOf, HeadReceiptNumber,
+    DomainBlockNumberFor, DomainHashingFor, ExecutionInbox, ExecutionReceiptOf, HeadReceiptNumber,
     InboxedBundleAuthor,
 };
 use codec::{Decode, Encode};
@@ -95,8 +95,8 @@ pub(crate) fn execution_receipt_type<T: Config>(
         Ordering::Less => {
             let oldest_receipt_number =
                 head_receipt_number.saturating_sub(T::BlockTreePruningDepth::get());
-            let already_exist =
-                BlockTree::<T>::get(domain_id, receipt_number).contains(&execution_receipt.hash());
+            let already_exist = BlockTree::<T>::get(domain_id, receipt_number)
+                .contains(&execution_receipt.hash::<DomainHashingFor<T>>());
 
             if receipt_number < oldest_receipt_number {
                 // Receipt already pruned
@@ -135,7 +135,8 @@ pub(crate) fn verify_execution_receipt<T: Config>(
         // The genesis receipt is generated and added to the block tree by the runtime upon domain
         // instantiation, thus it is unchallengeable and must always be the same.
         ensure!(
-            BlockTree::<T>::get(domain_id, domain_block_number).contains(&execution_receipt.hash()),
+            BlockTree::<T>::get(domain_id, domain_block_number)
+                .contains(&execution_receipt.hash::<DomainHashingFor<T>>()),
             Error::BadGenesisReceipt
         );
     } else {
@@ -326,7 +327,7 @@ pub(crate) fn process_execution_receipt<T: Config>(
         }
         AcceptedReceiptType::CurrentHead => {
             // Add confirmation to the current head receipt
-            let er_hash = execution_receipt.hash();
+            let er_hash = execution_receipt.hash::<DomainHashingFor<T>>();
             BlockTreeNodes::<T>::mutate(er_hash, |maybe_node| {
                 let node = maybe_node.as_mut().expect(
                     "The domain block of `CurrentHead` receipt is checked to be exist in `execution_receipt_type`; qed"
@@ -344,7 +345,7 @@ fn add_new_receipt_to_block_tree<T: Config>(
     execution_receipt: ExecutionReceiptOf<T>,
 ) {
     // Construct and add a new domain block to the block tree
-    let er_hash = execution_receipt.hash();
+    let er_hash = execution_receipt.hash::<DomainHashingFor<T>>();
     let domain_block_number = execution_receipt.domain_block_number;
     StateRoots::<T>::insert(
         (
@@ -376,7 +377,7 @@ pub(crate) fn import_genesis_receipt<T: Config>(
     domain_id: DomainId,
     genesis_receipt: ExecutionReceiptOf<T>,
 ) {
-    let er_hash = genesis_receipt.hash();
+    let er_hash = genesis_receipt.hash::<DomainHashingFor<T>>();
     let domain_block_number = genesis_receipt.domain_block_number;
     let block_tree_node = BlockTreeNode {
         execution_receipt: genesis_receipt,
@@ -557,7 +558,10 @@ mod tests {
                 pruned_receipt.consensus_block_number,
             )
             .is_none());
-            assert!(DomainBlockDescendants::<Test>::get(pruned_receipt.hash()).is_empty());
+            assert!(DomainBlockDescendants::<Test>::get(
+                pruned_receipt.hash::<DomainHashingFor<Test>>()
+            )
+            .is_empty());
         });
     }
 
@@ -620,7 +624,7 @@ mod tests {
             let stale_receipt = get_block_tree_node_at::<Test>(domain_id, head_receipt_number - 1)
                 .unwrap()
                 .execution_receipt;
-            let stale_receipt_hash = stale_receipt.hash();
+            let stale_receipt_hash = stale_receipt.hash::<DomainHashingFor<Test>>();
 
             // Stale receipt can pass the verification
             assert_eq!(
@@ -676,7 +680,7 @@ mod tests {
                 head_receipt.final_state_root = H256::random();
                 head_receipt
             };
-            let new_branch_receipt_hash = new_branch_receipt.hash();
+            let new_branch_receipt_hash = new_branch_receipt.hash::<DomainHashingFor<Test>>();
 
             // New branch receipt can pass the verification
             assert_eq!(

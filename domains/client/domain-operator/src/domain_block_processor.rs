@@ -18,7 +18,7 @@ use sp_blockchain::{HashAndNumber, HeaderBackend, HeaderMetadata};
 use sp_consensus::{BlockOrigin, SyncOracle};
 use sp_core::traits::CodeExecutor;
 use sp_domains::merkle_tree::MerkleTree;
-use sp_domains::{BundleValidity, DomainId, DomainsApi, ExecutionReceipt};
+use sp_domains::{BundleValidity, DomainId, DomainsApi, ExecutionReceipt, HeaderHashingFor};
 use sp_domains_fraud_proof::fraud_proof::{FraudProof, ValidBundleProof};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, One, Zero};
 use sp_runtime::Digest;
@@ -387,7 +387,8 @@ where
             domain_block_number: header_number,
             domain_block_hash: header_hash,
             domain_block_extrinsic_root: extrinsics_root,
-            parent_domain_block_receipt_hash: parent_receipt.hash(),
+            parent_domain_block_receipt_hash: parent_receipt
+                .hash::<HeaderHashingFor<Block::Header>>(),
             consensus_block_number,
             consensus_block_hash,
             inboxed_bundles: bundles,
@@ -793,7 +794,7 @@ where
             {
                 bad_receipts_to_write.push((
                     execution_receipt.consensus_block_number,
-                    execution_receipt.hash(),
+                    execution_receipt.hash::<HeaderHashingFor<Block::Header>>(),
                     receipt_mismatch_info,
                 ));
 
@@ -805,7 +806,7 @@ where
             {
                 bad_receipts_to_write.push((
                     execution_receipt.consensus_block_number,
-                    execution_receipt.hash(),
+                    execution_receipt.hash::<HeaderHashingFor<Block::Header>>(),
                     ReceiptMismatchInfo::DomainExtrinsicsRoot {
                         consensus_block_hash,
                     },
@@ -819,7 +820,7 @@ where
             ) {
                 bad_receipts_to_write.push((
                     execution_receipt.consensus_block_number,
-                    execution_receipt.hash(),
+                    execution_receipt.hash::<HeaderHashingFor<Block::Header>>(),
                     (trace_mismatch_index, consensus_block_hash).into(),
                 ));
                 continue;
@@ -828,7 +829,7 @@ where
             if execution_receipt.total_rewards != local_receipt.total_rewards {
                 bad_receipts_to_write.push((
                     execution_receipt.consensus_block_number,
-                    execution_receipt.hash(),
+                    execution_receipt.hash::<HeaderHashingFor<Block::Header>>(),
                     ReceiptMismatchInfo::TotalRewards {
                         consensus_block_hash,
                     },
@@ -838,7 +839,7 @@ where
             if execution_receipt.domain_block_hash != local_receipt.domain_block_hash {
                 bad_receipts_to_write.push((
                     execution_receipt.consensus_block_number,
-                    execution_receipt.hash(),
+                    execution_receipt.hash::<HeaderHashingFor<Block::Header>>(),
                     ReceiptMismatchInfo::DomainBlockHash {
                         consensus_block_hash,
                     },
@@ -872,7 +873,7 @@ where
         }
 
         for (bad_receipt_number, bad_receipt_hash, mismatch_info) in bad_receipts_to_write {
-            crate::aux_schema::write_bad_receipt::<_, ParentChainBlock>(
+            crate::aux_schema::write_bad_receipt::<_, ParentChainBlock, Block>(
                 &*self.client,
                 bad_receipt_number,
                 bad_receipt_hash,
@@ -881,7 +882,7 @@ where
         }
 
         for (bad_receipt_number, bad_receipt_hash) in bad_receipts_to_delete {
-            if let Err(e) = crate::aux_schema::delete_bad_receipt::<_, ParentChainBlock>(
+            if let Err(e) = crate::aux_schema::delete_bad_receipt::<_, ParentChainBlock, Block>(
                 &*self.client,
                 bad_receipt_number,
                 bad_receipt_hash,
@@ -972,7 +973,7 @@ where
                 } => match mismatch_type {
                     BundleMismatchType::Valid => FraudProof::ValidBundle(ValidBundleProof {
                         domain_id: self.domain_id,
-                        bad_receipt_hash: local_receipt.hash(),
+                        bad_receipt_hash: local_receipt.hash::<HeaderHashingFor<Block::Header>>(),
                         bundle_index,
                     }),
                     _ => self

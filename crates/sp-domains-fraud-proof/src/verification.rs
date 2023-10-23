@@ -31,7 +31,7 @@ pub fn verify_invalid_domain_extrinsics_root_fraud_proof<CBlock, Balance, Hashin
         HeaderHashFor<DomainHeader>,
         Balance,
     >,
-    fraud_proof: &InvalidExtrinsicsRootProof,
+    fraud_proof: &InvalidExtrinsicsRootProof<HeaderHashFor<DomainHeader>>,
 ) -> Result<(), VerificationError>
 where
     CBlock: BlockT,
@@ -131,7 +131,7 @@ pub fn verify_valid_bundle_fraud_proof<CBlock, DomainNumber, DomainHash, Balance
         DomainHash,
         Balance,
     >,
-    fraud_proof: &ValidBundleProof,
+    fraud_proof: &ValidBundleProof<DomainHash>,
 ) -> Result<(), VerificationError>
 where
     CBlock: BlockT,
@@ -188,7 +188,7 @@ pub fn verify_invalid_state_transition_fraud_proof<CBlock, DomainHeader, Balance
         DomainHeader::Hash,
         Balance,
     >,
-    fraud_proof: &InvalidStateTransitionProof,
+    fraud_proof: &InvalidStateTransitionProof<HeaderHashFor<DomainHeader>>,
 ) -> Result<(), VerificationError>
 where
     CBlock: BlockT,

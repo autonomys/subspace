@@ -57,7 +57,7 @@ use sp_core::{Hasher, OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
     DomainId, DomainInstanceData, DomainsHoldIdentifier, ExecutionReceipt, OpaqueBundle,
-    OpaqueBundles, OperatorId, OperatorPublicKey, ReceiptHash, StakingHoldIdentifier,
+    OpaqueBundles, OperatorId, OperatorPublicKey, StakingHoldIdentifier,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
@@ -1357,7 +1357,7 @@ impl_runtime_apis! {
             Domains::domain_state_root(domain_id, number, hash)
         }
 
-        fn execution_receipt(receipt_hash: ReceiptHash) -> Option<ExecutionReceipt<NumberFor<Block>, <Block as BlockT>::Hash, DomainNumber, DomainHash, Balance>> {
+        fn execution_receipt(receipt_hash: DomainHash) -> Option<ExecutionReceipt<NumberFor<Block>, <Block as BlockT>::Hash, DomainNumber, DomainHash, Balance>> {
             Domains::execution_receipt(receipt_hash)
         }
     }
