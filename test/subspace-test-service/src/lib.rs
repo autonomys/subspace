@@ -42,11 +42,11 @@ use sc_service::config::{
     WasmtimeInstantiationStrategy,
 };
 use sc_service::{
-    BasePath, BlocksPruning, Configuration, InPoolTransaction, NetworkStarter, Role,
-    SpawnTasksParams, TaskManager, TransactionPool,
+    BasePath, BlocksPruning, Configuration, NetworkStarter, Role, SpawnTasksParams, TaskManager,
 };
 use sc_transaction_pool::error::Error as PoolError;
-use sc_transaction_pool_api::TransactionSource;
+use sc_transaction_pool::FullPool;
+use sc_transaction_pool_api::{InPoolTransaction, TransactionPool, TransactionSource};
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnboundedSender};
 use sp_api::{ApiExt, HashT, HeaderT, ProvideRuntimeApi};
 use sp_application_crypto::UncheckedFrom;
@@ -71,15 +71,11 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time;
 use subspace_core_primitives::{Randomness, Solution};
-use subspace_fraud_proof::invalid_transaction_proof::InvalidTransactionProofVerifier;
-use subspace_fraud_proof::verifier_api::VerifierClient;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash};
-use subspace_service::tx_pre_validator::ConsensusChainTxPreValidator;
 use subspace_service::FullSelectChain;
-use subspace_test_client::{chain_spec, Backend, Client, FraudProofVerifier, TestExecutorDispatch};
+use subspace_test_client::{chain_spec, Backend, Client, TestExecutorDispatch};
 use subspace_test_runtime::{RuntimeApi, RuntimeCall, UncheckedExtrinsic, SLOT_DURATION};
-use subspace_transaction_pool::FullPool;
 
 /// Create a Subspace `Configuration`.
 ///
@@ -171,8 +167,6 @@ pub fn node_config(
 
 type StorageChanges = sp_api::StorageChanges<Block>;
 
-type TxPreValidator = ConsensusChainTxPreValidator<Block, Client, FraudProofVerifier>;
-
 struct MockExtensionsFactory<Client, DomainBlock, Executor> {
     consensus_client: Arc<Client>,
     executor: Arc<Executor>,
@@ -226,7 +220,7 @@ pub struct MockConsensusNode {
     /// Code executor.
     pub executor: NativeElseWasmExecutor<TestExecutorDispatch>,
     /// Transaction pool.
-    pub transaction_pool: Arc<FullPool<Block, Client, TxPreValidator>>,
+    pub transaction_pool: Arc<FullPool<Block, Client>>,
     /// The SelectChain Strategy
     pub select_chain: FullSelectChain,
     /// Network service.
@@ -292,26 +286,12 @@ impl MockConsensusNode {
 
         let select_chain = sc_consensus::LongestChain::new(backend.clone());
 
-        let invalid_transaction_proof_verifier = InvalidTransactionProofVerifier::new(
+        let transaction_pool = sc_transaction_pool::BasicPool::new_full(
+            config.transaction_pool.clone(),
+            config.role.is_authority().into(),
+            config.prometheus_registry(),
+            task_manager.spawn_essential_handle(),
             client.clone(),
-            Arc::new(executor.clone()),
-            VerifierClient::new(client.clone()),
-        );
-
-        let proof_verifier =
-            subspace_fraud_proof::ProofVerifier::new(Arc::new(invalid_transaction_proof_verifier));
-
-        let tx_pre_validator = ConsensusChainTxPreValidator::new(
-            client.clone(),
-            Box::new(task_manager.spawn_handle()),
-            proof_verifier.clone(),
-        );
-
-        let transaction_pool = subspace_transaction_pool::new_full(
-            &config,
-            &task_manager,
-            client.clone(),
-            tx_pre_validator,
         );
 
         let block_import = MockBlockImport::<_, _>::new(client.clone());

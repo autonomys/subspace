@@ -2609,7 +2609,6 @@ dependencies = [
  "sp-trie",
  "sp-weights",
  "subspace-core-primitives",
- "subspace-fraud-proof",
  "subspace-runtime-primitives",
  "subspace-test-runtime",
  "subspace-test-service",
@@ -2757,7 +2756,6 @@ dependencies = [
  "sp-transaction-pool",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
- "subspace-transaction-pool",
  "substrate-build-script-utils",
  "substrate-frame-rpc-system",
  "substrate-prometheus-endpoint",
@@ -10825,12 +10823,19 @@ dependencies = [
 name = "sp-domains-fraud-proof"
 version = "0.1.0"
 dependencies = [
+ "domain-block-builder",
  "domain-block-preprocessor",
  "domain-runtime-primitives",
+ "domain-test-service",
  "frame-support",
+ "futures",
  "hash-db 0.16.0",
+ "pallet-balances",
  "parity-scale-codec",
+ "sc-cli",
+ "sc-client-api",
  "sc-executor",
+ "sc-service",
  "scale-info",
  "sp-api",
  "sp-blockchain",
@@ -10846,7 +10851,11 @@ dependencies = [
  "sp-trie",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
+ "subspace-test-client",
+ "subspace-test-service",
+ "tempfile",
  "thiserror",
+ "tokio",
  "trie-db",
 ]
 
@@ -11588,38 +11597,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "subspace-fraud-proof"
-version = "0.1.0"
-dependencies = [
- "domain-block-builder",
- "domain-block-preprocessor",
- "domain-runtime-primitives",
- "domain-test-service",
- "futures",
- "hash-db 0.16.0",
- "pallet-balances",
- "parity-scale-codec",
- "sc-cli",
- "sc-client-api",
- "sc-executor",
- "sc-service",
- "sp-api",
- "sp-blockchain",
- "sp-core",
- "sp-domain-digests",
- "sp-domains",
- "sp-domains-fraud-proof",
- "sp-runtime",
- "sp-state-machine",
- "sp-trie",
- "subspace-runtime-primitives",
- "subspace-test-client",
- "subspace-test-service",
- "tempfile",
- "tokio",
-]
-
-[[package]]
 name = "subspace-metrics"
 version = "0.1.0"
 dependencies = [
@@ -11890,12 +11867,10 @@ dependencies = [
  "static_assertions",
  "subspace-archiving",
  "subspace-core-primitives",
- "subspace-fraud-proof",
  "subspace-metrics",
  "subspace-networking",
  "subspace-proof-of-space",
  "subspace-runtime-primitives",
- "subspace-transaction-pool",
  "substrate-frame-rpc-system",
  "substrate-prometheus-endpoint",
  "thiserror",
@@ -12024,33 +11999,12 @@ dependencies = [
  "sp-runtime",
  "sp-timestamp",
  "subspace-core-primitives",
- "subspace-fraud-proof",
  "subspace-runtime-primitives",
  "subspace-service",
  "subspace-test-client",
  "subspace-test-runtime",
- "subspace-transaction-pool",
  "tokio",
  "tracing",
-]
-
-[[package]]
-name = "subspace-transaction-pool"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "futures",
- "jsonrpsee",
- "sc-client-api",
- "sc-service",
- "sc-transaction-pool",
- "sc-transaction-pool-api",
- "sp-api",
- "sp-blockchain",
- "sp-core",
- "sp-runtime",
- "sp-transaction-pool",
- "substrate-prometheus-endpoint",
 ]
 
 [[package]]

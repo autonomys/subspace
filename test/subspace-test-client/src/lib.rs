@@ -45,7 +45,6 @@ use subspace_farmer_components::plotting::{
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_runtime_primitives::opaque::Block;
-use subspace_service::tx_pre_validator::ConsensusChainTxPreValidator;
 use subspace_service::{FullClient, NewFull};
 use zeroize::Zeroizing;
 
@@ -76,14 +75,8 @@ pub type Client = FullClient<subspace_test_runtime::RuntimeApi, TestExecutorDisp
 /// The backend type being used by the test service.
 pub type Backend = sc_service::TFullBackend<Block>;
 
-/// The fraud proof verifier being used the test service.
-pub type FraudProofVerifier =
-    subspace_service::FraudProofVerifier<subspace_test_runtime::RuntimeApi, TestExecutorDispatch>;
-
-type TxPreValidator = ConsensusChainTxPreValidator<Block, Client, FraudProofVerifier>;
-
 /// Run a farmer.
-pub fn start_farmer<PosTable>(new_full: &NewFull<Client, TxPreValidator>)
+pub fn start_farmer<PosTable>(new_full: &NewFull<Client>)
 where
     PosTable: Table,
 {

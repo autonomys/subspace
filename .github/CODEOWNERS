@@ -12,7 +12,5 @@
 /crates/subspace-networking       @shamil-gadelshin @nazar-pc @rg3l3dr
 /crates/subspace-runtime*         @vedhavyas @nazar-pc @rg3l3dr
 /crates/subspace-node             @NingLin-P @nazar-pc @rg3l3dr
-/crates/subspace-fraud-proof      @NingLin-P @nazar-pc @rg3l3dr
-/crates/subspace-transaction-pool @NingLin-P @nazar-pc @rg3l3dr
 /crates/substrate                 @nazar-pc @rg3l3dr
 /domains                          @vedhavyas @NingLin-P @nazar-pc @rg3l3dr

@@ -155,7 +155,7 @@ mod pallet {
         ReceiptHash, RuntimeId, RuntimeType,
     };
     use sp_domains_fraud_proof::fraud_proof::FraudProof;
-    use sp_domains_fraud_proof::transaction::InvalidTransactionCode;
+    use sp_domains_fraud_proof::InvalidTransactionCode;
     use sp_runtime::traits::{
         AtLeast32BitUnsigned, BlockNumberProvider, CheckEqual, CheckedAdd, Header as HeaderT,
         MaybeDisplay, One, SimpleBitOps, Zero,
