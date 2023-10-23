@@ -48,8 +48,8 @@ use sp_core::H256;
 use sp_domains::bundle_producer_election::{is_below_threshold, BundleProducerElectionParams};
 use sp_domains::{
     DomainBlockLimit, DomainId, DomainInstanceData, ExecutionReceipt, OpaqueBundle, OperatorId,
-    OperatorPublicKey, ProofOfElection, ReceiptHash, RuntimeId,
-    DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT, EMPTY_EXTRINSIC_ROOT,
+    OperatorPublicKey, ProofOfElection, RuntimeId, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT,
+    EMPTY_EXTRINSIC_ROOT,
 };
 use sp_domains_fraud_proof::fraud_proof::{
     FraudProof, InvalidDomainBlockHashProof, InvalidTotalRewardsProof,
@@ -105,6 +105,7 @@ pub(crate) struct ElectionVerificationParams<Balance> {
 
 pub type DomainBlockNumberFor<T> = <<T as Config>::DomainHeader as Header>::Number;
 pub type DomainHashingFor<T> = <<T as Config>::DomainHeader as Header>::Hashing;
+pub type ReceiptHashFor<T> = <<T as Config>::DomainHeader as Header>::Hash;
 
 #[frame_support::pallet]
 mod pallet {
@@ -139,7 +140,7 @@ mod pallet {
     use crate::weights::WeightInfo;
     use crate::{
         BalanceOf, DomainBlockNumberFor, ElectionVerificationParams, HoldIdentifier, NominatorId,
-        OpaqueBundleOf,
+        OpaqueBundleOf, ReceiptHashFor,
     };
     use alloc::string::String;
     use codec::FullCodec;
@@ -152,7 +153,7 @@ mod pallet {
     use sp_core::H256;
     use sp_domains::{
         BundleDigest, DomainId, EpochIndex, GenesisDomain, OperatorAllowList, OperatorId,
-        ReceiptHash, RuntimeId, RuntimeType,
+        RuntimeId, RuntimeType,
     };
     use sp_domains_fraud_proof::fraud_proof::FraudProof;
     use sp_domains_fraud_proof::InvalidTransactionCode;
@@ -453,7 +454,7 @@ mod pallet {
         _,
         Identity,
         DomainId,
-        DomainObject<BlockNumberFor<T>, T::AccountId>,
+        DomainObject<BlockNumberFor<T>, ReceiptHashFor<T>, T::AccountId>,
         OptionQuery,
     >;
 
@@ -466,7 +467,7 @@ mod pallet {
         DomainId,
         Identity,
         DomainBlockNumberFor<T>,
-        BTreeSet<ReceiptHash>,
+        BTreeSet<ReceiptHashFor<T>>,
         ValueQuery,
     >;
 
@@ -475,7 +476,7 @@ mod pallet {
     pub(super) type BlockTreeNodes<T: Config> = StorageMap<
         _,
         Identity,
-        ReceiptHash,
+        ReceiptHashFor<T>,
         BlockTreeNode<
             BlockNumberFor<T>,
             T::Hash,
@@ -491,7 +492,7 @@ mod pallet {
     // by then every parent ER should only have one immediate descendants ER
     #[pallet::storage]
     pub(super) type DomainBlockDescendants<T: Config> =
-        StorageMap<_, Identity, ReceiptHash, BTreeSet<ReceiptHash>, ValueQuery>;
+        StorageMap<_, Identity, ReceiptHashFor<T>, BTreeSet<ReceiptHashFor<T>>, ValueQuery>;
 
     /// The head receipt number of each domain
     #[pallet::storage]
@@ -1797,7 +1798,7 @@ impl<T: Config> Pallet<T> {
         randomness
     }
 
-    pub fn execution_receipt(receipt_hash: ReceiptHash) -> Option<ExecutionReceiptOf<T>> {
+    pub fn execution_receipt(receipt_hash: ReceiptHashFor<T>) -> Option<ExecutionReceiptOf<T>> {
         BlockTreeNodes::<T>::get(receipt_hash).map(|db| db.execution_receipt)
     }
 }

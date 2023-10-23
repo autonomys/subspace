@@ -17,7 +17,7 @@ use sp_consensus::SyncOracle;
 use sp_core::traits::FetchRuntimeCode;
 use sp_core::{Pair, H256};
 use sp_domain_digests::AsPredigest;
-use sp_domains::{Bundle, BundleValidity, DomainId, DomainsApi};
+use sp_domains::{Bundle, BundleValidity, DomainId, DomainsApi, HeaderHashingFor};
 use sp_domains_fraud_proof::execution_prover::ExecutionProver;
 use sp_domains_fraud_proof::fraud_proof::{
     ExecutionPhase, FraudProof, InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof,
@@ -1328,7 +1328,10 @@ async fn test_valid_bundle_proof_generation_and_verification() {
         {
             if let FraudProof::ValidBundle(proof) = *fraud_proof {
                 // The fraud proof is targetting the `bad_receipt`
-                assert_eq!(proof.bad_receipt_hash, bad_receipt.hash());
+                assert_eq!(
+                    proof.bad_receipt_hash,
+                    bad_receipt.hash::<HeaderHashingFor<Header>>()
+                );
 
                 // If the fraud proof target a non-exist receipt then it is invalid
                 let mut bad_proof = proof.clone();
@@ -1448,7 +1451,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
 
     let good_invalid_state_transition_proof = InvalidStateTransitionProof {
         domain_id: DomainId::new(3u32),
-        bad_receipt_hash: bad_receipt.hash(),
+        bad_receipt_hash: bad_receipt.hash::<HeaderHashingFor<Header>>(),
         proof: storage_proof,
         execution_phase,
     };
