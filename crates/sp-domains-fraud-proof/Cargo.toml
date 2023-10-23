@@ -61,6 +61,8 @@ std = [
     "scale-info/std",
     "domain-block-preprocessor",
     "sc-client-api",
+    "sc-executor/std",
+    "sc-client-api",
     "sc-executor",
     "sp-api/std",
     "sp-blockchain",

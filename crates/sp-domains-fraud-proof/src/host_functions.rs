@@ -3,15 +3,20 @@ use crate::{
 };
 use codec::{Decode, Encode};
 use domain_block_preprocessor::inherents::extract_domain_runtime_upgrade_code;
-use domain_block_preprocessor::runtime_api::{SetCodeConstructor, TimestampExtrinsicConstructor};
+use domain_block_preprocessor::runtime_api::{
+    SetCodeConstructor, SignerExtractor, TimestampExtrinsicConstructor,
+};
 use domain_block_preprocessor::runtime_api_light::RuntimeApiLight;
+use sc_client_api::BlockBackend;
 use sc_executor::RuntimeVersionOf;
-use sp_api::{BlockT, ProvideRuntimeApi};
+use sp_api::{BlockT, HashT, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, FetchRuntimeCode, RuntimeCode};
 use sp_core::H256;
 use sp_domains::{DomainId, DomainsApi};
 use sp_runtime::traits::Header as HeaderT;
+use sp_runtime::OpaqueExtrinsic;
+use sp_std::vec::Vec;
 use sp_trie::StorageProof;
 use std::borrow::Cow;
 use std::marker::PhantomData;
@@ -35,6 +40,15 @@ pub trait FraudProofHostFunctions: Send + Sync {
         fraud_proof_verification_req: FraudProofVerificationInfoRequest,
     ) -> Option<FraudProofVerificationInfoResponse>;
 
+    /// Derive the bundle digest for the given bundle body.
+    fn derive_bundle_digest(
+        &self,
+        consensus_block_hash: H256,
+        domain_id: DomainId,
+        bundle_body: Vec<OpaqueExtrinsic>,
+    ) -> Option<H256>;
+
+    /// Check the execution proof
     fn execution_proof_check(
         &self,
         pre_state_root: H256,
@@ -83,7 +97,7 @@ where
     Block: BlockT,
     Block::Hash: From<H256>,
     DomainBlock: BlockT,
-    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block>,
+    Client: BlockBackend<Block> + HeaderBackend<Block> + ProvideRuntimeApi<Block>,
     Client::Api: DomainsApi<Block, DomainBlock::Header>,
     Executor: CodeExecutor + RuntimeVersionOf,
 {
@@ -116,6 +130,30 @@ where
         )
         .ok()
         .map(|ext| ext.encode())
+    }
+
+    fn get_domain_bundle_body(
+        &self,
+        consensus_block_hash: H256,
+        domain_id: DomainId,
+        bundle_index: u32,
+    ) -> Option<Vec<OpaqueExtrinsic>> {
+        let consensus_block_hash = consensus_block_hash.into();
+        let consensus_extrinsics = self
+            .consensus_client
+            .block_body(consensus_block_hash)
+            .ok()??;
+        let mut bundles = self
+            .consensus_client
+            .runtime_api()
+            .extract_successful_bundles(consensus_block_hash, domain_id, consensus_extrinsics)
+            .ok()?;
+
+        if bundle_index < bundles.len() as u32 {
+            Some(bundles.swap_remove(bundle_index as usize).extrinsics)
+        } else {
+            None
+        }
     }
 
     fn derive_domain_set_code_extrinsic(
@@ -176,8 +214,8 @@ where
     Block: BlockT,
     Block::Hash: From<H256>,
     DomainBlock: BlockT,
-    DomainBlock::Hash: From<H256>,
-    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block>,
+    DomainBlock::Hash: From<H256> + Into<H256>,
+    Client: BlockBackend<Block> + HeaderBackend<Block> + ProvideRuntimeApi<Block>,
     Client::Api: DomainsApi<Block, DomainBlock::Header>,
     Executor: CodeExecutor + RuntimeVersionOf,
 {
@@ -199,6 +237,14 @@ where
                         domain_timestamp_extrinsic,
                     )
                 }),
+            FraudProofVerificationInfoRequest::DomainBundleBody {
+                domain_id,
+                bundle_index,
+            } => self
+                .get_domain_bundle_body(consensus_block_hash, domain_id, bundle_index)
+                .map(|domain_bundle_body| {
+                    FraudProofVerificationInfoResponse::DomainBundleBody(domain_bundle_body)
+                }),
             FraudProofVerificationInfoRequest::DomainRuntimeCode(domain_id) => self
                 .get_domain_runtime_code(consensus_block_hash, domain_id)
                 .map(|domain_runtime_code| {
@@ -212,6 +258,45 @@ where
                     )
                 }),
         }
+    }
+
+    fn derive_bundle_digest(
+        &self,
+        consensus_block_hash: H256,
+        domain_id: DomainId,
+        bundle_body: Vec<OpaqueExtrinsic>,
+    ) -> Option<H256> {
+        let mut extrinsics = Vec::with_capacity(bundle_body.len());
+        for opaque_extrinsic in bundle_body {
+            let ext = <<DomainBlock as BlockT>::Extrinsic>::decode(
+                &mut opaque_extrinsic.encode().as_slice(),
+            )
+            .ok()?;
+            extrinsics.push(ext);
+        }
+
+        let domain_runtime_code = self.get_domain_runtime_code(consensus_block_hash, domain_id)?;
+        let domain_runtime_api_light =
+            RuntimeApiLight::new(self.executor.clone(), domain_runtime_code.into());
+
+        let ext_signers: Vec<_> = SignerExtractor::<DomainBlock>::extract_signer(
+            &domain_runtime_api_light,
+            // `extract_signer` is a stateless runtime api thus it is okay to use
+            // default block hash
+            Default::default(),
+            extrinsics,
+        )
+        .ok()?
+        .into_iter()
+        .map(|(signer, tx)| {
+            (
+                signer,
+                <DomainBlock::Header as HeaderT>::Hashing::hash_of(&tx),
+            )
+        })
+        .collect();
+
+        Some(<DomainBlock::Header as HeaderT>::Hashing::hash_of(&ext_signers).into())
     }
 
     fn execution_proof_check(

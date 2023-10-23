@@ -416,6 +416,16 @@ impl<Number, Hash, DomainNumber, DomainHash, Balance>
             .collect()
     }
 
+    pub fn valid_bundle_digest_at(&self, index: usize) -> Option<DomainHash>
+    where
+        DomainHash: Copy,
+    {
+        match self.inboxed_bundles.get(index).map(|ib| &ib.bundle) {
+            Some(BundleValidity::Valid(bundle_digest_hash)) => Some(*bundle_digest_hash),
+            _ => None,
+        }
+    }
+
     pub fn valid_bundle_digests(&self) -> Vec<DomainHash>
     where
         DomainHash: Copy,

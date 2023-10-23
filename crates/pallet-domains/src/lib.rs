@@ -57,7 +57,7 @@ use sp_domains_fraud_proof::fraud_proof::{
 use sp_domains_fraud_proof::verification::{
     verify_invalid_domain_block_hash_fraud_proof,
     verify_invalid_domain_extrinsics_root_fraud_proof, verify_invalid_state_transition_fraud_proof,
-    verify_invalid_total_rewards_fraud_proof,
+    verify_invalid_total_rewards_fraud_proof, verify_valid_bundle_fraud_proof,
 };
 use sp_runtime::traits::{CheckedSub, Hash, Header, One, Zero};
 use sp_runtime::{RuntimeAppPublic, SaturatedConversion, Saturating};
@@ -613,6 +613,8 @@ mod pallet {
         InvalidStateTransitionFraudProof,
         /// Parent receipt not found.
         ParentReceiptNotFound,
+        /// Bad/Invalid valid bundle fraud proof
+        BadValidBundleFraudProof,
     }
 
     impl<T> From<FraudProofError> for Error<T> {
@@ -1605,6 +1607,19 @@ impl<T: Config> Pallet<T> {
                     FraudProofError::InvalidStateTransitionFraudProof
                 })?;
             }
+            FraudProof::ValidBundle(proof) => verify_valid_bundle_fraud_proof::<
+                T::Block,
+                DomainBlockNumberFor<T>,
+                T::DomainHash,
+                BalanceOf<T>,
+            >(bad_receipt, proof)
+            .map_err(|err| {
+                log::error!(
+                    target: "runtime::domains",
+                    "Valid bundle proof verification failed: {err:?}"
+                );
+                FraudProofError::BadValidBundleFraudProof
+            })?,
             _ => {}
         }
 

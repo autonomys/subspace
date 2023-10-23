@@ -38,6 +38,7 @@ pub use runtime_interface::fraud_proof_runtime_interface::HostFunctions;
 use sp_api::scale_info::TypeInfo;
 use sp_domains::DomainId;
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidity};
+use sp_runtime::OpaqueExtrinsic;
 use sp_runtime_interface::pass_by;
 use sp_runtime_interface::pass_by::PassBy;
 use sp_std::vec::Vec;
@@ -74,6 +75,11 @@ pub enum FraudProofVerificationInfoRequest {
     BlockRandomness,
     /// Domain timestamp extrinsic using the timestamp at a given consensus block hash.
     DomainTimestampExtrinsic(DomainId),
+    /// The body of domain bundle included in a given consensus block at a given index
+    DomainBundleBody {
+        domain_id: DomainId,
+        bundle_index: u32,
+    },
     /// The domain runtime code
     DomainRuntimeCode(DomainId),
     /// Domain set_code extrinsic if there is a runtime upgrade at a given consensus block hash.
@@ -100,6 +106,8 @@ pub enum FraudProofVerificationInfoResponse {
     BlockRandomness(Randomness),
     /// Encoded domain timestamp extrinsic using the timestamp from consensus state at a specific block hash.
     DomainTimestampExtrinsic(Vec<u8>),
+    /// Domain block body fetch from a specific consensus block body
+    DomainBundleBody(Vec<OpaqueExtrinsic>),
     /// The domain runtime code
     DomainRuntimeCode(Vec<u8>),
     /// Encoded domain set_code extrinsic if there is a runtime upgrade at given consensus block hash.
@@ -134,6 +142,13 @@ impl FraudProofVerificationInfoResponse {
                 maybe_set_code_extrinsic,
             ) => maybe_set_code_extrinsic,
             _ => SetCodeExtrinsic::None,
+        }
+    }
+
+    pub fn into_bundle_body(self) -> Option<Vec<OpaqueExtrinsic>> {
+        match self {
+            Self::DomainBundleBody(bb) => Some(bb),
+            _ => None,
         }
     }
 }

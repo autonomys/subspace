@@ -27,7 +27,7 @@ use jsonrpsee::RpcModule;
 use parking_lot::Mutex;
 use sc_block_builder::BlockBuilderProvider;
 use sc_client_api::execution_extensions::ExtensionsFactory;
-use sc_client_api::ExecutorProvider;
+use sc_client_api::{BlockBackend, ExecutorProvider};
 use sc_consensus::block_import::{
     BlockCheckParams, BlockImportParams, ForkChoiceStrategy, ImportResult,
 };
@@ -189,8 +189,8 @@ where
     Block: BlockT,
     Block::Hash: From<H256>,
     DomainBlock: BlockT,
-    DomainBlock::Hash: From<H256>,
-    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + 'static,
+    DomainBlock::Hash: Into<H256> + From<H256>,
+    Client: BlockBackend<Block> + HeaderBackend<Block> + ProvideRuntimeApi<Block> + 'static,
     Client::Api: DomainsApi<Block, DomainBlock::Header>,
     Executor: CodeExecutor + sc_executor::RuntimeVersionOf,
 {
