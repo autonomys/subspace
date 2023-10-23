@@ -92,9 +92,6 @@ impl sp_runtime::BoundToRuntimeAppPublic for OperatorKey {
 /// Derived from the Balance and can't be smaller than u128.
 pub type StakeWeight = u128;
 
-/// The hash of a execution receipt.
-pub type ReceiptHash = H256;
-
 /// The Trie root of all extrinsics included in a bundle.
 pub type ExtrinsicsRoot = H256;
 
@@ -384,7 +381,7 @@ pub struct ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance> {
     /// Extrinsic root field of the header of domain block referenced by this ER.
     pub domain_block_extrinsic_root: DomainHash,
     /// The hash of the ER for the last domain block.
-    pub parent_domain_block_receipt_hash: ReceiptHash,
+    pub parent_domain_block_receipt_hash: DomainHash,
     /// A pointer to the consensus block index which contains all of the bundles that were used to derive and
     /// order all extrinsics executed by the current domain block for this ER.
     pub consensus_block_number: Number,
@@ -460,8 +457,8 @@ impl<
     > ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance>
 {
     /// Returns the hash of this execution receipt.
-    pub fn hash(&self) -> ReceiptHash {
-        BlakeTwo256::hash_of(self)
+    pub fn hash<DomainHashing: HashT<Output = DomainHash>>(&self) -> DomainHash {
+        DomainHashing::hash_of(self)
     }
 
     pub fn genesis(
@@ -489,7 +486,7 @@ impl<
         consensus_block_number: Number,
         consensus_block_hash: Hash,
         domain_block_number: DomainNumber,
-        parent_domain_block_receipt_hash: ReceiptHash,
+        parent_domain_block_receipt_hash: DomainHash,
     ) -> ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance>
     where
         DomainHashing: HashT<Output = DomainHash>,
@@ -924,7 +921,7 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the execution receipt
         #[allow(clippy::type_complexity)]
-        fn execution_receipt(receipt_hash: ReceiptHash) -> Option<ExecutionReceipt<NumberFor<Block>, Block::Hash, HeaderNumberFor<DomainHeader>, HeaderHashFor<DomainHeader>, Balance>>;
+        fn execution_receipt(receipt_hash: HeaderHashFor<DomainHeader>) -> Option<ExecutionReceipt<NumberFor<Block>, Block::Hash, HeaderNumberFor<DomainHeader>, HeaderHashFor<DomainHeader>, Balance>>;
     }
 
     pub trait BundleProducerElectionApi<Balance: Encode + Decode> {

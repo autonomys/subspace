@@ -17,8 +17,7 @@ use frame_system::pallet_prelude::*;
 use scale_info::TypeInfo;
 use sp_core::Get;
 use sp_domains::{
-    derive_domain_block_hash, DomainId, DomainsDigestItem, OperatorAllowList, ReceiptHash,
-    RuntimeId,
+    derive_domain_block_hash, DomainId, DomainsDigestItem, OperatorAllowList, RuntimeId,
 };
 use sp_runtime::traits::{CheckedAdd, Zero};
 use sp_runtime::DigestItem;
@@ -62,7 +61,7 @@ pub struct DomainConfig<AccountId: Ord> {
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
-pub struct DomainObject<Number, AccountId: Ord> {
+pub struct DomainObject<Number, ReceiptHash, AccountId: Ord> {
     /// The address of the domain creator, used to validate updating the domain config.
     pub owner_account_id: AccountId,
     /// The consensus chain block number when the domain first instantiated.
@@ -145,7 +144,7 @@ pub(crate) fn do_instantiate_domain<T: Config>(
             genesis_block_hash,
         )
     };
-    let genesis_receipt_hash = genesis_receipt.hash();
+    let genesis_receipt_hash = genesis_receipt.hash::<DomainHashingFor<T>>();
 
     let domain_obj = DomainObject {
         owner_account_id: owner_account_id.clone(),

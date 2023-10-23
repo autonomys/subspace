@@ -8,7 +8,6 @@ use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::CodeExecutor;
-use sp_core::H256;
 use sp_domain_digests::AsPredigest;
 use sp_domains::proof_provider_and_verifier::StorageProofProvider;
 use sp_domains::{DomainId, DomainsApi};
@@ -108,7 +107,7 @@ where
         &self,
         domain_id: DomainId,
         local_receipt: &ExecutionReceiptFor<Block, CBlock>,
-        bad_receipt_hash: H256,
+        bad_receipt_hash: Block::Hash,
     ) -> Result<FraudProofFor<PCB, Block::Header>, FraudProofError>
     where
         PCB: BlockT,
@@ -129,7 +128,7 @@ where
         &self,
         domain_id: DomainId,
         local_receipt: &ExecutionReceiptFor<Block, CBlock>,
-        bad_receipt_hash: H256,
+        bad_receipt_hash: Block::Hash,
     ) -> Result<FraudProofFor<PCB, Block::Header>, FraudProofError>
     where
         PCB: BlockT,
@@ -154,7 +153,7 @@ where
         _local_receipt: &ExecutionReceiptFor<Block, CBlock>,
         mismatch_type: BundleMismatchType,
         bundle_index: u32,
-        _bad_receipt_hash: H256,
+        _bad_receipt_hash: Block::Hash,
     ) -> Result<FraudProofFor<PCB, Block::Header>, FraudProofError>
     where
         PCB: BlockT,
@@ -186,7 +185,7 @@ where
         &self,
         domain_id: DomainId,
         local_receipt: &ExecutionReceiptFor<Block, CBlock>,
-        bad_receipt_hash: H256,
+        bad_receipt_hash: Block::Hash,
     ) -> Result<FraudProofFor<PCB, Block::Header>, FraudProofError>
     where
         PCB: BlockT,
@@ -258,7 +257,7 @@ where
         domain_id: DomainId,
         local_trace_index: u32,
         local_receipt: &ExecutionReceiptFor<Block, CBlock>,
-        bad_receipt_hash: H256,
+        bad_receipt_hash: Block::Hash,
     ) -> Result<FraudProofFor<PCB, Block::Header>, FraudProofError>
     where
         PCB: BlockT,
