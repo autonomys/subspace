@@ -6,6 +6,7 @@ mod plotting;
 use crate::identity::{Identity, IdentityError};
 use crate::node_client::NodeClient;
 use crate::reward_signing::reward_signing;
+use crate::single_disk_farm::farming::rayon_files::RayonFiles;
 use crate::single_disk_farm::farming::sync_fallback::SyncPlotAudit;
 pub use crate::single_disk_farm::farming::FarmingError;
 use crate::single_disk_farm::farming::{farming, slot_notification_forwarder, FarmingOptions};
@@ -971,7 +972,6 @@ impl SingleDiskFarm {
         let farming_join_handle = thread::Builder::new()
             .name(format!("farming-{disk_farm_index}"))
             .spawn({
-                let plot_file = Arc::clone(&plot_file);
                 let handle = handle.clone();
                 let erasure_coding = erasure_coding.clone();
                 let handlers = Arc::clone(&handlers);
@@ -1024,17 +1024,8 @@ impl SingleDiskFarm {
                                 }
                             }
 
-                            #[cfg(not(windows))]
-                            let plot_audit = &SyncPlotAudit::new(&*plot_file);
-                            #[cfg(windows)]
-                            let plot_mmap = unsafe {
-                                memmap2::Mmap::map(&*plot_file).map_err(FarmingError::from)?
-                            };
-                            // On Windows random read is horrible in terms of performance, memory-mapped I/O helps
-                            // TODO: Remove this once https://internals.rust-lang.org/t/introduce-write-all-at-read-exact-at-on-windows/19649
-                            //  or similar exists in standard library
-                            #[cfg(windows)]
-                            let plot_audit = &SyncPlotAudit::new(&*plot_mmap);
+                            let plot = RayonFiles::open(&directory.join(Self::PLOT_FILE))?;
+                            let plot_audit = &SyncPlotAudit::new(&plot);
 
                             let farming_options = FarmingOptions {
                                 public_key,
