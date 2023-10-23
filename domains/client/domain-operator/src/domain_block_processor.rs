@@ -20,7 +20,7 @@ use sp_core::traits::CodeExecutor;
 use sp_core::H256;
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{BundleValidity, DomainId, DomainsApi, ExecutionReceipt};
-use sp_domains_fraud_proof::fraud_proof::FraudProof;
+use sp_domains_fraud_proof::fraud_proof::{FraudProof, ValidBundleProof};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, One, Zero};
 use sp_runtime::Digest;
 use std::cmp::Ordering;
@@ -566,7 +566,7 @@ where
     }
 }
 
-// Find the first mismatch of the `InboxedBundle` in the `ER::bundles` list
+// Find the first mismatch of the `InboxedBundle` in the `ER::inboxed_bundles` list
 pub(crate) fn find_inboxed_bundles_mismatch<Block, CBlock>(
     local_receipt: &ExecutionReceiptFor<Block, CBlock>,
     external_receipt: &ExecutionReceiptFor<Block, CBlock>,
@@ -592,7 +592,7 @@ where
         ).into()));
     }
 
-    // Get the first mismatch of `ER::bundles`
+    // Get the first mismatch of `ER::inboxed_bundles`
     let (bundle_index, (local_bundle, external_bundle)) = local_receipt
         .inboxed_bundles
         .iter()
@@ -969,28 +969,27 @@ where
                     mismatch_type,
                     bundle_index,
                     ..
-                } => {
-                    match mismatch_type {
-                        BundleMismatchType::Valid => {
-                            // TODO: generate valid bundle fraud proof
-                            return Ok(None);
-                        }
-                        _ => self
-                            .fraud_proof_generator
-                            .generate_invalid_bundle_field_proof::<ParentChainBlock>(
-                                self.domain_id,
-                                &local_receipt,
-                                mismatch_type,
-                                bundle_index,
-                                bad_receipt_hash,
-                            )
-                            .map_err(|err| {
-                                sp_blockchain::Error::Application(Box::from(format!(
-                                    "Failed to generate invalid bundles field fraud proof: {err}"
-                                )))
-                            })?,
-                    }
-                }
+                } => match mismatch_type {
+                    BundleMismatchType::Valid => FraudProof::ValidBundle(ValidBundleProof {
+                        domain_id: self.domain_id,
+                        bad_receipt_hash: local_receipt.hash(),
+                        bundle_index,
+                    }),
+                    _ => self
+                        .fraud_proof_generator
+                        .generate_invalid_bundle_field_proof::<ParentChainBlock>(
+                            self.domain_id,
+                            &local_receipt,
+                            mismatch_type,
+                            bundle_index,
+                            bad_receipt_hash,
+                        )
+                        .map_err(|err| {
+                            sp_blockchain::Error::Application(Box::from(format!(
+                                "Failed to generate invalid bundles field fraud proof: {err}"
+                            )))
+                        })?,
+                },
                 ReceiptMismatchInfo::DomainExtrinsicsRoot { .. } => self
                     .fraud_proof_generator
                     .generate_invalid_domain_extrinsics_root_proof::<ParentChainBlock>(

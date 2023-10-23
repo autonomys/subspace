@@ -288,6 +288,18 @@ pub enum VerificationError {
         error("Failed to derive domain set code extrinsic")
     )]
     FailedToDeriveDomainSetCodeExtrinsic,
+    /// Failed to get the bundle body
+    #[cfg_attr(feature = "thiserror", error("Failed to get the bundle body"))]
+    FailedToGetDomainBundleBody,
+    /// Failed to derive bundle digest
+    #[cfg_attr(feature = "thiserror", error("Failed to derive bundle digest"))]
+    FailedToDeriveBundleDigest,
+    /// The target valid bundle not found from the target bad receipt
+    #[cfg_attr(
+        feature = "thiserror",
+        error("The target valid bundle not found from the target bad receipt")
+    )]
+    TargetValidBundleNotFound,
 }
 
 // TODO: Define rest of the fraud proof fields
@@ -349,6 +361,7 @@ pub enum FraudProof<Number, Hash> {
     ImproperTransactionSortition(ImproperTransactionSortitionProof),
     InvalidTotalRewards(InvalidTotalRewardsProof),
     InvalidExtrinsicsRoot(InvalidExtrinsicsRootProof),
+    ValidBundle(ValidBundleProof),
     InvalidDomainBlockHash(InvalidDomainBlockHashProof),
     // Dummy fraud proof only used in test and benchmark
     #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
@@ -370,10 +383,11 @@ impl<Number, Hash> FraudProof<Number, Hash> {
             Self::ImproperTransactionSortition(proof) => proof.domain_id,
             #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
             Self::Dummy { domain_id, .. } => *domain_id,
-            FraudProof::InvalidTotalRewards(proof) => proof.domain_id(),
-            FraudProof::InvalidBundles(proof) => proof.domain_id(),
-            FraudProof::InvalidExtrinsicsRoot(proof) => proof.domain_id,
-            FraudProof::InvalidDomainBlockHash(proof) => proof.domain_id,
+            Self::InvalidTotalRewards(proof) => proof.domain_id(),
+            Self::InvalidExtrinsicsRoot(proof) => proof.domain_id,
+            Self::InvalidBundles(proof) => proof.domain_id(),
+            Self::ValidBundle(proof) => proof.domain_id,
+            Self::InvalidDomainBlockHash(proof) => proof.domain_id,
         }
     }
 
@@ -390,11 +404,12 @@ impl<Number, Hash> FraudProof<Number, Hash> {
             Self::Dummy {
                 bad_receipt_hash, ..
             } => *bad_receipt_hash,
-            FraudProof::InvalidTotalRewards(proof) => proof.bad_receipt_hash(),
+            Self::InvalidExtrinsicsRoot(proof) => proof.bad_receipt_hash,
+            Self::InvalidTotalRewards(proof) => proof.bad_receipt_hash(),
+            Self::ValidBundle(proof) => proof.bad_receipt_hash,
             // TODO: Remove default value when invalid bundle proofs are fully expanded
-            FraudProof::InvalidBundles(_) => Default::default(),
-            FraudProof::InvalidExtrinsicsRoot(proof) => proof.bad_receipt_hash,
-            FraudProof::InvalidDomainBlockHash(proof) => proof.bad_receipt_hash,
+            Self::InvalidBundles(_) => Default::default(),
+            Self::InvalidDomainBlockHash(proof) => proof.bad_receipt_hash,
         }
     }
 
@@ -587,6 +602,17 @@ impl InvalidTotalRewardsProof {
 pub fn operator_block_rewards_final_key() -> Vec<u8> {
     frame_support::storage::storage_prefix("OperatorRewards".as_ref(), "BlockRewards".as_ref())
         .to_vec()
+}
+
+/// Fraud proof for the valid bundles in `ExecutionReceipt::inboxed_bundles`
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+pub struct ValidBundleProof {
+    /// The id of the domain this fraud proof targeted
+    pub domain_id: DomainId,
+    /// The targetted bad receipt
+    pub bad_receipt_hash: H256,
+    /// The index of the targetted bundle
+    pub bundle_index: u32,
 }
 
 /// Digest storage key in frame_system.

@@ -1,5 +1,6 @@
 use crate::fraud_proof::{
-    ExtrinsicDigest, InvalidExtrinsicsRootProof, InvalidStateTransitionProof, VerificationError,
+    ExtrinsicDigest, InvalidExtrinsicsRootProof, InvalidStateTransitionProof, ValidBundleProof,
+    VerificationError,
 };
 use crate::fraud_proof_runtime_interface::get_fraud_proof_verification_info;
 use crate::{
@@ -122,6 +123,55 @@ where
     }
 
     Ok(())
+}
+
+/// Verifies valid bundle fraud proof.
+pub fn verify_valid_bundle_fraud_proof<CBlock, DomainNumber, DomainHash, Balance>(
+    bad_receipt: ExecutionReceipt<
+        NumberFor<CBlock>,
+        CBlock::Hash,
+        DomainNumber,
+        DomainHash,
+        Balance,
+    >,
+    fraud_proof: &ValidBundleProof,
+) -> Result<(), VerificationError>
+where
+    CBlock: BlockT,
+    CBlock::Hash: Into<H256>,
+{
+    let ValidBundleProof {
+        domain_id,
+        bundle_index,
+        ..
+    } = fraud_proof;
+
+    let bundle_body = fraud_proof_runtime_interface::get_fraud_proof_verification_info(
+        bad_receipt.consensus_block_hash.into(),
+        FraudProofVerificationInfoRequest::DomainBundleBody {
+            domain_id: *domain_id,
+            bundle_index: *bundle_index,
+        },
+    )
+    .and_then(FraudProofVerificationInfoResponse::into_bundle_body)
+    .ok_or(VerificationError::FailedToGetDomainBundleBody)?;
+
+    let valid_bundle_digest = fraud_proof_runtime_interface::derive_bundle_digest(
+        bad_receipt.consensus_block_hash.into(),
+        *domain_id,
+        bundle_body,
+    )
+    .ok_or(VerificationError::FailedToDeriveBundleDigest)?;
+
+    let bad_valid_bundle_digest = bad_receipt
+        .valid_bundle_digest_at(*bundle_index as usize)
+        .ok_or(VerificationError::TargetValidBundleNotFound)?;
+
+    if bad_valid_bundle_digest == valid_bundle_digest {
+        Err(VerificationError::InvalidProof)
+    } else {
+        Ok(())
+    }
 }
 
 /// Verifies invalid state transition fraud proof.

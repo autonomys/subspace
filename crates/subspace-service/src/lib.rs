@@ -233,8 +233,13 @@ where
     Block: BlockT,
     Block::Hash: From<H256>,
     DomainBlock: BlockT,
-    DomainBlock::Hash: From<H256>,
-    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + 'static,
+    DomainBlock::Hash: Into<H256> + From<H256>,
+    Client: BlockBackend<Block>
+        + HeaderBackend<Block>
+        + ProvideRuntimeApi<Block>
+        + Send
+        + Sync
+        + 'static,
     Client::Api: SubspaceApi<Block, FarmerPublicKey>
         + DomainsApi<Block, NumberFor<DomainBlock>, DomainBlock::Hash>,
     ExecutorDispatch: CodeExecutor + sc_executor::RuntimeVersionOf,

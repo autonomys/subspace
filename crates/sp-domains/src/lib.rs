@@ -395,6 +395,13 @@ impl<Number, Hash, DomainNumber, DomainHash, Balance>
             .collect()
     }
 
+    pub fn valid_bundle_digest_at(&self, index: usize) -> Option<H256> {
+        match self.inboxed_bundles.get(index).map(|ib| &ib.bundle) {
+            Some(BundleValidity::Valid(bundle_digest_hash)) => Some(*bundle_digest_hash),
+            _ => None,
+        }
+    }
+
     pub fn valid_bundle_digests(&self) -> Vec<H256> {
         self.inboxed_bundles
             .iter()
