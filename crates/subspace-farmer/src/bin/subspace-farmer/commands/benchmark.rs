@@ -3,8 +3,6 @@ use anyhow::anyhow;
 use clap::Subcommand;
 use criterion::{black_box, BatchSize, Criterion, Throughput};
 use futures::FutureExt;
-#[cfg(windows)]
-use memmap2::Mmap;
 use parking_lot::Mutex;
 use std::fs::OpenOptions;
 use std::num::NonZeroUsize;
@@ -12,6 +10,7 @@ use std::path::PathBuf;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{Record, SolutionRange};
 use subspace_erasure_coding::ErasureCoding;
+use subspace_farmer::single_disk_farm::farming::rayon_files::RayonFiles;
 use subspace_farmer::single_disk_farm::farming::sync_fallback::SyncPlotAudit;
 use subspace_farmer::single_disk_farm::farming::{PlotAudit, PlotAuditOptions};
 use subspace_farmer::single_disk_farm::{SingleDiskFarm, SingleDiskFarmSummary};
@@ -81,20 +80,52 @@ fn audit(disk_farm: PathBuf, sample_size: usize) -> anyhow::Result<()> {
             sector_size as u64 * sectors_metadata.len() as u64,
         ));
         {
-            let plot_file = OpenOptions::new()
+            let plot = OpenOptions::new()
                 .read(true)
                 .open(disk_farm.join(SingleDiskFarm::PLOT_FILE))
                 .map_err(|error| anyhow::anyhow!("Failed to open plot: {error}"))?;
-            #[cfg(windows)]
-            let plot_mmap = unsafe { Mmap::map(&plot_file)? };
 
-            group.bench_function("plot/sync", |b| {
-                #[cfg(not(windows))]
-                let plot = &plot_file;
-                #[cfg(windows)]
-                let plot = &*plot_mmap;
+            group.bench_function("plot/sync/single", |b| {
+                let sync_plot_audit = SyncPlotAudit::new(&plot);
 
-                let sync_plot_audit = SyncPlotAudit::new(plot);
+                b.iter_batched(
+                    rand::random,
+                    |global_challenge| {
+                        let options = PlotAuditOptions::<PosTable> {
+                            public_key: single_disk_farm_info.public_key(),
+                            reward_address: single_disk_farm_info.public_key(),
+                            slot_info: SlotInfo {
+                                slot_number: 0,
+                                global_challenge,
+                                // No solution will be found, pure audit
+                                solution_range: SolutionRange::MIN,
+                                // No solution will be found, pure audit
+                                voting_solution_range: SolutionRange::MIN,
+                            },
+                            sectors_metadata: &sectors_metadata,
+                            kzg: &kzg,
+                            erasure_coding: &erasure_coding,
+                            maybe_sector_being_modified: None,
+                            table_generator: &table_generator,
+                        };
+
+                        black_box(
+                            sync_plot_audit
+                                .audit(black_box(options))
+                                .now_or_never()
+                                .unwrap(),
+                        )
+                    },
+                    BatchSize::SmallInput,
+                )
+            });
+        }
+        {
+            let plot = RayonFiles::open(&disk_farm.join(SingleDiskFarm::PLOT_FILE))
+                .map_err(|error| anyhow::anyhow!("Failed to open plot: {error}"))?;
+
+            group.bench_function("plot/sync/rayon", |b| {
+                let sync_plot_audit = SyncPlotAudit::new(&plot);
 
                 b.iter_batched(
                     rand::random,
