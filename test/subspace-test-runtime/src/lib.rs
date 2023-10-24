@@ -40,12 +40,10 @@ use frame_support::{construct_runtime, parameter_types, PalletId};
 use frame_system::limits::{BlockLength, BlockWeights};
 use frame_system::EnsureNever;
 use pallet_balances::NegativeImbalance;
-use pallet_feeds::feed_processor::{FeedMetadata, FeedObjectMapping, FeedProcessor};
-use pallet_grandpa_finality_verifier::chain::Chain;
 pub use pallet_subspace::AllowAuthoringBy;
 use pallet_transporter::EndpointHandler;
 use scale_info::TypeInfo;
-use sp_api::{impl_runtime_apis, BlockT, HashT, HeaderT};
+use sp_api::{impl_runtime_apis, BlockT};
 use sp_consensus_slots::SlotDuration;
 use sp_consensus_subspace::{
     ChainConstants, EquivocationProof, FarmerPublicKey, PotParameters, SignedVote, SolutionRanges,
@@ -53,7 +51,7 @@ use sp_consensus_subspace::{
 };
 use sp_core::crypto::{ByteArray, KeyTypeId};
 use sp_core::storage::StateVersion;
-use sp_core::{Hasher, OpaqueMetadata, H256};
+use sp_core::{OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
     DomainId, DomainInstanceData, DomainsHoldIdentifier, ExecutionReceipt, OpaqueBundle,
@@ -72,9 +70,7 @@ use sp_runtime::traits::{
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
 };
-use sp_runtime::{
-    create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, DispatchError, Perbill,
-};
+use sp_runtime::{create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, Perbill};
 use sp_std::iter::Peekable;
 use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
@@ -686,76 +682,6 @@ impl pallet_rewards::Config for Runtime {
     type OnReward = ();
 }
 
-/// Polkadot-like chain.
-struct PolkadotLike;
-
-impl Chain for PolkadotLike {
-    type BlockNumber = u32;
-    type Hash = <BlakeTwo256 as Hasher>::Out;
-    type Header = generic::Header<u32, BlakeTwo256>;
-    type Hasher = BlakeTwo256;
-}
-
-/// Type used to represent a FeedId or ChainId
-pub type FeedId = u64;
-
-pub struct GrandpaValidator<C>(PhantomData<C>);
-
-impl<C: Chain> FeedProcessor<FeedId> for GrandpaValidator<C> {
-    fn init(&self, feed_id: FeedId, data: &[u8]) -> sp_runtime::DispatchResult {
-        pallet_grandpa_finality_verifier::initialize::<Runtime, C>(feed_id, data)
-    }
-
-    fn put(&self, feed_id: FeedId, object: &[u8]) -> Result<Option<FeedMetadata>, DispatchError> {
-        Ok(Some(
-            pallet_grandpa_finality_verifier::validate_finalized_block::<Runtime, C>(
-                feed_id, object,
-            )?
-            .encode(),
-        ))
-    }
-
-    fn object_mappings(&self, _feed_id: FeedId, object: &[u8]) -> Vec<FeedObjectMapping> {
-        let block = match C::decode_block::<Runtime>(object) {
-            Ok(block) => block,
-            // we just return empty if we failed to decode as this is not called in runtime
-            Err(_) => return vec![],
-        };
-        // for substrate, we store the height and block hash at that height
-        let key = (*block.block.header.number(), block.block.header.hash()).encode();
-        vec![FeedObjectMapping::Custom { key, offset: 0 }]
-    }
-
-    fn delete(&self, feed_id: FeedId) -> sp_runtime::DispatchResult {
-        pallet_grandpa_finality_verifier::purge::<Runtime>(feed_id)
-    }
-}
-
-parameter_types! {
-    pub const MaxFeeds: u32 = 10;
-}
-
-impl pallet_feeds::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type FeedId = FeedId;
-    type FeedProcessorKind = ();
-    type MaxFeeds = MaxFeeds;
-
-    fn feed_processor(
-        _feed_processor_id: Self::FeedProcessorKind,
-    ) -> Box<dyn FeedProcessor<Self::FeedId>> {
-        Box::new(GrandpaValidator(PhantomData::<PolkadotLike>))
-    }
-}
-
-impl pallet_grandpa_finality_verifier::Config for Runtime {
-    type ChainId = FeedId;
-}
-
-impl pallet_object_store::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-}
-
 parameter_types! {
     // This value doesn't matter, we don't use it (`VestedTransferOrigin = EnsureNever` below).
     pub const MinVestedTransfer: Balance = 0;
@@ -785,9 +711,6 @@ construct_runtime!(
         TransactionPayment: pallet_transaction_payment = 5,
         Utility: pallet_utility = 8,
 
-        Feeds: pallet_feeds = 6,
-        GrandpaFinalityVerifier: pallet_grandpa_finality_verifier = 13,
-        ObjectStore: pallet_object_store = 10,
         Domains: pallet_domains = 11,
 
         Vesting: orml_vesting = 7,
@@ -863,47 +786,6 @@ fn extract_xdm_proof_state_roots(
         }
     } else {
         None
-    }
-}
-
-fn extract_feeds_block_object_mapping<I: Iterator<Item = Hash>>(
-    base_offset: u32,
-    objects: &mut Vec<BlockObject>,
-    call: &pallet_feeds::Call<Runtime>,
-    successful_calls: &mut Peekable<I>,
-) {
-    let call_hash = successful_calls.peek();
-    match call_hash {
-        Some(hash) => {
-            if <BlakeTwo256 as HashT>::hash(call.encode().as_slice()) != *hash {
-                return;
-            }
-
-            // remove the hash and fetch the object mapping for this call
-            successful_calls.next();
-        }
-        None => return,
-    }
-    call.extract_call_objects()
-        .into_iter()
-        .for_each(|object_map| {
-            objects.push(BlockObject::V0 {
-                hash: object_map.key,
-                offset: base_offset + object_map.offset,
-            })
-        })
-}
-
-fn extract_object_store_block_object_mapping(
-    base_offset: u32,
-    objects: &mut Vec<BlockObject>,
-    call: &pallet_object_store::Call<Runtime>,
-) {
-    if let Some(call_object) = call.extract_call_object() {
-        objects.push(BlockObject::V0 {
-            hash: call_object.hash,
-            offset: base_offset + call_object.offset,
-        });
     }
 }
 
@@ -988,23 +870,14 @@ fn extract_call_block_object_mapping<I: Iterator<Item = Hash>>(
     // Add enum variant to the base offset.
     base_offset += 1;
 
-    match call {
-        RuntimeCall::Feeds(call) => {
-            extract_feeds_block_object_mapping(base_offset, objects, call, successful_calls);
-        }
-        RuntimeCall::ObjectStore(call) => {
-            extract_object_store_block_object_mapping(base_offset, objects, call);
-        }
-        RuntimeCall::Utility(call) => {
-            extract_utility_block_object_mapping(
-                base_offset,
-                objects,
-                call,
-                recursion_depth_left,
-                successful_calls,
-            );
-        }
-        _ => {}
+    if let RuntimeCall::Utility(call) = call {
+        extract_utility_block_object_mapping(
+            base_offset,
+            objects,
+            call,
+            recursion_depth_left,
+            successful_calls,
+        );
     }
 }
 
@@ -1195,7 +1068,8 @@ impl_runtime_apis! {
         }
 
         fn validated_object_call_hashes() -> Vec<Hash> {
-            Feeds::successful_puts()
+            // No pallets produce objects right now
+            Vec::new()
         }
     }
 

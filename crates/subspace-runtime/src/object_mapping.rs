@@ -1,55 +1,11 @@
 use crate::{Block, Runtime, RuntimeCall};
 use codec::{Compact, CompactLen, Encode};
-use sp_api::HashT;
-use sp_runtime::traits::BlakeTwo256;
 use sp_std::iter::Peekable;
 use sp_std::prelude::*;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping};
 use subspace_runtime_primitives::Hash;
 
 const MAX_OBJECT_MAPPING_RECURSION_DEPTH: u16 = 5;
-
-pub(crate) fn extract_feeds_block_object_mapping<I: Iterator<Item = Hash>>(
-    base_offset: u32,
-    objects: &mut Vec<BlockObject>,
-    call: &pallet_feeds::Call<Runtime>,
-    successful_calls: &mut Peekable<I>,
-) {
-    let call_hash = successful_calls.peek();
-    match call_hash {
-        Some(hash) => {
-            if <BlakeTwo256 as HashT>::hash(call.encode().as_slice()) != *hash {
-                return;
-            }
-
-            // remove the hash and fetch the object mapping for this call
-            successful_calls.next();
-        }
-        None => return,
-    }
-
-    call.extract_call_objects()
-        .into_iter()
-        .for_each(|object_map| {
-            objects.push(BlockObject::V0 {
-                hash: object_map.key,
-                offset: base_offset + object_map.offset,
-            })
-        })
-}
-
-pub(crate) fn extract_object_store_block_object_mapping(
-    base_offset: u32,
-    objects: &mut Vec<BlockObject>,
-    call: &pallet_object_store::Call<Runtime>,
-) {
-    if let Some(call_object) = call.extract_call_object() {
-        objects.push(BlockObject::V0 {
-            hash: call_object.hash,
-            offset: base_offset + call_object.offset,
-        });
-    }
-}
 
 pub(crate) fn extract_utility_block_object_mapping<I: Iterator<Item = Hash>>(
     mut base_offset: u32,
@@ -132,23 +88,14 @@ pub(crate) fn extract_call_block_object_mapping<I: Iterator<Item = Hash>>(
     // Add enum variant to the base offset.
     base_offset += 1;
 
-    match call {
-        RuntimeCall::Feeds(call) => {
-            extract_feeds_block_object_mapping(base_offset, objects, call, successful_calls);
-        }
-        RuntimeCall::ObjectStore(call) => {
-            extract_object_store_block_object_mapping(base_offset, objects, call);
-        }
-        RuntimeCall::Utility(call) => {
-            extract_utility_block_object_mapping(
-                base_offset,
-                objects,
-                call,
-                recursion_depth_left,
-                successful_calls,
-            );
-        }
-        _ => {}
+    if let RuntimeCall::Utility(call) = call {
+        extract_utility_block_object_mapping(
+            base_offset,
+            objects,
+            call,
+            recursion_depth_left,
+            successful_calls,
+        );
     }
 }
 
