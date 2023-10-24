@@ -51,14 +51,13 @@ use sp_domains::{
     OperatorPublicKey, ProofOfElection, ReceiptHash, RuntimeId,
     DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT, EMPTY_EXTRINSIC_ROOT,
 };
-use sp_domains_fraud_proof::fraud_proof::InvalidBundlesFraudProof::{FalseInvalid, TrueInvalid};
 use sp_domains_fraud_proof::fraud_proof::{
     FraudProof, InvalidDomainBlockHashProof, InvalidTotalRewardsProof,
 };
 use sp_domains_fraud_proof::verification::{
-    verify_invalid_domain_block_hash_fraud_proof,
+    verify_invalid_bundles_fraud_proof, verify_invalid_domain_block_hash_fraud_proof,
     verify_invalid_domain_extrinsics_root_fraud_proof, verify_invalid_state_transition_fraud_proof,
-    verify_invalid_total_rewards_fraud_proof, verify_true_invalid_bundle_fraud_proof,
+    verify_invalid_total_rewards_fraud_proof,
 };
 use sp_runtime::traits::{BlakeTwo256, CheckedSub, Hash, Header, One, Zero};
 use sp_runtime::{RuntimeAppPublic, SaturatedConversion, Saturating};
@@ -1612,25 +1611,19 @@ impl<T: Config> Pallet<T> {
                 })?;
             }
             FraudProof::InvalidBundles(invalid_bundles_fraud_proof) => {
-                match invalid_bundles_fraud_proof {
-                    TrueInvalid(true_invalid_fraud_proof) => {
-                        verify_true_invalid_bundle_fraud_proof::<
-                            T::Block,
-                            DomainBlockNumberFor<T>,
-                            T::DomainHash,
-                            BalanceOf<T>,
-                        >(bad_receipt, true_invalid_fraud_proof)
-                        .map_err(|err| {
-                            log::error!(
-                                target: "runtime::domains",
-                                "Invalid Bundle proof verification failed: {err:?}"
-                            );
-                            FraudProofError::InvalidBundleFraudProof
-                        })?;
-                    }
-                    // TODO: Verify false invalid fraud proof
-                    FalseInvalid(_false_invalid_fraud_proof) => {}
-                }
+                verify_invalid_bundles_fraud_proof::<
+                    T::Block,
+                    DomainBlockNumberFor<T>,
+                    T::DomainHash,
+                    BalanceOf<T>,
+                >(bad_receipt, invalid_bundles_fraud_proof)
+                .map_err(|err| {
+                    log::error!(
+                        target: "runtime::domains",
+                        "Invalid Bundle proof verification failed: {err:?}"
+                    );
+                    FraudProofError::InvalidBundleFraudProof
+                })?;
             }
             _ => {}
         }

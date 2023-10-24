@@ -79,6 +79,7 @@ impl<Block, Client, DomainBlock, Executor>
     }
 }
 
+// TODO: Revisit the host function implementation once we decide best strategy to structure them.
 impl<Block, Client, DomainBlock, Executor>
     FraudProofHostFunctionsImpl<Block, Client, DomainBlock, Executor>
 where
@@ -173,34 +174,26 @@ where
 
     fn is_tx_in_range(
         &self,
-        consensus_block_hash_with_bundle: H256,
-        consensus_block_hash_with_tx_range: H256,
+        consensus_block_hash: H256,
         domain_id: DomainId,
         opaque_extrinsic: OpaqueExtrinsic,
         bundle_index: u32,
     ) -> Option<bool> {
         let runtime_api = self.consensus_client.runtime_api();
-        let consensus_block_hash_with_tx_range = consensus_block_hash_with_tx_range.into();
+        let runtime_code = self.get_domain_runtime_code(consensus_block_hash, domain_id)?;
+        let consensus_block_hash = consensus_block_hash.into();
         let domain_tx_range = runtime_api
-            .domain_tx_range(consensus_block_hash_with_tx_range, domain_id)
+            .domain_tx_range(consensus_block_hash, domain_id)
             .ok()?;
 
-        let runtime_code =
-            self.get_domain_runtime_code(consensus_block_hash_with_bundle, domain_id)?;
-
-        let consensus_block_hash_with_bundles = consensus_block_hash_with_bundle.into();
         let consensus_extrinsics = self
             .consensus_client
-            .block_body(consensus_block_hash_with_bundles)
+            .block_body(consensus_block_hash)
             .ok()??;
         let bundles = self
             .consensus_client
             .runtime_api()
-            .extract_successful_bundles(
-                consensus_block_hash_with_bundles,
-                domain_id,
-                consensus_extrinsics,
-            )
+            .extract_successful_bundles(consensus_block_hash, domain_id, consensus_extrinsics)
             .ok()?;
 
         let bundle = bundles.get(bundle_index as usize)?;
@@ -268,15 +261,12 @@ where
                     )
                 }),
             FraudProofVerificationInfoRequest::TxRangeCheck {
-                consensus_block_hash_with_tx_range,
                 domain_id,
                 opaque_extrinsic,
                 bundle_index,
-                ..
             } => self
                 .is_tx_in_range(
                     consensus_block_hash,
-                    consensus_block_hash_with_tx_range,
                     domain_id,
                     opaque_extrinsic,
                     bundle_index,

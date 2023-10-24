@@ -300,62 +300,49 @@ pub enum VerificationError {
     /// Fraud proof mismatch with actual bundle entry
     #[cfg_attr(
         feature = "thiserror",
-        error("Fraud proof mismatch with actual bundle entry")
+        error("Invalid bundle entry in bad receipt matches exactly with fraud proof. Bundle validity entry: {0:?}")
     )]
-    FraudProofMismatch,
-    /// Tx range host function returned err
-    #[cfg_attr(feature = "thiserror", error("Tx range host function returned err"))]
-    TxRangeHostFnFailed,
+    TrueInvalidBundleFraudProofMismatch(BundleValidity),
+    /// Tx range host function did not return response (returned None)
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Tx range host function did not return a response (returned None)")
+    )]
+    FailedToGetResponseFromTxRangeHostFn,
     /// Unable to receive tx range from host function
     #[cfg_attr(
         feature = "thiserror",
-        error("Unable to receive tx range from host function")
+        error("Received invalid information from tx range host function")
     )]
-    ReceivedInvalidInfoFromHostFn,
-}
-
-// TODO: Define rest of the fraud proof fields
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct FalseInvalidBundleEntryFraudProof {
-    pub bad_receipt_hash: ReceiptHash,
-    pub domain_id: DomainId,
-    pub bundle_index: u32,
-}
-
-impl FalseInvalidBundleEntryFraudProof {
-    pub fn new(bad_receipt_hash: ReceiptHash, domain_id: DomainId, bundle_index: u32) -> Self {
-        Self {
-            bad_receipt_hash,
-            domain_id,
-            bundle_index,
-        }
-    }
+    ReceivedInvalidInfoFromTxRangeHostFn,
 }
 
 /// Proof data specific to each *expected* invalid bundle type
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub enum ProofDataPerExpectedInvalidBundle {
+pub enum ProofDataPerInvalidBundleType {
     OutOfRangeTx,
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct TrueInvalidBundleEntryFraudProof {
+pub struct InvalidBundlesFraudProof {
     pub bad_receipt_hash: ReceiptHash,
     pub domain_id: DomainId,
     pub bundle_index: u32,
     pub mismatched_extrinsic_index: u32,
     pub extrinsic_inclusion_proof: Vec<Vec<u8>>,
-    pub proof_data: ProofDataPerExpectedInvalidBundle,
+    pub is_true_invalid_fraud_proof: bool,
+    pub proof_data: ProofDataPerInvalidBundleType,
 }
 
-impl TrueInvalidBundleEntryFraudProof {
+impl InvalidBundlesFraudProof {
     pub fn new(
         bad_receipt_hash: ReceiptHash,
         domain_id: DomainId,
         bundle_index: u32,
         mismatched_extrinsic_index: u32,
         extrinsic_inclusion_proof: Vec<Vec<u8>>,
-        proof_data: ProofDataPerExpectedInvalidBundle,
+        is_true_invalid_fraud_proof: bool,
+        proof_data: ProofDataPerInvalidBundleType,
     ) -> Self {
         Self {
             bad_receipt_hash,
@@ -363,45 +350,39 @@ impl TrueInvalidBundleEntryFraudProof {
             bundle_index,
             mismatched_extrinsic_index,
             extrinsic_inclusion_proof,
+            is_true_invalid_fraud_proof,
             proof_data,
         }
     }
 
-    pub fn matches_with_bundle_entry(&self, inboxed_bundle_entry: &InboxedBundle) -> bool {
-        if !inboxed_bundle_entry.is_invalid() {
-            return true;
-        }
+    pub fn is_valid_with_context_of_bundle_entry(
+        &self,
+        inboxed_bundle_entry: &InboxedBundle,
+    ) -> bool {
+        // If this is true, this would mean actual invalid bundle entry in bad receipt is marked as either valid or has different invalid type thn expected.
+        // If this is false, this would mean actual valid bundle entry in bad receipt is marked as invalid with specific invalid bundle type.
+        let is_true_invalid_proof = self.is_true_invalid_fraud_proof;
 
-        let expected_bundle_validity = match self.proof_data {
-            ProofDataPerExpectedInvalidBundle::OutOfRangeTx => BundleValidity::Invalid(
-                InvalidBundleType::OutOfRangeTx(self.mismatched_extrinsic_index),
-            ),
-        };
+        match (inboxed_bundle_entry.is_invalid(), is_true_invalid_proof) {
+            // If entry is not invalid and is true proof then bundle entry is valid while it should be invalid
+            (false, true) => true,
+            // If entry is invalid and is false proof then bundle entry is invalid while it should be valid
+            (true, false) => true,
+            // If entry is invalid and is true proof then both are invalid in that case we need to compare further
+            (true, true) => {
+                // this bundle validity is not expected, because if that is the case then what
+                // fraud proof is trying to prove and what the execution receipt says match for this
+                // bundle. In that case, the fraud proof is not valid.
+                let not_expected_bundle_validity = match self.proof_data {
+                    ProofDataPerInvalidBundleType::OutOfRangeTx => BundleValidity::Invalid(
+                        InvalidBundleType::OutOfRangeTx(self.mismatched_extrinsic_index),
+                    ),
+                };
 
-        expected_bundle_validity == inboxed_bundle_entry.bundle
-    }
-}
-
-/// Fraud proof indicating that a bundle included in `inboxed_bundles` field has incorrect
-/// `bundle_validity` field
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub enum InvalidBundlesFraudProof {
-    TrueInvalid(TrueInvalidBundleEntryFraudProof),
-    FalseInvalid(FalseInvalidBundleEntryFraudProof),
-}
-
-impl InvalidBundlesFraudProof {
-    pub fn domain_id(&self) -> DomainId {
-        match self {
-            InvalidBundlesFraudProof::TrueInvalid(proof) => proof.domain_id,
-            InvalidBundlesFraudProof::FalseInvalid(proof) => proof.domain_id,
-        }
-    }
-
-    pub fn bad_receipt_hash(&self) -> ReceiptHash {
-        match self {
-            InvalidBundlesFraudProof::TrueInvalid(proof) => proof.bad_receipt_hash,
-            InvalidBundlesFraudProof::FalseInvalid(proof) => proof.bad_receipt_hash,
+                not_expected_bundle_validity != inboxed_bundle_entry.bundle
+            }
+            // If entry is not invalid and is false proof then there is no need for the fraud proof as both conclude to valid bundle entry.
+            (false, false) => false,
         }
     }
 }
@@ -439,7 +420,7 @@ impl<Number, Hash> FraudProof<Number, Hash> {
             #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
             Self::Dummy { domain_id, .. } => *domain_id,
             FraudProof::InvalidTotalRewards(proof) => proof.domain_id(),
-            FraudProof::InvalidBundles(proof) => proof.domain_id(),
+            FraudProof::InvalidBundles(proof) => proof.domain_id,
             FraudProof::InvalidExtrinsicsRoot(proof) => proof.domain_id,
             FraudProof::InvalidDomainBlockHash(proof) => proof.domain_id,
         }
@@ -459,8 +440,7 @@ impl<Number, Hash> FraudProof<Number, Hash> {
                 bad_receipt_hash, ..
             } => *bad_receipt_hash,
             FraudProof::InvalidTotalRewards(proof) => proof.bad_receipt_hash(),
-            // TODO: Remove default value when invalid bundle proofs are fully expanded
-            FraudProof::InvalidBundles(proof) => proof.bad_receipt_hash(),
+            FraudProof::InvalidBundles(proof) => proof.bad_receipt_hash,
             FraudProof::InvalidExtrinsicsRoot(proof) => proof.bad_receipt_hash,
             FraudProof::InvalidDomainBlockHash(proof) => proof.bad_receipt_hash,
         }
