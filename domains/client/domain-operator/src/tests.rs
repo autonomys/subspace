@@ -67,7 +67,7 @@ async fn test_domain_instance_bootstrapper() {
         .unwrap();
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -90,8 +90,6 @@ async fn test_domain_instance_bootstrapper() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[cfg_attr(target_os = "windows", ignore)]
-// TODO: fix this on windows. https://github.com/subspace/subspace/actions/runs/6505907396/job/17683021699?pr=1974
 async fn test_domain_block_production() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -109,7 +107,7 @@ async fn test_domain_block_production() {
     );
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -120,7 +118,6 @@ async fn test_domain_block_production() {
     for i in 0..50 {
         let (tx, slot) = if i % 2 == 0 {
             // Produce bundle and include it in the primary block hence produce a domain block
-            alice.send_system_remark().await;
             let (slot, _) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
             // `None` means collect tx from the tx pool
             (None, slot)
@@ -181,7 +178,6 @@ async fn test_domain_block_production() {
     assert_eq!(alice.client.info().best_hash, domain_block_hash);
 
     // Simply producing more block on fork C
-    alice.send_system_remark().await;
     for _ in 0..10 {
         let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
         let tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
@@ -221,7 +217,7 @@ async fn test_processing_empty_consensus_block() {
     );
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -377,7 +373,7 @@ async fn collected_receipts_should_be_on_the_same_branch_with_current_best_block
     );
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -549,7 +545,7 @@ async fn test_domain_tx_propagate() {
     );
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -623,7 +619,7 @@ async fn test_executor_full_node_catching_up() {
     }
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -675,7 +671,7 @@ async fn test_executor_inherent_timestamp_is_set() {
     );
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -1378,7 +1374,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
     );
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -1522,7 +1518,7 @@ async fn set_new_code_should_work() {
     );
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -1593,7 +1589,7 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
     );
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -1602,7 +1598,7 @@ async fn pallet_domains_unsigned_extrinsics_should_work() {
     .await;
 
     // Run Bob (a evm domain full node)
-    let mut bob = domain_test_service::DomainNodeBuilder::new(
+    let bob = domain_test_service::DomainNodeBuilder::new(
         tokio_handle,
         Bob,
         BasePath::new(directory.path().join("bob")),
@@ -1691,7 +1687,7 @@ async fn duplicated_and_stale_bundle_should_be_rejected() {
     );
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -1762,7 +1758,7 @@ async fn existing_bundle_can_be_resubmitted_to_new_fork() {
     );
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -2208,7 +2204,7 @@ async fn test_restart_domain_operator() {
     );
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -2241,7 +2237,7 @@ async fn test_restart_domain_operator() {
     ferdie.set_next_slot(next_slot);
 
     // Restart Alice
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -2340,7 +2336,7 @@ async fn test_multiple_consensus_blocks_derive_similar_domain_block() {
     );
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),

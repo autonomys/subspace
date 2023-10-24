@@ -177,6 +177,7 @@ pub struct OperatorParams<
     pub operator_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS, ASS>,
     pub domain_confirmation_depth: NumberFor<Block>,
     pub block_import: SharedBlockImport<Block>,
+    pub skip_empty_bundle_production: bool,
 }
 
 pub(crate) fn load_execution_receipt_by_domain_hash<Block, CBlock, Client>(

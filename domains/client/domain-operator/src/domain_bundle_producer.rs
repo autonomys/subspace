@@ -49,6 +49,7 @@ pub(super) struct DomainBundleProducer<
     keystore: KeystorePtr,
     bundle_producer_election_solver: BundleProducerElectionSolver<Block, CBlock, CClient>,
     domain_bundle_proposer: DomainBundleProposer<Block, Client, CBlock, CClient, TransactionPool>,
+    skip_empty_bundle_production: bool,
     _phantom_data: PhantomData<ParentChainBlock>,
 }
 
@@ -77,6 +78,7 @@ where
             keystore: self.keystore.clone(),
             bundle_producer_election_solver: self.bundle_producer_election_solver.clone(),
             domain_bundle_proposer: self.domain_bundle_proposer.clone(),
+            skip_empty_bundle_production: self.skip_empty_bundle_production,
             _phantom_data: self._phantom_data,
         }
     }
@@ -105,6 +107,7 @@ where
     ParentChain: ParentChainInterface<Block, ParentChainBlock> + Clone,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn new(
         domain_id: DomainId,
         consensus_client: Arc<CClient>,
@@ -119,6 +122,7 @@ where
         >,
         bundle_sender: Arc<BundleSender<Block, CBlock>>,
         keystore: KeystorePtr,
+        skip_empty_bundle_production: bool,
     ) -> Self {
         let bundle_producer_election_solver = BundleProducerElectionSolver::<Block, CBlock, _>::new(
             keystore.clone(),
@@ -133,6 +137,7 @@ where
             keystore,
             bundle_producer_election_solver,
             domain_bundle_proposer,
+            skip_empty_bundle_production,
             _phantom_data: PhantomData,
         }
     }
@@ -194,14 +199,15 @@ where
                 .await?;
 
             // if there are no extrinsics and no receipts to confirm, skip the bundle
-            if extrinsics.is_empty()
+            if self.skip_empty_bundle_production
+                && extrinsics.is_empty()
                 && !self
                     .parent_chain
                     .non_empty_er_exists(parent_chain_best_hash, self.domain_id)?
             {
                 tracing::warn!(
                     ?domain_best_number,
-                    "Skipping bundle production on slot {slot}"
+                    "Skipping empty bundle production on slot {slot}"
                 );
                 return Ok(None);
             }
