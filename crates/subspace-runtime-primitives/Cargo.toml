@@ -8,19 +8,23 @@ edition = "2021"
 homepage = "https://subspace.network"
 repository = "https://github.com/subspace/subspace"
 include = [
-	"/src",
-	"/Cargo.toml",
+    "/src",
+    "/Cargo.toml",
 ]
 
 [package.metadata.docs.rs]
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
+frame-support = { version = "4.0.0-dev", default-features = false, optional = true, git = "https://github.com/subspace/polkadot-sdk", rev = "892bf8e938c6bd2b893d3827d1093cd81baa59a1" }
+frame-system = { version = "4.0.0-dev", default-features = false, optional = true, git = "https://github.com/subspace/polkadot-sdk", rev = "892bf8e938c6bd2b893d3827d1093cd81baa59a1" }
+pallet-transaction-payment = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "892bf8e938c6bd2b893d3827d1093cd81baa59a1" }
 # TODO: Should, idealy, be optional, but `sp-runtime`'s `serde` feature is enabled unconditionally by something in
 #  Substrate and as the result our custom `Block` implementation has to derive `serde` traits essentially
 #  unconditionally or else it doesn't compile
 serde = { version = "1.0.183", default-features = false, features = ["alloc", "derive"] }
 sp-core = { version = "21.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "892bf8e938c6bd2b893d3827d1093cd81baa59a1" }
+sp-io = { version = "23.0.0", default-features = false, optional = true, git = "https://github.com/subspace/polkadot-sdk", rev = "892bf8e938c6bd2b893d3827d1093cd81baa59a1" }
 sp-runtime = { version = "24.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "892bf8e938c6bd2b893d3827d1093cd81baa59a1" }
 sp-std = { version = "8.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "892bf8e938c6bd2b893d3827d1093cd81baa59a1" }
 subspace-core-primitives = { version = "0.1.0", default-features = false, path = "../subspace-core-primitives" }
@@ -28,9 +32,15 @@ subspace-core-primitives = { version = "0.1.0", default-features = false, path =
 [features]
 default = ["std"]
 std = [
-	"serde/std",
-	"sp-core/std",
-	"sp-runtime/std",
-	"sp-std/std",
-	"subspace-core-primitives/std",
+    "pallet-transaction-payment/std",
+    "serde/std",
+    "sp-core/std",
+    "sp-runtime/std",
+    "sp-std/std",
+    "subspace-core-primitives/std",
+]
+testing = [
+    "frame-support",
+    "frame-system",
+    "sp-io"
 ]
