@@ -90,7 +90,7 @@ use subspace_core_primitives::{
 };
 use subspace_runtime_primitives::{
     AccountId, Balance, BlockNumber, FindBlockRewardAddress, Hash, Moment, Nonce, Signature,
-    MIN_REPLICATION_FACTOR, SHANNON, SSC, STORAGE_FEES_ESCROW_BLOCK_REWARD,
+    SlowAdjustingFeeUpdate, MIN_REPLICATION_FACTOR, SHANNON, SSC, STORAGE_FEES_ESCROW_BLOCK_REWARD,
     STORAGE_FEES_ESCROW_BLOCK_TAX,
 };
 
@@ -487,7 +487,7 @@ impl pallet_transaction_payment::Config for Runtime {
     type OperationalFeeMultiplier = ConstU8<5>;
     type WeightToFee = IdentityFee<Balance>;
     type LengthToFee = ConstantMultiplier<Balance, TransactionByteFee>;
-    type FeeMultiplierUpdate = ();
+    type FeeMultiplierUpdate = SlowAdjustingFeeUpdate<Runtime>;
 }
 
 impl pallet_utility::Config for Runtime {
@@ -1223,5 +1223,16 @@ impl_runtime_apis! {
 
             Ok(batches)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{Runtime, SubspaceBlockWeights as BlockWeights};
+    use subspace_runtime_primitives::tests_utils::FeeMultiplierUtils;
+
+    #[test]
+    fn multiplier_can_grow_from_zero() {
+        FeeMultiplierUtils::<Runtime, BlockWeights>::multiplier_can_grow_from_zero()
     }
 }

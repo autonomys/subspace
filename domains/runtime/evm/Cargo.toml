@@ -61,6 +61,9 @@ sp-version = { version = "22.0.0", default-features = false, git = "https://gith
 subspace-core-primitives = { version = "0.1.0", path = "../../../crates/subspace-core-primitives", default-features = false }
 subspace-runtime-primitives = { version = "0.1.0", path = "../../../crates/subspace-runtime-primitives", default-features = false }
 
+[dev-dependencies]
+subspace-runtime-primitives = { version = "0.1.0", features = ["testing"], path = "../../../crates/subspace-runtime-primitives" }
+
 [build-dependencies]
 substrate-wasm-builder = { version = "5.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "892bf8e938c6bd2b893d3827d1093cd81baa59a1", optional = true }
 

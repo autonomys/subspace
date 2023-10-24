@@ -61,7 +61,7 @@ use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
-use subspace_runtime_primitives::{Moment, SHANNON};
+use subspace_runtime_primitives::{Moment, SlowAdjustingFeeUpdate, SHANNON};
 
 /// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
 pub type Signature = EthereumSignature;
@@ -359,7 +359,7 @@ impl pallet_transaction_payment::Config for Runtime {
         pallet_transaction_payment::CurrencyAdapter<Balances, ActualPaidFeesHandler>;
     type WeightToFee = IdentityFee<Balance>;
     type LengthToFee = ConstantMultiplier<Balance, TransactionByteFee>;
-    type FeeMultiplierUpdate = ();
+    type FeeMultiplierUpdate = SlowAdjustingFeeUpdate<Runtime>;
     type OperationalFeeMultiplier = OperationalFeeMultiplier;
 }
 
@@ -1230,5 +1230,16 @@ impl_runtime_apis! {
             if batches.is_empty() { return Err("Benchmark not found for this pallet.".into()) }
             Ok(batches)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{Runtime, RuntimeBlockWeights as BlockWeights};
+    use subspace_runtime_primitives::tests_utils::FeeMultiplierUtils;
+
+    #[test]
+    fn multiplier_can_grow_from_zero() {
+        FeeMultiplierUtils::<Runtime, BlockWeights>::multiplier_can_grow_from_zero()
     }
 }
