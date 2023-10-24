@@ -2450,3 +2450,55 @@ async fn test_multiple_consensus_blocks_derive_similar_domain_block() {
     // Simply produce more block
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_skip_empty_bundle_production() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a evm domain authority node) with `skip_empty_bundle_production` set to `true`
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .skip_empty_bundle()
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .await;
+
+    // Wait for `BlockTreePruningDepth + 1` blocks which is 16 + 1 in test
+    // to enure the genesis ER is confirmed
+    produce_blocks!(ferdie, alice, 17).await.unwrap();
+    let consensus_block_number = ferdie.client.info().best_number;
+    let domain_block_number = alice.client.info().best_number;
+
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    ferdie.produce_block_with_slot(slot).await.unwrap();
+
+    // Alice will skip producing bundle since there is no domain extrinsic
+    assert!(bundle.is_none());
+    assert_eq!(ferdie.client.info().best_number, consensus_block_number + 1);
+    assert_eq!(alice.client.info().best_number, domain_block_number);
+
+    // Send a domain extrinsic, Alice will start producing bundle
+    alice.send_system_remark().await;
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+    assert!(bundle.is_some());
+    assert_eq!(ferdie.client.info().best_number, consensus_block_number + 2);
+    assert_eq!(alice.client.info().best_number, domain_block_number + 1);
+}
