@@ -397,7 +397,6 @@ where
                                 record_witness: solution.record_witness,
                                 chunk: solution.chunk,
                                 chunk_witness: solution.chunk_witness,
-                                audit_chunk_offset: solution.audit_chunk_offset,
                                 proof_of_space: solution.proof_of_space,
                             };
 

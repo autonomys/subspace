@@ -709,7 +709,6 @@
 //                 record_witness: Default::default(),
 //                 chunk: Default::default(),
 //                 chunk_witness: Default::default(),
-//                 audit_chunk_offset: 0,
 //                 proof_of_space: Default::default(),
 //             },
 //             slot,

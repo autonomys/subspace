@@ -32,7 +32,6 @@ use crate::fees::{OnChargeTransaction, TransactionByteFee};
 use crate::object_mapping::extract_block_object_mapping;
 use crate::signed_extensions::{CheckStorageAccess, DisablePallets};
 use codec::{Decode, Encode, MaxEncodedLen};
-use core::mem;
 use core::num::NonZeroU64;
 use domain_runtime_primitives::opaque::Header as DomainHeader;
 use domain_runtime_primitives::{
@@ -78,7 +77,6 @@ use sp_std::prelude::*;
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 use static_assertions::const_assert;
-use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{
     HistorySize, Piece, Randomness, Record, SegmentCommitment, SegmentHeader, SegmentIndex,
@@ -209,16 +207,12 @@ const MAX_BLOCK_LENGTH: u32 = 5 * 1024 * 1024;
 
 /// Computes the following:
 /// ```
-/// MAX * slot_probability / audit_chunks_per_chunk / (pieces_in_sector * chunks / s_buckets)
-///     / sectors
+/// MAX * slot_probability / (pieces_in_sector * chunks / s_buckets) / sectors
 /// ```
 const fn sectors_to_solution_range(sectors: u64) -> SolutionRange {
-    let audit_chunks_per_chunk = Scalar::FULL_BYTES / mem::size_of::<SolutionRange>();
     let solution_range = SolutionRange::MAX
         // Account for slot probability
         / SLOT_PROBABILITY.1 * SLOT_PROBABILITY.0
-        // We're auditing one chunk in each sector, account for how many audit chunks each chunk has
-        / audit_chunks_per_chunk as u64
         // Now take sector size and probability of hitting occupied s-bucket in sector into account
         / (MAX_PIECES_IN_SECTOR as u64 * Record::NUM_CHUNKS as u64 / Record::NUM_S_BUCKETS as u64);
 
@@ -228,16 +222,12 @@ const fn sectors_to_solution_range(sectors: u64) -> SolutionRange {
 
 /// Computes the following:
 /// ```
-/// MAX * slot_probability / audit_chunks_per_chunk / (pieces_in_sector * chunks / s_buckets)
-///     / solution_range
+/// MAX * slot_probability / (pieces_in_sector * chunks / s_buckets) / solution_range
 /// ```
 const fn solution_range_to_sectors(solution_range: SolutionRange) -> u64 {
-    let audit_chunks_per_chunk = Scalar::FULL_BYTES / mem::size_of::<SolutionRange>();
     let sectors = SolutionRange::MAX
         // Account for slot probability
         / SLOT_PROBABILITY.1 * SLOT_PROBABILITY.0
-        // We're auditing one chunk in each sector, account for how many audit chunks each chunk has
-        / audit_chunks_per_chunk as u64
         // Now take sector size and probability of hitting occupied s-bucket in sector into account
         / (MAX_PIECES_IN_SECTOR as u64 * Record::NUM_CHUNKS as u64 / Record::NUM_S_BUCKETS as u64);
 

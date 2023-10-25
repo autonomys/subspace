@@ -614,8 +614,6 @@ pub struct Solution<PublicKey, RewardAddress> {
     pub chunk: Scalar,
     /// Witness for above chunk
     pub chunk_witness: ChunkWitness,
-    /// Audit chunk offset within above chunk
-    pub audit_chunk_offset: u8,
     /// Proof of space for piece offset
     pub proof_of_space: PosProof,
 }
@@ -640,7 +638,6 @@ impl<PublicKey, RewardAddressA> Solution<PublicKey, RewardAddressA> {
             record_witness,
             chunk,
             chunk_witness,
-            audit_chunk_offset,
             proof_of_space,
         } = self;
         Solution {
@@ -653,7 +650,6 @@ impl<PublicKey, RewardAddressA> Solution<PublicKey, RewardAddressA> {
             record_witness,
             chunk,
             chunk_witness,
-            audit_chunk_offset,
             proof_of_space,
         }
     }
@@ -672,13 +668,13 @@ impl<PublicKey, RewardAddress> Solution<PublicKey, RewardAddress> {
             record_witness: RecordWitness::default(),
             chunk: Scalar::default(),
             chunk_witness: ChunkWitness::default(),
-            audit_chunk_offset: 0,
             proof_of_space: PosProof::default(),
         }
     }
 }
 
 /// Bidirectional distance metric implemented on top of subtraction
+#[inline(always)]
 pub fn bidirectional_distance<T: WrappingSub + Ord>(a: &T, b: &T) -> T {
     let diff = a.wrapping_sub(b);
     let diff2 = b.wrapping_sub(a);

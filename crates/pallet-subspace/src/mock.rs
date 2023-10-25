@@ -40,11 +40,11 @@ use sp_runtime::testing::{Digest, DigestItem, Header, TestXt};
 use sp_runtime::traits::{Block as BlockT, Header as _, IdentityLookup};
 use sp_runtime::{BuildStorage, Perbill};
 use sp_weights::Weight;
+use std::iter;
 use std::marker::PhantomData;
 use std::num::{NonZeroU32, NonZeroU64, NonZeroUsize};
 use std::simd::Simd;
 use std::sync::{Once, OnceLock};
-use std::{iter, mem};
 use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::crypto::Scalar;
@@ -243,7 +243,6 @@ pub fn go_to_block(
             record_witness: Default::default(),
             chunk,
             chunk_witness: Default::default(),
-            audit_chunk_offset: 0,
             proof_of_space: Default::default(),
         },
     );
@@ -350,7 +349,6 @@ pub fn generate_equivocation_proof(
                 record_witness: Default::default(),
                 chunk,
                 chunk_witness: Default::default(),
-                audit_chunk_offset: 0,
                 proof_of_space: Default::default(),
             },
         );
@@ -514,18 +512,11 @@ pub fn create_signed_vote(
         let masked_chunk = (Simd::from(solution.chunk.to_bytes())
             ^ Simd::from(solution.proof_of_space.hash()))
         .to_array();
-        // Extract audit chunk from masked chunk
-        let audit_chunk = SolutionRange::from_le_bytes(
-            *masked_chunk
-                .array_chunks::<{ mem::size_of::<SolutionRange>() }>()
-                .nth(usize::from(solution.audit_chunk_offset))
-                .unwrap(),
-        );
 
         // Check that solution quality is not too high
         if is_within_solution_range(
             &global_challenge,
-            audit_chunk,
+            &masked_chunk,
             &sector_slot_challenge,
             solution_range,
         )
@@ -548,7 +539,6 @@ pub fn create_signed_vote(
                 record_witness: solution.record_witness,
                 chunk: solution.chunk,
                 chunk_witness: solution.chunk_witness,
-                audit_chunk_offset: solution.audit_chunk_offset,
                 proof_of_space: solution.proof_of_space,
             },
             proof_of_time,

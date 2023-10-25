@@ -99,15 +99,9 @@ struct VoteVerificationData {
     parent_slot: Slot,
 }
 
-/// Simple wrapper for chunk offset in a sector for readability purposes
-#[derive(
-    Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Encode, Decode, MaxEncodedLen, TypeInfo,
-)]
-struct AuditChunkOffset(u8);
-
 #[frame_support::pallet]
 pub mod pallet {
-    use super::{AuditChunkOffset, EraChangeTrigger, VoteVerificationData};
+    use super::{EraChangeTrigger, VoteVerificationData};
     use crate::equivocation::HandleEquivocation;
     use crate::weights::WeightInfo;
     use frame_support::pallet_prelude::*;
@@ -401,17 +395,8 @@ pub mod pallet {
 
     /// Parent block author information.
     #[pallet::storage]
-    pub(super) type ParentBlockAuthorInfo<T> = StorageValue<
-        _,
-        (
-            FarmerPublicKey,
-            SectorIndex,
-            PieceOffset,
-            Scalar,
-            AuditChunkOffset,
-            Slot,
-        ),
-    >;
+    pub(super) type ParentBlockAuthorInfo<T> =
+        StorageValue<_, (FarmerPublicKey, SectorIndex, PieceOffset, Scalar, Slot)>;
 
     /// Enable rewards since specified block number.
     #[pallet::storage]
@@ -426,7 +411,6 @@ pub mod pallet {
             SectorIndex,
             PieceOffset,
             Scalar,
-            AuditChunkOffset,
             Slot,
             T::AccountId,
         ),
@@ -437,14 +421,7 @@ pub mod pallet {
     pub(super) type ParentBlockVoters<T: Config> = StorageValue<
         _,
         BTreeMap<
-            (
-                FarmerPublicKey,
-                SectorIndex,
-                PieceOffset,
-                Scalar,
-                AuditChunkOffset,
-                Slot,
-            ),
+            (FarmerPublicKey, SectorIndex, PieceOffset, Scalar, Slot),
             (T::AccountId, FarmerSignature),
         >,
         ValueQuery,
@@ -455,14 +432,7 @@ pub mod pallet {
     pub(super) type CurrentBlockVoters<T: Config> = StorageValue<
         _,
         BTreeMap<
-            (
-                FarmerPublicKey,
-                SectorIndex,
-                PieceOffset,
-                Scalar,
-                AuditChunkOffset,
-                Slot,
-            ),
+            (FarmerPublicKey, SectorIndex, PieceOffset, Scalar, Slot),
             (T::AccountId, FarmerSignature),
         >,
     >;
@@ -805,12 +775,10 @@ impl<T: Config> Pallet<T> {
                 pre_digest.solution().sector_index,
                 pre_digest.solution().piece_offset,
                 pre_digest.solution().chunk,
-                AuditChunkOffset(pre_digest.solution().audit_chunk_offset),
                 pre_digest.slot(),
             );
             if ParentBlockVoters::<T>::get().contains_key(&key) {
-                let (public_key, _sector_index, _piece_offset, _chunk, _audit_chunk_offset, slot) =
-                    key;
+                let (public_key, _sector_index, _piece_offset, _chunk, slot) = key;
 
                 let offence = SubspaceEquivocationOffence {
                     slot,
@@ -827,28 +795,20 @@ impl<T: Config> Pallet<T> {
                     );
                 }
             } else {
-                let (public_key, sector_index, piece_offset, chunk, audit_chunk_offset, slot) = key;
+                let (public_key, sector_index, piece_offset, chunk, slot) = key;
 
                 CurrentBlockAuthorInfo::<T>::put((
                     public_key,
                     sector_index,
                     piece_offset,
                     chunk,
-                    audit_chunk_offset,
                     slot,
                     pre_digest.solution().reward_address.clone(),
                 ));
             }
         }
         CurrentBlockVoters::<T>::put(BTreeMap::<
-            (
-                FarmerPublicKey,
-                SectorIndex,
-                PieceOffset,
-                Scalar,
-                AuditChunkOffset,
-                Slot,
-            ),
+            (FarmerPublicKey, SectorIndex, PieceOffset, Scalar, Slot),
             (T::AccountId, FarmerSignature),
         >::default());
 
@@ -978,24 +938,10 @@ impl<T: Config> Pallet<T> {
             ));
         }
 
-        if let Some((
-            public_key,
-            sector_index,
-            piece_offset,
-            scalar,
-            audit_chunk_offset,
-            slot,
-            _reward_address,
-        )) = CurrentBlockAuthorInfo::<T>::take()
+        if let Some((public_key, sector_index, piece_offset, scalar, slot, _reward_address)) =
+            CurrentBlockAuthorInfo::<T>::take()
         {
-            ParentBlockAuthorInfo::<T>::put((
-                public_key,
-                sector_index,
-                piece_offset,
-                scalar,
-                audit_chunk_offset,
-                slot,
-            ));
+            ParentBlockAuthorInfo::<T>::put((public_key, sector_index, piece_offset, scalar, slot));
         }
 
         ParentVoteVerificationData::<T>::put(current_vote_verification_data::<T>(true));
@@ -1611,7 +1557,6 @@ fn check_vote<T: Config>(
         solution.sector_index,
         solution.piece_offset,
         solution.chunk,
-        AuditChunkOffset(solution.audit_chunk_offset),
         slot,
     );
     // Check that farmer didn't use solution from this vote yet in:
@@ -1622,23 +1567,8 @@ fn check_vote<T: Config>(
     let mut is_equivocating = ParentBlockAuthorInfo::<T>::get().as_ref() == Some(&key)
         || CurrentBlockAuthorInfo::<T>::get()
             .map(
-                |(
-                    public_key,
-                    sector_index,
-                    piece_offset,
-                    chunk,
-                    audit_chunk_offset,
-                    slot,
-                    _reward_address,
-                )| {
-                    (
-                        public_key,
-                        sector_index,
-                        piece_offset,
-                        chunk,
-                        audit_chunk_offset,
-                        slot,
-                    )
+                |(public_key, sector_index, piece_offset, chunk, slot, _reward_address)| {
+                    (public_key, sector_index, piece_offset, chunk, slot)
                 },
             )
             .as_ref()
@@ -1676,7 +1606,7 @@ fn check_vote<T: Config>(
             }
         });
 
-        let (public_key, _sector_index, _piece_offset, _chunk, _audit_chunk_offset, _slot) = key;
+        let (public_key, _sector_index, _piece_offset, _chunk, _slot) = key;
 
         return Err(CheckVoteError::Equivocated(SubspaceEquivocationOffence {
             slot,
@@ -1754,15 +1684,7 @@ fn check_segment_headers<T: Config>(
 impl<T: Config> subspace_runtime_primitives::FindBlockRewardAddress<T::AccountId> for Pallet<T> {
     fn find_block_reward_address() -> Option<T::AccountId> {
         CurrentBlockAuthorInfo::<T>::get().and_then(
-            |(
-                public_key,
-                _sector_index,
-                _piece_offset,
-                _chunk,
-                _audit_chunk_offset,
-                _slot,
-                reward_address,
-            )| {
+            |(public_key, _sector_index, _piece_offset, _chunk, _slot, reward_address)| {
                 // Equivocation might have happened in this block, if so - no reward for block
                 // author
                 if !BlockList::<T>::contains_key(public_key) {
