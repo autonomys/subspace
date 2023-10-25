@@ -229,6 +229,7 @@ where
     pub gossip_message_sink: GossipMessageSink,
     pub domain_message_receiver: TracingUnboundedReceiver<Vec<u8>>,
     pub provider: Provider,
+    pub skip_empty_bundle_production: bool,
 }
 
 /// Builds service for a domain full node.
@@ -330,6 +331,7 @@ where
         gossip_message_sink,
         domain_message_receiver,
         provider,
+        skip_empty_bundle_production,
     } = domain_params;
 
     // TODO: Do we even need block announcement on domain node?
@@ -452,6 +454,7 @@ where
             operator_streams,
             domain_confirmation_depth,
             block_import,
+            skip_empty_bundle_production,
         },
     )
     .await?;

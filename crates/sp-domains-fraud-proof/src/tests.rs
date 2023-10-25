@@ -58,7 +58,7 @@ async fn check_tx_validity_runtime_api_should_work() {
     );
 
     // Run Alice (a evm domain authority node)
-    let mut alice = domain_test_service::DomainNodeBuilder::new(
+    let alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),

@@ -1645,8 +1645,7 @@ impl<T: Config> Pallet<T> {
         let operator_stake = domain_stake_summary
             .current_operators
             .get(operator_id)
-            .ok_or(BundleError::BadOperator)
-            .unwrap();
+            .ok_or(BundleError::BadOperator)?;
         Ok((*operator_stake, domain_stake_summary.current_total_stake))
     }
 
