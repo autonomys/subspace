@@ -17,7 +17,6 @@
 // --repeat=20
 // --pallet=pallet_transporter
 // --extrinsic=*
-// --execution=wasm
 // --wasm-execution=compiled
 // --heap-pages=4096
 // --output=./domains/pallets/transporter/src/weights.rs

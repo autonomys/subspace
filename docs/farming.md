@@ -45,7 +45,6 @@ If you're connected directly without any router, then again nothing needs to be 
 # Copy all of the lines below, they are all part of the same command
 .\NODE_FILE_NAME.exe `
 --chain gemini-3f `
---execution wasm `
 --blocks-pruning 256 `
 --state-pruning archive `
 --no-private-ipv4 `
@@ -97,7 +96,6 @@ If you're connected directly without any router, then again nothing needs to be 
 # Copy all of the lines below, they are all part of the same command
 ./NODE_FILE_NAME \
   --chain gemini-3f \
-  --execution wasm \
   --blocks-pruning 256 \
   --state-pruning archive \
   --no-private-ipv4 \
@@ -152,7 +150,6 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 # Copy all of the lines below, they are all part of the same command
 ./NODE_FILE_NAME \
   --chain gemini-3f \
-  --execution wasm \
   --blocks-pruning 256 \
   --state-pruning archive \
   --no-private-ipv4 \
@@ -218,7 +215,6 @@ services:
     command: [
       "--chain", "gemini-3f",
       "--base-path", "/var/subspace",
-      "--execution", "wasm",
       "--blocks-pruning", "256",
       "--state-pruning", "archive",
       "--port", "30333",

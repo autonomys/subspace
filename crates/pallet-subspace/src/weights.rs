@@ -16,7 +16,6 @@
 // --repeat=20
 // --pallet=pallet_subspace
 // --extrinsic=*
-// --execution=wasm
 // --wasm-execution=compiled
 // --heap-pages=4096
 // --output=./crates/pallet-subspace/src/weights.rs
