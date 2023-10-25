@@ -12,7 +12,6 @@
 // --repeat=20
 // --pallet=orml_vesting
 // --extrinsic=*
-// --execution=wasm
 // --wasm-execution=compiled
 // --heap-pages=4096
 // --output=./vesting/src/weights.rs

@@ -17,7 +17,6 @@
 // --repeat=20
 // --pallet=domain-pallet-executive
 // --extrinsic=*
-// --execution=wasm
 // --wasm-execution=compiled
 // --heap-pages=4096
 // --output=./domains/pallets/executive/src/weights.rs
