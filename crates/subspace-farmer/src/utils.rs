@@ -106,6 +106,8 @@ where
     let (result_tx, result_rx) = oneshot::channel();
     let handle = Handle::current();
     let join_handle = thread::Builder::new().name(thread_name).spawn(move || {
+        let _tokio_handle_guard = handle.enter();
+
         let result = match handle.block_on(futures::future::select(future, drop_rx)) {
             Either::Left((result, _)) => result,
             Either::Right(_) => {
