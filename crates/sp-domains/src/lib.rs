@@ -50,6 +50,7 @@ use sp_runtime::{Digest, DigestItem, OpaqueExtrinsic, Percent};
 use sp_runtime_interface::pass_by;
 use sp_runtime_interface::pass_by::PassBy;
 use sp_std::collections::btree_set::BTreeSet;
+use sp_std::fmt::{Display, Formatter};
 use sp_std::vec::Vec;
 use sp_weights::Weight;
 use subspace_core_primitives::crypto::blake3_hash;
@@ -167,6 +168,12 @@ impl DomainId {
     /// Converts the inner integer to little-endian bytes.
     pub fn to_le_bytes(&self) -> [u8; 4] {
         self.0.to_le_bytes()
+    }
+}
+
+impl Display for DomainId {
+    fn fmt(&self, f: &mut Formatter<'_>) -> core::fmt::Result {
+        self.0.fmt(f)
     }
 }
 

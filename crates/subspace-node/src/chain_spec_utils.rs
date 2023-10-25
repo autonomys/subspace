@@ -1,5 +1,7 @@
 use frame_support::traits::Get;
 use sc_service::Properties;
+use serde_json::map::Map;
+use serde_json::Value;
 use sp_core::crypto::AccountId32;
 use sp_core::{sr25519, Pair, Public};
 use sp_runtime::traits::IdentifyAccount;
@@ -18,6 +20,11 @@ pub(crate) fn chain_spec_properties() -> Properties {
     );
     properties.insert("tokenDecimals".to_string(), DECIMAL_PLACES.into());
     properties.insert("tokenSymbol".to_string(), "tSSC".into());
+    let domains_bootstrap_nodes = Map::<String, Value>::new();
+    properties.insert(
+        "domainsBootstrapNodes".to_string(),
+        domains_bootstrap_nodes.into(),
+    );
 
     properties
 }

@@ -433,6 +433,21 @@ fn main() -> Result<(), Error> {
             runner.run_node_until_exit(|consensus_chain_config| async move {
                 let tokio_handle = consensus_chain_config.tokio_handle.clone();
                 let database_source = consensus_chain_config.database.clone();
+
+                let domains_bootstrap_nodes: serde_json::map::Map<String, serde_json::Value> =
+                    consensus_chain_config
+                        .chain_spec
+                        .properties()
+                        .get("domainsBootstrapNodes")
+                        .map(|d| serde_json::from_value(d.clone()))
+                        .transpose()
+                        .map_err(|error| {
+                            sc_service::Error::Other(format!(
+                                "Failed to decode Domains bootstrap nodes: {error:?}"
+                            ))
+                        })?
+                        .unwrap_or_default();
+
                 let consensus_chain_node = {
                     let span = sc_tracing::tracing::info_span!(
                         sc_tracing::logging::PREFIX_LOG_SPAN,
@@ -556,13 +571,28 @@ fn main() -> Result<(), Error> {
                     );
                     let _enter = span.enter();
 
-                    let domain_cli = DomainCli::new(
+                    let mut domain_cli = DomainCli::new(
                         cli.run
                             .base_path()?
                             .map(|base_path| base_path.path().to_path_buf()),
                         cli.domain_args.into_iter(),
                     );
+
                     let domain_id = domain_cli.domain_id;
+
+                    if domain_cli.run.network_params.bootnodes.is_empty() {
+                        domain_cli.run.network_params.bootnodes = domains_bootstrap_nodes
+                            .get(&format!("{}", domain_id))
+                            .map(|d| serde_json::from_value(d.clone()))
+                            .transpose()
+                            .map_err(|error| {
+                                sc_service::Error::Other(format!(
+                                    "Failed to decode Domain: {} bootstrap nodes: {error:?}",
+                                    domain_id
+                                ))
+                            })?
+                            .unwrap_or_default();
+                    }
 
                     // start relayer for consensus chain
                     let mut xdm_gossip_worker_builder = GossipWorkerBuilder::new();
