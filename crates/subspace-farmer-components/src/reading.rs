@@ -15,7 +15,7 @@ use subspace_core_primitives::{
     Piece, PieceOffset, Record, RecordCommitment, RecordWitness, SBucket, SectorId,
 };
 use subspace_erasure_coding::ErasureCoding;
-use subspace_proof_of_space::{Quality, Table, TableGenerator};
+use subspace_proof_of_space::{Table, TableGenerator};
 use thiserror::Error;
 use tracing::debug;
 
@@ -148,13 +148,12 @@ where
 
                     // Decode chunk if necessary
                     if encoded_chunk_used {
-                        let quality = pos_table.find_quality(s_bucket.into()).expect(
-                            "encoded_chunk_used implies quality exists for this chunk; qed",
-                        );
+                        let proof = pos_table
+                            .find_proof(s_bucket.into())
+                            .expect("encoded_chunk_used implies proof exists for this chunk; qed");
 
-                        record_chunk = Simd::to_array(
-                            Simd::from(record_chunk) ^ Simd::from(quality.create_proof().hash()),
-                        );
+                        record_chunk =
+                            Simd::to_array(Simd::from(record_chunk) ^ Simd::from(proof.hash()));
                     }
 
                     maybe_record_chunk.replace(Scalar::try_from(record_chunk).map_err(
@@ -194,12 +193,12 @@ where
 
                         // Decode chunk if necessary
                         if encoded_chunk_used {
-                            let quality = pos_table.find_quality(s_bucket.into()).expect(
-                                "encoded_chunk_used implies quality exists for this chunk; qed",
+                            let proof = pos_table.find_proof(s_bucket.into()).expect(
+                                "encoded_chunk_used implies proof exists for this chunk; qed",
                             );
 
                             record_chunk = Simd::to_array(
-                                Simd::from(record_chunk) ^ Simd::from(quality.create_proof().hash()),
+                                Simd::from(record_chunk) ^ Simd::from(proof.hash()),
                             );
                         }
 

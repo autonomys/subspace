@@ -18,7 +18,7 @@ use subspace_core_primitives::{
     RecordWitness, SBucket, SectorId, Solution, SolutionRange,
 };
 use subspace_erasure_coding::ErasureCoding;
-use subspace_proof_of_space::{Quality, Table};
+use subspace_proof_of_space::Table;
 use thiserror::Error;
 
 /// Solutions that can be proven if necessary.
@@ -440,13 +440,9 @@ where
             );
             let record_metadata = record_metadata_fut.await?;
 
-            let proof_of_space = pos_table
-                .find_quality(state.s_bucket.into())
-                .expect(
-                    "Quality exists for this s-bucket, otherwise it wouldn't be a winning \
-                        chunk; qed",
-                )
-                .create_proof();
+            let proof_of_space = pos_table.find_proof(state.s_bucket.into()).expect(
+                "Quality exists for this s-bucket, otherwise it wouldn't be a winning chunk; qed",
+            );
 
             let chunk_witness = state
                 .kzg

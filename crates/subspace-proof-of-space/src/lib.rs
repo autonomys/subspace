@@ -18,16 +18,7 @@ pub mod chiapos;
 pub mod shim;
 
 use core::fmt;
-use subspace_core_primitives::{PosProof, PosQualityBytes, PosSeed};
-
-/// Abstraction that represents quality of the solution in the table
-pub trait Quality {
-    /// Get underlying bytes representation of the quality
-    fn to_bytes(&self) -> PosQualityBytes;
-
-    /// Create proof for this solution
-    fn create_proof(&self) -> PosProof;
-}
+use subspace_core_primitives::{PosProof, PosSeed};
 
 /// Proof of space table type
 #[derive(Debug, Clone, Copy)]
@@ -62,11 +53,6 @@ pub trait Table: Sized + Send + Sync + 'static {
     /// Instance that can be used to generate tables with better performance
     type Generator: TableGenerator<Self>;
 
-    /// Abstraction that represents quality of the solution in the table
-    type Quality<'a>: Quality
-    where
-        Self: 'a;
-
     /// Generate new table with 32 bytes seed.
     ///
     /// There is also [`Self::generate_parallel()`] that can achieve lower latency.
@@ -81,15 +67,11 @@ pub trait Table: Sized + Send + Sync + 'static {
         Self::generate(seed)
     }
 
-    /// Try to find quality of the proof at `challenge_index` if proof exists
-    fn find_quality(&self, challenge_index: u32) -> Option<Self::Quality<'_>>;
+    /// Try to find proof at `challenge_index` if it exists
+    fn find_proof(&self, challenge_index: u32) -> Option<PosProof>;
 
     /// Check whether proof created earlier is valid and return quality bytes if yes
-    fn is_proof_valid(
-        seed: &PosSeed,
-        challenge_index: u32,
-        proof: &PosProof,
-    ) -> Option<PosQualityBytes>;
+    fn is_proof_valid(seed: &PosSeed, challenge_index: u32, proof: &PosProof) -> bool;
 
     /// Returns a stateful table generator with better performance
     fn generator() -> Self::Generator {

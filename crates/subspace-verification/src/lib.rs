@@ -208,13 +208,11 @@ where
     let s_bucket_audit_index = sector_slot_challenge.s_bucket_audit_index();
 
     // Check that proof of space is valid
-    if PosTable::is_proof_valid(
+    if !PosTable::is_proof_valid(
         &sector_id.derive_evaluation_seed(solution.piece_offset, solution.history_size),
         s_bucket_audit_index.into(),
         &solution.proof_of_space,
-    )
-    .is_none()
-    {
+    ) {
         return Err(Error::InvalidProofOfSpace);
     };
 

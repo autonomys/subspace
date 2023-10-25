@@ -4,7 +4,7 @@ use criterion::{black_box, criterion_group, criterion_main, Criterion};
 #[cfg(feature = "parallel")]
 use rayon::ThreadPoolBuilder;
 use subspace_core_primitives::PosSeed;
-use subspace_proof_of_space::{Quality, Table, TableGenerator};
+use subspace_proof_of_space::{Table, TableGenerator};
 
 fn pos_bench<PosTable>(
     c: &mut Criterion,
@@ -49,37 +49,31 @@ fn pos_bench<PosTable>(
 
     let table = generator_instance.generate(&seed);
 
-    group.bench_function("quality/no-solution", |b| {
+    group.bench_function("proof/missing", |b| {
         b.iter(|| {
             assert!(table
-                .find_quality(black_box(challenge_index_without_solution))
+                .find_proof(black_box(challenge_index_without_solution))
                 .is_none());
         });
     });
 
-    group.bench_function("quality/solution", |b| {
+    group.bench_function("proof/present", |b| {
         b.iter(|| {
             assert!(table
-                .find_quality(black_box(challenge_index_with_solution))
+                .find_proof(black_box(challenge_index_with_solution))
                 .is_some());
         });
     });
 
-    let quality = table.find_quality(challenge_index_with_solution).unwrap();
-
-    group.bench_function("proof", |b| {
-        b.iter(|| {
-            quality.create_proof();
-        });
-    });
-
-    let proof = quality.create_proof();
+    let proof = table.find_proof(challenge_index_with_solution).unwrap();
 
     group.bench_function("verification", |b| {
         b.iter(|| {
-            assert!(
-                PosTable::is_proof_valid(&seed, challenge_index_with_solution, &proof).is_some()
-            );
+            assert!(PosTable::is_proof_valid(
+                &seed,
+                challenge_index_with_solution,
+                &proof
+            ));
         });
     });
     group.finish();
