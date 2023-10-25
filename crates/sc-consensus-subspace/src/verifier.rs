@@ -4,6 +4,7 @@ use crate::Error;
 use futures::lock::Mutex;
 use log::{debug, info, trace, warn};
 use rand::prelude::*;
+use rayon::prelude::*;
 use sc_client_api::backend::AuxStore;
 use sc_consensus::block_import::BlockImportParams;
 use sc_consensus::import_queue::Verifier;
@@ -26,6 +27,7 @@ use sp_consensus_subspace::{
 };
 use sp_runtime::traits::NumberFor;
 use sp_runtime::{DigestItem, Justifications};
+use std::iter;
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::sync::atomic::{AtomicU32, Ordering};
@@ -279,10 +281,8 @@ where
                 return Err(VerificationError::MissingSubspaceJustification);
             };
 
-            let SubspaceJustification::PotCheckpoints {
-                mut seed,
-                checkpoints,
-            } = subspace_justification;
+            let SubspaceJustification::PotCheckpoints { seed, checkpoints } =
+                subspace_justification;
 
             // Last checkpoint must be our future proof of time, this is how we anchor the rest of
             // checks together
@@ -293,12 +293,12 @@ where
             }
 
             let future_slot = slot + self.chain_constants.block_authoring_delay();
-            let mut slot_to_check = Slot::from(
+            let slot_to_check = Slot::from(
                 future_slot
                     .checked_sub(checkpoints.len() as u64 - 1)
                     .ok_or(VerificationError::InvalidProofOfTime)?,
             );
-            let mut slot_iterations = subspace_digest_items
+            let slot_iterations = subspace_digest_items
                 .pot_parameters_change
                 .as_ref()
                 .and_then(|parameters_change| {
@@ -307,40 +307,60 @@ where
                 })
                 .unwrap_or(subspace_digest_items.pot_slot_iterations);
 
-            // All checkpoints must be valid, at least according to the seed included in
-            // justifications
-            for checkpoints in &checkpoints {
-                if full_pot_verification {
-                    // Try to find invalid checkpoints
-                    if !self
-                        .pot_verifier
-                        .verify_checkpoints(seed, slot_iterations, checkpoints)
-                    {
-                        return Err(VerificationError::InvalidProofOfTime);
-                    }
-                } else {
-                    // We inject verified checkpoints in order to avoid full proving when votes
-                    // included in the block will inevitably be verified during block execution
-                    self.pot_verifier.inject_verified_checkpoints(
-                        seed,
-                        slot_iterations,
-                        *checkpoints,
+            let mut pot_input = PotNextSlotInput {
+                slot: slot_to_check,
+                slot_iterations,
+                seed,
+            };
+            // Collect all the data we will use for verification so we can process it in parallel
+            let checkpoints_verification_input = iter::once((
+                pot_input,
+                *checkpoints
+                    .first()
+                    .expect("Not empty, contents was checked above; qed"),
+            ));
+            let checkpoints_verification_input = checkpoints_verification_input
+                .chain(checkpoints.windows(2).map(|checkpoints_pair| {
+                    pot_input = PotNextSlotInput::derive(
+                        pot_input.slot_iterations,
+                        pot_input.slot,
+                        checkpoints_pair[0].output(),
+                        &subspace_digest_items.pot_parameters_change,
                     );
-                }
 
-                let pot_input = PotNextSlotInput::derive(
-                    slot_iterations,
-                    slot_to_check,
-                    checkpoints.output(),
-                    &subspace_digest_items.pot_parameters_change,
-                );
+                    (pot_input, checkpoints_pair[1])
+                }))
+                .collect::<Vec<_>>();
 
-                // TODO: Consider carrying of the whole `PotNextSlotInput` rather than individual
-                //  variables
-                slot_to_check = pot_input.slot;
-                slot_iterations = pot_input.slot_iterations;
-                seed = pot_input.seed;
-            }
+            // All checkpoints must be valid, at least according to the seed included in
+            // justifications, search for the first error
+            let pot_verifier = &self.pot_verifier;
+            checkpoints_verification_input
+                .into_par_iter()
+                .find_map_first(|(pot_input, checkpoints)| {
+                    if full_pot_verification {
+                        // Try to find invalid checkpoints
+                        if !pot_verifier.verify_checkpoints(
+                            pot_input.seed,
+                            pot_input.slot_iterations,
+                            &checkpoints,
+                        ) {
+                            return Some(VerificationError::InvalidProofOfTime);
+                        }
+                    } else {
+                        // We inject verified checkpoints in order to avoid full proving when votes
+                        // included in the block will inevitably be verified during block execution
+                        pot_verifier.inject_verified_checkpoints(
+                            pot_input.seed,
+                            pot_input.slot_iterations,
+                            checkpoints,
+                        );
+                    }
+
+                    // We search for errors
+                    None
+                })
+                .map_or(Ok(()), Err)?;
         }
 
         // Verify that block is signed properly
@@ -451,15 +471,7 @@ where
     SN: Fn() -> Slot + Send + Sync + 'static,
 {
     fn verification_concurrency(&self) -> NonZeroUsize {
-        available_parallelism()
-            .ok()
-            .and_then(|concurrency| {
-                // Multiply by two because with optimistic verification we will not actually spend a
-                // lot of CPU time verifying blocks, increasing this will help with CPU utilization
-                // and will make sync faster
-                concurrency.checked_mul(NonZeroUsize::new(2).expect("Not zero; qed"))
-            })
-            .unwrap_or(NonZeroUsize::new(1).expect("Not zero; qed"))
+        available_parallelism().unwrap_or(NonZeroUsize::new(1).expect("Not zero; qed"))
     }
 
     async fn verify(
