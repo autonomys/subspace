@@ -20,7 +20,6 @@
 #![recursion_limit = "256"]
 
 mod domains;
-mod feed_processor;
 mod fees;
 mod object_mapping;
 mod signed_extensions;
@@ -29,14 +28,13 @@ mod signed_extensions;
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
-use crate::feed_processor::feed_processor;
-pub use crate::feed_processor::FeedProcessorKind;
 use crate::fees::{OnChargeTransaction, TransactionByteFee};
 use crate::object_mapping::extract_block_object_mapping;
 use crate::signed_extensions::{CheckStorageAccess, DisablePallets};
 use codec::{Decode, Encode, MaxEncodedLen};
 use core::mem;
 use core::num::NonZeroU64;
+use domain_runtime_primitives::opaque::Header as DomainHeader;
 use domain_runtime_primitives::{
     BlockNumber as DomainNumber, Hash as DomainHash, MultiAccountId, TryConvertBack,
 };
@@ -47,7 +45,6 @@ use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
 use frame_support::{construct_runtime, parameter_types, PalletId};
 use frame_system::limits::{BlockLength, BlockWeights};
 use frame_system::EnsureNever;
-use pallet_feeds::feed_processor::FeedProcessor;
 pub use pallet_subspace::AllowAuthoringBy;
 use pallet_transporter::EndpointHandler;
 use scale_info::TypeInfo;
@@ -62,8 +59,8 @@ use sp_core::storage::StateVersion;
 use sp_core::{OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
-    DomainId, DomainInstanceData, DomainsHoldIdentifier, OperatorId, OperatorPublicKey,
-    StakingHoldIdentifier,
+    DomainId, DomainInstanceData, DomainsHoldIdentifier, ExecutionReceipt, OperatorId,
+    OperatorPublicKey, StakingHoldIdentifier,
 };
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
@@ -89,7 +86,7 @@ use subspace_core_primitives::{
 };
 use subspace_runtime_primitives::{
     AccountId, Balance, BlockNumber, FindBlockRewardAddress, Hash, Moment, Nonce, Signature,
-    MIN_REPLICATION_FACTOR, SHANNON, SSC, STORAGE_FEES_ESCROW_BLOCK_REWARD,
+    SlowAdjustingFeeUpdate, MIN_REPLICATION_FACTOR, SHANNON, SSC, STORAGE_FEES_ESCROW_BLOCK_REWARD,
     STORAGE_FEES_ESCROW_BLOCK_TAX,
 };
 
@@ -486,7 +483,7 @@ impl pallet_transaction_payment::Config for Runtime {
     type OperationalFeeMultiplier = ConstU8<5>;
     type WeightToFee = IdentityFee<Balance>;
     type LengthToFee = ConstantMultiplier<Balance, TransactionByteFee>;
-    type FeeMultiplierUpdate = ();
+    type FeeMultiplierUpdate = SlowAdjustingFeeUpdate<Runtime>;
 }
 
 impl pallet_utility::Config for Runtime {
@@ -616,13 +613,13 @@ parameter_types! {
     pub const StakeEpochDuration: DomainNumber = 100;
     pub TreasuryAccount: AccountId = PalletId(*b"treasury").into_account_truncating();
     pub const MaxPendingStakingOperation: u32 = 100;
+    pub const MaxNominators: u32 = 100;
 }
 
 impl pallet_domains::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type DomainNumber = DomainNumber;
     type DomainHash = DomainHash;
-    type DomainHashing = BlakeTwo256;
+    type DomainHeader = sp_runtime::generic::Header<DomainNumber, BlakeTwo256>;
     type ConfirmationDepthK = ConfirmationDepthK;
     type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
     type Currency = Balances;
@@ -642,6 +639,7 @@ impl pallet_domains::Config for Runtime {
     type StakeEpochDuration = StakeEpochDuration;
     type TreasuryAccount = TreasuryAccount;
     type MaxPendingStakingOperation = MaxPendingStakingOperation;
+    type MaxNominators = MaxNominators;
     type Randomness = Subspace;
 }
 
@@ -667,34 +665,6 @@ impl pallet_rewards::Config for Runtime {
     type FindVotingRewardAddresses = Subspace;
     type WeightInfo = ();
     type OnReward = StakingOnReward;
-}
-
-pub type FeedId = u64;
-
-parameter_types! {
-    // Limit maximum number of feeds per account
-    pub const MaxFeeds: u32 = 100;
-}
-
-impl pallet_feeds::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
-    type FeedId = FeedId;
-    type FeedProcessorKind = FeedProcessorKind;
-    type MaxFeeds = MaxFeeds;
-
-    fn feed_processor(
-        feed_processor_kind: Self::FeedProcessorKind,
-    ) -> Box<dyn FeedProcessor<Self::FeedId>> {
-        feed_processor(feed_processor_kind)
-    }
-}
-
-impl pallet_grandpa_finality_verifier::Config for Runtime {
-    type ChainId = FeedId;
-}
-
-impl pallet_object_store::Config for Runtime {
-    type RuntimeEvent = RuntimeEvent;
 }
 
 impl pallet_runtime_configs::Config for Runtime {
@@ -730,9 +700,6 @@ construct_runtime!(
         TransactionPayment: pallet_transaction_payment = 7,
         Utility: pallet_utility = 8,
 
-        Feeds: pallet_feeds = 9,
-        GrandpaFinalityVerifier: pallet_grandpa_finality_verifier = 10,
-        ObjectStore: pallet_object_store = 11,
         Domains: pallet_domains = 12,
         RuntimeConfigs: pallet_runtime_configs = 14,
 
@@ -919,7 +886,8 @@ impl_runtime_apis! {
         }
 
         fn validated_object_call_hashes() -> Vec<Hash> {
-            Feeds::successful_puts()
+            // No pallets produce objects right now
+            Vec::new()
         }
     }
 
@@ -1011,17 +979,9 @@ impl_runtime_apis! {
         }
     }
 
-    impl sp_domains::transaction::PreValidationObjectApi<Block, DomainNumber, DomainHash, > for Runtime {
-        fn extract_pre_validation_object(
-            extrinsic: <Block as BlockT>::Extrinsic,
-        ) -> sp_domains::transaction::PreValidationObject<Block, DomainNumber, DomainHash> {
-            crate::domains::extract_pre_validation_object(extrinsic)
-        }
-    }
-
-    impl sp_domains::DomainsApi<Block, DomainNumber, DomainHash> for Runtime {
+    impl sp_domains::DomainsApi<Block, DomainHeader> for Runtime {
         fn submit_bundle_unsigned(
-            opaque_bundle: sp_domains::OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainNumber, DomainHash, Balance>,
+            opaque_bundle: sp_domains::OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, Balance>,
         ) {
             Domains::submit_bundle_unsigned(opaque_bundle)
         }
@@ -1029,7 +989,7 @@ impl_runtime_apis! {
         fn extract_successful_bundles(
             domain_id: DomainId,
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> sp_domains::OpaqueBundles<Block, DomainNumber, DomainHash, Balance> {
+        ) -> sp_domains::OpaqueBundles<Block, DomainHeader, Balance> {
             crate::domains::extract_successful_bundles(domain_id, extrinsics)
         }
 
@@ -1087,6 +1047,10 @@ impl_runtime_apis! {
 
         fn domain_state_root(domain_id: DomainId, number: DomainNumber, hash: DomainHash) -> Option<DomainHash>{
             Domains::domain_state_root(domain_id, number, hash)
+        }
+
+        fn execution_receipt(receipt_hash: DomainHash) -> Option<ExecutionReceipt<NumberFor<Block>, <Block as BlockT>::Hash, DomainNumber, DomainHash, Balance>> {
+            Domains::execution_receipt(receipt_hash)
         }
     }
 
@@ -1225,5 +1189,16 @@ impl_runtime_apis! {
 
             Ok(batches)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{Runtime, SubspaceBlockWeights as BlockWeights};
+    use subspace_runtime_primitives::tests_utils::FeeMultiplierUtils;
+
+    #[test]
+    fn multiplier_can_grow_from_zero() {
+        FeeMultiplierUtils::<Runtime, BlockWeights>::multiplier_can_grow_from_zero()
     }
 }

@@ -4,14 +4,13 @@ use crate::domain_block_processor::{
 use crate::{DomainParentChain, ExecutionReceiptFor};
 use domain_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_block_preprocessor::DomainBlockPreprocessor;
-use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
+use domain_runtime_primitives::DomainCoreApi;
 use sc_client_api::{AuxStore, BlockBackend, Finalizer, ProofProvider};
 use sc_consensus::{BlockImportParams, ForkChoiceStrategy, StateAction};
 use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::BlockOrigin;
 use sp_core::traits::CodeExecutor;
-use sp_core::H256;
 use sp_domain_digests::AsPredigest;
 use sp_domains::{DomainId, DomainsApi, ReceiptValidity};
 use sp_keystore::KeystorePtr;
@@ -129,7 +128,6 @@ where
     CBlock: BlockT,
     NumberFor<CBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
     CBlock::Hash: From<Block::Hash>,
-    Block::Hash: Into<H256>,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + AuxStore
@@ -139,7 +137,6 @@ where
         + 'static,
     Client::Api: DomainCoreApi<Block>
         + MessengerApi<Block, NumberFor<Block>>
-        + InherentExtrinsicApi<Block>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<Block>,
     CClient: HeaderBackend<CBlock>
@@ -148,9 +145,8 @@ where
         + ProofProvider<CBlock>
         + ProvideRuntimeApi<CBlock>
         + 'static,
-    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>
-        + MessengerApi<CBlock, NumberFor<CBlock>>
-        + 'static,
+    CClient::Api:
+        DomainsApi<CBlock, Block::Header> + MessengerApi<CBlock, NumberFor<CBlock>> + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
     E: CodeExecutor,
 {
@@ -283,7 +279,7 @@ where
             return Ok(None);
         };
 
-        let digest = Digest {
+        let inherent_digests = Digest {
             logs: vec![DigestItem::consensus_block_info(consensus_block_hash)],
         };
 
@@ -293,7 +289,7 @@ where
                 (consensus_block_hash, consensus_block_number),
                 (parent_hash, parent_number),
                 preprocess_result,
-                digest,
+                inherent_digests,
             )
             .await?;
 
@@ -319,7 +315,8 @@ where
             .check_state_transition(consensus_block_hash)?;
 
         self.domain_receipts_checker
-            .submit_fraud_proof(consensus_block_hash)?;
+            .submit_fraud_proof(consensus_block_hash)
+            .await?;
 
         Ok(Some(built_block_info))
     }

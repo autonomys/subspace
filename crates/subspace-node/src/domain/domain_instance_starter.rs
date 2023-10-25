@@ -137,6 +137,7 @@ impl DomainInstanceStarter {
                     gossip_message_sink,
                     domain_message_receiver,
                     provider: eth_provider,
+                    skip_empty_bundle_production: true,
                 };
 
                 let mut domain_node = domain_service::new_full::<

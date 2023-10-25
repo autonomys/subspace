@@ -1,4 +1,4 @@
-mod farming;
+pub mod farming;
 pub mod piece_cache;
 pub mod piece_reader;
 mod plotting;
@@ -6,6 +6,8 @@ mod plotting;
 use crate::identity::{Identity, IdentityError};
 use crate::node_client::NodeClient;
 use crate::reward_signing::reward_signing;
+use crate::single_disk_farm::farming::rayon_files::RayonFiles;
+use crate::single_disk_farm::farming::sync_fallback::SyncPlotAudit;
 pub use crate::single_disk_farm::farming::FarmingError;
 use crate::single_disk_farm::farming::{farming, slot_notification_forwarder, FarmingOptions};
 use crate::single_disk_farm::piece_cache::{DiskPieceCache, DiskPieceCacheError};
@@ -19,9 +21,8 @@ use async_lock::RwLock;
 use derive_more::{Display, From};
 use event_listener_primitives::{Bag, HandlerId};
 use futures::channel::{mpsc, oneshot};
-use futures::future::{select, Either};
 use futures::stream::FuturesUnordered;
-use futures::StreamExt;
+use futures::{select, FutureExt, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use rayon::prelude::*;
@@ -262,6 +263,8 @@ pub struct SingleDiskFarmOptions<NC, PG> {
     /// Semaphore for part of the plotting when farmer encodes downloaded sector, should typically
     /// allow one permit at a time for efficient CPU utilization
     pub encoding_semaphore: Arc<Semaphore>,
+    /// Whether to farm during initial plotting
+    pub farm_during_initial_plotting: bool,
     /// Thread pool size used for farming (mostly for blocking I/O, but also for some
     /// compute-intensive operations during proving)
     pub farming_thread_pool_size: usize,
@@ -270,6 +273,9 @@ pub struct SingleDiskFarmOptions<NC, PG> {
     /// Thread pool used for replotting, typically smaller pool than for plotting to not affect
     /// farming as much
     pub replotting_thread_pool: Arc<ThreadPool>,
+    /// Notification for plotter to start, can be used to delay plotting until some initialization
+    /// has happened externally
+    pub plotting_delay: Option<oneshot::Receiver<()>>,
 }
 
 /// Errors happening when trying to create/open single disk farm
@@ -556,13 +562,13 @@ impl Drop for SingleDiskFarm {
 }
 
 impl SingleDiskFarm {
-    const PLOT_FILE: &'static str = "plot.bin";
-    const METADATA_FILE: &'static str = "metadata.bin";
+    pub const PLOT_FILE: &'static str = "plot.bin";
+    pub const METADATA_FILE: &'static str = "metadata.bin";
     const SUPPORTED_PLOT_VERSION: u8 = 0;
 
     /// Create new single disk farm instance
     ///
-    /// NOTE: Thought this function is async, it will do some blocking I/O.
+    /// NOTE: Though this function is async, it will do some blocking I/O.
     pub async fn new<NC, PG, PosTable>(
         options: SingleDiskFarmOptions<NC, PG>,
         disk_farm_index: usize,
@@ -590,6 +596,8 @@ impl SingleDiskFarm {
             farming_thread_pool_size,
             plotting_thread_pool,
             replotting_thread_pool,
+            plotting_delay,
+            farm_during_initial_plotting,
         } = options;
         fs::create_dir_all(&directory)?;
 
@@ -849,6 +857,13 @@ impl SingleDiskFarm {
         let sectors_indices_left_to_plot =
             metadata_header.plotted_sector_count..target_sector_count;
 
+        let (farming_delay_sender, delay_farmer_receiver) = if farm_during_initial_plotting {
+            (None, None)
+        } else {
+            let (sender, receiver) = oneshot::channel();
+            (Some(sender), Some(receiver))
+        };
+
         let span = info_span!("single_disk_farm", %disk_farm_index);
 
         let plotting_join_handle = thread::Builder::new()
@@ -869,11 +884,17 @@ impl SingleDiskFarm {
                     let _tokio_handle_guard = handle.enter();
                     let _span_guard = span.enter();
 
-                    // Initial plotting
-                    let initial_plotting_fut = async move {
+                    let plotting_fut = async move {
                         if start_receiver.recv().await.is_err() {
                             // Dropped before starting
-                            return Ok(());
+                            return;
+                        }
+
+                        if let Some(plotting_delay) = plotting_delay {
+                            if plotting_delay.await.is_err() {
+                                // Dropped before resolving
+                                return;
+                            }
                         }
 
                         let plotting_options = PlottingOptions {
@@ -896,22 +917,30 @@ impl SingleDiskFarm {
                             encoding_semaphore,
                             plotting_thread_pool,
                             replotting_thread_pool,
+                            stop_receiver: stop_receiver.resubscribe(),
                         };
-                        plotting::<_, _, PosTable>(plotting_options).await
-                    };
 
-                    let initial_plotting_result = handle.block_on(select(
-                        Box::pin(initial_plotting_fut),
-                        Box::pin(stop_receiver.recv()),
-                    ));
+                        let plotting_fut = plotting::<_, _, PosTable>(plotting_options);
 
-                    if let Either::Left((Err(error), _)) = initial_plotting_result {
-                        if let Some(error_sender) = error_sender.lock().take() {
-                            if let Err(error) = error_sender.send(error.into()) {
-                                error!(%error, "Plotting failed to send error to background task");
+                        select! {
+                            plotting_result = plotting_fut.fuse() => {
+                                if let Err(error) = plotting_result
+                                    && let Some(error_sender) = error_sender.lock().take()
+                                    && let Err(error) = error_sender.send(error.into())
+                                {
+                                    error!(
+                                        %error,
+                                        "Plotting failed to send error to background task"
+                                    );
+                                }
+                            }
+                            _ = stop_receiver.recv().fuse() => {
+                                // Nothing, just exit
                             }
                         }
-                    }
+                    };
+
+                    handle.block_on(plotting_fut);
                 }
             })?;
 
@@ -924,6 +953,7 @@ impl SingleDiskFarm {
             node_client: node_client.clone(),
             sectors_metadata: Arc::clone(&sectors_metadata),
             sectors_to_plot_sender,
+            initial_plotting_finished: farming_delay_sender,
         };
         tasks.push(Box::pin(plotting_scheduler(plotting_scheduler_options)));
 
@@ -942,7 +972,6 @@ impl SingleDiskFarm {
         let farming_join_handle = thread::Builder::new()
             .name(format!("farming-{disk_farm_index}"))
             .spawn({
-                let plot_file = Arc::clone(&plot_file);
                 let handle = handle.clone();
                 let erasure_coding = erasure_coding.clone();
                 let handlers = Arc::clone(&handlers);
@@ -988,12 +1017,21 @@ impl SingleDiskFarm {
                                 return Ok(());
                             }
 
+                            if let Some(farming_delay) = delay_farmer_receiver {
+                                if farming_delay.await.is_err() {
+                                    // Dropped before resolving
+                                    return Ok(());
+                                }
+                            }
+
+                            let plot = RayonFiles::open(&directory.join(Self::PLOT_FILE))?;
+                            let plot_audit = &SyncPlotAudit::new(&plot);
+
                             let farming_options = FarmingOptions {
                                 public_key,
                                 reward_address,
                                 node_client,
-                                sector_size,
-                                plot_file: &plot_file,
+                                plot_audit,
                                 sectors_metadata,
                                 kzg,
                                 erasure_coding,
@@ -1001,24 +1039,27 @@ impl SingleDiskFarm {
                                 modifying_sector_index,
                                 slot_info_notifications: slot_info_forwarder_receiver,
                             };
-                            farming::<PosTable, _>(farming_options).await
+                            farming::<PosTable, _, _>(farming_options).await
                         };
 
-                        let farming_result = handle.block_on(select(
-                            Box::pin(farming_fut),
-                            Box::pin(stop_receiver.recv()),
-                        ));
-
-                        if let Either::Left((Err(error), _)) = farming_result {
-                            if let Some(error_sender) = error_sender.lock().take() {
-                                if let Err(error) = error_sender.send(error.into()) {
-                                    error!(
-                                        %error,
-                                        "Farming failed to send error to background task",
-                                    );
+                        handle.block_on(async {
+                            select! {
+                                farming_result = farming_fut.fuse() => {
+                                    if let Err(error) = farming_result
+                                        && let Some(error_sender) = error_sender.lock().take()
+                                        && let Err(error) = error_sender.send(error.into())
+                                    {
+                                        error!(
+                                            %error,
+                                            "Farming failed to send error to background task",
+                                        );
+                                    }
+                                }
+                                _ = stop_receiver.recv().fuse() => {
+                                    // Nothing, just exit
                                 }
                             }
-                        }
+                        });
                     })
                 }
             })?;
@@ -1041,10 +1082,16 @@ impl SingleDiskFarm {
                 move || {
                     let _tokio_handle_guard = handle.enter();
 
-                    handle.block_on(select(
-                        Box::pin(reading_fut),
-                        Box::pin(stop_receiver.recv()),
-                    ));
+                    handle.block_on(async {
+                        select! {
+                            _ = reading_fut.fuse() => {
+                                // Nothing, just exit
+                            }
+                            _ = stop_receiver.recv().fuse() => {
+                                // Nothing, just exit
+                            }
+                        }
+                    });
                 }
             })?;
 
@@ -1091,6 +1138,60 @@ impl SingleDiskFarm {
             info: single_disk_farm_info,
             directory,
         }
+    }
+
+    /// Read all sectors metadata
+    pub fn read_all_sectors_metadata(
+        directory: &Path,
+    ) -> io::Result<Vec<SectorMetadataChecksummed>> {
+        let mut metadata_file = OpenOptions::new()
+            .read(true)
+            .open(directory.join(Self::METADATA_FILE))?;
+
+        let metadata_size = metadata_file.seek(SeekFrom::End(0))?;
+        let sector_metadata_size = SectorMetadataChecksummed::encoded_size();
+
+        let mut metadata_header_bytes = vec![0; PlotMetadataHeader::encoded_size()];
+        metadata_file.read_exact_at(&mut metadata_header_bytes, 0)?;
+
+        let metadata_header = PlotMetadataHeader::decode(&mut metadata_header_bytes.as_ref())
+            .map_err(|error| {
+                io::Error::new(
+                    io::ErrorKind::Other,
+                    format!("Failed to decode metadata header: {}", error),
+                )
+            })?;
+
+        if metadata_header.version != SingleDiskFarm::SUPPORTED_PLOT_VERSION {
+            return Err(io::Error::new(
+                io::ErrorKind::Other,
+                format!("Unsupported metadata version {}", metadata_header.version),
+            ));
+        }
+
+        let mut sectors_metadata = Vec::<SectorMetadataChecksummed>::with_capacity(
+            ((metadata_size - RESERVED_PLOT_METADATA) / sector_metadata_size as u64) as usize,
+        );
+
+        let mut sector_metadata_bytes = vec![0; sector_metadata_size];
+        for sector_index in 0..metadata_header.plotted_sector_count {
+            metadata_file.read_exact_at(
+                &mut sector_metadata_bytes,
+                RESERVED_PLOT_METADATA + sector_metadata_size as u64 * u64::from(sector_index),
+            )?;
+            sectors_metadata.push(
+                SectorMetadataChecksummed::decode(&mut sector_metadata_bytes.as_ref()).map_err(
+                    |error| {
+                        io::Error::new(
+                            io::ErrorKind::Other,
+                            format!("Failed to decode sector metadata: {}", error),
+                        )
+                    },
+                )?,
+            );
+        }
+
+        Ok(sectors_metadata)
     }
 
     /// ID of this farm
@@ -1167,7 +1268,7 @@ impl SingleDiskFarm {
     }
 
     /// Run and wait for background threads to exit or return an error
-    pub async fn run(mut self) -> anyhow::Result<()> {
+    pub async fn run(mut self) -> anyhow::Result<SingleDiskFarmId> {
         if let Some(start_sender) = self.start_sender.take() {
             // Do not care if anyone is listening on the other side
             let _ = start_sender.send(());
@@ -1177,7 +1278,7 @@ impl SingleDiskFarm {
             result?;
         }
 
-        Ok(())
+        Ok(*self.id())
     }
 
     /// Wipe everything that belongs to this single disk farm

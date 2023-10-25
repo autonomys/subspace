@@ -28,19 +28,15 @@ pub mod dsn;
 mod metrics;
 pub mod rpc;
 mod sync_from_dsn;
-pub mod tx_pre_validator;
 
 use crate::dsn::{create_dsn_instance, DsnConfigurationError};
 use crate::metrics::NodeMetrics;
-use crate::tx_pre_validator::ConsensusChainTxPreValidator;
 use core::sync::atomic::{AtomicU32, Ordering};
 use cross_domain_message_gossip::cdm_gossip_peers_set_config;
-use domain_runtime_primitives::opaque::Block as DomainBlock;
-use domain_runtime_primitives::{BlockNumber as DomainNumber, Hash as DomainHash};
+use domain_runtime_primitives::opaque::{Block as DomainBlock, Header as DomainHeader};
 pub use dsn::DsnConfig;
 use frame_system_rpc_runtime_api::AccountNonceApi;
 use futures::channel::oneshot;
-use futures::executor::block_on;
 use futures::FutureExt;
 use jsonrpsee::RpcModule;
 use pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi;
@@ -69,6 +65,7 @@ use sc_subspace_block_relay::{
     build_consensus_relay, BlockRelayConfigurationError, NetworkWrapper,
 };
 use sc_telemetry::{Telemetry, TelemetryWorker};
+use sc_transaction_pool::FullPool;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
@@ -80,7 +77,6 @@ use sp_consensus_subspace::{
 };
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
 use sp_core::H256;
-use sp_domains::transaction::PreValidationObjectApi;
 use sp_domains::DomainsApi;
 use sp_domains_fraud_proof::{FraudProofExtension, FraudProofHostFunctionsImpl};
 use sp_externalities::Extensions;
@@ -97,15 +93,13 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{PotSeed, REWARD_SIGNING_CONTEXT};
-use subspace_fraud_proof::verifier_api::VerifierClient;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::Node;
 use subspace_proof_of_space::Table;
 use subspace_runtime_primitives::opaque::Block;
-use subspace_runtime_primitives::{AccountId, Balance, Hash, Nonce};
-use subspace_transaction_pool::{FullPool, PreValidateTransaction};
+use subspace_runtime_primitives::{AccountId, Balance, Nonce};
 use tracing::{debug, error, info, Instrument};
 
 // There are multiple places where it is assumed that node is running on 64-bit system, refuse to
@@ -114,7 +108,7 @@ const_assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<u64>());
 
 /// This is over 15 minutes of slots assuming there are no forks, should be both sufficient and not
 /// too large to handle
-const POT_VERIFIER_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(10_000).expect("Not zero; qed");
+const POT_VERIFIER_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(30_000).expect("Not zero; qed");
 const SYNC_TARGET_UPDATE_INTERVAL: Duration = Duration::from_secs(1);
 
 /// Error type for Subspace service.
@@ -163,30 +157,6 @@ pub type FullClient<RuntimeApi, ExecutorDispatch> =
 
 pub type FullBackend = sc_service::TFullBackend<Block>;
 pub type FullSelectChain = sc_consensus::LongestChain<FullBackend, Block>;
-
-pub type InvalidTransactionProofVerifier<RuntimeApi, ExecutorDispatch> =
-    subspace_fraud_proof::invalid_transaction_proof::InvalidTransactionProofVerifier<
-        Block,
-        FullClient<RuntimeApi, ExecutorDispatch>,
-        Hash,
-        NativeElseWasmExecutor<ExecutorDispatch>,
-        VerifierClient<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
-    >;
-
-pub type InvalidStateTransitionProofVerifier<RuntimeApi, ExecutorDispatch> =
-    subspace_fraud_proof::invalid_state_transition_proof::InvalidStateTransitionProofVerifier<
-        Block,
-        FullClient<RuntimeApi, ExecutorDispatch>,
-        NativeElseWasmExecutor<ExecutorDispatch>,
-        Hash,
-        VerifierClient<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
-    >;
-
-pub type FraudProofVerifier<RuntimeApi, ExecutorDispatch> = subspace_fraud_proof::ProofVerifier<
-    Block,
-    InvalidTransactionProofVerifier<RuntimeApi, ExecutorDispatch>,
-    InvalidStateTransitionProofVerifier<RuntimeApi, ExecutorDispatch>,
->;
 
 /// Subspace networking instantiation variant
 #[derive(Debug)]
@@ -244,10 +214,15 @@ where
     Block: BlockT,
     Block::Hash: From<H256>,
     DomainBlock: BlockT,
-    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + 'static,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey>
-        + DomainsApi<Block, NumberFor<DomainBlock>, DomainBlock::Hash>,
-    ExecutorDispatch: CodeExecutor,
+    DomainBlock::Hash: Into<H256> + From<H256>,
+    Client: BlockBackend<Block>
+        + HeaderBackend<Block>
+        + ProvideRuntimeApi<Block>
+        + Send
+        + Sync
+        + 'static,
+    Client::Api: SubspaceApi<Block, FarmerPublicKey> + DomainsApi<Block, DomainBlock::Header>,
+    ExecutorDispatch: CodeExecutor + sc_executor::RuntimeVersionOf,
 {
     fn extensions_for(
         &self,
@@ -261,104 +236,106 @@ where
             let client = Arc::clone(&self.client);
             let pot_verifier = self.pot_verifier.clone();
 
-            Box::new(move |parent_hash, slot, proof_of_time, quick_verification| {
-                let parent_hash = {
-                    let mut converted_parent_hash = Block::Hash::default();
-                    converted_parent_hash.as_mut().copy_from_slice(&parent_hash);
-                    converted_parent_hash
-                };
+            Box::new(
+                move |parent_hash, slot, proof_of_time, quick_verification| {
+                    let parent_hash = {
+                        let mut converted_parent_hash = Block::Hash::default();
+                        converted_parent_hash.as_mut().copy_from_slice(&parent_hash);
+                        converted_parent_hash
+                    };
 
-                let parent_header = match client.header(parent_hash) {
-                    Ok(Some(parent_header)) => parent_header,
-                    Ok(None) => {
-                        error!(
-                            %parent_hash,
-                            "Header not found during proof of time verification"
-                        );
+                    let parent_header = match client.header(parent_hash) {
+                        Ok(Some(parent_header)) => parent_header,
+                        Ok(None) => {
+                            error!(
+                                %parent_hash,
+                                "Header not found during proof of time verification"
+                            );
 
+                            return false;
+                        }
+                        Err(error) => {
+                            error!(
+                                %error,
+                                %parent_hash,
+                                "Failed to retrieve header during proof of time verification"
+                            );
+
+                            return false;
+                        }
+                    };
+                    let parent_pre_digest = match extract_pre_digest(&parent_header) {
+                        Ok(parent_pre_digest) => parent_pre_digest,
+                        Err(error) => {
+                            error!(
+                                %error,
+                                %parent_hash,
+                                parent_number = %parent_header.number(),
+                                "Failed to extract pre-digest from parent header during proof of \
+                                time verification, this must never happen"
+                            );
+
+                            return false;
+                        }
+                    };
+
+                    let parent_slot = parent_pre_digest.slot();
+                    if slot <= *parent_slot {
                         return false;
                     }
-                    Err(error) => {
-                        error!(
-                            %error,
-                            %parent_hash,
-                            "Failed to retrieve header during proof of time verification"
-                        );
 
-                        return false;
+                    let pot_parameters = match client.runtime_api().pot_parameters(parent_hash) {
+                        Ok(pot_parameters) => pot_parameters,
+                        Err(error) => {
+                            debug!(
+                                %error,
+                                %parent_hash,
+                                parent_number = %parent_header.number(),
+                                "Failed to retrieve proof of time parameters during proof of time \
+                                verification"
+                            );
+
+                            return false;
+                        }
+                    };
+
+                    let pot_input = if parent_header.number().is_zero() {
+                        PotNextSlotInput {
+                            slot: parent_slot + Slot::from(1),
+                            slot_iterations: pot_parameters.slot_iterations(),
+                            seed: pot_verifier.genesis_seed(),
+                        }
+                    } else {
+                        let pot_info = parent_pre_digest.pot_info();
+
+                        PotNextSlotInput::derive(
+                            pot_parameters.slot_iterations(),
+                            parent_slot,
+                            pot_info.proof_of_time(),
+                            &pot_parameters.next_parameters_change(),
+                        )
+                    };
+
+                    // Ensure proof of time and future proof of time included in upcoming block are
+                    // valid
+
+                    if quick_verification {
+                        pot_verifier.try_is_output_valid(
+                            pot_input,
+                            Slot::from(slot - u64::from(parent_slot)),
+                            proof_of_time,
+                            pot_parameters.next_parameters_change(),
+                        )
+                    } else {
+                        pot_verifier.is_output_valid(
+                            pot_input,
+                            Slot::from(slot - u64::from(parent_slot)),
+                            proof_of_time,
+                            pot_parameters.next_parameters_change(),
+                        )
                     }
-                };
-                let parent_pre_digest = match extract_pre_digest(&parent_header) {
-                    Ok(parent_pre_digest) => parent_pre_digest,
-                    Err(error) => {
-                        error!(
-                            %error,
-                            %parent_hash,
-                            parent_number = %parent_header.number(),
-                            "Failed to extract pre-digest from parent header during proof of time \
-                            verification, this must never happen"
-                        );
-
-                        return false;
-                    }
-                };
-
-                let parent_slot = parent_pre_digest.slot();
-                if slot <= *parent_slot {
-                    return false;
-                }
-
-                let pot_parameters = match client.runtime_api().pot_parameters(parent_hash) {
-                    Ok(pot_parameters) => pot_parameters,
-                    Err(error) => {
-                        debug!(
-                            %error,
-                            %parent_hash,
-                            parent_number = %parent_header.number(),
-                            "Failed to retieve proof of time parameters during proof of time \
-                            verification"
-                        );
-
-                        return false;
-                    }
-                };
-
-                let pot_input = if parent_header.number().is_zero() {
-                    PotNextSlotInput {
-                        slot: parent_slot + Slot::from(1),
-                        slot_iterations: pot_parameters.slot_iterations(),
-                        seed: pot_verifier.genesis_seed(),
-                    }
-                } else {
-                    let pot_info = parent_pre_digest.pot_info();
-
-                    PotNextSlotInput::derive(
-                        pot_parameters.slot_iterations(),
-                        parent_slot,
-                        pot_info.proof_of_time(),
-                        &pot_parameters.next_parameters_change(),
-                    )
-                };
-
-                // Ensure proof of time and future proof of time included in upcoming block are
-                // valid
-
-                if quick_verification {
-                    block_on(pot_verifier.try_is_output_valid(
-                        pot_input,
-                        Slot::from(slot - u64::from(parent_slot)),
-                        proof_of_time,
-                        pot_parameters.next_parameters_change(),
-                    ))
-                } else {
-                    block_on(pot_verifier.is_output_valid(
-                        pot_input,
-                        Slot::from(slot - u64::from(parent_slot)),
-                        proof_of_time,
-                        pot_parameters.next_parameters_change(),
-                    ))
-                }
-            })
+                },
+            )
         }));
 
         exts.register(FraudProofExtension::new(Arc::new(
@@ -400,15 +377,7 @@ type PartialComponents<RuntimeApi, ExecutorDispatch> = sc_service::PartialCompon
     FullBackend,
     FullSelectChain,
     DefaultImportQueue<Block>,
-    FullPool<
-        Block,
-        FullClient<RuntimeApi, ExecutorDispatch>,
-        ConsensusChainTxPreValidator<
-            Block,
-            FullClient<RuntimeApi, ExecutorDispatch>,
-            FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
-        >,
-    >,
+    FullPool<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
     OtherPartialComponents<RuntimeApi, ExecutorDispatch>,
 >;
 
@@ -431,9 +400,8 @@ where
         + SessionKeys<Block>
         + TaggedTransactionQueue<Block>
         + SubspaceApi<Block, FarmerPublicKey>
-        + DomainsApi<Block, DomainNumber, DomainHash>
-        + ObjectsApi<Block>
-        + PreValidationObjectApi<Block, DomainNumber, DomainHash>,
+        + DomainsApi<Block, DomainHeader>
+        + ObjectsApi<Block>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
     let telemetry = config
@@ -465,12 +433,6 @@ where
         POT_VERIFIER_CACHE_SIZE,
     );
 
-    let invalid_state_transition_proof_verifier = InvalidStateTransitionProofVerifier::new(
-        client.clone(),
-        executor.clone(),
-        VerifierClient::new(client.clone()),
-    );
-
     let executor = Arc::new(executor);
 
     client
@@ -492,33 +454,16 @@ where
 
     let select_chain = sc_consensus::LongestChain::new(backend.clone());
 
-    let invalid_transaction_proof_verifier = InvalidTransactionProofVerifier::new(
+    let transaction_pool = sc_transaction_pool::BasicPool::new_full(
+        config.transaction_pool.clone(),
+        config.role.is_authority().into(),
+        config.prometheus_registry(),
+        task_manager.spawn_essential_handle(),
         client.clone(),
-        executor.clone(),
-        VerifierClient::new(client.clone()),
-    );
-
-    let proof_verifier = subspace_fraud_proof::ProofVerifier::new(
-        Arc::new(invalid_transaction_proof_verifier),
-        Arc::new(invalid_state_transition_proof_verifier),
-    );
-
-    let tx_pre_validator = ConsensusChainTxPreValidator::new(
-        client.clone(),
-        Box::new(task_manager.spawn_handle()),
-        proof_verifier.clone(),
-    );
-    let transaction_pool = subspace_transaction_pool::new_full(
-        config,
-        &task_manager,
-        client.clone(),
-        tx_pre_validator,
     );
 
     let segment_headers_store = SegmentHeadersStore::new(client.clone())
         .map_err(|error| ServiceError::Application(error.into()))?;
-    let fraud_proof_block_import =
-        sc_consensus_fraud_proof::block_import(client.clone(), client.clone(), proof_verifier);
 
     let (block_import, subspace_link) = sc_consensus_subspace::block_import::<
         PosTable,
@@ -529,7 +474,7 @@ where
         _,
     >(
         sc_consensus_subspace::slot_duration(&*client)?,
-        fraud_proof_block_import,
+        client.clone(),
         client.clone(),
         kzg.clone(),
         {
@@ -614,7 +559,7 @@ where
 }
 
 /// Full node along with some other components.
-pub struct NewFull<Client, TxPreValidator>
+pub struct NewFull<Client>
 where
     Client: ProvideRuntimeApi<Block>
         + BlockBackend<Block>
@@ -622,10 +567,7 @@ where
         + HeaderBackend<Block>
         + HeaderMetadata<Block, Error = sp_blockchain::Error>
         + 'static,
-    Client::Api: TaggedTransactionQueue<Block>
-        + DomainsApi<Block, DomainNumber, DomainHash>
-        + PreValidationObjectApi<Block, DomainNumber, DomainHash>,
-    TxPreValidator: PreValidateTransaction<Block = Block> + Send + Sync + Clone + 'static,
+    Client::Api: TaggedTransactionQueue<Block> + DomainsApi<Block, DomainHeader>,
 {
     /// Task manager.
     pub task_manager: TaskManager,
@@ -654,17 +596,10 @@ where
     /// Network starter.
     pub network_starter: NetworkStarter,
     /// Transaction pool.
-    pub transaction_pool: Arc<FullPool<Block, Client, TxPreValidator>>,
+    pub transaction_pool: Arc<FullPool<Block, Client>>,
 }
 
-type FullNode<RuntimeApi, ExecutorDispatch> = NewFull<
-    FullClient<RuntimeApi, ExecutorDispatch>,
-    ConsensusChainTxPreValidator<
-        Block,
-        FullClient<RuntimeApi, ExecutorDispatch>,
-        FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
-    >,
->;
+type FullNode<RuntimeApi, ExecutorDispatch> = NewFull<FullClient<RuntimeApi, ExecutorDispatch>>;
 
 /// Builds a new service for a full client.
 pub async fn new_full<PosTable, RuntimeApi, ExecutorDispatch>(
@@ -688,9 +623,8 @@ where
         + TaggedTransactionQueue<Block>
         + TransactionPaymentApi<Block, Balance>
         + SubspaceApi<Block, FarmerPublicKey>
-        + DomainsApi<Block, DomainNumber, DomainHash>
-        + ObjectsApi<Block>
-        + PreValidationObjectApi<Block, DomainNumber, DomainHash>,
+        + DomainsApi<Block, DomainHeader>
+        + ObjectsApi<Block>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
     let PartialComponents {

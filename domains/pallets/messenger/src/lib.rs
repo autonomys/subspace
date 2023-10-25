@@ -105,7 +105,7 @@ mod pallet {
     use frame_support::weights::WeightToFee;
     use frame_system::pallet_prelude::*;
     use sp_core::storage::StorageKey;
-    use sp_domains::verification::{StorageProofVerifier, VerificationError};
+    use sp_domains::proof_provider_and_verifier::{StorageProofVerifier, VerificationError};
     use sp_domains::DomainId;
     use sp_messenger::endpoint::{DomainInfo, Endpoint, EndpointHandler, EndpointRequest, Sender};
     use sp_messenger::messages::{
@@ -865,17 +865,20 @@ mod pallet {
                 .unwrap_or(extracted_state_roots.consensus_chain_state_root);
 
             // verify and decode the message
-            let msg = StorageProofVerifier::<T::Hashing>::verify_and_get_value::<
-                Message<BalanceOf<T>>,
-            >(&state_root, xdm.proof.message_proof.clone(), storage_key)
-            .map_err(|err| {
-                log::error!(
-                    target: "runtime::messenger",
-                    "Failed to verify storage proof: {:?}",
-                    err
-                );
-                TransactionValidityError::Invalid(InvalidTransaction::BadProof)
-            })?;
+            let msg =
+                StorageProofVerifier::<T::Hashing>::get_decoded_value::<Message<BalanceOf<T>>>(
+                    &state_root,
+                    xdm.proof.message_proof.clone(),
+                    storage_key,
+                )
+                .map_err(|err| {
+                    log::error!(
+                        target: "runtime::messenger",
+                        "Failed to verify storage proof: {:?}",
+                        err
+                    );
+                    TransactionValidityError::Invalid(InvalidTransaction::BadProof)
+                })?;
 
             Ok(msg)
         }

@@ -13,7 +13,7 @@ use frame_support::{assert_err, assert_ok};
 use pallet_transporter::Location;
 use sp_core::storage::StorageKey;
 use sp_core::{Blake2Hasher, H256};
-use sp_domains::verification::{StorageProofVerifier, VerificationError};
+use sp_domains::proof_provider_and_verifier::{StorageProofVerifier, VerificationError};
 use sp_messenger::endpoint::{Endpoint, EndpointPayload, EndpointRequest, Sender};
 use sp_messenger::messages::{
     BlockInfo, ChainId, CrossDomainMessage, InitiateChannelParams, Payload, Proof,
@@ -191,7 +191,7 @@ fn test_storage_proof_verification_invalid() {
         message_proof: storage_proof,
     };
     let res: Result<Channel<Balance>, VerificationError> =
-        StorageProofVerifier::<Blake2Hasher>::verify_and_get_value(
+        StorageProofVerifier::<Blake2Hasher>::get_decoded_value(
             &proof.consensus_chain_state_root,
             proof.message_proof,
             StorageKey(vec![]),
@@ -218,7 +218,7 @@ fn test_storage_proof_verification_missing_value() {
         message_proof: storage_proof,
     };
     let res: Result<Channel<Balance>, VerificationError> =
-        StorageProofVerifier::<Blake2Hasher>::verify_and_get_value(
+        StorageProofVerifier::<Blake2Hasher>::get_decoded_value(
             &proof.consensus_chain_state_root,
             proof.message_proof,
             storage_key,
@@ -247,7 +247,7 @@ fn test_storage_proof_verification() {
         message_proof: storage_proof,
     };
     let res: Result<Channel<Balance>, VerificationError> =
-        StorageProofVerifier::<Blake2Hasher>::verify_and_get_value(
+        StorageProofVerifier::<Blake2Hasher>::get_decoded_value(
             &proof.consensus_chain_state_root,
             proof.message_proof,
             storage_key,

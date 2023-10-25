@@ -2,7 +2,9 @@ use crate::sector::{
     sector_record_chunks_size, RecordMetadata, SectorContentsMap, SectorContentsMapFromBytesError,
     SectorMetadataChecksummed,
 };
-use crate::ReadAt;
+use crate::{ReadAt, ReadAtAsync, ReadAtSync};
+use futures::stream::FuturesUnordered;
+use futures::StreamExt;
 use parity_scale_codec::Decode;
 use rayon::prelude::*;
 use std::io;
@@ -84,22 +86,26 @@ pub struct PlotRecord {
     pub witness: RecordWitness,
 }
 
-/// Read sector record chunks, only plotted s-buckets are returned (in decoded form)
-pub fn read_sector_record_chunks<PosTable, Sector>(
+/// Read sector record chunks, only plotted s-buckets are returned (in decoded form).
+///
+/// NOTE: This is an async function, but it also does CPU-intensive operation internally, while it
+/// is not very long, make sure it is okay to do so in your context.
+pub async fn read_sector_record_chunks<PosTable, S, A>(
     piece_offset: PieceOffset,
     pieces_in_sector: u16,
     s_bucket_offsets: &[u32; Record::NUM_S_BUCKETS],
     sector_contents_map: &SectorContentsMap,
     pos_table: &PosTable,
-    sector: &Sector,
+    sector: &ReadAt<S, A>,
 ) -> Result<Box<[Option<Scalar>; Record::NUM_S_BUCKETS]>, ReadingError>
 where
     PosTable: Table,
-    Sector: ReadAt + ?Sized,
+    S: ReadAtSync,
+    A: ReadAtAsync,
 {
     let mut record_chunks = vec![None; Record::NUM_S_BUCKETS];
 
-    record_chunks
+    let read_chunks_inputs = record_chunks
         .par_iter_mut()
         .zip(sector_contents_map.par_iter_record_chunk_to_plot(piece_offset))
         .zip(
@@ -108,52 +114,121 @@ where
                 .map(SBucket::from)
                 .zip(s_bucket_offsets.par_iter()),
         )
-        .try_for_each(
+        .map(
             |((maybe_record_chunk, maybe_chunk_details), (s_bucket, &s_bucket_offset))| {
-                let (chunk_offset, encoded_chunk_used) = match maybe_chunk_details {
-                    Some(chunk_details) => chunk_details,
-                    None => {
-                        return Ok(());
-                    }
-                };
+                let (chunk_offset, encoded_chunk_used) = maybe_chunk_details?;
 
                 let chunk_location = chunk_offset + s_bucket_offset as usize;
 
-                let mut record_chunk = [0; Scalar::FULL_BYTES];
-                sector
-                    .read_at(
-                        &mut record_chunk,
-                        SectorContentsMap::encoded_size(pieces_in_sector)
-                            + chunk_location * Scalar::FULL_BYTES,
-                    )
-                    .map_err(|error| ReadingError::FailedToReadChunk {
-                        chunk_location,
-                        error,
-                    })?;
-
-                // Decode chunk if necessary
-                if encoded_chunk_used {
-                    let quality = pos_table
-                        .find_quality(s_bucket.into())
-                        .expect("encoded_chunk_used implies quality exists for this chunk; qed");
-
-                    record_chunk = Simd::to_array(
-                        Simd::from(record_chunk) ^ Simd::from(quality.create_proof().hash()),
-                    );
-                }
-
-                maybe_record_chunk.replace(Scalar::try_from(record_chunk).map_err(|error| {
-                    ReadingError::InvalidChunk {
-                        s_bucket,
-                        encoded_chunk_used,
-                        chunk_location,
-                        error,
-                    }
-                })?);
-
-                Ok::<_, ReadingError>(())
+                Some((
+                    maybe_record_chunk,
+                    chunk_location,
+                    encoded_chunk_used,
+                    s_bucket,
+                ))
             },
-        )?;
+        )
+        .collect::<Vec<_>>();
+
+    match sector {
+        ReadAt::Sync(sector) => {
+            read_chunks_inputs.into_par_iter().flatten().try_for_each(
+                |(maybe_record_chunk, chunk_location, encoded_chunk_used, s_bucket)| {
+                    let mut record_chunk = [0; Scalar::FULL_BYTES];
+                    sector
+                        .read_at(
+                            &mut record_chunk,
+                            SectorContentsMap::encoded_size(pieces_in_sector)
+                                + chunk_location * Scalar::FULL_BYTES,
+                        )
+                        .map_err(|error| ReadingError::FailedToReadChunk {
+                            chunk_location,
+                            error,
+                        })?;
+
+                    // Decode chunk if necessary
+                    if encoded_chunk_used {
+                        let quality = pos_table.find_quality(s_bucket.into()).expect(
+                            "encoded_chunk_used implies quality exists for this chunk; qed",
+                        );
+
+                        record_chunk = Simd::to_array(
+                            Simd::from(record_chunk) ^ Simd::from(quality.create_proof().hash()),
+                        );
+                    }
+
+                    maybe_record_chunk.replace(Scalar::try_from(record_chunk).map_err(
+                        |error| ReadingError::InvalidChunk {
+                            s_bucket,
+                            encoded_chunk_used,
+                            chunk_location,
+                            error,
+                        },
+                    )?);
+
+                    Ok::<_, ReadingError>(())
+                },
+            )?;
+        }
+        ReadAt::Async(sector) => {
+            let processing_chunks = read_chunks_inputs
+                .into_iter()
+                .flatten()
+                .map(
+                    |(maybe_record_chunk, chunk_location, encoded_chunk_used, s_bucket)| async move {
+                        let mut record_chunk = [0; Scalar::FULL_BYTES];
+                        record_chunk.copy_from_slice(
+                            &sector
+                                .read_at(
+                                    vec![0; Scalar::FULL_BYTES],
+                                    SectorContentsMap::encoded_size(pieces_in_sector)
+                                        + chunk_location * Scalar::FULL_BYTES,
+                                )
+                                .await
+                                .map_err(|error| ReadingError::FailedToReadChunk {
+                                    chunk_location,
+                                    error,
+                                })?
+                        );
+
+
+                        // Decode chunk if necessary
+                        if encoded_chunk_used {
+                            let quality = pos_table.find_quality(s_bucket.into()).expect(
+                                "encoded_chunk_used implies quality exists for this chunk; qed",
+                            );
+
+                            record_chunk = Simd::to_array(
+                                Simd::from(record_chunk) ^ Simd::from(quality.create_proof().hash()),
+                            );
+                        }
+
+                        maybe_record_chunk.replace(Scalar::try_from(record_chunk).map_err(
+                            |error| ReadingError::InvalidChunk {
+                                s_bucket,
+                                encoded_chunk_used,
+                                chunk_location,
+                                error,
+                            },
+                        )?);
+
+                        Ok::<_, ReadingError>(())
+                    },
+                )
+                .collect::<FuturesUnordered<_>>()
+                .filter_map(|result| async move {
+                    match result {
+                        Ok(()) => None,
+                        Err(error) => Some(error),
+                    }
+                });
+
+            std::pin::pin!(processing_chunks)
+                .next()
+                .await
+                .map_or(Ok(()), Err)?;
+        }
+    }
 
     let mut record_chunks = ManuallyDrop::new(record_chunks);
 
@@ -223,13 +298,14 @@ pub fn recover_source_record_chunks(
 }
 
 /// Read metadata (commitment and witness) for record
-pub(crate) fn read_record_metadata<Sector>(
+pub(crate) async fn read_record_metadata<S, A>(
     piece_offset: PieceOffset,
     pieces_in_sector: u16,
-    sector: &Sector,
+    sector: &ReadAt<S, A>,
 ) -> Result<RecordMetadata, ReadingError>
 where
-    Sector: ReadAt + ?Sized,
+    S: ReadAtSync,
+    A: ReadAtAsync,
 {
     let sector_metadata_start = SectorContentsMap::encoded_size(pieces_in_sector)
         + sector_record_chunks_size(pieces_in_sector);
@@ -237,54 +313,73 @@ where
     let record_metadata_offset =
         sector_metadata_start + RecordMetadata::encoded_size() * usize::from(piece_offset);
 
-    let mut record_metadata_bytes = [0; RecordMetadata::encoded_size()];
-    sector.read_at(&mut record_metadata_bytes, record_metadata_offset)?;
+    let mut record_metadata_bytes = vec![0; RecordMetadata::encoded_size()];
+    match sector {
+        ReadAt::Sync(sector) => {
+            sector.read_at(&mut record_metadata_bytes, record_metadata_offset)?;
+        }
+        ReadAt::Async(sector) => {
+            record_metadata_bytes = sector
+                .read_at(record_metadata_bytes, record_metadata_offset)
+                .await?;
+        }
+    }
     let record_metadata = RecordMetadata::decode(&mut record_metadata_bytes.as_ref())
         .expect("Length is correct, contents doesn't have specific structure to it; qed");
 
     Ok(record_metadata)
 }
 
-/// Read piece from sector
-pub fn read_piece<PosTable, Sector>(
+/// Read piece from sector.
+///
+/// NOTE: Even though this function is async, proof of time table generation is expensive and should
+/// be done in a dedicated thread where blocking is allowed.
+pub async fn read_piece<PosTable, S, A>(
     piece_offset: PieceOffset,
     sector_id: &SectorId,
     sector_metadata: &SectorMetadataChecksummed,
-    sector: &Sector,
+    sector: &ReadAt<S, A>,
     erasure_coding: &ErasureCoding,
     table_generator: &mut PosTable::Generator,
 ) -> Result<Piece, ReadingError>
 where
     PosTable: Table,
-    Sector: ReadAt + ?Sized,
+    S: ReadAtSync,
+    A: ReadAtAsync,
 {
     let pieces_in_sector = sector_metadata.pieces_in_sector;
 
     let sector_contents_map = {
         let mut sector_contents_map_bytes =
             vec![0; SectorContentsMap::encoded_size(pieces_in_sector)];
-        sector.read_at(&mut sector_contents_map_bytes, 0)?;
+        match sector {
+            ReadAt::Sync(sector) => {
+                sector.read_at(&mut sector_contents_map_bytes, 0)?;
+            }
+            ReadAt::Async(sector) => {
+                sector_contents_map_bytes = sector.read_at(sector_contents_map_bytes, 0).await?;
+            }
+        }
 
         SectorContentsMap::from_bytes(&sector_contents_map_bytes, pieces_in_sector)?
     };
 
-    // Restore source record scalars
-    let record_chunks = recover_source_record_chunks(
-        &*read_sector_record_chunks(
-            piece_offset,
-            pieces_in_sector,
-            &sector_metadata.s_bucket_offsets(),
-            &sector_contents_map,
-            &table_generator.generate(
-                &sector_id.derive_evaluation_seed(piece_offset, sector_metadata.history_size),
-            ),
-            sector,
-        )?,
+    let sector_record_chunks = read_sector_record_chunks(
         piece_offset,
-        erasure_coding,
-    )?;
+        pieces_in_sector,
+        &sector_metadata.s_bucket_offsets(),
+        &sector_contents_map,
+        &table_generator.generate(
+            &sector_id.derive_evaluation_seed(piece_offset, sector_metadata.history_size),
+        ),
+        sector,
+    )
+    .await?;
+    // Restore source record scalars
+    let record_chunks =
+        recover_source_record_chunks(&sector_record_chunks, piece_offset, erasure_coding)?;
 
-    let record_metadata = read_record_metadata(piece_offset, pieces_in_sector, sector)?;
+    let record_metadata = read_record_metadata(piece_offset, pieces_in_sector, sector).await?;
 
     let mut piece = Piece::default();
 

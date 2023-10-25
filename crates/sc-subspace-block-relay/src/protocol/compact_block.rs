@@ -1,44 +1,52 @@
 //! Compact block implementation.
 
-use crate::protocol::{
-    ClientBackend, ProtocolClient, ProtocolServer, ProtocolUnitInfo, Resolved, ServerBackend,
-};
+use crate::protocol::{ClientBackend, ProtocolUnitInfo, Resolved, ServerBackend};
 use crate::types::RelayError;
 use crate::utils::NetworkPeerHandle;
 use crate::LOG_TARGET;
-use async_trait::async_trait;
 use codec::{Decode, Encode};
+use derive_more::From;
 use std::collections::BTreeMap;
 use tracing::{trace, warn};
 
-/// Request messages
-#[derive(Encode, Decode)]
-pub(crate) enum CompactBlockRequest<DownloadUnitId, ProtocolUnitId> {
-    /// Initial request
-    Initial,
-
-    /// Request for missing transactions
-    MissingEntries(MissingEntriesRequest<DownloadUnitId, ProtocolUnitId>),
+/// The initial request(currently we don't need to do send anything
+/// as part of the initial download request for compact blocks).
+#[derive(From, Encode, Decode)]
+pub(crate) enum CompactBlockInitialRequest {
+    #[codec(index = 0)]
+    V0,
+    // Next version/variant goes here:
+    // #[codec(index = 1)]
 }
 
-/// Response messages
+/// The compact block initial response from the server.
 #[derive(Encode, Decode)]
-pub(crate) enum CompactBlockResponse<DownloadUnitId, ProtocolUnitId, ProtocolUnit> {
-    /// Initial/compact response
-    Initial(InitialResponse<DownloadUnitId, ProtocolUnitId, ProtocolUnit>),
-
-    /// Response for missing transactions request
-    MissingEntries(MissingEntriesResponse<ProtocolUnit>),
-}
-
-/// The compact response
-#[derive(Encode, Decode)]
-pub(crate) struct InitialResponse<DownloadUnitId, ProtocolUnitId, ProtocolUnit> {
+pub(crate) struct CompactBlockInitialResponse<DownloadUnitId, ProtocolUnitId, ProtocolUnit> {
     /// The download unit
     download_unit_id: DownloadUnitId,
 
     /// List of the protocol units Ids.
     protocol_units: Vec<ProtocolUnitInfo<ProtocolUnitId, ProtocolUnit>>,
+}
+
+/// The handshake messages from the client.
+#[derive(From, Encode, Decode)]
+pub(crate) enum CompactBlockHandshake<DownloadUnitId, ProtocolUnitId> {
+    /// Request for missing transactions
+    #[codec(index = 0)]
+    MissingEntriesV0(MissingEntriesRequest<DownloadUnitId, ProtocolUnitId>),
+    // Next version/variant goes here:
+    // #[codec(index = 1)]
+}
+
+/// The handshake reply from the server.
+#[derive(From, Encode, Decode)]
+pub(crate) enum CompactBlockHandshakeResponse<ProtocolUnit> {
+    /// Response for missing transactions
+    #[codec(index = 0)]
+    MissingEntriesV0(MissingEntriesResponse<ProtocolUnit>),
+    // Next version/variant goes here:
+    // #[codec(index = 1)]
 }
 
 /// Request for missing transactions
@@ -72,7 +80,7 @@ pub(crate) struct CompactBlockClient<DownloadUnitId, ProtocolUnitId, ProtocolUni
 impl<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
     CompactBlockClient<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
 where
-    DownloadUnitId: Send + Sync + Encode + Decode + Clone,
+    DownloadUnitId: Send + Sync + Encode + Decode + Clone + std::fmt::Debug,
     ProtocolUnitId: Send + Sync + Encode + Decode + Clone,
     ProtocolUnit: Send + Sync + Encode + Decode + Clone,
 {
@@ -83,10 +91,63 @@ where
         }
     }
 
-    /// Tries to resolve the entries in InitialResponse locally
+    /// Builds the initial request.
+    pub(crate) fn build_initial_request(
+        &self,
+        _backend: &dyn ClientBackend<ProtocolUnitId, ProtocolUnit>,
+    ) -> CompactBlockInitialRequest {
+        CompactBlockInitialRequest::V0
+    }
+
+    /// Resolves the initial response to produce the protocol units.
+    pub(crate) async fn resolve_initial_response<Request>(
+        &self,
+        compact_response: CompactBlockInitialResponse<DownloadUnitId, ProtocolUnitId, ProtocolUnit>,
+        network_peer_handle: &NetworkPeerHandle,
+        backend: &dyn ClientBackend<ProtocolUnitId, ProtocolUnit>,
+    ) -> Result<(DownloadUnitId, Vec<Resolved<ProtocolUnitId, ProtocolUnit>>), RelayError>
+    where
+        Request: From<CompactBlockHandshake<DownloadUnitId, ProtocolUnitId>> + Encode + Send + Sync,
+    {
+        // Try to resolve the hashes locally first.
+        let context = self.resolve_local(&compact_response, backend)?;
+        if context.resolved.len() == compact_response.protocol_units.len() {
+            trace!(
+                target: LOG_TARGET,
+                "relay::resolve: {:?}: resolved locally[{}]",
+                compact_response.download_unit_id,
+                compact_response.protocol_units.len()
+            );
+            return Ok((
+                compact_response.download_unit_id,
+                context.resolved.into_values().collect(),
+            ));
+        }
+
+        // Resolve the misses from the server
+        let misses = context.local_miss.len();
+        let download_unit_id = compact_response.download_unit_id.clone();
+        let resolved = self
+            .resolve_misses::<Request>(compact_response, context, network_peer_handle)
+            .await?;
+        trace!(
+            target: LOG_TARGET,
+            "relay::resolve: {:?}: resolved by server[{},{}]",
+            download_unit_id,
+            resolved.len(),
+            misses,
+        );
+        Ok((download_unit_id, resolved))
+    }
+
+    /// Tries to resolve the entries in InitialResponse locally.
     fn resolve_local(
         &self,
-        compact_response: &InitialResponse<DownloadUnitId, ProtocolUnitId, ProtocolUnit>,
+        compact_response: &CompactBlockInitialResponse<
+            DownloadUnitId,
+            ProtocolUnitId,
+            ProtocolUnit,
+        >,
         backend: &dyn ClientBackend<ProtocolUnitId, ProtocolUnit>,
     ) -> Result<ResolveContext<ProtocolUnitId, ProtocolUnit>, RelayError> {
         let mut context = ResolveContext {
@@ -129,15 +190,15 @@ where
         Ok(context)
     }
 
-    /// Fetches the missing entries from the server
+    /// Fetches the missing entries from the server.
     async fn resolve_misses<Request>(
         &self,
-        compact_response: InitialResponse<DownloadUnitId, ProtocolUnitId, ProtocolUnit>,
+        compact_response: CompactBlockInitialResponse<DownloadUnitId, ProtocolUnitId, ProtocolUnit>,
         context: ResolveContext<ProtocolUnitId, ProtocolUnit>,
         network_peer_handle: &NetworkPeerHandle,
     ) -> Result<Vec<Resolved<ProtocolUnitId, ProtocolUnit>>, RelayError>
     where
-        Request: From<CompactBlockRequest<DownloadUnitId, ProtocolUnitId>> + Encode + Send + Sync,
+        Request: From<CompactBlockHandshake<DownloadUnitId, ProtocolUnitId>> + Encode + Send + Sync,
     {
         let ResolveContext {
             mut resolved,
@@ -145,18 +206,14 @@ where
         } = context;
         let missing = local_miss.len();
         // Request the missing entries from the server
-        let request = CompactBlockRequest::MissingEntries(MissingEntriesRequest {
+        let request = CompactBlockHandshake::from(MissingEntriesRequest {
             download_unit_id: compact_response.download_unit_id.clone(),
             protocol_unit_ids: local_miss.clone(),
         });
-        let response: CompactBlockResponse<DownloadUnitId, ProtocolUnitId, ProtocolUnit> =
+
+        let response: CompactBlockHandshakeResponse<ProtocolUnit> =
             network_peer_handle.request(Request::from(request)).await?;
-        let missing_entries_response =
-            if let CompactBlockResponse::MissingEntries(response) = response {
-                response
-            } else {
-                return Err(RelayError::UnexpectedProtocolRespone);
-            };
+        let CompactBlockHandshakeResponse::MissingEntriesV0(missing_entries_response) = response;
 
         if missing_entries_response.protocol_units.len() != missing {
             return Err(RelayError::ResolveMismatch {
@@ -185,77 +242,16 @@ where
     }
 }
 
-#[async_trait]
-impl<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
-    ProtocolClient<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
-    for CompactBlockClient<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
-where
-    DownloadUnitId: Send + Sync + Encode + Decode + Clone + std::fmt::Debug + 'static,
-    ProtocolUnitId: Send + Sync + Encode + Decode + Clone + 'static,
-    ProtocolUnit: Send + Sync + Encode + Decode + Clone + 'static,
-{
-    type Request = CompactBlockRequest<DownloadUnitId, ProtocolUnitId>;
-    type Response = CompactBlockResponse<DownloadUnitId, ProtocolUnitId, ProtocolUnit>;
-
-    fn build_initial_request(
-        &self,
-        _backend: &dyn ClientBackend<ProtocolUnitId, ProtocolUnit>,
-    ) -> Self::Request {
-        CompactBlockRequest::Initial
-    }
-
-    async fn resolve_initial_response<Request>(
-        &self,
-        response: Self::Response,
-        network_peer_handle: &NetworkPeerHandle,
-        backend: &dyn ClientBackend<ProtocolUnitId, ProtocolUnit>,
-    ) -> Result<(DownloadUnitId, Vec<Resolved<ProtocolUnitId, ProtocolUnit>>), RelayError>
-    where
-        Request: From<Self::Request> + Encode + Send + Sync,
-    {
-        let compact_response = match response {
-            CompactBlockResponse::Initial(compact_response) => compact_response,
-            _ => return Err(RelayError::UnexpectedInitialResponse),
-        };
-
-        // Try to resolve the hashes locally first.
-        let context = self.resolve_local(&compact_response, backend)?;
-        if context.resolved.len() == compact_response.protocol_units.len() {
-            trace!(
-                target: LOG_TARGET,
-                "relay::resolve: {:?}: resolved locally[{}]",
-                compact_response.download_unit_id,
-                compact_response.protocol_units.len()
-            );
-            return Ok((
-                compact_response.download_unit_id,
-                context.resolved.into_values().collect(),
-            ));
-        }
-
-        // Resolve the misses from the server
-        let misses = context.local_miss.len();
-        let download_unit_id = compact_response.download_unit_id.clone();
-        let resolved = self
-            .resolve_misses::<Request>(compact_response, context, network_peer_handle)
-            .await?;
-        trace!(
-            target: LOG_TARGET,
-            "relay::resolve: {:?}: resolved by server[{},{}]",
-            download_unit_id,
-            resolved.len(),
-            misses,
-        );
-        Ok((download_unit_id, resolved))
-    }
-}
-
 pub(crate) struct CompactBlockServer<DownloadUnitId, ProtocolUnitId, ProtocolUnit> {
     _phantom_data: std::marker::PhantomData<(DownloadUnitId, ProtocolUnitId, ProtocolUnit)>,
 }
 
 impl<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
     CompactBlockServer<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
+where
+    DownloadUnitId: Encode + Decode + Clone,
+    ProtocolUnitId: Encode + Decode + Clone,
+    ProtocolUnit: Encode + Decode,
 {
     /// Creates the server.
     pub(crate) fn new() -> Self {
@@ -263,47 +259,29 @@ impl<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
             _phantom_data: Default::default(),
         }
     }
-}
 
-#[async_trait]
-impl<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
-    ProtocolServer<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
-    for CompactBlockServer<DownloadUnitId, ProtocolUnitId, ProtocolUnit>
-where
-    DownloadUnitId: Encode + Decode + Clone,
-    ProtocolUnitId: Encode + Decode + Clone,
-    ProtocolUnit: Encode + Decode,
-{
-    type Request = CompactBlockRequest<DownloadUnitId, ProtocolUnitId>;
-    type Response = CompactBlockResponse<DownloadUnitId, ProtocolUnitId, ProtocolUnit>;
-
-    fn build_initial_response(
+    /// Builds the protocol response to the initial request.
+    pub(crate) fn build_initial_response(
         &self,
         download_unit_id: &DownloadUnitId,
-        initial_request: Self::Request,
+        _initial_request: CompactBlockInitialRequest,
         backend: &dyn ServerBackend<DownloadUnitId, ProtocolUnitId, ProtocolUnit>,
-    ) -> Result<Self::Response, RelayError> {
-        if !matches!(initial_request, CompactBlockRequest::Initial) {
-            return Err(RelayError::UnexpectedInitialRequest);
-        }
-
+    ) -> Result<CompactBlockInitialResponse<DownloadUnitId, ProtocolUnitId, ProtocolUnit>, RelayError>
+    {
         // Return the info of the members in the download unit.
-        let response = InitialResponse {
+        Ok(CompactBlockInitialResponse {
             download_unit_id: download_unit_id.clone(),
             protocol_units: backend.download_unit_members(download_unit_id)?,
-        };
-        Ok(CompactBlockResponse::Initial(response))
+        })
     }
 
-    fn on_request(
+    /// Handles the additional client messages during the reconcile phase.
+    pub(crate) fn on_protocol_message(
         &self,
-        request: Self::Request,
+        message: CompactBlockHandshake<DownloadUnitId, ProtocolUnitId>,
         backend: &dyn ServerBackend<DownloadUnitId, ProtocolUnitId, ProtocolUnit>,
-    ) -> Result<Self::Response, RelayError> {
-        let request = match request {
-            CompactBlockRequest::MissingEntries(req) => req,
-            _ => return Err(RelayError::UnexpectedProtocolRequest),
-        };
+    ) -> Result<CompactBlockHandshakeResponse<ProtocolUnit>, RelayError> {
+        let CompactBlockHandshake::MissingEntriesV0(request) = message;
 
         let mut protocol_units = BTreeMap::new();
         let total_len = request.protocol_unit_ids.len();
@@ -326,7 +304,7 @@ where
                 protocol_units.len()
             );
         }
-        Ok(CompactBlockResponse::MissingEntries(
+        Ok(CompactBlockHandshakeResponse::from(
             MissingEntriesResponse { protocol_units },
         ))
     }

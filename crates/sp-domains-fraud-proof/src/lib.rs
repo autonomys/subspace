@@ -18,8 +18,13 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 #[cfg(feature = "std")]
+pub mod execution_prover;
+pub mod fraud_proof;
+#[cfg(feature = "std")]
 mod host_functions;
 mod runtime_interface;
+#[cfg(test)]
+mod tests;
 pub mod verification;
 
 use codec::{Decode, Encode};
@@ -32,10 +37,36 @@ pub use runtime_interface::fraud_proof_runtime_interface;
 pub use runtime_interface::fraud_proof_runtime_interface::HostFunctions;
 use sp_api::scale_info::TypeInfo;
 use sp_domains::DomainId;
+use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidity};
+use sp_runtime::OpaqueExtrinsic;
 use sp_runtime_interface::pass_by;
 use sp_runtime_interface::pass_by::PassBy;
 use sp_std::vec::Vec;
 use subspace_core_primitives::Randomness;
+
+/// Custom invalid validity code for the extrinsics in pallet-domains.
+#[repr(u8)]
+pub enum InvalidTransactionCode {
+    BundleEquivocationProof = 101,
+    TransactionProof = 102,
+    ExecutionReceipt = 103,
+    Bundle = 104,
+    FraudProof = 105,
+}
+
+impl From<InvalidTransactionCode> for InvalidTransaction {
+    #[inline]
+    fn from(invalid_code: InvalidTransactionCode) -> Self {
+        InvalidTransaction::Custom(invalid_code as u8)
+    }
+}
+
+impl From<InvalidTransactionCode> for TransactionValidity {
+    #[inline]
+    fn from(invalid_code: InvalidTransactionCode) -> Self {
+        InvalidTransaction::Custom(invalid_code as u8).into()
+    }
+}
 
 /// Request type to fetch required verification information for fraud proof through Host function.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
@@ -44,10 +75,28 @@ pub enum FraudProofVerificationInfoRequest {
     BlockRandomness,
     /// Domain timestamp extrinsic using the timestamp at a given consensus block hash.
     DomainTimestampExtrinsic(DomainId),
+    /// The body of domain bundle included in a given consensus block at a given index
+    DomainBundleBody {
+        domain_id: DomainId,
+        bundle_index: u32,
+    },
+    /// The domain runtime code
+    DomainRuntimeCode(DomainId),
+    /// Domain set_code extrinsic if there is a runtime upgrade at a given consensus block hash.
+    DomainSetCodeExtrinsic(DomainId),
 }
 
 impl PassBy for FraudProofVerificationInfoRequest {
     type PassBy = pass_by::Codec<Self>;
+}
+
+/// Type that maybe holds an encoded set_code extrinsic with upgraded runtime
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub enum SetCodeExtrinsic {
+    /// No runtime upgrade.
+    None,
+    /// Holds an encoded set_code extrinsic with an upgraded runtime.
+    EncodedExtrinsic(Vec<u8>),
 }
 
 /// Response holds required verification information for fraud proof from Host function.
@@ -57,4 +106,49 @@ pub enum FraudProofVerificationInfoResponse {
     BlockRandomness(Randomness),
     /// Encoded domain timestamp extrinsic using the timestamp from consensus state at a specific block hash.
     DomainTimestampExtrinsic(Vec<u8>),
+    /// Domain block body fetch from a specific consensus block body
+    DomainBundleBody(Vec<OpaqueExtrinsic>),
+    /// The domain runtime code
+    DomainRuntimeCode(Vec<u8>),
+    /// Encoded domain set_code extrinsic if there is a runtime upgrade at given consensus block hash.
+    DomainSetCodeExtrinsic(SetCodeExtrinsic),
+}
+
+impl FraudProofVerificationInfoResponse {
+    pub fn into_block_randomness(self) -> Option<Randomness> {
+        match self {
+            Self::BlockRandomness(randomness) => Some(randomness),
+            _ => None,
+        }
+    }
+
+    pub fn into_domain_timestamp_extrinsic(self) -> Option<Vec<u8>> {
+        match self {
+            Self::DomainTimestampExtrinsic(timestamp_extrinsic) => Some(timestamp_extrinsic),
+            _ => None,
+        }
+    }
+
+    pub fn into_domain_runtime_code(self) -> Option<Vec<u8>> {
+        match self {
+            Self::DomainRuntimeCode(c) => Some(c),
+            _ => None,
+        }
+    }
+
+    pub fn into_domain_set_code_extrinsic(self) -> SetCodeExtrinsic {
+        match self {
+            FraudProofVerificationInfoResponse::DomainSetCodeExtrinsic(
+                maybe_set_code_extrinsic,
+            ) => maybe_set_code_extrinsic,
+            _ => SetCodeExtrinsic::None,
+        }
+    }
+
+    pub fn into_bundle_body(self) -> Option<Vec<OpaqueExtrinsic>> {
+        match self {
+            Self::DomainBundleBody(bb) => Some(bb),
+            _ => None,
+        }
+    }
 }

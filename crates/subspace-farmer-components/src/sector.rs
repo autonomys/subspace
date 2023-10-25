@@ -15,6 +15,7 @@ use tracing::debug;
 /// Size of the part of the plot containing record chunks (s-buckets).
 ///
 /// Total size of the plot can be computed with [`sector_size()`].
+#[inline]
 pub const fn sector_record_chunks_size(pieces_in_sector: u16) -> usize {
     pieces_in_sector as usize * Record::SIZE
 }
@@ -22,6 +23,7 @@ pub const fn sector_record_chunks_size(pieces_in_sector: u16) -> usize {
 /// Size of the part of the plot containing record metadata.
 ///
 /// Total size of the plot can be computed with [`sector_size()`].
+#[inline]
 pub const fn sector_record_metadata_size(pieces_in_sector: u16) -> usize {
     pieces_in_sector as usize * RecordMetadata::encoded_size()
 }
@@ -33,6 +35,7 @@ pub const fn sector_record_metadata_size(pieces_in_sector: u16) -> usize {
 /// [`sector_record_chunks_size()`] and size of record commitments and witnesses with
 /// [`sector_record_metadata_size()`]. This function just combines those three together for
 /// convenience.
+#[inline]
 pub const fn sector_size(pieces_in_sector: u16) -> usize {
     sector_record_chunks_size(pieces_in_sector)
         + sector_record_metadata_size(pieces_in_sector)

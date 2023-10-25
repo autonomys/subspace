@@ -22,7 +22,7 @@ pub mod chain_spec;
 pub mod domain_chain_spec;
 
 use futures::executor::block_on;
-use futures::StreamExt;
+use futures::{FutureExt, StreamExt};
 use sc_client_api::{BlockBackend, HeaderBackend};
 use sc_consensus_subspace::archiver::encode_block;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
@@ -38,14 +38,13 @@ use subspace_core_primitives::{
     HistorySize, PosSeed, PublicKey, Record, SegmentIndex, Solution, REWARD_SIGNING_CONTEXT,
 };
 use subspace_erasure_coding::ErasureCoding;
-use subspace_farmer_components::auditing::audit_sector;
+use subspace_farmer_components::auditing::audit_sector_sync;
 use subspace_farmer_components::plotting::{
     plot_sector, PieceGetterRetryPolicy, PlotSectorOptions, PlottedSector,
 };
 use subspace_farmer_components::FarmerProtocolInfo;
 use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_runtime_primitives::opaque::Block;
-use subspace_service::tx_pre_validator::ConsensusChainTxPreValidator;
 use subspace_service::{FullClient, NewFull};
 use zeroize::Zeroizing;
 
@@ -76,14 +75,8 @@ pub type Client = FullClient<subspace_test_runtime::RuntimeApi, TestExecutorDisp
 /// The backend type being used by the test service.
 pub type Backend = sc_service::TFullBackend<Block>;
 
-/// The fraud proof verifier being used the test service.
-pub type FraudProofVerifier =
-    subspace_service::FraudProofVerifier<subspace_test_runtime::RuntimeApi, TestExecutorDispatch>;
-
-type TxPreValidator = ConsensusChainTxPreValidator<Block, Client, FraudProofVerifier>;
-
 /// Run a farmer.
-pub fn start_farmer<PosTable>(new_full: &NewFull<Client, TxPreValidator>)
+pub fn start_farmer<PosTable>(new_full: &NewFull<Client>)
 where
     PosTable: Table,
 {
@@ -148,7 +141,8 @@ async fn start_farming<PosTable, Client>(
 
     let kzg = Kzg::new(embedded_kzg_settings());
     let erasure_coding = ErasureCoding::new(
-        NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
+        NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
+            .expect("Not zero; qed"),
     )
     .unwrap();
 
@@ -174,7 +168,6 @@ async fn start_farming<PosTable, Client>(
     });
 
     let (sector, plotted_sector, mut table_generator) = plotting_result_receiver.await.unwrap();
-    let sector_index = 0;
     let public_key = PublicKey::from(keypair.public.to_bytes());
 
     let mut new_slot_notification_stream = new_slot_notification_stream.subscribe();
@@ -188,23 +181,26 @@ async fn start_farming<PosTable, Client>(
             let global_challenge = new_slot_info
                 .global_randomness
                 .derive_global_challenge(new_slot_info.slot.into());
-            let audit_result = audit_sector(
+            let audit_result = audit_sector_sync(
                 &public_key,
-                sector_index,
                 &global_challenge,
                 new_slot_info.solution_range,
                 &sector,
                 &plotted_sector.sector_metadata,
-            )
-            .expect("With max solution range there must be a sector eligible; qed");
+            );
 
             let solution = audit_result
+                .unwrap()
                 .solution_candidates
                 .into_solutions(&public_key, &kzg, &erasure_coding, |seed: &PosSeed| {
                     table_generator.generate_parallel(seed)
                 })
+                .now_or_never()
+                .expect("Implementation of the sector is synchronous here; qed")
                 .unwrap()
                 .next()
+                .now_or_never()
+                .expect("Implementation of the sector is synchronous here; qed")
                 .expect("With max solution range there must be a solution; qed")
                 .unwrap();
             // Lazy conversion to a different type of public key and reward address

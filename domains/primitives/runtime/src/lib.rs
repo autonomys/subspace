@@ -19,10 +19,12 @@
 
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
-use sp_runtime::generic::UncheckedExtrinsic;
-use sp_runtime::traits::{Block as BlockT, Convert, IdentifyAccount, LookupError, Verify};
+use sp_runtime::generic::{Era, UncheckedExtrinsic};
+use sp_runtime::traits::{
+    Block as BlockT, Convert, IdentifyAccount, LookupError, NumberFor, Verify,
+};
 use sp_runtime::transaction_validity::TransactionValidityError;
-use sp_runtime::{MultiAddress, MultiSignature};
+use sp_runtime::{Digest, MultiAddress, MultiSignature};
 use sp_std::vec::Vec;
 use sp_weights::Weight;
 use subspace_core_primitives::U256;
@@ -135,6 +137,8 @@ pub mod opaque {
 pub enum CheckTxValidityError {
     /// Can not find the sender from address.
     Lookup,
+    /// Unable to extract signer from tx
+    UnableToExtractSigner { error: TransactionValidityError },
     /// Transaction is invalid.
     InvalidTransaction {
         /// Concrete transaction validity error type.
@@ -182,27 +186,38 @@ sp_api::decl_runtime_apis! {
         /// Returns an encoded extrinsic aiming to upgrade the runtime using given code.
         fn construct_set_code_extrinsic(code: Vec<u8>) -> Vec<u8>;
 
+        /// Returns an encoded extrinsic to set timestamp.
+        fn construct_timestamp_extrinsic(moment: Moment) -> Block::Extrinsic;
+
+        /// Returns true if the extrinsic is an inherent extrinsic.
+        fn is_inherent_extrinsic(extrinsic: &<Block as BlockT>::Extrinsic) -> bool;
+
         /// Checks the validity of extrinsic in a bundle.
         fn check_transaction_validity(
             uxt: &<Block as BlockT>::Extrinsic,
-            block_hash: <Block as BlockT>::Hash,
+            block_number: NumberFor<Block>,
+            block_hash: <Block as BlockT>::Hash
         ) -> Result<(), CheckTxValidityError>;
 
         /// Returns the storage keys of states accessed in the API `check_transaction_validity`.
         fn storage_keys_for_verifying_transaction_validity(
             account_id: opaque::AccountId,
+            block_number: NumberFor<Block>,
+            tx_era: Option<Era>,
         ) -> Result<Vec<Vec<u8>>, VerifyTxValidityError>;
+
+        /// Returns extrinsic Era if present
+        fn extrinsic_era(
+          extrinsic: &<Block as BlockT>::Extrinsic
+        ) -> Option<Era>;
 
         /// Return the extrinsic weight
         fn extrinsic_weight(ext: &Block::Extrinsic) -> Weight;
 
         /// The accumulated transaction fee of all transactions included in the block
         fn block_rewards() -> Balance;
-    }
 
-    /// Api that construct inherent extrinsics.
-    pub trait InherentExtrinsicApi {
-        /// Api to construct inherent timestamp extrinsic from given time
-        fn construct_inherent_timestamp_extrinsic(moment: Moment) -> Block::Extrinsic;
+        /// Return the block digest
+        fn block_digest() -> Digest;
     }
 }

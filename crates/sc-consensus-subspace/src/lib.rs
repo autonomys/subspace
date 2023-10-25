@@ -1081,7 +1081,7 @@ where
 #[allow(clippy::type_complexity)]
 pub fn block_import<PosTable, Client, Block, I, CIDP, AS>(
     slot_duration: SlotDuration,
-    wrapped_block_import: I,
+    block_import_inner: I,
     client: Arc<Client>,
     kzg: Kzg,
     create_inherent_data_providers: CIDP,
@@ -1139,7 +1139,7 @@ where
 
     let import = SubspaceBlockImport::new(
         client,
-        wrapped_block_import,
+        block_import_inner,
         link.clone(),
         create_inherent_data_providers,
         chain_constants,

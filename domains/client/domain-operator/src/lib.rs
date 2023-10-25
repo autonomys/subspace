@@ -114,8 +114,7 @@ type BundleSender<Block, CBlock> = TracingUnboundedSender<
         <Block as BlockT>::Extrinsic,
         NumberFor<CBlock>,
         <CBlock as BlockT>::Hash,
-        NumberFor<Block>,
-        <Block as BlockT>::Hash,
+        <Block as BlockT>::Header,
         Balance,
     >,
 >;
@@ -178,6 +177,7 @@ pub struct OperatorParams<
     pub operator_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS, ASS>,
     pub domain_confirmation_depth: NumberFor<Block>,
     pub block_import: SharedBlockImport<Block>,
+    pub skip_empty_bundle_production: bool,
 }
 
 pub(crate) fn load_execution_receipt_by_domain_hash<Block, CBlock, Client>(

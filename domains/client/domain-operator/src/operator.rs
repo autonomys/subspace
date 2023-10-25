@@ -5,7 +5,7 @@ use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::fraud_proof::FraudProofGenerator;
 use crate::parent_chain::DomainParentChain;
 use crate::{DomainImportNotifications, NewSlotNotification, OperatorParams};
-use domain_runtime_primitives::{DomainCoreApi, InherentExtrinsicApi};
+use domain_runtime_primitives::DomainCoreApi;
 use futures::channel::mpsc;
 use futures::{FutureExt, Stream};
 use sc_client_api::{
@@ -60,10 +60,10 @@ impl<Block, CBlock, Client, CClient, TransactionPool, Backend, E>
     Operator<Block, CBlock, Client, CClient, TransactionPool, Backend, E>
 where
     Block: BlockT,
+    Block::Hash: Into<H256>,
     CBlock: BlockT,
     NumberFor<CBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
     CBlock::Hash: From<Block::Hash>,
-    Block::Hash: Into<H256>,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + AuxStore
@@ -72,7 +72,6 @@ where
         + Finalizer<Block, Backend>
         + 'static,
     Client::Api: DomainCoreApi<Block>
-        + InherentExtrinsicApi<Block>
         + MessengerApi<Block, NumberFor<Block>>
         + sp_block_builder::BlockBuilder<Block>
         + sp_api::ApiExt<Block>,
@@ -85,7 +84,7 @@ where
         + Send
         + Sync
         + 'static,
-    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>
+    CClient::Api: DomainsApi<CBlock, Block::Header>
         + MessengerApi<CBlock, NumberFor<CBlock>>
         + BundleProducerElectionApi<CBlock, Balance>,
     Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
@@ -132,6 +131,7 @@ where
             domain_bundle_proposer,
             params.bundle_sender,
             params.keystore.clone(),
+            params.skip_empty_bundle_production,
         );
 
         let fraud_proof_generator = FraudProofGenerator::new(

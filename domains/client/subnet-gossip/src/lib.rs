@@ -36,8 +36,7 @@ type BundleFor<Block, CBlock> = Bundle<
     <Block as BlockT>::Extrinsic,
     NumberFor<CBlock>,
     <CBlock as BlockT>::Hash,
-    NumberFor<Block>,
-    <Block as BlockT>::Hash,
+    <Block as BlockT>::Header,
     Balance,
 >;
 

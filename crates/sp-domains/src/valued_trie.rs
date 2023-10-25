@@ -247,9 +247,13 @@ where
 
 #[cfg(test)]
 mod test {
-    use crate::valued_trie_root::valued_ordered_trie_root;
+    use crate::proof_provider_and_verifier::{StorageProofProvider, StorageProofVerifier};
+    use crate::valued_trie::valued_ordered_trie_root;
+    use parity_scale_codec::{Compact, Encode};
     use rand::rngs::StdRng;
     use rand::{Rng, SeedableRng};
+    use sp_core::storage::StorageKey;
+    use sp_core::H256;
     use sp_runtime::traits::{BlakeTwo256, Hash};
     use sp_trie::LayoutV1;
     use trie_db::node::Value;
@@ -272,7 +276,7 @@ mod test {
             exts_hashed.push(hashed);
         }
 
-        let exts_values = exts_hashed
+        let exts_values: Vec<_> = exts_hashed
             .iter()
             .zip(exts_length)
             .map(|(ext_hashed, ext_length)| {
@@ -285,8 +289,57 @@ mod test {
             })
             .collect();
 
-        let root = BlakeTwo256::ordered_trie_root(exts, sp_core::storage::StateVersion::V1);
+        let root = BlakeTwo256::ordered_trie_root(exts.clone(), sp_core::storage::StateVersion::V1);
         let got_root = valued_ordered_trie_root::<LayoutV1<BlakeTwo256>>(exts_values);
-        assert_eq!(root, got_root)
+        assert_eq!(root, got_root);
+
+        for (i, ext) in exts.clone().into_iter().enumerate() {
+            // Generate a proof-of-inclusion and verify it with the above `root`
+            let storage_key = StorageKey(Compact(i as u32).encode());
+            let storage_proof =
+                StorageProofProvider::<LayoutV1<BlakeTwo256>>::generate_enumerated_proof_of_inclusion(
+                    &exts,
+                    i as u32,
+                )
+                .unwrap();
+
+            assert!(StorageProofVerifier::<BlakeTwo256>::verify_storage_proof(
+                storage_proof.clone(),
+                &root,
+                ext.clone(),
+                storage_key.clone(),
+            ));
+
+            // Verifying the proof with a wrong root/ext/index will fail
+            assert!(!StorageProofVerifier::<BlakeTwo256>::verify_storage_proof(
+                storage_proof.clone(),
+                &H256::random(),
+                ext.clone(),
+                storage_key.clone(),
+            ));
+
+            assert!(!StorageProofVerifier::<BlakeTwo256>::verify_storage_proof(
+                storage_proof.clone(),
+                &root,
+                vec![i as u8; ext.len()],
+                storage_key,
+            ));
+
+            let storage_key = StorageKey(Compact(i as u32 + 1).encode());
+            assert!(!StorageProofVerifier::<BlakeTwo256>::verify_storage_proof(
+                storage_proof,
+                &root,
+                ext,
+                storage_key,
+            ));
+        }
+
+        // fails to generate storage key for unknown index
+        assert!(
+            StorageProofProvider::<LayoutV1<BlakeTwo256>>::generate_enumerated_proof_of_inclusion(
+                &exts, 100,
+            )
+            .is_none()
+        );
     }
 }

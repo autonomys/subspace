@@ -1,4 +1,4 @@
-use crate::DsnArgs;
+use crate::commands::farm::DsnArgs;
 use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
 use std::collections::HashSet;

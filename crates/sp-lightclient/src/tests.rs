@@ -45,7 +45,8 @@ fn erasure_coding_instance() -> &'static ErasureCoding {
 
     ERASURE_CODING.get_or_init(|| {
         ErasureCoding::new(
-            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize).unwrap(),
+            NonZeroUsize::new(Record::NUM_S_BUCKETS.next_power_of_two().ilog2() as usize)
+                .expect("Not zero; qed"),
         )
         .unwrap()
     })
@@ -196,7 +197,6 @@ fn valid_header(
 
         let maybe_solution_candidates = audit_sector(
             &public_key,
-            sector_index,
             &global_challenge,
             SolutionRange::MAX,
             &plotted_sector_bytes,

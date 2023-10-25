@@ -12,9 +12,9 @@ include = [
 ]
 
 [dependencies]
-sc-chain-spec = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
-sc-service = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c", default-features = false }
-sc-telemetry = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
+sc-chain-spec = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "892bf8e938c6bd2b893d3827d1093cd81baa59a1" }
+sc-service = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "892bf8e938c6bd2b893d3827d1093cd81baa59a1", default-features = false }
+sc-telemetry = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "892bf8e938c6bd2b893d3827d1093cd81baa59a1" }
 serde = "1.0.183"
-sp-core = { version = "21.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
-sp-runtime = { version = "24.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "920fb277d5ea16a3b0918052c7555026a1ac2c6c" }
+sp-core = { version = "21.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "892bf8e938c6bd2b893d3827d1093cd81baa59a1" }
+sp-runtime = { version = "24.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "892bf8e938c6bd2b893d3827d1093cd81baa59a1" }

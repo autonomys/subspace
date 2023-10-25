@@ -19,10 +19,10 @@ pub trait StateRootExtractor<Block: BlockT> {
     ) -> Result<ExtractedStateRoots<Block>, ApiError>;
 }
 
-/// Trait to construct inherent extrinsics
-pub trait InherentExtrinsicConstructor<Block: BlockT> {
-    /// Returns Inherent timestamp extrinsic if the Runtime implements the API.
-    fn construct_timestamp_inherent_extrinsic(
+/// Trait to construct timestamp extrinsic.
+pub trait TimestampExtrinsicConstructor<Block: BlockT> {
+    /// Returns encoded timestamp extrinsic for the given time.
+    fn construct_timestamp_extrinsic(
         &self,
         at: Block::Hash,
         moment: subspace_runtime_primitives::Moment,
@@ -37,6 +37,16 @@ pub trait SetCodeConstructor<Block: BlockT> {
         at: Block::Hash,
         runtime_code: Vec<u8>,
     ) -> Result<Vec<u8>, ApiError>;
+}
+
+/// Trait to wrap the new domain runtime as an extrinsic of
+/// `domain_pallet_executive::Call::sudo_unchecked_weight_unsigned`.
+pub trait IsInherentExtrinsic<Block: BlockT> {
+    fn is_inherent_extrinsic(
+        &self,
+        at: Block::Hash,
+        extrinsic: &<Block as BlockT>::Extrinsic,
+    ) -> Result<bool, ApiError>;
 }
 
 pub type ExtractSignerResult<Block> = Vec<(Option<AccountId>, <Block as BlockT>::Extrinsic)>;

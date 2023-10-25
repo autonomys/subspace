@@ -20,22 +20,20 @@
 
 use codec::{Decode, Encode};
 use cross_domain_message_gossip::GossipWorkerBuilder;
-use domain_runtime_primitives::opaque::Block as DomainBlock;
-use domain_runtime_primitives::BlockNumber as DomainNumber;
+use domain_runtime_primitives::opaque::{Block as DomainBlock, Header as DomainHeader};
 use futures::channel::mpsc;
 use futures::{select, FutureExt, StreamExt};
 use jsonrpsee::RpcModule;
 use parking_lot::Mutex;
 use sc_block_builder::BlockBuilderProvider;
 use sc_client_api::execution_extensions::ExtensionsFactory;
-use sc_client_api::ExecutorProvider;
+use sc_client_api::{BlockBackend, ExecutorProvider};
 use sc_consensus::block_import::{
     BlockCheckParams, BlockImportParams, ForkChoiceStrategy, ImportResult,
 };
 use sc_consensus::{
     BasicQueue, BlockImport, SharedBlockImport, StateAction, Verifier as VerifierT,
 };
-use sc_consensus_fraud_proof::FraudProofBlockImport;
 use sc_executor::NativeElseWasmExecutor;
 use sc_network::config::{NetworkConfiguration, TransportConfig};
 use sc_network::multiaddr;
@@ -44,11 +42,11 @@ use sc_service::config::{
     WasmtimeInstantiationStrategy,
 };
 use sc_service::{
-    BasePath, BlocksPruning, Configuration, InPoolTransaction, NetworkStarter, Role,
-    SpawnTasksParams, TaskManager, TransactionPool,
+    BasePath, BlocksPruning, Configuration, NetworkStarter, Role, SpawnTasksParams, TaskManager,
 };
 use sc_transaction_pool::error::Error as PoolError;
-use sc_transaction_pool_api::TransactionSource;
+use sc_transaction_pool::FullPool;
+use sc_transaction_pool_api::{InPoolTransaction, TransactionPool, TransactionSource};
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnboundedSender};
 use sp_api::{ApiExt, HashT, HeaderT, ProvideRuntimeApi};
 use sp_application_crypto::UncheckedFrom;
@@ -73,16 +71,11 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use std::time;
 use subspace_core_primitives::{Randomness, Solution};
-use subspace_fraud_proof::invalid_state_transition_proof::InvalidStateTransitionProofVerifier;
-use subspace_fraud_proof::invalid_transaction_proof::InvalidTransactionProofVerifier;
-use subspace_fraud_proof::verifier_api::VerifierClient;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash};
-use subspace_service::tx_pre_validator::ConsensusChainTxPreValidator;
 use subspace_service::FullSelectChain;
-use subspace_test_client::{chain_spec, Backend, Client, FraudProofVerifier, TestExecutorDispatch};
+use subspace_test_client::{chain_spec, Backend, Client, TestExecutorDispatch};
 use subspace_test_runtime::{RuntimeApi, RuntimeCall, UncheckedExtrinsic, SLOT_DURATION};
-use subspace_transaction_pool::FullPool;
 
 /// Create a Subspace `Configuration`.
 ///
@@ -174,8 +167,6 @@ pub fn node_config(
 
 type StorageChanges = sp_api::StorageChanges<Block>;
 
-type TxPreValidator = ConsensusChainTxPreValidator<Block, Client, FraudProofVerifier>;
-
 struct MockExtensionsFactory<Client, DomainBlock, Executor> {
     consensus_client: Arc<Client>,
     executor: Arc<Executor>,
@@ -198,9 +189,10 @@ where
     Block: BlockT,
     Block::Hash: From<H256>,
     DomainBlock: BlockT,
-    Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + 'static,
-    Client::Api: DomainsApi<Block, NumberFor<DomainBlock>, DomainBlock::Hash>,
-    Executor: CodeExecutor,
+    DomainBlock::Hash: Into<H256> + From<H256>,
+    Client: BlockBackend<Block> + HeaderBackend<Block> + ProvideRuntimeApi<Block> + 'static,
+    Client::Api: DomainsApi<Block, DomainBlock::Header>,
+    Executor: CodeExecutor + sc_executor::RuntimeVersionOf,
 {
     fn extensions_for(
         &self,
@@ -228,7 +220,7 @@ pub struct MockConsensusNode {
     /// Code executor.
     pub executor: NativeElseWasmExecutor<TestExecutorDispatch>,
     /// Transaction pool.
-    pub transaction_pool: Arc<FullPool<Block, Client, TxPreValidator>>,
+    pub transaction_pool: Arc<FullPool<Block, Client>>,
     /// The SelectChain Strategy
     pub select_chain: FullSelectChain,
     /// Network service.
@@ -249,11 +241,7 @@ pub struct MockConsensusNode {
     acknowledgement_sender_subscribers: Vec<TracingUnboundedSender<mpsc::Sender<()>>>,
     /// Block import pipeline
     #[allow(clippy::type_complexity)]
-    block_import: MockBlockImport<
-        FraudProofBlockImport<Block, Client, Arc<Client>, FraudProofVerifier, DomainNumber, H256>,
-        Client,
-        Block,
-    >,
+    block_import: MockBlockImport<Client, Block>,
     xdm_gossip_worker_builder: Option<GossipWorkerBuilder>,
     /// Mock subspace solution used to mock the subspace `PreDigest`
     mock_solution: Solution<FarmerPublicKey, AccountId>,
@@ -298,40 +286,15 @@ impl MockConsensusNode {
 
         let select_chain = sc_consensus::LongestChain::new(backend.clone());
 
-        let invalid_transaction_proof_verifier = InvalidTransactionProofVerifier::new(
+        let transaction_pool = sc_transaction_pool::BasicPool::new_full(
+            config.transaction_pool.clone(),
+            config.role.is_authority().into(),
+            config.prometheus_registry(),
+            task_manager.spawn_essential_handle(),
             client.clone(),
-            Arc::new(executor.clone()),
-            VerifierClient::new(client.clone()),
         );
 
-        let invalid_state_transition_proof_verifier = InvalidStateTransitionProofVerifier::new(
-            client.clone(),
-            executor.clone(),
-            VerifierClient::new(client.clone()),
-        );
-
-        let proof_verifier = subspace_fraud_proof::ProofVerifier::new(
-            Arc::new(invalid_transaction_proof_verifier),
-            Arc::new(invalid_state_transition_proof_verifier),
-        );
-
-        let tx_pre_validator = ConsensusChainTxPreValidator::new(
-            client.clone(),
-            Box::new(task_manager.spawn_handle()),
-            proof_verifier.clone(),
-        );
-
-        let transaction_pool = subspace_transaction_pool::new_full(
-            &config,
-            &task_manager,
-            client.clone(),
-            tx_pre_validator,
-        );
-
-        let fraud_proof_block_import =
-            sc_consensus_fraud_proof::block_import(client.clone(), client.clone(), proof_verifier);
-
-        let block_import = MockBlockImport::<_, _, _>::new(fraud_proof_block_import);
+        let block_import = MockBlockImport::<_, _>::new(client.clone());
 
         let net_config = sc_network::config::FullNetworkConfiguration::new(&config.network);
 
@@ -447,7 +410,7 @@ impl MockConsensusNode {
     pub async fn notify_new_slot_and_wait_for_bundle(
         &mut self,
         slot: Slot,
-    ) -> Option<OpaqueBundle<NumberFor<Block>, Hash, DomainNumber, H256, Balance>> {
+    ) -> Option<OpaqueBundle<NumberFor<Block>, Hash, DomainHeader, Balance>> {
         let value = (slot, Randomness::from(Hash::random().to_fixed_bytes()));
         self.new_slot_notification_subscribers
             .retain(|subscriber| subscriber.unbounded_send(value).is_ok());
@@ -461,7 +424,7 @@ impl MockConsensusNode {
         &mut self,
     ) -> (
         Slot,
-        Option<OpaqueBundle<NumberFor<Block>, Hash, DomainNumber, H256, Balance>>,
+        Option<OpaqueBundle<NumberFor<Block>, Hash, DomainHeader, Balance>>,
     ) {
         let slot = self.produce_slot();
 
@@ -530,7 +493,7 @@ impl MockConsensusNode {
     pub fn get_bundle_from_tx_pool(
         &self,
         slot: u64,
-    ) -> Option<OpaqueBundle<NumberFor<Block>, Hash, DomainNumber, H256, Balance>> {
+    ) -> Option<OpaqueBundle<NumberFor<Block>, Hash, DomainHeader, Balance>> {
         for ready_tx in self.transaction_pool.ready() {
             let ext = UncheckedExtrinsic::decode(&mut ready_tx.data.encode().as_slice())
                 .expect("should be able to decode");
@@ -837,19 +800,17 @@ where
 // `MockBlockImport` is mostly port from `sc-consensus-subspace::SubspaceBlockImport` with all
 // the consensus related logic removed.
 #[allow(clippy::type_complexity)]
-struct MockBlockImport<Inner, Client, Block: BlockT> {
-    inner: Inner,
+struct MockBlockImport<Client, Block: BlockT> {
+    inner: Arc<Client>,
     block_importing_notification_subscribers:
         Arc<Mutex<Vec<TracingUnboundedSender<(NumberFor<Block>, mpsc::Sender<()>)>>>>,
-    _phantom_data: PhantomData<Client>,
 }
 
-impl<Inner, Client, Block: BlockT> MockBlockImport<Inner, Client, Block> {
-    fn new(inner: Inner) -> Self {
+impl<Client, Block: BlockT> MockBlockImport<Client, Block> {
+    fn new(inner: Arc<Client>) -> Self {
         MockBlockImport {
             inner,
             block_importing_notification_subscribers: Arc::new(Mutex::new(Vec::new())),
-            _phantom_data: Default::default(),
         }
     }
 
@@ -865,24 +826,22 @@ impl<Inner, Client, Block: BlockT> MockBlockImport<Inner, Client, Block> {
     }
 }
 
-impl<Inner: Clone, Client, Block: BlockT> MockBlockImport<Inner, Client, Block> {
+impl<Client, Block: BlockT> MockBlockImport<Client, Block> {
     fn clone(&self) -> Self {
         MockBlockImport {
             inner: self.inner.clone(),
             block_importing_notification_subscribers: self
                 .block_importing_notification_subscribers
                 .clone(),
-            _phantom_data: Default::default(),
         }
     }
 }
 
 #[async_trait::async_trait]
-impl<Inner, Client, Block> BlockImport<Block> for MockBlockImport<Inner, Client, Block>
+impl<Client, Block> BlockImport<Block> for MockBlockImport<Client, Block>
 where
     Block: BlockT,
-    Inner: BlockImport<Block, Error = ConsensusError> + Send + Sync,
-    Inner::Error: Into<ConsensusError>,
+    for<'r> &'r Client: BlockImport<Block, Error = ConsensusError> + Send + Sync,
     Client: ProvideRuntimeApi<Block> + HeaderBackend<Block> + Send + Sync + 'static,
     Client::Api: ApiExt<Block>,
 {
@@ -947,7 +906,6 @@ where
 macro_rules! produce_blocks {
     ($primary_node:ident, $operator_node:ident, $count: literal $(, $domain_node:ident)*) => {
         {
-            $operator_node.send_system_remark().await;
             async {
                 let domain_fut = {
                     let mut futs: Vec<std::pin::Pin<Box<dyn futures::Future<Output = ()>>>> = Vec::new();
@@ -969,7 +927,6 @@ macro_rules! produce_blocks {
 macro_rules! produce_block_with {
     ($primary_node_produce_block:expr, $operator_node:ident $(, $domain_node:ident)*) => {
         {
-            $operator_node.send_system_remark().await;
             async {
                 let domain_fut = {
                     let mut futs: Vec<std::pin::Pin<Box<dyn futures::Future<Output = ()>>>> = Vec::new();

@@ -15,9 +15,10 @@ use domain_runtime_primitives::{MultiAccountId, TryConvertBack, SLOT_DURATION};
 use fp_account::EthereumSignature;
 use fp_self_contained::SelfContainedCall;
 use frame_support::dispatch::{DispatchClass, GetDispatchInfo};
+use frame_support::inherent::ProvideInherent;
 use frame_support::traits::{
     ConstU16, ConstU32, ConstU64, Currency, Everything, FindAuthor, Imbalance, OnFinalize,
-    OnUnbalanced,
+    OnUnbalanced, PalletInfoAccess,
 };
 use frame_support::weights::constants::{
     BlockExecutionWeight, ExtrinsicBaseWeight, ParityDbWeight, WEIGHT_REF_TIME_PER_MILLIS,
@@ -43,6 +44,7 @@ use sp_messenger::messages::{
     BlockInfo, BlockMessagesWithStorageKey, ChainId, CrossDomainMessage,
     ExtractedStateRootsFromProof, MessageId,
 };
+use sp_runtime::generic::Era;
 use sp_runtime::traits::{
     BlakeTwo256, Block as BlockT, Convert, DispatchInfoOf, Dispatchable, IdentifyAccount,
     IdentityLookup, PostDispatchInfoOf, UniqueSaturatedInto, Verify,
@@ -51,15 +53,15 @@ use sp_runtime::transaction_validity::{
     TransactionSource, TransactionValidity, TransactionValidityError,
 };
 use sp_runtime::{
-    create_runtime_str, generic, impl_opaque_keys, ApplyExtrinsicResult, ConsensusEngineId,
+    create_runtime_str, generic, impl_opaque_keys, ApplyExtrinsicResult, ConsensusEngineId, Digest,
 };
-pub use sp_runtime::{MultiAddress, Perbill, Permill};
+pub use sp_runtime::{MultiAddress, Perbill, Permill, SaturatedConversion};
 use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
 #[cfg(feature = "std")]
 use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
-use subspace_runtime_primitives::{Moment, SHANNON};
+use subspace_runtime_primitives::{Moment, SlowAdjustingFeeUpdate, SHANNON};
 
 /// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
 pub type Signature = EthereumSignature;
@@ -357,7 +359,7 @@ impl pallet_transaction_payment::Config for Runtime {
         pallet_transaction_payment::CurrencyAdapter<Balances, ActualPaidFeesHandler>;
     type WeightToFee = IdentityFee<Balance>;
     type LengthToFee = ConstantMultiplier<Balance, TransactionByteFee>;
-    type FeeMultiplierUpdate = ();
+    type FeeMultiplierUpdate = SlowAdjustingFeeUpdate<Runtime>;
     type OperationalFeeMultiplier = OperationalFeeMultiplier;
 }
 
@@ -667,7 +669,7 @@ fn extract_xdm_proof_state_roots(
 fn extract_signer_inner<Lookup>(
     ext: &UncheckedExtrinsic,
     lookup: &Lookup,
-) -> Option<opaque::AccountId>
+) -> Option<Result<AccountId, TransactionValidityError>>
 where
     Lookup: sp_runtime::traits::Lookup<Source = Address, Target = AccountId>,
 {
@@ -675,13 +677,12 @@ where
         ext.0
             .function
             .check_self_contained()
-            .and_then(|signed_info| signed_info.ok())
-            .map(|account| account.encode())
+            .map(|signed_info| signed_info.map(|signer| signer.into()))
     } else {
         ext.0
             .signature
             .as_ref()
-            .and_then(|(signed, _, _)| lookup.lookup(*signed).ok().map(|account| account.encode()))
+            .map(|(signed, _, _)| lookup.lookup(*signed).map_err(|e| e.into()))
     }
 }
 
@@ -693,10 +694,39 @@ pub fn extract_signer(
     extrinsics
         .into_iter()
         .map(|extrinsic| {
-            let maybe_signer = extract_signer_inner(&extrinsic, &lookup);
+            let maybe_signer =
+                extract_signer_inner(&extrinsic, &lookup).and_then(|account_result| {
+                    account_result.ok().map(|account_id| account_id.encode())
+                });
             (maybe_signer, extrinsic)
         })
         .collect()
+}
+
+fn storage_keys_for_verifying_tx_validity_inner(
+    sender: AccountId,
+    block_number: BlockNumber,
+    maybe_tx_era: Option<Era>,
+) -> Vec<Vec<u8>> {
+    let mut storage_keys = sp_std::vec![
+        frame_system::BlockHash::<Runtime>::hashed_key_for(BlockNumber::from(0u32)),
+        frame_support::storage::storage_prefix(System::name().as_bytes(), b"Number").to_vec(),
+        frame_system::Account::<Runtime>::hashed_key_for(sender),
+        pallet_transaction_payment::NextFeeMultiplier::<Runtime>::hashed_key().to_vec()
+    ];
+
+    match maybe_tx_era {
+        None => storage_keys,
+        Some(era) => {
+            let birth_number = era
+                .birth(block_number.saturated_into::<u64>())
+                .saturated_into::<BlockNumber>();
+            storage_keys.push(frame_system::BlockHash::<Runtime>::hashed_key_for(
+                birth_number,
+            ));
+            storage_keys
+        }
+    }
 }
 
 #[cfg(feature = "runtime-benchmarks")]
@@ -829,7 +859,9 @@ impl_runtime_apis! {
             use subspace_core_primitives::crypto::blake3_hash;
 
             let lookup = frame_system::ChainContext::<Runtime>::default();
-            if let Some(signer) = extract_signer_inner(extrinsic, &lookup) {
+            if let Some(signer) = extract_signer_inner(extrinsic, &lookup).and_then(|account_result| {
+                    account_result.ok().map(|account_id| account_id.encode())
+                }) {
                 // Check if the signer Id hash is within the tx range
                 let signer_id_hash = U256::from_be_bytes(blake3_hash(&signer.encode()));
                 sp_domains::signer_in_tx_range(bundle_vrf_hash, &signer_id_hash, tx_range)
@@ -861,23 +893,63 @@ impl_runtime_apis! {
             ).encode()
         }
 
+        fn construct_timestamp_extrinsic(moment: Moment) -> <Block as BlockT>::Extrinsic {
+            UncheckedExtrinsic::new_unsigned(
+                pallet_timestamp::Call::set{ now: moment }.into()
+            )
+        }
+
+        fn is_inherent_extrinsic(extrinsic: &<Block as BlockT>::Extrinsic) -> bool {
+            match &extrinsic.0.function {
+                RuntimeCall::Timestamp(call) => Timestamp::is_inherent(call),
+                RuntimeCall::ExecutivePallet(call) => ExecutivePallet::is_inherent(call),
+                _ => false,
+            }
+        }
+
         fn check_transaction_validity(
-            _uxt: &<Block as BlockT>::Extrinsic,
-            _block_hash: <Block as BlockT>::Hash,
+            uxt: &<Block as BlockT>::Extrinsic,
+            block_number: BlockNumber,
+            block_hash: <Block as BlockT>::Hash
         ) -> Result<(), domain_runtime_primitives::CheckTxValidityError> {
-            // TODO: check transaction fee to core-evm
-            Ok(())
+            let lookup = frame_system::ChainContext::<Runtime>::default();
+            let maybe_signer_info = extract_signer_inner(uxt, &lookup);
+
+            if let Some(signer_info) = maybe_signer_info {
+                let signer = signer_info.map_err(|tx_validity_error| {
+                    domain_runtime_primitives::CheckTxValidityError::UnableToExtractSigner {
+                        error: tx_validity_error
+                    }
+                })?;
+
+                let tx_validity =
+                    Executive::validate_transaction(TransactionSource::External, uxt.clone(), block_hash);
+
+                tx_validity.map(|_| ()).map_err(|tx_validity_error| {
+                    domain_runtime_primitives::CheckTxValidityError::InvalidTransaction {
+                        error: tx_validity_error,
+                        storage_keys: storage_keys_for_verifying_tx_validity_inner(signer, block_number, Self::extrinsic_era(uxt)),
+                    }
+                })
+            } else {
+                Ok(())
+            }
         }
 
         fn storage_keys_for_verifying_transaction_validity(
             who: opaque::AccountId,
+            block_number: BlockNumber,
+            maybe_tx_era: Option<Era>
         ) -> Result<Vec<Vec<u8>>, domain_runtime_primitives::VerifyTxValidityError> {
             let sender = AccountId::decode(&mut who.as_slice())
                 .map_err(|_| domain_runtime_primitives::VerifyTxValidityError::FailedToDecodeAccountId)?;
-            Ok(sp_std::vec![
-                frame_system::Account::<Runtime>::hashed_key_for(sender),
-                pallet_transaction_payment::NextFeeMultiplier::<Runtime>::hashed_key().to_vec(),
-            ])
+            Ok(storage_keys_for_verifying_tx_validity_inner(sender, block_number, maybe_tx_era))
+        }
+
+        fn extrinsic_era(
+          extrinsic: &<Block as BlockT>::Extrinsic
+        ) -> Option<Era> {
+            extrinsic.0.signature.as_ref().map(|(_, _, extra)| extra.4.0)
         }
 
         fn extrinsic_weight(ext: &<Block as BlockT>::Extrinsic) -> Weight {
@@ -887,13 +959,9 @@ impl_runtime_apis! {
         fn block_rewards() -> Balance {
             OperatorRewards::block_rewards()
         }
-    }
 
-    impl domain_runtime_primitives::InherentExtrinsicApi<Block> for Runtime {
-        fn construct_inherent_timestamp_extrinsic(moment: Moment) -> <Block as BlockT>::Extrinsic {
-            UncheckedExtrinsic::new_unsigned(
-                pallet_timestamp::Call::set{ now: moment }.into()
-            )
+        fn block_digest() -> Digest {
+            System::digest()
         }
     }
 
@@ -1162,5 +1230,16 @@ impl_runtime_apis! {
             if batches.is_empty() { return Err("Benchmark not found for this pallet.".into()) }
             Ok(batches)
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::{Runtime, RuntimeBlockWeights as BlockWeights};
+    use subspace_runtime_primitives::tests_utils::FeeMultiplierUtils;
+
+    #[test]
+    fn multiplier_can_grow_from_zero() {
+        FeeMultiplierUtils::<Runtime, BlockWeights>::multiplier_can_grow_from_zero()
     }
 }

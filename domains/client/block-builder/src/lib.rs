@@ -36,6 +36,7 @@ use sp_blockchain::{ApplyExtrinsicFailed, Error};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, Hash, HashingFor, Header as HeaderT, NumberFor, One};
 use sp_runtime::Digest;
+use std::collections::VecDeque;
 
 /// Used as parameter to [`BlockBuilderProvider`] to express if proof recording should be enabled.
 ///
@@ -127,7 +128,7 @@ where
 
 /// Utility for building new (valid) blocks from a stream of extrinsics.
 pub struct BlockBuilder<'a, Block: BlockT, A: ProvideRuntimeApi<Block>, B> {
-    extrinsics: Vec<Block::Extrinsic>,
+    extrinsics: VecDeque<Block::Extrinsic>,
     api: ApiRef<'a, A::Api>,
     parent_hash: Block::Hash,
     backend: &'a B,
@@ -147,6 +148,7 @@ where
     /// While proof recording is enabled, all accessed trie nodes are saved.
     /// These recorded trie nodes can be used by a third party to prove the
     /// output of this block builder without having access to the full storage.
+    #[allow(clippy::too_many_arguments)]
     pub fn new(
         api: &'a A,
         parent_hash: Block::Hash,
@@ -154,7 +156,8 @@ where
         record_proof: RecordProof,
         inherent_digests: Digest,
         backend: &'a B,
-        extrinsics: Vec<Block::Extrinsic>,
+        mut extrinsics: VecDeque<Block::Extrinsic>,
+        maybe_inherent_data: Option<sp_inherents::InherentData>,
     ) -> Result<Self, Error> {
         let header = <<Block as BlockT>::Header as HeaderT>::new(
             parent_number + One::one(),
@@ -173,6 +176,13 @@ where
         }
 
         api.initialize_block(parent_hash, &header)?;
+
+        if let Some(inherent_data) = maybe_inherent_data {
+            let inherent_extrinsics = Self::create_inherents(parent_hash, &api, inherent_data)?;
+            for inherent_extrinsic in inherent_extrinsics {
+                extrinsics.push_front(inherent_extrinsic)
+            }
+        }
 
         Ok(Self {
             parent_hash,
@@ -275,7 +285,7 @@ where
         let storage_changes = self.collect_storage_changes()?;
 
         Ok(BuiltBlock {
-            block: <Block as BlockT>::new(header, self.extrinsics),
+            block: <Block as BlockT>::new(header, self.extrinsics.into()),
             storage_changes,
             proof,
         })
@@ -285,17 +295,18 @@ where
     ///
     /// Returns the inherents created by the runtime or an error if something failed.
     pub fn create_inherents(
-        &mut self,
+        parent_hash: Block::Hash,
+        api: &ApiRef<A::Api>,
         inherent_data: sp_inherents::InherentData,
-    ) -> Result<Vec<Block::Extrinsic>, Error> {
-        let parent_hash = self.parent_hash;
-        self.api
+    ) -> Result<VecDeque<Block::Extrinsic>, Error> {
+        let exts = api
             .execute_in_transaction(move |api| {
                 // `create_inherents` should not change any state, to ensure this we always rollback
                 // the transaction.
                 TransactionOutcome::Rollback(api.inherent_extrinsics(parent_hash, inherent_data))
             })
-            .map_err(|e| Error::Application(Box::new(e)))
+            .map_err(|e| Error::Application(Box::new(e)))?;
+        Ok(VecDeque::from(exts))
     }
 
     /// Estimate the size of the block in the current state.
@@ -324,6 +335,7 @@ mod tests {
     use sp_core::Blake2Hasher;
     use sp_state_machine::Backend;
     // TODO: Remove `substrate_test_runtime_client` dependency for faster build time
+    use std::collections::VecDeque;
     use substrate_test_runtime_client::{DefaultTestClientBuilderExt, TestClientBuilderExt};
 
     // TODO: Unlock this test, it got broken in https://github.com/subspace/subspace/pull/1548 and
@@ -341,7 +353,8 @@ mod tests {
             RecordProof::Yes,
             Default::default(),
             &*backend,
-            vec![],
+            VecDeque::new(),
+            Default::default(),
         )
         .unwrap()
         .build()

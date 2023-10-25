@@ -5,7 +5,7 @@ use crate::chain_spec::create_domain_spec;
 use crate::{construct_extrinsic_generic, node_config, EcdsaKeyring, UncheckedExtrinsicFor};
 use domain_client_operator::{BootstrapResult, Bootstrapper, OperatorStreams};
 use domain_runtime_primitives::opaque::Block;
-use domain_runtime_primitives::{Balance, DomainCoreApi, InherentExtrinsicApi};
+use domain_runtime_primitives::{Balance, DomainCoreApi};
 use domain_service::providers::DefaultProvider;
 use domain_service::FullClient;
 use domain_test_primitives::OnchainStateApi;
@@ -142,7 +142,6 @@ where
         + TaggedTransactionQueue<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
-        + InherentExtrinsicApi<Block>
         + MessengerApi<Block, NumberFor<Block>>
         + RelayerApi<Block, NumberFor<Block>>
         + OnchainStateApi<Block, AccountId, Balance>
@@ -168,6 +167,7 @@ where
         base_path: BasePath,
         domain_nodes: Vec<MultiaddrWithPeerId>,
         domain_nodes_exclusive: bool,
+        skip_empty_bundle_production: bool,
         role: Role,
         mock_consensus_node: &mut MockConsensusNode,
     ) -> Self {
@@ -234,6 +234,7 @@ where
             gossip_message_sink: gossip_msg_sink,
             domain_message_receiver,
             provider: DefaultProvider,
+            skip_empty_bundle_production,
         };
 
         let domain_node = domain_service::new_full::<
@@ -388,6 +389,7 @@ pub struct DomainNodeBuilder {
     key: EcdsaKeyring,
     domain_nodes: Vec<MultiaddrWithPeerId>,
     domain_nodes_exclusive: bool,
+    skip_empty_bundle_production: bool,
     base_path: BasePath,
 }
 
@@ -407,6 +409,7 @@ impl DomainNodeBuilder {
             tokio_handle,
             domain_nodes: Vec::new(),
             domain_nodes_exclusive: false,
+            skip_empty_bundle_production: false,
             base_path,
         }
     }
@@ -428,6 +431,12 @@ impl DomainNodeBuilder {
         self
     }
 
+    /// Skip empty bundle production when there is no non-empty domain block need to confirm
+    pub fn skip_empty_bundle(mut self) -> Self {
+        self.skip_empty_bundle_production = true;
+        self
+    }
+
     /// Build a evm domain node
     pub async fn build_evm_node(
         self,
@@ -442,6 +451,7 @@ impl DomainNodeBuilder {
             self.base_path,
             self.domain_nodes,
             self.domain_nodes_exclusive,
+            self.skip_empty_bundle_production,
             role,
             mock_consensus_node,
         )
