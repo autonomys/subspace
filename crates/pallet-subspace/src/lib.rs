@@ -395,6 +395,13 @@ pub mod pallet {
         subspace_core_primitives::SegmentCommitment,
     >;
 
+    /// Whether the segment headers inherent has been processed in this block (temporary value).
+    ///
+    /// This value is updated to `true` when processing `store_segment_headers` by a node.
+    /// It is then cleared at the end of each block execution in the `on_finalize` hook.
+    #[pallet::storage]
+    pub(super) type DidProcessSegmentHeaders<T: Config> = StorageValue<_, bool, ValueQuery>;
+
     /// Storage of previous vote verification data, updated on each block during finalization.
     #[pallet::storage]
     pub(super) type ParentVoteVerificationData<T> = StorageValue<_, VoteVerificationData>;
@@ -1001,6 +1008,8 @@ impl<T: Config> Pallet<T> {
         ParentVoteVerificationData::<T>::put(current_vote_verification_data::<T>(true));
 
         ParentBlockVoters::<T>::put(CurrentBlockVoters::<T>::take().unwrap_or_default());
+
+        DidProcessSegmentHeaders::<T>::take();
     }
 
     fn do_report_equivocation(
@@ -1019,6 +1028,11 @@ impl<T: Config> Pallet<T> {
     }
 
     fn do_store_segment_headers(segment_headers: Vec<SegmentHeader>) -> DispatchResult {
+        assert!(
+            !DidProcessSegmentHeaders::<T>::exists(),
+            "Segment headers must be updated only once in the block"
+        );
+
         for segment_header in segment_headers {
             SegmentCommitment::<T>::insert(
                 segment_header.segment_index(),
@@ -1031,6 +1045,8 @@ impl<T: Config> Pallet<T> {
             ));
             Self::deposit_event(Event::SegmentHeaderStored { segment_header });
         }
+
+        DidProcessSegmentHeaders::<T>::put(true);
         Ok(())
     }
 
