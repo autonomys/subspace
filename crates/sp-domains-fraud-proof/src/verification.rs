@@ -322,6 +322,20 @@ where
     Ok(())
 }
 
+fn convert_bundle_validity_to_generic<DomainHash>(
+    bundle_validity: BundleValidity<DomainHash>,
+) -> BundleValidity<H256>
+where
+    DomainHash: Into<H256> + Clone,
+{
+    match bundle_validity {
+        BundleValidity::Invalid(invalid_bundle_type) => {
+            BundleValidity::Invalid(invalid_bundle_type.clone())
+        }
+        BundleValidity::Valid(hash) => BundleValidity::Valid(hash.clone().into()),
+    }
+}
+
 /// This function checks if this fraud proof is expected against the inboxed bundle entry it is targeting.
 /// If the entry is expected then it will be returned
 /// In any other cases VerificationError will be returned
@@ -354,7 +368,8 @@ where
         // `FalseInvalid`
         // The proof trying to prove `bad_receipt_bundle`'s `invalid_bundle_type` is wrong,
         // so the proof should contains the same `invalid_bundle_type`
-        targeted_invalid_bundle_entry.bundle == BundleValidity::Invalid(invalid_type_of_proof)
+        targeted_invalid_bundle_entry.bundle
+            == BundleValidity::Invalid(invalid_type_of_proof.clone())
     } else {
         // `TrueInvalid`
         match &targeted_invalid_bundle_entry.bundle {
@@ -374,20 +389,13 @@ where
     };
 
     if !is_expected {
-        return match &targeted_invalid_bundle_entry.bundle {
-            BundleValidity::Invalid(invalid_bundle_type) => {
-                Err(VerificationError::UnexpectedInvalidBundleEntry {
-                    bundle_index: invalid_bundle_fraud_proof.bundle_index,
-                    invalid_bundle_type: invalid_bundle_type.clone(),
-                })
-            }
-            BundleValidity::Valid(valid_bundle_hash) => {
-                Err(VerificationError::UnexpectedValidBundleEntry {
-                    bundle_index: invalid_bundle_fraud_proof.bundle_index,
-                    bundle_hash: valid_bundle_hash.clone().into(),
-                })
-            }
-        };
+        return Err(VerificationError::UnexpectedTargetedBundleEntry {
+            bundle_index: invalid_bundle_fraud_proof.bundle_index,
+            fraud_proof_invalid_type_of_proof: invalid_type_of_proof,
+            targeted_entry_bundle: convert_bundle_validity_to_generic(
+                targeted_invalid_bundle_entry.bundle.clone(),
+            ),
+        });
     }
 
     Ok(targeted_invalid_bundle_entry.clone())
@@ -444,11 +452,10 @@ where
                     opaque_extrinsic: extrinsic,
                 },
             )
-            // These are two different kind of errors as the first represent that we got None from the host function
-            // while second represents that we got the FraudProofVerificationInfoResponse but was none.
-            .ok_or(VerificationError::FailedToGetResponseFromTxRangeHostFn)? // Not possible to return any more info as we do not receive actual error here
+            // TODO: In future if we start getting errors from host function, change below errors to include the underlying error
+            .ok_or(VerificationError::FailedToGetResponseFromTxRangeHostFn)?
             .into_tx_range_check()
-            .ok_or(VerificationError::ReceivedInvalidInfoFromTxRangeHostFn)?; // Not possible to return any more info as we do not receive actual error here
+            .ok_or(VerificationError::ReceivedInvalidInfoFromTxRangeHostFn)?;
 
             // If it is true invalid fraud proof then tx must not be in range and
             // if it is false invalid fraud proof then tx must be in range for fraud

@@ -5,7 +5,7 @@ use sp_core::H256;
 use sp_domain_digests::AsPredigest;
 use sp_domains::proof_provider_and_verifier::StorageProofVerifier;
 use sp_domains::{
-    DomainId, ExecutionReceipt, HeaderHashFor, HeaderHashingFor, InvalidBundleType,
+    BundleValidity, DomainId, ExecutionReceipt, HeaderHashFor, HeaderHashingFor, InvalidBundleType,
     SealedBundleHeader,
 };
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor};
@@ -296,22 +296,13 @@ pub enum VerificationError {
     /// Invalid bundle entry in bad receipt was expected to be valid but instead found invalid entry
     #[cfg_attr(
         feature = "thiserror",
-        error("Invalid bundle entry at {bundle_index} in bad receipt was not expected to be invalid but found: {invalid_bundle_type:?}")
+        error("Unexpected bundle entry at {bundle_index} in bad receipt found: {targeted_entry_bundle:?} with fraud proof's type of proof: {fraud_proof_invalid_type_of_proof:?}")
     )]
-    UnexpectedInvalidBundleEntry {
+    UnexpectedTargetedBundleEntry {
         bundle_index: u32,
-        invalid_bundle_type: InvalidBundleType,
+        fraud_proof_invalid_type_of_proof: InvalidBundleType,
+        targeted_entry_bundle: BundleValidity<H256>,
     },
-    /// Invalid bundle entry in bad receipt was expected to be invalid but instead found valid entry
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Invalid bundle entry at {bundle_index} in bad receipt was not expected to be valid but found valid entry with extrinsic hash: {bundle_hash:?}")
-    )]
-    UnexpectedValidBundleEntry {
-        bundle_index: u32,
-        bundle_hash: H256,
-    },
-
     /// Tx range host function did not return response (returned None)
     #[cfg_attr(
         feature = "thiserror",
