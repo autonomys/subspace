@@ -1,35 +1,10 @@
 //! Chia proof of space implementation
 use crate::chiapos::{Tables, TablesCache};
-use crate::{PosTableType, Quality, Table, TableGenerator};
+use crate::{PosTableType, Table, TableGenerator};
 use core::mem;
-use subspace_core_primitives::{PosProof, PosQualityBytes, PosSeed};
+use subspace_core_primitives::{PosProof, PosSeed};
 
 const K: u8 = 20;
-
-/// Abstraction that represents quality of the solution in the table.
-///
-/// Chia implementation.
-#[derive(Debug)]
-#[must_use]
-pub struct ChiaQuality<'a> {
-    bytes: PosQualityBytes,
-    challenge: [u8; 32],
-    tables: &'a Tables<K>,
-}
-
-impl<'a> Quality for ChiaQuality<'a> {
-    fn to_bytes(&self) -> PosQualityBytes {
-        self.bytes
-    }
-
-    fn create_proof(&self) -> PosProof {
-        self.tables
-            .find_proof(&self.challenge)
-            .next()
-            .map(PosProof::from)
-            .expect("Proof always exists if quality exists; qed")
-    }
-}
 
 /// Subspace proof of space table generator.
 ///
@@ -66,8 +41,6 @@ impl Table for ChiaTable {
     const TABLE_TYPE: PosTableType = PosTableType::Chia;
     type Generator = ChiaTableGenerator;
 
-    type Quality<'a> = ChiaQuality<'a>;
-
     fn generate(seed: &PosSeed) -> ChiaTable {
         Self {
             tables: Tables::<K>::create_simple((*seed).into()),
@@ -81,25 +54,22 @@ impl Table for ChiaTable {
         }
     }
 
-    fn find_quality(&self, challenge_index: u32) -> Option<Self::Quality<'_>> {
+    fn find_proof(&self, challenge_index: u32) -> Option<PosProof> {
         let mut challenge = [0; 32];
         challenge[..mem::size_of::<u32>()].copy_from_slice(&challenge_index.to_le_bytes());
-        let maybe_quality = self.tables.find_quality(&challenge).next();
-        maybe_quality.map(|quality| ChiaQuality {
-            bytes: PosQualityBytes::from(quality),
-            challenge,
-            tables: &self.tables,
-        })
+
+        let proof = self
+            .tables
+            .find_proof(&challenge)
+            .next()
+            .map(PosProof::from);
+        proof
     }
 
-    fn is_proof_valid(
-        seed: &PosSeed,
-        challenge_index: u32,
-        proof: &PosProof,
-    ) -> Option<PosQualityBytes> {
+    fn is_proof_valid(seed: &PosSeed, challenge_index: u32, proof: &PosProof) -> bool {
         let mut challenge = [0; 32];
         challenge[..mem::size_of::<u32>()].copy_from_slice(&challenge_index.to_le_bytes());
-        Tables::<K>::verify(**seed, &challenge, proof).map(PosQualityBytes::from)
+        Tables::<K>::verify(**seed, &challenge, proof).is_some()
     }
 }
 
@@ -117,22 +87,14 @@ mod tests {
         let table = ChiaTable::generate(&seed);
         let table_parallel = ChiaTable::generate_parallel(&seed);
 
-        assert!(table.find_quality(1232460437).is_none());
-        assert!(table_parallel.find_quality(1232460437).is_none());
+        assert!(table.find_proof(1232460437).is_none());
+        assert!(table_parallel.find_proof(1232460437).is_none());
 
         {
             let challenge_index = 600426542;
-            let quality = table.find_quality(challenge_index).unwrap();
-            assert_eq!(
-                quality.to_bytes(),
-                table_parallel
-                    .find_quality(challenge_index)
-                    .unwrap()
-                    .to_bytes()
-            );
-            let proof = quality.create_proof();
-            let maybe_quality = ChiaTable::is_proof_valid(&seed, challenge_index, &proof);
-            assert_eq!(maybe_quality, Some(quality.to_bytes()));
+            let proof = table.find_proof(challenge_index).unwrap();
+            assert_eq!(proof, table_parallel.find_proof(challenge_index).unwrap());
+            assert!(ChiaTable::is_proof_valid(&seed, challenge_index, &proof));
         }
     }
 }

@@ -169,29 +169,6 @@ impl PosSeed {
     pub const SIZE: usize = 32;
 }
 
-/// Proof of space quality.
-#[derive(Debug, Copy, Clone, Eq, PartialEq, Deref)]
-pub struct PosQualityBytes([u8; Self::SIZE]);
-
-impl From<[u8; PosQualityBytes::SIZE]> for PosQualityBytes {
-    #[inline]
-    fn from(value: [u8; Self::SIZE]) -> Self {
-        Self(value)
-    }
-}
-
-impl From<PosQualityBytes> for [u8; PosQualityBytes::SIZE] {
-    #[inline]
-    fn from(value: PosQualityBytes) -> Self {
-        value.0
-    }
-}
-
-impl PosQualityBytes {
-    /// Size of proof of space quality in bytes.
-    pub const SIZE: usize = 32;
-}
-
 /// Proof of space proof bytes.
 #[derive(
     Debug, Copy, Clone, Eq, PartialEq, Deref, DerefMut, Encode, Decode, TypeInfo, MaxEncodedLen,

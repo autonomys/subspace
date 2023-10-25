@@ -1,41 +1,10 @@
 //! Shim proof of space implementation that works much faster than Chia and can be used for testing
 //! purposes to reduce memory and CPU usage
 
-use crate::{PosTableType, Quality, Table, TableGenerator};
+use crate::{PosTableType, Table, TableGenerator};
 use core::iter;
 use subspace_core_primitives::crypto::blake3_hash;
-use subspace_core_primitives::{Blake3Hash, PosProof, PosQualityBytes, PosSeed, U256};
-
-/// Abstraction that represents quality of the solution in the table.
-///
-/// Shim implementation.
-#[derive(Debug)]
-#[must_use]
-pub struct ShimQuality<'a> {
-    seed: &'a PosSeed,
-    quality: Blake3Hash,
-}
-
-impl<'a> Quality for ShimQuality<'a> {
-    fn to_bytes(&self) -> PosQualityBytes {
-        PosQualityBytes::from(self.quality)
-    }
-
-    fn create_proof(&self) -> PosProof {
-        let mut proof = PosProof::default();
-        proof
-            .iter_mut()
-            .zip(
-                self.seed
-                    .iter()
-                    .chain(iter::repeat(self.quality.iter()).flatten()),
-            )
-            .for_each(|(output, input)| {
-                *output = *input;
-            });
-        proof
-    }
-}
+use subspace_core_primitives::{PosProof, PosSeed, U256};
 
 /// Subspace proof of space table generator.
 ///
@@ -60,39 +29,38 @@ pub struct ShimTable {
 impl Table for ShimTable {
     const TABLE_TYPE: PosTableType = PosTableType::Shim;
     type Generator = ShimTableGenerator;
-
-    type Quality<'a> = ShimQuality<'a>;
-
     fn generate(seed: &PosSeed) -> ShimTable {
         Self { seed: *seed }
     }
 
-    fn find_quality(&self, challenge_index: u32) -> Option<Self::Quality<'_>> {
-        find_quality(&self.seed, challenge_index)
+    fn find_proof(&self, challenge_index: u32) -> Option<PosProof> {
+        find_proof(&self.seed, challenge_index)
     }
 
-    fn is_proof_valid(
-        seed: &PosSeed,
-        challenge_index: u32,
-        proof: &PosProof,
-    ) -> Option<PosQualityBytes> {
-        let quality = find_quality(seed, challenge_index)?;
+    fn is_proof_valid(seed: &PosSeed, challenge_index: u32, proof: &PosProof) -> bool {
+        let Some(correct_proof) = find_proof(seed, challenge_index) else {
+            return false;
+        };
 
-        proof[..seed.len()]
-            .iter()
-            .zip(
-                seed.iter()
-                    .chain(iter::repeat(quality.quality.iter()).flatten()),
-            )
-            .all(|(a, b)| a == b)
-            .then_some(PosQualityBytes::from(quality.quality))
+        &correct_proof == proof
     }
 }
 
-fn find_quality(seed: &PosSeed, challenge_index: u32) -> Option<ShimQuality<'_>> {
+fn find_proof(seed: &PosSeed, challenge_index: u32) -> Option<PosProof> {
     let quality = blake3_hash(&challenge_index.to_le_bytes());
-    (U256::from_le_bytes(quality) % U256::from(3u32) > U256::zero())
-        .then_some(ShimQuality { seed, quality })
+    if U256::from_le_bytes(quality) % U256::from(3u32) > U256::zero() {
+        let mut proof = PosProof::default();
+        proof
+            .iter_mut()
+            .zip(seed.iter().chain(iter::repeat(quality.iter()).flatten()))
+            .for_each(|(output, input)| {
+                *output = *input;
+            });
+
+        Some(proof)
+    } else {
+        None
+    }
 }
 
 #[cfg(test)]
@@ -108,14 +76,12 @@ mod tests {
 
         let table = ShimTable::generate(&seed);
 
-        assert!(table.find_quality(0).is_none());
+        assert!(table.find_proof(0).is_none());
 
         {
             let challenge_index = 2;
-            let quality = table.find_quality(challenge_index).unwrap();
-            let proof = quality.create_proof();
-            let maybe_quality = ShimTable::is_proof_valid(&seed, challenge_index, &proof);
-            assert_eq!(maybe_quality, Some(quality.to_bytes()));
+            let proof = table.find_proof(challenge_index).unwrap();
+            assert!(ShimTable::is_proof_valid(&seed, challenge_index, &proof));
         }
     }
 }

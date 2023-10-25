@@ -24,7 +24,7 @@ use subspace_core_primitives::{
     SectorId, SectorIndex,
 };
 use subspace_erasure_coding::ErasureCoding;
-use subspace_proof_of_space::{Quality, Table, TableGenerator};
+use subspace_proof_of_space::{Table, TableGenerator};
 use thiserror::Error;
 use tokio::sync::Semaphore;
 use tokio::task::yield_now;
@@ -353,11 +353,9 @@ where
                     .interleave(&parity_record_chunks),
             )
             .map(|(s_bucket, record_chunk)| {
-                let quality = pos_table.find_quality(s_bucket.into())?;
+                let proof = pos_table.find_proof(s_bucket.into())?;
 
-                Some(
-                    Simd::from(record_chunk.to_bytes()) ^ Simd::from(quality.create_proof().hash()),
-                )
+                Some(Simd::from(record_chunk.to_bytes()) ^ Simd::from(proof.hash()))
             })
             .collect_into_vec(&mut chunks_scratch);
         let num_successfully_encoded_chunks = chunks_scratch

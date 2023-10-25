@@ -336,6 +336,8 @@ where
                 let mut hasher = Sha256::new();
                 hasher.update(challenge);
 
+                // NOTE: this works correctly, but may overflow if `quality_index` is changed to
+                // not be zero-initialized anymore
                 let left_right_xs_bit_offset = quality_index * usize::from(K * 2);
                 // Collect `left_x` and `right_x` bits, potentially with extra bits at the beginning
                 // and the end
