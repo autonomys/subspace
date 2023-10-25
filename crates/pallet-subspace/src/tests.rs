@@ -23,7 +23,7 @@ use crate::mock::{
     SLOT_PROBABILITY,
 };
 use crate::{
-    pallet, AllowAuthoringByAnyone, AuditChunkOffset, BlockList, Call, CheckVoteError, Config,
+    pallet, AllowAuthoringByAnyone, BlockList, Call, CheckVoteError, Config,
     CurrentBlockAuthorInfo, CurrentBlockVoters, CurrentSlot, ParentBlockAuthorInfo,
     ParentBlockVoters, SegmentCommitment, SubspaceEquivocationOffence,
 };
@@ -1300,14 +1300,12 @@ fn vote_equivocation_current_block_plus_vote() {
             pallet::SolutionRanges::<Test>::get().voting_current,
         );
 
-        // Parent block author + sector index + chunk + audit chunk index + slot matches that of the
-        // vote
+        // Parent block author + sector index + chunk + slot matches that of the vote
         CurrentBlockAuthorInfo::<Test>::put((
             FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
             signed_vote.vote.solution().sector_index,
             signed_vote.vote.solution().piece_offset,
             signed_vote.vote.solution().chunk,
-            AuditChunkOffset(signed_vote.vote.solution().audit_chunk_offset),
             slot,
             reward_address,
         ));
@@ -1357,14 +1355,12 @@ fn vote_equivocation_parent_block_plus_vote() {
             pallet::SolutionRanges::<Test>::get().voting_current,
         );
 
-        // Parent block author + sector index + chunk + audit chunk index + slot matches that of the
-        // vote
+        // Parent block author + sector index + chunk + slot matches that of the vote
         ParentBlockAuthorInfo::<Test>::put((
             FarmerPublicKey::unchecked_from(keypair.public.to_bytes()),
             signed_vote.vote.solution().sector_index,
             signed_vote.vote.solution().piece_offset,
             signed_vote.vote.solution().chunk,
-            AuditChunkOffset(signed_vote.vote.solution().audit_chunk_offset),
             slot,
         ));
 
@@ -1432,7 +1428,6 @@ fn vote_equivocation_current_voters_duplicate() {
                     signed_vote.vote.solution().sector_index,
                     signed_vote.vote.solution().piece_offset,
                     signed_vote.vote.solution().chunk,
-                    AuditChunkOffset(signed_vote.vote.solution().audit_chunk_offset),
                     slot,
                 ),
                 (reward_address, signed_vote.signature.clone()),
@@ -1454,7 +1449,6 @@ fn vote_equivocation_current_voters_duplicate() {
                     signed_vote.vote.solution().sector_index,
                     signed_vote.vote.solution().piece_offset,
                     signed_vote.vote.solution().chunk,
-                    AuditChunkOffset(signed_vote.vote.solution().audit_chunk_offset),
                     slot,
                 ),
                 (reward_address, FarmerSignature::unchecked_from([0; 64])),
@@ -1518,7 +1512,6 @@ fn vote_equivocation_parent_voters_duplicate() {
                     signed_vote.vote.solution().sector_index,
                     signed_vote.vote.solution().piece_offset,
                     signed_vote.vote.solution().chunk,
-                    AuditChunkOffset(signed_vote.vote.solution().audit_chunk_offset),
                     slot,
                 ),
                 (reward_address, signed_vote.signature.clone()),
@@ -1540,7 +1533,6 @@ fn vote_equivocation_parent_voters_duplicate() {
                     signed_vote.vote.solution().sector_index,
                     signed_vote.vote.solution().piece_offset,
                     signed_vote.vote.solution().chunk,
-                    AuditChunkOffset(signed_vote.vote.solution().audit_chunk_offset),
                     slot,
                 ),
                 (reward_address, FarmerSignature::unchecked_from([0; 64])),
@@ -1572,7 +1564,6 @@ fn enabling_block_rewards_works() {
             0,
             PieceOffset::ZERO,
             Scalar::default(),
-            AuditChunkOffset(0),
             Subspace::current_slot(),
             1,
         ));
@@ -1584,7 +1575,6 @@ fn enabling_block_rewards_works() {
                     0,
                     PieceOffset::ZERO,
                     Scalar::default(),
-                    AuditChunkOffset(0),
                     Subspace::current_slot(),
                 ),
                 (2, FarmerSignature::unchecked_from([0; 64])),

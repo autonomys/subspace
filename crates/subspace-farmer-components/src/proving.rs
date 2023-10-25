@@ -1,4 +1,4 @@
-use crate::auditing::{AuditChunkCandidate, ChunkCandidate};
+use crate::auditing::ChunkCandidate;
 use crate::reading::{read_record_metadata, read_sector_record_chunks, ReadingError};
 use crate::sector::{
     SectorContentsMap, SectorContentsMapFromBytesError, SectorMetadataChecksummed,
@@ -12,10 +12,9 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::task::{Context, Poll};
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::{
-    ChunkWitness, PieceOffset, PosProof, PosSeed, PublicKey, Record, RecordCommitment,
-    RecordWitness, SBucket, SectorId, Solution, SolutionRange,
+    ChunkWitness, PieceOffset, PosSeed, PublicKey, Record, SBucket, SectorId, Solution,
+    SolutionRange,
 };
 use subspace_erasure_coding::ErasureCoding;
 use subspace_proof_of_space::Table;
@@ -82,8 +81,8 @@ struct WinningChunk {
     chunk_offset: u32,
     /// Piece offset in a sector
     piece_offset: PieceOffset,
-    /// Audit chunk in above chunk
-    audit_chunks: VecDeque<AuditChunkCandidate>,
+    /// Solution distance of this chunk
+    solution_distance: SolutionRange,
 }
 
 /// Container for solution candidates.
@@ -141,10 +140,7 @@ where
 
     /// Total number of candidates
     pub fn len(&self) -> usize {
-        self.chunk_candidates
-            .iter()
-            .map(|winning_chunk| winning_chunk.audit_chunks.len())
-            .sum()
+        self.chunk_candidates.len()
     }
 
     /// Returns true if no candidates inside
@@ -183,15 +179,6 @@ where
     }
 }
 
-struct ChunkCache {
-    chunk: Scalar,
-    chunk_offset: u32,
-    record_commitment: RecordCommitment,
-    record_witness: RecordWitness,
-    chunk_witness: ChunkWitness,
-    proof_of_space: PosProof,
-}
-
 struct SolutionsIteratorState<'a, RewardAddress, PosTable, TableGenerator, Sector>
 where
     Sector: 'a,
@@ -210,7 +197,6 @@ where
     sector: Sector,
     winning_chunks: VecDeque<WinningChunk>,
     count: Arc<AtomicUsize>,
-    chunk_cache: Option<ChunkCache>,
     table_generator: TableGenerator,
 }
 
@@ -314,26 +300,18 @@ where
                 encoded_chunk_used.then_some(WinningChunk {
                     chunk_offset: chunk_candidate.chunk_offset,
                     piece_offset: *piece_offset,
-                    audit_chunks: chunk_candidate.audit_chunks.into(),
+                    solution_distance: chunk_candidate.solution_distance,
                 })
             })
             .collect::<VecDeque<_>>();
 
-        let count = winning_chunks
-            .iter()
-            .map(|winning_chunk| winning_chunk.audit_chunks.len())
-            .sum();
-
-        let best_solution_distance = winning_chunks.front().and_then(|winning_chunk| {
-            winning_chunk
-                .audit_chunks
-                .front()
-                .map(|audit_chunk| audit_chunk.solution_distance)
-        });
+        let best_solution_distance = winning_chunks
+            .front()
+            .map(|winning_chunk| winning_chunk.solution_distance);
 
         let s_bucket_offsets = sector_metadata.s_bucket_offsets();
 
-        let count = Arc::new(AtomicUsize::new(count));
+        let count = Arc::new(AtomicUsize::new(winning_chunks.len()));
 
         let state = SolutionsIteratorState {
             public_key,
@@ -348,7 +326,6 @@ where
             sector,
             winning_chunks,
             count: Arc::clone(&count),
-            chunk_cache: None,
             table_generator,
         };
 
@@ -375,132 +352,88 @@ where
     S: ReadAtSync + 'a,
     A: ReadAtAsync + 'a,
 {
-    let (chunk_offset, piece_offset, audit_chunk_offset) = {
-        let winning_chunk = state.winning_chunks.front_mut()?;
-
-        let audit_chunk = winning_chunk.audit_chunks.pop_front()?;
-        let chunk_offset = winning_chunk.chunk_offset;
-        let piece_offset = winning_chunk.piece_offset;
-
-        if winning_chunk.audit_chunks.is_empty() {
-            // When all audit chunk offsets are removed, the winning chunks entry itself can be removed
-            state.winning_chunks.pop_front();
-        }
-
-        (chunk_offset, piece_offset, audit_chunk.offset)
-    };
+    let WinningChunk {
+        chunk_offset,
+        piece_offset,
+        solution_distance: _,
+    } = state.winning_chunks.pop_front()?;
 
     state.count.fetch_sub(1, Ordering::SeqCst);
 
-    let chunk_cache = 'outer: {
-        if let Some(chunk_cache) = &state.chunk_cache {
-            if chunk_cache.chunk_offset == chunk_offset {
-                break 'outer chunk_cache;
-            }
-        }
+    // Derive PoSpace table
+    let pos_table = (state.table_generator)(
+        &state
+            .sector_id
+            .derive_evaluation_seed(piece_offset, state.sector_metadata.history_size),
+    );
 
-        // Derive PoSpace table
-        let pos_table = (state.table_generator)(
-            &state
-                .sector_id
-                .derive_evaluation_seed(piece_offset, state.sector_metadata.history_size),
+    let maybe_solution: Result<_, ProvingError> = try {
+        let sector_record_chunks_fut = read_sector_record_chunks(
+            piece_offset,
+            state.sector_metadata.pieces_in_sector,
+            &state.s_bucket_offsets,
+            &state.sector_contents_map,
+            &pos_table,
+            &state.sector,
+        );
+        let sector_record_chunks = sector_record_chunks_fut.await?;
+
+        let chunk = sector_record_chunks
+            .get(usize::from(state.s_bucket))
+            .expect("Within s-bucket range; qed")
+            .expect("Winning chunk was plotted; qed");
+
+        let source_chunks_polynomial = state
+            .erasure_coding
+            .recover_poly(sector_record_chunks.as_slice())
+            .map_err(|error| ReadingError::FailedToErasureDecodeRecord {
+                piece_offset,
+                error,
+            })?;
+        drop(sector_record_chunks);
+
+        // NOTE: We do not check plot consistency using checksum because it is more
+        // expensive and consensus will verify validity of the proof anyway
+        let record_metadata_fut = read_record_metadata(
+            piece_offset,
+            state.sector_metadata.pieces_in_sector,
+            &state.sector,
+        );
+        let record_metadata = record_metadata_fut.await?;
+
+        let proof_of_space = pos_table.find_proof(state.s_bucket.into()).expect(
+            "Quality exists for this s-bucket, otherwise it wouldn't be a winning chunk; qed",
         );
 
-        let maybe_chunk_cache: Result<_, ProvingError> = try {
-            let sector_record_chunks_fut = read_sector_record_chunks(
+        let chunk_witness = state
+            .kzg
+            .create_witness(
+                &source_chunks_polynomial,
+                Record::NUM_S_BUCKETS,
+                state.s_bucket.into(),
+            )
+            .map_err(|error| ProvingError::FailedToCreateChunkWitness {
                 piece_offset,
-                state.sector_metadata.pieces_in_sector,
-                &state.s_bucket_offsets,
-                &state.sector_contents_map,
-                &pos_table,
-                &state.sector,
-            );
-            let sector_record_chunks = sector_record_chunks_fut.await?;
-
-            let chunk = sector_record_chunks
-                .get(usize::from(state.s_bucket))
-                .expect("Within s-bucket range; qed")
-                .expect("Winning chunk was plotted; qed");
-
-            let source_chunks_polynomial = state
-                .erasure_coding
-                .recover_poly(sector_record_chunks.as_slice())
-                .map_err(|error| ReadingError::FailedToErasureDecodeRecord {
-                    piece_offset,
-                    error,
-                })?;
-            drop(sector_record_chunks);
-
-            // NOTE: We do not check plot consistency using checksum because it is more
-            // expensive and consensus will verify validity of the proof anyway
-            let record_metadata_fut = read_record_metadata(
-                piece_offset,
-                state.sector_metadata.pieces_in_sector,
-                &state.sector,
-            );
-            let record_metadata = record_metadata_fut.await?;
-
-            let proof_of_space = pos_table.find_proof(state.s_bucket.into()).expect(
-                "Quality exists for this s-bucket, otherwise it wouldn't be a winning chunk; qed",
-            );
-
-            let chunk_witness = state
-                .kzg
-                .create_witness(
-                    &source_chunks_polynomial,
-                    Record::NUM_S_BUCKETS,
-                    state.s_bucket.into(),
-                )
-                .map_err(|error| ProvingError::FailedToCreateChunkWitness {
-                    piece_offset,
-                    chunk_offset,
-                    error,
-                })?;
-
-            ChunkCache {
-                chunk,
                 chunk_offset,
-                record_commitment: record_metadata.commitment,
-                record_witness: record_metadata.witness,
-                chunk_witness: ChunkWitness::from(chunk_witness),
-                proof_of_space,
-            }
-        };
+                error,
+            })?;
 
-        let chunk_cache = match maybe_chunk_cache {
-            Ok(chunk_cache) => chunk_cache,
-            Err(error) => {
-                if let Some(winning_chunk) = state.winning_chunks.front() {
-                    if winning_chunk.chunk_offset == chunk_offset {
-                        // Subsequent attempts to generate solutions for this chunk offset will
-                        // fail too, remove it so save potential computation
-                        state
-                            .count
-                            .fetch_sub(winning_chunk.audit_chunks.len(), Ordering::SeqCst);
-                        state.winning_chunks.pop_front();
-                    }
-                }
-
-                return Some((Err(error), state));
-            }
-        };
-
-        state.chunk_cache.insert(chunk_cache)
+        Solution {
+            public_key: *state.public_key,
+            reward_address: *state.reward_address,
+            sector_index: state.sector_metadata.sector_index,
+            history_size: state.sector_metadata.history_size,
+            piece_offset,
+            record_commitment: record_metadata.commitment,
+            record_witness: record_metadata.witness,
+            chunk,
+            chunk_witness: ChunkWitness::from(chunk_witness),
+            proof_of_space,
+        }
     };
 
-    let solution = Solution {
-        public_key: *state.public_key,
-        reward_address: *state.reward_address,
-        sector_index: state.sector_metadata.sector_index,
-        history_size: state.sector_metadata.history_size,
-        piece_offset,
-        record_commitment: chunk_cache.record_commitment,
-        record_witness: chunk_cache.record_witness,
-        chunk: chunk_cache.chunk,
-        chunk_witness: chunk_cache.chunk_witness,
-        audit_chunk_offset,
-        proof_of_space: chunk_cache.proof_of_space,
-    };
-
-    Some((Ok(solution), state))
+    match maybe_solution {
+        Ok(solution) => Some((Ok(solution), state)),
+        Err(error) => Some((Err(error), state)),
+    }
 }

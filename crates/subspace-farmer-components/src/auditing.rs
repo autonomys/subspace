@@ -27,23 +27,14 @@ where
     pub best_solution_distance: SolutionRange,
 }
 
-/// Audit chunk candidate
-#[derive(Debug, Clone)]
-pub(crate) struct AuditChunkCandidate {
-    /// Audit chunk offset
-    pub(crate) offset: u8,
-    /// Solution distance of this audit chunk, can be used to prioritize higher quality solutions
-    pub(crate) solution_distance: SolutionRange,
-}
-
 /// Chunk candidate, contains one or more potentially winning audit chunks (in case chunk itself was
 /// encoded and eligible for claiming a reward)
 #[derive(Debug, Clone)]
 pub(crate) struct ChunkCandidate {
     /// Chunk offset within s-bucket
     pub(crate) chunk_offset: u32,
-    /// Audit chunk candidates in above chunk
-    pub(crate) audit_chunks: Vec<AuditChunkCandidate>,
+    /// Solution distance of this chunk, can be used to prioritize higher quality solutions
+    pub(crate) solution_distance: SolutionRange,
 }
 
 /// Audit a single sector and generate a stream of solutions.
@@ -363,69 +354,34 @@ fn map_winning_chunks(
     solution_range: SolutionRange,
 ) -> Option<(Vec<ChunkCandidate>, SolutionRange)> {
     // Map all winning chunks
-    let mut winning_chunks = s_bucket
+    let mut chunk_candidates = s_bucket
         .array_chunks::<{ Scalar::FULL_BYTES }>()
         .enumerate()
         .filter_map(|(chunk_offset, chunk)| {
-            // Check all audit chunks within chunk, there might be more than one winning
-            let mut winning_audit_chunks = chunk
-                .array_chunks::<{ mem::size_of::<SolutionRange>() }>()
-                .enumerate()
-                .filter_map(|(audit_chunk_offset, &audit_chunk)| {
-                    is_within_solution_range(
-                        global_challenge,
-                        SolutionRange::from_le_bytes(audit_chunk),
-                        sector_slot_challenge,
-                        solution_range,
-                    )
-                    .map(|solution_distance| AuditChunkCandidate {
-                        offset: audit_chunk_offset as u8,
-                        solution_distance,
-                    })
-                })
-                .collect::<Vec<_>>();
-
-            // In case none of the audit chunks are winning, we don't care about this sector
-            if winning_audit_chunks.is_empty() {
-                return None;
-            }
-
-            winning_audit_chunks.sort_by(|a, b| a.solution_distance.cmp(&b.solution_distance));
-
-            Some(ChunkCandidate {
+            is_within_solution_range(
+                global_challenge,
+                chunk,
+                sector_slot_challenge,
+                solution_range,
+            )
+            .map(|solution_distance| ChunkCandidate {
                 chunk_offset: chunk_offset as u32,
-                audit_chunks: winning_audit_chunks,
+                solution_distance,
             })
         })
         .collect::<Vec<_>>();
 
     // Check if there are any solutions possible
-    if winning_chunks.is_empty() {
+    if chunk_candidates.is_empty() {
         return None;
     }
 
-    winning_chunks.sort_by(|a, b| {
-        let a_solution_distance = a
-            .audit_chunks
-            .first()
-            .expect("Lists of audit chunks are non-empty; qed")
-            .solution_distance;
-        let b_solution_distance = b
-            .audit_chunks
-            .first()
-            .expect("Lists of audit chunks are non-empty; qed")
-            .solution_distance;
+    chunk_candidates.sort_by_key(|chunk_candidate| chunk_candidate.solution_distance);
 
-        a_solution_distance.cmp(&b_solution_distance)
-    });
-
-    let best_solution_distance = winning_chunks
+    let best_solution_distance = chunk_candidates
         .first()
         .expect("Not empty, checked above; qed")
-        .audit_chunks
-        .first()
-        .expect("Lists of audit chunks are non-empty; qed")
         .solution_distance;
 
-    Some((winning_chunks, best_solution_distance))
+    Some((chunk_candidates, best_solution_distance))
 }

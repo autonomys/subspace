@@ -105,27 +105,25 @@ pub fn check_reward_signature(
 /// solution distance is within solution range (see [`is_within_solution_range()`]).
 fn calculate_solution_distance(
     global_challenge: &Blake3Hash,
-    audit_chunk: SolutionRange,
+    chunk: &[u8; 32],
     sector_slot_challenge: &SectorSlotChallenge,
 ) -> SolutionRange {
+    let audit_chunk = blake3_hash_with_key(sector_slot_challenge, chunk);
+    let audit_chunk_as_solution_range: SolutionRange = SolutionRange::from_le_bytes(
+        *audit_chunk
+            .array_chunks::<{ mem::size_of::<SolutionRange>() }>()
+            .next()
+            .expect("Solution range is smaller in size than global challenge; qed"),
+    );
     let global_challenge_as_solution_range: SolutionRange = SolutionRange::from_le_bytes(
         *global_challenge
             .array_chunks::<{ mem::size_of::<SolutionRange>() }>()
             .next()
             .expect("Solution range is smaller in size than global challenge; qed"),
     );
-    let sector_slot_challenge_with_audit_chunk =
-        blake3_hash_with_key(sector_slot_challenge, &audit_chunk.to_le_bytes());
-    let sector_slot_challenge_with_audit_chunk_as_solution_range: SolutionRange =
-        SolutionRange::from_le_bytes(
-            *sector_slot_challenge_with_audit_chunk
-                .array_chunks::<{ mem::size_of::<SolutionRange>() }>()
-                .next()
-                .expect("Solution range is smaller in size than blake3 hash; qed"),
-        );
     subspace_core_primitives::bidirectional_distance(
         &global_challenge_as_solution_range,
-        &sector_slot_challenge_with_audit_chunk_as_solution_range,
+        &audit_chunk_as_solution_range,
     )
 }
 
@@ -133,12 +131,12 @@ fn calculate_solution_distance(
 /// parameters.
 pub fn is_within_solution_range(
     global_challenge: &Blake3Hash,
-    audit_chunk: SolutionRange,
+    chunk: &[u8; 32],
     sector_slot_challenge: &SectorSlotChallenge,
     solution_range: SolutionRange,
 ) -> Option<SolutionRange> {
     let solution_distance =
-        calculate_solution_distance(global_challenge, audit_chunk, sector_slot_challenge);
+        calculate_solution_distance(global_challenge, chunk, sector_slot_challenge);
     (solution_distance <= solution_range / 2).then_some(solution_distance)
 }
 
@@ -219,19 +217,9 @@ where
     let masked_chunk = (Simd::from(solution.chunk.to_bytes())
         ^ Simd::from(solution.proof_of_space.hash()))
     .to_array();
-    // Extract audit chunk from masked chunk
-    let audit_chunk = match masked_chunk
-        .array_chunks::<{ mem::size_of::<SolutionRange>() }>()
-        .nth(usize::from(solution.audit_chunk_offset))
-    {
-        Some(audit_chunk) => SolutionRange::from_le_bytes(*audit_chunk),
-        None => {
-            return Err(Error::InvalidAuditChunkOffset);
-        }
-    };
 
     let solution_distance =
-        calculate_solution_distance(&global_challenge, audit_chunk, &sector_slot_challenge);
+        calculate_solution_distance(&global_challenge, &masked_chunk, &sector_slot_challenge);
 
     // Check that solution is within solution range
     if solution_distance > solution_range / 2 {
