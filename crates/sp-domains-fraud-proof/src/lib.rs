@@ -84,6 +84,14 @@ pub enum FraudProofVerificationInfoRequest {
     DomainRuntimeCode(DomainId),
     /// Domain set_code extrinsic if there is a runtime upgrade at a given consensus block hash.
     DomainSetCodeExtrinsic(DomainId),
+    /// Request to check if particular extrinsic is in range for (domain, bundle) pair at given domain block
+    TxRangeCheck {
+        domain_id: DomainId,
+        /// Index of the bundle in which the extrinsic exists
+        bundle_index: u32,
+        /// Extrinsic for which we need to check the range
+        opaque_extrinsic: OpaqueExtrinsic,
+    },
 }
 
 impl PassBy for FraudProofVerificationInfoRequest {
@@ -112,6 +120,8 @@ pub enum FraudProofVerificationInfoResponse {
     DomainRuntimeCode(Vec<u8>),
     /// Encoded domain set_code extrinsic if there is a runtime upgrade at given consensus block hash.
     DomainSetCodeExtrinsic(SetCodeExtrinsic),
+    /// if particular extrinsic is in range for (domain, bundle) pair at given domain block
+    TxRangeCheck(bool),
 }
 
 impl FraudProofVerificationInfoResponse {
@@ -142,6 +152,15 @@ impl FraudProofVerificationInfoResponse {
                 maybe_set_code_extrinsic,
             ) => maybe_set_code_extrinsic,
             _ => SetCodeExtrinsic::None,
+        }
+    }
+
+    pub fn into_tx_range_check(self) -> Option<bool> {
+        match self {
+            FraudProofVerificationInfoResponse::TxRangeCheck(is_tx_in_range) => {
+                Some(is_tx_in_range)
+            }
+            _ => None,
         }
     }
 

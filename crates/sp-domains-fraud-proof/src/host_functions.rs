@@ -21,7 +21,7 @@ use sp_trie::StorageProof;
 use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subspace_core_primitives::Randomness;
+use subspace_core_primitives::{Randomness, U256};
 
 struct DomainRuntimeCodeFetcher(Vec<u8>);
 
@@ -91,6 +91,7 @@ impl<Block, Client, DomainBlock, Executor>
     }
 }
 
+// TODO: Revisit the host function implementation once we decide best strategy to structure them.
 impl<Block, Client, DomainBlock, Executor>
     FraudProofHostFunctionsImpl<Block, Client, DomainBlock, Executor>
 where
@@ -206,6 +207,52 @@ where
             .ok()
             .flatten()
     }
+
+    fn is_tx_in_range(
+        &self,
+        consensus_block_hash: H256,
+        domain_id: DomainId,
+        opaque_extrinsic: OpaqueExtrinsic,
+        bundle_index: u32,
+    ) -> Option<bool> {
+        let runtime_api = self.consensus_client.runtime_api();
+        let runtime_code = self.get_domain_runtime_code(consensus_block_hash, domain_id)?;
+        let consensus_block_hash = consensus_block_hash.into();
+        let domain_tx_range = runtime_api
+            .domain_tx_range(consensus_block_hash, domain_id)
+            .ok()?;
+
+        let consensus_extrinsics = self
+            .consensus_client
+            .block_body(consensus_block_hash)
+            .ok()??;
+        let bundles = self
+            .consensus_client
+            .runtime_api()
+            .extract_successful_bundles(consensus_block_hash, domain_id, consensus_extrinsics)
+            .ok()?;
+
+        let bundle = bundles.get(bundle_index as usize)?;
+        let bundle_vrf_hash =
+            U256::from_be_bytes(bundle.sealed_header.header.proof_of_election.vrf_hash());
+
+        let domain_runtime_api_light =
+            RuntimeApiLight::new(self.executor.clone(), runtime_code.into());
+
+        let encoded_extrinsic = opaque_extrinsic.encode();
+        let extrinsic =
+            <DomainBlock as BlockT>::Extrinsic::decode(&mut encoded_extrinsic.as_slice()).ok()?;
+
+        <RuntimeApiLight<Executor> as domain_runtime_primitives::DomainCoreApi<
+            DomainBlock,
+        >>::is_within_tx_range(
+            &domain_runtime_api_light,
+            Default::default(), // Doesn't matter for RuntimeApiLight
+            &extrinsic,
+            &bundle_vrf_hash,
+            &domain_tx_range,
+        ).ok()
+    }
 }
 
 impl<Block, Client, DomainBlock, Executor> FraudProofHostFunctions
@@ -256,6 +303,20 @@ where
                     FraudProofVerificationInfoResponse::DomainSetCodeExtrinsic(
                         maybe_domain_set_code_extrinsic,
                     )
+                }),
+            FraudProofVerificationInfoRequest::TxRangeCheck {
+                domain_id,
+                opaque_extrinsic,
+                bundle_index,
+            } => self
+                .is_tx_in_range(
+                    consensus_block_hash,
+                    domain_id,
+                    opaque_extrinsic,
+                    bundle_index,
+                )
+                .map(|is_tx_in_range| {
+                    FraudProofVerificationInfoResponse::TxRangeCheck(is_tx_in_range)
                 }),
         }
     }

@@ -4,7 +4,10 @@ use sp_consensus_slots::Slot;
 use sp_core::H256;
 use sp_domain_digests::AsPredigest;
 use sp_domains::proof_provider_and_verifier::StorageProofVerifier;
-use sp_domains::{DomainId, ExecutionReceipt, HeaderHashFor, HeaderHashingFor, SealedBundleHeader};
+use sp_domains::{
+    BundleValidity, DomainId, ExecutionReceipt, HeaderHashFor, HeaderHashingFor, InvalidBundleType,
+    SealedBundleHeader,
+};
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor};
 use sp_runtime::{Digest, DigestItem};
 use sp_std::vec::Vec;
@@ -284,6 +287,34 @@ pub enum VerificationError {
         error("Failed to derive domain set code extrinsic")
     )]
     FailedToDeriveDomainSetCodeExtrinsic,
+    /// Bundle with requested index not found in execution receipt
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Bundle with requested index not found in execution receipt")
+    )]
+    BundleNotFound,
+    /// Invalid bundle entry in bad receipt was expected to be valid but instead found invalid entry
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Unexpected bundle entry at {bundle_index} in bad receipt found: {targeted_entry_bundle:?} with fraud proof's type of proof: {fraud_proof_invalid_type_of_proof:?}")
+    )]
+    UnexpectedTargetedBundleEntry {
+        bundle_index: u32,
+        fraud_proof_invalid_type_of_proof: InvalidBundleType,
+        targeted_entry_bundle: BundleValidity<H256>,
+    },
+    /// Tx range host function did not return response (returned None)
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Tx range host function did not return a response (returned None)")
+    )]
+    FailedToGetResponseFromTxRangeHostFn,
+    /// Unable to receive tx range from host function
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Received invalid information from tx range host function")
+    )]
+    ReceivedInvalidInfoFromTxRangeHostFn,
     /// Failed to get the bundle body
     #[cfg_attr(feature = "thiserror", error("Failed to get the bundle body"))]
     FailedToGetDomainBundleBody,
@@ -298,50 +329,41 @@ pub enum VerificationError {
     TargetValidBundleNotFound,
 }
 
-// TODO: Define rest of the fraud proof fields
+/// Proof data specific to each *expected* invalid bundle type
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct MissingInvalidBundleEntryFraudProof {
-    domain_id: DomainId,
-    bundle_index: u32,
+pub enum ProofDataPerInvalidBundleType {
+    OutOfRangeTx,
 }
 
-impl MissingInvalidBundleEntryFraudProof {
-    pub fn new(domain_id: DomainId, bundle_index: u32) -> Self {
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub struct InvalidBundlesFraudProof<ReceiptHash> {
+    pub bad_receipt_hash: ReceiptHash,
+    pub domain_id: DomainId,
+    pub bundle_index: u32,
+    pub mismatched_extrinsic_index: u32,
+    pub extrinsic_inclusion_proof: Vec<Vec<u8>>,
+    pub is_true_invalid_fraud_proof: bool,
+    pub proof_data: ProofDataPerInvalidBundleType,
+}
+
+impl<ReceiptHash> InvalidBundlesFraudProof<ReceiptHash> {
+    pub fn new(
+        bad_receipt_hash: ReceiptHash,
+        domain_id: DomainId,
+        bundle_index: u32,
+        mismatched_extrinsic_index: u32,
+        extrinsic_inclusion_proof: Vec<Vec<u8>>,
+        is_true_invalid_fraud_proof: bool,
+        proof_data: ProofDataPerInvalidBundleType,
+    ) -> Self {
         Self {
+            bad_receipt_hash,
             domain_id,
             bundle_index,
-        }
-    }
-}
-
-// TODO: Define rest of the fraud proof fields
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct ValidAsInvalidBundleEntryFraudProof {
-    domain_id: DomainId,
-    bundle_index: u32,
-}
-
-impl ValidAsInvalidBundleEntryFraudProof {
-    pub fn new(domain_id: DomainId, bundle_index: u32) -> Self {
-        Self {
-            domain_id,
-            bundle_index,
-        }
-    }
-}
-
-/// Fraud proof indicating that `invalid_bundles` field of the receipt is incorrect
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub enum InvalidBundlesFraudProof {
-    MissingInvalidBundleEntry(MissingInvalidBundleEntryFraudProof),
-    ValidAsInvalid(ValidAsInvalidBundleEntryFraudProof),
-}
-
-impl InvalidBundlesFraudProof {
-    pub fn domain_id(&self) -> DomainId {
-        match self {
-            InvalidBundlesFraudProof::MissingInvalidBundleEntry(proof) => proof.domain_id,
-            InvalidBundlesFraudProof::ValidAsInvalid(proof) => proof.domain_id,
+            mismatched_extrinsic_index,
+            extrinsic_inclusion_proof,
+            is_true_invalid_fraud_proof,
+            proof_data,
         }
     }
 }
@@ -367,7 +389,7 @@ pub enum FraudProof<Number, Hash, DomainHeader: HeaderT> {
         /// Hash of the bad receipt this fraud proof targeted
         bad_receipt_hash: HeaderHashFor<DomainHeader>,
     },
-    InvalidBundles(InvalidBundlesFraudProof),
+    InvalidBundles(InvalidBundlesFraudProof<HeaderHashFor<DomainHeader>>),
 }
 
 impl<Number, Hash, DomainHeader: HeaderT> FraudProof<Number, Hash, DomainHeader> {
@@ -381,7 +403,7 @@ impl<Number, Hash, DomainHeader: HeaderT> FraudProof<Number, Hash, DomainHeader>
             Self::Dummy { domain_id, .. } => *domain_id,
             Self::InvalidTotalRewards(proof) => proof.domain_id(),
             Self::InvalidExtrinsicsRoot(proof) => proof.domain_id,
-            Self::InvalidBundles(proof) => proof.domain_id(),
+            Self::InvalidBundles(proof) => proof.domain_id,
             Self::ValidBundle(proof) => proof.domain_id,
             Self::InvalidDomainBlockHash(proof) => proof.domain_id,
         }
@@ -403,8 +425,7 @@ impl<Number, Hash, DomainHeader: HeaderT> FraudProof<Number, Hash, DomainHeader>
             Self::InvalidExtrinsicsRoot(proof) => proof.bad_receipt_hash,
             Self::InvalidTotalRewards(proof) => proof.bad_receipt_hash(),
             Self::ValidBundle(proof) => proof.bad_receipt_hash,
-            // TODO: Remove default value when invalid bundle proofs are fully expanded
-            Self::InvalidBundles(_) => Default::default(),
+            Self::InvalidBundles(proof) => proof.bad_receipt_hash,
             Self::InvalidDomainBlockHash(proof) => proof.bad_receipt_hash,
         }
     }

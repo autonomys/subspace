@@ -255,6 +255,7 @@ pub(crate) struct MockDomainFraudProofExtension {
     block_randomness: Randomness,
     timestamp: Moment,
     runtime_code: Vec<u8>,
+    tx_range: bool,
 }
 
 impl FraudProofHostFunctions for MockDomainFraudProofExtension {
@@ -296,6 +297,9 @@ impl FraudProofHostFunctions for MockDomainFraudProofExtension {
                         .encode(),
                     ),
                 )
+            }
+            FraudProofVerificationInfoRequest::TxRangeCheck { .. } => {
+                FraudProofVerificationInfoResponse::TxRangeCheck(self.tx_range)
             }
         };
 
@@ -963,6 +967,7 @@ fn test_invalid_domain_extrinsic_root_proof() {
         block_randomness: Randomness::from([1u8; 32]),
         timestamp: 1000,
         runtime_code: vec![1, 2, 3, 4],
+        tx_range: true,
     }));
     ext.register_extension(fraud_proof_ext);
 

@@ -55,7 +55,7 @@ use sp_domains_fraud_proof::fraud_proof::{
     FraudProof, InvalidDomainBlockHashProof, InvalidTotalRewardsProof,
 };
 use sp_domains_fraud_proof::verification::{
-    verify_invalid_domain_block_hash_fraud_proof,
+    verify_invalid_bundles_fraud_proof, verify_invalid_domain_block_hash_fraud_proof,
     verify_invalid_domain_extrinsics_root_fraud_proof, verify_invalid_state_transition_fraud_proof,
     verify_invalid_total_rewards_fraud_proof, verify_valid_bundle_fraud_proof,
 };
@@ -614,6 +614,8 @@ mod pallet {
         InvalidStateTransitionFraudProof,
         /// Parent receipt not found.
         ParentReceiptNotFound,
+        /// Invalid bundles fraud proof
+        InvalidBundleFraudProof,
         /// Bad/Invalid valid bundle fraud proof
         BadValidBundleFraudProof,
     }
@@ -1606,6 +1608,19 @@ impl<T: Config> Pallet<T> {
                         "Invalid State transition proof verification failed: {err:?}"
                     );
                     FraudProofError::InvalidStateTransitionFraudProof
+                })?;
+            }
+            FraudProof::InvalidBundles(invalid_bundles_fraud_proof) => {
+                verify_invalid_bundles_fraud_proof::<T::Block, T::DomainHeader, BalanceOf<T>>(
+                    bad_receipt,
+                    invalid_bundles_fraud_proof,
+                )
+                .map_err(|err| {
+                    log::error!(
+                        target: "runtime::domains",
+                        "Invalid Bundle proof verification failed: {err:?}"
+                    );
+                    FraudProofError::InvalidBundleFraudProof
                 })?;
             }
             FraudProof::ValidBundle(proof) => verify_valid_bundle_fraud_proof::<
