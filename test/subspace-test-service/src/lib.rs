@@ -469,7 +469,7 @@ impl MockConsensusNode {
         }
 
         // Wait for all the acknowledgements to progress and proactively drop closed subscribers.
-        while (acknowledgement_receiver.next().await).is_some() {
+        while acknowledgement_receiver.next().await.is_some() {
             // Wait for all the acknowledgements to finish.
         }
     }
@@ -482,13 +482,14 @@ impl MockConsensusNode {
         {
             // Must drop `block_import_acknowledgement_sender` after the notification otherwise
             // the receiver will block forever as there is still a sender not closed.
-            let value = (Default::default(), acknowledgement_sender);
+            // NOTE: it is okay to use the default block number since it is ignored in the consumer side.
+            let value = (NumberFor::<Block>::default(), acknowledgement_sender);
             self.block_import
                 .block_importing_notification_subscribers
                 .lock()
                 .retain(|subscriber| subscriber.unbounded_send(value.clone()).is_ok());
         }
-        while (acknowledgement_receiver.next().await).is_some() {
+        while acknowledgement_receiver.next().await.is_some() {
             // Wait for all the acknowledgements to finish.
         }
 
@@ -879,7 +880,7 @@ where
                 .retain(|subscriber| subscriber.unbounded_send(value.clone()).is_ok());
         }
 
-        while (acknowledgement_receiver.next().await).is_some() {
+        while acknowledgement_receiver.next().await.is_some() {
             // Wait for all the acknowledgements to finish.
         }
 

@@ -1059,7 +1059,7 @@ where
                 acknowledgement_sender,
             });
 
-        while (acknowledgement_receiver.next().await).is_some() {
+        while acknowledgement_receiver.next().await.is_some() {
             // Wait for all the acknowledgements to finish.
         }
 
