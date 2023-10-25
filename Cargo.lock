@@ -2609,7 +2609,6 @@ dependencies = [
  "sp-trie",
  "sp-weights",
  "subspace-core-primitives",
- "subspace-fraud-proof",
  "subspace-runtime-primitives",
  "subspace-test-runtime",
  "subspace-test-service",
@@ -2757,7 +2756,6 @@ dependencies = [
  "sp-transaction-pool",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
- "subspace-transaction-pool",
  "substrate-build-script-utils",
  "substrate-frame-rpc-system",
  "substrate-prometheus-endpoint",
@@ -6404,15 +6402,6 @@ name = "memmap2"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f49388d20533534cd19360ad3d6a7dadc885944aa802ba3995040c5ec11288c6"
-dependencies = [
- "libc",
-]
-
-[[package]]
-name = "memmap2"
-version = "0.9.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "deaba38d7abf1d4cca21cc89e932e542ba2b9258664d2a9ef0e61512039c9375"
 dependencies = [
  "libc",
 ]
@@ -10825,13 +10814,19 @@ dependencies = [
 name = "sp-domains-fraud-proof"
 version = "0.1.0"
 dependencies = [
+ "domain-block-builder",
  "domain-block-preprocessor",
  "domain-runtime-primitives",
+ "domain-test-service",
  "frame-support",
+ "futures",
  "hash-db 0.16.0",
+ "pallet-balances",
  "parity-scale-codec",
+ "sc-cli",
  "sc-client-api",
  "sc-executor",
+ "sc-service",
  "scale-info",
  "sp-api",
  "sp-blockchain",
@@ -10847,7 +10842,11 @@ dependencies = [
  "sp-trie",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
+ "subspace-test-client",
+ "subspace-test-service",
+ "tempfile",
  "thiserror",
+ "tokio",
  "trie-db",
 ]
 
@@ -11524,7 +11523,6 @@ dependencies = [
  "hex",
  "jsonrpsee",
  "lru 0.11.1",
- "memmap2 0.9.0",
  "mimalloc",
  "monoio",
  "parity-scale-codec",
@@ -11586,38 +11584,6 @@ dependencies = [
  "tokio",
  "tracing",
  "winapi",
-]
-
-[[package]]
-name = "subspace-fraud-proof"
-version = "0.1.0"
-dependencies = [
- "domain-block-builder",
- "domain-block-preprocessor",
- "domain-runtime-primitives",
- "domain-test-service",
- "futures",
- "hash-db 0.16.0",
- "pallet-balances",
- "parity-scale-codec",
- "sc-cli",
- "sc-client-api",
- "sc-executor",
- "sc-service",
- "sp-api",
- "sp-blockchain",
- "sp-core",
- "sp-domain-digests",
- "sp-domains",
- "sp-domains-fraud-proof",
- "sp-runtime",
- "sp-state-machine",
- "sp-trie",
- "subspace-runtime-primitives",
- "subspace-test-client",
- "subspace-test-service",
- "tempfile",
- "tokio",
 ]
 
 [[package]]
@@ -11782,10 +11748,7 @@ dependencies = [
  "orml-vesting",
  "pallet-balances",
  "pallet-domains",
- "pallet-feeds",
- "pallet-grandpa-finality-verifier",
  "pallet-messenger",
- "pallet-object-store",
  "pallet-offences-subspace",
  "pallet-rewards",
  "pallet-runtime-configs",
@@ -11826,8 +11789,12 @@ dependencies = [
 name = "subspace-runtime-primitives"
 version = "0.1.0"
 dependencies = [
+ "frame-support",
+ "frame-system",
+ "pallet-transaction-payment",
  "serde",
  "sp-core",
+ "sp-io",
  "sp-runtime",
  "sp-std",
  "subspace-core-primitives",
@@ -11891,12 +11858,10 @@ dependencies = [
  "static_assertions",
  "subspace-archiving",
  "subspace-core-primitives",
- "subspace-fraud-proof",
  "subspace-metrics",
  "subspace-networking",
  "subspace-proof-of-space",
  "subspace-runtime-primitives",
- "subspace-transaction-pool",
  "substrate-frame-rpc-system",
  "substrate-prometheus-endpoint",
  "thiserror",
@@ -11947,10 +11912,7 @@ dependencies = [
  "orml-vesting",
  "pallet-balances",
  "pallet-domains",
- "pallet-feeds",
- "pallet-grandpa-finality-verifier",
  "pallet-messenger",
- "pallet-object-store",
  "pallet-offences-subspace",
  "pallet-rewards",
  "pallet-subspace",
@@ -12025,33 +11987,12 @@ dependencies = [
  "sp-runtime",
  "sp-timestamp",
  "subspace-core-primitives",
- "subspace-fraud-proof",
  "subspace-runtime-primitives",
  "subspace-service",
  "subspace-test-client",
  "subspace-test-runtime",
- "subspace-transaction-pool",
  "tokio",
  "tracing",
-]
-
-[[package]]
-name = "subspace-transaction-pool"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "futures",
- "jsonrpsee",
- "sc-client-api",
- "sc-service",
- "sc-transaction-pool",
- "sc-transaction-pool-api",
- "sp-api",
- "sp-blockchain",
- "sp-core",
- "sp-runtime",
- "sp-transaction-pool",
- "substrate-prometheus-endpoint",
 ]
 
 [[package]]

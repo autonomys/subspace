@@ -1,4 +1,4 @@
-use crate::runtime_api::StateRootExtractor;
+use codec::Encode;
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::{Error, HeaderBackend};
 use sp_domains::DomainsApi;
@@ -11,23 +11,26 @@ use std::sync::Arc;
 /// This is used by the Domains to validate Extrinsics using their embeded consensus chain.
 /// Returns either true if the XDM is valid else false.
 /// Returns Error when required calls to fetch header info fails.
-pub fn is_valid_xdm<CClient, CBlock, Block, SRE>(
+pub fn is_valid_xdm<CClient, CBlock, Block, Client>(
     consensus_client: &Arc<CClient>,
     at: Block::Hash,
-    state_root_extractor: &SRE,
+    client: &Arc<Client>,
     extrinsic: &Block::Extrinsic,
 ) -> Result<bool, Error>
 where
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock> + 'static,
-    CClient::Api:
-        DomainsApi<CBlock, NumberFor<Block>, Block::Hash> + MessengerApi<CBlock, NumberFor<CBlock>>,
+    CClient::Api: DomainsApi<CBlock, Block::Header> + MessengerApi<CBlock, NumberFor<CBlock>>,
     Block: BlockT,
     CBlock: BlockT,
     NumberFor<CBlock>: From<NumberFor<Block>>,
     CBlock::Hash: From<Block::Hash>,
-    SRE: StateRootExtractor<Block>,
+    Client: ProvideRuntimeApi<Block>,
+    Client::Api: MessengerApi<Block, NumberFor<Block>>,
 {
-    if let Ok(state_roots) = state_root_extractor.extract_state_roots(at, extrinsic) {
+    if let Some(state_roots) = client
+        .runtime_api()
+        .extract_xdm_proof_state_roots(at, extrinsic.encode())?
+    {
         // verify consensus chain state root
         if let Some(header) =
             consensus_client.header(state_roots.consensus_chain_block_info.block_hash.into())?

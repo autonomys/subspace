@@ -17,10 +17,9 @@ use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HashAndNumber, HeaderBackend, HeaderMetadata};
 use sp_consensus::{BlockOrigin, SyncOracle};
 use sp_core::traits::CodeExecutor;
-use sp_core::H256;
 use sp_domains::merkle_tree::MerkleTree;
-use sp_domains::{BundleValidity, DomainId, DomainsApi, ExecutionReceipt};
-use sp_domains_fraud_proof::fraud_proof::FraudProof;
+use sp_domains::{BundleValidity, DomainId, DomainsApi, ExecutionReceipt, HeaderHashingFor};
+use sp_domains_fraud_proof::fraud_proof::{FraudProof, ValidBundleProof};
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, One, Zero};
 use sp_runtime::Digest;
 use std::cmp::Ordering;
@@ -103,7 +102,6 @@ where
     Block: BlockT,
     CBlock: BlockT,
     NumberFor<CBlock>: Into<NumberFor<Block>>,
-    Block::Hash: Into<H256>,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
         + AuxStore
@@ -117,7 +115,7 @@ where
         + BlockBackend<CBlock>
         + ProvideRuntimeApi<CBlock>
         + 'static,
-    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash> + 'static,
+    CClient::Api: DomainsApi<CBlock, Block::Header> + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
 {
     /// Returns a list of consensus blocks waiting to be processed if any.
@@ -370,7 +368,7 @@ where
             })?;
             ExecutionReceipt::genesis(
                 *genesis_header.state_root(),
-                (*genesis_header.extrinsics_root()).into(),
+                *genesis_header.extrinsics_root(),
                 genesis_hash,
             )
         } else {
@@ -388,8 +386,9 @@ where
         let execution_receipt = ExecutionReceipt {
             domain_block_number: header_number,
             domain_block_hash: header_hash,
-            domain_block_extrinsic_root: extrinsics_root.into(),
-            parent_domain_block_receipt_hash: parent_receipt.hash(),
+            domain_block_extrinsic_root: extrinsics_root,
+            parent_domain_block_receipt_hash: parent_receipt
+                .hash::<HeaderHashingFor<Block::Header>>(),
             consensus_block_number,
             consensus_block_hash,
             inboxed_bundles: bundles,
@@ -566,7 +565,7 @@ where
     }
 }
 
-// Find the first mismatch of the `InboxedBundle` in the `ER::bundles` list
+// Find the first mismatch of the `InboxedBundle` in the `ER::inboxed_bundles` list
 pub(crate) fn find_inboxed_bundles_mismatch<Block, CBlock>(
     local_receipt: &ExecutionReceiptFor<Block, CBlock>,
     external_receipt: &ExecutionReceiptFor<Block, CBlock>,
@@ -592,7 +591,7 @@ where
         ).into()));
     }
 
-    // Get the first mismatch of `ER::bundles`
+    // Get the first mismatch of `ER::inboxed_bundles`
     let (bundle_index, (local_bundle, external_bundle)) = local_receipt
         .inboxed_bundles
         .iter()
@@ -708,7 +707,7 @@ where
         + ProofProvider<CBlock>
         + ProvideRuntimeApi<CBlock>
         + 'static,
-    CClient::Api: DomainsApi<CBlock, NumberFor<Block>, Block::Hash>,
+    CClient::Api: DomainsApi<CBlock, Block::Header>,
     Backend: sc_client_api::Backend<Block> + 'static,
     E: CodeExecutor,
     ParentChain: ParentChainInterface<Block, ParentChainBlock>,
@@ -763,7 +762,9 @@ where
         &self,
         parent_chain_block_hash: ParentChainBlock::Hash,
         receipts: Vec<ExecutionReceiptFor<Block, ParentChainBlock>>,
-        fraud_proofs: Vec<FraudProof<NumberFor<ParentChainBlock>, ParentChainBlock::Hash>>,
+        fraud_proofs: Vec<
+            FraudProof<NumberFor<ParentChainBlock>, ParentChainBlock::Hash, Block::Header>,
+        >,
     ) -> Result<(), sp_blockchain::Error> {
         let mut bad_receipts_to_write = vec![];
 
@@ -793,7 +794,7 @@ where
             {
                 bad_receipts_to_write.push((
                     execution_receipt.consensus_block_number,
-                    execution_receipt.hash(),
+                    execution_receipt.hash::<HeaderHashingFor<Block::Header>>(),
                     receipt_mismatch_info,
                 ));
 
@@ -805,7 +806,7 @@ where
             {
                 bad_receipts_to_write.push((
                     execution_receipt.consensus_block_number,
-                    execution_receipt.hash(),
+                    execution_receipt.hash::<HeaderHashingFor<Block::Header>>(),
                     ReceiptMismatchInfo::DomainExtrinsicsRoot {
                         consensus_block_hash,
                     },
@@ -819,7 +820,7 @@ where
             ) {
                 bad_receipts_to_write.push((
                     execution_receipt.consensus_block_number,
-                    execution_receipt.hash(),
+                    execution_receipt.hash::<HeaderHashingFor<Block::Header>>(),
                     (trace_mismatch_index, consensus_block_hash).into(),
                 ));
                 continue;
@@ -828,7 +829,7 @@ where
             if execution_receipt.total_rewards != local_receipt.total_rewards {
                 bad_receipts_to_write.push((
                     execution_receipt.consensus_block_number,
-                    execution_receipt.hash(),
+                    execution_receipt.hash::<HeaderHashingFor<Block::Header>>(),
                     ReceiptMismatchInfo::TotalRewards {
                         consensus_block_hash,
                     },
@@ -838,7 +839,7 @@ where
             if execution_receipt.domain_block_hash != local_receipt.domain_block_hash {
                 bad_receipts_to_write.push((
                     execution_receipt.consensus_block_number,
-                    execution_receipt.hash(),
+                    execution_receipt.hash::<HeaderHashingFor<Block::Header>>(),
                     ReceiptMismatchInfo::DomainBlockHash {
                         consensus_block_hash,
                     },
@@ -872,7 +873,7 @@ where
         }
 
         for (bad_receipt_number, bad_receipt_hash, mismatch_info) in bad_receipts_to_write {
-            crate::aux_schema::write_bad_receipt::<_, ParentChainBlock>(
+            crate::aux_schema::write_bad_receipt::<_, ParentChainBlock, Block>(
                 &*self.client,
                 bad_receipt_number,
                 bad_receipt_hash,
@@ -881,7 +882,7 @@ where
         }
 
         for (bad_receipt_number, bad_receipt_hash) in bad_receipts_to_delete {
-            if let Err(e) = crate::aux_schema::delete_bad_receipt::<_, ParentChainBlock>(
+            if let Err(e) = crate::aux_schema::delete_bad_receipt::<_, ParentChainBlock, Block>(
                 &*self.client,
                 bad_receipt_number,
                 bad_receipt_hash,
@@ -901,7 +902,7 @@ where
     async fn create_fraud_proof_for_first_unconfirmed_bad_receipt(
         &self,
     ) -> sp_blockchain::Result<
-        Option<FraudProof<NumberFor<ParentChainBlock>, ParentChainBlock::Hash>>,
+        Option<FraudProof<NumberFor<ParentChainBlock>, ParentChainBlock::Hash, Block::Header>>,
     > {
         if let Some((bad_receipt_hash, mismatch_info)) =
             crate::aux_schema::find_first_unconfirmed_bad_receipt_info::<_, Block, CBlock, _>(
@@ -969,28 +970,27 @@ where
                     mismatch_type,
                     bundle_index,
                     ..
-                } => {
-                    match mismatch_type {
-                        BundleMismatchType::Valid => {
-                            // TODO: generate valid bundle fraud proof
-                            return Ok(None);
-                        }
-                        _ => self
-                            .fraud_proof_generator
-                            .generate_invalid_bundle_field_proof::<ParentChainBlock>(
-                                self.domain_id,
-                                &local_receipt,
-                                mismatch_type,
-                                bundle_index,
-                                bad_receipt_hash,
-                            )
-                            .map_err(|err| {
-                                sp_blockchain::Error::Application(Box::from(format!(
-                                    "Failed to generate invalid bundles field fraud proof: {err}"
-                                )))
-                            })?,
-                    }
-                }
+                } => match mismatch_type {
+                    BundleMismatchType::Valid => FraudProof::ValidBundle(ValidBundleProof {
+                        domain_id: self.domain_id,
+                        bad_receipt_hash: local_receipt.hash::<HeaderHashingFor<Block::Header>>(),
+                        bundle_index,
+                    }),
+                    _ => self
+                        .fraud_proof_generator
+                        .generate_invalid_bundle_field_proof::<ParentChainBlock>(
+                            self.domain_id,
+                            &local_receipt,
+                            mismatch_type,
+                            bundle_index,
+                            bad_receipt_hash,
+                        )
+                        .map_err(|err| {
+                            sp_blockchain::Error::Application(Box::from(format!(
+                                "Failed to generate invalid bundles field fraud proof: {err}"
+                            )))
+                        })?,
+                },
                 ReceiptMismatchInfo::DomainExtrinsicsRoot { .. } => self
                     .fraud_proof_generator
                     .generate_invalid_domain_extrinsics_root_proof::<ParentChainBlock>(
@@ -1021,7 +1021,7 @@ mod tests {
     use subspace_test_runtime::Block as CBlock;
 
     fn create_test_execution_receipt(
-        inboxed_bundles: Vec<InboxedBundle>,
+        inboxed_bundles: Vec<InboxedBundle<<Block as BlockT>::Hash>>,
     ) -> ExecutionReceiptFor<Block, CBlock>
     where
         Block: BlockT,

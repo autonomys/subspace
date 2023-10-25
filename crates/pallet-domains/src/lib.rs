@@ -48,8 +48,8 @@ use sp_core::H256;
 use sp_domains::bundle_producer_election::{is_below_threshold, BundleProducerElectionParams};
 use sp_domains::{
     DomainBlockLimit, DomainId, DomainInstanceData, ExecutionReceipt, OpaqueBundle, OperatorId,
-    OperatorPublicKey, ProofOfElection, ReceiptHash, RuntimeId,
-    DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT, EMPTY_EXTRINSIC_ROOT,
+    OperatorPublicKey, ProofOfElection, RuntimeId, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT,
+    EMPTY_EXTRINSIC_ROOT,
 };
 use sp_domains_fraud_proof::fraud_proof::{
     FraudProof, InvalidDomainBlockHashProof, InvalidTotalRewardsProof,
@@ -57,9 +57,9 @@ use sp_domains_fraud_proof::fraud_proof::{
 use sp_domains_fraud_proof::verification::{
     verify_invalid_bundles_fraud_proof, verify_invalid_domain_block_hash_fraud_proof,
     verify_invalid_domain_extrinsics_root_fraud_proof, verify_invalid_state_transition_fraud_proof,
-    verify_invalid_total_rewards_fraud_proof,
+    verify_invalid_total_rewards_fraud_proof, verify_valid_bundle_fraud_proof,
 };
-use sp_runtime::traits::{BlakeTwo256, CheckedSub, Hash, Header, One, Zero};
+use sp_runtime::traits::{CheckedSub, Hash, Header, One, Zero};
 use sp_runtime::{RuntimeAppPublic, SaturatedConversion, Saturating};
 use sp_std::boxed::Box;
 use sp_std::collections::btree_map::BTreeMap;
@@ -92,8 +92,7 @@ pub type ExecutionReceiptOf<T> = ExecutionReceipt<
 pub type OpaqueBundleOf<T> = OpaqueBundle<
     BlockNumberFor<T>,
     <T as frame_system::Config>::Hash,
-    DomainBlockNumberFor<T>,
-    <T as Config>::DomainHash,
+    <T as Config>::DomainHeader,
     BalanceOf<T>,
 >;
 
@@ -106,6 +105,7 @@ pub(crate) struct ElectionVerificationParams<Balance> {
 
 pub type DomainBlockNumberFor<T> = <<T as Config>::DomainHeader as Header>::Number;
 pub type DomainHashingFor<T> = <<T as Config>::DomainHeader as Header>::Hashing;
+pub type ReceiptHashFor<T> = <<T as Config>::DomainHeader as Header>::Hash;
 
 #[frame_support::pallet]
 mod pallet {
@@ -140,7 +140,7 @@ mod pallet {
     use crate::weights::WeightInfo;
     use crate::{
         BalanceOf, DomainBlockNumberFor, ElectionVerificationParams, HoldIdentifier, NominatorId,
-        OpaqueBundleOf,
+        OpaqueBundleOf, ReceiptHashFor,
     };
     use alloc::string::String;
     use codec::FullCodec;
@@ -153,10 +153,10 @@ mod pallet {
     use sp_core::H256;
     use sp_domains::{
         BundleDigest, DomainId, EpochIndex, GenesisDomain, OperatorAllowList, OperatorId,
-        ReceiptHash, RuntimeId, RuntimeType,
+        RuntimeId, RuntimeType,
     };
     use sp_domains_fraud_proof::fraud_proof::FraudProof;
-    use sp_domains_fraud_proof::transaction::InvalidTransactionCode;
+    use sp_domains_fraud_proof::InvalidTransactionCode;
     use sp_runtime::traits::{
         AtLeast32BitUnsigned, BlockNumberProvider, CheckEqual, CheckedAdd, Header as HeaderT,
         MaybeDisplay, One, SimpleBitOps, Zero,
@@ -454,7 +454,7 @@ mod pallet {
         _,
         Identity,
         DomainId,
-        DomainObject<BlockNumberFor<T>, T::AccountId>,
+        DomainObject<BlockNumberFor<T>, ReceiptHashFor<T>, T::AccountId>,
         OptionQuery,
     >;
 
@@ -467,7 +467,7 @@ mod pallet {
         DomainId,
         Identity,
         DomainBlockNumberFor<T>,
-        BTreeSet<ReceiptHash>,
+        BTreeSet<ReceiptHashFor<T>>,
         ValueQuery,
     >;
 
@@ -476,7 +476,7 @@ mod pallet {
     pub(super) type BlockTreeNodes<T: Config> = StorageMap<
         _,
         Identity,
-        ReceiptHash,
+        ReceiptHashFor<T>,
         BlockTreeNode<
             BlockNumberFor<T>,
             T::Hash,
@@ -492,7 +492,7 @@ mod pallet {
     // by then every parent ER should only have one immediate descendants ER
     #[pallet::storage]
     pub(super) type DomainBlockDescendants<T: Config> =
-        StorageMap<_, Identity, ReceiptHash, BTreeSet<ReceiptHash>, ValueQuery>;
+        StorageMap<_, Identity, ReceiptHashFor<T>, BTreeSet<ReceiptHashFor<T>>, ValueQuery>;
 
     /// The head receipt number of each domain
     #[pallet::storage]
@@ -535,7 +535,7 @@ mod pallet {
             NMapKey<Identity, DomainBlockNumberFor<T>>,
             NMapKey<Identity, BlockNumberFor<T>>,
         ),
-        Vec<BundleDigest>,
+        Vec<BundleDigest<T::DomainHash>>,
         ValueQuery,
     >;
 
@@ -544,7 +544,7 @@ mod pallet {
     /// slash malicious operator who have submitted invalid bundle.
     #[pallet::storage]
     pub(super) type InboxedBundleAuthor<T: Config> =
-        StorageMap<_, Identity, H256, OperatorId, OptionQuery>;
+        StorageMap<_, Identity, T::DomainHash, OperatorId, OptionQuery>;
 
     /// The block number of the best domain block, increase by one when the first bundle of the domain is
     /// successfully submitted to current consensus block, which mean a new domain block with this block
@@ -616,6 +616,8 @@ mod pallet {
         ParentReceiptNotFound,
         /// Invalid bundles fraud proof
         InvalidBundleFraudProof,
+        /// Bad/Invalid valid bundle fraud proof
+        BadValidBundleFraudProof,
     }
 
     impl<T> From<FraudProofError> for Error<T> {
@@ -878,7 +880,7 @@ mod pallet {
         #[pallet::weight((Weight::from_all(10_000), Pays::No))]
         pub fn submit_fraud_proof(
             origin: OriginFor<T>,
-            fraud_proof: Box<FraudProof<BlockNumberFor<T>, T::Hash>>,
+            fraud_proof: Box<FraudProof<BlockNumberFor<T>, T::Hash, T::DomainHeader>>,
         ) -> DispatchResult {
             ensure_none(origin)?;
 
@@ -1432,7 +1434,7 @@ impl<T: Config> Pallet<T> {
     }
 
     fn check_extrinsics_root(opaque_bundle: &OpaqueBundleOf<T>) -> Result<(), BundleError> {
-        let expected_extrinsics_root = BlakeTwo256::ordered_trie_root(
+        let expected_extrinsics_root = <T::DomainHeader as Header>::Hashing::ordered_trie_root(
             opaque_bundle
                 .extrinsics
                 .iter()
@@ -1521,7 +1523,7 @@ impl<T: Config> Pallet<T> {
     }
 
     fn validate_fraud_proof(
-        fraud_proof: &FraudProof<BlockNumberFor<T>, T::Hash>,
+        fraud_proof: &FraudProof<BlockNumberFor<T>, T::Hash, T::DomainHeader>,
     ) -> Result<(), FraudProofError> {
         let bad_receipt = BlockTreeNodes::<T>::get(fraud_proof.bad_receipt_hash())
             .ok_or(FraudProofError::BadReceiptNotFound)?
@@ -1577,11 +1579,9 @@ impl<T: Config> Pallet<T> {
             FraudProof::InvalidExtrinsicsRoot(proof) => {
                 verify_invalid_domain_extrinsics_root_fraud_proof::<
                     T::Block,
-                    DomainBlockNumberFor<T>,
-                    T::DomainHash,
                     BalanceOf<T>,
                     T::Hashing,
-                    DomainHashingFor<T>,
+                    T::DomainHeader,
                 >(bad_receipt, proof)
                 .map_err(|err| {
                     log::error!(
@@ -1611,12 +1611,10 @@ impl<T: Config> Pallet<T> {
                 })?;
             }
             FraudProof::InvalidBundles(invalid_bundles_fraud_proof) => {
-                verify_invalid_bundles_fraud_proof::<
-                    T::Block,
-                    DomainBlockNumberFor<T>,
-                    T::DomainHash,
-                    BalanceOf<T>,
-                >(bad_receipt, invalid_bundles_fraud_proof)
+                verify_invalid_bundles_fraud_proof::<T::Block, T::DomainHeader, BalanceOf<T>>(
+                    bad_receipt,
+                    invalid_bundles_fraud_proof,
+                )
                 .map_err(|err| {
                     log::error!(
                         target: "runtime::domains",
@@ -1625,6 +1623,19 @@ impl<T: Config> Pallet<T> {
                     FraudProofError::InvalidBundleFraudProof
                 })?;
             }
+            FraudProof::ValidBundle(proof) => verify_valid_bundle_fraud_proof::<
+                T::Block,
+                DomainBlockNumberFor<T>,
+                T::DomainHash,
+                BalanceOf<T>,
+            >(bad_receipt, proof)
+            .map_err(|err| {
+                log::error!(
+                    target: "runtime::domains",
+                    "Valid bundle proof verification failed: {err:?}"
+                );
+                FraudProofError::BadValidBundleFraudProof
+            })?,
             _ => {}
         }
 
@@ -1785,7 +1796,7 @@ impl<T: Config> Pallet<T> {
             if !ExecutionInbox::<T>::iter_prefix_values((domain_id, to_check)).all(|digests| {
                 digests
                     .iter()
-                    .all(|digest| digest.extrinsics_root == EMPTY_EXTRINSIC_ROOT)
+                    .all(|digest| digest.extrinsics_root == EMPTY_EXTRINSIC_ROOT.into())
             }) {
                 return true;
             }
@@ -1802,7 +1813,7 @@ impl<T: Config> Pallet<T> {
         randomness
     }
 
-    pub fn execution_receipt(receipt_hash: ReceiptHash) -> Option<ExecutionReceiptOf<T>> {
+    pub fn execution_receipt(receipt_hash: ReceiptHashFor<T>) -> Option<ExecutionReceiptOf<T>> {
         BlockTreeNodes::<T>::get(receipt_hash).map(|db| db.execution_receipt)
     }
 }
@@ -1832,7 +1843,9 @@ where
     }
 
     /// Submits an unsigned extrinsic [`Call::submit_fraud_proof`].
-    pub fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<BlockNumberFor<T>, T::Hash>) {
+    pub fn submit_fraud_proof_unsigned(
+        fraud_proof: FraudProof<BlockNumberFor<T>, T::Hash, T::DomainHeader>,
+    ) {
         let call = Call::submit_fraud_proof {
             fraud_proof: Box::new(fraud_proof),
         };

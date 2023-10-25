@@ -18,8 +18,10 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
-use sp_runtime::traits::{IdentifyAccount, Verify};
-use sp_runtime::MultiSignature;
+use pallet_transaction_payment::{Multiplier, TargetedFeeAdjustment};
+use sp_core::parameter_types;
+use sp_runtime::traits::{Bounded, IdentifyAccount, Verify};
+use sp_runtime::{FixedPointNumber, MultiSignature, Perquintill};
 use sp_std::vec::Vec;
 pub use subspace_core_primitives::BlockNumber;
 
@@ -87,4 +89,126 @@ pub trait FindBlockRewardAddress<RewardAddress> {
 pub trait FindVotingRewardAddresses<RewardAddress> {
     /// Find the addresses for voting rewards based on transactions found in the block.
     fn find_voting_reward_addresses() -> Vec<RewardAddress>;
+}
+
+parameter_types! {
+    /// The portion of the `NORMAL_DISPATCH_RATIO` that we adjust the fees with. Blocks filled less
+    /// than this will decrease the weight and more will increase.
+    pub const TargetBlockFullness: Perquintill = Perquintill::from_percent(50);
+    /// The adjustment variable of the runtime. Higher values will cause `TargetBlockFullness` to
+    /// change the fees more rapidly.
+    pub AdjustmentVariable: Multiplier = Multiplier::saturating_from_rational(75, 1_000_000);
+    /// Minimum amount of the multiplier. This value cannot be too low. A test case should ensure
+    /// that combined with `AdjustmentVariable`, we can recover from the minimum.
+    /// See `multiplier_can_grow_from_zero`.
+    pub MinimumMultiplier: Multiplier = Multiplier::saturating_from_rational(1, 10u128);
+    /// The maximum amount of the multiplier.
+    pub MaximumMultiplier: Multiplier = Bounded::max_value();
+}
+
+/// Parameterized slow adjusting fee updated based on
+/// <https://research.web3.foundation/Polkadot/overview/token-economics#2-slow-adjusting-mechanism>
+pub type SlowAdjustingFeeUpdate<R> = TargetedFeeAdjustment<
+    R,
+    TargetBlockFullness,
+    AdjustmentVariable,
+    MinimumMultiplier,
+    MaximumMultiplier,
+>;
+
+#[cfg(feature = "testing")]
+pub mod tests_utils {
+    use frame_support::dispatch::DispatchClass;
+    use frame_support::weights::Weight;
+    use frame_system::limits::BlockWeights;
+    use pallet_transaction_payment::{Multiplier, MultiplierUpdate};
+    use sp_runtime::traits::{Convert, Get};
+    use sp_runtime::BuildStorage;
+    use std::marker::PhantomData;
+
+    pub struct FeeMultiplierUtils<Runtime, BlockWeightsGetter>(
+        PhantomData<(Runtime, BlockWeightsGetter)>,
+    );
+
+    impl<Runtime, BlockWeightsGetter> FeeMultiplierUtils<Runtime, BlockWeightsGetter>
+    where
+        Runtime: frame_system::Config + pallet_transaction_payment::Config,
+        BlockWeightsGetter: Get<BlockWeights>,
+    {
+        fn max_normal() -> Weight {
+            let block_weights = BlockWeightsGetter::get();
+            block_weights
+                .get(DispatchClass::Normal)
+                .max_total
+                .unwrap_or(block_weights.max_block)
+        }
+
+        fn min_multiplier() -> Multiplier {
+            <<Runtime as pallet_transaction_payment::Config>::FeeMultiplierUpdate as MultiplierUpdate>::min()
+        }
+
+        fn target() -> Weight {
+            <<Runtime as pallet_transaction_payment::Config>::FeeMultiplierUpdate as MultiplierUpdate>::target() * Self::max_normal()
+        }
+
+        // update based on runtime impl.
+        fn runtime_multiplier_update(fm: Multiplier) -> Multiplier {
+            <<Runtime as pallet_transaction_payment::Config>::FeeMultiplierUpdate as Convert<
+                Multiplier,
+                Multiplier,
+            >>::convert(fm)
+        }
+
+        fn run_with_system_weight<F>(w: Weight, assertions: F)
+        where
+            F: Fn(),
+        {
+            let mut t: sp_io::TestExternalities = frame_system::GenesisConfig::<Runtime>::default()
+                .build_storage()
+                .unwrap()
+                .into();
+            t.execute_with(|| {
+                frame_system::Pallet::<Runtime>::set_block_consumed_resources(w, 0);
+                assertions()
+            });
+        }
+
+        // The following function is taken from test with same name from
+        // https://github.com/paritytech/polkadot-sdk/blob/91851951856b8effe627fb1d151fe336a51eef2d/substrate/bin/node/runtime/src/impls.rs#L234
+        // with some small surface changes.
+        pub fn multiplier_can_grow_from_zero()
+        where
+            Runtime: pallet_transaction_payment::Config,
+            BlockWeightsGetter: Get<BlockWeights>,
+        {
+            // if the min is too small, then this will not change, and we are doomed forever.
+            // the block ref time is 1/100th bigger than target.
+            Self::run_with_system_weight(
+                Self::target().set_ref_time(Self::target().ref_time() * 101 / 100),
+                || {
+                    let next = Self::runtime_multiplier_update(Self::min_multiplier());
+                    assert!(
+                        next > Self::min_multiplier(),
+                        "{:?} !> {:?}",
+                        next,
+                        Self::min_multiplier()
+                    );
+                },
+            );
+
+            // the block proof size is 1/100th bigger than target.
+            Self::run_with_system_weight(
+                Self::target().set_proof_size((Self::target().proof_size() / 100) * 101),
+                || {
+                    let next = Self::runtime_multiplier_update(Self::min_multiplier());
+                    assert!(
+                        next > Self::min_multiplier(),
+                        "{:?} !> {:?}",
+                        next,
+                        Self::min_multiplier()
+                    );
+                },
+            )
+        }
+    }
 }

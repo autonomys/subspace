@@ -529,6 +529,26 @@ where
                         .await;
                     }
                 }
+                Err(error @ subspace_verification::Error::OutsideSolutionRange { .. }) => {
+                    // Solution range might have just adjusted, but when farmer was auditing they
+                    // didn't know about this, so downgrade warning to debug message
+                    if runtime_api
+                        .solution_ranges(parent_hash)
+                        .ok()
+                        .and_then(|solution_ranges| solution_ranges.next)
+                        .is_some()
+                    {
+                        debug!(
+                            target: "subspace",
+                            "Invalid solution received for slot {slot}: {error:?}",
+                        );
+                    } else {
+                        warn!(
+                            target: "subspace",
+                            "Invalid solution received for slot {slot}: {error:?}",
+                        );
+                    }
+                }
                 Err(error) => {
                     warn!(target: "subspace", "Invalid solution received for slot {slot}: {error:?}");
                 }

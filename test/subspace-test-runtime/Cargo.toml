@@ -24,10 +24,7 @@ frame-system = { version = "4.0.0-dev", default-features = false, git = "https:/
 orml-vesting = { version = "0.4.1-dev", default-features = false, path = "../../orml/vesting" }
 pallet-balances = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "892bf8e938c6bd2b893d3827d1093cd81baa59a1" }
 pallet-domains = { version = "0.1.0", default-features = false, path = "../../crates/pallet-domains" }
-pallet-feeds = { version = "0.1.0", default-features = false, path = "../../crates/pallet-feeds" }
-pallet-grandpa-finality-verifier = { version = "0.1.0", default-features = false, path = "../../crates/pallet-grandpa-finality-verifier" }
 pallet-messenger = { version = "0.1.0", path = "../../domains/pallets/messenger", default-features = false }
-pallet-object-store = { version = "0.1.0", default-features = false, path = "../../crates/pallet-object-store" }
 pallet-offences-subspace = { version = "0.1.0", default-features = false, path = "../../crates/pallet-offences-subspace" }
 pallet-rewards = { version = "0.1.0", default-features = false, path = "../../crates/pallet-rewards" }
 pallet-subspace = { version = "0.1.0", default-features = false, features = ["serde"], path = "../../crates/pallet-subspace" }
@@ -77,10 +74,7 @@ std = [
     "orml-vesting/std",
     "pallet-balances/std",
     "pallet-domains/std",
-    "pallet-feeds/std",
-    "pallet-grandpa-finality-verifier/std",
     "pallet-messenger/std",
-    "pallet-object-store/std",
     "pallet-offences-subspace/std",
     "pallet-rewards/std",
     "pallet-subspace/std",

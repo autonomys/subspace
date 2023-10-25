@@ -275,7 +275,7 @@ where
         NumberFor<CCBlock>: Into<NumberFor<Block>>,
         CCBlock::Hash: Into<Block::Hash>,
         CCC: HeaderBackend<CCBlock> + ProvideRuntimeApi<CCBlock> + ProofProvider<CCBlock>,
-        CCC::Api: DomainsApi<CCBlock, NumberFor<Block>, Block::Hash>,
+        CCC::Api: DomainsApi<CCBlock, Block::Header>,
     {
         let chain_id = Self::chain_id(domain_client)?;
         let ChainId::Domain(domain_id) = chain_id else {
@@ -302,6 +302,19 @@ where
             return Err(Error::DomainNonConfirmedOnConsensusChain);
         }
 
+        // fetch messages to be relayed
+        let domain_api = domain_client.runtime_api();
+        let block_messages: BlockMessagesWithStorageKey = domain_api
+            .block_messages(confirmed_block_hash)
+            .map_err(|_| Error::FetchAssignedMessages)?;
+
+        let filtered_messages = Self::filter_messages(domain_client, block_messages)?;
+
+        // short circuit if the there are no messages to relay
+        if filtered_messages.outbox.is_empty() && filtered_messages.inbox_responses.is_empty() {
+            return Ok(());
+        }
+
         // verify if the state root is matching.
         let domain_number = *domain_block_header.number();
         if !consensus_chain_api
@@ -324,19 +337,6 @@ where
                 confirmed_block_hash
             );
             return Err(Error::DomainStateRootInvalid);
-        }
-
-        // fetch messages to be relayed
-        let domain_api = domain_client.runtime_api();
-        let block_messages: BlockMessagesWithStorageKey = domain_api
-            .block_messages(confirmed_block_hash)
-            .map_err(|_| Error::FetchAssignedMessages)?;
-
-        let filtered_messages = Self::filter_messages(domain_client, block_messages)?;
-
-        // short circuit if the there are no messages to relay
-        if filtered_messages.outbox.is_empty() && filtered_messages.inbox_responses.is_empty() {
-            return Ok(());
         }
 
         // generate domain proof that points to the state root of the domain block on Consensus chain.

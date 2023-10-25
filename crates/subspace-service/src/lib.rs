@@ -28,15 +28,12 @@ pub mod dsn;
 mod metrics;
 pub mod rpc;
 mod sync_from_dsn;
-pub mod tx_pre_validator;
 
 use crate::dsn::{create_dsn_instance, DsnConfigurationError};
 use crate::metrics::NodeMetrics;
-use crate::tx_pre_validator::ConsensusChainTxPreValidator;
 use core::sync::atomic::{AtomicU32, Ordering};
 use cross_domain_message_gossip::cdm_gossip_peers_set_config;
-use domain_runtime_primitives::opaque::Block as DomainBlock;
-use domain_runtime_primitives::{BlockNumber as DomainNumber, Hash as DomainHash};
+use domain_runtime_primitives::opaque::{Block as DomainBlock, Header as DomainHeader};
 pub use dsn::DsnConfig;
 use frame_system_rpc_runtime_api::AccountNonceApi;
 use futures::channel::oneshot;
@@ -68,6 +65,7 @@ use sc_subspace_block_relay::{
     build_consensus_relay, BlockRelayConfigurationError, NetworkWrapper,
 };
 use sc_telemetry::{Telemetry, TelemetryWorker};
+use sc_transaction_pool::FullPool;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
@@ -80,7 +78,6 @@ use sp_consensus_subspace::{
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
 use sp_core::H256;
 use sp_domains::DomainsApi;
-use sp_domains_fraud_proof::transaction::PreValidationObjectApi;
 use sp_domains_fraud_proof::{FraudProofExtension, FraudProofHostFunctionsImpl};
 use sp_externalities::Extensions;
 use sp_objects::ObjectsApi;
@@ -96,15 +93,13 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{PotSeed, REWARD_SIGNING_CONTEXT};
-use subspace_fraud_proof::verifier_api::VerifierClient;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::Node;
 use subspace_proof_of_space::Table;
 use subspace_runtime_primitives::opaque::Block;
-use subspace_runtime_primitives::{AccountId, Balance, Hash, Nonce};
-use subspace_transaction_pool::{FullPool, PreValidateTransaction};
+use subspace_runtime_primitives::{AccountId, Balance, Nonce};
 use tracing::{debug, error, info, Instrument};
 
 // There are multiple places where it is assumed that node is running on 64-bit system, refuse to
@@ -163,20 +158,6 @@ pub type FullClient<RuntimeApi, ExecutorDispatch> =
 pub type FullBackend = sc_service::TFullBackend<Block>;
 pub type FullSelectChain = sc_consensus::LongestChain<FullBackend, Block>;
 
-pub type InvalidTransactionProofVerifier<RuntimeApi, ExecutorDispatch> =
-    subspace_fraud_proof::invalid_transaction_proof::InvalidTransactionProofVerifier<
-        Block,
-        FullClient<RuntimeApi, ExecutorDispatch>,
-        Hash,
-        NativeElseWasmExecutor<ExecutorDispatch>,
-        VerifierClient<FullClient<RuntimeApi, ExecutorDispatch>, Block>,
-    >;
-
-pub type FraudProofVerifier<RuntimeApi, ExecutorDispatch> = subspace_fraud_proof::ProofVerifier<
-    Block,
-    InvalidTransactionProofVerifier<RuntimeApi, ExecutorDispatch>,
->;
-
 /// Subspace networking instantiation variant
 #[derive(Debug)]
 #[allow(clippy::large_enum_variant)]
@@ -233,15 +214,14 @@ where
     Block: BlockT,
     Block::Hash: From<H256>,
     DomainBlock: BlockT,
-    DomainBlock::Hash: From<H256>,
+    DomainBlock::Hash: Into<H256> + From<H256>,
     Client: BlockBackend<Block>
         + HeaderBackend<Block>
         + ProvideRuntimeApi<Block>
         + Send
         + Sync
         + 'static,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey>
-        + DomainsApi<Block, NumberFor<DomainBlock>, DomainBlock::Hash>,
+    Client::Api: SubspaceApi<Block, FarmerPublicKey> + DomainsApi<Block, DomainBlock::Header>,
     ExecutorDispatch: CodeExecutor + sc_executor::RuntimeVersionOf,
 {
     fn extensions_for(
@@ -397,15 +377,7 @@ type PartialComponents<RuntimeApi, ExecutorDispatch> = sc_service::PartialCompon
     FullBackend,
     FullSelectChain,
     DefaultImportQueue<Block>,
-    FullPool<
-        Block,
-        FullClient<RuntimeApi, ExecutorDispatch>,
-        ConsensusChainTxPreValidator<
-            Block,
-            FullClient<RuntimeApi, ExecutorDispatch>,
-            FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
-        >,
-    >,
+    FullPool<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
     OtherPartialComponents<RuntimeApi, ExecutorDispatch>,
 >;
 
@@ -428,9 +400,8 @@ where
         + SessionKeys<Block>
         + TaggedTransactionQueue<Block>
         + SubspaceApi<Block, FarmerPublicKey>
-        + DomainsApi<Block, DomainNumber, DomainHash>
-        + ObjectsApi<Block>
-        + PreValidationObjectApi<Block, DomainNumber, DomainHash>,
+        + DomainsApi<Block, DomainHeader>
+        + ObjectsApi<Block>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
     let telemetry = config
@@ -483,25 +454,12 @@ where
 
     let select_chain = sc_consensus::LongestChain::new(backend.clone());
 
-    let invalid_transaction_proof_verifier = InvalidTransactionProofVerifier::new(
+    let transaction_pool = sc_transaction_pool::BasicPool::new_full(
+        config.transaction_pool.clone(),
+        config.role.is_authority().into(),
+        config.prometheus_registry(),
+        task_manager.spawn_essential_handle(),
         client.clone(),
-        executor.clone(),
-        VerifierClient::new(client.clone()),
-    );
-
-    let proof_verifier =
-        subspace_fraud_proof::ProofVerifier::new(Arc::new(invalid_transaction_proof_verifier));
-
-    let tx_pre_validator = ConsensusChainTxPreValidator::new(
-        client.clone(),
-        Box::new(task_manager.spawn_handle()),
-        proof_verifier.clone(),
-    );
-    let transaction_pool = subspace_transaction_pool::new_full(
-        config,
-        &task_manager,
-        client.clone(),
-        tx_pre_validator,
     );
 
     let segment_headers_store = SegmentHeadersStore::new(client.clone())
@@ -601,7 +559,7 @@ where
 }
 
 /// Full node along with some other components.
-pub struct NewFull<Client, TxPreValidator>
+pub struct NewFull<Client>
 where
     Client: ProvideRuntimeApi<Block>
         + BlockBackend<Block>
@@ -609,10 +567,7 @@ where
         + HeaderBackend<Block>
         + HeaderMetadata<Block, Error = sp_blockchain::Error>
         + 'static,
-    Client::Api: TaggedTransactionQueue<Block>
-        + DomainsApi<Block, DomainNumber, DomainHash>
-        + PreValidationObjectApi<Block, DomainNumber, DomainHash>,
-    TxPreValidator: PreValidateTransaction<Block = Block> + Send + Sync + Clone + 'static,
+    Client::Api: TaggedTransactionQueue<Block> + DomainsApi<Block, DomainHeader>,
 {
     /// Task manager.
     pub task_manager: TaskManager,
@@ -641,17 +596,10 @@ where
     /// Network starter.
     pub network_starter: NetworkStarter,
     /// Transaction pool.
-    pub transaction_pool: Arc<FullPool<Block, Client, TxPreValidator>>,
+    pub transaction_pool: Arc<FullPool<Block, Client>>,
 }
 
-type FullNode<RuntimeApi, ExecutorDispatch> = NewFull<
-    FullClient<RuntimeApi, ExecutorDispatch>,
-    ConsensusChainTxPreValidator<
-        Block,
-        FullClient<RuntimeApi, ExecutorDispatch>,
-        FraudProofVerifier<RuntimeApi, ExecutorDispatch>,
-    >,
->;
+type FullNode<RuntimeApi, ExecutorDispatch> = NewFull<FullClient<RuntimeApi, ExecutorDispatch>>;
 
 /// Builds a new service for a full client.
 pub async fn new_full<PosTable, RuntimeApi, ExecutorDispatch>(
@@ -675,9 +623,8 @@ where
         + TaggedTransactionQueue<Block>
         + TransactionPaymentApi<Block, Balance>
         + SubspaceApi<Block, FarmerPublicKey>
-        + DomainsApi<Block, DomainNumber, DomainHash>
-        + ObjectsApi<Block>
-        + PreValidationObjectApi<Block, DomainNumber, DomainHash>,
+        + DomainsApi<Block, DomainHeader>
+        + ObjectsApi<Block>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
     let PartialComponents {

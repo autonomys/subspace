@@ -58,8 +58,5 @@ tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
 ulid = { version = "1.0.0", features = ["serde"] }
 zeroize = "1.6.0"
 
-[target.'cfg(windows)'.dependencies]
-memmap2 = "0.9.0"
-
 [target.'cfg(any(target_os = "linux", target_os = "macos"))'.dependencies]
 monoio = { version = "0.1.10-beta.1", features = ["sync"] }

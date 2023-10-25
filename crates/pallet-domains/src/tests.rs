@@ -2,11 +2,12 @@ use crate::block_tree::BlockTreeNode;
 use crate::domain_registry::{DomainConfig, DomainObject};
 use crate::{
     self as pallet_domains, BalanceOf, BlockTree, BlockTreeNodes, BundleError, Config,
-    ConsensusBlockHash, DomainBlockNumberFor, DomainRegistry, ExecutionInbox, ExecutionReceiptOf,
-    FraudProofError, FungibleHoldId, HeadReceiptNumber, NextDomainId, Operator, OperatorStatus,
-    Operators,
+    ConsensusBlockHash, DomainBlockNumberFor, DomainHashingFor, DomainRegistry, ExecutionInbox,
+    ExecutionReceiptOf, FraudProofError, FungibleHoldId, HeadReceiptNumber, NextDomainId, Operator,
+    OperatorStatus, Operators, ReceiptHashFor,
 };
 use codec::{Decode, Encode, MaxEncodedLen};
+use domain_runtime_primitives::opaque::Header as DomainHeader;
 use domain_runtime_primitives::BlockNumber as DomainBlockNumber;
 use frame_support::dispatch::RawOrigin;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, Currency, Hooks};
@@ -21,8 +22,8 @@ use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::storage::RawGenesis;
 use sp_domains::{
     BundleHeader, DomainId, DomainsHoldIdentifier, ExecutionReceipt, InboxedBundle, OpaqueBundle,
-    OperatorAllowList, OperatorId, OperatorPair, ProofOfElection, ReceiptHash, RuntimeType,
-    SealedBundleHeader, StakingHoldIdentifier,
+    OperatorAllowList, OperatorId, OperatorPair, ProofOfElection, RuntimeType, SealedBundleHeader,
+    StakingHoldIdentifier,
 };
 use sp_domains_fraud_proof::fraud_proof::{
     ExtrinsicDigest, FraudProof, InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof,
@@ -213,7 +214,7 @@ impl pallet_timestamp::Config for Test {
 impl pallet_domains::Config for Test {
     type RuntimeEvent = RuntimeEvent;
     type DomainHash = sp_core::H256;
-    type DomainHeader = sp_runtime::generic::Header<DomainBlockNumber, BlakeTwo256>;
+    type DomainHeader = DomainHeader;
     type ConfirmationDepthK = ConfirmationDepthK;
     type DomainRuntimeUpgradeDelay = DomainRuntimeUpgradeDelay;
     type Currency = Balances;
@@ -278,6 +279,9 @@ impl FraudProofHostFunctions for MockDomainFraudProofExtension {
                     .encode(),
                 )
             }
+            FraudProofVerificationInfoRequest::DomainBundleBody { .. } => {
+                FraudProofVerificationInfoResponse::DomainBundleBody(Default::default())
+            }
             FraudProofVerificationInfoRequest::DomainRuntimeCode(_) => {
                 FraudProofVerificationInfoResponse::DomainRuntimeCode(Default::default())
             }
@@ -300,6 +304,15 @@ impl FraudProofHostFunctions for MockDomainFraudProofExtension {
         };
 
         Some(response)
+    }
+
+    fn derive_bundle_digest(
+        &self,
+        _consensus_block_hash: H256,
+        _domain_id: DomainId,
+        _bundle_body: Vec<OpaqueExtrinsic>,
+    ) -> Option<H256> {
+        Some(H256::random())
     }
 
     fn execution_proof_check(
@@ -376,7 +389,7 @@ fn create_dummy_bundle(
     domain_id: DomainId,
     block_number: BlockNumber,
     consensus_block_hash: Hash,
-) -> OpaqueBundle<BlockNumber, Hash, DomainBlockNumber, H256, u128> {
+) -> OpaqueBundle<BlockNumber, Hash, DomainHeader, u128> {
     let execution_receipt = create_dummy_receipt(
         block_number,
         consensus_block_hash,
@@ -396,10 +409,10 @@ pub(crate) fn create_dummy_bundle_with_receipts(
     operator_id: OperatorId,
     bundle_extrinsics_root: H256,
     receipt: ExecutionReceipt<BlockNumber, Hash, DomainBlockNumber, H256, u128>,
-) -> OpaqueBundle<BlockNumber, Hash, DomainBlockNumber, H256, u128> {
+) -> OpaqueBundle<BlockNumber, Hash, DomainHeader, u128> {
     let pair = OperatorPair::from_seed(&U256::from(0u32).into());
 
-    let header = BundleHeader {
+    let header = BundleHeader::<_, _, DomainHeader, _> {
         proof_of_election: ProofOfElection::dummy(domain_id, operator_id),
         receipt,
         bundle_size: 0u32,
@@ -519,7 +532,9 @@ pub(crate) fn extend_block_tree(
         receipt = create_dummy_receipt(
             block_number,
             H256::random(),
-            parent_block_tree_node.execution_receipt.hash(),
+            parent_block_tree_node
+                .execution_receipt
+                .hash::<DomainHashingFor<Test>>(),
             vec![bundle_extrinsics_root],
         );
     }
@@ -818,7 +833,7 @@ fn test_invalid_fraud_proof() {
         let bad_receipt_hash = get_block_tree_node_at::<Test>(domain_id, bad_receipt_at)
             .unwrap()
             .execution_receipt
-            .hash();
+            .hash::<DomainHashingFor<Test>>();
         let fraud_proof = FraudProof::dummy_fraud_proof(domain_id, bad_receipt_hash);
         assert_eq!(
             Domains::validate_fraud_proof(&fraud_proof),
@@ -852,7 +867,9 @@ fn test_invalid_total_rewards_fraud_proof() {
         let bad_receipt_at = 8;
         let mut domain_block = get_block_tree_node_at::<Test>(domain_id, bad_receipt_at).unwrap();
 
-        let bad_receipt_hash = domain_block.execution_receipt.hash();
+        let bad_receipt_hash = domain_block
+            .execution_receipt
+            .hash::<DomainHashingFor<Test>>();
         let (fraud_proof, root) = generate_invalid_total_rewards_fraud_proof::<Test>(
             domain_id,
             bad_receipt_hash,
@@ -865,11 +882,14 @@ fn test_invalid_total_rewards_fraud_proof() {
     });
 }
 
+type FraudProofFor<T> =
+    FraudProof<BlockNumberFor<T>, <T as frame_system::Config>::Hash, <T as Config>::DomainHeader>;
+
 fn generate_invalid_total_rewards_fraud_proof<T: Config>(
     domain_id: DomainId,
-    bad_receipt_hash: ReceiptHash,
+    bad_receipt_hash: ReceiptHashFor<T>,
     rewards: BalanceOf<T>,
-) -> (FraudProof<BlockNumberFor<T>, T::Hash>, T::Hash) {
+) -> (FraudProofFor<T>, T::Hash) {
     let storage_key = sp_domains_fraud_proof::fraud_proof::operator_block_rewards_final_key();
     let mut root = T::Hash::default();
     let mut mdb = PrefixedMemoryDB::<T::Hashing>::default();
@@ -931,7 +951,7 @@ fn test_invalid_domain_extrinsic_root_proof() {
         };
         bad_receipt.domain_block_extrinsic_root = H256::random();
 
-        let bad_receipt_hash = bad_receipt.hash();
+        let bad_receipt_hash = bad_receipt.hash::<DomainHashingFor<Test>>();
         let fraud_proof =
             generate_invalid_domain_extrinsic_root_fraud_proof::<Test>(domain_id, bad_receipt_hash);
         let (consensus_block_number, consensus_block_hash) = (
@@ -958,8 +978,8 @@ fn test_invalid_domain_extrinsic_root_proof() {
 
 fn generate_invalid_domain_extrinsic_root_fraud_proof<T: Config + pallet_timestamp::Config>(
     domain_id: DomainId,
-    bad_receipt_hash: ReceiptHash,
-) -> FraudProof<BlockNumberFor<T>, T::Hash> {
+    bad_receipt_hash: ReceiptHashFor<T>,
+) -> FraudProof<BlockNumberFor<T>, T::Hash, T::DomainHeader> {
     let valid_bundle_digests = vec![ValidBundleDigest {
         bundle_index: 0,
         bundle_digest: vec![(Some(vec![1, 2, 3]), ExtrinsicDigest::Data(vec![4, 5, 6]))],
@@ -992,7 +1012,9 @@ fn test_invalid_domain_block_hash_fraud_proof() {
             generate_invalid_domain_block_hash_fraud_proof::<Test>(Digest::default());
         domain_block.execution_receipt.final_state_root = root;
         domain_block.execution_receipt.domain_block_hash = H256::random();
-        let bad_receipt_hash = domain_block.execution_receipt.hash();
+        let bad_receipt_hash = domain_block
+            .execution_receipt
+            .hash::<DomainHashingFor<Test>>();
         BlockTreeNodes::<Test>::insert(bad_receipt_hash, domain_block);
         let fraud_proof = FraudProof::InvalidDomainBlockHash(InvalidDomainBlockHashProof {
             domain_id,
@@ -1037,7 +1059,7 @@ fn test_basic_fraud_proof_processing() {
         let bad_receipt = get_block_tree_node_at::<Test>(domain_id, bad_receipt_at)
             .unwrap()
             .execution_receipt;
-        let bad_receipt_hash = bad_receipt.hash();
+        let bad_receipt_hash = bad_receipt.hash::<DomainHashingFor<Test>>();
         let fraud_proof = FraudProof::dummy_fraud_proof(domain_id, bad_receipt_hash);
         assert_ok!(Domains::submit_fraud_proof(
             RawOrigin::None.into(),
@@ -1106,7 +1128,7 @@ fn test_fraud_proof_prune_fraudulent_branch_of_receipt() {
                 }
                 er
             };
-            let bad_receipt_hash = bad_receipt.hash();
+            let bad_receipt_hash = bad_receipt.hash::<DomainHashingFor<Test>>();
             let bundle = create_dummy_bundle_with_receipts(
                 domain_id,
                 operator_id,

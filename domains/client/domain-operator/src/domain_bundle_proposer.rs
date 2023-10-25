@@ -8,9 +8,8 @@ use sc_transaction_pool_api::InPoolTransaction;
 use sp_api::{HeaderT, NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
-use sp_core::H256;
-use sp_domains::{BundleHeader, ExecutionReceipt, ProofOfElection};
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash as HashT, One, Zero};
+use sp_domains::{BundleHeader, ExecutionReceipt, HeaderHashingFor, ProofOfElection};
+use sp_runtime::traits::{Block as BlockT, Hash as HashT, One, Zero};
 use sp_weights::Weight;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -39,13 +38,7 @@ impl<Block, Client, CBlock, CClient, TransactionPool> Clone
 }
 
 pub(super) type ProposeBundleOutput<Block, CBlock> = (
-    BundleHeader<
-        NumberFor<CBlock>,
-        <CBlock as BlockT>::Hash,
-        NumberFor<Block>,
-        <Block as BlockT>::Hash,
-        Balance,
-    >,
+    BundleHeader<NumberFor<CBlock>, <CBlock as BlockT>::Hash, <Block as BlockT>::Header, Balance>,
     Vec<<Block as BlockT>::Extrinsic>,
 );
 
@@ -54,7 +47,6 @@ impl<Block, Client, CBlock, CClient, TransactionPool>
 where
     Block: BlockT,
     CBlock: BlockT,
-    Block::Hash: Into<H256>,
     NumberFor<Block>: Into<NumberFor<CBlock>>,
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
     Client::Api: BlockBuilder<Block> + DomainCoreApi<Block>,
@@ -150,7 +142,7 @@ where
             }
         }
 
-        let extrinsics_root = BlakeTwo256::ordered_trie_root(
+        let extrinsics_root = HeaderHashingFor::<Block::Header>::ordered_trie_root(
             extrinsics.iter().map(|xt| xt.encode()).collect(),
             sp_core::storage::StateVersion::V1,
         );
@@ -199,7 +191,7 @@ where
 
             return Ok(ExecutionReceipt::genesis(
                 *genesis_header.state_root(),
-                (*genesis_header.extrinsics_root()).into(),
+                *genesis_header.extrinsics_root(),
                 genesis_hash,
             ));
         }
