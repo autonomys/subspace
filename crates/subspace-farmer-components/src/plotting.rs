@@ -26,7 +26,7 @@ use subspace_core_primitives::{
 use subspace_erasure_coding::ErasureCoding;
 use subspace_proof_of_space::{Table, TableGenerator};
 use thiserror::Error;
-use tokio::sync::Semaphore;
+use tokio::sync::{AcquireError, Semaphore};
 use tokio::task::yield_now;
 use tracing::{debug, trace, warn};
 
@@ -151,6 +151,13 @@ pub enum PlottingError {
         /// Lower-level error
         error: Box<dyn std::error::Error + Send + Sync + 'static>,
     },
+    /// Failed to acquire permit
+    #[error("Failed to acquire permit: {error}")]
+    FailedToAcquirePermit {
+        /// Lower-level error
+        #[from]
+        error: AcquireError,
+    },
 }
 
 /// Options for plotting a sector.
@@ -244,7 +251,7 @@ where
     }
 
     let _downloading_permit = match downloading_semaphore {
-        Some(downloading_semaphore) => Some(downloading_semaphore.acquire().await),
+        Some(downloading_semaphore) => Some(downloading_semaphore.acquire().await?),
         None => None,
     };
 
@@ -311,7 +318,7 @@ where
     let mut raw_sector = raw_sector.into_inner();
 
     let _encoding_permit = match encoding_semaphore {
-        Some(encoding_semaphore) => Some(encoding_semaphore.acquire().await),
+        Some(encoding_semaphore) => Some(encoding_semaphore.acquire().await?),
         None => None,
     };
 
