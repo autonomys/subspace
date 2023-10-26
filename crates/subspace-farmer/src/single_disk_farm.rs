@@ -16,7 +16,7 @@ pub use crate::single_disk_farm::plotting::PlottingError;
 use crate::single_disk_farm::plotting::{
     plotting, plotting_scheduler, PlottingOptions, PlottingSchedulerOptions,
 };
-use crate::utils::{tokio_rayon_spawn_handler, JoinOnDrop};
+use crate::utils::{tokio_rayon_spawn_handler, AsyncJoinOnDrop};
 use async_lock::RwLock;
 use derive_more::{Display, From};
 use event_listener_primitives::{Bag, HandlerId};
@@ -37,7 +37,7 @@ use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::{fs, io, mem, thread};
+use std::{fs, io, mem};
 use subspace_core_primitives::crypto::blake3_hash;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
@@ -500,6 +500,9 @@ pub enum BackgroundTaskError {
     /// Farming error
     #[error(transparent)]
     Farming(#[from] FarmingError),
+    /// Background task panicked
+    #[error("Background task {task} panicked")]
+    BackgroundTaskPanicked { task: String },
 }
 
 type BackgroundTask = Pin<Box<dyn Future<Output = Result<(), BackgroundTaskError>> + Send>>;
@@ -542,9 +545,6 @@ pub struct SingleDiskFarm {
     handlers: Arc<Handlers>,
     piece_cache: DiskPieceCache,
     piece_reader: PieceReader,
-    _plotting_join_handle: JoinOnDrop,
-    _farming_join_handle: JoinOnDrop,
-    _reading_join_handle: JoinOnDrop,
     /// Sender that will be used to signal to background threads that they should start
     start_sender: Option<broadcast::Sender<()>>,
     /// Sender that will be used to signal to background threads that they must stop
@@ -578,8 +578,6 @@ impl SingleDiskFarm {
         PG: PieceGetter + Clone + Send + 'static,
         PosTable: Table,
     {
-        let handle = Handle::current();
-
         let SingleDiskFarmOptions {
             directory,
             farmer_app_info,
@@ -866,83 +864,89 @@ impl SingleDiskFarm {
 
         let span = info_span!("single_disk_farm", %disk_farm_index);
 
-        let plotting_join_handle = thread::Builder::new()
-            .name(format!("plotting-{disk_farm_index}"))
-            .spawn({
-                let handle = handle.clone();
-                let sectors_metadata = Arc::clone(&sectors_metadata);
-                let kzg = kzg.clone();
-                let erasure_coding = erasure_coding.clone();
-                let handlers = Arc::clone(&handlers);
-                let modifying_sector_index = Arc::clone(&modifying_sector_index);
-                let node_client = node_client.clone();
-                let plot_file = Arc::clone(&plot_file);
-                let error_sender = Arc::clone(&error_sender);
-                let span = span.clone();
+        let plotting_join_handle = tokio::task::spawn_blocking({
+            let sectors_metadata = Arc::clone(&sectors_metadata);
+            let kzg = kzg.clone();
+            let erasure_coding = erasure_coding.clone();
+            let handlers = Arc::clone(&handlers);
+            let modifying_sector_index = Arc::clone(&modifying_sector_index);
+            let node_client = node_client.clone();
+            let plot_file = Arc::clone(&plot_file);
+            let error_sender = Arc::clone(&error_sender);
+            let span = span.clone();
 
-                move || {
-                    let _tokio_handle_guard = handle.enter();
-                    let _span_guard = span.enter();
+            move || {
+                let _span_guard = span.enter();
 
-                    let plotting_fut = async move {
-                        if start_receiver.recv().await.is_err() {
-                            // Dropped before starting
+                let plotting_fut = async move {
+                    if start_receiver.recv().await.is_err() {
+                        // Dropped before starting
+                        return;
+                    }
+
+                    if let Some(plotting_delay) = plotting_delay {
+                        if plotting_delay.await.is_err() {
+                            // Dropped before resolving
                             return;
                         }
+                    }
 
-                        if let Some(plotting_delay) = plotting_delay {
-                            if plotting_delay.await.is_err() {
-                                // Dropped before resolving
-                                return;
-                            }
-                        }
-
-                        let plotting_options = PlottingOptions {
-                            public_key,
-                            node_client,
-                            pieces_in_sector,
-                            sector_size,
-                            sector_metadata_size,
-                            metadata_header,
-                            plot_file,
-                            metadata_file,
-                            sectors_metadata,
-                            piece_getter,
-                            kzg,
-                            erasure_coding,
-                            handlers,
-                            modifying_sector_index,
-                            sectors_to_plot_receiver,
-                            downloading_semaphore,
-                            encoding_semaphore,
-                            plotting_thread_pool,
-                            replotting_thread_pool,
-                            stop_receiver: stop_receiver.resubscribe(),
-                        };
-
-                        let plotting_fut = plotting::<_, _, PosTable>(plotting_options);
-
-                        select! {
-                            plotting_result = plotting_fut.fuse() => {
-                                if let Err(error) = plotting_result
-                                    && let Some(error_sender) = error_sender.lock().take()
-                                    && let Err(error) = error_sender.send(error.into())
-                                {
-                                    error!(
-                                        %error,
-                                        "Plotting failed to send error to background task"
-                                    );
-                                }
-                            }
-                            _ = stop_receiver.recv().fuse() => {
-                                // Nothing, just exit
-                            }
-                        }
+                    let plotting_options = PlottingOptions {
+                        public_key,
+                        node_client,
+                        pieces_in_sector,
+                        sector_size,
+                        sector_metadata_size,
+                        metadata_header,
+                        plot_file,
+                        metadata_file,
+                        sectors_metadata,
+                        piece_getter,
+                        kzg,
+                        erasure_coding,
+                        handlers,
+                        modifying_sector_index,
+                        sectors_to_plot_receiver,
+                        downloading_semaphore,
+                        encoding_semaphore,
+                        plotting_thread_pool,
+                        replotting_thread_pool,
+                        stop_receiver: stop_receiver.resubscribe(),
                     };
 
-                    handle.block_on(plotting_fut);
+                    let plotting_fut = plotting::<_, _, PosTable>(plotting_options);
+
+                    select! {
+                        plotting_result = plotting_fut.fuse() => {
+                            if let Err(error) = plotting_result
+                                && let Some(error_sender) = error_sender.lock().take()
+                                && let Err(error) = error_sender.send(error.into())
+                            {
+                                error!(
+                                    %error,
+                                    "Plotting failed to send error to background task"
+                                );
+                            }
+                        }
+                        _ = stop_receiver.recv().fuse() => {
+                            // Nothing, just exit
+                        }
+                    }
+                };
+
+                Handle::current().block_on(plotting_fut);
+            }
+        });
+        let plotting_join_handle = AsyncJoinOnDrop::new(plotting_join_handle, false);
+
+        tasks.push(Box::pin(async move {
+            // Panic will already be printed by now
+            plotting_join_handle.await.map_err(|_error| {
+                BackgroundTaskError::BackgroundTaskPanicked {
+                    task: format!("plotting-{disk_farm_index}"),
                 }
-            })?;
+            })
+        }));
 
         let plotting_scheduler_options = PlottingSchedulerOptions {
             public_key_hash: public_key.hash(),
@@ -969,100 +973,106 @@ impl SingleDiskFarm {
             }
         }));
 
-        let farming_join_handle = thread::Builder::new()
-            .name(format!("farming-{disk_farm_index}"))
-            .spawn({
-                let handle = handle.clone();
-                let erasure_coding = erasure_coding.clone();
-                let handlers = Arc::clone(&handlers);
-                let modifying_sector_index = Arc::clone(&modifying_sector_index);
-                let sectors_metadata = Arc::clone(&sectors_metadata);
-                let mut start_receiver = start_sender.subscribe();
-                let mut stop_receiver = stop_sender.subscribe();
-                let node_client = node_client.clone();
-                let span = span.clone();
+        let farming_join_handle = tokio::task::spawn_blocking({
+            let erasure_coding = erasure_coding.clone();
+            let handlers = Arc::clone(&handlers);
+            let modifying_sector_index = Arc::clone(&modifying_sector_index);
+            let sectors_metadata = Arc::clone(&sectors_metadata);
+            let mut start_receiver = start_sender.subscribe();
+            let mut stop_receiver = stop_sender.subscribe();
+            let node_client = node_client.clone();
+            let span = span.clone();
 
-                move || {
-                    let _tokio_handle_guard = handle.enter();
+            move || {
+                let thread_pool = match ThreadPoolBuilder::new()
+                    .thread_name(move |thread_index| {
+                        format!("farming-{disk_farm_index}.{thread_index}")
+                    })
+                    .num_threads(farming_thread_pool_size)
+                    .spawn_handler(tokio_rayon_spawn_handler())
+                    .build()
+                    .map_err(FarmingError::FailedToCreateThreadPool)
+                {
+                    Ok(thread_pool) => thread_pool,
+                    Err(error) => {
+                        if let Some(error_sender) = error_sender.lock().take() {
+                            if let Err(error) = error_sender.send(error.into()) {
+                                error!(
+                                    %error,
+                                    "Farming failed to send error to background task",
+                                );
+                            }
+                        }
+                        return;
+                    }
+                };
 
-                    let thread_pool = match ThreadPoolBuilder::new()
-                        .thread_name(move |thread_index| {
-                            format!("farming-{disk_farm_index}.{thread_index}")
-                        })
-                        .num_threads(farming_thread_pool_size)
-                        .spawn_handler(tokio_rayon_spawn_handler())
-                        .build()
-                        .map_err(FarmingError::FailedToCreateThreadPool)
-                    {
-                        Ok(thread_pool) => thread_pool,
-                        Err(error) => {
-                            if let Some(error_sender) = error_sender.lock().take() {
-                                if let Err(error) = error_sender.send(error.into()) {
+                let handle = Handle::current();
+                thread_pool.install(move || {
+                    let _span_guard = span.enter();
+
+                    let farming_fut = async move {
+                        if start_receiver.recv().await.is_err() {
+                            // Dropped before starting
+                            return Ok(());
+                        }
+
+                        if let Some(farming_delay) = delay_farmer_receiver {
+                            if farming_delay.await.is_err() {
+                                // Dropped before resolving
+                                return Ok(());
+                            }
+                        }
+
+                        let plot = RayonFiles::open(&directory.join(Self::PLOT_FILE))?;
+                        let plot_audit = &SyncPlotAudit::new(&plot);
+
+                        let farming_options = FarmingOptions {
+                            public_key,
+                            reward_address,
+                            node_client,
+                            plot_audit,
+                            sectors_metadata,
+                            kzg,
+                            erasure_coding,
+                            handlers,
+                            modifying_sector_index,
+                            slot_info_notifications: slot_info_forwarder_receiver,
+                        };
+                        farming::<PosTable, _, _>(farming_options).await
+                    };
+
+                    handle.block_on(async {
+                        select! {
+                            farming_result = farming_fut.fuse() => {
+                                if let Err(error) = farming_result
+                                    && let Some(error_sender) = error_sender.lock().take()
+                                    && let Err(error) = error_sender.send(error.into())
+                                {
                                     error!(
                                         %error,
                                         "Farming failed to send error to background task",
                                     );
                                 }
                             }
-                            return;
+                            _ = stop_receiver.recv().fuse() => {
+                                // Nothing, just exit
+                            }
                         }
-                    };
+                    });
+                })
+            }
+        });
+        let farming_join_handle = AsyncJoinOnDrop::new(farming_join_handle, false);
 
-                    thread_pool.install(move || {
-                        let _span_guard = span.enter();
-
-                        let farming_fut = async move {
-                            if start_receiver.recv().await.is_err() {
-                                // Dropped before starting
-                                return Ok(());
-                            }
-
-                            if let Some(farming_delay) = delay_farmer_receiver {
-                                if farming_delay.await.is_err() {
-                                    // Dropped before resolving
-                                    return Ok(());
-                                }
-                            }
-
-                            let plot = RayonFiles::open(&directory.join(Self::PLOT_FILE))?;
-                            let plot_audit = &SyncPlotAudit::new(&plot);
-
-                            let farming_options = FarmingOptions {
-                                public_key,
-                                reward_address,
-                                node_client,
-                                plot_audit,
-                                sectors_metadata,
-                                kzg,
-                                erasure_coding,
-                                handlers,
-                                modifying_sector_index,
-                                slot_info_notifications: slot_info_forwarder_receiver,
-                            };
-                            farming::<PosTable, _, _>(farming_options).await
-                        };
-
-                        handle.block_on(async {
-                            select! {
-                                farming_result = farming_fut.fuse() => {
-                                    if let Err(error) = farming_result
-                                        && let Some(error_sender) = error_sender.lock().take()
-                                        && let Err(error) = error_sender.send(error.into())
-                                    {
-                                        error!(
-                                            %error,
-                                            "Farming failed to send error to background task",
-                                        );
-                                    }
-                                }
-                                _ = stop_receiver.recv().fuse() => {
-                                    // Nothing, just exit
-                                }
-                            }
-                        });
-                    })
+        tasks.push(Box::pin(async move {
+            // Panic will already be printed by now
+            farming_join_handle.await.map_err(|_error| {
+                BackgroundTaskError::BackgroundTaskPanicked {
+                    task: format!("farming-{disk_farm_index}"),
                 }
-            })?;
+            })
+        }));
 
         let (piece_reader, reading_fut) = PieceReader::new::<PosTable>(
             public_key,
@@ -1073,27 +1083,33 @@ impl SingleDiskFarm {
             modifying_sector_index,
         );
 
-        let reading_join_handle = thread::Builder::new()
-            .name(format!("reading-{disk_farm_index}"))
-            .spawn({
-                let mut stop_receiver = stop_sender.subscribe();
-                let reading_fut = reading_fut.instrument(span.clone());
+        let reading_join_handle = tokio::task::spawn_blocking({
+            let mut stop_receiver = stop_sender.subscribe();
+            let reading_fut = reading_fut.instrument(span.clone());
 
-                move || {
-                    let _tokio_handle_guard = handle.enter();
-
-                    handle.block_on(async {
-                        select! {
-                            _ = reading_fut.fuse() => {
-                                // Nothing, just exit
-                            }
-                            _ = stop_receiver.recv().fuse() => {
-                                // Nothing, just exit
-                            }
+            move || {
+                Handle::current().block_on(async {
+                    select! {
+                        _ = reading_fut.fuse() => {
+                            // Nothing, just exit
                         }
-                    });
+                        _ = stop_receiver.recv().fuse() => {
+                            // Nothing, just exit
+                        }
+                    }
+                });
+            }
+        });
+        let reading_join_handle = AsyncJoinOnDrop::new(reading_join_handle, false);
+
+        tasks.push(Box::pin(async move {
+            // Panic will already be printed by now
+            reading_join_handle.await.map_err(|_error| {
+                BackgroundTaskError::BackgroundTaskPanicked {
+                    task: format!("reading-{disk_farm_index}"),
                 }
-            })?;
+            })
+        }));
 
         tasks.push(Box::pin(async move {
             // TODO: Error handling here
@@ -1112,9 +1128,6 @@ impl SingleDiskFarm {
             handlers,
             piece_cache,
             piece_reader,
-            _plotting_join_handle: JoinOnDrop::new(plotting_join_handle),
-            _farming_join_handle: JoinOnDrop::new(farming_join_handle),
-            _reading_join_handle: JoinOnDrop::new(reading_join_handle),
             start_sender: Some(start_sender),
             stop_sender: Some(stop_sender),
         };
