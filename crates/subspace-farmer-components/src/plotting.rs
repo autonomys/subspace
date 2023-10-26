@@ -26,7 +26,7 @@ use subspace_core_primitives::{
 use subspace_erasure_coding::ErasureCoding;
 use subspace_proof_of_space::{Table, TableGenerator};
 use thiserror::Error;
-use tokio::sync::{AcquireError, Semaphore};
+use tokio::sync::{AcquireError, Semaphore, SemaphorePermit};
 use tokio::task::yield_now;
 use tracing::{debug, trace, warn};
 
@@ -250,72 +250,22 @@ where
         });
     }
 
-    let _downloading_permit = match downloading_semaphore {
-        Some(downloading_semaphore) => Some(downloading_semaphore.acquire().await?),
-        None => None,
-    };
-
-    let sector_id = SectorId::new(public_key.hash(), sector_index);
-
-    let piece_indexes: Vec<PieceIndex> = (PieceOffset::ZERO..)
-        .take(pieces_in_sector.into())
-        .map(|piece_offset| {
-            sector_id.derive_piece_index(
-                piece_offset,
-                farmer_protocol_info.history_size,
-                farmer_protocol_info.max_pieces_in_sector,
-                farmer_protocol_info.recent_segments,
-                farmer_protocol_info.recent_history_fraction,
-            )
-        })
-        .collect();
-
-    // TODO: Downloading and encoding below can happen in parallel, but a bit tricky to implement
-    //  due to sync/async pairing
-
-    let raw_sector = Mutex::new(RawSector::new(pieces_in_sector));
-
-    {
-        // This list will be mutated, replacing pieces we have already processed with `None`
-        let incremental_piece_indices =
-            Mutex::new(piece_indexes.iter().copied().map(Some).collect::<Vec<_>>());
-
-        retry(default_backoff(), || async {
-            let mut raw_sector = raw_sector.lock().await;
-            let mut incremental_piece_indices = incremental_piece_indices.lock().await;
-
-            if let Err(error) = download_sector(
-                &mut raw_sector,
-                piece_getter,
-                piece_getter_retry_policy,
-                kzg,
-                &mut incremental_piece_indices,
-            )
-            .await
-            {
-                let retrieved_pieces = incremental_piece_indices
-                    .iter()
-                    .filter(|maybe_piece_index| maybe_piece_index.is_none())
-                    .count();
-                warn!(
-                    %sector_index,
-                    %error,
-                    %pieces_in_sector,
-                    %retrieved_pieces,
-                    "Sector plotting attempt failed, will retry later"
-                );
-
-                return Err(BackoffError::transient(error));
-            }
-
-            debug!(%sector_index, "Sector downloaded successfully");
-
-            Ok(())
-        })
-        .await?;
-    }
-
-    let mut raw_sector = raw_sector.into_inner();
+    let download_sector_fut = download_sector(DownloadSectorOptions {
+        public_key,
+        sector_index,
+        piece_getter,
+        piece_getter_retry_policy,
+        farmer_protocol_info,
+        kzg,
+        pieces_in_sector,
+        downloading_semaphore,
+    });
+    let DownloadedSector {
+        sector_id,
+        piece_indices,
+        mut raw_sector,
+        downloading_permit: _downloading_permit,
+    } = download_sector_fut.await?;
 
     let _encoding_permit = match encoding_semaphore {
         Some(encoding_semaphore) => Some(encoding_semaphore.acquire().await?),
@@ -491,11 +441,134 @@ where
         sector_id,
         sector_index,
         sector_metadata,
-        piece_indexes,
+        piece_indexes: piece_indices,
     })
 }
 
-async fn download_sector<PG: PieceGetter>(
+/// Opaque sector downloaded and ready for encoding
+pub struct DownloadedSector<'a> {
+    sector_id: SectorId,
+    piece_indices: Vec<PieceIndex>,
+    raw_sector: RawSector,
+    downloading_permit: Option<SemaphorePermit<'a>>,
+}
+
+/// Options for sector downloading
+pub struct DownloadSectorOptions<'a, PG> {
+    /// Public key corresponding to sector
+    pub public_key: &'a PublicKey,
+    /// Sector index
+    pub sector_index: SectorIndex,
+    /// Getter for pieces of archival history
+    pub piece_getter: &'a PG,
+    /// Retry policy for piece getter
+    pub piece_getter_retry_policy: PieceGetterRetryPolicy,
+    /// Farmer protocol info
+    pub farmer_protocol_info: &'a FarmerProtocolInfo,
+    /// KZG instance
+    pub kzg: &'a Kzg,
+    /// How many pieces should sector contain
+    pub pieces_in_sector: u16,
+    /// Semaphore for part of the plotting when farmer downloads new sector, allows to limit memory
+    /// usage of the plotting process, permit will be held until the end of the plotting process
+    pub downloading_semaphore: Option<&'a Semaphore>,
+}
+
+/// Download sector for plotting.
+///
+/// This will identify necessary pieces and download them from DSN, after which they can be encoded
+/// and written to the plot.
+pub async fn download_sector<PG>(
+    options: DownloadSectorOptions<'_, PG>,
+) -> Result<DownloadedSector<'_>, PlottingError>
+where
+    PG: PieceGetter,
+{
+    let DownloadSectorOptions {
+        public_key,
+        sector_index,
+        piece_getter,
+        piece_getter_retry_policy,
+        farmer_protocol_info,
+        kzg,
+        pieces_in_sector,
+        downloading_semaphore,
+    } = options;
+
+    let downloading_permit = match downloading_semaphore {
+        Some(downloading_semaphore) => Some(downloading_semaphore.acquire().await?),
+        None => None,
+    };
+
+    let sector_id = SectorId::new(public_key.hash(), sector_index);
+
+    let piece_indices = (PieceOffset::ZERO..)
+        .take(pieces_in_sector.into())
+        .map(|piece_offset| {
+            sector_id.derive_piece_index(
+                piece_offset,
+                farmer_protocol_info.history_size,
+                farmer_protocol_info.max_pieces_in_sector,
+                farmer_protocol_info.recent_segments,
+                farmer_protocol_info.recent_history_fraction,
+            )
+        })
+        .collect::<Vec<_>>();
+
+    // TODO: Downloading and encoding below can happen in parallel, but a bit tricky to implement
+    //  due to sync/async pairing
+
+    let raw_sector = Mutex::new(RawSector::new(pieces_in_sector));
+
+    {
+        // This list will be mutated, replacing pieces we have already processed with `None`
+        let incremental_piece_indices =
+            Mutex::new(piece_indices.iter().copied().map(Some).collect::<Vec<_>>());
+
+        retry(default_backoff(), || async {
+            let mut raw_sector = raw_sector.lock().await;
+            let mut incremental_piece_indices = incremental_piece_indices.lock().await;
+
+            if let Err(error) = download_sector_internal(
+                &mut raw_sector,
+                piece_getter,
+                piece_getter_retry_policy,
+                kzg,
+                &mut incremental_piece_indices,
+            )
+            .await
+            {
+                let retrieved_pieces = incremental_piece_indices
+                    .iter()
+                    .filter(|maybe_piece_index| maybe_piece_index.is_none())
+                    .count();
+                warn!(
+                    %sector_index,
+                    %error,
+                    %pieces_in_sector,
+                    %retrieved_pieces,
+                    "Sector plotting attempt failed, will retry later"
+                );
+
+                return Err(BackoffError::transient(error));
+            }
+
+            debug!(%sector_index, "Sector downloaded successfully");
+
+            Ok(())
+        })
+        .await?;
+    }
+
+    Ok(DownloadedSector {
+        sector_id,
+        piece_indices,
+        raw_sector: raw_sector.into_inner(),
+        downloading_permit,
+    })
+}
+
+async fn download_sector_internal<PG: PieceGetter>(
     raw_sector: &mut RawSector,
     piece_getter: &PG,
     piece_getter_retry_policy: PieceGetterRetryPolicy,
