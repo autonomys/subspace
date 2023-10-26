@@ -1,7 +1,6 @@
 use crate::fraud_proof::{
     ExtrinsicDigest, InvalidBundlesFraudProof, InvalidExtrinsicsRootProof,
-    InvalidStateTransitionProof, ProofDataPerInvalidBundleType, ValidBundleProof,
-    VerificationError,
+    InvalidStateTransitionProof, ValidBundleProof, VerificationError,
 };
 use crate::fraud_proof_runtime_interface::get_fraud_proof_verification_info;
 use crate::{
@@ -20,7 +19,7 @@ use sp_domains::{
     InboxedBundle, InvalidBundleType,
 };
 use sp_runtime::generic::Digest;
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Hash, Header as HeaderT, NumberFor};
+use sp_runtime::traits::{Block as BlockT, Hash, Header as HeaderT, NumberFor};
 use sp_std::vec::Vec;
 use sp_trie::{LayoutV1, StorageProof};
 use subspace_core_primitives::Randomness;
@@ -36,7 +35,7 @@ pub fn verify_invalid_domain_extrinsics_root_fraud_proof<CBlock, Balance, Hashin
         Balance,
     >,
     fraud_proof: &InvalidExtrinsicsRootProof<HeaderHashFor<DomainHeader>>,
-) -> Result<(), VerificationError>
+) -> Result<(), VerificationError<DomainHeader::Hash>>
 where
     CBlock: BlockT,
     Hashing: Hasher<Out = CBlock::Hash>,
@@ -136,7 +135,7 @@ pub fn verify_valid_bundle_fraud_proof<CBlock, DomainNumber, DomainHash, Balance
         Balance,
     >,
     fraud_proof: &ValidBundleProof<DomainHash>,
-) -> Result<(), VerificationError>
+) -> Result<(), VerificationError<DomainHash>>
 where
     CBlock: BlockT,
     CBlock::Hash: Into<H256>,
@@ -148,7 +147,7 @@ where
         ..
     } = fraud_proof;
 
-    let bundle_body = fraud_proof_runtime_interface::get_fraud_proof_verification_info(
+    let bundle_body = get_fraud_proof_verification_info(
         bad_receipt.consensus_block_hash.into(),
         FraudProofVerificationInfoRequest::DomainBundleBody {
             domain_id: *domain_id,
@@ -193,7 +192,7 @@ pub fn verify_invalid_state_transition_fraud_proof<CBlock, DomainHeader, Balance
         Balance,
     >,
     fraud_proof: &InvalidStateTransitionProof<HeaderHashFor<DomainHeader>>,
-) -> Result<(), VerificationError>
+) -> Result<(), VerificationError<DomainHeader::Hash>>
 where
     CBlock: BlockT,
     CBlock::Hash: Into<H256>,
@@ -251,7 +250,7 @@ pub fn verify_invalid_domain_block_hash_fraud_proof<CBlock, Balance, DomainHeade
     >,
     digest_storage_proof: StorageProof,
     parent_domain_block_hash: DomainHeader::Hash,
-) -> Result<(), VerificationError>
+) -> Result<(), VerificationError<DomainHeader::Hash>>
 where
     CBlock: BlockT,
     Balance: PartialEq + Decode,
@@ -298,7 +297,7 @@ pub fn verify_invalid_total_rewards_fraud_proof<
         Balance,
     >,
     storage_proof: &StorageProof,
-) -> Result<(), VerificationError>
+) -> Result<(), VerificationError<DomainHash>>
 where
     CBlock: BlockT,
     Balance: PartialEq + Decode,
@@ -322,54 +321,34 @@ where
     Ok(())
 }
 
-fn convert_bundle_validity_to_generic<DomainHash>(
-    bundle_validity: BundleValidity<DomainHash>,
-) -> BundleValidity<H256>
-where
-    DomainHash: Into<H256> + Clone,
-{
-    match bundle_validity {
-        BundleValidity::Invalid(invalid_bundle_type) => {
-            BundleValidity::Invalid(invalid_bundle_type.clone())
-        }
-        BundleValidity::Valid(hash) => BundleValidity::Valid(hash.clone().into()),
-    }
-}
-
 /// This function checks if this fraud proof is expected against the inboxed bundle entry it is targeting.
 /// If the entry is expected then it will be returned
 /// In any other cases VerificationError will be returned
-fn check_expected_bundle_entry<CBlock, DomainNumber, DomainHash, Balance, ReceiptHash>(
+fn check_expected_bundle_entry<CBlock, DomainHeader, Balance>(
     bad_receipt: &ExecutionReceipt<
         NumberFor<CBlock>,
         CBlock::Hash,
-        DomainNumber,
-        DomainHash,
+        HeaderNumberFor<DomainHeader>,
+        HeaderHashFor<DomainHeader>,
         Balance,
     >,
-    invalid_bundle_fraud_proof: &InvalidBundlesFraudProof<ReceiptHash>,
-) -> Result<InboxedBundle<DomainHash>, VerificationError>
+    invalid_bundle_fraud_proof: &InvalidBundlesFraudProof<DomainHeader::Hash>,
+) -> Result<InboxedBundle<HeaderHashFor<DomainHeader>>, VerificationError<DomainHeader::Hash>>
 where
     CBlock: BlockT,
-    DomainHash: Into<H256> + PartialEq + Clone,
+    DomainHeader: HeaderT,
 {
     let targeted_invalid_bundle_entry = bad_receipt
         .inboxed_bundles
         .get(invalid_bundle_fraud_proof.bundle_index as usize)
         .ok_or(VerificationError::BundleNotFound)?;
 
-    let invalid_type_of_proof = match invalid_bundle_fraud_proof.proof_data {
-        ProofDataPerInvalidBundleType::OutOfRangeTx => {
-            InvalidBundleType::OutOfRangeTx(invalid_bundle_fraud_proof.mismatched_extrinsic_index)
-        }
-    };
-
+    let invalid_bundle_type = invalid_bundle_fraud_proof.invalid_bundle_type.clone();
     let is_expected = if !invalid_bundle_fraud_proof.is_true_invalid_fraud_proof {
         // `FalseInvalid`
         // The proof trying to prove `bad_receipt_bundle`'s `invalid_bundle_type` is wrong,
         // so the proof should contains the same `invalid_bundle_type`
-        targeted_invalid_bundle_entry.bundle
-            == BundleValidity::Invalid(invalid_type_of_proof.clone())
+        targeted_invalid_bundle_entry.bundle == BundleValidity::Invalid(invalid_bundle_type.clone())
     } else {
         // `TrueInvalid`
         match &targeted_invalid_bundle_entry.bundle {
@@ -379,11 +358,11 @@ where
             BundleValidity::Invalid(invalid_type) => {
                 // The proof trying to prove there is an invalid extrinsic that the `bad_receipt_bundle` think is valid,
                 // so the proof should point to an extrinsic that in front of the `bad_receipt_bundle`'s
-                invalid_type_of_proof.extrinsic_index() < invalid_type.extrinsic_index() ||
+                invalid_bundle_type.extrinsic_index() < invalid_type.extrinsic_index() ||
                     // The proof trying to prove the invalid extrinsic can not pass a check that the `bad_receipt_bundle` think it can,
                     // so the proof should point to the same extrinsic and a check that perform before the `bad_receipt_bundle`'s
-                    (invalid_type_of_proof.extrinsic_index() == invalid_type.extrinsic_index()
-                        && invalid_type_of_proof.checking_order() < invalid_type.checking_order())
+                    (invalid_bundle_type.extrinsic_index() == invalid_type.extrinsic_index()
+                        && invalid_bundle_type.checking_order() < invalid_type.checking_order())
             }
         }
     };
@@ -391,10 +370,8 @@ where
     if !is_expected {
         return Err(VerificationError::UnexpectedTargetedBundleEntry {
             bundle_index: invalid_bundle_fraud_proof.bundle_index,
-            fraud_proof_invalid_type_of_proof: invalid_type_of_proof,
-            targeted_entry_bundle: convert_bundle_validity_to_generic(
-                targeted_invalid_bundle_entry.bundle.clone(),
-            ),
+            fraud_proof_invalid_type_of_proof: invalid_bundle_type,
+            targeted_entry_bundle: targeted_invalid_bundle_entry.bundle.clone(),
         });
     }
 
@@ -410,41 +387,34 @@ pub fn verify_invalid_bundles_fraud_proof<CBlock, DomainHeader, Balance>(
         Balance,
     >,
     invalid_bundles_fraud_proof: &InvalidBundlesFraudProof<HeaderHashFor<DomainHeader>>,
-) -> Result<(), VerificationError>
+) -> Result<(), VerificationError<DomainHeader::Hash>>
 where
     CBlock: BlockT,
-    CBlock::Hash: Into<H256>,
     DomainHeader: HeaderT,
-    DomainHeader::Hash: Into<H256> + From<H256> + PartialEq + Clone,
 {
-    let invalid_bundle_entry = check_expected_bundle_entry::<
-        CBlock,
-        <DomainHeader as HeaderT>::Number,
-        <DomainHeader as HeaderT>::Hash,
-        Balance,
-        <DomainHeader as HeaderT>::Hash,
-    >(&bad_receipt, invalid_bundles_fraud_proof)?;
+    let invalid_bundle_entry = check_expected_bundle_entry::<CBlock, DomainHeader, Balance>(
+        &bad_receipt,
+        invalid_bundles_fraud_proof,
+    )?;
 
-    let extrinsic = StorageProofVerifier::<BlakeTwo256>::get_decoded_value(
-        &invalid_bundle_entry.extrinsics_root.into(),
-        StorageProof::new(
+    let storage_key =
+        StorageProofVerifier::<HeaderHashingFor<DomainHeader>>::enumerated_storage_key(
             invalid_bundles_fraud_proof
-                .extrinsic_inclusion_proof
-                .clone()
-                .drain(..),
-        ),
-        StorageKey(
-            invalid_bundles_fraud_proof
-                .mismatched_extrinsic_index
-                .to_be_bytes()
-                .to_vec(),
-        ),
+                .invalid_bundle_type
+                .extrinsic_index(),
+        );
+    let extrinsic = StorageProofVerifier::<HeaderHashingFor<DomainHeader>>::get_decoded_value(
+        &invalid_bundle_entry.extrinsics_root,
+        invalid_bundles_fraud_proof
+            .extrinsic_inclusion_proof
+            .clone(),
+        storage_key,
     )
     .map_err(|_e| VerificationError::InvalidProof)?;
 
-    match invalid_bundles_fraud_proof.proof_data {
-        ProofDataPerInvalidBundleType::OutOfRangeTx => {
-            let is_tx_in_range = fraud_proof_runtime_interface::get_fraud_proof_verification_info(
+    match invalid_bundles_fraud_proof.invalid_bundle_type {
+        InvalidBundleType::OutOfRangeTx(_) => {
+            let is_tx_in_range = get_fraud_proof_verification_info(
                 H256::from_slice(bad_receipt.consensus_block_hash.as_ref()),
                 FraudProofVerificationInfoRequest::TxRangeCheck {
                     domain_id: invalid_bundles_fraud_proof.domain_id,
@@ -452,10 +422,8 @@ where
                     opaque_extrinsic: extrinsic,
                 },
             )
-            // TODO: In future if we start getting errors from host function, change below errors to include the underlying error
-            .ok_or(VerificationError::FailedToGetResponseFromTxRangeHostFn)?
-            .into_tx_range_check()
-            .ok_or(VerificationError::ReceivedInvalidInfoFromTxRangeHostFn)?;
+            .and_then(FraudProofVerificationInfoResponse::into_tx_range_check)
+            .ok_or(VerificationError::FailedToGetResponseFromTxRangeHostFn)?;
 
             // If it is true invalid fraud proof then tx must not be in range and
             // if it is false invalid fraud proof then tx must be in range for fraud
@@ -465,5 +433,8 @@ where
             }
             Ok(())
         }
+
+        // TODO: implement the other invalid bundle types
+        _ => Err(VerificationError::InvalidProof),
     }
 }

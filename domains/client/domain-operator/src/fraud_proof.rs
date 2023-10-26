@@ -15,7 +15,7 @@ use sp_domains_fraud_proof::execution_prover::ExecutionProver;
 use sp_domains_fraud_proof::fraud_proof::{
     ExecutionPhase, ExtrinsicDigest, FraudProof, InvalidBundlesFraudProof,
     InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof, InvalidStateTransitionProof,
-    InvalidTotalRewardsProof, ProofDataPerInvalidBundleType, ValidBundleDigest,
+    InvalidTotalRewardsProof, ValidBundleDigest,
 };
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashingFor, Header as HeaderT, NumberFor};
 use sp_runtime::{Digest, DigestItem};
@@ -159,27 +159,25 @@ where
     {
         match mismatch_type {
             // TODO: Generate a proper proof once fields are in place
-            BundleMismatchType::TrueInvalid(_invalid_type) => {
+            BundleMismatchType::TrueInvalid(invalid_type) => {
                 Ok(FraudProof::InvalidBundles(InvalidBundlesFraudProof::new(
                     bad_receipt_hash,
                     domain_id,
                     bundle_index,
-                    0,
-                    vec![],
+                    invalid_type,
+                    StorageProof::empty(),
                     true,
-                    ProofDataPerInvalidBundleType::OutOfRangeTx,
                 )))
             }
             // TODO: Generate a proper proof once fields are in place
-            BundleMismatchType::FalseInvalid(_invalid_type) => {
+            BundleMismatchType::FalseInvalid(invalid_type) => {
                 Ok(FraudProof::InvalidBundles(InvalidBundlesFraudProof::new(
                     bad_receipt_hash,
                     domain_id,
                     bundle_index,
-                    0,
-                    vec![],
+                    invalid_type,
+                    StorageProof::empty(),
                     false,
-                    ProofDataPerInvalidBundleType::OutOfRangeTx,
                 )))
             }
             BundleMismatchType::Valid => Err(sp_blockchain::Error::Application(

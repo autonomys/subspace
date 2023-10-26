@@ -68,7 +68,7 @@ impl ExecutionPhase {
     pub fn decode_execution_result<Header: HeaderT>(
         &self,
         execution_result: Vec<u8>,
-    ) -> Result<Header::Hash, VerificationError> {
+    ) -> Result<Header::Hash, VerificationError<Header::Hash>> {
         match self {
             Self::InitializeBlock | Self::ApplyExtrinsic { .. } => {
                 let encoded_storage_root = Vec::<u8>::decode(&mut execution_result.as_slice())
@@ -88,7 +88,7 @@ impl ExecutionPhase {
         &self,
         bad_receipt: &ExecutionReceiptFor<DomainHeader, CBlock, Balance>,
         bad_receipt_parent: &ExecutionReceiptFor<DomainHeader, CBlock, Balance>,
-    ) -> Result<(H256, H256), VerificationError>
+    ) -> Result<(H256, H256), VerificationError<DomainHeader::Hash>>
     where
         CBlock: BlockT,
         DomainHeader: HeaderT,
@@ -128,7 +128,7 @@ impl ExecutionPhase {
         &self,
         bad_receipt: &ExecutionReceiptFor<DomainHeader, CBlock, Balance>,
         bad_receipt_parent: &ExecutionReceiptFor<DomainHeader, CBlock, Balance>,
-    ) -> Result<Vec<u8>, VerificationError>
+    ) -> Result<Vec<u8>, VerificationError<DomainHeader::Hash>>
     where
         CBlock: BlockT,
         DomainHeader: HeaderT,
@@ -177,7 +177,7 @@ impl ExecutionPhase {
 /// Error type of fraud proof verification on consensus node.
 #[derive(Debug)]
 #[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
-pub enum VerificationError {
+pub enum VerificationError<DomainHash> {
     /// Hash of the consensus block being challenged not found.
     #[cfg_attr(feature = "thiserror", error("consensus block hash not found"))]
     ConsensusBlockHashNotFound,
@@ -301,7 +301,7 @@ pub enum VerificationError {
     UnexpectedTargetedBundleEntry {
         bundle_index: u32,
         fraud_proof_invalid_type_of_proof: InvalidBundleType,
-        targeted_entry_bundle: BundleValidity<H256>,
+        targeted_entry_bundle: BundleValidity<DomainHash>,
     },
     /// Tx range host function did not return response (returned None)
     #[cfg_attr(
@@ -309,12 +309,6 @@ pub enum VerificationError {
         error("Tx range host function did not return a response (returned None)")
     )]
     FailedToGetResponseFromTxRangeHostFn,
-    /// Unable to receive tx range from host function
-    #[cfg_attr(
-        feature = "thiserror",
-        error("Received invalid information from tx range host function")
-    )]
-    ReceivedInvalidInfoFromTxRangeHostFn,
     /// Failed to get the bundle body
     #[cfg_attr(feature = "thiserror", error("Failed to get the bundle body"))]
     FailedToGetDomainBundleBody,
@@ -329,21 +323,14 @@ pub enum VerificationError {
     TargetValidBundleNotFound,
 }
 
-/// Proof data specific to each *expected* invalid bundle type
-#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub enum ProofDataPerInvalidBundleType {
-    OutOfRangeTx,
-}
-
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct InvalidBundlesFraudProof<ReceiptHash> {
     pub bad_receipt_hash: ReceiptHash,
     pub domain_id: DomainId,
     pub bundle_index: u32,
-    pub mismatched_extrinsic_index: u32,
-    pub extrinsic_inclusion_proof: Vec<Vec<u8>>,
+    pub invalid_bundle_type: InvalidBundleType,
+    pub extrinsic_inclusion_proof: StorageProof,
     pub is_true_invalid_fraud_proof: bool,
-    pub proof_data: ProofDataPerInvalidBundleType,
 }
 
 impl<ReceiptHash> InvalidBundlesFraudProof<ReceiptHash> {
@@ -351,19 +338,17 @@ impl<ReceiptHash> InvalidBundlesFraudProof<ReceiptHash> {
         bad_receipt_hash: ReceiptHash,
         domain_id: DomainId,
         bundle_index: u32,
-        mismatched_extrinsic_index: u32,
-        extrinsic_inclusion_proof: Vec<Vec<u8>>,
+        invalid_bundle_type: InvalidBundleType,
+        extrinsic_inclusion_proof: StorageProof,
         is_true_invalid_fraud_proof: bool,
-        proof_data: ProofDataPerInvalidBundleType,
     ) -> Self {
         Self {
             bad_receipt_hash,
             domain_id,
             bundle_index,
-            mismatched_extrinsic_index,
+            invalid_bundle_type,
             extrinsic_inclusion_proof,
             is_true_invalid_fraud_proof,
-            proof_data,
         }
     }
 }
