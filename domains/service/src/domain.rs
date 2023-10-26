@@ -29,6 +29,7 @@ use sp_consensus_slots::Slot;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_core::{Decode, Encode};
 use sp_domains::{BundleProducerElectionApi, DomainId, DomainsApi};
+use sp_domains_fraud_proof::FraudProofApi;
 use sp_messenger::messages::ChainId;
 use sp_messenger::{MessengerApi, RelayerApi};
 use sp_offchain::OffchainWorkerApi;
@@ -273,7 +274,8 @@ where
     CClient::Api: DomainsApi<CBlock, Header>
         + RelayerApi<CBlock, NumberFor<CBlock>>
         + MessengerApi<CBlock, NumberFor<CBlock>>
-        + BundleProducerElectionApi<CBlock, subspace_runtime_primitives::Balance>,
+        + BundleProducerElectionApi<CBlock, subspace_runtime_primitives::Balance>
+        + FraudProofApi<CBlock, Header>,
     IBNS: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Send + 'static,
     CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + 'static,
     NSNS: Stream<Item = (Slot, Randomness)> + Send + 'static,

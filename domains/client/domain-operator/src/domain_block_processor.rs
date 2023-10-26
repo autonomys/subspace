@@ -13,13 +13,15 @@ use sc_consensus::{
     BlockImportParams, ForkChoiceStrategy, ImportResult, SharedBlockImport, StateAction,
     StorageChanges,
 };
-use sp_api::{NumberFor, ProvideRuntimeApi};
+use sc_transaction_pool_api::OffchainTransactionPoolFactory;
+use sp_api::{ApiExt, NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HashAndNumber, HeaderBackend, HeaderMetadata};
 use sp_consensus::{BlockOrigin, SyncOracle};
 use sp_core::traits::CodeExecutor;
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{BundleValidity, DomainId, DomainsApi, ExecutionReceipt, HeaderHashingFor};
 use sp_domains_fraud_proof::fraud_proof::{FraudProof, ValidBundleProof};
+use sp_domains_fraud_proof::FraudProofApi;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, One, Zero};
 use sp_runtime::Digest;
 use std::cmp::Ordering;
@@ -657,7 +659,9 @@ pub(crate) struct ReceiptsChecker<
     E,
     ParentChain,
     ParentChainBlock,
-> {
+> where
+    CBlock: BlockT,
+{
     pub(crate) domain_id: DomainId,
     pub(crate) client: Arc<Client>,
     pub(crate) consensus_client: Arc<CClient>,
@@ -665,13 +669,15 @@ pub(crate) struct ReceiptsChecker<
     pub(crate) fraud_proof_generator:
         FraudProofGenerator<Block, CBlock, Client, CClient, Backend, E>,
     pub(crate) parent_chain: ParentChain,
+    pub(crate) consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory<CBlock>,
     pub(crate) _phantom: std::marker::PhantomData<ParentChainBlock>,
 }
 
 impl<Block, CBlock, Client, CClient, Backend, E, ParentChain, ParentChainBlock> Clone
-    for ReceiptsChecker<Block, CBlock, Client, CClient, Backend, E, ParentChain, ParentChainBlock>
+    for ReceiptsChecker<Block, Client, CBlock, CClient, Backend, E, ParentChain, ParentChainBlock>
 where
     Block: BlockT,
+    CBlock: BlockT,
     ParentChain: Clone,
 {
     fn clone(&self) -> Self {
@@ -682,6 +688,7 @@ where
             consensus_network_sync_oracle: self.consensus_network_sync_oracle.clone(),
             fraud_proof_generator: self.fraud_proof_generator.clone(),
             parent_chain: self.parent_chain.clone(),
+            consensus_offchain_tx_pool_factory: self.consensus_offchain_tx_pool_factory.clone(),
             _phantom: self._phantom,
         }
     }
@@ -707,7 +714,7 @@ where
         + ProofProvider<CBlock>
         + ProvideRuntimeApi<CBlock>
         + 'static,
-    CClient::Api: DomainsApi<CBlock, Block::Header>,
+    CClient::Api: DomainsApi<CBlock, Block::Header> + FraudProofApi<CBlock, Block::Header>,
     Backend: sc_client_api::Backend<Block> + 'static,
     E: CodeExecutor,
     ParentChain: ParentChainInterface<Block, ParentChainBlock>,

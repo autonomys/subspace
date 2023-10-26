@@ -2749,6 +2749,7 @@ dependencies = [
  "sp-consensus-slots",
  "sp-core",
  "sp-domains",
+ "sp-domains-fraud-proof",
  "sp-messenger",
  "sp-offchain",
  "sp-runtime",

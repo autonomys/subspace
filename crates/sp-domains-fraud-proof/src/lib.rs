@@ -27,6 +27,7 @@ mod runtime_interface;
 mod tests;
 pub mod verification;
 
+use crate::fraud_proof::FraudProof;
 use codec::{Decode, Encode};
 #[cfg(feature = "std")]
 pub use host_functions::{
@@ -37,6 +38,7 @@ pub use runtime_interface::fraud_proof_runtime_interface;
 pub use runtime_interface::fraud_proof_runtime_interface::HostFunctions;
 use sp_api::scale_info::TypeInfo;
 use sp_domains::DomainId;
+use sp_runtime::traits::{Header as HeaderT, NumberFor};
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidity};
 use sp_runtime::OpaqueExtrinsic;
 use sp_runtime_interface::pass_by;
@@ -169,5 +171,19 @@ impl FraudProofVerificationInfoResponse {
             Self::DomainBundleBody(bb) => Some(bb),
             _ => None,
         }
+    }
+}
+
+sp_api::decl_runtime_apis! {
+    /// API necessary for fraud proof.
+    pub trait FraudProofApi<DomainHeader: HeaderT> {
+        /// Submit the fraud proof via an unsigned extrinsic.
+        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, Block::Hash, DomainHeader>);
+
+        /// Extract the fraud proof handled successfully from the given extrinsics.
+        fn extract_fraud_proofs(
+            domain_id: DomainId,
+            extrinsics: Vec<Block::Extrinsic>,
+        ) -> Vec<FraudProof<NumberFor<Block>, Block::Hash, DomainHeader>>;
     }
 }

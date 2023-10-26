@@ -934,39 +934,17 @@ fn extract_successful_bundles(
         .collect()
 }
 
-// TODO: Remove when proceeding to fraud proof v2.
-#[allow(unused)]
-fn extract_receipts(
-    extrinsics: Vec<UncheckedExtrinsic>,
+pub(crate) fn extract_fraud_proofs(
     domain_id: DomainId,
-) -> Vec<ExecutionReceipt<BlockNumber, Hash, DomainNumber, DomainHash, Balance>> {
-    let successful_bundles = Domains::successful_bundles(domain_id);
-    extrinsics
-        .into_iter()
-        .filter_map(|uxt| match uxt.function {
-            RuntimeCall::Domains(pallet_domains::Call::submit_bundle { opaque_bundle })
-                if opaque_bundle.domain_id() == domain_id
-                    && successful_bundles.contains(&opaque_bundle.hash()) =>
-            {
-                Some(opaque_bundle.into_receipt())
-            }
-            _ => None,
-        })
-        .collect()
-}
-
-// TODO: Remove when proceeding to fraud proof v2.
-#[allow(unused)]
-fn extract_fraud_proofs(
     extrinsics: Vec<UncheckedExtrinsic>,
-    domain_id: DomainId,
 ) -> Vec<FraudProof<NumberFor<Block>, Hash, DomainHeader>> {
-    // TODO: Ensure fraud proof extrinsic is infallible.
+    let successful_fraud_proofs = Domains::successful_fraud_proofs(domain_id);
     extrinsics
         .into_iter()
         .filter_map(|uxt| match uxt.function {
             RuntimeCall::Domains(pallet_domains::Call::submit_fraud_proof { fraud_proof })
-                if fraud_proof.domain_id() == domain_id =>
+                if fraud_proof.domain_id() == domain_id
+                    && successful_fraud_proofs.contains(&fraud_proof.hash()) =>
             {
                 Some(*fraud_proof)
             }
@@ -1175,6 +1153,19 @@ impl_runtime_apis! {
             extract_successful_bundles(domain_id, extrinsics)
         }
 
+        #[allow(clippy::type_complexity)]
+        fn extract_receipts(
+            domain_id: DomainId,
+            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
+        ) -> Vec<
+            ExecutionReceipt<NumberFor<Block>, <Block as BlockT>::Hash, DomainNumber, DomainHash, Balance>,
+        > {
+            extract_successful_bundles(domain_id, extrinsics)
+                .into_iter()
+                .map(|bundle| bundle.into_receipt())
+                .collect()
+        }
+
         fn extrinsics_shuffling_seed() -> Randomness {
             Randomness::from(Domains::extrinsics_shuffling_seed().to_fixed_bytes())
         }
@@ -1328,6 +1319,19 @@ impl_runtime_apis! {
 
         fn should_relay_inbox_message_response(dst_chain_id: ChainId, msg_id: MessageId) -> bool {
             Messenger::should_relay_inbox_message_response(dst_chain_id, msg_id)
+        }
+    }
+
+    impl sp_domains_fraud_proof::FraudProofApi<Block, DomainHeader> for Runtime {
+        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader>) {
+            Domains::submit_fraud_proof_unsigned(fraud_proof)
+        }
+
+        fn extract_fraud_proofs(
+            domain_id: DomainId,
+            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
+        ) -> Vec<FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader>> {
+            extract_fraud_proofs(domain_id, extrinsics)
         }
     }
 }

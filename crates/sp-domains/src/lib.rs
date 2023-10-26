@@ -886,6 +886,21 @@ sp_api::decl_runtime_apis! {
             extrinsics: Vec<Block::Extrinsic>,
         ) -> OpaqueBundles<Block, DomainHeader, Balance>;
 
+        /// Extract the execution receipt stored successfully from the given extrinsics.
+        #[allow(clippy::type_complexity)]
+        fn extract_receipts(
+            domain_id: DomainId,
+            extrinsics: Vec<Block::Extrinsic>,
+        ) -> Vec<
+            ExecutionReceipt<
+                NumberFor<Block>,
+                Block::Hash,
+                HeaderNumberFor<DomainHeader>,
+                HeaderHashFor<DomainHeader>,
+                Balance,
+            >,
+        >;
+
         /// Generates a randomness seed for extrinsics shuffling.
         fn extrinsics_shuffling_seed() -> Randomness;
 

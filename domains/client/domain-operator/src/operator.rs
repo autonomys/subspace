@@ -17,6 +17,7 @@ use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
 use sp_core::H256;
 use sp_domains::{BundleProducerElectionApi, DomainsApi};
+use sp_domains_fraud_proof::FraudProofApi;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use std::sync::Arc;
@@ -86,7 +87,8 @@ where
         + 'static,
     CClient::Api: DomainsApi<CBlock, Block::Header>
         + MessengerApi<CBlock, NumberFor<CBlock>>
-        + BundleProducerElectionApi<CBlock, Balance>,
+        + BundleProducerElectionApi<CBlock, Balance>
+        + FraudProofApi<CBlock, Block::Header>,
     Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
     E: CodeExecutor,
@@ -159,6 +161,7 @@ where
             fraud_proof_generator: fraud_proof_generator.clone(),
             parent_chain,
             consensus_network_sync_oracle: params.consensus_network_sync_oracle,
+            consensus_offchain_tx_pool_factory: params.consensus_offchain_tx_pool_factory.clone(),
             _phantom: std::marker::PhantomData,
         };
 

@@ -13,6 +13,7 @@ use sp_consensus::BlockOrigin;
 use sp_core::traits::CodeExecutor;
 use sp_domain_digests::AsPredigest;
 use sp_domains::{DomainId, DomainsApi, ReceiptValidity};
+use sp_domains_fraud_proof::FraudProofApi;
 use sp_keystore::KeystorePtr;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, Zero};
@@ -145,8 +146,10 @@ where
         + ProofProvider<CBlock>
         + ProvideRuntimeApi<CBlock>
         + 'static,
-    CClient::Api:
-        DomainsApi<CBlock, Block::Header> + MessengerApi<CBlock, NumberFor<CBlock>> + 'static,
+    CClient::Api: DomainsApi<CBlock, Block::Header>
+        + MessengerApi<CBlock, NumberFor<CBlock>>
+        + FraudProofApi<CBlock, Block::Header>
+        + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
     E: CodeExecutor,
 {

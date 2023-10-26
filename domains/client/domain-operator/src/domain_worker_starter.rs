@@ -33,6 +33,7 @@ use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
 use sp_core::H256;
 use sp_domains::{BundleProducerElectionApi, DomainsApi};
+use sp_domains_fraud_proof::FraudProofApi;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::NumberFor;
 use std::sync::Arc;
@@ -94,7 +95,8 @@ pub(super) async fn start_worker<
         + 'static,
     CClient::Api: DomainsApi<CBlock, Block::Header>
         + MessengerApi<CBlock, NumberFor<CBlock>>
-        + BundleProducerElectionApi<CBlock, Balance>,
+        + BundleProducerElectionApi<CBlock, Balance>
+        + FraudProofApi<CBlock, Block::Header>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
     IBNS: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Send + 'static,
