@@ -16,10 +16,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::archiver::SegmentHeadersStore;
-use crate::{
-    BlockImportingNotification, NewSlotInfo, NewSlotNotification, RewardSigningNotification,
-    SubspaceLink,
-};
+use crate::{NewSlotInfo, NewSlotNotification, RewardSigningNotification, SubspaceLink};
 use futures::channel::mpsc;
 use futures::{StreamExt, TryFutureExt};
 use log::{debug, error, info, warn};
@@ -552,25 +549,6 @@ where
                 Err(error) => {
                     warn!(target: "subspace", "Invalid solution received for slot {slot}: {error:?}");
                 }
-            }
-        }
-
-        // TODO: This is a workaround for potential root cause of
-        //  https://github.com/subspace/subspace/issues/871, also being discussed in
-        //  https://substrate.stackexchange.com/questions/7886/is-block-creation-guaranteed-to-be-running-after-parent-block-is-fully-imported
-        if maybe_pre_digest.is_some() {
-            let block_number = *parent_header.number() + One::one();
-            let (acknowledgement_sender, mut acknowledgement_receiver) = mpsc::channel(0);
-
-            self.subspace_link
-                .block_importing_notification_sender
-                .notify(move || BlockImportingNotification {
-                    block_number,
-                    acknowledgement_sender,
-                });
-
-            while (acknowledgement_receiver.next().await).is_some() {
-                // Wait for all the acknowledgements to finish.
             }
         }
 

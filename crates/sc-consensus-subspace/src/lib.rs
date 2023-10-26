@@ -570,7 +570,11 @@ impl<Block: BlockT> SubspaceLink<Block> {
         self.archived_segment_notification_stream.clone()
     }
 
-    /// Get stream with notifications about each imported block.
+    /// Get stream with notifications about each imported block right BEFORE import actually
+    /// happens.
+    ///
+    /// NOTE: all Subspace checks have already happened for this block, but block can still
+    /// potentially fail to import in Substrate's internals.
     pub fn block_importing_notification_stream(
         &self,
     ) -> SubspaceNotificationStream<BlockImportingNotification<Block>> {
@@ -599,8 +603,6 @@ where
 {
     inner: I,
     client: Arc<Client>,
-    block_importing_notification_sender:
-        SubspaceNotificationSender<BlockImportingNotification<Block>>,
     subspace_link: SubspaceLink<Block>,
     create_inherent_data_providers: CIDP,
     chain_constants: ChainConstants,
@@ -620,7 +622,6 @@ where
         SubspaceBlockImport {
             inner: self.inner.clone(),
             client: self.client.clone(),
-            block_importing_notification_sender: self.block_importing_notification_sender.clone(),
             subspace_link: self.subspace_link.clone(),
             create_inherent_data_providers: self.create_inherent_data_providers.clone(),
             chain_constants: self.chain_constants,
@@ -641,14 +642,9 @@ where
     AS: AuxStore + Send + Sync + 'static,
     BlockNumber: From<<<Block as BlockT>::Header as HeaderT>::Number>,
 {
-    // TODO: Create a struct for these parameters
-    #[allow(clippy::too_many_arguments)]
     fn new(
         client: Arc<Client>,
         block_import: I,
-        block_importing_notification_sender: SubspaceNotificationSender<
-            BlockImportingNotification<Block>,
-        >,
         subspace_link: SubspaceLink<Block>,
         create_inherent_data_providers: CIDP,
         chain_constants: ChainConstants,
@@ -658,7 +654,6 @@ where
         Self {
             client,
             inner: block_import,
-            block_importing_notification_sender,
             subspace_link,
             create_inherent_data_providers,
             chain_constants,
@@ -1000,8 +995,6 @@ where
         let added_weight = calculate_block_weight(subspace_digest_items.solution_range);
         let total_weight = parent_weight + added_weight;
 
-        let info = self.client.info();
-
         aux_schema::write_block_weight(block_hash, total_weight, |values| {
             block
                 .auxiliary
@@ -1034,12 +1027,14 @@ where
             }
         }
 
-        // The fork choice rule is that we pick the heaviest chain (i.e. smallest solution
-        // range), if there's a tie we go with the longest chain.
+        // The fork choice rule is that we pick the heaviest chain (i.e. smallest solution range),
+        // if there's a tie we go with the longest chain
         let fork_choice = {
+            let info = self.client.info();
+
             let last_best_weight = if &info.best_hash == block.header.parent_hash() {
-                // the parent=genesis case is already covered for loading parent weight,
-                // so we don't need to cover again here.
+                // the parent=genesis case is already covered for loading parent weight, so we don't
+                // need to cover again here
                 parent_weight
             } else {
                 aux_schema::load_block_weight(&*self.client, info.best_hash)
@@ -1055,20 +1050,20 @@ where
         };
         block.fork_choice = Some(fork_choice);
 
-        let import_result = self.inner.import_block(block).await?;
         let (acknowledgement_sender, mut acknowledgement_receiver) = mpsc::channel(0);
 
-        self.block_importing_notification_sender
+        self.subspace_link
+            .block_importing_notification_sender
             .notify(move || BlockImportingNotification {
                 block_number,
                 acknowledgement_sender,
             });
 
-        while (acknowledgement_receiver.next().await).is_some() {
+        while acknowledgement_receiver.next().await.is_some() {
             // Wait for all the acknowledgements to finish.
         }
 
-        Ok(import_result)
+        self.inner.import_block(block).await
     }
 
     async fn check_block(
@@ -1129,7 +1124,7 @@ where
         reward_signing_notification_stream,
         archived_segment_notification_sender,
         archived_segment_notification_stream,
-        block_importing_notification_sender: block_importing_notification_sender.clone(),
+        block_importing_notification_sender,
         block_importing_notification_stream,
         // TODO: Consider making `confirmation_depth_k` non-zero
         segment_headers: Arc::new(Mutex::new(LruCache::new(
@@ -1145,7 +1140,6 @@ where
     let import = SubspaceBlockImport::new(
         client,
         block_import_inner,
-        block_importing_notification_sender,
         link.clone(),
         create_inherent_data_providers,
         chain_constants,

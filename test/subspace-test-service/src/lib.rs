@@ -469,17 +469,32 @@ impl MockConsensusNode {
         }
 
         // Wait for all the acknowledgements to progress and proactively drop closed subscribers.
-        loop {
-            select! {
-                res = acknowledgement_receiver.next() => if res.is_none() {
-                    break;
-                },
-                // TODO: Workaround for https://github.com/smol-rs/async-channel/issues/23, remove once fix is released
-                _ = futures_timer::Delay::new(time::Duration::from_millis(500)).fuse() => {
-                    self.acknowledgement_sender_subscribers.retain(|subscriber| !subscriber.is_closed());
-                }
-            }
+        while acknowledgement_receiver.next().await.is_some() {
+            // Wait for all the acknowledgements to finish.
         }
+    }
+
+    /// Wait for the operator finish processing the consensus block before return
+    pub async fn confirm_block_import_processed(&mut self) {
+        // Send one more notification to ensure the previous consensus block import notificaion
+        // have received by the operator
+        let (acknowledgement_sender, mut acknowledgement_receiver) = mpsc::channel(0);
+        {
+            // Must drop `block_import_acknowledgement_sender` after the notification otherwise
+            // the receiver will block forever as there is still a sender not closed.
+            // NOTE: it is okay to use the default block number since it is ignored in the consumer side.
+            let value = (NumberFor::<Block>::default(), acknowledgement_sender);
+            self.block_import
+                .block_importing_notification_subscribers
+                .lock()
+                .retain(|subscriber| subscriber.unbounded_send(value.clone()).is_ok());
+        }
+        while acknowledgement_receiver.next().await.is_some() {
+            // Wait for all the acknowledgements to finish.
+        }
+
+        // Ensure the operator finish processing the consensus block
+        self.confirm_acknowledgement().await;
     }
 
     /// Subscribe the block importing notification
@@ -704,7 +719,7 @@ impl MockConsensusNode {
             }
             err => err,
         };
-        self.confirm_acknowledgement().await;
+        self.confirm_block_import_processed().await;
         res
     }
 
@@ -854,7 +869,6 @@ where
         let block_number = *block.header.number();
         block.fork_choice = Some(ForkChoiceStrategy::LongestChain);
 
-        let import_result = self.inner.import_block(block).await?;
         let (acknowledgement_sender, mut acknowledgement_receiver) = mpsc::channel(0);
 
         // Must drop `block_import_acknowledgement_sender` after the notification otherwise the receiver
@@ -863,35 +877,14 @@ where
             let value = (block_number, acknowledgement_sender);
             self.block_importing_notification_subscribers
                 .lock()
-                .retain(|subscriber| {
-                    // It is necessary to notify the subscriber twice for each importing block in the test to ensure
-                    // the imported block must be fully processed by the executor when all acknowledgements responded.
-                    // This is because the `futures::channel::mpsc::channel` used in the executor have 1 slot even the
-                    // `consensus_block_import_throttling_buffer_size` is set to 0 in the test, notify one more time can
-                    // ensure the previously sent `block_imported` notification must be fully processed by the executor
-                    // when the second acknowledgements responded.
-                    // Please see https://github.com/subspace/subspace/pull/1363#discussion_r1162571291 for more details.
-                    subscriber
-                        .unbounded_send(value.clone())
-                        .and_then(|_| subscriber.unbounded_send(value.clone()))
-                        .is_ok()
-                });
+                .retain(|subscriber| subscriber.unbounded_send(value.clone()).is_ok());
         }
 
-        // Wait for all the acknowledgements to progress and proactively drop closed subscribers.
-        loop {
-            select! {
-                res = acknowledgement_receiver.next() => if res.is_none() {
-                    break;
-                },
-                // TODO: Workaround for https://github.com/smol-rs/async-channel/issues/23, remove once fix is released
-                _ = futures_timer::Delay::new(time::Duration::from_millis(500)).fuse() => {
-                    self.block_importing_notification_subscribers.lock().retain(|subscriber| !subscriber.is_closed());
-                }
-            }
+        while acknowledgement_receiver.next().await.is_some() {
+            // Wait for all the acknowledgements to finish.
         }
 
-        Ok(import_result)
+        self.inner.import_block(block).await
     }
 
     async fn check_block(

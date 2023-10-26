@@ -97,6 +97,7 @@ where
                         let _ = block_info_sender.feed(Some(block_info)).await;
                     }
                     maybe_block_importing = blocks_importing.next() => {
+                        // TODO: remove the `block_number` from the notification since it is not used
                         let (_block_number, mut acknowledgement_sender) =
                             match maybe_block_importing {
                                 Some(block_importing) => block_importing,
