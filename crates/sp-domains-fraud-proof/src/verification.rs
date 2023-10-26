@@ -433,6 +433,26 @@ where
             }
             Ok(())
         }
+        InvalidBundleType::InherentExtrinsic(_) => {
+            let is_inherent = get_fraud_proof_verification_info(
+                H256::from_slice(bad_receipt.consensus_block_hash.as_ref()),
+                FraudProofVerificationInfoRequest::InherentExtrinsicCheck {
+                    domain_id: invalid_bundles_fraud_proof.domain_id,
+                    opaque_extrinsic: extrinsic,
+                },
+            )
+            .and_then(FraudProofVerificationInfoResponse::into_inherent_extrinsic_check)
+            .ok_or(VerificationError::FailedToCheckInherentExtrinsic)?;
+
+            // Proof to be considered valid only,
+            // If it is true invalid fraud proof then extrinsic must be an inherent and
+            // If it is false invalid fraud proof then extrinsic must not be an inherent
+            if is_inherent == invalid_bundles_fraud_proof.is_true_invalid_fraud_proof {
+                Ok(())
+            } else {
+                Err(VerificationError::InvalidProof)
+            }
+        }
 
         // TODO: implement the other invalid bundle types
         _ => Err(VerificationError::InvalidProof),

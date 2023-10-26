@@ -321,6 +321,12 @@ pub enum VerificationError<DomainHash> {
         error("The target valid bundle not found from the target bad receipt")
     )]
     TargetValidBundleNotFound,
+    /// Failed to check if a given extrinsic is inherent or not.
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Failed to check if a given extrinsic is inherent or not")
+    )]
+    FailedToCheckInherentExtrinsic,
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
