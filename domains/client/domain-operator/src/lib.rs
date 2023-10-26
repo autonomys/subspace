@@ -72,7 +72,6 @@ mod domain_worker;
 mod domain_worker_starter;
 mod fraud_proof;
 mod operator;
-mod parent_chain;
 #[cfg(test)]
 mod tests;
 mod utils;
@@ -80,7 +79,6 @@ mod utils;
 pub use self::aux_schema::load_execution_receipt;
 pub use self::bootstrapper::{BootstrapResult, Bootstrapper};
 pub use self::operator::Operator;
-pub use self::parent_chain::DomainParentChain;
 pub use self::utils::{DomainBlockImportNotification, DomainImportNotifications};
 use futures::channel::mpsc;
 use futures::Stream;

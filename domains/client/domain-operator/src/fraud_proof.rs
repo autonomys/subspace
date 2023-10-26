@@ -62,8 +62,8 @@ impl<Block, CBlock, Client, CClient, Backend, E> Clone
     }
 }
 
-type FraudProofFor<PCB, DomainHeader> =
-    FraudProof<NumberFor<PCB>, <PCB as BlockT>::Hash, DomainHeader>;
+type FraudProofFor<CBlock, DomainHeader> =
+    FraudProof<NumberFor<CBlock>, <CBlock as BlockT>::Hash, DomainHeader>;
 
 impl<Block, CBlock, Client, CClient, Backend, E>
     FraudProofGenerator<Block, CBlock, Client, CClient, Backend, E>
@@ -102,15 +102,12 @@ where
         }
     }
 
-    pub(crate) fn generate_invalid_total_rewards_proof<PCB>(
+    pub(crate) fn generate_invalid_total_rewards_proof(
         &self,
         domain_id: DomainId,
         local_receipt: &ExecutionReceiptFor<Block, CBlock>,
         bad_receipt_hash: Block::Hash,
-    ) -> Result<FraudProofFor<PCB, Block::Header>, FraudProofError>
-    where
-        PCB: BlockT,
-    {
+    ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
         let block_hash = local_receipt.domain_block_hash;
         let key = sp_domains_fraud_proof::fraud_proof::operator_block_rewards_final_key();
         let proof = self
@@ -123,15 +120,12 @@ where
         }))
     }
 
-    pub(crate) fn generate_invalid_domain_block_hash_proof<PCB>(
+    pub(crate) fn generate_invalid_domain_block_hash_proof(
         &self,
         domain_id: DomainId,
         local_receipt: &ExecutionReceiptFor<Block, CBlock>,
         bad_receipt_hash: Block::Hash,
-    ) -> Result<FraudProofFor<PCB, Block::Header>, FraudProofError>
-    where
-        PCB: BlockT,
-    {
+    ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
         let block_hash = local_receipt.domain_block_hash;
         let digest_key = sp_domains_fraud_proof::fraud_proof::system_digest_final_key();
         let digest_storage_proof = self
@@ -146,17 +140,14 @@ where
         ))
     }
 
-    pub(crate) fn generate_invalid_bundle_field_proof<PCB>(
+    pub(crate) fn generate_invalid_bundle_field_proof(
         &self,
         domain_id: DomainId,
         _local_receipt: &ExecutionReceiptFor<Block, CBlock>,
         mismatch_type: BundleMismatchType,
         bundle_index: u32,
         bad_receipt_hash: Block::Hash,
-    ) -> Result<FraudProofFor<PCB, Block::Header>, FraudProofError>
-    where
-        PCB: BlockT,
-    {
+    ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
         match mismatch_type {
             // TODO: Generate a proper proof once fields are in place
             BundleMismatchType::TrueInvalid(_invalid_type) => {
@@ -191,15 +182,12 @@ where
         }
     }
 
-    pub(crate) fn generate_invalid_domain_extrinsics_root_proof<PCB>(
+    pub(crate) fn generate_invalid_domain_extrinsics_root_proof(
         &self,
         domain_id: DomainId,
         local_receipt: &ExecutionReceiptFor<Block, CBlock>,
         bad_receipt_hash: Block::Hash,
-    ) -> Result<FraudProofFor<PCB, Block::Header>, FraudProofError>
-    where
-        PCB: BlockT,
-    {
+    ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
         let consensus_block_hash = local_receipt.consensus_block_hash;
         let consensus_extrinsics = self
             .consensus_client
@@ -262,16 +250,13 @@ where
         ))
     }
 
-    pub(crate) async fn generate_invalid_state_transition_proof<PCB>(
+    pub(crate) async fn generate_invalid_state_transition_proof(
         &self,
         domain_id: DomainId,
         local_trace_index: u32,
         local_receipt: &ExecutionReceiptFor<Block, CBlock>,
         bad_receipt_hash: Block::Hash,
-    ) -> Result<FraudProofFor<PCB, Block::Header>, FraudProofError>
-    where
-        PCB: BlockT,
-    {
+    ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
         let block_hash = local_receipt.domain_block_hash;
         let block_number = local_receipt.domain_block_number;
         let header = self.header(block_hash)?;

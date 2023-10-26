@@ -110,7 +110,7 @@ pub async fn relay_domain_messages<CCC, DC, CCBlock, Block, SO>(
             let at = consensus_chain_client.info().best_hash;
             let oldest_tracked_number = api.oldest_receipt_number(at, domain_id)?;
             // ensure block number is at least the oldest tracked number
-            Ok(block_number >= oldest_tracked_number.into())
+            Ok(block_number >= oldest_tracked_number)
         },
     )
     .await;

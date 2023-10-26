@@ -1025,15 +1025,15 @@ impl_runtime_apis! {
             Domains::genesis_state_root(domain_id)
         }
 
-        fn head_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
+        fn head_receipt_number(domain_id: DomainId) -> DomainNumber {
             Domains::head_receipt_number(domain_id)
         }
 
-        fn oldest_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
+        fn oldest_receipt_number(domain_id: DomainId) -> DomainNumber {
             Domains::oldest_receipt_number(domain_id)
         }
 
-        fn block_tree_pruning_depth() -> NumberFor<Block> {
+        fn block_tree_pruning_depth() -> DomainNumber {
             Domains::block_tree_pruning_depth()
         }
 

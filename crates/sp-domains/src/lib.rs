@@ -923,13 +923,13 @@ sp_api::decl_runtime_apis! {
         fn genesis_state_root(domain_id: DomainId) -> Option<H256>;
 
         /// Returns the best execution chain number.
-        fn head_receipt_number(domain_id: DomainId) -> NumberFor<Block>;
+        fn head_receipt_number(domain_id: DomainId) -> HeaderNumberFor<DomainHeader>;
 
         /// Returns the block number of oldest execution receipt.
-        fn oldest_receipt_number(domain_id: DomainId) -> NumberFor<Block>;
+        fn oldest_receipt_number(domain_id: DomainId) -> HeaderNumberFor<DomainHeader>;
 
         /// Returns the block tree pruning depth.
-        fn block_tree_pruning_depth() -> NumberFor<Block>;
+        fn block_tree_pruning_depth() -> HeaderNumberFor<DomainHeader>;
 
         /// Returns the domain block limit of the given domain.
         fn domain_block_limit(domain_id: DomainId) -> Option<DomainBlockLimit>;

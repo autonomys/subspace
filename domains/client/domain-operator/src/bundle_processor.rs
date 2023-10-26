@@ -1,7 +1,7 @@
 use crate::domain_block_processor::{
     DomainBlockProcessor, PendingConsensusBlocks, ReceiptsChecker,
 };
-use crate::{DomainParentChain, ExecutionReceiptFor};
+use crate::ExecutionReceiptFor;
 use domain_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_block_preprocessor::DomainBlockPreprocessor;
 use domain_runtime_primitives::DomainCoreApi;
@@ -20,16 +20,8 @@ use sp_runtime::traits::{Block as BlockT, Zero};
 use sp_runtime::{Digest, DigestItem};
 use std::sync::Arc;
 
-type DomainReceiptsChecker<Block, CBlock, Client, CClient, Backend, E> = ReceiptsChecker<
-    Block,
-    Client,
-    CBlock,
-    CClient,
-    Backend,
-    E,
-    DomainParentChain<Block, CBlock, CClient>,
-    CBlock,
->;
+type DomainReceiptsChecker<Block, CBlock, Client, CClient, Backend, E> =
+    ReceiptsChecker<Block, Client, CBlock, CClient, Backend, E>;
 
 pub(crate) struct BundleProcessor<Block, CBlock, Client, CClient, Backend, E>
 where
@@ -262,8 +254,7 @@ where
         let head_receipt_number = self
             .consensus_client
             .runtime_api()
-            .head_receipt_number(consensus_block_hash, self.domain_id)?
-            .into();
+            .head_receipt_number(consensus_block_hash, self.domain_id)?;
 
         let Some(preprocess_result) = self
             .domain_block_preprocessor
