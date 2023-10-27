@@ -222,10 +222,10 @@ where
             piece_getter_retry_policy: PieceGetterRetryPolicy::Limited(
                 PIECE_GETTER_RETRY_NUMBER.get(),
             ),
-            farmer_protocol_info: &farmer_app_info.protocol_info,
+            farmer_protocol_info: farmer_app_info.protocol_info,
             kzg: &kzg,
             pieces_in_sector,
-            downloading_semaphore: Some(&downloading_semaphore),
+            downloading_semaphore: Some(Arc::clone(&downloading_semaphore)),
         });
         let downloaded_sector = downloaded_sector_fut.await?;
 

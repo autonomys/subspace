@@ -259,7 +259,7 @@ where
         sector_index,
         piece_getter: &archived_segment.pieces,
         piece_getter_retry_policy: PieceGetterRetryPolicy::default(),
-        farmer_protocol_info: &farmer_protocol_info,
+        farmer_protocol_info,
         kzg: &kzg,
         erasure_coding,
         pieces_in_sector,

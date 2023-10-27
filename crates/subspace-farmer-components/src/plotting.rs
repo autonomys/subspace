@@ -26,7 +26,7 @@ use subspace_core_primitives::{
 use subspace_erasure_coding::ErasureCoding;
 use subspace_proof_of_space::{Table, TableGenerator};
 use thiserror::Error;
-use tokio::sync::{AcquireError, Semaphore, SemaphorePermit};
+use tokio::sync::{AcquireError, OwnedSemaphorePermit, Semaphore};
 use tokio::task::yield_now;
 use tracing::{debug, trace, warn};
 
@@ -178,7 +178,7 @@ where
     /// Retry policy for piece getter
     pub piece_getter_retry_policy: PieceGetterRetryPolicy,
     /// Farmer protocol info
-    pub farmer_protocol_info: &'a FarmerProtocolInfo,
+    pub farmer_protocol_info: FarmerProtocolInfo,
     /// KZG instance
     pub kzg: &'a Kzg,
     /// Erasure coding instance
@@ -193,7 +193,7 @@ where
     pub sector_metadata_output: &'a mut Vec<u8>,
     /// Semaphore for part of the plotting when farmer downloads new sector, allows to limit memory
     /// usage of the plotting process, permit will be held until the end of the plotting process
-    pub downloading_semaphore: Option<&'a Semaphore>,
+    pub downloading_semaphore: Option<Arc<Semaphore>>,
     /// Semaphore for part of the plotting when farmer encodes downloaded sector, should typically
     /// allow one permit at a time for efficient CPU utilization
     pub encoding_semaphore: Option<&'a Semaphore>,
@@ -257,12 +257,12 @@ where
 }
 
 /// Opaque sector downloaded and ready for encoding
-pub struct DownloadedSector<'a> {
+pub struct DownloadedSector {
     sector_id: SectorId,
     piece_indices: Vec<PieceIndex>,
     raw_sector: RawSector,
-    farmer_protocol_info: &'a FarmerProtocolInfo,
-    downloading_permit: Option<SemaphorePermit<'a>>,
+    farmer_protocol_info: FarmerProtocolInfo,
+    downloading_permit: Option<OwnedSemaphorePermit>,
 }
 
 /// Options for sector downloading
@@ -276,14 +276,14 @@ pub struct DownloadSectorOptions<'a, PG> {
     /// Retry policy for piece getter
     pub piece_getter_retry_policy: PieceGetterRetryPolicy,
     /// Farmer protocol info
-    pub farmer_protocol_info: &'a FarmerProtocolInfo,
+    pub farmer_protocol_info: FarmerProtocolInfo,
     /// KZG instance
     pub kzg: &'a Kzg,
     /// How many pieces should sector contain
     pub pieces_in_sector: u16,
     /// Semaphore for part of the plotting when farmer downloads new sector, allows to limit memory
     /// usage of the plotting process, permit will be held until the end of the plotting process
-    pub downloading_semaphore: Option<&'a Semaphore>,
+    pub downloading_semaphore: Option<Arc<Semaphore>>,
 }
 
 /// Download sector for plotting.
@@ -292,7 +292,7 @@ pub struct DownloadSectorOptions<'a, PG> {
 /// and written to the plot.
 pub async fn download_sector<PG>(
     options: DownloadSectorOptions<'_, PG>,
-) -> Result<DownloadedSector<'_>, PlottingError>
+) -> Result<DownloadedSector, PlottingError>
 where
     PG: PieceGetter,
 {
@@ -308,7 +308,7 @@ where
     } = options;
 
     let downloading_permit = match downloading_semaphore {
-        Some(downloading_semaphore) => Some(downloading_semaphore.acquire().await?),
+        Some(downloading_semaphore) => Some(downloading_semaphore.acquire_owned().await?),
         None => None,
     };
 
@@ -410,7 +410,7 @@ where
 }
 
 pub async fn encode_sector<PosTable>(
-    downloaded_sector: DownloadedSector<'_>,
+    downloaded_sector: DownloadedSector,
     encoding_options: EncodeSectorOptions<'_, PosTable>,
 ) -> Result<PlottedSector, PlottingError>
 where
