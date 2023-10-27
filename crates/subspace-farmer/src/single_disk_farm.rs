@@ -26,7 +26,7 @@ use futures::{select, FutureExt, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use rayon::prelude::*;
-use rayon::{ThreadPool, ThreadPoolBuilder};
+use rayon::ThreadPoolBuilder;
 use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
 use std::fs::{File, OpenOptions};
@@ -268,11 +268,11 @@ pub struct SingleDiskFarmOptions<NC, PG> {
     /// Thread pool size used for farming (mostly for blocking I/O, but also for some
     /// compute-intensive operations during proving)
     pub farming_thread_pool_size: usize,
-    /// Thread pool used for plotting
-    pub plotting_thread_pool: Arc<ThreadPool>,
-    /// Thread pool used for replotting, typically smaller pool than for plotting to not affect
+    /// Thread pool size used for plotting
+    pub plotting_thread_pool_size: usize,
+    /// Thread pool size used for replotting, typically smaller pool than for plotting to not affect
     /// farming as much
-    pub replotting_thread_pool: Arc<ThreadPool>,
+    pub replotting_thread_pool_size: usize,
     /// Notification for plotter to start, can be used to delay plotting until some initialization
     /// has happened externally
     pub plotting_delay: Option<oneshot::Receiver<()>>,
@@ -592,8 +592,8 @@ impl SingleDiskFarm {
             downloading_semaphore,
             encoding_semaphore,
             farming_thread_pool_size,
-            plotting_thread_pool,
-            replotting_thread_pool,
+            plotting_thread_pool_size,
+            replotting_thread_pool_size,
             plotting_delay,
             farm_during_initial_plotting,
         } = options;
@@ -877,6 +877,50 @@ impl SingleDiskFarm {
 
             move || {
                 let _span_guard = span.enter();
+                let plotting_thread_pool = match ThreadPoolBuilder::new()
+                    .thread_name(move |thread_index| {
+                        format!("plotting-{disk_farm_index}.{thread_index}")
+                    })
+                    .num_threads(plotting_thread_pool_size)
+                    .spawn_handler(tokio_rayon_spawn_handler())
+                    .build()
+                    .map_err(PlottingError::FailedToCreateThreadPool)
+                {
+                    Ok(thread_pool) => thread_pool,
+                    Err(error) => {
+                        if let Some(error_sender) = error_sender.lock().take() {
+                            if let Err(error) = error_sender.send(error.into()) {
+                                error!(
+                                    %error,
+                                    "Plotting failed to send error to background task",
+                                );
+                            }
+                        }
+                        return;
+                    }
+                };
+                let replotting_thread_pool = match ThreadPoolBuilder::new()
+                    .thread_name(move |thread_index| {
+                        format!("replotting-{disk_farm_index}.{thread_index}")
+                    })
+                    .num_threads(replotting_thread_pool_size)
+                    .spawn_handler(tokio_rayon_spawn_handler())
+                    .build()
+                    .map_err(PlottingError::FailedToCreateThreadPool)
+                {
+                    Ok(thread_pool) => thread_pool,
+                    Err(error) => {
+                        if let Some(error_sender) = error_sender.lock().take() {
+                            if let Err(error) = error_sender.send(error.into()) {
+                                error!(
+                                    %error,
+                                    "Plotting failed to send error to background task",
+                                );
+                            }
+                        }
+                        return;
+                    }
+                };
 
                 let plotting_fut = async move {
                     if start_receiver.recv().await.is_err() {
@@ -984,6 +1028,7 @@ impl SingleDiskFarm {
             let span = span.clone();
 
             move || {
+                let _span_guard = span.enter();
                 let thread_pool = match ThreadPoolBuilder::new()
                     .thread_name(move |thread_index| {
                         format!("farming-{disk_farm_index}.{thread_index}")
@@ -1008,6 +1053,7 @@ impl SingleDiskFarm {
                 };
 
                 let handle = Handle::current();
+                let span = span.clone();
                 thread_pool.install(move || {
                     let _span_guard = span.enter();
 
