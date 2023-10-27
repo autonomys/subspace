@@ -155,9 +155,12 @@ impl ExecutionPhase {
                 mismatch_index,
                 extrinsic,
             } => {
+                // There is a trace root of the `initialize_block` in the head of the trace so we
+                // need to minus one to get the correct `extrinsic_index`
+                let extrinsic_index = *mismatch_index - 1;
                 let storage_key =
                     StorageProofVerifier::<DomainHeader::Hashing>::enumerated_storage_key(
-                        *mismatch_index,
+                        extrinsic_index,
                     );
                 if !StorageProofVerifier::<DomainHeader::Hashing>::verify_storage_proof(
                     proof_of_inclusion.clone(),

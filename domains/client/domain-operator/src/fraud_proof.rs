@@ -332,7 +332,7 @@ where
             // Regular extrinsic execution proof.
             let (proof, execution_phase) = self
                 .create_extrinsic_execution_proof(
-                    local_trace_index as usize - 1,
+                    local_trace_index,
                     &parent_header,
                     block_hash,
                     &prover,
@@ -369,7 +369,7 @@ where
     #[allow(clippy::too_many_arguments)]
     async fn create_extrinsic_execution_proof(
         &self,
-        extrinsic_index: usize,
+        trace_mismatch_index: u32,
         parent_header: &Block::Header,
         current_hash: Block::Hash,
         prover: &ExecutionProver<Block, Backend, E>,
@@ -378,6 +378,9 @@ where
         let extrinsics = self.block_body(current_hash)?;
         let encoded_extrinsics: Vec<_> = extrinsics.iter().map(Encode::encode).collect();
 
+        // There is a trace root of the `initialize_block` in the head of the trace so we
+        // need to minus one to get the correct `extrinsic_index`
+        let extrinsic_index = trace_mismatch_index as usize - 1;
         let target_extrinsic = encoded_extrinsics.get(extrinsic_index).ok_or(
             FraudProofError::InvalidExtrinsicIndex {
                 index: extrinsic_index,
@@ -395,7 +398,7 @@ where
             .ok_or(FraudProofError::FailToGenerateProofOfInclusion)?;
             ExecutionPhase::ApplyExtrinsic {
                 proof_of_inclusion,
-                mismatch_index: extrinsic_index as u32,
+                mismatch_index: trace_mismatch_index,
                 extrinsic: target_extrinsic.clone(),
             }
         };
