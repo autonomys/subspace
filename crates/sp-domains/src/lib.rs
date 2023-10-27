@@ -52,6 +52,7 @@ use sp_runtime_interface::pass_by::PassBy;
 use sp_std::collections::btree_set::BTreeSet;
 use sp_std::fmt::{Display, Formatter};
 use sp_std::vec::Vec;
+use sp_trie::TrieLayout;
 use sp_weights::Weight;
 use subspace_core_primitives::crypto::blake3_hash;
 use subspace_core_primitives::{bidirectional_distance, Blake3Hash, Randomness, U256};
@@ -872,6 +873,33 @@ pub fn derive_domain_block_hash<DomainHeader: HeaderT>(
     );
 
     domain_header.hash()
+}
+
+/// Represents the extrinsic either as full data or hash of the data.
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+pub enum ExtrinsicDigest {
+    /// Actual extrinsic data that is inlined since it is less than 33 bytes.
+    Data(Vec<u8>),
+    /// Extrinsic Hash.
+    Hash(H256),
+}
+
+impl ExtrinsicDigest {
+    pub fn new<Layout: TrieLayout>(ext: Vec<u8>) -> Self
+    where
+        Layout::Hash: HashT,
+        <Layout::Hash as HashT>::Output: Into<H256>,
+    {
+        if let Some(threshold) = Layout::MAX_INLINE_VALUE {
+            if ext.len() >= threshold as usize {
+                ExtrinsicDigest::Hash(Layout::Hash::hash(&ext).into())
+            } else {
+                ExtrinsicDigest::Data(ext)
+            }
+        } else {
+            ExtrinsicDigest::Data(ext)
+        }
+    }
 }
 
 sp_api::decl_runtime_apis! {

@@ -28,11 +28,12 @@ use sp_api::{HashT, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_domains::extrinsics::deduplicate_and_shuffle_extrinsics;
 use sp_domains::{
-    DomainId, DomainsApi, ExecutionReceipt, HeaderHashingFor, InboxedBundle, InvalidBundleType,
-    OpaqueBundle, OpaqueBundles, ReceiptValidity,
+    DomainId, DomainsApi, ExecutionReceipt, ExtrinsicDigest, HeaderHashingFor, InboxedBundle,
+    InvalidBundleType, OpaqueBundle, OpaqueBundles, ReceiptValidity,
 };
 use sp_messenger::MessengerApi;
-use sp_runtime::traits::{Block as BlockT, NumberFor};
+use sp_runtime::traits::{BlakeTwo256, Block as BlockT, NumberFor};
+use sp_trie::LayoutV1;
 use std::collections::VecDeque;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -228,7 +229,7 @@ where
                         .map(|(signer, tx)| {
                             (
                                 signer.clone(),
-                                HeaderHashingFor::<Block::Header>::hash_of(tx),
+                                ExtrinsicDigest::new::<LayoutV1<BlakeTwo256>>(tx.encode()),
                             )
                         })
                         .collect();

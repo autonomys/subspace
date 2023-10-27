@@ -10,12 +10,12 @@ use sp_blockchain::HeaderBackend;
 use sp_core::traits::CodeExecutor;
 use sp_domain_digests::AsPredigest;
 use sp_domains::proof_provider_and_verifier::StorageProofProvider;
-use sp_domains::{DomainId, DomainsApi};
+use sp_domains::{DomainId, DomainsApi, ExtrinsicDigest};
 use sp_domains_fraud_proof::execution_prover::ExecutionProver;
 use sp_domains_fraud_proof::fraud_proof::{
-    ExecutionPhase, ExtrinsicDigest, FraudProof, InvalidBundlesFraudProof,
-    InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof, InvalidStateTransitionProof,
-    InvalidTotalRewardsProof, ProofDataPerInvalidBundleType, ValidBundleDigest,
+    ExecutionPhase, FraudProof, InvalidBundlesFraudProof, InvalidDomainBlockHashProof,
+    InvalidExtrinsicsRootProof, InvalidStateTransitionProof, InvalidTotalRewardsProof,
+    ProofDataPerInvalidBundleType, ValidBundleDigest,
 };
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashingFor, Header as HeaderT, NumberFor};
 use sp_runtime::{Digest, DigestItem};

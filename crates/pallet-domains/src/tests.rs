@@ -21,13 +21,13 @@ use sp_core::{Get, H256, U256};
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::storage::RawGenesis;
 use sp_domains::{
-    BundleHeader, DomainId, DomainsHoldIdentifier, ExecutionReceipt, InboxedBundle, OpaqueBundle,
-    OperatorAllowList, OperatorId, OperatorPair, ProofOfElection, RuntimeType, SealedBundleHeader,
-    StakingHoldIdentifier,
+    BundleHeader, DomainId, DomainsHoldIdentifier, ExecutionReceipt, ExtrinsicDigest,
+    InboxedBundle, OpaqueBundle, OperatorAllowList, OperatorId, OperatorPair, ProofOfElection,
+    RuntimeType, SealedBundleHeader, StakingHoldIdentifier,
 };
 use sp_domains_fraud_proof::fraud_proof::{
-    ExtrinsicDigest, FraudProof, InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof,
-    InvalidTotalRewardsProof, ValidBundleDigest,
+    FraudProof, InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof, InvalidTotalRewardsProof,
+    ValidBundleDigest,
 };
 use sp_domains_fraud_proof::{
     FraudProofExtension, FraudProofHostFunctions, FraudProofVerificationInfoRequest,

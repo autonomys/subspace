@@ -2531,6 +2531,7 @@ dependencies = [
  "sp-runtime",
  "sp-state-machine",
  "sp-timestamp",
+ "sp-trie",
  "subspace-core-primitives",
  "subspace-runtime-primitives",
  "tracing",
