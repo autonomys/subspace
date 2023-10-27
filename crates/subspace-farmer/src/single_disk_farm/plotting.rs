@@ -152,8 +152,11 @@ where
         encoding_semaphore,
         plotting_thread_pool,
         replotting_thread_pool,
-        stop_receiver,
+        mut stop_receiver,
     } = plotting_options;
+    let erasure_coding = &erasure_coding;
+    let encoding_semaphore = Some(encoding_semaphore.as_ref());
+    let stop_receiver = &mut stop_receiver;
 
     let mut table_generator = PosTable::generator();
     // TODO: Concurrency
@@ -237,24 +240,20 @@ where
         let plotted_sector;
 
         (sector, sector_metadata, table_generator, plotted_sector) = {
-            let mut sector = Vec::new();
-            let mut sector_metadata = Vec::new();
+            let plotting_fn = || {
+                tokio::task::block_in_place(|| {
+                    let mut sector = Vec::new();
+                    let mut sector_metadata = Vec::new();
 
-            let erasure_coding = erasure_coding.clone();
-            let encoding_semaphore = Arc::clone(&encoding_semaphore);
-            let mut stop_receiver = stop_receiver.resubscribe();
-
-            let plotting_fn = move || {
-                tokio::task::block_in_place(move || {
                     let plot_sector_fut = encode_sector::<PosTable>(
                         downloaded_sector,
                         EncodeSectorOptions {
                             sector_index,
-                            erasure_coding: &erasure_coding,
+                            erasure_coding,
                             pieces_in_sector,
                             sector_output: &mut sector,
                             sector_metadata_output: &mut sector_metadata,
-                            encoding_semaphore: Some(&encoding_semaphore),
+                            encoding_semaphore,
                             table_generator: &mut table_generator,
                         },
                     );
