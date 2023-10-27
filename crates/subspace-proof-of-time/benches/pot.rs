@@ -7,8 +7,8 @@ use subspace_proof_of_time::{prove, verify};
 fn criterion_benchmark(c: &mut Criterion) {
     let mut seed = PotSeed::default();
     thread_rng().fill(seed.as_mut());
-    // About 1s on 5.5 GHz Raptor Lake CPU
-    let pot_iterations = NonZeroU32::new(183_270_000).expect("Not zero; qed");
+    // About 1s on 6.0 GHz Raptor Lake CPU (14900K)
+    let pot_iterations = NonZeroU32::new(200_032_000).expect("Not zero; qed");
 
     c.bench_function("prove", |b| {
         b.iter(|| {

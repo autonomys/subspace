@@ -155,7 +155,8 @@ pub fn gemini_3f_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, 
                         )),
                     ),
                     // TODO: Adjust once we bench PoT on faster hardware
-                    pot_slot_iterations: NonZeroU32::new(183_270_000).expect("Not zero; qed"),
+                    // About 1s on 6.0 GHz Raptor Lake CPU (14900K)
+                    pot_slot_iterations: NonZeroU32::new(200_032_000).expect("Not zero; qed"),
                     enable_domains: true,
                     enable_balance_transfers: true,
                     confirmation_depth_k: 100, // TODO: Proper value here
