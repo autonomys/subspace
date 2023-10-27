@@ -72,9 +72,6 @@ const SWARM_MAX_PENDING_INCOMING_CONNECTIONS: u32 = 80;
 const SWARM_MAX_PENDING_OUTGOING_CONNECTIONS: u32 = 80;
 // The default maximum connection number to be maintained for the swarm.
 const SWARM_TARGET_CONNECTION_NUMBER: u32 = 30;
-// Defines a replication factor for Kademlia on get_record operation.
-// "Good citizen" supports the network health.
-const YAMUX_MAX_STREAMS: usize = 256;
 const KADEMLIA_QUERY_TIMEOUT: Duration = Duration::from_secs(40);
 const SWARM_MAX_ESTABLISHED_CONNECTIONS_PER_PEER: Option<u32> = Some(3);
 // TODO: Consider moving this constant to configuration or removing `Toggle` wrapper when we find a
@@ -86,6 +83,17 @@ const TEMPORARY_BANS_DEFAULT_BACKOFF_INITIAL_INTERVAL: Duration = Duration::from
 const TEMPORARY_BANS_DEFAULT_BACKOFF_RANDOMIZATION_FACTOR: f64 = 0.1;
 const TEMPORARY_BANS_DEFAULT_BACKOFF_MULTIPLIER: f64 = 1.5;
 const TEMPORARY_BANS_DEFAULT_MAX_INTERVAL: Duration = Duration::from_secs(30 * 60);
+
+/// Specific YAMUX settings for Subspace applications: additional buffer space for pieces and
+/// substream's limit.
+///
+/// Defines a replication factor for Kademlia on get_record operation.
+/// "Good citizen" supports the network health.
+const YAMUX_MAX_STREAMS: usize = 256;
+/// 1MB of piece + original value (256 KB)
+const YAMUX_RECEIVING_WINDOW: usize = Piece::SIZE + 256 * 1024;
+/// 1MB of piece + original value (1 MB)
+const YAMUX_BUFFER_SIZE: usize = Piece::SIZE + 1024 * 1024;
 
 /// Max confidence for autonat protocol. Could affect Kademlia mode change.
 pub(crate) const AUTONAT_MAX_CONFIDENCE: usize = 3;
@@ -296,7 +304,10 @@ where
             .set_replication_interval(None);
 
         let mut yamux_config = YamuxConfig::default();
-        yamux_config.set_max_num_streams(YAMUX_MAX_STREAMS);
+        yamux_config
+            .set_max_num_streams(YAMUX_MAX_STREAMS)
+            .set_receive_window_size(YAMUX_RECEIVING_WINDOW as u32)
+            .set_max_buffer_size(YAMUX_BUFFER_SIZE);
 
         let gossipsub = ENABLE_GOSSIP_PROTOCOL.then(|| {
             GossipsubConfigBuilder::default()
