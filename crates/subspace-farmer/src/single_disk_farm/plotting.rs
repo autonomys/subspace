@@ -27,7 +27,8 @@ use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer_components::file_ext::FileExt;
 use subspace_farmer_components::plotting;
 use subspace_farmer_components::plotting::{
-    plot_sector, PieceGetter, PieceGetterRetryPolicy, PlotSectorOptions, PlottedSector,
+    download_sector, encode_sector, DownloadSectorOptions, EncodeSectorOptions, PieceGetter,
+    PieceGetterRetryPolicy, PlottedSector,
 };
 use subspace_farmer_components::sector::SectorMetadataChecksummed;
 use subspace_proof_of_space::Table;
@@ -214,6 +215,20 @@ where
             break farmer_app_info;
         };
 
+        let downloaded_sector_fut = download_sector(DownloadSectorOptions {
+            public_key: &public_key,
+            sector_index,
+            piece_getter: &piece_getter,
+            piece_getter_retry_policy: PieceGetterRetryPolicy::Limited(
+                PIECE_GETTER_RETRY_NUMBER.get(),
+            ),
+            farmer_protocol_info: &farmer_app_info.protocol_info,
+            kzg: &kzg,
+            pieces_in_sector,
+            downloading_semaphore: Some(&downloading_semaphore),
+        });
+        let downloaded_sector = downloaded_sector_fut.await?;
+
         // Inform others that this sector is being modified
         modifying_sector_index.write().await.replace(sector_index);
 
@@ -225,32 +240,24 @@ where
             let mut sector = Vec::new();
             let mut sector_metadata = Vec::new();
 
-            let piece_getter = piece_getter.clone();
-            let kzg = kzg.clone();
             let erasure_coding = erasure_coding.clone();
-            let downloading_semaphore = Arc::clone(&downloading_semaphore);
             let encoding_semaphore = Arc::clone(&encoding_semaphore);
             let mut stop_receiver = stop_receiver.resubscribe();
 
             let plotting_fn = move || {
                 tokio::task::block_in_place(move || {
-                    let plot_sector_fut = plot_sector::<PosTable, _>(PlotSectorOptions {
-                        public_key: &public_key,
-                        sector_index,
-                        piece_getter: &piece_getter,
-                        piece_getter_retry_policy: PieceGetterRetryPolicy::Limited(
-                            PIECE_GETTER_RETRY_NUMBER.get(),
-                        ),
-                        farmer_protocol_info: &farmer_app_info.protocol_info,
-                        kzg: &kzg,
-                        erasure_coding: &erasure_coding,
-                        pieces_in_sector,
-                        sector_output: &mut sector,
-                        sector_metadata_output: &mut sector_metadata,
-                        downloading_semaphore: Some(&downloading_semaphore),
-                        encoding_semaphore: Some(&encoding_semaphore),
-                        table_generator: &mut table_generator,
-                    });
+                    let plot_sector_fut = encode_sector::<PosTable>(
+                        downloaded_sector,
+                        EncodeSectorOptions {
+                            sector_index,
+                            erasure_coding: &erasure_coding,
+                            pieces_in_sector,
+                            sector_output: &mut sector,
+                            sector_metadata_output: &mut sector_metadata,
+                            encoding_semaphore: Some(&encoding_semaphore),
+                            table_generator: &mut table_generator,
+                        },
+                    );
 
                     let plotted_sector = Handle::current().block_on(async {
                         select! {
