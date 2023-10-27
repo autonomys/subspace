@@ -988,7 +988,7 @@ where
                 } => match mismatch_type {
                     BundleMismatchType::Valid => FraudProof::ValidBundle(ValidBundleProof {
                         domain_id: self.domain_id,
-                        bad_receipt_hash: local_receipt.hash::<HeaderHashingFor<Block::Header>>(),
+                        bad_receipt_hash,
                         bundle_index,
                     }),
                     _ => self
