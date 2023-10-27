@@ -17,7 +17,8 @@ use sp_consensus::SyncOracle;
 use sp_core::traits::FetchRuntimeCode;
 use sp_core::{Pair, H256};
 use sp_domain_digests::AsPredigest;
-use sp_domains::{Bundle, BundleValidity, DomainId, DomainsApi, HeaderHashingFor};
+use sp_domains::merkle_tree::MerkleTree;
+use sp_domains::{Bundle, BundleValidity, DomainsApi, HeaderHashingFor};
 use sp_domains_fraud_proof::execution_prover::ExecutionProver;
 use sp_domains_fraud_proof::fraud_proof::{
     ExecutionPhase, FraudProof, InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof,
@@ -709,29 +710,27 @@ async fn test_executor_inherent_timestamp_is_set() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore]
 async fn test_initialize_block_proof_creation_and_verification_should_work() {
     test_invalid_state_transition_proof_creation_and_verification(0).await
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore]
 async fn test_apply_extrinsic_proof_creation_and_verification_should_work() {
-    test_invalid_state_transition_proof_creation_and_verification(1).await
-}
-
-// TODO: the test is ignored due to the invalid receipt can not pass the state root check
-// in the runtime now, thus can't construct `finalize_block` fraud proof, find a way to
-// bypass the check
-#[tokio::test(flavor = "multi_thread")]
-#[ignore]
-async fn test_finalize_block_proof_creation_and_verification_should_work() {
     test_invalid_state_transition_proof_creation_and_verification(2).await
 }
 
+#[tokio::test(flavor = "multi_thread")]
+async fn test_finalize_block_proof_creation_and_verification_should_work() {
+    test_invalid_state_transition_proof_creation_and_verification(3).await
+}
+
 /// This test will create and verify a invalid state transition proof that targets the receipt of
-/// a bundle that contains 1 extrinsic, thus there are 3 trace roots and the `mismatch_trace_index`
-/// should be in the range of [0..2]
+/// a bundle that contains 2 extrinsic (including 1 inherent timestamp extrinsic), thus there are
+/// 4 trace roots in total, passing the `mismatch_trace_index` as:
+/// - 0 to test the `initialize_block` invalid state transition
+/// - 1 to test the `apply_extrinsic` invalid state transition with the inherent timestamp extrinsic
+/// - 2 to test the `apply_extrinsic` invalid state transition with regular domain extrinsic
+/// - 3 to test the `finalize_block` invalid state transition
 async fn test_invalid_state_transition_proof_creation_and_verification(
     mismatch_trace_index: usize,
 ) {
@@ -787,17 +786,31 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
     // Get a bundle from the txn pool and modify the receipt of the target bundle to an invalid one
     let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let original_submit_bundle_tx = bundle_to_tx(bundle.clone().unwrap());
-    let bad_submit_bundle_tx = {
+    let (bad_receipt_hash, bad_submit_bundle_tx) = {
         let mut opaque_bundle = bundle.unwrap();
         let receipt = &mut opaque_bundle.sealed_header.header.receipt;
-        assert_eq!(receipt.execution_trace.len(), 3);
+        assert_eq!(receipt.execution_trace.len(), 4);
 
         receipt.execution_trace[mismatch_trace_index] = Default::default();
+        receipt.execution_trace_root = {
+            let trace: Vec<_> = receipt
+                .execution_trace
+                .iter()
+                .map(|t| t.encode().try_into().unwrap())
+                .collect();
+            MerkleTree::from_leaves(trace.as_slice())
+                .root()
+                .unwrap()
+                .into()
+        };
         opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
             .pair()
             .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
             .into();
-        bundle_to_tx(opaque_bundle)
+        (
+            opaque_bundle.receipt().hash::<BlakeTwo256>(),
+            bundle_to_tx(opaque_bundle),
+        )
     };
 
     // Replace `original_submit_bundle_tx` with `bad_submit_bundle_tx` in the tx pool
@@ -812,11 +825,18 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
         .await
         .unwrap();
 
-    // Produce a consensus block that contains the `bad_submit_bundle_tx`
+    // Produce a consensus block that contains the `bad_submit_bundle_tx` and the bad receipt should
+    // be added to the consensus chain block tree
     let mut import_tx_stream = ferdie.transaction_pool.import_notification_stream();
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
         .unwrap();
+    assert!(ferdie
+        .client
+        .runtime_api()
+        .execution_receipt(ferdie.client.info().best_hash, bad_receipt_hash)
+        .unwrap()
+        .is_some());
 
     // When the system domain node process the primary block that contains the `bad_submit_bundle_tx`,
     // it will generate and submit a fraud proof
@@ -839,11 +859,12 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
                         proof.execution_phase,
                         ExecutionPhase::InitializeBlock
                     )),
-                    1 => assert!(matches!(
+                    // 1 for the inherent timestamp extrinsic, 2 for the above `transfer_allow_death` extrinsic
+                    1 | 2 => assert!(matches!(
                         proof.execution_phase,
                         ExecutionPhase::ApplyExtrinsic { .. }
                     )),
-                    2 => assert!(matches!(
+                    3 => assert!(matches!(
                         proof.execution_phase,
                         ExecutionPhase::FinalizeBlock
                     )),
@@ -855,12 +876,17 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
     }
 
     // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
-    // in the block import pipeline
+    // and executed, thus pruned the bad receipt from the block tree
     ferdie.produce_blocks(1).await.unwrap();
+    assert!(ferdie
+        .client
+        .runtime_api()
+        .execution_receipt(ferdie.client.info().best_hash, bad_receipt_hash)
+        .unwrap()
+        .is_none());
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore]
 async fn test_invalid_total_rewards_proof_creation() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -916,7 +942,7 @@ async fn test_invalid_total_rewards_proof_creation() {
     // Get a bundle from the txn pool and modify the receipt of the target bundle to an invalid one
     let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let original_submit_bundle_tx = bundle_to_tx(bundle.clone().unwrap());
-    let bad_submit_bundle_tx = {
+    let (bad_receipt_hash, bad_submit_bundle_tx) = {
         let mut opaque_bundle = bundle.unwrap();
         let receipt = &mut opaque_bundle.sealed_header.header.receipt;
         receipt.total_rewards = Default::default();
@@ -924,7 +950,10 @@ async fn test_invalid_total_rewards_proof_creation() {
             .pair()
             .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
             .into();
-        bundle_to_tx(opaque_bundle)
+        (
+            opaque_bundle.receipt().hash::<BlakeTwo256>(),
+            bundle_to_tx(opaque_bundle),
+        )
     };
 
     // Replace `original_submit_bundle_tx` with `bad_submit_bundle_tx` in the tx pool
@@ -939,11 +968,18 @@ async fn test_invalid_total_rewards_proof_creation() {
         .await
         .unwrap();
 
-    // Produce a consensus block that contains the `bad_submit_bundle_tx`
+    // Produce a consensus block that contains the `bad_submit_bundle_tx` and the bad receipt should
+    // be added to the consensus chain block tree
     let mut import_tx_stream = ferdie.transaction_pool.import_notification_stream();
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
         .unwrap();
+    assert!(ferdie
+        .client
+        .runtime_api()
+        .execution_receipt(ferdie.client.info().best_hash, bad_receipt_hash)
+        .unwrap()
+        .is_some());
 
     // When the domain node operator process the primary block that contains the `bad_submit_bundle_tx`,
     // it will generate and submit a fraud proof
@@ -966,13 +1002,18 @@ async fn test_invalid_total_rewards_proof_creation() {
         }
     }
 
-    // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified on
-    // on the runtime itself
+    // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
+    // and executed, thus pruned the bad receipt from the block tree
     ferdie.produce_blocks(1).await.unwrap();
+    assert!(ferdie
+        .client
+        .runtime_api()
+        .execution_receipt(ferdie.client.info().best_hash, bad_receipt_hash)
+        .unwrap()
+        .is_none());
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore]
 async fn test_invalid_domain_block_hash_proof_creation() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -1028,7 +1069,7 @@ async fn test_invalid_domain_block_hash_proof_creation() {
     // Get a bundle from the txn pool and modify the receipt of the target bundle to an invalid one
     let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let original_submit_bundle_tx = bundle_to_tx(bundle.clone().unwrap());
-    let bad_submit_bundle_tx = {
+    let (bad_receipt_hash, bad_submit_bundle_tx) = {
         let mut opaque_bundle = bundle.unwrap();
         let receipt = &mut opaque_bundle.sealed_header.header.receipt;
         receipt.domain_block_hash = Default::default();
@@ -1036,7 +1077,10 @@ async fn test_invalid_domain_block_hash_proof_creation() {
             .pair()
             .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
             .into();
-        bundle_to_tx(opaque_bundle)
+        (
+            opaque_bundle.receipt().hash::<BlakeTwo256>(),
+            bundle_to_tx(opaque_bundle),
+        )
     };
 
     // Replace `original_submit_bundle_tx` with `bad_submit_bundle_tx` in the tx pool
@@ -1051,11 +1095,18 @@ async fn test_invalid_domain_block_hash_proof_creation() {
         .await
         .unwrap();
 
-    // Produce a consensus block that contains the `bad_submit_bundle_tx`
+    // Produce a consensus block that contains the `bad_submit_bundle_tx` and the bad receipt should
+    // be added to the consensus chain block tree
     let mut import_tx_stream = ferdie.transaction_pool.import_notification_stream();
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
         .unwrap();
+    assert!(ferdie
+        .client
+        .runtime_api()
+        .execution_receipt(ferdie.client.info().best_hash, bad_receipt_hash)
+        .unwrap()
+        .is_some());
 
     // When the domain node operator process the primary block that contains the `bad_submit_bundle_tx`,
     // it will generate and submit a fraud proof
@@ -1080,13 +1131,18 @@ async fn test_invalid_domain_block_hash_proof_creation() {
         }
     }
 
-    // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified on
-    // on the runtime itself
+    // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
+    // and executed, thus pruned the bad receipt from the block tree
     ferdie.produce_blocks(1).await.unwrap();
+    assert!(ferdie
+        .client
+        .runtime_api()
+        .execution_receipt(ferdie.client.info().best_hash, bad_receipt_hash)
+        .unwrap()
+        .is_none());
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore]
 async fn test_invalid_domain_extrinsics_root_proof_creation() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -1142,7 +1198,7 @@ async fn test_invalid_domain_extrinsics_root_proof_creation() {
     // Get a bundle from the txn pool and modify the receipt of the target bundle to an invalid one
     let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let original_submit_bundle_tx = bundle_to_tx(bundle.clone().unwrap());
-    let bad_submit_bundle_tx = {
+    let (bad_receipt_hash, bad_submit_bundle_tx) = {
         let mut opaque_bundle = bundle.unwrap();
         let receipt = &mut opaque_bundle.sealed_header.header.receipt;
         receipt.domain_block_extrinsic_root = Default::default();
@@ -1150,7 +1206,10 @@ async fn test_invalid_domain_extrinsics_root_proof_creation() {
             .pair()
             .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
             .into();
-        bundle_to_tx(opaque_bundle)
+        (
+            opaque_bundle.receipt().hash::<BlakeTwo256>(),
+            bundle_to_tx(opaque_bundle),
+        )
     };
 
     // Replace `original_submit_bundle_tx` with `bad_submit_bundle_tx` in the tx pool
@@ -1165,11 +1224,18 @@ async fn test_invalid_domain_extrinsics_root_proof_creation() {
         .await
         .unwrap();
 
-    // Produce a consensus block that contains the `bad_submit_bundle_tx`
+    // Produce a consensus block that contains the `bad_submit_bundle_tx` and the bad receipt should
+    // be added to the consensus chain block tree
     let mut import_tx_stream = ferdie.transaction_pool.import_notification_stream();
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
         .unwrap();
+    assert!(ferdie
+        .client
+        .runtime_api()
+        .execution_receipt(ferdie.client.info().best_hash, bad_receipt_hash)
+        .unwrap()
+        .is_some());
 
     // When the domain node operator process the primary block that contains the `bad_submit_bundle_tx`,
     // it will generate and submit a fraud proof
@@ -1198,13 +1264,18 @@ async fn test_invalid_domain_extrinsics_root_proof_creation() {
 
     assert!(fraud_proof_submitted, "Fraud proof must be submitted");
 
-    // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified on
-    // on the runtime itself
+    // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
+    // and executed, thus pruned the bad receipt from the block tree
     ferdie.produce_blocks(1).await.unwrap();
+    assert!(ferdie
+        .client
+        .runtime_api()
+        .execution_receipt(ferdie.client.info().best_hash, bad_receipt_hash)
+        .unwrap()
+        .is_none());
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore]
 async fn test_valid_bundle_proof_generation_and_verification() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -1301,11 +1372,21 @@ async fn test_valid_bundle_proof_generation_and_verification() {
         .await
         .unwrap();
 
-    // Produce one more block to inlcude the bad receipt in the consensus chain
+    // Produce a consensus block that contains the `bad_submit_bundle_tx` and the bad receipt should
+    // be added to the consensus chain block tree
     let mut import_tx_stream = ferdie.transaction_pool.import_notification_stream();
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
         .unwrap();
+    assert!(ferdie
+        .client
+        .runtime_api()
+        .execution_receipt(
+            ferdie.client.info().best_hash,
+            bad_receipt.hash::<BlakeTwo256>()
+        )
+        .unwrap()
+        .is_some());
 
     // When the domain node operator process the primary block that contains the `bad_submit_bundle_tx`,
     // it will generate and submit a fraud proof
@@ -1350,13 +1431,21 @@ async fn test_valid_bundle_proof_generation_and_verification() {
         }
     }
 
-    // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified on
-    // on the runtime itself
+    // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
+    // and executed, thus pruned the bad receipt from the block tree
     ferdie.produce_blocks(1).await.unwrap();
+    assert!(ferdie
+        .client
+        .runtime_api()
+        .execution_receipt(
+            ferdie.client.info().best_hash,
+            bad_receipt.hash::<BlakeTwo256>()
+        )
+        .unwrap()
+        .is_none());
 }
 
 #[tokio::test(flavor = "multi_thread")]
-#[ignore]
 async fn fraud_proof_verification_in_tx_pool_should_work() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -1382,15 +1471,29 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
     .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
     .await;
 
-    // TODO: test the `initialize_block` fraud proof of block 1 with `wait_for_blocks(1)`
-    // after https://github.com/subspace/subspace/issues/1301 is resolved.
     produce_blocks!(ferdie, alice, 3).await.unwrap();
 
     // Get a bundle from the txn pool and change its receipt to an invalid one
     let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let bad_bundle = {
         let mut opaque_bundle = bundle.unwrap();
-        opaque_bundle.sealed_header.header.receipt.execution_trace[0] = Default::default();
+        let receipt = &mut opaque_bundle.sealed_header.header.receipt;
+        receipt.execution_trace[0] = Default::default();
+        receipt.execution_trace_root = {
+            let trace: Vec<_> = receipt
+                .execution_trace
+                .iter()
+                .map(|t| t.encode().try_into().unwrap())
+                .collect();
+            MerkleTree::from_leaves(trace.as_slice())
+                .root()
+                .unwrap()
+                .into()
+        };
+        opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
+            .pair()
+            .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
+            .into();
         opaque_bundle
     };
     let bad_receipt = bad_bundle.receipt().clone();
@@ -1446,7 +1549,7 @@ async fn fraud_proof_verification_in_tx_pool_should_work() {
         .expect("Create `initialize_block` proof");
 
     let good_invalid_state_transition_proof = InvalidStateTransitionProof {
-        domain_id: DomainId::new(3u32),
+        domain_id: GENESIS_DOMAIN_ID,
         bad_receipt_hash: bad_receipt.hash::<HeaderHashingFor<Header>>(),
         proof: storage_proof,
         execution_phase,
