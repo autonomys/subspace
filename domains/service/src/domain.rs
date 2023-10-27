@@ -443,7 +443,7 @@ where
             domain_created_at,
             consensus_client: consensus_client.clone(),
             consensus_offchain_tx_pool_factory,
-            consensus_network_sync_oracle,
+            consensus_network_sync_oracle: consensus_network_sync_oracle.clone(),
             client: client.clone(),
             transaction_pool: transaction_pool.clone(),
             backend: backend.clone(),
@@ -463,7 +463,9 @@ where
         let relayer_worker = domain_client_message_relayer::worker::relay_domain_messages(
             consensus_client.clone(),
             client.clone(),
-            sync_service.clone(),
+            // domain relayer will use consensus chain sync oracle instead of domain sync orcle
+            // since domain sync oracle will always return `synced` due to force sync being set.
+            consensus_network_sync_oracle,
             gossip_message_sink,
         );
 
