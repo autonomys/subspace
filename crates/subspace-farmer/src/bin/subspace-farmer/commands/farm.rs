@@ -11,7 +11,6 @@ use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use lru::LruCache;
 use parking_lot::Mutex;
-use rayon::ThreadPoolBuilder;
 use std::fs;
 use std::net::SocketAddr;
 use std::num::{NonZeroU8, NonZeroUsize};
@@ -29,9 +28,7 @@ use subspace_farmer::utils::farmer_piece_getter::FarmerPieceGetter;
 use subspace_farmer::utils::piece_validator::SegmentCommitmentPieceValidator;
 use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
 use subspace_farmer::utils::ss58::parse_ss58_reward_address;
-use subspace_farmer::utils::{
-    run_future_in_dedicated_thread, tokio_rayon_spawn_handler, AsyncJoinOnDrop,
-};
+use subspace_farmer::utils::{run_future_in_dedicated_thread, AsyncJoinOnDrop};
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_farmer_components::plotting::PlottedSector;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
@@ -134,13 +131,21 @@ pub(crate) struct FarmingArgs {
     /// the system
     #[arg(long, default_value_t = available_parallelism())]
     farming_thread_pool_size: usize,
-    /// Size of thread pool used for plotting, defaults to number of CPU cores available in the
-    /// system. This thread pool is global for all farms and generally doesn't need to be changed.
+    /// Size of PER FARM thread pool used for plotting, defaults to number of CPU cores available
+    /// in the system.
+    ///
+    /// NOTE: The fact that this parameter is per farm doesn't mean farmer will plot multiple
+    /// sectors concurrently, see `--sector-downloading-concurrency` and
+    /// `--sector-encoding-concurrency` options.
     #[arg(long, default_value_t = available_parallelism())]
     plotting_thread_pool_size: usize,
-    /// Size of thread pool used for replotting, typically smaller pool than for plotting to not
-    /// affect farming as much, defaults to half of the number of CPU cores available in the system.
-    /// This thread pool is global for all farms and generally doesn't need to be changed.
+    /// Size of PER FARM thread pool used for replotting, typically smaller pool than for plotting
+    /// to not affect farming as much, defaults to half of the number of CPU cores available in the
+    /// system.
+    ///
+    /// NOTE: The fact that this parameter is per farm doesn't mean farmer will replot multiple
+    /// sectors concurrently, see `--sector-downloading-concurrency` and
+    /// `--sector-encoding-concurrency` options.
     #[arg(long, default_value_t = available_parallelism() / 2)]
     replotting_thread_pool_size: usize,
 }
@@ -423,21 +428,6 @@ where
         None => farmer_app_info.protocol_info.max_pieces_in_sector,
     };
 
-    let plotting_thread_pool = Arc::new(
-        ThreadPoolBuilder::new()
-            .thread_name(move |thread_index| format!("plotting#{thread_index}"))
-            .num_threads(plotting_thread_pool_size)
-            .spawn_handler(tokio_rayon_spawn_handler())
-            .build()?,
-    );
-    let replotting_thread_pool = Arc::new(
-        ThreadPoolBuilder::new()
-            .thread_name(move |thread_index| format!("replotting#{thread_index}"))
-            .num_threads(replotting_thread_pool_size)
-            .spawn_handler(tokio_rayon_spawn_handler())
-            .build()?,
-    );
-
     let downloading_semaphore = Arc::new(Semaphore::new(sector_downloading_concurrency.get()));
     let encoding_semaphore = Arc::new(Semaphore::new(sector_encoding_concurrency.get()));
 
@@ -467,8 +457,8 @@ where
                 encoding_semaphore: Arc::clone(&encoding_semaphore),
                 farm_during_initial_plotting,
                 farming_thread_pool_size,
-                plotting_thread_pool: Arc::clone(&plotting_thread_pool),
-                replotting_thread_pool: Arc::clone(&replotting_thread_pool),
+                plotting_thread_pool_size,
+                replotting_thread_pool_size,
                 plotting_delay: Some(plotting_delay_receiver),
             },
             disk_farm_index,

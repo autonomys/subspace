@@ -9,7 +9,7 @@ use futures::channel::{mpsc, oneshot};
 use futures::{select, FutureExt, SinkExt, StreamExt};
 use lru::LruCache;
 use parity_scale_codec::Encode;
-use rayon::ThreadPool;
+use rayon::{ThreadPool, ThreadPoolBuildError};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io;
@@ -81,12 +81,15 @@ pub enum PlottingError {
     /// Farm is shutting down
     #[error("Farm is shutting down")]
     FarmIsShuttingDown,
-    /// I/O error occurred
-    #[error("I/O error: {0}")]
-    Io(#[from] io::Error),
     /// Low-level plotting error
     #[error("Low-level plotting error: {0}")]
     LowLevel(#[from] plotting::PlottingError),
+    /// I/O error occurred
+    #[error("I/O error: {0}")]
+    Io(#[from] io::Error),
+    /// Failed to create thread pool
+    #[error("Failed to create thread pool: {0}")]
+    FailedToCreateThreadPool(#[from] ThreadPoolBuildError),
 }
 
 pub(super) struct PlottingOptions<NC, PG> {
@@ -111,8 +114,8 @@ pub(super) struct PlottingOptions<NC, PG> {
     /// Semaphore for part of the plotting when farmer encodes downloaded sector, should typically
     /// allow one permit at a time for efficient CPU utilization
     pub(crate) encoding_semaphore: Arc<Semaphore>,
-    pub(super) plotting_thread_pool: Arc<ThreadPool>,
-    pub(super) replotting_thread_pool: Arc<ThreadPool>,
+    pub(super) plotting_thread_pool: ThreadPool,
+    pub(super) replotting_thread_pool: ThreadPool,
     pub(super) stop_receiver: broadcast::Receiver<()>,
 }
 
