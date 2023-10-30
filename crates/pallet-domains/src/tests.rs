@@ -19,15 +19,16 @@ use sp_core::crypto::Pair;
 use sp_core::storage::{StateVersion, StorageKey};
 use sp_core::{Get, H256, U256};
 use sp_domains::merkle_tree::MerkleTree;
+use sp_domains::proof_provider_and_verifier::StorageProofProvider;
 use sp_domains::storage::RawGenesis;
 use sp_domains::{
-    BundleHeader, DomainId, DomainsHoldIdentifier, ExecutionReceipt, InboxedBundle, OpaqueBundle,
-    OperatorAllowList, OperatorId, OperatorPair, ProofOfElection, RuntimeType, SealedBundleHeader,
-    StakingHoldIdentifier,
+    BundleHeader, DomainId, DomainsHoldIdentifier, ExecutionReceipt, InboxedBundle,
+    InvalidBundleType, OpaqueBundle, OperatorAllowList, OperatorId, OperatorPair, ProofOfElection,
+    RuntimeType, SealedBundleHeader, StakingHoldIdentifier,
 };
 use sp_domains_fraud_proof::fraud_proof::{
-    ExtrinsicDigest, FraudProof, InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof,
-    InvalidTotalRewardsProof, ValidBundleDigest,
+    ExtrinsicDigest, FraudProof, InvalidBundlesFraudProof, InvalidDomainBlockHashProof,
+    InvalidExtrinsicsRootProof, InvalidTotalRewardsProof, ValidBundleDigest,
 };
 use sp_domains_fraud_proof::{
     FraudProofExtension, FraudProofHostFunctions, FraudProofVerificationInfoRequest,
@@ -39,7 +40,7 @@ use sp_state_machine::backend::AsTrieBackend;
 use sp_state_machine::{prove_read, Backend, TrieBackendBuilder};
 use sp_std::sync::Arc;
 use sp_trie::trie_types::TrieDBMutBuilderV1;
-use sp_trie::{PrefixedMemoryDB, StorageProof, TrieMut};
+use sp_trie::{LayoutV1, PrefixedMemoryDB, StorageProof, TrieMut};
 use sp_version::RuntimeVersion;
 use std::sync::atomic::{AtomicU64, Ordering};
 use subspace_core_primitives::{Randomness, U256 as P256};
@@ -256,6 +257,7 @@ pub(crate) struct MockDomainFraudProofExtension {
     timestamp: Moment,
     runtime_code: Vec<u8>,
     tx_range: bool,
+    is_inherent: bool,
 }
 
 impl FraudProofHostFunctions for MockDomainFraudProofExtension {
@@ -300,6 +302,9 @@ impl FraudProofHostFunctions for MockDomainFraudProofExtension {
             }
             FraudProofVerificationInfoRequest::TxRangeCheck { .. } => {
                 FraudProofVerificationInfoResponse::TxRangeCheck(self.tx_range)
+            }
+            FraudProofVerificationInfoRequest::InherentExtrinsicCheck { .. } => {
+                FraudProofVerificationInfoResponse::InherentExtrinsicCheck(self.is_inherent)
             }
         };
 
@@ -968,6 +973,7 @@ fn test_invalid_domain_extrinsic_root_proof() {
         timestamp: 1000,
         runtime_code: vec![1, 2, 3, 4],
         tx_range: true,
+        is_inherent: true,
     }));
     ext.register_extension(fraud_proof_ext);
 
@@ -989,6 +995,152 @@ fn generate_invalid_domain_extrinsic_root_fraud_proof<T: Config + pallet_timesta
         domain_id,
         bad_receipt_hash,
         valid_bundle_digests,
+    })
+}
+
+#[test]
+fn test_true_invalid_bundles_inherent_extrinsic_proof() {
+    let creator = 0u64;
+    let operator_id = 1u64;
+    let head_domain_number = 10;
+    let mut ext = new_test_ext_with_extensions();
+    let fraud_proof = ext.execute_with(|| {
+        let domain_id = register_genesis_domain(creator, vec![operator_id]);
+        extend_block_tree(domain_id, operator_id, head_domain_number + 1);
+        assert_eq!(
+            HeadReceiptNumber::<Test>::get(domain_id),
+            head_domain_number
+        );
+
+        let inherent_extrinsic = vec![1, 2, 3].encode();
+        let extrinsics = vec![inherent_extrinsic];
+        let bundle_extrinsic_root =
+            BlakeTwo256::ordered_trie_root(extrinsics.clone(), StateVersion::V1);
+
+        let bad_receipt_at = 8;
+        let mut domain_block = get_block_tree_node_at::<Test>(domain_id, bad_receipt_at).unwrap();
+        let bad_receipt = &mut domain_block.execution_receipt;
+        // bad receipt marks this particular bundle as valid even though bundle contains inherent extrinsic
+        bad_receipt.inboxed_bundles =
+            vec![InboxedBundle::valid(H256::random(), bundle_extrinsic_root)];
+        bad_receipt.domain_block_extrinsic_root = H256::random();
+
+        let bad_receipt_hash = bad_receipt.hash::<DomainHashingFor<Test>>();
+        let fraud_proof = generate_invalid_bundle_inherent_extrinsic_fraud_proof::<Test>(
+            domain_id,
+            bad_receipt_hash,
+            0,
+            0,
+            extrinsics,
+            true,
+        );
+        let (consensus_block_number, consensus_block_hash) = (
+            bad_receipt.consensus_block_number,
+            bad_receipt.consensus_block_hash,
+        );
+        ConsensusBlockHash::<Test>::insert(domain_id, consensus_block_number, consensus_block_hash);
+        BlockTreeNodes::<Test>::insert(bad_receipt_hash, domain_block);
+        fraud_proof
+    });
+
+    let fraud_proof_ext = FraudProofExtension::new(Arc::new(MockDomainFraudProofExtension {
+        block_randomness: Randomness::from([1u8; 32]),
+        timestamp: 1000,
+        runtime_code: vec![1, 2, 3, 4],
+        tx_range: true,
+        // return `true` indicating this is an inherent extrinsic
+        is_inherent: true,
+    }));
+    ext.register_extension(fraud_proof_ext);
+
+    ext.execute_with(|| {
+        assert_ok!(Domains::validate_fraud_proof(&fraud_proof),);
+    })
+}
+
+#[test]
+fn test_false_invalid_bundles_inherent_extrinsic_proof() {
+    let creator = 0u64;
+    let operator_id = 1u64;
+    let head_domain_number = 10;
+    let mut ext = new_test_ext_with_extensions();
+    let fraud_proof = ext.execute_with(|| {
+        let domain_id = register_genesis_domain(creator, vec![operator_id]);
+        extend_block_tree(domain_id, operator_id, head_domain_number + 1);
+        assert_eq!(
+            HeadReceiptNumber::<Test>::get(domain_id),
+            head_domain_number
+        );
+
+        let non_inherent_extrinsic = vec![1, 2, 3].encode();
+        let extrinsics = vec![non_inherent_extrinsic];
+        let bundle_extrinsic_root =
+            BlakeTwo256::ordered_trie_root(extrinsics.clone(), StateVersion::V1);
+
+        let bad_receipt_at = 8;
+        let mut domain_block = get_block_tree_node_at::<Test>(domain_id, bad_receipt_at).unwrap();
+        let bad_receipt = &mut domain_block.execution_receipt;
+        // bad receipt marks this bundle as invalid even though bundle do not contain inherent extrinsic.
+        bad_receipt.inboxed_bundles = vec![InboxedBundle::invalid(
+            InvalidBundleType::InherentExtrinsic(0),
+            bundle_extrinsic_root,
+        )];
+        bad_receipt.domain_block_extrinsic_root = H256::random();
+
+        let bad_receipt_hash = bad_receipt.hash::<DomainHashingFor<Test>>();
+        let fraud_proof = generate_invalid_bundle_inherent_extrinsic_fraud_proof::<Test>(
+            domain_id,
+            bad_receipt_hash,
+            0,
+            0,
+            extrinsics,
+            false,
+        );
+        let (consensus_block_number, consensus_block_hash) = (
+            bad_receipt.consensus_block_number,
+            bad_receipt.consensus_block_hash,
+        );
+        ConsensusBlockHash::<Test>::insert(domain_id, consensus_block_number, consensus_block_hash);
+        BlockTreeNodes::<Test>::insert(bad_receipt_hash, domain_block);
+        fraud_proof
+    });
+
+    let fraud_proof_ext = FraudProofExtension::new(Arc::new(MockDomainFraudProofExtension {
+        block_randomness: Randomness::from([1u8; 32]),
+        timestamp: 1000,
+        runtime_code: vec![1, 2, 3, 4],
+        tx_range: true,
+        // return `false` indicating this is not an inherent extrinsic
+        is_inherent: false,
+    }));
+    ext.register_extension(fraud_proof_ext);
+
+    ext.execute_with(|| {
+        assert_ok!(Domains::validate_fraud_proof(&fraud_proof),);
+    })
+}
+
+fn generate_invalid_bundle_inherent_extrinsic_fraud_proof<T: Config>(
+    domain_id: DomainId,
+    bad_receipt_hash: ReceiptHashFor<T>,
+    bundle_index: u32,
+    bundle_extrinsic_index: u32,
+    bundle_extrinsics: Vec<Vec<u8>>,
+    is_true_invalid_fraud_proof: bool,
+) -> FraudProof<BlockNumberFor<T>, T::Hash, T::DomainHeader> {
+    let extrinsic_inclusion_proof =
+        StorageProofProvider::<LayoutV1<BlakeTwo256>>::generate_enumerated_proof_of_inclusion(
+            bundle_extrinsics.as_slice(),
+            bundle_extrinsic_index,
+        )
+        .unwrap();
+    FraudProof::InvalidBundles(InvalidBundlesFraudProof {
+        domain_id,
+        bad_receipt_hash,
+        bundle_index,
+        invalid_bundle_type: InvalidBundleType::InherentExtrinsic(bundle_extrinsic_index),
+        extrinsic_inclusion_proof,
+        is_true_invalid_fraud_proof,
     })
 }
 

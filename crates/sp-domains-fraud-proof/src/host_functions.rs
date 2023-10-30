@@ -253,6 +253,30 @@ where
             &domain_tx_range,
         ).ok()
     }
+
+    fn is_inherent_extrinsic(
+        &self,
+        consensus_block_hash: H256,
+        domain_id: DomainId,
+        opaque_extrinsic: OpaqueExtrinsic,
+    ) -> Option<bool> {
+        let runtime_code = self.get_domain_runtime_code(consensus_block_hash, domain_id)?;
+
+        let domain_runtime_api_light =
+            RuntimeApiLight::new(self.executor.clone(), runtime_code.into());
+
+        let encoded_extrinsic = opaque_extrinsic.encode();
+        let extrinsic =
+            <DomainBlock as BlockT>::Extrinsic::decode(&mut encoded_extrinsic.as_slice()).ok()?;
+
+        <RuntimeApiLight<Executor> as domain_runtime_primitives::DomainCoreApi<
+            DomainBlock,
+        >>::is_inherent_extrinsic(
+            &domain_runtime_api_light,
+            Default::default(), // Doesn't matter for RuntimeApiLight
+            &extrinsic
+        ).ok()
+    }
 }
 
 impl<Block, Client, DomainBlock, Executor> FraudProofHostFunctions
@@ -317,6 +341,14 @@ where
                 )
                 .map(|is_tx_in_range| {
                     FraudProofVerificationInfoResponse::TxRangeCheck(is_tx_in_range)
+                }),
+            FraudProofVerificationInfoRequest::InherentExtrinsicCheck {
+                domain_id,
+                opaque_extrinsic,
+            } => self
+                .is_inherent_extrinsic(consensus_block_hash, domain_id, opaque_extrinsic)
+                .map(|is_inherent| {
+                    FraudProofVerificationInfoResponse::InherentExtrinsicCheck(is_inherent)
                 }),
         }
     }
