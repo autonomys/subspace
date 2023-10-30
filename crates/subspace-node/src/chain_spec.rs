@@ -16,8 +16,11 @@
 
 //! Subspace chain configurations.
 
-use crate::chain_spec_utils::{chain_spec_properties, get_account_id_from_seed};
+use crate::chain_spec_utils::{
+    chain_spec_properties, get_account_id_from_seed, get_public_key_from_seed,
+};
 use crate::domain::evm_chain_spec::{self, SpecId};
+use hex_literal::hex;
 use parity_scale_codec::Encode;
 use sc_service::{ChainType, NoExtension};
 use sc_subspace_chain_specs::ConsensusChainSpec;
@@ -25,8 +28,9 @@ use sc_telemetry::TelemetryEndpoints;
 use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::crypto::{Ss58Codec, UncheckedFrom};
 use sp_domains::storage::RawGenesis;
-use sp_domains::{OperatorAllowList, RuntimeType};
+use sp_domains::{OperatorAllowList, OperatorPublicKey, RuntimeType};
 use sp_runtime::{BuildStorage, Percent};
+use std::collections::btree_set::BTreeSet;
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use subspace_core_primitives::PotKey;
@@ -91,6 +95,12 @@ struct GenesisParams {
     confirmation_depth_k: u32,
 }
 
+struct GenesisDomainParams {
+    domain_name: String,
+    operator_allow_list: OperatorAllowList<AccountId>,
+    operator_signing_key: OperatorPublicKey,
+}
+
 pub fn gemini_3g_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String> {
     Ok(ConsensusChainSpec::from_genesis(
         // Name
@@ -143,7 +153,7 @@ pub fn gemini_3g_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, 
             subspace_genesis_config(
                 SpecId::Gemini,
                 WASM_BINARY.expect("Wasm binary must be built for Gemini"),
-                sudo_account,
+                sudo_account.clone(),
                 balances,
                 vesting_schedules,
                 GenesisParams {
@@ -160,6 +170,15 @@ pub fn gemini_3g_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, 
                     enable_domains: true,
                     enable_balance_transfers: true,
                     confirmation_depth_k: 100, // TODO: Proper value here
+                },
+                GenesisDomainParams {
+                    domain_name: "nova".to_owned(),
+                    operator_allow_list: OperatorAllowList::Operators(BTreeSet::from_iter(vec![
+                        sudo_account,
+                    ])),
+                    operator_signing_key: OperatorPublicKey::unchecked_from(hex!(
+                        "aa3b05b4d649666723e099cf3bafc2f2c04160ebe0e16ddc82f72d6ed97c4b6b"
+                    )),
                 },
             )
         },
@@ -259,6 +278,13 @@ pub fn devnet_config_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfi
                     enable_balance_transfers: true,
                     confirmation_depth_k: 100, // TODO: Proper value here
                 },
+                GenesisDomainParams {
+                    domain_name: "evm-domain".to_owned(),
+                    operator_allow_list: OperatorAllowList::Anyone,
+                    operator_signing_key: OperatorPublicKey::unchecked_from(hex!(
+                        "aa3b05b4d649666723e099cf3bafc2f2c04160ebe0e16ddc82f72d6ed97c4b6b"
+                    )),
+                },
             )
         },
         // Bootnodes
@@ -316,6 +342,11 @@ pub fn dev_config() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String> 
                     enable_domains: true,
                     enable_balance_transfers: true,
                     confirmation_depth_k: 5,
+                },
+                GenesisDomainParams {
+                    domain_name: "evm-domain".to_owned(),
+                    operator_allow_list: OperatorAllowList::Anyone,
+                    operator_signing_key: get_public_key_from_seed::<OperatorPublicKey>("Alice"),
                 },
             )
         },
@@ -380,6 +411,11 @@ pub fn local_config() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String
                     enable_balance_transfers: true,
                     confirmation_depth_k: 1,
                 },
+                GenesisDomainParams {
+                    domain_name: "evm-domain".to_owned(),
+                    operator_allow_list: OperatorAllowList::Anyone,
+                    operator_signing_key: get_public_key_from_seed::<OperatorPublicKey>("Alice"),
+                },
             )
         },
         // Bootnodes
@@ -412,6 +448,7 @@ fn subspace_genesis_config(
     // who, start, period, period_count, per_period
     vesting: Vec<(AccountId, BlockNumber, BlockNumber, u32, Balance)>,
     genesis_params: GenesisParams,
+    genesis_domain_params: GenesisDomainParams,
 ) -> RuntimeGenesisConfig {
     let GenesisParams {
         enable_rewards,
@@ -423,10 +460,8 @@ fn subspace_genesis_config(
         confirmation_depth_k,
     } = genesis_params;
 
-    let (domain_genesis_config, genesis_domain_params) =
-        evm_chain_spec::get_testnet_genesis_by_spec_id(spec_id);
-
     let raw_genesis_storage = {
+        let domain_genesis_config = evm_chain_spec::get_testnet_genesis_by_spec_id(spec_id);
         let storage = domain_genesis_config
             .build_storage()
             .expect("Failed to build genesis storage from genesis runtime config");
@@ -468,12 +503,12 @@ fn subspace_genesis_config(
 
                 // Domain config, mainly for placeholder the concrete value TBD
                 owner_account_id: sudo_account,
-                domain_name: "evm-domain".to_owned(),
+                domain_name: genesis_domain_params.domain_name,
                 max_block_size: MaxDomainBlockSize::get(),
                 max_block_weight: MaxDomainBlockWeight::get(),
                 bundle_slot_probability: (1, 1),
                 target_bundles_per_block: 10,
-                operator_allow_list: OperatorAllowList::Anyone,
+                operator_allow_list: genesis_domain_params.operator_allow_list,
                 signing_key: genesis_domain_params.operator_signing_key,
                 nomination_tax: Percent::from_percent(5),
                 minimum_nominator_stake: 100 * SSC,
