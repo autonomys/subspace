@@ -603,7 +603,8 @@ parameter_types! {
     pub const StakeEpochDuration: DomainNumber = 100;
     pub TreasuryAccount: AccountId = PalletId(*b"treasury").into_account_truncating();
     pub const MaxPendingStakingOperation: u32 = 100;
-    pub const MaxNominators: u32 = 100;
+    // TODO: reset `MaxNominators` back to `100` once the gemini-3g chain spec is created
+    pub const MaxNominators: u32 = 0;
 }
 
 impl pallet_domains::Config for Runtime {
