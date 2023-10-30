@@ -20,11 +20,16 @@ subspace-core-primitives = { version = "0.1.0", path = "../subspace-core-primiti
 thiserror = { version = "1.0.48", optional = true }
 
 [dev-dependencies]
+core_affinity = "0.8.1"
 criterion = "0.5.1"
 rand = "0.8.5"
 
 [[bench]]
 name = "pot"
+harness = false
+
+[[bench]]
+name = "pot-compare-cpu-cores"
 harness = false
 
 [features]
