@@ -89,14 +89,14 @@ pub fn local_testnet_config<F: Fn() -> RuntimeGenesisConfig + 'static + Send + S
     )
 }
 
-pub fn gemini_3f_config<F: Fn() -> RuntimeGenesisConfig + 'static + Send + Sync>(
+pub fn gemini_3g_config<F: Fn() -> RuntimeGenesisConfig + 'static + Send + Sync>(
     constructor: F,
 ) -> ExecutionChainSpec<RuntimeGenesisConfig> {
     ExecutionChainSpec::from_genesis(
         // Name
-        "Subspace Gemini 3f EVM Domain",
+        "Subspace Gemini 3g EVM Domain",
         // ID
-        "subspace_gemini_3f_evm_domain",
+        "subspace_gemini_3g_evm_domain",
         ChainType::Live,
         constructor,
         // Bootnodes
@@ -104,7 +104,7 @@ pub fn gemini_3f_config<F: Fn() -> RuntimeGenesisConfig + 'static + Send + Sync>
         // Telemetry
         None,
         // Protocol ID
-        Some("subspace-gemini-3f-evm-domain"),
+        Some("subspace-gemini-3g-evm-domain"),
         None,
         // Properties
         Some(chain_spec_properties()),
@@ -143,7 +143,7 @@ pub fn load_chain_spec(spec_id: &str) -> Result<Box<dyn sc_cli::ChainSpec>, Stri
 
     let chain_spec = match spec_id {
         "dev" => development_config(move || constructor(SpecId::Dev)),
-        "gemini-3f" => gemini_3f_config(move || constructor(SpecId::Gemini)),
+        "gemini-3g" => gemini_3g_config(move || constructor(SpecId::Gemini)),
         "devnet" => devnet_config(move || constructor(SpecId::DevNet)),
         "" | "local" => local_testnet_config(move || constructor(SpecId::Local)),
         path => ChainSpec::from_json_file(std::path::PathBuf::from(path))?,
@@ -243,7 +243,7 @@ pub fn create_domain_spec(
     let constructor = RuntimeGenesisConfig::default;
     let mut chain_spec = match chain_id {
         "dev" => development_config(constructor),
-        "gemini-3f" => gemini_3f_config(constructor),
+        "gemini-3g" => gemini_3g_config(constructor),
         "devnet" => devnet_config(constructor),
         "" | "local" => local_testnet_config(constructor),
         path => ChainSpec::from_json_file(std::path::PathBuf::from(path))?,
