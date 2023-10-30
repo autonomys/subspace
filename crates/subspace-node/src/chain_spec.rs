@@ -91,13 +91,13 @@ struct GenesisParams {
     confirmation_depth_k: u32,
 }
 
-pub fn gemini_3f_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String> {
+pub fn gemini_3g_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String> {
     Ok(ConsensusChainSpec::from_genesis(
         // Name
-        "Subspace Gemini 3f",
+        "Subspace Gemini 3g",
         // ID
-        "subspace_gemini_3f",
-        ChainType::Custom("Subspace Gemini 3f".to_string()),
+        "subspace_gemini_3g",
+        ChainType::Custom("Subspace Gemini 3g".to_string()),
         || {
             let sudo_account =
                 AccountId::from_ss58check("5DNwQTHfARgKoa2NdiUM51ZUow7ve5xG9S2yYdSbVQcnYxBA")
@@ -171,7 +171,7 @@ pub fn gemini_3f_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, 
                 .map_err(|error| error.to_string())?,
         ),
         // Protocol ID
-        Some("subspace-gemini-3f"),
+        Some("subspace-gemini-3g"),
         None,
         // Properties
         Some({
@@ -187,8 +187,8 @@ pub fn gemini_3f_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, 
     ))
 }
 
-pub fn gemini_3f_config() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String> {
-    unimplemented!("Please use release prefixed with Gemini-3f.")
+pub fn gemini_3g_config() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String> {
+    unimplemented!("Please use release prefixed with Gemini-3g.")
 }
 
 pub fn devnet_config() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String> {
