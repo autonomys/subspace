@@ -2583,6 +2583,7 @@ dependencies = [
  "futures-timer",
  "pallet-balances",
  "pallet-domains",
+ "pallet-timestamp",
  "parity-scale-codec",
  "parking_lot 0.12.1",
  "sc-cli",
