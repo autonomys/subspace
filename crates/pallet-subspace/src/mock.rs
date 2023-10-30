@@ -461,7 +461,7 @@ pub fn create_signed_vote(
             sector_index,
             piece_getter: archived_history_segment,
             piece_getter_retry_policy: PieceGetterRetryPolicy::default(),
-            farmer_protocol_info: &farmer_protocol_info,
+            farmer_protocol_info,
             kzg,
             erasure_coding,
             pieces_in_sector,

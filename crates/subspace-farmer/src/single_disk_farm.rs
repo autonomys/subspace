@@ -575,7 +575,7 @@ impl SingleDiskFarm {
     ) -> Result<Self, SingleDiskFarmError>
     where
         NC: NodeClient,
-        PG: PieceGetter + Clone + Send + 'static,
+        PG: PieceGetter + Clone + Send + Sync + 'static,
         PosTable: Table,
     {
         let SingleDiskFarmOptions {
@@ -850,7 +850,7 @@ impl SingleDiskFarm {
         let (start_sender, mut start_receiver) = broadcast::channel::<()>(1);
         let (stop_sender, mut stop_receiver) = broadcast::channel::<()>(1);
         let modifying_sector_index = Arc::<RwLock<Option<SectorIndex>>>::default();
-        let (sectors_to_plot_sender, sectors_to_plot_receiver) = mpsc::channel(0);
+        let (sectors_to_plot_sender, sectors_to_plot_receiver) = mpsc::channel(1);
         // Some sectors may already be plotted, skip them
         let sectors_indices_left_to_plot =
             metadata_header.plotted_sector_count..target_sector_count;
@@ -937,7 +937,7 @@ impl SingleDiskFarm {
 
                     let plotting_options = PlottingOptions {
                         public_key,
-                        node_client,
+                        node_client: &node_client,
                         pieces_in_sector,
                         sector_size,
                         sector_metadata_size,
@@ -945,17 +945,17 @@ impl SingleDiskFarm {
                         plot_file,
                         metadata_file,
                         sectors_metadata,
-                        piece_getter,
-                        kzg,
-                        erasure_coding,
+                        piece_getter: &piece_getter,
+                        kzg: &kzg,
+                        erasure_coding: &erasure_coding,
                         handlers,
                         modifying_sector_index,
                         sectors_to_plot_receiver,
                         downloading_semaphore,
-                        encoding_semaphore,
+                        encoding_semaphore: &encoding_semaphore,
                         plotting_thread_pool,
                         replotting_thread_pool,
-                        stop_receiver: stop_receiver.resubscribe(),
+                        stop_receiver: &mut stop_receiver.resubscribe(),
                     };
 
                     let plotting_fut = plotting::<_, _, PosTable>(plotting_options);
