@@ -779,11 +779,6 @@ mod pallet {
             let receipt = opaque_bundle.into_receipt();
 
             match execution_receipt_type::<T>(domain_id, &receipt) {
-                // The stale receipt should not be further processed, but we still track them for purposes
-                // of measuring the bundle production rate.
-                ReceiptType::Stale => {
-                    return Ok(());
-                }
                 ReceiptType::Rejected(rejected_receipt_type) => {
                     return Err(Error::<T>::BlockTree(rejected_receipt_type.into()).into());
                 }

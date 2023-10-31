@@ -24,6 +24,8 @@ pub enum Error {
     BuiltOnUnknownConsensusBlock,
     InFutureReceipt,
     PrunedReceipt,
+    StaleReceipt,
+    NewBranchReceipt,
     BadGenesisReceipt,
     UnexpectedReceiptType,
     MaxHeadDomainNumber,
@@ -49,9 +51,7 @@ pub struct BlockTreeNode<Number, Hash, DomainNumber, DomainHash, Balance> {
 pub(crate) enum AcceptedReceiptType {
     // New head receipt that extend the longest branch
     NewHead,
-    // Receipt that creates a new branch of the block tree
-    NewBranch,
-    // Receipt that comfirms the current head receipt
+    // Receipt that confirms the current head receipt
     CurrentHead,
 }
 
@@ -61,6 +61,13 @@ pub(crate) enum RejectedReceiptType {
     InFuture,
     // Receipt that already been pruned
     Pruned,
+    // Receipt that confirm a non-head receipt
+    Stale,
+    // Receipt that tries to create a new branch of the block tree
+    //
+    // The honests operatpr must submit fraud proof to prune the bad receipt at the
+    // same height before submitting the valid receipt.
+    NewBranch,
 }
 
 impl From<RejectedReceiptType> for Error {
@@ -68,6 +75,8 @@ impl From<RejectedReceiptType> for Error {
         match rejected_receipt {
             RejectedReceiptType::InFuture => Error::InFutureReceipt,
             RejectedReceiptType::Pruned => Error::PrunedReceipt,
+            RejectedReceiptType::Stale => Error::StaleReceipt,
+            RejectedReceiptType::NewBranch => Error::NewBranchReceipt,
         }
     }
 }
@@ -77,8 +86,6 @@ impl From<RejectedReceiptType> for Error {
 pub(crate) enum ReceiptType {
     Accepted(AcceptedReceiptType),
     Rejected(RejectedReceiptType),
-    // Receipt that comfirm a non-head receipt
-    Stale,
 }
 
 /// Get the receipt type of the given receipt based on the current block tree state
@@ -103,13 +110,13 @@ pub(crate) fn execution_receipt_type<T: Config>(
                 ReceiptType::Rejected(RejectedReceiptType::Pruned)
             } else if !already_exist {
                 // Create new branch
-                ReceiptType::Accepted(AcceptedReceiptType::NewBranch)
+                ReceiptType::Rejected(RejectedReceiptType::NewBranch)
             } else if receipt_number == head_receipt_number {
-                // Add comfirm to the current head receipt
+                // Add confirm to the current head receipt
                 ReceiptType::Accepted(AcceptedReceiptType::CurrentHead)
             } else {
-                // Add comfirm to a non-head receipt
-                ReceiptType::Stale
+                // Add confirm to a non-head receipt
+                ReceiptType::Rejected(RejectedReceiptType::Stale)
             }
         }
     }
@@ -215,7 +222,8 @@ pub(crate) fn verify_execution_receipt<T: Config>(
             );
             Err(Error::PrunedReceipt)
         }
-        ReceiptType::Accepted(_) | ReceiptType::Stale => Ok(()),
+        ReceiptType::Rejected(rejected_receipt_type) => Err(rejected_receipt_type.into()),
+        ReceiptType::Accepted(_) => Ok(()),
     }
 }
 
@@ -240,9 +248,6 @@ pub(crate) fn process_execution_receipt<T: Config>(
     receipt_type: AcceptedReceiptType,
 ) -> ProcessExecutionReceiptResult<T> {
     match receipt_type {
-        AcceptedReceiptType::NewBranch => {
-            add_new_receipt_to_block_tree::<T>(domain_id, submitter, execution_receipt);
-        }
         AcceptedReceiptType::NewHead => {
             let domain_block_number = execution_receipt.domain_block_number;
 
@@ -619,7 +624,7 @@ mod tests {
             let domain_id = register_genesis_domain(creator, vec![operator_id1, operator_id2]);
             extend_block_tree(domain_id, operator_id1, 3);
 
-            // Receipt that comfirm a non-head receipt is stale receipt
+            // Receipt that confirm a non-head receipt is stale receipt
             let head_receipt_number = HeadReceiptNumber::<Test>::get(domain_id);
             let stale_receipt = get_block_tree_node_at::<Test>(domain_id, head_receipt_number - 1)
                 .unwrap()
@@ -629,21 +634,21 @@ mod tests {
             // Stale receipt can pass the verification
             assert_eq!(
                 execution_receipt_type::<Test>(domain_id, &stale_receipt),
-                ReceiptType::Stale
+                ReceiptType::Rejected(RejectedReceiptType::Stale)
             );
-            assert_ok!(verify_execution_receipt::<Test>(domain_id, &stale_receipt));
+            assert_err!(
+                verify_execution_receipt::<Test>(domain_id, &stale_receipt),
+                Error::StaleReceipt
+            );
 
-            // Stale receipt can be submitted but won't be added to the block tree
+            // Stale receipt will be rejected and won't be added to the block tree
             let bundle = create_dummy_bundle_with_receipts(
                 domain_id,
                 operator_id2,
                 H256::random(),
                 stale_receipt,
             );
-            assert_ok!(crate::Pallet::<Test>::submit_bundle(
-                RawOrigin::None.into(),
-                bundle,
-            ));
+            assert!(crate::Pallet::<Test>::submit_bundle(RawOrigin::None.into(), bundle,).is_err());
 
             assert_eq!(
                 BlockTreeNodes::<Test>::get(stale_receipt_hash)
@@ -685,35 +690,22 @@ mod tests {
             // New branch receipt can pass the verification
             assert_eq!(
                 execution_receipt_type::<Test>(domain_id, &new_branch_receipt),
-                ReceiptType::Accepted(AcceptedReceiptType::NewBranch)
+                ReceiptType::Rejected(RejectedReceiptType::NewBranch)
             );
-            assert_ok!(verify_execution_receipt::<Test>(
-                domain_id,
-                &new_branch_receipt
-            ));
+            assert_err!(
+                verify_execution_receipt::<Test>(domain_id, &new_branch_receipt),
+                Error::NewBranchReceipt
+            );
 
-            // Submit the new branch receipt will create fork in the block tree
+            // Submit the new branch receipt will will be rejected
             let bundle = create_dummy_bundle_with_receipts(
                 domain_id,
                 operator_id2,
                 H256::random(),
                 new_branch_receipt,
             );
-            assert_ok!(crate::Pallet::<Test>::submit_bundle(
-                RawOrigin::None.into(),
-                bundle,
-            ));
-
-            let nodes = BlockTree::<Test>::get(domain_id, head_receipt_number);
-            assert_eq!(nodes.len(), 2);
-            for n in nodes.iter() {
-                let node = BlockTreeNodes::<Test>::get(n).unwrap();
-                if *n == new_branch_receipt_hash {
-                    assert_eq!(node.operator_ids, vec![operator_id2]);
-                } else {
-                    assert_eq!(node.operator_ids, vec![operator_id1]);
-                }
-            }
+            assert!(crate::Pallet::<Test>::submit_bundle(RawOrigin::None.into(), bundle).is_err());
+            assert!(BlockTreeNodes::<Test>::get(new_branch_receipt_hash).is_none());
         });
     }
 
