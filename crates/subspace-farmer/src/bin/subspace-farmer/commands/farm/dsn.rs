@@ -42,6 +42,7 @@ pub(super) fn configure_dsn(
         pending_out_connections,
         target_connections,
         external_addresses,
+        disable_bootstrap_on_start,
     }: DsnArgs,
     weak_readers_and_pieces: Weak<Mutex<Option<ReadersAndPieces>>>,
     node_client: NodeRpcClient,
@@ -194,6 +195,7 @@ pub(super) fn configure_dsn(
         },
         external_addresses,
         metrics,
+        disable_bootstrap_on_start,
         ..default_config
     };
 
