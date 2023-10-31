@@ -252,6 +252,8 @@ pub struct Config<LocalRecordProvider> {
     pub external_addresses: Vec<Multiaddr>,
     /// Enable autonat protocol. Helps detecting whether we're behind the firewall.
     pub enable_autonat: bool,
+    /// Defines whether we should run blocking Kademlia bootstrap() operation before other requests.
+    pub disable_bootstrap_on_start: bool,
 }
 
 impl<LocalRecordProvider> fmt::Debug for Config<LocalRecordProvider> {
@@ -370,6 +372,7 @@ where
             kademlia_mode: KademliaMode::Static(Mode::Client),
             external_addresses: Vec::new(),
             enable_autonat: true,
+            disable_bootstrap_on_start: false,
         }
     }
 }
@@ -433,6 +436,7 @@ where
         kademlia_mode,
         external_addresses,
         enable_autonat,
+        disable_bootstrap_on_start,
     } = config;
     let local_peer_id = peer_id(&keypair);
 
@@ -557,6 +561,7 @@ where
             bootstrap_addresses,
             kademlia_mode,
             external_addresses,
+            disable_bootstrap_on_start,
         });
 
     Ok((node, node_runner))
