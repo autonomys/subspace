@@ -4,12 +4,13 @@ use codec::Encode;
 use domain_runtime_primitives::DomainCoreApi;
 use futures::{select, FutureExt};
 use sc_client_api::{AuxStore, BlockBackend};
-use sc_transaction_pool_api::InPoolTransaction;
+use sc_transaction_pool_api::{InPoolTransaction, TransactionSource};
 use sp_api::{HeaderT, NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_domains::{BundleHeader, ExecutionReceipt, HeaderHashingFor, ProofOfElection};
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, One, Zero};
+use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use sp_weights::Weight;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -49,7 +50,7 @@ where
     CBlock: BlockT,
     NumberFor<Block>: Into<NumberFor<CBlock>>,
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
-    Client::Api: BlockBuilder<Block> + DomainCoreApi<Block>,
+    Client::Api: BlockBuilder<Block> + DomainCoreApi<Block> + TaggedTransactionQueue<Block>,
     CClient: HeaderBackend<CBlock>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {
@@ -114,32 +115,59 @@ where
                     );
                 })
                 .unwrap_or(false);
-
-            if is_within_tx_range {
-                let tx_weight = self
-                    .client
-                    .runtime_api()
-                    .extrinsic_weight(parent_hash, pending_tx_data)
-                    .map_err(|error| {
-                        sp_blockchain::Error::Application(Box::from(format!(
-                            "Error getting extrinsic weight: {error}"
-                        )))
-                    })?;
-                let next_estimated_bundle_weight =
-                    estimated_bundle_weight.saturating_add(tx_weight);
-                if next_estimated_bundle_weight.any_gt(domain_block_limit.max_block_weight) {
-                    break;
-                }
-
-                let next_bundle_size = bundle_size + pending_tx_data.encoded_size() as u32;
-                if next_bundle_size > domain_block_limit.max_block_size {
-                    break;
-                }
-
-                estimated_bundle_weight = next_estimated_bundle_weight;
-                bundle_size = next_bundle_size;
-                extrinsics.push(pending_tx_data.clone());
+            if !is_within_tx_range {
+                continue;
             }
+
+            // Double check the transaction validity, because the tx pool are re-validate the transaction
+            // in pool asynchronously so there is race condition that the operator imported a domain block
+            // and start producing bundle immediately before the re-validation based on the latest block
+            // is finished, cause the bundle contains illegal tx accidentally and being considered as invalid
+            // bundle and slashing on the honest operator.
+            //
+            // NOTE: this check need tp keep aligned with how the illegal tx is detected in the block-preprocessor
+            // thus when https://github.com/subspace/subspace/issues/2184 is implemented, we also need to
+            // perfome the check for bundle as a whole instead of checking tx one by one.
+            let transaction_validity = self
+                .client
+                .runtime_api()
+                .validate_transaction(
+                    parent_hash,
+                    TransactionSource::External,
+                    pending_tx_data.clone(),
+                    parent_hash,
+                )
+                .map_err(|error| {
+                    sp_blockchain::Error::Application(Box::from(format!(
+                        "Error getting transaction validity: {error}"
+                    )))
+                })?;
+            if transaction_validity.is_err() {
+                continue;
+            }
+
+            let tx_weight = self
+                .client
+                .runtime_api()
+                .extrinsic_weight(parent_hash, pending_tx_data)
+                .map_err(|error| {
+                    sp_blockchain::Error::Application(Box::from(format!(
+                        "Error getting extrinsic weight: {error}"
+                    )))
+                })?;
+            let next_estimated_bundle_weight = estimated_bundle_weight.saturating_add(tx_weight);
+            if next_estimated_bundle_weight.any_gt(domain_block_limit.max_block_weight) {
+                break;
+            }
+
+            let next_bundle_size = bundle_size + pending_tx_data.encoded_size() as u32;
+            if next_bundle_size > domain_block_limit.max_block_size {
+                break;
+            }
+
+            estimated_bundle_weight = next_estimated_bundle_weight;
+            bundle_size = next_bundle_size;
+            extrinsics.push(pending_tx_data.clone());
         }
 
         let extrinsics_root = HeaderHashingFor::<Block::Header>::ordered_trie_root(

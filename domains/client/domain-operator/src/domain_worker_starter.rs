@@ -35,6 +35,7 @@ use sp_core::H256;
 use sp_domains::{BundleProducerElectionApi, DomainsApi};
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::NumberFor;
+use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::sync::Arc;
 use subspace_runtime_primitives::Balance;
 use tracing::{info, Instrument};
@@ -84,7 +85,8 @@ pub(super) async fn start_worker<
     Client::Api: DomainCoreApi<Block>
         + MessengerApi<Block, NumberFor<Block>>
         + BlockBuilder<Block>
-        + sp_api::ApiExt<Block>,
+        + sp_api::ApiExt<Block>
+        + TaggedTransactionQueue<Block>,
     CClient: HeaderBackend<CBlock>
         + HeaderMetadata<CBlock, Error = sp_blockchain::Error>
         + BlockBackend<CBlock>
