@@ -256,10 +256,6 @@ where
     while let Some(reason) = notifications.next().await {
         let prev_sync_mode = sync_mode.swap(SyncMode::Paused, Ordering::AcqRel);
 
-        while notifications.try_next().is_ok() {
-            // Just drain extra messages if there are any
-        }
-
         info!(?reason, "Received notification to sync from DSN");
         // TODO: Maybe handle failed block imports, additional helpful logging
         if let Err(error) = import_blocks_from_dsn(
@@ -280,6 +276,10 @@ where
             initial_sync_mode.take().unwrap_or(prev_sync_mode),
             Ordering::Release,
         );
+
+        while notifications.try_next().is_ok() {
+            // Just drain extra messages if there are any
+        }
     }
 
     Ok(())
