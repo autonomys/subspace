@@ -434,8 +434,6 @@ where
 
     let mut plotting_delay_senders = Vec::with_capacity(disk_farms.len());
 
-    // TODO: Check plot and metadata sizes to ensure there is enough space for farmer to not
-    //  fail later
     for (disk_farm_index, disk_farm) in disk_farms.into_iter().enumerate() {
         debug!(url = %node_rpc_url, %disk_farm_index, "Connecting to node RPC");
         let node_client = NodeRpcClient::new(&node_rpc_url).await?;
