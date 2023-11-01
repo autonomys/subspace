@@ -9,7 +9,6 @@ use futures::channel::mpsc;
 use futures::StreamExt;
 use parking_lot::Mutex;
 use rayon::ThreadPoolBuildError;
-use std::future::Future;
 use std::io;
 use std::sync::Arc;
 use std::time::Instant;
@@ -108,15 +107,12 @@ pub trait PlotAudit<'p> {
     fn audit<'a, PosTable>(
         &'p self,
         options: PlotAuditOptions<'a, PosTable>,
-    ) -> impl Future<
-        Output = Vec<(
-            SectorIndex,
-            impl ProvableSolutions<
-                    Item = Result<Solution<PublicKey, PublicKey>, proving::ProvingError>,
-                > + Unpin
-                + 'a,
-        )>,
-    >
+    ) -> Vec<(
+        SectorIndex,
+        impl ProvableSolutions<Item = Result<Solution<PublicKey, PublicKey>, proving::ProvingError>>
+            + Unpin
+            + 'a,
+    )>
     where
         'p: 'a,
         PosTable: Table;
@@ -181,18 +177,16 @@ where
             let modifying_sector_guard = modifying_sector_index.read().await;
             let maybe_sector_being_modified = modifying_sector_guard.as_ref().copied();
 
-            plot_audit
-                .audit(PlotAuditOptions::<PosTable> {
-                    public_key: &public_key,
-                    reward_address: &reward_address,
-                    slot_info,
-                    sectors_metadata: &sectors_metadata,
-                    kzg: &kzg,
-                    erasure_coding: &erasure_coding,
-                    maybe_sector_being_modified,
-                    table_generator: &table_generator,
-                })
-                .await
+            plot_audit.audit(PlotAuditOptions::<PosTable> {
+                public_key: &public_key,
+                reward_address: &reward_address,
+                slot_info,
+                sectors_metadata: &sectors_metadata,
+                kzg: &kzg,
+                erasure_coding: &erasure_coding,
+                maybe_sector_being_modified,
+                table_generator: &table_generator,
+            })
         };
 
         sectors_solutions.sort_by(|a, b| {
@@ -202,8 +196,8 @@ where
             a_solution_distance.cmp(&b_solution_distance)
         });
 
-        'solutions_processing: for (sector_index, mut sector_solutions) in sectors_solutions {
-            while let Some(maybe_solution) = sector_solutions.next().await {
+        'solutions_processing: for (sector_index, sector_solutions) in sectors_solutions {
+            for maybe_solution in sector_solutions {
                 let solution = match maybe_solution {
                     Ok(solution) => solution,
                     Err(error) => {

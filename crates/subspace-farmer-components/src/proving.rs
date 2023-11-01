@@ -4,13 +4,9 @@ use crate::sector::{
     SectorContentsMap, SectorContentsMapFromBytesError, SectorMetadataChecksummed,
 };
 use crate::{ReadAt, ReadAtSync};
-use futures::Stream;
+use futures::FutureExt;
 use std::collections::VecDeque;
 use std::io;
-use std::pin::Pin;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
-use std::task::{Context, Poll};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
     ChunkWitness, PieceOffset, PosSeed, PublicKey, Record, SBucket, SectorId, Solution,
@@ -21,20 +17,9 @@ use subspace_proof_of_space::Table;
 use thiserror::Error;
 
 /// Solutions that can be proven if necessary.
-///
-/// NOTE: Even though this implements async stream, it will do blocking proof os space table
-/// derivation and should be running on a dedicated thread.
-pub trait ProvableSolutions: Stream {
+pub trait ProvableSolutions: ExactSizeIterator {
     /// Best solution distance found, `None` in case there are no solutions
     fn best_solution_distance(&self) -> Option<SolutionRange>;
-
-    /// Returns the exact remaining number of solutions
-    fn len(&self) -> usize;
-
-    /// Returns `true` if there are no solutions
-    fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
 }
 
 /// Errors that happen during proving
@@ -115,15 +100,15 @@ where
     }
 }
 
-impl<'a, S> SolutionCandidates<'a, S>
+impl<'a, Sector> SolutionCandidates<'a, Sector>
 where
-    S: ReadAtSync + 'a,
+    Sector: ReadAtSync + 'a,
 {
     pub(crate) fn new(
         public_key: &'a PublicKey,
         sector_id: SectorId,
         s_bucket: SBucket,
-        sector: S,
+        sector: Sector,
         sector_metadata: &'a SectorMetadataChecksummed,
         chunk_candidates: VecDeque<ChunkCandidate>,
     ) -> Self {
@@ -148,7 +133,7 @@ where
     }
 
     /// Turn solution candidates into actual solutions
-    pub async fn into_solutions<RewardAddress, PosTable, TableGenerator>(
+    pub fn into_solutions<RewardAddress, PosTable, TableGenerator>(
         self,
         reward_address: &'a RewardAddress,
         kzg: &'a Kzg,
@@ -160,7 +145,7 @@ where
         PosTable: Table,
         TableGenerator: (FnMut(&PosSeed) -> PosTable) + 'a,
     {
-        SolutionsIterator::<'a, RewardAddress>::new::<PosTable, TableGenerator, S>(
+        SolutionsIterator::<'a, _, PosTable, _, _>::new(
             self.public_key,
             reward_address,
             self.sector_id,
@@ -175,9 +160,11 @@ where
     }
 }
 
-struct SolutionsIteratorState<'a, RewardAddress, PosTable, TableGenerator, Sector>
+type MaybeSolution<RewardAddress> = Result<Solution<PublicKey, RewardAddress>, ProvingError>;
+
+struct SolutionsIterator<'a, RewardAddress, PosTable, TableGenerator, Sector>
 where
-    Sector: 'a,
+    Sector: ReadAtSync + 'a,
     PosTable: Table,
     TableGenerator: (FnMut(&PosSeed) -> PosTable) + 'a,
 {
@@ -190,73 +177,163 @@ where
     kzg: &'a Kzg,
     erasure_coding: &'a ErasureCoding,
     sector_contents_map: SectorContentsMap,
-    sector: Sector,
+    sector: ReadAt<Sector, !>,
     winning_chunks: VecDeque<WinningChunk>,
-    count: Arc<AtomicUsize>,
+    count: usize,
+    best_solution_distance: Option<SolutionRange>,
     table_generator: TableGenerator,
 }
 
-type MaybeSolution<RewardAddress> = Result<Solution<PublicKey, RewardAddress>, ProvingError>;
-
-#[pin_project::pin_project]
-struct SolutionsIterator<'a, RewardAddress> {
-    #[pin]
-    stream: Pin<Box<dyn Stream<Item = MaybeSolution<RewardAddress>> + 'a>>,
-    count: Arc<AtomicUsize>,
-    best_solution_distance: Option<SolutionRange>,
-}
-
-impl<'a, RewardAddress> Stream for SolutionsIterator<'a, RewardAddress>
+impl<'a, RewardAddress, PosTable, TableGenerator, Sector> ExactSizeIterator
+    for SolutionsIterator<'a, RewardAddress, PosTable, TableGenerator, Sector>
 where
     RewardAddress: Copy,
+    Sector: ReadAtSync + 'a,
+    PosTable: Table,
+    TableGenerator: (FnMut(&PosSeed) -> PosTable) + 'a,
+{
+}
+
+impl<'a, RewardAddress, PosTable, TableGenerator, Sector> Iterator
+    for SolutionsIterator<'a, RewardAddress, PosTable, TableGenerator, Sector>
+where
+    RewardAddress: Copy,
+    Sector: ReadAtSync + 'a,
+    PosTable: Table,
+    TableGenerator: (FnMut(&PosSeed) -> PosTable) + 'a,
 {
     type Item = MaybeSolution<RewardAddress>;
 
-    fn poll_next(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Option<Self::Item>> {
-        self.project().stream.poll_next(cx)
+    fn next(&mut self) -> Option<Self::Item> {
+        let WinningChunk {
+            chunk_offset,
+            piece_offset,
+            solution_distance: _,
+        } = self.winning_chunks.pop_front()?;
+
+        self.count -= 1;
+
+        // Derive PoSpace table
+        let pos_table = (self.table_generator)(
+            &self
+                .sector_id
+                .derive_evaluation_seed(piece_offset, self.sector_metadata.history_size),
+        );
+
+        let maybe_solution: Result<_, ProvingError> = try {
+            let sector_record_chunks_fut = read_sector_record_chunks(
+                piece_offset,
+                self.sector_metadata.pieces_in_sector,
+                &self.s_bucket_offsets,
+                &self.sector_contents_map,
+                &pos_table,
+                &self.sector,
+            );
+            let sector_record_chunks = sector_record_chunks_fut
+                .now_or_never()
+                .expect("Sync reader; qed")?;
+
+            let chunk = sector_record_chunks
+                .get(usize::from(self.s_bucket))
+                .expect("Within s-bucket range; qed")
+                .expect("Winning chunk was plotted; qed");
+
+            let source_chunks_polynomial = self
+                .erasure_coding
+                .recover_poly(sector_record_chunks.as_slice())
+                .map_err(|error| ReadingError::FailedToErasureDecodeRecord {
+                    piece_offset,
+                    error,
+                })?;
+            drop(sector_record_chunks);
+
+            // NOTE: We do not check plot consistency using checksum because it is more
+            // expensive and consensus will verify validity of the proof anyway
+            let record_metadata_fut = read_record_metadata(
+                piece_offset,
+                self.sector_metadata.pieces_in_sector,
+                &self.sector,
+            );
+            let record_metadata = record_metadata_fut
+                .now_or_never()
+                .expect("Sync reader; qed")?;
+
+            let proof_of_space = pos_table.find_proof(self.s_bucket.into()).expect(
+                "Quality exists for this s-bucket, otherwise it wouldn't be a winning chunk; qed",
+            );
+
+            let chunk_witness = self
+                .kzg
+                .create_witness(
+                    &source_chunks_polynomial,
+                    Record::NUM_S_BUCKETS,
+                    self.s_bucket.into(),
+                )
+                .map_err(|error| ProvingError::FailedToCreateChunkWitness {
+                    piece_offset,
+                    chunk_offset,
+                    error,
+                })?;
+
+            Solution {
+                public_key: *self.public_key,
+                reward_address: *self.reward_address,
+                sector_index: self.sector_metadata.sector_index,
+                history_size: self.sector_metadata.history_size,
+                piece_offset,
+                record_commitment: record_metadata.commitment,
+                record_witness: record_metadata.witness,
+                chunk,
+                chunk_witness: ChunkWitness::from(chunk_witness),
+                proof_of_space,
+            }
+        };
+
+        match maybe_solution {
+            Ok(solution) => Some(Ok(solution)),
+            Err(error) => Some(Err(error)),
+        }
     }
 
     fn size_hint(&self) -> (usize, Option<usize>) {
-        let count = self.count.load(Ordering::Acquire);
-        (count, Some(count))
+        (self.count, Some(self.count))
     }
 }
 
-impl<'a, RewardAddress> ProvableSolutions for SolutionsIterator<'a, RewardAddress>
+impl<'a, RewardAddress, PosTable, TableGenerator, Sector> ProvableSolutions
+    for SolutionsIterator<'a, RewardAddress, PosTable, TableGenerator, Sector>
 where
     RewardAddress: Copy,
+    Sector: ReadAtSync + 'a,
+    PosTable: Table,
+    TableGenerator: (FnMut(&PosSeed) -> PosTable) + 'a,
 {
     fn best_solution_distance(&self) -> Option<SolutionRange> {
         self.best_solution_distance
     }
-
-    fn len(&self) -> usize {
-        self.count.load(Ordering::Acquire)
-    }
 }
 
-impl<'a, RewardAddress> SolutionsIterator<'a, RewardAddress>
+impl<'a, RewardAddress, PosTable, TableGenerator, Sector>
+    SolutionsIterator<'a, RewardAddress, PosTable, TableGenerator, Sector>
 where
     RewardAddress: Copy,
+    Sector: ReadAtSync + 'a,
+    PosTable: Table,
+    TableGenerator: (FnMut(&PosSeed) -> PosTable) + 'a,
 {
     #[allow(clippy::too_many_arguments)]
-    fn new<PosTable, TableGenerator, S>(
+    fn new(
         public_key: &'a PublicKey,
         reward_address: &'a RewardAddress,
         sector_id: SectorId,
         s_bucket: SBucket,
-        sector: S,
+        sector: Sector,
         sector_metadata: &'a SectorMetadataChecksummed,
         kzg: &'a Kzg,
         erasure_coding: &'a ErasureCoding,
         chunk_candidates: VecDeque<ChunkCandidate>,
         table_generator: TableGenerator,
-    ) -> Result<Self, ProvingError>
-    where
-        S: ReadAtSync + 'a,
-        PosTable: Table,
-        TableGenerator: (FnMut(&PosSeed) -> PosTable) + 'a,
-    {
+    ) -> Result<Self, ProvingError> {
         if erasure_coding.max_shards() < Record::NUM_S_BUCKETS {
             return Err(ProvingError::InvalidErasureCodingInstance);
         }
@@ -298,9 +375,9 @@ where
 
         let s_bucket_offsets = sector_metadata.s_bucket_offsets();
 
-        let count = Arc::new(AtomicUsize::new(winning_chunks.len()));
+        let count = winning_chunks.len();
 
-        let state = SolutionsIteratorState {
+        Ok(Self {
             public_key,
             reward_address,
             sector_id,
@@ -312,114 +389,9 @@ where
             sector_contents_map,
             sector: ReadAt::from_sync(sector),
             winning_chunks,
-            count: Arc::clone(&count),
-            table_generator,
-        };
-
-        let stream = futures::stream::unfold(state, solutions_iterator_next);
-
-        Ok(Self {
-            stream: Box::pin(stream),
             count,
             best_solution_distance,
+            table_generator,
         })
-    }
-}
-
-async fn solutions_iterator_next<'a, RewardAddress, PosTable, TableGenerator, S>(
-    mut state: SolutionsIteratorState<'a, RewardAddress, PosTable, TableGenerator, ReadAt<S, !>>,
-) -> Option<(
-    MaybeSolution<RewardAddress>,
-    SolutionsIteratorState<'a, RewardAddress, PosTable, TableGenerator, ReadAt<S, !>>,
-)>
-where
-    RewardAddress: Copy,
-    PosTable: Table,
-    TableGenerator: (FnMut(&PosSeed) -> PosTable) + 'a,
-    S: ReadAtSync + 'a,
-{
-    let WinningChunk {
-        chunk_offset,
-        piece_offset,
-        solution_distance: _,
-    } = state.winning_chunks.pop_front()?;
-
-    state.count.fetch_sub(1, Ordering::SeqCst);
-
-    // Derive PoSpace table
-    let pos_table = (state.table_generator)(
-        &state
-            .sector_id
-            .derive_evaluation_seed(piece_offset, state.sector_metadata.history_size),
-    );
-
-    let maybe_solution: Result<_, ProvingError> = try {
-        let sector_record_chunks_fut = read_sector_record_chunks(
-            piece_offset,
-            state.sector_metadata.pieces_in_sector,
-            &state.s_bucket_offsets,
-            &state.sector_contents_map,
-            &pos_table,
-            &state.sector,
-        );
-        let sector_record_chunks = sector_record_chunks_fut.await?;
-
-        let chunk = sector_record_chunks
-            .get(usize::from(state.s_bucket))
-            .expect("Within s-bucket range; qed")
-            .expect("Winning chunk was plotted; qed");
-
-        let source_chunks_polynomial = state
-            .erasure_coding
-            .recover_poly(sector_record_chunks.as_slice())
-            .map_err(|error| ReadingError::FailedToErasureDecodeRecord {
-                piece_offset,
-                error,
-            })?;
-        drop(sector_record_chunks);
-
-        // NOTE: We do not check plot consistency using checksum because it is more
-        // expensive and consensus will verify validity of the proof anyway
-        let record_metadata_fut = read_record_metadata(
-            piece_offset,
-            state.sector_metadata.pieces_in_sector,
-            &state.sector,
-        );
-        let record_metadata = record_metadata_fut.await?;
-
-        let proof_of_space = pos_table.find_proof(state.s_bucket.into()).expect(
-            "Quality exists for this s-bucket, otherwise it wouldn't be a winning chunk; qed",
-        );
-
-        let chunk_witness = state
-            .kzg
-            .create_witness(
-                &source_chunks_polynomial,
-                Record::NUM_S_BUCKETS,
-                state.s_bucket.into(),
-            )
-            .map_err(|error| ProvingError::FailedToCreateChunkWitness {
-                piece_offset,
-                chunk_offset,
-                error,
-            })?;
-
-        Solution {
-            public_key: *state.public_key,
-            reward_address: *state.reward_address,
-            sector_index: state.sector_metadata.sector_index,
-            history_size: state.sector_metadata.history_size,
-            piece_offset,
-            record_commitment: record_metadata.commitment,
-            record_witness: record_metadata.witness,
-            chunk,
-            chunk_witness: ChunkWitness::from(chunk_witness),
-            proof_of_space,
-        }
-    };
-
-    match maybe_solution {
-        Ok(solution) => Some((Ok(solution), state)),
-        Err(error) => Some((Err(error), state)),
     }
 }

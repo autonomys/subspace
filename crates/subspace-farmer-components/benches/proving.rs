@@ -1,6 +1,7 @@
+#![feature(exact_size_is_empty)]
+
 use criterion::{black_box, criterion_group, criterion_main, BatchSize, Criterion, Throughput};
 use futures::executor::block_on;
-use futures::{FutureExt, StreamExt};
 use parking_lot::Mutex;
 use rand::prelude::*;
 use schnorrkel::Keypair;
@@ -21,7 +22,6 @@ use subspace_farmer_components::file_ext::{FileExt, OpenOptionsExt};
 use subspace_farmer_components::plotting::{
     plot_sector, PieceGetterRetryPolicy, PlotSectorOptions, PlottedSector,
 };
-use subspace_farmer_components::proving::ProvableSolutions;
 use subspace_farmer_components::sector::{
     sector_size, SectorContentsMap, SectorMetadata, SectorMetadataChecksummed,
 };
@@ -180,8 +180,6 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             .into_solutions(reward_address, kzg, erasure_coding, |seed: &PosSeed| {
                 table_generator.generate_parallel(seed)
             })
-            .now_or_never()
-            .unwrap()
             .unwrap()
             .is_empty()
         {
@@ -204,13 +202,9 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                         black_box(erasure_coding),
                         black_box(|seed: &PosSeed| table_generator.lock().generate_parallel(seed)),
                     )
-                    .now_or_never()
-                    .unwrap()
                     .unwrap()
                     // Process just one solution
                     .next()
-                    .now_or_never()
-                    .unwrap()
                     .unwrap()
                     .unwrap();
             })
@@ -276,13 +270,9 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                                         table_generator.lock().generate_parallel(seed)
                                     }),
                                 )
-                                .now_or_never()
-                                .unwrap()
                                 .unwrap()
                                 // Process just one solution
                                 .next()
-                                .now_or_never()
-                                .unwrap()
                                 .unwrap()
                                 .unwrap();
                         }

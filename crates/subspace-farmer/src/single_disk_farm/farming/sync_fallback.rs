@@ -1,5 +1,4 @@
 use crate::single_disk_farm::farming::{PlotAudit, PlotAuditOptions};
-use futures::FutureExt;
 use subspace_core_primitives::{PosSeed, PublicKey, SectorIndex, Solution};
 use subspace_farmer_components::auditing::audit_plot_sync;
 use subspace_farmer_components::proving::{ProvableSolutions, ProvingError};
@@ -16,7 +15,7 @@ impl<'p, Plot> PlotAudit<'p> for SyncPlotAudit<Plot>
 where
     Plot: ReadAtSync + 'p,
 {
-    async fn audit<'a, PosTable>(
+    fn audit<'a, PosTable>(
         &'p self,
         options: PlotAuditOptions<'a, PosTable>,
     ) -> Vec<(
@@ -52,17 +51,14 @@ where
             .filter_map(|audit_results| {
                 let sector_index = audit_results.sector_index;
 
-                let sector_solutions_fut = audit_results.solution_candidates.into_solutions(
+                let sector_solutions = audit_results.solution_candidates.into_solutions(
                     reward_address,
                     kzg,
                     erasure_coding,
                     |seed: &PosSeed| table_generator.lock().generate_parallel(seed),
                 );
 
-                let sector_solutions = match sector_solutions_fut
-                    .now_or_never()
-                    .expect("Implementation of the sector is synchronous here; qed")
-                {
+                let sector_solutions = match sector_solutions {
                     Ok(solutions) => solutions,
                     Err(error) => {
                         warn!(

@@ -22,7 +22,7 @@ pub mod chain_spec;
 pub mod domain_chain_spec;
 
 use futures::executor::block_on;
-use futures::{FutureExt, StreamExt};
+use futures::StreamExt;
 use sc_client_api::{BlockBackend, HeaderBackend};
 use sc_consensus_subspace::archiver::encode_block;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
@@ -195,12 +195,8 @@ async fn start_farming<PosTable, Client>(
                 .into_solutions(&public_key, &kzg, &erasure_coding, |seed: &PosSeed| {
                     table_generator.generate_parallel(seed)
                 })
-                .now_or_never()
-                .expect("Implementation of the sector is synchronous here; qed")
                 .unwrap()
                 .next()
-                .now_or_never()
-                .expect("Implementation of the sector is synchronous here; qed")
                 .expect("With max solution range there must be a solution; qed")
                 .unwrap();
             // Lazy conversion to a different type of public key and reward address

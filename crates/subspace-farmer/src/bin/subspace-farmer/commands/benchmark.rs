@@ -2,7 +2,6 @@ use crate::PosTable;
 use anyhow::anyhow;
 use clap::Subcommand;
 use criterion::{black_box, BatchSize, Criterion, Throughput};
-use futures::FutureExt;
 use parking_lot::Mutex;
 use std::fs::OpenOptions;
 use std::num::NonZeroUsize;
@@ -109,12 +108,7 @@ fn audit(disk_farm: PathBuf, sample_size: usize) -> anyhow::Result<()> {
                             table_generator: &table_generator,
                         };
 
-                        black_box(
-                            sync_plot_audit
-                                .audit(black_box(options))
-                                .now_or_never()
-                                .unwrap(),
-                        )
+                        black_box(sync_plot_audit.audit(black_box(options)))
                     },
                     BatchSize::SmallInput,
                 )
@@ -148,12 +142,7 @@ fn audit(disk_farm: PathBuf, sample_size: usize) -> anyhow::Result<()> {
                             table_generator: &table_generator,
                         };
 
-                        black_box(
-                            sync_plot_audit
-                                .audit(black_box(options))
-                                .now_or_never()
-                                .unwrap(),
-                        )
+                        black_box(sync_plot_audit.audit(black_box(options)))
                     },
                     BatchSize::SmallInput,
                 )
