@@ -12,7 +12,7 @@ use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, Numb
 use sp_runtime::{Digest, DigestItem};
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
-use subspace_runtime_primitives::{AccountId, Balance};
+use subspace_runtime_primitives::Balance;
 use trie_db::TrieLayout;
 
 type ExecutionReceiptFor<DomainHeader, CBlock, Balance> = ExecutionReceipt<
@@ -475,8 +475,6 @@ pub fn dummy_invalid_state_transition_proof<ReceiptHash: Default>(
 pub struct BundleEquivocationProof<Number, Hash, DomainHeader: HeaderT> {
     /// The id of the domain this fraud proof targeted
     pub domain_id: DomainId,
-    /// The authority id of the equivocator.
-    pub offender: AccountId,
     /// The slot at which the equivocation happened.
     pub slot: Slot,
     // TODO: The generic type should be `<Number, Hash, DomainNumber, DomainHash, Balance>`

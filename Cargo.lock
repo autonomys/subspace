@@ -10747,6 +10747,7 @@ dependencies = [
  "subspace-runtime-primitives",
  "subspace-test-client",
  "subspace-test-service",
+ "substrate-test-runtime-client",
  "tempfile",
  "thiserror",
  "tokio",

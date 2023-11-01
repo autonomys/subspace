@@ -18,6 +18,8 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 #[cfg(feature = "std")]
+mod bundle_equivocation;
+#[cfg(feature = "std")]
 pub mod execution_prover;
 pub mod fraud_proof;
 #[cfg(feature = "std")]
