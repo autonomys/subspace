@@ -1,5 +1,4 @@
 pub mod rayon_files;
-pub mod sync_fallback;
 
 use crate::node_client;
 use crate::node_client::NodeClient;
@@ -13,12 +12,13 @@ use std::io;
 use std::sync::Arc;
 use std::time::Instant;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::{PublicKey, SectorIndex, Solution, SolutionRange};
+use subspace_core_primitives::{PosSeed, PublicKey, SectorIndex, Solution, SolutionRange};
 use subspace_erasure_coding::ErasureCoding;
-use subspace_farmer_components::proving;
-use subspace_farmer_components::proving::ProvableSolutions;
+use subspace_farmer_components::auditing::audit_plot_sync;
+use subspace_farmer_components::proving::{ProvableSolutions, ProvingError};
 use subspace_farmer_components::sector::SectorMetadataChecksummed;
-use subspace_proof_of_space::Table;
+use subspace_farmer_components::{proving, ReadAtSync};
+use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_rpc_primitives::{SlotInfo, SolutionResponse};
 use thiserror::Error;
 use tracing::{debug, error, info, trace, warn};
@@ -102,27 +102,90 @@ where
     pub table_generator: &'a Mutex<PosTable::Generator>,
 }
 
-/// Auditing implementation used by farming
-pub trait PlotAudit<'p> {
-    fn audit<'a, PosTable>(
-        &'p self,
+/// Plot auditing implementation
+pub struct PlotAudit<Plot>(Plot)
+where
+    Plot: ReadAtSync;
+
+impl<'a, Plot> PlotAudit<Plot>
+where
+    Plot: ReadAtSync + 'a,
+{
+    /// Create new instance
+    pub fn new(plot: Plot) -> Self {
+        Self(plot)
+    }
+
+    pub fn audit<PosTable>(
+        &'a self,
         options: PlotAuditOptions<'a, PosTable>,
     ) -> Vec<(
         SectorIndex,
-        impl ProvableSolutions<Item = Result<Solution<PublicKey, PublicKey>, proving::ProvingError>>
-            + Unpin
-            + 'a,
+        impl ProvableSolutions<Item = Result<Solution<PublicKey, PublicKey>, ProvingError>> + 'a,
     )>
     where
-        'p: 'a,
-        PosTable: Table;
+        PosTable: Table,
+    {
+        let PlotAuditOptions {
+            public_key,
+            reward_address,
+            slot_info,
+            sectors_metadata,
+            kzg,
+            erasure_coding,
+            maybe_sector_being_modified,
+            table_generator,
+        } = options;
+
+        let audit_results = audit_plot_sync(
+            public_key,
+            &slot_info.global_challenge,
+            slot_info.voting_solution_range,
+            &self.0,
+            sectors_metadata,
+            maybe_sector_being_modified,
+        );
+
+        audit_results
+            .into_iter()
+            .filter_map(|audit_results| {
+                let sector_index = audit_results.sector_index;
+
+                let sector_solutions = audit_results.solution_candidates.into_solutions(
+                    reward_address,
+                    kzg,
+                    erasure_coding,
+                    |seed: &PosSeed| table_generator.lock().generate_parallel(seed),
+                );
+
+                let sector_solutions = match sector_solutions {
+                    Ok(solutions) => solutions,
+                    Err(error) => {
+                        warn!(
+                            %error,
+                            %sector_index,
+                            "Failed to turn solution candidates into solutions",
+                        );
+
+                        return None;
+                    }
+                };
+
+                if sector_solutions.len() == 0 {
+                    return None;
+                }
+
+                Some((sector_index, sector_solutions))
+            })
+            .collect()
+    }
 }
 
-pub(super) struct FarmingOptions<'a, NC, PA> {
+pub(super) struct FarmingOptions<NC, PlotAudit> {
     pub(super) public_key: PublicKey,
     pub(super) reward_address: PublicKey,
     pub(super) node_client: NC,
-    pub(super) plot_audit: &'a PA,
+    pub(super) plot_audit: PlotAudit,
     pub(super) sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
     pub(super) kzg: Kzg,
     pub(super) erasure_coding: ErasureCoding,
@@ -135,13 +198,13 @@ pub(super) struct FarmingOptions<'a, NC, PA> {
 ///
 /// NOTE: Returned future is async, but does blocking operations and should be running in dedicated
 /// thread.
-pub(super) async fn farming<'a, PosTable, NC, PA>(
-    farming_options: FarmingOptions<'a, NC, PA>,
+pub(super) async fn farming<'a, PosTable, NC, Plot>(
+    farming_options: FarmingOptions<NC, PlotAudit<Plot>>,
 ) -> Result<(), FarmingError>
 where
     PosTable: Table,
     NC: NodeClient,
-    PA: PlotAudit<'a>,
+    Plot: ReadAtSync + 'a,
 {
     let FarmingOptions {
         public_key,

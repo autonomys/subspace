@@ -10,7 +10,6 @@ use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{Record, SolutionRange};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer::single_disk_farm::farming::rayon_files::RayonFiles;
-use subspace_farmer::single_disk_farm::farming::sync_fallback::SyncPlotAudit;
 use subspace_farmer::single_disk_farm::farming::{PlotAudit, PlotAuditOptions};
 use subspace_farmer::single_disk_farm::{SingleDiskFarm, SingleDiskFarmSummary};
 use subspace_farmer_components::sector::sector_size;
@@ -84,8 +83,8 @@ fn audit(disk_farm: PathBuf, sample_size: usize) -> anyhow::Result<()> {
                 .open(disk_farm.join(SingleDiskFarm::PLOT_FILE))
                 .map_err(|error| anyhow::anyhow!("Failed to open plot: {error}"))?;
 
-            group.bench_function("plot/sync/single", |b| {
-                let sync_plot_audit = SyncPlotAudit::new(&plot);
+            group.bench_function("plot/single", |b| {
+                let plot_audit = PlotAudit::new(&plot);
 
                 b.iter_batched(
                     rand::random,
@@ -108,7 +107,7 @@ fn audit(disk_farm: PathBuf, sample_size: usize) -> anyhow::Result<()> {
                             table_generator: &table_generator,
                         };
 
-                        black_box(sync_plot_audit.audit(black_box(options)))
+                        black_box(plot_audit.audit(black_box(options)))
                     },
                     BatchSize::SmallInput,
                 )
@@ -118,8 +117,8 @@ fn audit(disk_farm: PathBuf, sample_size: usize) -> anyhow::Result<()> {
             let plot = RayonFiles::open(&disk_farm.join(SingleDiskFarm::PLOT_FILE))
                 .map_err(|error| anyhow::anyhow!("Failed to open plot: {error}"))?;
 
-            group.bench_function("plot/sync/rayon", |b| {
-                let sync_plot_audit = SyncPlotAudit::new(&plot);
+            group.bench_function("plot/rayon", |b| {
+                let plot_audit = PlotAudit::new(&plot);
 
                 b.iter_batched(
                     rand::random,
@@ -142,7 +141,7 @@ fn audit(disk_farm: PathBuf, sample_size: usize) -> anyhow::Result<()> {
                             table_generator: &table_generator,
                         };
 
-                        black_box(sync_plot_audit.audit(black_box(options)))
+                        black_box(plot_audit.audit(black_box(options)))
                     },
                     BatchSize::SmallInput,
                 )

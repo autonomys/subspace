@@ -7,9 +7,10 @@ use crate::identity::{Identity, IdentityError};
 use crate::node_client::NodeClient;
 use crate::reward_signing::reward_signing;
 use crate::single_disk_farm::farming::rayon_files::RayonFiles;
-use crate::single_disk_farm::farming::sync_fallback::SyncPlotAudit;
 pub use crate::single_disk_farm::farming::FarmingError;
-use crate::single_disk_farm::farming::{farming, slot_notification_forwarder, FarmingOptions};
+use crate::single_disk_farm::farming::{
+    farming, slot_notification_forwarder, FarmingOptions, PlotAudit,
+};
 use crate::single_disk_farm::piece_cache::{DiskPieceCache, DiskPieceCacheError};
 use crate::single_disk_farm::piece_reader::PieceReader;
 pub use crate::single_disk_farm::plotting::PlottingError;
@@ -1071,7 +1072,7 @@ impl SingleDiskFarm {
                         }
 
                         let plot = RayonFiles::open(&directory.join(Self::PLOT_FILE))?;
-                        let plot_audit = &SyncPlotAudit::new(&plot);
+                        let plot_audit = PlotAudit::new(&plot);
 
                         let farming_options = FarmingOptions {
                             public_key,
