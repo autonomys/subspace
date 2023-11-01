@@ -207,10 +207,10 @@ services:
     ports:
 # If port 30333 or 30433 is already occupied by another Substrate-based node, replace all
 # occurrences of `30333` or `30433` in this file with another value
-      - "0.0.0.0:30333:30333/tcp"
       - "0.0.0.0:30333:30333/udp"
-      - "0.0.0.0:30433:30433/tcp"
+      - "0.0.0.0:30333:30333/tcp"
       - "0.0.0.0:30433:30433/udp"
+      - "0.0.0.0:30433:30433/tcp"
     restart: unless-stopped
     command: [
       "--chain", "gemini-3g",
@@ -250,8 +250,8 @@ services:
     ports:
 # If port 30533 is already occupied by something else, replace all
 # occurrences of `30533` in this file with another value
-      - "0.0.0.0:30533:30533/tcp"
       - "0.0.0.0:30533:30533/udp"
+      - "0.0.0.0:30533:30533/tcp"
     restart: unless-stopped
     command: [
       "farm",
