@@ -38,7 +38,6 @@ mod benchmarks {
 
         let mut receipt =
             BlockTree::<T>::get::<_, DomainBlockNumberFor<T>>(domain_id, Zero::zero())
-                .first()
                 .and_then(BlockTreeNodes::<T>::get)
                 .expect("genesis receipt must exist")
                 .execution_receipt;
@@ -59,8 +58,6 @@ mod benchmarks {
             // Create ER for the above bundle
             let head_receipt_number = HeadReceiptNumber::<T>::get(domain_id);
             let parent_domain_block_receipt = BlockTree::<T>::get(domain_id, head_receipt_number)
-                .first()
-                .cloned()
                 .expect("parent receipt must exist");
             receipt = ExecutionReceipt::dummy::<DomainHashingFor<T>>(
                 consensus_block_number,
@@ -243,9 +240,8 @@ mod benchmarks {
         assert_eq!(domain_obj.domain_config, domain_config);
         assert_eq!(domain_obj.owner_account_id, creator);
         assert!(DomainStakingSummary::<T>::get(domain_id).is_some());
-        assert_eq!(
-            BlockTree::<T>::get::<_, DomainBlockNumberFor<T>>(domain_id, Zero::zero()).len(),
-            1
+        assert!(
+            BlockTree::<T>::get::<_, DomainBlockNumberFor<T>>(domain_id, Zero::zero()).is_some(),
         );
         assert_eq!(NextDomainId::<T>::get(), domain_id + 1.into());
     }

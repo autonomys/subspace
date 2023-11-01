@@ -554,9 +554,7 @@ pub(crate) fn get_block_tree_node_at<T: Config>(
 ) -> Option<
     BlockTreeNode<BlockNumberFor<T>, T::Hash, DomainBlockNumberFor<T>, T::DomainHash, BalanceOf<T>>,
 > {
-    BlockTree::<T>::get(domain_id, block_number)
-        .first()
-        .and_then(BlockTreeNodes::<T>::get)
+    BlockTree::<T>::get(domain_id, block_number).and_then(BlockTreeNodes::<T>::get)
 }
 
 // TODO: Unblock once bundle producer election v2 is finished.
@@ -1196,57 +1194,67 @@ fn generate_invalid_domain_block_hash_fraud_proof<T: Config>(
 fn test_basic_fraud_proof_processing() {
     let creator = 0u64;
     let operator_id = 1u64;
-    let head_domain_number = BlockTreePruningDepth::get() * 2;
-    let bad_receipt_at = head_domain_number - BlockTreePruningDepth::get() / 2;
-    let mut ext = new_test_ext_with_extensions();
-    ext.execute_with(|| {
-        let domain_id = register_genesis_domain(creator, vec![operator_id]);
-        extend_block_tree(domain_id, operator_id, head_domain_number + 1);
-        assert_eq!(
-            HeadReceiptNumber::<Test>::get(domain_id),
-            head_domain_number
-        );
-
-        // Construct and submit fraud proof that target ER at `head_domain_number - BlockTreePruningDepth::get() / 2`
-        let bad_receipt = get_block_tree_node_at::<Test>(domain_id, bad_receipt_at)
-            .unwrap()
-            .execution_receipt;
-        let bad_receipt_hash = bad_receipt.hash::<DomainHashingFor<Test>>();
-        let fraud_proof = FraudProof::dummy_fraud_proof(domain_id, bad_receipt_hash);
-        assert_ok!(Domains::submit_fraud_proof(
-            RawOrigin::None.into(),
-            Box::new(fraud_proof)
-        ));
-
-        // The head receipt number should be reverted to `bad_receipt_at - 1`
-        let head_receipt_number_after_fraud_proof = HeadReceiptNumber::<Test>::get(domain_id);
-        assert_eq!(head_receipt_number_after_fraud_proof, bad_receipt_at - 1);
-
-        for block_number in bad_receipt_at..=head_domain_number {
-            // The targetted ER and all its descendants should be removed from the block tree
-            assert!(BlockTree::<Test>::get(domain_id, block_number).is_empty());
-
-            // The other data that used to verify ER should not be removed, such that the honest
-            // operator can re-submit the valid ER
-            assert!(
-                !ExecutionInbox::<Test>::get((domain_id, block_number, block_number as u64))
-                    .is_empty()
+    let head_domain_number = BlockTreePruningDepth::get() - 1;
+    let test_cases = vec![
+        1,
+        2,
+        head_domain_number - BlockTreePruningDepth::get() / 2,
+        head_domain_number - 1,
+        head_domain_number,
+    ];
+    for bad_receipt_at in test_cases {
+        let mut ext = new_test_ext_with_extensions();
+        ext.execute_with(|| {
+            let domain_id = register_genesis_domain(creator, vec![operator_id]);
+            extend_block_tree(domain_id, operator_id, head_domain_number + 1);
+            assert_eq!(
+                HeadReceiptNumber::<Test>::get(domain_id),
+                head_domain_number
             );
-            assert!(ConsensusBlockHash::<Test>::get(domain_id, block_number as u64).is_some());
-        }
 
-        // Re-submit the valid ER
-        let resubmit_receipt = bad_receipt;
-        let bundle = create_dummy_bundle_with_receipts(
-            domain_id,
-            operator_id,
-            H256::random(),
-            resubmit_receipt,
-        );
-        assert_ok!(Domains::submit_bundle(RawOrigin::None.into(), bundle,));
-        assert_eq!(
-            HeadReceiptNumber::<Test>::get(domain_id),
-            head_receipt_number_after_fraud_proof + 1
-        );
-    });
+            // Construct and submit fraud proof that target ER at `head_domain_number - BlockTreePruningDepth::get() / 2`
+            let bad_receipt = get_block_tree_node_at::<Test>(domain_id, bad_receipt_at)
+                .unwrap()
+                .execution_receipt;
+            let bad_receipt_hash = bad_receipt.hash::<DomainHashingFor<Test>>();
+            let fraud_proof = FraudProof::dummy_fraud_proof(domain_id, bad_receipt_hash);
+            assert_ok!(Domains::submit_fraud_proof(
+                RawOrigin::None.into(),
+                Box::new(fraud_proof)
+            ));
+
+            // The head receipt number should be reverted to `bad_receipt_at - 1`
+            let head_receipt_number_after_fraud_proof = HeadReceiptNumber::<Test>::get(domain_id);
+            assert_eq!(head_receipt_number_after_fraud_proof, bad_receipt_at - 1);
+
+            for block_number in bad_receipt_at..=head_domain_number {
+                // The targetted ER and all its descendants should be removed from the block tree
+                assert!(BlockTree::<Test>::get(domain_id, block_number).is_none());
+
+                // The other data that used to verify ER should not be removed, such that the honest
+                // operator can re-submit the valid ER
+                assert!(!ExecutionInbox::<Test>::get((
+                    domain_id,
+                    block_number,
+                    block_number as u64
+                ))
+                .is_empty());
+                assert!(ConsensusBlockHash::<Test>::get(domain_id, block_number as u64).is_some());
+            }
+
+            // Re-submit the valid ER
+            let resubmit_receipt = bad_receipt;
+            let bundle = create_dummy_bundle_with_receipts(
+                domain_id,
+                operator_id,
+                H256::random(),
+                resubmit_receipt,
+            );
+            assert_ok!(Domains::submit_bundle(RawOrigin::None.into(), bundle,));
+            assert_eq!(
+                HeadReceiptNumber::<Test>::get(domain_id),
+                head_receipt_number_after_fraud_proof + 1
+            );
+        });
+    }
 }

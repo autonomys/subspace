@@ -2,9 +2,9 @@
 
 use crate::pallet::StateRoots;
 use crate::{
-    BalanceOf, BlockTree, BlockTreeNodes, Config, ConsensusBlockHash, DomainBlockDescendants,
-    DomainBlockNumberFor, DomainHashingFor, ExecutionInbox, ExecutionReceiptOf, HeadReceiptNumber,
-    InboxedBundleAuthor,
+    BalanceOf, BlockTree, BlockTreeNodes, Config, ConsensusBlockHash, DomainBlockNumberFor,
+    DomainHashingFor, ExecutionInbox, ExecutionReceiptOf, HeadReceiptNumber, InboxedBundleAuthor,
+    ReceiptHashFor,
 };
 use codec::{Decode, Encode};
 use frame_support::{ensure, PalletError};
@@ -29,7 +29,6 @@ pub enum Error {
     BadGenesisReceipt,
     UnexpectedReceiptType,
     MaxHeadDomainNumber,
-    MultipleERsAfterChallengePeriod,
     MissingDomainBlock,
     InvalidTraceRoot,
     UnavailableConsensusBlockHash,
@@ -88,6 +87,16 @@ pub(crate) enum ReceiptType {
     Rejected(RejectedReceiptType),
 }
 
+pub(crate) fn is_receipt_exist<T: Config>(
+    domain_id: DomainId,
+    domain_number: DomainBlockNumberFor<T>,
+    receipt_hash: ReceiptHashFor<T>,
+) -> bool {
+    BlockTree::<T>::get(domain_id, domain_number)
+        .map(|h| h == receipt_hash)
+        .unwrap_or(false)
+}
+
 /// Get the receipt type of the given receipt based on the current block tree state
 pub(crate) fn execution_receipt_type<T: Config>(
     domain_id: DomainId,
@@ -102,8 +111,11 @@ pub(crate) fn execution_receipt_type<T: Config>(
         Ordering::Less => {
             let oldest_receipt_number =
                 head_receipt_number.saturating_sub(T::BlockTreePruningDepth::get());
-            let already_exist = BlockTree::<T>::get(domain_id, receipt_number)
-                .contains(&execution_receipt.hash::<DomainHashingFor<T>>());
+            let already_exist = is_receipt_exist::<T>(
+                domain_id,
+                receipt_number,
+                execution_receipt.hash::<DomainHashingFor<T>>(),
+            );
 
             if receipt_number < oldest_receipt_number {
                 // Receipt already pruned
@@ -142,8 +154,11 @@ pub(crate) fn verify_execution_receipt<T: Config>(
         // The genesis receipt is generated and added to the block tree by the runtime upon domain
         // instantiation, thus it is unchallengeable and must always be the same.
         ensure!(
-            BlockTree::<T>::get(domain_id, domain_block_number)
-                .contains(&execution_receipt.hash::<DomainHashingFor<T>>()),
+            is_receipt_exist::<T>(
+                domain_id,
+                *domain_block_number,
+                execution_receipt.hash::<DomainHashingFor<T>>(),
+            ),
             Error::BadGenesisReceipt
         );
     } else {
@@ -200,8 +215,11 @@ pub(crate) fn verify_execution_receipt<T: Config>(
     }
 
     if let Some(parent_block_number) = domain_block_number.checked_sub(&One::one()) {
-        let parent_block_exist = BlockTree::<T>::get(domain_id, parent_block_number)
-            .contains(parent_domain_block_receipt_hash);
+        let parent_block_exist = is_receipt_exist::<T>(
+            domain_id,
+            parent_block_number,
+            *parent_domain_block_receipt_hash,
+        );
         ensure!(parent_block_exist, Error::UnknownParentBlockReceipt);
     }
 
@@ -260,29 +278,12 @@ pub(crate) fn process_execution_receipt<T: Config>(
             if let Some(to_prune) =
                 domain_block_number.checked_sub(&T::BlockTreePruningDepth::get())
             {
-                let receipts_at_number = BlockTree::<T>::take(domain_id, to_prune);
-
-                // The receipt at `to_prune` may already been pruned if there is fraud proof being
-                // processed and the `HeadReceiptNumber` is reverted.
-                if receipts_at_number.is_empty() {
-                    return Ok(None);
-                }
-
-                // FIXME: the following check is wrong because the ER at `to_prune` may not necessarily go through
-                // the whole challenge period since the malicious operator can submit `NewBranch` ER any time, thus
-                // the ER may just submitted a few blocks ago and `receipts_at_number` may contains more than one block.
-                //
-                // In current implementatiomn, the correct finalized ER should be the one that has `BlockTreePruningDepth`
-                // length of descendants which is non-trival to find, but once https://github.com/subspace/subspace/issues/1731
-                // is implemented this issue should be fixed automatically.
-                if receipts_at_number.len() != 1 {
-                    return Err(Error::MultipleERsAfterChallengePeriod);
-                }
-
-                let receipt_hash = receipts_at_number
-                    .first()
-                    .cloned()
-                    .expect("should always have a value due to check above");
+                let receipt_hash = match BlockTree::<T>::take(domain_id, to_prune) {
+                    Some(h) => h,
+                    // The receipt at `to_prune` may already been pruned if there is fraud proof being
+                    // processed previously and the `HeadReceiptNumber` is reverted.
+                    None => return Ok(None),
+                };
 
                 let BlockTreeNode {
                     execution_receipt,
@@ -294,7 +295,6 @@ pub(crate) fn process_execution_receipt<T: Config>(
                     to_prune,
                     execution_receipt.domain_block_hash,
                 ));
-                _ = DomainBlockDescendants::<T>::take(receipt_hash);
 
                 // Collect the invalid bundle author
                 let mut invalid_bundle_authors = Vec::new();
@@ -361,15 +361,7 @@ fn add_new_receipt_to_block_tree<T: Config>(
         execution_receipt.final_state_root,
     );
 
-    BlockTree::<T>::mutate(domain_id, domain_block_number, |er_hashes| {
-        er_hashes.insert(er_hash);
-    });
-    DomainBlockDescendants::<T>::mutate(
-        execution_receipt.parent_domain_block_receipt_hash,
-        |er_hashes| {
-            er_hashes.insert(er_hash);
-        },
-    );
+    BlockTree::<T>::insert(domain_id, domain_block_number, er_hash);
     let block_tree_node = BlockTreeNode {
         execution_receipt,
         operator_ids: sp_std::vec![submitter],
@@ -388,10 +380,8 @@ pub(crate) fn import_genesis_receipt<T: Config>(
         execution_receipt: genesis_receipt,
         operator_ids: sp_std::vec![],
     };
-    // NOTE: no need to update the head receipt number as we are using `ValueQuery`
-    BlockTree::<T>::mutate(domain_id, domain_block_number, |er_hashes| {
-        er_hashes.insert(er_hash);
-    });
+    // NOTE: no need to update the head receipt number as `HeadReceiptNumber` is using `ValueQuery`
+    BlockTree::<T>::insert(domain_id, domain_block_number, er_hash);
     StateRoots::<T>::insert(
         (
             domain_id,
@@ -424,11 +414,9 @@ mod tests {
             let domain_id = register_genesis_domain(0u64, vec![0u64]);
 
             // The genesis receipt should be added to the block tree
-            let block_tree_node_at_0 = BlockTree::<Test>::get(domain_id, 0);
-            assert_eq!(block_tree_node_at_0.len(), 1);
+            let block_tree_node_at_0 = BlockTree::<Test>::get(domain_id, 0).unwrap();
 
-            let genesis_node =
-                BlockTreeNodes::<Test>::get(block_tree_node_at_0.first().unwrap()).unwrap();
+            let genesis_node = BlockTreeNodes::<Test>::get(block_tree_node_at_0).unwrap();
             assert!(genesis_node.operator_ids.is_empty());
             assert_eq!(HeadReceiptNumber::<Test>::get(domain_id), 0);
 
@@ -517,12 +505,10 @@ mod tests {
                 assert_eq!(head_receipt_number, block_number as u32 - 1);
 
                 // As we only extending the block tree there should be no fork
-                let parent_block_tree_nodes =
-                    BlockTree::<Test>::get(domain_id, head_receipt_number);
-                assert_eq!(parent_block_tree_nodes.len(), 1);
+                let parent_domain_block_receipt =
+                    BlockTree::<Test>::get(domain_id, head_receipt_number).unwrap();
 
                 // The submitter should be added to `operator_ids`
-                let parent_domain_block_receipt = parent_block_tree_nodes.first().unwrap();
                 let parent_node = BlockTreeNodes::<Test>::get(parent_domain_block_receipt).unwrap();
                 assert_eq!(parent_node.operator_ids.len(), 1);
                 assert_eq!(parent_node.operator_ids[0], operator_id);
@@ -532,7 +518,7 @@ mod tests {
                 receipt = create_dummy_receipt(
                     block_number,
                     H256::random(),
-                    *parent_domain_block_receipt,
+                    parent_domain_block_receipt,
                     vec![bundle_extrinsics_root],
                 );
 
@@ -547,7 +533,7 @@ mod tests {
             // `InvalidExtrinsicsRoots` error as `ExecutionInbox` of block 1 is pruned
             let pruned_receipt = receipt_of_block_1.unwrap();
             let pruned_bundle = bundle_header_hash_of_block_1.unwrap();
-            assert!(BlockTree::<Test>::get(domain_id, 1).is_empty());
+            assert!(BlockTree::<Test>::get(domain_id, 1).is_none());
             assert!(ExecutionInbox::<Test>::get((domain_id, 1, 1)).is_empty());
             assert!(!InboxedBundleAuthor::<Test>::contains_key(pruned_bundle));
             assert_eq!(
@@ -563,10 +549,6 @@ mod tests {
                 pruned_receipt.consensus_block_number,
             )
             .is_none());
-            assert!(DomainBlockDescendants::<Test>::get(
-                pruned_receipt.hash::<DomainHashingFor<Test>>()
-            )
-            .is_empty());
         });
     }
 
@@ -670,10 +652,7 @@ mod tests {
             extend_block_tree(domain_id, operator_id1, 3);
 
             let head_receipt_number = HeadReceiptNumber::<Test>::get(domain_id);
-            assert_eq!(
-                BlockTree::<Test>::get(domain_id, head_receipt_number).len(),
-                1
-            );
+            assert!(BlockTree::<Test>::get(domain_id, head_receipt_number).is_some());
 
             // Construct new branch receipt that fork away from an existing node of
             // the block tree
