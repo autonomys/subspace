@@ -1,5 +1,3 @@
-#[cfg(any(target_os = "linux", target_os = "macos"))]
-pub mod monoio;
 pub mod rayon_files;
 pub mod sync_fallback;
 
