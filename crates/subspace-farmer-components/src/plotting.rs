@@ -327,9 +327,6 @@ where
         })
         .collect::<Vec<_>>();
 
-    // TODO: Downloading and encoding below can happen in parallel, but a bit tricky to implement
-    //  due to sync/async pairing
-
     let raw_sector = Mutex::new(RawSector::new(pieces_in_sector));
 
     {

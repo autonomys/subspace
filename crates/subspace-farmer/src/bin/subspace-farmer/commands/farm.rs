@@ -339,8 +339,9 @@ where
         .expect("Disk farm collection is not be empty as checked above; qed")
         .directory
         .clone();
-    // TODO: Update `Identity` to use more specific error type and remove this `.unwrap()`
-    let identity = Identity::open_or_create(&first_farm_directory).unwrap();
+
+    let identity = Identity::open_or_create(&first_farm_directory)
+        .map_err(|error| anyhow!("Failed to open or create identity: {error}"))?;
     let keypair = derive_libp2p_keypair(identity.secret_key());
     let peer_id = keypair.public().to_peer_id();
 
@@ -433,8 +434,6 @@ where
 
     let mut plotting_delay_senders = Vec::with_capacity(disk_farms.len());
 
-    // TODO: Check plot and metadata sizes to ensure there is enough space for farmer to not
-    //  fail later
     for (disk_farm_index, disk_farm) in disk_farms.into_iter().enumerate() {
         debug!(url = %node_rpc_url, %disk_farm_index, "Connecting to node RPC");
         let node_client = NodeRpcClient::new(&node_rpc_url).await?;
