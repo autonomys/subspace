@@ -125,7 +125,7 @@ where
             // is finished, cause the bundle contains illegal tx accidentally and being considered as invalid
             // bundle and slashing on the honest operator.
             //
-            // NOTE: this check need tp keep aligned with how the illegal tx is detected in the block-preprocessor
+            // NOTE: this check need to be kept aligned with how the illegal tx is detected in the block-preprocessor
             // thus when https://github.com/subspace/subspace/issues/2184 is implemented, we also need to
             // perfome the check for bundle as a whole instead of checking tx one by one.
             let transaction_validity = self
