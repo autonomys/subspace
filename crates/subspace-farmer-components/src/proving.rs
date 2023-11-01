@@ -3,7 +3,7 @@ use crate::reading::{read_record_metadata, read_sector_record_chunks, ReadingErr
 use crate::sector::{
     SectorContentsMap, SectorContentsMapFromBytesError, SectorMetadataChecksummed,
 };
-use crate::{ReadAt, ReadAtAsync, ReadAtSync};
+use crate::{ReadAt, ReadAtSync};
 use futures::Stream;
 use std::collections::VecDeque;
 use std::io;
@@ -115,16 +115,15 @@ where
     }
 }
 
-impl<'a, S, A> SolutionCandidates<'a, ReadAt<S, A>>
+impl<'a, S> SolutionCandidates<'a, S>
 where
     S: ReadAtSync + 'a,
-    A: ReadAtAsync + 'a,
 {
     pub(crate) fn new(
         public_key: &'a PublicKey,
         sector_id: SectorId,
         s_bucket: SBucket,
-        sector: ReadAt<S, A>,
+        sector: S,
         sector_metadata: &'a SectorMetadataChecksummed,
         chunk_candidates: VecDeque<ChunkCandidate>,
     ) -> Self {
@@ -161,21 +160,18 @@ where
         PosTable: Table,
         TableGenerator: (FnMut(&PosSeed) -> PosTable) + 'a,
     {
-        let solutions_iterator_fut =
-            SolutionsIterator::<'a, RewardAddress>::new::<PosTable, TableGenerator, S, A>(
-                self.public_key,
-                reward_address,
-                self.sector_id,
-                self.s_bucket,
-                self.sector,
-                self.sector_metadata,
-                kzg,
-                erasure_coding,
-                self.chunk_candidates,
-                table_generator,
-            );
-
-        solutions_iterator_fut.await
+        SolutionsIterator::<'a, RewardAddress>::new::<PosTable, TableGenerator, S>(
+            self.public_key,
+            reward_address,
+            self.sector_id,
+            self.s_bucket,
+            self.sector,
+            self.sector_metadata,
+            kzg,
+            erasure_coding,
+            self.chunk_candidates,
+            table_generator,
+        )
     }
 }
 
@@ -244,12 +240,12 @@ where
     RewardAddress: Copy,
 {
     #[allow(clippy::too_many_arguments)]
-    async fn new<PosTable, TableGenerator, S, A>(
+    fn new<PosTable, TableGenerator, S>(
         public_key: &'a PublicKey,
         reward_address: &'a RewardAddress,
         sector_id: SectorId,
         s_bucket: SBucket,
-        sector: ReadAt<S, A>,
+        sector: S,
         sector_metadata: &'a SectorMetadataChecksummed,
         kzg: &'a Kzg,
         erasure_coding: &'a ErasureCoding,
@@ -258,7 +254,6 @@ where
     ) -> Result<Self, ProvingError>
     where
         S: ReadAtSync + 'a,
-        A: ReadAtAsync + 'a,
         PosTable: Table,
         TableGenerator: (FnMut(&PosSeed) -> PosTable) + 'a,
     {
@@ -270,15 +265,7 @@ where
             let mut sector_contents_map_bytes =
                 vec![0; SectorContentsMap::encoded_size(sector_metadata.pieces_in_sector)];
 
-            match &sector {
-                ReadAt::Sync(sector) => {
-                    sector.read_at(&mut sector_contents_map_bytes, 0)?;
-                }
-                ReadAt::Async(sector) => {
-                    sector_contents_map_bytes =
-                        sector.read_at(sector_contents_map_bytes, 0).await?;
-                }
-            }
+            sector.read_at(&mut sector_contents_map_bytes, 0)?;
 
             SectorContentsMap::from_bytes(
                 &sector_contents_map_bytes,
@@ -323,7 +310,7 @@ where
             kzg,
             erasure_coding,
             sector_contents_map,
-            sector,
+            sector: ReadAt::from_sync(sector),
             winning_chunks,
             count: Arc::clone(&count),
             table_generator,
@@ -339,18 +326,17 @@ where
     }
 }
 
-async fn solutions_iterator_next<'a, RewardAddress, PosTable, TableGenerator, S, A>(
-    mut state: SolutionsIteratorState<'a, RewardAddress, PosTable, TableGenerator, ReadAt<S, A>>,
+async fn solutions_iterator_next<'a, RewardAddress, PosTable, TableGenerator, S>(
+    mut state: SolutionsIteratorState<'a, RewardAddress, PosTable, TableGenerator, ReadAt<S, !>>,
 ) -> Option<(
     MaybeSolution<RewardAddress>,
-    SolutionsIteratorState<'a, RewardAddress, PosTable, TableGenerator, ReadAt<S, A>>,
+    SolutionsIteratorState<'a, RewardAddress, PosTable, TableGenerator, ReadAt<S, !>>,
 )>
 where
     RewardAddress: Copy,
     PosTable: Table,
     TableGenerator: (FnMut(&PosSeed) -> PosTable) + 'a,
     S: ReadAtSync + 'a,
-    A: ReadAtAsync + 'a,
 {
     let WinningChunk {
         chunk_offset,
