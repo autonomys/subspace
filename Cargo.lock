@@ -2596,6 +2596,7 @@ dependencies = [
  "sp-messenger",
  "sp-runtime",
  "sp-state-machine",
+ "sp-transaction-pool",
  "sp-trie",
  "sp-weights",
  "subspace-core-primitives",
