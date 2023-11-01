@@ -29,6 +29,7 @@ use rayon::prelude::*;
 use rayon::ThreadPoolBuilder;
 use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
+use std::error::Error;
 use std::fs::{File, OpenOptions};
 use std::future::Future;
 use std::io::{Seek, SeekFrom};
@@ -281,6 +282,9 @@ pub struct SingleDiskFarmOptions<NC, PG> {
 /// Errors happening when trying to create/open single disk farm
 #[derive(Debug, Error)]
 pub enum SingleDiskFarmError {
+    /// Failed to open or create identity
+    #[error("Failed to open or create identity: {0}")]
+    FailedToOpenIdentity(#[from] IdentityError),
     // TODO: Make more variants out of this generic one
     /// I/O error occurred
     #[error("I/O error: {0}")]
@@ -500,6 +504,9 @@ pub enum BackgroundTaskError {
     /// Farming error
     #[error(transparent)]
     Farming(#[from] FarmingError),
+    /// Reward signing
+    #[error(transparent)]
+    RewardSigning(#[from] Box<dyn Error + Send + Sync + 'static>),
     /// Background task panicked
     #[error("Background task {task} panicked")]
     BackgroundTaskPanicked { task: String },
@@ -599,8 +606,7 @@ impl SingleDiskFarm {
         } = options;
         fs::create_dir_all(&directory)?;
 
-        // TODO: Update `Identity` to use more specific error type and remove this `.unwrap()`
-        let identity = Identity::open_or_create(&directory).unwrap();
+        let identity = Identity::open_or_create(&directory)?;
         let public_key = identity.public_key().to_bytes().into();
 
         let single_disk_farm_info = match SingleDiskFarmInfo::load_from(&directory)? {
@@ -1158,8 +1164,17 @@ impl SingleDiskFarm {
         }));
 
         tasks.push(Box::pin(async move {
-            // TODO: Error handling here
-            reward_signing(node_client, identity).await.unwrap().await;
+            match reward_signing(node_client, identity).await {
+                Ok(reward_signing_fut) => {
+                    reward_signing_fut.await;
+                }
+                Err(error) => {
+                    return Err(BackgroundTaskError::RewardSigning(
+                        format!("Failed to subscribe to reward signing notifications: {error}")
+                            .into(),
+                    ));
+                }
+            }
 
             Ok(())
         }));

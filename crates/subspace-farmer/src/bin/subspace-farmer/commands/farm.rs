@@ -339,8 +339,9 @@ where
         .expect("Disk farm collection is not be empty as checked above; qed")
         .directory
         .clone();
-    // TODO: Update `Identity` to use more specific error type and remove this `.unwrap()`
-    let identity = Identity::open_or_create(&first_farm_directory).unwrap();
+
+    let identity = Identity::open_or_create(&first_farm_directory)
+        .map_err(|error| anyhow!("Failed to open or create identity: {error}"))?;
     let keypair = derive_libp2p_keypair(identity.secret_key());
     let peer_id = keypair.public().to_peer_id();
 
