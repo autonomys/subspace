@@ -198,6 +198,9 @@ struct DsnArgs {
     /// Known external addresses
     #[arg(long, alias = "external-address")]
     external_addresses: Vec<Multiaddr>,
+    /// Defines whether we should run blocking Kademlia bootstrap() operation before other requests.
+    #[arg(long, default_value_t = false)]
+    disable_bootstrap_on_start: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -293,8 +296,9 @@ where
         replotting_thread_pool_size,
     } = farming_args;
 
-    // Override the `--enable_private_ips` flag with `--dev`
+    // Override flags with `--dev`
     dsn.enable_private_ips = dsn.enable_private_ips || dev;
+    dsn.disable_bootstrap_on_start = dsn.disable_bootstrap_on_start || dev;
 
     let _tmp_directory = if let Some(plot_size) = tmp {
         let tmp_directory = TempDir::new()?;

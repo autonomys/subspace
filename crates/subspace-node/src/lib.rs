@@ -267,6 +267,10 @@ pub struct Cli {
     #[arg(long, default_value_t = false)]
     pub dsn_enable_private_ips: bool,
 
+    /// Defines whether we should run blocking Kademlia bootstrap() operation before other requests.
+    #[arg(long, default_value_t = false)]
+    pub dsn_disable_bootstrap_on_start: bool,
+
     /// Enables DSN-sync on startup.
     #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
     pub sync_from_dsn: bool,

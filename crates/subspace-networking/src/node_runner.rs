@@ -147,6 +147,8 @@ where
     /// Optional storage for the [`HandlerId`] of the address removal task.
     /// We keep to stop the task along with the rest of the networking.
     _address_removal_task_handler_id: Option<HandlerId>,
+    /// Defines whether we should run blocking Kademlia bootstrap() operation before other requests.
+    disable_bootstrap_on_start: bool,
 }
 
 // Helper struct for NodeRunner configuration (clippy requirement).
@@ -169,6 +171,7 @@ where
     pub(crate) bootstrap_addresses: Vec<Multiaddr>,
     pub(crate) kademlia_mode: KademliaMode,
     pub(crate) external_addresses: Vec<Multiaddr>,
+    pub(crate) disable_bootstrap_on_start: bool,
 }
 
 impl<LocalRecordProvider> NodeRunner<LocalRecordProvider>
@@ -192,6 +195,7 @@ where
             bootstrap_addresses,
             kademlia_mode,
             external_addresses,
+            disable_bootstrap_on_start,
         }: NodeRunnerConfig<LocalRecordProvider>,
     ) -> Self {
         // Setup the address removal events exchange between persistent params storage and Kademlia.
@@ -235,12 +239,17 @@ where
             external_addresses,
             removed_addresses_rx,
             _address_removal_task_handler_id: address_removal_task_handler_id,
+            disable_bootstrap_on_start,
         }
     }
 
     /// Drives the main networking future forward.
     pub async fn run(&mut self) {
-        self.bootstrap().await;
+        if !self.disable_bootstrap_on_start {
+            self.bootstrap().await;
+        } else {
+            debug!("Kademlia bootstrapping was skipped.");
+        }
 
         loop {
             futures::select! {

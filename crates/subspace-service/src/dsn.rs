@@ -69,6 +69,9 @@ pub struct DsnConfig {
 
     /// Known external addresses
     pub external_addresses: Vec<Multiaddr>,
+
+    /// Defines whether we should run blocking Kademlia bootstrap() operation before other requests.
+    pub disable_bootstrap_on_start: bool,
 }
 
 pub(crate) fn create_dsn_instance<AS>(
@@ -185,6 +188,7 @@ where
         external_addresses: dsn_config.external_addresses,
         kademlia_mode: KademliaMode::Static(Mode::Client),
         metrics,
+        disable_bootstrap_on_start: dsn_config.disable_bootstrap_on_start,
 
         ..default_networking_config
     };
