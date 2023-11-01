@@ -24,7 +24,6 @@ use crate::{
 use frame_support::parameter_types;
 use frame_support::traits::{ConstU128, ConstU16, ConstU32, ConstU64, OnInitialize};
 use futures::executor::block_on;
-use futures::{FutureExt, StreamExt};
 use rand::Rng;
 use schnorrkel::Keypair;
 use sp_consensus_slots::Slot;
@@ -495,12 +494,8 @@ pub fn create_signed_vote(
             .into_solutions(&reward_address, kzg, erasure_coding, |seed: &PosSeed| {
                 table_generator.generate_parallel(seed)
             })
-            .now_or_never()
-            .unwrap()
             .unwrap()
             .next()
-            .now_or_never()
-            .unwrap()
             .unwrap()
             .unwrap();
 
