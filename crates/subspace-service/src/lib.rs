@@ -508,18 +508,11 @@ where
         pot_verifier.clone(),
     )?;
 
-    let slot_duration = subspace_link.slot_duration();
     let sync_target_block_number = Arc::new(AtomicU32::new(0));
-    let verifier = SubspaceVerifier::<PosTable, _, _, _, _>::new(SubspaceVerifierOptions {
+    let verifier = SubspaceVerifier::<PosTable, _, _, _>::new(SubspaceVerifierOptions {
         client: client.clone(),
         kzg,
         select_chain: select_chain.clone(),
-        // TODO: Remove use current best slot known from PoT verifier in PoT case
-        slot_now: move || {
-            let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
-
-            Slot::from_timestamp(*timestamp, slot_duration)
-        },
         telemetry: telemetry.as_ref().map(|x| x.handle()),
         offchain_tx_pool_factory: OffchainTransactionPoolFactory::new(transaction_pool.clone()),
         reward_signing_context: schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT),

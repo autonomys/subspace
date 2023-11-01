@@ -96,7 +96,7 @@ where
 }
 
 /// Options for Subspace block verifier
-pub struct SubspaceVerifierOptions<Block, Client, SelectChain, SlotNow>
+pub struct SubspaceVerifierOptions<Block, Client, SelectChain>
 where
     Block: BlockT,
 {
@@ -106,9 +106,6 @@ where
     pub kzg: Kzg,
     /// Chain selection rule
     pub select_chain: SelectChain,
-    /// Callback for determining current slot based on timestamp
-    // TODO: Remove field once PoT is the only option
-    pub slot_now: SlotNow,
     /// Telemetry
     pub telemetry: Option<TelemetryHandle>,
     /// The offchain transaction pool factory.
@@ -126,15 +123,13 @@ where
 }
 
 /// A verifier for Subspace blocks.
-pub struct SubspaceVerifier<PosTable, Block, Client, SelectChain, SlotNow>
+pub struct SubspaceVerifier<PosTable, Block, Client, SelectChain>
 where
     Block: BlockT,
 {
     client: Arc<Client>,
     kzg: Kzg,
     select_chain: SelectChain,
-    // TODO: Remove field once PoT is the only option
-    slot_now: SlotNow,
     telemetry: Option<TelemetryHandle>,
     offchain_tx_pool_factory: OffchainTransactionPoolFactory<Block>,
     chain_constants: ChainConstants,
@@ -148,8 +143,7 @@ where
     _block: PhantomData<Block>,
 }
 
-impl<PosTable, Block, Client, SelectChain, SN>
-    SubspaceVerifier<PosTable, Block, Client, SelectChain, SN>
+impl<PosTable, Block, Client, SelectChain> SubspaceVerifier<PosTable, Block, Client, SelectChain>
 where
     PosTable: Table,
     Block: BlockT,
@@ -160,13 +154,12 @@ where
 {
     /// Create new instance
     pub fn new(
-        options: SubspaceVerifierOptions<Block, Client, SelectChain, SN>,
+        options: SubspaceVerifierOptions<Block, Client, SelectChain>,
     ) -> sp_blockchain::Result<Self> {
         let SubspaceVerifierOptions {
             client,
             kzg,
             select_chain,
-            slot_now,
             telemetry,
             offchain_tx_pool_factory,
             reward_signing_context,
@@ -183,7 +176,6 @@ where
             client,
             kzg,
             select_chain,
-            slot_now,
             telemetry,
             offchain_tx_pool_factory,
             chain_constants,
@@ -459,8 +451,8 @@ where
 }
 
 #[async_trait::async_trait]
-impl<PosTable, Block, Client, SelectChain, SN> Verifier<Block>
-    for SubspaceVerifier<PosTable, Block, Client, SelectChain, SN>
+impl<PosTable, Block, Client, SelectChain> Verifier<Block>
+    for SubspaceVerifier<PosTable, Block, Client, SelectChain>
 where
     PosTable: Table,
     Block: BlockT,
@@ -468,7 +460,6 @@ where
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + Send + Sync + AuxStore,
     Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey>,
     SelectChain: sp_consensus::SelectChain<Block>,
-    SN: Fn() -> Slot + Send + Sync + 'static,
 {
     fn verification_concurrency(&self) -> NonZeroUsize {
         available_parallelism().unwrap_or(NonZeroUsize::new(1).expect("Not zero; qed"))
@@ -534,8 +525,6 @@ where
             }
         }
 
-        let slot_now = (self.slot_now)();
-
         let full_pot_verification = self.full_pot_verification(*block.header.number());
 
         // Stateless header verification only. This means only check that header contains required
@@ -569,6 +558,19 @@ where
         } = checked_header;
 
         let slot = pre_digest.slot();
+        // Estimate what the "current" slot is according to sync target since we don't have other way to know it
+        let diff_in_blocks = self
+            .sync_target_block_number
+            .load(Ordering::Relaxed)
+            .saturating_sub(BlockNumber::from(*pre_header.number()));
+        let slot_now = if diff_in_blocks > 0 {
+            slot + Slot::from(
+                u64::from(diff_in_blocks) * self.chain_constants.slot_probability().1
+                    / self.chain_constants.slot_probability().0,
+            )
+        } else {
+            slot
+        };
 
         // the header is valid but let's check if there was something else already proposed at the
         // same slot by the given author. if there was, we will report the equivocation to the
