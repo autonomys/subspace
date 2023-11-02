@@ -934,6 +934,19 @@ fn extract_successful_bundles(
         .collect()
 }
 
+fn extract_bundle(
+    extrinsic: UncheckedExtrinsic,
+) -> Option<
+    sp_domains::OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, Balance>,
+> {
+    match extrinsic.function {
+        RuntimeCall::Domains(pallet_domains::Call::submit_bundle { opaque_bundle }) => {
+            Some(opaque_bundle)
+        }
+        _ => None,
+    }
+}
+
 // TODO: Remove when proceeding to fraud proof v2.
 #[allow(unused)]
 fn extract_receipts(
@@ -1161,6 +1174,7 @@ impl_runtime_apis! {
         }
     }
 
+    #[api_version(2)]
     impl sp_domains::DomainsApi<Block, DomainHeader> for Runtime {
         fn submit_bundle_unsigned(
             opaque_bundle: OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, Balance>,
@@ -1173,6 +1187,12 @@ impl_runtime_apis! {
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
         ) -> OpaqueBundles<Block, DomainHeader, Balance> {
             extract_successful_bundles(domain_id, extrinsics)
+        }
+
+        fn extract_bundle(
+            extrinsic: <Block as BlockT>::Extrinsic
+        ) -> Option<OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, Balance>> {
+            extract_bundle(extrinsic)
         }
 
         fn extrinsics_shuffling_seed() -> Randomness {
@@ -1233,6 +1253,14 @@ impl_runtime_apis! {
 
         fn execution_receipt(receipt_hash: DomainHash) -> Option<ExecutionReceipt<NumberFor<Block>, <Block as BlockT>::Hash, DomainNumber, DomainHash, Balance>> {
             Domains::execution_receipt(receipt_hash)
+        }
+    }
+
+    impl sp_domains_fraud_proof::FraudProofsApi<Block, DomainHeader> for Runtime {
+        fn submit_fraud_proof_unsigned(
+            fraud_proof: FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader>,
+        ){
+            Domains::submit_fraud_proof_unsigned(fraud_proof)
         }
     }
 

@@ -28,9 +28,11 @@ pub mod dsn;
 mod metrics;
 pub mod rpc;
 mod sync_from_dsn;
+pub mod transaction_pool;
 
 use crate::dsn::{create_dsn_instance, DsnConfigurationError};
 use crate::metrics::NodeMetrics;
+use crate::transaction_pool::FullPool;
 use core::sync::atomic::{AtomicU32, Ordering};
 use cross_domain_message_gossip::cdm_gossip_peers_set_config;
 use domain_runtime_primitives::opaque::{Block as DomainBlock, Header as DomainHeader};
@@ -44,7 +46,9 @@ use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
 use sc_basic_authorship::ProposerFactory;
 use sc_client_api::execution_extensions::ExtensionsFactory;
-use sc_client_api::{Backend, BlockBackend, BlockchainEvents, ExecutorProvider, HeaderBackend};
+use sc_client_api::{
+    AuxStore, Backend, BlockBackend, BlockchainEvents, ExecutorProvider, HeaderBackend,
+};
 use sc_consensus::{BasicQueue, DefaultImportQueue, ImportQueue, SharedBlockImport};
 use sc_consensus_slots::SlotProportion;
 use sc_consensus_subspace::archiver::{create_subspace_archiver, SegmentHeadersStore};
@@ -65,7 +69,6 @@ use sc_subspace_block_relay::{
     build_consensus_relay, BlockRelayConfigurationError, NetworkWrapper,
 };
 use sc_telemetry::{Telemetry, TelemetryWorker};
-use sc_transaction_pool::FullPool;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
@@ -78,7 +81,7 @@ use sp_consensus_subspace::{
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
 use sp_core::H256;
 use sp_domains::DomainsApi;
-use sp_domains_fraud_proof::{FraudProofExtension, FraudProofHostFunctionsImpl};
+use sp_domains_fraud_proof::{FraudProofExtension, FraudProofHostFunctionsImpl, FraudProofsApi};
 use sp_externalities::Extensions;
 use sp_objects::ObjectsApi;
 use sp_offchain::OffchainWorkerApi;
@@ -377,7 +380,7 @@ type PartialComponents<RuntimeApi, ExecutorDispatch> = sc_service::PartialCompon
     FullBackend,
     FullSelectChain,
     DefaultImportQueue<Block>,
-    FullPool<Block, FullClient<RuntimeApi, ExecutorDispatch>>,
+    FullPool<FullClient<RuntimeApi, ExecutorDispatch>, Block, DomainHeader>,
     OtherPartialComponents<RuntimeApi, ExecutorDispatch>,
 >;
 
@@ -401,6 +404,7 @@ where
         + TaggedTransactionQueue<Block>
         + SubspaceApi<Block, FarmerPublicKey>
         + DomainsApi<Block, DomainHeader>
+        + FraudProofsApi<Block, DomainHeader>
         + ObjectsApi<Block>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
@@ -454,14 +458,6 @@ where
 
     let select_chain = sc_consensus::LongestChain::new(backend.clone());
 
-    let transaction_pool = sc_transaction_pool::BasicPool::new_full(
-        config.transaction_pool.clone(),
-        config.role.is_authority().into(),
-        config.prometheus_registry(),
-        task_manager.spawn_essential_handle(),
-        client.clone(),
-    );
-
     let segment_headers_store = SegmentHeadersStore::new(client.clone())
         .map_err(|error| ServiceError::Application(error.into()))?;
 
@@ -509,6 +505,13 @@ where
     )?;
 
     let sync_target_block_number = Arc::new(AtomicU32::new(0));
+    let transaction_pool = crate::transaction_pool::new_full(
+        config,
+        &task_manager,
+        client.clone(),
+        sync_target_block_number.clone(),
+    )?;
+
     let verifier = SubspaceVerifier::<PosTable, _, _, _>::new(SubspaceVerifierOptions {
         client: client.clone(),
         kzg,
@@ -555,12 +558,16 @@ where
 pub struct NewFull<Client>
 where
     Client: ProvideRuntimeApi<Block>
+        + AuxStore
         + BlockBackend<Block>
         + BlockIdTo<Block>
         + HeaderBackend<Block>
         + HeaderMetadata<Block, Error = sp_blockchain::Error>
         + 'static,
-    Client::Api: TaggedTransactionQueue<Block> + DomainsApi<Block, DomainHeader>,
+    Client::Api: TaggedTransactionQueue<Block>
+        + DomainsApi<Block, DomainHeader>
+        + FraudProofsApi<Block, DomainHeader>
+        + SubspaceApi<Block, FarmerPublicKey>,
 {
     /// Task manager.
     pub task_manager: TaskManager,
@@ -589,7 +596,7 @@ where
     /// Network starter.
     pub network_starter: NetworkStarter,
     /// Transaction pool.
-    pub transaction_pool: Arc<FullPool<Block, Client>>,
+    pub transaction_pool: Arc<FullPool<Client, Block, DomainHeader>>,
 }
 
 type FullNode<RuntimeApi, ExecutorDispatch> = NewFull<FullClient<RuntimeApi, ExecutorDispatch>>;
@@ -617,6 +624,7 @@ where
         + TransactionPaymentApi<Block, Balance>
         + SubspaceApi<Block, FarmerPublicKey>
         + DomainsApi<Block, DomainHeader>
+        + FraudProofsApi<Block, DomainHeader>
         + ObjectsApi<Block>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {

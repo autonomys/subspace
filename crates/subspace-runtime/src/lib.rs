@@ -58,9 +58,10 @@ use sp_core::storage::StateVersion;
 use sp_core::{OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
-    DomainId, DomainInstanceData, DomainsHoldIdentifier, ExecutionReceipt, OperatorId,
-    OperatorPublicKey, StakingHoldIdentifier,
+    DomainId, DomainInstanceData, DomainsHoldIdentifier, ExecutionReceipt, OpaqueBundle,
+    OperatorId, OperatorPublicKey, StakingHoldIdentifier,
 };
+use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
 use sp_messenger::messages::{
     BlockInfo, BlockMessagesWithStorageKey, ChainId, CrossDomainMessage,
@@ -970,6 +971,7 @@ impl_runtime_apis! {
         }
     }
 
+    #[api_version(2)]
     impl sp_domains::DomainsApi<Block, DomainHeader> for Runtime {
         fn submit_bundle_unsigned(
             opaque_bundle: sp_domains::OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, Balance>,
@@ -982,6 +984,12 @@ impl_runtime_apis! {
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
         ) -> sp_domains::OpaqueBundles<Block, DomainHeader, Balance> {
             crate::domains::extract_successful_bundles(domain_id, extrinsics)
+        }
+
+        fn extract_bundle(
+            extrinsic: <Block as BlockT>::Extrinsic
+        ) -> Option<OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, Balance>> {
+            crate::domains::extract_bundle(extrinsic)
         }
 
         fn extrinsics_shuffling_seed() -> Randomness {
@@ -1042,6 +1050,14 @@ impl_runtime_apis! {
 
         fn execution_receipt(receipt_hash: DomainHash) -> Option<ExecutionReceipt<NumberFor<Block>, <Block as BlockT>::Hash, DomainNumber, DomainHash, Balance>> {
             Domains::execution_receipt(receipt_hash)
+        }
+    }
+
+    impl sp_domains_fraud_proof::FraudProofsApi<Block, DomainHeader> for Runtime {
+        fn submit_fraud_proof_unsigned(
+            fraud_proof: FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader>,
+        ){
+            Domains::submit_fraud_proof_unsigned(fraud_proof)
         }
     }
 

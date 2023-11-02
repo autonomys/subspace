@@ -1,5 +1,6 @@
 use crate::{Balance, Block, Domains, RuntimeCall, UncheckedExtrinsic};
 use domain_runtime_primitives::opaque::Header as DomainHeader;
+use sp_api::{BlockT, NumberFor};
 use sp_domains::DomainId;
 use sp_std::vec::Vec;
 
@@ -20,4 +21,17 @@ pub(crate) fn extract_successful_bundles(
             _ => None,
         })
         .collect()
+}
+
+pub(crate) fn extract_bundle(
+    extrinsic: UncheckedExtrinsic,
+) -> Option<
+    sp_domains::OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, Balance>,
+> {
+    match extrinsic.function {
+        RuntimeCall::Domains(pallet_domains::Call::submit_bundle { opaque_bundle }) => {
+            Some(opaque_bundle)
+        }
+        _ => None,
+    }
 }

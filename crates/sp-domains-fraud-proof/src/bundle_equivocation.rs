@@ -42,7 +42,6 @@ pub type CheckEquivocationResult<CNumber, CHash, DomainHeader> =
 /// Checks if the header is an equivocation and returns the proof in that case.
 ///
 /// Note: it detects equivocations only when slot_now - slot <= MAX_SLOT_CAPACITY.
-#[allow(dead_code)]
 pub fn check_equivocation<CClient, CBlock, DomainHeader>(
     backend: &Arc<CClient>,
     slot_now: Slot,

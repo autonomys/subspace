@@ -18,7 +18,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 
 #[cfg(feature = "std")]
-mod bundle_equivocation;
+pub mod bundle_equivocation;
 #[cfg(feature = "std")]
 pub mod execution_prover;
 pub mod fraud_proof;
@@ -29,6 +29,7 @@ mod runtime_interface;
 mod tests;
 pub mod verification;
 
+use crate::fraud_proof::FraudProof;
 use codec::{Decode, Encode};
 #[cfg(feature = "std")]
 pub use host_functions::{
@@ -38,7 +39,9 @@ pub use runtime_interface::fraud_proof_runtime_interface;
 #[cfg(feature = "std")]
 pub use runtime_interface::fraud_proof_runtime_interface::HostFunctions;
 use sp_api::scale_info::TypeInfo;
+use sp_api::HeaderT;
 use sp_domains::DomainId;
+use sp_runtime::traits::NumberFor;
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidity};
 use sp_runtime::OpaqueExtrinsic;
 use sp_runtime_interface::pass_by;
@@ -49,7 +52,7 @@ use subspace_core_primitives::Randomness;
 /// Custom invalid validity code for the extrinsics in pallet-domains.
 #[repr(u8)]
 pub enum InvalidTransactionCode {
-    BundleEquivocationProof = 101,
+    BundleEquivocation = 101,
     TransactionProof = 102,
     ExecutionReceipt = 103,
     Bundle = 104,
@@ -188,5 +191,14 @@ impl FraudProofVerificationInfoResponse {
             }
             _ => None,
         }
+    }
+}
+
+sp_api::decl_runtime_apis! {
+    pub trait FraudProofsApi<DomainHeader: HeaderT> {
+        /// Submits the fraud proof via an unsigned extrinsic.
+        fn submit_fraud_proof_unsigned(
+            fraud_proof: FraudProof<NumberFor<Block>, Block::Hash, DomainHeader>,
+        );
     }
 }

@@ -45,7 +45,6 @@ use sc_service::{
     BasePath, BlocksPruning, Configuration, NetworkStarter, Role, SpawnTasksParams, TaskManager,
 };
 use sc_transaction_pool::error::Error as PoolError;
-use sc_transaction_pool::FullPool;
 use sc_transaction_pool_api::{InPoolTransaction, TransactionPool, TransactionSource};
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver, TracingUnboundedSender};
 use sp_api::{ApiExt, HashT, HeaderT, ProvideRuntimeApi};
@@ -68,11 +67,13 @@ use sp_runtime::{DigestItem, OpaqueExtrinsic};
 use sp_timestamp::Timestamp;
 use std::error::Error;
 use std::marker::PhantomData;
+use std::sync::atomic::AtomicU32;
 use std::sync::Arc;
 use std::time;
 use subspace_core_primitives::{Randomness, Solution};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash};
+use subspace_service::transaction_pool::FullPool;
 use subspace_service::FullSelectChain;
 use subspace_test_client::{chain_spec, Backend, Client, TestExecutorDispatch};
 use subspace_test_runtime::{RuntimeApi, RuntimeCall, UncheckedExtrinsic, SLOT_DURATION};
@@ -220,7 +221,7 @@ pub struct MockConsensusNode {
     /// Code executor.
     pub executor: NativeElseWasmExecutor<TestExecutorDispatch>,
     /// Transaction pool.
-    pub transaction_pool: Arc<FullPool<Block, Client>>,
+    pub transaction_pool: Arc<FullPool<Client, Block, DomainHeader>>,
     /// The SelectChain Strategy
     pub select_chain: FullSelectChain,
     /// Network service.
@@ -286,13 +287,14 @@ impl MockConsensusNode {
 
         let select_chain = sc_consensus::LongestChain::new(backend.clone());
 
-        let transaction_pool = sc_transaction_pool::BasicPool::new_full(
-            config.transaction_pool.clone(),
-            config.role.is_authority().into(),
-            config.prometheus_registry(),
-            task_manager.spawn_essential_handle(),
+        let sync_target_block_number = Arc::new(AtomicU32::new(0));
+        let transaction_pool = subspace_service::transaction_pool::new_full(
+            &config,
+            &task_manager,
             client.clone(),
-        );
+            sync_target_block_number.clone(),
+        )
+        .expect("failed to create transaction pool");
 
         let block_import = MockBlockImport::<_, _>::new(client.clone());
 
