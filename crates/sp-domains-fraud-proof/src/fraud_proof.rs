@@ -6,7 +6,7 @@ use sp_domain_digests::AsPredigest;
 use sp_domains::proof_provider_and_verifier::StorageProofVerifier;
 use sp_domains::{
     BundleValidity, DomainId, ExecutionReceipt, HeaderHashFor, HeaderHashingFor, InvalidBundleType,
-    SealedBundleHeader,
+    OperatorId, SealedBundleHeader,
 };
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor};
 use sp_runtime::{Digest, DigestItem};
@@ -400,24 +400,30 @@ impl<Number, Hash, DomainHeader: HeaderT> FraudProof<Number, Hash, DomainHeader>
         }
     }
 
-    pub fn bad_receipt_hash(&self) -> HeaderHashFor<DomainHeader> {
+    pub fn targeted_bad_receipt_hash(&self) -> Option<HeaderHashFor<DomainHeader>> {
         match self {
-            Self::InvalidStateTransition(proof) => proof.bad_receipt_hash,
-            Self::InvalidTransaction(proof) => proof.bad_receipt_hash,
-            Self::ImproperTransactionSortition(proof) => proof.bad_receipt_hash,
-            // TODO: the `BundleEquivocation` fraud proof is different from other fraud proof,
-            // which target equivocate bundle instead of bad receipt, revisit this when fraud
-            // proof v2 is implemented.
-            Self::BundleEquivocation(_) => Default::default(),
+            Self::InvalidStateTransition(proof) => Some(proof.bad_receipt_hash),
+            Self::InvalidTransaction(proof) => Some(proof.bad_receipt_hash),
+            Self::ImproperTransactionSortition(proof) => Some(proof.bad_receipt_hash),
+            Self::BundleEquivocation(_) => None,
             #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
             Self::Dummy {
                 bad_receipt_hash, ..
-            } => *bad_receipt_hash,
-            Self::InvalidExtrinsicsRoot(proof) => proof.bad_receipt_hash,
-            Self::InvalidTotalRewards(proof) => proof.bad_receipt_hash(),
-            Self::ValidBundle(proof) => proof.bad_receipt_hash,
-            Self::InvalidBundles(proof) => proof.bad_receipt_hash,
-            Self::InvalidDomainBlockHash(proof) => proof.bad_receipt_hash,
+            } => Some(*bad_receipt_hash),
+            Self::InvalidExtrinsicsRoot(proof) => Some(proof.bad_receipt_hash),
+            Self::InvalidTotalRewards(proof) => Some(proof.bad_receipt_hash()),
+            Self::ValidBundle(proof) => Some(proof.bad_receipt_hash),
+            Self::InvalidBundles(proof) => Some(proof.bad_receipt_hash),
+            Self::InvalidDomainBlockHash(proof) => Some(proof.bad_receipt_hash),
+        }
+    }
+
+    pub fn targeted_bad_operator(&self) -> Option<OperatorId> {
+        match self {
+            Self::BundleEquivocation(proof) => {
+                Some(proof.first_header.header.proof_of_election.operator_id)
+            }
+            _ => None,
         }
     }
 
