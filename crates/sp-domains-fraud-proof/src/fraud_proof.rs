@@ -1,3 +1,4 @@
+use crate::verification::InvalidBundleEquivocationError;
 use codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
@@ -327,6 +328,18 @@ pub enum VerificationError<DomainHash> {
         error("Failed to check if a given extrinsic is inherent or not")
     )]
     FailedToCheckInherentExtrinsic,
+    /// Invalid bundle equivocation fraud proof.
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Invalid bundle equivocation fraud proof: {0}")
+    )]
+    InvalidBundleEquivocationFraudProof(InvalidBundleEquivocationError),
+}
+
+impl<DomainHash> From<InvalidBundleEquivocationError> for VerificationError<DomainHash> {
+    fn from(err: InvalidBundleEquivocationError) -> Self {
+        Self::InvalidBundleEquivocationFraudProof(err)
+    }
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]

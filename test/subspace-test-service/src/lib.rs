@@ -56,7 +56,7 @@ use sp_consensus_subspace::digests::{CompatibleDigestItem, PreDigest, PreDigestP
 use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
 use sp_core::H256;
-use sp_domains::{DomainsApi, OpaqueBundle};
+use sp_domains::{BundleProducerElectionApi, DomainsApi, OpaqueBundle};
 use sp_domains_fraud_proof::{FraudProofExtension, FraudProofHostFunctionsImpl};
 use sp_externalities::Extensions;
 use sp_inherents::{InherentData, InherentDataProvider};
@@ -192,7 +192,7 @@ where
     DomainBlock: BlockT,
     DomainBlock::Hash: Into<H256> + From<H256>,
     Client: BlockBackend<Block> + HeaderBackend<Block> + ProvideRuntimeApi<Block> + 'static,
-    Client::Api: DomainsApi<Block, DomainBlock::Header>,
+    Client::Api: DomainsApi<Block, DomainBlock::Header> + BundleProducerElectionApi<Block, Balance>,
     Executor: CodeExecutor + sc_executor::RuntimeVersionOf,
 {
     fn extensions_for(

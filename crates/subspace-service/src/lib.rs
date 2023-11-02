@@ -80,7 +80,7 @@ use sp_consensus_subspace::{
 };
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
 use sp_core::H256;
-use sp_domains::DomainsApi;
+use sp_domains::{BundleProducerElectionApi, DomainsApi};
 use sp_domains_fraud_proof::{FraudProofExtension, FraudProofHostFunctionsImpl, FraudProofsApi};
 use sp_externalities::Extensions;
 use sp_objects::ObjectsApi;
@@ -224,7 +224,9 @@ where
         + Send
         + Sync
         + 'static,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey> + DomainsApi<Block, DomainBlock::Header>,
+    Client::Api: SubspaceApi<Block, FarmerPublicKey>
+        + DomainsApi<Block, DomainBlock::Header>
+        + BundleProducerElectionApi<Block, Balance>,
     ExecutorDispatch: CodeExecutor + sc_executor::RuntimeVersionOf,
 {
     fn extensions_for(
@@ -405,6 +407,7 @@ where
         + SubspaceApi<Block, FarmerPublicKey>
         + DomainsApi<Block, DomainHeader>
         + FraudProofsApi<Block, DomainHeader>
+        + BundleProducerElectionApi<Block, Balance>
         + ObjectsApi<Block>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {

@@ -11,15 +11,17 @@ use codec::{Decode, Encode};
 use hash_db::Hasher;
 use sp_core::storage::StorageKey;
 use sp_core::H256;
+use sp_domains::bundle_producer_election::{check_proof_of_election, ProofOfElectionError};
 use sp_domains::extrinsics::{deduplicate_and_shuffle_extrinsics, extrinsics_shuffling_seed};
 use sp_domains::proof_provider_and_verifier::StorageProofVerifier;
 use sp_domains::valued_trie::valued_ordered_trie_root;
 use sp_domains::{
     BundleValidity, ExecutionReceipt, HeaderHashFor, HeaderHashingFor, HeaderNumberFor,
-    InboxedBundle, InvalidBundleType,
+    InboxedBundle, InvalidBundleType, OperatorPublicKey, SealedBundleHeader,
 };
 use sp_runtime::generic::Digest;
 use sp_runtime::traits::{Block as BlockT, Hash, Header as HeaderT, NumberFor};
+use sp_runtime::{RuntimeAppPublic, SaturatedConversion};
 use sp_std::vec::Vec;
 use sp_trie::{LayoutV1, StorageProof};
 use subspace_core_primitives::Randomness;
@@ -457,4 +459,98 @@ where
         // TODO: implement the other invalid bundle types
         _ => Err(VerificationError::InvalidProof),
     }
+}
+
+/// Represents error for invalid bundle equivocation proof.
+#[derive(Debug)]
+#[cfg_attr(feature = "thiserror", derive(thiserror::Error))]
+pub enum InvalidBundleEquivocationError {
+    /// Bundle signature is invalid.
+    #[cfg_attr(feature = "thiserror", error("Invalid bundle signature."))]
+    BadBundleSignature,
+    /// Bundle slot mismatch.
+    #[cfg_attr(feature = "thiserror", error("Bundle slot mismatch."))]
+    BundleSlotMismatch,
+    /// Same bundle hash.
+    #[cfg_attr(feature = "thiserror", error("Same bundle hash."))]
+    SameBundleHash,
+    /// Invalid Proof of election.
+    #[cfg_attr(feature = "thiserror", error("Invalid Proof of Election: {0:?}"))]
+    InvalidProofOfElection(ProofOfElectionError),
+    /// Failed to get domain total stake.
+    #[cfg_attr(feature = "thiserror", error("Failed to get domain total stake."))]
+    FailedToGetDomainTotalStake,
+    /// Failed to get operator stake.
+    #[cfg_attr(feature = "thiserror", error("Failed to get operator stake"))]
+    FailedToGetOperatorStake,
+}
+
+/// Verifies Bundle equivocation fraud proof.
+#[allow(dead_code)]
+pub fn verify_bundle_equivocation_fraud_proof<CBlock, DomainHeader, Balance>(
+    operator_signing_key: &OperatorPublicKey,
+    header_1: SealedBundleHeader<NumberFor<CBlock>, CBlock::Hash, DomainHeader, Balance>,
+    header_2: SealedBundleHeader<NumberFor<CBlock>, CBlock::Hash, DomainHeader, Balance>,
+) -> Result<(), InvalidBundleEquivocationError>
+where
+    CBlock: BlockT,
+    DomainHeader: HeaderT,
+    Balance: Encode,
+{
+    if !operator_signing_key.verify(&header_1.pre_hash(), &header_1.signature) {
+        return Err(InvalidBundleEquivocationError::BadBundleSignature);
+    }
+
+    if !operator_signing_key.verify(&header_2.pre_hash(), &header_2.signature) {
+        return Err(InvalidBundleEquivocationError::BadBundleSignature);
+    }
+
+    let consensus_block_hash = header_1.header.proof_of_election.consensus_block_hash;
+    let domain_id = header_1.header.proof_of_election.domain_id;
+    let operator_id = header_1.header.proof_of_election.operator_id;
+
+    let (domain_total_stake, bundle_slot_probability) = get_fraud_proof_verification_info(
+        H256::from_slice(consensus_block_hash.as_ref()),
+        FraudProofVerificationInfoRequest::DomainElectionParams { domain_id },
+    )
+    .and_then(|resp| resp.into_domain_election_params())
+    .ok_or(InvalidBundleEquivocationError::FailedToGetDomainTotalStake)?;
+
+    let operator_stake = get_fraud_proof_verification_info(
+        H256::from_slice(consensus_block_hash.as_ref()),
+        FraudProofVerificationInfoRequest::OperatorStake { operator_id },
+    )
+    .and_then(|resp| resp.into_operator_stake())
+    .ok_or(InvalidBundleEquivocationError::FailedToGetOperatorStake)?
+    .saturated_into();
+
+    check_proof_of_election(
+        operator_signing_key,
+        bundle_slot_probability,
+        &header_1.header.proof_of_election,
+        operator_stake,
+        domain_total_stake,
+    )
+    .map_err(InvalidBundleEquivocationError::InvalidProofOfElection)?;
+
+    check_proof_of_election(
+        operator_signing_key,
+        bundle_slot_probability,
+        &header_2.header.proof_of_election,
+        operator_stake,
+        domain_total_stake,
+    )
+    .map_err(InvalidBundleEquivocationError::InvalidProofOfElection)?;
+
+    if header_1.header.proof_of_election.slot_number
+        != header_2.header.proof_of_election.slot_number
+    {
+        return Err(InvalidBundleEquivocationError::BundleSlotMismatch);
+    }
+
+    if header_1.hash() == header_2.hash() {
+        return Err(InvalidBundleEquivocationError::SameBundleHash);
+    }
+
+    Ok(())
 }

@@ -40,7 +40,7 @@ pub use runtime_interface::fraud_proof_runtime_interface;
 pub use runtime_interface::fraud_proof_runtime_interface::HostFunctions;
 use sp_api::scale_info::TypeInfo;
 use sp_api::HeaderT;
-use sp_domains::DomainId;
+use sp_domains::{DomainId, OperatorId};
 use sp_runtime::traits::NumberFor;
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidity};
 use sp_runtime::OpaqueExtrinsic;
@@ -48,6 +48,7 @@ use sp_runtime_interface::pass_by;
 use sp_runtime_interface::pass_by::PassBy;
 use sp_std::vec::Vec;
 use subspace_core_primitives::Randomness;
+use subspace_runtime_primitives::Balance;
 
 /// Custom invalid validity code for the extrinsics in pallet-domains.
 #[repr(u8)]
@@ -103,6 +104,10 @@ pub enum FraudProofVerificationInfoRequest {
         /// Extrinsic for which we need to if it is inherent or not.
         opaque_extrinsic: OpaqueExtrinsic,
     },
+    /// Request to get Domain election params.
+    DomainElectionParams { domain_id: DomainId },
+    /// Request to get Operator stake.
+    OperatorStake { operator_id: OperatorId },
 }
 
 impl PassBy for FraudProofVerificationInfoRequest {
@@ -135,6 +140,13 @@ pub enum FraudProofVerificationInfoResponse {
     TxRangeCheck(bool),
     /// If the particular extrinsic provided is either inherent or not.
     InherentExtrinsicCheck(bool),
+    /// Domain's total stake at a given Consensus hash.
+    DomainElectionParams {
+        domain_total_stake: Balance,
+        bundle_slot_probability: (u64, u64),
+    },
+    /// Operators Stake at a given Consensus hash.
+    OperatorStake(Balance),
 }
 
 impl FraudProofVerificationInfoResponse {
@@ -189,6 +201,23 @@ impl FraudProofVerificationInfoResponse {
             FraudProofVerificationInfoResponse::InherentExtrinsicCheck(is_inherent) => {
                 Some(is_inherent)
             }
+            _ => None,
+        }
+    }
+
+    pub fn into_domain_election_params(self) -> Option<(Balance, (u64, u64))> {
+        match self {
+            FraudProofVerificationInfoResponse::DomainElectionParams {
+                domain_total_stake,
+                bundle_slot_probability,
+            } => Some((domain_total_stake, bundle_slot_probability)),
+            _ => None,
+        }
+    }
+
+    pub fn into_operator_stake(self) -> Option<Balance> {
+        match self {
+            FraudProofVerificationInfoResponse::OperatorStake(stake) => Some(stake),
             _ => None,
         }
     }

@@ -35,7 +35,7 @@ pub mod weights;
 extern crate alloc;
 
 use crate::block_tree::verify_execution_receipt;
-use crate::staking::{do_nominate_operator, Operator, OperatorStatus};
+use crate::staking::{do_nominate_operator, OperatorStatus};
 use codec::{Decode, Encode};
 use frame_support::ensure;
 use frame_support::traits::fungible::{Inspect, InspectHold};
@@ -45,11 +45,10 @@ use frame_system::pallet_prelude::*;
 pub use pallet::*;
 use scale_info::TypeInfo;
 use sp_core::H256;
-use sp_domains::bundle_producer_election::{is_below_threshold, BundleProducerElectionParams};
+use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
     DomainBlockLimit, DomainId, DomainInstanceData, ExecutionReceipt, OpaqueBundle, OperatorId,
-    OperatorPublicKey, ProofOfElection, RuntimeId, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT,
-    EMPTY_EXTRINSIC_ROOT,
+    OperatorPublicKey, RuntimeId, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT, EMPTY_EXTRINSIC_ROOT,
 };
 use sp_domains_fraud_proof::fraud_proof::{
     FraudProof, InvalidDomainBlockHashProof, InvalidTotalRewardsProof,
@@ -151,6 +150,7 @@ mod pallet {
     use frame_support::{Identity, PalletError};
     use frame_system::pallet_prelude::*;
     use sp_core::H256;
+    use sp_domains::bundle_producer_election::ProofOfElectionError;
     use sp_domains::{
         BundleDigest, DomainId, EpochIndex, GenesisDomain, OperatorAllowList, OperatorId,
         RuntimeId, RuntimeType,
@@ -653,6 +653,15 @@ mod pallet {
     impl<T> From<BlockTreeError> for Error<T> {
         fn from(err: BlockTreeError) -> Self {
             Error::BlockTree(err)
+        }
+    }
+
+    impl From<ProofOfElectionError> for BundleError {
+        fn from(err: ProofOfElectionError) -> Self {
+            match err {
+                ProofOfElectionError::BadVrfProof => Self::BadVrfSignature,
+                ProofOfElectionError::ThresholdUnsatisfied => Self::ThresholdUnsatisfied,
+            }
         }
     }
 
@@ -1432,33 +1441,6 @@ impl<T: Config> Pallet<T> {
         Ok(())
     }
 
-    fn check_proof_of_election(
-        domain_id: DomainId,
-        operator_id: OperatorId,
-        operator: Operator<BalanceOf<T>, T::Share>,
-        bundle_slot_probability: (u64, u64),
-        proof_of_election: &ProofOfElection,
-    ) -> Result<(), BundleError> {
-        proof_of_election
-            .verify_vrf_signature(&operator.signing_key)
-            .map_err(|_| BundleError::BadVrfSignature)?;
-
-        let (operator_stake, total_domain_stake) =
-            Self::fetch_operator_stake_info(domain_id, &operator_id)?;
-
-        let threshold = sp_domains::bundle_producer_election::calculate_threshold(
-            operator_stake.saturated_into(),
-            total_domain_stake.saturated_into(),
-            bundle_slot_probability,
-        );
-
-        if !is_below_threshold(&proof_of_election.vrf_signature.output, threshold) {
-            return Err(BundleError::ThresholdUnsatisfied);
-        }
-
-        Ok(())
-    }
-
     fn validate_bundle(opaque_bundle: &OpaqueBundleOf<T>) -> Result<(), BundleError> {
         let domain_id = opaque_bundle.domain_id();
         let operator_id = opaque_bundle.operator_id();
@@ -1491,12 +1473,15 @@ impl<T: Config> Pallet<T> {
         Self::check_extrinsics_root(opaque_bundle)?;
 
         let proof_of_election = &sealed_header.header.proof_of_election;
-        Self::check_proof_of_election(
-            domain_id,
-            operator_id,
-            operator,
+        let (operator_stake, total_domain_stake) =
+            Self::fetch_operator_stake_info(domain_id, &operator_id)?;
+
+        sp_domains::bundle_producer_election::check_proof_of_election(
+            &operator.signing_key,
             domain_config.bundle_slot_probability,
             proof_of_election,
+            operator_stake.saturated_into(),
+            total_domain_stake.saturated_into(),
         )?;
 
         let receipt = &sealed_header.header.receipt;

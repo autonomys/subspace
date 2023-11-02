@@ -1,4 +1,4 @@
-use crate::{DomainId, OperatorId, OperatorPublicKey, StakeWeight};
+use crate::{DomainId, OperatorId, OperatorPublicKey, ProofOfElection, StakeWeight};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::crypto::{VrfPublic, Wraps};
@@ -60,9 +60,11 @@ pub struct BundleProducerElectionParams<Balance> {
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub enum VrfProofError {
+pub enum ProofOfElectionError {
     /// Invalid vrf proof.
-    BadProof,
+    BadVrfProof,
+    /// Threshold unsatisfied error.
+    ThresholdUnsatisfied,
 }
 
 /// Verify the vrf proof generated in the bundle election.
@@ -71,12 +73,31 @@ pub(crate) fn verify_vrf_signature(
     public_key: &OperatorPublicKey,
     vrf_signature: &VrfSignature,
     global_challenge: &Blake3Hash,
-) -> Result<(), VrfProofError> {
+) -> Result<(), ProofOfElectionError> {
     if !public_key.as_inner_ref().vrf_verify(
         &make_transcript(domain_id, global_challenge).into(),
         vrf_signature,
     ) {
-        return Err(VrfProofError::BadProof);
+        return Err(ProofOfElectionError::BadVrfProof);
+    }
+
+    Ok(())
+}
+
+pub fn check_proof_of_election<CHash>(
+    operator_signing_key: &OperatorPublicKey,
+    bundle_slot_probability: (u64, u64),
+    proof_of_election: &ProofOfElection<CHash>,
+    operator_stake: StakeWeight,
+    total_domain_stake: StakeWeight,
+) -> Result<(), ProofOfElectionError> {
+    proof_of_election.verify_vrf_signature(operator_signing_key)?;
+
+    let threshold =
+        calculate_threshold(operator_stake, total_domain_stake, bundle_slot_probability);
+
+    if !is_below_threshold(&proof_of_election.vrf_signature.output, threshold) {
+        return Err(ProofOfElectionError::ThresholdUnsatisfied);
     }
 
     Ok(())

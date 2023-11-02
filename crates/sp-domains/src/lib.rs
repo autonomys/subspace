@@ -30,7 +30,7 @@ extern crate alloc;
 
 use crate::storage::{RawGenesis, StorageKey};
 use alloc::string::String;
-use bundle_producer_election::{BundleProducerElectionParams, VrfProofError};
+use bundle_producer_election::{BundleProducerElectionParams, ProofOfElectionError};
 use hexlit::hex;
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
@@ -184,7 +184,7 @@ impl PassBy for DomainId {
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct BundleHeader<Number, Hash, DomainHeader: HeaderT, Balance> {
     /// Proof of bundle producer election.
-    pub proof_of_election: ProofOfElection,
+    pub proof_of_election: ProofOfElection<Hash>,
     /// Execution receipt that should extend the receipt chain or add confirmations
     /// to the head receipt.
     pub receipt: ExecutionReceipt<
@@ -341,7 +341,12 @@ impl<Extrinsic: Encode, Number, Hash, DomainHeader: HeaderT, Balance>
 }
 
 #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
-pub fn dummy_opaque_bundle<Number: Encode, Hash: Encode, DomainHeader: HeaderT, Balance: Encode>(
+pub fn dummy_opaque_bundle<
+    Number: Encode,
+    Hash: Default + Encode,
+    DomainHeader: HeaderT,
+    Balance: Encode,
+>(
     domain_id: DomainId,
     operator_id: OperatorId,
     receipt: ExecutionReceipt<
@@ -526,7 +531,7 @@ impl<
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct ProofOfElection {
+pub struct ProofOfElection<CHash> {
     /// Domain id.
     pub domain_id: DomainId,
     /// The slot number.
@@ -537,13 +542,15 @@ pub struct ProofOfElection {
     pub vrf_signature: VrfSignature,
     /// Operator index in the OperatorRegistry.
     pub operator_id: OperatorId,
+    /// Consensus block hash at which proof of election was derived.
+    pub consensus_block_hash: CHash,
 }
 
-impl ProofOfElection {
+impl<CHash> ProofOfElection<CHash> {
     pub fn verify_vrf_signature(
         &self,
         operator_signing_key: &OperatorPublicKey,
-    ) -> Result<(), VrfProofError> {
+    ) -> Result<(), ProofOfElectionError> {
         let global_challenge = self
             .global_randomness
             .derive_global_challenge(self.slot_number);
@@ -563,7 +570,7 @@ impl ProofOfElection {
     }
 }
 
-impl ProofOfElection {
+impl<CHash: Default> ProofOfElection<CHash> {
     #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
     pub fn dummy(domain_id: DomainId, operator_id: OperatorId) -> Self {
         let output_bytes = sp_std::vec![0u8; VrfOutput::max_encoded_len()];
@@ -578,6 +585,7 @@ impl ProofOfElection {
             global_randomness: Randomness::default(),
             vrf_signature,
             operator_id,
+            consensus_block_hash: Default::default(),
         }
     }
 }
