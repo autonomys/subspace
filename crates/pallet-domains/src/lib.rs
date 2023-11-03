@@ -161,7 +161,7 @@ mod pallet {
         AtLeast32BitUnsigned, BlockNumberProvider, CheckEqual, CheckedAdd, Header as HeaderT,
         MaybeDisplay, One, SimpleBitOps, Zero,
     };
-    use sp_runtime::SaturatedConversion;
+    use sp_runtime::{SaturatedConversion, Saturating};
     use sp_std::boxed::Box;
     use sp_std::collections::btree_map::BTreeMap;
     use sp_std::collections::btree_set::BTreeSet;
@@ -472,8 +472,8 @@ mod pallet {
         DomainId,
         Identity,
         DomainBlockNumberFor<T>,
-        BTreeSet<ReceiptHashFor<T>>,
-        ValueQuery,
+        ReceiptHashFor<T>,
+        OptionQuery,
     >;
 
     /// Mapping of block tree node hash to the node, each node represent a domain block
@@ -492,17 +492,17 @@ mod pallet {
         OptionQuery,
     >;
 
-    // Mapping of the parent ER to all its immediate descendants ER
-    // TODO: remove this mapping once https://github.com/subspace/subspace/issues/1731 is implemented
-    // by then every parent ER should only have one immediate descendants ER
-    #[pallet::storage]
-    pub(super) type DomainBlockDescendants<T: Config> =
-        StorageMap<_, Identity, ReceiptHashFor<T>, BTreeSet<ReceiptHashFor<T>>, ValueQuery>;
-
     /// The head receipt number of each domain
     #[pallet::storage]
     pub(super) type HeadReceiptNumber<T: Config> =
         StorageMap<_, Identity, DomainId, DomainBlockNumberFor<T>, ValueQuery>;
+
+    /// Whether the head receipt have extended in the current consensus block
+    ///
+    /// Temporary storage only exist during block execution
+    #[pallet::storage]
+    pub(super) type HeadReceiptExtended<T: Config> =
+        StorageMap<_, Identity, DomainId, bool, ValueQuery>;
 
     /// State root mapped again each domain (block, hash)
     /// This acts as an index for other protocols like XDM to fetch state roots faster.
@@ -733,7 +733,7 @@ mod pallet {
         },
         FraudProofProcessed {
             domain_id: DomainId,
-            new_head_receipt_number: Option<DomainBlockNumberFor<T>>,
+            new_head_receipt_number: DomainBlockNumberFor<T>,
         },
         DomainOperatorAllowListUpdated {
             domain_id: DomainId,
@@ -784,11 +784,6 @@ mod pallet {
             let receipt = opaque_bundle.into_receipt();
 
             match execution_receipt_type::<T>(domain_id, &receipt) {
-                // The stale receipt should not be further processed, but we still track them for purposes
-                // of measuring the bundle production rate.
-                ReceiptType::Stale => {
-                    return Ok(());
-                }
                 ReceiptType::Rejected(rejected_receipt_type) => {
                     return Err(Error::<T>::BlockTree(rejected_receipt_type.into()).into());
                 }
@@ -892,70 +887,49 @@ mod pallet {
             log::trace!(target: "runtime::domains", "Processing fraud proof: {fraud_proof:?}");
 
             let domain_id = fraud_proof.domain_id();
-            let mut receipt_to_remove = vec![fraud_proof.bad_receipt_hash()];
-            let mut operator_to_slash = BTreeSet::new();
-            let mut next_head_receipt_number = None;
+            let head_receipt_number = HeadReceiptNumber::<T>::get(domain_id);
+            let bad_receipt_number = BlockTreeNodes::<T>::get(fraud_proof.bad_receipt_hash())
+                .ok_or::<Error<T>>(FraudProofError::BadReceiptNotFound.into())?
+                .execution_receipt
+                .domain_block_number;
+            // The `head_receipt_number` must greater than or equal to any existing receipt, including
+            // the bad receipt, otherwise the fraud proof should be rejected due to `BadReceiptNotFound`,
+            // double check here to make it more robust.
+            ensure!(
+                head_receipt_number >= bad_receipt_number,
+                Error::<T>::from(FraudProofError::BadReceiptNotFound),
+            );
 
-            // Prune the bad ER and all of its descendants from the block tree. ER are pruning
-            // with BFS order from lower height to higher height.
-            while let Some(receipt_hash) = receipt_to_remove.pop() {
+            // Starting from the head receipt, prune all ER between [bad_receipt_number..head_receipt_number]
+            let mut to_prune = head_receipt_number;
+            let mut operator_to_slash = BTreeSet::new();
+            while to_prune >= bad_receipt_number {
+                let receipt_hash = BlockTree::<T>::take(domain_id, to_prune)
+                    .ok_or::<Error<T>>(FraudProofError::BadReceiptNotFound.into())?;
+
                 let BlockTreeNode {
                     execution_receipt,
                     operator_ids,
                 } = BlockTreeNodes::<T>::take(receipt_hash)
                     .ok_or::<Error<T>>(FraudProofError::BadReceiptNotFound.into())?;
 
-                BlockTree::<T>::mutate_exists(
-                    domain_id,
-                    execution_receipt.domain_block_number,
-                    |maybe_er_hashes| {
-                        if let Some(er_hashes) = maybe_er_hashes {
-                            // Remove ER hash from the set, remove the whole set if it is empty.
-                            er_hashes.remove(&receipt_hash);
-                            if er_hashes.is_empty() {
-                                maybe_er_hashes.take();
-                            }
-                            // If all the ER at `domain_block_number` are pruned then any ER that derive from domain
-                            // block with height > `domain_block_number` must also be pruned since their parent ER
-                            // are pruned thus we can reset the new head receipt number to `domain_block_number - 1`.
-                            if maybe_er_hashes.is_none() && next_head_receipt_number.is_none() {
-                                next_head_receipt_number
-                                    .replace(execution_receipt.domain_block_number - One::one());
-                            } else if maybe_er_hashes.is_some()
-                                && next_head_receipt_number.is_some()
-                            {
-                                // `next_head_receipt_number` is `Some` means all the ER at prior height are pruned
-                                // thus the descendants must also be pruned
-                                return Err::<(), Error<T>>(
-                                    FraudProofError::DescendantsOfFraudulentERNotPruned.into(),
-                                );
-                            }
-                        }
-                        Ok(())
-                    },
-                )?;
-
-                _ = StateRoots::<T>::take((
+                let _ = StateRoots::<T>::take((
                     domain_id,
                     execution_receipt.domain_block_number,
                     execution_receipt.domain_block_hash,
                 ));
 
-                // Add all the immediate descendants of the pruned ER to the `receipt_to_remove` list
-                DomainBlockDescendants::<T>::take(receipt_hash)
-                    .into_iter()
-                    .for_each(|descendant| receipt_to_remove.push(descendant));
-
                 // NOTE: the operator id will be deduplicated since we are using `BTreeSet`
                 operator_ids.into_iter().for_each(|id| {
                     operator_to_slash.insert(id);
                 });
+
+                to_prune -= One::one();
             }
 
-            // Update the head receipt number
-            if let Some(next_head_receipt_number) = next_head_receipt_number {
-                HeadReceiptNumber::<T>::insert(domain_id, next_head_receipt_number);
-            }
+            // Update the head receipt number to `bad_receipt_number - 1`
+            let new_head_receipt_number = bad_receipt_number.saturating_sub(One::one());
+            HeadReceiptNumber::<T>::insert(domain_id, new_head_receipt_number);
 
             // Slash operator who have submitted the pruned fraudulent ER
             do_slash_operators::<T, _>(operator_to_slash.into_iter()).map_err(Error::<T>::from)?;
@@ -964,7 +938,7 @@ mod pallet {
 
             Self::deposit_event(Event::FraudProofProcessed {
                 domain_id,
-                new_head_receipt_number: next_head_receipt_number,
+                new_head_receipt_number,
             });
 
             Ok(())
@@ -1265,6 +1239,7 @@ mod pallet {
 
         fn on_finalize(_: BlockNumberFor<T>) {
             let _ = LastEpochStakingDistribution::<T>::clear(u32::MAX, None);
+            let _ = HeadReceiptExtended::<T>::clear(u32::MAX, None);
         }
     }
 
@@ -1384,7 +1359,6 @@ impl<T: Config> Pallet<T> {
 
     pub fn genesis_state_root(domain_id: DomainId) -> Option<H256> {
         BlockTree::<T>::get(domain_id, DomainBlockNumberFor::<T>::zero())
-            .first()
             .and_then(BlockTreeNodes::<T>::get)
             .map(|block| block.execution_receipt.final_state_root.into())
     }
