@@ -87,7 +87,7 @@ pub(crate) enum ReceiptType {
     Rejected(RejectedReceiptType),
 }
 
-pub(crate) fn is_receipt_exist<T: Config>(
+pub(crate) fn does_receipt_exists<T: Config>(
     domain_id: DomainId,
     domain_number: DomainBlockNumberFor<T>,
     receipt_hash: ReceiptHashFor<T>,
@@ -104,8 +104,9 @@ pub(crate) fn execution_receipt_type<T: Config>(
 ) -> ReceiptType {
     let receipt_number = execution_receipt.domain_block_number;
     let head_receipt_number = HeadReceiptNumber::<T>::get(domain_id);
+    let next_receipt_number = head_receipt_number.saturating_add(One::one());
 
-    match receipt_number.cmp(&head_receipt_number.saturating_add(One::one())) {
+    match receipt_number.cmp(&next_receipt_number) {
         Ordering::Greater => ReceiptType::Rejected(RejectedReceiptType::InFuture),
         Ordering::Equal => ReceiptType::Accepted(AcceptedReceiptType::NewHead),
         Ordering::Less => {
@@ -117,7 +118,7 @@ pub(crate) fn execution_receipt_type<T: Config>(
             }
 
             // Reject receipt that try to create new branch in the block tree
-            let already_exist = is_receipt_exist::<T>(
+            let already_exist = does_receipt_exists::<T>(
                 domain_id,
                 receipt_number,
                 execution_receipt.hash::<DomainHashingFor<T>>(),
@@ -161,7 +162,7 @@ pub(crate) fn verify_execution_receipt<T: Config>(
         // The genesis receipt is generated and added to the block tree by the runtime upon domain
         // instantiation, thus it is unchallengeable and must always be the same.
         ensure!(
-            is_receipt_exist::<T>(
+            does_receipt_exists::<T>(
                 domain_id,
                 *domain_block_number,
                 execution_receipt.hash::<DomainHashingFor<T>>(),
@@ -222,7 +223,7 @@ pub(crate) fn verify_execution_receipt<T: Config>(
     }
 
     if let Some(parent_block_number) = domain_block_number.checked_sub(&One::one()) {
-        let parent_block_exist = is_receipt_exist::<T>(
+        let parent_block_exist = does_receipt_exists::<T>(
             domain_id,
             parent_block_number,
             *parent_domain_block_receipt_hash,
