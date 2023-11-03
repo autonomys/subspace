@@ -95,12 +95,8 @@ where
     let protocol_id = config.protocol_id();
 
     let (chain_sync_network_provider, chain_sync_network_handle) = NetworkServiceProvider::new();
-    let (mut block_server, block_downloader, block_request_protocol_config) = match block_relay {
-        Some(params) => (
-            params.server,
-            params.downloader,
-            params.request_response_config,
-        ),
+    let (mut block_server, block_downloader) = match block_relay {
+        Some(params) => (params.server, params.downloader),
         None => {
             // Custom protocol was not specified, use the default block handler.
             let params = BlockRequestHandler::new(
@@ -111,11 +107,7 @@ where
                 config.network.default_peers_set.in_peers as usize
                     + config.network.default_peers_set.out_peers as usize,
             );
-            (
-                params.server,
-                params.downloader,
-                params.request_response_config,
-            )
+            (params.server, params.downloader)
         }
     };
     spawn_handle.spawn("block-request-handler", Some("networking"), async move {
@@ -154,7 +146,13 @@ where
         state_request_protocol_config.name.clone(),
         None,
         rx,
-        config.network.force_synced,
+        // set to be force_synced always for domains since they relay on Consensus chain to derive and import domain blocks.
+        // If not set, each domain node will wait to be fully synced and as a result will not propagate the transactions over network.
+        // It would have been ideal to use `Consensus` chain sync service to respond to `is_major_sync` requests but this
+        // would require upstream changes and with some refactoring. This is not worth the effort at the moment since
+        // we are planning to enable domain's block request and state sync mechanism in the near future.
+        // Until such change has been made, domain's sync service needs to be in force_synced state.
+        true,
     )?;
     let sync_service_import_queue = sync_service.clone();
     let sync_service = Arc::new(sync_service);
@@ -176,9 +174,6 @@ where
         config.chain_spec.fork_id(),
     );
     net_config.add_notification_protocol(transactions_handler_proto.set_config());
-
-    net_config.add_request_response_protocol(block_request_protocol_config);
-    net_config.add_request_response_protocol(state_request_protocol_config);
 
     // Create `PeerStore` and initialize it with bootnode peer ids.
     let peer_store = PeerStore::new(

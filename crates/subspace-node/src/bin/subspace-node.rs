@@ -218,6 +218,8 @@ fn main() -> Result<(), Error> {
                     "subspace_gemini_3b",
                     "subspace_gemini_3c",
                     "subspace_gemini_3d",
+                    "subspace_gemini_3e",
+                    "subspace_gemini_3f",
                 ] {
                     let _ = std::fs::remove_dir_all(
                         base_dir.join("subspace-node").join("chains").join(chain),
@@ -366,7 +368,7 @@ fn main() -> Result<(), Error> {
                         cli.run
                             .base_path()?
                             .map(|base_path| base_path.path().to_path_buf()),
-                        // pass the domain-id manually for benchmark since this is 
+                        // pass the domain-id manually for benchmark since this is
                         // not possible through cli commands at this moment.
                         vec!["--domain-id".to_owned(), "0".to_owned()].into_iter(),
                     );
@@ -514,6 +516,9 @@ fn main() -> Result<(), Error> {
                             max_pending_out_connections: cli.dsn_pending_out_connections,
                             target_connections: cli.dsn_target_connections,
                             external_addresses: cli.dsn_external_addresses,
+                            // Override initial Kademlia bootstrapping  with --dev
+                            disable_bootstrap_on_start: cli.dsn_disable_bootstrap_on_start
+                                || cli.run.shared_params.dev,
                         }
                     };
 

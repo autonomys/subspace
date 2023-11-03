@@ -447,7 +447,7 @@ mod pallet {
         /// Channel is set to initiated and do not accept or receive any messages.
         /// Only a root user can create the channel.
         #[pallet::call_index(0)]
-        #[pallet::weight((T::WeightInfo::initiate_channel(), Pays::No))]
+        #[pallet::weight(T::WeightInfo::initiate_channel())]
         pub fn initiate_channel(
             origin: OriginFor<T>,
             dst_chain_id: ChainId,
@@ -476,7 +476,7 @@ mod pallet {
         /// Channel is set to Closed and do not accept or receive any messages.
         /// Only a root user can close an open channel.
         #[pallet::call_index(1)]
-        #[pallet::weight((T::WeightInfo::close_channel(), Pays::No))]
+        #[pallet::weight(T::WeightInfo::close_channel())]
         pub fn close_channel(
             origin: OriginFor<T>,
             chain_id: ChainId,

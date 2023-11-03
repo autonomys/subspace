@@ -11,7 +11,6 @@ use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use lru::LruCache;
 use parking_lot::Mutex;
-use rayon::ThreadPoolBuilder;
 use std::fs;
 use std::net::SocketAddr;
 use std::num::{NonZeroU8, NonZeroUsize};
@@ -29,9 +28,7 @@ use subspace_farmer::utils::farmer_piece_getter::FarmerPieceGetter;
 use subspace_farmer::utils::piece_validator::SegmentCommitmentPieceValidator;
 use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
 use subspace_farmer::utils::ss58::parse_ss58_reward_address;
-use subspace_farmer::utils::{
-    run_future_in_dedicated_thread, tokio_rayon_spawn_handler, AsyncJoinOnDrop,
-};
+use subspace_farmer::utils::{run_future_in_dedicated_thread, AsyncJoinOnDrop};
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_farmer_components::plotting::PlottedSector;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
@@ -134,13 +131,21 @@ pub(crate) struct FarmingArgs {
     /// the system
     #[arg(long, default_value_t = available_parallelism())]
     farming_thread_pool_size: usize,
-    /// Size of thread pool used for plotting, defaults to number of CPU cores available in the
-    /// system. This thread pool is global for all farms and generally doesn't need to be changed.
+    /// Size of PER FARM thread pool used for plotting, defaults to number of CPU cores available
+    /// in the system.
+    ///
+    /// NOTE: The fact that this parameter is per farm doesn't mean farmer will plot multiple
+    /// sectors concurrently, see `--sector-downloading-concurrency` and
+    /// `--sector-encoding-concurrency` options.
     #[arg(long, default_value_t = available_parallelism())]
     plotting_thread_pool_size: usize,
-    /// Size of thread pool used for replotting, typically smaller pool than for plotting to not
-    /// affect farming as much, defaults to half of the number of CPU cores available in the system.
-    /// This thread pool is global for all farms and generally doesn't need to be changed.
+    /// Size of PER FARM thread pool used for replotting, typically smaller pool than for plotting
+    /// to not affect farming as much, defaults to half of the number of CPU cores available in the
+    /// system.
+    ///
+    /// NOTE: The fact that this parameter is per farm doesn't mean farmer will replot multiple
+    /// sectors concurrently, see `--sector-downloading-concurrency` and
+    /// `--sector-encoding-concurrency` options.
     #[arg(long, default_value_t = available_parallelism() / 2)]
     replotting_thread_pool_size: usize,
 }
@@ -193,6 +198,9 @@ struct DsnArgs {
     /// Known external addresses
     #[arg(long, alias = "external-address")]
     external_addresses: Vec<Multiaddr>,
+    /// Defines whether we should run blocking Kademlia bootstrap() operation before other requests.
+    #[arg(long, default_value_t = false)]
+    disable_bootstrap_on_start: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -288,8 +296,9 @@ where
         replotting_thread_pool_size,
     } = farming_args;
 
-    // Override the `--enable_private_ips` flag with `--dev`
+    // Override flags with `--dev`
     dsn.enable_private_ips = dsn.enable_private_ips || dev;
+    dsn.disable_bootstrap_on_start = dsn.disable_bootstrap_on_start || dev;
 
     let _tmp_directory = if let Some(plot_size) = tmp {
         let tmp_directory = TempDir::new()?;
@@ -334,8 +343,9 @@ where
         .expect("Disk farm collection is not be empty as checked above; qed")
         .directory
         .clone();
-    // TODO: Update `Identity` to use more specific error type and remove this `.unwrap()`
-    let identity = Identity::open_or_create(&first_farm_directory).unwrap();
+
+    let identity = Identity::open_or_create(&first_farm_directory)
+        .map_err(|error| anyhow!("Failed to open or create identity: {error}"))?;
     let keypair = derive_libp2p_keypair(identity.secret_key());
     let peer_id = keypair.public().to_peer_id();
 
@@ -423,28 +433,11 @@ where
         None => farmer_app_info.protocol_info.max_pieces_in_sector,
     };
 
-    let plotting_thread_pool = Arc::new(
-        ThreadPoolBuilder::new()
-            .thread_name(move |thread_index| format!("plotting#{thread_index}"))
-            .num_threads(plotting_thread_pool_size)
-            .spawn_handler(tokio_rayon_spawn_handler())
-            .build()?,
-    );
-    let replotting_thread_pool = Arc::new(
-        ThreadPoolBuilder::new()
-            .thread_name(move |thread_index| format!("replotting#{thread_index}"))
-            .num_threads(replotting_thread_pool_size)
-            .spawn_handler(tokio_rayon_spawn_handler())
-            .build()?,
-    );
-
     let downloading_semaphore = Arc::new(Semaphore::new(sector_downloading_concurrency.get()));
     let encoding_semaphore = Arc::new(Semaphore::new(sector_encoding_concurrency.get()));
 
     let mut plotting_delay_senders = Vec::with_capacity(disk_farms.len());
 
-    // TODO: Check plot and metadata sizes to ensure there is enough space for farmer to not
-    //  fail later
     for (disk_farm_index, disk_farm) in disk_farms.into_iter().enumerate() {
         debug!(url = %node_rpc_url, %disk_farm_index, "Connecting to node RPC");
         let node_client = NodeRpcClient::new(&node_rpc_url).await?;
@@ -467,8 +460,8 @@ where
                 encoding_semaphore: Arc::clone(&encoding_semaphore),
                 farm_during_initial_plotting,
                 farming_thread_pool_size,
-                plotting_thread_pool: Arc::clone(&plotting_thread_pool),
-                replotting_thread_pool: Arc::clone(&replotting_thread_pool),
+                plotting_thread_pool_size,
+                replotting_thread_pool_size,
                 plotting_delay: Some(plotting_delay_receiver),
             },
             disk_farm_index,

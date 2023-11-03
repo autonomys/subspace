@@ -292,13 +292,13 @@ impl BuildGenesisStorageCmd {
         let is_dev = self.shared_params.is_dev();
         let chain_id = self.shared_params.chain_id(is_dev);
         let domain_genesis_config = match chain_id.as_str() {
-            "gemini-3f" => evm_chain_spec::get_testnet_genesis_by_spec_id(SpecId::Gemini).0,
-            "devnet" => evm_chain_spec::get_testnet_genesis_by_spec_id(SpecId::DevNet).0,
-            "dev" => evm_chain_spec::get_testnet_genesis_by_spec_id(SpecId::Dev).0,
-            "" | "local" => evm_chain_spec::get_testnet_genesis_by_spec_id(SpecId::Local).0,
+            "gemini-3g" => evm_chain_spec::get_testnet_genesis_by_spec_id(SpecId::Gemini),
+            "devnet" => evm_chain_spec::get_testnet_genesis_by_spec_id(SpecId::DevNet),
+            "dev" => evm_chain_spec::get_testnet_genesis_by_spec_id(SpecId::Dev),
+            "" | "local" => evm_chain_spec::get_testnet_genesis_by_spec_id(SpecId::Local),
             unknown_id => {
                 eprintln!(
-                    "unknown chain {unknown_id:?}, expected gemini-3f, devnet, dev, or local",
+                    "unknown chain {unknown_id:?}, expected gemini-3g, devnet, dev, or local",
                 );
                 return Ok(());
             }

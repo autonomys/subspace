@@ -267,6 +267,10 @@ pub struct Cli {
     #[arg(long, default_value_t = false)]
     pub dsn_enable_private_ips: bool,
 
+    /// Defines whether we should run blocking Kademlia bootstrap() operation before other requests.
+    #[arg(long, default_value_t = false)]
+    pub dsn_disable_bootstrap_on_start: bool,
+
     /// Enables DSN-sync on startup.
     #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
     pub sync_from_dsn: bool,
@@ -350,8 +354,8 @@ impl SubstrateCli for Cli {
 
     fn load_spec(&self, id: &str) -> Result<Box<dyn ChainSpec>, String> {
         let mut chain_spec = match id {
-            "gemini-3f-compiled" => chain_spec::gemini_3f_compiled()?,
-            "gemini-3f" => chain_spec::gemini_3f_config()?,
+            "gemini-3g-compiled" => chain_spec::gemini_3g_compiled()?,
+            "gemini-3g" => chain_spec::gemini_3g_config()?,
             "devnet" => chain_spec::devnet_config()?,
             "devnet-compiled" => chain_spec::devnet_config_compiled()?,
             "dev" => chain_spec::dev_config()?,

@@ -26,7 +26,7 @@ use subspace_core_primitives::{
 use subspace_erasure_coding::ErasureCoding;
 use subspace_proof_of_space::{Table, TableGenerator};
 use thiserror::Error;
-use tokio::sync::Semaphore;
+use tokio::sync::{AcquireError, OwnedSemaphorePermit, Semaphore};
 use tokio::task::yield_now;
 use tracing::{debug, trace, warn};
 
@@ -151,6 +151,13 @@ pub enum PlottingError {
         /// Lower-level error
         error: Box<dyn std::error::Error + Send + Sync + 'static>,
     },
+    /// Failed to acquire permit
+    #[error("Failed to acquire permit: {error}")]
+    FailedToAcquirePermit {
+        /// Lower-level error
+        #[from]
+        error: AcquireError,
+    },
 }
 
 /// Options for plotting a sector.
@@ -171,7 +178,7 @@ where
     /// Retry policy for piece getter
     pub piece_getter_retry_policy: PieceGetterRetryPolicy,
     /// Farmer protocol info
-    pub farmer_protocol_info: &'a FarmerProtocolInfo,
+    pub farmer_protocol_info: FarmerProtocolInfo,
     /// KZG instance
     pub kzg: &'a Kzg,
     /// Erasure coding instance
@@ -186,7 +193,7 @@ where
     pub sector_metadata_output: &'a mut Vec<u8>,
     /// Semaphore for part of the plotting when farmer downloads new sector, allows to limit memory
     /// usage of the plotting process, permit will be held until the end of the plotting process
-    pub downloading_semaphore: Option<&'a Semaphore>,
+    pub downloading_semaphore: Option<Arc<Semaphore>>,
     /// Semaphore for part of the plotting when farmer encodes downloaded sector, should typically
     /// allow one permit at a time for efficient CPU utilization
     pub encoding_semaphore: Option<&'a Semaphore>,
@@ -195,6 +202,8 @@ where
 }
 
 /// Plot a single sector.
+///
+/// This is a convenient wrapper around [`download_sector`] and [`encode_sector`] functions.
 ///
 /// NOTE: Even though this function is async, it has blocking code inside and must be running in a
 /// separate thread in order to prevent blocking an executor.
@@ -221,36 +230,91 @@ where
         table_generator,
     } = options;
 
-    if erasure_coding.max_shards() < Record::NUM_S_BUCKETS {
-        return Err(PlottingError::InvalidErasureCodingInstance);
-    }
+    let download_sector_fut = download_sector(DownloadSectorOptions {
+        public_key,
+        sector_index,
+        piece_getter,
+        piece_getter_retry_policy,
+        farmer_protocol_info,
+        kzg,
+        pieces_in_sector,
+        downloading_semaphore,
+    });
 
-    let sector_size = sector_size(pieces_in_sector);
+    encode_sector(
+        download_sector_fut.await?,
+        EncodeSectorOptions::<PosTable> {
+            sector_index,
+            erasure_coding,
+            pieces_in_sector,
+            sector_output,
+            sector_metadata_output,
+            encoding_semaphore,
+            table_generator,
+        },
+    )
+    .await
+}
 
-    if !sector_output.is_empty() && sector_output.len() != sector_size {
-        return Err(PlottingError::BadSectorOutputSize {
-            provided: sector_output.len(),
-            expected: sector_size,
-        });
-    }
+/// Opaque sector downloaded and ready for encoding
+pub struct DownloadedSector {
+    sector_id: SectorId,
+    piece_indices: Vec<PieceIndex>,
+    raw_sector: RawSector,
+    farmer_protocol_info: FarmerProtocolInfo,
+    downloading_permit: Option<OwnedSemaphorePermit>,
+}
 
-    if !sector_metadata_output.is_empty()
-        && sector_metadata_output.len() != SectorMetadataChecksummed::encoded_size()
-    {
-        return Err(PlottingError::BadSectorMetadataOutputSize {
-            provided: sector_metadata_output.len(),
-            expected: SectorMetadataChecksummed::encoded_size(),
-        });
-    }
+/// Options for sector downloading
+pub struct DownloadSectorOptions<'a, PG> {
+    /// Public key corresponding to sector
+    pub public_key: &'a PublicKey,
+    /// Sector index
+    pub sector_index: SectorIndex,
+    /// Getter for pieces of archival history
+    pub piece_getter: &'a PG,
+    /// Retry policy for piece getter
+    pub piece_getter_retry_policy: PieceGetterRetryPolicy,
+    /// Farmer protocol info
+    pub farmer_protocol_info: FarmerProtocolInfo,
+    /// KZG instance
+    pub kzg: &'a Kzg,
+    /// How many pieces should sector contain
+    pub pieces_in_sector: u16,
+    /// Semaphore for part of the plotting when farmer downloads new sector, allows to limit memory
+    /// usage of the plotting process, permit will be held until the end of the plotting process
+    pub downloading_semaphore: Option<Arc<Semaphore>>,
+}
 
-    let _downloading_permit = match downloading_semaphore {
-        Some(downloading_semaphore) => Some(downloading_semaphore.acquire().await),
+/// Download sector for plotting.
+///
+/// This will identify necessary pieces and download them from DSN, after which they can be encoded
+/// and written to the plot.
+pub async fn download_sector<PG>(
+    options: DownloadSectorOptions<'_, PG>,
+) -> Result<DownloadedSector, PlottingError>
+where
+    PG: PieceGetter,
+{
+    let DownloadSectorOptions {
+        public_key,
+        sector_index,
+        piece_getter,
+        piece_getter_retry_policy,
+        farmer_protocol_info,
+        kzg,
+        pieces_in_sector,
+        downloading_semaphore,
+    } = options;
+
+    let downloading_permit = match downloading_semaphore {
+        Some(downloading_semaphore) => Some(downloading_semaphore.acquire_owned().await?),
         None => None,
     };
 
     let sector_id = SectorId::new(public_key.hash(), sector_index);
 
-    let piece_indexes: Vec<PieceIndex> = (PieceOffset::ZERO..)
+    let piece_indices = (PieceOffset::ZERO..)
         .take(pieces_in_sector.into())
         .map(|piece_offset| {
             sector_id.derive_piece_index(
@@ -261,23 +325,20 @@ where
                 farmer_protocol_info.recent_history_fraction,
             )
         })
-        .collect();
-
-    // TODO: Downloading and encoding below can happen in parallel, but a bit tricky to implement
-    //  due to sync/async pairing
+        .collect::<Vec<_>>();
 
     let raw_sector = Mutex::new(RawSector::new(pieces_in_sector));
 
     {
         // This list will be mutated, replacing pieces we have already processed with `None`
         let incremental_piece_indices =
-            Mutex::new(piece_indexes.iter().copied().map(Some).collect::<Vec<_>>());
+            Mutex::new(piece_indices.iter().copied().map(Some).collect::<Vec<_>>());
 
         retry(default_backoff(), || async {
             let mut raw_sector = raw_sector.lock().await;
             let mut incremental_piece_indices = incremental_piece_indices.lock().await;
 
-            if let Err(error) = download_sector(
+            if let Err(error) = download_sector_internal(
                 &mut raw_sector,
                 piece_getter,
                 piece_getter_retry_policy,
@@ -308,10 +369,91 @@ where
         .await?;
     }
 
-    let mut raw_sector = raw_sector.into_inner();
+    Ok(DownloadedSector {
+        sector_id,
+        piece_indices,
+        raw_sector: raw_sector.into_inner(),
+        farmer_protocol_info,
+        downloading_permit,
+    })
+}
+
+/// Options for encoding a sector.
+///
+/// Sector output and sector metadata output should be either empty (in which case they'll be
+/// resized to correct size automatically) or correctly sized from the beginning or else error will
+/// be returned.
+pub struct EncodeSectorOptions<'a, PosTable>
+where
+    PosTable: Table,
+{
+    /// Sector index
+    pub sector_index: SectorIndex,
+    /// Erasure coding instance
+    pub erasure_coding: &'a ErasureCoding,
+    /// How many pieces should sector contain
+    pub pieces_in_sector: u16,
+    /// Where plotted sector should be written, vector must either be empty (in which case it'll be
+    /// resized to correct size automatically) or correctly sized from the beginning
+    pub sector_output: &'a mut Vec<u8>,
+    /// Where plotted sector metadata should be written, vector must either be empty (in which case
+    /// it'll be resized to correct size automatically) or correctly sized from the beginning
+    pub sector_metadata_output: &'a mut Vec<u8>,
+    /// Semaphore for part of the plotting when farmer encodes downloaded sector, should typically
+    /// allow one permit at a time for efficient CPU utilization
+    pub encoding_semaphore: Option<&'a Semaphore>,
+    /// Proof of space table generator
+    pub table_generator: &'a mut PosTable::Generator,
+}
+
+pub async fn encode_sector<PosTable>(
+    downloaded_sector: DownloadedSector,
+    encoding_options: EncodeSectorOptions<'_, PosTable>,
+) -> Result<PlottedSector, PlottingError>
+where
+    PosTable: Table,
+{
+    let DownloadedSector {
+        sector_id,
+        piece_indices,
+        mut raw_sector,
+        farmer_protocol_info,
+        downloading_permit: _downloading_permit,
+    } = downloaded_sector;
+    let EncodeSectorOptions {
+        sector_index,
+        erasure_coding,
+        pieces_in_sector,
+        sector_output,
+        sector_metadata_output,
+        encoding_semaphore,
+        table_generator,
+    } = encoding_options;
+
+    if erasure_coding.max_shards() < Record::NUM_S_BUCKETS {
+        return Err(PlottingError::InvalidErasureCodingInstance);
+    }
+
+    let sector_size = sector_size(pieces_in_sector);
+
+    if !sector_output.is_empty() && sector_output.len() != sector_size {
+        return Err(PlottingError::BadSectorOutputSize {
+            provided: sector_output.len(),
+            expected: sector_size,
+        });
+    }
+
+    if !sector_metadata_output.is_empty()
+        && sector_metadata_output.len() != SectorMetadataChecksummed::encoded_size()
+    {
+        return Err(PlottingError::BadSectorMetadataOutputSize {
+            provided: sector_metadata_output.len(),
+            expected: SectorMetadataChecksummed::encoded_size(),
+        });
+    }
 
     let _encoding_permit = match encoding_semaphore {
-        Some(encoding_semaphore) => Some(encoding_semaphore.acquire().await),
+        Some(encoding_semaphore) => Some(encoding_semaphore.acquire().await?),
         None => None,
     };
 
@@ -484,11 +626,11 @@ where
         sector_id,
         sector_index,
         sector_metadata,
-        piece_indexes,
+        piece_indexes: piece_indices,
     })
 }
 
-async fn download_sector<PG: PieceGetter>(
+async fn download_sector_internal<PG: PieceGetter>(
     raw_sector: &mut RawSector,
     piece_getter: &PG,
     piece_getter_retry_policy: PieceGetterRetryPolicy,

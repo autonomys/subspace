@@ -806,6 +806,7 @@ pub enum BundleValidity<Hash> {
     Invalid(InvalidBundleType),
     // The valid bundle's hash of `Vec<(tx_signer, tx_hash)>` of all domain extrinsic being
     // included in the bundle.
+    // TODO remove this and use host function to fetch above mentioned data
     Valid(Hash),
 }
 
@@ -813,6 +814,7 @@ pub enum BundleValidity<Hash> {
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct InboxedBundle<Hash> {
     pub bundle: BundleValidity<Hash>,
+    // TODO remove this as the root is already present in the `ExecutionInbox` storage
     pub extrinsics_root: Hash,
 }
 

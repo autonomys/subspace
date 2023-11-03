@@ -15,6 +15,7 @@ use sp_domains::{
 use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{Block as BlockT, Zero};
 use sp_runtime::RuntimeAppPublic;
+use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::convert::{AsRef, Into};
 use std::sync::Arc;
 use subspace_runtime_primitives::Balance;
@@ -70,7 +71,7 @@ where
     NumberFor<Block>: Into<NumberFor<CBlock>>,
     NumberFor<CBlock>: Into<NumberFor<Block>>,
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
-    Client::Api: BlockBuilder<Block> + DomainCoreApi<Block>,
+    Client::Api: BlockBuilder<Block> + DomainCoreApi<Block> + TaggedTransactionQueue<Block>,
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock>,
     CClient::Api: DomainsApi<CBlock, Block::Header> + BundleProducerElectionApi<CBlock, Balance>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,

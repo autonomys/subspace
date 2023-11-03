@@ -7,9 +7,10 @@ use crate::identity::{Identity, IdentityError};
 use crate::node_client::NodeClient;
 use crate::reward_signing::reward_signing;
 use crate::single_disk_farm::farming::rayon_files::RayonFiles;
-use crate::single_disk_farm::farming::sync_fallback::SyncPlotAudit;
 pub use crate::single_disk_farm::farming::FarmingError;
-use crate::single_disk_farm::farming::{farming, slot_notification_forwarder, FarmingOptions};
+use crate::single_disk_farm::farming::{
+    farming, slot_notification_forwarder, FarmingOptions, PlotAudit,
+};
 use crate::single_disk_farm::piece_cache::{DiskPieceCache, DiskPieceCacheError};
 use crate::single_disk_farm::piece_reader::PieceReader;
 pub use crate::single_disk_farm::plotting::PlottingError;
@@ -26,9 +27,10 @@ use futures::{select, FutureExt, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use rayon::prelude::*;
-use rayon::{ThreadPool, ThreadPoolBuilder};
+use rayon::ThreadPoolBuilder;
 use serde::{Deserialize, Serialize};
 use static_assertions::const_assert;
+use std::error::Error;
 use std::fs::{File, OpenOptions};
 use std::future::Future;
 use std::io::{Seek, SeekFrom};
@@ -268,11 +270,11 @@ pub struct SingleDiskFarmOptions<NC, PG> {
     /// Thread pool size used for farming (mostly for blocking I/O, but also for some
     /// compute-intensive operations during proving)
     pub farming_thread_pool_size: usize,
-    /// Thread pool used for plotting
-    pub plotting_thread_pool: Arc<ThreadPool>,
-    /// Thread pool used for replotting, typically smaller pool than for plotting to not affect
+    /// Thread pool size used for plotting
+    pub plotting_thread_pool_size: usize,
+    /// Thread pool size used for replotting, typically smaller pool than for plotting to not affect
     /// farming as much
-    pub replotting_thread_pool: Arc<ThreadPool>,
+    pub replotting_thread_pool_size: usize,
     /// Notification for plotter to start, can be used to delay plotting until some initialization
     /// has happened externally
     pub plotting_delay: Option<oneshot::Receiver<()>>,
@@ -281,6 +283,9 @@ pub struct SingleDiskFarmOptions<NC, PG> {
 /// Errors happening when trying to create/open single disk farm
 #[derive(Debug, Error)]
 pub enum SingleDiskFarmError {
+    /// Failed to open or create identity
+    #[error("Failed to open or create identity: {0}")]
+    FailedToOpenIdentity(#[from] IdentityError),
     // TODO: Make more variants out of this generic one
     /// I/O error occurred
     #[error("I/O error: {0}")]
@@ -500,6 +505,9 @@ pub enum BackgroundTaskError {
     /// Farming error
     #[error(transparent)]
     Farming(#[from] FarmingError),
+    /// Reward signing
+    #[error(transparent)]
+    RewardSigning(#[from] Box<dyn Error + Send + Sync + 'static>),
     /// Background task panicked
     #[error("Background task {task} panicked")]
     BackgroundTaskPanicked { task: String },
@@ -575,7 +583,7 @@ impl SingleDiskFarm {
     ) -> Result<Self, SingleDiskFarmError>
     where
         NC: NodeClient,
-        PG: PieceGetter + Clone + Send + 'static,
+        PG: PieceGetter + Clone + Send + Sync + 'static,
         PosTable: Table,
     {
         let SingleDiskFarmOptions {
@@ -592,15 +600,14 @@ impl SingleDiskFarm {
             downloading_semaphore,
             encoding_semaphore,
             farming_thread_pool_size,
-            plotting_thread_pool,
-            replotting_thread_pool,
+            plotting_thread_pool_size,
+            replotting_thread_pool_size,
             plotting_delay,
             farm_during_initial_plotting,
         } = options;
         fs::create_dir_all(&directory)?;
 
-        // TODO: Update `Identity` to use more specific error type and remove this `.unwrap()`
-        let identity = Identity::open_or_create(&directory).unwrap();
+        let identity = Identity::open_or_create(&directory)?;
         let public_key = identity.public_key().to_bytes().into();
 
         let single_disk_farm_info = match SingleDiskFarmInfo::load_from(&directory)? {
@@ -850,7 +857,7 @@ impl SingleDiskFarm {
         let (start_sender, mut start_receiver) = broadcast::channel::<()>(1);
         let (stop_sender, mut stop_receiver) = broadcast::channel::<()>(1);
         let modifying_sector_index = Arc::<RwLock<Option<SectorIndex>>>::default();
-        let (sectors_to_plot_sender, sectors_to_plot_receiver) = mpsc::channel(0);
+        let (sectors_to_plot_sender, sectors_to_plot_receiver) = mpsc::channel(1);
         // Some sectors may already be plotted, skip them
         let sectors_indices_left_to_plot =
             metadata_header.plotted_sector_count..target_sector_count;
@@ -877,6 +884,50 @@ impl SingleDiskFarm {
 
             move || {
                 let _span_guard = span.enter();
+                let plotting_thread_pool = match ThreadPoolBuilder::new()
+                    .thread_name(move |thread_index| {
+                        format!("plotting-{disk_farm_index}.{thread_index}")
+                    })
+                    .num_threads(plotting_thread_pool_size)
+                    .spawn_handler(tokio_rayon_spawn_handler())
+                    .build()
+                    .map_err(PlottingError::FailedToCreateThreadPool)
+                {
+                    Ok(thread_pool) => thread_pool,
+                    Err(error) => {
+                        if let Some(error_sender) = error_sender.lock().take() {
+                            if let Err(error) = error_sender.send(error.into()) {
+                                error!(
+                                    %error,
+                                    "Plotting failed to send error to background task",
+                                );
+                            }
+                        }
+                        return;
+                    }
+                };
+                let replotting_thread_pool = match ThreadPoolBuilder::new()
+                    .thread_name(move |thread_index| {
+                        format!("replotting-{disk_farm_index}.{thread_index}")
+                    })
+                    .num_threads(replotting_thread_pool_size)
+                    .spawn_handler(tokio_rayon_spawn_handler())
+                    .build()
+                    .map_err(PlottingError::FailedToCreateThreadPool)
+                {
+                    Ok(thread_pool) => thread_pool,
+                    Err(error) => {
+                        if let Some(error_sender) = error_sender.lock().take() {
+                            if let Err(error) = error_sender.send(error.into()) {
+                                error!(
+                                    %error,
+                                    "Plotting failed to send error to background task",
+                                );
+                            }
+                        }
+                        return;
+                    }
+                };
 
                 let plotting_fut = async move {
                     if start_receiver.recv().await.is_err() {
@@ -893,7 +944,7 @@ impl SingleDiskFarm {
 
                     let plotting_options = PlottingOptions {
                         public_key,
-                        node_client,
+                        node_client: &node_client,
                         pieces_in_sector,
                         sector_size,
                         sector_metadata_size,
@@ -901,17 +952,17 @@ impl SingleDiskFarm {
                         plot_file,
                         metadata_file,
                         sectors_metadata,
-                        piece_getter,
-                        kzg,
-                        erasure_coding,
+                        piece_getter: &piece_getter,
+                        kzg: &kzg,
+                        erasure_coding: &erasure_coding,
                         handlers,
                         modifying_sector_index,
                         sectors_to_plot_receiver,
                         downloading_semaphore,
-                        encoding_semaphore,
+                        encoding_semaphore: &encoding_semaphore,
                         plotting_thread_pool,
                         replotting_thread_pool,
-                        stop_receiver: stop_receiver.resubscribe(),
+                        stop_receiver: &mut stop_receiver.resubscribe(),
                     };
 
                     let plotting_fut = plotting::<_, _, PosTable>(plotting_options);
@@ -984,6 +1035,7 @@ impl SingleDiskFarm {
             let span = span.clone();
 
             move || {
+                let _span_guard = span.enter();
                 let thread_pool = match ThreadPoolBuilder::new()
                     .thread_name(move |thread_index| {
                         format!("farming-{disk_farm_index}.{thread_index}")
@@ -1008,6 +1060,7 @@ impl SingleDiskFarm {
                 };
 
                 let handle = Handle::current();
+                let span = span.clone();
                 thread_pool.install(move || {
                     let _span_guard = span.enter();
 
@@ -1025,7 +1078,7 @@ impl SingleDiskFarm {
                         }
 
                         let plot = RayonFiles::open(&directory.join(Self::PLOT_FILE))?;
-                        let plot_audit = &SyncPlotAudit::new(&plot);
+                        let plot_audit = PlotAudit::new(&plot);
 
                         let farming_options = FarmingOptions {
                             public_key,
@@ -1112,8 +1165,17 @@ impl SingleDiskFarm {
         }));
 
         tasks.push(Box::pin(async move {
-            // TODO: Error handling here
-            reward_signing(node_client, identity).await.unwrap().await;
+            match reward_signing(node_client, identity).await {
+                Ok(reward_signing_fut) => {
+                    reward_signing_fut.await;
+                }
+                Err(error) => {
+                    return Err(BackgroundTaskError::RewardSigning(
+                        format!("Failed to subscribe to reward signing notifications: {error}")
+                            .into(),
+                    ));
+                }
+            }
 
             Ok(())
         }));

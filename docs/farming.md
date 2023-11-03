@@ -44,9 +44,9 @@ If you're connected directly without any router, then again nothing needs to be 
 # Replace `INSERT_YOUR_ID` with a nickname you choose
 # Copy all of the lines below, they are all part of the same command
 .\NODE_FILE_NAME.exe `
---chain gemini-3f `
+--chain gemini-3g `
 --blocks-pruning 256 `
---state-pruning archive `
+--state-pruning archive-canonical `
 --no-private-ipv4 `
 --validator `
 --name "INSERT_YOUR_ID"
@@ -95,9 +95,9 @@ If you're connected directly without any router, then again nothing needs to be 
 # Replace `INSERT_YOUR_ID` with a nickname you choose
 # Copy all of the lines below, they are all part of the same command
 ./NODE_FILE_NAME \
-  --chain gemini-3f \
+  --chain gemini-3g \
   --blocks-pruning 256 \
-  --state-pruning archive \
+  --state-pruning archive-canonical \
   --no-private-ipv4 \
   --validator \
   --name "INSERT_YOUR_ID"
@@ -149,9 +149,9 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 # Replace `INSERT_YOUR_ID` with a nickname you choose
 # Copy all of the lines below, they are all part of the same command
 ./NODE_FILE_NAME \
-  --chain gemini-3f \
+  --chain gemini-3g \
   --blocks-pruning 256 \
-  --state-pruning archive \
+  --state-pruning archive-canonical \
   --no-private-ipv4 \
   --validator \
   --name "INSERT_YOUR_ID"
@@ -207,16 +207,16 @@ services:
     ports:
 # If port 30333 or 30433 is already occupied by another Substrate-based node, replace all
 # occurrences of `30333` or `30433` in this file with another value
-      - "0.0.0.0:30333:30333/tcp"
       - "0.0.0.0:30333:30333/udp"
-      - "0.0.0.0:30433:30433/tcp"
+      - "0.0.0.0:30333:30333/tcp"
       - "0.0.0.0:30433:30433/udp"
+      - "0.0.0.0:30433:30433/tcp"
     restart: unless-stopped
     command: [
-      "--chain", "gemini-3f",
+      "--chain", "gemini-3g",
       "--base-path", "/var/subspace",
       "--blocks-pruning", "256",
-      "--state-pruning", "archive",
+      "--state-pruning", "archive-canonical",
       "--port", "30333",
       "--dsn-listen-on", "/ip4/0.0.0.0/udp/30433/quic-v1",
       "--dsn-listen-on", "/ip4/0.0.0.0/tcp/30433",
@@ -250,8 +250,8 @@ services:
     ports:
 # If port 30533 is already occupied by something else, replace all
 # occurrences of `30533` in this file with another value
-      - "0.0.0.0:30533:30533/tcp"
       - "0.0.0.0:30533:30533/udp"
+      - "0.0.0.0:30533:30533/tcp"
     restart: unless-stopped
     command: [
       "farm",
@@ -284,7 +284,7 @@ You can read logs with `docker-compose logs --tail=1000 -f`, for the rest read [
 
 ## Checking results and interacting with the network
 
-Visit [Polkadot.js explorer](https://polkadot.js.org/apps/?rpc=wss%3A%2F%2Feu-0.gemini-3f.subspace.network%2Fws#/explorer), from there you can interact with Subspace Network as any Substrate-based blockchain.
+Visit [Polkadot.js explorer](https://polkadot.js.org/apps/?rpc=wss%3A%2F%2Feu-0.gemini-3g.subspace.network%2Fws#/explorer), from there you can interact with Subspace Network as any Substrate-based blockchain.
 
 ## Switching from older/different versions of Subspace
 
@@ -295,7 +295,7 @@ If you were running a node previously, and want to switch to a new snapshot, ple
 # Replace `FARMER_FILE_NAME` with the name of the node file you downloaded from releases
 ./FARMER_FILE_NAME wipe PATH_TO_FARM
 # Replace `NODE_FILE_NAME` with the name of the node file you downloaded from releases
-./NODE_FILE_NAME purge-chain --chain gemini-3f
+./NODE_FILE_NAME purge-chain --chain gemini-3g
 ```
 Does not matter if the node/farmer executable is the previous one or from the new snapshot, both will work :)
 The reason we require this is, with every snapshot change, the network might get partitioned, and you may be on a different genesis than the current one.
@@ -319,8 +319,8 @@ Below are some helpful samples:
 - `./FARMER_FILE_NAME info PATH_TO_FARM`: show information about the farm at `PATH_TO_FARM`
 - `./FARMER_FILE_NAME scrub PATH_TO_FARM`: Scrub the farm to find and fix farm at `PATH_TO_FARM` corruption
 - `./FARMER_FILE_NAME wipe PATH_TO_FARM`: erases everything related to farmer if data were stored in `PATH_TO_FARM`
-- `./NODE_FILE_NAME --base-path NODE_DATA_PATH --chain gemini-3f ...`: start node and store data in `NODE_DATA_PATH` instead of default location
-- `./NODE_FILE_NAME purge-chain --base-path NODE_DATA_PATH --chain gemini-3f`: erases data related to the node if data were stored in `NODE_DATA_PATH`
+- `./NODE_FILE_NAME --base-path NODE_DATA_PATH --chain gemini-3g ...`: start node and store data in `NODE_DATA_PATH` instead of default location
+- `./NODE_FILE_NAME purge-chain --base-path NODE_DATA_PATH --chain gemini-3g`: erases data related to the node if data were stored in `NODE_DATA_PATH`
 
 Examples:
 ```bash

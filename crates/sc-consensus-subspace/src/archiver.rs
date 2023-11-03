@@ -437,13 +437,32 @@ where
 
             let last_archived_block_encoded = encode_block(last_archived_block);
 
-            Archiver::with_initial_state(
+            let archiver = Archiver::with_initial_state(
                 subspace_link.kzg().clone(),
                 last_segment_header,
                 &last_archived_block_encoded,
                 block_object_mappings,
             )
-            .expect("Incorrect parameters for archiver")
+            .expect("Incorrect parameters for archiver");
+
+            // Due to sync from DSN it is possible that the very first segment header is known even
+            // though only genesis block exists, in this case there is nothing else left to archive
+            // and we need to insert segment header to be included in the block 1 explicitly here or
+            // else it'll be missing and block import will fail.
+            //
+            // Checking for segment index instead of best block number ensures we support
+            // hypothetical reorgs of the early blocks within confirmation depth distance from
+            // genesis.
+            if last_segment_header.segment_index() == SegmentIndex::ZERO {
+                // Set list of expected segment headers for the block where we expect segment
+                // header extrinsic to be included
+                subspace_link
+                    .segment_headers
+                    .lock()
+                    .put(One::one(), vec![last_segment_header]);
+            }
+
+            archiver
         } else {
             info!(target: "subspace", "Starting archiving from genesis");
 

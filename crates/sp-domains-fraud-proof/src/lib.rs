@@ -94,6 +94,12 @@ pub enum FraudProofVerificationInfoRequest {
         /// Extrinsic for which we need to check the range
         opaque_extrinsic: OpaqueExtrinsic,
     },
+    /// Request to check if particular extrinsic is an inherent extrinsic
+    InherentExtrinsicCheck {
+        domain_id: DomainId,
+        /// Extrinsic for which we need to if it is inherent or not.
+        opaque_extrinsic: OpaqueExtrinsic,
+    },
 }
 
 impl PassBy for FraudProofVerificationInfoRequest {
@@ -122,8 +128,10 @@ pub enum FraudProofVerificationInfoResponse {
     DomainRuntimeCode(Vec<u8>),
     /// Encoded domain set_code extrinsic if there is a runtime upgrade at given consensus block hash.
     DomainSetCodeExtrinsic(SetCodeExtrinsic),
-    /// if particular extrinsic is in range for (domain, bundle) pair at given domain block
+    /// If particular extrinsic is in range for (domain, bundle) pair at given domain block
     TxRangeCheck(bool),
+    /// If the particular extrinsic provided is either inherent or not.
+    InherentExtrinsicCheck(bool),
 }
 
 impl FraudProofVerificationInfoResponse {
@@ -169,6 +177,15 @@ impl FraudProofVerificationInfoResponse {
     pub fn into_bundle_body(self) -> Option<Vec<OpaqueExtrinsic>> {
         match self {
             Self::DomainBundleBody(bb) => Some(bb),
+            _ => None,
+        }
+    }
+
+    pub fn into_inherent_extrinsic_check(self) -> Option<bool> {
+        match self {
+            FraudProofVerificationInfoResponse::InherentExtrinsicCheck(is_inherent) => {
+                Some(is_inherent)
+            }
             _ => None,
         }
     }

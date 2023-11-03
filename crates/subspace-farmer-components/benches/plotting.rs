@@ -73,7 +73,7 @@ fn criterion_benchmark(c: &mut Criterion) {
                 sector_index: black_box(sector_index),
                 piece_getter: black_box(&archived_history_segment),
                 piece_getter_retry_policy: black_box(PieceGetterRetryPolicy::default()),
-                farmer_protocol_info: black_box(&farmer_protocol_info),
+                farmer_protocol_info: black_box(farmer_protocol_info),
                 kzg: black_box(&kzg),
                 erasure_coding: black_box(&erasure_coding),
                 pieces_in_sector: black_box(pieces_in_sector),
