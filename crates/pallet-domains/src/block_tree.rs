@@ -3,8 +3,8 @@
 use crate::pallet::StateRoots;
 use crate::{
     BalanceOf, BlockTree, BlockTreeNodes, Config, ConsensusBlockHash, DomainBlockNumberFor,
-    DomainHashingFor, ExecutionInbox, ExecutionReceiptOf, HeadReceiptNumber, InboxedBundleAuthor,
-    ReceiptHashFor,
+    DomainHashingFor, ExecutionInbox, ExecutionReceiptOf, HeadReceiptExtended, HeadReceiptNumber,
+    InboxedBundleAuthor, ReceiptHashFor,
 };
 use codec::{Decode, Encode};
 use frame_support::{ensure, PalletError};
@@ -50,7 +50,7 @@ pub struct BlockTreeNode<Number, Hash, DomainNumber, DomainHash, Balance> {
 pub(crate) enum AcceptedReceiptType {
     // New head receipt that extend the longest branch
     NewHead,
-    // Receipt that confirms the current head receipt
+    // Receipt that confirms the head receipt that added in the current block
     CurrentHead,
 }
 
@@ -60,7 +60,7 @@ pub(crate) enum RejectedReceiptType {
     InFuture,
     // Receipt that already been pruned
     Pruned,
-    // Receipt that confirm a non-head receipt
+    // Receipt that confirm a non-head receipt or head receipt of the previous block
     Stale,
     // Receipt that tries to create a new branch of the block tree
     //
@@ -109,27 +109,34 @@ pub(crate) fn execution_receipt_type<T: Config>(
         Ordering::Greater => ReceiptType::Rejected(RejectedReceiptType::InFuture),
         Ordering::Equal => ReceiptType::Accepted(AcceptedReceiptType::NewHead),
         Ordering::Less => {
+            // Reject receipt that already pruned/confirmed
             let oldest_receipt_number =
                 head_receipt_number.saturating_sub(T::BlockTreePruningDepth::get());
+            if receipt_number < oldest_receipt_number {
+                return ReceiptType::Rejected(RejectedReceiptType::Pruned);
+            }
+
+            // Reject receipt that try to create new branch in the block tree
             let already_exist = is_receipt_exist::<T>(
                 domain_id,
                 receipt_number,
                 execution_receipt.hash::<DomainHashingFor<T>>(),
             );
-
-            if receipt_number < oldest_receipt_number {
-                // Receipt already pruned
-                ReceiptType::Rejected(RejectedReceiptType::Pruned)
-            } else if !already_exist {
-                // Create new branch
-                ReceiptType::Rejected(RejectedReceiptType::NewBranch)
-            } else if receipt_number == head_receipt_number {
-                // Add confirm to the current head receipt
-                ReceiptType::Accepted(AcceptedReceiptType::CurrentHead)
-            } else {
-                // Add confirm to a non-head receipt
-                ReceiptType::Rejected(RejectedReceiptType::Stale)
+            if !already_exist {
+                return ReceiptType::Rejected(RejectedReceiptType::NewBranch);
             }
+
+            // Add confirm to the head receipt that added in the current block or it is
+            // the genesis receipt
+            let head_receipt_extended = HeadReceiptExtended::<T>::get(domain_id);
+            if receipt_number == head_receipt_number
+                && (head_receipt_extended || receipt_number.is_zero())
+            {
+                return ReceiptType::Accepted(AcceptedReceiptType::CurrentHead);
+            }
+
+            // Add confirm to a non-head receipt or head receipt of the previous block
+            ReceiptType::Rejected(RejectedReceiptType::Stale)
         }
     }
 }
@@ -273,6 +280,7 @@ pub(crate) fn process_execution_receipt<T: Config>(
 
             // Update the head receipt number
             HeadReceiptNumber::<T>::insert(domain_id, domain_block_number);
+            HeadReceiptExtended::<T>::insert(domain_id, true);
 
             // Prune expired domain block
             if let Some(to_prune) =
@@ -398,8 +406,8 @@ mod tests {
     use super::*;
     use crate::tests::{
         create_dummy_bundle_with_receipts, create_dummy_receipt, extend_block_tree,
-        get_block_tree_node_at, new_test_ext_with_extensions, register_genesis_domain,
-        run_to_block, BlockTreePruningDepth, Test,
+        extend_block_tree_from_zero, get_block_tree_node_at, new_test_ext_with_extensions,
+        register_genesis_domain, run_to_block, BlockTreePruningDepth, Test,
     };
     use frame_support::dispatch::RawOrigin;
     use frame_support::{assert_err, assert_ok};
@@ -553,24 +561,45 @@ mod tests {
     }
 
     #[test]
-    fn test_confirm_head_receipt() {
+    fn test_confirm_current_head_receipt() {
         let creator = 0u64;
         let operator_id1 = 1u64;
         let operator_id2 = 2u64;
         let mut ext = new_test_ext_with_extensions();
         ext.execute_with(|| {
             let domain_id = register_genesis_domain(creator, vec![operator_id1, operator_id2]);
-            extend_block_tree(domain_id, operator_id1, 3);
+            let next_head_receipt = extend_block_tree_from_zero(domain_id, operator_id1, 3);
+
+            // Submit the new head receipt
+            assert_eq!(
+                execution_receipt_type::<Test>(domain_id, &next_head_receipt),
+                ReceiptType::Accepted(AcceptedReceiptType::NewHead)
+            );
+            assert_ok!(verify_execution_receipt::<Test>(
+                domain_id,
+                &next_head_receipt
+            ));
+            let bundle = create_dummy_bundle_with_receipts(
+                domain_id,
+                operator_id1,
+                H256::random(),
+                next_head_receipt.clone(),
+            );
+            assert_ok!(crate::Pallet::<Test>::submit_bundle(
+                RawOrigin::None.into(),
+                bundle,
+            ));
 
             let head_receipt_number = HeadReceiptNumber::<Test>::get(domain_id);
-
-            // Get the head receipt
             let current_head_receipt =
                 get_block_tree_node_at::<Test>(domain_id, head_receipt_number)
                     .unwrap()
                     .execution_receipt;
 
-            // Receipt should be valid
+            // Now `next_head_receipt` become the head receipt
+            assert_eq!(next_head_receipt, current_head_receipt);
+
+            // Head receipt added in the current block is consider valid
             assert_eq!(
                 execution_receipt_type::<Test>(domain_id, &current_head_receipt),
                 ReceiptType::Accepted(AcceptedReceiptType::CurrentHead)
@@ -580,7 +609,7 @@ mod tests {
                 &current_head_receipt
             ));
 
-            // Re-submit the receipt will add confirm to the head receipt
+            // Re-submit the head receipt by a different operator is okay
             let bundle = create_dummy_bundle_with_receipts(
                 domain_id,
                 operator_id2,
@@ -591,20 +620,21 @@ mod tests {
                 RawOrigin::None.into(),
                 bundle,
             ));
+
             let head_node = get_block_tree_node_at::<Test>(domain_id, head_receipt_number).unwrap();
             assert_eq!(head_node.operator_ids, vec![operator_id1, operator_id2]);
         });
     }
 
     #[test]
-    fn test_stale_receipt() {
+    fn test_non_head_receipt() {
         let creator = 0u64;
         let operator_id1 = 1u64;
         let operator_id2 = 2u64;
         let mut ext = new_test_ext_with_extensions();
         ext.execute_with(|| {
             let domain_id = register_genesis_domain(creator, vec![operator_id1, operator_id2]);
-            extend_block_tree(domain_id, operator_id1, 3);
+            extend_block_tree_from_zero(domain_id, operator_id1, 3);
 
             // Receipt that confirm a non-head receipt is stale receipt
             let head_receipt_number = HeadReceiptNumber::<Test>::get(domain_id);
@@ -642,6 +672,47 @@ mod tests {
     }
 
     #[test]
+    fn test_previous_head_receipt() {
+        let creator = 0u64;
+        let operator_id1 = 1u64;
+        let operator_id2 = 2u64;
+        let mut ext = new_test_ext_with_extensions();
+        ext.execute_with(|| {
+            let domain_id = register_genesis_domain(creator, vec![operator_id1, operator_id2]);
+            extend_block_tree_from_zero(domain_id, operator_id1, 3);
+
+            // No new receipt submitted in current block
+            assert!(!HeadReceiptExtended::<Test>::get(domain_id));
+
+            // Receipt that confirm a head receipt of the previous block is stale receipt
+            let head_receipt_number = HeadReceiptNumber::<Test>::get(domain_id);
+            let previous_head_receipt =
+                get_block_tree_node_at::<Test>(domain_id, head_receipt_number)
+                    .unwrap()
+                    .execution_receipt;
+
+            // Stale receipt can not pass the verification
+            assert_eq!(
+                execution_receipt_type::<Test>(domain_id, &previous_head_receipt),
+                ReceiptType::Rejected(RejectedReceiptType::Stale)
+            );
+            assert_err!(
+                verify_execution_receipt::<Test>(domain_id, &previous_head_receipt),
+                Error::StaleReceipt
+            );
+
+            // Stale receipt will be rejected and won't be added to the block tree
+            let bundle = create_dummy_bundle_with_receipts(
+                domain_id,
+                operator_id2,
+                H256::random(),
+                previous_head_receipt,
+            );
+            assert!(crate::Pallet::<Test>::submit_bundle(RawOrigin::None.into(), bundle,).is_err());
+        });
+    }
+
+    #[test]
     fn test_new_branch_receipt() {
         let creator = 0u64;
         let operator_id1 = 1u64;
@@ -649,7 +720,7 @@ mod tests {
         let mut ext = new_test_ext_with_extensions();
         ext.execute_with(|| {
             let domain_id = register_genesis_domain(creator, vec![operator_id1, operator_id2]);
-            extend_block_tree(domain_id, operator_id1, 3);
+            extend_block_tree_from_zero(domain_id, operator_id1, 3);
 
             let head_receipt_number = HeadReceiptNumber::<Test>::get(domain_id);
             assert!(BlockTree::<Test>::get(domain_id, head_receipt_number).is_some());
@@ -695,7 +766,7 @@ mod tests {
         let mut ext = new_test_ext_with_extensions();
         ext.execute_with(|| {
             let domain_id = register_genesis_domain(creator, vec![operator_id]);
-            extend_block_tree(domain_id, operator_id, 3);
+            extend_block_tree_from_zero(domain_id, operator_id, 3);
 
             let head_receipt_number = HeadReceiptNumber::<Test>::get(domain_id);
             let current_head_receipt =
@@ -780,7 +851,7 @@ mod tests {
         let mut ext = new_test_ext_with_extensions();
         ext.execute_with(|| {
             let domain_id = register_genesis_domain(creator, vec![operator_id1, operator_id2]);
-            extend_block_tree(domain_id, operator_id1, 3);
+            extend_block_tree_from_zero(domain_id, operator_id1, 3);
 
             let head_receipt_number = HeadReceiptNumber::<Test>::get(domain_id);
 
@@ -832,26 +903,22 @@ mod tests {
         let mut ext = new_test_ext_with_extensions();
         ext.execute_with(|| {
             let domain_id = register_genesis_domain(creator, operator_set.clone());
-            let mut target_receipt = extend_block_tree(domain_id, operator_set[0], 3);
+            let next_receipt = extend_block_tree_from_zero(domain_id, operator_set[0], 3);
 
-            // Submit bundle for every operator except operator 1 since it already submit one
-            let head_receipt_number = HeadReceiptNumber::<Test>::get(domain_id);
-            let current_head_receipt =
-                get_block_tree_node_at::<Test>(domain_id, head_receipt_number)
-                    .unwrap()
-                    .execution_receipt;
-            for operator_id in operator_set.iter().skip(1) {
+            // Submit bundle for every operator
+            for operator_id in operator_set.iter() {
                 let bundle = create_dummy_bundle_with_receipts(
                     domain_id,
                     *operator_id,
                     H256::random(),
-                    current_head_receipt.clone(),
+                    next_receipt.clone(),
                 );
                 assert_ok!(crate::Pallet::<Test>::submit_bundle(
                     RawOrigin::None.into(),
                     bundle,
                 ));
             }
+            let head_receipt_number = HeadReceiptNumber::<Test>::get(domain_id);
             let head_node = get_block_tree_node_at::<Test>(domain_id, head_receipt_number).unwrap();
             assert_eq!(head_node.operator_ids, operator_set);
 
@@ -886,31 +953,20 @@ mod tests {
                     bundles.push(InboxedBundle::valid(H256::random(), extrinsics_root));
                 }
             }
+            let mut target_receipt = create_dummy_receipt(
+                current_block_number,
+                H256::random(),
+                next_receipt.hash::<DomainHashingFor<Test>>(),
+                vec![],
+            );
             target_receipt.inboxed_bundles = bundles;
 
-            // Run into next block
-            run_to_block::<Test>(
-                current_block_number + 1,
-                target_receipt.consensus_block_hash,
-            );
-            let current_block_number = current_block_number + 1;
-
-            // Submit `target_receipt`
-            assert_ok!(crate::Pallet::<Test>::submit_bundle(
-                RawOrigin::None.into(),
-                create_dummy_bundle_with_receipts(
-                    domain_id,
-                    operator_set[0],
-                    H256::random(),
-                    target_receipt,
-                ),
-            ));
-
-            // Extend the block tree by `challenge_period - 1` blocks
+            // Extend the block tree by `challenge_period + 1` blocks
             let next_receipt = extend_block_tree(
                 domain_id,
                 operator_set[0],
-                (current_block_number + challenge_period) as u32 - 1,
+                (current_block_number + challenge_period) as u32 + 1,
+                target_receipt,
             );
             // Confirm `target_receipt`
             let confirmed_domain_block = process_execution_receipt::<Test>(

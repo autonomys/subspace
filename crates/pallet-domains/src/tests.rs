@@ -34,8 +34,10 @@ use sp_domains_fraud_proof::{
     FraudProofExtension, FraudProofHostFunctions, FraudProofVerificationInfoRequest,
     FraudProofVerificationInfoResponse, SetCodeExtrinsic,
 };
-use sp_runtime::traits::{AccountIdConversion, BlakeTwo256, Hash as HashT, IdentityLookup, Zero};
-use sp_runtime::{BuildStorage, Digest, OpaqueExtrinsic};
+use sp_runtime::traits::{
+    AccountIdConversion, BlakeTwo256, BlockNumberProvider, Hash as HashT, IdentityLookup, One, Zero,
+};
+use sp_runtime::{BuildStorage, Digest, OpaqueExtrinsic, Saturating};
 use sp_state_machine::backend::AsTrieBackend;
 use sp_state_machine::{prove_read, Backend, TrieBackendBuilder};
 use sp_std::sync::Arc;
@@ -446,10 +448,16 @@ impl sp_core::traits::ReadRuntimeVersion for ReadRuntimeVersion {
 }
 
 pub(crate) fn run_to_block<T: Config>(block_number: BlockNumberFor<T>, parent_hash: T::Hash) {
+    // Finalize previous block
+    <crate::Pallet<T> as Hooks<BlockNumberFor<T>>>::on_finalize(
+        block_number.saturating_sub(One::one()),
+    );
+    frame_system::Pallet::<T>::finalize();
+
+    // Initialize current block
     frame_system::Pallet::<T>::set_block_number(block_number);
     frame_system::Pallet::<T>::initialize(&block_number, &parent_hash, &Default::default());
     <crate::Pallet<T> as Hooks<BlockNumberFor<T>>>::on_initialize(block_number);
-    frame_system::Pallet::<T>::finalize();
 }
 
 pub(crate) fn register_genesis_domain(creator: u64, operator_ids: Vec<OperatorId>) -> DomainId {
@@ -502,20 +510,31 @@ pub(crate) fn register_genesis_domain(creator: u64, operator_ids: Vec<OperatorId
     domain_id
 }
 
+// Submit new head receipt to extend the block tree from the genesis block
+pub(crate) fn extend_block_tree_from_zero(
+    domain_id: DomainId,
+    operator_id: u64,
+    to: DomainBlockNumberFor<Test>,
+) -> ExecutionReceiptOf<Test> {
+    let genesis_receipt = get_block_tree_node_at::<Test>(domain_id, 0)
+        .unwrap()
+        .execution_receipt;
+    extend_block_tree(domain_id, operator_id, to, genesis_receipt)
+}
+
 // Submit new head receipt to extend the block tree
 pub(crate) fn extend_block_tree(
     domain_id: DomainId,
     operator_id: u64,
     to: DomainBlockNumberFor<Test>,
+    mut latest_receipt: ExecutionReceiptOf<Test>,
 ) -> ExecutionReceiptOf<Test> {
-    let head_receipt_number = HeadReceiptNumber::<Test>::get(domain_id);
-    assert!(head_receipt_number < to);
+    let current_block_number = frame_system::Pallet::<Test>::current_block_number();
+    assert!(current_block_number < to as u64);
 
-    let head_node = get_block_tree_node_at::<Test>(domain_id, head_receipt_number).unwrap();
-    let mut receipt = head_node.execution_receipt;
-    for block_number in (head_receipt_number as u64 + 1)..=to as u64 {
+    for block_number in (current_block_number + 1)..to as u64 {
         // Finilize parent block and initialize block at `block_number`
-        run_to_block::<Test>(block_number, receipt.consensus_block_hash);
+        run_to_block::<Test>(block_number, latest_receipt.consensus_block_hash);
 
         // Submit a bundle with the receipt of the last block
         let bundle_extrinsics_root = H256::random();
@@ -523,7 +542,7 @@ pub(crate) fn extend_block_tree(
             domain_id,
             operator_id,
             bundle_extrinsics_root,
-            receipt,
+            latest_receipt,
         );
         assert_ok!(crate::Pallet::<Test>::submit_bundle(
             RawOrigin::None.into(),
@@ -534,7 +553,7 @@ pub(crate) fn extend_block_tree(
         let head_receipt_number = HeadReceiptNumber::<Test>::get(domain_id);
         let parent_block_tree_node =
             get_block_tree_node_at::<Test>(domain_id, head_receipt_number).unwrap();
-        receipt = create_dummy_receipt(
+        latest_receipt = create_dummy_receipt(
             block_number,
             H256::random(),
             parent_block_tree_node
@@ -544,7 +563,10 @@ pub(crate) fn extend_block_tree(
         );
     }
 
-    receipt
+    // Finilize parent block and initialize block at `to`
+    run_to_block::<Test>(to as u64, latest_receipt.consensus_block_hash);
+
+    latest_receipt
 }
 
 #[allow(clippy::type_complexity)]
@@ -825,7 +847,7 @@ fn test_invalid_fraud_proof() {
     let mut ext = new_test_ext_with_extensions();
     ext.execute_with(|| {
         let domain_id = register_genesis_domain(creator, vec![operator_id]);
-        extend_block_tree(domain_id, operator_id, head_domain_number + 1);
+        extend_block_tree_from_zero(domain_id, operator_id, head_domain_number + 2);
         assert_eq!(
             HeadReceiptNumber::<Test>::get(domain_id),
             head_domain_number
@@ -861,7 +883,7 @@ fn test_invalid_total_rewards_fraud_proof() {
     let mut ext = new_test_ext_with_extensions();
     ext.execute_with(|| {
         let domain_id = register_genesis_domain(creator, vec![operator_id]);
-        extend_block_tree(domain_id, operator_id, head_domain_number + 1);
+        extend_block_tree_from_zero(domain_id, operator_id, head_domain_number + 2);
         assert_eq!(
             HeadReceiptNumber::<Test>::get(domain_id),
             head_domain_number
@@ -931,7 +953,7 @@ fn test_invalid_domain_extrinsic_root_proof() {
     let mut ext = new_test_ext_with_extensions();
     let fraud_proof = ext.execute_with(|| {
         let domain_id = register_genesis_domain(creator, vec![operator_id]);
-        extend_block_tree(domain_id, operator_id, head_domain_number + 1);
+        extend_block_tree_from_zero(domain_id, operator_id, head_domain_number + 2);
         assert_eq!(
             HeadReceiptNumber::<Test>::get(domain_id),
             head_domain_number
@@ -1004,7 +1026,7 @@ fn test_true_invalid_bundles_inherent_extrinsic_proof() {
     let mut ext = new_test_ext_with_extensions();
     let fraud_proof = ext.execute_with(|| {
         let domain_id = register_genesis_domain(creator, vec![operator_id]);
-        extend_block_tree(domain_id, operator_id, head_domain_number + 1);
+        extend_block_tree_from_zero(domain_id, operator_id, head_domain_number + 2);
         assert_eq!(
             HeadReceiptNumber::<Test>::get(domain_id),
             head_domain_number
@@ -1064,7 +1086,7 @@ fn test_false_invalid_bundles_inherent_extrinsic_proof() {
     let mut ext = new_test_ext_with_extensions();
     let fraud_proof = ext.execute_with(|| {
         let domain_id = register_genesis_domain(creator, vec![operator_id]);
-        extend_block_tree(domain_id, operator_id, head_domain_number + 1);
+        extend_block_tree_from_zero(domain_id, operator_id, head_domain_number + 2);
         assert_eq!(
             HeadReceiptNumber::<Test>::get(domain_id),
             head_domain_number
@@ -1150,7 +1172,7 @@ fn test_invalid_domain_block_hash_fraud_proof() {
     let mut ext = new_test_ext_with_extensions();
     ext.execute_with(|| {
         let domain_id = register_genesis_domain(creator, vec![operator_id]);
-        extend_block_tree(domain_id, operator_id, head_domain_number + 1);
+        extend_block_tree_from_zero(domain_id, operator_id, head_domain_number + 2);
         assert_eq!(
             HeadReceiptNumber::<Test>::get(domain_id),
             head_domain_number
@@ -1206,7 +1228,7 @@ fn test_basic_fraud_proof_processing() {
         let mut ext = new_test_ext_with_extensions();
         ext.execute_with(|| {
             let domain_id = register_genesis_domain(creator, vec![operator_id]);
-            extend_block_tree(domain_id, operator_id, head_domain_number + 1);
+            extend_block_tree_from_zero(domain_id, operator_id, head_domain_number + 2);
             assert_eq!(
                 HeadReceiptNumber::<Test>::get(domain_id),
                 head_domain_number
