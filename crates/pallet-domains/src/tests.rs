@@ -239,6 +239,7 @@ impl pallet_domains::Config for Test {
     type MaxPendingStakingOperation = MaxPendingStakingOperation;
     type MaxNominators = MaxNominators;
     type Randomness = MockRandomness;
+    type SudoId = ();
 }
 
 impl domain_pallet_executive::Config for Test {
@@ -476,7 +477,7 @@ pub(crate) fn register_genesis_domain(creator: u64, operator_ids: Vec<OperatorId
             + <Test as pallet_balances::Config>::ExistentialDeposit::get(),
     );
     crate::Pallet::<Test>::instantiate_domain(
-        RawOrigin::Signed(creator).into(),
+        RawOrigin::Root.into(),
         DomainConfig {
             domain_name: "evm-domain".to_owned(),
             runtime_id: 0,
