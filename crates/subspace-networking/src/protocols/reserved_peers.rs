@@ -2,6 +2,8 @@ mod handler;
 #[cfg(test)]
 mod tests;
 
+use futures::FutureExt;
+use futures_timer::Delay;
 use handler::Handler;
 use libp2p::core::{Endpoint, Multiaddr};
 use libp2p::swarm::behaviour::{ConnectionEstablished, FromSwarm};
@@ -12,9 +14,8 @@ use libp2p::swarm::{
 };
 use libp2p::PeerId;
 use std::collections::HashMap;
-use std::ops::Add;
-use std::task::{Context, Poll};
-use std::time::{Duration, Instant};
+use std::task::{Context, Poll, Waker};
+use std::time::Duration;
 use tracing::{debug, trace};
 
 use crate::utils::strip_peer_id;
@@ -36,7 +37,7 @@ use crate::utils::strip_peer_id;
 /// 3. `Connected`: This state signals that the peer is currently connected.
 ///
 /// The protocol will attempt to establish a connection to a `NotConnected` peer after a set delay,
-/// specified by `DIALING_INTERVAL_IN_SECS`, to prevent multiple simultaneous connection attempts
+/// specified by configurable dialing interval, to prevent multiple simultaneous connection attempts
 /// to offline peers. This delay not only conserves resources, but also reduces the amount of
 /// log output.
 ///
@@ -51,11 +52,15 @@ use crate::utils::strip_peer_id;
 ///
 #[derive(Debug)]
 pub struct Behaviour {
-    /// Protocol name.
-    protocol_name: &'static str,
+    /// Protocol configuration.
+    config: Config,
     /// A mapping from `PeerId` to `ReservedPeerState`, where each `ReservedPeerState`
     /// represents the current state of the connection to a reserved peer.
     reserved_peers_state: HashMap<PeerId, ReservedPeerState>,
+    /// Delay between dialing attempts.
+    dialing_delay: Delay,
+    /// Future waker.
+    waker: Option<Waker>,
 }
 
 /// Reserved peers protocol configuration.
@@ -65,27 +70,19 @@ pub struct Config {
     pub protocol_name: &'static str,
     /// Predefined set of reserved peers with addresses.
     pub reserved_peers: Vec<Multiaddr>,
+    /// Interval between new dialing attempts.
+    pub dialing_interval: Duration,
 }
 
 /// Reserved peer connection status.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ConnectionStatus {
-    /// Reserved peer is not connected. The next connection attempt is scheduled.
-    NotConnected { scheduled_at: Instant },
+    /// Reserved peer is not connected.
+    NotConnected,
     /// Reserved peer dialing is in progress.
     PendingConnection,
     /// Reserved peer is connected.
     Connected,
-}
-
-/// We pause between reserved peers dialing otherwise we could do multiple dials to offline peers
-/// wasting resources and producing a ton of log records.
-const DIALING_INTERVAL_IN_SECS: Duration = Duration::from_secs(1);
-
-/// Helper-function to schedule a connection attempt.
-#[inline]
-fn schedule_connection() -> Instant {
-    Instant::now().add(DIALING_INTERVAL_IN_SECS)
 }
 
 /// Defines the state of a reserved peer connection state.
@@ -110,7 +107,8 @@ impl Behaviour {
             "Reserved peers protocol initialization...."
         );
 
-        let peer_addresses = strip_peer_id(config.reserved_peers);
+        let peer_addresses = strip_peer_id(config.reserved_peers.clone());
+        let dialing_delay = Delay::new(config.dialing_interval);
 
         let reserved_peers_state = peer_addresses
             .into_iter()
@@ -120,17 +118,17 @@ impl Behaviour {
                     ReservedPeerState {
                         peer_id,
                         address,
-                        connection_status: ConnectionStatus::NotConnected {
-                            scheduled_at: schedule_connection(),
-                        },
+                        connection_status: ConnectionStatus::NotConnected,
                     },
                 )
             })
             .collect();
 
         Self {
-            protocol_name: config.protocol_name,
+            config,
             reserved_peers_state,
+            waker: None,
+            dialing_delay,
         }
     }
 
@@ -138,9 +136,15 @@ impl Behaviour {
     #[inline]
     fn new_reserved_peers_handler(&self, peer_id: &PeerId) -> Handler {
         Handler::new(
-            self.protocol_name,
+            self.config.protocol_name,
             self.reserved_peers_state.contains_key(peer_id),
         )
+    }
+
+    fn wake(&self) {
+        if let Some(waker) = &self.waker {
+            waker.wake_by_ref()
+        }
     }
 }
 
@@ -175,6 +179,7 @@ impl NetworkBehaviour for Behaviour {
                     state.connection_status = ConnectionStatus::Connected;
 
                     debug!(peer_id=%state.peer_id, "Reserved peer connected.");
+                    self.wake();
                 }
             }
             FromSwarm::ConnectionClosed(ConnectionClosed {
@@ -184,11 +189,10 @@ impl NetworkBehaviour for Behaviour {
             }) => {
                 if let Some(state) = self.reserved_peers_state.get_mut(&peer_id) {
                     if remaining_established == 0 {
-                        state.connection_status = ConnectionStatus::NotConnected {
-                            scheduled_at: schedule_connection(),
-                        };
+                        state.connection_status = ConnectionStatus::NotConnected;
 
                         debug!(%state.peer_id, "Reserved peer disconnected.");
+                        self.wake();
                     }
                 }
             }
@@ -196,12 +200,11 @@ impl NetworkBehaviour for Behaviour {
                 if let Some(peer_id) = peer_id {
                     if let Some(state) = self.reserved_peers_state.get_mut(&peer_id) {
                         if state.connection_status == ConnectionStatus::PendingConnection {
-                            state.connection_status = ConnectionStatus::NotConnected {
-                                scheduled_at: schedule_connection(),
-                            };
+                            state.connection_status = ConnectionStatus::NotConnected;
                         };
 
                         debug!(peer_id=%state.peer_id, "Reserved peer dialing failed.");
+                        self.wake();
                     }
                 }
             }
@@ -228,28 +231,35 @@ impl NetworkBehaviour for Behaviour {
 
     fn poll(
         &mut self,
-        _: &mut Context<'_>,
+        cx: &mut Context<'_>,
         _: &mut impl PollParameters,
     ) -> Poll<ToSwarm<Self::ToSwarm, THandlerInEvent<Self>>> {
-        for (_, state) in self.reserved_peers_state.iter_mut() {
-            trace!(?state, "Reserved peer state.");
+        // Schedule new peer dialing.
+        match self.dialing_delay.poll_unpin(cx) {
+            Poll::Pending => {}
+            Poll::Ready(()) => {
+                self.dialing_delay.reset(self.config.dialing_interval);
 
-            if let ConnectionStatus::NotConnected { scheduled_at } = state.connection_status {
-                if Instant::now() > scheduled_at {
-                    state.connection_status = ConnectionStatus::PendingConnection;
+                for (_, state) in self.reserved_peers_state.iter_mut() {
+                    trace!(?state, "Reserved peer state.");
 
-                    debug!(peer_id=%state.peer_id, "Dialing the reserved peer....");
+                    if let ConnectionStatus::NotConnected = state.connection_status {
+                        state.connection_status = ConnectionStatus::PendingConnection;
 
-                    let dial_opts =
-                        DialOpts::peer_id(state.peer_id).addresses(vec![state.address.clone()]);
+                        debug!(peer_id=%state.peer_id, "Dialing the reserved peer....");
 
-                    return Poll::Ready(ToSwarm::Dial {
-                        opts: dial_opts.build(),
-                    });
+                        let dial_opts =
+                            DialOpts::peer_id(state.peer_id).addresses(vec![state.address.clone()]);
+
+                        return Poll::Ready(ToSwarm::Dial {
+                            opts: dial_opts.build(),
+                        });
+                    }
                 }
             }
         }
 
+        self.waker.replace(cx.waker().clone());
         Poll::Pending
     }
 }
