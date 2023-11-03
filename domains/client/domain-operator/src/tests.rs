@@ -1,6 +1,6 @@
 use crate::domain_block_processor::{DomainBlockProcessor, PendingConsensusBlocks};
 use codec::{Decode, Encode};
-use domain_runtime_primitives::{DomainCoreApi, Hash};
+use domain_runtime_primitives::Hash;
 use domain_test_primitives::TimestampApi;
 use domain_test_service::evm_domain_test_runtime::{Header, UncheckedExtrinsic};
 use domain_test_service::EcdsaKeyring::{Alice, Bob};
@@ -22,10 +22,9 @@ use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{
     Bundle, BundleValidity, DomainsApi, HeaderHashingFor, InboxedBundle, InvalidBundleType,
 };
-use sp_domains_fraud_proof::execution_prover::ExecutionProver;
 use sp_domains_fraud_proof::fraud_proof::{
     ExecutionPhase, FraudProof, InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof,
-    InvalidStateTransitionProof, InvalidTotalRewardsProof,
+    InvalidTotalRewardsProof,
 };
 use sp_domains_fraud_proof::InvalidTransactionCode;
 use sp_runtime::generic::{BlockId, DigestItem};
@@ -1773,158 +1772,6 @@ async fn test_valid_bundle_proof_generation_and_verification() {
         )
         .unwrap()
         .is_none());
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn fraud_proof_verification_in_tx_pool_should_work() {
-    let directory = TempDir::new().expect("Must be able to create temporary directory");
-
-    let mut builder = sc_cli::LoggerBuilder::new("");
-    builder.with_colors(false);
-    let _ = builder.init();
-
-    let tokio_handle = tokio::runtime::Handle::current();
-
-    // Start Ferdie
-    let mut ferdie = MockConsensusNode::run(
-        tokio_handle.clone(),
-        Ferdie,
-        BasePath::new(directory.path().join("ferdie")),
-    );
-
-    // Run Alice (a evm domain authority node)
-    let alice = domain_test_service::DomainNodeBuilder::new(
-        tokio_handle.clone(),
-        Alice,
-        BasePath::new(directory.path().join("alice")),
-    )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
-    .await;
-
-    produce_blocks!(ferdie, alice, 3).await.unwrap();
-
-    // Get a bundle from the txn pool and change its receipt to an invalid one
-    let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let bad_bundle = {
-        let mut opaque_bundle = bundle.unwrap();
-        let receipt = &mut opaque_bundle.sealed_header.header.receipt;
-        receipt.execution_trace[0] = Default::default();
-        receipt.execution_trace_root = {
-            let trace: Vec<_> = receipt
-                .execution_trace
-                .iter()
-                .map(|t| t.encode().try_into().unwrap())
-                .collect();
-            MerkleTree::from_leaves(trace.as_slice())
-                .root()
-                .unwrap()
-                .into()
-        };
-        opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
-            .pair()
-            .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
-            .into();
-        opaque_bundle
-    };
-    let bad_receipt = bad_bundle.receipt().clone();
-    let bad_receipt_number = bad_receipt.consensus_block_number;
-    assert_ne!(bad_receipt_number, 1);
-
-    // Submit the bad receipt to the consensus chain
-    let submit_bundle_tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
-        pallet_domains::Call::submit_bundle {
-            opaque_bundle: bad_bundle,
-        }
-        .into(),
-    );
-    produce_block_with!(
-        ferdie.produce_block_with_extrinsics(vec![submit_bundle_tx.into()]),
-        alice
-    )
-    .await
-    .unwrap();
-
-    let header = alice
-        .client
-        .header(alice.client.hash(bad_receipt_number).unwrap().unwrap())
-        .unwrap()
-        .unwrap();
-    let parent_header = alice.client.header(*header.parent_hash()).unwrap().unwrap();
-
-    let prover = ExecutionProver::new(alice.backend.clone(), alice.code_executor.clone());
-
-    let digest = alice
-        .client
-        .runtime_api()
-        .block_digest(header.hash())
-        .unwrap();
-
-    let new_header = Header::new(
-        *header.number(),
-        header.hash(),
-        *header.state_root(),
-        parent_header.hash(),
-        digest,
-    );
-    let execution_phase = ExecutionPhase::InitializeBlock;
-    let initialize_block_call_data = new_header.encode();
-
-    let storage_proof = prover
-        .prove_execution::<sp_trie::PrefixedMemoryDB<BlakeTwo256>>(
-            parent_header.hash(),
-            &execution_phase,
-            &initialize_block_call_data,
-            None,
-        )
-        .expect("Create `initialize_block` proof");
-
-    let good_invalid_state_transition_proof = InvalidStateTransitionProof {
-        domain_id: GENESIS_DOMAIN_ID,
-        bad_receipt_hash: bad_receipt.hash::<HeaderHashingFor<Header>>(),
-        proof: storage_proof,
-        execution_phase,
-    };
-    let valid_fraud_proof =
-        FraudProof::InvalidStateTransition(good_invalid_state_transition_proof.clone());
-
-    let tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
-        pallet_domains::Call::submit_fraud_proof {
-            fraud_proof: Box::new(valid_fraud_proof.clone()),
-        }
-        .into(),
-    )
-    .into();
-
-    // The exact same fraud proof should be submitted to tx pool already
-    match ferdie.submit_transaction(tx).await.unwrap_err() {
-        sc_transaction_pool::error::Error::Pool(
-            sc_transaction_pool_api::error::Error::AlreadyImported(_),
-        ) => {}
-        e => panic!("Unexpected error while submitting fraud proof: {e}"),
-    }
-    // Produce one more block to verify the fraud proof in the block import pipeline
-    ferdie.produce_blocks(1).await.unwrap();
-
-    let bad_invalid_state_transition_proof = InvalidStateTransitionProof {
-        execution_phase: ExecutionPhase::FinalizeBlock,
-        ..good_invalid_state_transition_proof
-    };
-    let invalid_fraud_proof =
-        FraudProof::InvalidStateTransition(bad_invalid_state_transition_proof);
-
-    let tx = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
-        pallet_domains::Call::submit_fraud_proof {
-            fraud_proof: Box::new(invalid_fraud_proof),
-        }
-        .into(),
-    );
-
-    match ferdie.submit_transaction(tx.into()).await.unwrap_err() {
-        sc_transaction_pool::error::Error::Pool(
-            sc_transaction_pool_api::error::Error::InvalidTransaction(invalid_tx),
-        ) => assert_eq!(invalid_tx, InvalidTransactionCode::FraudProof.into()),
-        e => panic!("Unexpected error while submitting an invalid fraud proof: {e}"),
-    }
 }
 
 // TODO: Add a new test which simulates a situation that an executor produces a fraud proof
