@@ -486,11 +486,10 @@ pub enum InvalidBundleEquivocationError {
 }
 
 /// Verifies Bundle equivocation fraud proof.
-#[allow(dead_code)]
 pub fn verify_bundle_equivocation_fraud_proof<CBlock, DomainHeader, Balance>(
     operator_signing_key: &OperatorPublicKey,
-    header_1: SealedBundleHeader<NumberFor<CBlock>, CBlock::Hash, DomainHeader, Balance>,
-    header_2: SealedBundleHeader<NumberFor<CBlock>, CBlock::Hash, DomainHeader, Balance>,
+    header_1: &SealedBundleHeader<NumberFor<CBlock>, CBlock::Hash, DomainHeader, Balance>,
+    header_2: &SealedBundleHeader<NumberFor<CBlock>, CBlock::Hash, DomainHeader, Balance>,
 ) -> Result<(), InvalidBundleEquivocationError>
 where
     CBlock: BlockT,

@@ -54,7 +54,8 @@ use sp_domains_fraud_proof::fraud_proof::{
     FraudProof, InvalidDomainBlockHashProof, InvalidTotalRewardsProof,
 };
 use sp_domains_fraud_proof::verification::{
-    verify_invalid_bundles_fraud_proof, verify_invalid_domain_block_hash_fraud_proof,
+    verify_bundle_equivocation_fraud_proof, verify_invalid_bundles_fraud_proof,
+    verify_invalid_domain_block_hash_fraud_proof,
     verify_invalid_domain_extrinsics_root_fraud_proof, verify_invalid_state_transition_fraud_proof,
     verify_invalid_total_rewards_fraud_proof, verify_valid_bundle_fraud_proof,
 };
@@ -64,6 +65,7 @@ use sp_std::boxed::Box;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::vec::Vec;
 use subspace_core_primitives::U256;
+use subspace_runtime_primitives::Balance;
 
 pub(crate) type BalanceOf<T> =
     <<T as Config>::Currency as Inspect<<T as frame_system::Config>::AccountId>>::Balance;
@@ -618,6 +620,12 @@ mod pallet {
         InvalidBundleFraudProof,
         /// Bad/Invalid valid bundle fraud proof
         BadValidBundleFraudProof,
+        /// Missing operator.
+        MissingOperator,
+        /// Unexpected fraud proof.
+        UnexpectedFraudProof,
+        /// Bad/Invalid bundle equivocation fraud proof.
+        BadBundleEquivocationFraudProof,
     }
 
     impl<T> From<FraudProofError> for Error<T> {
@@ -1607,7 +1615,29 @@ impl<T: Config> Pallet<T> {
                     );
                     FraudProofError::BadValidBundleFraudProof
                 })?,
-                _ => {}
+                _ => return Err(FraudProofError::UnexpectedFraudProof),
+            }
+        } else if let Some(bad_operator_id) = fraud_proof.targeted_bad_operator() {
+            let operator =
+                Operators::<T>::get(bad_operator_id).ok_or(FraudProofError::MissingOperator)?;
+            match fraud_proof {
+                FraudProof::BundleEquivocation(proof) => {
+                    let operator_signing_key = operator.signing_key;
+                    verify_bundle_equivocation_fraud_proof::<T::Block, T::DomainHeader, Balance>(
+                        &operator_signing_key,
+                        &proof.first_header,
+                        &proof.second_header,
+                    )
+                    .map_err(|err| {
+                        log::error!(
+                            target: "runtime::domains",
+                            "Bundle equivocation proof verification failed: {err:?}"
+                        );
+                        FraudProofError::BadBundleEquivocationFraudProof
+                    })?;
+                }
+
+                _ => return Err(FraudProofError::UnexpectedFraudProof),
             }
         }
 
