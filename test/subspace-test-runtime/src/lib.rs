@@ -637,6 +637,7 @@ parameter_types! {
     pub TreasuryAccount: AccountId = PalletId(*b"treasury").into_account_truncating();
     pub const MaxPendingStakingOperation: u32 = 100;
     pub const MaxNominators: u32 = 100;
+    pub SudoId: AccountId = Sudo::key().expect("Sudo account must exist");
 }
 
 impl pallet_domains::Config for Runtime {
@@ -664,6 +665,7 @@ impl pallet_domains::Config for Runtime {
     type MaxPendingStakingOperation = MaxPendingStakingOperation;
     type MaxNominators = MaxNominators;
     type Randomness = Subspace;
+    type SudoId = SudoId;
 }
 
 parameter_types! {

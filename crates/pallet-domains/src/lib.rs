@@ -288,6 +288,10 @@ mod pallet {
 
         /// Randomness source.
         type Randomness: RandomnessT<Self::Hash, BlockNumberFor<Self>>;
+
+        /// The sudo account id
+        #[pallet::constant]
+        type SudoId: Get<Self::AccountId>;
     }
 
     #[pallet::pallet]
@@ -1044,7 +1048,9 @@ mod pallet {
             origin: OriginFor<T>,
             domain_config: DomainConfig<T::AccountId>,
         ) -> DispatchResult {
-            let who = ensure_signed(origin)?;
+            ensure_root(origin)?;
+
+            let who = T::SudoId::get();
 
             let created_at = frame_system::Pallet::<T>::current_block_number();
 

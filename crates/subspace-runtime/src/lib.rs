@@ -605,6 +605,7 @@ parameter_types! {
     pub const MaxPendingStakingOperation: u32 = 100;
     // TODO: reset `MaxNominators` back to `100` once the gemini-3g chain spec is created
     pub const MaxNominators: u32 = 0;
+    pub SudoId: AccountId = Sudo::key().expect("Sudo account must exist");
 }
 
 impl pallet_domains::Config for Runtime {
@@ -632,6 +633,7 @@ impl pallet_domains::Config for Runtime {
     type MaxPendingStakingOperation = MaxPendingStakingOperation;
     type MaxNominators = MaxNominators;
     type Randomness = Subspace;
+    type SudoId = SudoId;
 }
 
 pub struct StakingOnReward;
