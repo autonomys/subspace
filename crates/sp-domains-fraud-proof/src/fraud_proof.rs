@@ -374,7 +374,11 @@ pub enum FraudProof<Number, Hash, DomainHeader: HeaderT> {
     InvalidExtrinsicsRoot(InvalidExtrinsicsRootProof<HeaderHashFor<DomainHeader>>),
     ValidBundle(ValidBundleProof<HeaderHashFor<DomainHeader>>),
     InvalidDomainBlockHash(InvalidDomainBlockHashProof<HeaderHashFor<DomainHeader>>),
+    InvalidBundles(InvalidBundlesFraudProof<HeaderHashFor<DomainHeader>>),
     // Dummy fraud proof only used in test and benchmark
+    //
+    // NOTE: the `Dummy` must be the last variant, because the `#[cfg(..)]` will apply to
+    // all the variants after it.
     #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
     Dummy {
         /// Id of the domain this fraud proof targeted
@@ -382,7 +386,6 @@ pub enum FraudProof<Number, Hash, DomainHeader: HeaderT> {
         /// Hash of the bad receipt this fraud proof targeted
         bad_receipt_hash: HeaderHashFor<DomainHeader>,
     },
-    InvalidBundles(InvalidBundlesFraudProof<HeaderHashFor<DomainHeader>>),
 }
 
 impl<Number, Hash, DomainHeader: HeaderT> FraudProof<Number, Hash, DomainHeader> {
