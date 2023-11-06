@@ -21,26 +21,29 @@ use subspace_rpc_primitives::SlotInfo;
 pub(crate) enum BenchmarkArgs {
     /// Audit benchmark
     Audit {
+        #[arg(long, default_value_t = 10)]
+        sample_size: usize,
         /// Disk farm to audit
         ///
         /// Example:
         ///   /path/to/directory
         disk_farm: PathBuf,
-        #[arg(long, default_value_t = 10)]
-        sample_size: usize,
+        /// Optional filter for benchmarks, must correspond to a part of benchmark name in order for benchmark to run
+        filter: Option<String>,
     },
 }
 
 pub(crate) fn benchmark(benchmark_args: BenchmarkArgs) -> anyhow::Result<()> {
     match benchmark_args {
         BenchmarkArgs::Audit {
-            disk_farm,
             sample_size,
-        } => audit(disk_farm, sample_size),
+            disk_farm,
+            filter,
+        } => audit(sample_size, disk_farm, filter),
     }
 }
 
-fn audit(disk_farm: PathBuf, sample_size: usize) -> anyhow::Result<()> {
+fn audit(sample_size: usize, disk_farm: PathBuf, filter: Option<String>) -> anyhow::Result<()> {
     let (single_disk_farm_info, disk_farm) = match SingleDiskFarm::collect_summary(disk_farm) {
         SingleDiskFarmSummary::Found { info, directory } => (info, directory),
         SingleDiskFarmSummary::NotFound { directory } => {
@@ -72,6 +75,9 @@ fn audit(disk_farm: PathBuf, sample_size: usize) -> anyhow::Result<()> {
         .map_err(|error| anyhow::anyhow!("Failed to read sectors metadata: {error}"))?;
 
     let mut criterion = Criterion::default().sample_size(sample_size);
+    if let Some(filter) = filter {
+        criterion = criterion.with_filter(filter);
+    }
     {
         let mut group = criterion.benchmark_group("audit");
         group.throughput(Throughput::Bytes(
