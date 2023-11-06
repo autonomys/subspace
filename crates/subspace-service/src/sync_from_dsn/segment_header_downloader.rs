@@ -1,6 +1,8 @@
+use futures::stream::FuturesUnordered;
 use futures::StreamExt;
-use std::collections::{BTreeMap, BTreeSet, HashMap};
+use std::collections::{BTreeSet, HashMap};
 use std::error::Error;
+use std::pin::pin;
 use subspace_core_primitives::{SegmentHeader, SegmentIndex};
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::{Node, SegmentHeaderRequest, SegmentHeaderResponse};
@@ -96,7 +98,7 @@ impl<'a> SegmentHeaderDownloader<'a> {
     async fn get_last_segment_header(
         &self,
     ) -> Result<Option<(SegmentHeader, Vec<PeerId>)>, Box<dyn Error>> {
-        let mut last_peer_blocks = BTreeMap::default();
+        let mut peer_segment_headers = HashMap::<PeerId, Vec<SegmentHeader>>::default();
         for (required_peers, retry_attempt) in (1..=SEGMENT_HEADER_CONSENSUS_INITIAL_NODES)
             .rev()
             .zip(1_usize..)
@@ -111,8 +113,8 @@ impl<'a> SegmentHeaderDownloader<'a> {
                 .await;
 
             // Acquire segment headers from peers.
-            let get_peers_stream = match get_peers_result {
-                Ok(get_peers_stream) => get_peers_stream,
+            let peers = match get_peers_result {
+                Ok(get_peers_stream) => get_peers_stream.collect::<Vec<_>>().await,
                 Err(err) => {
                     warn!(?err, "get_closest_peers returned an error");
 
@@ -120,9 +122,9 @@ impl<'a> SegmentHeaderDownloader<'a> {
                 }
             };
 
-            // Hashmap here just to potentially peers
-            let peer_blocks: BTreeMap<PeerId, Vec<SegmentHeader>> = get_peers_stream
-                .filter_map(|peer_id| async move {
+            let new_last_known_segment_headers = peers
+                .into_iter()
+                .map(|peer_id| async move {
                     let request_result = self
                         .dsn_node
                         .send_generic_request(
@@ -163,21 +165,27 @@ impl<'a> SegmentHeaderDownloader<'a> {
                         }
                     }
                 })
-                .collect()
-                .await;
+                .collect::<FuturesUnordered<_>>()
+                .filter_map(|maybe_result| async move { maybe_result });
+            let mut new_last_known_segment_headers = pin!(new_last_known_segment_headers);
 
-            let peer_count = peer_blocks.len();
+            let last_peers_count = peer_segment_headers.len();
+
+            while let Some((peer_id, segment_headers)) = new_last_known_segment_headers.next().await
+            {
+                peer_segment_headers.insert(peer_id, segment_headers);
+            }
+
+            let peer_count = peer_segment_headers.len();
 
             if peer_count < required_peers {
-                if last_peer_blocks.is_empty() || last_peer_blocks != peer_blocks {
+                if last_peers_count == 0 || last_peers_count != peer_count {
                     debug!(
                         %peer_count,
                         %required_peers,
                         %retry_attempt,
                         "Segment headers consensus requires more peers, will retry"
                     );
-
-                    last_peer_blocks = peer_blocks;
 
                     continue;
                 } else {
@@ -194,7 +202,7 @@ impl<'a> SegmentHeaderDownloader<'a> {
             // Calculate votes
             let mut segment_header_peers: HashMap<SegmentHeader, Vec<PeerId>> = HashMap::new();
 
-            for (peer_id, segment_headers) in peer_blocks {
+            for (peer_id, segment_headers) in peer_segment_headers {
                 for segment_header in segment_headers {
                     segment_header_peers
                         .entry(segment_header)
