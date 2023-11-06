@@ -70,9 +70,17 @@ pub async fn start_slot_worker<Block, Client, SC, Worker, SO, CIDP>(
 
     let mut worker = SimpleSlotWorkerToSlotWorker(worker);
 
-    let mut maybe_last_claimed_slot = None;
+    let mut maybe_last_proven_slot = None;
 
     while let Some(PotSlotInfo { slot, checkpoints }) = slot_info_stream.next().await {
+        if let Some(last_proven_slot) = maybe_last_proven_slot {
+            if last_proven_slot >= slot {
+                // Already processed
+                continue;
+            }
+        }
+        maybe_last_proven_slot.replace(slot);
+
         worker.0.on_proof(slot, checkpoints);
 
         if sync_oracle.is_major_syncing() {
@@ -85,14 +93,6 @@ pub async fn start_slot_worker<Block, Client, SC, Worker, SO, CIDP>(
             trace!("Skipping very early slot during chain start");
             continue;
         };
-
-        if let Some(last_claimed_slot) = maybe_last_claimed_slot {
-            if last_claimed_slot >= slot_to_claim {
-                // Already processed
-                continue;
-            }
-        }
-        maybe_last_claimed_slot.replace(slot_to_claim);
 
         if let Some(slot_info) = slot_info_producer.produce_slot_info(slot_to_claim).await {
             let _ = worker.on_slot(slot_info).await;
