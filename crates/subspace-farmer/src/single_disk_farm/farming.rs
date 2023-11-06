@@ -79,6 +79,7 @@ where
 }
 
 /// Plot audit options
+#[derive(Debug)]
 pub struct PlotAuditOptions<'a, PosTable>
 where
     PosTable: Table,
@@ -101,6 +102,17 @@ where
     /// Proof of space table generator
     pub table_generator: &'a Mutex<PosTable::Generator>,
 }
+
+impl<'a, PosTable> Clone for PlotAuditOptions<'a, PosTable>
+where
+    PosTable: Table,
+{
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<'a, PosTable> Copy for PlotAuditOptions<'a, PosTable> where PosTable: Table {}
 
 /// Plot auditing implementation
 pub struct PlotAudit<Plot>(Plot)
