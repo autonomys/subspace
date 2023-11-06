@@ -50,7 +50,12 @@ pub(super) fn build_transport(
             .boxed()
     };
 
-    let quic = QuicTransport::new(QuicConfig::new(keypair))
+    #[cfg(not(windows))]
+    let quic_config = QuicConfig::new(keypair);
+    #[cfg(windows)]
+    let quic_config = QuicConfig::new(keypair).path_mtu_discovery_config(None);
+
+    let quic = QuicTransport::new(quic_config)
         .map(|(peer_id, muxer), _| (peer_id, StreamMuxerBox::new(muxer)));
 
     let wrapped_quic =

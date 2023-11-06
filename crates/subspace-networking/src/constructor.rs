@@ -84,6 +84,10 @@ const TEMPORARY_BANS_DEFAULT_BACKOFF_RANDOMIZATION_FACTOR: f64 = 0.1;
 const TEMPORARY_BANS_DEFAULT_BACKOFF_MULTIPLIER: f64 = 1.5;
 const TEMPORARY_BANS_DEFAULT_MAX_INTERVAL: Duration = Duration::from_secs(30 * 60);
 
+/// We pause between reserved peers dialing otherwise we could do multiple dials to offline peers
+/// wasting resources and producing a ton of log records.
+const DIALING_INTERVAL_IN_SECS: Duration = Duration::from_secs(1);
+
 /// Specific YAMUX settings for Subspace applications: additional buffer space for pieces and
 /// substream's limit.
 ///
@@ -479,6 +483,7 @@ where
         reserved_peers: ReservedPeersConfig {
             reserved_peers: reserved_peers.clone(),
             protocol_name: RESERVED_PEERS_PROTOCOL_NAME,
+            dialing_interval: DIALING_INTERVAL_IN_SECS,
         },
         peer_info_config: PeerInfoConfig::new(PEER_INFO_PROTOCOL_NAME),
         peer_info_provider,
