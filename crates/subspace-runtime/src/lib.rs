@@ -58,7 +58,7 @@ use sp_core::storage::StateVersion;
 use sp_core::{OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
-    DomainId, DomainInstanceData, DomainsHoldIdentifier, ExecutionReceipt, OperatorId,
+    DomainId, DomainInstanceData, DomainsHoldIdentifier, ExecutionReceiptFor, OperatorId,
     OperatorPublicKey, StakingHoldIdentifier,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
@@ -971,6 +971,7 @@ impl_runtime_apis! {
         }
     }
 
+    #[api_version(2)]
     impl sp_domains::DomainsApi<Block, DomainHeader> for Runtime {
         fn submit_bundle_unsigned(
             opaque_bundle: sp_domains::OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, Balance>,
@@ -985,13 +986,10 @@ impl_runtime_apis! {
             crate::domains::extract_successful_bundles(domain_id, extrinsics)
         }
 
-        #[allow(clippy::type_complexity)]
         fn extract_receipts(
             domain_id: DomainId,
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
-        ) -> Vec<
-            ExecutionReceipt<NumberFor<Block>, <Block as BlockT>::Hash, DomainNumber, DomainHash, Balance>,
-        > {
+        ) -> Vec<ExecutionReceiptFor<DomainHeader, Block, Balance>> {
             crate::domains::extract_successful_bundles(domain_id, extrinsics)
                 .into_iter()
                 .map(|bundle| bundle.into_receipt())
@@ -1054,7 +1052,7 @@ impl_runtime_apis! {
             Domains::domain_state_root(domain_id, number, hash)
         }
 
-        fn execution_receipt(receipt_hash: DomainHash) -> Option<ExecutionReceipt<NumberFor<Block>, <Block as BlockT>::Hash, DomainNumber, DomainHash, Balance>> {
+        fn execution_receipt(receipt_hash: DomainHash) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>> {
             Domains::execution_receipt(receipt_hash)
         }
     }

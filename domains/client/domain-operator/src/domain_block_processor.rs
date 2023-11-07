@@ -17,6 +17,7 @@ use sp_api::{ApiExt, NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HashAndNumber, HeaderBackend, HeaderMetadata};
 use sp_consensus::{BlockOrigin, SyncOracle};
 use sp_core::traits::CodeExecutor;
+use sp_core::H256;
 use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{BundleValidity, DomainId, DomainsApi, ExecutionReceipt, HeaderHashingFor};
 use sp_domains_fraud_proof::fraud_proof::{FraudProof, ValidBundleProof};
@@ -684,6 +685,7 @@ impl<Block, Client, CBlock, CClient, Backend, E>
     ReceiptsChecker<Block, Client, CBlock, CClient, Backend, E>
 where
     Block: BlockT,
+    Block::Hash: Into<H256>,
     CBlock: BlockT,
     NumberFor<CBlock>: Into<NumberFor<Block>>,
     Client: HeaderBackend<Block>

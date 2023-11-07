@@ -904,6 +904,14 @@ impl ExtrinsicDigest {
     }
 }
 
+pub type ExecutionReceiptFor<DomainHeader, CBlock, Balance> = ExecutionReceipt<
+    NumberFor<CBlock>,
+    <CBlock as BlockT>::Hash,
+    <DomainHeader as HeaderT>::Number,
+    <DomainHeader as HeaderT>::Hash,
+    Balance,
+>;
+
 sp_api::decl_runtime_apis! {
     /// API necessary for domains pallet.
     pub trait DomainsApi<DomainHeader: HeaderT> {
@@ -917,19 +925,11 @@ sp_api::decl_runtime_apis! {
         ) -> OpaqueBundles<Block, DomainHeader, Balance>;
 
         /// Extract the execution receipt stored successfully from the given extrinsics.
-        #[allow(clippy::type_complexity)]
+        #[api_version(2)]
         fn extract_receipts(
             domain_id: DomainId,
             extrinsics: Vec<Block::Extrinsic>,
-        ) -> Vec<
-            ExecutionReceipt<
-                NumberFor<Block>,
-                Block::Hash,
-                HeaderNumberFor<DomainHeader>,
-                HeaderHashFor<DomainHeader>,
-                Balance,
-            >,
-        >;
+        ) -> Vec<ExecutionReceiptFor<DomainHeader, Block, Balance>>;
 
         /// Generates a randomness seed for extrinsics shuffling.
         fn extrinsics_shuffling_seed() -> Randomness;
@@ -977,8 +977,7 @@ sp_api::decl_runtime_apis! {
             hash: HeaderHashFor<DomainHeader>) -> Option<HeaderHashFor<DomainHeader>>;
 
         /// Returns the execution receipt
-        #[allow(clippy::type_complexity)]
-        fn execution_receipt(receipt_hash: HeaderHashFor<DomainHeader>) -> Option<ExecutionReceipt<NumberFor<Block>, Block::Hash, HeaderNumberFor<DomainHeader>, HeaderHashFor<DomainHeader>, Balance>>;
+        fn execution_receipt(receipt_hash: HeaderHashFor<DomainHeader>) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>>;
     }
 
     pub trait BundleProducerElectionApi<Balance: Encode + Decode> {

@@ -7,10 +7,11 @@ use domain_block_preprocessor::DomainBlockPreprocessor;
 use domain_runtime_primitives::DomainCoreApi;
 use sc_client_api::{AuxStore, BlockBackend, Finalizer, ProofProvider};
 use sc_consensus::{BlockImportParams, ForkChoiceStrategy, StateAction};
-use sp_api::{NumberFor, ProvideRuntimeApi};
+use sp_api::{ApiExt, NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::BlockOrigin;
 use sp_core::traits::CodeExecutor;
+use sp_core::H256;
 use sp_domain_digests::AsPredigest;
 use sp_domains::{DomainId, DomainsApi, ReceiptValidity};
 use sp_domains_fraud_proof::FraudProofApi;
@@ -118,6 +119,7 @@ impl<Block, CBlock, Client, CClient, Backend, E>
     BundleProcessor<Block, CBlock, Client, CClient, Backend, E>
 where
     Block: BlockT,
+    Block::Hash: Into<H256>,
     CBlock: BlockT,
     NumberFor<CBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
     CBlock::Hash: From<Block::Hash>,
@@ -304,13 +306,25 @@ where
             head_receipt_number,
         )?;
 
-        // TODO: Remove as ReceiptsChecker has been superseded by ReceiptValidator in block-preprocessor.
-        self.domain_receipts_checker
-            .check_state_transition(consensus_block_hash)?;
+        // Check the consensus runtime version before checking bad ER and submit fraud proof.
+        //
+        // TODO: this is used to keep compatible with the gemini-3g network, because some necessary
+        // runtime API are introduced in `#[api_version(2)]`, remove this before the next network
+        let domains_api_version = self
+            .consensus_client
+            .runtime_api()
+            .api_version::<dyn DomainsApi<CBlock, Block::Header>>(consensus_block_hash)?
+            // safe to return default version as 1 since there will always be version 1.
+            .unwrap_or(1);
+        if domains_api_version >= 2 {
+            // TODO: Remove as ReceiptsChecker has been superseded by ReceiptValidator in block-preprocessor.
+            self.domain_receipts_checker
+                .check_state_transition(consensus_block_hash)?;
 
-        self.domain_receipts_checker
-            .submit_fraud_proof(consensus_block_hash)
-            .await?;
+            self.domain_receipts_checker
+                .submit_fraud_proof(consensus_block_hash)
+                .await?;
+        }
 
         Ok(Some(built_block_info))
     }

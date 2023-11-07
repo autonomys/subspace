@@ -8,6 +8,7 @@ use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::CodeExecutor;
+use sp_core::H256;
 use sp_domain_digests::AsPredigest;
 use sp_domains::proof_provider_and_verifier::StorageProofProvider;
 use sp_domains::{DomainId, DomainsApi, ExtrinsicDigest, HeaderHashingFor};
@@ -17,7 +18,7 @@ use sp_domains_fraud_proof::fraud_proof::{
     InvalidExtrinsicsRootProof, InvalidStateTransitionProof, InvalidTotalRewardsProof,
     ValidBundleDigest,
 };
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashingFor, Header as HeaderT, NumberFor};
+use sp_runtime::traits::{Block as BlockT, HashingFor, Header as HeaderT, NumberFor};
 use sp_runtime::{Digest, DigestItem};
 use sp_trie::{LayoutV1, StorageProof};
 use std::marker::PhantomData;
@@ -71,6 +72,7 @@ impl<Block, CBlock, Client, CClient, Backend, E>
     FraudProofGenerator<Block, CBlock, Client, CClient, Backend, E>
 where
     Block: BlockT,
+    Block::Hash: Into<H256>,
     CBlock: BlockT,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
@@ -248,7 +250,9 @@ where
                 .map(|(signer, ext)| {
                     (
                         signer,
-                        ExtrinsicDigest::new::<LayoutV1<BlakeTwo256>>(ext.encode()),
+                        ExtrinsicDigest::new::<LayoutV1<HeaderHashingFor<Block::Header>>>(
+                            ext.encode(),
+                        ),
                     )
                 })
                 .collect::<Vec<(Option<AccountId>, ExtrinsicDigest)>>();
