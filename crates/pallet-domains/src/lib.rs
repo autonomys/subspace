@@ -35,7 +35,7 @@ pub mod weights;
 extern crate alloc;
 
 use crate::block_tree::verify_execution_receipt;
-use crate::staking::{do_nominate_operator, Operator, OperatorStatus};
+use crate::staking::{Operator, OperatorStatus};
 use codec::{Decode, Encode};
 use frame_support::ensure;
 use frame_support::traits::fungible::{Inspect, InspectHold};
@@ -127,9 +127,9 @@ mod pallet {
     #[cfg(not(feature = "runtime-benchmarks"))]
     use crate::staking::do_reward_operators;
     use crate::staking::{
-        do_auto_stake_block_rewards, do_deregister_operator, do_nominate_operator,
-        do_register_operator, do_slash_operators, do_switch_operator_domain, do_withdraw_stake,
-        Error as StakingError, Nominator, Operator, OperatorConfig, StakingSummary, Withdraw,
+        do_deregister_operator, do_nominate_operator, do_register_operator, do_slash_operators,
+        do_switch_operator_domain, do_withdraw_stake, Error as StakingError, Nominator, Operator,
+        OperatorConfig, StakingSummary, Withdraw,
     };
     #[cfg(not(feature = "runtime-benchmarks"))]
     use crate::staking_epoch::do_unlock_pending_withdrawals;
@@ -566,12 +566,6 @@ mod pallet {
     #[pallet::storage]
     pub(super) type LastEpochStakingDistribution<T: Config> =
         StorageMap<_, Identity, DomainId, ElectionVerificationParams<BalanceOf<T>>, OptionQuery>;
-
-    /// A preferred Operator for a given Farmer, enabling automatic staking of block rewards.
-    /// For the auto-staking to succeed, the Farmer must also be a Nominator of the preferred Operator.
-    #[pallet::storage]
-    pub(super) type PreferredOperator<T: Config> =
-        StorageMap<_, Identity, NominatorId<T>, OperatorId, OptionQuery>;
 
     #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
     pub enum BundleError {
@@ -1116,24 +1110,6 @@ mod pallet {
             Ok(())
         }
 
-        #[pallet::call_index(10)]
-        #[pallet::weight(T::WeightInfo::auto_stake_block_rewards())]
-        pub fn auto_stake_block_rewards(
-            origin: OriginFor<T>,
-            operator_id: OperatorId,
-        ) -> DispatchResult {
-            let who = ensure_signed(origin)?;
-
-            do_auto_stake_block_rewards::<T>(who.clone(), operator_id).map_err(Error::<T>::from)?;
-
-            Self::deposit_event(Event::PreferredOperator {
-                operator_id,
-                nominator_id: who,
-            });
-
-            Ok(())
-        }
-
         /// Extrinsic to update domain's operator allow list.
         /// Note:
         /// - If the previous allowed list is set to specific operators and new allow list is set
@@ -1141,7 +1117,7 @@ mod pallet {
         /// - If the previous allowed list is set to `Anyone` or specific operators and the new
         ///   allow list is set to specific operators, then all the registered not allowed operators
         ///   will continue to operate until they de-register themselves.
-        #[pallet::call_index(12)]
+        #[pallet::call_index(10)]
         #[pallet::weight(Weight::from_all(10_000))]
         pub fn update_domain_operator_allow_list(
             origin: OriginFor<T>,
@@ -1741,22 +1717,6 @@ impl<T: Config> Pallet<T> {
             max_block_size: domain_obj.domain_config.max_block_size,
             max_block_weight: domain_obj.domain_config.max_block_weight,
         })
-    }
-
-    /// Increase the nomination stake by `reward` to the preferred operator of `who`.
-    /// Preference is removed if the nomination fails.
-    pub fn on_block_reward(who: NominatorId<T>, reward: BalanceOf<T>) {
-        PreferredOperator::<T>::mutate_exists(who.clone(), |maybe_preferred_operator_id| {
-            if let Some(operator_id) = maybe_preferred_operator_id {
-                if let Err(err) = do_nominate_operator::<T>(*operator_id, who, reward) {
-                    log::trace!(
-                        target: "runtime::domains",
-                        "Failed to stake the reward amount to preferred operator: {err:?}. Removing preference."
-                    );
-                    maybe_preferred_operator_id.take();
-                }
-            }
-        });
     }
 
     /// Returns if there are any ERs in the challenge period that have non empty extrinsics.
