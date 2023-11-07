@@ -23,13 +23,13 @@ use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::proof_provider_and_verifier::StorageProofProvider;
 use sp_domains::storage::RawGenesis;
 use sp_domains::{
-    BundleHeader, DomainId, DomainsHoldIdentifier, ExecutionReceipt, InboxedBundle,
-    InvalidBundleType, OpaqueBundle, OperatorAllowList, OperatorId, OperatorPair, ProofOfElection,
-    RuntimeType, SealedBundleHeader, StakingHoldIdentifier,
+    BundleHeader, DomainId, DomainsHoldIdentifier, ExecutionReceipt, ExtrinsicDigest,
+    InboxedBundle, InvalidBundleType, OpaqueBundle, OperatorAllowList, OperatorId, OperatorPair,
+    ProofOfElection, RuntimeType, SealedBundleHeader, StakingHoldIdentifier,
 };
 use sp_domains_fraud_proof::fraud_proof::{
-    ExtrinsicDigest, FraudProof, InvalidBundlesFraudProof, InvalidDomainBlockHashProof,
-    InvalidExtrinsicsRootProof, InvalidTotalRewardsProof, ValidBundleDigest,
+    FraudProof, InvalidBundlesFraudProof, InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof,
+    InvalidTotalRewardsProof, ValidBundleDigest,
 };
 use sp_domains_fraud_proof::{
     FraudProofExtension, FraudProofHostFunctions, FraudProofVerificationInfoRequest,
@@ -240,6 +240,7 @@ impl pallet_domains::Config for Test {
     type MaxPendingStakingOperation = MaxPendingStakingOperation;
     type MaxNominators = MaxNominators;
     type Randomness = MockRandomness;
+    type SudoId = ();
 }
 
 impl domain_pallet_executive::Config for Test {
@@ -489,7 +490,7 @@ pub(crate) fn register_genesis_domain(creator: u64, operator_ids: Vec<OperatorId
             + <Test as pallet_balances::Config>::ExistentialDeposit::get(),
     );
     crate::Pallet::<Test>::instantiate_domain(
-        RawOrigin::Signed(creator).into(),
+        RawOrigin::Root.into(),
         DomainConfig {
             domain_name: "evm-domain".to_owned(),
             runtime_id: 0,

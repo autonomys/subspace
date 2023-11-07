@@ -1,6 +1,6 @@
 use crate::fraud_proof::{
-    ExtrinsicDigest, InvalidBundlesFraudProof, InvalidExtrinsicsRootProof,
-    InvalidStateTransitionProof, ValidBundleProof, VerificationError,
+    InvalidBundlesFraudProof, InvalidExtrinsicsRootProof, InvalidStateTransitionProof,
+    ValidBundleProof, VerificationError,
 };
 use crate::fraud_proof_runtime_interface::get_fraud_proof_verification_info;
 use crate::{
@@ -16,8 +16,8 @@ use sp_domains::extrinsics::{deduplicate_and_shuffle_extrinsics, extrinsics_shuf
 use sp_domains::proof_provider_and_verifier::StorageProofVerifier;
 use sp_domains::valued_trie::valued_ordered_trie_root;
 use sp_domains::{
-    BundleValidity, ExecutionReceipt, HeaderHashFor, HeaderHashingFor, HeaderNumberFor,
-    InboxedBundle, InvalidBundleType, OperatorPublicKey, SealedBundleHeader,
+    BundleValidity, ExecutionReceipt, ExtrinsicDigest, HeaderHashFor, HeaderHashingFor,
+    HeaderNumberFor, InboxedBundle, InvalidBundleType, OperatorPublicKey, SealedBundleHeader,
 };
 use sp_runtime::generic::Digest;
 use sp_runtime::traits::{Block as BlockT, Hash, Header as HeaderT, NumberFor};

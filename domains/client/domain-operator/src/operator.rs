@@ -3,7 +3,6 @@ use crate::domain_block_processor::{DomainBlockProcessor, ReceiptsChecker};
 use crate::domain_bundle_producer::DomainBundleProducer;
 use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::fraud_proof::FraudProofGenerator;
-use crate::parent_chain::DomainParentChain;
 use crate::{DomainImportNotifications, NewSlotNotification, OperatorParams};
 use domain_runtime_primitives::DomainCoreApi;
 use futures::channel::mpsc;
@@ -17,6 +16,7 @@ use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
 use sp_core::H256;
 use sp_domains::{BundleProducerElectionApi, DomainsApi};
+use sp_domains_fraud_proof::FraudProofApi;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
@@ -88,7 +88,8 @@ where
         + 'static,
     CClient::Api: DomainsApi<CBlock, Block::Header>
         + MessengerApi<CBlock, NumberFor<CBlock>>
-        + BundleProducerElectionApi<CBlock, Balance>,
+        + BundleProducerElectionApi<CBlock, Balance>
+        + FraudProofApi<CBlock, Block::Header>,
     Backend: sc_client_api::Backend<Block> + Send + Sync + 'static,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
     E: CodeExecutor,
@@ -116,10 +117,8 @@ where
         NSNS: Stream<Item = NewSlotNotification> + Send + 'static,
         ASS: Stream<Item = mpsc::Sender<()>> + Send + 'static,
     {
-        let parent_chain =
-            DomainParentChain::new(params.domain_id, params.consensus_client.clone());
-
         let domain_bundle_proposer = DomainBundleProposer::new(
+            params.domain_id,
             params.client.clone(),
             params.consensus_client.clone(),
             params.transaction_pool.clone(),
@@ -129,7 +128,6 @@ where
             params.domain_id,
             params.consensus_client.clone(),
             params.client.clone(),
-            parent_chain.clone(),
             domain_bundle_proposer,
             params.bundle_sender,
             params.keystore.clone(),
@@ -159,9 +157,8 @@ where
             client: params.client.clone(),
             consensus_client: params.consensus_client.clone(),
             fraud_proof_generator: fraud_proof_generator.clone(),
-            parent_chain,
             consensus_network_sync_oracle: params.consensus_network_sync_oracle,
-            _phantom: std::marker::PhantomData,
+            consensus_offchain_tx_pool_factory: params.consensus_offchain_tx_pool_factory.clone(),
         };
 
         let bundle_processor = BundleProcessor::new(

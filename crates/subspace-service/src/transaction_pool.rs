@@ -20,7 +20,7 @@ use sp_core::traits::SpawnEssentialNamed;
 use sp_domains::DomainsApi;
 use sp_domains_fraud_proof::bundle_equivocation::check_equivocation;
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
-use sp_domains_fraud_proof::{FraudProofsApi, InvalidTransactionCode};
+use sp_domains_fraud_proof::{FraudProofApi, InvalidTransactionCode};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, BlockIdTo, Header, NumberFor};
 use sp_runtime::transaction_validity::{TransactionValidity, TransactionValidityError};
@@ -348,7 +348,7 @@ where
         + 'static,
     Client::Api: TaggedTransactionQueue<Block>
         + SubspaceApi<Block, FarmerPublicKey>
-        + FraudProofsApi<Block, DomainHeader>
+        + FraudProofApi<Block, DomainHeader>
         + DomainsApi<Block, DomainHeader>,
 {
     type Block = Block;
@@ -502,7 +502,7 @@ where
     DomainHeader: HeaderT,
     Client::Api: TaggedTransactionQueue<Block>
         + SubspaceApi<Block, FarmerPublicKey>
-        + FraudProofsApi<Block, DomainHeader>
+        + FraudProofApi<Block, DomainHeader>
         + DomainsApi<Block, DomainHeader>,
 {
     let prometheus = config.prometheus_registry();

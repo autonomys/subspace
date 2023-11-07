@@ -60,6 +60,7 @@ pub struct PotSourceWorker<Block, Client, SO> {
     timekeeper_proofs_receiver: mpsc::Receiver<TimekeeperProof>,
     to_gossip_sender: mpsc::Sender<ToGossipMessage>,
     from_gossip_receiver: mpsc::Receiver<(PeerId, GossipProof)>,
+    last_slot_sent: Slot,
     slot_sender: mpsc::Sender<PotSlotInfo>,
     state: Arc<PotState>,
     _block: PhantomData<Block>,
@@ -176,6 +177,7 @@ where
             timekeeper_proofs_receiver,
             to_gossip_sender,
             from_gossip_receiver,
+            last_slot_sent: Slot::from(0),
             slot_sender,
             state,
             _block: PhantomData,
@@ -268,9 +270,13 @@ where
             );
         }
 
-        // We don't care if block production is too slow or block production is not enabled on this
-        // node at all
-        let _ = self.slot_sender.try_send(PotSlotInfo { slot, checkpoints });
+        if slot > self.last_slot_sent {
+            self.last_slot_sent = slot;
+
+            // We don't care if block production is too slow or block production is not enabled on this
+            // node at all
+            let _ = self.slot_sender.try_send(PotSlotInfo { slot, checkpoints });
+        }
     }
 
     // TODO: Follow both verified and unverified checkpoints to start secondary timekeeper ASAP in
@@ -288,12 +294,16 @@ where
             proof.checkpoints.output(),
             None,
         ) {
-            // We don't care if block production is too slow or block production is not enabled on
-            // this node at all
-            let _ = self.slot_sender.try_send(PotSlotInfo {
-                slot: proof.slot,
-                checkpoints: proof.checkpoints,
-            });
+            if proof.slot > self.last_slot_sent {
+                self.last_slot_sent = proof.slot;
+
+                // We don't care if block production is too slow or block production is not enabled on
+                // this node at all
+                let _ = self.slot_sender.try_send(PotSlotInfo {
+                    slot: proof.slot,
+                    checkpoints: proof.checkpoints,
+                });
+            }
 
             if self
                 .to_gossip_sender

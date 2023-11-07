@@ -12,10 +12,11 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     let cpu_cores = core_affinity::get_core_ids().expect("Must be able to get CPU cores");
     for cpu_core in cpu_cores {
+        if !core_affinity::set_for_current(cpu_core) {
+            panic!("Failed to set CPU affinity");
+        }
+
         c.bench_function(&format!("prove/cpu-{}", cpu_core.id), move |b| {
-            if !core_affinity::set_for_current(cpu_core) {
-                panic!("Failed to set CPU affinity");
-            }
             b.iter(|| {
                 black_box(prove(black_box(seed), black_box(pot_iterations))).unwrap();
             })

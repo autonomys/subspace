@@ -6,15 +6,14 @@ use sp_core::H256;
 use sp_domain_digests::AsPredigest;
 use sp_domains::proof_provider_and_verifier::StorageProofVerifier;
 use sp_domains::{
-    BundleValidity, DomainId, ExecutionReceipt, HeaderHashFor, HeaderHashingFor, InvalidBundleType,
-    OperatorId, SealedBundleHeader,
+    BundleValidity, DomainId, ExecutionReceipt, ExtrinsicDigest, HeaderHashFor, HeaderHashingFor,
+    InvalidBundleType, OperatorId, SealedBundleHeader,
 };
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor};
 use sp_runtime::{Digest, DigestItem};
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
 use subspace_runtime_primitives::Balance;
-use trie_db::TrieLayout;
 
 type ExecutionReceiptFor<DomainHeader, CBlock, Balance> = ExecutionReceipt<
     NumberFor<CBlock>,
@@ -156,9 +155,12 @@ impl ExecutionPhase {
                 mismatch_index,
                 extrinsic,
             } => {
+                // There is a trace root of the `initialize_block` in the head of the trace so we
+                // need to minus one to get the correct `extrinsic_index`
+                let extrinsic_index = *mismatch_index - 1;
                 let storage_key =
                     StorageProofVerifier::<DomainHeader::Hashing>::enumerated_storage_key(
-                        *mismatch_index,
+                        extrinsic_index,
                     );
                 if !StorageProofVerifier::<DomainHeader::Hashing>::verify_storage_proof(
                     proof_of_inclusion.clone(),
@@ -385,7 +387,11 @@ pub enum FraudProof<Number, Hash, DomainHeader: HeaderT> {
     InvalidExtrinsicsRoot(InvalidExtrinsicsRootProof<HeaderHashFor<DomainHeader>>),
     ValidBundle(ValidBundleProof<HeaderHashFor<DomainHeader>>),
     InvalidDomainBlockHash(InvalidDomainBlockHashProof<HeaderHashFor<DomainHeader>>),
+    InvalidBundles(InvalidBundlesFraudProof<HeaderHashFor<DomainHeader>>),
     // Dummy fraud proof only used in test and benchmark
+    //
+    // NOTE: the `Dummy` must be the last variant, because the `#[cfg(..)]` will apply to
+    // all the variants after it.
     #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
     Dummy {
         /// Id of the domain this fraud proof targeted
@@ -393,7 +399,6 @@ pub enum FraudProof<Number, Hash, DomainHeader: HeaderT> {
         /// Hash of the bad receipt this fraud proof targeted
         bad_receipt_hash: HeaderHashFor<DomainHeader>,
     },
-    InvalidBundles(InvalidBundlesFraudProof<HeaderHashFor<DomainHeader>>),
 }
 
 impl<Number, Hash, DomainHeader: HeaderT> FraudProof<Number, Hash, DomainHeader> {
@@ -563,33 +568,6 @@ pub struct InvalidDomainBlockHashProof<ReceiptHash> {
     pub bad_receipt_hash: ReceiptHash,
     /// Digests storage proof that is used to derive Domain block hash.
     pub digest_storage_proof: StorageProof,
-}
-
-/// Represents the extrinsic either as full data or hash of the data.
-#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
-pub enum ExtrinsicDigest {
-    /// Actual extrinsic data that is inlined since it is less than 33 bytes.
-    Data(Vec<u8>),
-    /// Extrinsic Hash.
-    Hash(H256),
-}
-
-impl ExtrinsicDigest {
-    pub fn new<Layout: TrieLayout>(ext: Vec<u8>) -> Self
-    where
-        Layout::Hash: HashT,
-        <Layout::Hash as HashT>::Output: Into<H256>,
-    {
-        if let Some(threshold) = Layout::MAX_INLINE_VALUE {
-            if ext.len() >= threshold as usize {
-                ExtrinsicDigest::Hash(Layout::Hash::hash(&ext).into())
-            } else {
-                ExtrinsicDigest::Data(ext)
-            }
-        } else {
-            ExtrinsicDigest::Data(ext)
-        }
-    }
 }
 
 /// Represents a valid bundle index and all the extrinsics within that bundle.

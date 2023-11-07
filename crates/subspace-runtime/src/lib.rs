@@ -58,7 +58,7 @@ use sp_core::storage::StateVersion;
 use sp_core::{OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
-    DomainId, DomainInstanceData, DomainsHoldIdentifier, ExecutionReceipt, OpaqueBundle,
+    DomainId, DomainInstanceData, DomainsHoldIdentifier, ExecutionReceiptFor, OpaqueBundle,
     OperatorId, OperatorPublicKey, StakingHoldIdentifier,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
@@ -104,7 +104,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_name: create_runtime_str!("subspace"),
     impl_name: create_runtime_str!("subspace"),
     authoring_version: 0,
-    spec_version: 0,
+    spec_version: 1,
     impl_version: 0,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 0,
@@ -606,6 +606,7 @@ parameter_types! {
     pub const MaxPendingStakingOperation: u32 = 100;
     // TODO: reset `MaxNominators` back to `100` once the gemini-3g chain spec is created
     pub const MaxNominators: u32 = 0;
+    pub SudoId: AccountId = Sudo::key().expect("Sudo account must exist");
 }
 
 impl pallet_domains::Config for Runtime {
@@ -633,6 +634,7 @@ impl pallet_domains::Config for Runtime {
     type MaxPendingStakingOperation = MaxPendingStakingOperation;
     type MaxNominators = MaxNominators;
     type Randomness = Subspace;
+    type SudoId = SudoId;
 }
 
 pub struct StakingOnReward;
@@ -992,6 +994,16 @@ impl_runtime_apis! {
             crate::domains::extract_bundle(extrinsic)
         }
 
+        fn extract_receipts(
+            domain_id: DomainId,
+            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
+        ) -> Vec<ExecutionReceiptFor<DomainHeader, Block, Balance>> {
+            crate::domains::extract_successful_bundles(domain_id, extrinsics)
+                .into_iter()
+                .map(|bundle| bundle.into_receipt())
+                .collect()
+        }
+
         fn extrinsics_shuffling_seed() -> Randomness {
             Randomness::from(Domains::extrinsics_shuffling_seed().to_fixed_bytes())
         }
@@ -1020,15 +1032,15 @@ impl_runtime_apis! {
             Domains::genesis_state_root(domain_id)
         }
 
-        fn head_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
+        fn head_receipt_number(domain_id: DomainId) -> DomainNumber {
             Domains::head_receipt_number(domain_id)
         }
 
-        fn oldest_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
+        fn oldest_receipt_number(domain_id: DomainId) -> DomainNumber {
             Domains::oldest_receipt_number(domain_id)
         }
 
-        fn block_tree_pruning_depth() -> NumberFor<Block> {
+        fn block_tree_pruning_depth() -> DomainNumber {
             Domains::block_tree_pruning_depth()
         }
 
@@ -1048,16 +1060,8 @@ impl_runtime_apis! {
             Domains::domain_state_root(domain_id, number, hash)
         }
 
-        fn execution_receipt(receipt_hash: DomainHash) -> Option<ExecutionReceipt<NumberFor<Block>, <Block as BlockT>::Hash, DomainNumber, DomainHash, Balance>> {
+        fn execution_receipt(receipt_hash: DomainHash) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>> {
             Domains::execution_receipt(receipt_hash)
-        }
-    }
-
-    impl sp_domains_fraud_proof::FraudProofsApi<Block, DomainHeader> for Runtime {
-        fn submit_fraud_proof_unsigned(
-            fraud_proof: FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader>,
-        ){
-            Domains::submit_fraud_proof_unsigned(fraud_proof)
         }
     }
 
@@ -1153,6 +1157,19 @@ impl_runtime_apis! {
 
         fn should_relay_inbox_message_response(dst_chain_id: ChainId, msg_id: MessageId) -> bool {
             Messenger::should_relay_inbox_message_response(dst_chain_id, msg_id)
+        }
+    }
+
+    impl sp_domains_fraud_proof::FraudProofApi<Block, DomainHeader> for Runtime {
+        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader>) {
+            Domains::submit_fraud_proof_unsigned(fraud_proof)
+        }
+
+        fn extract_fraud_proofs(
+            domain_id: DomainId,
+            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
+        ) -> Vec<FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader>> {
+            crate::domains::extract_fraud_proofs(domain_id, extrinsics)
         }
     }
 

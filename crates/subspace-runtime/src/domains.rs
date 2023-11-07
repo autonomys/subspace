@@ -2,6 +2,7 @@ use crate::{Balance, Block, Domains, RuntimeCall, UncheckedExtrinsic};
 use domain_runtime_primitives::opaque::Header as DomainHeader;
 use sp_api::{BlockT, NumberFor};
 use sp_domains::DomainId;
+use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_std::vec::Vec;
 
 pub(crate) fn extract_successful_bundles(
@@ -34,4 +35,23 @@ pub(crate) fn extract_bundle(
         }
         _ => None,
     }
+}
+
+pub(crate) fn extract_fraud_proofs(
+    domain_id: DomainId,
+    extrinsics: Vec<UncheckedExtrinsic>,
+) -> Vec<FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader>> {
+    let successful_fraud_proofs = Domains::successful_fraud_proofs(domain_id);
+    extrinsics
+        .into_iter()
+        .filter_map(|uxt| match uxt.function {
+            RuntimeCall::Domains(pallet_domains::Call::submit_fraud_proof { fraud_proof })
+                if fraud_proof.domain_id() == domain_id
+                    && successful_fraud_proofs.contains(&fraud_proof.hash()) =>
+            {
+                Some(*fraud_proof)
+            }
+            _ => None,
+        })
+        .collect()
 }

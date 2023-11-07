@@ -405,8 +405,7 @@ where
                                     slot = %slot_number,
                                     %sector_index,
                                     %public_key,
-                                    "Solution receiver is closed, likely because farmer was too \
-                                    slow"
+                                    "Solution receiver is closed, likely because farmer was too slow"
                                 );
                             }
                         }

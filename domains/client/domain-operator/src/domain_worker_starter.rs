@@ -17,7 +17,6 @@
 use crate::bundle_processor::BundleProcessor;
 use crate::domain_bundle_producer::DomainBundleProducer;
 use crate::domain_worker::{on_new_slot, throttling_block_import_notifications};
-use crate::parent_chain::DomainParentChain;
 use crate::utils::OperatorSlotInfo;
 use crate::{NewSlotNotification, OperatorStreams};
 use domain_runtime_primitives::DomainCoreApi;
@@ -33,6 +32,7 @@ use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
 use sp_core::H256;
 use sp_domains::{BundleProducerElectionApi, DomainsApi};
+use sp_domains_fraud_proof::FraudProofApi;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::NumberFor;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
@@ -58,15 +58,7 @@ pub(super) async fn start_worker<
     consensus_client: Arc<CClient>,
     consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory<CBlock>,
     is_authority: bool,
-    bundle_producer: DomainBundleProducer<
-        Block,
-        CBlock,
-        CBlock,
-        Client,
-        CClient,
-        DomainParentChain<Block, CBlock, CClient>,
-        TransactionPool,
-    >,
+    bundle_producer: DomainBundleProducer<Block, CBlock, Client, CClient, TransactionPool>,
     bundle_processor: BundleProcessor<Block, CBlock, Client, CClient, Backend, E>,
     operator_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS, ASS>,
 ) where
@@ -96,7 +88,8 @@ pub(super) async fn start_worker<
         + 'static,
     CClient::Api: DomainsApi<CBlock, Block::Header>
         + MessengerApi<CBlock, NumberFor<CBlock>>
-        + BundleProducerElectionApi<CBlock, Balance>,
+        + BundleProducerElectionApi<CBlock, Balance>
+        + FraudProofApi<CBlock, Block::Header>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block> + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
     IBNS: Stream<Item = (NumberFor<CBlock>, mpsc::Sender<()>)> + Send + 'static,

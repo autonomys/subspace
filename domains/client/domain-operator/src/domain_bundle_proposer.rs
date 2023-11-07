@@ -1,4 +1,3 @@
-use crate::parent_chain::ParentChainInterface;
 use crate::ExecutionReceiptFor;
 use codec::Encode;
 use domain_runtime_primitives::DomainCoreApi;
@@ -8,7 +7,9 @@ use sc_transaction_pool_api::{InPoolTransaction, TransactionSource};
 use sp_api::{HeaderT, NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
-use sp_domains::{BundleHeader, ExecutionReceipt, HeaderHashingFor, ProofOfElection};
+use sp_domains::{
+    BundleHeader, DomainId, DomainsApi, ExecutionReceipt, HeaderHashingFor, ProofOfElection,
+};
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, One, Zero};
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use sp_weights::Weight;
@@ -19,6 +20,7 @@ use subspace_core_primitives::U256;
 use subspace_runtime_primitives::Balance;
 
 pub(super) struct DomainBundleProposer<Block, Client, CBlock, CClient, TransactionPool> {
+    domain_id: DomainId,
     client: Arc<Client>,
     consensus_client: Arc<CClient>,
     transaction_pool: Arc<TransactionPool>,
@@ -30,6 +32,7 @@ impl<Block, Client, CBlock, CClient, TransactionPool> Clone
 {
     fn clone(&self) -> Self {
         Self {
+            domain_id: self.domain_id,
             client: self.client.clone(),
             consensus_client: self.consensus_client.clone(),
             transaction_pool: self.transaction_pool.clone(),
@@ -51,15 +54,18 @@ where
     NumberFor<Block>: Into<NumberFor<CBlock>>,
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
     Client::Api: BlockBuilder<Block> + DomainCoreApi<Block> + TaggedTransactionQueue<Block>,
-    CClient: HeaderBackend<CBlock>,
+    CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock>,
+    CClient::Api: DomainsApi<CBlock, Block::Header>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {
     pub(crate) fn new(
+        domain_id: DomainId,
         client: Arc<Client>,
         consensus_client: Arc<CClient>,
         transaction_pool: Arc<TransactionPool>,
     ) -> Self {
         Self {
+            domain_id,
             client,
             consensus_client,
             transaction_pool,
@@ -67,16 +73,11 @@ where
         }
     }
 
-    pub(crate) async fn propose_bundle_at<ParentChain, ParentChainBlock>(
+    pub(crate) async fn propose_bundle_at(
         &self,
         proof_of_election: ProofOfElection<CBlock::Hash>,
-        parent_chain: ParentChain,
         tx_range: U256,
-    ) -> sp_blockchain::Result<ProposeBundleOutput<Block, CBlock>>
-    where
-        ParentChainBlock: BlockT,
-        ParentChain: ParentChainInterface<Block, ParentChainBlock>,
-    {
+    ) -> sp_blockchain::Result<ProposeBundleOutput<Block, CBlock>> {
         let parent_number = self.client.info().best_number;
         let parent_hash = self.client.info().best_hash;
 
@@ -96,7 +97,15 @@ where
         };
 
         let bundle_vrf_hash = U256::from_be_bytes(proof_of_election.vrf_hash());
-        let domain_block_limit = parent_chain.domain_block_limit(parent_chain.best_hash())?;
+        let domain_block_limit = self
+            .consensus_client
+            .runtime_api()
+            .domain_block_limit(self.consensus_client.info().best_hash, self.domain_id)?
+            .ok_or_else(|| {
+                sp_blockchain::Error::Application(
+                    format!("Domain block limit for {:?} not found", self.domain_id).into(),
+                )
+            })?;
         let mut extrinsics = Vec::new();
         let mut estimated_bundle_weight = Weight::default();
         let mut bundle_size = 0u32;
@@ -175,7 +184,7 @@ where
             sp_core::storage::StateVersion::V1,
         );
 
-        let receipt = self.load_bundle_receipt(parent_number, parent_chain)?;
+        let receipt = self.load_bundle_receipt(parent_number)?;
 
         let header = BundleHeader {
             proof_of_election,
@@ -189,24 +198,22 @@ where
     }
 
     /// Returns the receipt in the next domain bundle.
-    fn load_bundle_receipt<ParentChain, ParentChainBlock>(
+    fn load_bundle_receipt(
         &self,
         header_number: NumberFor<Block>,
-        parent_chain: ParentChain,
-    ) -> sp_blockchain::Result<ExecutionReceiptFor<Block, CBlock>>
-    where
-        ParentChainBlock: BlockT,
-        ParentChain: ParentChainInterface<Block, ParentChainBlock>,
-    {
-        let parent_chain_block_hash = parent_chain.best_hash();
-        let head_receipt_number = parent_chain.head_receipt_number(parent_chain_block_hash)?;
+    ) -> sp_blockchain::Result<ExecutionReceiptFor<Block, CBlock>> {
+        let consensus_chain_block_hash = self.consensus_client.info().best_hash;
+        let head_receipt_number = self
+            .consensus_client
+            .runtime_api()
+            .head_receipt_number(consensus_chain_block_hash, self.domain_id)?;
         let receipt_number = (head_receipt_number + One::one()).min(header_number);
 
         tracing::trace!(
             ?header_number,
             ?head_receipt_number,
             ?receipt_number,
-            "Collecting receipts at {parent_chain_block_hash:?}"
+            "Collecting receipts at {consensus_chain_block_hash:?}"
         );
 
         if receipt_number.is_zero() {

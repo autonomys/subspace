@@ -81,7 +81,7 @@ use sp_consensus_subspace::{
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
 use sp_core::H256;
 use sp_domains::{BundleProducerElectionApi, DomainsApi};
-use sp_domains_fraud_proof::{FraudProofExtension, FraudProofHostFunctionsImpl, FraudProofsApi};
+use sp_domains_fraud_proof::{FraudProofApi, FraudProofExtension, FraudProofHostFunctionsImpl};
 use sp_externalities::Extensions;
 use sp_objects::ObjectsApi;
 use sp_offchain::OffchainWorkerApi;
@@ -406,7 +406,7 @@ where
         + TaggedTransactionQueue<Block>
         + SubspaceApi<Block, FarmerPublicKey>
         + DomainsApi<Block, DomainHeader>
-        + FraudProofsApi<Block, DomainHeader>
+        + FraudProofApi<Block, DomainHeader>
         + BundleProducerElectionApi<Block, Balance>
         + ObjectsApi<Block>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
@@ -569,7 +569,7 @@ where
         + 'static,
     Client::Api: TaggedTransactionQueue<Block>
         + DomainsApi<Block, DomainHeader>
-        + FraudProofsApi<Block, DomainHeader>
+        + FraudProofApi<Block, DomainHeader>
         + SubspaceApi<Block, FarmerPublicKey>,
 {
     /// Task manager.
@@ -627,7 +627,7 @@ where
         + TransactionPaymentApi<Block, Balance>
         + SubspaceApi<Block, FarmerPublicKey>
         + DomainsApi<Block, DomainHeader>
-        + FraudProofsApi<Block, DomainHeader>
+        + FraudProofApi<Block, DomainHeader>
         + ObjectsApi<Block>,
     ExecutorDispatch: NativeExecutionDispatch + 'static,
 {

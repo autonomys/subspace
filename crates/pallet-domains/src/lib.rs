@@ -290,6 +290,10 @@ mod pallet {
 
         /// Randomness source.
         type Randomness: RandomnessT<Self::Hash, BlockNumberFor<Self>>;
+
+        /// The sudo account id
+        #[pallet::constant]
+        type SudoId: Get<Self::AccountId>;
     }
 
     #[pallet::pallet]
@@ -299,6 +303,11 @@ mod pallet {
     /// Bundles submitted successfully in current block.
     #[pallet::storage]
     pub(super) type SuccessfulBundles<T> = StorageMap<_, Identity, DomainId, Vec<H256>, ValueQuery>;
+
+    /// Fraud proofs submitted successfully in current block.
+    #[pallet::storage]
+    pub(super) type SuccessfulFraudProofs<T: Config> =
+        StorageMap<_, Identity, DomainId, Vec<T::DomainHash>, ValueQuery>;
 
     /// Stores the next runtime id.
     #[pallet::storage]
@@ -960,6 +969,8 @@ mod pallet {
             // Slash bad operators
             do_slash_operators::<T, _>(operators_to_slash.into_iter()).map_err(Error::<T>::from)?;
 
+            SuccessfulFraudProofs::<T>::append(domain_id, fraud_proof.hash());
+
             Ok(())
         }
 
@@ -1070,7 +1081,9 @@ mod pallet {
             origin: OriginFor<T>,
             domain_config: DomainConfig<T::AccountId>,
         ) -> DispatchResult {
-            let who = ensure_signed(origin)?;
+            ensure_root(origin)?;
+
+            let who = T::SudoId::get();
 
             let created_at = frame_system::Pallet::<T>::current_block_number();
 
@@ -1251,6 +1264,8 @@ mod pallet {
                 ConsensusBlockHash::<T>::insert(domain_id, parent_number, parent_hash);
             }
 
+            let _ = SuccessfulFraudProofs::<T>::clear(u32::MAX, None);
+
             Weight::zero()
         }
 
@@ -1330,6 +1345,10 @@ mod pallet {
 impl<T: Config> Pallet<T> {
     pub fn successful_bundles(domain_id: DomainId) -> Vec<H256> {
         SuccessfulBundles::<T>::get(domain_id)
+    }
+
+    pub fn successful_fraud_proofs(domain_id: DomainId) -> Vec<T::DomainHash> {
+        SuccessfulFraudProofs::<T>::get(domain_id)
     }
 
     pub fn domain_runtime_code(domain_id: DomainId) -> Option<Vec<u8>> {
