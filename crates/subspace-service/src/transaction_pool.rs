@@ -195,6 +195,7 @@ where
                     })?
                     // safe to return default version as 1 since there will always be version 1.
                     .unwrap_or(1);
+                // TODO: this is keep gemini-3g compatible. Remove before a new network launch.
                 if domains_api_version >= 2 {
                     let maybe_opaque_bundle = runtime_api
                         .extract_bundle(at, uxt)
@@ -524,6 +525,10 @@ where
 
     let offchain_tx_pool_factory = OffchainTransactionPoolFactory::new(basic_pool.clone());
 
+    // run a separate task to submit fraud proof since chain api cannot depend on Basic pool since
+    // Basic pool would require chain api to be instantiated first.
+    // Ofcourse, there are other approaches that inject this into chain Api but it feels more like
+    // a hack and prefer to run a separate task that submits the fraud proof when equivocation is detected
     task_manager
         .spawn_essential_handle()
         .spawn_essential_blocking(
