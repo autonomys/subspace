@@ -158,9 +158,17 @@ pub(crate) fn verify_execution_receipt<T: Config>(
         ..
     } = execution_receipt;
 
+    // Checking if the incoming ER is expected regarding to its `domain_block_number`/freshness
+    if let ReceiptType::Rejected(rejected_receipt_type) =
+        execution_receipt_type::<T>(domain_id, execution_receipt)
+    {
+        return Err(rejected_receipt_type.into());
+    }
+
+    // The genesis receipt is generated and added to the block tree by the runtime upon domain
+    // instantiation thus it is unchallengeable, we can safely skip other checks as long as we
+    // can ensure it is always be the same.
     if domain_block_number.is_zero() {
-        // The genesis receipt is generated and added to the block tree by the runtime upon domain
-        // instantiation, thus it is unchallengeable and must always be the same.
         ensure!(
             does_receipt_exists::<T>(
                 domain_id,
@@ -169,59 +177,63 @@ pub(crate) fn verify_execution_receipt<T: Config>(
             ),
             Error::BadGenesisReceipt
         );
-    } else {
-        let bundles_extrinsics_roots: Vec<_> =
-            inboxed_bundles.iter().map(|b| b.extrinsics_root).collect();
-        let execution_inbox =
-            ExecutionInbox::<T>::get((domain_id, domain_block_number, consensus_block_number));
-        let expected_extrinsics_roots: Vec<_> =
-            execution_inbox.iter().map(|b| b.extrinsics_root).collect();
-        ensure!(
-            !bundles_extrinsics_roots.is_empty()
-                && bundles_extrinsics_roots == expected_extrinsics_roots,
-            Error::InvalidExtrinsicsRoots
-        );
-
-        let mut trace = Vec::with_capacity(execution_trace.len());
-        for root in execution_trace {
-            trace.push(
-                root.encode()
-                    .try_into()
-                    .map_err(|_| Error::InvalidTraceRoot)?,
-            );
-        }
-        let expected_execution_trace_root: sp_core::H256 =
-            MerkleTree::from_leaves(trace.as_slice())
-                .root()
-                .ok_or(Error::InvalidTraceRoot)?
-                .into();
-        ensure!(
-            expected_execution_trace_root == *execution_trace_root,
-            Error::InvalidTraceRoot
-        );
-
-        let excepted_consensus_block_hash =
-            match ConsensusBlockHash::<T>::get(domain_id, consensus_block_number) {
-                Some(hash) => hash,
-                // The `initialize_block` of non-system pallets is skipped in the `validate_transaction`,
-                // thus the hash of best block, which is recorded in the this pallet's `on_initialize` hook,
-                // is unavailable at this point.
-                None => {
-                    let parent_block_number =
-                        frame_system::Pallet::<T>::current_block_number() - One::one();
-                    if *consensus_block_number == parent_block_number {
-                        frame_system::Pallet::<T>::parent_hash()
-                    } else {
-                        return Err(Error::UnavailableConsensusBlockHash);
-                    }
-                }
-            };
-        ensure!(
-            *consensus_block_hash == excepted_consensus_block_hash,
-            Error::BuiltOnUnknownConsensusBlock
-        );
+        return Ok(());
     }
 
+    // Check if the ER is derived from the correct consensus block in the current chain
+    let excepted_consensus_block_hash =
+        match ConsensusBlockHash::<T>::get(domain_id, consensus_block_number) {
+            Some(hash) => hash,
+            // The `initialize_block` of non-system pallets is skipped in the `validate_transaction`,
+            // thus the hash of best block, which is recorded in the this pallet's `on_initialize` hook,
+            // is unavailable at this point.
+            None => {
+                let parent_block_number =
+                    frame_system::Pallet::<T>::current_block_number() - One::one();
+                if *consensus_block_number == parent_block_number {
+                    frame_system::Pallet::<T>::parent_hash()
+                } else {
+                    return Err(Error::UnavailableConsensusBlockHash);
+                }
+            }
+        };
+    ensure!(
+        *consensus_block_hash == excepted_consensus_block_hash,
+        Error::BuiltOnUnknownConsensusBlock
+    );
+
+    // Check if the ER is derived from the expected inboxed bundles of the consensus block
+    let bundles_extrinsics_roots: Vec<_> =
+        inboxed_bundles.iter().map(|b| b.extrinsics_root).collect();
+    let execution_inbox =
+        ExecutionInbox::<T>::get((domain_id, domain_block_number, consensus_block_number));
+    let expected_extrinsics_roots: Vec<_> =
+        execution_inbox.iter().map(|b| b.extrinsics_root).collect();
+    ensure!(
+        !bundles_extrinsics_roots.is_empty()
+            && bundles_extrinsics_roots == expected_extrinsics_roots,
+        Error::InvalidExtrinsicsRoots
+    );
+
+    // Check if the `execution_trace_root` is well-format
+    let mut trace = Vec::with_capacity(execution_trace.len());
+    for root in execution_trace {
+        trace.push(
+            root.encode()
+                .try_into()
+                .map_err(|_| Error::InvalidTraceRoot)?,
+        );
+    }
+    let expected_execution_trace_root: sp_core::H256 = MerkleTree::from_leaves(trace.as_slice())
+        .root()
+        .ok_or(Error::InvalidTraceRoot)?
+        .into();
+    ensure!(
+        expected_execution_trace_root == *execution_trace_root,
+        Error::InvalidTraceRoot
+    );
+
+    // Check if the ER is extending an existing parent ER
     if let Some(parent_block_number) = domain_block_number.checked_sub(&One::one()) {
         let parent_block_exist = does_receipt_exists::<T>(
             domain_id,
@@ -231,26 +243,7 @@ pub(crate) fn verify_execution_receipt<T: Config>(
         ensure!(parent_block_exist, Error::UnknownParentBlockReceipt);
     }
 
-    match execution_receipt_type::<T>(domain_id, execution_receipt) {
-        ReceiptType::Rejected(RejectedReceiptType::InFuture) => {
-            log::error!(
-                target: "runtime::domains",
-                "Unexpected in future receipt {execution_receipt:?}, which should result in \
-                `UnknownParentBlockReceipt` error as it parent receipt is missing"
-            );
-            Err(Error::InFutureReceipt)
-        }
-        ReceiptType::Rejected(RejectedReceiptType::Pruned) => {
-            log::error!(
-                target: "runtime::domains",
-                "Unexpected pruned receipt {execution_receipt:?}, which should result in \
-                `InvalidExtrinsicsRoots` error as its `ExecutionInbox` is pruned at the same time"
-            );
-            Err(Error::PrunedReceipt)
-        }
-        ReceiptType::Rejected(rejected_receipt_type) => Err(rejected_receipt_type.into()),
-        ReceiptType::Accepted(_) => Ok(()),
-    }
+    Ok(())
 }
 
 /// Details of the confirmed domain block such as operators, rewards they would receive.
@@ -440,9 +433,11 @@ mod tests {
                 domain_id,
                 &genesis_receipt
             ));
+            // Submitting an invalid genesis ER will result in `NewBranchReceipt` because the operator
+            // need to submit fraud proof to pruned a ER first before submitting an ER at the same height
             assert_err!(
                 verify_execution_receipt::<Test>(domain_id, &invalid_genesis_receipt),
-                Error::BadGenesisReceipt
+                Error::NewBranchReceipt
             );
         });
     }
@@ -539,7 +534,7 @@ mod tests {
             }
 
             // The receipt of the block 1 is pruned at the last iteration, verify it will result in
-            // `InvalidExtrinsicsRoots` error as `ExecutionInbox` of block 1 is pruned
+            // `PrunedReceipt` error
             let pruned_receipt = receipt_of_block_1.unwrap();
             let pruned_bundle = bundle_header_hash_of_block_1.unwrap();
             assert!(BlockTree::<Test>::get(domain_id, 1).is_none());
@@ -551,7 +546,7 @@ mod tests {
             );
             assert_err!(
                 verify_execution_receipt::<Test>(domain_id, &pruned_receipt),
-                Error::InvalidExtrinsicsRoots
+                Error::PrunedReceipt
             );
             assert!(ConsensusBlockHash::<Test>::get(
                 domain_id,
@@ -767,16 +762,11 @@ mod tests {
         let mut ext = new_test_ext_with_extensions();
         ext.execute_with(|| {
             let domain_id = register_genesis_domain(creator, vec![operator_id]);
-            extend_block_tree_from_zero(domain_id, operator_id, 3);
-
+            let next_receipt = extend_block_tree_from_zero(domain_id, operator_id, 3);
             let head_receipt_number = HeadReceiptNumber::<Test>::get(domain_id);
-            let current_head_receipt =
-                get_block_tree_node_at::<Test>(domain_id, head_receipt_number)
-                    .unwrap()
-                    .execution_receipt;
 
             // Construct a future receipt
-            let mut future_receipt = current_head_receipt.clone();
+            let mut future_receipt = next_receipt.clone();
             future_receipt.domain_block_number = head_receipt_number + 2;
             future_receipt.consensus_block_number = head_receipt_number as u64 + 2;
             ExecutionInbox::<Test>::insert(
@@ -799,26 +789,13 @@ mod tests {
                 execution_receipt_type::<Test>(domain_id, &future_receipt),
                 ReceiptType::Rejected(RejectedReceiptType::InFuture)
             );
-
-            // Return `UnavailableConsensusBlockHash` error since ER point to a future consensus block
             assert_err!(
                 verify_execution_receipt::<Test>(domain_id, &future_receipt),
-                Error::UnavailableConsensusBlockHash
-            );
-            ConsensusBlockHash::<Test>::insert(
-                domain_id,
-                future_receipt.consensus_block_number,
-                future_receipt.consensus_block_hash,
-            );
-
-            // Return `UnknownParentBlockReceipt` error as its parent receipt is missing from the block tree
-            assert_err!(
-                verify_execution_receipt::<Test>(domain_id, &future_receipt),
-                Error::UnknownParentBlockReceipt
+                Error::InFutureReceipt
             );
 
             // Receipt with unknown extrinsics roots
-            let mut unknown_extrinsics_roots_receipt = current_head_receipt.clone();
+            let mut unknown_extrinsics_roots_receipt = next_receipt.clone();
             unknown_extrinsics_roots_receipt.inboxed_bundles =
                 vec![InboxedBundle::valid(H256::random(), H256::random())];
             assert_err!(
@@ -827,7 +804,7 @@ mod tests {
             );
 
             // Receipt with unknown consensus block hash
-            let mut unknown_consensus_block_receipt = current_head_receipt.clone();
+            let mut unknown_consensus_block_receipt = next_receipt.clone();
             unknown_consensus_block_receipt.consensus_block_hash = H256::random();
             assert_err!(
                 verify_execution_receipt::<Test>(domain_id, &unknown_consensus_block_receipt),
@@ -835,7 +812,7 @@ mod tests {
             );
 
             // Receipt with unknown parent receipt
-            let mut unknown_parent_receipt = current_head_receipt;
+            let mut unknown_parent_receipt = next_receipt;
             unknown_parent_receipt.parent_domain_block_receipt_hash = H256::random();
             assert_err!(
                 verify_execution_receipt::<Test>(domain_id, &unknown_parent_receipt),
@@ -852,18 +829,10 @@ mod tests {
         let mut ext = new_test_ext_with_extensions();
         ext.execute_with(|| {
             let domain_id = register_genesis_domain(creator, vec![operator_id1, operator_id2]);
-            extend_block_tree_from_zero(domain_id, operator_id1, 3);
-
-            let head_receipt_number = HeadReceiptNumber::<Test>::get(domain_id);
-
-            // Get the head receipt
-            let current_head_receipt =
-                get_block_tree_node_at::<Test>(domain_id, head_receipt_number)
-                    .unwrap()
-                    .execution_receipt;
+            let next_receipt = extend_block_tree_from_zero(domain_id, operator_id1, 3);
 
             // Receipt with wrong value of `execution_trace_root`
-            let mut invalid_receipt = current_head_receipt.clone();
+            let mut invalid_receipt = next_receipt.clone();
             invalid_receipt.execution_trace_root = H256::random();
             assert_err!(
                 verify_execution_receipt::<Test>(domain_id, &invalid_receipt),
@@ -871,7 +840,7 @@ mod tests {
             );
 
             // Receipt with wrong value of trace
-            let mut invalid_receipt = current_head_receipt.clone();
+            let mut invalid_receipt = next_receipt.clone();
             invalid_receipt.execution_trace[0] = H256::random();
             assert_err!(
                 verify_execution_receipt::<Test>(domain_id, &invalid_receipt),
@@ -879,7 +848,7 @@ mod tests {
             );
 
             // Receipt with addtional trace
-            let mut invalid_receipt = current_head_receipt.clone();
+            let mut invalid_receipt = next_receipt.clone();
             invalid_receipt.execution_trace.push(H256::random());
             assert_err!(
                 verify_execution_receipt::<Test>(domain_id, &invalid_receipt),
@@ -887,7 +856,7 @@ mod tests {
             );
 
             // Receipt with missing trace
-            let mut invalid_receipt = current_head_receipt;
+            let mut invalid_receipt = next_receipt;
             invalid_receipt.execution_trace.pop();
             assert_err!(
                 verify_execution_receipt::<Test>(domain_id, &invalid_receipt),
