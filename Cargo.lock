@@ -8157,7 +8157,7 @@ dependencies = [
  "bytes",
  "futures-io",
  "pin-project-lite 0.2.13",
- "quinn-proto 0.10.4",
+ "quinn-proto 0.10.6",
  "quinn-udp",
  "rustc-hash",
  "rustls 0.21.7",
@@ -8186,9 +8186,9 @@ dependencies = [
 
 [[package]]
 name = "quinn-proto"
-version = "0.10.4"
+version = "0.10.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e13f81c9a9d574310b8351f8666f5a93ac3b0069c45c28ad52c10291389a7cf9"
+checksum = "141bf7dfde2fbc246bfd3fe12f2455aa24b0fbd9af535d8c86c7bd1381ff2b1a"
 dependencies = [
  "bytes",
  "rand 0.8.5",
