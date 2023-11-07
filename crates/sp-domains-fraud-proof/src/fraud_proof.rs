@@ -6,22 +6,14 @@ use sp_core::H256;
 use sp_domain_digests::AsPredigest;
 use sp_domains::proof_provider_and_verifier::StorageProofVerifier;
 use sp_domains::{
-    BundleValidity, DomainId, ExecutionReceipt, ExtrinsicDigest, HeaderHashFor, HeaderHashingFor,
-    InvalidBundleType, OperatorId, SealedBundleHeader,
+    BundleValidity, DomainId, ExecutionReceiptFor, ExtrinsicDigest, HeaderHashFor,
+    HeaderHashingFor, InvalidBundleType, OperatorId, SealedBundleHeader,
 };
-use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor};
+use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
 use sp_runtime::{Digest, DigestItem};
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
 use subspace_runtime_primitives::Balance;
-
-type ExecutionReceiptFor<DomainHeader, CBlock, Balance> = ExecutionReceipt<
-    NumberFor<CBlock>,
-    <CBlock as BlockT>::Hash,
-    <DomainHeader as HeaderT>::Number,
-    <DomainHeader as HeaderT>::Hash,
-    Balance,
->;
 
 /// A phase of a block's execution, carrying necessary information needed for verifying the
 /// invalid state transition proof.
