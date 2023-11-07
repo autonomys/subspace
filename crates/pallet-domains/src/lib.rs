@@ -302,6 +302,11 @@ mod pallet {
     #[pallet::storage]
     pub(super) type SuccessfulBundles<T> = StorageMap<_, Identity, DomainId, Vec<H256>, ValueQuery>;
 
+    /// Fraud proofs submitted successfully in current block.
+    #[pallet::storage]
+    pub(super) type SuccessfulFraudProofs<T: Config> =
+        StorageMap<_, Identity, DomainId, Vec<T::DomainHash>, ValueQuery>;
+
     /// Stores the next runtime id.
     #[pallet::storage]
     pub(super) type NextRuntimeId<T> = StorageValue<_, RuntimeId, ValueQuery>;
@@ -933,6 +938,8 @@ mod pallet {
             // Slash operator who have submitted the pruned fraudulent ER
             do_slash_operators::<T, _>(operator_to_slash.into_iter()).map_err(Error::<T>::from)?;
 
+            SuccessfulFraudProofs::<T>::append(domain_id, fraud_proof.hash());
+
             Self::deposit_event(Event::FraudProofProcessed {
                 domain_id,
                 new_head_receipt_number,
@@ -1231,6 +1238,8 @@ mod pallet {
                 ConsensusBlockHash::<T>::insert(domain_id, parent_number, parent_hash);
             }
 
+            let _ = SuccessfulFraudProofs::<T>::clear(u32::MAX, None);
+
             Weight::zero()
         }
 
@@ -1310,6 +1319,10 @@ mod pallet {
 impl<T: Config> Pallet<T> {
     pub fn successful_bundles(domain_id: DomainId) -> Vec<H256> {
         SuccessfulBundles::<T>::get(domain_id)
+    }
+
+    pub fn successful_fraud_proofs(domain_id: DomainId) -> Vec<T::DomainHash> {
+        SuccessfulFraudProofs::<T>::get(domain_id)
     }
 
     pub fn domain_runtime_code(domain_id: DomainId) -> Option<Vec<u8>> {

@@ -8,16 +8,17 @@ use sc_client_api::{AuxStore, BlockBackend, ProofProvider};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::CodeExecutor;
+use sp_core::H256;
 use sp_domain_digests::AsPredigest;
 use sp_domains::proof_provider_and_verifier::StorageProofProvider;
-use sp_domains::{DomainId, DomainsApi, HeaderHashingFor};
+use sp_domains::{DomainId, DomainsApi, ExtrinsicDigest, HeaderHashingFor};
 use sp_domains_fraud_proof::execution_prover::ExecutionProver;
 use sp_domains_fraud_proof::fraud_proof::{
-    ExecutionPhase, ExtrinsicDigest, FraudProof, InvalidBundlesFraudProof,
-    InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof, InvalidStateTransitionProof,
-    InvalidTotalRewardsProof, ValidBundleDigest,
+    ExecutionPhase, FraudProof, InvalidBundlesFraudProof, InvalidDomainBlockHashProof,
+    InvalidExtrinsicsRootProof, InvalidStateTransitionProof, InvalidTotalRewardsProof,
+    ValidBundleDigest,
 };
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, HashingFor, Header as HeaderT, NumberFor};
+use sp_runtime::traits::{Block as BlockT, HashingFor, Header as HeaderT, NumberFor};
 use sp_runtime::{Digest, DigestItem};
 use sp_trie::{LayoutV1, StorageProof};
 use std::marker::PhantomData;
@@ -64,13 +65,14 @@ impl<Block, CBlock, Client, CClient, Backend, E> Clone
     }
 }
 
-type FraudProofFor<PCB, DomainHeader> =
-    FraudProof<NumberFor<PCB>, <PCB as BlockT>::Hash, DomainHeader>;
+type FraudProofFor<CBlock, DomainHeader> =
+    FraudProof<NumberFor<CBlock>, <CBlock as BlockT>::Hash, DomainHeader>;
 
 impl<Block, CBlock, Client, CClient, Backend, E>
     FraudProofGenerator<Block, CBlock, Client, CClient, Backend, E>
 where
     Block: BlockT,
+    Block::Hash: Into<H256>,
     CBlock: BlockT,
     Client: HeaderBackend<Block>
         + BlockBackend<Block>
@@ -104,15 +106,12 @@ where
         }
     }
 
-    pub(crate) fn generate_invalid_total_rewards_proof<PCB>(
+    pub(crate) fn generate_invalid_total_rewards_proof(
         &self,
         domain_id: DomainId,
         local_receipt: &ExecutionReceiptFor<Block, CBlock>,
         bad_receipt_hash: Block::Hash,
-    ) -> Result<FraudProofFor<PCB, Block::Header>, FraudProofError>
-    where
-        PCB: BlockT,
-    {
+    ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
         let block_hash = local_receipt.domain_block_hash;
         let key = sp_domains_fraud_proof::fraud_proof::operator_block_rewards_final_key();
         let proof = self
@@ -125,15 +124,12 @@ where
         }))
     }
 
-    pub(crate) fn generate_invalid_domain_block_hash_proof<PCB>(
+    pub(crate) fn generate_invalid_domain_block_hash_proof(
         &self,
         domain_id: DomainId,
         local_receipt: &ExecutionReceiptFor<Block, CBlock>,
         bad_receipt_hash: Block::Hash,
-    ) -> Result<FraudProofFor<PCB, Block::Header>, FraudProofError>
-    where
-        PCB: BlockT,
-    {
+    ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
         let block_hash = local_receipt.domain_block_hash;
         let digest_key = sp_domains_fraud_proof::fraud_proof::system_digest_final_key();
         let digest_storage_proof = self
@@ -148,17 +144,14 @@ where
         ))
     }
 
-    pub(crate) fn generate_invalid_bundle_field_proof<PCB>(
+    pub(crate) fn generate_invalid_bundle_field_proof(
         &self,
         domain_id: DomainId,
         local_receipt: &ExecutionReceiptFor<Block, CBlock>,
         mismatch_type: BundleMismatchType,
         bundle_index: u32,
         bad_receipt_hash: Block::Hash,
-    ) -> Result<FraudProofFor<PCB, Block::Header>, FraudProofError>
-    where
-        PCB: BlockT,
-    {
+    ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
         let consensus_block_hash = local_receipt.consensus_block_hash;
         let consensus_extrinsics = self
             .consensus_client
@@ -208,15 +201,12 @@ where
         )))
     }
 
-    pub(crate) fn generate_invalid_domain_extrinsics_root_proof<PCB>(
+    pub(crate) fn generate_invalid_domain_extrinsics_root_proof(
         &self,
         domain_id: DomainId,
         local_receipt: &ExecutionReceiptFor<Block, CBlock>,
         bad_receipt_hash: Block::Hash,
-    ) -> Result<FraudProofFor<PCB, Block::Header>, FraudProofError>
-    where
-        PCB: BlockT,
-    {
+    ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
         let consensus_block_hash = local_receipt.consensus_block_hash;
         let consensus_extrinsics = self
             .consensus_client
@@ -260,7 +250,9 @@ where
                 .map(|(signer, ext)| {
                     (
                         signer,
-                        ExtrinsicDigest::new::<LayoutV1<BlakeTwo256>>(ext.encode()),
+                        ExtrinsicDigest::new::<LayoutV1<HeaderHashingFor<Block::Header>>>(
+                            ext.encode(),
+                        ),
                     )
                 })
                 .collect::<Vec<(Option<AccountId>, ExtrinsicDigest)>>();
@@ -279,16 +271,13 @@ where
         ))
     }
 
-    pub(crate) async fn generate_invalid_state_transition_proof<PCB>(
+    pub(crate) async fn generate_invalid_state_transition_proof(
         &self,
         domain_id: DomainId,
         local_trace_index: u32,
         local_receipt: &ExecutionReceiptFor<Block, CBlock>,
         bad_receipt_hash: Block::Hash,
-    ) -> Result<FraudProofFor<PCB, Block::Header>, FraudProofError>
-    where
-        PCB: BlockT,
-    {
+    ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
         let block_hash = local_receipt.domain_block_hash;
         let block_number = local_receipt.domain_block_number;
         let header = self.header(block_hash)?;
@@ -364,7 +353,7 @@ where
             // Regular extrinsic execution proof.
             let (proof, execution_phase) = self
                 .create_extrinsic_execution_proof(
-                    local_trace_index as usize - 1,
+                    local_trace_index,
                     &parent_header,
                     block_hash,
                     &prover,
@@ -401,7 +390,7 @@ where
     #[allow(clippy::too_many_arguments)]
     async fn create_extrinsic_execution_proof(
         &self,
-        extrinsic_index: usize,
+        trace_mismatch_index: u32,
         parent_header: &Block::Header,
         current_hash: Block::Hash,
         prover: &ExecutionProver<Block, Backend, E>,
@@ -410,6 +399,9 @@ where
         let extrinsics = self.block_body(current_hash)?;
         let encoded_extrinsics: Vec<_> = extrinsics.iter().map(Encode::encode).collect();
 
+        // There is a trace root of the `initialize_block` in the head of the trace so we
+        // need to minus one to get the correct `extrinsic_index`
+        let extrinsic_index = trace_mismatch_index as usize - 1;
         let target_extrinsic = encoded_extrinsics.get(extrinsic_index).ok_or(
             FraudProofError::InvalidExtrinsicIndex {
                 index: extrinsic_index,
@@ -427,7 +419,7 @@ where
             .ok_or(FraudProofError::FailToGenerateProofOfInclusion)?;
             ExecutionPhase::ApplyExtrinsic {
                 proof_of_inclusion,
-                mismatch_index: extrinsic_index as u32,
+                mismatch_index: trace_mismatch_index,
                 extrinsic: target_extrinsic.clone(),
             }
         };

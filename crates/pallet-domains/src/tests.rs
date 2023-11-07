@@ -22,13 +22,13 @@ use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::proof_provider_and_verifier::StorageProofProvider;
 use sp_domains::storage::RawGenesis;
 use sp_domains::{
-    BundleHeader, DomainId, DomainsHoldIdentifier, ExecutionReceipt, InboxedBundle,
-    InvalidBundleType, OpaqueBundle, OperatorAllowList, OperatorId, OperatorPair, ProofOfElection,
-    RuntimeType, SealedBundleHeader, StakingHoldIdentifier,
+    BundleHeader, DomainId, DomainsHoldIdentifier, ExecutionReceipt, ExtrinsicDigest,
+    InboxedBundle, InvalidBundleType, OpaqueBundle, OperatorAllowList, OperatorId, OperatorPair,
+    ProofOfElection, RuntimeType, SealedBundleHeader, StakingHoldIdentifier,
 };
 use sp_domains_fraud_proof::fraud_proof::{
-    ExtrinsicDigest, FraudProof, InvalidBundlesFraudProof, InvalidDomainBlockHashProof,
-    InvalidExtrinsicsRootProof, InvalidTotalRewardsProof, ValidBundleDigest,
+    FraudProof, InvalidBundlesFraudProof, InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof,
+    InvalidTotalRewardsProof, ValidBundleDigest,
 };
 use sp_domains_fraud_proof::{
     FraudProofExtension, FraudProofHostFunctions, FraudProofVerificationInfoRequest,
