@@ -12,12 +12,7 @@ pub struct RayonFiles {
 
 impl ReadAtSync for RayonFiles {
     fn read_at(&self, buf: &mut [u8], offset: usize) -> io::Result<()> {
-        let thread_index = rayon::current_thread_index().ok_or_else(|| {
-            io::Error::new(
-                io::ErrorKind::Other,
-                "Reads must be called from rayon worker thread",
-            )
-        })?;
+        let thread_index = rayon::current_thread_index().unwrap_or_default();
         let file = self.files.get(thread_index).ok_or_else(|| {
             io::Error::new(io::ErrorKind::Other, "No files entry for this rayon thread")
         })?;
