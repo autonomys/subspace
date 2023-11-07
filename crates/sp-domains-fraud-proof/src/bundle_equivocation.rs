@@ -16,6 +16,7 @@ use subspace_runtime_primitives::Balance;
 const SLOT_BUNDLE_HEADER_MAP_KEY: &[u8] = b"slot_bundle_header_map";
 const SLOT_BUNDLE_HEADER_START: &[u8] = b"slot_bundle_header_start";
 
+// TODO: revisit these values when there more than 1000 domains.
 /// We keep at least this number of slots in database.
 const MAX_SLOT_CAPACITY: u64 = 1000;
 /// We prune slots when they reach this number.
@@ -80,11 +81,18 @@ where
     }
 
     for previous_bundle_header in headers_with_sig.iter() {
+        let operator_set_1 = (
+            previous_bundle_header.header.proof_of_election.operator_id,
+            previous_bundle_header.header.proof_of_election.domain_id,
+        );
+        let operator_set_2 = (
+            bundle_header.header.proof_of_election.operator_id,
+            bundle_header.header.proof_of_election.domain_id,
+        );
+
         // A proof of equivocation consists of two headers:
-        // 1) signed by the same operator,
-        if previous_bundle_header.header.proof_of_election.operator_id
-            == bundle_header.header.proof_of_election.operator_id
-        {
+        // 1) signed by the same operator for same domain
+        if operator_set_1 == operator_set_2 {
             // 2) with different hash
             return if bundle_header.hash() != previous_bundle_header.hash() {
                 Ok(Some(FraudProof::BundleEquivocation(

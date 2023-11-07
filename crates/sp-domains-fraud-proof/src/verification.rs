@@ -483,6 +483,9 @@ pub enum InvalidBundleEquivocationError {
     /// Failed to get operator stake.
     #[cfg_attr(feature = "thiserror", error("Failed to get operator stake"))]
     FailedToGetOperatorStake,
+    /// Mismatched operatorId and Domain.
+    #[cfg_attr(feature = "thiserror", error("Mismatched operatorId and Domain."))]
+    MismatchedOperatorAndDomain,
 }
 
 /// Verifies Bundle equivocation fraud proof.
@@ -502,6 +505,20 @@ where
 
     if !operator_signing_key.verify(&header_2.pre_hash(), &header_2.signature) {
         return Err(InvalidBundleEquivocationError::BadBundleSignature);
+    }
+
+    let operator_set_1 = (
+        header_1.header.proof_of_election.operator_id,
+        header_1.header.proof_of_election.domain_id,
+    );
+    let operator_set_2 = (
+        header_2.header.proof_of_election.operator_id,
+        header_2.header.proof_of_election.domain_id,
+    );
+
+    // Operator and the domain the proof of election targeted should be same
+    if operator_set_1 != operator_set_2 {
+        return Err(InvalidBundleEquivocationError::MismatchedOperatorAndDomain);
     }
 
     let consensus_block_hash = header_1.header.proof_of_election.consensus_block_hash;
