@@ -303,35 +303,36 @@ mod test {
                 )
                 .unwrap();
 
-            assert!(StorageProofVerifier::<BlakeTwo256>::verify_storage_proof(
-                storage_proof.clone(),
-                &root,
-                ext.clone(),
-                storage_key.clone(),
-            ));
+            assert_eq!(
+                StorageProofVerifier::<BlakeTwo256>::get_bare_value(
+                    &root,
+                    storage_proof.clone(),
+                    storage_key.clone(),
+                )
+                .unwrap(),
+                ext.clone()
+            );
 
-            // Verifying the proof with a wrong root/ext/index will fail
-            assert!(!StorageProofVerifier::<BlakeTwo256>::verify_storage_proof(
-                storage_proof.clone(),
+            // Verifying the proof with a wrong root/key will fail
+            assert!(StorageProofVerifier::<BlakeTwo256>::get_bare_value(
                 &H256::random(),
-                ext.clone(),
-                storage_key.clone(),
-            ));
-
-            assert!(!StorageProofVerifier::<BlakeTwo256>::verify_storage_proof(
                 storage_proof.clone(),
-                &root,
-                vec![i as u8; ext.len()],
-                storage_key,
-            ));
+                storage_key.clone(),
+            )
+            .is_err());
 
             let storage_key = StorageKey(Compact(i as u32 + 1).encode());
-            assert!(!StorageProofVerifier::<BlakeTwo256>::verify_storage_proof(
-                storage_proof,
+            let result = StorageProofVerifier::<BlakeTwo256>::get_bare_value(
                 &root,
-                ext,
+                storage_proof,
                 storage_key,
-            ));
+            );
+
+            // there is a possibility that wrong key ends up being a different leaf in the merkle tree
+            // but the data that key holds is neither valid extrinsic nor the the one we expect.
+            if let Ok(data) = result {
+                assert_ne!(data, ext.clone())
+            }
         }
 
         // fails to generate storage key for unknown index

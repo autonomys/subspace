@@ -53,23 +53,6 @@ impl<H: Hasher> StorageProofVerifier<H> {
         Ok(val)
     }
 
-    /// Verifies the given storage proof and checks the expected_value matches the extracted value from the proof.
-    pub fn verify_storage_proof(
-        proof: StorageProof,
-        root: &H::Out,
-        expected_value: Vec<u8>,
-        storage_key: StorageKey,
-    ) -> bool
-    where
-        H: Hasher,
-    {
-        if let Ok(got_data) = StorageProofVerifier::<H>::get_bare_value(root, proof, storage_key) {
-            expected_value == got_data
-        } else {
-            false
-        }
-    }
-
     /// Constructs the storage key from a given enumerated index.
     pub fn enumerated_storage_key(index: u32) -> StorageKey {
         StorageKey(Compact(index).encode())
