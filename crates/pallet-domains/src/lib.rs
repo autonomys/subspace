@@ -1280,7 +1280,8 @@ mod pallet {
                         match e {
                             // These errors are common due to networking delay or chain re-org,
                             // using a lower log level to avoid the noise.
-                            BundleError::Receipt(BlockTreeError::StaleReceipt)
+                            BundleError::Receipt(BlockTreeError::InFutureReceipt)
+                            | BundleError::Receipt(BlockTreeError::StaleReceipt)
                             | BundleError::Receipt(BlockTreeError::NewBranchReceipt)
                             | BundleError::Receipt(BlockTreeError::BuiltOnUnknownConsensusBlock) => {
                                 log::debug!(

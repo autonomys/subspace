@@ -158,7 +158,7 @@ pub(crate) fn verify_execution_receipt<T: Config>(
         ..
     } = execution_receipt;
 
-    // Checking if the incoming ER is expected regarding to its `domain_block_number`/freshness
+    // Checking if the incoming ER is expected regarding to its `domain_block_number` or freshness
     if let ReceiptType::Rejected(rejected_receipt_type) =
         execution_receipt_type::<T>(domain_id, execution_receipt)
     {
