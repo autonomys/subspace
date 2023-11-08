@@ -51,6 +51,9 @@ use tracing::{debug, trace};
 /// Represents different states of a peer permanent connection.
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum ConnectionState {
+    /// Indicates that a connection is expected to be established to this peer.
+    Preparing { peer_address: Multiaddr },
+
     /// Indicates that a connection attempt to a peer is in progress.
     Connecting { peer_address: Multiaddr },
 
@@ -76,7 +79,7 @@ impl ConnectionState {
     /// Returns active connection ID if any.
     fn connection_id(&self) -> Option<ConnectionId> {
         match self {
-            ConnectionState::Connecting { .. } => None,
+            ConnectionState::Preparing { .. } | ConnectionState::Connecting { .. } => None,
             ConnectionState::Deciding { connection_id } => Some(*connection_id),
             ConnectionState::Permanent { connection_id } => Some(*connection_id),
             ConnectionState::NotInterested => None,
@@ -86,6 +89,7 @@ impl ConnectionState {
     /// Converts [`ConnectionState`] to a string with information loss.
     fn stringify(&self) -> String {
         match self {
+            ConnectionState::Preparing { .. } => "ToConnect".to_string(),
             ConnectionState::Connecting { .. } => "Connecting".to_string(),
             ConnectionState::Deciding { .. } => "Deciding".to_string(),
             ConnectionState::Permanent { .. } => "Permanent".to_string(),
@@ -199,7 +203,7 @@ impl<Instance> Behaviour<Instance> {
         let default_keep_alive_until = KeepAlive::Until(default_until);
         let keep_alive = if let Some(connection_state) = self.known_peers.get_mut(peer_id) {
             match connection_state {
-                ConnectionState::Connecting { .. } => {
+                ConnectionState::Preparing { .. } | ConnectionState::Connecting { .. } => {
                     // Connection attempt was successful.
                     *connection_state = ConnectionState::Deciding { connection_id };
 
@@ -474,16 +478,23 @@ impl<Instance: 'static + Send> NetworkBehaviour for Behaviour<Instance> {
         // Check decision statuses.
         for (peer_id, connection_state) in self.known_peers.iter_mut() {
             match connection_state {
-                ConnectionState::Connecting {
+                ConnectionState::Preparing {
                     peer_address: address,
                 } => {
                     debug!(%peer_id, "Dialing a new peer");
 
                     let dial_opts = DialOpts::peer_id(*peer_id).addresses(vec![address.clone()]);
 
+                    *connection_state = ConnectionState::Connecting {
+                        peer_address: address.clone(),
+                    };
+
                     return Poll::Ready(ToSwarm::Dial {
                         opts: dial_opts.build(),
                     });
+                }
+                ConnectionState::Connecting { .. } => {
+                    // Waiting for connection to be established.
                 }
                 ConnectionState::Deciding { .. } => {
                     // The decision time is limited by the connection timeout.
@@ -518,7 +529,9 @@ impl<Instance: 'static + Send> NetworkBehaviour for Behaviour<Instance> {
 
                     for (peer_id, address) in peer_addresses {
                         self.known_peers.entry(peer_id).or_insert_with(|| {
-                            ConnectionState::Connecting {
+                            cx.waker().wake_by_ref();
+
+                            ConnectionState::Preparing {
                                 peer_address: address,
                             }
                         });
