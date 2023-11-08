@@ -393,7 +393,7 @@ impl<Instance: 'static + Send> NetworkBehaviour for Behaviour<Instance> {
                     .unwrap_or(false);
 
                 if known_connection_closed {
-                    trace!(%peer_id, ?connection_id, "Known connection closed.");
+                    trace!(%peer_id, ?connection_id, "Known connection closed");
                     self.known_peers.remove(&peer_id);
                     self.wake();
                 }
@@ -403,12 +403,17 @@ impl<Instance: 'static + Send> NetworkBehaviour for Behaviour<Instance> {
                     let old_peer_decision = self.known_peers.remove(&peer_id);
 
                     if old_peer_decision.is_some() {
-                        trace!(%peer_id, ?old_peer_decision, ?connection_id, "Known peer disconnected.");
+                        trace!(
+                            %peer_id,
+                            ?old_peer_decision,
+                            ?connection_id,
+                            "Known peer disconnected"
+                        );
                         self.wake();
                     }
                 };
             }
-            FromSwarm::DialFailure(DialFailure { peer_id, .. }) => {
+            FromSwarm::DialFailure(DialFailure { peer_id, error, .. }) => {
                 if let Some(peer_id) = peer_id {
                     let other_connections = self
                         .known_peers
@@ -419,7 +424,12 @@ impl<Instance: 'static + Send> NetworkBehaviour for Behaviour<Instance> {
                         let old_peer_decision = self.known_peers.remove(&peer_id);
 
                         if old_peer_decision.is_some() {
-                            debug!(%peer_id, ?old_peer_decision, "Dialing error to known peer.");
+                            debug!(
+                                %peer_id,
+                                ?old_peer_decision,
+                                ?error,
+                                "Dialing error to known peer"
+                            );
                         }
                     }
 
@@ -467,7 +477,7 @@ impl<Instance: 'static + Send> NetworkBehaviour for Behaviour<Instance> {
                 ConnectionState::Connecting {
                     peer_address: address,
                 } => {
-                    debug!(%peer_id, "Dialing a new peer.");
+                    debug!(%peer_id, "Dialing a new peer");
 
                     let dial_opts = DialOpts::peer_id(*peer_id).addresses(vec![address.clone()]);
 
@@ -492,7 +502,7 @@ impl<Instance: 'static + Send> NetworkBehaviour for Behaviour<Instance> {
 
                 // Request new peer addresses.
                 if self.peer_cache.is_empty() {
-                    trace!("Requesting new peers for connected-peers protocol....");
+                    trace!("Requesting new peers for connected-peers protocol...");
 
                     return Poll::Ready(ToSwarm::GenerateEvent(
                         Event::NewDialingCandidatesRequested(PhantomData),
@@ -525,7 +535,11 @@ impl<Instance: 'static + Send> NetworkBehaviour for Behaviour<Instance> {
 
                 let stats = self.gather_stats();
 
-                debug!(instance=%self.config.log_target, ?stats, "Connected peers protocol statistics.");
+                debug!(
+                    instance = %self.config.log_target,
+                    ?stats,
+                    "Connected peers protocol statistics",
+                );
             }
         }
 

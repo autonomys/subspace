@@ -514,6 +514,7 @@ where
                 peer_id,
                 endpoint,
                 num_established,
+                cause,
                 ..
             } => {
                 let shared = match self.shared_weak.upgrade() {
@@ -522,7 +523,10 @@ where
                         return;
                     }
                 };
-                debug!("Connection closed with peer {peer_id} [{num_established} from peer]");
+                debug!(
+                    ?cause,
+                    "Connection closed with peer {peer_id} [{num_established} from peer]"
+                );
 
                 // TODO: Workaround for https://github.com/libp2p/rust-libp2p/discussions/3418
                 {
