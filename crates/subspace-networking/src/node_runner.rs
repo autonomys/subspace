@@ -699,6 +699,7 @@ where
                 );
 
                 self.ban_peer(peer_id);
+                return;
             }
 
             if info.listen_addrs.len() > 30 {
