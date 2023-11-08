@@ -58,8 +58,8 @@ use sp_core::storage::StateVersion;
 use sp_core::{OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
-    DomainId, DomainInstanceData, DomainsHoldIdentifier, ExecutionReceiptFor, OperatorId,
-    OperatorPublicKey, StakingHoldIdentifier,
+    DomainId, DomainInstanceData, DomainsHoldIdentifier, ExecutionReceiptFor, OpaqueBundle,
+    OperatorId, OperatorPublicKey, StakingHoldIdentifier,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
@@ -986,6 +986,12 @@ impl_runtime_apis! {
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
         ) -> sp_domains::OpaqueBundles<Block, DomainHeader, Balance> {
             crate::domains::extract_successful_bundles(domain_id, extrinsics)
+        }
+
+        fn extract_bundle(
+            extrinsic: <Block as BlockT>::Extrinsic
+        ) -> Option<OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, Balance>> {
+            crate::domains::extract_bundle(extrinsic)
         }
 
         fn extract_receipts(

@@ -869,23 +869,24 @@ where
         };
         let mut bad_receipts_to_delete = vec![];
         for fraud_proof in fraud_proofs {
-            let bad_receipt_hash = fraud_proof.bad_receipt_hash();
-            if let Some(bad_receipt) = self
-                .consensus_client
-                .runtime_api()
-                .execution_receipt(consensus_parent_hash, bad_receipt_hash)?
-            {
-                // In order to not delete a receipt which was just inserted, accumulate the write&delete operations
-                // in case the bad receipt and corresponding fraud proof are included in the same block.
-                if let Some(index) = bad_receipts_to_write
-                    .iter()
-                    .map(|(_, receipt_hash, _)| receipt_hash)
-                    .position(|v| *v == bad_receipt_hash)
+            if let Some(bad_receipt_hash) = fraud_proof.targeted_bad_receipt_hash() {
+                if let Some(bad_receipt) = self
+                    .consensus_client
+                    .runtime_api()
+                    .execution_receipt(consensus_parent_hash, bad_receipt_hash)?
                 {
-                    bad_receipts_to_write.swap_remove(index);
-                } else {
-                    bad_receipts_to_delete
-                        .push((bad_receipt.consensus_block_number, bad_receipt_hash));
+                    // In order to not delete a receipt which was just inserted, accumulate the write&delete operations
+                    // in case the bad receipt and corresponding fraud proof are included in the same block.
+                    if let Some(index) = bad_receipts_to_write
+                        .iter()
+                        .map(|(_, receipt_hash, _)| receipt_hash)
+                        .position(|v| *v == bad_receipt_hash)
+                    {
+                        bad_receipts_to_write.swap_remove(index);
+                    } else {
+                        bad_receipts_to_delete
+                            .push((bad_receipt.consensus_block_number, bad_receipt_hash));
+                    }
                 }
             }
         }

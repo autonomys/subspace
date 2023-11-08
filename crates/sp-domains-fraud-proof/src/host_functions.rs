@@ -13,7 +13,8 @@ use sp_api::{BlockT, HashT, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_core::traits::{CodeExecutor, FetchRuntimeCode, RuntimeCode};
 use sp_core::H256;
-use sp_domains::{DomainId, DomainsApi};
+use sp_domains::bundle_producer_election::BundleProducerElectionParams;
+use sp_domains::{BundleProducerElectionApi, DomainId, DomainsApi, OperatorId};
 use sp_runtime::traits::Header as HeaderT;
 use sp_runtime::OpaqueExtrinsic;
 use sp_std::vec::Vec;
@@ -22,6 +23,7 @@ use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::{Randomness, U256};
+use subspace_runtime_primitives::Balance;
 
 struct DomainRuntimeCodeFetcher(Vec<u8>);
 
@@ -99,7 +101,7 @@ where
     Block::Hash: From<H256>,
     DomainBlock: BlockT,
     Client: BlockBackend<Block> + HeaderBackend<Block> + ProvideRuntimeApi<Block>,
-    Client::Api: DomainsApi<Block, DomainBlock::Header>,
+    Client::Api: DomainsApi<Block, DomainBlock::Header> + BundleProducerElectionApi<Block, Balance>,
     Executor: CodeExecutor + RuntimeVersionOf,
 {
     fn get_block_randomness(&self, consensus_block_hash: H256) -> Option<Randomness> {
@@ -277,6 +279,32 @@ where
             &extrinsic
         ).ok()
     }
+
+    fn get_domain_election_params(
+        &self,
+        consensus_block_hash: H256,
+        domain_id: DomainId,
+    ) -> Option<BundleProducerElectionParams<Balance>> {
+        let runtime_api = self.consensus_client.runtime_api();
+        let consensus_block_hash = consensus_block_hash.into();
+        let election_params = runtime_api
+            .bundle_producer_election_params(consensus_block_hash, domain_id)
+            .ok()??;
+        Some(election_params)
+    }
+
+    fn get_operator_stake(
+        &self,
+        consensus_block_hash: H256,
+        operator_id: OperatorId,
+    ) -> Option<Balance> {
+        let runtime_api = self.consensus_client.runtime_api();
+        let consensus_block_hash = consensus_block_hash.into();
+        let (_, operator_stake) = runtime_api
+            .operator(consensus_block_hash, operator_id)
+            .ok()??;
+        Some(operator_stake)
+    }
 }
 
 impl<Block, Client, DomainBlock, Executor> FraudProofHostFunctions
@@ -287,7 +315,7 @@ where
     DomainBlock: BlockT,
     DomainBlock::Hash: From<H256> + Into<H256>,
     Client: BlockBackend<Block> + HeaderBackend<Block> + ProvideRuntimeApi<Block>,
-    Client::Api: DomainsApi<Block, DomainBlock::Header>,
+    Client::Api: DomainsApi<Block, DomainBlock::Header> + BundleProducerElectionApi<Block, Balance>,
     Executor: CodeExecutor + RuntimeVersionOf,
 {
     fn get_fraud_proof_verification_info(
@@ -349,6 +377,19 @@ where
                 .is_inherent_extrinsic(consensus_block_hash, domain_id, opaque_extrinsic)
                 .map(|is_inherent| {
                     FraudProofVerificationInfoResponse::InherentExtrinsicCheck(is_inherent)
+                }),
+            FraudProofVerificationInfoRequest::DomainElectionParams { domain_id } => self
+                .get_domain_election_params(consensus_block_hash, domain_id)
+                .map(|domain_election_params| {
+                    FraudProofVerificationInfoResponse::DomainElectionParams {
+                        domain_total_stake: domain_election_params.total_domain_stake,
+                        bundle_slot_probability: domain_election_params.bundle_slot_probability,
+                    }
+                }),
+            FraudProofVerificationInfoRequest::OperatorStake { operator_id } => self
+                .get_operator_stake(consensus_block_hash, operator_id)
+                .map(|operator_stake| {
+                    FraudProofVerificationInfoResponse::OperatorStake(operator_stake)
                 }),
         }
     }

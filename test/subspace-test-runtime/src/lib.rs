@@ -936,6 +936,19 @@ fn extract_successful_bundles(
         .collect()
 }
 
+fn extract_bundle(
+    extrinsic: UncheckedExtrinsic,
+) -> Option<
+    sp_domains::OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, Balance>,
+> {
+    match extrinsic.function {
+        RuntimeCall::Domains(pallet_domains::Call::submit_bundle { opaque_bundle }) => {
+            Some(opaque_bundle)
+        }
+        _ => None,
+    }
+}
+
 pub(crate) fn extract_fraud_proofs(
     domain_id: DomainId,
     extrinsics: Vec<UncheckedExtrinsic>,
@@ -1155,6 +1168,13 @@ impl_runtime_apis! {
         ) -> OpaqueBundles<Block, DomainHeader, Balance> {
             extract_successful_bundles(domain_id, extrinsics)
         }
+
+        fn extract_bundle(
+            extrinsic: <Block as BlockT>::Extrinsic
+        ) -> Option<OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, Balance>> {
+            extract_bundle(extrinsic)
+        }
+
 
         fn extract_receipts(
             domain_id: DomainId,

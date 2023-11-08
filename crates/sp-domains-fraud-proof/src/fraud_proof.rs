@@ -1,3 +1,4 @@
+use crate::verification::InvalidBundleEquivocationError;
 use codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_consensus_slots::Slot;
@@ -6,13 +7,13 @@ use sp_domain_digests::AsPredigest;
 use sp_domains::proof_provider_and_verifier::StorageProofVerifier;
 use sp_domains::{
     BundleValidity, DomainId, ExecutionReceiptFor, ExtrinsicDigest, HeaderHashFor,
-    HeaderHashingFor, InvalidBundleType, SealedBundleHeader,
+    HeaderHashingFor, InvalidBundleType, OperatorId, SealedBundleHeader,
 };
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
 use sp_runtime::{Digest, DigestItem};
 use sp_std::vec::Vec;
 use sp_trie::StorageProof;
-use subspace_runtime_primitives::{AccountId, Balance};
+use subspace_runtime_primitives::Balance;
 
 /// A phase of a block's execution, carrying necessary information needed for verifying the
 /// invalid state transition proof.
@@ -321,6 +322,18 @@ pub enum VerificationError<DomainHash> {
         error("Failed to check if a given extrinsic is inherent or not")
     )]
     FailedToCheckInherentExtrinsic,
+    /// Invalid bundle equivocation fraud proof.
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Invalid bundle equivocation fraud proof: {0}")
+    )]
+    InvalidBundleEquivocationFraudProof(InvalidBundleEquivocationError),
+}
+
+impl<DomainHash> From<InvalidBundleEquivocationError> for VerificationError<DomainHash> {
+    fn from(err: InvalidBundleEquivocationError) -> Self {
+        Self::InvalidBundleEquivocationFraudProof(err)
+    }
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
@@ -397,24 +410,30 @@ impl<Number, Hash, DomainHeader: HeaderT> FraudProof<Number, Hash, DomainHeader>
         }
     }
 
-    pub fn bad_receipt_hash(&self) -> HeaderHashFor<DomainHeader> {
+    pub fn targeted_bad_receipt_hash(&self) -> Option<HeaderHashFor<DomainHeader>> {
         match self {
-            Self::InvalidStateTransition(proof) => proof.bad_receipt_hash,
-            Self::InvalidTransaction(proof) => proof.bad_receipt_hash,
-            Self::ImproperTransactionSortition(proof) => proof.bad_receipt_hash,
-            // TODO: the `BundleEquivocation` fraud proof is different from other fraud proof,
-            // which target equivocate bundle instead of bad receipt, revisit this when fraud
-            // proof v2 is implemented.
-            Self::BundleEquivocation(_) => Default::default(),
+            Self::InvalidStateTransition(proof) => Some(proof.bad_receipt_hash),
+            Self::InvalidTransaction(proof) => Some(proof.bad_receipt_hash),
+            Self::ImproperTransactionSortition(proof) => Some(proof.bad_receipt_hash),
+            Self::BundleEquivocation(_) => None,
             #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
             Self::Dummy {
                 bad_receipt_hash, ..
-            } => *bad_receipt_hash,
-            Self::InvalidExtrinsicsRoot(proof) => proof.bad_receipt_hash,
-            Self::InvalidTotalRewards(proof) => proof.bad_receipt_hash(),
-            Self::ValidBundle(proof) => proof.bad_receipt_hash,
-            Self::InvalidBundles(proof) => proof.bad_receipt_hash,
-            Self::InvalidDomainBlockHash(proof) => proof.bad_receipt_hash,
+            } => Some(*bad_receipt_hash),
+            Self::InvalidExtrinsicsRoot(proof) => Some(proof.bad_receipt_hash),
+            Self::InvalidTotalRewards(proof) => Some(proof.bad_receipt_hash()),
+            Self::ValidBundle(proof) => Some(proof.bad_receipt_hash),
+            Self::InvalidBundles(proof) => Some(proof.bad_receipt_hash),
+            Self::InvalidDomainBlockHash(proof) => Some(proof.bad_receipt_hash),
+        }
+    }
+
+    pub fn targeted_bad_operator(&self) -> Option<OperatorId> {
+        match self {
+            Self::BundleEquivocation(proof) => {
+                Some(proof.first_header.header.proof_of_election.operator_id)
+            }
+            _ => None,
         }
     }
 
@@ -472,8 +491,6 @@ pub fn dummy_invalid_state_transition_proof<ReceiptHash: Default>(
 pub struct BundleEquivocationProof<Number, Hash, DomainHeader: HeaderT> {
     /// The id of the domain this fraud proof targeted
     pub domain_id: DomainId,
-    /// The authority id of the equivocator.
-    pub offender: AccountId,
     /// The slot at which the equivocation happened.
     pub slot: Slot,
     // TODO: The generic type should be `<Number, Hash, DomainNumber, DomainHash, Balance>`
