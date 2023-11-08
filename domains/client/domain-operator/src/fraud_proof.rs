@@ -418,9 +418,8 @@ where
             )
             .ok_or(FraudProofError::FailToGenerateProofOfInclusion)?;
             ExecutionPhase::ApplyExtrinsic {
-                proof_of_inclusion,
+                extrinsic_proof: proof_of_inclusion,
                 mismatch_index: trace_mismatch_index,
-                extrinsic: target_extrinsic.clone(),
             }
         };
 

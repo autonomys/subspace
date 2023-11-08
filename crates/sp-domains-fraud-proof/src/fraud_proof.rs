@@ -23,9 +23,8 @@ pub enum ExecutionPhase {
     InitializeBlock,
     /// Executes some extrinsic.
     ApplyExtrinsic {
-        proof_of_inclusion: StorageProof,
+        extrinsic_proof: StorageProof,
         mismatch_index: u32,
-        extrinsic: Vec<u8>,
     },
     /// Executes the `finalize_block` hook.
     FinalizeBlock,
@@ -143,9 +142,8 @@ impl ExecutionPhase {
                 new_header.encode()
             }
             ExecutionPhase::ApplyExtrinsic {
-                proof_of_inclusion,
+                extrinsic_proof: proof_of_inclusion,
                 mismatch_index,
-                extrinsic,
             } => {
                 // There is a trace root of the `initialize_block` in the head of the trace so we
                 // need to minus one to get the correct `extrinsic_index`
@@ -154,15 +152,13 @@ impl ExecutionPhase {
                     StorageProofVerifier::<DomainHeader::Hashing>::enumerated_storage_key(
                         extrinsic_index,
                     );
-                if !StorageProofVerifier::<DomainHeader::Hashing>::verify_storage_proof(
-                    proof_of_inclusion.clone(),
+
+                StorageProofVerifier::<DomainHeader::Hashing>::get_bare_value(
                     &bad_receipt.domain_block_extrinsic_root,
-                    extrinsic.clone(),
+                    proof_of_inclusion.clone(),
                     storage_key,
-                ) {
-                    return Err(VerificationError::InvalidApplyExtrinsicCallData);
-                }
-                extrinsic.clone()
+                )
+                .map_err(|_| VerificationError::InvalidApplyExtrinsicCallData)?
             }
             ExecutionPhase::FinalizeBlock => Vec::new(),
         })
