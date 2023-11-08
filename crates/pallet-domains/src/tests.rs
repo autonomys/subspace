@@ -1,9 +1,10 @@
 use crate::block_tree::BlockTreeNode;
 use crate::domain_registry::{DomainConfig, DomainObject};
+use crate::staking::Operator;
 use crate::{
     self as pallet_domains, BalanceOf, BlockTree, BlockTreeNodes, BundleError, Config,
     ConsensusBlockHash, DomainBlockNumberFor, DomainHashingFor, DomainRegistry, ExecutionInbox,
-    ExecutionReceiptOf, FraudProofError, FungibleHoldId, HeadReceiptNumber, NextDomainId, Operator,
+    ExecutionReceiptOf, FraudProofError, FungibleHoldId, HeadReceiptNumber, NextDomainId,
     OperatorStatus, Operators, ReceiptHashFor,
 };
 use codec::{Decode, Encode, MaxEncodedLen};
@@ -22,13 +23,13 @@ use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::proof_provider_and_verifier::StorageProofProvider;
 use sp_domains::storage::RawGenesis;
 use sp_domains::{
-    BundleHeader, DomainId, DomainsHoldIdentifier, ExecutionReceipt, InboxedBundle,
-    InvalidBundleType, OpaqueBundle, OperatorAllowList, OperatorId, OperatorPair, ProofOfElection,
-    RuntimeType, SealedBundleHeader, StakingHoldIdentifier,
+    BundleHeader, DomainId, DomainsHoldIdentifier, ExecutionReceipt, ExtrinsicDigest,
+    InboxedBundle, InvalidBundleType, OpaqueBundle, OperatorAllowList, OperatorId, OperatorPair,
+    ProofOfElection, RuntimeType, SealedBundleHeader, StakingHoldIdentifier,
 };
 use sp_domains_fraud_proof::fraud_proof::{
-    ExtrinsicDigest, FraudProof, InvalidBundlesFraudProof, InvalidDomainBlockHashProof,
-    InvalidExtrinsicsRootProof, InvalidTotalRewardsProof, ValidBundleDigest,
+    FraudProof, InvalidBundlesFraudProof, InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof,
+    InvalidTotalRewardsProof, ValidBundleDigest,
 };
 use sp_domains_fraud_proof::{
     FraudProofExtension, FraudProofHostFunctions, FraudProofVerificationInfoRequest,
@@ -261,6 +262,9 @@ pub(crate) struct MockDomainFraudProofExtension {
     runtime_code: Vec<u8>,
     tx_range: bool,
     is_inherent: bool,
+    domain_total_stake: Balance,
+    bundle_slot_probability: (u64, u64),
+    operator_stake: Balance,
 }
 
 impl FraudProofHostFunctions for MockDomainFraudProofExtension {
@@ -308,6 +312,15 @@ impl FraudProofHostFunctions for MockDomainFraudProofExtension {
             }
             FraudProofVerificationInfoRequest::InherentExtrinsicCheck { .. } => {
                 FraudProofVerificationInfoResponse::InherentExtrinsicCheck(self.is_inherent)
+            }
+            FraudProofVerificationInfoRequest::DomainElectionParams { .. } => {
+                FraudProofVerificationInfoResponse::DomainElectionParams {
+                    domain_total_stake: self.domain_total_stake,
+                    bundle_slot_probability: self.bundle_slot_probability,
+                }
+            }
+            FraudProofVerificationInfoRequest::OperatorStake { .. } => {
+                FraudProofVerificationInfoResponse::OperatorStake(self.operator_stake)
             }
         };
 
@@ -995,6 +1008,9 @@ fn test_invalid_domain_extrinsic_root_proof() {
         runtime_code: vec![1, 2, 3, 4],
         tx_range: true,
         is_inherent: true,
+        domain_total_stake: 100 * SSC,
+        operator_stake: 10 * SSC,
+        bundle_slot_probability: (0, 0),
     }));
     ext.register_extension(fraud_proof_ext);
 
@@ -1071,6 +1087,9 @@ fn test_true_invalid_bundles_inherent_extrinsic_proof() {
         tx_range: true,
         // return `true` indicating this is an inherent extrinsic
         is_inherent: true,
+        domain_total_stake: 100 * SSC,
+        operator_stake: 10 * SSC,
+        bundle_slot_probability: (0, 0),
     }));
     ext.register_extension(fraud_proof_ext);
 
@@ -1133,6 +1152,9 @@ fn test_false_invalid_bundles_inherent_extrinsic_proof() {
         tx_range: true,
         // return `false` indicating this is not an inherent extrinsic
         is_inherent: false,
+        domain_total_stake: 100 * SSC,
+        operator_stake: 10 * SSC,
+        bundle_slot_probability: (0, 0),
     }));
     ext.register_extension(fraud_proof_ext);
 

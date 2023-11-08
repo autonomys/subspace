@@ -54,7 +54,7 @@ use sp_core::storage::StateVersion;
 use sp_core::{OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
-    DomainId, DomainInstanceData, DomainsHoldIdentifier, ExecutionReceipt, OpaqueBundle,
+    DomainId, DomainInstanceData, DomainsHoldIdentifier, ExecutionReceiptFor, OpaqueBundle,
     OpaqueBundles, OperatorId, OperatorPublicKey, StakingHoldIdentifier,
 };
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
@@ -936,39 +936,30 @@ fn extract_successful_bundles(
         .collect()
 }
 
-// TODO: Remove when proceeding to fraud proof v2.
-#[allow(unused)]
-fn extract_receipts(
-    extrinsics: Vec<UncheckedExtrinsic>,
-    domain_id: DomainId,
-) -> Vec<ExecutionReceipt<BlockNumber, Hash, DomainNumber, DomainHash, Balance>> {
-    let successful_bundles = Domains::successful_bundles(domain_id);
-    extrinsics
-        .into_iter()
-        .filter_map(|uxt| match uxt.function {
-            RuntimeCall::Domains(pallet_domains::Call::submit_bundle { opaque_bundle })
-                if opaque_bundle.domain_id() == domain_id
-                    && successful_bundles.contains(&opaque_bundle.hash()) =>
-            {
-                Some(opaque_bundle.into_receipt())
-            }
-            _ => None,
-        })
-        .collect()
+fn extract_bundle(
+    extrinsic: UncheckedExtrinsic,
+) -> Option<
+    sp_domains::OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, Balance>,
+> {
+    match extrinsic.function {
+        RuntimeCall::Domains(pallet_domains::Call::submit_bundle { opaque_bundle }) => {
+            Some(opaque_bundle)
+        }
+        _ => None,
+    }
 }
 
-// TODO: Remove when proceeding to fraud proof v2.
-#[allow(unused)]
-fn extract_fraud_proofs(
-    extrinsics: Vec<UncheckedExtrinsic>,
+pub(crate) fn extract_fraud_proofs(
     domain_id: DomainId,
+    extrinsics: Vec<UncheckedExtrinsic>,
 ) -> Vec<FraudProof<NumberFor<Block>, Hash, DomainHeader>> {
-    // TODO: Ensure fraud proof extrinsic is infallible.
+    let successful_fraud_proofs = Domains::successful_fraud_proofs(domain_id);
     extrinsics
         .into_iter()
         .filter_map(|uxt| match uxt.function {
             RuntimeCall::Domains(pallet_domains::Call::submit_fraud_proof { fraud_proof })
-                if fraud_proof.domain_id() == domain_id =>
+                if fraud_proof.domain_id() == domain_id
+                    && successful_fraud_proofs.contains(&fraud_proof.hash()) =>
             {
                 Some(*fraud_proof)
             }
@@ -1163,6 +1154,7 @@ impl_runtime_apis! {
         }
     }
 
+    #[api_version(2)]
     impl sp_domains::DomainsApi<Block, DomainHeader> for Runtime {
         fn submit_bundle_unsigned(
             opaque_bundle: OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, Balance>,
@@ -1175,6 +1167,23 @@ impl_runtime_apis! {
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
         ) -> OpaqueBundles<Block, DomainHeader, Balance> {
             extract_successful_bundles(domain_id, extrinsics)
+        }
+
+        fn extract_bundle(
+            extrinsic: <Block as BlockT>::Extrinsic
+        ) -> Option<OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, Balance>> {
+            extract_bundle(extrinsic)
+        }
+
+
+        fn extract_receipts(
+            domain_id: DomainId,
+            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
+        ) -> Vec<ExecutionReceiptFor<DomainHeader, Block, Balance>> {
+            extract_successful_bundles(domain_id, extrinsics)
+                .into_iter()
+                .map(|bundle| bundle.into_receipt())
+                .collect()
         }
 
         fn extrinsics_shuffling_seed() -> Randomness {
@@ -1205,15 +1214,15 @@ impl_runtime_apis! {
             Domains::genesis_state_root(domain_id)
         }
 
-        fn head_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
+        fn head_receipt_number(domain_id: DomainId) -> DomainNumber {
             Domains::head_receipt_number(domain_id)
         }
 
-        fn oldest_receipt_number(domain_id: DomainId) -> NumberFor<Block> {
+        fn oldest_receipt_number(domain_id: DomainId) -> DomainNumber {
             Domains::oldest_receipt_number(domain_id)
         }
 
-        fn block_tree_pruning_depth() -> NumberFor<Block> {
+        fn block_tree_pruning_depth() -> DomainNumber {
             Domains::block_tree_pruning_depth()
         }
 
@@ -1233,7 +1242,7 @@ impl_runtime_apis! {
             Domains::domain_state_root(domain_id, number, hash)
         }
 
-        fn execution_receipt(receipt_hash: DomainHash) -> Option<ExecutionReceipt<NumberFor<Block>, <Block as BlockT>::Hash, DomainNumber, DomainHash, Balance>> {
+        fn execution_receipt(receipt_hash: DomainHash) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>> {
             Domains::execution_receipt(receipt_hash)
         }
     }
@@ -1330,6 +1339,19 @@ impl_runtime_apis! {
 
         fn should_relay_inbox_message_response(dst_chain_id: ChainId, msg_id: MessageId) -> bool {
             Messenger::should_relay_inbox_message_response(dst_chain_id, msg_id)
+        }
+    }
+
+    impl sp_domains_fraud_proof::FraudProofApi<Block, DomainHeader> for Runtime {
+        fn submit_fraud_proof_unsigned(fraud_proof: FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader>) {
+            Domains::submit_fraud_proof_unsigned(fraud_proof)
+        }
+
+        fn extract_fraud_proofs(
+            domain_id: DomainId,
+            extrinsics: Vec<<Block as BlockT>::Extrinsic>,
+        ) -> Vec<FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader>> {
+            extract_fraud_proofs(domain_id, extrinsics)
         }
     }
 }

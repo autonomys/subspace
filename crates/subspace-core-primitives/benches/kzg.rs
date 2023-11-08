@@ -16,41 +16,48 @@ fn criterion_benchmark(c: &mut Criterion) {
         })
     });
 
-    c.bench_function("commit", |b| {
+    {
         let polynomial = kzg.poly(&values).unwrap();
-        b.iter(|| {
-            kzg.commit(black_box(&polynomial)).unwrap();
-        })
-    });
+
+        c.bench_function("commit", |b| {
+            b.iter(|| {
+                kzg.commit(black_box(&polynomial)).unwrap();
+            })
+        });
+    }
 
     let num_values = values.len();
 
-    c.bench_function("create-witness", |b| {
+    {
         let polynomial = kzg.poly(&values).unwrap();
 
-        b.iter(|| {
-            kzg.create_witness(black_box(&polynomial), black_box(num_values), black_box(0))
-                .unwrap();
-        })
-    });
+        c.bench_function("create-witness", |b| {
+            b.iter(|| {
+                kzg.create_witness(black_box(&polynomial), black_box(num_values), black_box(0))
+                    .unwrap();
+            })
+        });
+    }
 
-    c.bench_function("verify", |b| {
+    {
         let polynomial = kzg.poly(&values).unwrap();
         let commitment = kzg.commit(&polynomial).unwrap();
         let index = 0;
         let witness = kzg.create_witness(&polynomial, num_values, index).unwrap();
         let value = values.first().unwrap();
 
-        b.iter(|| {
-            kzg.verify(
-                black_box(&commitment),
-                black_box(num_values),
-                black_box(index),
-                black_box(value),
-                black_box(&witness),
-            );
-        })
-    });
+        c.bench_function("verify", |b| {
+            b.iter(|| {
+                kzg.verify(
+                    black_box(&commitment),
+                    black_box(num_values),
+                    black_box(index),
+                    black_box(value),
+                    black_box(&witness),
+                );
+            })
+        });
+    }
 }
 
 criterion_group!(benches, criterion_benchmark);

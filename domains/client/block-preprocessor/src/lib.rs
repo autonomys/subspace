@@ -26,13 +26,15 @@ use runtime_api::TimestampExtrinsicConstructor;
 use sc_client_api::BlockBackend;
 use sp_api::{HashT, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
+use sp_core::H256;
 use sp_domains::extrinsics::deduplicate_and_shuffle_extrinsics;
 use sp_domains::{
-    DomainId, DomainsApi, ExecutionReceipt, HeaderHashingFor, InboxedBundle, InvalidBundleType,
-    OpaqueBundle, OpaqueBundles, ReceiptValidity,
+    DomainId, DomainsApi, ExecutionReceipt, ExtrinsicDigest, HeaderHashingFor, InboxedBundle,
+    InvalidBundleType, OpaqueBundle, OpaqueBundles, ReceiptValidity,
 };
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
+use sp_trie::LayoutV1;
 use std::collections::VecDeque;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -118,6 +120,7 @@ impl<Block, CBlock, Client, CClient, RuntimeApi, ReceiptValidator>
     DomainBlockPreprocessor<Block, CBlock, Client, CClient, RuntimeApi, ReceiptValidator>
 where
     Block: BlockT,
+    Block::Hash: Into<H256>,
     CBlock: BlockT,
     CBlock::Hash: From<Block::Hash>,
     NumberFor<CBlock>: From<NumberFor<Block>>,
@@ -228,7 +231,9 @@ where
                         .map(|(signer, tx)| {
                             (
                                 signer.clone(),
-                                HeaderHashingFor::<Block::Header>::hash_of(tx),
+                                ExtrinsicDigest::new::<LayoutV1<HeaderHashingFor<Block::Header>>>(
+                                    tx.encode(),
+                                ),
                             )
                         })
                         .collect();

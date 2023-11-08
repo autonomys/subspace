@@ -1,6 +1,5 @@
 use crate::bundle_producer_election_solver::BundleProducerElectionSolver;
 use crate::domain_bundle_proposer::DomainBundleProposer;
-use crate::parent_chain::ParentChainInterface;
 use crate::utils::OperatorSlotInfo;
 use crate::BundleSender;
 use codec::Decode;
@@ -18,7 +17,6 @@ use sp_runtime::traits::{Block as BlockT, Zero};
 use sp_runtime::RuntimeAppPublic;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::convert::{AsRef, Into};
-use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_runtime_primitives::Balance;
 use tracing::info;
@@ -30,82 +28,52 @@ type OpaqueBundle<Block, CBlock> = sp_domains::OpaqueBundle<
     Balance,
 >;
 
-pub(super) struct DomainBundleProducer<
-    Block,
-    CBlock,
-    ParentChainBlock,
-    Client,
-    CClient,
-    ParentChain,
-    TransactionPool,
-> where
+pub(super) struct DomainBundleProducer<Block, CBlock, Client, CClient, TransactionPool>
+where
     Block: BlockT,
     CBlock: BlockT,
 {
     domain_id: DomainId,
     consensus_client: Arc<CClient>,
     client: Arc<Client>,
-    parent_chain: ParentChain,
     bundle_sender: Arc<BundleSender<Block, CBlock>>,
     keystore: KeystorePtr,
     bundle_producer_election_solver: BundleProducerElectionSolver<Block, CBlock, CClient>,
     domain_bundle_proposer: DomainBundleProposer<Block, Client, CBlock, CClient, TransactionPool>,
     skip_empty_bundle_production: bool,
-    _phantom_data: PhantomData<ParentChainBlock>,
 }
 
-impl<Block, CBlock, ParentChainBlock, Client, CClient, ParentChain, TransactionPool> Clone
-    for DomainBundleProducer<
-        Block,
-        CBlock,
-        ParentChainBlock,
-        Client,
-        CClient,
-        ParentChain,
-        TransactionPool,
-    >
+impl<Block, CBlock, Client, CClient, TransactionPool> Clone
+    for DomainBundleProducer<Block, CBlock, Client, CClient, TransactionPool>
 where
     Block: BlockT,
     CBlock: BlockT,
-    ParentChain: Clone,
 {
     fn clone(&self) -> Self {
         Self {
             domain_id: self.domain_id,
             consensus_client: self.consensus_client.clone(),
             client: self.client.clone(),
-            parent_chain: self.parent_chain.clone(),
             bundle_sender: self.bundle_sender.clone(),
             keystore: self.keystore.clone(),
             bundle_producer_election_solver: self.bundle_producer_election_solver.clone(),
             domain_bundle_proposer: self.domain_bundle_proposer.clone(),
             skip_empty_bundle_production: self.skip_empty_bundle_production,
-            _phantom_data: self._phantom_data,
         }
     }
 }
 
-impl<Block, CBlock, ParentChainBlock, Client, CClient, ParentChain, TransactionPool>
-    DomainBundleProducer<
-        Block,
-        CBlock,
-        ParentChainBlock,
-        Client,
-        CClient,
-        ParentChain,
-        TransactionPool,
-    >
+impl<Block, CBlock, Client, CClient, TransactionPool>
+    DomainBundleProducer<Block, CBlock, Client, CClient, TransactionPool>
 where
     Block: BlockT,
     CBlock: BlockT,
-    ParentChainBlock: BlockT,
     NumberFor<Block>: Into<NumberFor<CBlock>>,
-    NumberFor<ParentChainBlock>: Into<NumberFor<Block>>,
+    NumberFor<CBlock>: Into<NumberFor<Block>>,
     Client: HeaderBackend<Block> + BlockBackend<Block> + AuxStore + ProvideRuntimeApi<Block>,
     Client::Api: BlockBuilder<Block> + DomainCoreApi<Block> + TaggedTransactionQueue<Block>,
     CClient: HeaderBackend<CBlock> + ProvideRuntimeApi<CBlock>,
     CClient::Api: DomainsApi<CBlock, Block::Header> + BundleProducerElectionApi<CBlock, Balance>,
-    ParentChain: ParentChainInterface<Block, ParentChainBlock> + Clone,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {
     #[allow(clippy::too_many_arguments)]
@@ -113,7 +81,6 @@ where
         domain_id: DomainId,
         consensus_client: Arc<CClient>,
         client: Arc<Client>,
-        parent_chain: ParentChain,
         domain_bundle_proposer: DomainBundleProposer<
             Block,
             Client,
@@ -133,13 +100,11 @@ where
             domain_id,
             consensus_client,
             client,
-            parent_chain,
             bundle_sender,
             keystore,
             bundle_producer_election_solver,
             domain_bundle_proposer,
             skip_empty_bundle_production,
-            _phantom_data: PhantomData,
         }
     }
 
@@ -154,11 +119,12 @@ where
         } = slot_info;
 
         let domain_best_number = self.client.info().best_number;
-        let parent_chain_best_hash = self.parent_chain.best_hash();
+        let consensus_chain_best_hash = self.consensus_client.info().best_hash;
         let should_skip_slot = {
             let head_receipt_number = self
-                .parent_chain
-                .head_receipt_number(parent_chain_best_hash)?;
+                .consensus_client
+                .runtime_api()
+                .head_receipt_number(consensus_chain_best_hash, self.domain_id)?;
 
             // Operator is lagging behind the receipt chain on its parent chain as another operator
             // already processed a block higher than the local best and submitted the receipt to
@@ -196,15 +162,16 @@ where
                 })?;
             let (bundle_header, extrinsics) = self
                 .domain_bundle_proposer
-                .propose_bundle_at(proof_of_election, self.parent_chain.clone(), tx_range)
+                .propose_bundle_at(proof_of_election, tx_range)
                 .await?;
 
             // if there are no extrinsics and no receipts to confirm, skip the bundle
             if self.skip_empty_bundle_production
                 && extrinsics.is_empty()
                 && !self
-                    .parent_chain
-                    .non_empty_er_exists(parent_chain_best_hash, self.domain_id)?
+                    .consensus_client
+                    .runtime_api()
+                    .non_empty_er_exists(consensus_chain_best_hash, self.domain_id)?
             {
                 tracing::warn!(
                     ?domain_best_number,

@@ -1,34 +1,28 @@
 use crate::domain_block_processor::{
     DomainBlockProcessor, PendingConsensusBlocks, ReceiptsChecker,
 };
-use crate::{DomainParentChain, ExecutionReceiptFor};
+use crate::ExecutionReceiptFor;
 use domain_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_block_preprocessor::DomainBlockPreprocessor;
 use domain_runtime_primitives::DomainCoreApi;
 use sc_client_api::{AuxStore, BlockBackend, Finalizer, ProofProvider};
 use sc_consensus::{BlockImportParams, ForkChoiceStrategy, StateAction};
-use sp_api::{NumberFor, ProvideRuntimeApi};
+use sp_api::{ApiExt, NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::BlockOrigin;
 use sp_core::traits::CodeExecutor;
+use sp_core::H256;
 use sp_domain_digests::AsPredigest;
 use sp_domains::{DomainId, DomainsApi, ReceiptValidity};
+use sp_domains_fraud_proof::FraudProofApi;
 use sp_keystore::KeystorePtr;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, Zero};
 use sp_runtime::{Digest, DigestItem};
 use std::sync::Arc;
 
-type DomainReceiptsChecker<Block, CBlock, Client, CClient, Backend, E> = ReceiptsChecker<
-    Block,
-    Client,
-    CBlock,
-    CClient,
-    Backend,
-    E,
-    DomainParentChain<Block, CBlock, CClient>,
-    CBlock,
->;
+type DomainReceiptsChecker<Block, CBlock, Client, CClient, Backend, E> =
+    ReceiptsChecker<Block, Client, CBlock, CClient, Backend, E>;
 
 pub(crate) struct BundleProcessor<Block, CBlock, Client, CClient, Backend, E>
 where
@@ -125,6 +119,7 @@ impl<Block, CBlock, Client, CClient, Backend, E>
     BundleProcessor<Block, CBlock, Client, CClient, Backend, E>
 where
     Block: BlockT,
+    Block::Hash: Into<H256>,
     CBlock: BlockT,
     NumberFor<CBlock>: From<NumberFor<Block>> + Into<NumberFor<Block>>,
     CBlock::Hash: From<Block::Hash>,
@@ -145,8 +140,10 @@ where
         + ProofProvider<CBlock>
         + ProvideRuntimeApi<CBlock>
         + 'static,
-    CClient::Api:
-        DomainsApi<CBlock, Block::Header> + MessengerApi<CBlock, NumberFor<CBlock>> + 'static,
+    CClient::Api: DomainsApi<CBlock, Block::Header>
+        + MessengerApi<CBlock, NumberFor<CBlock>>
+        + FraudProofApi<CBlock, Block::Header>
+        + 'static,
     Backend: sc_client_api::Backend<Block> + 'static,
     E: CodeExecutor,
 {
@@ -259,8 +256,7 @@ where
         let head_receipt_number = self
             .consensus_client
             .runtime_api()
-            .head_receipt_number(consensus_block_hash, self.domain_id)?
-            .into();
+            .head_receipt_number(consensus_block_hash, self.domain_id)?;
 
         let Some(preprocess_result) = self
             .domain_block_preprocessor
@@ -310,13 +306,25 @@ where
             head_receipt_number,
         )?;
 
-        // TODO: Remove as ReceiptsChecker has been superseded by ReceiptValidator in block-preprocessor.
-        self.domain_receipts_checker
-            .check_state_transition(consensus_block_hash)?;
+        // Check the consensus runtime version before checking bad ER and submit fraud proof.
+        //
+        // TODO: this is used to keep compatible with the gemini-3g network, because some necessary
+        // runtime API are introduced in `#[api_version(2)]`, remove this before the next network
+        let domains_api_version = self
+            .consensus_client
+            .runtime_api()
+            .api_version::<dyn DomainsApi<CBlock, Block::Header>>(consensus_block_hash)?
+            // safe to return default version as 1 since there will always be version 1.
+            .unwrap_or(1);
+        if domains_api_version >= 2 {
+            // TODO: Remove as ReceiptsChecker has been superseded by ReceiptValidator in block-preprocessor.
+            self.domain_receipts_checker
+                .check_state_transition(consensus_block_hash)?;
 
-        self.domain_receipts_checker
-            .submit_fraud_proof(consensus_block_hash)
-            .await?;
+            self.domain_receipts_checker
+                .submit_fraud_proof(consensus_block_hash)
+                .await?;
+        }
 
         Ok(Some(built_block_info))
     }

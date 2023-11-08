@@ -161,15 +161,15 @@ where
     )
 }
 
-pub(super) fn track_domain_hash_and_consensus_hash<Backend, Hash, PHash>(
+pub(super) fn track_domain_hash_and_consensus_hash<Backend, Hash, CHash>(
     backend: &Backend,
     best_domain_hash: Hash,
-    latest_consensus_hash: PHash,
+    latest_consensus_hash: CHash,
 ) -> ClientResult<()>
 where
     Backend: AuxStore,
     Hash: Clone + Encode,
-    PHash: Encode,
+    CHash: Encode,
 {
     // TODO: prune the stale mappings.
 

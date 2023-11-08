@@ -30,7 +30,7 @@ extern crate alloc;
 
 use crate::storage::{RawGenesis, StorageKey};
 use alloc::string::String;
-use bundle_producer_election::{BundleProducerElectionParams, VrfProofError};
+use bundle_producer_election::{BundleProducerElectionParams, ProofOfElectionError};
 use hexlit::hex;
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
@@ -52,6 +52,7 @@ use sp_runtime_interface::pass_by::PassBy;
 use sp_std::collections::btree_set::BTreeSet;
 use sp_std::fmt::{Display, Formatter};
 use sp_std::vec::Vec;
+use sp_trie::TrieLayout;
 use sp_weights::Weight;
 use subspace_core_primitives::crypto::blake3_hash;
 use subspace_core_primitives::{bidirectional_distance, Blake3Hash, Randomness, U256};
@@ -184,7 +185,7 @@ impl PassBy for DomainId {
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct BundleHeader<Number, Hash, DomainHeader: HeaderT, Balance> {
     /// Proof of bundle producer election.
-    pub proof_of_election: ProofOfElection,
+    pub proof_of_election: ProofOfElection<Hash>,
     /// Execution receipt that should extend the receipt chain or add confirmations
     /// to the head receipt.
     pub receipt: ExecutionReceipt<
@@ -341,7 +342,12 @@ impl<Extrinsic: Encode, Number, Hash, DomainHeader: HeaderT, Balance>
 }
 
 #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
-pub fn dummy_opaque_bundle<Number: Encode, Hash: Encode, DomainHeader: HeaderT, Balance: Encode>(
+pub fn dummy_opaque_bundle<
+    Number: Encode,
+    Hash: Default + Encode,
+    DomainHeader: HeaderT,
+    Balance: Encode,
+>(
     domain_id: DomainId,
     operator_id: OperatorId,
     receipt: ExecutionReceipt<
@@ -526,7 +532,7 @@ impl<
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct ProofOfElection {
+pub struct ProofOfElection<CHash> {
     /// Domain id.
     pub domain_id: DomainId,
     /// The slot number.
@@ -537,13 +543,15 @@ pub struct ProofOfElection {
     pub vrf_signature: VrfSignature,
     /// Operator index in the OperatorRegistry.
     pub operator_id: OperatorId,
+    /// Consensus block hash at which proof of election was derived.
+    pub consensus_block_hash: CHash,
 }
 
-impl ProofOfElection {
+impl<CHash> ProofOfElection<CHash> {
     pub fn verify_vrf_signature(
         &self,
         operator_signing_key: &OperatorPublicKey,
-    ) -> Result<(), VrfProofError> {
+    ) -> Result<(), ProofOfElectionError> {
         let global_challenge = self
             .global_randomness
             .derive_global_challenge(self.slot_number);
@@ -563,7 +571,7 @@ impl ProofOfElection {
     }
 }
 
-impl ProofOfElection {
+impl<CHash: Default> ProofOfElection<CHash> {
     #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
     pub fn dummy(domain_id: DomainId, operator_id: OperatorId) -> Self {
         let output_bytes = sp_std::vec![0u8; VrfOutput::max_encoded_len()];
@@ -578,6 +586,7 @@ impl ProofOfElection {
             global_randomness: Randomness::default(),
             vrf_signature,
             operator_id,
+            consensus_block_hash: Default::default(),
         }
     }
 }
@@ -876,6 +885,41 @@ pub fn derive_domain_block_hash<DomainHeader: HeaderT>(
     domain_header.hash()
 }
 
+/// Represents the extrinsic either as full data or hash of the data.
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+pub enum ExtrinsicDigest {
+    /// Actual extrinsic data that is inlined since it is less than 33 bytes.
+    Data(Vec<u8>),
+    /// Extrinsic Hash.
+    Hash(H256),
+}
+
+impl ExtrinsicDigest {
+    pub fn new<Layout: TrieLayout>(ext: Vec<u8>) -> Self
+    where
+        Layout::Hash: HashT,
+        <Layout::Hash as HashT>::Output: Into<H256>,
+    {
+        if let Some(threshold) = Layout::MAX_INLINE_VALUE {
+            if ext.len() >= threshold as usize {
+                ExtrinsicDigest::Hash(Layout::Hash::hash(&ext).into())
+            } else {
+                ExtrinsicDigest::Data(ext)
+            }
+        } else {
+            ExtrinsicDigest::Data(ext)
+        }
+    }
+}
+
+pub type ExecutionReceiptFor<DomainHeader, CBlock, Balance> = ExecutionReceipt<
+    NumberFor<CBlock>,
+    <CBlock as BlockT>::Hash,
+    <DomainHeader as HeaderT>::Number,
+    <DomainHeader as HeaderT>::Hash,
+    Balance,
+>;
+
 sp_api::decl_runtime_apis! {
     /// API necessary for domains pallet.
     pub trait DomainsApi<DomainHeader: HeaderT> {
@@ -887,6 +931,17 @@ sp_api::decl_runtime_apis! {
             domain_id: DomainId,
             extrinsics: Vec<Block::Extrinsic>,
         ) -> OpaqueBundles<Block, DomainHeader, Balance>;
+
+        /// Extract bundle from the extrinsic if the extrinsic is `submit_bundle`.
+        #[api_version(2)]
+        fn extract_bundle(extrinsic: Block::Extrinsic) -> Option<OpaqueBundle<NumberFor<Block>, Block::Hash, DomainHeader, Balance>>;
+
+        /// Extract the execution receipt stored successfully from the given extrinsics.
+        #[api_version(2)]
+        fn extract_receipts(
+            domain_id: DomainId,
+            extrinsics: Vec<Block::Extrinsic>,
+        ) -> Vec<ExecutionReceiptFor<DomainHeader, Block, Balance>>;
 
         /// Generates a randomness seed for extrinsics shuffling.
         fn extrinsics_shuffling_seed() -> Randomness;
@@ -910,13 +965,13 @@ sp_api::decl_runtime_apis! {
         fn genesis_state_root(domain_id: DomainId) -> Option<H256>;
 
         /// Returns the best execution chain number.
-        fn head_receipt_number(domain_id: DomainId) -> NumberFor<Block>;
+        fn head_receipt_number(domain_id: DomainId) -> HeaderNumberFor<DomainHeader>;
 
         /// Returns the block number of oldest execution receipt.
-        fn oldest_receipt_number(domain_id: DomainId) -> NumberFor<Block>;
+        fn oldest_receipt_number(domain_id: DomainId) -> HeaderNumberFor<DomainHeader>;
 
         /// Returns the block tree pruning depth.
-        fn block_tree_pruning_depth() -> NumberFor<Block>;
+        fn block_tree_pruning_depth() -> HeaderNumberFor<DomainHeader>;
 
         /// Returns the domain block limit of the given domain.
         fn domain_block_limit(domain_id: DomainId) -> Option<DomainBlockLimit>;
@@ -934,8 +989,7 @@ sp_api::decl_runtime_apis! {
             hash: HeaderHashFor<DomainHeader>) -> Option<HeaderHashFor<DomainHeader>>;
 
         /// Returns the execution receipt
-        #[allow(clippy::type_complexity)]
-        fn execution_receipt(receipt_hash: HeaderHashFor<DomainHeader>) -> Option<ExecutionReceipt<NumberFor<Block>, Block::Hash, HeaderNumberFor<DomainHeader>, HeaderHashFor<DomainHeader>, Balance>>;
+        fn execution_receipt(receipt_hash: HeaderHashFor<DomainHeader>) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>>;
     }
 
     pub trait BundleProducerElectionApi<Balance: Encode + Decode> {
