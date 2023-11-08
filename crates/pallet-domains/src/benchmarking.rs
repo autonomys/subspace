@@ -419,31 +419,6 @@ mod benchmarks {
         );
     }
 
-    #[benchmark]
-    fn auto_stake_block_rewards() {
-        let nominator = account("nominator", 1, SEED);
-        let minimum_nominator_stake = T::Currency::minimum_balance();
-        T::Currency::set_balance(
-            &nominator,
-            minimum_nominator_stake + T::Currency::minimum_balance(),
-        );
-
-        let domain_id = register_domain::<T>();
-        let (_, operator_id) = register_helper_operator::<T>(domain_id, minimum_nominator_stake);
-        assert_ok!(Domains::<T>::nominate_operator(
-            RawOrigin::Signed(nominator.clone()).into(),
-            operator_id,
-            minimum_nominator_stake,
-        ));
-        do_finalize_domain_staking::<T>(domain_id, 1u32.into())
-            .expect("finalize domain staking should success");
-
-        #[extrinsic_call]
-        _(RawOrigin::Signed(nominator.clone()), operator_id);
-
-        assert_eq!(PreferredOperator::<T>::get(nominator), Some(operator_id));
-    }
-
     fn register_runtime<T: Config>() -> RuntimeId {
         let runtime_blob =
             include_bytes!("../res/evm_domain_test_runtime.compact.compressed.wasm").to_vec();

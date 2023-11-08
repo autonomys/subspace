@@ -107,7 +107,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_version: 1,
     impl_version: 0,
     apis: RUNTIME_API_VERSIONS,
-    transaction_version: 0,
+    transaction_version: 1,
     state_version: 0,
 };
 
@@ -637,14 +637,6 @@ impl pallet_domains::Config for Runtime {
     type SudoId = SudoId;
 }
 
-pub struct StakingOnReward;
-
-impl pallet_rewards::OnReward<AccountId, Balance> for StakingOnReward {
-    fn on_reward(account: AccountId, reward: Balance) {
-        Domains::on_block_reward(account, reward);
-    }
-}
-
 parameter_types! {
     pub const BlockReward: Balance = SSC / (ExpectedVotesPerBlock::get() as Balance + 1);
     pub const VoteReward: Balance = SSC / (ExpectedVotesPerBlock::get() as Balance + 1);
@@ -658,7 +650,7 @@ impl pallet_rewards::Config for Runtime {
     type FindBlockRewardAddress = Subspace;
     type FindVotingRewardAddresses = Subspace;
     type WeightInfo = ();
-    type OnReward = StakingOnReward;
+    type OnReward = ();
 }
 
 impl pallet_runtime_configs::Config for Runtime {
