@@ -764,14 +764,16 @@ where
             }
         };
 
-        let indices = archived_segment
-            .segment_header
-            .segment_index()
-            .segment_piece_indexes();
+        let segment_index = archived_segment.segment_header.segment_index();
+        let (first_index, last_index) = (
+            segment_index.first_piece_index(),
+            segment_index.last_piece_index(),
+        );
         let pieces = &archived_segment.pieces;
-        for (piece_index, piece) in indices.into_iter().zip(pieces.iter()) {
-            if requested_piece_index == piece_index {
-                return Ok(Some(piece.to_vec()));
+        if requested_piece_index >= first_index && requested_piece_index <= last_index {
+            let offset = (requested_piece_index.position() - first_index.position()) as usize;
+            if pieces.len() >= offset + 1 {
+                return Ok(Some(pieces[offset].to_vec()));
             }
         }
 
