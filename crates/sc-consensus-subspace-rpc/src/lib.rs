@@ -767,11 +767,9 @@ where
         let pieces = &archived_segment.pieces;
         if requested_piece_index.segment_index() == archived_segment.segment_header.segment_index()
         {
-            if pieces.len() >= (requested_piece_index.position() + 1) as usize {
-                return Ok(Some(
-                    pieces[requested_piece_index.position() as usize].to_vec(),
-                ));
-            }
+            return Ok(Some(
+                pieces[requested_piece_index.position() as usize].to_vec(),
+            ));
         }
 
         Ok(None)
