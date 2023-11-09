@@ -764,15 +764,12 @@ where
             }
         };
 
-        let indices = archived_segment
-            .segment_header
-            .segment_index()
-            .segment_piece_indexes();
         let pieces = &archived_segment.pieces;
-        for (piece_index, piece) in indices.into_iter().zip(pieces.iter()) {
-            if requested_piece_index == piece_index {
-                return Ok(Some(piece.to_vec()));
-            }
+        if requested_piece_index.segment_index() == archived_segment.segment_header.segment_index()
+        {
+            return Ok(Some(
+                pieces[requested_piece_index.position() as usize].to_vec(),
+            ));
         }
 
         Ok(None)
