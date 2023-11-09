@@ -185,7 +185,7 @@ impl PassBy for DomainId {
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct BundleHeader<Number, Hash, DomainHeader: HeaderT, Balance> {
     /// Proof of bundle producer election.
-    pub proof_of_election: ProofOfElection<Hash>,
+    pub proof_of_election: ProofOfElection,
     /// Execution receipt that should extend the receipt chain or add confirmations
     /// to the head receipt.
     pub receipt: ExecutionReceipt<
@@ -532,7 +532,7 @@ impl<
 }
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
-pub struct ProofOfElection<CHash> {
+pub struct ProofOfElection {
     /// Domain id.
     pub domain_id: DomainId,
     /// The slot number.
@@ -543,11 +543,13 @@ pub struct ProofOfElection<CHash> {
     pub vrf_signature: VrfSignature,
     /// Operator index in the OperatorRegistry.
     pub operator_id: OperatorId,
-    /// Consensus block hash at which proof of election was derived.
-    pub consensus_block_hash: CHash,
+    // /// Consensus block hash at which proof of election was derived.
+    // TODO: enable before the new network
+    // Commented out due to mismatch of structure on Gemini-3g runtime and fails to decode/encode.
+    // pub consensus_block_hash: CHash,
 }
 
-impl<CHash> ProofOfElection<CHash> {
+impl ProofOfElection {
     pub fn verify_vrf_signature(
         &self,
         operator_signing_key: &OperatorPublicKey,
@@ -571,7 +573,7 @@ impl<CHash> ProofOfElection<CHash> {
     }
 }
 
-impl<CHash: Default> ProofOfElection<CHash> {
+impl ProofOfElection {
     #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
     pub fn dummy(domain_id: DomainId, operator_id: OperatorId) -> Self {
         let output_bytes = sp_std::vec![0u8; VrfOutput::max_encoded_len()];
@@ -586,7 +588,6 @@ impl<CHash: Default> ProofOfElection<CHash> {
             global_randomness: Randomness::default(),
             vrf_signature,
             operator_id,
-            consensus_block_hash: Default::default(),
         }
     }
 }

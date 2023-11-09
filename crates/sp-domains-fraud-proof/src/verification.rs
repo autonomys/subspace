@@ -521,7 +521,10 @@ where
         return Err(InvalidBundleEquivocationError::MismatchedOperatorAndDomain);
     }
 
-    let consensus_block_hash = header_1.header.proof_of_election.consensus_block_hash;
+    // TODO: enable before the new network
+    // Commented out due to mismatch of structure on Gemini-3g runtime and fails to decode/encode.
+    // let consensus_block_hash = header_1.header.proof_of_election.consensus_block_hash;
+    let consensus_block_hash: CBlock::Hash = Default::default();
     let domain_id = header_1.header.proof_of_election.domain_id;
     let operator_id = header_1.header.proof_of_election.operator_id;
 
@@ -540,7 +543,7 @@ where
     .ok_or(InvalidBundleEquivocationError::FailedToGetOperatorStake)?
     .saturated_into();
 
-    check_proof_of_election(
+    check_proof_of_election::<CBlock::Hash>(
         operator_signing_key,
         bundle_slot_probability,
         &header_1.header.proof_of_election,
@@ -549,7 +552,7 @@ where
     )
     .map_err(InvalidBundleEquivocationError::InvalidProofOfElection)?;
 
-    check_proof_of_election(
+    check_proof_of_election::<CBlock::Hash>(
         operator_signing_key,
         bundle_slot_probability,
         &header_2.header.proof_of_election,

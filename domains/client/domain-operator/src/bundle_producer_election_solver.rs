@@ -49,7 +49,7 @@ where
         consensus_block_hash: CBlock::Hash,
         domain_id: DomainId,
         global_randomness: Randomness,
-    ) -> sp_blockchain::Result<Option<(ProofOfElection<CBlock::Hash>, OperatorPublicKey)>> {
+    ) -> sp_blockchain::Result<Option<(ProofOfElection, OperatorPublicKey)>> {
         let BundleProducerElectionParams {
             current_operators,
             total_domain_stake,
@@ -94,7 +94,9 @@ where
                             global_randomness,
                             vrf_signature,
                             operator_id,
-                            consensus_block_hash,
+                            // TODO: enable before the new network
+                            // Commented out due to mismatch of structure on Gemini-3g runtime and fails to decode/encode.
+                            // consensus_block_hash,
                         };
                         return Ok(Some((proof_of_election, operator_signing_key)));
                     }

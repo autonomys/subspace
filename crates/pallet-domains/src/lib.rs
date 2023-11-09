@@ -1494,7 +1494,7 @@ impl<T: Config> Pallet<T> {
         let (operator_stake, total_domain_stake) =
             Self::fetch_operator_stake_info(domain_id, &operator_id)?;
 
-        sp_domains::bundle_producer_election::check_proof_of_election(
+        sp_domains::bundle_producer_election::check_proof_of_election::<T::Hash>(
             &operator.signing_key,
             domain_config.bundle_slot_probability,
             proof_of_election,

@@ -75,7 +75,7 @@ where
 
     pub(crate) async fn propose_bundle_at(
         &self,
-        proof_of_election: ProofOfElection<CBlock::Hash>,
+        proof_of_election: ProofOfElection,
         tx_range: U256,
     ) -> sp_blockchain::Result<ProposeBundleOutput<Block, CBlock>> {
         let parent_number = self.client.info().best_number;

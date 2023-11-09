@@ -87,7 +87,7 @@ pub(crate) fn verify_vrf_signature(
 pub fn check_proof_of_election<CHash>(
     operator_signing_key: &OperatorPublicKey,
     bundle_slot_probability: (u64, u64),
-    proof_of_election: &ProofOfElection<CHash>,
+    proof_of_election: &ProofOfElection,
     operator_stake: StakeWeight,
     total_domain_stake: StakeWeight,
 ) -> Result<(), ProofOfElectionError> {
