@@ -28,14 +28,13 @@ use libp2p::gossipsub::{
 use libp2p::identify::Config as IdentifyConfig;
 use libp2p::kad::store::RecordStore;
 use libp2p::kad::{
-    store, KademliaBucketInserts, KademliaConfig, KademliaStoreInserts, Mode, ProviderRecord,
-    Record, RecordKey,
+    store, BucketInserts, Config as KademliaConfig, Mode, ProviderRecord, Record, RecordKey,
+    StoreInserts,
 };
 use libp2p::metrics::Metrics;
 use libp2p::multiaddr::Protocol;
-use libp2p::swarm::SwarmBuilder;
 use libp2p::yamux::Config as YamuxConfig;
-use libp2p::{identity, Multiaddr, PeerId, StreamProtocol, TransportError};
+use libp2p::{identity, Multiaddr, PeerId, StreamProtocol, SwarmBuilder, TransportError};
 use parking_lot::Mutex;
 use std::borrow::Cow;
 use std::iter::Empty;
@@ -61,6 +60,8 @@ const SPECIAL_CONNECTED_PEERS_PROTOCOL_LOG_TARGET: &str = "special-connected-pee
 /// Defines max_negotiating_inbound_streams constant for the swarm.
 /// It must be set for large plots.
 const SWARM_MAX_NEGOTIATING_INBOUND_STREAMS: usize = 100000;
+/// How long will connection be allowed to be open without any usage
+const IDLE_CONNECTION_TIMEOUT: Duration = Duration::from_secs(10);
 /// The default maximum established incoming connection number for the swarm.
 const SWARM_MAX_ESTABLISHED_INCOMING_CONNECTIONS: u32 = 100;
 /// The default maximum established incoming connection number for the swarm.
@@ -306,8 +307,8 @@ where
             .expect("Manual protocol name creation.")])
             .disjoint_query_paths(true)
             .set_max_packet_size(2 * Piece::SIZE)
-            .set_kbucket_inserts(KademliaBucketInserts::Manual)
-            .set_record_filtering(KademliaStoreInserts::FilterBoth)
+            .set_kbucket_inserts(BucketInserts::Manual)
+            .set_record_filtering(StoreInserts::FilterBoth)
             // We don't use records and providers publication.
             .set_provider_record_ttl(None)
             .set_provider_publication_interval(None)
@@ -397,6 +398,11 @@ pub enum CreationError {
     /// I/O error.
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),
+    /// Transport creation error.
+    #[error("Transport creation error: {0}")]
+    // TODO: Restore `#[from] TransportError` once https://github.com/libp2p/rust-libp2p/issues/4824
+    //  is resolved
+    TransportCreationError(Box<dyn std::error::Error + Send + Sync>),
     /// Transport error when attempting to listen on multiaddr.
     #[error("Transport error when attempting to listen on multiaddr: {0}")]
     TransportError(#[from] TransportError<io::Error>),
@@ -452,18 +458,6 @@ where
         disable_bootstrap_on_start,
     } = config;
     let local_peer_id = peer_id(&keypair);
-
-    let temporary_bans = Arc::new(Mutex::new(TemporaryBans::new(
-        temporary_bans_cache_size,
-        temporary_ban_backoff,
-    )));
-    let transport = build_transport(
-        allow_non_global_addresses_in_dht,
-        &keypair,
-        Arc::clone(&temporary_bans),
-        timeout,
-        yamux_config,
-    )?;
 
     info!(
         %allow_non_global_addresses_in_dht,
@@ -521,8 +515,30 @@ where
         }),
     });
 
-    let mut swarm = SwarmBuilder::with_tokio_executor(transport, behaviour, local_peer_id)
-        .max_negotiating_inbound_streams(SWARM_MAX_NEGOTIATING_INBOUND_STREAMS)
+    let temporary_bans = Arc::new(Mutex::new(TemporaryBans::new(
+        temporary_bans_cache_size,
+        temporary_ban_backoff,
+    )));
+
+    let mut swarm = SwarmBuilder::with_existing_identity(keypair)
+        .with_tokio()
+        .with_other_transport(|keypair| {
+            Ok(build_transport(
+                allow_non_global_addresses_in_dht,
+                keypair,
+                Arc::clone(&temporary_bans),
+                timeout,
+                yamux_config,
+            )?)
+        })
+        .map_err(|error| CreationError::TransportCreationError(error.into()))?
+        .with_behaviour(move |_keypair| Ok(behaviour))
+        .expect("Not fallible; qed")
+        .with_swarm_config(|config| {
+            config
+                .with_max_negotiating_inbound_streams(SWARM_MAX_NEGOTIATING_INBOUND_STREAMS)
+                .with_idle_connection_timeout(IDLE_CONNECTION_TIMEOUT)
+        })
         .build();
 
     // Setup listen_on addresses

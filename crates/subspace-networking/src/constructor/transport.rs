@@ -1,11 +1,10 @@
 use crate::constructor::temporary_bans::TemporaryBans;
-use crate::CreationError;
 use futures::future::Either;
 use libp2p::core::multiaddr::{Multiaddr, Protocol};
 use libp2p::core::muxing::StreamMuxerBox;
 use libp2p::core::transport::{Boxed, ListenerId, TransportError, TransportEvent};
 use libp2p::core::Transport;
-use libp2p::dns::TokioDnsConfig;
+use libp2p::dns::tokio::Transport as TokioTransport;
 use libp2p::quic::tokio::Transport as QuicTransport;
 use libp2p::quic::Config as QuicConfig;
 use libp2p::tcp::tokio::Transport as TokioTcpTransport;
@@ -27,7 +26,7 @@ pub(super) fn build_transport(
     temporary_bans: Arc<Mutex<TemporaryBans>>,
     timeout: Duration,
     yamux_config: YamuxConfig,
-) -> Result<Boxed<(PeerId, StreamMuxerBox)>, CreationError> {
+) -> io::Result<Boxed<(PeerId, StreamMuxerBox)>> {
     let wrapped_tcp = {
         let tcp_config = GenTcpConfig::default().nodelay(true);
 
@@ -68,9 +67,7 @@ pub(super) fn build_transport(
             Either::Right((peer_id, muxer)) => (peer_id, muxer),
         });
 
-    let dns_wrapped_upgraded_quic_tcp = TokioDnsConfig::system(quic_tcp)?;
-
-    Ok(dns_wrapped_upgraded_quic_tcp.boxed())
+    Ok(TokioTransport::system(quic_tcp)?.boxed())
 }
 
 #[derive(Debug, Clone)]

@@ -19,7 +19,7 @@ async-trait = "0.1.73"
 cross-domain-message-gossip = { version = "0.1.0", path = "../../domains/client/cross-domain-message-gossip" }
 codec = { package = "parity-scale-codec", version = "3.2.1", features = ["derive"] }
 domain-runtime-primitives = { version = "0.1.0", path = "../../domains/primitives/runtime" }
-futures = "0.3.28"
+futures = "0.3.29"
 futures-timer = "3.0.1"
 jsonrpsee = { version = "0.16.3", features = ["server"] }
 rand = "0.8.5"

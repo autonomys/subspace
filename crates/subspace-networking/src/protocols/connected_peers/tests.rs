@@ -3,10 +3,9 @@ use futures::{select, FutureExt};
 use libp2p::core::transport::MemoryTransport;
 use libp2p::core::upgrade::Version;
 use libp2p::core::Transport;
-use libp2p::identity::{Keypair, PeerId};
-use libp2p::plaintext::PlainText2Config;
-use libp2p::swarm::{NetworkBehaviour, SwarmBuilder, SwarmEvent};
-use libp2p::{yamux, Swarm};
+use libp2p::plaintext::Config as PlainTextConfig;
+use libp2p::swarm::{NetworkBehaviour, SwarmEvent};
+use libp2p::{yamux, Swarm, SwarmBuilder};
 use libp2p_swarm_test::SwarmExt;
 use std::time::Duration;
 use tokio::time::sleep;
@@ -43,7 +42,7 @@ async fn test_connection_breaks_after_timeout_without_decision() {
         }),
     );
 
-    peer2.listen().await;
+    peer2.listen().with_memory_addr_external().await;
     peer1.connect(&mut peer2).await;
 
     loop {
@@ -79,7 +78,7 @@ async fn test_connection_decision() {
         }),
     );
 
-    peer2.listen().await;
+    peer2.listen().with_memory_addr_external().await;
     peer1.connect(&mut peer2).await;
 
     peer1
@@ -122,7 +121,7 @@ async fn test_connection_decision_symmetry() {
         }),
     );
 
-    peer2.listen().await;
+    peer2.listen().with_memory_addr_external().await;
     peer1.connect(&mut peer2).await;
 
     peer1
@@ -160,7 +159,7 @@ async fn test_new_peer_request() {
         }),
     );
 
-    peer1.listen().await;
+    peer1.listen().with_memory_addr_external().await;
 
     let waiting_for_event_fut = async {
         while !matches!(
@@ -217,8 +216,8 @@ async fn test_target_connected_peer_limit_number() {
         }),
     );
 
-    peer2.listen().await;
-    peer3.listen().await;
+    peer2.listen().with_memory_addr_external().await;
+    peer3.listen().with_memory_addr_external().await;
 
     peer1.connect(&mut peer2).await;
     peer1.connect(&mut peer3).await;
@@ -272,18 +271,19 @@ async fn test_target_connected_peer_limit_number() {
 }
 
 fn new_ephemeral<NB: NetworkBehaviour>(connection_timeout: Duration, behaviour: NB) -> Swarm<NB> {
-    let identity = Keypair::generate_ed25519();
-    let peer_id = PeerId::from(identity.public());
-
-    let transport = MemoryTransport::default()
-        .or_transport(libp2p::tcp::tokio::Transport::default())
-        .upgrade(Version::V1)
-        .authenticate(PlainText2Config {
-            local_public_key: identity.public(),
+    SwarmBuilder::with_new_identity()
+        .with_tokio()
+        .with_other_transport(|keypair| {
+            MemoryTransport::default()
+                .or_transport(libp2p::tcp::tokio::Transport::default())
+                .upgrade(Version::V1)
+                .authenticate(PlainTextConfig::new(keypair))
+                .multiplex(yamux::Config::default())
+                .timeout(connection_timeout)
+                .boxed()
         })
-        .multiplex(yamux::Config::default())
-        .timeout(connection_timeout)
-        .boxed();
-
-    SwarmBuilder::without_executor(transport, behaviour, peer_id).build()
+        .unwrap()
+        .with_behaviour(move |_keypair| behaviour)
+        .unwrap()
+        .build()
 }

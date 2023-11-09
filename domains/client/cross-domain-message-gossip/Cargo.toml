@@ -12,7 +12,7 @@ include = [
 ]
 
 [dependencies]
-futures = "0.3.28"
+futures = "0.3.29"
 parity-scale-codec = { version = "3.6.5", features = ["derive"] }
 parking_lot = "0.12.1"
 sc-network = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "892bf8e938c6bd2b893d3827d1093cd81baa59a1" }

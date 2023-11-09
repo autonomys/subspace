@@ -36,14 +36,13 @@ use libp2p::core::{Endpoint, Multiaddr};
 use libp2p::swarm::behaviour::{ConnectionEstablished, FromSwarm};
 use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::swarm::{
-    ConnectionClosed, ConnectionDenied, ConnectionId, DialFailure, KeepAlive, NetworkBehaviour,
-    NotifyHandler, PollParameters, THandler, THandlerInEvent, THandlerOutEvent, ToSwarm,
+    ConnectionClosed, ConnectionDenied, ConnectionId, DialFailure, NetworkBehaviour, NotifyHandler,
+    THandler, THandlerInEvent, THandlerOutEvent, ToSwarm,
 };
 use libp2p::PeerId;
 use std::collections::hash_map::Entry;
 use std::collections::HashMap;
 use std::marker::PhantomData;
-use std::ops::Add;
 use std::task::{Context, Poll, Waker};
 use std::time::{Duration, Instant};
 use tracing::{debug, trace};
@@ -144,7 +143,7 @@ pub enum Event<Instance> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct PeerConnectionDecisionUpdate {
     peer_id: PeerId,
-    keep_alive: KeepAlive,
+    keep_alive: handler::KeepAlive,
     connection_id: ConnectionId,
 }
 
@@ -202,30 +201,30 @@ impl<Instance> Behaviour<Instance> {
 
     /// Create a connection handler for the protocol.
     fn new_connection_handler(&mut self, peer_id: &PeerId, connection_id: ConnectionId) -> Handler {
-        let default_until = Instant::now().add(self.config.decision_timeout);
-        let default_keep_alive_until = KeepAlive::Until(default_until);
-        let keep_alive = if let Some(connection_state) = self.known_peers.get_mut(peer_id) {
-            match connection_state {
-                ConnectionState::Preparing { .. } | ConnectionState::Connecting { .. } => {
-                    // Connection attempt was successful.
-                    *connection_state = ConnectionState::Deciding { connection_id };
+        let default_keep_alive_until = Instant::now() + self.config.decision_timeout;
+        let (keep_alive, keep_alive_until) =
+            if let Some(connection_state) = self.known_peers.get_mut(peer_id) {
+                match connection_state {
+                    ConnectionState::Preparing { .. } | ConnectionState::Connecting { .. } => {
+                        // Connection attempt was successful.
+                        *connection_state = ConnectionState::Deciding { connection_id };
 
-                    default_keep_alive_until
+                        (true, Some(default_keep_alive_until))
+                    }
+                    ConnectionState::Deciding { .. } => (false, None), // We're already have a connection
+                    ConnectionState::Permanent { .. } => (false, None), // We're already have a connection
+                    ConnectionState::NotInterested => (false, None),
                 }
-                ConnectionState::Deciding { .. } => KeepAlive::No, // We're already have a connection
-                ConnectionState::Permanent { .. } => KeepAlive::No, // We're already have a connection
-                ConnectionState::NotInterested => KeepAlive::No,
-            }
-        } else {
-            // Connection from other protocols.
-            self.known_peers
-                .insert(*peer_id, ConnectionState::Deciding { connection_id });
+            } else {
+                // Connection from other protocols.
+                self.known_peers
+                    .insert(*peer_id, ConnectionState::Deciding { connection_id });
 
-            default_keep_alive_until
-        };
+                (true, Some(default_keep_alive_until))
+            };
 
         self.wake();
-        Handler::new(keep_alive)
+        Handler::new(keep_alive, keep_alive_until)
     }
 
     /// Specifies the whether we should keep connections to the peer alive. The decision could
@@ -247,9 +246,9 @@ impl<Instance> Behaviour<Instance> {
                 // Check whether we have enough connected peers already and a positive decision
                 let (new_connection_state, keep_alive_handler) =
                     if not_enough_connected_peers && keep_alive {
-                        (ConnectionState::Permanent { connection_id }, KeepAlive::Yes)
+                        (ConnectionState::Permanent { connection_id }, true)
                     } else {
-                        (ConnectionState::NotInterested, KeepAlive::No)
+                        (ConnectionState::NotInterested, false)
                     };
 
                 *connection_state = new_connection_state;
@@ -365,7 +364,7 @@ impl<Instance: 'static + Send> NetworkBehaviour for Behaviour<Instance> {
         Ok(self.new_connection_handler(&peer_id, connection_id))
     }
 
-    fn on_swarm_event(&mut self, event: FromSwarm<Self::ConnectionHandler>) {
+    fn on_swarm_event(&mut self, event: FromSwarm) {
         match event {
             FromSwarm::ConnectionEstablished(ConnectionEstablished {
                 peer_id,
@@ -420,39 +419,32 @@ impl<Instance: 'static + Send> NetworkBehaviour for Behaviour<Instance> {
                     }
                 };
             }
-            FromSwarm::DialFailure(DialFailure { peer_id, error, .. }) => {
-                if let Some(peer_id) = peer_id {
-                    let other_connections = self
-                        .known_peers
-                        .get(&peer_id)
-                        .map(|connection_state| connection_state.connected())
-                        .unwrap_or(false);
-                    if !other_connections {
-                        let old_peer_decision = self.known_peers.remove(&peer_id);
+            FromSwarm::DialFailure(DialFailure {
+                peer_id: Some(peer_id),
+                error,
+                ..
+            }) => {
+                let other_connections = self
+                    .known_peers
+                    .get(&peer_id)
+                    .map(|connection_state| connection_state.connected())
+                    .unwrap_or(false);
+                if !other_connections {
+                    let old_peer_decision = self.known_peers.remove(&peer_id);
 
-                        if old_peer_decision.is_some() {
-                            debug!(
-                                %peer_id,
-                                ?old_peer_decision,
-                                ?error,
-                                "Dialing error to known peer"
-                            );
-                        }
+                    if old_peer_decision.is_some() {
+                        debug!(
+                            %peer_id,
+                            ?old_peer_decision,
+                            ?error,
+                            "Dialing error to known peer"
+                        );
                     }
-
-                    self.wake();
                 }
+
+                self.wake();
             }
-            FromSwarm::AddressChange(_)
-            | FromSwarm::ListenFailure(_)
-            | FromSwarm::NewListener(_)
-            | FromSwarm::NewListenAddr(_)
-            | FromSwarm::ExpiredListenAddr(_)
-            | FromSwarm::ListenerError(_)
-            | FromSwarm::ListenerClosed(_)
-            | FromSwarm::NewExternalAddrCandidate(_)
-            | FromSwarm::ExternalAddrConfirmed(_)
-            | FromSwarm::ExternalAddrExpired(_) => {}
+            _ => {}
         }
     }
 
@@ -467,7 +459,6 @@ impl<Instance: 'static + Send> NetworkBehaviour for Behaviour<Instance> {
     fn poll(
         &mut self,
         cx: &mut Context<'_>,
-        _: &mut impl PollParameters,
     ) -> Poll<ToSwarm<Self::ToSwarm, THandlerInEvent<Self>>> {
         // Notify handlers about received connection decision.
         if let Some(change) = self.peer_decision_changes.pop() {

@@ -26,7 +26,7 @@ derive_more = "0.99.17"
 either = "1.8.1"
 event-listener-primitives = "2.0.1"
 fs2 = "0.4.3"
-futures = "0.3.28"
+futures = "0.3.29"
 futures-timer = "3.0.2"
 hex = "0.4.3"
 lru = "0.11.0"
@@ -35,7 +35,7 @@ nohash-hasher = "0.2.0"
 parity-scale-codec = "3.6.5"
 parking_lot = "0.12.1"
 pin-project = "1.1.3"
-prometheus-client = "0.21.2"
+prometheus-client = "0.22.0"
 rand = "0.8.5"
 serde = { version = "1.0.183", features = ["derive"] }
 serde_json = "1.0.106"
@@ -50,7 +50,7 @@ void = "1.0.2"
 
 [dependencies.libp2p]
 git = "https://github.com/subspace/rust-libp2p"
-rev = "7a9328fc0a5f9e28575192d5f4f8663fde6752af"
+rev = "64f3baf300f68a861acf9de644fe980529c5618a"
 default-features = false
 features = [
     "autonat",
@@ -73,4 +73,4 @@ features = [
 
 [dev-dependencies]
 rand = "0.8.5"
-libp2p-swarm-test = { git = "https://github.com/subspace/rust-libp2p", rev = "7a9328fc0a5f9e28575192d5f4f8663fde6752af" }
+libp2p-swarm-test = { git = "https://github.com/subspace/rust-libp2p", rev = "64f3baf300f68a861acf9de644fe980529c5618a" }

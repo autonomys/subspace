@@ -27,9 +27,10 @@ use libp2p::core::{address_translation, ConnectedPoint};
 use libp2p::gossipsub::{Event as GossipsubEvent, TopicHash};
 use libp2p::identify::Event as IdentifyEvent;
 use libp2p::kad::{
-    BootstrapOk, GetClosestPeersError, GetClosestPeersOk, GetProvidersError, GetProvidersOk,
-    GetRecordError, GetRecordOk, InboundRequest, Kademlia, KademliaEvent, Mode, PeerRecord,
-    ProgressStep, PutRecordOk, QueryId, QueryResult, Quorum, Record,
+    Behaviour as Kademlia, BootstrapOk, Event as KademliaEvent, GetClosestPeersError,
+    GetClosestPeersOk, GetProvidersError, GetProvidersOk, GetRecordError, GetRecordOk,
+    InboundRequest, Mode, PeerRecord, ProgressStep, PutRecordOk, QueryId, QueryResult, Quorum,
+    Record,
 };
 use libp2p::metrics::{Metrics, Recorder};
 use libp2p::swarm::{DialError, SwarmEvent};
@@ -410,7 +411,7 @@ where
             .remove_address(&event.peer_id, &remove_p2p_suffix(event.address));
     }
 
-    async fn handle_swarm_event<E: Debug>(&mut self, swarm_event: SwarmEvent<Event, E>) {
+    async fn handle_swarm_event(&mut self, swarm_event: SwarmEvent<Event>) {
         match swarm_event {
             SwarmEvent::Behaviour(Event::Identify(event)) => {
                 self.handle_identify_event(event).await;
@@ -1482,7 +1483,7 @@ where
             .remove_all_known_peer_addresses(peer_id);
     }
 
-    fn register_event_metrics<E: Debug>(&mut self, swarm_event: &SwarmEvent<Event, E>) {
+    fn register_event_metrics(&mut self, swarm_event: &SwarmEvent<Event>) {
         if let Some(ref mut metrics) = self.metrics {
             match swarm_event {
                 SwarmEvent::Behaviour(Event::Ping(ping_event)) => {

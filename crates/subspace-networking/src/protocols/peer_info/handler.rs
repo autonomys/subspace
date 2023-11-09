@@ -7,10 +7,10 @@ use libp2p::swarm::handler::{
     ListenUpgradeError, StreamUpgradeError as ConnectionHandlerUpgrErr,
 };
 use libp2p::swarm::{
-    ConnectionHandler, ConnectionHandlerEvent, KeepAlive, Stream as NegotiatedSubstream,
-    SubstreamProtocol,
+    ConnectionHandler, ConnectionHandlerEvent, Stream as NegotiatedSubstream, SubstreamProtocol,
 };
 use libp2p::StreamProtocol;
+use std::collections::VecDeque;
 use std::error::Error;
 use std::io;
 use std::sync::Arc;
@@ -40,8 +40,8 @@ impl Config {
     }
 
     /// Sets the protocol timeout.
-    pub fn with_timeout(mut self, d: Duration) -> Self {
-        self.timeout = d;
+    pub fn with_timeout(mut self, timeout: Duration) -> Self {
+        self.timeout = timeout;
         self
     }
 }
@@ -86,8 +86,14 @@ pub struct Handler {
     outbound: Option<OutboundState>,
     /// The inbound request future.
     inbound: Option<InPeerInfoFuture>,
-    /// Last peer-info error.
-    error: Option<PeerInfoError>,
+    /// Queue of events to return when polled.
+    queued_events: VecDeque<
+        ConnectionHandlerEvent<
+            <Self as ConnectionHandler>::OutboundProtocol,
+            <Self as ConnectionHandler>::OutboundOpenInfo,
+            <Self as ConnectionHandler>::ToBehaviour,
+        >,
+    >,
     /// Future waker.
     waker: Option<Waker>,
 }
@@ -99,7 +105,7 @@ impl Handler {
             config,
             outbound: None,
             inbound: None,
-            error: None,
+            queued_events: VecDeque::default(),
             waker: None,
         }
     }
@@ -114,7 +120,6 @@ impl Handler {
 impl ConnectionHandler for Handler {
     type FromBehaviour = HandlerInEvent;
     type ToBehaviour = Result<PeerInfoSuccess, PeerInfoError>;
-    type Error = PeerInfoError;
     type InboundProtocol = ReadyUpgrade<StreamProtocol>;
     type OutboundProtocol = ReadyUpgrade<StreamProtocol>;
     type OutboundOpenInfo = Arc<PeerInfo>;
@@ -138,10 +143,6 @@ impl ConnectionHandler for Handler {
         self.wake();
     }
 
-    fn connection_keep_alive(&self) -> KeepAlive {
-        KeepAlive::No
-    }
-
     fn poll(
         &mut self,
         cx: &mut Context<'_>,
@@ -150,23 +151,25 @@ impl ConnectionHandler for Handler {
             ReadyUpgrade<StreamProtocol>,
             Self::OutboundOpenInfo,
             Result<PeerInfoSuccess, PeerInfoError>,
-            Self::Error,
         >,
     > {
-        if let Some(error) = self.error.take() {
-            return Poll::Ready(ConnectionHandlerEvent::Close(error));
+        // Return queued events.
+        if let Some(event) = self.queued_events.pop_front() {
+            return Poll::Ready(event);
         }
 
         // Respond to inbound requests.
         if let Some(fut) = self.inbound.as_mut() {
             match fut.poll_unpin(cx) {
                 Poll::Pending => {}
-                Poll::Ready(Err(err)) => {
-                    debug!(?err, "Peer info handler: inbound peer info error.");
+                Poll::Ready(Err(error)) => {
+                    debug!(?error, "Peer info handler: inbound peer info error.");
 
-                    return Poll::Ready(ConnectionHandlerEvent::Close(PeerInfoError::Other {
-                        error: Box::new(err),
-                    }));
+                    return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(Err(
+                        PeerInfoError::Other {
+                            error: Box::new(error),
+                        },
+                    )));
                 }
                 Poll::Ready(Ok((stream, peer_info))) => {
                     debug!(?peer_info, "Inbound peer info");
@@ -196,9 +199,11 @@ impl ConnectionHandler for Handler {
                     Poll::Ready(Err(error)) => {
                         debug!(?error, "Outbound peer info error.",);
 
-                        self.error = Some(PeerInfoError::Other {
-                            error: Box::new(error),
-                        });
+                        return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(Err(
+                            PeerInfoError::Other {
+                                error: Box::new(error),
+                            },
+                        )));
                     }
                 }
             }
@@ -257,19 +262,25 @@ impl ConnectionHandler for Handler {
                     | ConnectionHandlerUpgrErr::Apply(..) => {
                         debug!(?error, "Peer-info protocol dial upgrade failed");
                     }
-                    e => {
-                        self.error = Some(PeerInfoError::Other { error: Box::new(e) });
+                    error => {
+                        self.queued_events
+                            .push_back(ConnectionHandlerEvent::NotifyBehaviour(Err(
+                                PeerInfoError::Other {
+                                    error: Box::new(error),
+                                },
+                            )));
                     }
                 };
             }
             ConnectionEvent::ListenUpgradeError(ListenUpgradeError { error, .. }) => {
-                self.error = Some(PeerInfoError::Other {
-                    error: Box::new(error),
-                });
+                self.queued_events
+                    .push_back(ConnectionHandlerEvent::NotifyBehaviour(Err(
+                        PeerInfoError::Other {
+                            error: Box::new(error),
+                        },
+                    )));
             }
-            ConnectionEvent::AddressChange(_) => {}
-            ConnectionEvent::LocalProtocolsChange(_) => {}
-            ConnectionEvent::RemoteProtocolsChange(_) => {}
+            _ => {}
         }
         self.wake();
     }

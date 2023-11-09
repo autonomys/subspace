@@ -32,7 +32,7 @@ subspace-verification = { version = "0.1.0", path = "../subspace-verification", 
 
 [dev-dependencies]
 env_logger = "0.10.0"
-futures = "0.3.28"
+futures = "0.3.29"
 pallet-balances = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "892bf8e938c6bd2b893d3827d1093cd81baa59a1" }
 pallet-offences-subspace = { version = "0.1.0", path = "../pallet-offences-subspace" }
 rand = { version = "0.8.5", features = ["min_const_gen"] }

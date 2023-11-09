@@ -3,10 +3,10 @@ use futures::{select, FutureExt};
 use libp2p::core::transport::MemoryTransport;
 use libp2p::core::upgrade::Version;
 use libp2p::core::Transport;
-use libp2p::identity::{Keypair, PeerId};
-use libp2p::plaintext::PlainText2Config;
-use libp2p::swarm::{NetworkBehaviour, SwarmBuilder, SwarmEvent};
-use libp2p::{yamux, Swarm};
+use libp2p::identity::Keypair;
+use libp2p::plaintext::Config as PlainTextConfig;
+use libp2p::swarm::{NetworkBehaviour, SwarmEvent};
+use libp2p::{yamux, Swarm, SwarmBuilder};
 use libp2p_swarm_test::SwarmExt;
 use std::time::Duration;
 use tokio::time::sleep;
@@ -41,8 +41,8 @@ async fn test_connection_breaks_after_timeout_without_reservation() {
         }),
     );
 
-    peer1.listen().await;
-    peer2.listen().await;
+    peer1.listen().with_memory_addr_external().await;
+    peer2.listen().with_memory_addr_external().await;
     peer1.connect(&mut peer2).await;
 
     loop {
@@ -89,8 +89,8 @@ async fn test_connection_reservation() {
         }),
     );
 
-    peer1.listen().await;
-    peer2.listen().await;
+    peer1.listen().with_memory_addr_external().await;
+    peer2.listen().with_memory_addr_external().await;
     peer1.connect(&mut peer2).await;
 
     loop {
@@ -116,28 +116,27 @@ async fn test_connection_reservation_symmetry() {
     let identity1 = Keypair::generate_ed25519();
     let identity2 = Keypair::generate_ed25519();
 
-    let peer2_address = format!("/memory/0/p2p/{}", identity2.public().to_peer_id());
-
     let mut peer1 = new_ephemeral(
         identity1,
         connection_timeout,
         Behaviour::new(Config {
-            reserved_peers: vec![peer2_address.parse().unwrap()],
+            reserved_peers: vec![],
             dialing_interval: DIALING_INTERVAL_IN_SECS,
         }),
     );
+
+    let (peer_1_memory_address, _) = peer1.listen().with_memory_addr_external().await;
 
     let mut peer2 = new_ephemeral(
         identity2,
         connection_timeout,
         Behaviour::new(Config {
-            reserved_peers: Vec::new(),
+            reserved_peers: vec![peer_1_memory_address],
             dialing_interval: DIALING_INTERVAL_IN_SECS,
         }),
     );
 
-    peer1.listen().await;
-    peer2.listen().await;
+    peer2.listen().with_memory_addr_external().await;
     peer1.connect(&mut peer2).await;
 
     loop {
@@ -175,7 +174,7 @@ async fn test_reserved_peers_dial_event() {
         }),
     );
 
-    peer1.listen().await;
+    peer1.listen().with_memory_addr_external().await;
 
     select! {
         event = peer1.next_swarm_event().fuse() => {
@@ -196,17 +195,19 @@ fn new_ephemeral<NB: NetworkBehaviour>(
     connection_timeout: Duration,
     behaviour: NB,
 ) -> Swarm<NB> {
-    let peer_id = PeerId::from(identity.public());
-
-    let transport = MemoryTransport::default()
-        .or_transport(libp2p::tcp::tokio::Transport::default())
-        .upgrade(Version::V1)
-        .authenticate(PlainText2Config {
-            local_public_key: identity.public(),
+    SwarmBuilder::with_existing_identity(identity)
+        .with_tokio()
+        .with_other_transport(|identity| {
+            MemoryTransport::default()
+                .or_transport(libp2p::tcp::tokio::Transport::default())
+                .upgrade(Version::V1)
+                .authenticate(PlainTextConfig::new(identity))
+                .multiplex(yamux::Config::default())
+                .timeout(connection_timeout)
+                .boxed()
         })
-        .multiplex(yamux::Config::default())
-        .timeout(connection_timeout)
-        .boxed();
-
-    SwarmBuilder::without_executor(transport, behaviour, peer_id).build()
+        .unwrap()
+        .with_behaviour(move |_keypair| behaviour)
+        .unwrap()
+        .build()
 }

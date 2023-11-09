@@ -1,6 +1,6 @@
 use crate::utils::multihash::Multihash;
 use crate::utils::unique_record_binary_heap::UniqueRecordBinaryHeap;
-use libp2p::kad::record::Key;
+use libp2p::kad::RecordKey;
 use libp2p::PeerId;
 
 #[test]
@@ -10,8 +10,8 @@ fn binary_heap_insert_works() {
 
     assert_eq!(heap.size(), 0);
 
-    let key1 = Key::from(vec![1]);
-    let key2 = Key::from(vec![2]);
+    let key1 = RecordKey::from(vec![1]);
+    let key2 = RecordKey::from(vec![2]);
 
     heap.insert(key1);
     assert_eq!(heap.size(), 1);
@@ -29,8 +29,8 @@ fn binary_heap_remove_works() {
     let peer_id = PeerId::random();
     let mut heap = UniqueRecordBinaryHeap::new(peer_id, 10);
 
-    let key1 = Key::from(vec![1]);
-    let key2 = Key::from(vec![2]);
+    let key1 = RecordKey::from(vec![1]);
+    let key2 = RecordKey::from(vec![2]);
 
     heap.insert(key1.clone());
     assert_eq!(heap.size(), 1);
@@ -47,8 +47,8 @@ fn binary_heap_limit_works() {
     let peer_id = PeerId::from_multihash(Multihash::wrap(0, [0u8].as_slice()).unwrap()).unwrap();
     let mut heap = UniqueRecordBinaryHeap::new(peer_id, 1);
 
-    let key1 = Key::from(vec![1]);
-    let key2 = Key::from(vec![2]);
+    let key1 = RecordKey::from(vec![1]);
+    let key2 = RecordKey::from(vec![2]);
 
     let evicted = heap.insert(key1);
     assert!(evicted.is_none());
@@ -66,16 +66,16 @@ fn binary_heap_eviction_works() {
     let peer_id = PeerId::from_multihash(Multihash::wrap(0, [0u8].as_slice()).unwrap()).unwrap();
     let mut heap = UniqueRecordBinaryHeap::new(peer_id, 1);
 
-    let key1 = Key::from(vec![1]);
-    let key2 = Key::from(vec![2]);
+    let key1 = RecordKey::from(vec![1]);
+    let key2 = RecordKey::from(vec![2]);
 
     heap.insert(key1.clone());
     let should_be_evicted = heap.should_include_key(key2.clone());
     let evicted = heap.insert(key2.clone());
     assert!(evicted.is_some());
 
-    let bucket_key1: KademliaBucketKey<Key> = KademliaBucketKey::new(key1.clone());
-    let bucket_key2: KademliaBucketKey<Key> = KademliaBucketKey::new(key2.clone());
+    let bucket_key1 = KademliaBucketKey::<RecordKey>::new(key1.clone());
+    let bucket_key2 = KademliaBucketKey::<RecordKey>::new(key2.clone());
 
     let evicted = evicted.unwrap();
     if bucket_key1.distance::<KademliaBucketKey<_>>(&KademliaBucketKey::from(peer_id))
@@ -95,7 +95,7 @@ fn binary_heap_should_include_key_works() {
     let mut heap = UniqueRecordBinaryHeap::new(peer_id, 1);
 
     // Limit not reached
-    let key1 = Key::from(vec![1]);
+    let key1 = RecordKey::from(vec![1]);
     assert!(heap.should_include_key(key1.clone()));
 
     // Limit reached and key is not "less" than top key
@@ -103,6 +103,6 @@ fn binary_heap_should_include_key_works() {
     assert!(!heap.should_include_key(key1));
 
     // Limit reached and key is "less" than top key
-    let key2 = Key::from(vec![2]);
+    let key2 = RecordKey::from(vec![2]);
     assert!(heap.should_include_key(key2));
 }
