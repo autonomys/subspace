@@ -764,16 +764,13 @@ where
             }
         };
 
-        let segment_index = archived_segment.segment_header.segment_index();
-        let (first_index, last_index) = (
-            segment_index.first_piece_index(),
-            segment_index.last_piece_index(),
-        );
         let pieces = &archived_segment.pieces;
-        if requested_piece_index >= first_index && requested_piece_index <= last_index {
-            let offset = (requested_piece_index.position() - first_index.position()) as usize;
-            if pieces.len() >= offset + 1 {
-                return Ok(Some(pieces[offset].to_vec()));
+        if requested_piece_index.segment_index() == archived_segment.segment_header.segment_index()
+        {
+            if pieces.len() >= (requested_piece_index.position() + 1) as usize {
+                return Ok(Some(
+                    pieces[requested_piece_index.position() as usize].to_vec(),
+                ));
             }
         }
 
