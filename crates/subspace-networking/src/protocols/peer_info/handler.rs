@@ -255,7 +255,7 @@ impl ConnectionHandler for Handler {
                 match error {
                     ConnectionHandlerUpgrErr::NegotiationFailed
                     | ConnectionHandlerUpgrErr::Apply(..) => {
-                        debug!("Peer-info protocol dial upgrade failed.");
+                        debug!(?error, "Peer-info protocol dial upgrade failed");
                     }
                     e => {
                         self.error = Some(PeerInfoError::Other { error: Box::new(e) });
