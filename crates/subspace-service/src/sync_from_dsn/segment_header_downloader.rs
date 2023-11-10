@@ -122,6 +122,8 @@ impl<'a> SegmentHeaderDownloader<'a> {
                 }
             };
 
+            trace!(peers_count = %peers.len(), "Found closest peers");
+
             let new_last_known_segment_headers = peers
                 .into_iter()
                 .map(|peer_id| async move {
