@@ -187,7 +187,7 @@ struct DsnArgs {
     #[arg(long, default_value_t = 100)]
     out_connections: u32,
     /// Defines max pending incoming connection limit.
-    #[arg(long, default_value_t = 50)]
+    #[arg(long, default_value_t = 100)]
     pending_in_connections: u32,
     /// Defines max pending outgoing swarm connection limit.
     #[arg(long, default_value_t = 100)]
