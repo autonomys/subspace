@@ -121,7 +121,7 @@ impl Default for Config {
     fn default() -> Self {
         Self {
             log_target: DEFAULT_CONNECTED_PEERS_LOG_TARGET,
-            dialing_interval: Duration::from_secs(3),
+            dialing_interval: Duration::from_secs(15),
             logging_interval: Duration::from_secs(5),
             target_connected_peers: 30,
             dialing_peer_batch_size: 5,
