@@ -71,7 +71,7 @@ const SWARM_MAX_PENDING_INCOMING_CONNECTIONS: u32 = 80;
 /// The default maximum pending incoming connection number for the swarm.
 const SWARM_MAX_PENDING_OUTGOING_CONNECTIONS: u32 = 80;
 // The default maximum connection number to be maintained for the swarm.
-const SWARM_TARGET_CONNECTION_NUMBER: u32 = 30;
+const SWARM_TARGET_CONNECTION_NUMBER: u32 = 25;
 const KADEMLIA_QUERY_TIMEOUT: Duration = Duration::from_secs(40);
 const SWARM_MAX_ESTABLISHED_CONNECTIONS_PER_PEER: Option<u32> = Some(3);
 // TODO: Consider moving this constant to configuration or removing `Toggle` wrapper when we find a
