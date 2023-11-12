@@ -15,7 +15,7 @@ use crate::protocols::request_response::request_response_factory::{
 };
 use crate::shared::{Command, CreatedSubscription, NewPeerInfo, PeerDiscovered, Shared};
 use crate::utils::rate_limiter::RateLimiterPermit;
-use crate::utils::{is_global_address_or_dns, strip_peer_id, PeerAddress};
+use crate::utils::{is_global_address, is_global_address_or_dns, strip_peer_id, PeerAddress};
 use async_mutex::Mutex as AsyncMutex;
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;
@@ -732,7 +732,7 @@ where
                             %local_peer_id,
                             %peer_id,
                             %address,
-                            "Ignoring self-reported non-global address.",
+                            "Ignoring self-reported non-global address",
                         );
                         continue;
                     }
@@ -741,11 +741,8 @@ where
                         %local_peer_id,
                         %peer_id,
                         %address,
-                        "Adding self-reported address to Kademlia DHT ({:?}).",
-                        kademlia
-                            .protocol_names()
-                            .iter()
-                            .collect::<Vec<_>>(),
+                        protocol_names = ?kademlia.protocol_names(),
+                        "Adding self-reported address to Kademlia DHT",
                     );
                     kademlia.add_address(&peer_id, address);
                 }
@@ -753,40 +750,41 @@ where
                 debug!(
                     %local_peer_id,
                     %peer_id,
-                    peer_protocols=?info.protocols,
-                    "Peer doesn't support our Kademlia DHT protocol ({:?}).",
-                    kademlia
-                        .protocol_names()
-                        .iter()
-                        .collect::<Vec<_>>(),
+                    peer_protocols = ?info.protocols,
+                    protocol_names = ?kademlia.protocol_names(),
+                    "Peer doesn't support our Kademlia DHT protocol",
                 );
 
                 kademlia.remove_peer(&peer_id);
             }
 
-            self.add_observed_external_address(info.observed_addr);
+            if self.allow_non_global_addresses_in_dht || is_global_address(&info.observed_addr) {
+                self.add_observed_external_address(info.observed_addr);
+            }
         }
     }
 
     fn add_observed_external_address(&mut self, observed_addr: Multiaddr) {
         if !self.external_addresses.is_empty() {
             debug!(
-                "Observed address wasn't added as external (manual external addresses set): {}",
-                observed_addr
+                %observed_addr,
+                "Ignoring observed address, configured explicitly during startup",
             );
             return;
         }
 
         let Some(listen_addr) = self.swarm.listeners().next() else {
-            warn!("Listener addresses are not specified!");
+            debug!(
+                "Listener addresses are not specified, will not accept observed external address"
+            );
             return;
         };
 
         let Some(observed_addr) = address_translation(listen_addr, &observed_addr) else {
             warn!(
-                ?listen_addr,
-                ?observed_addr,
-                "Can't translate observed address!"
+                %listen_addr,
+                %observed_addr,
+                "Can't translate observed address"
             );
             return;
         };
@@ -798,10 +796,10 @@ where
             .collect::<Vec<_>>()
             .contains(&observed_addr)
         {
-            info!("Added observed address as external: {}", observed_addr);
+            info!(%observed_addr, "Added observed address as external");
             self.swarm.add_external_address(observed_addr);
         } else {
-            trace!("Skipping known external address: {}", observed_addr);
+            trace!(%observed_addr, "Skipping known external address");
         }
     }
 
@@ -815,7 +813,7 @@ where
                 debug!("Unexpected AddProvider request received: {:?}", record);
             }
             KademliaEvent::UnroutablePeer { peer } => {
-                debug!("Unroutable peer detected: {:?}", peer);
+                debug!(%peer, "Unroutable peer detected");
 
                 self.swarm.behaviour_mut().kademlia.remove_peer(&peer);
 
