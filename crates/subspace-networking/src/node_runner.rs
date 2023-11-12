@@ -1334,10 +1334,7 @@ where
                                     }
                                 }
                                 Ok(false) => {
-                                    panic!(
-                                        "Logic error, topic subscription wasn't created, this must never \
-                            happen"
-                                    );
+                                    panic!("Logic error, topic subscription wasn't created, this must never happen");
                                 }
                                 Err(error) => {
                                     let _ = result_sender.send(Err(error));
