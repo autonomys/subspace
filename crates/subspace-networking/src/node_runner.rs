@@ -15,7 +15,7 @@ use crate::protocols::request_response::request_response_factory::{
 };
 use crate::shared::{Command, CreatedSubscription, NewPeerInfo, PeerDiscovered, Shared};
 use crate::utils::rate_limiter::RateLimiterPermit;
-use crate::utils::{is_global_address_or_dns, strip_peer_id, PeerAddress};
+use crate::utils::{is_global_address, is_global_address_or_dns, strip_peer_id, PeerAddress};
 use async_mutex::Mutex as AsyncMutex;
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;
@@ -764,7 +764,9 @@ where
                 kademlia.remove_peer(&peer_id);
             }
 
-            self.add_observed_external_address(info.observed_addr);
+            if self.allow_non_global_addresses_in_dht || is_global_address(&info.observed_addr) {
+                self.add_observed_external_address(info.observed_addr);
+            }
         }
     }
 
