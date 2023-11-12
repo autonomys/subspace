@@ -181,7 +181,19 @@ impl<'a> SegmentHeaderDownloader<'a> {
             let peer_count = peer_segment_headers.len();
 
             if peer_count < required_peers {
-                if last_peers_count == 0 || last_peers_count != peer_count {
+                // If we've got nothing, we have to retry
+                if last_peers_count == 0 {
+                    debug!(
+                        %peer_count,
+                        %required_peers,
+                        %retry_attempt,
+                        "Segment headers consensus requires some peers, will retry"
+                    );
+
+                    continue;
+                }
+                // If number of peers found increased, but there are still attempts left, do more attempts
+                if last_peers_count != peer_count && required_peers > 1 {
                     debug!(
                         %peer_count,
                         %required_peers,
@@ -190,15 +202,14 @@ impl<'a> SegmentHeaderDownloader<'a> {
                     );
 
                     continue;
-                } else {
-                    debug!(
-                        %peer_count,
-                        %required_peers,
-                        %retry_attempt,
-                        "Segment headers consensus requires more peers, but result is the same as \
-                        last time, so continue with what we've got"
-                    );
                 }
+
+                debug!(
+                    %peer_count,
+                    %required_peers,
+                    %retry_attempt,
+                    "Segment headers consensus requires more peers, but no attempts left, so continue as is"
+                );
             }
 
             // Calculate votes
