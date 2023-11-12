@@ -133,12 +133,8 @@ impl Behaviour {
     }
 
     /// Create a connection handler for the reserved peers protocol.
-    #[inline]
     fn new_reserved_peers_handler(&self, peer_id: &PeerId) -> Handler {
-        Handler::new(
-            self.config.protocol_name,
-            self.reserved_peers_state.contains_key(peer_id),
-        )
+        Handler::new(self.reserved_peers_state.contains_key(peer_id))
     }
 
     fn wake(&self) {
