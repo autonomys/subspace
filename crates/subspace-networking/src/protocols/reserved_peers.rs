@@ -66,8 +66,6 @@ pub struct Behaviour {
 /// Reserved peers protocol configuration.
 #[derive(Debug, Clone)]
 pub struct Config {
-    /// Protocol name.
-    pub protocol_name: &'static str,
     /// Predefined set of reserved peers with addresses.
     pub reserved_peers: Vec<Multiaddr>,
     /// Interval between new dialing attempts.
