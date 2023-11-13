@@ -20,6 +20,11 @@ use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, Zero};
 use sp_runtime::{Digest, DigestItem};
 use std::sync::Arc;
+use std::time::Instant;
+
+// The slow log threshold, 2000ms of block execution (from the maximum block weight)
+// plus 500ms of consensus block preprocessing
+const SLOW_DOMAIN_BLOCK_DERIVATION_MILLIS: u128 = 2000 + 500;
 
 type DomainReceiptsChecker<Block, CBlock, Client, CClient, Backend, E> =
     ReceiptsChecker<Block, Client, CBlock, CClient, Backend, E>;
@@ -247,6 +252,7 @@ where
     ) -> sp_blockchain::Result<Option<(Block::Hash, NumberFor<Block>)>> {
         let (consensus_block_hash, consensus_block_number) = consensus_block_info;
         let (parent_hash, parent_number) = parent_info;
+        let start = Instant::now();
 
         tracing::debug!(
             "Building a new domain block from consensus block #{consensus_block_number},{consensus_block_hash} \
@@ -324,6 +330,16 @@ where
             self.domain_receipts_checker
                 .submit_fraud_proof(consensus_block_hash)
                 .await?;
+        }
+
+        let took = start.elapsed().as_millis();
+        if took >= SLOW_DOMAIN_BLOCK_DERIVATION_MILLIS {
+            tracing::warn!(
+                ?consensus_block_info,
+                ?parent_info,
+                ?built_block_info,
+                "Domain block derivation is slow, took {took}ms"
+            );
         }
 
         Ok(Some(built_block_info))
