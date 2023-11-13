@@ -66,8 +66,6 @@ pub struct Behaviour {
 /// Reserved peers protocol configuration.
 #[derive(Debug, Clone)]
 pub struct Config {
-    /// Protocol name.
-    pub protocol_name: &'static str,
     /// Predefined set of reserved peers with addresses.
     pub reserved_peers: Vec<Multiaddr>,
     /// Interval between new dialing attempts.
@@ -133,12 +131,8 @@ impl Behaviour {
     }
 
     /// Create a connection handler for the reserved peers protocol.
-    #[inline]
     fn new_reserved_peers_handler(&self, peer_id: &PeerId) -> Handler {
-        Handler::new(
-            self.config.protocol_name,
-            self.reserved_peers_state.contains_key(peer_id),
-        )
+        Handler::new(self.reserved_peers_state.contains_key(peer_id))
     }
 
     fn wake(&self) {

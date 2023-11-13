@@ -14,8 +14,6 @@ use tokio::time::sleep;
 #[derive(Debug, Clone)]
 struct ReservedPeersInstance;
 
-const PROTOCOL_NAME: &str = "/reserved-peers";
-
 const DIALING_INTERVAL_IN_SECS: Duration = Duration::from_secs(1);
 
 #[tokio::test()]
@@ -28,7 +26,6 @@ async fn test_connection_breaks_after_timeout_without_reservation() {
         identity1,
         connection_timeout,
         Behaviour::new(Config {
-            protocol_name: PROTOCOL_NAME,
             reserved_peers: Vec::new(),
             dialing_interval: DIALING_INTERVAL_IN_SECS,
         }),
@@ -39,7 +36,6 @@ async fn test_connection_breaks_after_timeout_without_reservation() {
         identity2,
         connection_timeout,
         Behaviour::new(Config {
-            protocol_name: PROTOCOL_NAME,
             reserved_peers: Vec::new(),
             dialing_interval: DIALING_INTERVAL_IN_SECS,
         }),
@@ -79,7 +75,6 @@ async fn test_connection_reservation() {
         identity1,
         connection_timeout,
         Behaviour::new(Config {
-            protocol_name: PROTOCOL_NAME,
             reserved_peers: vec![peer2_address.parse().unwrap()],
             dialing_interval: DIALING_INTERVAL_IN_SECS,
         }),
@@ -89,7 +84,6 @@ async fn test_connection_reservation() {
         identity2,
         connection_timeout,
         Behaviour::new(Config {
-            protocol_name: PROTOCOL_NAME,
             reserved_peers: vec![peer1_address.parse().unwrap()],
             dialing_interval: DIALING_INTERVAL_IN_SECS,
         }),
@@ -128,7 +122,6 @@ async fn test_connection_reservation_symmetry() {
         identity1,
         connection_timeout,
         Behaviour::new(Config {
-            protocol_name: PROTOCOL_NAME,
             reserved_peers: vec![peer2_address.parse().unwrap()],
             dialing_interval: DIALING_INTERVAL_IN_SECS,
         }),
@@ -138,7 +131,6 @@ async fn test_connection_reservation_symmetry() {
         identity2,
         connection_timeout,
         Behaviour::new(Config {
-            protocol_name: PROTOCOL_NAME,
             reserved_peers: Vec::new(),
             dialing_interval: DIALING_INTERVAL_IN_SECS,
         }),
@@ -178,7 +170,6 @@ async fn test_reserved_peers_dial_event() {
         identity1,
         connection_timeout,
         Behaviour::new(Config {
-            protocol_name: PROTOCOL_NAME,
             reserved_peers: vec![peer2_address.parse().unwrap()],
             dialing_interval: DIALING_INTERVAL_IN_SECS,
         }),

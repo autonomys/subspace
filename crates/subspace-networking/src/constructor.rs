@@ -54,7 +54,6 @@ pub type ConnectedPeersHandler = Arc<dyn Fn(&PeerInfo) -> bool + Send + Sync + '
 const DEFAULT_NETWORK_PROTOCOL_VERSION: &str = "dev";
 const KADEMLIA_PROTOCOL: &str = "/subspace/kad/0.1.0";
 const GOSSIPSUB_PROTOCOL_PREFIX: &str = "subspace/gossipsub";
-const RESERVED_PEERS_PROTOCOL_NAME: &str = "/subspace/reserved-peers/1.0.0";
 const PEER_INFO_PROTOCOL_NAME: &str = "/subspace/peer-info/1.0.0";
 const GENERAL_CONNECTED_PEERS_PROTOCOL_LOG_TARGET: &str = "general-connected-peers";
 const SPECIAL_CONNECTED_PEERS_PROTOCOL_LOG_TARGET: &str = "special-connected-peers";
@@ -492,7 +491,6 @@ where
         connection_limits,
         reserved_peers: ReservedPeersConfig {
             reserved_peers: reserved_peers.clone(),
-            protocol_name: RESERVED_PEERS_PROTOCOL_NAME,
             dialing_interval: DIALING_INTERVAL_IN_SECS,
         },
         peer_info_config: PeerInfoConfig::new(PEER_INFO_PROTOCOL_NAME),

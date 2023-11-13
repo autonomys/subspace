@@ -1,7 +1,6 @@
-use libp2p::core::upgrade::ReadyUpgrade;
+use libp2p::core::upgrade::DeniedUpgrade;
 use libp2p::swarm::handler::ConnectionEvent;
 use libp2p::swarm::{ConnectionHandler, ConnectionHandlerEvent, KeepAlive, SubstreamProtocol};
-use libp2p::StreamProtocol;
 use std::error::Error;
 use std::fmt;
 use std::task::{Context, Poll};
@@ -21,17 +20,14 @@ use void::Void;
 /// This behavior ensures that connections to reserved peers are maintained persistently,
 /// while connections to non-reserved peers are allowed to close.
 pub struct Handler {
-    /// Protocol name.
-    protocol_name: &'static str,
     /// A boolean flag indicating whether the handler is currently connected to a reserved peer.
     connected_to_reserved_peer: bool,
 }
 
 impl Handler {
     /// Builds a new [`Handler`].
-    pub fn new(protocol_name: &'static str, connected_to_reserved_peer: bool) -> Self {
+    pub fn new(connected_to_reserved_peer: bool) -> Self {
         Handler {
-            protocol_name,
             connected_to_reserved_peer,
         }
     }
@@ -52,16 +48,13 @@ impl ConnectionHandler for Handler {
     type FromBehaviour = Void;
     type ToBehaviour = ();
     type Error = ReservedPeersError;
-    type InboundProtocol = ReadyUpgrade<StreamProtocol>;
-    type OutboundProtocol = ReadyUpgrade<StreamProtocol>;
+    type InboundProtocol = DeniedUpgrade;
+    type OutboundProtocol = DeniedUpgrade;
     type OutboundOpenInfo = ();
     type InboundOpenInfo = ();
 
-    fn listen_protocol(&self) -> SubstreamProtocol<ReadyUpgrade<StreamProtocol>, ()> {
-        SubstreamProtocol::new(
-            ReadyUpgrade::new(StreamProtocol::new(self.protocol_name)),
-            (),
-        )
+    fn listen_protocol(&self) -> SubstreamProtocol<DeniedUpgrade, ()> {
+        SubstreamProtocol::new(DeniedUpgrade, ())
     }
 
     fn on_behaviour_event(&mut self, _: Void) {}
@@ -77,7 +70,7 @@ impl ConnectionHandler for Handler {
     fn poll(
         &mut self,
         _: &mut Context<'_>,
-    ) -> Poll<ConnectionHandlerEvent<ReadyUpgrade<StreamProtocol>, (), (), Self::Error>> {
+    ) -> Poll<ConnectionHandlerEvent<DeniedUpgrade, (), (), Self::Error>> {
         Poll::Pending
     }
 
