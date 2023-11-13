@@ -373,9 +373,7 @@ where
             general_target_connections: SWARM_TARGET_CONNECTION_NUMBER,
             special_target_connections: SWARM_TARGET_CONNECTION_NUMBER,
             bootstrap_addresses: Vec::new(),
-            kademlia_mode: KademliaMode::Dynamic {
-                initial_mode: Mode::Client,
-            },
+            kademlia_mode: KademliaMode::Static(Mode::Client),
             external_addresses: Vec::new(),
             enable_autonat: true,
             disable_bootstrap_on_start: false,

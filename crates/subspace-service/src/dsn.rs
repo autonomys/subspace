@@ -186,9 +186,7 @@ where
         general_connected_peers_handler: Some(Arc::new(|_| true)),
         bootstrap_addresses: dsn_config.bootstrap_nodes,
         external_addresses: dsn_config.external_addresses,
-        kademlia_mode: KademliaMode::Dynamic {
-            initial_mode: Mode::Client,
-        },
+        kademlia_mode: KademliaMode::Static(Mode::Client),
         metrics,
         disable_bootstrap_on_start: dsn_config.disable_bootstrap_on_start,
 
