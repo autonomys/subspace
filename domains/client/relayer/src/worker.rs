@@ -158,14 +158,14 @@ where
     while let Some(block) = chain_block_import.next().await {
         // if the client is in major sync, wait until sync is complete
         if sync_oracle.is_major_syncing() {
-            tracing::info!(target: LOG_TARGET, "Client is in major sync. Skipping...");
+            tracing::debug!(target: LOG_TARGET, "Client is in major sync. Skipping...");
             continue;
         }
 
         let relay_block_until = match block.header.number().checked_sub(&relay_confirmation_depth) {
             None => {
                 // not enough confirmed blocks.
-                tracing::info!(
+                tracing::debug!(
                     target: LOG_TARGET,
                     "Not enough confirmed blocks for domain: {:?}. Skipping...",
                     chain_id
@@ -183,7 +183,7 @@ where
                 .collect();
 
         for (number, hash) in blocks_to_process {
-            tracing::info!(
+            tracing::debug!(
                 target: LOG_TARGET,
                 "Checking messages to be submitted from chain: {chain_id:?} at block: ({number:?}, {hash:?})",
             );
@@ -193,7 +193,7 @@ where
             // mark this block processed and continue to next one.
             if !can_relay_message_from_block(chain_id, number)? {
                 Relayer::store_relayed_block(&client, chain_id, number, hash)?;
-                tracing::info!(
+                tracing::debug!(
                     target: LOG_TARGET,
                     "Chain({chain_id:?}) messages in the Block ({number:?}, {hash:?}) cannot be relayed. Skipping...",
                 );
@@ -201,7 +201,7 @@ where
                 match message_processor(&client, hash) {
                     Ok(_) => {
                         Relayer::store_relayed_block(&client, chain_id, number, hash)?;
-                        tracing::info!(
+                        tracing::debug!(
                             target: LOG_TARGET,
                             "Messages from {chain_id:?} at block({number:?}, {hash:?}) are processed."
                         )
@@ -209,7 +209,7 @@ where
                     Err(err) => {
                         match err {
                             Error::DomainNonConfirmedOnConsensusChain => {
-                                tracing::info!(
+                                tracing::debug!(
                                     target: LOG_TARGET,
                                     "Waiting for Domain[{chain_id:?}] block({number:?}, {hash:?}) to be confirmed on Consensus chain."
                                 )

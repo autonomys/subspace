@@ -435,7 +435,7 @@ where
             COnRuntimeUpgrade,
         >::apply_extrinsic(uxt);
         // TODO: Critical!!! https://github.com/paritytech/substrate/pull/10922#issuecomment-1068997467
-        log::info!(
+        log::debug!(
             target: "domain::runtime::executive",
             "[apply_extrinsic] after: {:?}",
             {
