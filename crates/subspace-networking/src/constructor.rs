@@ -59,8 +59,8 @@ const PEER_INFO_PROTOCOL_NAME: &str = "/subspace/peer-info/1.0.0";
 const GENERAL_CONNECTED_PEERS_PROTOCOL_LOG_TARGET: &str = "general-connected-peers";
 const SPECIAL_CONNECTED_PEERS_PROTOCOL_LOG_TARGET: &str = "special-connected-peers";
 
-// Defines max_negotiating_inbound_streams constant for the swarm.
-// It must be set for large plots.
+/// Defines max_negotiating_inbound_streams constant for the swarm.
+/// It must be set for large plots.
 const SWARM_MAX_NEGOTIATING_INBOUND_STREAMS: usize = 100000;
 /// The default maximum established incoming connection number for the swarm.
 const SWARM_MAX_ESTABLISHED_INCOMING_CONNECTIONS: u32 = 100;
@@ -70,12 +70,10 @@ const SWARM_MAX_ESTABLISHED_OUTGOING_CONNECTIONS: u32 = 100;
 const SWARM_MAX_PENDING_INCOMING_CONNECTIONS: u32 = 80;
 /// The default maximum pending incoming connection number for the swarm.
 const SWARM_MAX_PENDING_OUTGOING_CONNECTIONS: u32 = 80;
-// The default maximum connection number to be maintained for the swarm.
-const SWARM_TARGET_CONNECTION_NUMBER: u32 = 25;
 const KADEMLIA_QUERY_TIMEOUT: Duration = Duration::from_secs(40);
 const SWARM_MAX_ESTABLISHED_CONNECTIONS_PER_PEER: Option<u32> = Some(3);
 // TODO: Consider moving this constant to configuration or removing `Toggle` wrapper when we find a
-// use-case for gossipsub protocol.
+//  use-case for gossipsub protocol.
 const ENABLE_GOSSIP_PROTOCOL: bool = false;
 
 const TEMPORARY_BANS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(10_000).expect("Not zero; qed");
@@ -236,15 +234,23 @@ pub struct Config<LocalRecordProvider> {
     /// Specifies a source for peer information. None disables the protocol.
     pub peer_info_provider: Option<PeerInfoProvider>,
     /// Defines whether we maintain a persistent connection for common peers.
-    /// None disables the protocol.
+    /// `None` (the default) disables the protocol.
     pub general_connected_peers_handler: Option<ConnectedPeersHandler>,
     /// Defines whether we maintain a persistent connection for special peers.
-    /// None disables the protocol.
+    /// `None` (the default) disables the protocol.
     pub special_connected_peers_handler: Option<ConnectedPeersHandler>,
-    /// Defines target total (in and out) connection number that should be maintained for general peers.
-    pub general_target_connections: u32,
-    /// Defines target total (in and out) connection number that should be maintained for special peers.
-    pub special_target_connections: u32,
+    /// Defines target total (in and out) connection number that should be maintained for general
+    /// peers (defaults to 0).
+    pub general_connected_peers_target: u32,
+    /// Defines target total (in and out) connection number that should be maintained for special
+    /// peers (defaults to 0).
+    pub special_connected_peers_target: u32,
+    /// Defines max total (in and out) connection number that should be maintained for general
+    /// peers (defaults to 0, will be automatically raised if set lower than target).
+    pub general_connected_peers_limit: u32,
+    /// Defines max total (in and out) connection number that should be maintained for special
+    /// peers (defaults to 0, will be automatically raised if set lower than target).
+    pub special_connected_peers_limit: u32,
     /// Addresses to bootstrap Kademlia network
     pub bootstrap_addresses: Vec<Multiaddr>,
     /// Kademlia mode. The default value is set to Static(Client). The peer won't add its address
@@ -367,15 +373,15 @@ where
             metrics: None,
             protocol_version,
             peer_info_provider,
-            // we don't need to keep additional connections by default
+            // Don't need to keep additional connections by default
             general_connected_peers_handler: None,
             special_connected_peers_handler: None,
-            general_target_connections: SWARM_TARGET_CONNECTION_NUMBER,
-            special_target_connections: SWARM_TARGET_CONNECTION_NUMBER,
+            general_connected_peers_target: 0,
+            special_connected_peers_target: 0,
+            general_connected_peers_limit: 0,
+            special_connected_peers_limit: 0,
             bootstrap_addresses: Vec::new(),
-            kademlia_mode: KademliaMode::Dynamic {
-                initial_mode: Mode::Client,
-            },
+            kademlia_mode: KademliaMode::Static(Mode::Client),
             external_addresses: Vec::new(),
             enable_autonat: true,
             disable_bootstrap_on_start: false,
@@ -436,8 +442,10 @@ where
         peer_info_provider,
         general_connected_peers_handler: general_connection_decision_handler,
         special_connected_peers_handler: special_connection_decision_handler,
-        general_target_connections,
-        special_target_connections,
+        general_connected_peers_target,
+        special_connected_peers_target,
+        general_connected_peers_limit,
+        special_connected_peers_limit,
         bootstrap_addresses,
         kademlia_mode,
         external_addresses,
@@ -492,14 +500,18 @@ where
         general_connected_peers_config: general_connection_decision_handler.as_ref().map(|_| {
             ConnectedPeersConfig {
                 log_target: GENERAL_CONNECTED_PEERS_PROTOCOL_LOG_TARGET,
-                target_connected_peers: general_target_connections,
+                target_connected_peers: general_connected_peers_target,
+                max_connected_peers: general_connected_peers_limit
+                    .max(general_connected_peers_target),
                 ..ConnectedPeersConfig::default()
             }
         }),
         special_connected_peers_config: special_connection_decision_handler.as_ref().map(|_| {
             ConnectedPeersConfig {
                 log_target: SPECIAL_CONNECTED_PEERS_PROTOCOL_LOG_TARGET,
-                target_connected_peers: special_target_connections,
+                target_connected_peers: special_connected_peers_target,
+                max_connected_peers: special_connected_peers_limit
+                    .max(special_connected_peers_target),
                 ..ConnectedPeersConfig::default()
             }
         }),

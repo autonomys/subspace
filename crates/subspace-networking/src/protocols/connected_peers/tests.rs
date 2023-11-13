@@ -155,37 +155,44 @@ async fn test_new_peer_request() {
         dialing_interval,
         Behaviour::<ConnectedPeersInstance>::new(Config {
             dialing_interval,
+            target_connected_peers: 1,
             ..Default::default()
         }),
     );
 
     peer1.listen().await;
 
-    loop {
-        select! {
-            event = peer1.next_swarm_event().fuse() => {
-                if matches!(event, SwarmEvent::Behaviour(ConnectedPeersEvent::<ConnectedPeersInstance>::NewDialingCandidatesRequested(..))){
-                    break;
-                }
-            },
-            _ = sleep(LONG_DELAY).fuse() => {
-                panic!("No new peers requests.");
-            }
+    let waiting_for_event_fut = async {
+        while !matches!(
+            peer1.next_swarm_event().await,
+            SwarmEvent::Behaviour(
+                ConnectedPeersEvent::<ConnectedPeersInstance>::NewDialingCandidatesRequested(..)
+            )
+        ) {
+            // Wait for interesting event
+        }
+    };
+
+    select! {
+        _ = waiting_for_event_fut.fuse() => {},
+        _ = sleep(LONG_DELAY).fuse() => {
+            panic!("No new peers requests");
         }
     }
 
-    // We've received the new peers request when we don't have enough connected peers.
+    // We've received the new peers request when peer cache is empty
 }
 
 #[tokio::test()]
 async fn test_target_connected_peer_limit_number() {
-    let target_connected_peers = 1;
+    let max_connected_peers = 1;
 
     let mut peer1 = new_ephemeral(
         DECISION_TIMEOUT,
         Behaviour::<ConnectedPeersInstance>::new(Config {
+            target_connected_peers: 0,
+            max_connected_peers,
             decision_timeout: DECISION_TIMEOUT,
-            target_connected_peers,
             ..Default::default()
         }),
     );
@@ -193,7 +200,8 @@ async fn test_target_connected_peer_limit_number() {
     let mut peer2 = new_ephemeral(
         DECISION_TIMEOUT,
         Behaviour::<ConnectedPeersInstance>::new(Config {
-            target_connected_peers,
+            target_connected_peers: 0,
+            max_connected_peers,
             decision_timeout: DECISION_TIMEOUT,
             ..Default::default()
         }),
@@ -202,7 +210,8 @@ async fn test_target_connected_peer_limit_number() {
     let mut peer3 = new_ephemeral(
         DECISION_TIMEOUT,
         Behaviour::<ConnectedPeersInstance>::new(Config {
-            target_connected_peers,
+            target_connected_peers: 0,
+            max_connected_peers,
             decision_timeout: DECISION_TIMEOUT,
             ..Default::default()
         }),
