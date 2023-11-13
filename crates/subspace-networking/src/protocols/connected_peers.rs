@@ -107,8 +107,10 @@ pub struct Config {
     pub dialing_interval: Duration,
     /// Interval between logging of the internal state.
     pub logging_interval: Duration,
-    /// Number of connected peers that protocol will maintain.
+    /// Number of connected peers that protocol will maintain proactively.
     pub target_connected_peers: u32,
+    /// Number of connected peers that protocol will allow to be connected to permanently.
+    pub max_connected_peers: u32,
     /// We dial peers using this batch size.
     pub dialing_peer_batch_size: u32,
     /// Time interval reserved for a decision about connections.
@@ -123,7 +125,8 @@ impl Default for Config {
             log_target: DEFAULT_CONNECTED_PEERS_LOG_TARGET,
             dialing_interval: Duration::from_secs(15),
             logging_interval: Duration::from_secs(5),
-            target_connected_peers: 30,
+            target_connected_peers: 15,
+            max_connected_peers: 30,
             dialing_peer_batch_size: 5,
             decision_timeout: Duration::from_secs(10),
         }
@@ -229,7 +232,7 @@ impl<Instance> Behaviour<Instance> {
     /// depend on another protocol (e.g.: PeerInfo protocol event handling).
     pub fn update_keep_alive_status(&mut self, peer_id: PeerId, keep_alive: bool) {
         let not_enough_connected_peers =
-            self.permanently_connected_peers() < self.config.target_connected_peers;
+            self.permanently_connected_peers() < self.config.max_connected_peers;
 
         // It's a known peer.
         if let Some(connection_state) = self.known_peers.get_mut(&peer_id) {
@@ -512,7 +515,7 @@ impl<Instance: 'static + Send> NetworkBehaviour for Behaviour<Instance> {
                 self.dialing_delay.reset(self.config.dialing_interval);
 
                 // Request new peer addresses.
-                if self.peer_cache.is_empty() {
+                if self.peer_cache.is_empty() && self.config.target_connected_peers > 0 {
                     trace!("Requesting new peers for connected-peers protocol...");
 
                     return Poll::Ready(ToSwarm::GenerateEvent(

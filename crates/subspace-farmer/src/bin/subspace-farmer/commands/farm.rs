@@ -193,7 +193,7 @@ struct DsnArgs {
     #[arg(long, default_value_t = 100)]
     pending_out_connections: u32,
     /// Defines target total (in and out) connection number that should be maintained.
-    #[arg(long, default_value_t = 25)]
+    #[arg(long, default_value_t = 15)]
     target_connections: u32,
     /// Known external addresses
     #[arg(long, alias = "external-address")]

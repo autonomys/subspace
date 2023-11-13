@@ -259,7 +259,7 @@ pub struct Cli {
     pub dsn_pending_out_connections: u32,
 
     /// Defines target total (in and out) connection number for DSN that should be maintained.
-    #[arg(long, default_value_t = 25)]
+    #[arg(long, default_value_t = 15)]
     pub dsn_target_connections: u32,
 
     /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses

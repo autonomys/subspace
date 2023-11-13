@@ -182,13 +182,19 @@ pub(super) fn configure_dsn(
         max_pending_outgoing_connections: pending_out_connections,
         max_established_incoming_connections: in_connections,
         max_pending_incoming_connections: pending_in_connections,
-        general_target_connections: target_connections,
-        // maintain permanent connections between farmers
-        special_connected_peers_handler: Some(Arc::new(PeerInfo::is_farmer)),
-        // other (non-farmer) connections
+        // Non-farmer connections
         general_connected_peers_handler: Some(Arc::new(|peer_info| {
             !PeerInfo::is_farmer(peer_info)
         })),
+        // Proactively maintain permanent connections with farmers
+        special_connected_peers_handler: Some(Arc::new(PeerInfo::is_farmer)),
+        // Do not have any target for general peers
+        general_connected_peers_target: 0,
+        special_connected_peers_target: target_connections,
+        // Allow up to quarter of incoming connections to be maintained
+        general_connected_peers_limit: in_connections / 4,
+        // Allow to maintain some extra farmer connections beyond direct interest too
+        special_connected_peers_limit: target_connections + in_connections / 4,
         bootstrap_addresses: bootstrap_nodes,
         kademlia_mode: KademliaMode::Dynamic {
             initial_mode: Mode::Client,

@@ -179,11 +179,13 @@ where
         max_established_outgoing_connections: dsn_config.max_out_connections,
         max_pending_incoming_connections: dsn_config.max_pending_in_connections,
         max_pending_outgoing_connections: dsn_config.max_pending_out_connections,
-        general_target_connections: dsn_config.target_connections,
-        special_target_connections: 0,
-        reserved_peers: dsn_config.reserved_peers,
-        // maintain permanent connections with any peer
+        // Maintain proactive connections with all peers
         general_connected_peers_handler: Some(Arc::new(|_| true)),
+        general_connected_peers_target: dsn_config.target_connections,
+        // Allow to maintain some extra general connections beyond direct interest too
+        general_connected_peers_limit: dsn_config.target_connections
+            + dsn_config.max_in_connections / 4,
+        reserved_peers: dsn_config.reserved_peers,
         bootstrap_addresses: dsn_config.bootstrap_nodes,
         external_addresses: dsn_config.external_addresses,
         kademlia_mode: KademliaMode::Static(Mode::Client),
