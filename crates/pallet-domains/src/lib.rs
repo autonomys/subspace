@@ -1163,6 +1163,31 @@ mod pallet {
             Self::deposit_event(crate::pallet::Event::DomainOperatorAllowListUpdated { domain_id });
             Ok(())
         }
+
+        /// Force staking epoch transition for a given domain
+        #[pallet::call_index(11)]
+        #[pallet::weight(T::WeightInfo::pending_staking_operation())]
+        pub fn force_staking_epoch_transition(
+            origin: OriginFor<T>,
+            domain_id: DomainId,
+        ) -> DispatchResult {
+            ensure_root(origin)?;
+
+            let completed_epoch_index = do_finalize_domain_current_epoch::<T>(
+                domain_id,
+                // This domain block number argument is used to calculate the `unlock_block_number` for
+                // withdrawal, using the `oldest_receipt_number` here such that the withdrawal can be
+                // unlocked later by the regular epoch transition with the same amount of locking period.
+                Self::oldest_receipt_number(domain_id),
+            )
+            .map_err(Error::<T>::from)?;
+
+            Self::deposit_event(Event::DomainEpochCompleted {
+                domain_id,
+                completed_epoch_index,
+            });
+            Ok(())
+        }
     }
 
     #[pallet::genesis_config]
