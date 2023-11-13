@@ -192,8 +192,8 @@ impl<'a> SegmentHeaderDownloader<'a> {
 
                     continue;
                 }
-                // If number of peers found increased, but there are still attempts left, do more attempts
-                if last_peers_count != peer_count && required_peers > 1 {
+                // If there are still attempts left, do more attempts
+                if required_peers > 1 {
                     debug!(
                         %peer_count,
                         %required_peers,
