@@ -632,7 +632,7 @@ where
 
     fn should_temporary_ban_on_dial_error(&self, peer_id: &PeerId, error: &DialError) -> bool {
         // Ban temporarily only peers without active connections.
-        if !self.swarm.is_connected(peer_id) {
+        if self.swarm.is_connected(peer_id) {
             return false;
         }
 
