@@ -49,8 +49,7 @@ unsigned-varint = { version = "0.7.1", features = ["futures", "asynchronous_code
 void = "1.0.2"
 
 [dependencies.libp2p]
-git = "https://github.com/subspace/rust-libp2p"
-rev = "64f3baf300f68a861acf9de644fe980529c5618a"
+version = "0.53.1"
 default-features = false
 features = [
     "autonat",
@@ -73,4 +72,4 @@ features = [
 
 [dev-dependencies]
 rand = "0.8.5"
-libp2p-swarm-test = { git = "https://github.com/subspace/rust-libp2p", rev = "64f3baf300f68a861acf9de644fe980529c5618a" }
+libp2p-swarm-test = "0.3.0"

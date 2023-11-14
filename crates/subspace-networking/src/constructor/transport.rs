@@ -49,10 +49,10 @@ pub(super) fn build_transport(
             .boxed()
     };
 
-    #[cfg(not(windows))]
-    let quic_config = QuicConfig::new(keypair);
-    #[cfg(windows)]
-    let quic_config = QuicConfig::new(keypair).path_mtu_discovery_config(None);
+    let mut quic_config = QuicConfig::new(keypair);
+    if cfg!(windows) {
+        quic_config = quic_config.disable_path_mtu_discovery();
+    }
 
     let quic = QuicTransport::new(quic_config)
         .map(|(peer_id, muxer), _| (peer_id, StreamMuxerBox::new(muxer)));
