@@ -165,6 +165,7 @@ impl ConnectionHandler for Handler {
                 Poll::Ready(Err(error)) => {
                     debug!(?error, "Peer info handler: inbound peer info error.");
 
+                    self.inbound = None;
                     return Poll::Ready(ConnectionHandlerEvent::NotifyBehaviour(Err(
                         PeerInfoError::Other {
                             error: Box::new(error),
