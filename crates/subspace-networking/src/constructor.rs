@@ -593,7 +593,6 @@ where
             special_connection_decision_handler,
             bootstrap_addresses,
             kademlia_mode,
-            external_addresses,
             disable_bootstrap_on_start,
         });
 
