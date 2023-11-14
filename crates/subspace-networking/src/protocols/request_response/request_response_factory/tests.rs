@@ -4,16 +4,15 @@ use crate::protocols::request_response::request_response_factory::{
 };
 use async_trait::async_trait;
 use futures::channel::{mpsc, oneshot};
-use futures::executor::LocalPool;
-use futures::task::Spawn;
-use futures::{FutureExt, StreamExt};
+use futures::stream::FuturesUnordered;
+use futures::StreamExt;
 use libp2p::core::transport::{MemoryTransport, Transport};
 use libp2p::core::upgrade;
-use libp2p::identity::Keypair;
-use libp2p::swarm::{Swarm, SwarmBuilder, SwarmEvent};
-use libp2p::{noise, Multiaddr};
-use std::iter;
+use libp2p::swarm::{Swarm, SwarmEvent};
+use libp2p::{noise, SwarmBuilder};
+use libp2p_swarm_test::SwarmExt;
 use std::time::Duration;
+use std::{io, iter};
 
 #[derive(Clone)]
 struct MockRunner(ProtocolConfig);
@@ -35,59 +34,55 @@ impl RequestHandler for MockRunner {
     }
 }
 
-fn build_swarm(
+async fn build_swarm(
     list: impl Iterator<Item = ProtocolConfig>,
-) -> (Swarm<RequestResponseFactoryBehaviour>, Multiaddr) {
-    let keypair = Keypair::generate_ed25519();
-
-    let transport = MemoryTransport::new()
-        .upgrade(upgrade::Version::V1)
-        .authenticate(noise::Config::new(&keypair).unwrap())
-        .multiplex(libp2p::yamux::Config::default())
-        .boxed();
-
+) -> Swarm<RequestResponseFactoryBehaviour> {
     let configs = list
         .into_iter()
         .map(|config| Box::new(MockRunner(config)) as Box<dyn RequestHandler>)
         .collect::<Vec<_>>();
     let behaviour = RequestResponseFactoryBehaviour::new(configs).unwrap();
 
-    let mut swarm =
-        SwarmBuilder::with_tokio_executor(transport, behaviour, keypair.public().to_peer_id())
-            .build();
-    let listen_addr: Multiaddr = format!("/memory/{}", rand::random::<u64>())
-        .parse()
-        .unwrap();
+    let mut swarm = SwarmBuilder::with_new_identity()
+        .with_tokio()
+        .with_other_transport(|keypair| {
+            MemoryTransport::default()
+                .or_transport(libp2p::tcp::tokio::Transport::default())
+                .upgrade(upgrade::Version::V1)
+                .authenticate(noise::Config::new(keypair).unwrap())
+                .multiplex(libp2p::yamux::Config::default())
+                .boxed()
+        })
+        .unwrap()
+        .with_behaviour(move |_keypair| behaviour)
+        .unwrap()
+        // Make sure connections stay alive
+        .with_swarm_config(|config| config.with_idle_connection_timeout(Duration::from_secs(10)))
+        .build();
 
-    swarm.listen_on(listen_addr.clone()).unwrap();
-    (swarm, listen_addr)
+    swarm.listen().with_memory_addr_external().await;
+
+    swarm
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn basic_request_response_works() {
     let protocol_name = "/test/req-resp/1";
-    let mut pool = LocalPool::new();
 
     // Build swarms whose behaviour is `RequestResponsesBehaviour`.
     let mut swarms = (0..2)
-        .map(|_| {
+        .map(|_| async {
             let (tx, mut rx) = mpsc::channel::<IncomingRequest>(64);
 
-            pool.spawner()
-                .spawn_obj(
-                    async move {
-                        while let Some(rq) = rx.next().await {
-                            assert_eq!(rq.payload, b"this is a request");
-                            let _ = rq.pending_response.send(OutgoingResponse {
-                                result: Ok(b"this is a response".to_vec()),
-                                sent_feedback: None,
-                            });
-                        }
-                    }
-                    .boxed()
-                    .into(),
-                )
-                .unwrap();
+            tokio::spawn(async move {
+                while let Some(rq) = rx.next().await {
+                    assert_eq!(rq.payload, b"this is a request");
+                    let _ = rq.pending_response.send(OutgoingResponse {
+                        result: Ok(b"this is a response".to_vec()),
+                        sent_feedback: None,
+                    });
+                }
+            });
 
             let protocol_config = ProtocolConfig {
                 name: protocol_name,
@@ -97,96 +92,72 @@ async fn basic_request_response_works() {
                 inbound_queue: Some(tx),
             };
 
-            build_swarm(iter::once(protocol_config))
+            build_swarm(iter::once(protocol_config)).await
         })
-        .collect::<Vec<_>>();
+        .collect::<FuturesUnordered<_>>()
+        .collect::<Vec<_>>()
+        .await;
 
-    // Ask `swarm[0]` to dial `swarm[1]`. There isn't any discovery mechanism in place in
-    // this test, so they wouldn't connect to each other.
-    {
-        let dial_addr = swarms[1].1.clone();
-        Swarm::dial(&mut swarms[0].0, dial_addr).unwrap();
-    }
+    let mut swarm_0 = swarms.remove(0);
+    let mut swarm_1 = swarms.remove(0);
 
-    let (mut swarm, _) = swarms.remove(0);
+    // Ask `swarm_0` to dial `swarm_1`. There isn't any discovery mechanism in place in this test, so they wouldn't
+    // connect to each other.
+    swarm_0.connect(&mut swarm_1).await;
 
-    // Running `swarm[0]` in the background.
-    pool.spawner()
-        .spawn_obj({
-            async move {
-                loop {
-                    if let SwarmEvent::Behaviour(Event::InboundRequest { result, .. }) =
-                        swarm.select_next_some().await
-                    {
-                        result.unwrap();
-                    }
-                }
-            }
-            .boxed()
-            .into()
-        })
-        .unwrap();
+    let peer_id_0 = *swarm_0.local_peer_id();
 
-    // Remove and run the remaining swarm.
-    let (mut swarm, _) = swarms.remove(0);
-
-    pool.run_until(async move {
-        let mut response_receiver = None;
-
+    // Running `swarm_0` in the background.
+    tokio::spawn(async move {
         loop {
-            match swarm.select_next_some().await {
-                SwarmEvent::ConnectionEstablished { peer_id, .. } => {
-                    let (sender, receiver) = oneshot::channel();
-                    swarm.behaviour_mut().send_request(
-                        &peer_id,
-                        protocol_name,
-                        b"this is a request".to_vec(),
-                        sender,
-                        IfDisconnected::ImmediateError,
-                    );
-                    assert!(response_receiver.is_none());
-                    response_receiver = Some(receiver);
-                }
-                SwarmEvent::Behaviour(Event::RequestFinished { result, .. }) => {
-                    result.unwrap();
-                    break;
-                }
-                _ => {}
+            if let SwarmEvent::Behaviour(Event::InboundRequest { result, .. }) =
+                swarm_0.select_next_some().await
+            {
+                result.unwrap();
             }
         }
-
-        assert_eq!(
-            response_receiver.unwrap().await.unwrap().unwrap(),
-            b"this is a response"
-        );
     });
+
+    let (sender, receiver) = oneshot::channel();
+    // Send request
+    swarm_1.behaviour_mut().send_request(
+        &peer_id_0,
+        protocol_name,
+        b"this is a request".to_vec(),
+        sender,
+        IfDisconnected::ImmediateError,
+    );
+    // Wait for request to finish
+    loop {
+        if let SwarmEvent::Behaviour(Event::RequestFinished { result, .. }) =
+            swarm_1.select_next_some().await
+        {
+            result.unwrap();
+            break;
+        }
+    }
+    // Expect response
+    assert_eq!(receiver.await.unwrap().unwrap(), b"this is a response");
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn max_response_size_exceeded() {
     let protocol_name = "/test/req-resp/1";
-    let mut pool = LocalPool::new();
 
     // Build swarms whose behaviour is `RequestResponsesBehaviour`.
     let mut swarms = (0..2)
-        .map(|_| {
+        .map(|_| async {
             let (tx, mut rx) = mpsc::channel::<IncomingRequest>(64);
 
-            pool.spawner()
-                .spawn_obj(
-                    async move {
-                        while let Some(rq) = rx.next().await {
-                            assert_eq!(rq.payload, b"this is a request");
-                            let _ = rq.pending_response.send(OutgoingResponse {
-                                result: Ok(b"this response exceeds the limit".to_vec()),
-                                sent_feedback: None,
-                            });
-                        }
-                    }
-                    .boxed()
-                    .into(),
-                )
-                .unwrap();
+            tokio::spawn(async move {
+                while let Some(rq) = rx.next().await {
+                    assert_eq!(rq.payload, b"this is a request");
+                    let _ = rq.pending_response.send(OutgoingResponse {
+                        result: Ok(b"this response exceeds the limit".to_vec()),
+                        sent_feedback: None,
+                    });
+                }
+            });
 
             let protocol_config = ProtocolConfig {
                 name: protocol_name,
@@ -196,71 +167,63 @@ async fn max_response_size_exceeded() {
                 inbound_queue: Some(tx),
             };
 
-            build_swarm(iter::once(protocol_config))
+            build_swarm(iter::once(protocol_config)).await
         })
-        .collect::<Vec<_>>();
+        .collect::<FuturesUnordered<_>>()
+        .collect::<Vec<_>>()
+        .await;
 
-    // Ask `swarm[0]` to dial `swarm[1]`. There isn't any discovery mechanism in place in
-    // this test, so they wouldn't connect to each other.
-    {
-        let dial_addr = swarms[1].1.clone();
-        Swarm::dial(&mut swarms[0].0, dial_addr).unwrap();
-    }
+    let mut swarm_0 = swarms.remove(0);
+    let mut swarm_1 = swarms.remove(0);
 
-    // Running `swarm[0]` in the background until a `InboundRequest` event happens,
-    // which is a hint about the test having ended.
-    let (mut swarm, _) = swarms.remove(0);
+    // Ask `swarm_0` to dial `swarm_1`. There isn't any discovery mechanism in place in this test, so they wouldn't
+    // connect to each other.
+    swarm_0.connect(&mut swarm_1).await;
 
-    pool.spawner()
-        .spawn_obj({
-            async move {
-                loop {
-                    if let SwarmEvent::Behaviour(Event::InboundRequest { result, .. }) =
-                        swarm.select_next_some().await
-                    {
-                        assert!(result.is_ok());
-                        break;
-                    }
-                }
-            }
-            .boxed()
-            .into()
-        })
-        .unwrap();
+    let peer_id_0 = *swarm_0.local_peer_id();
 
-    // Remove and run the remaining swarm.
-    let (mut swarm, _) = swarms.remove(0);
-
-    pool.run_until(async move {
-        let mut response_receiver = None;
-
+    // Running `swarm_0` in the background until a `InboundRequest` event happens, which is a hint about the test
+    // having ended.
+    tokio::spawn(async move {
         loop {
-            match swarm.select_next_some().await {
-                SwarmEvent::ConnectionEstablished { peer_id, .. } => {
-                    let (sender, receiver) = oneshot::channel();
-                    swarm.behaviour_mut().send_request(
-                        &peer_id,
-                        protocol_name,
-                        b"this is a request".to_vec(),
-                        sender,
-                        IfDisconnected::ImmediateError,
-                    );
-                    assert!(response_receiver.is_none());
-                    response_receiver = Some(receiver);
-                }
-                SwarmEvent::Behaviour(Event::RequestFinished { result, .. }) => {
-                    assert!(result.is_err());
-                    break;
-                }
-                _ => {}
+            if let SwarmEvent::Behaviour(Event::InboundRequest { result, .. }) =
+                swarm_0.select_next_some().await
+            {
+                assert!(result.is_ok());
             }
-        }
-
-        match response_receiver.unwrap().await.unwrap().unwrap_err() {
-            RequestFailure::Network(OutboundFailure::ConnectionClosed) => {}
-            _ => panic!(),
         }
     });
+
+    // Run the remaining swarm.
+    let (sender, receiver) = oneshot::channel();
+    // Send request
+    swarm_1.behaviour_mut().send_request(
+        &peer_id_0,
+        protocol_name,
+        b"this is a request".to_vec(),
+        sender,
+        IfDisconnected::ImmediateError,
+    );
+    // Wait for request to finish
+    loop {
+        if let SwarmEvent::Behaviour(Event::RequestFinished { result, .. }) =
+            swarm_1.select_next_some().await
+        {
+            assert!(result.is_err());
+            break;
+        }
+    }
+    // Expect response
+    match receiver.await.unwrap().unwrap_err() {
+        RequestFailure::Network(OutboundFailure::Io(error)) => {
+            if error.kind() != io::ErrorKind::InvalidInput
+                || error.to_string() != "Response size exceeds limit: 31 > 8"
+            {
+                panic!("Unexpected I/O error: {error}")
+            }
+        }
+        error => panic!("Unexpected error: {error}"),
+    }
 }
 
 /// A [`RequestId`] is a unique identifier among either all inbound or all outbound requests for
@@ -277,7 +240,6 @@ async fn max_response_size_exceeded() {
 async fn request_id_collision() {
     let protocol_name_1 = "/test/req-resp-1/1";
     let protocol_name_2 = "/test/req-resp-2/1";
-    let mut pool = LocalPool::new();
 
     let mut swarm_1 = {
         let protocol_configs = vec![
@@ -297,10 +259,10 @@ async fn request_id_collision() {
             },
         ];
 
-        build_swarm(protocol_configs.into_iter()).0
+        build_swarm(protocol_configs.into_iter()).await
     };
 
-    let (mut swarm_2, mut swarm_2_handler_1, mut swarm_2_handler_2, listen_add_2) = {
+    let (mut swarm_2, mut swarm_2_handler_1, mut swarm_2_handler_2) = {
         let (tx_1, rx_1) = mpsc::channel(64);
         let (tx_2, rx_2) = mpsc::channel(64);
 
@@ -321,109 +283,87 @@ async fn request_id_collision() {
             },
         ];
 
-        let (swarm, listen_addr) = build_swarm(protocol_configs.into_iter());
+        let swarm = build_swarm(protocol_configs.into_iter()).await;
 
-        (swarm, rx_1, rx_2, listen_addr)
+        (swarm, rx_1, rx_2)
     };
 
     // Ask swarm 1 to dial swarm 2. There isn't any discovery mechanism in place in this test,
     // so they wouldn't connect to each other.
-    swarm_1.dial(listen_add_2).unwrap();
+    swarm_1.connect(&mut swarm_2).await;
+
+    let peer_id_2 = *swarm_2.local_peer_id();
 
     // Run swarm 2 in the background, receiving two requests.
-    pool.spawner()
-        .spawn_obj(
-            async move {
-                loop {
-                    if let SwarmEvent::Behaviour(Event::InboundRequest { result, .. }) =
-                        swarm_2.select_next_some().await
-                    {
-                        result.unwrap();
-                    }
-                }
+    tokio::spawn(async move {
+        loop {
+            if let SwarmEvent::Behaviour(Event::InboundRequest { result, .. }) =
+                swarm_2.select_next_some().await
+            {
+                result.unwrap();
             }
-            .boxed()
-            .into(),
-        )
-        .unwrap();
+        }
+    });
 
     // Handle both requests sent by swarm 1 to swarm 2 in the background.
     //
     // Make sure both requests overlap, by answering the first only after receiving the
     // second.
-    pool.spawner()
-        .spawn_obj(
-            async move {
-                let protocol_1_request = swarm_2_handler_1.next().await;
-                let protocol_2_request = swarm_2_handler_2.next().await;
+    tokio::spawn(async move {
+        let protocol_1_request = swarm_2_handler_1.next().await;
+        let protocol_2_request = swarm_2_handler_2.next().await;
 
-                protocol_1_request
-                    .unwrap()
-                    .pending_response
-                    .send(OutgoingResponse {
-                        result: Ok(b"this is a response".to_vec()),
-                        sent_feedback: None,
-                    })
-                    .unwrap();
-                protocol_2_request
-                    .unwrap()
-                    .pending_response
-                    .send(OutgoingResponse {
-                        result: Ok(b"this is a response".to_vec()),
-                        sent_feedback: None,
-                    })
-                    .unwrap();
-            }
-            .boxed()
-            .into(),
-        )
-        .unwrap();
+        protocol_1_request
+            .unwrap()
+            .pending_response
+            .send(OutgoingResponse {
+                result: Ok(b"this is a response 1".to_vec()),
+                sent_feedback: None,
+            })
+            .unwrap();
+        protocol_2_request
+            .unwrap()
+            .pending_response
+            .send(OutgoingResponse {
+                result: Ok(b"this is a response 2".to_vec()),
+                sent_feedback: None,
+            })
+            .unwrap();
+    });
 
     // Have swarm 1 send two requests to swarm 2 and await responses.
-    pool.run_until(async move {
-        let mut response_receivers = None;
-        let mut num_responses = 0;
+    let mut num_responses = 0;
 
-        loop {
-            match swarm_1.select_next_some().await {
-                SwarmEvent::ConnectionEstablished { peer_id, .. } => {
-                    let (sender_1, receiver_1) = oneshot::channel();
-                    let (sender_2, receiver_2) = oneshot::channel();
-                    swarm_1.behaviour_mut().send_request(
-                        &peer_id,
-                        protocol_name_1,
-                        b"this is a request".to_vec(),
-                        sender_1,
-                        IfDisconnected::ImmediateError,
-                    );
-                    swarm_1.behaviour_mut().send_request(
-                        &peer_id,
-                        protocol_name_2,
-                        b"this is a request".to_vec(),
-                        sender_2,
-                        IfDisconnected::ImmediateError,
-                    );
-                    assert!(response_receivers.is_none());
-                    response_receivers = Some((receiver_1, receiver_2));
-                }
-                SwarmEvent::Behaviour(Event::RequestFinished { result, .. }) => {
-                    num_responses += 1;
-                    result.unwrap();
-                    if num_responses == 2 {
-                        break;
-                    }
-                }
-                _ => {}
+    let (sender_1, receiver_1) = oneshot::channel();
+    let (sender_2, receiver_2) = oneshot::channel();
+    // Send two requests
+    swarm_1.behaviour_mut().send_request(
+        &peer_id_2,
+        protocol_name_1,
+        b"this is a request 1".to_vec(),
+        sender_1,
+        IfDisconnected::ImmediateError,
+    );
+    swarm_1.behaviour_mut().send_request(
+        &peer_id_2,
+        protocol_name_2,
+        b"this is a request 2".to_vec(),
+        sender_2,
+        IfDisconnected::ImmediateError,
+    );
+    // Expect both to finish
+    loop {
+        if let SwarmEvent::Behaviour(Event::RequestFinished { result, .. }) =
+            swarm_1.select_next_some().await
+        {
+            num_responses += 1;
+            result.unwrap();
+            if num_responses == 2 {
+                break;
             }
         }
-        let (response_receiver_1, response_receiver_2) = response_receivers.unwrap();
-        assert_eq!(
-            response_receiver_1.await.unwrap().unwrap(),
-            b"this is a response"
-        );
-        assert_eq!(
-            response_receiver_2.await.unwrap().unwrap(),
-            b"this is a response"
-        );
-    });
+    }
+    // Expect two responses
+    assert_eq!(receiver_1.await.unwrap().unwrap(), b"this is a response 1");
+    assert_eq!(receiver_2.await.unwrap().unwrap(), b"this is a response 2");
 }

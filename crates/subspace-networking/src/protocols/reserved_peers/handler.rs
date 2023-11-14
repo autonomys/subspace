@@ -1,8 +1,6 @@
 use libp2p::core::upgrade::DeniedUpgrade;
 use libp2p::swarm::handler::ConnectionEvent;
-use libp2p::swarm::{ConnectionHandler, ConnectionHandlerEvent, KeepAlive, SubstreamProtocol};
-use std::error::Error;
-use std::fmt;
+use libp2p::swarm::{ConnectionHandler, ConnectionHandlerEvent, SubstreamProtocol};
 use std::task::{Context, Poll};
 use void::Void;
 
@@ -33,21 +31,9 @@ impl Handler {
     }
 }
 
-#[derive(Debug)]
-pub struct ReservedPeersError;
-
-impl fmt::Display for ReservedPeersError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Reserved peers error.")
-    }
-}
-
-impl Error for ReservedPeersError {}
-
 impl ConnectionHandler for Handler {
     type FromBehaviour = Void;
     type ToBehaviour = ();
-    type Error = ReservedPeersError;
     type InboundProtocol = DeniedUpgrade;
     type OutboundProtocol = DeniedUpgrade;
     type OutboundOpenInfo = ();
@@ -59,18 +45,11 @@ impl ConnectionHandler for Handler {
 
     fn on_behaviour_event(&mut self, _: Void) {}
 
-    fn connection_keep_alive(&self) -> KeepAlive {
-        if self.connected_to_reserved_peer {
-            KeepAlive::Yes
-        } else {
-            KeepAlive::No
-        }
+    fn connection_keep_alive(&self) -> bool {
+        self.connected_to_reserved_peer
     }
 
-    fn poll(
-        &mut self,
-        _: &mut Context<'_>,
-    ) -> Poll<ConnectionHandlerEvent<DeniedUpgrade, (), (), Self::Error>> {
+    fn poll(&mut self, _: &mut Context<'_>) -> Poll<ConnectionHandlerEvent<DeniedUpgrade, (), ()>> {
         Poll::Pending
     }
 

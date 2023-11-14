@@ -2,8 +2,8 @@
 mod tests;
 
 use crate::utils::multihash::ToMultihash;
-pub use libp2p::kad::record::Key;
 use libp2p::kad::KBucketDistance;
+pub use libp2p::kad::RecordKey;
 pub use libp2p::PeerId;
 use std::cmp::Ordering;
 use std::collections::BTreeSet;
@@ -20,7 +20,7 @@ struct RecordHeapKey<K> {
 
 impl<K> RecordHeapKey<K>
 where
-    Key: From<K>,
+    RecordKey: From<K>,
     K: Clone,
 {
     fn peer_distance(&self) -> KBucketDistance {
@@ -28,21 +28,21 @@ where
     }
 
     fn new(peer_key: &KademliaBucketKey<PeerId>, key: K) -> Self {
-        let peer_distance = KademliaBucketKey::new(Key::from(key.clone())).distance(peer_key);
+        let peer_distance = KademliaBucketKey::new(RecordKey::from(key.clone())).distance(peer_key);
         Self { peer_distance, key }
     }
 }
 
 impl<K> Eq for RecordHeapKey<K>
 where
-    Key: From<K>,
+    RecordKey: From<K>,
     K: Clone,
 {
 }
 
 impl<K> PartialEq<Self> for RecordHeapKey<K>
 where
-    Key: From<K>,
+    RecordKey: From<K>,
     K: Clone,
 {
     fn eq(&self, other: &Self) -> bool {
@@ -52,7 +52,7 @@ where
 
 impl<K> PartialOrd<Self> for RecordHeapKey<K>
 where
-    Key: From<K>,
+    RecordKey: From<K>,
     K: Clone,
 {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
@@ -62,7 +62,7 @@ where
 
 impl<K> Ord for RecordHeapKey<K>
 where
-    Key: From<K>,
+    RecordKey: From<K>,
     K: Clone,
 {
     fn cmp(&self, other: &Self) -> Ordering {
@@ -75,7 +75,7 @@ where
 #[derive(Debug, Copy, Clone)]
 pub struct KeyWrapper<T>(pub T);
 
-impl From<KeyWrapper<PieceIndex>> for Key {
+impl From<KeyWrapper<PieceIndex>> for RecordKey {
     fn from(value: KeyWrapper<PieceIndex>) -> Self {
         value.0.to_multihash().into()
     }
@@ -87,7 +87,7 @@ impl From<KeyWrapper<PieceIndex>> for Key {
 /// It maintains limited size and evicts (pops) items when this limited is exceeded.
 /// Unique keys are only inserted once.
 #[derive(Clone, Debug)]
-pub struct UniqueRecordBinaryHeap<K = Key> {
+pub struct UniqueRecordBinaryHeap<K = RecordKey> {
     peer_key: KademliaBucketKey<PeerId>,
     set: BTreeSet<RecordHeapKey<K>>,
     limit: usize,
@@ -95,7 +95,7 @@ pub struct UniqueRecordBinaryHeap<K = Key> {
 
 impl<K> UniqueRecordBinaryHeap<K>
 where
-    Key: From<K>,
+    RecordKey: From<K>,
     K: Clone,
 {
     /// Constructs a heap with given PeerId and size limit.

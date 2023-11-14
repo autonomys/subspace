@@ -24,7 +24,7 @@ use libp2p::gossipsub::{
     Behaviour as Gossipsub, Config as GossipsubConfig, Event as GossipsubEvent, MessageAuthenticity,
 };
 use libp2p::identify::{Behaviour as Identify, Config as IdentifyConfig, Event as IdentifyEvent};
-use libp2p::kad::{Kademlia, KademliaConfig, KademliaEvent};
+use libp2p::kad::{Behaviour as Kademlia, Config as KademliaConfig, Event as KademliaEvent};
 use libp2p::ping::{Behaviour as Ping, Event as PingEvent};
 use libp2p::swarm::behaviour::toggle::Toggle;
 use libp2p::swarm::NetworkBehaviour;

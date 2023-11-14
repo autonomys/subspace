@@ -21,7 +21,7 @@ domain-client-message-relayer = { version = "0.1.0", path = "../client/relayer" 
 domain-client-operator = { version = "0.1.0", path = "../client/domain-operator" }
 domain-client-subnet-gossip = { version = "0.1.0", path = "../client/subnet-gossip" }
 domain-runtime-primitives = { version = "0.1.0", path = "../primitives/runtime" }
-futures = "0.3.28"
+futures = "0.3.29"
 jsonrpsee = { version = "0.16.3", features = ["server"] }
 log = "0.4.20"
 pallet-transaction-payment-rpc = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "892bf8e938c6bd2b893d3827d1093cd81baa59a1" }

@@ -7,8 +7,8 @@ pub use handler::{Config, PeerInfoError, PeerInfoSuccess};
 use libp2p::core::{Endpoint, Multiaddr};
 use libp2p::swarm::behaviour::{ConnectionEstablished, FromSwarm};
 use libp2p::swarm::{
-    ConnectionClosed, ConnectionDenied, ConnectionId, NetworkBehaviour, NotifyHandler,
-    PollParameters, THandler, THandlerInEvent, THandlerOutEvent, ToSwarm,
+    ConnectionClosed, ConnectionDenied, ConnectionId, NetworkBehaviour, NotifyHandler, THandler,
+    THandlerInEvent, THandlerOutEvent, ToSwarm,
 };
 use libp2p::PeerId;
 use parity_scale_codec::{Decode, Encode};
@@ -200,7 +200,6 @@ impl NetworkBehaviour for Behaviour {
     fn poll(
         &mut self,
         cx: &mut Context<'_>,
-        _: &mut impl PollParameters,
     ) -> Poll<ToSwarm<Self::ToSwarm, THandlerInEvent<Self>>> {
         if let Some(e) = self.events.pop_back() {
             let Event { result, peer_id } = &e;
@@ -233,7 +232,7 @@ impl NetworkBehaviour for Behaviour {
         Poll::Pending
     }
 
-    fn on_swarm_event(&mut self, event: FromSwarm<Self::ConnectionHandler>) {
+    fn on_swarm_event(&mut self, event: FromSwarm) {
         match event {
             FromSwarm::ConnectionEstablished(ConnectionEstablished {
                 peer_id,
@@ -258,17 +257,7 @@ impl NetworkBehaviour for Behaviour {
                     self.connected_peers.remove(&peer_id);
                 }
             }
-            FromSwarm::AddressChange(_)
-            | FromSwarm::DialFailure(_)
-            | FromSwarm::ListenFailure(_)
-            | FromSwarm::NewListener(_)
-            | FromSwarm::NewListenAddr(_)
-            | FromSwarm::ExpiredListenAddr(_)
-            | FromSwarm::ListenerError(_)
-            | FromSwarm::ListenerClosed(_)
-            | FromSwarm::NewExternalAddrCandidate(_)
-            | FromSwarm::ExternalAddrConfirmed(_)
-            | FromSwarm::ExternalAddrExpired(_) => {}
+            _ => {}
         }
     }
 }

@@ -33,7 +33,7 @@ fp-evm = { version = "3.0.0-dev", git = "https://github.com/subspace/frontier", 
 frame-benchmarking = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "892bf8e938c6bd2b893d3827d1093cd81baa59a1", default-features = false }
 frame-benchmarking-cli = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "892bf8e938c6bd2b893d3827d1093cd81baa59a1", default-features = false }
 frame-support = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "892bf8e938c6bd2b893d3827d1093cd81baa59a1" }
-futures = "0.3.28"
+futures = "0.3.29"
 hex = "0.4.3"
 hex-literal = "0.4.1"
 log = "0.4.20"

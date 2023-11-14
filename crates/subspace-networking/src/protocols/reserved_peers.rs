@@ -9,8 +9,8 @@ use libp2p::core::{Endpoint, Multiaddr};
 use libp2p::swarm::behaviour::{ConnectionEstablished, FromSwarm};
 use libp2p::swarm::dial_opts::DialOpts;
 use libp2p::swarm::{
-    ConnectionClosed, ConnectionDenied, ConnectionId, DialFailure, NetworkBehaviour,
-    PollParameters, THandler, THandlerInEvent, THandlerOutEvent, ToSwarm,
+    ConnectionClosed, ConnectionDenied, ConnectionId, DialFailure, NetworkBehaviour, THandler,
+    THandlerInEvent, THandlerOutEvent, ToSwarm,
 };
 use libp2p::PeerId;
 use std::collections::HashMap;
@@ -166,7 +166,7 @@ impl NetworkBehaviour for Behaviour {
         Ok(self.new_reserved_peers_handler(&peer_id))
     }
 
-    fn on_swarm_event(&mut self, event: FromSwarm<Self::ConnectionHandler>) {
+    fn on_swarm_event(&mut self, event: FromSwarm) {
         match event {
             FromSwarm::ConnectionEstablished(ConnectionEstablished { peer_id, .. }) => {
                 if let Some(state) = self.reserved_peers_state.get_mut(&peer_id) {
@@ -190,28 +190,20 @@ impl NetworkBehaviour for Behaviour {
                     }
                 }
             }
-            FromSwarm::DialFailure(DialFailure { peer_id, .. }) => {
-                if let Some(peer_id) = peer_id {
-                    if let Some(state) = self.reserved_peers_state.get_mut(&peer_id) {
-                        if state.connection_status == ConnectionStatus::PendingConnection {
-                            state.connection_status = ConnectionStatus::NotConnected;
-                        };
+            FromSwarm::DialFailure(DialFailure {
+                peer_id: Some(peer_id),
+                ..
+            }) => {
+                if let Some(state) = self.reserved_peers_state.get_mut(&peer_id) {
+                    if state.connection_status == ConnectionStatus::PendingConnection {
+                        state.connection_status = ConnectionStatus::NotConnected;
+                    };
 
-                        debug!(peer_id=%state.peer_id, "Reserved peer dialing failed.");
-                        self.wake();
-                    }
+                    debug!(peer_id=%state.peer_id, "Reserved peer dialing failed.");
+                    self.wake();
                 }
             }
-            FromSwarm::AddressChange(_)
-            | FromSwarm::ListenFailure(_)
-            | FromSwarm::NewListener(_)
-            | FromSwarm::NewListenAddr(_)
-            | FromSwarm::ExpiredListenAddr(_)
-            | FromSwarm::ListenerError(_)
-            | FromSwarm::ListenerClosed(_)
-            | FromSwarm::NewExternalAddrCandidate(_)
-            | FromSwarm::ExternalAddrConfirmed(_)
-            | FromSwarm::ExternalAddrExpired(_) => {}
+            _ => {}
         }
     }
 
@@ -226,7 +218,6 @@ impl NetworkBehaviour for Behaviour {
     fn poll(
         &mut self,
         cx: &mut Context<'_>,
-        _: &mut impl PollParameters,
     ) -> Poll<ToSwarm<Self::ToSwarm, THandlerInEvent<Self>>> {
         // Schedule new peer dialing.
         match self.dialing_delay.poll_unpin(cx) {

@@ -20,13 +20,13 @@ async-trait = "0.1.73"
 atomic = "0.5.3"
 cross-domain-message-gossip = { version = "0.1.0", path = "../../domains/client/cross-domain-message-gossip" }
 domain-runtime-primitives = { version = "0.1.0", path = "../../domains/primitives/runtime" }
-futures = "0.3.28"
+futures = "0.3.29"
 hex = "0.4.3"
 jsonrpsee = { version = "0.16.3", features = ["server"] }
 pallet-transaction-payment-rpc = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "892bf8e938c6bd2b893d3827d1093cd81baa59a1" }
 parity-scale-codec = "3.6.5"
 parking_lot = "0.12.1"
-prometheus-client = "0.21.2"
+prometheus-client = "0.22.0"
 sc-basic-authorship = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "892bf8e938c6bd2b893d3827d1093cd81baa59a1" }
 sc-chain-spec = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "892bf8e938c6bd2b893d3827d1093cd81baa59a1" }
 sc-client-api = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "892bf8e938c6bd2b893d3827d1093cd81baa59a1" }
