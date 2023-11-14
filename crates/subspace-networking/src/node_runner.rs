@@ -707,6 +707,7 @@ where
             // Remove temporary ban if there was any
             self.temporary_bans.lock().remove(&peer_id);
             // Forget about this peer until they upgrade
+            let _ = self.swarm.disconnect_peer_id(peer_id);
             self.swarm.behaviour_mut().kademlia.remove_peer(&peer_id);
             self.networking_parameters_registry
                 .remove_all_known_peer_addresses(peer_id);
