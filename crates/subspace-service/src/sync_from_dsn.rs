@@ -7,7 +7,7 @@ use crate::sync_from_dsn::piece_validator::SegmentCommitmentPieceValidator;
 use crate::sync_from_dsn::segment_header_downloader::SegmentHeaderDownloader;
 use atomic::Atomic;
 use futures::channel::mpsc;
-use futures::{FutureExt, StreamExt};
+use futures::{select, FutureExt, StreamExt};
 use sc_client_api::{AuxStore, BlockBackend, BlockchainEvents};
 use sc_consensus::import_queue::ImportQueueService;
 use sc_consensus_subspace::archiver::SegmentHeadersStore;
@@ -16,9 +16,10 @@ use sc_network::{NetworkPeers, NetworkService};
 use sp_api::{BlockT, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus_subspace::{FarmerPublicKey, SubspaceApi};
+use sp_runtime::traits::{CheckedSub, NumberFor};
 use sp_runtime::Saturating;
 use std::future::Future;
-use std::sync::atomic::Ordering;
+use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 use subspace_core_primitives::crypto::kzg::Kzg;
@@ -27,10 +28,12 @@ use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_networking::Node;
 use tracing::{info, warn};
 
-/// How much time to wait for new block to be imported before timing out and starting sync from DSN.
+/// How much time to wait for new block to be imported before timing out and starting sync from DSN
 const NO_IMPORTED_BLOCKS_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 /// Frequency with which to check whether node is online or not
 const CHECK_ONLINE_STATUS_INTERVAL: Duration = Duration::from_secs(1);
+/// Frequency with which to check whether node is almost synced to the tip of the observed chain
+const CHECK_ALMOST_SYNCED_INTERVAL: Duration = Duration::from_secs(1);
 /// Period of time during which node should be offline for DSN sync to kick-in
 const MIN_OFFLINE_PERIOD: Duration = Duration::from_secs(60);
 
@@ -43,12 +46,14 @@ enum NotificationReason {
 
 /// Create node observer that will track node state and send notifications to worker to start sync
 /// from DSN.
+#[allow(clippy::too_many_arguments)]
 pub(super) fn create_observer_and_worker<Block, AS, Client>(
     segment_headers_store: SegmentHeadersStore<AS>,
     network_service: Arc<NetworkService<Block, <Block as BlockT>::Hash>>,
     node: Node,
     client: Arc<Client>,
     mut import_queue_service: Box<dyn ImportQueueService<Block>>,
+    sync_target_block_number: Arc<AtomicU32>,
     sync_mode: Arc<Atomic<SyncMode>>,
     kzg: Kzg,
 ) -> (
@@ -80,6 +85,7 @@ where
             &node,
             client.as_ref(),
             import_queue_service.as_mut(),
+            sync_target_block_number,
             sync_mode,
             rx,
             &kzg,
@@ -204,11 +210,13 @@ async fn create_substrate_network_observer<Block>(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 async fn create_worker<Block, AS, IQS, Client>(
     segment_headers_store: SegmentHeadersStore<AS>,
     node: &Node,
     client: &Client,
     import_queue_service: &mut IQS,
+    sync_target_block_number: Arc<AtomicU32>,
     sync_mode: Arc<Atomic<SyncMode>>,
     mut notifications: mpsc::Receiver<NotificationReason>,
     kzg: &Kzg,
@@ -225,22 +233,20 @@ where
     Client::Api: SubspaceApi<Block, FarmerPublicKey>,
     IQS: ImportQueueService<Block> + ?Sized,
 {
+    let info = client.info();
+    let chain_constants = client
+        .runtime_api()
+        .chain_constants(info.best_hash)
+        .map_err(|error| error.to_string())?;
+
     // Corresponds to contents of block one, everyone has it, so we consider it being processed
     // right away
     let mut last_processed_segment_index = SegmentIndex::ZERO;
     // TODO: We'll be able to just take finalized block once we are able to decouple pruning from
     //  finality: https://github.com/paritytech/polkadot-sdk/issues/1570
-    let mut last_processed_block_number = {
-        let info = client.info();
-        info.best_number.saturating_sub(
-            client
-                .runtime_api()
-                .chain_constants(info.best_hash)
-                .map_err(|error| error.to_string())?
-                .confirmation_depth_k()
-                .into(),
-        )
-    };
+    let mut last_processed_block_number = info
+        .best_number
+        .saturating_sub(chain_constants.confirmation_depth_k().into());
     let segment_header_downloader = SegmentHeaderDownloader::new(node);
     let piece_provider = PieceProvider::new(
         node.clone(),
@@ -258,7 +264,7 @@ where
 
         info!(?reason, "Received notification to sync from DSN");
         // TODO: Maybe handle failed block imports, additional helpful logging
-        if let Err(error) = import_blocks_from_dsn(
+        let import_froms_from_dsn_fut = import_blocks_from_dsn(
             &segment_headers_store,
             &segment_header_downloader,
             client,
@@ -266,10 +272,36 @@ where
             import_queue_service,
             &mut last_processed_segment_index,
             &mut last_processed_block_number,
-        )
-        .await
-        {
-            warn!(%error, "Error when syncing blocks from DSN");
+        );
+        let wait_almost_synced_fut = async {
+            loop {
+                tokio::time::sleep(CHECK_ALMOST_SYNCED_INTERVAL).await;
+
+                let info = client.info();
+                let target_block_number =
+                    NumberFor::<Block>::from(sync_target_block_number.load(Ordering::Relaxed));
+
+                // If less blocks than confirmation depth to the tip of the chain, no need to worry about DSN sync
+                // anymore, it will not be helpful anyway
+                if target_block_number
+                    .checked_sub(&info.best_number)
+                    .map(|diff| diff < chain_constants.confirmation_depth_k().into())
+                    .unwrap_or_default()
+                {
+                    break;
+                }
+            }
+        };
+
+        select! {
+            result = import_froms_from_dsn_fut.fuse() => {
+                if let Err(error) = result {
+                    warn!(%error, "Error when syncing blocks from DSN");
+                }
+            }
+            _ = wait_almost_synced_fut.fuse() => {
+                // Almost synced, DSN sync can't possibly help here
+            }
         }
 
         sync_mode.store(

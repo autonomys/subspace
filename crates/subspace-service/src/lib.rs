@@ -783,6 +783,7 @@ where
         None,
         Box::pin({
             let sync_service = sync_service.clone();
+            let sync_target_block_number = Arc::clone(&sync_target_block_number);
 
             async move {
                 loop {
@@ -832,6 +833,7 @@ where
             node.clone(),
             Arc::clone(&client),
             import_queue_service,
+            sync_target_block_number,
             sync_mode,
             subspace_link.kzg().clone(),
         );
