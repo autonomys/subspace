@@ -462,9 +462,6 @@ where
                     }
                 };
 
-                // Remove temporary ban if there was any
-                self.temporary_bans.lock().remove(&peer_id);
-
                 let shared = match self.shared_weak.upgrade() {
                     Some(shared) => shared,
                     None => {
@@ -690,21 +687,30 @@ where
         let local_peer_id = *self.swarm.local_peer_id();
 
         if let IdentifyEvent::Received { peer_id, mut info } = event {
-            debug!(?peer_id, protocols=?info.protocols, "IdentifyEvent::Received");
+            debug!(?peer_id, protocols = ?info.protocols, "IdentifyEvent::Received");
 
             // Check for network partition
             if info.protocol_version != self.protocol_version {
                 debug!(
                     %local_peer_id,
                     %peer_id,
-                    local_protocol_version=%self.protocol_version,
-                    peer_protocol_version=%info.protocol_version,
-                    "Peer has different protocol version. Peer was banned.",
+                    local_protocol_version = %self.protocol_version,
+                    peer_protocol_version = %info.protocol_version,
+                    "Peer has different protocol version, banning temporarily",
                 );
 
-                self.ban_peer(peer_id);
+                self.temporary_bans.lock().create_or_extend(&peer_id);
+                // Forget about this peer until they upgrade
+                let _ = self.swarm.disconnect_peer_id(peer_id);
+                self.swarm.behaviour_mut().kademlia.remove_peer(&peer_id);
+                self.networking_parameters_registry
+                    .remove_all_known_peer_addresses(peer_id);
+
                 return;
             }
+
+            // Remove temporary ban if there was any
+            self.temporary_bans.lock().remove(&peer_id);
 
             if info.listen_addrs.len() > 30 {
                 debug!(
