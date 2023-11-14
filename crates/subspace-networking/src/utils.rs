@@ -50,15 +50,6 @@ impl<T> Future for AsyncJoinOnDrop<T> {
     }
 }
 
-/// This test is successful only for global IP addresses.
-pub(crate) fn is_global_address(addr: &Multiaddr) -> bool {
-    match addr.iter().next() {
-        Some(Protocol::Ip4(ip)) => ip.is_global(),
-        Some(Protocol::Ip6(ip)) => ip.is_global(),
-        _ => false,
-    }
-}
-
 /// This test is successful only for global IP addresses and DNS names.
 pub(crate) fn is_global_address_or_dns(addr: &Multiaddr) -> bool {
     match addr.iter().next() {

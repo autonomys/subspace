@@ -15,7 +15,7 @@ use crate::protocols::request_response::request_response_factory::{
 };
 use crate::shared::{Command, CreatedSubscription, NewPeerInfo, PeerDiscovered, Shared};
 use crate::utils::rate_limiter::RateLimiterPermit;
-use crate::utils::{is_global_address, is_global_address_or_dns, strip_peer_id, PeerAddress};
+use crate::utils::{is_global_address_or_dns, strip_peer_id, PeerAddress};
 use async_mutex::Mutex as AsyncMutex;
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;
@@ -23,7 +23,7 @@ use futures::channel::mpsc;
 use futures::future::Fuse;
 use futures::{FutureExt, StreamExt};
 use libp2p::autonat::{Event as AutonatEvent, NatStatus};
-use libp2p::core::{address_translation, ConnectedPoint};
+use libp2p::core::ConnectedPoint;
 use libp2p::gossipsub::{Event as GossipsubEvent, TopicHash};
 use libp2p::identify::Event as IdentifyEvent;
 use libp2p::kad::{
@@ -140,9 +140,6 @@ where
     bootstrap_command_state: Arc<AsyncMutex<BootstrapCommandState>>,
     /// Kademlia mode.
     kademlia_mode: KademliaMode,
-    /// Known external addresses to the local peer. The addresses are added on the swarm start
-    /// and enable peer to notify others about its reachable address.
-    external_addresses: Vec<Multiaddr>,
     /// Receives an event on peer address removal from the persistent storage.
     removed_addresses_rx: mpsc::UnboundedReceiver<PeerAddressRemovedEvent>,
     /// Optional storage for the [`HandlerId`] of the address removal task.
@@ -171,7 +168,6 @@ where
     pub(crate) special_connection_decision_handler: Option<ConnectedPeersHandler>,
     pub(crate) bootstrap_addresses: Vec<Multiaddr>,
     pub(crate) kademlia_mode: KademliaMode,
-    pub(crate) external_addresses: Vec<Multiaddr>,
     pub(crate) disable_bootstrap_on_start: bool,
 }
 
@@ -195,7 +191,6 @@ where
             special_connection_decision_handler,
             bootstrap_addresses,
             kademlia_mode,
-            external_addresses,
             disable_bootstrap_on_start,
         }: NodeRunnerConfig<LocalRecordProvider>,
     ) -> Self {
@@ -237,7 +232,6 @@ where
             bootstrap_addresses,
             bootstrap_command_state: Arc::new(AsyncMutex::new(BootstrapCommandState::default())),
             kademlia_mode,
-            external_addresses,
             removed_addresses_rx,
             _address_removal_task_handler_id: address_removal_task_handler_id,
             disable_bootstrap_on_start,
@@ -628,6 +622,12 @@ where
                     }
                 }
             }
+            SwarmEvent::NewExternalAddrCandidate { address } => {
+                trace!(%address, "External address candidate");
+            }
+            SwarmEvent::ExternalAddrConfirmed { address } => {
+                info!(%address, "Confirmed external address");
+            }
             other => {
                 trace!("Other swarm event: {:?}", other);
             }
@@ -758,49 +758,6 @@ where
 
                 kademlia.remove_peer(&peer_id);
             }
-
-            if self.allow_non_global_addresses_in_dht || is_global_address(&info.observed_addr) {
-                self.add_observed_external_address(info.observed_addr);
-            }
-        }
-    }
-
-    fn add_observed_external_address(&mut self, observed_addr: Multiaddr) {
-        if !self.external_addresses.is_empty() {
-            debug!(
-                %observed_addr,
-                "Ignoring observed address, configured explicitly during startup",
-            );
-            return;
-        }
-
-        let Some(listen_addr) = self.swarm.listeners().next() else {
-            debug!(
-                "Listener addresses are not specified, will not accept observed external address"
-            );
-            return;
-        };
-
-        let Some(observed_addr) = address_translation(listen_addr, &observed_addr) else {
-            warn!(
-                %listen_addr,
-                %observed_addr,
-                "Can't translate observed address"
-            );
-            return;
-        };
-
-        if !self
-            .swarm
-            .external_addresses()
-            .cloned()
-            .collect::<Vec<_>>()
-            .contains(&observed_addr)
-        {
-            info!(%observed_addr, "Added observed address as external");
-            self.swarm.add_external_address(observed_addr);
-        } else {
-            trace!(%observed_addr, "Skipping known external address");
         }
     }
 
