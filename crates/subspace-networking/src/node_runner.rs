@@ -22,7 +22,7 @@ use event_listener_primitives::HandlerId;
 use futures::channel::mpsc;
 use futures::future::Fuse;
 use futures::{FutureExt, StreamExt};
-use libp2p::autonat::Event as AutonatEvent;
+use libp2p::autonat::{Event as AutonatEvent, NatStatus};
 use libp2p::core::ConnectedPoint;
 use libp2p::gossipsub::{Event as GossipsubEvent, TopicHash};
 use libp2p::identify::Event as IdentifyEvent;
@@ -1153,6 +1153,13 @@ where
 
         if let AutonatEvent::StatusChanged { old, new } = event {
             info!(?old, ?new, "Public address status changed.");
+
+            // TODO: Remove block once https://github.com/libp2p/rust-libp2p/issues/4863 is resolved
+            if let (NatStatus::Public(old_address), NatStatus::Private) = (old, new) {
+                self.swarm.remove_external_address(&old_address);
+                // Trigger potential mode change manually
+                self.swarm.behaviour_mut().kademlia.set_mode(None);
+            }
         }
     }
 
