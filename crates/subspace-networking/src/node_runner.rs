@@ -606,6 +606,15 @@ where
             }
             SwarmEvent::ExternalAddrConfirmed { address } => {
                 info!(%address, "Confirmed external address");
+
+                let connected_peers = self.swarm.connected_peers().copied().collect::<Vec<_>>();
+                self.swarm.behaviour_mut().identify.push(connected_peers);
+            }
+            SwarmEvent::ExternalAddrExpired { address } => {
+                info!(%address, "External address expired");
+
+                let connected_peers = self.swarm.connected_peers().copied().collect::<Vec<_>>();
+                self.swarm.behaviour_mut().identify.push(connected_peers);
             }
             other => {
                 trace!("Other swarm event: {:?}", other);
@@ -1159,6 +1168,9 @@ where
                 self.swarm.remove_external_address(&old_address);
                 // Trigger potential mode change manually
                 self.swarm.behaviour_mut().kademlia.set_mode(None);
+
+                let connected_peers = self.swarm.connected_peers().copied().collect::<Vec<_>>();
+                self.swarm.behaviour_mut().identify.push(connected_peers);
             }
         }
     }
