@@ -274,7 +274,6 @@ pub async fn configure_dsn(
         allow_non_global_addresses_in_dht: enable_private_ips,
         request_response_protocols: vec![PieceByIndexRequestHandler::create(|_, _| async { None })],
         bootstrap_addresses,
-        enable_autonat: false,
         max_pending_outgoing_connections: pending_out_peers,
         max_established_outgoing_connections: out_peers,
         ..default_config
