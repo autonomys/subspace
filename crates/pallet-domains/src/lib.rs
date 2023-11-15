@@ -1285,6 +1285,7 @@ mod pallet {
                             BundleError::Receipt(BlockTreeError::InFutureReceipt)
                             | BundleError::Receipt(BlockTreeError::StaleReceipt)
                             | BundleError::Receipt(BlockTreeError::NewBranchReceipt)
+                            | BundleError::Receipt(BlockTreeError::UnavailableConsensusBlockHash)
                             | BundleError::Receipt(BlockTreeError::BuiltOnUnknownConsensusBlock) => {
                                 log::debug!(
                                     target: "runtime::domains",
