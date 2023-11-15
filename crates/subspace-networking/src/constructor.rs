@@ -257,10 +257,6 @@ pub struct Config<LocalRecordProvider> {
     /// Known external addresses to the local peer. The addresses will be added on the swarm start
     /// and enable peer to notify others about its reachable address.
     pub external_addresses: Vec<Multiaddr>,
-    /// Enable autonat protocol. Helps detecting whether we're behind the firewall.
-    ///
-    /// NOTE: Ignored and implied to be `false` in case `external_addresses` is not empty.
-    pub enable_autonat: bool,
     /// Defines whether we should run blocking Kademlia bootstrap() operation before other requests.
     pub disable_bootstrap_on_start: bool,
 }
@@ -382,7 +378,6 @@ where
             bootstrap_addresses: Vec::new(),
             kademlia_mode: KademliaMode::Static(Mode::Client),
             external_addresses: Vec::new(),
-            enable_autonat: true,
             disable_bootstrap_on_start: false,
         }
     }
@@ -453,7 +448,6 @@ where
         bootstrap_addresses,
         kademlia_mode,
         external_addresses,
-        enable_autonat,
         disable_bootstrap_on_start,
     } = config;
     let local_peer_id = peer_id(&keypair);
@@ -506,7 +500,7 @@ where
                 ..ConnectedPeersConfig::default()
             }
         }),
-        autonat: (enable_autonat && external_addresses.is_empty()).then(|| AutonatConfig {
+        autonat: external_addresses.is_empty().then(|| AutonatConfig {
             use_connected: true,
             only_global_ips: !config.allow_non_global_addresses_in_dht,
             confidence_max: AUTONAT_MAX_CONFIDENCE,
@@ -514,8 +508,16 @@ where
         }),
     });
 
-    if let KademliaMode::Static(mode) = kademlia_mode {
-        behaviour.kademlia.set_mode(Some(mode));
+    match (kademlia_mode, external_addresses.is_empty()) {
+        (KademliaMode::Static(mode), _) => {
+            behaviour.kademlia.set_mode(Some(mode));
+        }
+        (KademliaMode::Dynamic, false) => {
+            behaviour.kademlia.set_mode(Some(Mode::Server));
+        }
+        _ => {
+            // Autonat will figure it out
+        }
     };
 
     let temporary_bans = Arc::new(Mutex::new(TemporaryBans::new(
