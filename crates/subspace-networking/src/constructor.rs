@@ -105,10 +105,7 @@ pub enum KademliaMode {
     /// The Kademlia mode is static for the duration of the application.
     Static(Mode),
     /// Kademlia mode will be changed using Autonat protocol when max confidence reached.
-    Dynamic {
-        /// Defines initial Kademlia mode.
-        initial_mode: Mode,
-    },
+    Dynamic,
 }
 
 /// Trait to be implemented on providers of local records
@@ -477,7 +474,7 @@ where
 
     debug!(?connection_limits, "DSN connection limits set.");
 
-    let behaviour = Behavior::new(BehaviorConfig {
+    let mut behaviour = Behavior::new(BehaviorConfig {
         peer_id: local_peer_id,
         identify,
         kademlia,
@@ -516,6 +513,10 @@ where
             ..Default::default()
         }),
     });
+
+    if let KademliaMode::Static(mode) = kademlia_mode {
+        behaviour.kademlia.set_mode(Some(mode));
+    };
 
     let temporary_bans = Arc::new(Mutex::new(TemporaryBans::new(
         temporary_bans_cache_size,
@@ -594,7 +595,6 @@ where
             general_connection_decision_handler,
             special_connection_decision_handler,
             bootstrap_addresses,
-            kademlia_mode,
             disable_bootstrap_on_start,
         });
 

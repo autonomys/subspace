@@ -8,7 +8,7 @@ use subspace_farmer::piece_cache::PieceCache;
 use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
 use subspace_farmer::{NodeClient, NodeRpcClient};
 use subspace_networking::libp2p::identity::Keypair;
-use subspace_networking::libp2p::kad::{Mode, RecordKey};
+use subspace_networking::libp2p::kad::RecordKey;
 use subspace_networking::libp2p::metrics::Metrics;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::utils::multihash::ToMultihash;
@@ -196,9 +196,7 @@ pub(super) fn configure_dsn(
         // Allow to maintain some extra farmer connections beyond direct interest too
         special_connected_peers_limit: target_connections + in_connections / 4,
         bootstrap_addresses: bootstrap_nodes,
-        kademlia_mode: KademliaMode::Dynamic {
-            initial_mode: Mode::Client,
-        },
+        kademlia_mode: KademliaMode::Dynamic,
         external_addresses,
         metrics,
         disable_bootstrap_on_start,
