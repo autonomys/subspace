@@ -261,6 +261,8 @@ pub struct Config<LocalRecordProvider> {
     /// and enable peer to notify others about its reachable address.
     pub external_addresses: Vec<Multiaddr>,
     /// Enable autonat protocol. Helps detecting whether we're behind the firewall.
+    ///
+    /// NOTE: Ignored and implied to be `false` in case `external_addresses` is not empty.
     pub enable_autonat: bool,
     /// Defines whether we should run blocking Kademlia bootstrap() operation before other requests.
     pub disable_bootstrap_on_start: bool,
@@ -507,7 +509,7 @@ where
                 ..ConnectedPeersConfig::default()
             }
         }),
-        autonat: enable_autonat.then(|| AutonatConfig {
+        autonat: (enable_autonat && external_addresses.is_empty()).then(|| AutonatConfig {
             use_connected: true,
             only_global_ips: !config.allow_non_global_addresses_in_dht,
             confidence_max: AUTONAT_MAX_CONFIDENCE,
