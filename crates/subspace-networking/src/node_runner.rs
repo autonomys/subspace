@@ -47,7 +47,7 @@ use std::sync::atomic::Ordering;
 use std::sync::{Arc, Weak};
 use std::time::Duration;
 use tokio::time::Sleep;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{debug, error, trace, warn};
 
 // Defines a batch size for peer addresses from Kademlia buckets.
 const KADEMLIA_PEERS_ADDRESSES_BATCH_SIZE: usize = 20;
@@ -605,13 +605,13 @@ where
                 trace!(%address, "External address candidate");
             }
             SwarmEvent::ExternalAddrConfirmed { address } => {
-                info!(%address, "Confirmed external address");
+                debug!(%address, "Confirmed external address");
 
                 let connected_peers = self.swarm.connected_peers().copied().collect::<Vec<_>>();
                 self.swarm.behaviour_mut().identify.push(connected_peers);
             }
             SwarmEvent::ExternalAddrExpired { address } => {
-                info!(%address, "External address expired");
+                debug!(%address, "External address expired");
 
                 let connected_peers = self.swarm.connected_peers().copied().collect::<Vec<_>>();
                 self.swarm.behaviour_mut().identify.push(connected_peers);
@@ -1188,7 +1188,7 @@ where
         }
 
         if let AutonatEvent::StatusChanged { old, new } = event {
-            info!(?old, ?new, "Public address status changed.");
+            debug!(?old, ?new, "Public address status changed.");
 
             // TODO: Remove block once https://github.com/libp2p/rust-libp2p/issues/4863 is resolved
             if let (NatStatus::Public(old_address), NatStatus::Private) = (old, new) {
