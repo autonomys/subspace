@@ -14,7 +14,11 @@ use std::task::{Context, Poll};
 // TODO: Upstream these capabilities
 pub(crate) struct Behaviour {
     inner: ConnectionLimitsBehaviour,
+    /// For every peer ID store both their expected IP addresses as well as number of incoming connection attempts
+    /// allowed before this allow list entry no longer has an effect
     incoming_allow_list: HashMap<PeerId, (HashSet<IpAddr>, usize)>,
+    /// For every peer ID store number of outgoing connection attempts allowed before this allow list entry no longer
+    /// has an effect
     outgoing_allow_list: HashMap<PeerId, usize>,
 }
 
@@ -64,37 +68,6 @@ impl Behaviour {
             }
         } else {
             self.incoming_allow_list.remove(peer);
-        }
-    }
-
-    /// Add to allow list some attempts of outgoing connections from specified peer ID that will bypass global limits
-    // TODO: Not using for now, but will be helpful upstream
-    #[allow(dead_code)]
-    pub(crate) fn add_to_outgoing_allow_list(&mut self, peer: PeerId, attempts: usize) {
-        self.outgoing_allow_list
-            .entry(peer)
-            .and_modify(|entry| *entry = entry.saturating_add(attempts))
-            .or_insert(attempts);
-    }
-
-    /// Remove some (or all) attempts of outgoing connections from specified peer ID
-    // TODO: Not using for now, but will be helpful upstream
-    #[allow(dead_code)]
-    pub(crate) fn remove_from_outgoing_allow_list(
-        &mut self,
-        peer: &PeerId,
-        remove_attempts: Option<usize>,
-    ) {
-        if let Some(remove_attempts) = remove_attempts {
-            if let Some(attempts) = self.outgoing_allow_list.get_mut(peer) {
-                *attempts = attempts.saturating_sub(remove_attempts);
-
-                if *attempts == 0 {
-                    self.outgoing_allow_list.remove(peer);
-                }
-            }
-        } else {
-            self.outgoing_allow_list.remove(peer);
         }
     }
 }
