@@ -746,6 +746,10 @@ mod pallet {
             domain_id: DomainId,
             completed_epoch_index: EpochIndex,
         },
+        ForceDomainEpochTransition {
+            domain_id: DomainId,
+            completed_epoch_index: EpochIndex,
+        },
         FraudProofProcessed {
             domain_id: DomainId,
             new_head_receipt_number: Option<DomainBlockNumberFor<T>>,
@@ -1182,7 +1186,7 @@ mod pallet {
             )
             .map_err(Error::<T>::from)?;
 
-            Self::deposit_event(Event::DomainEpochCompleted {
+            Self::deposit_event(Event::ForceDomainEpochTransition {
                 domain_id,
                 completed_epoch_index,
             });
