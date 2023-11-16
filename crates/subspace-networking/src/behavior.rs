@@ -15,11 +15,12 @@ use crate::protocols::request_response::request_response_factory::{
 use crate::protocols::reserved_peers::{
     Behaviour as ReservedPeersBehaviour, Config as ReservedPeersConfig, Event as ReservedPeersEvent,
 };
+use crate::protocols::subspace_connection_limits::Behaviour as ConnectionLimitsBehaviour;
 use crate::PeerInfoProvider;
 use derive_more::From;
 use libp2p::allow_block_list::{Behaviour as AllowBlockListBehaviour, BlockedPeers};
 use libp2p::autonat::{Behaviour as Autonat, Config as AutonatConfig, Event as AutonatEvent};
-use libp2p::connection_limits::{Behaviour as ConnectionLimitsBehaviour, ConnectionLimits};
+use libp2p::connection_limits::ConnectionLimits;
 use libp2p::gossipsub::{
     Behaviour as Gossipsub, Config as GossipsubConfig, Event as GossipsubEvent, MessageAuthenticity,
 };

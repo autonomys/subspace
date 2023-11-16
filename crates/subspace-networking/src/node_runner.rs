@@ -22,7 +22,7 @@ use event_listener_primitives::HandlerId;
 use futures::channel::mpsc;
 use futures::future::Fuse;
 use futures::{FutureExt, StreamExt};
-use libp2p::autonat::{Event as AutonatEvent, NatStatus};
+use libp2p::autonat::{Event as AutonatEvent, NatStatus, OutboundProbeEvent};
 use libp2p::core::ConnectedPoint;
 use libp2p::gossipsub::{Event as GossipsubEvent, TopicHash};
 use libp2p::identify::Event as IdentifyEvent;
@@ -1183,17 +1183,49 @@ where
             );
         }
 
-        if let AutonatEvent::StatusChanged { old, new } = event {
-            debug!(?old, ?new, "Public address status changed.");
+        match event {
+            AutonatEvent::InboundProbe(_inbound_probe_event) => {
+                // We do not care about this event
+            }
+            AutonatEvent::OutboundProbe(outbound_probe_event) => {
+                match outbound_probe_event {
+                    OutboundProbeEvent::Request { peer, .. } => {
+                        // For outbound probe request add peer to allow list to ensure they can dial us back and not hit
+                        // global incoming connection limit
+                        self.swarm
+                            .behaviour_mut()
+                            .connection_limits
+                            // We expect a single successful dial from this peer
+                            .add_to_incoming_allow_list(peer, 1);
+                    }
+                    OutboundProbeEvent::Response { peer, .. } => {
+                        self.swarm
+                            .behaviour_mut()
+                            .connection_limits
+                            .remove_from_incoming_allow_list(&peer, Some(1));
+                    }
+                    OutboundProbeEvent::Error { peer, .. } => {
+                        if let Some(peer) = peer {
+                            self.swarm
+                                .behaviour_mut()
+                                .connection_limits
+                                .remove_from_incoming_allow_list(&peer, Some(1));
+                        }
+                    }
+                }
+            }
+            AutonatEvent::StatusChanged { old, new } => {
+                debug!(?old, ?new, "Public address status changed.");
 
-            // TODO: Remove block once https://github.com/libp2p/rust-libp2p/issues/4863 is resolved
-            if let (NatStatus::Public(old_address), NatStatus::Private) = (old, new) {
-                self.swarm.remove_external_address(&old_address);
-                // Trigger potential mode change manually
-                self.swarm.behaviour_mut().kademlia.set_mode(None);
+                // TODO: Remove block once https://github.com/libp2p/rust-libp2p/issues/4863 is resolved
+                if let (NatStatus::Public(old_address), NatStatus::Private) = (old, new) {
+                    self.swarm.remove_external_address(&old_address);
+                    // Trigger potential mode change manually
+                    self.swarm.behaviour_mut().kademlia.set_mode(None);
 
-                let connected_peers = self.swarm.connected_peers().copied().collect::<Vec<_>>();
-                self.swarm.behaviour_mut().identify.push(connected_peers);
+                    let connected_peers = self.swarm.connected_peers().copied().collect::<Vec<_>>();
+                    self.swarm.behaviour_mut().identify.push(connected_peers);
+                }
             }
         }
     }
