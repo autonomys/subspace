@@ -145,6 +145,7 @@ mod pallet {
     };
     use alloc::string::String;
     use codec::FullCodec;
+    use domain_runtime_primitives::EVMChainId;
     use frame_support::pallet_prelude::*;
     use frame_support::traits::fungible::{InspectHold, Mutate, MutateHold};
     use frame_support::traits::Randomness as RandomnessT;
@@ -312,6 +313,20 @@ mod pallet {
     /// Stores the next runtime id.
     #[pallet::storage]
     pub(super) type NextRuntimeId<T> = StorageValue<_, RuntimeId, ValueQuery>;
+
+    /// Starting EVM chain ID for evm runtimes.
+    pub struct StartingEVMChainId;
+    impl Get<EVMChainId> for StartingEVMChainId {
+        fn get() -> EVMChainId {
+            // after looking at `https://chainlist.org/?testnets=false`
+            // we think starting with `490000` would not have much clashes
+            490000
+        }
+    }
+
+    /// Stores the next evm chain id.
+    #[pallet::storage]
+    pub(super) type NextEVMChainId<T> = StorageValue<_, EVMChainId, ValueQuery, StartingEVMChainId>;
 
     #[pallet::storage]
     pub(super) type RuntimeRegistry<T: Config> =
@@ -1370,7 +1385,8 @@ impl<T: Config> Pallet<T> {
         let domain_obj = DomainRegistry::<T>::get(domain_id)?;
         let runtime_object = RuntimeRegistry::<T>::get(domain_obj.domain_config.runtime_id)?;
         let runtime_type = runtime_object.runtime_type.clone();
-        let raw_genesis = runtime_object.into_complete_raw_genesis(domain_id);
+        let raw_genesis =
+            runtime_object.into_complete_raw_genesis(domain_id, domain_obj.domain_runtime_info);
         Some((
             DomainInstanceData {
                 runtime_type,

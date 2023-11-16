@@ -161,7 +161,6 @@ pub fn get_testnet_genesis_by_spec_id(spec_id: SpecId) -> RuntimeGenesisConfig {
                 accounts.clone(),
                 // Alith is Sudo
                 Some(accounts[0]),
-                1000,
             )
         }
         SpecId::Gemini => {
@@ -173,7 +172,6 @@ pub fn get_testnet_genesis_by_spec_id(spec_id: SpecId) -> RuntimeGenesisConfig {
                     sudo_account,
                 ],
                 Some(sudo_account),
-                1002,
             )
         }
         SpecId::DevNet => {
@@ -185,7 +183,6 @@ pub fn get_testnet_genesis_by_spec_id(spec_id: SpecId) -> RuntimeGenesisConfig {
                     sudo_account,
                 ],
                 Some(sudo_account),
-                1003,
             )
         }
         SpecId::Local => {
@@ -194,7 +191,6 @@ pub fn get_testnet_genesis_by_spec_id(spec_id: SpecId) -> RuntimeGenesisConfig {
                 accounts.clone(),
                 // Alith is sudo
                 Some(accounts[0]),
-                1001,
             )
         }
     }
@@ -222,7 +218,6 @@ pub fn create_domain_spec(
 fn testnet_genesis(
     endowed_accounts: Vec<AccountId>,
     maybe_sudo_account: Option<AccountId>,
-    chain_id: u64,
 ) -> RuntimeGenesisConfig {
     // This is the simplest bytecode to revert without returning any data.
     // We will pre-deploy it under all of our precompiles to ensure they can be called from
@@ -248,10 +243,9 @@ fn testnet_genesis(
                 .map(|k| (k, 1_000_000 * SSC))
                 .collect(),
         },
-        evm_chain_id: EVMChainIdConfig {
-            chain_id,
-            ..Default::default()
-        },
+        // this is set to default and chain_id will be set into genesis during the domain
+        // instantiation on Consensus runtime.
+        evm_chain_id: EVMChainIdConfig::default(),
         evm: EVMConfig {
             // We need _some_ code inserted at the precompile address so that
             // the evm will actually call the address.

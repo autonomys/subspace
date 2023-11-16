@@ -4,6 +4,7 @@ use crate::pallet::{NextRuntimeId, RuntimeRegistry, ScheduledRuntimeUpgrades};
 use crate::{Config, Event};
 use alloc::string::String;
 use codec::{Decode, Encode};
+use domain_runtime_primitives::EVMChainId;
 use frame_support::PalletError;
 use frame_system::pallet_prelude::*;
 use scale_info::TypeInfo;
@@ -43,13 +44,32 @@ pub struct RuntimeObject<Number, Hash> {
     pub updated_at: Number,
 }
 
+/// Domain runtime specific information to create domain raw genesis.
+#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq, Copy)]
+pub enum DomainRuntimeInfo {
+    EVM { chain_id: EVMChainId },
+}
+
+impl Default for DomainRuntimeInfo {
+    fn default() -> Self {
+        Self::EVM { chain_id: 0 }
+    }
+}
+
 impl<Number, Hash> RuntimeObject<Number, Hash> {
     // Return a complete raw genesis with runtime code and domain id set properly
-    pub fn into_complete_raw_genesis(self, domain_id: DomainId) -> RawGenesis {
+    pub fn into_complete_raw_genesis(
+        self,
+        domain_id: DomainId,
+        domain_runtime_info: DomainRuntimeInfo,
+    ) -> RawGenesis {
         let RuntimeObject {
             mut raw_genesis, ..
         } = self;
         raw_genesis.set_domain_id(domain_id);
+        match domain_runtime_info {
+            DomainRuntimeInfo::EVM { chain_id } => raw_genesis.set_evm_chain_id(chain_id),
+        }
         raw_genesis
     }
 }
