@@ -551,24 +551,15 @@ where
             }
             SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
                 if let Some(peer_id) = &peer_id {
-                    // Create or extend temporary ban, but only if we are not offline
-                    if let Some(shared) = self.shared_weak.upgrade() {
-                        // One peer is possibly a node peer is connected to, hence expecting more
-                        // than one for online status
-                        let other_connections_exist = shared
-                            .num_established_peer_connections
-                            .load(Ordering::Relaxed)
-                            > 1;
-                        let should_ban_temporarily =
-                            self.should_temporary_ban_on_dial_error(peer_id, &error);
+                    let should_ban_temporarily =
+                        self.should_temporary_ban_on_dial_error(peer_id, &error);
 
-                        trace!(%should_ban_temporarily, %other_connections_exist, "Temporary bans conditions.");
+                    trace!(%should_ban_temporarily, "Temporary bans conditions.");
 
-                        if other_connections_exist && should_ban_temporarily {
-                            self.temporary_bans.lock().create_or_extend(peer_id);
-                            debug!(%peer_id, ?error, "Peer was temporarily banned.");
-                        }
-                    };
+                    if should_ban_temporarily {
+                        self.temporary_bans.lock().create_or_extend(peer_id);
+                        debug!(%peer_id, ?error, "Peer was temporarily banned.");
+                    }
                 }
 
                 debug!(
@@ -623,6 +614,11 @@ where
     }
 
     fn should_temporary_ban_on_dial_error(&self, peer_id: &PeerId, error: &DialError) -> bool {
+        // TODO: Replace with banning of addresses rather peer IDs if this helps
+        if true {
+            return false;
+        }
+
         // Ban temporarily only peers without active connections.
         if self.swarm.is_connected(peer_id) {
             return false;
