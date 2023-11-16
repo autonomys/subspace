@@ -123,8 +123,6 @@ where
     temporary_bans: Arc<Mutex<TemporaryBans>>,
     /// Prometheus metrics.
     metrics: Option<Metrics>,
-    /// Mapping from specific peer to number of established connections
-    established_connections: HashMap<(PeerId, ConnectedPoint), usize>,
     /// Defines protocol version for the network peers. Affects network partition.
     protocol_version: String,
     /// Defines whether we maintain a persistent connection for common peers.
@@ -219,7 +217,6 @@ where
             reserved_peers,
             temporary_bans,
             metrics,
-            established_connections: HashMap::new(),
             protocol_version,
             general_connection_decision_handler,
             special_connection_decision_handler,
@@ -454,13 +451,6 @@ where
                     "Connection established [{num_established} from peer]"
                 );
 
-                // TODO: Workaround for https://github.com/libp2p/rust-libp2p/discussions/3418
-                self.established_connections
-                    .entry((peer_id, endpoint))
-                    .and_modify(|entry| {
-                        *entry += 1;
-                    })
-                    .or_insert(1);
                 let num_established_peer_connections = shared
                     .num_established_peer_connections
                     .fetch_add(1, Ordering::SeqCst)
@@ -486,7 +476,6 @@ where
             }
             SwarmEvent::ConnectionClosed {
                 peer_id,
-                endpoint,
                 num_established,
                 cause,
                 ..
@@ -502,29 +491,6 @@ where
                     "Connection closed with peer {peer_id} [{num_established} from peer]"
                 );
 
-                // TODO: Workaround for https://github.com/libp2p/rust-libp2p/discussions/3418
-                {
-                    match self.established_connections.entry((peer_id, endpoint)) {
-                        Entry::Vacant(_) => {
-                            // Nothing to do here, we are not aware of the connection being closed
-                            warn!(
-                                ?peer_id,
-                                "Connection closed, but it is not known as open connection, \
-                                this is likely a bug in libp2p: \
-                                https://github.com/libp2p/rust-libp2p/discussions/3418"
-                            );
-                            return;
-                        }
-                        Entry::Occupied(mut entry) => {
-                            let value = entry.get_mut();
-                            if *value == 1 {
-                                entry.remove_entry();
-                            } else {
-                                *value -= 1;
-                            }
-                        }
-                    };
-                }
                 let num_established_peer_connections = shared
                     .num_established_peer_connections
                     .fetch_sub(1, Ordering::SeqCst)
