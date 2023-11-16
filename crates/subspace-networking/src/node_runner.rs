@@ -32,6 +32,7 @@ use libp2p::kad::{
     InboundRequest, PeerRecord, ProgressStep, PutRecordOk, QueryId, QueryResult, Quorum, Record,
 };
 use libp2p::metrics::{Metrics, Recorder};
+use libp2p::multiaddr::Protocol;
 use libp2p::swarm::{DialError, SwarmEvent};
 use libp2p::{futures, Multiaddr, PeerId, Swarm, TransportError};
 use nohash_hasher::IntMap;
@@ -41,6 +42,7 @@ use rand::{Rng, SeedableRng};
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
+use std::net::IpAddr;
 use std::num::NonZeroUsize;
 use std::pin::Pin;
 use std::sync::atomic::Ordering;
@@ -123,6 +125,8 @@ where
     temporary_bans: Arc<Mutex<TemporaryBans>>,
     /// Prometheus metrics.
     metrics: Option<Metrics>,
+    /// Mapping from specific peer to ip addresses
+    peer_ip_addresses: HashMap<PeerId, HashSet<IpAddr>>,
     /// Defines protocol version for the network peers. Affects network partition.
     protocol_version: String,
     /// Defines whether we maintain a persistent connection for common peers.
@@ -217,6 +221,7 @@ where
             reserved_peers,
             temporary_bans,
             metrics,
+            peer_ip_addresses: HashMap::new(),
             protocol_version,
             general_connection_decision_handler,
             special_connection_decision_handler,
@@ -451,6 +456,24 @@ where
                     "Connection established [{num_established} from peer]"
                 );
 
+                let maybe_remote_ip =
+                    endpoint
+                        .get_remote_address()
+                        .iter()
+                        .find_map(|protocol| match protocol {
+                            Protocol::Ip4(ip) => Some(IpAddr::V4(ip)),
+                            Protocol::Ip6(ip) => Some(IpAddr::V6(ip)),
+                            _ => None,
+                        });
+                if let Some(ip) = maybe_remote_ip {
+                    self.peer_ip_addresses
+                        .entry(peer_id)
+                        .and_modify(|ips| {
+                            ips.insert(ip);
+                        })
+                        .or_insert(HashSet::from([ip]));
+                }
+
                 let num_established_peer_connections = shared
                     .num_established_peer_connections
                     .fetch_add(1, Ordering::SeqCst)
@@ -491,6 +514,9 @@ where
                     "Connection closed with peer {peer_id} [{num_established} from peer]"
                 );
 
+                if num_established == 0 {
+                    self.peer_ip_addresses.remove(&peer_id);
+                }
                 let num_established_peer_connections = shared
                     .num_established_peer_connections
                     .fetch_sub(1, Ordering::SeqCst)
@@ -1162,7 +1188,15 @@ where
                             .behaviour_mut()
                             .connection_limits
                             // We expect a single successful dial from this peer
-                            .add_to_incoming_allow_list(peer, 1);
+                            .add_to_incoming_allow_list(
+                                peer,
+                                self.peer_ip_addresses
+                                    .get(&peer)
+                                    .iter()
+                                    .flat_map(|ip_addresses| ip_addresses.iter())
+                                    .copied(),
+                                1,
+                            );
                     }
                     OutboundProbeEvent::Response { peer, .. } => {
                         self.swarm

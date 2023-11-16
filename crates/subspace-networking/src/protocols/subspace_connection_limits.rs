@@ -6,13 +6,15 @@ use libp2p::swarm::{
     THandlerOutEvent, ToSwarm,
 };
 use libp2p::{Multiaddr, PeerId};
-use std::collections::HashMap;
+use std::collections::hash_map::Entry;
+use std::collections::{HashMap, HashSet};
+use std::net::IpAddr;
 use std::task::{Context, Poll};
 
 // TODO: Upstream these capabilities
 pub(crate) struct Behaviour {
     inner: ConnectionLimitsBehaviour,
-    incoming_allow_list: HashMap<PeerId, usize>,
+    incoming_allow_list: HashMap<PeerId, (HashSet<IpAddr>, usize)>,
     outgoing_allow_list: HashMap<PeerId, usize>,
 }
 
@@ -26,11 +28,24 @@ impl Behaviour {
     }
 
     /// Add to allow list some attempts of incoming connections from specified peer ID that will bypass global limits
-    pub(crate) fn add_to_incoming_allow_list(&mut self, peer: PeerId, attempts: usize) {
-        self.incoming_allow_list
-            .entry(peer)
-            .and_modify(|entry| *entry = entry.saturating_add(attempts))
-            .or_insert(attempts);
+    pub(crate) fn add_to_incoming_allow_list<IpAddresses>(
+        &mut self,
+        peer: PeerId,
+        ip_addresses: IpAddresses,
+        add_attempts: usize,
+    ) where
+        IpAddresses: Iterator<Item = IpAddr>,
+    {
+        match self.incoming_allow_list.entry(peer) {
+            Entry::Occupied(mut entry) => {
+                let (existing_ip_addresses, attempts) = entry.get_mut();
+                existing_ip_addresses.extend(ip_addresses);
+                *attempts = attempts.saturating_add(add_attempts);
+            }
+            Entry::Vacant(entry) => {
+                entry.insert((ip_addresses.collect(), add_attempts));
+            }
+        }
     }
 
     /// Remove some (or all) attempts of incoming connections from specified peer ID
@@ -40,7 +55,7 @@ impl Behaviour {
         remove_attempts: Option<usize>,
     ) {
         if let Some(remove_attempts) = remove_attempts {
-            if let Some(attempts) = self.incoming_allow_list.get_mut(peer) {
+            if let Some((_ip_addresses, attempts)) = self.incoming_allow_list.get_mut(peer) {
                 *attempts = attempts.saturating_sub(remove_attempts);
 
                 if *attempts == 0 {
@@ -94,14 +109,17 @@ impl NetworkBehaviour for Behaviour {
         local_addr: &Multiaddr,
         remote_addr: &Multiaddr,
     ) -> Result<(), ConnectionDenied> {
-        if let Some(peer) = remote_addr.iter().find_map(|protocol| {
-            if let Protocol::P2p(peer) = protocol {
-                Some(peer)
-            } else {
-                None
-            }
+        // PeerId is not yet known at this point, so we check against IP address instead
+        if let Some(ip_address) = remote_addr.iter().find_map(|protocol| match protocol {
+            Protocol::Ip4(ip) => Some(IpAddr::V4(ip)),
+            Protocol::Ip6(ip) => Some(IpAddr::V6(ip)),
+            _ => None,
         }) {
-            if self.incoming_allow_list.contains_key(&peer) {
+            if self
+                .incoming_allow_list
+                .values()
+                .any(|(ip_addresses, _attempts)| ip_addresses.contains(&ip_address))
+            {
                 return Ok(());
             }
         }
@@ -117,7 +135,7 @@ impl NetworkBehaviour for Behaviour {
         local_addr: &Multiaddr,
         remote_addr: &Multiaddr,
     ) -> Result<THandler<Self>, ConnectionDenied> {
-        if let Some(attempts) = self.incoming_allow_list.get_mut(&peer) {
+        if let Some((_ip_addresses, attempts)) = self.incoming_allow_list.get_mut(&peer) {
             *attempts -= 1;
 
             if *attempts == 0 {
