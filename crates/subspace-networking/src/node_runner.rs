@@ -102,6 +102,8 @@ where
 {
     /// Should non-global addresses be added to the DHT?
     allow_non_global_addresses_in_dht: bool,
+    /// Whether node is listening on some addresses
+    is_listening: bool,
     command_receiver: mpsc::Receiver<Command>,
     swarm: Swarm<Behavior<LocalOnlyRecordStore<LocalRecordProvider>>>,
     shared_weak: Weak<Shared>,
@@ -154,6 +156,8 @@ where
     LocalRecordProvider: constructor::LocalRecordProvider + Send + Sync + 'static,
 {
     pub(crate) allow_non_global_addresses_in_dht: bool,
+    /// Whether node is listening on some addresses
+    pub(crate) is_listening: bool,
     pub(crate) command_receiver: mpsc::Receiver<Command>,
     pub(crate) swarm: Swarm<Behavior<LocalOnlyRecordStore<LocalRecordProvider>>>,
     pub(crate) shared_weak: Weak<Shared>,
@@ -176,6 +180,7 @@ where
     pub(crate) fn new(
         NodeRunnerConfig {
             allow_non_global_addresses_in_dht,
+            is_listening,
             command_receiver,
             swarm,
             shared_weak,
@@ -206,6 +211,7 @@ where
 
         Self {
             allow_non_global_addresses_in_dht,
+            is_listening,
             command_receiver,
             swarm,
             shared_weak,
@@ -236,6 +242,23 @@ where
 
     /// Drives the main networking future forward.
     pub async fn run(&mut self) {
+        if self.is_listening {
+            // Wait for listen addresses, otherwise we will get ephemeral addresses in external address candidates that
+            // we do not want
+            loop {
+                if self.swarm.listeners().next().is_some() {
+                    break;
+                }
+
+                if let Some(swarm_event) = self.swarm.next().await {
+                    self.register_event_metrics(&swarm_event);
+                    self.handle_swarm_event(swarm_event).await;
+                } else {
+                    break;
+                }
+            }
+        }
+
         if !self.disable_bootstrap_on_start {
             self.bootstrap().await;
         } else {
