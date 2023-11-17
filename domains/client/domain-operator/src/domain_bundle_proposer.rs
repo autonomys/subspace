@@ -207,6 +207,14 @@ where
             .consensus_client
             .runtime_api()
             .head_receipt_number(consensus_chain_block_hash, self.domain_id)?;
+
+        // TODO: the `receipt_number` may not be the best domain block number if there
+        // is fraud proof submitted and bad ERs pruned, thus the ER may not the one that
+        // derive from the latest domain block, which may cause the lagging operator able
+        // to submit invalid bundle accidentally.
+        //
+        // We need to resolve `https://github.com/subspace/subspace/issues/1673` to fix it
+        // completely.
         let receipt_number = (head_receipt_number + One::one()).min(header_number);
 
         tracing::trace!(

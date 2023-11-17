@@ -280,15 +280,11 @@ where
             bundles,
         } = preprocess_result;
 
-        // Although the domain block intuitively ought to use the same fork choice
-        // from the corresponding consensus block, it's fine to forcibly always use
-        // the longest chain for simplicity as we manually build the domain branches
-        // by following the consensus chain branches. Due to the possibility of domain
-        // branch transitioning to a lower fork caused by the change that a consensus block
-        // can possibility produce no domain block, it's important to note that now we
-        // need to ensure the consensus block built from the latest consensus block is the
-        // new best domain block after processing each imported consensus block.
-        let fork_choice = ForkChoiceStrategy::LongestChain;
+        // The fork choice of the domain chain should follow exactly as the consensus chain,
+        // so always use `Custom(false)` here to not set the domain block as new best block
+        // immediately, and if the domain block is indeed derive from the best consensus fork,
+        // it will be reset as the best domain block, see `BundleProcessor::process_bundles`.
+        let fork_choice = ForkChoiceStrategy::Custom(false);
         let inherent_data = get_inherent_data::<_, _, Block>(
             self.consensus_client.clone(),
             consensus_block_hash,
