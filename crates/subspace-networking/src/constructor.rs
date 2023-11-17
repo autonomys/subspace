@@ -101,11 +101,24 @@ const YAMUX_BUFFER_SIZE: usize = Piece::SIZE + 1024 * 1024;
 pub(crate) const AUTONAT_MAX_CONFIDENCE: usize = 3;
 
 /// Defines Kademlia mode
+#[derive(Clone, Debug)]
 pub enum KademliaMode {
     /// The Kademlia mode is static for the duration of the application.
     Static(Mode),
     /// Kademlia mode will be changed using Autonat protocol when max confidence reached.
     Dynamic,
+}
+
+impl KademliaMode {
+    /// Returns true if the mode is Dynamic.
+    pub fn is_dynamic(&self) -> bool {
+        matches!(self, Self::Dynamic)
+    }
+
+    /// Returns true if the mode is Static.
+    pub fn is_static(&self) -> bool {
+        matches!(self, Self::Static(..))
+    }
 }
 
 /// Trait to be implemented on providers of local records
@@ -468,6 +481,9 @@ where
 
     debug!(?connection_limits, "DSN connection limits set.");
 
+    let enable_autonat = external_addresses.is_empty() && kademlia_mode.is_dynamic();
+    debug!(%enable_autonat, ?external_addresses, ?kademlia_mode, "Autonat settings.");
+
     let mut behaviour = Behavior::new(BehaviorConfig {
         peer_id: local_peer_id,
         identify,
@@ -500,7 +516,7 @@ where
                 ..ConnectedPeersConfig::default()
             }
         }),
-        autonat: external_addresses.is_empty().then(|| AutonatConfig {
+        autonat: enable_autonat.then(|| AutonatConfig {
             use_connected: true,
             only_global_ips: !config.allow_non_global_addresses_in_dht,
             confidence_max: AUTONAT_MAX_CONFIDENCE,

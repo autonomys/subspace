@@ -1241,14 +1241,20 @@ where
                 debug!(?old, ?new, "Public address status changed.");
 
                 // TODO: Remove block once https://github.com/libp2p/rust-libp2p/issues/4863 is resolved
-                if let (NatStatus::Public(old_address), NatStatus::Private) = (old, new) {
+                if let (NatStatus::Public(old_address), NatStatus::Private) = (old, new.clone()) {
                     self.swarm.remove_external_address(&old_address);
+                    debug!(
+                        ?old_address,
+                        new_status = ?new,
+                        "Removing old external address...",
+                    );
+
                     // Trigger potential mode change manually
                     self.swarm.behaviour_mut().kademlia.set_mode(None);
-
-                    let connected_peers = self.swarm.connected_peers().copied().collect::<Vec<_>>();
-                    self.swarm.behaviour_mut().identify.push(connected_peers);
                 }
+
+                let connected_peers = self.swarm.connected_peers().copied().collect::<Vec<_>>();
+                self.swarm.behaviour_mut().identify.push(connected_peers);
             }
         }
     }
