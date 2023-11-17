@@ -9,6 +9,7 @@ use crate::constructor::temporary_bans::TemporaryBans;
 use crate::constructor::transport::build_transport;
 use crate::node::Node;
 use crate::node_runner::{NodeRunner, NodeRunnerConfig};
+use crate::protocols::autonat_wrapper::Config as AutonatWrapperConfig;
 use crate::protocols::connected_peers::Config as ConnectedPeersConfig;
 use crate::protocols::peer_info::PeerInfoProvider;
 use crate::protocols::request_response::request_response_factory::RequestHandler;
@@ -99,6 +100,8 @@ const YAMUX_BUFFER_SIZE: usize = Piece::SIZE + 1024 * 1024;
 
 /// Max confidence for autonat protocol. Could affect Kademlia mode change.
 pub(crate) const AUTONAT_MAX_CONFIDENCE: usize = 3;
+/// We set a very long pause before autonat initialization (Duration::Max panics).
+const AUTONAT_SERVER_PROBE_DELAY: Duration = Duration::from_secs(3600 * 24 * 365);
 
 /// Defines Kademlia mode
 #[derive(Clone, Debug)]
@@ -481,8 +484,18 @@ where
 
     debug!(?connection_limits, "DSN connection limits set.");
 
-    let enable_autonat = external_addresses.is_empty() && kademlia_mode.is_dynamic();
-    debug!(%enable_autonat, ?external_addresses, ?kademlia_mode, "Autonat settings.");
+    let autonat_boot_delay = if kademlia_mode.is_static() || !external_addresses.is_empty() {
+        AUTONAT_SERVER_PROBE_DELAY
+    } else {
+        AutonatConfig::default().boot_delay
+    };
+
+    debug!(
+        ?autonat_boot_delay,
+        ?kademlia_mode,
+        ?external_addresses,
+        "Autonat boot delay set."
+    );
 
     let mut behaviour = Behavior::new(BehaviorConfig {
         peer_id: local_peer_id,
@@ -516,12 +529,16 @@ where
                 ..ConnectedPeersConfig::default()
             }
         }),
-        autonat: enable_autonat.then(|| AutonatConfig {
-            use_connected: true,
-            only_global_ips: !config.allow_non_global_addresses_in_dht,
-            confidence_max: AUTONAT_MAX_CONFIDENCE,
-            ..Default::default()
-        }),
+        autonat: AutonatWrapperConfig {
+            inner_config: AutonatConfig {
+                use_connected: true,
+                only_global_ips: !config.allow_non_global_addresses_in_dht,
+                confidence_max: AUTONAT_MAX_CONFIDENCE,
+                boot_delay: autonat_boot_delay,
+                ..Default::default()
+            },
+            local_peer_id,
+        },
     });
 
     match (kademlia_mode, external_addresses.is_empty()) {
