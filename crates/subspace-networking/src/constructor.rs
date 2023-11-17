@@ -546,6 +546,8 @@ where
         })
         .build();
 
+    let is_listening = !listen_on.is_empty();
+
     // Setup listen_on addresses
     for mut addr in listen_on {
         if let Err(error) = swarm.listen_on(addr.clone()) {
@@ -581,24 +583,24 @@ where
     let shared_weak = Arc::downgrade(&shared);
 
     let node = Node::new(shared);
-    let node_runner =
-        NodeRunner::<LocalRecordProvider>::new(NodeRunnerConfig::<LocalRecordProvider> {
-            allow_non_global_addresses_in_dht,
-            command_receiver,
-            swarm,
-            shared_weak,
-            next_random_query_interval: initial_random_query_interval,
-            networking_parameters_registry: networking_parameters_registry
-                .unwrap_or(StubNetworkingParametersManager.boxed()),
-            reserved_peers: strip_peer_id(reserved_peers).into_iter().collect(),
-            temporary_bans,
-            metrics,
-            protocol_version,
-            general_connection_decision_handler,
-            special_connection_decision_handler,
-            bootstrap_addresses,
-            disable_bootstrap_on_start,
-        });
+    let node_runner = NodeRunner::new(NodeRunnerConfig {
+        allow_non_global_addresses_in_dht,
+        is_listening,
+        command_receiver,
+        swarm,
+        shared_weak,
+        next_random_query_interval: initial_random_query_interval,
+        networking_parameters_registry: networking_parameters_registry
+            .unwrap_or(StubNetworkingParametersManager.boxed()),
+        reserved_peers: strip_peer_id(reserved_peers).into_iter().collect(),
+        temporary_bans,
+        metrics,
+        protocol_version,
+        general_connection_decision_handler,
+        special_connection_decision_handler,
+        bootstrap_addresses,
+        disable_bootstrap_on_start,
+    });
 
     Ok((node, node_runner))
 }
