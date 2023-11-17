@@ -5,6 +5,7 @@ use crate::behavior::persistent_parameters::{
 use crate::behavior::{
     Behavior, Event, GeneralConnectedPeersInstance, SpecialConnectedPeersInstance,
 };
+use crate::constructor;
 use crate::constructor::temporary_bans::TemporaryBans;
 use crate::constructor::{ConnectedPeersHandler, LocalOnlyRecordStore};
 use crate::protocols::connected_peers::Event as ConnectedPeersEvent;
@@ -15,7 +16,6 @@ use crate::protocols::request_response::request_response_factory::{
 use crate::shared::{Command, CreatedSubscription, NewPeerInfo, PeerDiscovered, Shared};
 use crate::utils::rate_limiter::RateLimiterPermit;
 use crate::utils::{is_global_address_or_dns, strip_peer_id, PeerAddress};
-use crate::{constructor, KademliaMode};
 use async_mutex::Mutex as AsyncMutex;
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;
@@ -146,8 +146,6 @@ where
     _address_removal_task_handler_id: Option<HandlerId>,
     /// Defines whether we should run blocking Kademlia bootstrap() operation before other requests.
     disable_bootstrap_on_start: bool,
-    /// Kademlia mode defines the mode of `Kademlia` behavior.
-    kademlia_mode: KademliaMode,
 }
 
 // Helper struct for NodeRunner configuration (clippy requirement).
@@ -169,7 +167,6 @@ where
     pub(crate) special_connection_decision_handler: Option<ConnectedPeersHandler>,
     pub(crate) bootstrap_addresses: Vec<Multiaddr>,
     pub(crate) disable_bootstrap_on_start: bool,
-    pub(crate) kademlia_mode: KademliaMode,
 }
 
 impl<LocalRecordProvider> NodeRunner<LocalRecordProvider>
@@ -192,7 +189,6 @@ where
             special_connection_decision_handler,
             bootstrap_addresses,
             disable_bootstrap_on_start,
-            kademlia_mode,
         }: NodeRunnerConfig<LocalRecordProvider>,
     ) -> Self {
         // Setup the address removal events exchange between persistent params storage and Kademlia.
@@ -235,7 +231,6 @@ where
             removed_addresses_rx,
             _address_removal_task_handler_id: address_removal_task_handler_id,
             disable_bootstrap_on_start,
-            kademlia_mode,
         }
     }
 
@@ -1222,18 +1217,21 @@ where
             AutonatEvent::StatusChanged { old, new } => {
                 debug!(?old, ?new, "Public address status changed.");
 
-                if matches!(self.kademlia_mode, KademliaMode::Dynamic) {
-                    // TODO: Remove block once https://github.com/libp2p/rust-libp2p/issues/4863 is resolved
-                    if let (NatStatus::Public(old_address), NatStatus::Private) = (old, new) {
-                        self.swarm.remove_external_address(&old_address);
-                        // Trigger potential mode change manually
-                        self.swarm.behaviour_mut().kademlia.set_mode(None);
+                // TODO: Remove block once https://github.com/libp2p/rust-libp2p/issues/4863 is resolved
+                if let (NatStatus::Public(old_address), NatStatus::Private) = (old, new.clone()) {
+                    self.swarm.remove_external_address(&old_address);
+                    debug!(
+                        ?old_address,
+                        new_status = ?new,
+                        "Removing old external address...",
+                    );
 
-                        let connected_peers =
-                            self.swarm.connected_peers().copied().collect::<Vec<_>>();
-                        self.swarm.behaviour_mut().identify.push(connected_peers);
-                    }
+                    // Trigger potential mode change manually
+                    self.swarm.behaviour_mut().kademlia.set_mode(None);
                 }
+
+                let connected_peers = self.swarm.connected_peers().copied().collect::<Vec<_>>();
+                self.swarm.behaviour_mut().identify.push(connected_peers);
             }
         }
     }

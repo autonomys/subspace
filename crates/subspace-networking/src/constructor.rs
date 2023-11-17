@@ -109,6 +109,18 @@ pub enum KademliaMode {
     Dynamic,
 }
 
+impl KademliaMode {
+    /// Returns true if the mode is Dynamic.
+    pub fn is_dynamic(&self) -> bool {
+        matches!(self, Self::Dynamic)
+    }
+
+    /// Returns true if the mode is Static.
+    pub fn is_static(&self) -> bool {
+        matches!(self, Self::Static(..))
+    }
+}
+
 /// Trait to be implemented on providers of local records
 pub trait LocalRecordProvider {
     /// Gets a provider record for key that is stored locally
@@ -469,6 +481,9 @@ where
 
     debug!(?connection_limits, "DSN connection limits set.");
 
+    let enable_autonat = external_addresses.is_empty() && kademlia_mode.is_dynamic();
+    debug!(%enable_autonat, ?external_addresses, ?kademlia_mode, "Autonat settings.");
+
     let mut behaviour = Behavior::new(BehaviorConfig {
         peer_id: local_peer_id,
         identify,
@@ -501,7 +516,7 @@ where
                 ..ConnectedPeersConfig::default()
             }
         }),
-        autonat: external_addresses.is_empty().then(|| AutonatConfig {
+        autonat: enable_autonat.then(|| AutonatConfig {
             use_connected: true,
             only_global_ips: !config.allow_non_global_addresses_in_dht,
             confidence_max: AUTONAT_MAX_CONFIDENCE,
@@ -509,7 +524,7 @@ where
         }),
     });
 
-    match (kademlia_mode.clone(), external_addresses.is_empty()) {
+    match (kademlia_mode, external_addresses.is_empty()) {
         (KademliaMode::Static(mode), _) => {
             behaviour.kademlia.set_mode(Some(mode));
         }
@@ -599,7 +614,6 @@ where
             special_connection_decision_handler,
             bootstrap_addresses,
             disable_bootstrap_on_start,
-            kademlia_mode,
         });
 
     Ok((node, node_runner))
