@@ -1190,13 +1190,12 @@ where
 
     async fn handle_autonat_event(&mut self, event: AutonatEvent) {
         trace!(?event, "Autonat event received.");
-        if let Some(autonat) = self.swarm.behaviour().autonat.as_ref() {
-            debug!(
-                public_address=?autonat.public_address(),
-                confidence=%autonat.confidence(),
-                "Current public address confidence."
-            );
-        }
+        let autonat = &self.swarm.behaviour().autonat;
+        debug!(
+            public_address=?autonat.public_address(),
+            confidence=%autonat.confidence(),
+            "Current public address confidence."
+        );
 
         match event {
             AutonatEvent::InboundProbe(_inbound_probe_event) => {

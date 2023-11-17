@@ -62,8 +62,8 @@ pub(crate) struct BehaviorConfig<RecordStore> {
     pub(crate) general_connected_peers_config: Option<ConnectedPeersConfig>,
     /// The configuration for the [`ConnectedPeers`] protocol (special instance).
     pub(crate) special_connected_peers_config: Option<ConnectedPeersConfig>,
-    /// Autonat configuration (optional).
-    pub(crate) autonat: Option<AutonatWrapperConfig>,
+    /// Autonat configuration.
+    pub(crate) autonat: AutonatWrapperConfig,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -88,7 +88,7 @@ pub(crate) struct Behavior<RecordStore> {
         Toggle<ConnectedPeersBehaviour<GeneralConnectedPeersInstance>>,
     pub(crate) special_connected_peers:
         Toggle<ConnectedPeersBehaviour<SpecialConnectedPeersInstance>>,
-    pub(crate) autonat: Toggle<AutonatWrapper>,
+    pub(crate) autonat: AutonatWrapper,
 }
 
 impl<RecordStore> Behavior<RecordStore>
@@ -140,7 +140,7 @@ where
                 .special_connected_peers_config
                 .map(ConnectedPeersBehaviour::new)
                 .into(),
-            autonat: config.autonat.map(AutonatWrapper::new).into(),
+            autonat: AutonatWrapper::new(config.autonat),
         }
     }
 }
