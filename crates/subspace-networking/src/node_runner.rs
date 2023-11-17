@@ -733,22 +733,35 @@ where
             });
 
             if full_kademlia_support {
-                let old_addresses = kademlia
-                    .kbucket(peer_id)
-                    .and_then(|peers| {
-                        let key = peer_id.into();
-                        peers.iter().find_map(|peer| {
-                            (peer.node.key == &key).then_some(
-                                peer.node
-                                    .value
-                                    .iter()
-                                    .filter(|address| info.listen_addrs.contains(address))
-                                    .cloned()
-                                    .collect::<Vec<_>>(),
-                            )
-                        })
-                    })
-                    .unwrap_or_default();
+                //TODO: Consider restoring obsolete address removal
+                // let old_addresses = kademlia
+                //     .kbucket(peer_id)
+                //     .and_then(|peers| {
+                //         let key = peer_id.into();
+                //         peers.iter().find_map(|peer| {
+                //             (peer.node.key == &key).then_some(
+                //                 peer.node
+                //                     .value
+                //                     .iter()
+                //                     .filter(|address| info.listen_addrs.contains(address))
+                //                     .cloned()
+                //                     .collect::<Vec<_>>(),
+                //             )
+                //         })
+                //     })
+                //     .unwrap_or_default();
+
+                // for old_address in old_addresses {
+                //     trace!(
+                //         %local_peer_id,
+                //         %peer_id,
+                //         %old_address,
+                //         "Removing old self-reported address from Kademlia DHT",
+                //     );
+                //
+                //     kademlia.remove_address(&peer_id, &old_address);
+                // }
+
                 for address in info.listen_addrs {
                     if !self.allow_non_global_addresses_in_dht
                         && !is_global_address_or_dns(&address)
@@ -762,7 +775,7 @@ where
                         continue;
                     }
 
-                    trace!(
+                    debug!(
                         %local_peer_id,
                         %peer_id,
                         %address,
@@ -771,16 +784,6 @@ where
                     );
 
                     kademlia.add_address(&peer_id, address);
-                }
-                for old_address in old_addresses {
-                    trace!(
-                        %local_peer_id,
-                        %peer_id,
-                        %old_address,
-                        "Removing old self-reported address from Kademlia DHT",
-                    );
-
-                    kademlia.remove_address(&peer_id, &old_address);
                 }
             } else {
                 debug!(
