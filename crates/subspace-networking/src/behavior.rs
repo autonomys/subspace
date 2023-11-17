@@ -2,6 +2,9 @@ pub(crate) mod persistent_parameters;
 #[cfg(test)]
 mod tests;
 
+use crate::protocols::autonat_wrapper::{
+    Behaviour as AutonatWrapper, Config as AutonatWrapperConfig,
+};
 use crate::protocols::connected_peers::{
     Behaviour as ConnectedPeersBehaviour, Config as ConnectedPeersConfig,
     Event as ConnectedPeersEvent,
@@ -19,7 +22,7 @@ use crate::protocols::subspace_connection_limits::Behaviour as ConnectionLimitsB
 use crate::PeerInfoProvider;
 use derive_more::From;
 use libp2p::allow_block_list::{Behaviour as AllowBlockListBehaviour, BlockedPeers};
-use libp2p::autonat::{Behaviour as Autonat, Config as AutonatConfig, Event as AutonatEvent};
+use libp2p::autonat::Event as AutonatEvent;
 use libp2p::connection_limits::ConnectionLimits;
 use libp2p::gossipsub::{
     Behaviour as Gossipsub, Config as GossipsubConfig, Event as GossipsubEvent, MessageAuthenticity,
@@ -60,7 +63,7 @@ pub(crate) struct BehaviorConfig<RecordStore> {
     /// The configuration for the [`ConnectedPeers`] protocol (special instance).
     pub(crate) special_connected_peers_config: Option<ConnectedPeersConfig>,
     /// Autonat configuration (optional).
-    pub(crate) autonat: Option<AutonatConfig>,
+    pub(crate) autonat: Option<AutonatWrapperConfig>,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -85,7 +88,7 @@ pub(crate) struct Behavior<RecordStore> {
         Toggle<ConnectedPeersBehaviour<GeneralConnectedPeersInstance>>,
     pub(crate) special_connected_peers:
         Toggle<ConnectedPeersBehaviour<SpecialConnectedPeersInstance>>,
-    pub(crate) autonat: Toggle<Autonat>,
+    pub(crate) autonat: Toggle<AutonatWrapper>,
 }
 
 impl<RecordStore> Behavior<RecordStore>
@@ -137,10 +140,7 @@ where
                 .special_connected_peers_config
                 .map(ConnectedPeersBehaviour::new)
                 .into(),
-            autonat: config
-                .autonat
-                .map(|autonat_config| Autonat::new(config.peer_id, autonat_config))
-                .into(),
+            autonat: config.autonat.map(AutonatWrapper::new).into(),
         }
     }
 }

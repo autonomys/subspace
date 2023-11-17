@@ -9,6 +9,7 @@ use crate::constructor::temporary_bans::TemporaryBans;
 use crate::constructor::transport::build_transport;
 use crate::node::Node;
 use crate::node_runner::{NodeRunner, NodeRunnerConfig};
+use crate::protocols::autonat_wrapper::Config as AutonatWrapperConfig;
 use crate::protocols::connected_peers::Config as ConnectedPeersConfig;
 use crate::protocols::peer_info::PeerInfoProvider;
 use crate::protocols::request_response::request_response_factory::RequestHandler;
@@ -516,11 +517,14 @@ where
                 ..ConnectedPeersConfig::default()
             }
         }),
-        autonat: enable_autonat.then(|| AutonatConfig {
-            use_connected: true,
-            only_global_ips: !config.allow_non_global_addresses_in_dht,
-            confidence_max: AUTONAT_MAX_CONFIDENCE,
-            ..Default::default()
+        autonat: enable_autonat.then(|| AutonatWrapperConfig {
+            inner_config: AutonatConfig {
+                use_connected: true,
+                only_global_ips: !config.allow_non_global_addresses_in_dht,
+                confidence_max: AUTONAT_MAX_CONFIDENCE,
+                ..Default::default()
+            },
+            local_peer_id,
         }),
     });
 
