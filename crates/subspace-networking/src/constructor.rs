@@ -101,6 +101,7 @@ const YAMUX_BUFFER_SIZE: usize = Piece::SIZE + 1024 * 1024;
 pub(crate) const AUTONAT_MAX_CONFIDENCE: usize = 3;
 
 /// Defines Kademlia mode
+#[derive(Clone, Debug)]
 pub enum KademliaMode {
     /// The Kademlia mode is static for the duration of the application.
     Static(Mode),
@@ -508,7 +509,7 @@ where
         }),
     });
 
-    match (kademlia_mode, external_addresses.is_empty()) {
+    match (kademlia_mode.clone(), external_addresses.is_empty()) {
         (KademliaMode::Static(mode), _) => {
             behaviour.kademlia.set_mode(Some(mode));
         }
@@ -598,6 +599,7 @@ where
             special_connection_decision_handler,
             bootstrap_addresses,
             disable_bootstrap_on_start,
+            kademlia_mode,
         });
 
     Ok((node, node_runner))
