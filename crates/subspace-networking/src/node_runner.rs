@@ -733,8 +733,27 @@ where
             });
 
             if full_kademlia_support {
-                let received_address_strings = info
+                let received_addresses = info
                     .listen_addrs
+                    .into_iter()
+                    .filter(|address| {
+                        if self.allow_non_global_addresses_in_dht
+                            || is_global_address_or_dns(address)
+                        {
+                            true
+                        } else {
+                            trace!(
+                                %local_peer_id,
+                                %peer_id,
+                                %address,
+                                "Ignoring self-reported non-global address",
+                            );
+
+                            false
+                        }
+                    })
+                    .collect::<Vec<_>>();
+                let received_address_strings = received_addresses
                     .iter()
                     .map(ToString::to_string)
                     .collect::<Vec<_>>();
@@ -762,19 +781,7 @@ where
                     })
                     .unwrap_or_default();
 
-                for address in info.listen_addrs {
-                    if !self.allow_non_global_addresses_in_dht
-                        && !is_global_address_or_dns(&address)
-                    {
-                        trace!(
-                            %local_peer_id,
-                            %peer_id,
-                            %address,
-                            "Ignoring self-reported non-global address",
-                        );
-                        continue;
-                    }
-
+                for address in received_addresses {
                     debug!(
                         %local_peer_id,
                         %peer_id,
