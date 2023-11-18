@@ -733,6 +733,11 @@ where
             });
 
             if full_kademlia_support {
+                let received_address_strings = info
+                    .listen_addrs
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>();
                 let old_addresses = kademlia
                     .kbucket(peer_id)
                     .and_then(|peers| {
@@ -742,7 +747,14 @@ where
                                 peer.node
                                     .value
                                     .iter()
-                                    .filter(|address| !info.listen_addrs.contains(address))
+                                    .filter(|existing_address| {
+                                        let existing_address = existing_address.to_string();
+
+                                        !received_address_strings.iter().any(|received_address| {
+                                            received_address.starts_with(&existing_address)
+                                                || existing_address.starts_with(received_address)
+                                        })
+                                    })
                                     .cloned()
                                     .collect::<Vec<_>>(),
                             )
