@@ -7,7 +7,7 @@ use domain_test_service::EcdsaKeyring::{Alice, Bob};
 use domain_test_service::Sr25519Keyring::{self, Ferdie};
 use domain_test_service::GENESIS_DOMAIN_ID;
 use futures::StreamExt;
-use sc_client_api::{Backend, BlockBackend, HeaderBackend};
+use sc_client_api::{Backend, BlockBackend, BlockchainEvents, HeaderBackend};
 use sc_consensus::SharedBlockImport;
 use sc_service::{BasePath, Role};
 use sc_transaction_pool_api::error::Error as TxPoolError;
@@ -90,6 +90,65 @@ async fn test_domain_instance_bootstrapper() {
     produce_blocks!(ferdie, alice, 3)
         .await
         .expect("3 consensus blocks produced successfully");
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_domain_chain_fork_choice() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a evm domain authority node)
+    let alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .await;
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+    assert_eq!(alice.client.info().best_number, 3);
+
+    let domain_hash_3 = alice.client.info().best_hash;
+    let common_consensus_hash = ferdie.client.info().best_hash;
+
+    // Fork A produce a consenus block that contains no bundle
+    let slot = ferdie.produce_slot();
+    let fork_a_block_hash = ferdie
+        .produce_block_with_slot_at(slot, common_consensus_hash, Some(vec![]))
+        .await
+        .unwrap();
+
+    // Fork B produce a consenus block that contains bundles thus derive a domain block
+    let mut alice_import_notification_stream = alice.client.every_import_notification_stream();
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert!(bundle.is_some());
+    ferdie
+        .produce_block_with_slot_at(slot, common_consensus_hash, None)
+        .await
+        .unwrap();
+
+    // Because the new domain block is in a stale fork thus we need to use `every_import_notification_stream`
+    let new_domain_block = alice_import_notification_stream.next().await.unwrap();
+    assert_eq!(*new_domain_block.header.number(), 4);
+
+    // The consensus fork A is still the best fork, because fork A don't derive any new
+    // domain block thus the best domain block is still #3
+    assert_eq!(ferdie.client.info().best_hash, fork_a_block_hash);
+    assert_eq!(alice.client.info().best_number, 3);
+    assert_eq!(alice.client.info().best_hash, domain_hash_3);
 }
 
 #[tokio::test(flavor = "multi_thread")]
