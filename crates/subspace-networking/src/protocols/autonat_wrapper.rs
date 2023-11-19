@@ -36,14 +36,13 @@ impl Behaviour {
     }
 
     fn address_corresponds_to_listening_addresses(&self, addr: &Multiaddr) -> bool {
-        let candidate_protocol = addr
-            .iter()
-            .find_map(|protocol| match protocol {
-                udp @ Protocol::Udp(_) => Some(udp),
-                tcp @ Protocol::Tcp(_) => Some(tcp),
-                _ => None,
-            })
-            .expect("Either TCP or UDP protocol should be enabled.");
+        let Some(candidate_protocol) = addr.iter().find_map(|protocol| match protocol {
+            udp @ Protocol::Udp(_) => Some(udp),
+            tcp @ Protocol::Tcp(_) => Some(tcp),
+            _ => None,
+        }) else {
+            return false;
+        };
 
         let address_result = self
             .listen_addresses
