@@ -50,7 +50,7 @@ subspace-test-service = { version = "0.1.0", path = "../../test/subspace-test-se
 subspace-runtime-primitives = { version = "0.1.0", path = "../../crates/subspace-runtime-primitives" }
 substrate-test-runtime-client = { version = "2.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "892bf8e938c6bd2b893d3827d1093cd81baa59a1" }
 tempfile = "3.8.0"
-tokio = "1.32.0"
+tokio = "1.34.0"
 
 [features]
 default = ["std"]
