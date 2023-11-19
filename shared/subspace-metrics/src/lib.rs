@@ -84,7 +84,9 @@ pub fn start_prometheus_metrics_server(
     let data = Data::new(shared_registry);
 
     let app_factory = move || App::new().app_data(data.clone()).service(metrics);
-    let result = HttpServer::new(app_factory.clone()).bind(endpoints.as_slice());
+    let result = HttpServer::new(app_factory.clone())
+        .workers(2)
+        .bind(endpoints.as_slice());
 
     let server = match result {
         Ok(server) => server,
