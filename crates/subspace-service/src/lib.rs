@@ -431,7 +431,7 @@ where
             executor.clone(),
         )?;
 
-    let kzg = Kzg::new(embedded_kzg_settings());
+    let kzg = tokio::task::block_in_place(|| Kzg::new(embedded_kzg_settings()));
 
     let client = Arc::new(client);
 
@@ -461,8 +461,9 @@ where
 
     let select_chain = sc_consensus::LongestChain::new(backend.clone());
 
-    let segment_headers_store = SegmentHeadersStore::new(client.clone())
-        .map_err(|error| ServiceError::Application(error.into()))?;
+    let segment_headers_store =
+        tokio::task::block_in_place(|| SegmentHeadersStore::new(client.clone()))
+            .map_err(|error| ServiceError::Application(error.into()))?;
 
     let (block_import, subspace_link) = sc_consensus_subspace::block_import::<
         PosTable,
@@ -802,13 +803,15 @@ where
 
     let sync_oracle = SubspaceSyncOracle::new(config.base.force_authoring, sync_service.clone());
 
-    let subspace_archiver = create_subspace_archiver(
-        segment_headers_store.clone(),
-        &subspace_link,
-        client.clone(),
-        sync_oracle.clone(),
-        telemetry.as_ref().map(|telemetry| telemetry.handle()),
-    )
+    let subspace_archiver = tokio::task::block_in_place(|| {
+        create_subspace_archiver(
+            segment_headers_store.clone(),
+            &subspace_link,
+            client.clone(),
+            sync_oracle.clone(),
+            telemetry.as_ref().map(|telemetry| telemetry.handle()),
+        )
+    })
     .map_err(ServiceError::Client)?;
 
     task_manager
