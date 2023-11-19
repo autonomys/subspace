@@ -339,8 +339,6 @@ where
             }
         };
 
-        debug!("Bootstrap started.");
-
         let mut bootstrap_step = 0;
         loop {
             futures::select! {
