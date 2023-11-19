@@ -341,24 +341,34 @@ where
             };
 
             // Find plot in which there is a place for new piece to be stored
-            for (disk_farm_index, cache) in caches.iter_mut().enumerate() {
-                let Some(offset) = cache.free_offsets.pop() else {
-                    continue;
-                };
+            if !caches
+                .iter_mut()
+                .enumerate()
+                .any(|(disk_farm_index, cache)| {
+                    let Some(offset) = cache.free_offsets.pop() else {
+                        return false;
+                    };
 
-                if let Err(error) = cache.backend.write_piece(offset, piece_index, &piece) {
-                    error!(
-                        %error,
-                        %disk_farm_index,
-                        %piece_index,
-                        %offset,
-                        "Failed to write piece into cache"
-                    );
-                    continue;
-                }
-                cache
-                    .stored_pieces
-                    .insert(RecordKey::from(piece_index.to_multihash()), offset);
+                    if let Err(error) = cache.backend.write_piece(offset, piece_index, &piece) {
+                        error!(
+                            %error,
+                            %disk_farm_index,
+                            %piece_index,
+                            %offset,
+                            "Failed to write piece into cache"
+                        );
+                        return false;
+                    }
+                    cache
+                        .stored_pieces
+                        .insert(RecordKey::from(piece_index.to_multihash()), offset);
+                    true
+                })
+            {
+                error!(
+                    %piece_index,
+                    "Failed to store piece in cache, there was no space"
+                );
             }
 
             downloaded_pieces_count += 1;
