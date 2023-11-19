@@ -331,6 +331,11 @@ where
         let mut downloaded_pieces_count = 0;
         self.handlers.progress.call_simple(&0.0);
         while let Some(maybe_piece) = downloading_pieces.next().await {
+            // Push another piece to download
+            if let Some(piece_index_to_download) = piece_indices_to_store.next() {
+                downloading_pieces.push(download_piece(piece_index_to_download));
+            }
+
             let Some((piece_index, piece)) = maybe_piece else {
                 continue;
             };
@@ -364,11 +369,6 @@ where
 
                 info!("Piece cache sync {progress:.2}% complete");
                 self.handlers.progress.call_simple(&progress);
-            }
-
-            // Push another piece to download
-            if let Some(piece_index_to_download) = piece_indices_to_store.next() {
-                downloading_pieces.push(download_piece(piece_index_to_download));
             }
         }
 
