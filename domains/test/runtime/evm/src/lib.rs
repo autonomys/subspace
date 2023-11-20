@@ -833,6 +833,7 @@ impl_runtime_apis! {
         }
     }
 
+    #[api_version(2)]
     impl domain_runtime_primitives::DomainCoreApi<Block> for Runtime {
         fn extract_signer(
             extrinsics: Vec<<Block as BlockT>::Extrinsic>,
@@ -950,6 +951,10 @@ impl_runtime_apis! {
 
         fn block_digest() -> Digest {
             System::digest()
+        }
+
+        fn block_weight() -> Weight {
+            System::block_weight().total()
         }
     }
 

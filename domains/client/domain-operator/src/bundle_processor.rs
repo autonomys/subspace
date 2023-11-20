@@ -19,7 +19,22 @@ use sp_keystore::KeystorePtr;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, Zero};
 use sp_runtime::{Digest, DigestItem};
+use sp_weights::constants::WEIGHT_REF_TIME_PER_MILLIS;
 use std::sync::Arc;
+use std::time::Instant;
+
+// The slow log threshold for consensus block preprocessing
+const SLOW_PREPROCESS_MILLIS: u64 = 500;
+
+// The slow log threshold for domain block execution: `reference_duration_ms * 1.2 + 200ms`,
+// where `reference_duration_ms * 0.2` as buffer of the slow extrinsic execution (i.e. slower
+// machine than the reference machine) and 200ms as buffer of the rest of the processing.
+fn slow_domain_block_execution_threshold(reference_duration_ms: u64) -> u64 {
+    reference_duration_ms + (reference_duration_ms / 5) + 200
+}
+
+// The slow log threshold for post domain block execution
+const SLOW_POST_DOMAIN_BLOCK_EXECUTION_MILLIS: u64 = 250;
 
 type DomainReceiptsChecker<Block, CBlock, Client, CClient, Backend, E> =
     ReceiptsChecker<Block, Client, CBlock, CClient, Backend, E>;
@@ -247,6 +262,7 @@ where
     ) -> sp_blockchain::Result<Option<(Block::Hash, NumberFor<Block>)>> {
         let (consensus_block_hash, consensus_block_number) = consensus_block_info;
         let (parent_hash, parent_number) = parent_info;
+        let start = Instant::now();
 
         tracing::debug!(
             "Building a new domain block from consensus block #{consensus_block_number},{consensus_block_hash} \
@@ -258,10 +274,19 @@ where
             .runtime_api()
             .head_receipt_number(consensus_block_hash, self.domain_id)?;
 
-        let Some(preprocess_result) = self
+        let maybe_preprocess_result = self
             .domain_block_preprocessor
-            .preprocess_consensus_block(consensus_block_hash, parent_hash)?
-        else {
+            .preprocess_consensus_block(consensus_block_hash, parent_hash)?;
+
+        let preprocess_took = start.elapsed().as_millis();
+        if preprocess_took >= SLOW_PREPROCESS_MILLIS.into() {
+            tracing::warn!(
+                ?consensus_block_info,
+                "Slow consensus block preprocessing, took {preprocess_took}ms"
+            );
+        }
+
+        let Some(preprocess_result) = maybe_preprocess_result else {
             tracing::debug!(
                 "Skip building new domain block, no bundles and runtime upgrade for this domain \
                     in consensus block #{consensus_block_number:?},{consensus_block_hash}"
@@ -300,6 +325,36 @@ where
             domain_block_result.header_number,
         );
 
+        let block_execution_took = start.elapsed().as_millis().saturating_sub(preprocess_took);
+        let domain_core_api_version = self
+            .client
+            .runtime_api()
+            .api_version::<dyn DomainCoreApi<Block>>(domain_block_result.header_hash)?
+            // safe to return default version as 1 since there will always be version 1.
+            .unwrap_or(1);
+        let reference_block_execution_duration_ms = if domain_core_api_version >= 2 {
+            self.client
+                .runtime_api()
+                .block_weight(domain_block_result.header_hash)?
+                .ref_time()
+                / WEIGHT_REF_TIME_PER_MILLIS
+        } else {
+            // TODO: this is used to keep compatible with the gemini-3g network, remove this
+            // before the next network
+            // 2000ms is the maximum compute time set in the max domain block weight
+            2000
+        };
+        if block_execution_took
+            >= slow_domain_block_execution_threshold(reference_block_execution_duration_ms).into()
+        {
+            tracing::warn!(
+                ?consensus_block_info,
+                ?built_block_info,
+                ?reference_block_execution_duration_ms,
+                "Slow domain block execution, took {block_execution_took}ms"
+            );
+        }
+
         self.domain_block_processor.on_consensus_block_processed(
             consensus_block_hash,
             Some(domain_block_result),
@@ -324,6 +379,18 @@ where
             self.domain_receipts_checker
                 .submit_fraud_proof(consensus_block_hash)
                 .await?;
+        }
+
+        let post_block_execution_took = start
+            .elapsed()
+            .as_millis()
+            .saturating_sub(preprocess_took + block_execution_took);
+        if post_block_execution_took >= SLOW_POST_DOMAIN_BLOCK_EXECUTION_MILLIS.into() {
+            tracing::warn!(
+                ?consensus_block_info,
+                ?built_block_info,
+                "Slow post domain block execution, took {post_block_execution_took}ms"
+            );
         }
 
         Ok(Some(built_block_info))
