@@ -538,6 +538,7 @@ where
                 ..Default::default()
             },
             local_peer_id,
+            servers: bootstrap_addresses.clone(),
         },
     });
 

@@ -14,25 +14,37 @@ use tracing::debug;
 pub(crate) struct Config {
     pub(crate) inner_config: AutonatConfig,
     pub(crate) local_peer_id: PeerId,
+    pub(crate) servers: Vec<Multiaddr>,
 }
 
 pub(crate) struct Behaviour {
     inner: Autonat,
-    config: Config,
+    private_ips_enabled: bool,
     listen_addresses: HashSet<Multiaddr>,
 }
 
 impl Behaviour {
     pub(crate) fn new(config: Config) -> Self {
+        let mut inner = Autonat::new(config.local_peer_id, config.inner_config.clone());
+
+        for server in config.servers {
+            let maybe_peer_id = server.iter().find_map(|protocol| {
+                if let Protocol::P2p(peer_id) = protocol {
+                    Some(peer_id)
+                } else {
+                    None
+                }
+            });
+            if let Some(peer_id) = maybe_peer_id {
+                inner.add_server(peer_id, Some(server));
+            }
+        }
+
         Self {
-            inner: Autonat::new(config.local_peer_id, config.inner_config.clone()),
-            config,
+            inner,
+            private_ips_enabled: !config.inner_config.only_global_ips,
             listen_addresses: Default::default(),
         }
-    }
-
-    fn private_ips_enabled(&self) -> bool {
-        !self.config.inner_config.only_global_ips
     }
 
     fn address_corresponds_to_listening_addresses(&self, addr: &Multiaddr) -> bool {
@@ -105,7 +117,7 @@ impl NetworkBehaviour for Behaviour {
                     //TODO: handle listener address change
                     self.listen_addresses.insert(addr.addr.clone());
 
-                    if self.private_ips_enabled() || is_global_address_or_dns(addr.addr) {
+                    if self.private_ips_enabled || is_global_address_or_dns(addr.addr) {
                         self.inner.on_swarm_event(new_listen_addr_event);
                     } else {
                         debug!(addr=?addr.addr, "Skipped listening address in AutonatWrapper.");
