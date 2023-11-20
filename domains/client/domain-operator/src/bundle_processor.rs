@@ -2,7 +2,6 @@ use crate::domain_block_processor::{
     DomainBlockProcessor, PendingConsensusBlocks, ReceiptsChecker,
 };
 use crate::ExecutionReceiptFor;
-use domain_block_preprocessor::runtime_api_full::RuntimeApiFull;
 use domain_block_preprocessor::DomainBlockPreprocessor;
 use domain_runtime_primitives::DomainCoreApi;
 use sc_client_api::{AuxStore, BlockBackend, Finalizer, ProofProvider};
@@ -35,14 +34,8 @@ where
     backend: Arc<Backend>,
     keystore: KeystorePtr,
     domain_receipts_checker: DomainReceiptsChecker<Block, CBlock, Client, CClient, Backend, E>,
-    domain_block_preprocessor: DomainBlockPreprocessor<
-        Block,
-        CBlock,
-        Client,
-        CClient,
-        RuntimeApiFull<Client>,
-        ReceiptValidator<Client>,
-    >,
+    domain_block_preprocessor:
+        DomainBlockPreprocessor<Block, CBlock, Client, CClient, ReceiptValidator<Client>>,
     domain_block_processor: DomainBlockProcessor<Block, CBlock, Client, CClient, Backend>,
 }
 
@@ -160,7 +153,6 @@ where
             domain_id,
             client.clone(),
             consensus_client.clone(),
-            RuntimeApiFull::new(client.clone()),
             ReceiptValidator::new(client.clone()),
         );
         Self {
