@@ -3,10 +3,7 @@ use crate::{
 };
 use codec::{Decode, Encode};
 use domain_block_preprocessor::inherents::extract_domain_runtime_upgrade_code;
-use domain_block_preprocessor::runtime_api::{
-    SetCodeConstructor, SignerExtractor, TimestampExtrinsicConstructor,
-};
-use domain_block_preprocessor::runtime_api_light::RuntimeApiLight;
+use domain_block_preprocessor::stateless_runtime::StatelessRuntime;
 use sc_client_api::BlockBackend;
 use sc_executor::RuntimeVersionOf;
 use sp_api::{BlockT, HashT, ProvideRuntimeApi};
@@ -121,18 +118,13 @@ where
         let runtime_code = self.get_domain_runtime_code(consensus_block_hash, domain_id)?;
         let timestamp = runtime_api.timestamp(consensus_block_hash.into()).ok()?;
 
-        let domain_runtime_api_light =
-            RuntimeApiLight::new(self.executor.clone(), runtime_code.into());
+        let domain_stateless_runtime =
+            StatelessRuntime::<DomainBlock, _>::new(self.executor.clone(), runtime_code.into());
 
-        TimestampExtrinsicConstructor::<DomainBlock>::construct_timestamp_extrinsic(
-            &domain_runtime_api_light,
-            // We do not care about the domain hash since this is stateless call into
-            // domain runtime,
-            Default::default(),
-            timestamp,
-        )
-        .ok()
-        .map(|ext| ext.encode())
+        domain_stateless_runtime
+            .construct_timestamp_extrinsic(timestamp)
+            .ok()
+            .map(|ext| ext.encode())
     }
 
     fn get_domain_bundle_body(
@@ -174,18 +166,13 @@ where
 
         if let Some(upgraded_runtime) = maybe_upgraded_runtime {
             let runtime_code = self.get_domain_runtime_code(consensus_block_hash, domain_id)?;
-            let domain_runtime_api_light =
-                RuntimeApiLight::new(self.executor.clone(), runtime_code.into());
+            let domain_stateless_runtime =
+                StatelessRuntime::<DomainBlock, _>::new(self.executor.clone(), runtime_code.into());
 
-            SetCodeConstructor::<DomainBlock>::construct_set_code_extrinsic(
-                &domain_runtime_api_light,
-                // We do not care about the domain hash since this is stateless call into
-                // domain runtime,
-                Default::default(),
-                upgraded_runtime,
-            )
-            .ok()
-            .map(|ext| SetCodeExtrinsic::EncodedExtrinsic(ext.encode()))
+            domain_stateless_runtime
+                .construct_set_code_extrinsic(upgraded_runtime)
+                .ok()
+                .map(|ext| SetCodeExtrinsic::EncodedExtrinsic(ext.encode()))
         } else {
             Some(SetCodeExtrinsic::None)
         }
@@ -238,22 +225,16 @@ where
         let bundle_vrf_hash =
             U256::from_be_bytes(bundle.sealed_header.header.proof_of_election.vrf_hash());
 
-        let domain_runtime_api_light =
-            RuntimeApiLight::new(self.executor.clone(), runtime_code.into());
+        let domain_stateless_runtime =
+            StatelessRuntime::<DomainBlock, _>::new(self.executor.clone(), runtime_code.into());
 
         let encoded_extrinsic = opaque_extrinsic.encode();
         let extrinsic =
             <DomainBlock as BlockT>::Extrinsic::decode(&mut encoded_extrinsic.as_slice()).ok()?;
 
-        <RuntimeApiLight<Executor> as domain_runtime_primitives::DomainCoreApi<
-            DomainBlock,
-        >>::is_within_tx_range(
-            &domain_runtime_api_light,
-            Default::default(), // Doesn't matter for RuntimeApiLight
-            &extrinsic,
-            &bundle_vrf_hash,
-            &domain_tx_range,
-        ).ok()
+        domain_stateless_runtime
+            .is_within_tx_range(&extrinsic, &bundle_vrf_hash, &domain_tx_range)
+            .ok()
     }
 
     fn is_inherent_extrinsic(
@@ -264,20 +245,16 @@ where
     ) -> Option<bool> {
         let runtime_code = self.get_domain_runtime_code(consensus_block_hash, domain_id)?;
 
-        let domain_runtime_api_light =
-            RuntimeApiLight::new(self.executor.clone(), runtime_code.into());
+        let domain_stateless_runtime =
+            StatelessRuntime::<DomainBlock, _>::new(self.executor.clone(), runtime_code.into());
 
         let encoded_extrinsic = opaque_extrinsic.encode();
         let extrinsic =
             <DomainBlock as BlockT>::Extrinsic::decode(&mut encoded_extrinsic.as_slice()).ok()?;
 
-        <RuntimeApiLight<Executor> as domain_runtime_primitives::DomainCoreApi<
-            DomainBlock,
-        >>::is_inherent_extrinsic(
-            &domain_runtime_api_light,
-            Default::default(), // Doesn't matter for RuntimeApiLight
-            &extrinsic
-        ).ok()
+        domain_stateless_runtime
+            .is_inherent_extrinsic(&extrinsic)
+            .ok()
     }
 
     fn get_domain_election_params(
@@ -410,25 +387,22 @@ where
         }
 
         let domain_runtime_code = self.get_domain_runtime_code(consensus_block_hash, domain_id)?;
-        let domain_runtime_api_light =
-            RuntimeApiLight::new(self.executor.clone(), domain_runtime_code.into());
+        let domain_stateless_runtime = StatelessRuntime::<DomainBlock, _>::new(
+            self.executor.clone(),
+            domain_runtime_code.into(),
+        );
 
-        let ext_signers: Vec<_> = SignerExtractor::<DomainBlock>::extract_signer(
-            &domain_runtime_api_light,
-            // `extract_signer` is a stateless runtime api thus it is okay to use
-            // default block hash
-            Default::default(),
-            extrinsics,
-        )
-        .ok()?
-        .into_iter()
-        .map(|(signer, tx)| {
-            (
-                signer,
-                <DomainBlock::Header as HeaderT>::Hashing::hash_of(&tx),
-            )
-        })
-        .collect();
+        let ext_signers: Vec<_> = domain_stateless_runtime
+            .extract_signer(extrinsics)
+            .ok()?
+            .into_iter()
+            .map(|(signer, tx)| {
+                (
+                    signer,
+                    <DomainBlock::Header as HeaderT>::Hashing::hash_of(&tx),
+                )
+            })
+            .collect();
 
         Some(<DomainBlock::Header as HeaderT>::Hashing::hash_of(&ext_signers).into())
     }
