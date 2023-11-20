@@ -26,7 +26,9 @@ use std::time::Instant;
 // The slow log threshold for consensus block preprocessing
 const SLOW_PREPROCESS_MILLIS: u64 = 500;
 
-// The slow log threshold for domain block execution: `reference_duration_ms * 1.2 + 200ms`
+// The slow log threshold for domain block execution: `reference_duration_ms * 1.2 + 200ms`,
+// where `reference_duration_ms * 0.2` as buffer of the slow extrinsic execution (i.e. slower
+// machine than the reference machine) and 200ms as buffer of the rest of the processing.
 fn slow_domain_block_execution_threshold(reference_duration_ms: u64) -> u64 {
     reference_duration_ms + (reference_duration_ms / 5) + 200
 }
