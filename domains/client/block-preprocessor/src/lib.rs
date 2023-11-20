@@ -11,8 +11,7 @@
 #![warn(rust_2018_idioms)]
 
 pub mod inherents;
-pub mod runtime_api;
-pub mod runtime_api_light;
+pub mod stateless_runtime;
 pub mod xdm_verifier;
 
 use crate::inherents::is_runtime_upgraded;

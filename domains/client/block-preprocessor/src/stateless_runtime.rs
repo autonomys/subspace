@@ -1,35 +1,36 @@
-use crate::runtime_api::{
-    ExtractSignerResult, ExtractedStateRoots, IsInherentExtrinsic, SetCodeConstructor,
-    SignerExtractor, StateRootExtractor, TimestampExtrinsicConstructor,
-};
 use codec::{Codec, Encode};
-use domain_runtime_primitives::DomainCoreApi;
+use domain_runtime_primitives::opaque::AccountId;
+use domain_runtime_primitives::{CheckTxValidityError, DomainCoreApi};
 use sc_executor::RuntimeVersionOf;
 use sp_api::{ApiError, BlockT, Core, Hasher, RuntimeVersion};
 use sp_core::traits::{CallContext, CodeExecutor, FetchRuntimeCode, RuntimeCode};
+use sp_messenger::messages::ExtractedStateRootsFromProof;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::NumberFor;
 use sp_runtime::Storage;
 use sp_state_machine::BasicExternalities;
 use std::borrow::Cow;
+use std::marker::PhantomData;
 use std::sync::Arc;
+use subspace_core_primitives::U256;
 use subspace_runtime_primitives::Moment;
 
-/// Lightweight runtime api based on the runtime code and partial state.
+/// Stateless runtime api based on the runtime code and partial state if provided.
 ///
 /// NOTE:
 /// - This is only supposed to be used when no domain client available, i.e., when the
 /// caller does not own the entire domain state.
 /// - This perfectly fits the runtime APIs that are purely stateless, but it's also usable
 /// for the stateful APIs. If some states are used inside a runtime api, these states must
-/// be provided and set before dispatching otherwise [`RuntimeApiLight`] may give invalid output.
-pub struct RuntimeApiLight<Executor> {
+/// be provided and set before dispatching otherwise [`StatelessRuntime`] may give invalid output.
+pub struct StatelessRuntime<Block, Executor> {
     executor: Arc<Executor>,
     runtime_code: Cow<'static, [u8]>,
     storage: Storage,
+    _marker: PhantomData<Block>,
 }
 
-impl<Block, Executor> Core<Block> for RuntimeApiLight<Executor>
+impl<Block, Executor> Core<Block> for StatelessRuntime<Block, Executor>
 where
     Block: BlockT,
     Executor: CodeExecutor + RuntimeVersionOf,
@@ -44,7 +45,7 @@ where
     }
 }
 
-impl<Block, Executor> DomainCoreApi<Block> for RuntimeApiLight<Executor>
+impl<Block, Executor> DomainCoreApi<Block> for StatelessRuntime<Block, Executor>
 where
     Block: BlockT,
     Executor: CodeExecutor + RuntimeVersionOf,
@@ -59,7 +60,7 @@ where
     }
 }
 
-impl<Block, Executor> MessengerApi<Block, NumberFor<Block>> for RuntimeApiLight<Executor>
+impl<Block, Executor> MessengerApi<Block, NumberFor<Block>> for StatelessRuntime<Block, Executor>
 where
     Block: BlockT,
     NumberFor<Block>: Codec,
@@ -75,22 +76,32 @@ where
     }
 }
 
-impl<Executor> FetchRuntimeCode for RuntimeApiLight<Executor> {
+impl<Block, Executor> FetchRuntimeCode for StatelessRuntime<Block, Executor> {
     fn fetch_runtime_code(&self) -> Option<Cow<'static, [u8]>> {
         Some(self.runtime_code.clone())
     }
 }
 
-impl<Executor> RuntimeApiLight<Executor>
+pub type ExtractedStateRoots<Block> = ExtractedStateRootsFromProof<
+    NumberFor<Block>,
+    <Block as BlockT>::Hash,
+    <Block as BlockT>::Hash,
+>;
+
+pub type ExtractSignerResult<Block> = Vec<(Option<AccountId>, <Block as BlockT>::Extrinsic)>;
+
+impl<Block, Executor> StatelessRuntime<Block, Executor>
 where
+    Block: BlockT,
     Executor: CodeExecutor + RuntimeVersionOf,
 {
-    /// Create a new instance of [`RuntimeApiLight`] with empty storage.
+    /// Create a new instance of [`StatelessRuntime`] with empty storage.
     pub fn new(executor: Arc<Executor>, runtime_code: Cow<'static, [u8]>) -> Self {
         Self {
             executor,
             runtime_code,
             storage: Storage::default(),
+            _marker: Default::default(),
         }
     }
 
@@ -140,79 +151,79 @@ where
                 ApiError::Application(format!("Failed to invoke call to {fn_name}: {err}").into())
             })
     }
-}
 
-impl<Block, Executor> StateRootExtractor<Block> for RuntimeApiLight<Executor>
-where
-    Block: BlockT,
-    Executor: CodeExecutor + RuntimeVersionOf,
-{
-    fn extract_state_roots(
+    pub fn extract_state_roots(
         &self,
-        block_hash: Block::Hash,
         ext: &Block::Extrinsic,
     ) -> Result<ExtractedStateRoots<Block>, ApiError> {
         let maybe_state_roots = <Self as MessengerApi<Block, _>>::extract_xdm_proof_state_roots(
             self,
-            block_hash,
+            Default::default(),
             ext.encode(),
         )?;
         maybe_state_roots.ok_or(ApiError::Application("Empty state roots".into()))
     }
-}
 
-impl<Executor, Block> SignerExtractor<Block> for RuntimeApiLight<Executor>
-where
-    Block: BlockT,
-    Executor: CodeExecutor + RuntimeVersionOf,
-{
-    fn extract_signer(
+    pub fn extract_signer(
         &self,
-        at: Block::Hash,
         extrinsics: Vec<<Block as BlockT>::Extrinsic>,
     ) -> Result<ExtractSignerResult<Block>, ApiError> {
-        <Self as DomainCoreApi<Block>>::extract_signer(self, at, extrinsics)
+        <Self as DomainCoreApi<Block>>::extract_signer(self, Default::default(), extrinsics)
     }
-}
 
-impl<Executor, Block> SetCodeConstructor<Block> for RuntimeApiLight<Executor>
-where
-    Block: BlockT,
-    Executor: CodeExecutor + RuntimeVersionOf,
-{
-    fn construct_set_code_extrinsic(
-        &self,
-        at: Block::Hash,
-        runtime_code: Vec<u8>,
-    ) -> Result<Vec<u8>, ApiError> {
-        <Self as DomainCoreApi<Block>>::construct_set_code_extrinsic(self, at, runtime_code)
+    pub fn construct_set_code_extrinsic(&self, runtime_code: Vec<u8>) -> Result<Vec<u8>, ApiError> {
+        <Self as DomainCoreApi<Block>>::construct_set_code_extrinsic(
+            self,
+            Default::default(),
+            runtime_code,
+        )
     }
-}
 
-impl<Executor, Block> TimestampExtrinsicConstructor<Block> for RuntimeApiLight<Executor>
-where
-    Block: BlockT,
-    Executor: CodeExecutor + RuntimeVersionOf,
-{
-    fn construct_timestamp_extrinsic(
+    pub fn construct_timestamp_extrinsic(
         &self,
-        at: Block::Hash,
         moment: Moment,
     ) -> Result<Block::Extrinsic, ApiError> {
-        <Self as DomainCoreApi<Block>>::construct_timestamp_extrinsic(self, at, moment)
+        <Self as DomainCoreApi<Block>>::construct_timestamp_extrinsic(
+            self,
+            Default::default(),
+            moment,
+        )
     }
-}
 
-impl<Executor, Block> IsInherentExtrinsic<Block> for RuntimeApiLight<Executor>
-where
-    Block: BlockT,
-    Executor: CodeExecutor + RuntimeVersionOf,
-{
-    fn is_inherent_extrinsic(
+    pub fn is_inherent_extrinsic(
         &self,
-        at: Block::Hash,
         extrinsic: &<Block as BlockT>::Extrinsic,
     ) -> Result<bool, ApiError> {
-        <Self as DomainCoreApi<Block>>::is_inherent_extrinsic(self, at, extrinsic)
+        <Self as DomainCoreApi<Block>>::is_inherent_extrinsic(self, Default::default(), extrinsic)
+    }
+
+    pub fn is_within_tx_range(
+        &self,
+        extrinsic: &<Block as BlockT>::Extrinsic,
+        bundle_vrf_hash: &U256,
+        tx_range: &U256,
+    ) -> Result<bool, ApiError> {
+        <Self as DomainCoreApi<Block>>::is_within_tx_range(
+            self,
+            Default::default(),
+            extrinsic,
+            bundle_vrf_hash,
+            tx_range,
+        )
+    }
+
+    pub fn check_transaction_validity(
+        &self,
+        uxt: &<Block as BlockT>::Extrinsic,
+        block_number: NumberFor<Block>,
+        block_hash: <Block as BlockT>::Hash,
+    ) -> Result<Result<(), CheckTxValidityError>, ApiError> {
+        <Self as DomainCoreApi<Block>>::check_transaction_validity(
+            self,
+            Default::default(),
+            uxt,
+            block_number,
+            block_hash,
+        )
     }
 }
