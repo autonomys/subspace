@@ -12,6 +12,7 @@ use domain_runtime_primitives::opaque::Header as DomainHeader;
 use domain_runtime_primitives::BlockNumber as DomainBlockNumber;
 use frame_support::dispatch::RawOrigin;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, Currency, Hooks};
+use frame_support::weights::constants::RocksDbWeight;
 use frame_support::weights::Weight;
 use frame_support::{assert_err, assert_ok, parameter_types, PalletId};
 use frame_system::pallet_prelude::*;
@@ -80,7 +81,7 @@ impl frame_system::Config for Test {
     type BaseCallFilter = frame_support::traits::Everything;
     type BlockWeights = ();
     type BlockLength = ();
-    type DbWeight = ();
+    type DbWeight = RocksDbWeight;
     type RuntimeOrigin = RuntimeOrigin;
     type RuntimeCall = RuntimeCall;
     type Nonce = u64;
@@ -780,6 +781,7 @@ fn test_bundle_fromat_verification() {
             created_at: Default::default(),
             genesis_receipt_hash: Default::default(),
             domain_config,
+            domain_runtime_info: Default::default(),
         };
         DomainRegistry::<Test>::insert(domain_id, domain_obj);
 

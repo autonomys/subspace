@@ -1,7 +1,8 @@
 //! Domain registry for domains
 
 use crate::block_tree::import_genesis_receipt;
-use crate::pallet::DomainStakingSummary;
+use crate::pallet::{DomainStakingSummary, NextEVMChainId};
+use crate::runtime_registry::DomainRuntimeInfo;
 use crate::staking::StakingSummary;
 use crate::{
     Config, DomainHashingFor, DomainRegistry, ExecutionReceiptOf, HoldIdentifier, NextDomainId,
@@ -18,6 +19,7 @@ use scale_info::TypeInfo;
 use sp_core::Get;
 use sp_domains::{
     derive_domain_block_hash, DomainId, DomainsDigestItem, OperatorAllowList, RuntimeId,
+    RuntimeType,
 };
 use sp_runtime::traits::{CheckedAdd, Zero};
 use sp_runtime::DigestItem;
@@ -31,6 +33,7 @@ pub enum Error {
     ExceedMaxDomainBlockWeight,
     ExceedMaxDomainBlockSize,
     MaxDomainId,
+    MaxEVMChainId,
     InvalidSlotProbability,
     RuntimeNotFound,
     InsufficientFund,
@@ -70,6 +73,8 @@ pub struct DomainObject<Number, ReceiptHash, AccountId: Ord> {
     pub genesis_receipt_hash: ReceiptHash,
     /// The domain config.
     pub domain_config: DomainConfig<AccountId>,
+    /// Domain runtime specific information.
+    pub domain_runtime_info: DomainRuntimeInfo,
 }
 
 pub(crate) fn can_instantiate_domain<T: Config>(
@@ -122,13 +127,23 @@ pub(crate) fn do_instantiate_domain<T: Config>(
     can_instantiate_domain::<T>(&owner_account_id, &domain_config)?;
 
     let domain_id = NextDomainId::<T>::get();
+    let runtime_obj = RuntimeRegistry::<T>::get(domain_config.runtime_id)
+        .expect("Runtime object must exist as checked in `can_instantiate_domain`; qed");
+
+    let domain_runtime_info = match runtime_obj.runtime_type {
+        RuntimeType::Evm => {
+            let evm_chain_id = NextEVMChainId::<T>::get();
+            let next_evm_chain_id = evm_chain_id.checked_add(1).ok_or(Error::MaxEVMChainId)?;
+            NextEVMChainId::<T>::set(next_evm_chain_id);
+            DomainRuntimeInfo::EVM {
+                chain_id: evm_chain_id,
+            }
+        }
+    };
 
     let genesis_receipt = {
-        let runtime_obj = RuntimeRegistry::<T>::get(domain_config.runtime_id)
-            .expect("Runtime object must exist as checked in `can_instantiate_domain`; qed");
-
         let state_version = runtime_obj.version.state_version();
-        let raw_genesis = runtime_obj.into_complete_raw_genesis(domain_id);
+        let raw_genesis = runtime_obj.into_complete_raw_genesis(domain_id, domain_runtime_info);
         let state_root = raw_genesis.state_root::<DomainHashingFor<T>>(state_version);
         let genesis_block_hash = derive_domain_block_hash::<T::DomainHeader>(
             Zero::zero(),
@@ -151,6 +166,7 @@ pub(crate) fn do_instantiate_domain<T: Config>(
         created_at,
         genesis_receipt_hash,
         domain_config,
+        domain_runtime_info,
     };
     DomainRegistry::<T>::insert(domain_id, domain_obj);
 
