@@ -127,11 +127,13 @@ where
     ///
     /// If key doesn't pass [`UniqueRecordBinaryHeap::should_include_key`] check, it will be
     /// silently ignored.
-    pub fn insert(&mut self, key: K) -> Option<K> {
+    ///
+    /// Returns: 1. whether the key is inserted 2. the possibly evicted key
+    pub fn insert(&mut self, key: K) -> (bool, Option<K>) {
         let key = RecordHeapKey::new(&self.peer_key, key);
 
         if !self.should_include_key_internal(&key) {
-            return None;
+            return (false, None);
         }
 
         let evicted = if self.is_limit_reached() {
@@ -142,7 +144,7 @@ where
 
         self.set.insert(key);
 
-        evicted
+        (true, evicted)
     }
 
     /// Removes a key from the heap.

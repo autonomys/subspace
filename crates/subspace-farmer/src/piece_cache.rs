@@ -552,8 +552,9 @@ where
 
         let mut caches = self.caches.write();
         match worker_state.heap.insert(heap_key) {
+            (false, _) => return,
             // Entry is already occupied, we need to find and replace old piece with new one
-            Some(KeyWrapper(old_piece_index)) => {
+            (true, Some(KeyWrapper(old_piece_index))) => {
                 for (disk_farm_index, cache) in caches.iter_mut().enumerate() {
                     let old_record_key = RecordKey::from(old_piece_index.to_multihash());
                     let Some(offset) = cache.stored_pieces.remove(&old_record_key) else {
@@ -590,7 +591,7 @@ where
                 );
             }
             // There is free space in cache, need to find a free spot and place piece there
-            None => {
+            (true, None) => {
                 for (disk_farm_index, cache) in caches.iter_mut().enumerate() {
                     let Some(offset) = cache.free_offsets.pop() else {
                         // Not this disk farm
