@@ -331,29 +331,44 @@ where
         let mut downloaded_pieces_count = 0;
         self.handlers.progress.call_simple(&0.0);
         while let Some(maybe_piece) = downloading_pieces.next().await {
+            // Push another piece to download
+            if let Some(piece_index_to_download) = piece_indices_to_store.next() {
+                downloading_pieces.push(download_piece(piece_index_to_download));
+            }
+
             let Some((piece_index, piece)) = maybe_piece else {
                 continue;
             };
 
             // Find plot in which there is a place for new piece to be stored
-            for (disk_farm_index, cache) in caches.iter_mut().enumerate() {
-                let Some(offset) = cache.free_offsets.pop() else {
-                    continue;
-                };
+            if !caches
+                .iter_mut()
+                .enumerate()
+                .any(|(disk_farm_index, cache)| {
+                    let Some(offset) = cache.free_offsets.pop() else {
+                        return false;
+                    };
 
-                if let Err(error) = cache.backend.write_piece(offset, piece_index, &piece) {
-                    error!(
-                        %error,
-                        %disk_farm_index,
-                        %piece_index,
-                        %offset,
-                        "Failed to write piece into cache"
-                    );
-                    continue;
-                }
-                cache
-                    .stored_pieces
-                    .insert(RecordKey::from(piece_index.to_multihash()), offset);
+                    if let Err(error) = cache.backend.write_piece(offset, piece_index, &piece) {
+                        error!(
+                            %error,
+                            %disk_farm_index,
+                            %piece_index,
+                            %offset,
+                            "Failed to write piece into cache"
+                        );
+                        return false;
+                    }
+                    cache
+                        .stored_pieces
+                        .insert(RecordKey::from(piece_index.to_multihash()), offset);
+                    true
+                })
+            {
+                error!(
+                    %piece_index,
+                    "Failed to store piece in cache, there was no space"
+                );
             }
 
             downloaded_pieces_count += 1;
@@ -364,11 +379,6 @@ where
 
                 info!("Piece cache sync {progress:.2}% complete");
                 self.handlers.progress.call_simple(&progress);
-            }
-
-            // Push another piece to download
-            if let Some(piece_index_to_download) = piece_indices_to_store.next() {
-                downloading_pieces.push(download_piece(piece_index_to_download));
             }
         }
 
