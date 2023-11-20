@@ -219,5 +219,9 @@ sp_api::decl_runtime_apis! {
 
         /// Return the block digest
         fn block_digest() -> Digest;
+
+        /// Return the consumed weight of the block
+        #[api_version(2)]
+        fn block_weight() -> Weight;
     }
 }
