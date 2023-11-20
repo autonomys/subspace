@@ -75,12 +75,14 @@ pub(crate) struct SpecialConnectedPeersInstance;
 #[behaviour(to_swarm = "Event")]
 #[behaviour(event_process = false)]
 pub(crate) struct Behavior<RecordStore> {
+    // TODO: Connection limits must be the first protocol due to https://github.com/libp2p/rust-libp2p/issues/4773 as
+    //  suggested in https://github.com/libp2p/rust-libp2p/issues/4898#issuecomment-1818013483
+    pub(crate) connection_limits: ConnectionLimitsBehaviour,
     pub(crate) identify: Identify,
     pub(crate) kademlia: Kademlia<RecordStore>,
     pub(crate) gossipsub: Toggle<Gossipsub>,
     pub(crate) ping: Ping,
     pub(crate) request_response: RequestResponseFactoryBehaviour,
-    pub(crate) connection_limits: ConnectionLimitsBehaviour,
     pub(crate) block_list: BlockListBehaviour,
     pub(crate) reserved_peers: ReservedPeersBehaviour,
     pub(crate) peer_info: Toggle<PeerInfoBehaviour>,
@@ -119,6 +121,7 @@ where
             .map(|provider| PeerInfoBehaviour::new(config.peer_info_config, provider));
 
         Self {
+            connection_limits: ConnectionLimitsBehaviour::new(config.connection_limits),
             identify: Identify::new(config.identify),
             kademlia,
             gossipsub,
@@ -128,7 +131,6 @@ where
             )
             //TODO: Convert to an error.
             .expect("RequestResponse protocols registration failed."),
-            connection_limits: ConnectionLimitsBehaviour::new(config.connection_limits),
             block_list: BlockListBehaviour::default(),
             reserved_peers: ReservedPeersBehaviour::new(config.reserved_peers),
             peer_info: peer_info.into(),
