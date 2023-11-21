@@ -180,7 +180,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 kademlia_mode: KademliaMode::Static(Mode::Server),
                 external_addresses,
                 metrics,
-                networking_parameters_registry: Some(KnownPeersManager::new().boxed()),
+                networking_parameters_registry: KnownPeersManager::new().boxed(),
 
                 ..Config::new(protocol_version.to_string(), keypair, (), None)
             };

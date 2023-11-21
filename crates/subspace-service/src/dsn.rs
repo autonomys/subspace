@@ -50,7 +50,7 @@ pub struct DsnConfig {
     pub allow_non_global_addresses_in_dht: bool,
 
     /// System base path.
-    pub base_path: Option<PathBuf>,
+    pub base_path: PathBuf,
 
     /// Defines max established incoming swarm connection limit.
     pub max_in_connections: u32,
@@ -88,25 +88,24 @@ where
     let mut metric_registry = Registry::default();
     let metrics = enable_metrics.then(|| Metrics::new(&mut metric_registry));
 
-    let networking_parameters_registry = dsn_config
-        .base_path
-        .map(|path| {
-            // TODO: Remove this in the future after enough upgrade time that this no longer exist
-            if path.join("known_addresses_db").is_dir() {
-                let _ = fs::remove_file(path.join("known_addresses_db"));
-            }
-            let file_path = path.join("known_addresses.bin");
+    let networking_parameters_registry = {
+        let path = dsn_config.base_path;
 
-            NetworkingParametersManager::new(
-                &file_path,
-                strip_peer_id(dsn_config.bootstrap_nodes.clone())
-                    .into_iter()
-                    .map(|(peer_id, _)| peer_id)
-                    .collect::<HashSet<_>>(),
-            )
-            .map(NetworkingParametersManager::boxed)
-        })
-        .transpose()?;
+        // TODO: Remove this in the future after enough upgrade time that this no longer exist
+        if path.join("known_addresses_db").is_dir() {
+            let _ = fs::remove_file(path.join("known_addresses_db"));
+        }
+        let file_path = path.join("known_addresses.bin");
+
+        NetworkingParametersManager::new(
+            &file_path,
+            strip_peer_id(dsn_config.bootstrap_nodes.clone())
+                .into_iter()
+                .map(|(peer_id, _)| peer_id)
+                .collect::<HashSet<_>>(),
+        )
+        .map(NetworkingParametersManager::boxed)?
+    };
 
     let keypair = dsn_config.keypair.clone();
     let default_networking_config = subspace_networking::Config::new(

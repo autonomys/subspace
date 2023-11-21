@@ -72,7 +72,7 @@ pub(super) fn configure_dsn(
         reserved_peers,
         listen_on,
         allow_non_global_addresses_in_dht: enable_private_ips,
-        networking_parameters_registry: Some(networking_parameters_registry),
+        networking_parameters_registry,
         request_response_protocols: vec![
             PieceByIndexRequestHandler::create(move |_, &PieceByIndexRequest { piece_index }| {
                 debug!(?piece_index, "Piece request received. Trying cache...");
