@@ -2,7 +2,9 @@
 
 #![feature(type_changing_struct_update)]
 
+use async_trait::async_trait;
 use clap::Parser;
+use event_listener_primitives::{Bag, HandlerId};
 use futures::{select, FutureExt};
 use libp2p::identity::ed25519::Keypair;
 use libp2p::kad::Mode;
@@ -16,11 +18,17 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::libp2p::multiaddr::Protocol;
-use subspace_networking::{peer_id, Config, KademliaMode};
+use subspace_networking::{
+    peer_id, Config, KademliaMode, NetworkingParametersRegistry, PeerAddress,
+    PeerAddressRemovedEvent,
+};
 use tracing::{debug, info, Level};
 use tracing_subscriber::fmt::Subscriber;
 use tracing_subscriber::util::SubscriberInitExt;
 use tracing_subscriber::EnvFilter;
+
+pub(crate) type HandlerFn<A> = Arc<dyn Fn(&A) + Send + Sync + 'static>;
+pub(crate) type Handler<A> = Bag<HandlerFn<A>, A>;
 
 #[derive(Debug, Parser)]
 #[clap(about, version)]
@@ -173,6 +181,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 kademlia_mode: KademliaMode::Static(Mode::Server),
                 external_addresses,
                 metrics,
+                networking_parameters_registry: Some(NetworkingParametersManager::new().boxed()),
 
                 ..Config::new(protocol_version.to_string(), keypair, (), None)
             };
@@ -219,4 +228,56 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
 fn peer_id_from_keypair(keypair: Keypair) -> PeerId {
     peer_id(&libp2p::identity::Keypair::from(keypair))
+}
+
+/// Networking manager implementation for DSN bootstrap node.
+#[derive(Clone, Default)]
+pub(crate) struct NetworkingParametersManager {
+    address_removed: Handler<PeerAddressRemovedEvent>,
+}
+
+impl NetworkingParametersManager {
+    pub fn new() -> Self {
+        Self {
+            address_removed: Default::default(),
+        }
+    }
+    /// Returns an instance of `NetworkingParametersManager` as the `Box` reference.
+    pub fn boxed(self) -> Box<dyn NetworkingParametersRegistry> {
+        Box::new(self)
+    }
+}
+
+#[async_trait]
+impl NetworkingParametersRegistry for NetworkingParametersManager {
+    async fn add_known_peer(&mut self, _: PeerId, _: Vec<Multiaddr>) {}
+
+    async fn remove_known_peer_addresses(&mut self, peer_id: PeerId, addresses: Vec<Multiaddr>) {
+        for addr in addresses {
+            self.address_removed.call_simple(&PeerAddressRemovedEvent {
+                peer_id,
+                address: addr.clone(),
+            });
+        }
+    }
+
+    fn remove_all_known_peer_addresses(&mut self, _peer_id: PeerId) {}
+
+    async fn next_known_addresses_batch(&mut self) -> Vec<PeerAddress> {
+        Vec::new()
+    }
+
+    async fn run(&mut self) {
+        // Never resolves
+        futures::future::pending().await
+    }
+
+    fn on_unreachable_address(
+        &mut self,
+        handler: HandlerFn<PeerAddressRemovedEvent>,
+    ) -> Option<HandlerId> {
+        let handler_id = self.address_removed.add(handler);
+
+        Some(handler_id)
+    }
 }
