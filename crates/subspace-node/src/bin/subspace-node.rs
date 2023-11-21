@@ -514,7 +514,6 @@ fn main() -> Result<(), Error> {
                             max_out_connections: cli.dsn_out_connections,
                             max_pending_in_connections: cli.dsn_pending_in_connections,
                             max_pending_out_connections: cli.dsn_pending_out_connections,
-                            target_connections: cli.dsn_target_connections,
                             external_addresses: cli.dsn_external_addresses,
                             // Override initial Kademlia bootstrapping  with --dev
                             disable_bootstrap_on_start: cli.dsn_disable_bootstrap_on_start
