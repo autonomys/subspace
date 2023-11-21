@@ -16,7 +16,7 @@
 
 //! Consensus archiver module.
 //!
-//! Contains implementation of archiving process in Subspace blockchain that convers blockchain
+//! Contains implementation of archiving process in Subspace blockchain that converts blockchain
 //! history (blocks) into archived history (pieces).
 
 use crate::{
