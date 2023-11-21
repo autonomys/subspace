@@ -7322,6 +7322,7 @@ dependencies = [
  "pallet-timestamp",
  "parity-scale-codec",
  "scale-info",
+ "sp-consensus-slots",
  "sp-core",
  "sp-domains",
  "sp-domains-fraud-proof",
