@@ -49,8 +49,6 @@ pub struct PeerAddressRemovedEvent {
     pub peer_id: PeerId,
     /// Peer address
     pub address: Multiaddr,
-    /// No address left in the permanent storage.
-    pub last_address: bool,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -656,7 +654,6 @@ pub(super) fn remove_known_peer_addresses_internal(
                             let address_removed = PeerAddressRemovedEvent{
                                 peer_id,
                                 address: addr.clone(),
-                                last_address
                             };
 
                             address_removed_events.push(address_removed);

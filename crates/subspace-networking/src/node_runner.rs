@@ -398,6 +398,21 @@ where
     fn handle_removed_address_event(&mut self, event: PeerAddressRemovedEvent) {
         trace!(?event, "Peer addressed removed event.",);
 
+        let bootstrap_node_ids = strip_peer_id(self.bootstrap_addresses.clone())
+            .into_iter()
+            .map(|(peer_id, _)| peer_id)
+            .collect::<Vec<_>>();
+
+        if bootstrap_node_ids.contains(&event.peer_id) {
+            debug!(
+                ?event,
+                ?bootstrap_node_ids,
+                "Skipped removing bootstrap node from Kademlia buckets."
+            );
+
+            return;
+        }
+
         // Remove both versions of the address
         self.swarm.behaviour_mut().kademlia.remove_address(
             &event.peer_id,
