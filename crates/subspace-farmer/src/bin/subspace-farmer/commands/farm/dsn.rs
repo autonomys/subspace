@@ -25,6 +25,8 @@ use tracing::{debug, error, info, Instrument};
 ///
 /// Must be the same as RPC limit since all requests go to the node anyway.
 const SEGMENT_HEADER_NUMBER_LIMIT: u64 = MAX_SEGMENT_HEADERS_PER_REQUEST as u64;
+/// Should be sufficient number of target connections for everyone, limits are higher
+const TARGET_CONNECTIONS: u32 = 15;
 
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub(super) fn configure_dsn(
@@ -40,7 +42,6 @@ pub(super) fn configure_dsn(
         out_connections,
         pending_in_connections,
         pending_out_connections,
-        target_connections,
         external_addresses,
         disable_bootstrap_on_start,
     }: DsnArgs,
@@ -190,11 +191,11 @@ pub(super) fn configure_dsn(
         special_connected_peers_handler: Some(Arc::new(PeerInfo::is_farmer)),
         // Do not have any target for general peers
         general_connected_peers_target: 0,
-        special_connected_peers_target: target_connections,
+        special_connected_peers_target: TARGET_CONNECTIONS,
         // Allow up to quarter of incoming connections to be maintained
         general_connected_peers_limit: in_connections / 4,
         // Allow to maintain some extra farmer connections beyond direct interest too
-        special_connected_peers_limit: target_connections + in_connections / 4,
+        special_connected_peers_limit: TARGET_CONNECTIONS + in_connections / 4,
         bootstrap_addresses: bootstrap_nodes,
         kademlia_mode: KademliaMode::Dynamic,
         external_addresses,

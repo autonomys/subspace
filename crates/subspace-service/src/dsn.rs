@@ -19,6 +19,8 @@ use thiserror::Error;
 use tracing::{debug, error, trace};
 
 const SEGMENT_HEADERS_NUMBER_LIMIT: u64 = 1000;
+/// Should be sufficient number of target connections for everyone, limits are higher
+const TARGET_CONNECTIONS: u32 = 15;
 
 /// Errors that might happen during DSN configuration.
 #[derive(Debug, Error)]
@@ -63,9 +65,6 @@ pub struct DsnConfig {
 
     /// Defines max pending outgoing swarm connection limit.
     pub max_pending_out_connections: u32,
-
-    /// Defines target total (in and out) connection number for DSN that should be maintained.
-    pub target_connections: u32,
 
     /// Known external addresses
     pub external_addresses: Vec<Multiaddr>,
@@ -181,10 +180,9 @@ where
         max_pending_outgoing_connections: dsn_config.max_pending_out_connections,
         // Maintain proactive connections with all peers
         general_connected_peers_handler: Some(Arc::new(|_| true)),
-        general_connected_peers_target: dsn_config.target_connections,
+        general_connected_peers_target: TARGET_CONNECTIONS,
         // Allow to maintain some extra general connections beyond direct interest too
-        general_connected_peers_limit: dsn_config.target_connections
-            + dsn_config.max_in_connections / 4,
+        general_connected_peers_limit: TARGET_CONNECTIONS + dsn_config.max_in_connections / 4,
         reserved_peers: dsn_config.reserved_peers,
         bootstrap_addresses: dsn_config.bootstrap_nodes,
         external_addresses: dsn_config.external_addresses,
