@@ -28,7 +28,7 @@ mod shared;
 pub mod utils;
 
 pub use crate::behavior::persistent_parameters::{
-    NetworkParametersPersistenceError, NetworkingParametersManager, NetworkingParametersRegistry,
+    KnownPeersRegistry, NetworkParametersPersistenceError, NetworkingParametersManager,
     PeerAddressRemovedEvent,
 };
 pub use crate::node::{

@@ -178,7 +178,7 @@ impl KnownPeersSlots {
 
 /// Defines operations with the networking parameters.
 #[async_trait]
-pub trait NetworkingParametersRegistry: Send + Sync {
+pub trait KnownPeersRegistry: Send + Sync {
     /// Registers a peer ID and associated addresses
     async fn add_known_peer(&mut self, peer_id: PeerId, addresses: Vec<Multiaddr>);
 
@@ -215,13 +215,13 @@ pub(crate) struct StubNetworkingParametersManager;
 
 impl StubNetworkingParametersManager {
     /// Returns an instance of `StubNetworkingParametersManager` as the `Box` reference.
-    pub fn boxed(self) -> Box<dyn NetworkingParametersRegistry> {
+    pub fn boxed(self) -> Box<dyn KnownPeersRegistry> {
         Box::new(self)
     }
 }
 
 #[async_trait]
-impl NetworkingParametersRegistry for StubNetworkingParametersManager {
+impl KnownPeersRegistry for StubNetworkingParametersManager {
     async fn add_known_peer(&mut self, _: PeerId, _: Vec<Multiaddr>) {}
 
     async fn remove_known_peer_addresses(&mut self, _peer_id: PeerId, _addresses: Vec<Multiaddr>) {}
@@ -428,7 +428,7 @@ impl NetworkingParametersManager {
     }
 
     /// Creates a reference to the `NetworkingParametersRegistry` trait implementation.
-    pub fn boxed(self) -> Box<dyn NetworkingParametersRegistry> {
+    pub fn boxed(self) -> Box<dyn KnownPeersRegistry> {
         Box::new(self)
     }
 
@@ -473,7 +473,7 @@ impl NetworkingParametersManager {
 }
 
 #[async_trait]
-impl NetworkingParametersRegistry for NetworkingParametersManager {
+impl KnownPeersRegistry for NetworkingParametersManager {
     async fn add_known_peer(&mut self, peer_id: PeerId, addresses: Vec<Multiaddr>) {
         if self.ignore_peer_list.contains(&peer_id) {
             debug!(

@@ -1,9 +1,7 @@
 pub(crate) mod temporary_bans;
 mod transport;
 
-use crate::behavior::persistent_parameters::{
-    NetworkingParametersRegistry, StubNetworkingParametersManager,
-};
+use crate::behavior::persistent_parameters::{KnownPeersRegistry, StubNetworkingParametersManager};
 use crate::behavior::{Behavior, BehaviorConfig};
 use crate::constructor::temporary_bans::TemporaryBans;
 use crate::constructor::transport::build_transport;
@@ -223,7 +221,7 @@ pub struct Config<LocalRecordProvider> {
     /// How frequently should random queries be done using Kademlia DHT to populate routing table.
     pub initial_random_query_interval: Duration,
     /// A reference to the `NetworkingParametersRegistry` implementation (optional).
-    pub networking_parameters_registry: Option<Box<dyn NetworkingParametersRegistry>>,
+    pub networking_parameters_registry: Option<Box<dyn KnownPeersRegistry>>,
     /// The configuration for the `RequestResponsesBehaviour` protocol.
     pub request_response_protocols: Vec<Box<dyn RequestHandler>>,
     /// Defines set of peers with a permanent connection (and reconnection if necessary).

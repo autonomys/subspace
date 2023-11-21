@@ -19,8 +19,7 @@ use std::sync::Arc;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::{
-    peer_id, Config, KademliaMode, NetworkingParametersRegistry, PeerAddress,
-    PeerAddressRemovedEvent,
+    peer_id, Config, KademliaMode, KnownPeersRegistry, PeerAddress, PeerAddressRemovedEvent,
 };
 use tracing::{debug, info, Level};
 use tracing_subscriber::fmt::Subscriber;
@@ -181,7 +180,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 kademlia_mode: KademliaMode::Static(Mode::Server),
                 external_addresses,
                 metrics,
-                networking_parameters_registry: Some(NetworkingParametersManager::new().boxed()),
+                networking_parameters_registry: Some(KnownPeersManager::new().boxed()),
 
                 ..Config::new(protocol_version.to_string(), keypair, (), None)
             };
@@ -232,24 +231,24 @@ fn peer_id_from_keypair(keypair: Keypair) -> PeerId {
 
 /// Networking manager implementation for DSN bootstrap node.
 #[derive(Clone, Default)]
-pub(crate) struct NetworkingParametersManager {
+pub(crate) struct KnownPeersManager {
     address_removed: Handler<PeerAddressRemovedEvent>,
 }
 
-impl NetworkingParametersManager {
+impl KnownPeersManager {
     pub fn new() -> Self {
         Self {
             address_removed: Default::default(),
         }
     }
     /// Returns an instance of `NetworkingParametersManager` as the `Box` reference.
-    pub fn boxed(self) -> Box<dyn NetworkingParametersRegistry> {
+    pub fn boxed(self) -> Box<dyn KnownPeersRegistry> {
         Box::new(self)
     }
 }
 
 #[async_trait]
-impl NetworkingParametersRegistry for NetworkingParametersManager {
+impl KnownPeersRegistry for KnownPeersManager {
     async fn add_known_peer(&mut self, _: PeerId, _: Vec<Multiaddr>) {}
 
     async fn remove_known_peer_addresses(&mut self, peer_id: PeerId, addresses: Vec<Multiaddr>) {
