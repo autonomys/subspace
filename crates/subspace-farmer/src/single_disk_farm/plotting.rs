@@ -598,6 +598,11 @@ where
     }
 }
 
+struct SectorToReplot {
+    sector_index: SectorIndex,
+    expires_at: SegmentIndex,
+}
+
 #[allow(clippy::too_many_arguments)]
 async fn send_plotting_notifications<NC>(
     public_key_hash: Blake3Hash,
@@ -641,9 +646,10 @@ where
         let _ = initial_plotting_finished.send(());
     }
 
-    let mut sectors_expire_at = HashMap::with_capacity(usize::from(target_sector_count));
+    let mut sectors_expire_at =
+        HashMap::<SectorIndex, SegmentIndex>::with_capacity(usize::from(target_sector_count));
 
-    let mut sector_indices_to_replot = Vec::new();
+    let mut sectors_to_replot = Vec::new();
     let mut sectors_to_check = Vec::with_capacity(usize::from(target_sector_count));
     let mut archived_segment_commitments_cache = LruCache::new(ARCHIVED_SEGMENTS_CACHE_SIZE);
 
@@ -664,26 +670,27 @@ where
             .map(|sector_metadata| (sector_metadata.sector_index, sector_metadata.history_size))
             .collect_into(&mut sectors_to_check);
         for (sector_index, history_size) in sectors_to_check.drain(..) {
-            if let Some(sector_expire_at) = sectors_expire_at.get(&sector_index) {
+            if let Some(expires_at) = sectors_expire_at.get(&sector_index).copied() {
                 trace!(
                     %sector_index,
                     %history_size,
-                    %sector_expire_at,
+                    %expires_at,
                     "Checking sector for expiration"
                 );
                 // +1 means we will start replotting a bit before it actually expires to avoid
                 // storing expired sectors
-                if *sector_expire_at
-                    <= (archived_segment_header.segment_index() + SegmentIndex::ONE)
-                {
+                if expires_at <= (archived_segment_header.segment_index() + SegmentIndex::ONE) {
                     debug!(
                         %sector_index,
                         %history_size,
-                        %sector_expire_at,
+                        %expires_at,
                         "Sector expires soon #1, scheduling replotting"
                     );
                     // Time to replot
-                    sector_indices_to_replot.push(sector_index);
+                    sectors_to_replot.push(SectorToReplot {
+                        sector_index,
+                        expires_at,
+                    });
                 }
                 continue;
             }
@@ -746,14 +753,18 @@ where
                     if expiration_history_size.segment_index()
                         <= (archived_segment_header.segment_index() + SegmentIndex::ONE)
                     {
+                        let expires_at = expiration_history_size.segment_index();
                         debug!(
                             %sector_index,
                             %history_size,
-                            sector_expire_at = %expiration_history_size.segment_index(),
+                            %expires_at,
                             "Sector expires soon #2, scheduling replotting"
                         );
                         // Time to replot
-                        sector_indices_to_replot.push(sector_index);
+                        sectors_to_replot.push(SectorToReplot {
+                            sector_index,
+                            expires_at,
+                        });
                     } else {
                         trace!(
                             %sector_index,
@@ -769,10 +780,12 @@ where
             }
         }
 
-        let sectors_queued = sector_indices_to_replot.len();
-        let mut sector_indices_to_replot =
-            sector_indices_to_replot.drain(..).enumerate().peekable();
-        while let Some((index, sector_index)) = sector_indices_to_replot.next() {
+        let sectors_queued = sectors_to_replot.len();
+        sectors_to_replot.sort_by_key(|sector_to_replot| sector_to_replot.expires_at);
+        let mut sector_indices_to_replot = sectors_to_replot.drain(..).enumerate().peekable();
+        while let Some((index, SectorToReplot { sector_index, .. })) =
+            sector_indices_to_replot.next()
+        {
             let (acknowledgement_sender, acknowledgement_receiver) = oneshot::channel();
             if let Err(error) = sectors_to_plot_sender
                 .send(SectorToPlot {
@@ -782,7 +795,7 @@ where
                     acknowledgement_sender,
                     next_segment_index_hint: sector_indices_to_replot
                         .peek()
-                        .map(|(_index, sector_index)| *sector_index),
+                        .map(|(_index, SectorToReplot { sector_index, .. })| *sector_index),
                 })
                 .await
             {
