@@ -154,6 +154,7 @@ mod pallet {
     use frame_support::weights::Weight;
     use frame_support::{Identity, PalletError};
     use frame_system::pallet_prelude::*;
+    use sp_consensus_slots::Slot;
     use sp_core::H256;
     use sp_domains::bundle_producer_election::ProofOfElectionError;
     use sp_domains::{
@@ -709,6 +710,17 @@ mod pallet {
         BlockTree(BlockTreeError),
     }
 
+    /// Reason for slashing an operator
+    #[derive(Clone, Debug, PartialEq, Encode, Decode, TypeInfo)]
+    pub enum SlashedReason<DomainBlock, ReceiptHash> {
+        /// Operator produced bad bundle.
+        InvalidBundle(DomainBlock),
+        /// Operator submitted bad Execution receipt.
+        BadExecutionReceipt(ReceiptHash),
+        /// Operator caused Bundle equivocation
+        BundleEquivocation(Slot),
+    }
+
     #[pallet::event]
     #[pallet::generate_deposit(pub (super) fn deposit_event)]
     pub enum Event<T: Config> {
@@ -773,6 +785,10 @@ mod pallet {
         },
         DomainOperatorAllowListUpdated {
             domain_id: DomainId,
+        },
+        OperatorSlashed {
+            operator_id: OperatorId,
+            reason: SlashedReason<DomainBlockNumberFor<T>, ReceiptHashFor<T>>,
         },
     }
 
@@ -849,7 +865,16 @@ mod pallet {
                         .map_err(Error::<T>::from)?;
 
                         do_slash_operators::<T, _>(
-                            confirmed_block_info.invalid_bundle_authors.into_iter(),
+                            confirmed_block_info.invalid_bundle_authors.into_iter().map(
+                                |operator_id| {
+                                    (
+                                        operator_id,
+                                        SlashedReason::InvalidBundle(
+                                            confirmed_block_info.domain_block_number,
+                                        ),
+                                    )
+                                },
+                            ),
                         )
                         .map_err(Error::<T>::from)?;
 
@@ -921,10 +946,10 @@ mod pallet {
             ensure_none(origin)?;
 
             log::trace!(target: "runtime::domains", "Processing fraud proof: {fraud_proof:?}");
-            let mut operators_to_slash = BTreeSet::new();
             let domain_id = fraud_proof.domain_id();
 
             if let Some(bad_receipt_hash) = fraud_proof.targeted_bad_receipt_hash() {
+                let mut operators_to_slash = BTreeMap::new();
                 let head_receipt_number = HeadReceiptNumber::<T>::get(domain_id);
                 let bad_receipt_number = BlockTreeNodes::<T>::get(bad_receipt_hash)
                     .ok_or::<Error<T>>(FraudProofError::BadReceiptNotFound.into())?
@@ -957,9 +982,12 @@ mod pallet {
                         execution_receipt.domain_block_hash,
                     ));
 
-                    // NOTE: the operator id will be deduplicated since we are using `BTreeSet`
+                    // NOTE: the operator id will be deduplicated since we are using `BTreeMap`
+                    // and slashed reason will hold earliest bad execution receipt hash which this
+                    // operator submitted.
                     operator_ids.into_iter().for_each(|id| {
-                        operators_to_slash.insert(id);
+                        operators_to_slash
+                            .insert(id, SlashedReason::BadExecutionReceipt(receipt_hash));
                     });
 
                     to_prune -= One::one();
@@ -973,16 +1001,27 @@ mod pallet {
                     domain_id,
                     new_head_receipt_number: Some(new_head_receipt_number),
                 });
-            } else if let Some(targeted_bad_operator) = fraud_proof.targeted_bad_operator() {
-                operators_to_slash.insert(targeted_bad_operator);
+
+                // Slash bad operators
+                do_slash_operators::<T, _>(operators_to_slash.into_iter())
+                    .map_err(Error::<T>::from)?;
+            } else if let Some((targeted_bad_operator, slot)) =
+                fraud_proof.targeted_bad_operator_and_slot_for_bundle_equivocation()
+            {
                 Self::deposit_event(Event::FraudProofProcessed {
                     domain_id,
                     new_head_receipt_number: None,
                 });
-            }
 
-            // Slash bad operators
-            do_slash_operators::<T, _>(operators_to_slash.into_iter()).map_err(Error::<T>::from)?;
+                do_slash_operators::<T, _>(
+                    vec![(
+                        targeted_bad_operator,
+                        SlashedReason::BundleEquivocation(slot),
+                    )]
+                    .into_iter(),
+                )
+                .map_err(Error::<T>::from)?;
+            }
 
             SuccessfulFraudProofs::<T>::append(domain_id, fraud_proof.hash());
 
@@ -1677,7 +1716,9 @@ impl<T: Config> Pallet<T> {
                 })?,
                 _ => return Err(FraudProofError::UnexpectedFraudProof),
             }
-        } else if let Some(bad_operator_id) = fraud_proof.targeted_bad_operator() {
+        } else if let Some((bad_operator_id, _)) =
+            fraud_proof.targeted_bad_operator_and_slot_for_bundle_equivocation()
+        {
             let operator =
                 Operators::<T>::get(bad_operator_id).ok_or(FraudProofError::MissingOperator)?;
             match fraud_proof {

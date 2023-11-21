@@ -7,7 +7,10 @@ use crate::pallet::{
     PendingSlashes, PendingStakingOperationCount, PendingWithdrawals,
 };
 use crate::staking_epoch::{mint_funds, PendingNominatorUnlock, PendingOperatorSlashInfo};
-use crate::{BalanceOf, Config, Event, HoldIdentifier, NominatorId, Pallet};
+use crate::{
+    BalanceOf, Config, DomainBlockNumberFor, Event, HoldIdentifier, NominatorId, Pallet,
+    ReceiptHashFor, SlashedReason,
+};
 use codec::{Decode, Encode};
 use frame_support::traits::fungible::{Inspect, MutateHold};
 use frame_support::traits::tokens::{Fortitude, Preservation};
@@ -531,10 +534,16 @@ pub(crate) fn do_reward_operators<T: Config>(
 
 /// Freezes the slashed operators and moves the operator to be removed once the domain they are
 /// operating finishes the epoch.
-pub(crate) fn do_slash_operators<T: Config, Iter: Iterator<Item = OperatorId>>(
-    operator_ids: Iter,
-) -> Result<(), Error> {
-    for operator_id in operator_ids {
+pub(crate) fn do_slash_operators<T: Config, Iter>(operator_ids: Iter) -> Result<(), Error>
+where
+    Iter: Iterator<
+        Item = (
+            OperatorId,
+            SlashedReason<DomainBlockNumberFor<T>, ReceiptHashFor<T>>,
+        ),
+    >,
+{
+    for (operator_id, reason) in operator_ids {
         Operators::<T>::try_mutate(operator_id, |maybe_operator| {
             let operator = maybe_operator.as_mut().ok_or(Error::UnknownOperator)?;
             let mut pending_slashes =
@@ -597,6 +606,10 @@ pub(crate) fn do_slash_operators<T: Config, Iter: Iterator<Item = OperatorId>>(
                     );
 
                     PendingSlashes::<T>::insert(operator.current_domain_id, pending_slashes);
+                    Pallet::<T>::deposit_event(Event::OperatorSlashed {
+                        operator_id,
+                        reason,
+                    });
                     Ok(())
                 },
             )
@@ -624,7 +637,7 @@ pub(crate) mod tests {
         do_unlock_pending_withdrawals, PendingNominatorUnlock,
     };
     use crate::tests::{new_test_ext, ExistentialDeposit, RuntimeOrigin, Test};
-    use crate::{BalanceOf, Error, NominatorId};
+    use crate::{BalanceOf, Error, NominatorId, SlashedReason};
     use frame_support::traits::fungible::Mutate;
     use frame_support::traits::Currency;
     use frame_support::weights::Weight;
@@ -1485,7 +1498,10 @@ pub(crate) mod tests {
                 do_nominate_operator::<Test>(operator_id, deposit.0, deposit.1).unwrap();
             }
 
-            do_slash_operators::<Test, _>(vec![operator_id].into_iter()).unwrap();
+            do_slash_operators::<Test, _>(
+                vec![(operator_id, SlashedReason::InvalidBundle(1))].into_iter(),
+            )
+            .unwrap();
 
             let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
             assert!(!domain_stake_summary.next_operators.contains(&operator_id));
