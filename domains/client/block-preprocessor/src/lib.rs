@@ -292,19 +292,6 @@ where
                 )));
             }
 
-            let is_legal_tx = self
-                .client
-                .runtime_api()
-                .check_transaction_validity(at, &extrinsic, domain_block_number, at)?
-                .is_ok();
-
-            if !is_legal_tx {
-                // TODO: Generate a fraud proof for this invalid bundle
-                return Ok(BundleValidity::Invalid(InvalidBundleType::IllegalTx(
-                    index as u32,
-                )));
-            }
-
             // Check if this extrinsic is an inherent extrinsic.
             // If so, this is an invalid bundle since these extrinsics should not be included in the
             // bundle. Extrinsic is always decodable due to the check above.
@@ -312,6 +299,26 @@ where
                 return Ok(BundleValidity::Invalid(
                     InvalidBundleType::InherentExtrinsic(index as u32),
                 ));
+            }
+
+            // Using one instance of runtime_api throughout the loop in order to maintain context
+            // between them.
+            // Using `check_transaction_validity_and_do_pre_dispatch` instead of `check_transaction_validity`
+            // to maintain side-effect in the storage buffer.
+            let is_legal_tx = runtime_api
+                .check_transaction_validity_and_do_pre_dispatch(
+                    at,
+                    &extrinsic,
+                    domain_block_number,
+                    at,
+                )?
+                .is_ok();
+
+            if !is_legal_tx {
+                // TODO: Generate a fraud proof for this invalid bundle
+                return Ok(BundleValidity::Invalid(InvalidBundleType::IllegalTx(
+                    index as u32,
+                )));
             }
 
             // TODO: the behavior is changed, as before invalid XDM will be dropped silently,

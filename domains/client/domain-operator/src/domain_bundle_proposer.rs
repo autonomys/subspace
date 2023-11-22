@@ -3,8 +3,8 @@ use codec::Encode;
 use domain_runtime_primitives::DomainCoreApi;
 use futures::{select, FutureExt};
 use sc_client_api::{AuxStore, BlockBackend};
-use sc_transaction_pool_api::{InPoolTransaction, TransactionSource};
-use sp_api::{HeaderT, NumberFor, ProvideRuntimeApi};
+use sc_transaction_pool_api::InPoolTransaction;
+use sp_api::{ApiExt, HeaderT, NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_domains::{
@@ -109,74 +109,81 @@ where
         let mut extrinsics = Vec::new();
         let mut estimated_bundle_weight = Weight::default();
         let mut bundle_size = 0u32;
-        for pending_tx in pending_iterator {
-            let pending_tx_data = pending_tx.data();
 
-            let is_within_tx_range = self
-                .client
-                .runtime_api()
-                .is_within_tx_range(parent_hash, pending_tx_data, &bundle_vrf_hash, &tx_range)
-                .map_err(|err| {
-                    tracing::error!(
-                        ?err,
-                        ?pending_tx_data,
-                        "Error occurred in locating the tx range"
-                    );
-                })
-                .unwrap_or(false);
-            if !is_within_tx_range {
-                continue;
+        // Seperate code block to make sure that runtime api instance is dropped after validation is done.
+        {
+            // We are using one runtime api instance here to maintain storage changes in the instance's internal buffer
+            // between runtime calls done in this loop.
+            let runtime_api_instance = self.client.runtime_api();
+            for pending_tx in pending_iterator {
+                let pending_tx_data = pending_tx.data();
+
+                let is_within_tx_range = runtime_api_instance
+                    .is_within_tx_range(parent_hash, pending_tx_data, &bundle_vrf_hash, &tx_range)
+                    .map_err(|err| {
+                        tracing::error!(
+                            ?err,
+                            ?pending_tx_data,
+                            "Error occurred in locating the tx range"
+                        );
+                    })
+                    .unwrap_or(false);
+                if !is_within_tx_range {
+                    continue;
+                }
+
+                let tx_weight = runtime_api_instance
+                    .extrinsic_weight(parent_hash, pending_tx_data)
+                    .map_err(|error| {
+                        sp_blockchain::Error::Application(Box::from(format!(
+                            "Error getting extrinsic weight: {error}"
+                        )))
+                    })?;
+                let next_estimated_bundle_weight =
+                    estimated_bundle_weight.saturating_add(tx_weight);
+                if next_estimated_bundle_weight.any_gt(domain_block_limit.max_block_weight) {
+                    break;
+                }
+
+                let next_bundle_size = bundle_size + pending_tx_data.encoded_size() as u32;
+                if next_bundle_size > domain_block_limit.max_block_size {
+                    break;
+                }
+
+                estimated_bundle_weight = next_estimated_bundle_weight;
+                bundle_size = next_bundle_size;
+
+                // Double check the transaction validity, because the tx pool are re-validate the transaction
+                // in pool asynchronously so there is race condition that the operator imported a domain block
+                // and start producing bundle immediately before the re-validation based on the latest block
+                // is finished, cause the bundle contains illegal tx accidentally and being considered as invalid
+                // bundle and slashing on the honest operator.
+                //
+                // This check is done in similar fashion to block builder's build block.
+                // This check needs to be the last check as otherwise if the tx won't be part of bundle due to
+                // some other checks, its side effect will still be part of RuntimeApiImpl's changes buffer.
+                let transaction_validity_result =
+                    runtime_api_instance.execute_in_transaction(|api| {
+                        let transaction_validity_result = api
+                            .check_transaction_validity_and_do_pre_dispatch(
+                                parent_hash,
+                                pending_tx_data,
+                                parent_number,
+                                parent_hash,
+                            );
+                        // Only commit, if there are no errors (both ApiError and CheckTxValidityError)
+                        if let Ok(Ok(_)) = transaction_validity_result {
+                            sp_api::TransactionOutcome::Commit(transaction_validity_result)
+                        } else {
+                            sp_api::TransactionOutcome::Rollback(transaction_validity_result)
+                        }
+                    })?;
+                if transaction_validity_result.is_err() {
+                    continue;
+                }
+
+                extrinsics.push(pending_tx_data.clone());
             }
-
-            // Double check the transaction validity, because the tx pool are re-validate the transaction
-            // in pool asynchronously so there is race condition that the operator imported a domain block
-            // and start producing bundle immediately before the re-validation based on the latest block
-            // is finished, cause the bundle contains illegal tx accidentally and being considered as invalid
-            // bundle and slashing on the honest operator.
-            //
-            // NOTE: this check need to be kept aligned with how the illegal tx is detected in the block-preprocessor
-            // thus when https://github.com/subspace/subspace/issues/2184 is implemented, we also need to
-            // perfome the check for bundle as a whole instead of checking tx one by one.
-            let transaction_validity = self
-                .client
-                .runtime_api()
-                .validate_transaction(
-                    parent_hash,
-                    TransactionSource::External,
-                    pending_tx_data.clone(),
-                    parent_hash,
-                )
-                .map_err(|error| {
-                    sp_blockchain::Error::Application(Box::from(format!(
-                        "Error getting transaction validity: {error}"
-                    )))
-                })?;
-            if transaction_validity.is_err() {
-                continue;
-            }
-
-            let tx_weight = self
-                .client
-                .runtime_api()
-                .extrinsic_weight(parent_hash, pending_tx_data)
-                .map_err(|error| {
-                    sp_blockchain::Error::Application(Box::from(format!(
-                        "Error getting extrinsic weight: {error}"
-                    )))
-                })?;
-            let next_estimated_bundle_weight = estimated_bundle_weight.saturating_add(tx_weight);
-            if next_estimated_bundle_weight.any_gt(domain_block_limit.max_block_weight) {
-                break;
-            }
-
-            let next_bundle_size = bundle_size + pending_tx_data.encoded_size() as u32;
-            if next_bundle_size > domain_block_limit.max_block_size {
-                break;
-            }
-
-            estimated_bundle_weight = next_estimated_bundle_weight;
-            bundle_size = next_bundle_size;
-            extrinsics.push(pending_tx_data.clone());
         }
 
         let extrinsics_root = HeaderHashingFor::<Block::Header>::ordered_trie_root(
