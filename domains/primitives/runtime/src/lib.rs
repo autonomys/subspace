@@ -163,8 +163,29 @@ pub enum VerifyTxValidityError {
     FailedToDecodeAccountId,
 }
 
+#[derive(Debug, PartialEq, Eq, Encode, Decode, TypeInfo)]
+pub enum CheckBundleValidityError {
+    /// One of the transaction is invalid.
+    InvalidTransaction {
+        /// Index of the transaction in bundle's transaction list
+        tx_index: u32,
+        /// Tx validity error of the tx referenced by `tx_index`
+        tx_validity_error: CheckTxValidityError,
+    },
+}
+
+impl CheckBundleValidityError {
+    pub fn from_tx_validity_error(tx_index: u32, tx_validity_error: CheckTxValidityError) -> Self {
+        Self::InvalidTransaction {
+            tx_index,
+            tx_validity_error,
+        }
+    }
+}
+
 sp_api::decl_runtime_apis! {
     /// Base API that every domain runtime must implement.
+    #[api_version(2)]
     pub trait DomainCoreApi {
         /// Extracts the optional signer per extrinsic.
         fn extract_signer(
@@ -195,19 +216,49 @@ sp_api::decl_runtime_apis! {
         /// Returns true if the extrinsic is an inherent extrinsic.
         fn is_inherent_extrinsic(extrinsic: &<Block as BlockT>::Extrinsic) -> bool;
 
-        /// Checks the validity of extrinsic in a bundle.
+        /// Checks the validity of extrinsic.
+        #[changed_in(2)]
         fn check_transaction_validity(
             uxt: &<Block as BlockT>::Extrinsic,
             block_number: NumberFor<Block>,
             block_hash: <Block as BlockT>::Hash
         ) -> Result<(), CheckTxValidityError>;
 
+        /// Checks the validity of extrinsic
+        /// v2 can check validity of unsigned and self contained extrinsics as well.
+        fn check_transaction_validity(
+            uxt: &<Block as BlockT>::Extrinsic,
+            block_number: NumberFor<Block>,
+            block_hash: <Block as BlockT>::Hash
+        ) -> Result<(), CheckTxValidityError>;
+
+        /// Check transaction validity and also perform pre dispatch on transaction.
+        /// This is useful to maintain side effect in the RuntimeApi instance's storage buffer.
+        fn check_transaction_validity_and_do_pre_dispatch(
+            uxt: &<Block as BlockT>::Extrinsic,
+            block_number: NumberFor<Block>,
+            block_hash: <Block as BlockT>::Hash
+        ) -> Result<(), CheckTxValidityError>;
+
         /// Returns the storage keys of states accessed in the API `check_transaction_validity`.
+        #[changed_in(2)]
         fn storage_keys_for_verifying_transaction_validity(
             account_id: opaque::AccountId,
             block_number: NumberFor<Block>,
             tx_era: Option<Era>,
         ) -> Result<Vec<Vec<u8>>, VerifyTxValidityError>;
+
+        /// Returns the storage keys of states accessed in the API `check_transaction_validity`
+        /// In v2, signer account id is optional to support getting storage keys for unsigned tx as well.
+        fn storage_keys_for_verifying_transaction_validity(
+            maybe_account_id: Option<opaque::AccountId>,
+            block_number: NumberFor<Block>,
+            tx_era: Option<Era>,
+        ) -> Result<Vec<Vec<u8>>, VerifyTxValidityError>;
+
+        /// Checks validity of bundle extrinsics. Internally calls `check_transaction_validity_and_do_pre_dispatch`
+        fn check_bundle_extrinsics_validity(bundle_extrinsics: Vec<<Block as BlockT>::Extrinsic>, block_number: NumberFor<Block>,
+            block_hash: <Block as BlockT>::Hash) -> Result<(), CheckBundleValidityError>;
 
         /// Returns extrinsic Era if present
         fn extrinsic_era(

@@ -226,4 +226,19 @@ where
             block_hash,
         )
     }
+
+    pub fn check_transaction_validity_and_do_pre_dispatch(
+        &self,
+        uxt: &<Block as BlockT>::Extrinsic,
+        block_number: NumberFor<Block>,
+        block_hash: <Block as BlockT>::Hash,
+    ) -> Result<Result<(), CheckTxValidityError>, ApiError> {
+        <Self as DomainCoreApi<Block>>::check_transaction_validity_and_do_pre_dispatch(
+            self,
+            Default::default(),
+            uxt,
+            block_number,
+            block_hash,
+        )
+    }
 }
