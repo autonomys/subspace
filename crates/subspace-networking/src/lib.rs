@@ -29,7 +29,7 @@ pub mod utils;
 
 pub use crate::behavior::persistent_parameters::{
     KnownPeersRegistry, NetworkParametersPersistenceError, NetworkingParametersManager,
-    PeerAddressRemovedEvent,
+    NetworkingParametersManagerConfig, PeerAddressRemovedEvent,
 };
 pub use crate::node::{
     GetClosestPeersError, Node, SendRequestError, SubscribeError, TopicSubscription,

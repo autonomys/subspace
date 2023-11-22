@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Weak};
 use subspace_farmer::piece_cache::PieceCache;
 use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
-use subspace_farmer::{NodeClient, NodeRpcClient};
+use subspace_farmer::{NodeClient, NodeRpcClient, PEER_CACHE_SIZE};
 use subspace_networking::libp2p::identity::Keypair;
 use subspace_networking::libp2p::kad::RecordKey;
 use subspace_networking::libp2p::metrics::Metrics;
@@ -14,8 +14,9 @@ use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::utils::strip_peer_id;
 use subspace_networking::{
-    construct, Config, KademliaMode, NetworkingParametersManager, Node, NodeRunner, PeerInfo,
-    PeerInfoProvider, PieceByIndexRequest, PieceByIndexRequestHandler, PieceByIndexResponse,
+    construct, Config, KademliaMode, NetworkingParametersManager,
+    NetworkingParametersManagerConfig, Node, NodeRunner, PeerInfo, PeerInfoProvider,
+    PieceByIndexRequest, PieceByIndexRequestHandler, PieceByIndexResponse,
     SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
 };
 use subspace_rpc_primitives::MAX_SEGMENT_HEADERS_PER_REQUEST;
@@ -49,14 +50,17 @@ pub(super) fn configure_dsn(
     piece_cache: PieceCache,
     initialize_metrics: bool,
 ) -> Result<(Node, NodeRunner<PieceCache>, Registry), anyhow::Error> {
-    let networking_parameters_registry = NetworkingParametersManager::new(
-        &base_path.join("known_addresses.bin"),
-        strip_peer_id(bootstrap_nodes.clone())
-            .into_iter()
-            .map(|(peer_id, _)| peer_id)
-            .collect::<HashSet<_>>(),
-    )
-    .map(Box::new)?;
+    let networking_parameters_registry =
+        NetworkingParametersManager::new(NetworkingParametersManagerConfig {
+            path: Some(base_path.join("known_addresses.bin").into_boxed_path()),
+            ignore_peer_list: strip_peer_id(bootstrap_nodes.clone())
+                .into_iter()
+                .map(|(peer_id, _)| peer_id)
+                .collect::<HashSet<_>>(),
+            cache_size: PEER_CACHE_SIZE,
+            ..Default::default()
+        })
+        .map(Box::new)?;
 
     // Metrics
     let mut metrics_registry = Registry::default();

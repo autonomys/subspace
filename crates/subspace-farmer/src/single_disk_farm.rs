@@ -18,6 +18,7 @@ use crate::single_disk_farm::plotting::{
     plotting, plotting_scheduler, PlottingOptions, PlottingSchedulerOptions,
 };
 use crate::utils::{tokio_rayon_spawn_handler, AsyncJoinOnDrop};
+use crate::PEER_CACHE_SIZE;
 use async_lock::RwLock;
 use derive_more::{Display, From};
 use event_listener_primitives::{Bag, HandlerId};
@@ -690,7 +691,7 @@ impl SingleDiskFarm {
         let fixed_space_usage = RESERVED_PLOT_METADATA
             + RESERVED_FARM_INFO
             + Identity::file_size() as u64
-            + NetworkingParametersManager::file_size() as u64;
+            + NetworkingParametersManager::file_size(PEER_CACHE_SIZE) as u64;
         // Calculate how many sectors can fit
         let target_sector_count = {
             let potentially_plottable_space = allocated_space.saturating_sub(fixed_space_usage)

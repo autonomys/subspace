@@ -3,6 +3,7 @@ use sc_client_api::AuxStore;
 use sc_consensus_subspace::archiver::SegmentHeadersStore;
 use std::collections::HashSet;
 use std::fs;
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::{SegmentHeader, SegmentIndex};
@@ -12,13 +13,17 @@ use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::utils::strip_peer_id;
 use subspace_networking::{
     CreationError, KademliaMode, NetworkParametersPersistenceError, NetworkingParametersManager,
-    Node, NodeRunner, PeerInfoProvider, PieceByIndexRequestHandler,
-    SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
+    NetworkingParametersManagerConfig, Node, NodeRunner, PeerInfoProvider,
+    PieceByIndexRequestHandler, SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest,
+    SegmentHeaderResponse,
 };
 use thiserror::Error;
 use tracing::{debug, error, trace};
 
 const SEGMENT_HEADERS_NUMBER_LIMIT: u64 = 1000;
+
+/// Size of the LRU cache for peers.
+pub const PEER_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(100).expect("Not zero; qed");
 
 /// Errors that might happen during DSN configuration.
 #[derive(Debug, Error)]
@@ -97,13 +102,15 @@ where
         }
         let file_path = path.join("known_addresses.bin");
 
-        NetworkingParametersManager::new(
-            &file_path,
-            strip_peer_id(dsn_config.bootstrap_nodes.clone())
+        NetworkingParametersManager::new(NetworkingParametersManagerConfig {
+            path: Some(file_path.into_boxed_path()),
+            ignore_peer_list: strip_peer_id(dsn_config.bootstrap_nodes.clone())
                 .into_iter()
                 .map(|(peer_id, _)| peer_id)
                 .collect::<HashSet<_>>(),
-        )
+            cache_size: PEER_CACHE_SIZE,
+            ..Default::default()
+        })
         .map(NetworkingParametersManager::boxed)?
     };
 
