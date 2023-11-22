@@ -181,7 +181,7 @@ struct DsnArgs {
     #[arg(long)]
     reserved_peers: Vec<Multiaddr>,
     /// Defines max established incoming connection limit.
-    #[arg(long, default_value_t = 50)]
+    #[arg(long, default_value_t = 300)]
     in_connections: u32,
     /// Defines max established outgoing swarm connection limit.
     #[arg(long, default_value_t = 100)]
@@ -192,9 +192,6 @@ struct DsnArgs {
     /// Defines max pending outgoing swarm connection limit.
     #[arg(long, default_value_t = 100)]
     pending_out_connections: u32,
-    /// Defines target total (in and out) connection number that should be maintained.
-    #[arg(long, default_value_t = 15)]
-    target_connections: u32,
     /// Known external addresses
     #[arg(long, alias = "external-address")]
     external_addresses: Vec<Multiaddr>,

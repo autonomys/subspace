@@ -424,11 +424,14 @@ impl<Number, Hash, DomainHeader: HeaderT> FraudProof<Number, Hash, DomainHeader>
         }
     }
 
-    pub fn targeted_bad_operator(&self) -> Option<OperatorId> {
+    pub fn targeted_bad_operator_and_slot_for_bundle_equivocation(
+        &self,
+    ) -> Option<(OperatorId, Slot)> {
         match self {
-            Self::BundleEquivocation(proof) => {
-                Some(proof.first_header.header.proof_of_election.operator_id)
-            }
+            Self::BundleEquivocation(proof) => Some((
+                proof.first_header.header.proof_of_election.operator_id,
+                proof.slot,
+            )),
             _ => None,
         }
     }
