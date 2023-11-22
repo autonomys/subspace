@@ -1,10 +1,7 @@
 //! Simple bootstrap node implementation
 
-#![feature(type_changing_struct_update)]
+#![feature(const_option, type_changing_struct_update)]
 
-mod known_peers_manager;
-
-use crate::known_peers_manager::KnownPeersManager;
 use clap::Parser;
 use futures::{select, FutureExt};
 use libp2p::identity::ed25519::Keypair;
@@ -13,14 +10,19 @@ use libp2p::metrics::Metrics;
 use libp2p::{identity, Multiaddr, PeerId};
 use prometheus_client::registry::Registry;
 use serde::{Deserialize, Serialize};
+use std::collections::HashSet;
 use std::error::Error;
 use std::fmt::{Display, Formatter};
 use std::net::SocketAddr;
+use std::num::NonZeroUsize;
 use std::sync::Arc;
 use std::time::Duration;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::libp2p::multiaddr::Protocol;
-use subspace_networking::{peer_id, Config, KademliaMode};
+use subspace_networking::utils::strip_peer_id;
+use subspace_networking::{
+    peer_id, Config, KademliaMode, NetworkingParametersManager, NetworkingParametersManagerConfig,
+};
 use tracing::{debug, info, Level};
 use tracing_subscriber::fmt::Subscriber;
 use tracing_subscriber::util::SubscriberInitExt;
@@ -28,6 +30,9 @@ use tracing_subscriber::EnvFilter;
 
 /// Defines an expiration period for the peer marked for the removal for Kademlia DHT.
 const REMOVE_KNOWN_PEERS_GRACE_PERIOD_FOR_KADEMLIA_SECS: Duration = Duration::from_secs(3600);
+
+/// Size of the LRU cache for peers.
+pub const PEER_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(10000).expect("Not zero; qed");
 
 #[derive(Debug, Parser)]
 #[clap(about, version)]
@@ -162,6 +167,22 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 })
                 .transpose()?;
 
+            let known_peers_registry_config = NetworkingParametersManagerConfig {
+                enable_known_peers_source: false,
+                cache_size: PEER_CACHE_SIZE,
+                ignore_peer_list: strip_peer_id(bootstrap_nodes.clone())
+                    .into_iter()
+                    .map(|(peer_id, _)| peer_id)
+                    .collect::<HashSet<_>>(),
+                path: None,
+                failed_address_kademlia_removal_interval:
+                    REMOVE_KNOWN_PEERS_GRACE_PERIOD_FOR_KADEMLIA_SECS,
+                failed_address_cache_removal_interval:
+                    REMOVE_KNOWN_PEERS_GRACE_PERIOD_FOR_KADEMLIA_SECS,
+            };
+            let known_peers_registry =
+                NetworkingParametersManager::new(known_peers_registry_config)?;
+
             let config = Config {
                 listen_on,
                 allow_non_global_addresses_in_dht: enable_private_ips,
@@ -180,10 +201,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 kademlia_mode: KademliaMode::Static(Mode::Server),
                 external_addresses,
                 metrics,
-                networking_parameters_registry: KnownPeersManager::new(
-                    REMOVE_KNOWN_PEERS_GRACE_PERIOD_FOR_KADEMLIA_SECS,
-                )
-                .boxed(),
+                networking_parameters_registry: known_peers_registry.boxed(),
 
                 ..Config::new(protocol_version.to_string(), keypair, (), None)
             };

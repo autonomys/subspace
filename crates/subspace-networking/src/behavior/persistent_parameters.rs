@@ -263,6 +263,10 @@ pub struct NetworkingParametersManagerConfig {
     pub ignore_peer_list: HashSet<PeerId>,
     /// Defines whether we enable cache persistence.
     pub path: Option<Box<Path>>,
+    /// Defines interval before the next peer address removes entry from the cache.
+    pub failed_address_cache_removal_interval: Duration,
+    /// Defines interval before the next peer address removal triggers [`PeerAddressRemovedEvent`].
+    pub failed_address_kademlia_removal_interval: Duration,
 }
 
 impl Default for NetworkingParametersManagerConfig {
@@ -272,6 +276,9 @@ impl Default for NetworkingParametersManagerConfig {
             cache_size: PEER_CACHE_SIZE,
             ignore_peer_list: Default::default(),
             path: None,
+            failed_address_cache_removal_interval: REMOVE_KNOWN_PEERS_GRACE_PERIOD_SECS,
+            failed_address_kademlia_removal_interval:
+                REMOVE_KNOWN_PEERS_GRACE_PERIOD_FOR_KADEMLIA_SECS,
         }
     }
 }
@@ -528,6 +535,14 @@ impl NetworkingParametersManager {
     fn persistent_enabled(&self) -> bool {
         self.config.path.is_some()
     }
+
+    #[cfg(test)]
+    pub(crate) fn contains_address(&self, peer_id: &PeerId, address: &Multiaddr) -> bool {
+        self.known_peers
+            .peek(peer_id)
+            .map(|addresses| addresses.peek(address).is_some())
+            .unwrap_or_default()
+    }
 }
 
 #[async_trait]
@@ -585,8 +600,8 @@ impl KnownPeersRegistry for NetworkingParametersManager {
             &mut self.known_peers,
             peer_id,
             addresses,
-            REMOVE_KNOWN_PEERS_GRACE_PERIOD_SECS,
-            REMOVE_KNOWN_PEERS_GRACE_PERIOD_FOR_KADEMLIA_SECS,
+            self.config.failed_address_cache_removal_interval,
+            self.config.failed_address_kademlia_removal_interval,
         );
 
         for event in removed_addresses {
