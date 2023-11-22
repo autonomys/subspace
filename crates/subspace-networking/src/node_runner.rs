@@ -1,5 +1,5 @@
 use crate::behavior::persistent_parameters::{
-    append_p2p_suffix, remove_p2p_suffix, NetworkingParametersRegistry, PeerAddressRemovedEvent,
+    append_p2p_suffix, remove_p2p_suffix, KnownPeersRegistry, PeerAddressRemovedEvent,
     PEERS_ADDRESSES_BATCH_SIZE,
 };
 use crate::behavior::{
@@ -120,7 +120,7 @@ where
     /// Defines an interval between periodical tasks.
     periodical_tasks_interval: Pin<Box<Fuse<Sleep>>>,
     /// Manages the networking parameters like known peers and addresses
-    networking_parameters_registry: Box<dyn NetworkingParametersRegistry>,
+    networking_parameters_registry: Box<dyn KnownPeersRegistry>,
     /// Defines set of peers with a permanent connection (and reconnection if necessary).
     reserved_peers: HashMap<PeerId, Multiaddr>,
     /// Temporarily banned peers.
@@ -162,7 +162,7 @@ where
     pub(crate) swarm: Swarm<Behavior<LocalOnlyRecordStore<LocalRecordProvider>>>,
     pub(crate) shared_weak: Weak<Shared>,
     pub(crate) next_random_query_interval: Duration,
-    pub(crate) networking_parameters_registry: Box<dyn NetworkingParametersRegistry>,
+    pub(crate) networking_parameters_registry: Box<dyn KnownPeersRegistry>,
     pub(crate) reserved_peers: HashMap<PeerId, Multiaddr>,
     pub(crate) temporary_bans: Arc<Mutex<TemporaryBans>>,
     pub(crate) metrics: Option<Metrics>,
@@ -397,6 +397,21 @@ where
 
     fn handle_removed_address_event(&mut self, event: PeerAddressRemovedEvent) {
         trace!(?event, "Peer addressed removed event.",);
+
+        let bootstrap_node_ids = strip_peer_id(self.bootstrap_addresses.clone())
+            .into_iter()
+            .map(|(peer_id, _)| peer_id)
+            .collect::<Vec<_>>();
+
+        if bootstrap_node_ids.contains(&event.peer_id) {
+            debug!(
+                ?event,
+                ?bootstrap_node_ids,
+                "Skipped removing bootstrap node from Kademlia buckets."
+            );
+
+            return;
+        }
 
         // Remove both versions of the address
         self.swarm.behaviour_mut().kademlia.remove_address(

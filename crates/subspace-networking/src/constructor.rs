@@ -1,9 +1,7 @@
 pub(crate) mod temporary_bans;
 mod transport;
 
-use crate::behavior::persistent_parameters::{
-    NetworkingParametersRegistry, StubNetworkingParametersManager,
-};
+use crate::behavior::persistent_parameters::{KnownPeersRegistry, StubNetworkingParametersManager};
 use crate::behavior::{Behavior, BehaviorConfig};
 use crate::constructor::temporary_bans::TemporaryBans;
 use crate::constructor::transport::build_transport;
@@ -222,8 +220,8 @@ pub struct Config<LocalRecordProvider> {
     pub allow_non_global_addresses_in_dht: bool,
     /// How frequently should random queries be done using Kademlia DHT to populate routing table.
     pub initial_random_query_interval: Duration,
-    /// A reference to the `NetworkingParametersRegistry` implementation (optional).
-    pub networking_parameters_registry: Option<Box<dyn NetworkingParametersRegistry>>,
+    /// A reference to the `NetworkingParametersRegistry` implementation.
+    pub networking_parameters_registry: Box<dyn KnownPeersRegistry>,
     /// The configuration for the `RequestResponsesBehaviour` protocol.
     pub request_response_protocols: Vec<Box<dyn RequestHandler>>,
     /// Defines set of peers with a permanent connection (and reconnection if necessary).
@@ -371,7 +369,7 @@ where
             local_records_provider,
             allow_non_global_addresses_in_dht: false,
             initial_random_query_interval: Duration::from_secs(1),
-            networking_parameters_registry: None,
+            networking_parameters_registry: StubNetworkingParametersManager.boxed(),
             request_response_protocols: Vec::new(),
             yamux_config,
             reserved_peers: Vec::new(),
@@ -638,8 +636,7 @@ where
         swarm,
         shared_weak,
         next_random_query_interval: initial_random_query_interval,
-        networking_parameters_registry: networking_parameters_registry
-            .unwrap_or(StubNetworkingParametersManager.boxed()),
+        networking_parameters_registry,
         reserved_peers: strip_peer_id(reserved_peers).into_iter().collect(),
         temporary_bans,
         metrics,

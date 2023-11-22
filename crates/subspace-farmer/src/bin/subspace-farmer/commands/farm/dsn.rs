@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Weak};
 use subspace_farmer::piece_cache::PieceCache;
 use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
-use subspace_farmer::{NodeClient, NodeRpcClient};
+use subspace_farmer::{NodeClient, NodeRpcClient, KNOWN_PEERS_CACHE_SIZE};
 use subspace_networking::libp2p::identity::Keypair;
 use subspace_networking::libp2p::kad::RecordKey;
 use subspace_networking::libp2p::metrics::Metrics;
@@ -14,9 +14,10 @@ use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::utils::strip_peer_id;
 use subspace_networking::{
-    construct, Config, KademliaMode, NetworkingParametersManager, Node, NodeRunner, PeerInfo,
-    PeerInfoProvider, PieceByIndexRequest, PieceByIndexRequestHandler, PieceByIndexResponse,
-    SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
+    construct, Config, KademliaMode, KnownPeersManager, KnownPeersManagerConfig, Node, NodeRunner,
+    PeerInfo, PeerInfoProvider, PieceByIndexRequest, PieceByIndexRequestHandler,
+    PieceByIndexResponse, SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest,
+    SegmentHeaderResponse,
 };
 use subspace_rpc_primitives::MAX_SEGMENT_HEADERS_PER_REQUEST;
 use tracing::{debug, error, info, Instrument};
@@ -50,13 +51,15 @@ pub(super) fn configure_dsn(
     piece_cache: PieceCache,
     initialize_metrics: bool,
 ) -> Result<(Node, NodeRunner<PieceCache>, Registry), anyhow::Error> {
-    let networking_parameters_registry = NetworkingParametersManager::new(
-        &base_path.join("known_addresses.bin"),
-        strip_peer_id(bootstrap_nodes.clone())
+    let networking_parameters_registry = KnownPeersManager::new(KnownPeersManagerConfig {
+        path: Some(base_path.join("known_addresses.bin").into_boxed_path()),
+        ignore_peer_list: strip_peer_id(bootstrap_nodes.clone())
             .into_iter()
             .map(|(peer_id, _)| peer_id)
             .collect::<HashSet<_>>(),
-    )
+        cache_size: KNOWN_PEERS_CACHE_SIZE,
+        ..Default::default()
+    })
     .map(Box::new)?;
 
     // Metrics
@@ -73,7 +76,7 @@ pub(super) fn configure_dsn(
         reserved_peers,
         listen_on,
         allow_non_global_addresses_in_dht: enable_private_ips,
-        networking_parameters_registry: Some(networking_parameters_registry),
+        networking_parameters_registry,
         request_response_protocols: vec![
             PieceByIndexRequestHandler::create(move |_, &PieceByIndexRequest { piece_index }| {
                 debug!(?piece_index, "Piece request received. Trying cache...");

@@ -501,9 +501,7 @@ fn main() -> Result<(), Error> {
 
                         DsnConfig {
                             keypair,
-                            base_path: cli.run.base_path()?.map(|base_path| {
-                                base_path.config_dir(consensus_chain_config.chain_spec.id())
-                            }),
+                            base_path: consensus_chain_config.base_path.path().into(),
                             listen_on: cli.dsn_listen_on,
                             bootstrap_nodes: dsn_bootstrap_nodes,
                             reserved_peers: cli.dsn_reserved_peers,

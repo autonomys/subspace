@@ -1,6 +1,9 @@
 use super::persistent_parameters::remove_known_peer_addresses_internal;
 use crate::behavior::persistent_parameters::{append_p2p_suffix, remove_p2p_suffix};
-use crate::{Config, GenericRequest, GenericRequestHandler};
+use crate::{
+    Config, GenericRequest, GenericRequestHandler, KnownPeersManager, KnownPeersManagerConfig,
+    KnownPeersRegistry,
+};
 use futures::channel::oneshot;
 use futures::future::pending;
 use libp2p::multiaddr::Protocol;
@@ -276,4 +279,43 @@ async fn test_address_p2p_prefix_addition() {
 
     assert_eq!(append_p2p_suffix(peer_id, long_addr.clone()), long_addr);
     assert_eq!(append_p2p_suffix(peer_id, short_addr.clone()), long_addr);
+}
+
+#[tokio::test()]
+async fn test_known_peers_removal_address_after_specified_interval() {
+    let config = KnownPeersManagerConfig {
+        enable_known_peers_source: false,
+        cache_size: NonZeroUsize::new(100).unwrap(),
+        ignore_peer_list: Default::default(),
+        path: None,
+        failed_address_cache_removal_interval: Duration::from_millis(100),
+        ..Default::default()
+    };
+    let mut known_peers = KnownPeersManager::new(config).unwrap();
+    let peer_id = PeerId::random();
+    let mut address = Multiaddr::empty();
+    address.push(Protocol::Tcp(10));
+
+    known_peers
+        .add_known_peer(peer_id, vec![address.clone()])
+        .await;
+
+    // We added address successfully.
+    assert!(known_peers.contains_address(&peer_id, &address));
+
+    known_peers
+        .remove_known_peer_addresses(peer_id, vec![address.clone()])
+        .await;
+
+    // We didn't remove address instantly.
+    assert!(known_peers.contains_address(&peer_id, &address));
+
+    sleep(Duration::from_millis(110)).await;
+
+    known_peers
+        .remove_known_peer_addresses(peer_id, vec![address.clone()])
+        .await;
+
+    // We removed address after the configured interval.
+    assert!(!known_peers.contains_address(&peer_id, &address));
 }

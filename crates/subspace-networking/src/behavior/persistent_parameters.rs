@@ -2,7 +2,7 @@ use crate::utils::{AsyncJoinOnDrop, CollectionBatcher, Handler, HandlerFn, PeerA
 use async_trait::async_trait;
 use event_listener_primitives::HandlerId;
 use fs2::FileExt;
-use futures::future::Fuse;
+use futures::future::{pending, Fuse};
 use futures::FutureExt;
 use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId};
@@ -13,7 +13,7 @@ use parking_lot::Mutex;
 use std::collections::HashSet;
 use std::fs::OpenOptions;
 use std::io::{Read, Seek, SeekFrom};
-use std::num::NonZeroUsize;
+use std::num::{NonZeroU64, NonZeroUsize};
 use std::path::Path;
 use std::pin::Pin;
 use std::str::FromStr;
@@ -30,7 +30,7 @@ use tracing::{debug, error, trace, warn};
 type FailureTime = Option<SystemTime>;
 
 /// Size of the LRU cache for peers.
-const PEER_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(100).expect("Not zero; qed");
+const KNOWN_PEERS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(100).expect("Not zero; qed");
 /// Size of the LRU cache for addresses of a single peer ID.
 const ADDRESSES_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(30).expect("Not zero; qed");
 /// Pause duration between network parameters save.
@@ -49,8 +49,6 @@ pub struct PeerAddressRemovedEvent {
     pub peer_id: PeerId,
     /// Peer address
     pub address: Multiaddr,
-    /// No address left in the permanent storage.
-    pub last_address: bool,
 }
 
 #[derive(Debug, Encode, Decode)]
@@ -62,6 +60,7 @@ struct EncodableKnownPeerAddress {
 
 #[derive(Debug, Encode, Decode)]
 struct EncodableKnownPeers {
+    cache_size: NonZeroU64,
     timestamp: u64,
     // Each entry is a tuple of peer ID + list of multiaddresses with corresponding failure time
     known_peers: Vec<(Vec<u8>, Vec<EncodableKnownPeerAddress>)>,
@@ -69,7 +68,10 @@ struct EncodableKnownPeers {
 
 impl EncodableKnownPeers {
     fn into_cache(self) -> LruCache<PeerId, LruCache<Multiaddr, FailureTime>> {
-        let mut peers_cache = LruCache::new(PEER_CACHE_SIZE);
+        let mut peers_cache = LruCache::new(
+            NonZeroUsize::new(self.cache_size.get() as usize)
+                .expect("Upstream value is NoneZeroUsize"),
+        );
 
         'peers: for (peer_id, addresses) in self.known_peers {
             let mut peer_cache = LruCache::<Multiaddr, FailureTime>::new(ADDRESSES_CACHE_SIZE);
@@ -107,10 +109,15 @@ impl EncodableKnownPeers {
         peers_cache
     }
 
-    fn from_cache(cache: &LruCache<PeerId, LruCache<Multiaddr, FailureTime>>) -> Self {
+    fn from_cache(
+        cache: &LruCache<PeerId, LruCache<Multiaddr, FailureTime>>,
+        cache_size: NonZeroUsize,
+    ) -> Self {
         let single_peer_encoded_address_size =
-            NetworkingParametersManager::single_peer_encoded_address_size();
+            KnownPeersManager::single_peer_encoded_address_size();
         Self {
+            cache_size: NonZeroU64::new(cache_size.get() as u64)
+                .expect("Getting the value from another NonZero type"),
             timestamp: SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)
                 .expect("Never before Unix epoch; qed")
@@ -180,7 +187,7 @@ impl KnownPeersSlots {
 
 /// Defines operations with the networking parameters.
 #[async_trait]
-pub trait NetworkingParametersRegistry: Send + Sync {
+pub trait KnownPeersRegistry: Send + Sync {
     /// Registers a peer ID and associated addresses
     async fn add_known_peer(&mut self, peer_id: PeerId, addresses: Vec<Multiaddr>);
 
@@ -217,13 +224,13 @@ pub(crate) struct StubNetworkingParametersManager;
 
 impl StubNetworkingParametersManager {
     /// Returns an instance of `StubNetworkingParametersManager` as the `Box` reference.
-    pub fn boxed(self) -> Box<dyn NetworkingParametersRegistry> {
+    pub fn boxed(self) -> Box<dyn KnownPeersRegistry> {
         Box::new(self)
     }
 }
 
 #[async_trait]
-impl NetworkingParametersRegistry for StubNetworkingParametersManager {
+impl KnownPeersRegistry for StubNetworkingParametersManager {
     async fn add_known_peer(&mut self, _: PeerId, _: Vec<Multiaddr>) {}
 
     async fn remove_known_peer_addresses(&mut self, _peer_id: PeerId, _addresses: Vec<Multiaddr>) {}
@@ -247,9 +254,40 @@ impl NetworkingParametersRegistry for StubNetworkingParametersManager {
     }
 }
 
+/// Configuration for [`KnownPeersManager`].
+#[derive(Debug, Clone)]
+pub struct KnownPeersManagerConfig {
+    /// Defines whether we return known peers batches on next_known_addresses_batch().
+    pub enable_known_peers_source: bool,
+    /// Defines cache size.
+    pub cache_size: NonZeroUsize,
+    /// Peer ID list to filter on address adding.
+    pub ignore_peer_list: HashSet<PeerId>,
+    /// Defines whether we enable cache persistence.
+    pub path: Option<Box<Path>>,
+    /// Defines interval before the next peer address removes entry from the cache.
+    pub failed_address_cache_removal_interval: Duration,
+    /// Defines interval before the next peer address removal triggers [`PeerAddressRemovedEvent`].
+    pub failed_address_kademlia_removal_interval: Duration,
+}
+
+impl Default for KnownPeersManagerConfig {
+    fn default() -> Self {
+        Self {
+            enable_known_peers_source: true,
+            cache_size: KNOWN_PEERS_CACHE_SIZE,
+            ignore_peer_list: Default::default(),
+            path: None,
+            failed_address_cache_removal_interval: REMOVE_KNOWN_PEERS_GRACE_PERIOD_SECS,
+            failed_address_kademlia_removal_interval:
+                REMOVE_KNOWN_PEERS_GRACE_PERIOD_FOR_KADEMLIA_SECS,
+        }
+    }
+}
+
 /// Networking parameters persistence errors.
 #[derive(Debug, Error)]
-pub enum NetworkParametersPersistenceError {
+pub enum KnownPeersManagerPersistenceError {
     /// I/O error.
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),
@@ -259,48 +297,54 @@ pub enum NetworkParametersPersistenceError {
 }
 
 /// Handles networking parameters. It manages network parameters set and its persistence.
-pub struct NetworkingParametersManager {
-    // Defines whether the cache requires saving to DB
+pub struct KnownPeersManager {
+    /// Defines whether the cache requires saving to DB
     cache_need_saving: bool,
-    // LRU cache for the known peers and their addresses
+    /// LRU cache for the known peers and their addresses
     known_peers: LruCache<PeerId, LruCache<Multiaddr, FailureTime>>,
-    // Period between networking parameters saves.
+    /// Period between networking parameters saves.
     networking_parameters_save_delay: Pin<Box<Fuse<Sleep>>>,
     /// Slots backed by file that store known peers
-    known_peers_slots: Arc<Mutex<KnownPeersSlots>>,
-    // Provides batching capabilities for the address collection (it stores the last batch index)
+    known_peers_slots: Option<Arc<Mutex<KnownPeersSlots>>>,
+    /// Provides batching capabilities for the address collection (it stores the last batch index)
     collection_batcher: CollectionBatcher<PeerAddress>,
-    // Event handler triggered when we decide to remove address from the storage.
+    /// Event handler triggered when we decide to remove address from the storage.
     address_removed: Handler<PeerAddressRemovedEvent>,
-    // Peer ID list to filter on address adding.
-    ignore_peer_list: HashSet<PeerId>,
+    /// Defines configuration.
+    config: KnownPeersManagerConfig,
 }
 
-impl Drop for NetworkingParametersManager {
+impl Drop for KnownPeersManager {
     fn drop(&mut self) {
         if self.cache_need_saving {
-            self.known_peers_slots
-                .lock()
-                .write_to_inactive_slot(&EncodableKnownPeers::from_cache(&self.known_peers));
+            if let Some(known_peers_slots) = &self.known_peers_slots {
+                known_peers_slots
+                    .lock()
+                    .write_to_inactive_slot(&EncodableKnownPeers::from_cache(
+                        &self.known_peers,
+                        self.config.cache_size,
+                    ));
+            }
         }
     }
 }
 
-impl NetworkingParametersManager {
-    /// Object constructor. It accepts `NetworkingParametersProvider` implementation as a parameter.
-    /// On object creation it starts a job for networking parameters cache handling.
-    pub fn new(
+impl KnownPeersManager {
+    fn init_file(
         path: &Path,
-        ignore_peer_list: HashSet<PeerId>,
-    ) -> Result<Self, NetworkParametersPersistenceError> {
+        cache_size: NonZeroUsize,
+    ) -> Result<
+        (Option<EncodableKnownPeers>, Arc<Mutex<KnownPeersSlots>>),
+        KnownPeersManagerPersistenceError,
+    > {
         let mut file = OpenOptions::new()
             .read(true)
             .write(true)
             .create(true)
             .open(path)?;
 
-        let known_addresses_size = Self::known_addresses_size();
-        let file_size = Self::file_size();
+        let known_addresses_size = Self::known_addresses_size(cache_size);
+        let file_size = Self::file_size(cache_size);
         // Try reading existing encoded known peers from file
         let mut maybe_newest_known_addresses = None::<EncodableKnownPeers>;
 
@@ -361,7 +405,7 @@ impl NetworkingParametersManager {
             // Allocating the whole file (`set_len` below can create a sparse file, which will cause
             // writes to fail later)
             file.allocate(file_size as u64)
-                .map_err(NetworkParametersPersistenceError::CantPreallocateKnownPeersFile)?;
+                .map_err(KnownPeersManagerPersistenceError::CantPreallocateKnownPeersFile)?;
             // Truncating file (if necessary)
             file.set_len(file_size as u64)?;
             true
@@ -392,24 +436,38 @@ impl NetworkingParametersManager {
             }
         }
 
+        let known_peers_slots = Arc::new(Mutex::new(KnownPeersSlots {
+            a: a_mmap,
+            b: b_mmap,
+        }));
+
+        Ok((maybe_newest_known_addresses, known_peers_slots))
+    }
+
+    /// Object constructor.
+    pub fn new(config: KnownPeersManagerConfig) -> Result<Self, KnownPeersManagerPersistenceError> {
+        let (maybe_newest_known_addresses, known_peers_slots) = if let Some(path) = &config.path {
+            Self::init_file(path, config.cache_size)
+                .map(|(known_addresses, slots)| (known_addresses, Some(slots)))?
+        } else {
+            (None, None)
+        };
+
         let known_peers = maybe_newest_known_addresses
             .map(EncodableKnownPeers::into_cache)
-            .unwrap_or_else(|| LruCache::new(PEER_CACHE_SIZE));
+            .unwrap_or_else(|| LruCache::new(config.cache_size));
 
         Ok(Self {
             cache_need_saving: false,
             known_peers,
             networking_parameters_save_delay: Self::default_delay(),
-            known_peers_slots: Arc::new(Mutex::new(KnownPeersSlots {
-                a: a_mmap,
-                b: b_mmap,
-            })),
+            known_peers_slots,
             collection_batcher: CollectionBatcher::new(
                 NonZeroUsize::new(PEERS_ADDRESSES_BATCH_SIZE)
                     .expect("Manual non-zero initialization failed."),
             ),
             address_removed: Default::default(),
-            ignore_peer_list,
+            config,
         })
     }
 
@@ -424,13 +482,13 @@ impl NetworkingParametersManager {
     }
 
     /// Size of the backing file on disk
-    pub fn file_size() -> usize {
+    pub fn file_size(cache_size: NonZeroUsize) -> usize {
         // *2 because we have a/b parts of the file
-        Self::known_addresses_size() * 2
+        Self::known_addresses_size(cache_size) * 2
     }
 
     /// Creates a reference to the `NetworkingParametersRegistry` trait implementation.
-    pub fn boxed(self) -> Box<dyn NetworkingParametersRegistry> {
+    pub fn boxed(self) -> Box<dyn KnownPeersRegistry> {
         Box::new(self)
     }
 
@@ -464,20 +522,32 @@ impl NetworkingParametersManager {
     ///
     /// NOTE: This is max size that needs to be allocated on disk for successful write of a single
     /// `known_addresses` copy, the actual written data can occupy only a part of this size
-    fn known_addresses_size() -> usize {
+    fn known_addresses_size(cache_size: NonZeroUsize) -> usize {
         // Timestamp (when was written) + compact encoding of the length of peer records + peer
         // records + checksum
         mem::size_of::<u64>()
-            + Compact::compact_len(&(PEER_CACHE_SIZE.get() as u32))
-            + Self::single_peer_encoded_size() * PEER_CACHE_SIZE.get()
+            + Compact::compact_len(&(cache_size.get() as u32))
+            + Self::single_peer_encoded_size() * cache_size.get()
             + mem::size_of::<Blake3Hash>()
+    }
+
+    fn persistent_enabled(&self) -> bool {
+        self.config.path.is_some()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn contains_address(&self, peer_id: &PeerId, address: &Multiaddr) -> bool {
+        self.known_peers
+            .peek(peer_id)
+            .map(|addresses| addresses.peek(address).is_some())
+            .unwrap_or_default()
     }
 }
 
 #[async_trait]
-impl NetworkingParametersRegistry for NetworkingParametersManager {
+impl KnownPeersRegistry for KnownPeersManager {
     async fn add_known_peer(&mut self, peer_id: PeerId, addresses: Vec<Multiaddr>) {
-        if self.ignore_peer_list.contains(&peer_id) {
+        if self.config.ignore_peer_list.contains(&peer_id) {
             debug!(
                 %peer_id,
                 addr_num=addresses.len(),
@@ -529,8 +599,8 @@ impl NetworkingParametersRegistry for NetworkingParametersManager {
             &mut self.known_peers,
             peer_id,
             addresses,
-            REMOVE_KNOWN_PEERS_GRACE_PERIOD_SECS,
-            REMOVE_KNOWN_PEERS_GRACE_PERIOD_FOR_KADEMLIA_SECS,
+            self.config.failed_address_cache_removal_interval,
+            self.config.failed_address_kademlia_removal_interval,
         );
 
         for event in removed_addresses {
@@ -549,6 +619,10 @@ impl NetworkingParametersRegistry for NetworkingParametersManager {
     }
 
     async fn next_known_addresses_batch(&mut self) -> Vec<PeerAddress> {
+        if !self.config.enable_known_peers_source {
+            return Vec::new();
+        }
+
         // We take cached known addresses and combine them with manually provided bootstrap addresses.
         let combined_addresses = self.known_addresses().await.into_iter().collect::<Vec<_>>();
 
@@ -561,31 +635,41 @@ impl NetworkingParametersRegistry for NetworkingParametersManager {
     }
 
     fn start_over_address_batching(&mut self) {
+        if !self.config.enable_known_peers_source {
+            return;
+        }
+
         self.collection_batcher.reset();
     }
 
     async fn run(&mut self) {
+        if !self.persistent_enabled() {
+            pending().await
+        }
+
         loop {
             (&mut self.networking_parameters_save_delay).await;
 
-            if self.cache_need_saving {
-                let known_peers = EncodableKnownPeers::from_cache(&self.known_peers);
-                let known_peers_slots = Arc::clone(&self.known_peers_slots);
-                let write_known_peers_fut =
-                    AsyncJoinOnDrop::new(tokio::task::spawn_blocking(move || {
-                        known_peers_slots
-                            .lock()
-                            .write_to_inactive_slot(&known_peers);
-                    }));
+            if let Some(known_peers_slots) = &self.known_peers_slots {
+                if self.cache_need_saving {
+                    let known_peers =
+                        EncodableKnownPeers::from_cache(&self.known_peers, self.config.cache_size);
+                    let known_peers_slots = Arc::clone(known_peers_slots);
+                    let write_known_peers_fut =
+                        AsyncJoinOnDrop::new(tokio::task::spawn_blocking(move || {
+                            known_peers_slots
+                                .lock()
+                                .write_to_inactive_slot(&known_peers);
+                        }));
 
-                if let Err(error) = write_known_peers_fut.await {
-                    error!(%error, "Failed to write known peers");
+                    if let Err(error) = write_known_peers_fut.await {
+                        error!(%error, "Failed to write known peers");
+                    }
+
+                    self.cache_need_saving = false;
                 }
-
-                self.cache_need_saving = false;
             }
-
-            self.networking_parameters_save_delay = NetworkingParametersManager::default_delay();
+            self.networking_parameters_save_delay = KnownPeersManager::default_delay();
         }
     }
 
@@ -656,7 +740,6 @@ pub(super) fn remove_known_peer_addresses_internal(
                             let address_removed = PeerAddressRemovedEvent{
                                 peer_id,
                                 address: addr.clone(),
-                                last_address
                             };
 
                             address_removed_events.push(address_removed);

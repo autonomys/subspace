@@ -3,6 +3,7 @@ use sc_client_api::AuxStore;
 use sc_consensus_subspace::archiver::SegmentHeadersStore;
 use std::collections::HashSet;
 use std::fs;
+use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_core_primitives::{SegmentHeader, SegmentIndex};
@@ -11,9 +12,10 @@ use subspace_networking::libp2p::metrics::Metrics;
 use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::utils::strip_peer_id;
 use subspace_networking::{
-    CreationError, KademliaMode, NetworkParametersPersistenceError, NetworkingParametersManager,
-    Node, NodeRunner, PeerInfoProvider, PieceByIndexRequestHandler,
-    SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
+    CreationError, KademliaMode, KnownPeersManager, KnownPeersManagerConfig,
+    KnownPeersManagerPersistenceError, Node, NodeRunner, PeerInfoProvider,
+    PieceByIndexRequestHandler, SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest,
+    SegmentHeaderResponse,
 };
 use thiserror::Error;
 use tracing::{debug, error, trace};
@@ -21,6 +23,9 @@ use tracing::{debug, error, trace};
 const SEGMENT_HEADERS_NUMBER_LIMIT: u64 = 1000;
 /// Should be sufficient number of target connections for everyone, limits are higher
 const TARGET_CONNECTIONS: u32 = 15;
+
+/// Size of the LRU cache for peers.
+pub const KNOWN_PEERS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(100).expect("Not zero; qed");
 
 /// Errors that might happen during DSN configuration.
 #[derive(Debug, Error)]
@@ -30,7 +35,7 @@ pub enum DsnConfigurationError {
     CreationError(#[from] CreationError),
     /// Network parameter manager error.
     #[error("Network parameter manager error: {0}")]
-    NetworkParameterManagerError(#[from] NetworkParametersPersistenceError),
+    NetworkParameterManagerError(#[from] KnownPeersManagerPersistenceError),
 }
 
 /// DSN configuration parameters.
@@ -52,7 +57,7 @@ pub struct DsnConfig {
     pub allow_non_global_addresses_in_dht: bool,
 
     /// System base path.
-    pub base_path: Option<PathBuf>,
+    pub base_path: PathBuf,
 
     /// Defines max established incoming swarm connection limit.
     pub max_in_connections: u32,
@@ -87,25 +92,26 @@ where
     let mut metric_registry = Registry::default();
     let metrics = enable_metrics.then(|| Metrics::new(&mut metric_registry));
 
-    let networking_parameters_registry = dsn_config
-        .base_path
-        .map(|path| {
-            // TODO: Remove this in the future after enough upgrade time that this no longer exist
-            if path.join("known_addresses_db").is_dir() {
-                let _ = fs::remove_file(path.join("known_addresses_db"));
-            }
-            let file_path = path.join("known_addresses.bin");
+    let networking_parameters_registry = {
+        let path = dsn_config.base_path;
 
-            NetworkingParametersManager::new(
-                &file_path,
-                strip_peer_id(dsn_config.bootstrap_nodes.clone())
-                    .into_iter()
-                    .map(|(peer_id, _)| peer_id)
-                    .collect::<HashSet<_>>(),
-            )
-            .map(NetworkingParametersManager::boxed)
+        // TODO: Remove this in the future after enough upgrade time that this no longer exist
+        if path.join("known_addresses_db").is_dir() {
+            let _ = fs::remove_file(path.join("known_addresses_db"));
+        }
+        let file_path = path.join("known_addresses.bin");
+
+        KnownPeersManager::new(KnownPeersManagerConfig {
+            path: Some(file_path.into_boxed_path()),
+            ignore_peer_list: strip_peer_id(dsn_config.bootstrap_nodes.clone())
+                .into_iter()
+                .map(|(peer_id, _)| peer_id)
+                .collect::<HashSet<_>>(),
+            cache_size: KNOWN_PEERS_CACHE_SIZE,
+            ..Default::default()
         })
-        .transpose()?;
+        .map(KnownPeersManager::boxed)?
+    };
 
     let keypair = dsn_config.keypair.clone();
     let default_networking_config = subspace_networking::Config::new(
