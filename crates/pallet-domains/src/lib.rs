@@ -27,8 +27,6 @@ mod tests;
 
 pub mod block_tree;
 pub mod domain_registry;
-// TODO: remove once the runtime is upgraded.
-pub mod migrations;
 pub mod runtime_registry;
 mod staking;
 mod staking_epoch;
@@ -1446,15 +1444,14 @@ impl<T: Config> Pallet<T> {
     }
 
     pub fn runtime_id(domain_id: DomainId) -> Option<RuntimeId> {
-        crate::migrations::migrate_domain_object::get_domain_object::<T>(domain_id)
+        DomainRegistry::<T>::get(domain_id)
             .map(|domain_object| domain_object.domain_config.runtime_id)
     }
 
     pub fn domain_instance_data(
         domain_id: DomainId,
     ) -> Option<(DomainInstanceData, BlockNumberFor<T>)> {
-        let domain_obj =
-            crate::migrations::migrate_domain_object::get_domain_object::<T>(domain_id)?;
+        let domain_obj = DomainRegistry::<T>::get(domain_id)?;
         let runtime_object = RuntimeRegistry::<T>::get(domain_obj.domain_config.runtime_id)?;
         let runtime_type = runtime_object.runtime_type.clone();
         let raw_genesis =
@@ -1486,7 +1483,7 @@ impl<T: Config> Pallet<T> {
         domain_id: DomainId,
     ) -> Option<BundleProducerElectionParams<BalanceOf<T>>> {
         match (
-            crate::migrations::migrate_domain_object::get_domain_object::<T>(domain_id),
+            DomainRegistry::<T>::get(domain_id),
             DomainStakingSummary::<T>::get(domain_id),
         ) {
             (Some(domain_object), Some(stake_summary)) => Some(BundleProducerElectionParams {
@@ -1568,10 +1565,9 @@ impl<T: Config> Pallet<T> {
 
         Self::check_bundle_duplication(opaque_bundle)?;
 
-        let domain_config =
-            crate::migrations::migrate_domain_object::get_domain_object::<T>(domain_id)
-                .ok_or(BundleError::InvalidDomainId)?
-                .domain_config;
+        let domain_config = DomainRegistry::<T>::get(domain_id)
+            .ok_or(BundleError::InvalidDomainId)?
+            .domain_config;
 
         // TODO: check bundle weight with `domain_config.max_block_weight`
 
@@ -1860,12 +1856,10 @@ impl<T: Config> Pallet<T> {
 
     /// Returns the domain block limit of the given domain.
     pub fn domain_block_limit(domain_id: DomainId) -> Option<DomainBlockLimit> {
-        crate::migrations::migrate_domain_object::get_domain_object::<T>(domain_id).map(
-            |domain_obj| DomainBlockLimit {
-                max_block_size: domain_obj.domain_config.max_block_size,
-                max_block_weight: domain_obj.domain_config.max_block_weight,
-            },
-        )
+        DomainRegistry::<T>::get(domain_id).map(|domain_obj| DomainBlockLimit {
+            max_block_size: domain_obj.domain_config.max_block_size,
+            max_block_weight: domain_obj.domain_config.max_block_weight,
+        })
     }
 
     /// Returns if there are any ERs in the challenge period that have non empty extrinsics.
