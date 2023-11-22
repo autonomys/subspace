@@ -21,7 +21,7 @@ use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::utils::strip_peer_id;
 use subspace_networking::{
-    peer_id, Config, KademliaMode, NetworkingParametersManager, NetworkingParametersManagerConfig,
+    peer_id, Config, KademliaMode, KnownPeersManager, KnownPeersManagerConfig,
 };
 use tracing::{debug, info, Level};
 use tracing_subscriber::fmt::Subscriber;
@@ -32,7 +32,7 @@ use tracing_subscriber::EnvFilter;
 const REMOVE_KNOWN_PEERS_GRACE_PERIOD_FOR_KADEMLIA_SECS: Duration = Duration::from_secs(3600);
 
 /// Size of the LRU cache for peers.
-pub const PEER_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(10000).expect("Not zero; qed");
+pub const KNOWN_PEERS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(10000).expect("Not zero; qed");
 
 #[derive(Debug, Parser)]
 #[clap(about, version)]
@@ -167,9 +167,9 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 })
                 .transpose()?;
 
-            let known_peers_registry_config = NetworkingParametersManagerConfig {
+            let known_peers_registry_config = KnownPeersManagerConfig {
                 enable_known_peers_source: false,
-                cache_size: PEER_CACHE_SIZE,
+                cache_size: KNOWN_PEERS_CACHE_SIZE,
                 ignore_peer_list: strip_peer_id(bootstrap_nodes.clone())
                     .into_iter()
                     .map(|(peer_id, _)| peer_id)
@@ -180,8 +180,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 failed_address_cache_removal_interval:
                     REMOVE_KNOWN_PEERS_GRACE_PERIOD_FOR_KADEMLIA_SECS,
             };
-            let known_peers_registry =
-                NetworkingParametersManager::new(known_peers_registry_config)?;
+            let known_peers_registry = KnownPeersManager::new(known_peers_registry_config)?;
 
             let config = Config {
                 listen_on,

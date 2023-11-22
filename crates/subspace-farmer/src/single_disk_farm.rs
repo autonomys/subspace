@@ -18,7 +18,7 @@ use crate::single_disk_farm::plotting::{
     plotting, plotting_scheduler, PlottingOptions, PlottingSchedulerOptions,
 };
 use crate::utils::{tokio_rayon_spawn_handler, AsyncJoinOnDrop};
-use crate::PEER_CACHE_SIZE;
+use crate::KNOWN_PEERS_CACHE_SIZE;
 use async_lock::RwLock;
 use derive_more::{Display, From};
 use event_listener_primitives::{Bag, HandlerId};
@@ -52,7 +52,7 @@ use subspace_farmer_components::file_ext::{FileExt, OpenOptionsExt};
 use subspace_farmer_components::plotting::{PieceGetter, PlottedSector};
 use subspace_farmer_components::sector::{sector_size, SectorMetadata, SectorMetadataChecksummed};
 use subspace_farmer_components::FarmerProtocolInfo;
-use subspace_networking::NetworkingParametersManager;
+use subspace_networking::KnownPeersManager;
 use subspace_proof_of_space::Table;
 use subspace_rpc_primitives::{FarmerAppInfo, SolutionResponse};
 use thiserror::Error;
@@ -691,7 +691,7 @@ impl SingleDiskFarm {
         let fixed_space_usage = RESERVED_PLOT_METADATA
             + RESERVED_FARM_INFO
             + Identity::file_size() as u64
-            + NetworkingParametersManager::file_size(PEER_CACHE_SIZE) as u64;
+            + KnownPeersManager::file_size(KNOWN_PEERS_CACHE_SIZE) as u64;
         // Calculate how many sectors can fit
         let target_sector_count = {
             let potentially_plottable_space = allocated_space.saturating_sub(fixed_space_usage)

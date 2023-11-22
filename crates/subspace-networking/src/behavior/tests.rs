@@ -1,8 +1,8 @@
 use super::persistent_parameters::remove_known_peer_addresses_internal;
 use crate::behavior::persistent_parameters::{append_p2p_suffix, remove_p2p_suffix};
 use crate::{
-    Config, GenericRequest, GenericRequestHandler, KnownPeersRegistry, NetworkingParametersManager,
-    NetworkingParametersManagerConfig,
+    Config, GenericRequest, GenericRequestHandler, KnownPeersManager, KnownPeersManagerConfig,
+    KnownPeersRegistry,
 };
 use futures::channel::oneshot;
 use futures::future::pending;
@@ -283,7 +283,7 @@ async fn test_address_p2p_prefix_addition() {
 
 #[tokio::test()]
 async fn test_known_peers_removal_address_after_specified_interval() {
-    let config = NetworkingParametersManagerConfig {
+    let config = KnownPeersManagerConfig {
         enable_known_peers_source: false,
         cache_size: NonZeroUsize::new(100).unwrap(),
         ignore_peer_list: Default::default(),
@@ -291,7 +291,7 @@ async fn test_known_peers_removal_address_after_specified_interval() {
         failed_address_cache_removal_interval: Duration::from_millis(100),
         ..Default::default()
     };
-    let mut known_peers = NetworkingParametersManager::new(config).unwrap();
+    let mut known_peers = KnownPeersManager::new(config).unwrap();
     let peer_id = PeerId::random();
     let mut address = Multiaddr::empty();
     address.push(Protocol::Tcp(10));

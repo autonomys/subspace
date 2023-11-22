@@ -12,8 +12,8 @@ use subspace_networking::libp2p::metrics::Metrics;
 use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::utils::strip_peer_id;
 use subspace_networking::{
-    CreationError, KademliaMode, NetworkParametersPersistenceError, NetworkingParametersManager,
-    NetworkingParametersManagerConfig, Node, NodeRunner, PeerInfoProvider,
+    CreationError, KademliaMode, KnownPeersManager, KnownPeersManagerConfig,
+    KnownPeersManagerPersistenceError, Node, NodeRunner, PeerInfoProvider,
     PieceByIndexRequestHandler, SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest,
     SegmentHeaderResponse,
 };
@@ -25,7 +25,7 @@ const SEGMENT_HEADERS_NUMBER_LIMIT: u64 = 1000;
 const TARGET_CONNECTIONS: u32 = 15;
 
 /// Size of the LRU cache for peers.
-pub const PEER_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(100).expect("Not zero; qed");
+pub const KNOWN_PEERS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(100).expect("Not zero; qed");
 
 /// Errors that might happen during DSN configuration.
 #[derive(Debug, Error)]
@@ -35,7 +35,7 @@ pub enum DsnConfigurationError {
     CreationError(#[from] CreationError),
     /// Network parameter manager error.
     #[error("Network parameter manager error: {0}")]
-    NetworkParameterManagerError(#[from] NetworkParametersPersistenceError),
+    NetworkParameterManagerError(#[from] KnownPeersManagerPersistenceError),
 }
 
 /// DSN configuration parameters.
@@ -101,16 +101,16 @@ where
         }
         let file_path = path.join("known_addresses.bin");
 
-        NetworkingParametersManager::new(NetworkingParametersManagerConfig {
+        KnownPeersManager::new(KnownPeersManagerConfig {
             path: Some(file_path.into_boxed_path()),
             ignore_peer_list: strip_peer_id(dsn_config.bootstrap_nodes.clone())
                 .into_iter()
                 .map(|(peer_id, _)| peer_id)
                 .collect::<HashSet<_>>(),
-            cache_size: PEER_CACHE_SIZE,
+            cache_size: KNOWN_PEERS_CACHE_SIZE,
             ..Default::default()
         })
-        .map(NetworkingParametersManager::boxed)?
+        .map(KnownPeersManager::boxed)?
     };
 
     let keypair = dsn_config.keypair.clone();

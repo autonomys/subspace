@@ -42,7 +42,7 @@ pub mod single_disk_farm;
 pub mod utils;
 
 /// Size of the LRU cache for peers.
-pub const PEER_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(100).expect("Not zero; qed");
+pub const KNOWN_PEERS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(100).expect("Not zero; qed");
 
 pub use identity::Identity;
 pub use jsonrpsee;
