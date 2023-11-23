@@ -1,10 +1,12 @@
 //! Staking epoch transition for domain
 
+#[cfg(any(not(feature = "runtime-benchmarks"), test))]
+use crate::pallet::OperatorSigningKey;
 use crate::pallet::{
-    DomainStakingSummary, LastEpochStakingDistribution, Nominators, OperatorIdOwner,
-    OperatorSigningKey, Operators, PendingDeposits, PendingNominatorUnlocks,
-    PendingOperatorDeregistrations, PendingOperatorSwitches, PendingOperatorUnlocks,
-    PendingSlashes, PendingStakingOperationCount, PendingUnlocks, PendingWithdrawals,
+    DomainStakingSummary, LastEpochStakingDistribution, Nominators, OperatorIdOwner, Operators,
+    PendingDeposits, PendingNominatorUnlocks, PendingOperatorDeregistrations,
+    PendingOperatorSwitches, PendingOperatorUnlocks, PendingSlashes, PendingStakingOperationCount,
+    PendingUnlocks, PendingWithdrawals,
 };
 use crate::staking::{Error as TransitionError, Nominator, OperatorStatus, Withdraw};
 use crate::{

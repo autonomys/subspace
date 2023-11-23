@@ -27,6 +27,7 @@ mod tests;
 
 pub mod block_tree;
 pub mod domain_registry;
+pub mod migrations;
 pub mod runtime_registry;
 mod staking;
 mod staking_epoch;
@@ -110,7 +111,7 @@ pub type DomainHashingFor<T> = <<T as Config>::DomainHeader as Header>::Hashing;
 pub type ReceiptHashFor<T> = <<T as Config>::DomainHeader as Header>::Hash;
 
 /// The current storage version.
-const STORAGE_VERSION: StorageVersion = StorageVersion::new(1);
+const STORAGE_VERSION: StorageVersion = StorageVersion::new(2);
 
 #[frame_support::pallet]
 mod pallet {
