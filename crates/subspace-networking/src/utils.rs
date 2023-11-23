@@ -113,8 +113,8 @@ impl<T: Clone> CollectionBatcher<T> {
     }
 }
 
-// Convenience alias for peer ID and its multiaddresses.
-pub(crate) type PeerAddress = (PeerId, Multiaddr);
+/// Convenience alias for peer ID and its multiaddresses.
+pub type PeerAddress = (PeerId, Multiaddr);
 
 /// Helper function. Converts multiaddresses to a tuple with peer ID removing the peer Id suffix.
 /// It logs incorrect multiaddresses.

@@ -717,6 +717,25 @@ impl DomainsDigestItem for DigestItem {
     }
 }
 
+/// EVM chain Id storage key.
+///
+/// This and next function should ideally use Host function to fetch the storage key
+/// from the domain runtime. But since the Host function is not available at Genesis, we have to
+/// assume the storage keys.
+/// TODO: once the chain is launched in mainnet, we should use the Host function for all domain instances.  
+pub(crate) fn evm_chain_id_storage_key() -> StorageKey {
+    StorageKey(
+        frame_support::storage::storage_prefix(
+            // This is the name used for the `pallet_evm_chain_id` in the `construct_runtime` macro
+            // i.e. `EVMChainId: pallet_evm_chain_id = 82,`
+            "EVMChainId".as_bytes(),
+            // This is the storage item name used inside the `pallet_evm_chain_id`
+            "ChainId".as_bytes(),
+        )
+        .to_vec(),
+    )
+}
+
 /// The storage key of the `SelfDomainId` storage item in the `pallet-domain-id`
 ///
 /// Any change to the storage item name or the `pallet-domain-id` name used in the `construct_runtime`

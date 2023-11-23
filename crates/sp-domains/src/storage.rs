@@ -1,4 +1,5 @@
-use crate::{self_domain_id_storage_key, DomainId};
+use crate::{evm_chain_id_storage_key, self_domain_id_storage_key, DomainId};
+use domain_runtime_primitives::EVMChainId;
 use hash_db::Hasher;
 use parity_scale_codec::{Codec, Decode, Encode};
 use scale_info::TypeInfo;
@@ -48,6 +49,12 @@ impl RawGenesis {
             self_domain_id_storage_key(),
             StorageData(domain_id.encode()),
         );
+    }
+
+    pub fn set_evm_chain_id(&mut self, chain_id: EVMChainId) {
+        let _ = self
+            .top
+            .insert(evm_chain_id_storage_key(), StorageData(chain_id.encode()));
     }
 
     fn set_runtime_code(&mut self, code: Vec<u8>) {

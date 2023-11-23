@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::{Arc, Weak};
 use subspace_farmer::piece_cache::PieceCache;
 use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
-use subspace_farmer::{NodeClient, NodeRpcClient};
+use subspace_farmer::{NodeClient, NodeRpcClient, KNOWN_PEERS_CACHE_SIZE};
 use subspace_networking::libp2p::identity::Keypair;
 use subspace_networking::libp2p::kad::RecordKey;
 use subspace_networking::libp2p::metrics::Metrics;
@@ -14,9 +14,10 @@ use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::utils::strip_peer_id;
 use subspace_networking::{
-    construct, Config, KademliaMode, NetworkingParametersManager, Node, NodeRunner, PeerInfo,
-    PeerInfoProvider, PieceByIndexRequest, PieceByIndexRequestHandler, PieceByIndexResponse,
-    SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
+    construct, Config, KademliaMode, KnownPeersManager, KnownPeersManagerConfig, Node, NodeRunner,
+    PeerInfo, PeerInfoProvider, PieceByIndexRequest, PieceByIndexRequestHandler,
+    PieceByIndexResponse, SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest,
+    SegmentHeaderResponse,
 };
 use subspace_rpc_primitives::MAX_SEGMENT_HEADERS_PER_REQUEST;
 use tracing::{debug, error, info, Instrument};
@@ -25,6 +26,8 @@ use tracing::{debug, error, info, Instrument};
 ///
 /// Must be the same as RPC limit since all requests go to the node anyway.
 const SEGMENT_HEADER_NUMBER_LIMIT: u64 = MAX_SEGMENT_HEADERS_PER_REQUEST as u64;
+/// Should be sufficient number of target connections for everyone, limits are higher
+const TARGET_CONNECTIONS: u32 = 15;
 
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub(super) fn configure_dsn(
@@ -40,7 +43,6 @@ pub(super) fn configure_dsn(
         out_connections,
         pending_in_connections,
         pending_out_connections,
-        target_connections,
         external_addresses,
         disable_bootstrap_on_start,
     }: DsnArgs,
@@ -49,13 +51,15 @@ pub(super) fn configure_dsn(
     piece_cache: PieceCache,
     initialize_metrics: bool,
 ) -> Result<(Node, NodeRunner<PieceCache>, Registry), anyhow::Error> {
-    let networking_parameters_registry = NetworkingParametersManager::new(
-        &base_path.join("known_addresses.bin"),
-        strip_peer_id(bootstrap_nodes.clone())
+    let networking_parameters_registry = KnownPeersManager::new(KnownPeersManagerConfig {
+        path: Some(base_path.join("known_addresses.bin").into_boxed_path()),
+        ignore_peer_list: strip_peer_id(bootstrap_nodes.clone())
             .into_iter()
             .map(|(peer_id, _)| peer_id)
             .collect::<HashSet<_>>(),
-    )
+        cache_size: KNOWN_PEERS_CACHE_SIZE,
+        ..Default::default()
+    })
     .map(Box::new)?;
 
     // Metrics
@@ -72,7 +76,7 @@ pub(super) fn configure_dsn(
         reserved_peers,
         listen_on,
         allow_non_global_addresses_in_dht: enable_private_ips,
-        networking_parameters_registry: Some(networking_parameters_registry),
+        networking_parameters_registry,
         request_response_protocols: vec![
             PieceByIndexRequestHandler::create(move |_, &PieceByIndexRequest { piece_index }| {
                 debug!(?piece_index, "Piece request received. Trying cache...");
@@ -190,11 +194,11 @@ pub(super) fn configure_dsn(
         special_connected_peers_handler: Some(Arc::new(PeerInfo::is_farmer)),
         // Do not have any target for general peers
         general_connected_peers_target: 0,
-        special_connected_peers_target: target_connections,
+        special_connected_peers_target: TARGET_CONNECTIONS,
         // Allow up to quarter of incoming connections to be maintained
         general_connected_peers_limit: in_connections / 4,
         // Allow to maintain some extra farmer connections beyond direct interest too
-        special_connected_peers_limit: target_connections + in_connections / 4,
+        special_connected_peers_limit: TARGET_CONNECTIONS + in_connections / 4,
         bootstrap_addresses: bootstrap_nodes,
         kademlia_mode: KademliaMode::Dynamic,
         external_addresses,

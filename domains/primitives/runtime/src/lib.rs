@@ -55,6 +55,9 @@ pub type Address = MultiAddress<AccountId, ()>;
 /// Slot duration that is same as consensus chain runtime.
 pub const SLOT_DURATION: u64 = 1000;
 
+/// The EVM chain Id type
+pub type EVMChainId = u64;
+
 /// Extracts the signer from an unchecked extrinsic.
 ///
 /// Used by executor to extract the optional signer when shuffling the extrinsics.
@@ -219,5 +222,9 @@ sp_api::decl_runtime_apis! {
 
         /// Return the block digest
         fn block_digest() -> Digest;
+
+        /// Return the consumed weight of the block
+        #[api_version(2)]
+        fn block_weight() -> Weight;
     }
 }

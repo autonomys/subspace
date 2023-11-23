@@ -1,5 +1,5 @@
 use codec::Encode;
-use domain_block_preprocessor::runtime_api_light::RuntimeApiLight;
+use domain_block_preprocessor::stateless_runtime::StatelessRuntime;
 use domain_runtime_primitives::{CheckTxValidityError, DomainCoreApi};
 use domain_test_service::domain::EvmDomainClient as DomainClient;
 use domain_test_service::evm_domain_test_runtime::Runtime as TestRuntime;
@@ -17,7 +17,6 @@ use sp_trie::{read_trie_value, LayoutV1};
 use std::collections::BTreeMap;
 use std::sync::Arc;
 use subspace_runtime_primitives::opaque::Block;
-use subspace_test_client::TestExecutorDispatch;
 use subspace_test_service::{produce_blocks, MockConsensusNode};
 use tempfile::TempDir;
 
@@ -188,8 +187,8 @@ async fn check_tx_validity_runtime_api_should_work() {
             .unwrap()
             .unwrap();
 
-        let mut runtime_api_light =
-            RuntimeApiLight::new(ferdie.executor.clone().into(), wasm_bundle.into());
+        let mut domain_stateless_runtime =
+            StatelessRuntime::<Block, _>::new(ferdie.executor.clone().into(), wasm_bundle.into());
 
         let db = storage_proof.into_memory_db::<BlakeTwo256>();
         let mut top_storage_map = BTreeMap::new();
@@ -211,15 +210,18 @@ async fn check_tx_validity_runtime_api_should_work() {
             children_default: Default::default(),
         };
 
-        runtime_api_light.set_storage(storage);
+        domain_stateless_runtime.set_storage(storage);
 
-        assert_eq!(<RuntimeApiLight<sc_executor::NativeElseWasmExecutor<TestExecutorDispatch>> as DomainCoreApi<Block>>::check_transaction_validity(
-            &runtime_api_light,
-            Default::default(),
-            &opaque_extrinsic,
-            bob.client.as_ref().info().best_number,
-            bob.client.as_ref().info().best_hash
-        ).unwrap(), expected_out);
+        assert_eq!(
+            domain_stateless_runtime
+                .check_transaction_validity(
+                    &opaque_extrinsic,
+                    bob.client.as_ref().info().best_number,
+                    bob.client.as_ref().info().best_hash
+                )
+                .unwrap(),
+            expected_out
+        );
     }
 }
 

@@ -150,6 +150,7 @@ where
             domain_confirmation_depth: params.domain_confirmation_depth,
             block_import: params.block_import,
             import_notification_sinks: Default::default(),
+            consensus_network_sync_oracle: params.consensus_network_sync_oracle.clone(),
         };
 
         let receipts_checker = ReceiptsChecker {

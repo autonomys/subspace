@@ -69,9 +69,7 @@ use sp_messenger::messages::{
 };
 use sp_runtime::traits::{AccountIdConversion, AccountIdLookup, BlakeTwo256, Convert, NumberFor};
 use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
-use sp_runtime::{
-    create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, Perbill, SaturatedConversion,
-};
+use sp_runtime::{create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, Perbill};
 use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
 #[cfg(feature = "std")]
@@ -104,7 +102,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_name: create_runtime_str!("subspace"),
     impl_name: create_runtime_str!("subspace"),
     authoring_version: 0,
-    spec_version: 2,
+    spec_version: 3,
     impl_version: 0,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 1,
@@ -587,8 +585,7 @@ parameter_types! {
     pub const DomainTxRangeAdjustmentInterval: u64 = TX_RANGE_ADJUSTMENT_INTERVAL_BLOCKS;
     /// Runtime upgrade is delayed for 1 day at 6 sec block time.
     pub const DomainRuntimeUpgradeDelay: BlockNumber = 14_400;
-    // Minimum Operator stake is 2 * MaximumBlockWeight * WeightToFee
-    pub MinOperatorStake: Balance = Balance::saturated_from(2 * BLOCK_WEIGHT_FOR_2_SEC.ref_time());
+    pub MinOperatorStake: Balance = 100 * SSC;
     /// Use the consensus chain's `Normal` extrinsics block size limit as the domain block size limit
     pub MaxDomainBlockSize: u32 = NORMAL_DISPATCH_RATIO * MAX_BLOCK_LENGTH;
     /// Use the consensus chain's `Normal` extrinsics block weight limit as the domain block weight limit
@@ -724,6 +721,7 @@ pub type SignedExtra = (
 /// Unchecked extrinsic type as expected by this runtime.
 pub type UncheckedExtrinsic =
     generic::UncheckedExtrinsic<Address, RuntimeCall, Signature, SignedExtra>;
+
 /// Executive: handles dispatch to the various modules.
 pub type Executive = frame_executive::Executive<
     Runtime,

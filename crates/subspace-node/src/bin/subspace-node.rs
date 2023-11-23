@@ -501,9 +501,7 @@ fn main() -> Result<(), Error> {
 
                         DsnConfig {
                             keypair,
-                            base_path: cli.run.base_path()?.map(|base_path| {
-                                base_path.config_dir(consensus_chain_config.chain_spec.id())
-                            }),
+                            base_path: consensus_chain_config.base_path.path().into(),
                             listen_on: cli.dsn_listen_on,
                             bootstrap_nodes: dsn_bootstrap_nodes,
                             reserved_peers: cli.dsn_reserved_peers,
@@ -514,7 +512,6 @@ fn main() -> Result<(), Error> {
                             max_out_connections: cli.dsn_out_connections,
                             max_pending_in_connections: cli.dsn_pending_in_connections,
                             max_pending_out_connections: cli.dsn_pending_out_connections,
-                            target_connections: cli.dsn_target_connections,
                             external_addresses: cli.dsn_external_addresses,
                             // Override initial Kademlia bootstrapping  with --dev
                             disable_bootstrap_on_start: cli.dsn_disable_bootstrap_on_start

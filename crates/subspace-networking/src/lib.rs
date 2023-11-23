@@ -28,7 +28,8 @@ mod shared;
 pub mod utils;
 
 pub use crate::behavior::persistent_parameters::{
-    NetworkParametersPersistenceError, NetworkingParametersManager,
+    KnownPeersManager, KnownPeersManagerConfig, KnownPeersManagerPersistenceError,
+    KnownPeersRegistry, PeerAddressRemovedEvent,
 };
 pub use crate::node::{
     GetClosestPeersError, Node, SendRequestError, SubscribeError, TopicSubscription,
@@ -53,3 +54,4 @@ pub use protocols::request_response::handlers::segment_header::{
 pub use shared::{NewPeerInfo, PeerDiscovered};
 pub use utils::multihash::Multihash;
 pub use utils::unique_record_binary_heap::{InsertResult, KeyWrapper, UniqueRecordBinaryHeap};
+pub use utils::PeerAddress;

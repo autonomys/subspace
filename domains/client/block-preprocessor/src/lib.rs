@@ -11,18 +11,14 @@
 #![warn(rust_2018_idioms)]
 
 pub mod inherents;
-pub mod runtime_api;
-pub mod runtime_api_full;
-pub mod runtime_api_light;
+pub mod stateless_runtime;
 pub mod xdm_verifier;
 
 use crate::inherents::is_runtime_upgraded;
-use crate::runtime_api::{SetCodeConstructor, SignerExtractor, StateRootExtractor};
 use crate::xdm_verifier::is_valid_xdm;
 use codec::{Decode, Encode};
 use domain_runtime_primitives::opaque::AccountId;
 use domain_runtime_primitives::DomainCoreApi;
-use runtime_api::TimestampExtrinsicConstructor;
 use sc_client_api::BlockBackend;
 use sp_api::{HashT, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
@@ -74,24 +70,22 @@ pub struct PreprocessResult<Block: BlockT> {
     pub bundles: Vec<InboxedBundle<Block::Hash>>,
 }
 
-pub struct DomainBlockPreprocessor<Block, CBlock, Client, CClient, RuntimeApi, ReceiptValidator> {
+pub struct DomainBlockPreprocessor<Block, CBlock, Client, CClient, ReceiptValidator> {
     domain_id: DomainId,
     client: Arc<Client>,
     consensus_client: Arc<CClient>,
-    runtime_api: RuntimeApi,
     receipt_validator: ReceiptValidator,
     _phantom_data: PhantomData<(Block, CBlock)>,
 }
 
-impl<Block, CBlock, Client, CClient, RuntimeApi: Clone, ReceiptValidator: Clone> Clone
-    for DomainBlockPreprocessor<Block, CBlock, Client, CClient, RuntimeApi, ReceiptValidator>
+impl<Block, CBlock, Client, CClient, ReceiptValidator: Clone> Clone
+    for DomainBlockPreprocessor<Block, CBlock, Client, CClient, ReceiptValidator>
 {
     fn clone(&self) -> Self {
         Self {
             domain_id: self.domain_id,
             client: self.client.clone(),
             consensus_client: self.consensus_client.clone(),
-            runtime_api: self.runtime_api.clone(),
             receipt_validator: self.receipt_validator.clone(),
             _phantom_data: self._phantom_data,
         }
@@ -115,18 +109,14 @@ where
     ) -> sp_blockchain::Result<ReceiptValidity>;
 }
 
-impl<Block, CBlock, Client, CClient, RuntimeApi, ReceiptValidator>
-    DomainBlockPreprocessor<Block, CBlock, Client, CClient, RuntimeApi, ReceiptValidator>
+impl<Block, CBlock, Client, CClient, ReceiptValidator>
+    DomainBlockPreprocessor<Block, CBlock, Client, CClient, ReceiptValidator>
 where
     Block: BlockT,
     Block::Hash: Into<H256>,
     CBlock: BlockT,
     CBlock::Hash: From<Block::Hash>,
     NumberFor<CBlock>: From<NumberFor<Block>>,
-    RuntimeApi: SignerExtractor<Block>
-        + StateRootExtractor<Block>
-        + SetCodeConstructor<Block>
-        + TimestampExtrinsicConstructor<Block>,
     Client: HeaderBackend<Block> + ProvideRuntimeApi<Block> + 'static,
     Client::Api: DomainCoreApi<Block> + MessengerApi<Block, NumberFor<Block>>,
     CClient: HeaderBackend<CBlock>
@@ -142,14 +132,12 @@ where
         domain_id: DomainId,
         client: Arc<Client>,
         consensus_client: Arc<CClient>,
-        runtime_api: RuntimeApi,
         receipt_validator: ReceiptValidator,
     ) -> Self {
         Self {
             domain_id,
             client,
             consensus_client,
-            runtime_api,
             receipt_validator,
             _phantom_data: Default::default(),
         }
@@ -214,11 +202,12 @@ where
         let mut inboxed_bundles = Vec::with_capacity(bundles.len());
         let mut valid_extrinsics = Vec::new();
 
+        let runtime_api = self.client.runtime_api();
         for bundle in bundles {
             let extrinsic_root = bundle.extrinsics_root();
             match self.check_bundle_validity(&bundle, &tx_range, at)? {
                 BundleValidity::Valid(extrinsics) => {
-                    let extrinsics: Vec<_> = match self.runtime_api.extract_signer(at, extrinsics) {
+                    let extrinsics: Vec<_> = match runtime_api.extract_signer(at, extrinsics) {
                         Ok(res) => res,
                         Err(e) => {
                             tracing::error!(error = ?e, "Error at calling runtime api: extract_signer");
