@@ -113,6 +113,9 @@ where
                         return Ok(None);
                     }
                 }
+            } else {
+                log::warn!("Operator[{operator_id}] is not registered on the Runtime",);
+                return Ok(None);
             }
         }
 
