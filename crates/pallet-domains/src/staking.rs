@@ -2,7 +2,7 @@
 
 use crate::pallet::{
     DomainRegistry, DomainStakingSummary, NextOperatorId, NominatorCount, Nominators,
-    OperatorIdOwner, Operators, PendingDeposits, PendingNominatorUnlocks,
+    OperatorIdOwner, OperatorSigningKey, Operators, PendingDeposits, PendingNominatorUnlocks,
     PendingOperatorDeregistrations, PendingOperatorSwitches, PendingOperatorUnlocks,
     PendingSlashes, PendingStakingOperationCount, PendingWithdrawals,
 };
@@ -113,6 +113,7 @@ pub enum Error {
     OperatorNotAllowed,
     InvalidOperatorSigningKey,
     MaximumNominators,
+    DuplicateOperatorSigningKey,
 }
 
 // Increase `PendingStakingOperationCount` by one and check if the `MaxPendingStakingOperation`
@@ -142,6 +143,11 @@ pub(crate) fn do_register_operator<T: Config>(
         ensure!(
             config.signing_key != OperatorPublicKey::from(ZERO_OPERATOR_SIGNING_KEY),
             Error::InvalidOperatorSigningKey
+        );
+
+        ensure!(
+            !OperatorSigningKey::<T>::contains_key(config.signing_key.clone()),
+            Error::DuplicateOperatorSigningKey
         );
 
         let domain_obj = DomainRegistry::<T>::get(domain_id).ok_or(Error::DomainNotInitialized)?;
@@ -178,7 +184,7 @@ pub(crate) fn do_register_operator<T: Config>(
         } = config;
 
         let operator = Operator {
-            signing_key,
+            signing_key: signing_key.clone(),
             current_domain_id: domain_id,
             next_domain_id: domain_id,
             minimum_nominator_stake,
@@ -189,6 +195,7 @@ pub(crate) fn do_register_operator<T: Config>(
             status: OperatorStatus::Registered,
         };
         Operators::<T>::insert(operator_id, operator);
+        OperatorSigningKey::<T>::append(signing_key, operator_id);
         // update stake summary to include new operator for next epoch
         domain_stake_summary.next_operators.insert(operator_id);
         // update pending transfers
@@ -774,7 +781,7 @@ pub(crate) mod tests {
 
         let mut ext = new_test_ext();
         ext.execute_with(|| {
-            let (operator_id, operator_config) = register_operator(
+            let (operator_id, mut operator_config) = register_operator(
                 domain_id,
                 operator_account,
                 operator_free_balance,
@@ -813,7 +820,21 @@ pub(crate) mod tests {
                 operator_free_balance - operator_stake - ExistentialDeposit::get()
             );
 
+            // cannot register with same operator key
+            let res = Domains::register_operator(
+                RuntimeOrigin::signed(operator_account),
+                domain_id,
+                operator_stake,
+                operator_config.clone(),
+            );
+            assert_err!(
+                res,
+                Error::<Test>::Staking(crate::staking::Error::DuplicateOperatorSigningKey)
+            );
+
             // cannot use the locked funds to register a new operator
+            let new_pair = OperatorPair::from_seed(&U256::from(1u32).into());
+            operator_config.signing_key = new_pair.public();
             let res = Domains::register_operator(
                 RuntimeOrigin::signed(operator_account),
                 domain_id,

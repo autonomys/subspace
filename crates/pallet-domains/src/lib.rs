@@ -161,7 +161,7 @@ mod pallet {
     use sp_domains::bundle_producer_election::ProofOfElectionError;
     use sp_domains::{
         BundleDigest, DomainId, EpochIndex, GenesisDomain, OperatorAllowList, OperatorId,
-        RuntimeId, RuntimeType,
+        OperatorPublicKey, RuntimeId, RuntimeType,
     };
     use sp_domains_fraud_proof::fraud_proof::FraudProof;
     use sp_domains_fraud_proof::InvalidTransactionCode;
@@ -355,6 +355,13 @@ mod pallet {
     #[pallet::storage]
     pub(super) type OperatorIdOwner<T: Config> =
         StorageMap<_, Identity, OperatorId, T::AccountId, OptionQuery>;
+
+    /// Indexes operator signing key against OperatorId.
+    // TODO: remove BTreeSet with single operatorId before next network
+    //  since there are multiple operators registered with same signing key in gemini-3g
+    #[pallet::storage]
+    pub(super) type OperatorSigningKey<T: Config> =
+        StorageMap<_, Identity, OperatorPublicKey, BTreeSet<OperatorId>, OptionQuery>;
 
     #[pallet::storage]
     pub(super) type DomainStakingSummary<T: Config> =
