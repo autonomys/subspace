@@ -54,6 +54,9 @@ pub fn is_below_threshold(vrf_output: &VrfOutput, threshold: u128) -> bool {
 
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct BundleProducerElectionParams<Balance> {
+    // TODO: current operators is not required anymore.
+    //  This is not removed right now in order to not break runtime api with new version
+    //  marking a todo to remove it before next network.
     pub current_operators: Vec<OperatorId>,
     pub total_domain_stake: Balance,
     pub bundle_slot_probability: (u64, u64),

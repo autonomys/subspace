@@ -9,8 +9,8 @@ use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{HashAndNumber, HeaderBackend};
 use sp_domains::{
-    Bundle, BundleProducerElectionApi, DomainId, DomainsApi, OperatorPublicKey, OperatorSignature,
-    SealedBundleHeader,
+    Bundle, BundleProducerElectionApi, DomainId, DomainsApi, OperatorId, OperatorPublicKey,
+    OperatorSignature, SealedBundleHeader,
 };
 use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{Block as BlockT, Zero};
@@ -34,6 +34,7 @@ where
     CBlock: BlockT,
 {
     domain_id: DomainId,
+    maybe_operator_id: Option<OperatorId>,
     consensus_client: Arc<CClient>,
     client: Arc<Client>,
     bundle_sender: Arc<BundleSender<Block, CBlock>>,
@@ -52,6 +53,7 @@ where
     fn clone(&self) -> Self {
         Self {
             domain_id: self.domain_id,
+            maybe_operator_id: self.maybe_operator_id,
             consensus_client: self.consensus_client.clone(),
             client: self.client.clone(),
             bundle_sender: self.bundle_sender.clone(),
@@ -79,6 +81,7 @@ where
     #[allow(clippy::too_many_arguments)]
     pub(super) fn new(
         domain_id: DomainId,
+        maybe_operator_id: Option<OperatorId>,
         consensus_client: Arc<CClient>,
         client: Arc<Client>,
         domain_bundle_proposer: DomainBundleProposer<
@@ -98,6 +101,7 @@ where
         );
         Self {
             domain_id,
+            maybe_operator_id,
             consensus_client,
             client,
             bundle_sender,
@@ -146,6 +150,7 @@ where
                 slot,
                 consensus_block_info.hash,
                 self.domain_id,
+                self.maybe_operator_id,
                 global_randomness,
             )?
         {

@@ -28,7 +28,7 @@ use sp_consensus::SyncOracle;
 use sp_consensus_slots::Slot;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_core::{Decode, Encode};
-use sp_domains::{BundleProducerElectionApi, DomainId, DomainsApi};
+use sp_domains::{BundleProducerElectionApi, DomainId, DomainsApi, OperatorId};
 use sp_domains_fraud_proof::FraudProofApi;
 use sp_messenger::messages::ChainId;
 use sp_messenger::{MessengerApi, RelayerApi};
@@ -223,6 +223,7 @@ where
     pub domain_id: DomainId,
     pub domain_config: ServiceConfiguration,
     pub domain_created_at: NumberFor<CBlock>,
+    pub maybe_operator_id: Option<OperatorId>,
     pub consensus_client: Arc<CClient>,
     pub consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory<CBlock>,
     pub consensus_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
@@ -324,6 +325,7 @@ where
 {
     let DomainParams {
         domain_id,
+        maybe_operator_id,
         mut domain_config,
         domain_created_at,
         consensus_client,
@@ -450,7 +452,7 @@ where
             transaction_pool: transaction_pool.clone(),
             backend: backend.clone(),
             code_executor: code_executor.clone(),
-            is_authority,
+            maybe_operator_id,
             keystore: params.keystore_container.keystore(),
             bundle_sender: Arc::new(bundle_sender),
             operator_streams,

@@ -221,6 +221,11 @@ where
             .xdm_gossip_worker_builder()
             .gossip_msg_sink();
 
+        let mut maybe_operator_id = None;
+        if role.is_authority() {
+            maybe_operator_id = Some(0)
+        }
+
         let domain_params = domain_service::DomainParams {
             domain_id,
             domain_config,
@@ -235,6 +240,7 @@ where
             domain_message_receiver,
             provider: DefaultProvider,
             skip_empty_bundle_production,
+            maybe_operator_id,
         };
 
         let domain_node = domain_service::new_full::<

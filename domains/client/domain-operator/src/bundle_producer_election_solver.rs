@@ -3,7 +3,9 @@ use sp_consensus_slots::Slot;
 use sp_domains::bundle_producer_election::{
     calculate_threshold, is_below_threshold, make_transcript, BundleProducerElectionParams,
 };
-use sp_domains::{BundleProducerElectionApi, DomainId, OperatorPublicKey, ProofOfElection};
+use sp_domains::{
+    BundleProducerElectionApi, DomainId, OperatorId, OperatorPublicKey, ProofOfElection,
+};
 use sp_keystore::{Keystore, KeystorePtr};
 use sp_runtime::traits::Block as BlockT;
 use sp_runtime::RuntimeAppPublic;
@@ -48,28 +50,29 @@ where
         slot: Slot,
         consensus_block_hash: CBlock::Hash,
         domain_id: DomainId,
+        maybe_operator_id: Option<OperatorId>,
         global_randomness: Randomness,
     ) -> sp_blockchain::Result<Option<(ProofOfElection<CBlock::Hash>, OperatorPublicKey)>> {
-        let BundleProducerElectionParams {
-            current_operators,
-            total_domain_stake,
-            bundle_slot_probability,
-        } = match self
-            .consensus_client
-            .runtime_api()
-            .bundle_producer_election_params(consensus_block_hash, domain_id)?
-        {
-            Some(params) => params,
-            None => return Ok(None),
-        };
+        if let Some(operator_id) = maybe_operator_id {
+            let BundleProducerElectionParams {
+                total_domain_stake,
+                bundle_slot_probability,
+                ..
+            } = match self
+                .consensus_client
+                .runtime_api()
+                .bundle_producer_election_params(consensus_block_hash, domain_id)?
+            {
+                Some(params) => params,
+                None => return Ok(None),
+            };
 
-        let global_challenge = global_randomness.derive_global_challenge(slot.into());
-        let vrf_sign_data = make_transcript(domain_id, &global_challenge).into_sign_data();
+            let global_challenge = global_randomness.derive_global_challenge(slot.into());
+            let vrf_sign_data = make_transcript(domain_id, &global_challenge).into_sign_data();
 
-        // TODO: The runtime API may take 10~20 microseonds each time, looping the operator set
-        // could take too long for the bundle production, track a mapping of signing_key to
-        // operator_id in the runtime and then we can update it to loop the keys in the keystore.
-        for operator_id in current_operators {
+            // Ideally, we can already cache operator signing key since we do not allow changing such key
+            // in the protocol right now. Leaving this as is since we anyway need to need to fetch operator's
+            // latest stake and this also returns the signing key with it.
             if let Some((operator_signing_key, operator_stake)) = self
                 .consensus_client
                 .runtime_api()

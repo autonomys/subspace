@@ -90,7 +90,7 @@ use sp_blockchain::HeaderBackend;
 use sp_consensus::SyncOracle;
 use sp_consensus_slots::Slot;
 use sp_domain_digests::AsPredigest;
-use sp_domains::{Bundle, DomainId, ExecutionReceipt};
+use sp_domains::{Bundle, DomainId, ExecutionReceipt, OperatorId};
 use sp_keystore::KeystorePtr;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use sp_runtime::DigestItem;
@@ -169,7 +169,7 @@ pub struct OperatorParams<
     pub transaction_pool: Arc<TransactionPool>,
     pub backend: Arc<Backend>,
     pub code_executor: Arc<E>,
-    pub is_authority: bool,
+    pub maybe_operator_id: Option<OperatorId>,
     pub keystore: KeystorePtr,
     pub bundle_sender: Arc<BundleSender<Block, CBlock>>,
     pub operator_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS, ASS>,
