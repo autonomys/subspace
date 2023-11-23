@@ -1,5 +1,7 @@
 //! Staking epoch transition for domain
 
+#[cfg(any(not(feature = "runtime-benchmarks"), test))]
+use crate::pallet::OperatorSigningKey;
 use crate::pallet::{
     DomainStakingSummary, LastEpochStakingDistribution, Nominators, OperatorIdOwner, Operators,
     PendingDeposits, PendingNominatorUnlocks, PendingOperatorDeregistrations,
@@ -269,6 +271,15 @@ fn unlock_operator<T: Config>(operator_id: OperatorId) -> Result<(), Error> {
 
         // remove OperatorOwner Details
         OperatorIdOwner::<T>::remove(operator_id);
+
+        // remove operator signing key
+        let maybe_operator_ids = OperatorSigningKey::<T>::take(operator.signing_key.clone());
+        if let Some(mut operator_ids) = maybe_operator_ids {
+            operator_ids.remove(&operator_id);
+            if !operator_ids.is_empty() {
+                OperatorSigningKey::<T>::insert(operator.signing_key, operator_ids)
+            }
+        }
 
         // remove nominator count for this operator.
         NominatorCount::<T>::remove(operator_id);
@@ -732,8 +743,8 @@ mod tests {
     use crate::domain_registry::{DomainConfig, DomainObject};
     use crate::pallet::{
         DomainRegistry, DomainStakingSummary, LastEpochStakingDistribution, NominatorCount,
-        Nominators, OperatorIdOwner, Operators, PendingDeposits, PendingOperatorSwitches,
-        PendingOperatorUnlocks, PendingUnlocks, PendingWithdrawals,
+        Nominators, OperatorIdOwner, OperatorSigningKey, Operators, PendingDeposits,
+        PendingOperatorSwitches, PendingOperatorUnlocks, PendingUnlocks, PendingWithdrawals,
     };
     use crate::staking::tests::register_operator;
     use crate::staking::{
@@ -889,6 +900,10 @@ mod tests {
             do_finalize_domain_current_epoch::<Test>(domain_id, domain_block_number).unwrap();
 
             // unlock operator
+            assert_eq!(
+                OperatorSigningKey::<Test>::get(pair.public()),
+                Some(BTreeSet::from([operator_id]))
+            );
             let unlock_at = 100 + crate::tests::StakeWithdrawalLockingPeriod::get();
             assert!(do_unlock_pending_withdrawals::<Test>(domain_id, unlock_at).is_ok());
 
@@ -913,6 +928,7 @@ mod tests {
 
             assert_eq!(Operators::<Test>::get(operator_id), None);
             assert_eq!(OperatorIdOwner::<Test>::get(operator_id), None);
+            assert_eq!(OperatorSigningKey::<Test>::get(pair.public()), None);
             assert!(PendingOperatorUnlocks::<Test>::get().is_empty());
             assert_eq!(NominatorCount::<Test>::get(operator_id), 0);
         });

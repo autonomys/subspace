@@ -27,6 +27,7 @@ mod tests;
 
 pub mod block_tree;
 pub mod domain_registry;
+pub mod migrations;
 pub mod runtime_registry;
 mod staking;
 mod staking_epoch;
@@ -110,7 +111,7 @@ pub type DomainHashingFor<T> = <<T as Config>::DomainHeader as Header>::Hashing;
 pub type ReceiptHashFor<T> = <<T as Config>::DomainHeader as Header>::Hash;
 
 /// The current storage version.
-const STORAGE_VERSION: StorageVersion = StorageVersion::new(1);
+const STORAGE_VERSION: StorageVersion = StorageVersion::new(2);
 
 #[frame_support::pallet]
 mod pallet {
@@ -161,7 +162,7 @@ mod pallet {
     use sp_domains::bundle_producer_election::ProofOfElectionError;
     use sp_domains::{
         BundleDigest, DomainId, EpochIndex, GenesisDomain, OperatorAllowList, OperatorId,
-        RuntimeId, RuntimeType,
+        OperatorPublicKey, RuntimeId, RuntimeType,
     };
     use sp_domains_fraud_proof::fraud_proof::FraudProof;
     use sp_domains_fraud_proof::InvalidTransactionCode;
@@ -355,6 +356,13 @@ mod pallet {
     #[pallet::storage]
     pub(super) type OperatorIdOwner<T: Config> =
         StorageMap<_, Identity, OperatorId, T::AccountId, OptionQuery>;
+
+    /// Indexes operator signing key against OperatorId.
+    // TODO: remove BTreeSet with single operatorId before next network
+    //  since there are multiple operators registered with same signing key in gemini-3g
+    #[pallet::storage]
+    pub(super) type OperatorSigningKey<T: Config> =
+        StorageMap<_, Identity, OperatorPublicKey, BTreeSet<OperatorId>, OptionQuery>;
 
     #[pallet::storage]
     pub(super) type DomainStakingSummary<T: Config> =
