@@ -93,6 +93,28 @@ pub struct UniqueRecordBinaryHeap<K = RecordKey> {
     limit: usize,
 }
 
+pub enum InsertResult<K> {
+    Ignored,
+    New,
+    Evicted(K),
+}
+
+impl<K> InsertResult<K> {
+    pub fn is_evicted(&self) -> bool {
+        match self {
+            InsertResult::Evicted(_) => return true,
+            _ => return false,
+        }
+    }
+
+    pub fn to_evicted(self) -> Option<K> {
+        match self {
+            InsertResult::Evicted(v) => return Some(v),
+            _ => return None,
+        }
+    }
+}
+
 impl<K> UniqueRecordBinaryHeap<K>
 where
     RecordKey: From<K>,
@@ -127,13 +149,11 @@ where
     ///
     /// If key doesn't pass [`UniqueRecordBinaryHeap::should_include_key`] check, it will be
     /// silently ignored.
-    ///
-    /// Returns: 1. whether the key is inserted 2. the possibly evicted key
-    pub fn insert(&mut self, key: K) -> (bool, Option<K>) {
+    pub fn insert(&mut self, key: K) -> InsertResult<K> {
         let key = RecordHeapKey::new(&self.peer_key, key);
 
         if !self.should_include_key_internal(&key) {
-            return (false, None);
+            return InsertResult::Ignored;
         }
 
         let evicted = if self.is_limit_reached() {
@@ -144,7 +164,11 @@ where
 
         self.set.insert(key);
 
-        (true, evicted)
+        if evicted.is_some() {
+            InsertResult::Evicted(evicted.unwrap())
+        } else {
+            InsertResult::New
+        }
     }
 
     /// Removes a key from the heap.

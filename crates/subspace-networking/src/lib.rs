@@ -52,4 +52,4 @@ pub use protocols::request_response::handlers::segment_header::{
 };
 pub use shared::{NewPeerInfo, PeerDiscovered};
 pub use utils::multihash::Multihash;
-pub use utils::unique_record_binary_heap::{KeyWrapper, UniqueRecordBinaryHeap};
+pub use utils::unique_record_binary_heap::{InsertResult, KeyWrapper, UniqueRecordBinaryHeap};

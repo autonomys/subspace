@@ -16,7 +16,7 @@ use subspace_farmer_components::plotting::{PieceGetter, PieceGetterRetryPolicy};
 use subspace_networking::libp2p::kad::{ProviderRecord, RecordKey};
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::ToMultihash;
-use subspace_networking::{KeyWrapper, LocalRecordProvider, UniqueRecordBinaryHeap};
+use subspace_networking::{InsertResult, KeyWrapper, LocalRecordProvider, UniqueRecordBinaryHeap};
 use tokio::sync::mpsc;
 use tracing::{debug, error, info, trace, warn};
 
@@ -552,9 +552,9 @@ where
 
         let mut caches = self.caches.write();
         match worker_state.heap.insert(heap_key) {
-            (false, _) => return,
+            InsertResult::Ignored => return,
             // Entry is already occupied, we need to find and replace old piece with new one
-            (true, Some(KeyWrapper(old_piece_index))) => {
+            InsertResult::Evicted(KeyWrapper(old_piece_index)) => {
                 for (disk_farm_index, cache) in caches.iter_mut().enumerate() {
                     let old_record_key = RecordKey::from(old_piece_index.to_multihash());
                     let Some(offset) = cache.stored_pieces.remove(&old_record_key) else {
@@ -591,7 +591,7 @@ where
                 );
             }
             // There is free space in cache, need to find a free spot and place piece there
-            (true, None) => {
+            InsertResult::New => {
                 for (disk_farm_index, cache) in caches.iter_mut().enumerate() {
                     let Some(offset) = cache.free_offsets.pop() else {
                         // Not this disk farm

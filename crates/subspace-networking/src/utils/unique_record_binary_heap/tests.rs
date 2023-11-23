@@ -50,12 +50,12 @@ fn binary_heap_limit_works() {
     let key1 = RecordKey::from(vec![1]);
     let key2 = RecordKey::from(vec![2]);
 
-    let (_, evicted) = heap.insert(key1);
-    assert!(evicted.is_none());
+    let result = heap.insert(key1);
+    assert!(!result.is_evicted());
     assert_eq!(heap.size(), 1);
 
-    let (_, evicted) = heap.insert(key2);
-    assert!(evicted.is_some());
+    let result = heap.insert(key2);
+    assert!(result.is_evicted());
     assert_eq!(heap.size(), 1);
 }
 
@@ -71,13 +71,13 @@ fn binary_heap_eviction_works() {
 
     heap.insert(key1.clone());
     let should_be_evicted = heap.should_include_key(key2.clone());
-    let (_, evicted) = heap.insert(key2.clone());
-    assert!(evicted.is_some());
+    let result = heap.insert(key2.clone());
+    assert!(result.is_evicted());
 
     let bucket_key1 = KademliaBucketKey::<RecordKey>::new(key1.clone());
     let bucket_key2 = KademliaBucketKey::<RecordKey>::new(key2.clone());
 
-    let evicted = evicted.unwrap();
+    let evicted = result.to_evicted().unwrap();
     if bucket_key1.distance::<KademliaBucketKey<_>>(&KademliaBucketKey::from(peer_id))
         > bucket_key2.distance::<KademliaBucketKey<_>>(&KademliaBucketKey::from(peer_id))
     {
