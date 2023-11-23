@@ -65,7 +65,7 @@ fn parse_domain_id(s: &str) -> std::result::Result<DomainId, ParseIntError> {
 }
 
 fn parse_operator_id(s: &str) -> std::result::Result<OperatorId, ParseIntError> {
-    s.parse::<u64>().map(Into::into)
+    s.parse::<u64>().map(OperatorId::from)
 }
 
 #[derive(Debug, Parser)]
@@ -220,7 +220,9 @@ impl CliConfiguration<Self> for DomainCli {
 
     fn role(&self, _is_dev: bool) -> Result<sc_service::Role> {
         if self.run.validator {
-            log::warn!("use `--operator-id` argument to run as operator")
+            return Err(sc_cli::Error::Input(
+                "use `--operator-id` argument to run as operator".to_string(),
+            ));
         }
 
         // is authority when operator_id is passed.

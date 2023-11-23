@@ -221,10 +221,7 @@ where
             .xdm_gossip_worker_builder()
             .gossip_msg_sink();
 
-        let mut maybe_operator_id = None;
-        if role.is_authority() {
-            maybe_operator_id = Some(0)
-        }
+        let maybe_operator_id = role.is_authority().then_some(0);
 
         let domain_params = domain_service::DomainParams {
             domain_id,

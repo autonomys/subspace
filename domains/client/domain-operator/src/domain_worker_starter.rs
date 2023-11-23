@@ -119,7 +119,7 @@ pub(super) async fn start_worker<
         );
 
     if let Some(operator_id) = maybe_operator_id {
-        info!("🧑‍🌾 Running as Operator[{operator_id:?}]...");
+        info!("👷 Running as Operator[{operator_id}]...");
         let bundler_fn = {
             let span = span.clone();
             move |consensus_block_info: sp_blockchain::HashAndNumber<CBlock>, slot_info| {

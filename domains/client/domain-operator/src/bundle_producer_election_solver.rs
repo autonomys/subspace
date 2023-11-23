@@ -1,5 +1,7 @@
 use sp_api::ProvideRuntimeApi;
 use sp_consensus_slots::Slot;
+use sp_core::bytes::to_hex;
+use sp_core::ByteArray;
 use sp_domains::bundle_producer_election::{
     calculate_threshold, is_below_threshold, make_transcript, BundleProducerElectionParams,
 };
@@ -13,6 +15,7 @@ use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::Randomness;
 use subspace_runtime_primitives::Balance;
+use tracing::log;
 
 pub(super) struct BundleProducerElectionSolver<Block, CBlock, CClient> {
     keystore: KeystorePtr,
@@ -78,28 +81,36 @@ where
                 .runtime_api()
                 .operator(consensus_block_hash, operator_id)?
             {
-                if let Ok(Some(vrf_signature)) = Keystore::sr25519_vrf_sign(
+                if let Ok(maybe_vrf_signature) = Keystore::sr25519_vrf_sign(
                     &*self.keystore,
                     OperatorPublicKey::ID,
                     &operator_signing_key.clone().into(),
                     &vrf_sign_data,
                 ) {
-                    let threshold = calculate_threshold(
-                        operator_stake,
-                        total_domain_stake,
-                        bundle_slot_probability,
-                    );
+                    if let Some(vrf_signature) = maybe_vrf_signature {
+                        let threshold = calculate_threshold(
+                            operator_stake,
+                            total_domain_stake,
+                            bundle_slot_probability,
+                        );
 
-                    if is_below_threshold(&vrf_signature.output, threshold) {
-                        let proof_of_election = ProofOfElection {
-                            domain_id,
-                            slot_number: slot.into(),
-                            global_randomness,
-                            vrf_signature,
-                            operator_id,
-                            consensus_block_hash,
-                        };
-                        return Ok(Some((proof_of_election, operator_signing_key)));
+                        if is_below_threshold(&vrf_signature.output, threshold) {
+                            let proof_of_election = ProofOfElection {
+                                domain_id,
+                                slot_number: slot.into(),
+                                global_randomness,
+                                vrf_signature,
+                                operator_id,
+                                consensus_block_hash,
+                            };
+                            return Ok(Some((proof_of_election, operator_signing_key)));
+                        }
+                    } else {
+                        log::warn!(
+                            "Operator[{operator_id}]'s Signing key[{}] pair is not available in keystore.",
+                            to_hex(operator_signing_key.as_slice(), false)
+                        );
+                        return Ok(None);
                     }
                 }
             }
