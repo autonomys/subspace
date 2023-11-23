@@ -38,6 +38,7 @@ use crate::block_tree::verify_execution_receipt;
 use crate::staking::OperatorStatus;
 use codec::{Decode, Encode};
 use frame_support::ensure;
+use frame_support::pallet_prelude::StorageVersion;
 use frame_support::traits::fungible::{Inspect, InspectHold};
 use frame_support::traits::{Get, Randomness as RandomnessT};
 use frame_system::offchain::SubmitTransaction;
@@ -108,6 +109,9 @@ pub type DomainBlockNumberFor<T> = <<T as Config>::DomainHeader as Header>::Numb
 pub type DomainHashingFor<T> = <<T as Config>::DomainHeader as Header>::Hashing;
 pub type ReceiptHashFor<T> = <<T as Config>::DomainHeader as Header>::Hash;
 
+/// The current storage version.
+const STORAGE_VERSION: StorageVersion = StorageVersion::new(1);
+
 #[frame_support::pallet]
 mod pallet {
     #![allow(clippy::large_enum_variant)]
@@ -141,7 +145,7 @@ mod pallet {
     use crate::weights::WeightInfo;
     use crate::{
         BalanceOf, DomainBlockNumberFor, ElectionVerificationParams, HoldIdentifier, NominatorId,
-        OpaqueBundleOf, ReceiptHashFor,
+        OpaqueBundleOf, ReceiptHashFor, STORAGE_VERSION,
     };
     use alloc::string::String;
     use codec::FullCodec;
@@ -300,6 +304,7 @@ mod pallet {
 
     #[pallet::pallet]
     #[pallet::without_storage_info]
+    #[pallet::storage_version(STORAGE_VERSION)]
     pub struct Pallet<T>(_);
 
     /// Bundles submitted successfully in current block.
