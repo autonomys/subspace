@@ -93,13 +93,18 @@ pub struct UniqueRecordBinaryHeap<K = RecordKey> {
     limit: usize,
 }
 
+/// insert result for UniqueRecordBinaryHeap::insert
 pub enum InsertResult<K> {
+    /// The inserted item is ignored
     Ignored,
+    /// The inserted item didn't evict an old one
     New,
+    /// The inserted item evicted an old one
     Evicted(K),
 }
 
 impl<K> InsertResult<K> {
+    /// Returns whether it's the `Evicted` variant
     pub fn is_evicted(&self) -> bool {
         match self {
             InsertResult::Evicted(_) => return true,
@@ -107,6 +112,7 @@ impl<K> InsertResult<K> {
         }
     }
 
+    /// Returns `Some` if it's the `Evicted` variant, `None` otherwise
     pub fn to_evicted(self) -> Option<K> {
         match self {
             InsertResult::Evicted(v) => return Some(v),
