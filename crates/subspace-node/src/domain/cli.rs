@@ -29,7 +29,7 @@ use sc_service::{BasePath, Configuration};
 use sp_blockchain::HeaderBackend;
 use sp_domain_digests::AsPredigest;
 use sp_domains::storage::RawGenesis;
-use sp_domains::DomainId;
+use sp_domains::{DomainId, OperatorId};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::Header;
 use sp_runtime::{BuildStorage, DigestItem};
@@ -64,6 +64,10 @@ fn parse_domain_id(s: &str) -> std::result::Result<DomainId, ParseIntError> {
     s.parse::<u32>().map(Into::into)
 }
 
+fn parse_operator_id(s: &str) -> std::result::Result<OperatorId, ParseIntError> {
+    s.parse::<u64>().map(OperatorId::from)
+}
+
 #[derive(Debug, Parser)]
 pub struct DomainCli {
     /// Run a domain node.
@@ -73,9 +77,9 @@ pub struct DomainCli {
     #[clap(long, value_parser = parse_domain_id)]
     pub domain_id: DomainId,
 
-    /// Run the node as an Operator
-    #[arg(long, conflicts_with = "validator")]
-    pub operator: bool,
+    /// Use provider operator id to submit bundles.
+    #[arg(long, value_parser = parse_operator_id)]
+    pub operator_id: Option<OperatorId>,
 
     /// Additional args for domain.
     #[clap(raw = true)]
@@ -214,9 +218,15 @@ impl CliConfiguration<Self> for DomainCli {
         self.run.chain_id(is_dev)
     }
 
-    fn role(&self, is_dev: bool) -> Result<sc_service::Role> {
-        // is authority when operator is enabled or in dev mode
-        let is_authority = self.operator || self.run.validator || is_dev;
+    fn role(&self, _is_dev: bool) -> Result<sc_service::Role> {
+        if self.run.validator {
+            return Err(sc_cli::Error::Input(
+                "use `--operator-id` argument to run as operator".to_string(),
+            ));
+        }
+
+        // is authority when operator_id is passed.
+        let is_authority = self.operator_id.is_some();
 
         Ok(if is_authority {
             Role::Authority

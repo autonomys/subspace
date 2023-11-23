@@ -31,7 +31,7 @@ use sp_block_builder::BlockBuilder;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
 use sp_core::H256;
-use sp_domains::{BundleProducerElectionApi, DomainsApi};
+use sp_domains::{BundleProducerElectionApi, DomainsApi, OperatorId};
 use sp_domains_fraud_proof::FraudProofApi;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::NumberFor;
@@ -57,7 +57,7 @@ pub(super) async fn start_worker<
     spawn_essential: Box<dyn SpawnEssentialNamed>,
     consensus_client: Arc<CClient>,
     consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory<CBlock>,
-    is_authority: bool,
+    maybe_operator_id: Option<OperatorId>,
     bundle_producer: DomainBundleProducer<Block, CBlock, Client, CClient, TransactionPool>,
     bundle_processor: BundleProcessor<Block, CBlock, Client, CClient, Backend, E>,
     operator_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS, ASS>,
@@ -118,27 +118,8 @@ pub(super) async fn start_worker<
             consensus_block_import_throttling_buffer_size,
         );
 
-    if !is_authority {
-        info!("🧑‍ Running as Full node...");
-        drop(new_slot_notification_stream);
-        drop(acknowledgement_sender_stream);
-        while let Some(maybe_block_info) = throttled_block_import_notification_stream.next().await {
-            if let Some(block_info) = maybe_block_info {
-                if let Err(error) = bundle_processor
-                    .clone()
-                    .process_bundles((block_info.hash, block_info.number, block_info.is_new_best))
-                    .instrument(span.clone())
-                    .await
-                {
-                    tracing::error!(?error, "Failed to process consensus block");
-                    // Bring down the service as bundles processor is an essential task.
-                    // TODO: more graceful shutdown.
-                    break;
-                }
-            }
-        }
-    } else {
-        info!("🧑‍🌾 Running as Operator...");
+    if let Some(operator_id) = maybe_operator_id {
+        info!("👷 Running as Operator[{operator_id}]...");
         let bundler_fn = {
             let span = span.clone();
             move |consensus_block_info: sp_blockchain::HashAndNumber<CBlock>, slot_info| {
@@ -212,6 +193,25 @@ pub(super) async fn start_worker<
                             "Failed to send acknowledgement"
                         );
                     }
+                }
+            }
+        }
+    } else {
+        info!("🧑‍ Running as Full node...");
+        drop(new_slot_notification_stream);
+        drop(acknowledgement_sender_stream);
+        while let Some(maybe_block_info) = throttled_block_import_notification_stream.next().await {
+            if let Some(block_info) = maybe_block_info {
+                if let Err(error) = bundle_processor
+                    .clone()
+                    .process_bundles((block_info.hash, block_info.number, block_info.is_new_best))
+                    .instrument(span.clone())
+                    .await
+                {
+                    tracing::error!(?error, "Failed to process consensus block");
+                    // Bring down the service as bundles processor is an essential task.
+                    // TODO: more graceful shutdown.
+                    break;
                 }
             }
         }

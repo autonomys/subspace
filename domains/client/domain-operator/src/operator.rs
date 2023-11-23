@@ -126,6 +126,7 @@ where
 
         let bundle_producer = DomainBundleProducer::new(
             params.domain_id,
+            params.maybe_operator_id,
             params.consensus_client.clone(),
             params.client.clone(),
             domain_bundle_proposer,
@@ -179,7 +180,7 @@ where
                 spawn_essential.clone(),
                 params.consensus_client.clone(),
                 params.consensus_offchain_tx_pool_factory.clone(),
-                params.is_authority,
+                params.maybe_operator_id,
                 bundle_producer,
                 bundle_processor.clone(),
                 params.operator_streams,

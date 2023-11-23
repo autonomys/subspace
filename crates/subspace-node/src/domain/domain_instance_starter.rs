@@ -138,6 +138,7 @@ impl DomainInstanceStarter {
                     domain_message_receiver,
                     provider: eth_provider,
                     skip_empty_bundle_production: true,
+                    maybe_operator_id: domain_cli.operator_id,
                 };
 
                 let mut domain_node = domain_service::new_full::<
