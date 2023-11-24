@@ -473,7 +473,6 @@ where
         _,
         _,
     >(
-        sc_consensus_subspace::slot_duration(&*client)?,
         client.clone(),
         client.clone(),
         kzg.clone(),

@@ -38,7 +38,6 @@ use sp_api::{ApiExt, BlockT, HeaderT, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::Error as ConsensusError;
-use sp_consensus_slots::SlotDuration;
 use sp_consensus_subspace::digests::{
     extract_pre_digest, extract_subspace_digest_items, SubspaceDigestItems,
 };
@@ -541,7 +540,6 @@ where
 /// Also returns a link object used to correctly instantiate the import queue and background worker.
 #[allow(clippy::type_complexity)]
 pub fn block_import<PosTable, Client, Block, I, CIDP, AS>(
-    slot_duration: SlotDuration,
     block_import_inner: I,
     client: Arc<Client>,
     kzg: Kzg,
@@ -578,7 +576,7 @@ where
         .chain_constants(client.info().best_hash)?;
 
     let link = SubspaceLink {
-        slot_duration,
+        slot_duration: chain_constants.slot_duration(),
         new_slot_notification_sender,
         new_slot_notification_stream,
         reward_signing_notification_sender,

@@ -49,8 +49,8 @@ use sp_consensus_subspace::consensus::{is_proof_of_time_valid, verify_solution};
 use sp_consensus_subspace::digests::CompatibleDigestItem;
 use sp_consensus_subspace::offence::{OffenceDetails, OffenceError, OnOffenceHandler};
 use sp_consensus_subspace::{
-    ChainConstants, EquivocationProof, FarmerPublicKey, FarmerSignature, PotParameters,
-    PotParametersChange, SignedVote, Vote, WrappedPotOutput,
+    EquivocationProof, FarmerPublicKey, FarmerSignature, PotParameters, PotParametersChange,
+    SignedVote, Vote, WrappedPotOutput,
 };
 use sp_runtime::generic::DigestItem;
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, Hash, One, Zero};
@@ -1141,25 +1141,6 @@ impl<T: Config> Pallet<T> {
         let archived_segments = SegmentCommitment::<T>::count();
 
         u64::from(archived_segments) * ArchivedHistorySegment::SIZE as u64
-    }
-
-    pub fn chain_constants() -> ChainConstants {
-        ChainConstants::V0 {
-            confirmation_depth_k: T::ConfirmationDepthK::get()
-                .try_into()
-                .unwrap_or_else(|_| panic!("Block number always fits in BlockNumber; qed")),
-            block_authoring_delay: T::BlockAuthoringDelay::get(),
-            era_duration: T::EraDuration::get()
-                .try_into()
-                .unwrap_or_else(|_| panic!("Block number always fits in BlockNumber; qed")),
-            slot_probability: T::SlotProbability::get(),
-            recent_segments: T::RecentSegments::get(),
-            recent_history_fraction: (
-                T::RecentHistoryFraction::get().0,
-                T::RecentHistoryFraction::get().1,
-            ),
-            min_sector_lifetime: T::MinSectorLifetime::get(),
-        }
     }
 }
 

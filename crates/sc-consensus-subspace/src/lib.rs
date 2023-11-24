@@ -35,11 +35,11 @@ use crate::slot_worker::SubspaceSlotWorker;
 pub use crate::slot_worker::SubspaceSyncOracle;
 use crate::verifier::VerificationError;
 use futures::channel::mpsc;
-use log::{debug, info, warn};
+use log::{info, warn};
 use lru::LruCache;
 use parking_lot::Mutex;
 use sc_client_api::backend::AuxStore;
-use sc_client_api::{BlockchainEvents, ProvideUncles, UsageProvider};
+use sc_client_api::{BlockchainEvents, ProvideUncles};
 use sc_consensus::{JustificationSyncLink, SharedBlockImport};
 use sc_consensus_slots::{BackoffAuthoringBlocksStrategy, InherentDataProviderExt, SlotProportion};
 use sc_proof_of_time::source::PotSlotInfoStream;
@@ -48,7 +48,7 @@ use sc_telemetry::TelemetryHandle;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::{ApiError, BlockT, HeaderT, NumberFor, ProvideRuntimeApi};
-use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata, Result as ClientResult};
+use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata};
 use sp_consensus::{Environment, Error as ConsensusError, Proposer, SelectChain, SyncOracle};
 use sp_consensus_slots::{Slot, SlotDuration};
 use sp_consensus_subspace::digests::Error as DigestError;
@@ -320,23 +320,6 @@ where
     }
 }
 
-/// Read configuration from the runtime state at current best block.
-pub fn slot_duration<Block: BlockT, Client>(client: &Client) -> ClientResult<SlotDuration>
-where
-    Block: BlockT,
-    Client: AuxStore + ProvideRuntimeApi<Block> + UsageProvider<Block>,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
-{
-    let block_hash = if client.usage_info().chain.finalized_state.is_some() {
-        client.usage_info().chain.best_hash
-    } else {
-        debug!(target: "subspace", "No finalized state is available. Reading config from genesis");
-        client.usage_info().chain.genesis_hash
-    };
-
-    Ok(client.runtime_api().slot_duration(block_hash)?)
-}
-
 /// Parameters for Subspace.
 pub struct SubspaceParams<Block, Client, SC, E, SO, L, CIDP, BS, AS>
 where
@@ -451,6 +434,11 @@ where
     Error: std::error::Error + Send + From<ConsensusError> + 'static,
     BlockNumber: From<<<Block as BlockT>::Header as HeaderT>::Number>,
 {
+    let chain_constants = client
+        .runtime_api()
+        .chain_constants(client.info().best_hash)
+        .map_err(|error| sp_consensus::Error::ChainLookup(error.to_string()))?;
+
     let worker = SubspaceSlotWorker {
         client: client.clone(),
         block_import,
@@ -465,10 +453,7 @@ where
         max_block_proposal_slot_portion,
         telemetry,
         offchain_tx_pool_factory,
-        chain_constants: client
-            .runtime_api()
-            .chain_constants(client.info().best_hash)
-            .map_err(|error| sp_consensus::Error::ChainLookup(error.to_string()))?,
+        chain_constants,
         segment_headers_store,
         pending_solutions: Default::default(),
         pot_checkpoints: Default::default(),
@@ -478,7 +463,7 @@ where
 
     info!(target: "subspace", "🧑‍🌾 Starting Subspace Authorship worker");
     let inner = sc_proof_of_time::start_slot_worker(
-        subspace_link.slot_duration(),
+        chain_constants.slot_duration(),
         client,
         select_chain,
         worker,
