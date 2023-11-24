@@ -465,47 +465,39 @@ where
         tokio::task::block_in_place(|| SegmentHeadersStore::new(client.clone()))
             .map_err(|error| ServiceError::Application(error.into()))?;
 
-    let (block_import, subspace_link) = sc_consensus_subspace::block_import::block_import::<
-        PosTable,
-        _,
-        _,
-        _,
-        _,
-        _,
-    >(
-        client.clone(),
-        client.clone(),
-        kzg.clone(),
-        {
-            let client = client.clone();
-
-            move |parent_hash, subspace_link: SubspaceLink<Block>| {
+    let (block_import, subspace_link) =
+        sc_consensus_subspace::block_import::block_import::<PosTable, _, _, _, _, _>(
+            client.clone(),
+            client.clone(),
+            kzg.clone(),
+            {
                 let client = client.clone();
 
-                async move {
-                    let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
+                move |parent_hash, subspace_link: SubspaceLink<Block>| {
+                    let client = client.clone();
 
-                    // TODO: Would be nice if the whole header was passed in here
-                    let parent_header = client
-                        .header(parent_hash)?
-                        .expect("Parent header must always exist when block is created; qed");
+                    async move {
+                        let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
 
-                    let parent_block_number = parent_header.number;
+                        // TODO: Would be nice if the whole header was passed in here
+                        let parent_header = client
+                            .header(parent_hash)?
+                            .expect("Parent header must always exist when block is created; qed");
 
-                    let subspace_inherents =
-                        sp_consensus_subspace::inherents::InherentDataProvider::from_timestamp_and_slot_duration(
-                            *timestamp,
-                            subspace_link.slot_duration(),
-                            subspace_link.segment_headers_for_block(parent_block_number + 1),
-                        );
+                        let parent_block_number = parent_header.number;
 
-                    Ok((timestamp, subspace_inherents))
+                        let subspace_inherents =
+                            sp_consensus_subspace::inherents::InherentDataProvider::new(
+                                subspace_link.segment_headers_for_block(parent_block_number + 1),
+                            );
+
+                        Ok((timestamp, subspace_inherents))
+                    }
                 }
-            }
-        },
-        segment_headers_store.clone(),
-        pot_verifier.clone(),
-    )?;
+            },
+            segment_headers_store.clone(),
+            pot_verifier.clone(),
+        )?;
 
     let sync_target_block_number = Arc::new(AtomicU32::new(0));
     let transaction_pool = crate::transaction_pool::new_full(
@@ -957,13 +949,11 @@ where
                         let parent_block_number = parent_header.number;
 
                         let subspace_inherents =
-                            sp_consensus_subspace::inherents::InherentDataProvider::from_timestamp_and_slot_duration(
-                                *timestamp,
-                                subspace_link.slot_duration(),
+                            sp_consensus_subspace::inherents::InherentDataProvider::new(
                                 subspace_link.segment_headers_for_block(parent_block_number + 1),
                             );
 
-                        Ok((subspace_inherents, timestamp))
+                        Ok((timestamp, subspace_inherents))
                     }
                 }
             },

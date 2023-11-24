@@ -576,7 +576,6 @@ where
         .chain_constants(client.info().best_hash)?;
 
     let link = SubspaceLink {
-        slot_duration: chain_constants.slot_duration(),
         new_slot_notification_sender,
         new_slot_notification_stream,
         reward_signing_notification_sender,

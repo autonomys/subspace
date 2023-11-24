@@ -605,7 +605,7 @@ impl MockConsensusNode {
             <Slot as Into<u64>>::into(slot) * SLOT_DURATION,
         ));
         let subspace_inherents =
-            sp_consensus_subspace::inherents::InherentDataProvider::new(slot, vec![]);
+            sp_consensus_subspace::inherents::InherentDataProvider::new(vec![]);
 
         let inherent_data = (subspace_inherents, timestamp)
             .create_inherent_data()

@@ -41,7 +41,7 @@ use parking_lot::Mutex;
 use sc_client_api::backend::AuxStore;
 use sc_client_api::{BlockchainEvents, ProvideUncles};
 use sc_consensus::{JustificationSyncLink, SharedBlockImport};
-use sc_consensus_slots::{BackoffAuthoringBlocksStrategy, InherentDataProviderExt, SlotProportion};
+use sc_consensus_slots::{BackoffAuthoringBlocksStrategy, SlotProportion};
 use sc_proof_of_time::source::PotSlotInfoStream;
 use sc_proof_of_time::verifier::PotVerifier;
 use sc_telemetry::TelemetryHandle;
@@ -50,7 +50,7 @@ use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::{ApiError, BlockT, HeaderT, NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata};
 use sp_consensus::{Environment, Error as ConsensusError, Proposer, SelectChain, SyncOracle};
-use sp_consensus_slots::{Slot, SlotDuration};
+use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::Error as DigestError;
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi};
 use sp_core::H256;
@@ -428,7 +428,6 @@ where
     SO: SyncOracle + Send + Sync + Clone + 'static,
     L: JustificationSyncLink<Block> + 'static,
     CIDP: CreateInherentDataProviders<Block, ()> + Send + Sync + 'static,
-    CIDP::InherentDataProviders: InherentDataProviderExt + Send,
     BS: BackoffAuthoringBlocksStrategy<NumberFor<Block>> + Send + Sync + 'static,
     AS: AuxStore + Send + Sync + 'static,
     Error: std::error::Error + Send + From<ConsensusError> + 'static,
@@ -497,7 +496,6 @@ impl Future for SubspaceWorker {
 /// State that must be shared between the import queue and the authoring logic.
 #[derive(Clone)]
 pub struct SubspaceLink<Block: BlockT> {
-    slot_duration: SlotDuration,
     new_slot_notification_sender: SubspaceNotificationSender<NewSlotNotification>,
     new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
     reward_signing_notification_sender: SubspaceNotificationSender<RewardSigningNotification>,
@@ -515,11 +513,6 @@ pub struct SubspaceLink<Block: BlockT> {
 }
 
 impl<Block: BlockT> SubspaceLink<Block> {
-    /// Get the slot duration from this link.
-    pub fn slot_duration(&self) -> SlotDuration {
-        self.slot_duration
-    }
-
     /// Get stream with notifications about new slot arrival with ability to send solution back.
     pub fn new_slot_notification_stream(&self) -> SubspaceNotificationStream<NewSlotNotification> {
         self.new_slot_notification_stream.clone()
