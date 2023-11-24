@@ -465,7 +465,7 @@ where
         tokio::task::block_in_place(|| SegmentHeadersStore::new(client.clone()))
             .map_err(|error| ServiceError::Application(error.into()))?;
 
-    let (block_import, subspace_link) = sc_consensus_subspace::block_import::<
+    let (block_import, subspace_link) = sc_consensus_subspace::block_import::block_import::<
         PosTable,
         _,
         _,
