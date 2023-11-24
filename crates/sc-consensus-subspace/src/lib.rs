@@ -16,7 +16,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 #![doc = include_str!("../README.md")]
-#![feature(let_chains, try_blocks)]
+#![feature(const_option, let_chains, try_blocks)]
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
 

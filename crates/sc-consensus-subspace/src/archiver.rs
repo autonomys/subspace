@@ -44,6 +44,7 @@ use sp_runtime::traits::{Block as BlockT, CheckedSub, Header, NumberFor, One, Ze
 use sp_runtime::{Justifications, Saturating};
 use std::error::Error;
 use std::future::Future;
+use std::num::NonZeroUsize;
 use std::slice;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
@@ -206,7 +207,8 @@ where
 /// Ideally, we'd decouple pruning from finalization, but it may require invasive changes in
 /// Substrate and is not worth it right now.
 /// https://github.com/paritytech/substrate/discussions/14359
-pub(crate) const FINALIZATION_DEPTH_IN_SEGMENTS: usize = 5;
+pub(crate) const FINALIZATION_DEPTH_IN_SEGMENTS: NonZeroUsize =
+    NonZeroUsize::new(5).expect("Not zero; qed");
 
 fn find_last_archived_block<Block, Client, AS>(
     client: &Client,
@@ -796,7 +798,7 @@ where
                     segment_headers
                         .iter()
                         .flat_map(|(_k, v)| v.iter().rev())
-                        .nth(FINALIZATION_DEPTH_IN_SEGMENTS)
+                        .nth(FINALIZATION_DEPTH_IN_SEGMENTS.get())
                         .map(|segment_header| segment_header.last_archived_block().number)
                 };
 

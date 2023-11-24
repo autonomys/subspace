@@ -49,7 +49,6 @@ use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
 use sp_runtime::traits::One;
 use sp_runtime::Justifications;
 use std::marker::PhantomData;
-use std::num::NonZeroUsize;
 use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{BlockNumber, PublicKey, SectorId};
@@ -584,13 +583,8 @@ where
         archived_segment_notification_stream,
         block_importing_notification_sender,
         block_importing_notification_stream,
-        // TODO: Consider making `confirmation_depth_k` non-zero
         segment_headers: Arc::new(Mutex::new(LruCache::new(
-            NonZeroUsize::new(
-                (FINALIZATION_DEPTH_IN_SEGMENTS + 1)
-                    .max(chain_constants.confirmation_depth_k() as usize),
-            )
-            .expect("Confirmation depth of zero is not supported"),
+            FINALIZATION_DEPTH_IN_SEGMENTS.saturating_add(1),
         ))),
         kzg,
     };
