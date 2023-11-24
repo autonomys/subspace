@@ -18,16 +18,12 @@
 //!
 //! Contains implementation of block import with corresponding checks and notifications.
 
-use crate::archiver::{SegmentHeadersStore, FINALIZATION_DEPTH_IN_SEGMENTS};
+use crate::archiver::SegmentHeadersStore;
 use crate::verifier::VerificationError;
-use crate::{
-    aux_schema, notification, slot_worker, BlockImportingNotification, Error, SubspaceLink,
-};
+use crate::{aux_schema, slot_worker, BlockImportingNotification, Error, SubspaceLink};
 use futures::channel::mpsc;
 use futures::StreamExt;
 use log::warn;
-use lru::LruCache;
-use parking_lot::Mutex;
 use sc_client_api::backend::AuxStore;
 use sc_client_api::BlockBackend;
 use sc_consensus::block_import::{
@@ -50,7 +46,6 @@ use sp_runtime::traits::One;
 use sp_runtime::Justifications;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{BlockNumber, PublicKey, SectorId};
 use subspace_proof_of_space::Table;
 use subspace_verification::{calculate_block_weight, PieceCheckParams, VerifySolutionParams};
@@ -101,7 +96,8 @@ where
     AS: AuxStore + Send + Sync + 'static,
     BlockNumber: From<<<Block as BlockT>::Header as HeaderT>::Number>,
 {
-    fn new(
+    /// Produce a Subspace block-import object to be used later on in the construction of an import-queue.
+    pub fn new(
         client: Arc<Client>,
         block_import: I,
         subspace_link: SubspaceLink<Block>,
@@ -531,73 +527,4 @@ where
     ) -> Result<ImportResult, Self::Error> {
         self.inner.check_block(block).await.map_err(Into::into)
     }
-}
-
-/// Produce a Subspace block-import object to be used later on in the construction of an
-/// import-queue.
-///
-/// Also returns a link object used to correctly instantiate the import queue and background worker.
-#[allow(clippy::type_complexity)]
-pub fn block_import<PosTable, Client, Block, I, CIDP, AS>(
-    block_import_inner: I,
-    client: Arc<Client>,
-    kzg: Kzg,
-    create_inherent_data_providers: CIDP,
-    segment_headers_store: SegmentHeadersStore<AS>,
-    pot_verifier: PotVerifier,
-) -> Result<
-    (
-        SubspaceBlockImport<PosTable, Block, Client, I, CIDP, AS>,
-        SubspaceLink<Block>,
-    ),
-    sp_blockchain::Error,
->
-where
-    PosTable: Table,
-    Block: BlockT,
-    Client: ProvideRuntimeApi<Block> + BlockBackend<Block> + HeaderBackend<Block> + AuxStore,
-    Client::Api: BlockBuilderApi<Block> + SubspaceApi<Block, FarmerPublicKey>,
-    CIDP: CreateInherentDataProviders<Block, SubspaceLink<Block>> + Send + Sync + 'static,
-    AS: AuxStore + Send + Sync + 'static,
-    BlockNumber: From<<<Block as BlockT>::Header as HeaderT>::Number>,
-{
-    let (new_slot_notification_sender, new_slot_notification_stream) =
-        notification::channel("subspace_new_slot_notification_stream");
-    let (reward_signing_notification_sender, reward_signing_notification_stream) =
-        notification::channel("subspace_reward_signing_notification_stream");
-    let (archived_segment_notification_sender, archived_segment_notification_stream) =
-        notification::channel("subspace_archived_segment_notification_stream");
-    let (block_importing_notification_sender, block_importing_notification_stream) =
-        notification::channel("subspace_block_importing_notification_stream");
-
-    let chain_constants = client
-        .runtime_api()
-        .chain_constants(client.info().best_hash)?;
-
-    let link = SubspaceLink {
-        new_slot_notification_sender,
-        new_slot_notification_stream,
-        reward_signing_notification_sender,
-        reward_signing_notification_stream,
-        archived_segment_notification_sender,
-        archived_segment_notification_stream,
-        block_importing_notification_sender,
-        block_importing_notification_stream,
-        segment_headers: Arc::new(Mutex::new(LruCache::new(
-            FINALIZATION_DEPTH_IN_SEGMENTS.saturating_add(1),
-        ))),
-        kzg,
-    };
-
-    let import = SubspaceBlockImport::new(
-        client,
-        block_import_inner,
-        link.clone(),
-        create_inherent_data_providers,
-        chain_constants,
-        segment_headers_store,
-        pot_verifier,
-    );
-
-    Ok((import, link))
 }

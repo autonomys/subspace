@@ -52,6 +52,7 @@ use sc_client_api::{
 use sc_consensus::{BasicQueue, DefaultImportQueue, ImportQueue, SharedBlockImport};
 use sc_consensus_slots::SlotProportion;
 use sc_consensus_subspace::archiver::{create_subspace_archiver, SegmentHeadersStore};
+use sc_consensus_subspace::block_import::SubspaceBlockImport;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::verifier::{SubspaceVerifier, SubspaceVerifierOptions};
 use sc_consensus_subspace::{
@@ -434,9 +435,10 @@ where
     let kzg = tokio::task::block_in_place(|| Kzg::new(embedded_kzg_settings()));
 
     let client = Arc::new(client);
+    let client_info = client.info();
 
     let pot_verifier = PotVerifier::new(
-        PotSeed::from_genesis(client.info().genesis_hash.as_ref(), pot_external_entropy),
+        PotSeed::from_genesis(client_info.genesis_hash.as_ref(), pot_external_entropy),
         POT_VERIFIER_CACHE_SIZE,
     );
 
@@ -465,42 +467,47 @@ where
         tokio::task::block_in_place(|| SegmentHeadersStore::new(client.clone()))
             .map_err(|error| ServiceError::Application(error.into()))?;
 
-    let (block_import, subspace_link) =
-        sc_consensus_subspace::block_import::block_import::<PosTable, _, _, _, _, _>(
-            client.clone(),
-            client.clone(),
-            kzg.clone(),
-            {
+    let chain_constants = client
+        .runtime_api()
+        .chain_constants(client_info.best_hash)
+        .map_err(|error| ServiceError::Application(error.into()))?;
+
+    let subspace_link = SubspaceLink::new(kzg.clone());
+    let block_import = SubspaceBlockImport::<PosTable, _, _, _, _, _>::new(
+        client.clone(),
+        client.clone(),
+        subspace_link.clone(),
+        {
+            let client = client.clone();
+
+            move |parent_hash, subspace_link: SubspaceLink<Block>| {
                 let client = client.clone();
 
-                move |parent_hash, subspace_link: SubspaceLink<Block>| {
-                    let client = client.clone();
+                async move {
+                    let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
 
-                    async move {
-                        let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
+                    let parent_header = client
+                        .header(parent_hash)?
+                        .expect("Parent header must always exist when block is created; qed");
 
-                        // TODO: Would be nice if the whole header was passed in here
-                        let parent_header = client
-                            .header(parent_hash)?
-                            .expect("Parent header must always exist when block is created; qed");
+                    let parent_block_number = parent_header.number;
 
-                        let parent_block_number = parent_header.number;
+                    let subspace_inherents =
+                        sp_consensus_subspace::inherents::InherentDataProvider::new(
+                            subspace_link.segment_headers_for_block(parent_block_number + 1),
+                        );
 
-                        let subspace_inherents =
-                            sp_consensus_subspace::inherents::InherentDataProvider::new(
-                                subspace_link.segment_headers_for_block(parent_block_number + 1),
-                            );
-
-                        Ok((timestamp, subspace_inherents))
-                    }
+                    Ok((timestamp, subspace_inherents))
                 }
-            },
-            segment_headers_store.clone(),
-            pot_verifier.clone(),
-        )?;
+            }
+        },
+        chain_constants,
+        segment_headers_store.clone(),
+        pot_verifier.clone(),
+    );
 
     let sync_target_block_number = Arc::new(AtomicU32::new(0));
-    let transaction_pool = crate::transaction_pool::new_full(
+    let transaction_pool = transaction_pool::new_full(
         config,
         &task_manager,
         client.clone(),
@@ -509,6 +516,7 @@ where
 
     let verifier = SubspaceVerifier::<PosTable, _, _, _>::new(SubspaceVerifierOptions {
         client: client.clone(),
+        chain_constants,
         kzg,
         select_chain: select_chain.clone(),
         telemetry: telemetry.as_ref().map(|x| x.handle()),
@@ -517,7 +525,7 @@ where
         sync_target_block_number: Arc::clone(&sync_target_block_number),
         is_authoring_blocks: config.role.is_authority(),
         pot_verifier: pot_verifier.clone(),
-    })?;
+    });
 
     let block_import = SharedBlockImport::new(block_import);
     let import_queue = BasicQueue::new(

@@ -29,7 +29,7 @@ mod slot_worker;
 mod tests;
 pub mod verifier;
 
-use crate::archiver::SegmentHeadersStore;
+use crate::archiver::{SegmentHeadersStore, FINALIZATION_DEPTH_IN_SEGMENTS};
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use crate::slot_worker::SubspaceSlotWorker;
 pub use crate::slot_worker::SubspaceSyncOracle;
@@ -513,6 +513,33 @@ pub struct SubspaceLink<Block: BlockT> {
 }
 
 impl<Block: BlockT> SubspaceLink<Block> {
+    /// Create new instance.
+    pub fn new(kzg: Kzg) -> Self {
+        let (new_slot_notification_sender, new_slot_notification_stream) =
+            notification::channel("subspace_new_slot_notification_stream");
+        let (reward_signing_notification_sender, reward_signing_notification_stream) =
+            notification::channel("subspace_reward_signing_notification_stream");
+        let (archived_segment_notification_sender, archived_segment_notification_stream) =
+            notification::channel("subspace_archived_segment_notification_stream");
+        let (block_importing_notification_sender, block_importing_notification_stream) =
+            notification::channel("subspace_block_importing_notification_stream");
+
+        Self {
+            new_slot_notification_sender,
+            new_slot_notification_stream,
+            reward_signing_notification_sender,
+            reward_signing_notification_stream,
+            archived_segment_notification_sender,
+            archived_segment_notification_stream,
+            block_importing_notification_sender,
+            block_importing_notification_stream,
+            segment_headers: Arc::new(Mutex::new(LruCache::new(
+                FINALIZATION_DEPTH_IN_SEGMENTS.saturating_add(1),
+            ))),
+            kzg,
+        }
+    }
+
     /// Get stream with notifications about new slot arrival with ability to send solution back.
     pub fn new_slot_notification_stream(&self) -> SubspaceNotificationStream<NewSlotNotification> {
         self.new_slot_notification_stream.clone()

@@ -102,6 +102,8 @@ where
 {
     /// Substrate client
     pub client: Arc<Client>,
+    /// Subspace chain constants
+    pub chain_constants: ChainConstants,
     /// Kzg instance
     pub kzg: Kzg,
     /// Chain selection rule
@@ -153,11 +155,10 @@ where
     SelectChain: sp_consensus::SelectChain<Block>,
 {
     /// Create new instance
-    pub fn new(
-        options: SubspaceVerifierOptions<Block, Client, SelectChain>,
-    ) -> sp_blockchain::Result<Self> {
+    pub fn new(options: SubspaceVerifierOptions<Block, Client, SelectChain>) -> Self {
         let SubspaceVerifierOptions {
             client,
+            chain_constants,
             kzg,
             select_chain,
             telemetry,
@@ -168,11 +169,7 @@ where
             pot_verifier,
         } = options;
 
-        let chain_constants = client
-            .runtime_api()
-            .chain_constants(client.info().best_hash)?;
-
-        Ok(Self {
+        Self {
             client,
             kzg,
             select_chain,
@@ -187,7 +184,7 @@ where
             block_list_verification_semaphore: Semaphore::new(BLOCKS_LIST_CHECK_CONCURRENCY),
             _pos_table: Default::default(),
             _block: Default::default(),
-        })
+        }
     }
 
     /// Determine if full proof of time verification is needed for this block number
