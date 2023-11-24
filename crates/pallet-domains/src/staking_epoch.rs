@@ -273,13 +273,7 @@ fn unlock_operator<T: Config>(operator_id: OperatorId) -> Result<(), Error> {
         OperatorIdOwner::<T>::remove(operator_id);
 
         // remove operator signing key
-        let maybe_operator_ids = OperatorSigningKey::<T>::take(operator.signing_key.clone());
-        if let Some(mut operator_ids) = maybe_operator_ids {
-            operator_ids.remove(&operator_id);
-            if !operator_ids.is_empty() {
-                OperatorSigningKey::<T>::insert(operator.signing_key, operator_ids)
-            }
-        }
+        OperatorSigningKey::<T>::remove(operator.signing_key.clone());
 
         // remove nominator count for this operator.
         NominatorCount::<T>::remove(operator_id);
@@ -902,7 +896,7 @@ mod tests {
             // unlock operator
             assert_eq!(
                 OperatorSigningKey::<Test>::get(pair.public()),
-                Some(BTreeSet::from([operator_id]))
+                Some(operator_id)
             );
             let unlock_at = 100 + crate::tests::StakeWithdrawalLockingPeriod::get();
             assert!(do_unlock_pending_withdrawals::<Test>(domain_id, unlock_at).is_ok());
