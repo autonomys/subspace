@@ -731,7 +731,18 @@ pub type VersionCheckedMigrateDomainsV1ToV2<T> = VersionedMigration<
     <T as frame_system::Config>::DbWeight,
 >;
 
-pub type Migrations = VersionCheckedMigrateDomainsV1ToV2<Runtime>;
+pub type VersionCheckedMigrateDomainsV2ToV3<T> = VersionedMigration<
+    2,
+    3,
+    pallet_domains::migrations::VersionUncheckedMigrateV2ToV3<T>,
+    pallet_domains::Pallet<T>,
+    <T as frame_system::Config>::DbWeight,
+>;
+
+pub type Migrations = (
+    VersionCheckedMigrateDomainsV1ToV2<Runtime>,
+    VersionCheckedMigrateDomainsV2ToV3<Runtime>,
+);
 
 /// Executive: handles dispatch to the various modules.
 pub type Executive = frame_executive::Executive<

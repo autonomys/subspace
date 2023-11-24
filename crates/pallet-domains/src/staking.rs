@@ -195,7 +195,7 @@ pub(crate) fn do_register_operator<T: Config>(
             status: OperatorStatus::Registered,
         };
         Operators::<T>::insert(operator_id, operator);
-        OperatorSigningKey::<T>::append(signing_key, operator_id);
+        OperatorSigningKey::<T>::insert(signing_key, operator_id);
         // update stake summary to include new operator for next epoch
         domain_stake_summary.next_operators.insert(operator_id);
         // update pending transfers

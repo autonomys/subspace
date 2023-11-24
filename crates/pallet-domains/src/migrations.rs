@@ -1,34 +1,72 @@
 //! Migration module for pallet-domains
 
-use crate::pallet::{OperatorSigningKey, Operators};
 use crate::Config;
 use frame_support::traits::OnRuntimeUpgrade;
 use frame_support::weights::Weight;
-use sp_core::Get;
 
 pub struct VersionUncheckedMigrateV1ToV2<T>(sp_std::marker::PhantomData<T>);
 impl<T: Config> OnRuntimeUpgrade for VersionUncheckedMigrateV1ToV2<T> {
     fn on_runtime_upgrade() -> Weight {
-        index_operator_signing_keys::<T>()
+        signing_key_index_migration::index_operator_signing_keys_v1_to_v2::<T>()
     }
 }
 
-/// Indexes the currently used operator's signing keys into
-/// newly introduced storage.
-fn index_operator_signing_keys<T: Config>() -> Weight {
-    let mut count = 0;
-    Operators::<T>::iter().for_each(|(operator_id, operator)| {
-        count += 1;
-        OperatorSigningKey::<T>::append(operator.signing_key, operator_id)
-    });
+pub struct VersionUncheckedMigrateV2ToV3<T>(sp_std::marker::PhantomData<T>);
+impl<T: Config> OnRuntimeUpgrade for VersionUncheckedMigrateV2ToV3<T> {
+    fn on_runtime_upgrade() -> Weight {
+        signing_key_index_migration::index_operator_signing_keys_v2_to_v3::<T>()
+    }
+}
 
-    T::DbWeight::get().reads_writes(count, count)
+pub(super) mod signing_key_index_migration {
+    use crate::pallet::{OperatorSigningKey as OperatorSigningKeyV3, Operators};
+    use crate::Config;
+    use frame_support::pallet_prelude::{OptionQuery, Weight};
+    use frame_support::{storage_alias, Identity};
+    use sp_core::Get;
+    use sp_domains::{OperatorId, OperatorPublicKey};
+    use sp_std::collections::btree_set::BTreeSet;
+
+    #[storage_alias]
+    pub(super) type OperatorSigningKey<T: Config> = StorageMap<
+        crate::Pallet<T>,
+        Identity,
+        OperatorPublicKey,
+        BTreeSet<OperatorId>,
+        OptionQuery,
+    >;
+
+    /// Indexes the currently used operator's signing keys into v2 domains storage.
+    pub(super) fn index_operator_signing_keys_v1_to_v2<T: Config>() -> Weight {
+        let mut count = 0;
+        Operators::<T>::iter().for_each(|(operator_id, operator)| {
+            count += 1;
+            OperatorSigningKey::<T>::append(operator.signing_key, operator_id)
+        });
+
+        T::DbWeight::get().reads_writes(count, count)
+    }
+
+    /// Indexes the currently used operator's signing keys into v3 storage item.
+    pub(super) fn index_operator_signing_keys_v2_to_v3<T: Config>() -> Weight {
+        let mut count = 0;
+        let keys = OperatorSigningKey::<T>::drain();
+        keys.for_each(|(signing_key, operators)| {
+            count += 1;
+            let maybe_operator_id = operators.first().cloned();
+            if let Some(operator_id) = maybe_operator_id {
+                OperatorSigningKeyV3::<T>::insert(signing_key, operator_id)
+            }
+        });
+
+        T::DbWeight::get().reads_writes(count, count)
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use crate::migrations::index_operator_signing_keys;
-    use crate::pallet::{OperatorSigningKey, Operators};
+    use crate::migrations::signing_key_index_migration::OperatorSigningKey as OperatorSigningKeyV2;
+    use crate::pallet::{OperatorSigningKey as OperatorSigningKeyV3, Operators};
     use crate::staking::{Operator, OperatorStatus};
     use crate::tests::{new_test_ext, Test};
     use sp_core::{Pair, U256};
@@ -66,26 +104,50 @@ mod tests {
             // operator uses pair_2
             Operators::<Test>::insert(3, create_operator(pair_2.public()));
 
-            assert!(!OperatorSigningKey::<Test>::contains_key(pair_1.public()));
-            assert!(!OperatorSigningKey::<Test>::contains_key(pair_2.public()));
+            assert!(!OperatorSigningKeyV2::<Test>::contains_key(pair_1.public()));
+            assert!(!OperatorSigningKeyV2::<Test>::contains_key(pair_2.public()));
         });
 
         ext.commit_all().unwrap();
 
         ext.execute_with(|| {
-            let weights = index_operator_signing_keys::<Test>();
+            let weights =
+                crate::migrations::signing_key_index_migration::index_operator_signing_keys_v1_to_v2::<Test>(
+                );
             assert_eq!(
                 weights,
                 <Test as frame_system::Config>::DbWeight::get().reads_writes(3, 3),
             );
 
             assert_eq!(
-                OperatorSigningKey::<Test>::get(pair_1.public()),
+                OperatorSigningKeyV2::<Test>::get(pair_1.public()),
                 Some(BTreeSet::from([1]))
             );
             assert_eq!(
-                OperatorSigningKey::<Test>::get(pair_2.public()),
+                OperatorSigningKeyV2::<Test>::get(pair_2.public()),
                 Some(BTreeSet::from([2, 3]))
+            );
+        });
+
+        ext.commit_all().unwrap();
+
+        ext.execute_with(|| {
+            let weights =
+                crate::migrations::signing_key_index_migration::index_operator_signing_keys_v2_to_v3::<Test>(
+                );
+            assert_eq!(
+                weights,
+                // only 2 migrations since we have only 2 signing keys
+                <Test as frame_system::Config>::DbWeight::get().reads_writes(2, 2),
+            );
+
+            assert_eq!(
+                OperatorSigningKeyV3::<Test>::get(pair_1.public()),
+                Some(1)
+            );
+            assert_eq!(
+                OperatorSigningKeyV3::<Test>::get(pair_2.public()),
+                Some(2)
             );
         })
     }

@@ -111,7 +111,7 @@ pub type DomainHashingFor<T> = <<T as Config>::DomainHeader as Header>::Hashing;
 pub type ReceiptHashFor<T> = <<T as Config>::DomainHeader as Header>::Hash;
 
 /// The current storage version.
-const STORAGE_VERSION: StorageVersion = StorageVersion::new(2);
+const STORAGE_VERSION: StorageVersion = StorageVersion::new(3);
 
 #[frame_support::pallet]
 mod pallet {
@@ -358,11 +358,9 @@ mod pallet {
         StorageMap<_, Identity, OperatorId, T::AccountId, OptionQuery>;
 
     /// Indexes operator signing key against OperatorId.
-    // TODO: remove BTreeSet with single operatorId before next network
-    //  since there are multiple operators registered with same signing key in gemini-3g
     #[pallet::storage]
     pub(super) type OperatorSigningKey<T: Config> =
-        StorageMap<_, Identity, OperatorPublicKey, BTreeSet<OperatorId>, OptionQuery>;
+        StorageMap<_, Identity, OperatorPublicKey, OperatorId, OptionQuery>;
 
     #[pallet::storage]
     pub(super) type DomainStakingSummary<T: Config> =
