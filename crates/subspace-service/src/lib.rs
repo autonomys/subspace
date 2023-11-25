@@ -168,7 +168,9 @@ struct BlockImportWrapper<BI>(BI);
 impl<Block, BI> BlockImport<Block> for BlockImportWrapper<BI>
 where
     Block: BlockT,
-    BI: BlockImport<Block, Error = sc_consensus_subspace::Error<Block::Header>> + Send + Sync,
+    BI: BlockImport<Block, Error = sc_consensus_subspace::block_import::Error<Block::Header>>
+        + Send
+        + Sync,
 {
     type Error = sp_consensus::Error;
 

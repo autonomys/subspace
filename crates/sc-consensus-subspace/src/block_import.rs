@@ -20,7 +20,7 @@
 
 use crate::archiver::SegmentHeadersStore;
 use crate::verifier::VerificationError;
-use crate::{aux_schema, slot_worker, Error, SubspaceLink};
+use crate::{aux_schema, slot_worker, SubspaceLink};
 use futures::channel::mpsc;
 use futures::StreamExt;
 use log::warn;
@@ -30,9 +30,10 @@ use sc_consensus::block_import::{
     BlockCheckParams, BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult,
 };
 use sc_proof_of_time::verifier::PotVerifier;
-use sp_api::{ApiExt, BlockT, HeaderT, ProvideRuntimeApi};
+use sp_api::{ApiError, ApiExt, BlockT, HeaderT, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
 use sp_blockchain::HeaderBackend;
+use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::{
     extract_pre_digest, extract_subspace_digest_items, SubspaceDigestItems,
 };
@@ -44,7 +45,9 @@ use sp_runtime::traits::{NumberFor, One};
 use sp_runtime::Justifications;
 use std::marker::PhantomData;
 use std::sync::Arc;
-use subspace_core_primitives::{BlockNumber, PublicKey, SectorId};
+use subspace_core_primitives::{
+    BlockNumber, HistorySize, PublicKey, SectorId, SegmentHeader, SegmentIndex, SolutionRange,
+};
 use subspace_proof_of_space::Table;
 use subspace_verification::{calculate_block_weight, PieceCheckParams, VerifySolutionParams};
 
@@ -60,6 +63,208 @@ where
     /// Sender for pausing the block import when operator is not fast enough to process
     /// the consensus block.
     pub acknowledgement_sender: mpsc::Sender<()>,
+}
+use subspace_verification::Error as VerificationPrimitiveError;
+
+/// Errors encountered by the Subspace authorship task.
+#[derive(Debug, thiserror::Error)]
+pub enum Error<Header: HeaderT> {
+    /// Inner block import error
+    #[error("Inner block import error: {0}")]
+    InnerBlockImportError(#[from] sp_consensus::Error),
+    /// Error during digest item extraction
+    #[error("Digest item error: {0}")]
+    DigestItemError(#[from] sp_consensus_subspace::digests::Error),
+    /// Parent unavailable. Cannot import
+    #[error("Parent ({0}) of {1} unavailable. Cannot import")]
+    ParentUnavailable(Header::Hash, Header::Hash),
+    /// Genesis block unavailable. Cannot import
+    #[error("Genesis block unavailable. Cannot import")]
+    GenesisUnavailable,
+    /// Slot number must increase
+    #[error("Slot number must increase: parent slot: {0}, this slot: {1}")]
+    SlotMustIncrease(Slot, Slot),
+    /// Header has a bad seal
+    #[error("Header {0:?} has a bad seal")]
+    HeaderBadSeal(Header::Hash),
+    /// Header is unsealed
+    #[error("Header {0:?} is unsealed")]
+    HeaderUnsealed(Header::Hash),
+    /// Bad reward signature
+    #[error("Bad reward signature on {0:?}")]
+    BadRewardSignature(Header::Hash),
+    /// Missing Subspace justification
+    #[error("Missing Subspace justification")]
+    MissingSubspaceJustification,
+    /// Invalid Subspace justification
+    #[error("Invalid Subspace justification: {0}")]
+    InvalidSubspaceJustification(codec::Error),
+    /// Invalid Subspace justification contents
+    #[error("Invalid Subspace justification contents")]
+    InvalidSubspaceJustificationContents,
+    /// Invalid proof of time
+    #[error("Invalid proof of time")]
+    InvalidProofOfTime,
+    /// Solution is outside of solution range
+    #[error(
+        "Solution distance {solution_distance} is outside of solution range \
+        {half_solution_range} (half of actual solution range) for slot {slot}"
+    )]
+    OutsideOfSolutionRange {
+        /// Time slot
+        slot: Slot,
+        /// Half of solution range
+        half_solution_range: SolutionRange,
+        /// Solution distance
+        solution_distance: SolutionRange,
+    },
+    /// Invalid proof of space
+    #[error("Invalid proof of space")]
+    InvalidProofOfSpace,
+    /// Invalid audit chunk offset
+    #[error("Invalid audit chunk offset")]
+    InvalidAuditChunkOffset,
+    /// Invalid chunk witness
+    #[error("Invalid chunk witness")]
+    InvalidChunkWitness,
+    /// Piece verification failed
+    #[error("Piece verification failed")]
+    InvalidPieceOffset {
+        /// Time slot
+        slot: Slot,
+        /// Index of the piece that failed verification
+        piece_offset: u16,
+        /// How many pieces one sector is supposed to contain (max)
+        max_pieces_in_sector: u16,
+    },
+    /// Piece verification failed
+    #[error("Piece verification failed for slot {0}")]
+    InvalidPiece(Slot),
+    /// Parent block has no associated weight
+    #[error("Parent block of {0} has no associated weight")]
+    ParentBlockNoAssociatedWeight(Header::Hash),
+    /// Block has invalid associated solution range
+    #[error("Invalid solution range for block {0}")]
+    InvalidSolutionRange(Header::Hash),
+    /// Invalid set of segment headers
+    #[error("Invalid set of segment headers")]
+    InvalidSetOfSegmentHeaders,
+    /// Stored segment header extrinsic was not found
+    #[error("Stored segment header extrinsic was not found: {0:?}")]
+    SegmentHeadersExtrinsicNotFound(Vec<SegmentHeader>),
+    /// Segment header not found
+    #[error("Segment header for index {0} not found")]
+    SegmentHeaderNotFound(SegmentIndex),
+    /// Different segment commitment found
+    #[error(
+        "Different segment commitment for segment index {0} was found in storage, likely fork \
+        below archiving point"
+    )]
+    DifferentSegmentCommitment(SegmentIndex),
+    /// Farmer in block list
+    #[error("Farmer {0} is in block list")]
+    FarmerInBlockList(FarmerPublicKey),
+    /// No block weight for parent header
+    #[error("No block weight for parent header {0}")]
+    NoBlockWeight(Header::Hash),
+    /// Segment commitment not found
+    #[error("Segment commitment for segment index {0} not found")]
+    SegmentCommitmentNotFound(SegmentIndex),
+    /// Sector expired
+    #[error("Sector expired")]
+    SectorExpired {
+        /// Expiration history size
+        expiration_history_size: HistorySize,
+        /// Current history size
+        current_history_size: HistorySize,
+    },
+    /// Invalid history size
+    #[error("Invalid history size")]
+    InvalidHistorySize,
+    /// Only root plot public key is allowed
+    #[error("Only root plot public key is allowed")]
+    OnlyRootPlotPublicKeyAllowed,
+    /// Check inherents error
+    #[error("Checking inherents failed: {0}")]
+    CheckInherents(sp_inherents::Error),
+    /// Unhandled check inherents error
+    #[error("Checking inherents unhandled error: {}", String::from_utf8_lossy(.0))]
+    CheckInherentsUnhandled(sp_inherents::InherentIdentifier),
+    /// Create inherents error.
+    #[error("Creating inherents failed: {0}")]
+    CreateInherents(sp_inherents::Error),
+    /// Client error
+    #[error(transparent)]
+    Client(#[from] sp_blockchain::Error),
+    /// Runtime Api error.
+    #[error(transparent)]
+    RuntimeApi(#[from] ApiError),
+}
+
+impl<Header> From<VerificationError<Header>> for Error<Header>
+where
+    Header: HeaderT,
+{
+    #[inline]
+    fn from(error: VerificationError<Header>) -> Self {
+        match error {
+            VerificationError::HeaderBadSeal(block_hash) => Error::HeaderBadSeal(block_hash),
+            VerificationError::HeaderUnsealed(block_hash) => Error::HeaderUnsealed(block_hash),
+            VerificationError::BadRewardSignature(block_hash) => {
+                Error::BadRewardSignature(block_hash)
+            }
+            VerificationError::MissingSubspaceJustification => Error::MissingSubspaceJustification,
+            VerificationError::InvalidSubspaceJustification(error) => {
+                Error::InvalidSubspaceJustification(error)
+            }
+            VerificationError::InvalidSubspaceJustificationContents => {
+                Error::InvalidSubspaceJustificationContents
+            }
+            VerificationError::InvalidProofOfTime => Error::InvalidProofOfTime,
+            VerificationError::VerificationError(slot, error) => match error {
+                VerificationPrimitiveError::InvalidPieceOffset {
+                    piece_offset,
+                    max_pieces_in_sector,
+                } => Error::InvalidPieceOffset {
+                    slot,
+                    piece_offset,
+                    max_pieces_in_sector,
+                },
+                VerificationPrimitiveError::InvalidPiece => Error::InvalidPiece(slot),
+                VerificationPrimitiveError::OutsideSolutionRange {
+                    half_solution_range,
+                    solution_distance,
+                } => Error::OutsideOfSolutionRange {
+                    slot,
+                    half_solution_range,
+                    solution_distance,
+                },
+                VerificationPrimitiveError::InvalidProofOfSpace => Error::InvalidProofOfSpace,
+                VerificationPrimitiveError::InvalidAuditChunkOffset => {
+                    Error::InvalidAuditChunkOffset
+                }
+                VerificationPrimitiveError::InvalidChunkWitness => Error::InvalidChunkWitness,
+                VerificationPrimitiveError::SectorExpired {
+                    expiration_history_size,
+                    current_history_size,
+                } => Error::SectorExpired {
+                    expiration_history_size,
+                    current_history_size,
+                },
+                VerificationPrimitiveError::InvalidHistorySize => Error::InvalidHistorySize,
+            },
+        }
+    }
+}
+
+impl<Header> From<Error<Header>> for String
+where
+    Header: HeaderT,
+{
+    #[inline]
+    fn from(error: Error<Header>) -> String {
+        error.to_string()
+    }
 }
 
 /// A block-import handler for Subspace.
