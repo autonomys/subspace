@@ -1,7 +1,6 @@
 //! Subspace block import implementation
 
 use futures::lock::Mutex;
-use log::{debug, info, trace, warn};
 use rand::prelude::*;
 use rayon::prelude::*;
 use sc_client_api::backend::AuxStore;
@@ -37,6 +36,7 @@ use subspace_core_primitives::{BlockNumber, PublicKey, RewardSignature};
 use subspace_proof_of_space::Table;
 use subspace_verification::{check_reward_signature, verify_solution, VerifySolutionParams};
 use tokio::sync::Semaphore;
+use tracing::{debug, info, trace, warn};
 
 /// This corresponds to default value of `--max-runtime-instances` in Substrate
 const BLOCKS_LIST_CHECK_CONCURRENCY: usize = 8;
@@ -434,12 +434,9 @@ where
                 .submit_report_equivocation_extrinsic(best_hash, equivocation_proof)
                 .map_err(|error| error.to_string())?;
 
-            info!(target: "subspace", "Submitted equivocation report for author {:?}", author);
+            info!(%author, "Submitted equivocation report for author");
         } else {
-            info!(
-                target: "subspace",
-                "Not submitting equivocation report because node is not authoring blocks"
-            );
+            info!("Not submitting equivocation report because node is not authoring blocks");
         }
 
         Ok(())
@@ -466,17 +463,19 @@ where
         mut block: BlockImportParams<Block>,
     ) -> Result<BlockImportParams<Block>, String> {
         trace!(
-            target: "subspace",
-            "Verifying origin: {:?} header: {:?} justification(s): {:?} body: {:?}",
-            block.origin,
-            block.header,
-            block.justifications,
-            block.body,
+            origin = ?block.origin,
+            header = ?block.header,
+            justifications = ?block.justifications,
+            body = ?block.body,
+            "Verifying",
         );
 
         let hash = block.header.hash();
 
-        debug!(target: "subspace", "We have {:?} logs in this header", block.header.digest().logs().len());
+        debug!(
+            "We have {:?} logs in this header",
+            block.header.digest().logs().len()
+        );
 
         let subspace_digest_items = extract_subspace_digest_items::<
             Block::Header,
@@ -504,9 +503,8 @@ where
                 .unwrap_or_default()
             {
                 warn!(
-                    target: "subspace",
-                    "Verifying block with solution provided by farmer in block list: {}",
-                    subspace_digest_items.pre_digest.solution().public_key
+                    public_key = %subspace_digest_items.pre_digest.solution().public_key,
+                    "Verifying block with solution provided by farmer in block list"
                 );
 
                 return Err(format!(
@@ -581,12 +579,12 @@ where
             .await
         {
             warn!(
-                target: "subspace",
-                "Error checking/reporting Subspace equivocation: {error}"
+                %error,
+                "Error checking/reporting Subspace equivocation"
             );
         }
 
-        trace!(target: "subspace", "Checked {:?}; importing.", pre_header);
+        trace!(?pre_header, "Checked header; importing");
         telemetry!(
             self.telemetry;
             CONSENSUS_TRACE;

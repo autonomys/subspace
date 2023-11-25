@@ -24,7 +24,6 @@ use crate::slot_worker::SubspaceSyncOracle;
 use crate::{SubspaceLink, SubspaceNotificationSender};
 use codec::{Decode, Encode};
 use futures::StreamExt;
-use log::{debug, info, warn};
 use parking_lot::Mutex;
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
@@ -51,6 +50,7 @@ use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{BlockNumber, RecordedHistorySegment, SegmentHeader, SegmentIndex};
+use tracing::{debug, info, warn};
 
 /// This corresponds to default value of `--max-runtime-instances` in Substrate
 const BLOCKS_TO_ARCHIVE_CONCURRENCY: usize = 8;
@@ -100,10 +100,7 @@ where
         let mut cache = Vec::with_capacity(Self::INITIAL_CACHE_CAPACITY);
         let mut next_key_index = 0;
 
-        debug!(
-            target: "subspace",
-            "Started loading segment headers into cache"
-        );
+        debug!("Started loading segment headers into cache");
         while let Some(segment_headers) =
             aux_store
                 .get_aux(&Self::key(next_key_index))?
@@ -115,10 +112,7 @@ where
             cache.extend(segment_headers);
             next_key_index += 1;
         }
-        debug!(
-            target: "subspace",
-            "Finished loading segment headers into cache"
-        );
+        debug!("Finished loading segment headers into cache");
 
         Ok(Self {
             inner: Arc::new(SegmentHeadersStoreInner {
@@ -435,9 +429,8 @@ where
             // Continuing from existing initial state
             let last_archived_block_number = last_segment_header.last_archived_block().number;
             info!(
-                target: "subspace",
-                "Last archived block {}",
-                last_archived_block_number,
+                %last_archived_block_number,
+                "Resuming archiver from last archived block",
             );
 
             // Set initial value, this is needed in case only genesis block was archived and there
@@ -476,7 +469,7 @@ where
 
             archiver
         } else {
-            info!(target: "subspace", "Starting archiving from genesis");
+            info!("Starting archiving from genesis");
 
             Archiver::new(subspace_link.kzg().clone()).expect("Incorrect parameters for archiver")
         };
@@ -509,10 +502,8 @@ where
 
         if let Some(blocks_to_archive_to) = blocks_to_archive_to {
             info!(
-                target: "subspace",
                 "Archiving already produced blocks {}..={}",
-                blocks_to_archive_from,
-                blocks_to_archive_to,
+                blocks_to_archive_from, blocks_to_archive_to,
             );
 
             let thread_pool = ThreadPoolBuilder::new()
@@ -568,7 +559,6 @@ where
                 let encoded_block = encode_block(block);
 
                 debug!(
-                    target: "subspace",
                     "Encoded block {} has size of {:.2} kiB",
                     block_number_to_archive,
                     encoded_block.len() as f32 / 1024.0
@@ -633,11 +623,15 @@ fn finalize_block<Block, Backend, Client>(
         client
             .apply_finality(import_op, hash, None, true)
             .map_err(|error| {
-                warn!(target: "subspace", "Error applying finality to block {:?}: {}", (hash, number), error);
+                warn!(
+                    "Error applying finality to block {:?}: {}",
+                    (hash, number),
+                    error
+                );
                 error
             })?;
 
-        debug!(target: "subspace", "Finalizing blocks up to ({:?}, {})", number, hash);
+        debug!("Finalizing blocks up to ({:?}, {})", number, hash);
 
         telemetry!(
             telemetry;
@@ -737,10 +731,8 @@ where
             let block_hash_to_archive = block.block.hash();
 
             debug!(
-                target: "subspace",
                 "Archiving block {:?} ({})",
-                block_number_to_archive,
-                block_hash_to_archive
+                block_number_to_archive, block_hash_to_archive
             );
 
             if parent_block_hash != best_archived_block_hash {
@@ -774,7 +766,6 @@ where
 
             let encoded_block = encode_block(block);
             debug!(
-                target: "subspace",
                 "Encoded block {} has size of {:.2} kiB",
                 block_number_to_archive,
                 encoded_block.len() as f32 / 1024.0

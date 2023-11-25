@@ -22,7 +22,6 @@ use crate::archiver::SegmentHeadersStore;
 use crate::SubspaceLink;
 use futures::channel::mpsc;
 use futures::{StreamExt, TryFutureExt};
-use log::{debug, error, info, warn};
 use sc_client_api::AuxStore;
 use sc_consensus::block_import::{BlockImportParams, StateAction};
 use sc_consensus::{JustificationSyncLink, SharedBlockImport, StorageChanges};
@@ -63,6 +62,7 @@ use subspace_proof_of_space::Table;
 use subspace_verification::{
     check_reward_signature, verify_solution, PieceCheckParams, VerifySolutionParams,
 };
+use tracing::{debug, error, info, warn};
 
 /// Large enough size for any practical purposes, there shouldn't be even this many solutions.
 const PENDING_SOLUTIONS_CHANNEL_CAPACITY: usize = 10;
@@ -230,10 +230,7 @@ where
         self.pot_checkpoints.insert(slot, checkpoints);
 
         if self.sync_oracle.is_major_syncing() {
-            debug!(
-                target: "subspace",
-                "Skipping farming slot {slot} due to sync"
-            );
+            debug!("Skipping farming slot {slot} due to sync");
             return;
         }
 
@@ -248,8 +245,10 @@ where
                 Ok(solution_ranges) => solution_ranges,
                 Err(error) => {
                     warn!(
-                        target: "subspace",
-                        "Failed to extract solution ranges for block at slot {slot}: {error}"
+                        %slot,
+                        %best_hash,
+                        %error,
+                        "Failed to extract solution ranges for block"
                     );
                     return;
                 }
@@ -341,8 +340,8 @@ where
             Ok(pre_digest) => pre_digest,
             Err(error) => {
                 error!(
-                    target: "subspace",
-                    "Failed to parse pre-digest out of parent header: {error}"
+                    %error,
+                    "Failed to parse pre-digest out of parent header"
                 );
 
                 return None;
@@ -352,13 +351,12 @@ where
 
         if slot <= parent_slot {
             debug!(
-                target: "subspace",
                 "Skipping claiming slot {slot} it must be higher than parent slot {parent_slot}",
             );
 
             return None;
         } else {
-            debug!(target: "subspace", "Attempting to claim slot {}", slot);
+            debug!(%slot, "Attempting to claim slot");
         }
 
         let chain_constants = self.subspace_link.chain_constants();
@@ -411,8 +409,8 @@ where
                 parent_pot_parameters.next_parameters_change(),
             ) {
                 warn!(
-                    target: "subspace",
-                    "Proof of time is invalid, skipping block authoring at slot {slot:?}"
+                    %slot,
+                    "Proof of time is invalid, skipping block authoring at slot"
                 );
                 return None;
             }
@@ -497,10 +495,9 @@ where
                 .ok()?
             {
                 warn!(
-                    target: "subspace",
-                    "Ignoring solution for slot {} provided by farmer in block list: {}",
-                    slot,
-                    solution.public_key,
+                    %slot,
+                    public_key = %solution.public_key,
+                    "Ignoring solution provided by farmer in block list",
                 );
 
                 continue;
@@ -532,10 +529,9 @@ where
                 Some(segment_commitment) => segment_commitment,
                 None => {
                     warn!(
-                        target: "subspace",
-                        "Segment commitment for segment index {} not found (slot {})",
-                        segment_index,
-                        slot,
+                        %slot,
+                        %segment_index,
+                        "Segment commitment not found",
                     );
                     continue;
                 }
@@ -578,7 +574,7 @@ where
                     // block reward is claimed
                     if solution_distance <= solution_range / 2 {
                         if maybe_pre_digest.is_none() {
-                            info!(target: "subspace", "🚜 Claimed block at slot {slot}");
+                            info!(%slot, "🚜 Claimed block at slot");
                             maybe_pre_digest.replace(PreDigest::V0 {
                                 slot,
                                 solution,
@@ -589,15 +585,15 @@ where
                             });
                         } else {
                             info!(
-                                target: "subspace",
-                                "Skipping solution that has quality sufficient for block {slot} \
-                                because block pre-digest was already created",
+                                %slot,
+                                "Skipping solution that has quality sufficient for block because \
+                                block pre-digest was already created",
                             );
                         }
                     } else if !parent_header.number().is_zero() {
                         // Not sending vote on top of genesis block since segment headers since piece
                         // verification wouldn't be possible due to missing (for now) segment commitment
-                        info!(target: "subspace", "🗳️ Claimed vote at slot {slot}");
+                        info!(%slot, "🗳️ Claimed vote at slot");
 
                         self.create_vote(
                             parent_header,
@@ -619,18 +615,24 @@ where
                         .is_some()
                     {
                         debug!(
-                            target: "subspace",
-                            "Invalid solution received for slot {slot}: {error:?}",
+                            %slot,
+                            %error,
+                            "Invalid solution received",
                         );
                     } else {
                         warn!(
-                            target: "subspace",
-                            "Invalid solution received for slot {slot}: {error:?}",
+                            %slot,
+                            %error,
+                            "Invalid solution received",
                         );
                     }
                 }
                 Err(error) => {
-                    warn!(target: "subspace", "Invalid solution received for slot {slot}: {error:?}");
+                    warn!(
+                        %slot,
+                        %error,
+                        "Invalid solution received",
+                    );
                 }
             }
         }
@@ -827,8 +829,9 @@ where
             Ok(signature) => signature,
             Err(error) => {
                 error!(
-                    target: "subspace",
-                    "Failed to submit vote at slot {slot}: {error:?}",
+                    %slot,
+                    %error,
+                    "Failed to submit vote",
                 );
                 return;
             }
@@ -838,8 +841,9 @@ where
 
         if let Err(error) = runtime_api.submit_vote_extrinsic(parent_hash, signed_vote) {
             error!(
-                target: "subspace",
-                "Failed to submit vote at slot {slot}: {error:?}",
+                %slot,
+                %error,
+                "Failed to submit vote",
             );
         }
     }
@@ -870,8 +874,8 @@ where
             .is_err()
             {
                 warn!(
-                    target: "subspace",
-                    "Received invalid signature for reward hash {hash:?}"
+                    %hash,
+                    "Received invalid signature for reward"
                 );
                 continue;
             }

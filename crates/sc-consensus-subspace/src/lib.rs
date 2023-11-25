@@ -32,7 +32,6 @@ use crate::archiver::{ArchivedSegmentNotification, FINALIZATION_DEPTH_IN_SEGMENT
 use crate::block_import::BlockImportingNotification;
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
 use crate::slot_worker::{NewSlotNotification, RewardSigningNotification};
-use log::warn;
 use lru::LruCache;
 use parking_lot::Mutex;
 use sp_api::{BlockT, NumberFor};

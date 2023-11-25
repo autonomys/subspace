@@ -23,7 +23,6 @@ use crate::verifier::VerificationError;
 use crate::{aux_schema, slot_worker, SubspaceLink};
 use futures::channel::mpsc;
 use futures::StreamExt;
-use log::warn;
 use sc_client_api::backend::AuxStore;
 use sc_client_api::BlockBackend;
 use sc_consensus::block_import::{
@@ -50,6 +49,7 @@ use subspace_core_primitives::{
 };
 use subspace_proof_of_space::Table;
 use subspace_verification::{calculate_block_weight, PieceCheckParams, VerifySolutionParams};
+use tracing::warn;
 
 /// Notification with number of the block that is about to be imported and acknowledgement sender
 /// that can be used to pause block production if desired.
@@ -371,9 +371,8 @@ where
             })?
         {
             warn!(
-                target: "subspace",
-                "Ignoring block with solution provided by farmer in block list: {}",
-                pre_digest.solution().public_key
+                public_key = %pre_digest.solution().public_key,
+                "Ignoring block with solution provided by farmer in block list",
             );
 
             return Err(Error::FarmerInBlockList(
@@ -672,12 +671,9 @@ where
 
             if &found_segment_commitment != segment_commitment {
                 warn!(
-                    target: "subspace",
                     "Different segment commitment for segment index {} was found in storage, \
                     likely fork below archiving point. expected {:?}, found {:?}",
-                    segment_index,
-                    segment_commitment,
-                    found_segment_commitment
+                    segment_index, segment_commitment, found_segment_commitment
                 );
                 return Err(Error::DifferentSegmentCommitment(segment_index));
             }
