@@ -20,7 +20,7 @@
 
 use crate::archiver::SegmentHeadersStore;
 use crate::verifier::VerificationError;
-use crate::{aux_schema, slot_worker, BlockImportingNotification, Error, SubspaceLink};
+use crate::{aux_schema, slot_worker, Error, SubspaceLink};
 use futures::channel::mpsc;
 use futures::StreamExt;
 use log::warn;
@@ -41,13 +41,27 @@ use sp_consensus_subspace::{
     FarmerPublicKey, FarmerSignature, PotNextSlotInput, SubspaceApi, SubspaceJustification,
 };
 use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
-use sp_runtime::traits::One;
+use sp_runtime::traits::{NumberFor, One};
 use sp_runtime::Justifications;
 use std::marker::PhantomData;
 use std::sync::Arc;
 use subspace_core_primitives::{BlockNumber, PublicKey, SectorId};
 use subspace_proof_of_space::Table;
 use subspace_verification::{calculate_block_weight, PieceCheckParams, VerifySolutionParams};
+
+/// Notification with number of the block that is about to be imported and acknowledgement sender
+/// that can be used to pause block production if desired.
+#[derive(Debug, Clone)]
+pub struct BlockImportingNotification<Block>
+where
+    Block: BlockT,
+{
+    /// Block number
+    pub block_number: NumberFor<Block>,
+    /// Sender for pausing the block import when operator is not fast enough to process
+    /// the consensus block.
+    pub acknowledgement_sender: mpsc::Sender<()>,
+}
 
 /// A block-import handler for Subspace.
 pub struct SubspaceBlockImport<PosTable, Block, Client, I, CIDP, AS>

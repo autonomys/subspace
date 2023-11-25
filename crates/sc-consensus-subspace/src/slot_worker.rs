@@ -19,7 +19,7 @@
 //! Contains implementation of Subspace slot worker that produces block and votes.
 
 use crate::archiver::SegmentHeadersStore;
-use crate::{NewSlotInfo, NewSlotNotification, RewardSigningNotification, SubspaceLink};
+use crate::SubspaceLink;
 use futures::channel::mpsc;
 use futures::{StreamExt, TryFutureExt};
 use log::{debug, error, info, warn};
@@ -33,7 +33,7 @@ use sc_proof_of_time::verifier::PotVerifier;
 use sc_proof_of_time::PotSlotWorker;
 use sc_telemetry::TelemetryHandle;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
-use sc_utils::mpsc::tracing_unbounded;
+use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedSender};
 use schnorrkel::context::SigningContext;
 use sp_api::{ApiError, ApiExt, NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata};
@@ -56,8 +56,8 @@ use std::marker::PhantomData;
 use std::pin::Pin;
 use std::sync::Arc;
 use subspace_core_primitives::{
-    BlockNumber, PotCheckpoints, PotOutput, PublicKey, RewardSignature, SectorId, Solution,
-    REWARD_SIGNING_CONTEXT,
+    BlockNumber, PotCheckpoints, PotOutput, PublicKey, Randomness, RewardSignature, SectorId,
+    Solution, SolutionRange, REWARD_SIGNING_CONTEXT,
 };
 use subspace_proof_of_space::Table;
 use subspace_verification::{
@@ -106,6 +106,38 @@ where
             inner: substrate_sync_oracle,
         }
     }
+}
+
+/// Information about new slot that just arrived
+#[derive(Debug, Copy, Clone)]
+pub struct NewSlotInfo {
+    /// Slot
+    pub slot: Slot,
+    /// Global randomness
+    pub global_randomness: Randomness,
+    /// Acceptable solution range for block authoring
+    pub solution_range: SolutionRange,
+    /// Acceptable solution range for voting
+    pub voting_solution_range: SolutionRange,
+}
+
+/// New slot notification with slot information and sender for solution for the slot.
+#[derive(Debug, Clone)]
+pub struct NewSlotNotification {
+    /// New slot information.
+    pub new_slot_info: NewSlotInfo,
+    /// Sender that can be used to send solutions for the slot.
+    pub solution_sender: mpsc::Sender<Solution<FarmerPublicKey, FarmerPublicKey>>,
+}
+/// Notification with a hash that needs to be signed to receive reward and sender for signature.
+#[derive(Debug, Clone)]
+pub struct RewardSigningNotification {
+    /// Hash to be signed.
+    pub hash: H256,
+    /// Public key of the plot identity that should create signature.
+    pub public_key: FarmerPublicKey,
+    /// Sender that can be used to send signature for the header.
+    pub signature_sender: TracingUnboundedSender<FarmerSignature>,
 }
 
 /// Parameters for [`SubspaceSlotWorker`]

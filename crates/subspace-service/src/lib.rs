@@ -51,17 +51,17 @@ use sc_client_api::{
 };
 use sc_consensus::{BasicQueue, DefaultImportQueue, ImportQueue, SharedBlockImport};
 use sc_consensus_slots::SlotProportion;
-use sc_consensus_subspace::archiver::{create_subspace_archiver, SegmentHeadersStore};
-use sc_consensus_subspace::block_import::SubspaceBlockImport;
+use sc_consensus_subspace::archiver::{
+    create_subspace_archiver, ArchivedSegmentNotification, SegmentHeadersStore,
+};
+use sc_consensus_subspace::block_import::{BlockImportingNotification, SubspaceBlockImport};
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::slot_worker::{
-    SubspaceSlotWorker, SubspaceSlotWorkerOptions, SubspaceSyncOracle,
+    NewSlotNotification, RewardSigningNotification, SubspaceSlotWorker, SubspaceSlotWorkerOptions,
+    SubspaceSyncOracle,
 };
 use sc_consensus_subspace::verifier::{SubspaceVerifier, SubspaceVerifierOptions};
-use sc_consensus_subspace::{
-    ArchivedSegmentNotification, BlockImportingNotification, NewSlotNotification,
-    RewardSigningNotification, SubspaceLink,
-};
+use sc_consensus_subspace::SubspaceLink;
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
 use sc_proof_of_time::source::gossip::pot_gossip_peers_set_config;

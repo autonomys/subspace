@@ -19,11 +19,9 @@
 //! Contains implementation of archiving process in Subspace blockchain that converts blockchain
 //! history (blocks) into archived history (pieces).
 
+use crate::block_import::BlockImportingNotification;
 use crate::slot_worker::SubspaceSyncOracle;
-use crate::{
-    ArchivedSegmentNotification, BlockImportingNotification, SubspaceLink,
-    SubspaceNotificationSender,
-};
+use crate::{SubspaceLink, SubspaceNotificationSender};
 use codec::{Decode, Encode};
 use futures::StreamExt;
 use log::{debug, info, warn};
@@ -34,7 +32,7 @@ use rayon::prelude::*;
 use rayon::ThreadPoolBuilder;
 use sc_client_api::{AuxStore, Backend as BackendT, BlockBackend, Finalizer, LockImportRun};
 use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_INFO};
-use sc_utils::mpsc::tracing_unbounded;
+use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedSender};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::SyncOracle;
@@ -56,6 +54,17 @@ use subspace_core_primitives::{BlockNumber, RecordedHistorySegment, SegmentHeade
 
 /// This corresponds to default value of `--max-runtime-instances` in Substrate
 const BLOCKS_TO_ARCHIVE_CONCURRENCY: usize = 8;
+
+/// How deep (in segments) should block be in order to be finalized.
+///
+/// This is required for full nodes to not prune recent history such that keep-up sync in Substrate
+/// works even without archival nodes (initial sync will be done from DSN).
+///
+/// Ideally, we'd decouple pruning from finalization, but it may require invasive changes in
+/// Substrate and is not worth it right now.
+/// https://github.com/paritytech/substrate/discussions/14359
+pub(crate) const FINALIZATION_DEPTH_IN_SEGMENTS: NonZeroUsize =
+    NonZeroUsize::new(5).expect("Not zero; qed");
 
 #[derive(Debug)]
 struct SegmentHeadersStoreInner<AS> {
@@ -200,16 +209,16 @@ where
     }
 }
 
-/// How deep (in segments) should block be in order to be finalized.
-///
-/// This is required for full nodes to not prune recent history such that keep-up sync in Substrate
-/// works even without archival nodes (initial sync will be done from DSN).
-///
-/// Ideally, we'd decouple pruning from finalization, but it may require invasive changes in
-/// Substrate and is not worth it right now.
-/// https://github.com/paritytech/substrate/discussions/14359
-pub(crate) const FINALIZATION_DEPTH_IN_SEGMENTS: NonZeroUsize =
-    NonZeroUsize::new(5).expect("Not zero; qed");
+/// Notification with block header hash that needs to be signed and sender for signature.
+#[derive(Debug, Clone)]
+pub struct ArchivedSegmentNotification {
+    /// Archived segment.
+    pub archived_segment: Arc<NewArchivedSegment>,
+    /// Sender that signified the fact of receiving archived segment by farmer.
+    ///
+    /// This must be used to send a message or else block import pipeline will get stuck.
+    pub acknowledgement_sender: TracingUnboundedSender<()>,
+}
 
 fn find_last_archived_block<Block, Client, AS>(
     client: &Client,

@@ -29,11 +29,12 @@ use lru::LruCache;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use sc_client_api::{AuxStore, BlockBackend};
-use sc_consensus_subspace::archiver::{recreate_genesis_segment, SegmentHeadersStore};
+use sc_consensus_subspace::archiver::{
+    recreate_genesis_segment, ArchivedSegmentNotification, SegmentHeadersStore,
+};
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
-use sc_consensus_subspace::slot_worker::SubspaceSyncOracle;
-use sc_consensus_subspace::{
-    ArchivedSegmentNotification, NewSlotNotification, RewardSigningNotification,
+use sc_consensus_subspace::slot_worker::{
+    NewSlotNotification, RewardSigningNotification, SubspaceSyncOracle,
 };
 use sc_rpc::{DenyUnsafe, SubscriptionTaskExecutor};
 use sc_utils::mpsc::TracingUnboundedSender;

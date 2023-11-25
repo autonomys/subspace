@@ -29,86 +29,22 @@ pub mod slot_worker;
 mod tests;
 pub mod verifier;
 
-use crate::archiver::FINALIZATION_DEPTH_IN_SEGMENTS;
+use crate::archiver::{ArchivedSegmentNotification, FINALIZATION_DEPTH_IN_SEGMENTS};
+use crate::block_import::BlockImportingNotification;
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
+use crate::slot_worker::{NewSlotNotification, RewardSigningNotification};
 use crate::verifier::VerificationError;
-use futures::channel::mpsc;
 use log::warn;
 use lru::LruCache;
 use parking_lot::Mutex;
-use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::{ApiError, BlockT, HeaderT, NumberFor};
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::Error as DigestError;
-use sp_consensus_subspace::{ChainConstants, FarmerPublicKey, FarmerSignature};
-use sp_core::H256;
+use sp_consensus_subspace::{ChainConstants, FarmerPublicKey};
 use std::sync::Arc;
-use subspace_archiving::archiver::NewArchivedSegment;
 use subspace_core_primitives::crypto::kzg::Kzg;
-use subspace_core_primitives::{
-    HistorySize, Randomness, SegmentHeader, SegmentIndex, Solution, SolutionRange,
-};
+use subspace_core_primitives::{HistorySize, SegmentHeader, SegmentIndex, SolutionRange};
 use subspace_verification::Error as VerificationPrimitiveError;
-
-/// Information about new slot that just arrived
-#[derive(Debug, Copy, Clone)]
-pub struct NewSlotInfo {
-    /// Slot
-    pub slot: Slot,
-    /// Global randomness
-    pub global_randomness: Randomness,
-    /// Acceptable solution range for block authoring
-    pub solution_range: SolutionRange,
-    /// Acceptable solution range for voting
-    pub voting_solution_range: SolutionRange,
-}
-
-/// New slot notification with slot information and sender for solution for the slot.
-#[derive(Debug, Clone)]
-pub struct NewSlotNotification {
-    /// New slot information.
-    pub new_slot_info: NewSlotInfo,
-    /// Sender that can be used to send solutions for the slot.
-    pub solution_sender: mpsc::Sender<Solution<FarmerPublicKey, FarmerPublicKey>>,
-}
-
-/// Notification with a hash that needs to be signed to receive reward and sender for signature.
-#[derive(Debug, Clone)]
-pub struct RewardSigningNotification {
-    /// Hash to be signed.
-    pub hash: H256,
-    /// Public key of the plot identity that should create signature.
-    pub public_key: FarmerPublicKey,
-    /// Sender that can be used to send signature for the header.
-    pub signature_sender: TracingUnboundedSender<FarmerSignature>,
-}
-
-/// Notification with block header hash that needs to be signed and sender for signature.
-#[derive(Debug, Clone)]
-pub struct ArchivedSegmentNotification {
-    /// Archived segment.
-    pub archived_segment: Arc<NewArchivedSegment>,
-    /// Sender that signified the fact of receiving archived segment by farmer.
-    ///
-    /// This must be used to send a message or else block import pipeline will get stuck.
-    pub acknowledgement_sender: TracingUnboundedSender<()>,
-}
-
-/// Notification with number of the block that is about to be imported and acknowledgement sender
-/// that can be used to pause block production if desired.
-///
-/// NOTE: Block is not fully imported yet!
-#[derive(Debug, Clone)]
-pub struct BlockImportingNotification<Block>
-where
-    Block: BlockT,
-{
-    /// Block number
-    pub block_number: NumberFor<Block>,
-    /// Sender for pausing the block import when operator is not fast enough to process
-    /// the consensus block.
-    pub acknowledgement_sender: mpsc::Sender<()>,
-}
 
 /// Errors encountered by the Subspace authorship task.
 #[derive(Debug, thiserror::Error)]
