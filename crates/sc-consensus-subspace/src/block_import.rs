@@ -33,7 +33,6 @@ use sc_proof_of_time::verifier::PotVerifier;
 use sp_api::{ApiExt, BlockT, HeaderT, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
 use sp_blockchain::HeaderBackend;
-use sp_consensus::Error as ConsensusError;
 use sp_consensus_subspace::digests::{
     extract_pre_digest, extract_subspace_digest_items, SubspaceDigestItems,
 };
@@ -162,7 +161,7 @@ where
                 if skip_runtime_access {
                     Ok(false)
                 } else {
-                    Err(Error::<Block::Header>::RuntimeApi(error))
+                    Err(Error::RuntimeApi(error))
                 }
             })?
         {
@@ -390,8 +389,7 @@ impl<PosTable, Block, Client, Inner, CIDP, AS> BlockImport<Block>
 where
     PosTable: Table,
     Block: BlockT,
-    Inner: BlockImport<Block, Error = ConsensusError> + Send + Sync,
-    Inner::Error: Into<ConsensusError>,
+    Inner: BlockImport<Block, Error = sp_consensus::Error> + Send + Sync,
     Client: ProvideRuntimeApi<Block>
         + BlockBackend<Block>
         + HeaderBackend<Block>
@@ -403,7 +401,7 @@ where
     AS: AuxStore + Send + Sync + 'static,
     BlockNumber: From<<<Block as BlockT>::Header as HeaderT>::Number>,
 {
-    type Error = ConsensusError;
+    type Error = Error<Block::Header>;
 
     async fn import_block(
         &mut self,
@@ -413,25 +411,25 @@ where
         let block_number = *block.header.number();
 
         // Early exit if block already in chain
-        match self.client.status(block_hash) {
-            Ok(sp_blockchain::BlockStatus::InChain) => {
+        match self.client.status(block_hash)? {
+            sp_blockchain::BlockStatus::InChain => {
                 block.fork_choice = Some(ForkChoiceStrategy::Custom(false));
-                return self.inner.import_block(block).await.map_err(Into::into);
+                return self
+                    .inner
+                    .import_block(block)
+                    .await
+                    .map_err(Error::InnerBlockImportError);
             }
-            Ok(sp_blockchain::BlockStatus::Unknown) => {}
-            Err(error) => return Err(ConsensusError::ClientImport(error.to_string())),
+            sp_blockchain::BlockStatus::Unknown => {}
         }
 
-        let subspace_digest_items = extract_subspace_digest_items(&block.header)
-            .map_err(|error| ConsensusError::ClientImport(error.to_string()))?;
+        let subspace_digest_items = extract_subspace_digest_items(&block.header)?;
         let skip_execution_checks = block.state_action.skip_execution_checks();
 
         let root_plot_public_key = self
             .client
             .runtime_api()
-            .root_plot_public_key(*block.header.parent_hash())
-            .map_err(Error::<Block::Header>::RuntimeApi)
-            .map_err(|e| ConsensusError::ClientImport(e.to_string()))?;
+            .root_plot_public_key(*block.header.parent_hash())?;
 
         self.block_import_verification(
             block_hash,
@@ -442,20 +440,13 @@ where
             &block.justifications,
             skip_execution_checks,
         )
-        .await
-        .map_err(|error| ConsensusError::ClientImport(error.to_string()))?;
+        .await?;
 
         let parent_weight = if block_number.is_one() {
             0
         } else {
-            aux_schema::load_block_weight(self.client.as_ref(), block.header.parent_hash())
-                .map_err(|e| ConsensusError::ClientImport(e.to_string()))?
-                .ok_or_else(|| {
-                    ConsensusError::ClientImport(
-                        Error::<Block::Header>::ParentBlockNoAssociatedWeight(block_hash)
-                            .to_string(),
-                    )
-                })?
+            aux_schema::load_block_weight(self.client.as_ref(), block.header.parent_hash())?
+                .ok_or_else(|| Error::ParentBlockNoAssociatedWeight(block_hash))?
         };
 
         let added_weight = calculate_block_weight(subspace_digest_items.solution_range);
@@ -471,11 +462,7 @@ where
             let found_segment_commitment = self
                 .segment_headers_store
                 .get_segment_header(segment_index)
-                .ok_or_else(|| {
-                    ConsensusError::ClientImport(format!(
-                        "Segment header for index {segment_index} not found"
-                    ))
-                })?
+                .ok_or_else(|| Error::SegmentHeaderNotFound(segment_index))?
                 .segment_commitment();
 
             if &found_segment_commitment != segment_commitment {
@@ -487,9 +474,7 @@ where
                     segment_commitment,
                     found_segment_commitment
                 );
-                return Err(ConsensusError::ClientImport(
-                    Error::<Block::Header>::DifferentSegmentCommitment(segment_index).to_string(),
-                ));
+                return Err(Error::DifferentSegmentCommitment(segment_index));
             }
         }
 
@@ -503,13 +488,8 @@ where
                 // need to cover again here
                 parent_weight
             } else {
-                aux_schema::load_block_weight(&*self.client, info.best_hash)
-                    .map_err(|e| ConsensusError::ChainLookup(e.to_string()))?
-                    .ok_or_else(|| {
-                        ConsensusError::ChainLookup(
-                            "No block weight for parent header.".to_string(),
-                        )
-                    })?
+                aux_schema::load_block_weight(&*self.client, info.best_hash)?
+                    .ok_or_else(|| Error::NoBlockWeight(info.best_hash))?
             };
 
             ForkChoiceStrategy::Custom(total_weight > last_best_weight)
@@ -529,7 +509,10 @@ where
             // Wait for all the acknowledgements to finish.
         }
 
-        self.inner.import_block(block).await
+        self.inner
+            .import_block(block)
+            .await
+            .map_err(Error::InnerBlockImportError)
     }
 
     async fn check_block(

@@ -49,7 +49,10 @@ use sc_client_api::execution_extensions::ExtensionsFactory;
 use sc_client_api::{
     AuxStore, Backend, BlockBackend, BlockchainEvents, ExecutorProvider, HeaderBackend,
 };
-use sc_consensus::{BasicQueue, DefaultImportQueue, ImportQueue, SharedBlockImport};
+use sc_consensus::{
+    BasicQueue, BlockCheckParams, BlockImport, BlockImportParams, DefaultImportQueue, ImportQueue,
+    ImportResult, SharedBlockImport,
+};
 use sc_consensus_slots::SlotProportion;
 use sc_consensus_subspace::archiver::{
     create_subspace_archiver, ArchivedSegmentNotification, SegmentHeadersStore,
@@ -156,6 +159,38 @@ pub enum Error {
     /// Other.
     #[error(transparent)]
     Other(Box<dyn std::error::Error + Send + Sync>),
+}
+
+// Simple wrapper whose ony purpose is to convert error type
+struct BlockImportWrapper<BI>(BI);
+
+#[async_trait::async_trait]
+impl<Block, BI> BlockImport<Block> for BlockImportWrapper<BI>
+where
+    Block: BlockT,
+    BI: BlockImport<Block, Error = sc_consensus_subspace::Error<Block::Header>> + Send + Sync,
+{
+    type Error = sp_consensus::Error;
+
+    async fn check_block(
+        &self,
+        block: BlockCheckParams<Block>,
+    ) -> Result<ImportResult, Self::Error> {
+        self.0
+            .check_block(block)
+            .await
+            .map_err(|error| sp_consensus::Error::Other(error.into()))
+    }
+
+    async fn import_block(
+        &mut self,
+        block: BlockImportParams<Block>,
+    ) -> Result<ImportResult, Self::Error> {
+        self.0
+            .import_block(block)
+            .await
+            .map_err(|error| sp_consensus::Error::Other(error.into()))
+    }
 }
 
 /// Subspace-like full client.
@@ -529,7 +564,7 @@ where
         pot_verifier: pot_verifier.clone(),
     });
 
-    let block_import = SharedBlockImport::new(block_import);
+    let block_import = SharedBlockImport::new(BlockImportWrapper(block_import));
     let import_queue = BasicQueue::new(
         verifier,
         block_import.clone(),

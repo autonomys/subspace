@@ -49,6 +49,9 @@ use subspace_verification::Error as VerificationPrimitiveError;
 /// Errors encountered by the Subspace authorship task.
 #[derive(Debug, thiserror::Error)]
 pub enum Error<Header: HeaderT> {
+    /// Inner block import error
+    #[error("Inner block import error: {0}")]
+    InnerBlockImportError(#[from] sp_consensus::Error),
     /// Error during digest item extraction
     #[error("Digest item error: {0}")]
     DigestItemError(#[from] DigestError),
@@ -129,6 +132,9 @@ pub enum Error<Header: HeaderT> {
     /// Stored segment header extrinsic was not found
     #[error("Stored segment header extrinsic was not found: {0:?}")]
     SegmentHeadersExtrinsicNotFound(Vec<SegmentHeader>),
+    /// Segment header not found
+    #[error("Segment header for index {0} not found")]
+    SegmentHeaderNotFound(SegmentIndex),
     /// Different segment commitment found
     #[error(
         "Different segment commitment for segment index {0} was found in storage, likely fork \
@@ -138,6 +144,9 @@ pub enum Error<Header: HeaderT> {
     /// Farmer in block list
     #[error("Farmer {0} is in block list")]
     FarmerInBlockList(FarmerPublicKey),
+    /// No block weight for parent header
+    #[error("No block weight for parent header {0}")]
+    NoBlockWeight(Header::Hash),
     /// Segment commitment not found
     #[error("Segment commitment for segment index {0} not found")]
     SegmentCommitmentNotFound(SegmentIndex),

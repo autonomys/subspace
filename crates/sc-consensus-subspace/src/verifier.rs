@@ -1,6 +1,5 @@
 //! Subspace block import implementation
 
-use crate::Error;
 use futures::lock::Mutex;
 use log::{debug, info, trace, warn};
 use rand::prelude::*;
@@ -387,7 +386,7 @@ where
         header: &Block::Header,
         author: &FarmerPublicKey,
         origin: &BlockOrigin,
-    ) -> Result<(), Error<Block::Header>> {
+    ) -> Result<(), String> {
         // don't report any equivocations during initial sync
         // as they are most likely stale.
         if *origin == BlockOrigin::NetworkInitialSync {
@@ -401,7 +400,7 @@ where
         // check if authorship of this header is an equivocation and return a proof if so.
         let equivocation_proof =
             match check_equivocation(&*self.client, slot_now, slot, header, author)
-                .map_err(Error::Client)?
+                .map_err(|error| error.to_string())?
             {
                 Some(proof) => proof,
                 None => return Ok(()),
@@ -422,7 +421,7 @@ where
                 .best_chain()
                 .await
                 .map(|h| h.hash())
-                .map_err(|e| Error::Client(e.into()))?;
+                .map_err(|error| error.to_string())?;
 
             // submit equivocation report at best block.
             let mut runtime_api = self.client.runtime_api();
@@ -433,7 +432,7 @@ where
             );
             runtime_api
                 .submit_report_equivocation_extrinsic(best_hash, equivocation_proof)
-                .map_err(Error::RuntimeApi)?;
+                .map_err(|error| error.to_string())?;
 
             info!(target: "subspace", "Submitted equivocation report for author {:?}", author);
         } else {
@@ -484,8 +483,7 @@ where
             FarmerPublicKey,
             FarmerPublicKey,
             FarmerSignature,
-        >(&block.header)
-        .map_err(Error::<Block::Header>::from)?;
+        >(&block.header)?;
 
         // Check if farmer's plot is burned, ignore runtime API errors since this check will happen
         // during block import anyway
@@ -511,14 +509,14 @@ where
                     subspace_digest_items.pre_digest.solution().public_key
                 );
 
-                return Err(Error::<Block::Header>::FarmerInBlockList(
+                return Err(format!(
+                    "Farmer {} is in block list",
                     subspace_digest_items
                         .pre_digest
                         .solution()
                         .public_key
                         .clone(),
-                )
-                .into());
+                ));
             }
         }
 
@@ -546,7 +544,7 @@ where
                 &block.justifications,
             )
             .await
-            .map_err(Error::<Block::Header>::from)?;
+            .map_err(|error| error.to_string())?;
 
         let CheckedHeader {
             pre_header,
@@ -572,7 +570,7 @@ where
         // the header is valid but let's check if there was something else already proposed at the
         // same slot by the given author. if there was, we will report the equivocation to the
         // runtime.
-        if let Err(err) = self
+        if let Err(error) = self
             .check_and_report_equivocation(
                 slot_now,
                 slot,
@@ -584,8 +582,7 @@ where
         {
             warn!(
                 target: "subspace",
-                "Error checking/reporting Subspace equivocation: {}",
-                err
+                "Error checking/reporting Subspace equivocation: {error}"
             );
         }
 
