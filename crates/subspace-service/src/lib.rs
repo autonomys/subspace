@@ -54,10 +54,13 @@ use sc_consensus_slots::SlotProportion;
 use sc_consensus_subspace::archiver::{create_subspace_archiver, SegmentHeadersStore};
 use sc_consensus_subspace::block_import::SubspaceBlockImport;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
+use sc_consensus_subspace::slot_worker::{
+    SubspaceSlotWorker, SubspaceSlotWorkerOptions, SubspaceSyncOracle,
+};
 use sc_consensus_subspace::verifier::{SubspaceVerifier, SubspaceVerifierOptions};
 use sc_consensus_subspace::{
     ArchivedSegmentNotification, BlockImportingNotification, NewSlotNotification,
-    RewardSigningNotification, SubspaceLink, SubspaceParams, SubspaceSyncOracle,
+    RewardSigningNotification, SubspaceLink,
 };
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkService;
@@ -472,7 +475,7 @@ where
         .chain_constants(client_info.best_hash)
         .map_err(|error| ServiceError::Application(error.into()))?;
 
-    let subspace_link = SubspaceLink::new(kzg.clone());
+    let subspace_link = SubspaceLink::new(chain_constants, kzg.clone());
     let block_import = SubspaceBlockImport::<PosTable, _, _, _, _, _>::new(
         client.clone(),
         client.clone(),
@@ -501,7 +504,6 @@ where
                 }
             }
         },
-        chain_constants,
         segment_headers_store.clone(),
         pot_verifier.clone(),
     );
@@ -931,63 +933,69 @@ where
             telemetry.as_ref().map(|x| x.handle()),
         );
 
-        let subspace_config = SubspaceParams {
-            client: client.clone(),
-            select_chain: select_chain.clone(),
-            env: proposer_factory,
-            block_import,
-            sync_oracle: sync_oracle.clone(),
-            justification_sync_link: sync_service.clone(),
-            create_inherent_data_providers: {
+        let subspace_slot_worker =
+            SubspaceSlotWorker::<PosTable, _, _, _, _, _, _, _>::new(SubspaceSlotWorkerOptions {
+                client: client.clone(),
+                env: proposer_factory,
+                block_import,
+                sync_oracle: sync_oracle.clone(),
+                justification_sync_link: sync_service.clone(),
+                force_authoring: config.base.force_authoring,
+                backoff_authoring_blocks,
+                subspace_link: subspace_link.clone(),
+                segment_headers_store: segment_headers_store.clone(),
+                block_proposal_slot_portion,
+                max_block_proposal_slot_portion: None,
+                telemetry: telemetry.as_ref().map(|x| x.handle()),
+                offchain_tx_pool_factory,
+                pot_verifier,
+            });
+
+        let create_inherent_data_providers = {
+            let client = client.clone();
+            let subspace_link = subspace_link.clone();
+
+            move |parent_hash, ()| {
                 let client = client.clone();
                 let subspace_link = subspace_link.clone();
 
-                move |parent_hash, ()| {
-                    let client = client.clone();
-                    let subspace_link = subspace_link.clone();
+                async move {
+                    let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
 
-                    async move {
-                        let timestamp = sp_timestamp::InherentDataProvider::from_system_time();
+                    // TODO: Would be nice if the whole header was passed in here
+                    let parent_header = client
+                        .header(parent_hash)?
+                        .expect("Parent header must always exist when block is created; qed");
 
-                        // TODO: Would be nice if the whole header was passed in here
-                        let parent_header = client
-                            .header(parent_hash)?
-                            .expect("Parent header must always exist when block is created; qed");
+                    let parent_block_number = parent_header.number;
 
-                        let parent_block_number = parent_header.number;
+                    let subspace_inherents =
+                        sp_consensus_subspace::inherents::InherentDataProvider::new(
+                            subspace_link.segment_headers_for_block(parent_block_number + 1),
+                        );
 
-                        let subspace_inherents =
-                            sp_consensus_subspace::inherents::InherentDataProvider::new(
-                                subspace_link.segment_headers_for_block(parent_block_number + 1),
-                            );
-
-                        Ok((timestamp, subspace_inherents))
-                    }
+                    Ok((timestamp, subspace_inherents))
                 }
-            },
-            force_authoring: config.base.force_authoring,
-            backoff_authoring_blocks,
-            subspace_link: subspace_link.clone(),
-            segment_headers_store: segment_headers_store.clone(),
-            block_proposal_slot_portion,
-            max_block_proposal_slot_portion: None,
-            telemetry: telemetry.as_ref().map(|x| x.handle()),
-            offchain_tx_pool_factory,
-            pot_verifier,
-            pot_slot_info_stream,
+            }
         };
 
-        let subspace =
-            sc_consensus_subspace::start_subspace::<PosTable, _, _, _, _, _, _, _, _, _, _>(
-                subspace_config,
-            )?;
+        info!(target: "subspace", "🧑‍🌾 Starting Subspace Authorship worker");
+        let slot_worker_task = sc_proof_of_time::start_slot_worker(
+            subspace_link.chain_constants().slot_duration(),
+            client.clone(),
+            select_chain.clone(),
+            subspace_slot_worker,
+            sync_oracle.clone(),
+            create_inherent_data_providers,
+            pot_slot_info_stream,
+        );
 
         // Subspace authoring task is considered essential, i.e. if it fails we take down the
         // service with it.
         task_manager.spawn_essential_handle().spawn_blocking(
             "subspace-proposer",
             Some("block-authoring"),
-            subspace,
+            slot_worker_task,
         );
     }
 

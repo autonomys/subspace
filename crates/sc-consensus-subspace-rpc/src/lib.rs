@@ -31,8 +31,9 @@ use parking_lot::Mutex;
 use sc_client_api::{AuxStore, BlockBackend};
 use sc_consensus_subspace::archiver::{recreate_genesis_segment, SegmentHeadersStore};
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
+use sc_consensus_subspace::slot_worker::SubspaceSyncOracle;
 use sc_consensus_subspace::{
-    ArchivedSegmentNotification, NewSlotNotification, RewardSigningNotification, SubspaceSyncOracle,
+    ArchivedSegmentNotification, NewSlotNotification, RewardSigningNotification,
 };
 use sc_rpc::{DenyUnsafe, SubscriptionTaskExecutor};
 use sc_utils::mpsc::TracingUnboundedSender;

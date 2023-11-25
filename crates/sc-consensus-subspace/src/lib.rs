@@ -24,48 +24,30 @@ pub mod archiver;
 pub mod aux_schema;
 pub mod block_import;
 pub mod notification;
-mod slot_worker;
+pub mod slot_worker;
 #[cfg(test)]
 mod tests;
 pub mod verifier;
 
-use crate::archiver::{SegmentHeadersStore, FINALIZATION_DEPTH_IN_SEGMENTS};
+use crate::archiver::FINALIZATION_DEPTH_IN_SEGMENTS;
 use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream};
-use crate::slot_worker::SubspaceSlotWorker;
-pub use crate::slot_worker::SubspaceSyncOracle;
 use crate::verifier::VerificationError;
 use futures::channel::mpsc;
-use log::{info, warn};
+use log::warn;
 use lru::LruCache;
 use parking_lot::Mutex;
-use sc_client_api::backend::AuxStore;
-use sc_client_api::{BlockchainEvents, ProvideUncles};
-use sc_consensus::{JustificationSyncLink, SharedBlockImport};
-use sc_consensus_slots::{BackoffAuthoringBlocksStrategy, SlotProportion};
-use sc_proof_of_time::source::PotSlotInfoStream;
-use sc_proof_of_time::verifier::PotVerifier;
-use sc_telemetry::TelemetryHandle;
-use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::TracingUnboundedSender;
-use sp_api::{ApiError, BlockT, HeaderT, NumberFor, ProvideRuntimeApi};
-use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata};
-use sp_consensus::{Environment, Error as ConsensusError, Proposer, SelectChain, SyncOracle};
+use sp_api::{ApiError, BlockT, HeaderT, NumberFor};
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::digests::Error as DigestError;
-use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi};
+use sp_consensus_subspace::{ChainConstants, FarmerPublicKey, FarmerSignature};
 use sp_core::H256;
-use sp_inherents::CreateInherentDataProviders;
-use std::future::Future;
-use std::marker::PhantomData;
-use std::pin::Pin;
 use std::sync::Arc;
 use subspace_archiving::archiver::NewArchivedSegment;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{
-    BlockNumber, HistorySize, Randomness, SegmentHeader, SegmentIndex, Solution, SolutionRange,
-    REWARD_SIGNING_CONTEXT,
+    HistorySize, Randomness, SegmentHeader, SegmentIndex, Solution, SolutionRange,
 };
-use subspace_proof_of_space::Table;
 use subspace_verification::Error as VerificationPrimitiveError;
 
 /// Information about new slot that just arrived
@@ -320,179 +302,6 @@ where
     }
 }
 
-/// Parameters for Subspace.
-pub struct SubspaceParams<Block, Client, SC, E, SO, L, CIDP, BS, AS>
-where
-    Block: BlockT,
-    SO: SyncOracle + Send + Sync,
-{
-    /// The client to use
-    pub client: Arc<Client>,
-
-    /// The SelectChain Strategy
-    pub select_chain: SC,
-
-    /// The environment we are producing blocks for.
-    pub env: E,
-
-    /// The underlying block-import object to supply our produced blocks to.
-    /// This must be a `SubspaceBlockImport` or a wrapper of it, otherwise
-    /// critical consensus logic will be omitted.
-    pub block_import: SharedBlockImport<Block>,
-
-    /// A sync oracle
-    pub sync_oracle: SubspaceSyncOracle<SO>,
-
-    /// Hook into the sync module to control the justification sync process.
-    pub justification_sync_link: L,
-
-    /// Something that can create the inherent data providers.
-    pub create_inherent_data_providers: CIDP,
-
-    /// Force authoring of blocks even if we are offline
-    pub force_authoring: bool,
-
-    /// Strategy and parameters for backing off block production.
-    pub backoff_authoring_blocks: Option<BS>,
-
-    /// The source of timestamps for relative slots
-    pub subspace_link: SubspaceLink<Block>,
-
-    /// Persistent storage of segment headers
-    pub segment_headers_store: SegmentHeadersStore<AS>,
-
-    /// The proportion of the slot dedicated to proposing.
-    ///
-    /// The block proposing will be limited to this proportion of the slot from the starting of the
-    /// slot. However, the proposing can still take longer when there is some lenience factor applied,
-    /// because there were no blocks produced for some slots.
-    pub block_proposal_slot_portion: SlotProportion,
-
-    /// The maximum proportion of the slot dedicated to proposing with any lenience factor applied
-    /// due to no blocks being produced.
-    pub max_block_proposal_slot_portion: Option<SlotProportion>,
-
-    /// Handle use to report telemetries.
-    pub telemetry: Option<TelemetryHandle>,
-
-    /// The offchain transaction pool factory.
-    ///
-    /// Will be used when sending equivocation reports and votes.
-    pub offchain_tx_pool_factory: OffchainTransactionPoolFactory<Block>,
-
-    /// Proof of time verifier
-    pub pot_verifier: PotVerifier,
-
-    /// Stream with proof of time slots.
-    pub pot_slot_info_stream: PotSlotInfoStream,
-}
-
-/// Start the Subspace worker.
-pub fn start_subspace<PosTable, Block, Client, SC, E, SO, CIDP, BS, L, AS, Error>(
-    SubspaceParams {
-        client,
-        select_chain,
-        env,
-        block_import,
-        sync_oracle,
-        justification_sync_link,
-        create_inherent_data_providers,
-        force_authoring,
-        backoff_authoring_blocks,
-        subspace_link,
-        segment_headers_store,
-        block_proposal_slot_portion,
-        max_block_proposal_slot_portion,
-        telemetry,
-        offchain_tx_pool_factory,
-        pot_verifier,
-        pot_slot_info_stream,
-    }: SubspaceParams<Block, Client, SC, E, SO, L, CIDP, BS, AS>,
-) -> Result<SubspaceWorker, sp_consensus::Error>
-where
-    PosTable: Table,
-    Block: BlockT,
-    Client: ProvideRuntimeApi<Block>
-        + ProvideUncles<Block>
-        + BlockchainEvents<Block>
-        + HeaderBackend<Block>
-        + HeaderMetadata<Block, Error = ClientError>
-        + AuxStore
-        + Send
-        + Sync
-        + 'static,
-    Client::Api: SubspaceApi<Block, FarmerPublicKey>,
-    SC: SelectChain<Block> + 'static,
-    E: Environment<Block, Error = Error> + Send + Sync + 'static,
-    E::Proposer: Proposer<Block, Error = Error>,
-    SO: SyncOracle + Send + Sync + Clone + 'static,
-    L: JustificationSyncLink<Block> + 'static,
-    CIDP: CreateInherentDataProviders<Block, ()> + Send + Sync + 'static,
-    BS: BackoffAuthoringBlocksStrategy<NumberFor<Block>> + Send + Sync + 'static,
-    AS: AuxStore + Send + Sync + 'static,
-    Error: std::error::Error + Send + From<ConsensusError> + 'static,
-    BlockNumber: From<<<Block as BlockT>::Header as HeaderT>::Number>,
-{
-    let chain_constants = client
-        .runtime_api()
-        .chain_constants(client.info().best_hash)
-        .map_err(|error| sp_consensus::Error::ChainLookup(error.to_string()))?;
-
-    let worker = SubspaceSlotWorker {
-        client: client.clone(),
-        block_import,
-        env,
-        sync_oracle: sync_oracle.clone(),
-        justification_sync_link,
-        force_authoring,
-        backoff_authoring_blocks,
-        subspace_link: subspace_link.clone(),
-        reward_signing_context: schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT),
-        block_proposal_slot_portion,
-        max_block_proposal_slot_portion,
-        telemetry,
-        offchain_tx_pool_factory,
-        chain_constants,
-        segment_headers_store,
-        pending_solutions: Default::default(),
-        pot_checkpoints: Default::default(),
-        pot_verifier,
-        _pos_table: PhantomData::<PosTable>,
-    };
-
-    info!(target: "subspace", "🧑‍🌾 Starting Subspace Authorship worker");
-    let inner = sc_proof_of_time::start_slot_worker(
-        chain_constants.slot_duration(),
-        client,
-        select_chain,
-        worker,
-        sync_oracle,
-        create_inherent_data_providers,
-        pot_slot_info_stream,
-    );
-
-    Ok(SubspaceWorker {
-        inner: Box::pin(inner),
-    })
-}
-
-/// Worker for Subspace which implements `Future<Output=()>`. This must be polled.
-#[must_use]
-pub struct SubspaceWorker {
-    inner: Pin<Box<dyn Future<Output = ()> + Send + 'static>>,
-}
-
-impl Future for SubspaceWorker {
-    type Output = ();
-
-    fn poll(
-        mut self: Pin<&mut Self>,
-        cx: &mut futures::task::Context,
-    ) -> futures::task::Poll<Self::Output> {
-        self.inner.as_mut().poll(cx)
-    }
-}
-
 /// State that must be shared between the import queue and the authoring logic.
 #[derive(Clone)]
 pub struct SubspaceLink<Block: BlockT> {
@@ -509,12 +318,13 @@ pub struct SubspaceLink<Block: BlockT> {
     /// Segment headers that are expected to appear in the corresponding blocks, used for block
     /// production and validation
     segment_headers: Arc<Mutex<LruCache<NumberFor<Block>, Vec<SegmentHeader>>>>,
+    chain_constants: ChainConstants,
     kzg: Kzg,
 }
 
 impl<Block: BlockT> SubspaceLink<Block> {
     /// Create new instance.
-    pub fn new(kzg: Kzg) -> Self {
+    pub fn new(chain_constants: ChainConstants, kzg: Kzg) -> Self {
         let (new_slot_notification_sender, new_slot_notification_stream) =
             notification::channel("subspace_new_slot_notification_stream");
         let (reward_signing_notification_sender, reward_signing_notification_stream) =
@@ -536,6 +346,7 @@ impl<Block: BlockT> SubspaceLink<Block> {
             segment_headers: Arc::new(Mutex::new(LruCache::new(
                 FINALIZATION_DEPTH_IN_SEGMENTS.saturating_add(1),
             ))),
+            chain_constants,
             kzg,
         }
     }
@@ -578,6 +389,11 @@ impl<Block: BlockT> SubspaceLink<Block> {
             .peek(&block_number)
             .cloned()
             .unwrap_or_default()
+    }
+
+    /// Subspace chain constants.
+    pub fn chain_constants(&self) -> &ChainConstants {
+        &self.chain_constants
     }
 
     /// Access KZG instance

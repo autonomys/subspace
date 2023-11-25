@@ -38,8 +38,7 @@ use sp_consensus_subspace::digests::{
     extract_pre_digest, extract_subspace_digest_items, SubspaceDigestItems,
 };
 use sp_consensus_subspace::{
-    ChainConstants, FarmerPublicKey, FarmerSignature, PotNextSlotInput, SubspaceApi,
-    SubspaceJustification,
+    FarmerPublicKey, FarmerSignature, PotNextSlotInput, SubspaceApi, SubspaceJustification,
 };
 use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
 use sp_runtime::traits::One;
@@ -59,7 +58,6 @@ where
     client: Arc<Client>,
     subspace_link: SubspaceLink<Block>,
     create_inherent_data_providers: CIDP,
-    chain_constants: ChainConstants,
     segment_headers_store: SegmentHeadersStore<AS>,
     pot_verifier: PotVerifier,
     _pos_table: PhantomData<PosTable>,
@@ -78,7 +76,6 @@ where
             client: self.client.clone(),
             subspace_link: self.subspace_link.clone(),
             create_inherent_data_providers: self.create_inherent_data_providers.clone(),
-            chain_constants: self.chain_constants,
             segment_headers_store: self.segment_headers_store.clone(),
             pot_verifier: self.pot_verifier.clone(),
             _pos_table: PhantomData,
@@ -102,7 +99,6 @@ where
         block_import: I,
         subspace_link: SubspaceLink<Block>,
         create_inherent_data_providers: CIDP,
-        chain_constants: ChainConstants,
         segment_headers_store: SegmentHeadersStore<AS>,
         pot_verifier: PotVerifier,
     ) -> Self {
@@ -111,7 +107,6 @@ where
             inner: block_import,
             subspace_link,
             create_inherent_data_providers,
-            chain_constants,
             segment_headers_store,
             pot_verifier,
             _pos_table: PhantomData,
@@ -208,6 +203,8 @@ where
             return Err(Error::InvalidSolutionRange(block_hash));
         }
 
+        let chain_constants = self.subspace_link.chain_constants();
+
         // For PoT justifications we only need to check the seed and number of checkpoints, the rest
         // was already checked during stateless block verification.
         {
@@ -227,7 +224,7 @@ where
             let SubspaceJustification::PotCheckpoints { seed, checkpoints } =
                 subspace_justification;
 
-            let future_slot = pre_digest.slot() + self.chain_constants.block_authoring_delay();
+            let future_slot = pre_digest.slot() + chain_constants.block_authoring_delay();
 
             if block_number.is_one() {
                 // In case of first block seed must match genesis seed
@@ -244,7 +241,7 @@ where
                     .as_ref()
                     .expect("Always Some for non-first block; qed");
 
-                let parent_future_slot = parent_slot + self.chain_constants.block_authoring_delay();
+                let parent_future_slot = parent_slot + chain_constants.block_authoring_delay();
 
                 let correct_input_parameters = PotNextSlotInput::derive(
                     subspace_digest_items.pot_slot_iterations,
@@ -283,8 +280,8 @@ where
             pre_digest.solution().piece_offset,
             pre_digest.solution().history_size,
             max_pieces_in_sector,
-            self.chain_constants.recent_segments(),
-            self.chain_constants.recent_history_fraction(),
+            chain_constants.recent_segments(),
+            chain_constants.recent_history_fraction(),
         );
         let segment_index = piece_index.segment_index();
 
@@ -301,7 +298,7 @@ where
                     .pre_digest
                     .solution()
                     .history_size
-                    .sector_expiration_check(self.chain_constants.min_sector_lifetime())
+                    .sector_expiration_check(chain_constants.min_sector_lifetime())
                     .ok_or(Error::InvalidHistorySize)?
                     .segment_index(),
             )
@@ -319,9 +316,9 @@ where
                 piece_check_params: Some(PieceCheckParams {
                     max_pieces_in_sector,
                     segment_commitment,
-                    recent_segments: self.chain_constants.recent_segments(),
-                    recent_history_fraction: self.chain_constants.recent_history_fraction(),
-                    min_sector_lifetime: self.chain_constants.min_sector_lifetime(),
+                    recent_segments: chain_constants.recent_segments(),
+                    recent_history_fraction: chain_constants.recent_history_fraction(),
+                    min_sector_lifetime: chain_constants.min_sector_lifetime(),
                     // TODO: Below `skip_runtime_access` has no impact on this, but ideally it
                     //  should (though we don't support fast sync yet, so doesn't matter in
                     //  practice)

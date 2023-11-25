@@ -1,4 +1,3 @@
-// Copyright (C) 2019-2021 Parity Technologies (UK) Ltd.
 // Copyright (C) 2021 Subspace Labs, Inc.
 // SPDX-License-Identifier: GPL-3.0-or-later WITH Classpath-exception-2.0
 
@@ -14,6 +13,10 @@
 
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+//! Slot worker module.
+//!
+//! Contains implementation of Subspace slot worker that produces block and votes.
 
 use crate::archiver::SegmentHeadersStore;
 use crate::{NewSlotInfo, NewSlotNotification, RewardSigningNotification, SubspaceLink};
@@ -40,7 +43,7 @@ use sp_consensus_subspace::digests::{
     extract_pre_digest, CompatibleDigestItem, PreDigest, PreDigestPotInfo,
 };
 use sp_consensus_subspace::{
-    ChainConstants, FarmerPublicKey, FarmerSignature, PotNextSlotInput, SignedVote, SubspaceApi,
+    FarmerPublicKey, FarmerSignature, PotNextSlotInput, SignedVote, SubspaceApi,
     SubspaceJustification, Vote,
 };
 use sp_core::crypto::ByteArray;
@@ -54,6 +57,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use subspace_core_primitives::{
     BlockNumber, PotCheckpoints, PotOutput, PublicKey, RewardSignature, SectorId, Solution,
+    REWARD_SIGNING_CONTEXT,
 };
 use subspace_proof_of_space::Table;
 use subspace_verification::{
@@ -104,33 +108,78 @@ where
     }
 }
 
-pub(super) struct SubspaceSlotWorker<PosTable, Block, Client, E, SO, L, BS, AS>
+/// Parameters for [`SubspaceSlotWorker`]
+pub struct SubspaceSlotWorkerOptions<Block, Client, E, SO, L, BS, AS>
 where
     Block: BlockT,
+    SO: SyncOracle + Send + Sync,
 {
-    pub(super) client: Arc<Client>,
-    pub(super) block_import: SharedBlockImport<Block>,
-    pub(super) env: E,
-    pub(super) sync_oracle: SO,
-    pub(super) justification_sync_link: L,
-    pub(super) force_authoring: bool,
-    pub(super) backoff_authoring_blocks: Option<BS>,
-    pub(super) subspace_link: SubspaceLink<Block>,
-    pub(super) reward_signing_context: SigningContext,
-    pub(super) block_proposal_slot_portion: SlotProportion,
-    pub(super) max_block_proposal_slot_portion: Option<SlotProportion>,
-    pub(super) telemetry: Option<TelemetryHandle>,
-    pub(crate) offchain_tx_pool_factory: OffchainTransactionPoolFactory<Block>,
-    pub(super) chain_constants: ChainConstants,
-    pub(super) segment_headers_store: SegmentHeadersStore<AS>,
+    /// The client to use
+    pub client: Arc<Client>,
+    /// The environment we are producing blocks for.
+    pub env: E,
+    /// The underlying block-import object to supply our produced blocks to.
+    /// This must be a `SubspaceBlockImport` or a wrapper of it, otherwise
+    /// critical consensus logic will be omitted.
+    pub block_import: SharedBlockImport<Block>,
+    /// A sync oracle
+    pub sync_oracle: SubspaceSyncOracle<SO>,
+    /// Hook into the sync module to control the justification sync process.
+    pub justification_sync_link: L,
+    /// Force authoring of blocks even if we are offline
+    pub force_authoring: bool,
+    /// Strategy and parameters for backing off block production.
+    pub backoff_authoring_blocks: Option<BS>,
+    /// The source of timestamps for relative slots
+    pub subspace_link: SubspaceLink<Block>,
+    /// Persistent storage of segment headers
+    pub segment_headers_store: SegmentHeadersStore<AS>,
+    /// The proportion of the slot dedicated to proposing.
+    ///
+    /// The block proposing will be limited to this proportion of the slot from the starting of the
+    /// slot. However, the proposing can still take longer when there is some lenience factor applied,
+    /// because there were no blocks produced for some slots.
+    pub block_proposal_slot_portion: SlotProportion,
+    /// The maximum proportion of the slot dedicated to proposing with any lenience factor applied
+    /// due to no blocks being produced.
+    pub max_block_proposal_slot_portion: Option<SlotProportion>,
+    /// Handle use to report telemetries.
+    pub telemetry: Option<TelemetryHandle>,
+    /// The offchain transaction pool factory.
+    ///
+    /// Will be used when sending equivocation reports and votes.
+    pub offchain_tx_pool_factory: OffchainTransactionPoolFactory<Block>,
+    /// Proof of time verifier
+    pub pot_verifier: PotVerifier,
+}
+
+/// Subspace slot worker responsible for block and vote production
+pub struct SubspaceSlotWorker<PosTable, Block, Client, E, SO, L, BS, AS>
+where
+    Block: BlockT,
+    SO: SyncOracle + Send + Sync,
+{
+    client: Arc<Client>,
+    block_import: SharedBlockImport<Block>,
+    env: E,
+    sync_oracle: SubspaceSyncOracle<SO>,
+    justification_sync_link: L,
+    force_authoring: bool,
+    backoff_authoring_blocks: Option<BS>,
+    subspace_link: SubspaceLink<Block>,
+    reward_signing_context: SigningContext,
+    block_proposal_slot_portion: SlotProportion,
+    max_block_proposal_slot_portion: Option<SlotProportion>,
+    telemetry: Option<TelemetryHandle>,
+    offchain_tx_pool_factory: OffchainTransactionPoolFactory<Block>,
+    segment_headers_store: SegmentHeadersStore<AS>,
     /// Solution receivers for challenges that were sent to farmers and expected to be received
     /// eventually
-    pub(super) pending_solutions:
-        BTreeMap<Slot, mpsc::Receiver<Solution<FarmerPublicKey, FarmerPublicKey>>>,
+    pending_solutions: BTreeMap<Slot, mpsc::Receiver<Solution<FarmerPublicKey, FarmerPublicKey>>>,
     /// Collection of PoT slots that can be retrieved later if needed by block production
-    pub(super) pot_checkpoints: BTreeMap<Slot, PotCheckpoints>,
-    pub(super) pot_verifier: PotVerifier,
-    pub(super) _pos_table: PhantomData<PosTable>,
+    pot_checkpoints: BTreeMap<Slot, PotCheckpoints>,
+    pot_verifier: PotVerifier,
+    _pos_table: PhantomData<PosTable>,
 }
 
 impl<PosTable, Block, Client, E, SO, L, BS, AS> PotSlotWorker<Block>
@@ -216,7 +265,7 @@ where
     BlockNumber: From<<<Block as BlockT>::Header as Header>::Number>,
 {
     type BlockImport = SharedBlockImport<Block>;
-    type SyncOracle = SO;
+    type SyncOracle = SubspaceSyncOracle<SO>;
     type JustificationSyncLink = L;
     type CreateProposer =
         Pin<Box<dyn Future<Output = Result<E::Proposer, ConsensusError>> + Send + 'static>>;
@@ -280,6 +329,8 @@ where
             debug!(target: "subspace", "Attempting to claim slot {}", slot);
         }
 
+        let chain_constants = self.subspace_link.chain_constants();
+
         let parent_hash = parent_header.hash();
         let runtime_api = self.client.runtime_api();
 
@@ -292,7 +343,7 @@ where
         let parent_future_slot = if parent_header.number().is_zero() {
             parent_slot
         } else {
-            parent_slot + self.chain_constants.block_authoring_delay()
+            parent_slot + chain_constants.block_authoring_delay()
         };
 
         let (proof_of_time, future_proof_of_time, pot_justification) = {
@@ -303,7 +354,7 @@ where
             let proof_of_time = self.pot_checkpoints.get(&slot)?.output();
 
             // Future slot for which proof must be available before authoring block at this slot
-            let future_slot = slot + self.chain_constants.block_authoring_delay();
+            let future_slot = slot + chain_constants.block_authoring_delay();
 
             let pot_input = if parent_header.number().is_zero() {
                 PotNextSlotInput {
@@ -436,8 +487,8 @@ where
                     solution.piece_offset,
                     solution.history_size,
                     max_pieces_in_sector,
-                    self.chain_constants.recent_segments(),
-                    self.chain_constants.recent_history_fraction(),
+                    chain_constants.recent_segments(),
+                    chain_constants.recent_history_fraction(),
                 )
                 .segment_index();
             let maybe_segment_commitment = self
@@ -459,7 +510,7 @@ where
             };
             let sector_expiration_check_segment_index = match solution
                 .history_size
-                .sector_expiration_check(self.chain_constants.min_sector_lifetime())
+                .sector_expiration_check(chain_constants.min_sector_lifetime())
             {
                 Some(sector_expiration_check) => sector_expiration_check.segment_index(),
                 None => {
@@ -479,9 +530,9 @@ where
                     piece_check_params: Some(PieceCheckParams {
                         max_pieces_in_sector,
                         segment_commitment,
-                        recent_segments: self.chain_constants.recent_segments(),
-                        recent_history_fraction: self.chain_constants.recent_history_fraction(),
-                        min_sector_lifetime: self.chain_constants.min_sector_lifetime(),
+                        recent_segments: chain_constants.recent_segments(),
+                        recent_history_fraction: chain_constants.recent_history_fraction(),
+                        min_sector_lifetime: chain_constants.min_sector_lifetime(),
                         current_history_size: history_size,
                         sector_expiration_check_segment_commitment,
                     }),
@@ -669,6 +720,47 @@ where
     AS: AuxStore + Send + Sync + 'static,
     BlockNumber: From<<<Block as BlockT>::Header as Header>::Number>,
 {
+    /// Create new Subspace slot worker
+    pub fn new(
+        SubspaceSlotWorkerOptions {
+            client,
+            env,
+            block_import,
+            sync_oracle,
+            justification_sync_link,
+            force_authoring,
+            backoff_authoring_blocks,
+            subspace_link,
+            segment_headers_store,
+            block_proposal_slot_portion,
+            max_block_proposal_slot_portion,
+            telemetry,
+            offchain_tx_pool_factory,
+            pot_verifier,
+        }: SubspaceSlotWorkerOptions<Block, Client, E, SO, L, BS, AS>,
+    ) -> Self {
+        Self {
+            client: client.clone(),
+            block_import,
+            env,
+            sync_oracle,
+            justification_sync_link,
+            force_authoring,
+            backoff_authoring_blocks,
+            subspace_link,
+            reward_signing_context: schnorrkel::context::signing_context(REWARD_SIGNING_CONTEXT),
+            block_proposal_slot_portion,
+            max_block_proposal_slot_portion,
+            telemetry,
+            offchain_tx_pool_factory,
+            segment_headers_store,
+            pending_solutions: Default::default(),
+            pot_checkpoints: Default::default(),
+            pot_verifier,
+            _pos_table: PhantomData::<PosTable>,
+        }
+    }
+
     async fn create_vote(
         &self,
         parent_header: &Block::Header,

@@ -19,9 +19,10 @@
 //! Contains implementation of archiving process in Subspace blockchain that converts blockchain
 //! history (blocks) into archived history (pieces).
 
+use crate::slot_worker::SubspaceSyncOracle;
 use crate::{
     ArchivedSegmentNotification, BlockImportingNotification, SubspaceLink,
-    SubspaceNotificationSender, SubspaceSyncOracle,
+    SubspaceNotificationSender,
 };
 use codec::{Decode, Encode};
 use futures::StreamExt;
