@@ -1,8 +1,6 @@
 //! Subspace block import implementation
 
-use crate::Error;
 use futures::lock::Mutex;
-use log::{debug, info, trace, warn};
 use rand::prelude::*;
 use rayon::prelude::*;
 use sc_client_api::backend::AuxStore;
@@ -38,6 +36,7 @@ use subspace_core_primitives::{BlockNumber, PublicKey, RewardSignature};
 use subspace_proof_of_space::Table;
 use subspace_verification::{check_reward_signature, verify_solution, VerifySolutionParams};
 use tokio::sync::Semaphore;
+use tracing::{debug, info, trace, warn};
 
 /// This corresponds to default value of `--max-runtime-instances` in Substrate
 const BLOCKS_LIST_CHECK_CONCURRENCY: usize = 8;
@@ -102,6 +101,8 @@ where
 {
     /// Substrate client
     pub client: Arc<Client>,
+    /// Subspace chain constants
+    pub chain_constants: ChainConstants,
     /// Kzg instance
     pub kzg: Kzg,
     /// Chain selection rule
@@ -153,11 +154,10 @@ where
     SelectChain: sp_consensus::SelectChain<Block>,
 {
     /// Create new instance
-    pub fn new(
-        options: SubspaceVerifierOptions<Block, Client, SelectChain>,
-    ) -> sp_blockchain::Result<Self> {
+    pub fn new(options: SubspaceVerifierOptions<Block, Client, SelectChain>) -> Self {
         let SubspaceVerifierOptions {
             client,
+            chain_constants,
             kzg,
             select_chain,
             telemetry,
@@ -168,11 +168,7 @@ where
             pot_verifier,
         } = options;
 
-        let chain_constants = client
-            .runtime_api()
-            .chain_constants(client.info().best_hash)?;
-
-        Ok(Self {
+        Self {
             client,
             kzg,
             select_chain,
@@ -187,7 +183,7 @@ where
             block_list_verification_semaphore: Semaphore::new(BLOCKS_LIST_CHECK_CONCURRENCY),
             _pos_table: Default::default(),
             _block: Default::default(),
-        })
+        }
     }
 
     /// Determine if full proof of time verification is needed for this block number
@@ -390,7 +386,7 @@ where
         header: &Block::Header,
         author: &FarmerPublicKey,
         origin: &BlockOrigin,
-    ) -> Result<(), Error<Block::Header>> {
+    ) -> Result<(), String> {
         // don't report any equivocations during initial sync
         // as they are most likely stale.
         if *origin == BlockOrigin::NetworkInitialSync {
@@ -404,7 +400,7 @@ where
         // check if authorship of this header is an equivocation and return a proof if so.
         let equivocation_proof =
             match check_equivocation(&*self.client, slot_now, slot, header, author)
-                .map_err(Error::Client)?
+                .map_err(|error| error.to_string())?
             {
                 Some(proof) => proof,
                 None => return Ok(()),
@@ -425,7 +421,7 @@ where
                 .best_chain()
                 .await
                 .map(|h| h.hash())
-                .map_err(|e| Error::Client(e.into()))?;
+                .map_err(|error| error.to_string())?;
 
             // submit equivocation report at best block.
             let mut runtime_api = self.client.runtime_api();
@@ -436,14 +432,11 @@ where
             );
             runtime_api
                 .submit_report_equivocation_extrinsic(best_hash, equivocation_proof)
-                .map_err(Error::RuntimeApi)?;
+                .map_err(|error| error.to_string())?;
 
-            info!(target: "subspace", "Submitted equivocation report for author {:?}", author);
+            info!(%author, "Submitted equivocation report for author");
         } else {
-            info!(
-                target: "subspace",
-                "Not submitting equivocation report because node is not authoring blocks"
-            );
+            info!("Not submitting equivocation report because node is not authoring blocks");
         }
 
         Ok(())
@@ -470,25 +463,26 @@ where
         mut block: BlockImportParams<Block>,
     ) -> Result<BlockImportParams<Block>, String> {
         trace!(
-            target: "subspace",
-            "Verifying origin: {:?} header: {:?} justification(s): {:?} body: {:?}",
-            block.origin,
-            block.header,
-            block.justifications,
-            block.body,
+            origin = ?block.origin,
+            header = ?block.header,
+            justifications = ?block.justifications,
+            body = ?block.body,
+            "Verifying",
         );
 
         let hash = block.header.hash();
 
-        debug!(target: "subspace", "We have {:?} logs in this header", block.header.digest().logs().len());
+        debug!(
+            "We have {:?} logs in this header",
+            block.header.digest().logs().len()
+        );
 
         let subspace_digest_items = extract_subspace_digest_items::<
             Block::Header,
             FarmerPublicKey,
             FarmerPublicKey,
             FarmerSignature,
-        >(&block.header)
-        .map_err(Error::<Block::Header>::from)?;
+        >(&block.header)?;
 
         // Check if farmer's plot is burned, ignore runtime API errors since this check will happen
         // during block import anyway
@@ -509,19 +503,18 @@ where
                 .unwrap_or_default()
             {
                 warn!(
-                    target: "subspace",
-                    "Verifying block with solution provided by farmer in block list: {}",
-                    subspace_digest_items.pre_digest.solution().public_key
+                    public_key = %subspace_digest_items.pre_digest.solution().public_key,
+                    "Verifying block with solution provided by farmer in block list"
                 );
 
-                return Err(Error::<Block::Header>::FarmerInBlockList(
+                return Err(format!(
+                    "Farmer {} is in block list",
                     subspace_digest_items
                         .pre_digest
                         .solution()
                         .public_key
                         .clone(),
-                )
-                .into());
+                ));
             }
         }
 
@@ -549,7 +542,7 @@ where
                 &block.justifications,
             )
             .await
-            .map_err(Error::<Block::Header>::from)?;
+            .map_err(|error| error.to_string())?;
 
         let CheckedHeader {
             pre_header,
@@ -575,7 +568,7 @@ where
         // the header is valid but let's check if there was something else already proposed at the
         // same slot by the given author. if there was, we will report the equivocation to the
         // runtime.
-        if let Err(err) = self
+        if let Err(error) = self
             .check_and_report_equivocation(
                 slot_now,
                 slot,
@@ -586,13 +579,12 @@ where
             .await
         {
             warn!(
-                target: "subspace",
-                "Error checking/reporting Subspace equivocation: {}",
-                err
+                %error,
+                "Error checking/reporting Subspace equivocation"
             );
         }
 
-        trace!(target: "subspace", "Checked {:?}; importing.", pre_header);
+        trace!(?pre_header, "Checked header; importing");
         telemetry!(
             self.telemetry;
             CONSENSUS_TRACE;

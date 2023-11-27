@@ -29,10 +29,12 @@ use lru::LruCache;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use sc_client_api::{AuxStore, BlockBackend};
-use sc_consensus_subspace::archiver::{recreate_genesis_segment, SegmentHeadersStore};
+use sc_consensus_subspace::archiver::{
+    recreate_genesis_segment, ArchivedSegmentNotification, SegmentHeadersStore,
+};
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
-use sc_consensus_subspace::{
-    ArchivedSegmentNotification, NewSlotNotification, RewardSigningNotification, SubspaceSyncOracle,
+use sc_consensus_subspace::slot_worker::{
+    NewSlotNotification, RewardSigningNotification, SubspaceSyncOracle,
 };
 use sc_rpc::{DenyUnsafe, SubscriptionTaskExecutor};
 use sc_utils::mpsc::TracingUnboundedSender;
@@ -301,7 +303,6 @@ where
             })?;
 
         let farmer_app_info: Result<FarmerAppInfo, ApiError> = try {
-            let slot_duration = runtime_api.slot_duration(best_hash)?;
             let chain_constants = runtime_api.chain_constants(best_hash)?;
             let protocol_info = FarmerProtocolInfo {
                 history_size: runtime_api.history_size(best_hash)?,
@@ -314,7 +315,8 @@ where
             FarmerAppInfo {
                 genesis_hash,
                 dsn_bootstrap_nodes: self.dsn_bootstrap_nodes.clone(),
-                farming_timeout: slot_duration
+                farming_timeout: chain_constants
+                    .slot_duration()
                     .as_duration()
                     .mul_f64(SlotNumber::from(chain_constants.block_authoring_delay()) as f64),
                 protocol_info,
