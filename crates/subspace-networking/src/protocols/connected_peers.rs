@@ -24,7 +24,6 @@
 
 mod handler;
 
-#[cfg(not(windows))] // TODO: Restore tests on windows after changing the waiting algorithm
 #[cfg(test)]
 mod tests;
 
