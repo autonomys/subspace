@@ -2,6 +2,7 @@ use crate::{BlockT, Error, GossipMessageSink, HeaderBackend, HeaderT, Relayer, L
 use futures::StreamExt;
 use parity_scale_codec::FullCodec;
 use sc_client_api::{AuxStore, BlockchainEvents, ProofProvider};
+use sc_state_db::PruningMode;
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_consensus::SyncOracle;
 use sp_domains::DomainsApi;
@@ -15,6 +16,7 @@ use std::sync::Arc;
 /// If the node is in major sync, worker waits waits until the sync is finished.
 pub async fn relay_consensus_chain_messages<Client, Block, SO>(
     consensus_chain_client: Arc<Client>,
+    state_pruning_mode: PruningMode,
     sync_oracle: SO,
     gossip_message_sink: GossipMessageSink,
 ) where
@@ -31,16 +33,17 @@ pub async fn relay_consensus_chain_messages<Client, Block, SO>(
     // since all the relayers will haven embed client to known the canonical chain.
     let result = start_relaying_messages(
         NumberFor::<Block>::zero(),
-        consensus_chain_client,
+        consensus_chain_client.clone(),
         |client, block_hash| {
             Relayer::submit_messages_from_consensus_chain(client, block_hash, &gossip_message_sink)
         },
         sync_oracle,
-        |_, _| -> Result<bool, ApiError> {
-            // since we just need to provide a storage proof with the state root of Consensus chain
-            // proof can always be generated for any consensus chain block.
-            // So we can always relay messages.
-            Ok(true)
+        |_, relay_number| -> Result<bool, ApiError> {
+            Ok(is_state_available(
+                &state_pruning_mode,
+                &consensus_chain_client,
+                relay_number,
+            ))
         },
     )
     .await;
@@ -59,6 +62,7 @@ pub async fn relay_consensus_chain_messages<Client, Block, SO>(
 pub async fn relay_domain_messages<CCC, DC, CCBlock, Block, SO>(
     consensus_chain_client: Arc<CCC>,
     domain_client: Arc<DC>,
+    domain_state_pruning: PruningMode,
     sync_oracle: SO,
     gossip_message_sink: GossipMessageSink,
 ) where
@@ -88,7 +92,7 @@ pub async fn relay_domain_messages<CCC, DC, CCBlock, Block, SO>(
 
     let result = start_relaying_messages(
         relay_confirmation_depth,
-        domain_client,
+        domain_client.clone(),
         |client, block_hash| {
             Relayer::submit_messages_from_domain(
                 client,
@@ -106,6 +110,11 @@ pub async fn relay_domain_messages<CCC, DC, CCBlock, Block, SO>(
                 )));
             };
 
+            // short circuit if the domain state is unavailable to relay messages.
+            if !is_state_available(&domain_state_pruning, &domain_client, block_number) {
+                return Ok(false);
+            }
+
             let api = consensus_chain_client.runtime_api();
             let at = consensus_chain_client.info().best_hash;
             let oldest_tracked_number = api.oldest_receipt_number(at, domain_id)?;
@@ -120,6 +129,32 @@ pub async fn relay_domain_messages<CCC, DC, CCBlock, Block, SO>(
             ?err,
             "Failed to start relayer for domain"
         )
+    }
+}
+
+fn is_state_available<Client, Block>(
+    state_pruning_mode: &PruningMode,
+    client: &Arc<Client>,
+    relay_number: NumberFor<Block>,
+) -> bool
+where
+    Block: BlockT,
+    Client: HeaderBackend<Block>,
+{
+    match state_pruning_mode {
+        // all the state is available for archive and archive canonical.
+        // we can relay any message from any block
+        PruningMode::ArchiveAll | PruningMode::ArchiveCanonical => true,
+        // If the pruning mode is constrained, then check if the state is available for the `relay_number`
+        PruningMode::Constrained(constraints) => {
+            let max_blocks = NumberFor::<Block>::from(constraints.max_blocks.unwrap_or(0));
+            let current_best_block = client.info().best_number;
+            match current_best_block.checked_sub(&max_blocks) {
+                // we still have the state available as there was no pruning yet.
+                None => true,
+                Some(available_block_state) => relay_number >= available_block_state,
+            }
+        }
     }
 }
 

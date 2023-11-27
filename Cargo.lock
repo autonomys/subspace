@@ -2617,6 +2617,7 @@ dependencies = [
  "futures",
  "parity-scale-codec",
  "sc-client-api",
+ "sc-state-db",
  "sc-utils",
  "sp-api",
  "sp-blockchain",
