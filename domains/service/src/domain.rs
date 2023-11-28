@@ -371,6 +371,7 @@ where
         })?;
 
     let is_authority = domain_config.role.is_authority();
+    let domain_state_pruning = domain_config.state_pruning.clone().unwrap_or_default();
     domain_config.rpc_id_provider = provider.rpc_id();
     let rpc_builder = {
         let deps = crate::rpc::FullDeps {
@@ -467,6 +468,7 @@ where
         let relayer_worker = domain_client_message_relayer::worker::relay_domain_messages(
             consensus_client.clone(),
             client.clone(),
+            domain_state_pruning,
             // domain relayer will use consensus chain sync oracle instead of domain sync orcle
             // since domain sync oracle will always return `synced` due to force sync being set.
             consensus_network_sync_oracle,
