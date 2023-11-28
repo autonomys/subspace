@@ -20,7 +20,7 @@ use codec::{Decode, Encode};
 use domain_runtime_primitives::opaque::AccountId;
 use domain_runtime_primitives::DomainCoreApi;
 use sc_client_api::BlockBackend;
-use sp_api::{HashT, ProvideRuntimeApi};
+use sp_api::{ApiExt, HashT, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_core::H256;
 use sp_domains::extrinsics::deduplicate_and_shuffle_extrinsics;
@@ -268,6 +268,14 @@ where
         //
         // NOTE: for each extrinsic the checking order must follow `InvalidBundleType::checking_order`
         let runtime_api = self.client.runtime_api();
+        let api_version = runtime_api
+            .api_version::<dyn DomainCoreApi<Block>>(at)
+            .map_err(sp_blockchain::Error::RuntimeApiError)?
+            .ok_or_else(|| {
+                sp_blockchain::Error::Application(
+                    format!("Could not find `DomainCoreApi` api for block `{:?}`.", at).into(),
+                )
+            })?;
         for (index, opaque_extrinsic) in bundle.extrinsics.iter().enumerate() {
             let Ok(extrinsic) =
                 <<Block as BlockT>::Extrinsic>::decode(&mut opaque_extrinsic.encode().as_slice())
@@ -303,16 +311,25 @@ where
 
             // Using one instance of runtime_api throughout the loop in order to maintain context
             // between them.
-            // Using `check_transaction_validity_and_do_pre_dispatch` instead of `check_transaction_validity`
+            // Using `check_transaction_and_do_pre_dispatch` instead of `check_transaction_validity`
             // to maintain side-effect in the storage buffer.
-            let is_legal_tx = runtime_api
-                .check_transaction_validity_and_do_pre_dispatch(
+            let is_legal_tx = if api_version == 2 {
+                runtime_api.check_transaction_and_do_pre_dispatch(
                     at,
                     &extrinsic,
                     domain_block_number,
                     at,
                 )?
-                .is_ok();
+            } else {
+                #[allow(deprecated)] // old check_transaction_validity
+                runtime_api.check_transaction_validity_before_version_2(
+                    at,
+                    &extrinsic,
+                    domain_block_number,
+                    at,
+                )?
+            }
+            .is_ok();
 
             if !is_legal_tx {
                 // TODO: Generate a fraud proof for this invalid bundle

@@ -47,7 +47,7 @@ use sp_messenger::messages::{
 use sp_runtime::generic::Era;
 use sp_runtime::traits::{
     BlakeTwo256, Block as BlockT, Checkable, Convert, DispatchInfoOf, Dispatchable,
-    IdentifyAccount, IdentityLookup, PostDispatchInfoOf, SignedExtension, UniqueSaturatedInto,
+    IdentifyAccount, IdentityLookup, One, PostDispatchInfoOf, SignedExtension, UniqueSaturatedInto,
     ValidateUnsigned, Verify,
 };
 use sp_runtime::transaction_validity::{
@@ -965,14 +965,31 @@ impl_runtime_apis! {
             check_transaction_validity_inner(&lookup, uxt, block_number, block_hash).map(|_| ())
         }
 
-        fn check_transaction_validity_and_do_pre_dispatch(
+        fn check_transaction_and_do_pre_dispatch(
             uxt: &<Block as BlockT>::Extrinsic,
             block_number: BlockNumber,
             block_hash: <Block as BlockT>::Hash
         ) -> Result<(), domain_runtime_primitives::CheckTxValidityError> {
-            let lookup = frame_system::ChainContext::<Runtime>::default();
+                        let lookup = frame_system::ChainContext::<Runtime>::default();
 
-            let maybe_signer = check_transaction_validity_inner(&lookup, uxt, block_number, block_hash)?;
+            let maybe_signer_info = extract_signer_inner(uxt, &lookup);
+            let maybe_signer = if let Some(signer_info) = maybe_signer_info {
+                let signer = signer_info.map_err(|tx_validity_error| {
+                    domain_runtime_primitives::CheckTxValidityError::UnableToExtractSigner {
+                        error: tx_validity_error,
+                    }
+                })?;
+                Some(signer)
+            } else {
+                None
+            };
+
+            // Initializing block related storage required for validation
+            System::initialize(
+                &(System::block_number() + BlockNumber::one()),
+                &block_hash,
+                &Default::default(),
+            );
 
             let storage_keys = storage_keys_for_verifying_tx_validity_inner(maybe_signer, block_number, Self::extrinsic_era(uxt));
 
@@ -984,6 +1001,13 @@ impl_runtime_apis! {
             })?;
 
             let dispatch_info = xt.get_dispatch_info();
+
+            if dispatch_info.class == DispatchClass::Mandatory {
+                return Err( domain_runtime_primitives::CheckTxValidityError::InvalidTransaction {
+                    error:  InvalidTransaction::BadMandatory.into(),
+                    storage_keys: storage_keys.clone(),
+                })
+            }
 
             let encoded = uxt.encode();
             let encoded_len = encoded.len();
@@ -1041,7 +1065,7 @@ impl_runtime_apis! {
         fn check_bundle_extrinsics_validity(bundle_extrinsics: Vec<<Block as BlockT>::Extrinsic>, block_number: BlockNumber,
             block_hash: <Block as BlockT>::Hash) -> Result<(), domain_runtime_primitives::CheckBundleValidityError> {
             for (extrinsic_index, extrinsic) in bundle_extrinsics.iter().enumerate() {
-                Self::check_transaction_validity_and_do_pre_dispatch(extrinsic, block_number, block_hash).map_err(|tx_validity_error| domain_runtime_primitives::CheckBundleValidityError::from_tx_validity_error(extrinsic_index as u32, tx_validity_error))?;
+                Self::check_transaction_and_do_pre_dispatch(extrinsic, block_number, block_hash).map_err(|tx_validity_error| domain_runtime_primitives::CheckBundleValidityError::from_tx_validity_error(extrinsic_index as u32, tx_validity_error))?;
             }
             Ok(())
         }

@@ -232,9 +232,10 @@ sp_api::decl_runtime_apis! {
             block_hash: <Block as BlockT>::Hash
         ) -> Result<(), CheckTxValidityError>;
 
-        /// Check transaction validity and also perform pre dispatch on transaction.
+        /// New in v2.
+        /// Checks transaction and also perform pre dispatch on transaction.
         /// This is useful to maintain side effect in the RuntimeApi instance's storage buffer.
-        fn check_transaction_validity_and_do_pre_dispatch(
+        fn check_transaction_and_do_pre_dispatch(
             uxt: &<Block as BlockT>::Extrinsic,
             block_number: NumberFor<Block>,
             block_hash: <Block as BlockT>::Hash
@@ -256,7 +257,8 @@ sp_api::decl_runtime_apis! {
             tx_era: Option<Era>,
         ) -> Result<Vec<Vec<u8>>, VerifyTxValidityError>;
 
-        /// Checks validity of bundle extrinsics. Internally calls `check_transaction_validity_and_do_pre_dispatch`
+        /// New in v2.
+        /// Checks validity of bundle extrinsics. Internally calls `check_transaction_and_do_pre_dispatch`
         fn check_bundle_extrinsics_validity(bundle_extrinsics: Vec<<Block as BlockT>::Extrinsic>, block_number: NumberFor<Block>,
             block_hash: <Block as BlockT>::Hash) -> Result<(), CheckBundleValidityError>;
 

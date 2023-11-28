@@ -212,6 +212,7 @@ where
         )
     }
 
+    /// This is stateful runtime api call and require setting of storage keys.
     pub fn check_transaction_validity(
         &self,
         uxt: &<Block as BlockT>::Extrinsic,
@@ -227,13 +228,14 @@ where
         )
     }
 
-    pub fn check_transaction_validity_and_do_pre_dispatch(
+    /// This is stateful runtime api call and require setting of storage keys.
+    pub fn check_transaction_and_do_pre_dispatch(
         &self,
         uxt: &<Block as BlockT>::Extrinsic,
         block_number: NumberFor<Block>,
         block_hash: <Block as BlockT>::Hash,
     ) -> Result<Result<(), CheckTxValidityError>, ApiError> {
-        <Self as DomainCoreApi<Block>>::check_transaction_validity_and_do_pre_dispatch(
+        <Self as DomainCoreApi<Block>>::check_transaction_and_do_pre_dispatch(
             self,
             Default::default(),
             uxt,
