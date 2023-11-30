@@ -335,13 +335,12 @@ where
         .await
         .map_err(|error| anyhow::anyhow!(error))?;
 
-    let first_farm_directory = disk_farms
+    let first_farm_directory = &disk_farms
         .first()
         .expect("Disk farm collection is not be empty as checked above; qed")
-        .directory
-        .clone();
+        .directory;
 
-    let identity = Identity::open_or_create(&first_farm_directory)
+    let identity = Identity::open_or_create(first_farm_directory)
         .map_err(|error| anyhow!("Failed to open or create identity: {error}"))?;
     let keypair = derive_libp2p_keypair(identity.secret_key());
     let peer_id = keypair.public().to_peer_id();
