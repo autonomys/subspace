@@ -189,7 +189,7 @@ async fn test_target_connected_peer_limit_number() {
     let mut peer1 = new_ephemeral(
         DECISION_TIMEOUT,
         Behaviour::<ConnectedPeersInstance>::new(Config {
-            target_connected_peers: 0,
+            target_connected_peers: 1,
             max_connected_peers,
             decision_timeout: DECISION_TIMEOUT,
             ..Default::default()
@@ -286,4 +286,76 @@ fn new_ephemeral<NB: NetworkBehaviour>(connection_timeout: Duration, behaviour: 
         .with_behaviour(move |_keypair| behaviour)
         .unwrap()
         .build()
+}
+
+#[tokio::test()]
+async fn test_connection_type_difference() {
+    let mut peer1 = new_ephemeral(
+        DECISION_TIMEOUT,
+        Behaviour::<ConnectedPeersInstance>::new(Config {
+            target_connected_peers: 0,
+            max_connected_peers: 1,
+            decision_timeout: DECISION_TIMEOUT,
+            ..Default::default()
+        }),
+    );
+
+    let mut peer2 = new_ephemeral(
+        DECISION_TIMEOUT,
+        Behaviour::<ConnectedPeersInstance>::new(Config {
+            target_connected_peers: 1,
+            max_connected_peers: 1,
+            decision_timeout: DECISION_TIMEOUT,
+            ..Default::default()
+        }),
+    );
+
+    peer1.listen().with_memory_addr_external().await;
+    peer2.listen().with_memory_addr_external().await;
+
+    peer1.connect(&mut peer2).await;
+
+    peer1
+        .behaviour_mut()
+        .update_keep_alive_status(*peer2.local_peer_id(), true);
+    peer2
+        .behaviour_mut()
+        .update_keep_alive_status(*peer1.local_peer_id(), true);
+
+    loop {
+        select! {
+            _ = peer1.next_swarm_event().fuse() => {},
+            _ = peer2.next_swarm_event().fuse() => {},
+            _ = sleep(LONG_DELAY).fuse() => {
+                break;
+            }
+        }
+    }
+
+    // Peer1 doesn't have enough slots for outgoing connections
+    assert!(!peer1.is_connected(peer2.local_peer_id()));
+    assert!(!peer2.is_connected(peer1.local_peer_id()));
+
+    peer2.connect(&mut peer1).await;
+
+    peer1
+        .behaviour_mut()
+        .update_keep_alive_status(*peer2.local_peer_id(), true);
+    peer2
+        .behaviour_mut()
+        .update_keep_alive_status(*peer1.local_peer_id(), true);
+
+    loop {
+        select! {
+            _ = peer1.next_swarm_event().fuse() => {},
+            _ = peer2.next_swarm_event().fuse() => {},
+            _ = sleep(LONG_DELAY).fuse() => {
+                break;
+            }
+        }
+    }
+
+    // Peer2 has enough slots for outgoing connections
+    assert!(peer1.is_connected(peer2.local_peer_id()));
+    assert!(peer2.is_connected(peer1.local_peer_id()));
 }
