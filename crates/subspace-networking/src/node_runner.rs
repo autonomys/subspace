@@ -392,6 +392,8 @@ where
             addresses.clear();
             addresses.append(&mut external_addresses);
         }
+
+        self.log_kademlia_stats();
     }
 
     fn handle_random_query_interval(&mut self) {
@@ -1644,5 +1646,24 @@ where
 
         result_peers.retain(|(peer_id, _)| !bootstrap_nodes.contains(peer_id));
         result_peers
+    }
+
+    fn log_kademlia_stats(&mut self) {
+        let mut peer_counter = 0;
+        let mut peer_with_no_address_counter = 0;
+        for kbucket in self.swarm.behaviour_mut().kademlia.kbuckets() {
+            for entry in kbucket.iter() {
+                peer_counter += 1;
+                if entry.node.value.len() == 0 {
+                    peer_with_no_address_counter += 1;
+                }
+            }
+        }
+
+        debug!(
+            peers = %peer_counter,
+            peers_with_no_address = %peer_with_no_address_counter,
+            "Kademlia stats"
+        );
     }
 }
