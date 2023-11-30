@@ -707,7 +707,6 @@ where
             let (node, mut node_runner, dsn_metrics_registry) = create_dsn_instance(
                 dsn_protocol_version,
                 dsn_config.clone(),
-                segment_headers_store.clone(),
                 config.base.prometheus_config.is_some(),
             )?;
 
