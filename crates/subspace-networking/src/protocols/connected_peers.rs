@@ -293,12 +293,7 @@ impl<Instance> Behaviour<Instance> {
     /// Specifies the whether we should keep connections to the peer alive. The decision could
     /// depend on another protocol (e.g.: PeerInfo protocol event handling).
     pub fn update_keep_alive_status(&mut self, peer_id: PeerId, keep_alive: bool) {
-        let allow_new_incoming_connected_peer = self
-            .permanently_connected_peers(ConnectionType::Incoming)
-            < self.config.max_connected_peers;
-        let allow_new_outgoing_connected_peer = self
-            .permanently_connected_peers(ConnectionType::Outgoing)
-            < self.config.target_connected_peers;
+        let current_connected_peers_number = self.permanently_connected_peers();
 
         // It's a known peer.
         if let Some(connection_state) = self.known_peers.get_mut(&peer_id) {
@@ -306,19 +301,20 @@ impl<Instance> Behaviour<Instance> {
             if let Some(connection_id) = connection_state.connection_id() {
                 let Some(connection_type) = connection_state.connection_type() else {
                     debug!(
-                            ?peer_id,
-                            ?keep_alive,
-                            "Detected an attempt to update status of peer with unknown connection type."
-                        );
+                        ?peer_id,
+                        ?keep_alive,
+                        "Detected an attempt to update status of peer with unknown connection type."
+                    );
                     return;
                 };
 
-                let not_enough_connected_peers = {
-                    match connection_type {
-                        ConnectionType::Outgoing => allow_new_outgoing_connected_peer,
-                        ConnectionType::Incoming => allow_new_incoming_connected_peer,
-                    }
-                };
+                // We allow new permanent outgoing connections when we have total connections less
+                // than our desired (target) connection number or new permanent incoming
+                // connections when we have total connections less than the maximum allowed number.
+                let not_enough_connected_peers = current_connected_peers_number
+                    < self.config.target_connected_peers
+                    || (connection_type == ConnectionType::Incoming
+                        && current_connected_peers_number < self.config.max_connected_peers);
 
                 if not_enough_connected_peers {
                     trace!(%peer_id, %keep_alive, "Insufficient number of connected peers detected.");
@@ -366,18 +362,11 @@ impl<Instance> Behaviour<Instance> {
     }
 
     /// Calculates the current number of permanently connected peers.
-    fn permanently_connected_peers(&self, filter_connection_type: ConnectionType) -> u32 {
+    fn permanently_connected_peers(&self) -> u32 {
         self.known_peers
             .iter()
             .filter(|(_, connection_state)| {
-                if let ConnectionState::Permanent {
-                    connection_type, ..
-                } = connection_state
-                {
-                    *connection_type == filter_connection_type
-                } else {
-                    false
-                }
+                matches!(connection_state, ConnectionState::Permanent { .. })
             })
             .count() as u32
     }
