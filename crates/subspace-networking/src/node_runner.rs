@@ -41,6 +41,7 @@ use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
+use std::fmt;
 use std::fmt::Debug;
 use std::net::IpAddr;
 use std::num::NonZeroUsize;
@@ -148,6 +149,15 @@ where
     _address_removal_task_handler_id: Option<HandlerId>,
     /// Defines whether we should run blocking Kademlia bootstrap() operation before other requests.
     disable_bootstrap_on_start: bool,
+}
+
+impl<LocalRecordProvider> fmt::Debug for NodeRunner<LocalRecordProvider>
+where
+    LocalRecordProvider: constructor::LocalRecordProvider + Send + Sync + 'static,
+{
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.debug_struct("NodeRunner").finish_non_exhaustive()
+    }
 }
 
 // Helper struct for NodeRunner configuration (clippy requirement).

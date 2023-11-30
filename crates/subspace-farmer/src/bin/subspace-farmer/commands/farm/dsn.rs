@@ -2,7 +2,7 @@ use crate::commands::farm::DsnArgs;
 use parking_lot::Mutex;
 use prometheus_client::registry::Registry;
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::Path;
 use std::sync::{Arc, Weak};
 use subspace_farmer::piece_cache::PieceCache;
 use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
@@ -32,7 +32,7 @@ const TARGET_CONNECTIONS: u32 = 15;
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub(super) fn configure_dsn(
     protocol_prefix: String,
-    base_path: PathBuf,
+    base_path: &Path,
     keypair: Keypair,
     DsnArgs {
         listen_on,
