@@ -8,9 +8,9 @@ use futures::{select, FutureExt, StreamExt};
 use parking_lot::RwLock;
 use rayon::prelude::*;
 use std::collections::HashMap;
-use std::mem;
 use std::num::NonZeroU16;
 use std::sync::Arc;
+use std::{fmt, mem};
 use subspace_core_primitives::{Piece, PieceIndex, SegmentIndex};
 use subspace_farmer_components::plotting::{PieceGetter, PieceGetterRetryPolicy};
 use subspace_networking::libp2p::kad::{ProviderRecord, RecordKey};
@@ -61,8 +61,12 @@ struct CacheWorkerState {
 }
 
 /// Cache worker used to drive the cache
+#[derive(Debug)]
 #[must_use = "Cache will not work unless its worker is running"]
-pub struct CacheWorker<NC> {
+pub struct CacheWorker<NC>
+where
+    NC: fmt::Debug,
+{
     peer_id: PeerId,
     node_client: NC,
     caches: Arc<RwLock<Vec<DiskPieceCacheState>>>,

@@ -1,12 +1,9 @@
 use prometheus_client::registry::Registry;
-use sc_client_api::AuxStore;
-use sc_consensus_subspace::archiver::SegmentHeadersStore;
 use std::collections::HashSet;
 use std::fs;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
-use subspace_core_primitives::{SegmentHeader, SegmentIndex};
 use subspace_networking::libp2p::kad::Mode;
 use subspace_networking::libp2p::metrics::Metrics;
 use subspace_networking::libp2p::{identity, Multiaddr};
@@ -14,13 +11,11 @@ use subspace_networking::utils::strip_peer_id;
 use subspace_networking::{
     CreationError, KademliaMode, KnownPeersManager, KnownPeersManagerConfig,
     KnownPeersManagerPersistenceError, Node, NodeRunner, PeerInfoProvider,
-    PieceByIndexRequestHandler, SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest,
-    SegmentHeaderResponse,
+    PieceByIndexRequestHandler, SegmentHeaderBySegmentIndexesRequestHandler,
 };
 use thiserror::Error;
-use tracing::{debug, error, trace};
+use tracing::{error, trace};
 
-const SEGMENT_HEADERS_NUMBER_LIMIT: u64 = 1000;
 /// Should be sufficient number of target connections for everyone, limits are higher
 const TARGET_CONNECTIONS: u32 = 15;
 
@@ -78,15 +73,11 @@ pub struct DsnConfig {
     pub disable_bootstrap_on_start: bool,
 }
 
-pub(crate) fn create_dsn_instance<AS>(
+pub(crate) fn create_dsn_instance(
     dsn_protocol_version: String,
     dsn_config: DsnConfig,
-    segment_headers_store: SegmentHeadersStore<AS>,
     enable_metrics: bool,
-) -> Result<(Node, NodeRunner<()>, Option<Registry>), DsnConfigurationError>
-where
-    AS: AuxStore + Sync + Send + 'static,
-{
+) -> Result<(Node, NodeRunner<()>, Option<Registry>), DsnConfigurationError> {
     trace!("Subspace networking starting.");
 
     let mut metric_registry = Registry::default();
@@ -129,56 +120,7 @@ where
         request_response_protocols: vec![
             // We need to enable protocol to request pieces
             PieceByIndexRequestHandler::create(|_, _| async { None }),
-            SegmentHeaderBySegmentIndexesRequestHandler::create(move |_, req| {
-                let segment_indexes = match req {
-                    SegmentHeaderRequest::SegmentIndexes { segment_indexes } => {
-                        segment_indexes.clone()
-                    }
-                    SegmentHeaderRequest::LastSegmentHeaders {
-                        segment_header_number,
-                    } => {
-                        let mut segment_headers_limit = *segment_header_number;
-                        if *segment_header_number > SEGMENT_HEADERS_NUMBER_LIMIT {
-                            debug!(
-                                %segment_header_number,
-                                "Segment header number exceeded the limit."
-                            );
-
-                            segment_headers_limit = SEGMENT_HEADERS_NUMBER_LIMIT;
-                        }
-
-                        match segment_headers_store.max_segment_index() {
-                            Some(max_segment_index) => {
-                                // Several last segment indexes
-                                (SegmentIndex::ZERO..=max_segment_index)
-                                    .rev()
-                                    .take(segment_headers_limit as usize)
-                                    .collect::<Vec<_>>()
-                            }
-                            None => {
-                                // Nothing yet
-                                Vec::new()
-                            }
-                        }
-                    }
-                };
-
-                let maybe_segment_headers = segment_indexes
-                    .iter()
-                    .map(|segment_index| segment_headers_store.get_segment_header(*segment_index))
-                    .collect::<Option<Vec<SegmentHeader>>>();
-
-                let result = match maybe_segment_headers {
-                    Some(segment_headers) => Some(SegmentHeaderResponse { segment_headers }),
-                    None => {
-                        error!("Segment header collection contained empty segment headers.");
-
-                        None
-                    }
-                };
-
-                async move { result }
-            }),
+            SegmentHeaderBySegmentIndexesRequestHandler::create(move |_, _| async move { None }),
         ],
         max_established_incoming_connections: dsn_config.max_in_connections,
         max_established_outgoing_connections: dsn_config.max_out_connections,
