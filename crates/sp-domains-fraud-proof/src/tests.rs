@@ -1,6 +1,6 @@
 use codec::{Decode, Encode};
 use domain_block_preprocessor::stateless_runtime::StatelessRuntime;
-use domain_runtime_primitives::{CheckBundleValidityError, CheckTxValidityError, DomainCoreApi};
+use domain_runtime_primitives::{CheckTxValidityError, DomainCoreApi};
 use domain_test_service::domain::EvmDomainClient as DomainClient;
 use domain_test_service::evm_domain_test_runtime::Runtime as TestRuntime;
 use domain_test_service::EcdsaKeyring::{Alice, Bob, Charlie};
@@ -381,19 +381,22 @@ async fn check_bundle_validity_runtime_api_should_work() {
         OpaqueExtrinsic::from_bytes(&transfer_to_charlie_2.encode()).unwrap(),
     ];
 
-    assert_eq!(
-        alice
-            .client
-            .runtime_api()
-            .check_bundle_extrinsics_validity(
-                alice.client.as_ref().info().best_hash,
-                sample_valid_bundle_extrinsics,
-                alice.client.as_ref().info().best_number,
-                alice.client.as_ref().info().best_hash,
-            )
-            .unwrap(),
-        Ok(())
-    );
+    {
+        let runtime_instance = alice.client.runtime_api();
+        for extrinsic in sample_valid_bundle_extrinsics {
+            assert_eq!(
+                runtime_instance
+                    .check_transaction_and_do_pre_dispatch(
+                        alice.client.as_ref().info().best_hash,
+                        &extrinsic,
+                        alice.client.as_ref().info().best_number,
+                        alice.client.as_ref().info().best_hash,
+                    )
+                    .unwrap(),
+                Ok(())
+            );
+        }
+    }
 
     let transfer_to_charlie_3_duplicate_nonce_extrinsic =
         construct_extrinsic_generic::<TestRuntime, _>(
@@ -416,28 +419,45 @@ async fn check_bundle_validity_runtime_api_should_work() {
             .unwrap(),
     ];
 
-    assert_eq!(
-        alice
-            .client
-            .runtime_api()
-            .check_bundle_extrinsics_validity(
-                alice.client.as_ref().info().best_hash,
-                sample_invalid_bundle_with_same_nonce_extrinsic,
-                alice.client.as_ref().info().best_number,
-                alice.client.as_ref().info().best_hash,
-            )
-            .unwrap(),
-        Err(CheckBundleValidityError::InvalidTransaction {
-            tx_index: 2,
-            tx_validity_error: CheckTxValidityError::InvalidTransaction {
-                error: TransactionValidityError::Invalid(InvalidTransaction::Stale),
-                storage_keys: get_storage_keys_for_verifying_signed_tx_validity(
-                    &alice,
-                    transfer_to_charlie_3_duplicate_nonce_extrinsic.clone()
-                ),
-            },
-        })
-    );
+    {
+        let runtime_instance = alice.client.runtime_api();
+        for (i, extrinsic) in sample_invalid_bundle_with_same_nonce_extrinsic
+            .iter()
+            .enumerate()
+        {
+            if i != 2 {
+                assert_eq!(
+                    runtime_instance
+                        .check_transaction_and_do_pre_dispatch(
+                            alice.client.as_ref().info().best_hash,
+                            extrinsic,
+                            alice.client.as_ref().info().best_number,
+                            alice.client.as_ref().info().best_hash,
+                        )
+                        .unwrap(),
+                    Ok(())
+                );
+            } else {
+                assert_eq!(
+                    runtime_instance
+                        .check_transaction_and_do_pre_dispatch(
+                            alice.client.as_ref().info().best_hash,
+                            extrinsic,
+                            alice.client.as_ref().info().best_number,
+                            alice.client.as_ref().info().best_hash,
+                        )
+                        .unwrap(),
+                    Err(CheckTxValidityError::InvalidTransaction {
+                        error: TransactionValidityError::Invalid(InvalidTransaction::Stale),
+                        storage_keys: get_storage_keys_for_verifying_signed_tx_validity(
+                            &alice,
+                            transfer_to_charlie_3_duplicate_nonce_extrinsic.clone()
+                        ),
+                    })
+                );
+            }
+        }
+    }
 
     // transfer most of the alice's balance
     let alice_balance = alice
@@ -512,9 +532,9 @@ async fn check_bundle_validity_runtime_api_should_work() {
         alice
             .client
             .runtime_api()
-            .check_bundle_extrinsics_validity(
+            .check_transaction_and_do_pre_dispatch(
                 alice.client.as_ref().info().best_hash,
-                vec![transfer_to_charlie_with_big_tip_1.clone().into(),],
+                &OpaqueExtrinsic::from_bytes(&transfer_to_charlie_with_big_tip_1.encode()).unwrap(),
                 alice.client.as_ref().info().best_number,
                 alice.client.as_ref().info().best_hash,
             )
@@ -530,28 +550,45 @@ async fn check_bundle_validity_runtime_api_should_work() {
             transfer_to_charlie_with_big_tip_2.clone(),
         ),
     };
-    assert_eq!(
-        alice
-            .client
-            .runtime_api()
-            .check_bundle_extrinsics_validity(
-                alice.client.as_ref().info().best_hash,
-                vec![
-                    transfer_to_charlie_with_big_tip_1.clone().into(),
-                    transfer_to_charlie_with_big_tip_2.clone().into(),
-                ],
-                alice.client.as_ref().info().best_number,
-                alice.client.as_ref().info().best_hash,
-            )
-            .unwrap(),
-        Err(CheckBundleValidityError::InvalidTransaction {
-            tx_index: 1,
-            tx_validity_error: CheckTxValidityError::decode(
-                &mut tx_validity_error.encode().as_slice()
-            )
-            .unwrap(),
-        })
-    );
+
+    let transfer_to_charlie_with_big_tip = vec![
+        transfer_to_charlie_with_big_tip_1.clone().into(),
+        transfer_to_charlie_with_big_tip_2.clone().into(),
+    ];
+
+    {
+        let runtime_instance = alice.client.runtime_api();
+        for (i, extrinsic) in transfer_to_charlie_with_big_tip.iter().enumerate() {
+            if i == 1 {
+                assert_eq!(
+                    runtime_instance
+                        .check_transaction_and_do_pre_dispatch(
+                            alice.client.as_ref().info().best_hash,
+                            extrinsic,
+                            alice.client.as_ref().info().best_number,
+                            alice.client.as_ref().info().best_hash,
+                        )
+                        .unwrap(),
+                    Err(
+                        CheckTxValidityError::decode(&mut tx_validity_error.encode().as_slice())
+                            .unwrap()
+                    )
+                );
+            } else {
+                assert_eq!(
+                    runtime_instance
+                        .check_transaction_and_do_pre_dispatch(
+                            alice.client.as_ref().info().best_hash,
+                            extrinsic,
+                            alice.client.as_ref().info().best_number,
+                            alice.client.as_ref().info().best_hash,
+                        )
+                        .unwrap(),
+                    Ok(())
+                );
+            }
+        }
+    }
 }
 
 #[tokio::test(flavor = "multi_thread")]

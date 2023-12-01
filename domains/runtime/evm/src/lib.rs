@@ -1061,15 +1061,6 @@ impl_runtime_apis! {
             Ok(storage_keys_for_verifying_tx_validity_inner(maybe_sender, block_number, maybe_tx_era))
         }
 
-        /// This runtime api is equivalent of `execute_block` but only for bundle extrinsic validation.
-        fn check_bundle_extrinsics_validity(bundle_extrinsics: Vec<<Block as BlockT>::Extrinsic>, block_number: BlockNumber,
-            block_hash: <Block as BlockT>::Hash) -> Result<(), domain_runtime_primitives::CheckBundleValidityError> {
-            for (extrinsic_index, extrinsic) in bundle_extrinsics.iter().enumerate() {
-                Self::check_transaction_and_do_pre_dispatch(extrinsic, block_number, block_hash).map_err(|tx_validity_error| domain_runtime_primitives::CheckBundleValidityError::from_tx_validity_error(extrinsic_index as u32, tx_validity_error))?;
-            }
-            Ok(())
-        }
-
         fn extrinsic_era(
           extrinsic: &<Block as BlockT>::Extrinsic
         ) -> Option<Era> {

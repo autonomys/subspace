@@ -163,26 +163,6 @@ pub enum VerifyTxValidityError {
     FailedToDecodeAccountId,
 }
 
-#[derive(Debug, PartialEq, Eq, Encode, Decode, TypeInfo)]
-pub enum CheckBundleValidityError {
-    /// One of the transaction is invalid.
-    InvalidTransaction {
-        /// Index of the transaction in bundle's transaction list
-        tx_index: u32,
-        /// Tx validity error of the tx referenced by `tx_index`
-        tx_validity_error: CheckTxValidityError,
-    },
-}
-
-impl CheckBundleValidityError {
-    pub fn from_tx_validity_error(tx_index: u32, tx_validity_error: CheckTxValidityError) -> Self {
-        Self::InvalidTransaction {
-            tx_index,
-            tx_validity_error,
-        }
-    }
-}
-
 sp_api::decl_runtime_apis! {
     /// Base API that every domain runtime must implement.
     #[api_version(2)]
@@ -256,11 +236,6 @@ sp_api::decl_runtime_apis! {
             block_number: NumberFor<Block>,
             tx_era: Option<Era>,
         ) -> Result<Vec<Vec<u8>>, VerifyTxValidityError>;
-
-        /// New in v2.
-        /// Checks validity of bundle extrinsics. Internally calls `check_transaction_and_do_pre_dispatch`
-        fn check_bundle_extrinsics_validity(bundle_extrinsics: Vec<<Block as BlockT>::Extrinsic>, block_number: NumberFor<Block>,
-            block_hash: <Block as BlockT>::Hash) -> Result<(), CheckBundleValidityError>;
 
         /// Returns extrinsic Era if present
         fn extrinsic_era(
