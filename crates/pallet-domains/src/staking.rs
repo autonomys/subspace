@@ -1559,6 +1559,80 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn slash_operators() {
+        let domain_id = DomainId::new(0);
+        let operator_free_balance = 250 * SSC;
+        let operator_stake = 200 * SSC;
+
+        let operator_account_1 = 1;
+        let operator_account_2 = 2;
+        let operator_account_3 = 3;
+
+        let pair_1 = OperatorPair::from_seed(&U256::from(0u32).into());
+        let pair_2 = OperatorPair::from_seed(&U256::from(1u32).into());
+        let pair_3 = OperatorPair::from_seed(&U256::from(2u32).into());
+
+        let mut ext = new_test_ext();
+        ext.execute_with(|| {
+            let (operator_id_1, _) = register_operator(
+                domain_id,
+                operator_account_1,
+                operator_free_balance,
+                operator_stake,
+                10 * SSC,
+                pair_1.public(),
+                Default::default(),
+            );
+
+            let (operator_id_2, _) = register_operator(
+                domain_id,
+                operator_account_2,
+                operator_free_balance,
+                operator_stake,
+                10 * SSC,
+                pair_2.public(),
+                Default::default(),
+            );
+
+            let (operator_id_3, _) = register_operator(
+                domain_id,
+                operator_account_3,
+                operator_free_balance,
+                operator_stake,
+                10 * SSC,
+                pair_3.public(),
+                Default::default(),
+            );
+
+            do_finalize_domain_current_epoch::<Test>(domain_id, Zero::zero()).unwrap();
+
+            do_slash_operators::<Test, _>(
+                vec![
+                    (operator_id_1, SlashedReason::InvalidBundle(1)),
+                    (operator_id_2, SlashedReason::InvalidBundle(2)),
+                    (operator_id_3, SlashedReason::InvalidBundle(3)),
+                ]
+                .into_iter(),
+            )
+            .unwrap();
+
+            let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
+            assert!(!domain_stake_summary.next_operators.contains(&operator_id_1));
+            assert!(!domain_stake_summary.next_operators.contains(&operator_id_2));
+            assert!(!domain_stake_summary.next_operators.contains(&operator_id_3));
+
+            let operator = Operators::<Test>::get(operator_id_1).unwrap();
+            assert_eq!(operator.status, OperatorStatus::Slashed);
+
+            let operator = Operators::<Test>::get(operator_id_2).unwrap();
+            assert_eq!(operator.status, OperatorStatus::Slashed);
+
+            let operator = Operators::<Test>::get(operator_id_3).unwrap();
+            assert_eq!(operator.status, OperatorStatus::Slashed);
+        });
+    }
+
+    #[test]
     fn nominator_withdraw_while_pending_deposit_exist() {
         let domain_id = DomainId::new(0);
         let operator_account = 1;
