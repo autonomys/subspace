@@ -19,7 +19,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::libp2p::multiaddr::Protocol;
-use subspace_networking::utils::strip_peer_id;
+use subspace_networking::utils::{strip_peer_id, SubspaceMetrics};
 use subspace_networking::{
     peer_id, Config, KademliaMode, KnownPeersManager, KnownPeersManagerConfig,
 };
@@ -155,8 +155,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
             // Metrics
             let mut metric_registry = Registry::default();
             let metrics_endpoints_are_specified = !metrics_endpoints.is_empty();
-            let metrics =
+            let external_metrics =
                 metrics_endpoints_are_specified.then(|| Metrics::new(&mut metric_registry));
+            let metrics =
+                metrics_endpoints_are_specified.then(|| SubspaceMetrics::new(&mut metric_registry));
 
             let prometheus_task = metrics_endpoints_are_specified
                 .then(|| {
@@ -199,6 +201,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 bootstrap_addresses: bootstrap_nodes,
                 kademlia_mode: KademliaMode::Static(Mode::Server),
                 external_addresses,
+                external_metrics,
                 metrics,
                 networking_parameters_registry: known_peers_registry.boxed(),
 

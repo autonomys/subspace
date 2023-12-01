@@ -14,7 +14,7 @@ use crate::protocols::request_response::request_response_factory::RequestHandler
 use crate::protocols::reserved_peers::Config as ReservedPeersConfig;
 use crate::shared::Shared;
 use crate::utils::rate_limiter::RateLimiter;
-use crate::utils::strip_peer_id;
+use crate::utils::{strip_peer_id, SubspaceMetrics};
 use crate::{PeerInfo, PeerInfoConfig};
 use backoff::{ExponentialBackoff, SystemClock};
 use futures::channel::mpsc;
@@ -239,7 +239,9 @@ pub struct Config<LocalRecordProvider> {
     /// Backoff policy for temporary banning of unreachable peers.
     pub temporary_ban_backoff: ExponentialBackoff,
     /// Optional external prometheus metrics. None will disable metrics gathering.
-    pub metrics: Option<Metrics>,
+    pub external_metrics: Option<Metrics>,
+    /// Internal prometheus metrics. None will disable metrics gathering.
+    pub metrics: Option<SubspaceMetrics>,
     /// Defines protocol version for the network peers. Affects network partition.
     pub protocol_version: String,
     /// Specifies a source for peer information. None disables the protocol.
@@ -379,6 +381,7 @@ where
             max_pending_outgoing_connections: SWARM_MAX_PENDING_OUTGOING_CONNECTIONS,
             temporary_bans_cache_size: TEMPORARY_BANS_CACHE_SIZE,
             temporary_ban_backoff,
+            external_metrics: None,
             metrics: None,
             protocol_version,
             peer_info_provider,
@@ -450,6 +453,7 @@ where
         max_pending_outgoing_connections,
         temporary_bans_cache_size,
         temporary_ban_backoff,
+        external_metrics,
         metrics,
         protocol_version,
         peer_info_provider,
@@ -639,6 +643,7 @@ where
         networking_parameters_registry,
         reserved_peers: strip_peer_id(reserved_peers).into_iter().collect(),
         temporary_bans,
+        external_metrics,
         metrics,
         protocol_version,
         general_connection_decision_handler,

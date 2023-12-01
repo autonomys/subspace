@@ -135,7 +135,7 @@ pub(crate) fn create_dsn_instance(
         bootstrap_addresses: dsn_config.bootstrap_nodes,
         external_addresses: dsn_config.external_addresses,
         kademlia_mode: KademliaMode::Static(Mode::Client),
-        metrics,
+        external_metrics: metrics,
         disable_bootstrap_on_start: dsn_config.disable_bootstrap_on_start,
 
         ..default_networking_config

@@ -202,7 +202,7 @@ pub(super) fn configure_dsn(
         bootstrap_addresses: bootstrap_nodes,
         kademlia_mode: KademliaMode::Dynamic,
         external_addresses,
-        metrics,
+        external_metrics: metrics,
         disable_bootstrap_on_start,
         ..default_config
     };

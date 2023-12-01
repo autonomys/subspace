@@ -11,6 +11,8 @@ use event_listener_primitives::Bag;
 use futures::future::{Fuse, FusedFuture, FutureExt};
 use libp2p::multiaddr::Protocol;
 use libp2p::{Multiaddr, PeerId};
+use prometheus_client::metrics::gauge::Gauge;
+use prometheus_client::registry::Registry;
 use std::future::Future;
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
@@ -20,6 +22,39 @@ use std::task::{Context, Poll};
 use tokio::runtime::Handle;
 use tokio::task;
 use tracing::warn;
+
+const NETWORKING_REGISTRY_PREFIX: &str = "subspace";
+
+/// Metrics for Subspace networking
+pub struct SubspaceMetrics {
+    established_connections: Gauge,
+}
+
+impl SubspaceMetrics {
+    /// Constructor
+    pub fn new(registry: &mut Registry) -> Self {
+        let sub_registry = registry.sub_registry_with_prefix(NETWORKING_REGISTRY_PREFIX);
+
+        let gauge = Gauge::default();
+        sub_registry.register(
+            "established_connections",
+            "The current number of established connections",
+            gauge.clone(),
+        );
+
+        Self {
+            established_connections: gauge,
+        }
+    }
+
+    pub(crate) fn inc_established_connections(&mut self) {
+        self.established_connections.inc();
+    }
+
+    pub(crate) fn dec_established_connections(&mut self) {
+        self.established_connections.dec();
+    }
+}
 
 /// Joins async join handle on drop
 pub(crate) struct AsyncJoinOnDrop<T>(Option<Fuse<task::JoinHandle<T>>>);

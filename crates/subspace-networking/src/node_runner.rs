@@ -15,7 +15,7 @@ use crate::protocols::request_response::request_response_factory::{
 };
 use crate::shared::{Command, CreatedSubscription, NewPeerInfo, PeerDiscovered, Shared};
 use crate::utils::rate_limiter::RateLimiterPermit;
-use crate::utils::{is_global_address_or_dns, strip_peer_id, PeerAddress};
+use crate::utils::{is_global_address_or_dns, strip_peer_id, PeerAddress, SubspaceMetrics};
 use async_mutex::Mutex as AsyncMutex;
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;
@@ -126,8 +126,10 @@ where
     reserved_peers: HashMap<PeerId, Multiaddr>,
     /// Temporarily banned peers.
     temporary_bans: Arc<Mutex<TemporaryBans>>,
-    /// Prometheus metrics.
-    metrics: Option<Metrics>,
+    /// External Prometheus metrics.
+    external_metrics: Option<Metrics>,
+    /// Subspace Prometheus metrics.
+    metrics: Option<SubspaceMetrics>,
     /// Mapping from specific peer to ip addresses
     peer_ip_addresses: HashMap<PeerId, HashSet<IpAddr>>,
     /// Defines protocol version for the network peers. Affects network partition.
@@ -175,7 +177,8 @@ where
     pub(crate) networking_parameters_registry: Box<dyn KnownPeersRegistry>,
     pub(crate) reserved_peers: HashMap<PeerId, Multiaddr>,
     pub(crate) temporary_bans: Arc<Mutex<TemporaryBans>>,
-    pub(crate) metrics: Option<Metrics>,
+    pub(crate) external_metrics: Option<Metrics>,
+    pub(crate) metrics: Option<SubspaceMetrics>,
     pub(crate) protocol_version: String,
     pub(crate) general_connection_decision_handler: Option<ConnectedPeersHandler>,
     pub(crate) special_connection_decision_handler: Option<ConnectedPeersHandler>,
@@ -198,6 +201,7 @@ where
             mut networking_parameters_registry,
             reserved_peers,
             temporary_bans,
+            external_metrics,
             metrics,
             protocol_version,
             general_connection_decision_handler,
@@ -236,6 +240,7 @@ where
             networking_parameters_registry,
             reserved_peers,
             temporary_bans,
+            external_metrics,
             metrics,
             peer_ip_addresses: HashMap::new(),
             protocol_version,
@@ -544,6 +549,10 @@ where
                 if num_established.get() == 1 {
                     shared.handlers.connected_peer.call_simple(&peer_id);
                 }
+
+                if let Some(metrics) = self.metrics.as_mut() {
+                    metrics.inc_established_connections()
+                }
             }
             SwarmEvent::ConnectionClosed {
                 peer_id,
@@ -588,6 +597,10 @@ where
                 if num_established == 0 {
                     shared.handlers.disconnected_peer.call_simple(&peer_id);
                 }
+
+                if let Some(metrics) = self.metrics.as_mut() {
+                    metrics.dec_established_connections()
+                };
             }
             SwarmEvent::OutgoingConnectionError { peer_id, error, .. } => {
                 if let Some(peer_id) = &peer_id {
@@ -1550,7 +1563,7 @@ where
     }
 
     fn register_event_metrics(&mut self, swarm_event: &SwarmEvent<Event>) {
-        if let Some(ref mut metrics) = self.metrics {
+        if let Some(ref mut metrics) = self.external_metrics {
             match swarm_event {
                 SwarmEvent::Behaviour(Event::Ping(ping_event)) => {
                     metrics.record(ping_event);
