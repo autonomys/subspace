@@ -23,7 +23,7 @@ use crate::domain::evm_chain_spec::{self, SpecId};
 use hex_literal::hex;
 use parity_scale_codec::Encode;
 use sc_service::{ChainType, NoExtension};
-use sc_subspace_chain_specs::ConsensusChainSpec;
+use sc_subspace_chain_specs::{ConsensusChainSpec, DEVNET_CHAIN_SPEC, GEMINI_3G_CHAIN_SPEC};
 use sc_telemetry::TelemetryEndpoints;
 use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::crypto::{Ss58Codec, UncheckedFrom};
@@ -42,8 +42,6 @@ use subspace_runtime::{
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, SSC};
 
 const SUBSPACE_TELEMETRY_URL: &str = "wss://telemetry.subspace.network/submit/";
-const DEVNET_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-devnet.json");
-const GEMINI_3G_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-gemini-3g.json");
 
 /// List of accounts which should receive token grants, amounts are specified in SSC.
 const TOKEN_GRANTS: &[(&str, u128)] = &[
