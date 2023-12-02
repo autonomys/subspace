@@ -24,7 +24,7 @@ clap = { version = "4.4.3", features = ["color", "derive"] }
 criterion = { version = "0.5.1", default-features = false, features = ["rayon", "async"] }
 derive_more = "0.99.17"
 event-listener-primitives = "2.0.1"
-fdlimit = "0.2"
+fdlimit = "0.3.0"
 futures = "0.3.29"
 hex = { version = "0.4.3", features = ["serde"] }
 jsonrpsee = { version = "0.16.3", features = ["client"] }
