@@ -1,6 +1,7 @@
 use crate::providers::{BlockImportProvider, RpcProvider};
 use crate::transaction_pool::FullChainApiWrapper;
 use crate::{FullBackend, FullClient};
+use cross_domain_message_gossip::ChainTxPoolMsg;
 use domain_client_block_preprocessor::inherents::CreateInherentDataProvider;
 use domain_client_message_relayer::GossipMessageSink;
 use domain_client_operator::{Operator, OperatorParams, OperatorStreams};
@@ -12,6 +13,7 @@ use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
 use sc_client_api::{BlockBackend, BlockImportNotification, BlockchainEvents, ProofProvider};
 use sc_consensus::SharedBlockImport;
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
+use sc_network::NetworkPeers;
 use sc_rpc_api::DenyUnsafe;
 use sc_service::{
     BuildNetworkParams, Configuration as ServiceConfiguration, NetworkStarter, PartialComponents,
@@ -216,7 +218,7 @@ where
     Ok(params)
 }
 
-pub struct DomainParams<CBlock, CClient, IBNS, CIBNS, NSNS, ASS, Provider>
+pub struct DomainParams<CBlock, CClient, IBNS, CIBNS, NSNS, ASS, Provider, CNetwork>
 where
     CBlock: BlockT,
 {
@@ -225,11 +227,12 @@ where
     pub domain_created_at: NumberFor<CBlock>,
     pub maybe_operator_id: Option<OperatorId>,
     pub consensus_client: Arc<CClient>,
+    pub consensus_network: Arc<CNetwork>,
     pub consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory<CBlock>,
     pub consensus_network_sync_oracle: Arc<dyn SyncOracle + Send + Sync>,
     pub operator_streams: OperatorStreams<CBlock, IBNS, CIBNS, NSNS, ASS>,
     pub gossip_message_sink: GossipMessageSink,
-    pub domain_message_receiver: TracingUnboundedReceiver<Vec<u8>>,
+    pub domain_message_receiver: TracingUnboundedReceiver<ChainTxPoolMsg>,
     pub provider: Provider,
     pub skip_empty_bundle_production: bool,
 }
@@ -246,8 +249,9 @@ pub async fn new_full<
     ExecutorDispatch,
     AccountId,
     Provider,
+    CNetwork,
 >(
-    domain_params: DomainParams<CBlock, CClient, IBNS, CIBNS, NSNS, ASS, Provider>,
+    domain_params: DomainParams<CBlock, CClient, IBNS, CIBNS, NSNS, ASS, Provider, CNetwork>,
 ) -> sc_service::error::Result<
     NewFull<
         Arc<FullClient<Block, RuntimeApi, ExecutorDispatch>>,
@@ -322,6 +326,7 @@ where
             CreateInherentDataProvider<CClient, CBlock>,
         > + BlockImportProvider<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>
         + 'static,
+    CNetwork: NetworkPeers + Send + Sync + 'static,
 {
     let DomainParams {
         domain_id,
@@ -331,6 +336,7 @@ where
         consensus_client,
         consensus_offchain_tx_pool_factory,
         consensus_network_sync_oracle,
+        consensus_network,
         operator_streams,
         gossip_message_sink,
         domain_message_receiver,
@@ -483,6 +489,7 @@ where
         ChainId::Domain(domain_id),
         client.clone(),
         params.transaction_pool.clone(),
+        consensus_network,
         domain_message_receiver,
     );
 

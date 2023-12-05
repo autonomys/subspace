@@ -1,7 +1,7 @@
 use super::{evm_chain_spec, DomainCli};
 use crate::domain::{AccountId20, EVMDomainExecutorDispatch};
 use crate::ExecutorDispatch as CExecutorDispatch;
-use cross_domain_message_gossip::Message;
+use cross_domain_message_gossip::{ChainTxPoolMsg, Message};
 use domain_client_operator::{BootstrapResult, OperatorStreams};
 use domain_eth_service::provider::EthProvider;
 use domain_eth_service::DefaultEthConfig;
@@ -13,6 +13,7 @@ use sc_cli::{CliConfiguration, Database, DefaultConfigurationValues, SubstrateCl
 use sc_consensus_subspace::block_import::BlockImportingNotification;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::slot_worker::NewSlotNotification;
+use sc_network::NetworkPeers;
 use sc_service::{BasePath, Configuration};
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::{TracingUnboundedReceiver, TracingUnboundedSender};
@@ -24,7 +25,7 @@ use subspace_service::FullClient as CFullClient;
 
 /// `DomainInstanceStarter` used to start a domain instance node based on the given
 /// bootstrap result
-pub struct DomainInstanceStarter {
+pub struct DomainInstanceStarter<CNetwork> {
     pub domain_cli: DomainCli,
     pub tokio_handle: tokio::runtime::Handle,
     pub consensus_client: Arc<CFullClient<CRuntimeApi, CExecutorDispatch>>,
@@ -33,11 +34,15 @@ pub struct DomainInstanceStarter {
         SubspaceNotificationStream<BlockImportingNotification<CBlock>>,
     pub new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
     pub consensus_sync_service: Arc<sc_network_sync::SyncingService<CBlock>>,
-    pub domain_message_receiver: TracingUnboundedReceiver<Vec<u8>>,
+    pub domain_message_receiver: TracingUnboundedReceiver<ChainTxPoolMsg>,
     pub gossip_message_sink: TracingUnboundedSender<Message>,
+    pub consensus_network: Arc<CNetwork>,
 }
 
-impl DomainInstanceStarter {
+impl<CNetwork> DomainInstanceStarter<CNetwork>
+where
+    CNetwork: NetworkPeers + Send + Sync + 'static,
+{
     pub async fn start(
         self,
         bootstrap_result: BootstrapResult<CBlock>,
@@ -63,6 +68,7 @@ impl DomainInstanceStarter {
             consensus_sync_service,
             domain_message_receiver,
             gossip_message_sink,
+            consensus_network,
         } = self;
 
         let domain_id = domain_cli.domain_id;
@@ -133,6 +139,7 @@ impl DomainInstanceStarter {
                     domain_created_at,
                     consensus_client,
                     consensus_offchain_tx_pool_factory,
+                    consensus_network,
                     consensus_network_sync_oracle: consensus_sync_service.clone(),
                     operator_streams,
                     gossip_message_sink,
@@ -152,6 +159,7 @@ impl DomainInstanceStarter {
                     evm_domain_runtime::RuntimeApi,
                     EVMDomainExecutorDispatch,
                     AccountId20,
+                    _,
                     _,
                 >(domain_params)
                 .await?;

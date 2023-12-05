@@ -2,7 +2,7 @@ use futures::{FutureExt, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::{Mutex, RwLock};
 use sc_network::config::NonDefaultSetConfig;
-use sc_network::PeerId;
+use sc_network::{NetworkPeers, PeerId};
 use sc_network_gossip::{
     GossipEngine, MessageIntent, Syncing as GossipSyncing, ValidationResult, Validator,
     ValidatorContext,
@@ -17,8 +17,14 @@ use std::sync::Arc;
 const LOG_TARGET: &str = "cross_chain_gossip_worker";
 const PROTOCOL_NAME: &str = "/subspace/cross-chain-messages";
 
+/// Encoded message with sender info if available.
+pub struct ChainTxPoolMsg {
+    pub encoded_data: Vec<u8>,
+    pub maybe_peer: Option<PeerId>,
+}
+
 /// Unbounded sender to send encoded ext to listeners.
-pub type ChainTxPoolSink = TracingUnboundedSender<Vec<u8>>;
+pub type ChainTxPoolSink = TracingUnboundedSender<ChainTxPoolMsg>;
 type MessageHash = [u8; 32];
 
 /// A cross chain message with encoded data.
@@ -63,7 +69,7 @@ impl GossipWorkerBuilder {
         self,
         network: Network,
         sync: Arc<GossipSync>,
-    ) -> GossipWorker<Block>
+    ) -> GossipWorker<Block, Network>
     where
         Block: BlockT,
         Network: sc_network_gossip::Network<Block> + Send + Sync + Clone + 'static,
@@ -75,7 +81,7 @@ impl GossipWorkerBuilder {
             ..
         } = self;
 
-        let gossip_validator = Arc::new(GossipValidator::default());
+        let gossip_validator = Arc::new(GossipValidator::new(network.clone()));
         let gossip_engine = Arc::new(Mutex::new(GossipEngine::new(
             network,
             sync,
@@ -95,9 +101,9 @@ impl GossipWorkerBuilder {
 
 /// Gossip worker to gossip incoming and outgoing messages to other peers.
 /// Also, streams the decoded extrinsics to destination chain tx pool if available.
-pub struct GossipWorker<Block: BlockT> {
+pub struct GossipWorker<Block: BlockT, Network> {
     gossip_engine: Arc<Mutex<GossipEngine<Block>>>,
-    gossip_validator: Arc<GossipValidator>,
+    gossip_validator: Arc<GossipValidator<Network>>,
     gossip_msg_stream: TracingUnboundedReceiver<Message>,
     chain_tx_pool_sinks: BTreeMap<ChainId, ChainTxPoolSink>,
 }
@@ -114,7 +120,7 @@ fn topic<Block: BlockT>() -> Block::Hash {
     <<Block::Header as HeaderT>::Hashing as HashT>::hash(b"cross-chain-messages")
 }
 
-impl<Block: BlockT> GossipWorker<Block> {
+impl<Block: BlockT, Network> GossipWorker<Block, Network> {
     /// Starts the Gossip message worker.
     pub async fn run(mut self) {
         let mut incoming_cross_chain_messages = Box::pin(
@@ -122,7 +128,9 @@ impl<Block: BlockT> GossipWorker<Block> {
                 .lock()
                 .messages_for(topic::<Block>())
                 .filter_map(|notification| async move {
-                    Message::decode(&mut &notification.message[..]).ok()
+                    Message::decode(&mut &notification.message[..])
+                        .ok()
+                        .map(|msg| (notification.sender, msg))
                 }),
         );
 
@@ -132,16 +140,16 @@ impl<Block: BlockT> GossipWorker<Block> {
 
             futures::select! {
                 cross_chain_message = incoming_cross_chain_messages.next().fuse() => {
-                    if let Some(msg) = cross_chain_message {
+                    if let Some((maybe_peer, msg)) = cross_chain_message {
                         tracing::debug!(target: LOG_TARGET, "Incoming cross chain message for chain from Network: {:?}", msg.chain_id);
-                        self.handle_cross_chain_message(msg);
+                        self.handle_cross_chain_message(msg, maybe_peer);
                     }
                 },
 
                 cross_chain_message = self.gossip_msg_stream.next().fuse() => {
                     if let Some(msg) = cross_chain_message {
                         tracing::debug!(target: LOG_TARGET, "Incoming cross chain message for chain from Relayer: {:?}", msg.chain_id);
-                        self.handle_cross_chain_message(msg);
+                        self.handle_cross_chain_message(msg, None);
                     }
                 }
 
@@ -153,7 +161,7 @@ impl<Block: BlockT> GossipWorker<Block> {
         }
     }
 
-    fn handle_cross_chain_message(&mut self, msg: Message) {
+    fn handle_cross_chain_message(&mut self, msg: Message, maybe_peer: Option<PeerId>) {
         // mark and rebroadcast message
         let encoded_msg = msg.encode();
         self.gossip_validator.note_broadcast(&encoded_msg);
@@ -171,7 +179,14 @@ impl<Block: BlockT> GossipWorker<Block> {
         };
 
         // send the message to the open and ready channel
-        if !sink.is_closed() && sink.unbounded_send(encoded_data).is_ok() {
+        if !sink.is_closed()
+            && sink
+                .unbounded_send(ChainTxPoolMsg {
+                    encoded_data,
+                    maybe_peer,
+                })
+                .is_ok()
+        {
             return;
         }
 
@@ -187,12 +202,20 @@ impl<Block: BlockT> GossipWorker<Block> {
 }
 
 /// Gossip validator to retain or clean up Gossiped messages.
-#[derive(Debug, Default)]
-struct GossipValidator {
+#[derive(Debug)]
+struct GossipValidator<Network> {
+    network: Network,
     should_broadcast: RwLock<HashSet<MessageHash>>,
 }
 
-impl GossipValidator {
+impl<Network> GossipValidator<Network> {
+    fn new(network: Network) -> Self {
+        Self {
+            network,
+            should_broadcast: Default::default(),
+        }
+    }
+
     fn note_broadcast(&self, msg: &[u8]) {
         let msg_hash = twox_256(msg);
         let mut msg_set = self.should_broadcast.write();
@@ -212,16 +235,23 @@ impl GossipValidator {
     }
 }
 
-impl<Block: BlockT> Validator<Block> for GossipValidator {
+impl<Block, Network> Validator<Block> for GossipValidator<Network>
+where
+    Block: BlockT,
+    Network: NetworkPeers + Send + Sync + 'static,
+{
     fn validate(
         &self,
         _context: &mut dyn ValidatorContext<Block>,
-        _sender: &PeerId,
+        sender: &PeerId,
         mut data: &[u8],
     ) -> ValidationResult<Block::Hash> {
         match Message::decode(&mut data) {
             Ok(_) => ValidationResult::ProcessAndKeep(topic::<Block>()),
-            Err(_) => ValidationResult::Discard,
+            Err(_) => {
+                self.network.report_peer(*sender, rep::GOSSIP_NOT_DECODABLE);
+                ValidationResult::Discard
+            }
         }
     }
 
@@ -241,4 +271,12 @@ impl<Block: BlockT> Validator<Block> for GossipValidator {
             should_broadcast
         })
     }
+}
+
+pub(crate) mod rep {
+    use sc_network::ReputationChange;
+
+    /// Reputation change when a peer sends us a gossip message that can't be decoded.
+    pub(crate) const GOSSIP_NOT_DECODABLE: ReputationChange =
+        ReputationChange::new_fatal("Cross chain message: not decodable");
 }
