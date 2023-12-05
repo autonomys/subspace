@@ -1,4 +1,6 @@
+use crate::ChainTxPoolMsg;
 use futures::{Stream, StreamExt};
+use sc_network::NetworkPeers;
 use sc_transaction_pool_api::{TransactionPool, TransactionSource};
 use sp_blockchain::HeaderBackend;
 use sp_messenger::messages::ChainId;
@@ -12,15 +14,17 @@ const LOG_TARGET: &str = "domain_message_listener";
 type BlockOf<T> = <T as TransactionPool>::Block;
 type ExtrinsicOf<T> = <<T as TransactionPool>::Block as BlockT>::Extrinsic;
 
-pub async fn start_cross_chain_message_listener<Client, TxPool, TxnListener>(
+pub async fn start_cross_chain_message_listener<Client, TxPool, TxnListener, CNetwork>(
     chain_id: ChainId,
     client: Arc<Client>,
     tx_pool: Arc<TxPool>,
+    network: Arc<CNetwork>,
     mut listener: TxnListener,
 ) where
     TxPool: TransactionPool + 'static,
     Client: HeaderBackend<BlockOf<TxPool>>,
-    TxnListener: Stream<Item = Vec<u8>> + Unpin,
+    TxnListener: Stream<Item = ChainTxPoolMsg> + Unpin,
+    CNetwork: NetworkPeers,
 {
     tracing::info!(
         target: LOG_TARGET,
@@ -28,21 +32,25 @@ pub async fn start_cross_chain_message_listener<Client, TxPool, TxnListener>(
         chain_id
     );
 
-    while let Some(encoded_ext) = listener.next().await {
+    while let Some(msg) = listener.next().await {
         tracing::debug!(
             target: LOG_TARGET,
             "Extrinsic received for Chain: {:?}",
             chain_id,
         );
 
-        let ext = match ExtrinsicOf::<TxPool>::decode(&mut encoded_ext.as_ref()) {
+        let ext = match ExtrinsicOf::<TxPool>::decode(&mut msg.encoded_data.as_ref()) {
             Ok(ext) => ext,
             Err(_) => {
-                tracing::error!(
-                    target: LOG_TARGET,
-                    "Failed to decode extrinsic: {:?}",
-                    encoded_ext
-                );
+                if let Some(peer_id) = msg.maybe_peer {
+                    network.report_peer(peer_id, crate::gossip_worker::rep::GOSSIP_NOT_DECODABLE);
+                } else {
+                    tracing::error!(
+                        target: LOG_TARGET,
+                        "Failed to decode extrinsic from unknown sender: {:?}",
+                        msg.encoded_data
+                    );
+                }
                 continue;
             }
         };

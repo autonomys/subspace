@@ -17,8 +17,14 @@ use std::sync::Arc;
 const LOG_TARGET: &str = "cross_chain_gossip_worker";
 const PROTOCOL_NAME: &str = "/subspace/cross-chain-messages";
 
+/// Encoded message with sender info if available.
+pub struct ChainTxPoolMsg {
+    pub encoded_data: Vec<u8>,
+    pub maybe_peer: Option<PeerId>,
+}
+
 /// Unbounded sender to send encoded ext to listeners.
-pub type ChainTxPoolSink = TracingUnboundedSender<Vec<u8>>;
+pub type ChainTxPoolSink = TracingUnboundedSender<ChainTxPoolMsg>;
 type MessageHash = [u8; 32];
 
 /// A cross chain message with encoded data.
@@ -122,7 +128,9 @@ impl<Block: BlockT, Network> GossipWorker<Block, Network> {
                 .lock()
                 .messages_for(topic::<Block>())
                 .filter_map(|notification| async move {
-                    Message::decode(&mut &notification.message[..]).ok()
+                    Message::decode(&mut &notification.message[..])
+                        .ok()
+                        .map(|msg| (notification.sender, msg))
                 }),
         );
 
@@ -132,16 +140,16 @@ impl<Block: BlockT, Network> GossipWorker<Block, Network> {
 
             futures::select! {
                 cross_chain_message = incoming_cross_chain_messages.next().fuse() => {
-                    if let Some(msg) = cross_chain_message {
+                    if let Some((maybe_peer, msg)) = cross_chain_message {
                         tracing::debug!(target: LOG_TARGET, "Incoming cross chain message for chain from Network: {:?}", msg.chain_id);
-                        self.handle_cross_chain_message(msg);
+                        self.handle_cross_chain_message(msg, maybe_peer);
                     }
                 },
 
                 cross_chain_message = self.gossip_msg_stream.next().fuse() => {
                     if let Some(msg) = cross_chain_message {
                         tracing::debug!(target: LOG_TARGET, "Incoming cross chain message for chain from Relayer: {:?}", msg.chain_id);
-                        self.handle_cross_chain_message(msg);
+                        self.handle_cross_chain_message(msg, None);
                     }
                 }
 
@@ -153,7 +161,7 @@ impl<Block: BlockT, Network> GossipWorker<Block, Network> {
         }
     }
 
-    fn handle_cross_chain_message(&mut self, msg: Message) {
+    fn handle_cross_chain_message(&mut self, msg: Message, maybe_peer: Option<PeerId>) {
         // mark and rebroadcast message
         let encoded_msg = msg.encode();
         self.gossip_validator.note_broadcast(&encoded_msg);
@@ -171,7 +179,14 @@ impl<Block: BlockT, Network> GossipWorker<Block, Network> {
         };
 
         // send the message to the open and ready channel
-        if !sink.is_closed() && sink.unbounded_send(encoded_data).is_ok() {
+        if !sink.is_closed()
+            && sink
+                .unbounded_send(ChainTxPoolMsg {
+                    encoded_data,
+                    maybe_peer,
+                })
+                .is_ok()
+        {
             return;
         }
 
@@ -258,10 +273,10 @@ where
     }
 }
 
-mod rep {
+pub(crate) mod rep {
     use sc_network::ReputationChange;
 
     /// Reputation change when a peer sends us a gossip message that can't be decoded.
-    pub(super) const GOSSIP_NOT_DECODABLE: ReputationChange =
+    pub(crate) const GOSSIP_NOT_DECODABLE: ReputationChange =
         ReputationChange::new_fatal("Cross chain message: not decodable");
 }
