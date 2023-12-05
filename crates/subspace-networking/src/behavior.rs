@@ -5,10 +5,7 @@ mod tests;
 use crate::protocols::autonat_wrapper::{
     Behaviour as AutonatWrapper, Config as AutonatWrapperConfig,
 };
-use crate::protocols::connected_peers::{
-    Behaviour as ConnectedPeersBehaviour, Config as ConnectedPeersConfig,
-    Event as ConnectedPeersEvent,
-};
+use crate::protocols::connected_peers::Config as ConnectedPeersConfig;
 use crate::protocols::peer_info::{
     Behaviour as PeerInfoBehaviour, Config as PeerInfoConfig, Event as PeerInfoEvent,
 };
@@ -59,7 +56,11 @@ pub(crate) struct BehaviorConfig<RecordStore> {
     /// Provides peer-info for local peer.
     pub(crate) peer_info_provider: Option<PeerInfoProvider>,
     /// The configuration for the [`ConnectedPeers`] protocol (general instance).
+    // TODO: Restore or remove connected peer later
+    #[allow(dead_code)]
     pub(crate) general_connected_peers_config: Option<ConnectedPeersConfig>,
+    // TODO: Restore or remove connected peer later
+    #[allow(dead_code)]
     /// The configuration for the [`ConnectedPeers`] protocol (special instance).
     pub(crate) special_connected_peers_config: Option<ConnectedPeersConfig>,
     /// Autonat configuration.
@@ -86,10 +87,11 @@ pub(crate) struct Behavior<RecordStore> {
     pub(crate) block_list: BlockListBehaviour,
     pub(crate) reserved_peers: ReservedPeersBehaviour,
     pub(crate) peer_info: Toggle<PeerInfoBehaviour>,
-    pub(crate) general_connected_peers:
-        Toggle<ConnectedPeersBehaviour<GeneralConnectedPeersInstance>>,
-    pub(crate) special_connected_peers:
-        Toggle<ConnectedPeersBehaviour<SpecialConnectedPeersInstance>>,
+    // TODO: Restore or remove connected peer later
+    // pub(crate) general_connected_peers:
+    //     Toggle<ConnectedPeersBehaviour<GeneralConnectedPeersInstance>>,
+    // pub(crate) special_connected_peers:
+    //     Toggle<ConnectedPeersBehaviour<SpecialConnectedPeersInstance>>,
     pub(crate) autonat: AutonatWrapper,
 }
 
@@ -134,14 +136,15 @@ where
             block_list: BlockListBehaviour::default(),
             reserved_peers: ReservedPeersBehaviour::new(config.reserved_peers),
             peer_info: peer_info.into(),
-            general_connected_peers: config
-                .general_connected_peers_config
-                .map(ConnectedPeersBehaviour::new)
-                .into(),
-            special_connected_peers: config
-                .special_connected_peers_config
-                .map(ConnectedPeersBehaviour::new)
-                .into(),
+            // TODO: Restore or remove connected peer later
+            // general_connected_peers: config
+            //     .general_connected_peers_config
+            //     .map(ConnectedPeersBehaviour::new)
+            //     .into(),
+            // special_connected_peers: config
+            //     .special_connected_peers_config
+            //     .map(ConnectedPeersBehaviour::new)
+            //     .into(),
             autonat: AutonatWrapper::new(config.autonat),
         }
     }
@@ -158,7 +161,8 @@ pub(crate) enum Event {
     VoidEventStub(VoidEvent),
     ReservedPeers(ReservedPeersEvent),
     PeerInfo(PeerInfoEvent),
-    GeneralConnectedPeers(ConnectedPeersEvent<GeneralConnectedPeersInstance>),
-    SpecialConnectedPeers(ConnectedPeersEvent<SpecialConnectedPeersInstance>),
+    // TODO: Restore or remove connected peer later
+    // GeneralConnectedPeers(ConnectedPeersEvent<GeneralConnectedPeersInstance>),
+    // SpecialConnectedPeers(ConnectedPeersEvent<SpecialConnectedPeersInstance>),
     Autonat(AutonatEvent),
 }

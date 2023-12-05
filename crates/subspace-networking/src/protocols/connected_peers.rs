@@ -22,6 +22,9 @@
 //! attempts, and manages a cache for candidates for permanent connections. It maintains
 //! a single connection for each peer. Multiple protocol instances could be instantiated.
 
+//! TODO: Restore or remove connected peer later
+#![allow(dead_code)]
+
 mod handler;
 
 #[cfg(test)]
