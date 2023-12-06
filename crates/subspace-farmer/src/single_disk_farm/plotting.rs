@@ -613,7 +613,7 @@ async fn send_plotting_notifications<NC>(
     sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
     last_archived_segment: &Atomic<SegmentHeader>,
     mut archived_segments_receiver: mpsc::Receiver<()>,
-    mut sectors_to_plot_sender: mpsc::Sender<SectorToPlot>,
+    mut sectors_to_plot_proxy_sender: mpsc::Sender<SectorToPlot>,
     initial_plotting_finished: Option<oneshot::Sender<()>>,
 ) -> Result<(), BackgroundTaskError>
 where
@@ -623,7 +623,7 @@ where
     let mut sectors_indices_left_to_plot = sectors_indices_left_to_plot.into_iter().peekable();
     while let Some(sector_index) = sectors_indices_left_to_plot.next() {
         let (acknowledgement_sender, acknowledgement_receiver) = oneshot::channel();
-        if let Err(error) = sectors_to_plot_sender
+        if let Err(error) = sectors_to_plot_proxy_sender
             .send(SectorToPlot {
                 sector_index,
                 progress: sector_index as f32 / target_sector_count as f32 * 100.0,
@@ -787,7 +787,7 @@ where
             sector_indices_to_replot.next()
         {
             let (acknowledgement_sender, acknowledgement_receiver) = oneshot::channel();
-            if let Err(error) = sectors_to_plot_sender
+            if let Err(error) = sectors_to_plot_proxy_sender
                 .send(SectorToPlot {
                     sector_index,
                     progress: index as f32 / sectors_queued as f32 * 100.0,
