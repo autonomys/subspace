@@ -1,3 +1,6 @@
+//! TODO: Restore or remove connected peer later
+#![allow(dead_code)]
+
 mod handler;
 mod protocol;
 
