@@ -206,11 +206,11 @@ pub fn gemini_3g_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, 
 }
 
 pub fn gemini_3g_config() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String> {
-    ConsensusChainSpec::from_json_bytes(GEMINI_3G_CHAIN_SPEC)
+    ConsensusChainSpec::from_json_bytes(GEMINI_3G_CHAIN_SPEC.as_bytes())
 }
 
 pub fn devnet_config() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String> {
-    ConsensusChainSpec::from_json_bytes(DEVNET_CHAIN_SPEC)
+    ConsensusChainSpec::from_json_bytes(DEVNET_CHAIN_SPEC.as_bytes())
 }
 
 pub fn devnet_config_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String> {
