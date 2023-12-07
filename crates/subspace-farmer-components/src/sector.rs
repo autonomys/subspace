@@ -577,7 +577,7 @@ fn record_has_s_bucket_chunk(
     } else if num_encoded_record_chunks == Record::NUM_CHUNKS {
         None
     } else {
-        // Count how many encoded chunks we before current offset
+        // Count how many encoded chunks we have before current offset
         let encoded_before = record_bitfields[..s_bucket].count_ones();
         let unencoded_before = s_bucket - encoded_before;
         // And how many unencoded we have total and how many before current offset
