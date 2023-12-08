@@ -309,7 +309,6 @@ where
                         %error,
                         "Failed to send solution to node, skipping further proving for this slot",
                     );
-                    break 'solutions_processing;
                 }
             }
         }
