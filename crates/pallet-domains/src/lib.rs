@@ -358,10 +358,12 @@ mod pallet {
 
     /// Indexes operator signing key against OperatorId.
     #[pallet::storage]
+    #[pallet::getter(fn operator_signing_key)]
     pub(super) type OperatorSigningKey<T: Config> =
         StorageMap<_, Identity, OperatorPublicKey, OperatorId, OptionQuery>;
 
     #[pallet::storage]
+    #[pallet::getter(fn domain_staking_summary)]
     pub(super) type DomainStakingSummary<T: Config> =
         StorageMap<_, Identity, DomainId, StakingSummary<OperatorId, BalanceOf<T>>, OptionQuery>;
 
