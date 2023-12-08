@@ -151,7 +151,8 @@ where
                     domain_message_receiver,
                     provider: eth_provider,
                     skip_empty_bundle_production: true,
-                    maybe_operator_id: domain_cli.operator_id,
+                    // Always set it to `None` to not running the normal bundle producer
+                    maybe_operator_id: None,
                 };
 
                 let mut domain_node = domain_service::new_full::<
@@ -168,6 +169,24 @@ where
                     _,
                 >(domain_params)
                 .await?;
+
+                let malicious_bundle_producer = MaliciousBundleProducer::new(
+                    domain_id,
+                    domain_node.client.clone(),
+                    consensus_client,
+                    consensus_keystore,
+                    consensus_offchain_tx_pool_factory,
+                    domain_node.transaction_pool.clone(),
+                );
+
+                domain_node
+                    .task_manager
+                    .spawn_essential_handle()
+                    .spawn_essential_blocking(
+                        "malicious-bundle-producer",
+                        None,
+                        Box::pin(malicious_bundle_producer.start(new_slot_notification_stream())),
+                    );
 
                 domain_node.network_starter.start_network();
 

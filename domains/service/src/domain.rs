@@ -105,6 +105,8 @@ where
     pub network_starter: NetworkStarter,
     /// Operator.
     pub operator: DomainOperator<Block, CBlock, CClient, RuntimeApi, ExecutorDispatch>,
+    /// Transaction pool
+    pub transaction_pool: Arc<FullPool<CBlock, CClient, RuntimeApi, ExecutorDispatch>>,
     _phantom_data: PhantomData<AccountId>,
 }
 
@@ -509,6 +511,7 @@ where
         rpc_handlers,
         network_starter,
         operator,
+        transaction_pool: params.transaction_pool,
         _phantom_data: Default::default(),
     };
 
