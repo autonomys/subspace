@@ -956,6 +956,14 @@ where
                 ))
             })?;
 
+            tracing::info!(
+                ?bad_receipt_hash,
+                ?mismatch_info,
+                "Generating fraud proof, domain block {}#{}",
+                local_receipt.domain_block_number,
+                local_receipt.domain_block_hash
+            );
+
             let fraud_proof = match mismatch_info {
                 ReceiptMismatchInfo::Trace { trace_index, .. } => self
                     .fraud_proof_generator

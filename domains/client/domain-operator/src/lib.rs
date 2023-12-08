@@ -67,7 +67,7 @@ mod bundle_processor;
 mod bundle_producer_election_solver;
 mod domain_block_processor;
 pub mod domain_bundle_producer;
-mod domain_bundle_proposer;
+pub mod domain_bundle_proposer;
 mod domain_worker;
 mod domain_worker_starter;
 mod fraud_proof;
@@ -79,7 +79,8 @@ mod utils;
 pub use self::aux_schema::load_execution_receipt;
 pub use self::bootstrapper::{BootstrapResult, Bootstrapper};
 pub use self::operator::Operator;
-pub use self::utils::{DomainBlockImportNotification, DomainImportNotifications};
+pub use self::utils::{DomainBlockImportNotification, DomainImportNotifications, OperatorSlotInfo};
+pub use domain_worker::OpaqueBundleFor;
 use futures::channel::mpsc;
 use futures::Stream;
 use sc_client_api::{AuxStore, BlockImportNotification};
@@ -99,7 +100,7 @@ use std::sync::Arc;
 use subspace_core_primitives::Randomness;
 use subspace_runtime_primitives::Balance;
 
-type ExecutionReceiptFor<Block, CBlock> = ExecutionReceipt<
+pub type ExecutionReceiptFor<Block, CBlock> = ExecutionReceipt<
     NumberFor<CBlock>,
     <CBlock as BlockT>::Hash,
     NumberFor<Block>,

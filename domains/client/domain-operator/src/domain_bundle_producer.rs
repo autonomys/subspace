@@ -28,7 +28,7 @@ type OpaqueBundle<Block, CBlock> = sp_domains::OpaqueBundle<
     Balance,
 >;
 
-pub(super) struct DomainBundleProducer<Block, CBlock, Client, CClient, TransactionPool>
+pub struct DomainBundleProducer<Block, CBlock, Client, CClient, TransactionPool>
 where
     Block: BlockT,
     CBlock: BlockT,
@@ -77,7 +77,7 @@ where
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {
     #[allow(clippy::too_many_arguments)]
-    pub(super) fn new(
+    pub fn new(
         domain_id: DomainId,
         consensus_client: Arc<CClient>,
         client: Arc<Client>,
@@ -108,7 +108,7 @@ where
         }
     }
 
-    pub(super) async fn produce_bundle(
+    pub async fn produce_bundle(
         self,
         operator_id: OperatorId,
         consensus_block_info: HashAndNumber<CBlock>,

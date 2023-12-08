@@ -19,7 +19,7 @@ use std::time;
 use subspace_core_primitives::U256;
 use subspace_runtime_primitives::Balance;
 
-pub(super) struct DomainBundleProposer<Block, Client, CBlock, CClient, TransactionPool> {
+pub struct DomainBundleProposer<Block, Client, CBlock, CClient, TransactionPool> {
     domain_id: DomainId,
     client: Arc<Client>,
     consensus_client: Arc<CClient>,
@@ -58,7 +58,7 @@ where
     CClient::Api: DomainsApi<CBlock, Block::Header>,
     TransactionPool: sc_transaction_pool_api::TransactionPool<Block = Block>,
 {
-    pub(crate) fn new(
+    pub fn new(
         domain_id: DomainId,
         client: Arc<Client>,
         consensus_client: Arc<CClient>,

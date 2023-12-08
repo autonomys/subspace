@@ -179,7 +179,7 @@ pub(crate) const DEFAULT_NETWORK_CONFIG_PATH: &str = "network";
 
 /// Create a Configuration object from the current object, port from `sc_cli::create_configuration`
 /// and changed to take `chain_spec` as argument instead of construct one internally.
-fn create_configuration<
+pub fn create_configuration<
     DCV: DefaultConfigurationValues,
     CC: CliConfiguration<DCV>,
     Cli: SubstrateCli,

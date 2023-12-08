@@ -30,7 +30,7 @@ include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use crate::fees::{OnChargeTransaction, TransactionByteFee};
 use crate::object_mapping::extract_block_object_mapping;
-use crate::signed_extensions::{CheckStorageAccess, DisablePallets};
+pub use crate::signed_extensions::{CheckStorageAccess, DisablePallets};
 use codec::{Decode, Encode, MaxEncodedLen};
 use core::num::NonZeroU64;
 use domain_runtime_primitives::opaque::Header as DomainHeader;
