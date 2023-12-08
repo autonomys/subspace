@@ -126,7 +126,6 @@ where
 
         let bundle_producer = DomainBundleProducer::new(
             params.domain_id,
-            params.maybe_operator_id,
             params.consensus_client.clone(),
             params.client.clone(),
             domain_bundle_proposer,

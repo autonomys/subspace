@@ -126,7 +126,7 @@ pub(super) async fn start_worker<
             move |consensus_block_info: sp_blockchain::HashAndNumber<CBlock>, slot_info| {
                 bundle_producer
                     .clone()
-                    .produce_bundle(consensus_block_info.clone(), slot_info)
+                    .produce_bundle(operator_id, consensus_block_info.clone(), slot_info)
                     .instrument(span.clone())
                     .unwrap_or_else(move |error| {
                         tracing::error!(
