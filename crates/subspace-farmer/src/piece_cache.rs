@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::num::NonZeroU16;
 use std::sync::Arc;
 use std::{fmt, mem};
-use subspace_core_primitives::{Piece, PieceIndex, SegmentIndex};
+use subspace_core_primitives::{Piece, PieceIndex, SegmentHeader, SegmentIndex};
 use subspace_farmer_components::plotting::{PieceGetter, PieceGetterRetryPolicy};
 use subspace_networking::libp2p::kad::{ProviderRecord, RecordKey};
 use subspace_networking::libp2p::PeerId;
@@ -108,6 +108,21 @@ where
             return;
         }
 
+        let mut segment_headers_notifications =
+            match self.node_client.subscribe_archived_segment_headers().await {
+                Ok(segment_headers_notifications) => segment_headers_notifications,
+                Err(error) => {
+                    error!(%error, "Failed to subscribe to archived segments notifications");
+                    return;
+                }
+            };
+
+        // Keep up with segment indices that were potentially created since reinitialization,
+        // depending on the size of the diff this may pause block production for a while (due to
+        // subscription we have created above)
+        self.keep_up_after_initial_sync(&piece_getter, &mut worker_state)
+            .await;
+
         loop {
             select! {
                 maybe_command = worker_receiver.recv().fuse() => {
@@ -118,10 +133,14 @@ where
 
                     self.handle_command(command, &piece_getter, &mut worker_state).await;
                 }
-                _ = self.keep_up_sync(&piece_getter, &mut worker_state).fuse() => {
-                    // Keep-up sync only ends with subscription, which lasts for duration of an
-                    // instance
-                    return;
+                maybe_segment_header = segment_headers_notifications.next().fuse() => {
+                    if let Some(segment_header) = maybe_segment_header {
+                        self.process_segment_header(segment_header, &mut worker_state).await;
+                    } else {
+                        // Keep-up sync only ends with subscription, which lasts for duration of an
+                        // instance
+                        return;
+                    }
                 }
             }
         }
@@ -402,90 +421,74 @@ where
         info!("Finished piece cache synchronization");
     }
 
-    async fn keep_up_sync<PG>(&self, piece_getter: &PG, worker_state: &mut CacheWorkerState)
-    where
-        PG: PieceGetter,
-    {
-        let mut segment_headers_notifications =
-            match self.node_client.subscribe_archived_segment_headers().await {
-                Ok(segment_headers_notifications) => segment_headers_notifications,
-                Err(error) => {
-                    error!(%error, "Failed to subscribe to archived segments notifications");
-                    return;
-                }
-            };
+    async fn process_segment_header(
+        &self,
+        segment_header: SegmentHeader,
+        worker_state: &mut CacheWorkerState,
+    ) {
+        let segment_index = segment_header.segment_index();
+        debug!(%segment_index, "Starting to process newly archived segment");
 
-        // Keep up with segment indices that were potentially created since reinitialization,
-        // depending on the size of the diff this may pause block production for a while (due to
-        // subscription we have created above)
-        self.keep_up_after_initial_sync(piece_getter, worker_state)
-            .await;
+        if worker_state.last_segment_index >= segment_index {
+            return;
+        }
 
-        while let Some(segment_header) = segment_headers_notifications.next().await {
-            let segment_index = segment_header.segment_index();
-            debug!(%segment_index, "Starting to process newly archived segment");
+        // TODO: Can probably do concurrency here
+        for piece_index in segment_index.segment_piece_indexes() {
+            if !worker_state
+                .heap
+                .should_include_key(KeyWrapper(piece_index))
+            {
+                trace!(%piece_index, "Piece doesn't need to be cached #1");
 
-            if worker_state.last_segment_index >= segment_index {
                 continue;
             }
 
-            // TODO: Can probably do concurrency here
-            for piece_index in segment_index.segment_piece_indexes() {
-                if !worker_state
-                    .heap
-                    .should_include_key(KeyWrapper(piece_index))
-                {
-                    trace!(%piece_index, "Piece doesn't need to be cached #1");
+            trace!(%piece_index, "Piece needs to be cached #1");
 
-                    continue;
-                }
-
-                trace!(%piece_index, "Piece needs to be cached #1");
-
-                let maybe_piece = match self.node_client.piece(piece_index).await {
-                    Ok(maybe_piece) => maybe_piece,
-                    Err(error) => {
-                        error!(
-                            %error,
-                            %segment_index,
-                            %piece_index,
-                            "Failed to retrieve piece from node right after archiving, this \
-                            should never happen and is an implementation bug"
-                        );
-                        continue;
-                    }
-                };
-
-                let Some(piece) = maybe_piece else {
+            let maybe_piece = match self.node_client.piece(piece_index).await {
+                Ok(maybe_piece) => maybe_piece,
+                Err(error) => {
                     error!(
+                        %error,
                         %segment_index,
                         %piece_index,
-                        "Failed to retrieve piece from node right after archiving, this should \
-                        never happen and is an implementation bug"
+                        "Failed to retrieve piece from node right after archiving, this \
+                        should never happen and is an implementation bug"
                     );
                     continue;
-                };
-
-                self.persist_piece_in_cache(piece_index, piece, worker_state);
-            }
-
-            worker_state.last_segment_index = segment_index;
-
-            match self
-                .node_client
-                .acknowledge_archived_segment_header(segment_index)
-                .await
-            {
-                Ok(()) => {
-                    debug!(%segment_index, "Acknowledged archived segment");
-                }
-                Err(error) => {
-                    error!(%segment_index, ?error, "Failed to acknowledge archived segment");
                 }
             };
 
-            debug!(%segment_index, "Finished processing newly archived segment");
+            let Some(piece) = maybe_piece else {
+                error!(
+                    %segment_index,
+                    %piece_index,
+                    "Failed to retrieve piece from node right after archiving, this should \
+                    never happen and is an implementation bug"
+                );
+                continue;
+            };
+
+            self.persist_piece_in_cache(piece_index, piece, worker_state);
         }
+
+        worker_state.last_segment_index = segment_index;
+
+        match self
+            .node_client
+            .acknowledge_archived_segment_header(segment_index)
+            .await
+        {
+            Ok(()) => {
+                debug!(%segment_index, "Acknowledged archived segment");
+            }
+            Err(error) => {
+                error!(%segment_index, ?error, "Failed to acknowledge archived segment");
+            }
+        };
+
+        debug!(%segment_index, "Finished processing newly archived segment");
     }
 
     async fn keep_up_after_initial_sync<PG>(
