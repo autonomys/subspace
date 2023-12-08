@@ -225,7 +225,7 @@ pub fn devnet_config_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfi
                 AccountId::from_ss58check("5CXTmJEusve5ixyJufqHThmy4qUrrm6FyLCR7QfE4bbyMTNC")
                     .expect("Wrong root account address");
 
-            let mut balances = vec![(sudo_account.clone(), 1_000 * SSC)];
+            let mut balances = vec![(sudo_account.clone(), Balance::MAX / 2)];
             let vesting_schedules = TOKEN_GRANTS
                 .iter()
                 .flat_map(|&(account_address, amount)| {
@@ -327,7 +327,7 @@ pub fn dev_config() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String> 
                 get_account_id_from_seed("Alice"),
                 // Pre-funded accounts
                 vec![
-                    (get_account_id_from_seed("Alice"), 1_000 * SSC),
+                    (get_account_id_from_seed("Alice"), Balance::MAX / 2),
                     (get_account_id_from_seed("Bob"), 1_000 * SSC),
                     (get_account_id_from_seed("Alice//stash"), 1_000 * SSC),
                     (get_account_id_from_seed("Bob//stash"), 1_000 * SSC),
@@ -387,7 +387,7 @@ pub fn local_config() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String
                 get_account_id_from_seed("Alice"),
                 // Pre-funded accounts
                 vec![
-                    (get_account_id_from_seed("Alice"), 1_000 * SSC),
+                    (get_account_id_from_seed("Alice"), Balance::MAX / 2),
                     (get_account_id_from_seed("Bob"), 1_000 * SSC),
                     (get_account_id_from_seed("Charlie"), 1_000 * SSC),
                     (get_account_id_from_seed("Dave"), 1_000 * SSC),

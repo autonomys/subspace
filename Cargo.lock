@@ -11756,6 +11756,66 @@ dependencies = [
 ]
 
 [[package]]
+name = "subspace-malicious-operator"
+version = "0.1.0"
+dependencies = [
+ "cross-domain-message-gossip",
+ "domain-client-message-relayer",
+ "domain-client-operator",
+ "domain-eth-service",
+ "domain-runtime-primitives",
+ "domain-service",
+ "evm-domain-runtime",
+ "frame-system",
+ "frame-system-rpc-runtime-api",
+ "futures",
+ "log",
+ "mimalloc",
+ "pallet-domains",
+ "pallet-sudo",
+ "pallet-transaction-payment",
+ "parity-scale-codec",
+ "rand 0.8.5",
+ "sc-chain-spec",
+ "sc-cli",
+ "sc-client-api",
+ "sc-consensus-slots",
+ "sc-consensus-subspace",
+ "sc-network",
+ "sc-network-sync",
+ "sc-service",
+ "sc-storage-monitor",
+ "sc-tracing",
+ "sc-transaction-pool-api",
+ "sc-utils",
+ "serde_json",
+ "sp-api",
+ "sp-block-builder",
+ "sp-blockchain",
+ "sp-consensus-slots",
+ "sp-consensus-subspace",
+ "sp-core",
+ "sp-domain-digests",
+ "sp-domains",
+ "sp-keyring",
+ "sp-keystore",
+ "sp-messenger",
+ "sp-runtime",
+ "sp-transaction-pool",
+ "subspace-core-primitives",
+ "subspace-networking",
+ "subspace-node",
+ "subspace-proof-of-space",
+ "subspace-runtime",
+ "subspace-runtime-primitives",
+ "subspace-service",
+ "substrate-build-script-utils",
+ "thiserror",
+ "tokio",
+ "tracing",
+]
+
+[[package]]
 name = "subspace-metrics"
 version = "0.1.0"
 dependencies = [
