@@ -503,8 +503,7 @@ impl SectorContentsMap {
     /// corresponds to the record to which chunk belongs and `encoded_chunk_used` indicates whether
     /// it was encoded.
     ///
-    /// ## Panics
-    /// Panics if `s_bucket` is outside of [`Record::NUM_S_BUCKETS`] range.
+    /// Returns error if `s_bucket` is outside of [`Record::NUM_S_BUCKETS`] range.
     pub fn iter_s_bucket_records(
         &self,
         s_bucket: SBucket,
