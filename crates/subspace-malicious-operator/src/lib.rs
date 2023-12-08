@@ -16,4 +16,5 @@
 
 //! Subspace malicious operator library.
 
+mod malicious_bundle_tamper;
 pub mod malicious_domain_instance_starter;
