@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 use derive_more::Display;
 use std::fs::{File, OpenOptions};
 use std::path::Path;
@@ -99,28 +102,13 @@ impl DiskPieceCache {
         let mut element = vec![0; Self::element_size()];
 
         (0..self.inner.num_elements).map(move |offset| {
-            if let Err(error) =
-                file.read_exact_at(&mut element, (offset * Self::element_size()) as u64)
-            {
-                warn!(%error, %offset, "Failed to read cache element #1");
-                return (Offset(offset), None);
+            match Self::read_piece_internal(file, offset, &mut element) {
+                Ok(maybe_piece_index) => (Offset(offset), maybe_piece_index),
+                Err(error) => {
+                    warn!(%error, %offset, "Failed to read cache element");
+                    (Offset(offset), None)
+                }
             }
-
-            let (piece_index_bytes, piece_bytes) = element.split_at(PieceIndex::SIZE);
-            let piece_index = PieceIndex::from_bytes(
-                piece_index_bytes
-                    .try_into()
-                    .expect("Statically known to have correct size; qed"),
-            );
-            // Piece index zero might mean we have piece index zero or just an empty space
-            let piece_index =
-                if piece_index != PieceIndex::ZERO || piece_bytes.iter().any(|&byte| byte != 0) {
-                    Some(piece_index)
-                } else {
-                    None
-                };
-
-            (Offset(offset), piece_index)
         })
     }
 
@@ -165,24 +153,20 @@ impl DiskPieceCache {
     ///
     /// NOTE: it is possible to do concurrent reads and writes, higher level logic must ensure this
     /// doesn't happen for the same piece being accessed!
-    pub(crate) fn read_piece_index(&self, offset: Offset) -> Option<PieceIndex> {
+    pub(crate) fn read_piece_index(
+        &self,
+        offset: Offset,
+    ) -> Result<Option<PieceIndex>, DiskPieceCacheError> {
         let Offset(offset) = offset;
         if offset >= self.inner.num_elements {
             warn!(%offset, "Trying to read piece out of range, this must be an implementation bug");
-            return None;
+            return Err(DiskPieceCacheError::OffsetOutsideOfRange {
+                provided: offset,
+                max: self.inner.num_elements - 1,
+            });
         }
 
-        let mut piece_index_bytes = [0; PieceIndex::SIZE];
-
-        if let Err(error) = self.inner.file.read_exact_at(
-            &mut piece_index_bytes,
-            (offset * Self::element_size()) as u64,
-        ) {
-            warn!(%error, %offset, "Failed to read cache piece index");
-            return None;
-        }
-
-        Some(PieceIndex::from_bytes(piece_index_bytes))
+        Self::read_piece_internal(&self.inner.file, offset, &mut vec![0; Self::element_size()])
     }
 
     /// Read piece from cache at specified offset.
@@ -195,22 +179,39 @@ impl DiskPieceCache {
         let Offset(offset) = offset;
         if offset >= self.inner.num_elements {
             warn!(%offset, "Trying to read piece out of range, this must be an implementation bug");
-            return Ok(None);
+            return Err(DiskPieceCacheError::OffsetOutsideOfRange {
+                provided: offset,
+                max: self.inner.num_elements - 1,
+            });
         }
 
         let mut element = vec![0; Self::element_size()];
-        self.inner
-            .file
-            .read_exact_at(&mut element, (offset * Self::element_size()) as u64)?;
+        if Self::read_piece_internal(&self.inner.file, offset, &mut element)?.is_some() {
+            let mut piece = Piece::default();
+            piece.copy_from_slice(&element[PieceIndex::SIZE..][..Piece::SIZE]);
+            Ok(Some(piece))
+        } else {
+            Ok(None)
+        }
+    }
+
+    fn read_piece_internal(
+        file: &File,
+        offset: usize,
+        element: &mut [u8],
+    ) -> Result<Option<PieceIndex>, DiskPieceCacheError> {
+        file.read_exact_at(element, (offset * Self::element_size()) as u64)?;
 
         let (piece_index_bytes, remaining_bytes) = element.split_at(PieceIndex::SIZE);
         let (piece_bytes, expected_checksum) = remaining_bytes.split_at(Piece::SIZE);
-        let mut piece = Piece::default();
-        piece.copy_from_slice(piece_bytes);
 
         // Verify checksum
-        let actual_checksum = blake3_hash_list(&[piece_index_bytes, piece.as_ref()]);
+        let actual_checksum = blake3_hash_list(&[piece_index_bytes, piece_bytes]);
         if actual_checksum != expected_checksum {
+            if element.iter().all(|&byte| byte == 0) {
+                return Ok(None);
+            }
+
             debug!(
                 actual_checksum = %hex::encode(actual_checksum),
                 expected_checksum = %hex::encode(expected_checksum),
@@ -220,7 +221,12 @@ impl DiskPieceCache {
             return Err(DiskPieceCacheError::ChecksumMismatch);
         }
 
-        Ok(Some(piece))
+        let piece_index = PieceIndex::from_bytes(
+            piece_index_bytes
+                .try_into()
+                .expect("Statically known to have correct size; qed"),
+        );
+        Ok(Some(piece_index))
     }
 
     pub(crate) fn wipe(directory: &Path) -> io::Result<()> {

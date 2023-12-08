@@ -158,15 +158,24 @@ where
                     // Making offset as unoccupied and remove corresponding key from heap
                     cache.free_offsets.push(offset);
                     match cache.backend.read_piece_index(offset) {
-                        Some(piece_index) => {
+                        Ok(Some(piece_index)) => {
                             worker_state.heap.remove(KeyWrapper(piece_index));
                         }
-                        None => {
+                        Ok(None) => {
                             warn!(
                                 %disk_farm_index,
                                 %offset,
                                 "Piece index out of range, this is likely an implementation bug, \
                                 not freeing heap element"
+                            );
+                        }
+                        Err(error) => {
+                            error!(
+                                %error,
+                                %disk_farm_index,
+                                ?key,
+                                %offset,
+                                "Error while reading piece from cache, might be a disk corruption"
                             );
                         }
                     }
