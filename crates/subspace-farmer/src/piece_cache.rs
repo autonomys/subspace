@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod tests;
+
 use crate::node_client::NodeClient;
 use crate::single_disk_farm::piece_cache::{DiskPieceCache, Offset};
 use crate::utils::AsyncJoinOnDrop;
@@ -429,51 +432,49 @@ where
         let segment_index = segment_header.segment_index();
         debug!(%segment_index, "Starting to process newly archived segment");
 
-        if worker_state.last_segment_index >= segment_index {
-            return;
-        }
+        if worker_state.last_segment_index < segment_index {
+            // TODO: Can probably do concurrency here
+            for piece_index in segment_index.segment_piece_indexes() {
+                if !worker_state
+                    .heap
+                    .should_include_key(KeyWrapper(piece_index))
+                {
+                    trace!(%piece_index, "Piece doesn't need to be cached #1");
 
-        // TODO: Can probably do concurrency here
-        for piece_index in segment_index.segment_piece_indexes() {
-            if !worker_state
-                .heap
-                .should_include_key(KeyWrapper(piece_index))
-            {
-                trace!(%piece_index, "Piece doesn't need to be cached #1");
-
-                continue;
-            }
-
-            trace!(%piece_index, "Piece needs to be cached #1");
-
-            let maybe_piece = match self.node_client.piece(piece_index).await {
-                Ok(maybe_piece) => maybe_piece,
-                Err(error) => {
-                    error!(
-                        %error,
-                        %segment_index,
-                        %piece_index,
-                        "Failed to retrieve piece from node right after archiving, this \
-                        should never happen and is an implementation bug"
-                    );
                     continue;
                 }
-            };
 
-            let Some(piece) = maybe_piece else {
-                error!(
-                    %segment_index,
-                    %piece_index,
-                    "Failed to retrieve piece from node right after archiving, this should \
-                    never happen and is an implementation bug"
-                );
-                continue;
-            };
+                trace!(%piece_index, "Piece needs to be cached #1");
 
-            self.persist_piece_in_cache(piece_index, piece, worker_state);
+                let maybe_piece = match self.node_client.piece(piece_index).await {
+                    Ok(maybe_piece) => maybe_piece,
+                    Err(error) => {
+                        error!(
+                            %error,
+                            %segment_index,
+                            %piece_index,
+                            "Failed to retrieve piece from node right after archiving, this \
+                            should never happen and is an implementation bug"
+                        );
+                        continue;
+                    }
+                };
+
+                let Some(piece) = maybe_piece else {
+                    error!(
+                        %segment_index,
+                        %piece_index,
+                        "Failed to retrieve piece from node right after archiving, this should \
+                        never happen and is an implementation bug"
+                    );
+                    continue;
+                };
+
+                self.persist_piece_in_cache(piece_index, piece, worker_state);
+            }
+
+            worker_state.last_segment_index = segment_index;
         }
-
-        worker_state.last_segment_index = segment_index;
 
         match self
             .node_client
@@ -527,12 +528,12 @@ where
         for piece_index in piece_indices {
             let key = KeyWrapper(piece_index);
             if !worker_state.heap.should_include_key(key) {
-                trace!(%piece_index, "Piece doesn't need to be cached #1");
+                trace!(%piece_index, "Piece doesn't need to be cached #2");
 
                 continue;
             }
 
-            trace!(%piece_index, "Piece needs to be cached #1");
+            trace!(%piece_index, "Piece needs to be cached #2");
 
             let result = piece_getter
                 .get_piece(
