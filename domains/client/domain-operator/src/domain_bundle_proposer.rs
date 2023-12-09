@@ -115,18 +115,6 @@ where
             // We are using one runtime api instance here to maintain storage changes in the instance's internal buffer
             // between runtime calls done in this loop.
             let runtime_api_instance = self.client.runtime_api();
-            let api_version = runtime_api_instance
-                .api_version::<dyn DomainCoreApi<Block>>(parent_hash)
-                .map_err(sp_blockchain::Error::RuntimeApiError)?
-                .ok_or_else(|| {
-                    sp_blockchain::Error::Application(
-                        format!(
-                            "Could not find `DomainCoreApi` api for block `{:?}`.",
-                            parent_hash
-                        )
-                        .into(),
-                    )
-                })?;
             for pending_tx in pending_iterator {
                 let pending_tx_data = pending_tx.data();
 
@@ -176,22 +164,13 @@ where
                 // some other checks, its side effect will still be part of RuntimeApiImpl's changes buffer.
                 let transaction_validity_result =
                     runtime_api_instance.execute_in_transaction(|api| {
-                        let transaction_validity_result = if api_version == 2 {
-                            api.check_transaction_and_do_pre_dispatch(
+                        let transaction_validity_result = api
+                            .check_transaction_and_do_pre_dispatch(
                                 parent_hash,
                                 pending_tx_data,
                                 parent_number,
                                 parent_hash,
-                            )
-                        } else {
-                            #[allow(deprecated)] // old check_transaction_validity
-                            api.check_transaction_validity_before_version_2(
-                                parent_hash,
-                                pending_tx_data,
-                                parent_number,
-                                parent_hash,
-                            )
-                        };
+                            );
                         // Only commit, if there are no errors (both ApiError and CheckTxValidityError)
                         if let Ok(Ok(_)) = transaction_validity_result {
                             sp_api::TransactionOutcome::Commit(transaction_validity_result)

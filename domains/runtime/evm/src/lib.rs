@@ -18,7 +18,7 @@ use frame_support::dispatch::{DispatchClass, GetDispatchInfo};
 use frame_support::inherent::ProvideInherent;
 use frame_support::traits::{
     ConstU16, ConstU32, ConstU64, Currency, Everything, FindAuthor, Imbalance, OnFinalize,
-    OnUnbalanced, PalletInfoAccess,
+    OnUnbalanced,
 };
 use frame_support::weights::constants::{
     BlockExecutionWeight, ExtrinsicBaseWeight, ParityDbWeight, WEIGHT_REF_TIME_PER_MILLIS,
@@ -56,7 +56,7 @@ use sp_runtime::transaction_validity::{
 use sp_runtime::{
     create_runtime_str, generic, impl_opaque_keys, ApplyExtrinsicResult, ConsensusEngineId, Digest,
 };
-pub use sp_runtime::{MultiAddress, Perbill, Permill, SaturatedConversion};
+pub use sp_runtime::{MultiAddress, Perbill, Permill};
 use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
 #[cfg(feature = "std")]
@@ -186,7 +186,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_name: create_runtime_str!("subspace-evm-domain"),
     impl_name: create_runtime_str!("subspace-evm-domain"),
     authoring_version: 0,
-    spec_version: 1,
+    spec_version: 0,
     impl_version: 0,
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 0,
@@ -704,79 +704,12 @@ pub fn extract_signer(
         .collect()
 }
 
-fn storage_keys_for_verifying_tx_validity_inner(
-    maybe_sender: Option<AccountId>,
-    block_number: BlockNumber,
-    maybe_tx_era: Option<Era>,
-) -> Vec<Vec<u8>> {
-    let mut storage_keys = sp_std::vec![
-        frame_system::BlockHash::<Runtime>::hashed_key_for(BlockNumber::from(0u32)),
-        frame_support::storage::storage_prefix(System::name().as_bytes(), b"Number").to_vec(),
-        pallet_transaction_payment::NextFeeMultiplier::<Runtime>::hashed_key().to_vec()
-    ];
-
-    if let Some(sender) = maybe_sender {
-        storage_keys.push(frame_system::Account::<Runtime>::hashed_key_for(sender));
-    }
-
-    match maybe_tx_era {
-        None => storage_keys,
-        Some(era) => {
-            let birth_number = era
-                .birth(block_number.saturated_into::<u64>())
-                .saturated_into::<BlockNumber>();
-            storage_keys.push(frame_system::BlockHash::<Runtime>::hashed_key_for(
-                birth_number,
-            ));
-            storage_keys
-        }
-    }
-}
-
 fn extrinsic_era(extrinsic: &<Block as BlockT>::Extrinsic) -> Option<Era> {
     extrinsic
         .0
         .signature
         .as_ref()
         .map(|(_, _, extra)| extra.4 .0)
-}
-
-fn check_transaction_validity_inner<Lookup>(
-    lookup: &Lookup,
-    uxt: &<Block as BlockT>::Extrinsic,
-    block_number: BlockNumber,
-    block_hash: <Block as BlockT>::Hash,
-) -> Result<Option<AccountId>, domain_runtime_primitives::CheckTxValidityError>
-where
-    Lookup: sp_runtime::traits::Lookup<Source = Address, Target = AccountId>,
-{
-    let maybe_signer_info = extract_signer_inner(uxt, lookup);
-    let maybe_signer = if let Some(signer_info) = maybe_signer_info {
-        let signer = signer_info.map_err(|tx_validity_error| {
-            domain_runtime_primitives::CheckTxValidityError::UnableToExtractSigner {
-                error: tx_validity_error,
-            }
-        })?;
-        Some(signer)
-    } else {
-        None
-    };
-
-    let tx_validity =
-        Executive::validate_transaction(TransactionSource::External, uxt.clone(), block_hash);
-
-    tx_validity
-        .map(|_| maybe_signer)
-        .map_err(|tx_validity_error| {
-            domain_runtime_primitives::CheckTxValidityError::InvalidTransaction {
-                error: tx_validity_error,
-                storage_keys: storage_keys_for_verifying_tx_validity_inner(
-                    maybe_signer,
-                    block_number,
-                    extrinsic_era(uxt),
-                ),
-            }
-        })
 }
 
 #[cfg(feature = "runtime-benchmarks")]
@@ -958,55 +891,26 @@ impl_runtime_apis! {
             }
         }
 
-        fn check_transaction_validity(uxt: &<Block as BlockT>::Extrinsic,
-            block_number: BlockNumber,
-            block_hash: <Block as BlockT>::Hash) -> Result<(), domain_runtime_primitives::CheckTxValidityError>  {
-            let lookup = frame_system::ChainContext::<Runtime>::default();
-            check_transaction_validity_inner(&lookup, uxt, block_number, block_hash).map(|_| ())
-        }
-
         fn check_transaction_and_do_pre_dispatch(
             uxt: &<Block as BlockT>::Extrinsic,
             block_number: BlockNumber,
             block_hash: <Block as BlockT>::Hash
-        ) -> Result<(), domain_runtime_primitives::CheckTxValidityError> {
-                        let lookup = frame_system::ChainContext::<Runtime>::default();
-
-            let maybe_signer_info = extract_signer_inner(uxt, &lookup);
-            let maybe_signer = if let Some(signer_info) = maybe_signer_info {
-                let signer = signer_info.map_err(|tx_validity_error| {
-                    domain_runtime_primitives::CheckTxValidityError::UnableToExtractSigner {
-                        error: tx_validity_error,
-                    }
-                })?;
-                Some(signer)
-            } else {
-                None
-            };
+        ) -> Result<(), TransactionValidityError> {
+            let lookup = frame_system::ChainContext::<Runtime>::default();
 
             // Initializing block related storage required for validation
             System::initialize(
-                &(System::block_number() + BlockNumber::one()),
+                &(block_number + BlockNumber::one()),
                 &block_hash,
                 &Default::default(),
             );
 
-            let storage_keys = storage_keys_for_verifying_tx_validity_inner(maybe_signer, block_number, Self::extrinsic_era(uxt));
-
-            let xt = uxt.clone().check(&lookup).map_err(|tx_validity_error| {
-                domain_runtime_primitives::CheckTxValidityError::InvalidTransaction {
-                    error: tx_validity_error,
-                    storage_keys: storage_keys.clone(),
-                }
-            })?;
+            let xt = uxt.clone().check(&lookup)?;
 
             let dispatch_info = xt.get_dispatch_info();
 
             if dispatch_info.class == DispatchClass::Mandatory {
-                return Err( domain_runtime_primitives::CheckTxValidityError::InvalidTransaction {
-                    error:  InvalidTransaction::BadMandatory.into(),
-                    storage_keys: storage_keys.clone(),
-                })
+                return Err(InvalidTransaction::BadMandatory.into());
             }
 
             let encoded = uxt.encode();
@@ -1017,48 +921,18 @@ impl_runtime_apis! {
             // runtime instance.
             match xt.signed {
                     CheckedSignature::Signed(account_id, extra) => {
-                        extra.pre_dispatch(&account_id, &xt.function, &dispatch_info, encoded_len).map(|_| ()).map_err(|tx_validity_error| {
-                            domain_runtime_primitives::CheckTxValidityError::InvalidTransaction {
-                                error: tx_validity_error,
-                                storage_keys,
-                            }
-                        })
+                        extra.pre_dispatch(&account_id, &xt.function, &dispatch_info, encoded_len).map(|_| ())
                     },
                     CheckedSignature::Unsigned => {
-                        Runtime::pre_dispatch(&xt.function).map(|_| ()).map_err(|tx_validity_error| {
-                            domain_runtime_primitives::CheckTxValidityError::InvalidTransaction {
-                                error: tx_validity_error,
-                                storage_keys: storage_keys.clone(),
-                            }
-                        })?;
-                        SignedExtra::pre_dispatch_unsigned(&xt.function, &dispatch_info, encoded_len).map(|_| ()).map_err(|tx_validity_error| {
-                            domain_runtime_primitives::CheckTxValidityError::InvalidTransaction {
-                                error: tx_validity_error,
-                                storage_keys,
-                            }
-                        })
+                        Runtime::pre_dispatch(&xt.function).map(|_| ())?;
+                        SignedExtra::pre_dispatch_unsigned(&xt.function, &dispatch_info, encoded_len).map(|_| ())
                     },
                     CheckedSignature::SelfContained(self_contained_signing_info) => {
                         xt.function.pre_dispatch_self_contained(&self_contained_signing_info, &dispatch_info, encoded_len).ok_or(TransactionValidityError::Invalid(
-                            InvalidTransaction::BadProof,
-                        )).map(|_| ()).map_err(|tx_validity_error| {
-                            domain_runtime_primitives::CheckTxValidityError::InvalidTransaction {
-                                error: tx_validity_error,
-                                // TODO: Verify the storage keys here
-                                storage_keys,
-                            }
-                        })
+                            InvalidTransaction::Call,
+                        )).map(|_| ())
                     }
                 }
-        }
-
-        fn storage_keys_for_verifying_transaction_validity(
-            maybe_who: Option<opaque::AccountId>,
-            block_number: BlockNumber,
-            maybe_tx_era: Option<Era>
-        ) -> Result<Vec<Vec<u8>>, domain_runtime_primitives::VerifyTxValidityError> {
-            let maybe_sender = maybe_who.map(|who| AccountId::decode(&mut who.as_slice()).map_err(|_| domain_runtime_primitives::VerifyTxValidityError::FailedToDecodeAccountId)).transpose()?;
-            Ok(storage_keys_for_verifying_tx_validity_inner(maybe_sender, block_number, maybe_tx_era))
         }
 
         fn extrinsic_era(

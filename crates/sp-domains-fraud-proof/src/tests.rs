@@ -1,91 +1,18 @@
-use codec::{Decode, Encode};
-use domain_block_preprocessor::stateless_runtime::StatelessRuntime;
-use domain_runtime_primitives::{CheckTxValidityError, DomainCoreApi};
-use domain_test_service::domain::EvmDomainClient as DomainClient;
-use domain_test_service::evm_domain_test_runtime::Runtime as TestRuntime;
-use domain_test_service::EcdsaKeyring::{Alice, Bob, Charlie};
+use codec::Encode;
+use domain_runtime_primitives::DomainCoreApi;
+use domain_test_service::EcdsaKeyring::{Alice, Charlie};
 use domain_test_service::Sr25519Keyring::Ferdie;
-use domain_test_service::{construct_extrinsic_generic, EvmDomainNode, GENESIS_DOMAIN_ID};
-use fp_rpc::EthereumRuntimeRPCApi;
-use sc_client_api::{HeaderBackend, ProofProvider, StorageProof};
+use domain_test_service::GENESIS_DOMAIN_ID;
+use sc_client_api::HeaderBackend;
 use sc_service::{BasePath, Role};
-use sp_api::{ApiExt, BlockT, ProvideRuntimeApi, TransactionOutcome};
-use sp_domains::DomainsApi;
-use sp_runtime::generic::UncheckedExtrinsic;
-use sp_runtime::traits::{BlakeTwo256, Header as HeaderT};
+use sp_api::{ApiExt, ProvideRuntimeApi, TransactionOutcome};
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidityError};
-use sp_runtime::{OpaqueExtrinsic, Storage};
-use sp_trie::{read_trie_value, LayoutV1};
-use std::collections::BTreeMap;
-use std::sync::Arc;
-use subspace_runtime_primitives::opaque::Block;
-use subspace_test_service::{produce_block_with, produce_blocks, MockConsensusNode};
+use sp_runtime::OpaqueExtrinsic;
+use subspace_test_service::MockConsensusNode;
 use tempfile::TempDir;
 
-type HashFor<Block> = <<Block as BlockT>::Header as HeaderT>::Hash;
-
-fn generate_storage_proof_for_tx_validity(
-    block_hash: HashFor<Block>,
-    client: Arc<DomainClient>,
-    keys: Vec<Vec<u8>>,
-) -> StorageProof {
-    client
-        .read_proof(
-            block_hash,
-            &mut keys
-                .iter()
-                .map(|k| k.as_slice())
-                .collect::<Vec<&[u8]>>()
-                .into_iter(),
-        )
-        .unwrap()
-}
-
-fn get_storage_keys_for_verifying_signed_tx_validity(
-    domain_node: &EvmDomainNode,
-    extrinsic: UncheckedExtrinsic<
-        domain_test_service::evm_domain_test_runtime::Address,
-        <TestRuntime as frame_system::Config>::RuntimeCall,
-        domain_test_service::evm_domain_test_runtime::Signature,
-        domain_test_service::evm_domain_test_runtime::SignedExtra,
-    >,
-) -> Vec<Vec<u8>> {
-    let extrinsic_signer = domain_node
-        .client
-        .runtime_api()
-        .extract_signer(
-            domain_node.client.as_ref().info().best_hash,
-            vec![extrinsic.clone().into()],
-        )
-        .unwrap()
-        .first()
-        .unwrap()
-        .0
-        .clone();
-    let extrinsic_era = domain_node
-        .client
-        .runtime_api()
-        .extrinsic_era(
-            domain_node.client.as_ref().info().best_hash,
-            &extrinsic.clone().into(),
-        )
-        .unwrap();
-
-    domain_node
-        .client
-        .runtime_api()
-        .storage_keys_for_verifying_transaction_validity(
-            domain_node.client.as_ref().info().best_hash,
-            extrinsic_signer,
-            domain_node.client.as_ref().info().best_number,
-            extrinsic_era,
-        )
-        .unwrap()
-        .unwrap()
-}
-
 #[tokio::test(flavor = "multi_thread")]
-async fn runtime_instance_assumptions_are_correct() {
+async fn runtime_instance_storage_assumptions_are_correct() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
     let mut builder = sc_cli::LoggerBuilder::new("");
@@ -102,7 +29,7 @@ async fn runtime_instance_assumptions_are_correct() {
     );
 
     // Run Alice (a evm domain authority node)
-    let alice = domain_test_service::DomainNodeBuilder::new(
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -110,90 +37,44 @@ async fn runtime_instance_assumptions_are_correct() {
     .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
     .await;
 
+    let best_hash = alice.client.as_ref().info().best_hash;
+    let best_number = alice.client.as_ref().info().best_number;
+
     // transfer most of the alice's balance
-    let alice_balance = alice
-        .client
-        .runtime_api()
-        .account_basic(
-            alice.client.as_ref().info().best_hash,
-            Alice.to_account_id().into(),
-        )
-        .unwrap()
-        .balance
-        .as_u128();
-    let target_balance = u32::MAX - 100;
-    let balance_to_transfer = alice_balance - target_balance as u128;
+    let alice_balance = alice.free_balance(Alice.to_account_id());
 
-    let alice_balance_transfer_extrinsic = construct_extrinsic_generic::<TestRuntime, _>(
-        &alice.client,
-        pallet_balances::Call::transfer_allow_death {
-            dest: Charlie.to_account_id(),
-            value: balance_to_transfer,
-        },
-        alice.key,
-        false,
-        0,
-        1,
-    );
+    let mut alice_nonce = alice.account_nonce();
 
-    alice
-        .send_extrinsic(alice_balance_transfer_extrinsic)
-        .await
-        .expect("Failed to send extrinsic");
-
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    assert!(bundle.is_some());
-    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
-        .await
-        .unwrap();
-    produce_blocks!(ferdie, alice, 10).await.unwrap();
-
-    let mut alice_nonce = 1;
-
-    let transfer_to_charlie_with_big_tip_1 = construct_extrinsic_generic::<TestRuntime, _>(
-        &alice.client,
+    let transfer_to_charlie_with_big_tip_1 = alice.construct_extrinsic_with_tip(
+        alice_nonce,
+        (alice_balance / 3) * 2,
         pallet_balances::Call::transfer_allow_death {
             dest: Charlie.to_account_id(),
             value: 1,
         },
-        alice.key,
-        false,
-        alice_nonce,
-        2000000000u32,
     );
     alice_nonce += 1;
 
-    let transfer_to_charlie_with_big_tip_2 = construct_extrinsic_generic::<TestRuntime, _>(
-        &alice.client,
+    let transfer_to_charlie_with_big_tip_2 = alice.construct_extrinsic_with_tip(
+        alice_nonce,
+        (alice_balance / 3) * 2,
         pallet_balances::Call::transfer_allow_death {
             dest: Charlie.to_account_id(),
             value: 1,
         },
-        alice.key,
-        false,
-        alice_nonce,
-        2000000000u32,
     );
 
     // A runtime instance preserve changes in between
     let runtime_instance = alice.client.runtime_api();
 
-    let tx_validity_error = CheckTxValidityError::InvalidTransaction {
-        error: TransactionValidityError::Invalid(InvalidTransaction::Payment),
-        storage_keys: get_storage_keys_for_verifying_signed_tx_validity(
-            &alice,
-            transfer_to_charlie_with_big_tip_2.clone(),
-        ),
-    };
-
     // First transaction should be okay
     assert_eq!(
         runtime_instance
             .check_transaction_and_do_pre_dispatch(
-                alice.client.as_ref().info().best_hash,
+                best_hash,
                 &transfer_to_charlie_with_big_tip_1.clone().into(),
-                alice.client.as_ref().info().best_number,
-                alice.client.as_ref().info().best_hash,
+                best_number,
+                best_hash,
             )
             .unwrap(),
         Ok(())
@@ -204,70 +85,82 @@ async fn runtime_instance_assumptions_are_correct() {
     assert_eq!(
         runtime_instance
             .check_transaction_and_do_pre_dispatch(
-                alice.client.as_ref().info().best_hash,
+                best_hash,
                 &transfer_to_charlie_with_big_tip_2.clone().into(),
-                alice.client.as_ref().info().best_number,
-                alice.client.as_ref().info().best_hash,
+                best_number,
+                best_hash,
             )
             .unwrap(),
-        Err(CheckTxValidityError::decode(&mut tx_validity_error.encode().as_slice()).unwrap())
+        Err(TransactionValidityError::Invalid(
+            InvalidTransaction::Payment
+        ))
+    );
+
+    // If second tx is executed in dedicated runtime instance it would error with `InvalidTransaction::Future`
+    // as the nonce at the block for this account is less than the tx's nonce. And there is no overlay
+    // preserved between runtime instance.
+    assert_eq!(
+        alice
+            .client
+            .runtime_api()
+            .check_transaction_and_do_pre_dispatch(
+                best_hash,
+                &transfer_to_charlie_with_big_tip_2.clone().into(),
+                best_number,
+                best_hash,
+            )
+            .unwrap(),
+        Err(TransactionValidityError::Invalid(
+            InvalidTransaction::Future
+        ))
     );
 
     let test_commit_mode = vec![true, false];
 
     for commit_mode in test_commit_mode {
-        // A runtime instance can rollback changes safely.
-        let runtime_instance = alice.client.runtime_api();
+        alice_nonce = alice.account_nonce();
 
-        alice_nonce = 1;
-
-        let transfer_with_big_tip_1 = construct_extrinsic_generic::<TestRuntime, _>(
-            &alice.client,
+        let transfer_with_big_tip_1 = alice.construct_extrinsic_with_tip(
+            alice_nonce,
+            alice_balance / 3,
             pallet_balances::Call::transfer_allow_death {
                 dest: Charlie.to_account_id(),
                 value: 1,
             },
-            alice.key,
-            false,
-            alice_nonce,
-            4000000000u32 / 3,
         );
         alice_nonce += 1;
 
-        let transfer_with_big_tip_2 = construct_extrinsic_generic::<TestRuntime, _>(
-            &alice.client,
+        let transfer_with_big_tip_2 = alice.construct_extrinsic_with_tip(
+            alice_nonce,
+            alice_balance / 3,
             pallet_balances::Call::transfer_allow_death {
                 dest: Charlie.to_account_id(),
                 value: 1,
             },
-            alice.key,
-            false,
-            alice_nonce,
-            4000000000u32 / 3,
         );
 
         if commit_mode {
             alice_nonce += 1;
         }
 
-        let transfer_with_big_tip_3 = construct_extrinsic_generic::<TestRuntime, _>(
-            &alice.client,
+        let transfer_with_big_tip_3 = alice.construct_extrinsic_with_tip(
+            alice_nonce,
+            alice_balance / 3,
             pallet_balances::Call::transfer_allow_death {
                 dest: Charlie.to_account_id(),
                 value: 1,
             },
-            alice.key,
-            false,
-            alice_nonce,
-            4000000000u32 / 3,
         );
+
+        // A runtime instance can rollback changes safely.
+        let runtime_instance = alice.client.runtime_api();
 
         assert!(runtime_instance
             .check_transaction_and_do_pre_dispatch(
-                alice.client.as_ref().info().best_hash,
+                best_hash,
                 &transfer_with_big_tip_1.clone().into(),
-                alice.client.as_ref().info().best_number,
-                alice.client.as_ref().info().best_hash
+                best_number,
+                best_hash
             )
             .unwrap()
             .is_ok());
@@ -276,17 +169,17 @@ async fn runtime_instance_assumptions_are_correct() {
             .execute_in_transaction(|api| {
                 if commit_mode {
                     TransactionOutcome::Commit(api.check_transaction_and_do_pre_dispatch(
-                        alice.client.as_ref().info().best_hash,
+                        best_hash,
                         &transfer_with_big_tip_2.clone().into(),
-                        alice.client.as_ref().info().best_number,
-                        alice.client.as_ref().info().best_hash,
+                        best_number,
+                        best_hash,
                     ))
                 } else {
                     TransactionOutcome::Rollback(api.check_transaction_and_do_pre_dispatch(
-                        alice.client.as_ref().info().best_hash,
+                        best_hash,
                         &transfer_with_big_tip_2.clone().into(),
-                        alice.client.as_ref().info().best_number,
-                        alice.client.as_ref().info().best_hash,
+                        best_number,
+                        best_hash,
                     ))
                 }
             })
@@ -295,17 +188,16 @@ async fn runtime_instance_assumptions_are_correct() {
         assert_eq!(
             runtime_instance
                 .check_transaction_and_do_pre_dispatch(
-                    alice.client.as_ref().info().best_hash,
+                    best_hash,
                     &transfer_with_big_tip_3.clone().into(),
-                    alice.client.as_ref().info().best_number,
-                    alice.client.as_ref().info().best_hash
+                    best_number,
+                    best_hash
                 )
                 .unwrap(),
             if commit_mode {
-                Err(
-                    CheckTxValidityError::decode(&mut tx_validity_error.encode().as_slice())
-                        .unwrap(),
-                )
+                Err(TransactionValidityError::Invalid(
+                    InvalidTransaction::Payment,
+                ))
             } else {
                 Ok(())
             }
@@ -314,7 +206,7 @@ async fn runtime_instance_assumptions_are_correct() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn check_bundle_validity_runtime_api_should_work() {
+async fn check_tx_validity_and_pre_dispatch_runtime_api_should_work() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
     let mut builder = sc_cli::LoggerBuilder::new("");
@@ -331,7 +223,7 @@ async fn check_bundle_validity_runtime_api_should_work() {
     );
 
     // Run Alice (a evm domain authority node)
-    let alice = domain_test_service::DomainNodeBuilder::new(
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
         BasePath::new(directory.path().join("alice")),
@@ -339,42 +231,20 @@ async fn check_bundle_validity_runtime_api_should_work() {
     .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
     .await;
 
-    let mut alice_nonce = 0;
-    let alice_balance = alice
-        .client
-        .runtime_api()
-        .account_basic(
-            alice.client.as_ref().info().best_hash,
-            Alice.to_account_id().into(),
-        )
-        .unwrap()
-        .balance
-        .as_u128();
+    let mut alice_nonce = alice.account_nonce();
+    let best_hash = alice.client.as_ref().info().best_hash;
+    let best_number = alice.client.as_ref().info().best_number;
+    let dummy_runtime_call = pallet_balances::Call::transfer_allow_death {
+        dest: Charlie.to_account_id(),
+        value: 1,
+    };
 
-    let transfer_to_charlie = construct_extrinsic_generic::<TestRuntime, _>(
-        &alice.client,
-        pallet_balances::Call::transfer_allow_death {
-            dest: Charlie.to_account_id(),
-            value: alice_balance,
-        },
-        alice.key,
-        false,
-        alice_nonce,
-        0,
-    );
+    let transfer_to_charlie =
+        alice.construct_extrinsic_with_tip(alice_nonce, 0, dummy_runtime_call.clone());
     alice_nonce += 1;
 
-    let transfer_to_charlie_2 = construct_extrinsic_generic::<TestRuntime, _>(
-        &alice.client,
-        pallet_balances::Call::transfer_allow_death {
-            dest: Charlie.to_account_id(),
-            value: 8,
-        },
-        alice.key,
-        false,
-        alice_nonce,
-        1,
-    );
+    let transfer_to_charlie_2 =
+        alice.construct_extrinsic_with_tip(alice_nonce, 0, dummy_runtime_call.clone());
 
     let sample_valid_bundle_extrinsics = vec![
         OpaqueExtrinsic::from_bytes(&transfer_to_charlie.encode()).unwrap(),
@@ -387,10 +257,10 @@ async fn check_bundle_validity_runtime_api_should_work() {
             assert_eq!(
                 runtime_instance
                     .check_transaction_and_do_pre_dispatch(
-                        alice.client.as_ref().info().best_hash,
+                        best_hash,
                         &extrinsic,
-                        alice.client.as_ref().info().best_number,
-                        alice.client.as_ref().info().best_hash,
+                        best_number,
+                        best_hash,
                     )
                     .unwrap(),
                 Ok(())
@@ -399,17 +269,7 @@ async fn check_bundle_validity_runtime_api_should_work() {
     }
 
     let transfer_to_charlie_3_duplicate_nonce_extrinsic =
-        construct_extrinsic_generic::<TestRuntime, _>(
-            &alice.client,
-            pallet_balances::Call::transfer_allow_death {
-                dest: Charlie.to_account_id(),
-                value: 8,
-            },
-            alice.key,
-            false,
-            alice_nonce,
-            1,
-        );
+        alice.construct_extrinsic_with_tip(alice_nonce, 0, dummy_runtime_call.clone());
 
     // Here tx index: 2 is invalid
     let sample_invalid_bundle_with_same_nonce_extrinsic = vec![
@@ -429,10 +289,10 @@ async fn check_bundle_validity_runtime_api_should_work() {
                 assert_eq!(
                     runtime_instance
                         .check_transaction_and_do_pre_dispatch(
-                            alice.client.as_ref().info().best_hash,
+                            best_hash,
                             extrinsic,
-                            alice.client.as_ref().info().best_number,
-                            alice.client.as_ref().info().best_hash,
+                            best_number,
+                            best_hash,
                         )
                         .unwrap(),
                     Ok(())
@@ -441,89 +301,36 @@ async fn check_bundle_validity_runtime_api_should_work() {
                 assert_eq!(
                     runtime_instance
                         .check_transaction_and_do_pre_dispatch(
-                            alice.client.as_ref().info().best_hash,
+                            best_hash,
                             extrinsic,
-                            alice.client.as_ref().info().best_number,
-                            alice.client.as_ref().info().best_hash,
+                            best_number,
+                            best_hash,
                         )
                         .unwrap(),
-                    Err(CheckTxValidityError::InvalidTransaction {
-                        error: TransactionValidityError::Invalid(InvalidTransaction::Stale),
-                        storage_keys: get_storage_keys_for_verifying_signed_tx_validity(
-                            &alice,
-                            transfer_to_charlie_3_duplicate_nonce_extrinsic.clone()
-                        ),
-                    })
+                    Err(TransactionValidityError::Invalid(InvalidTransaction::Stale))
                 );
             }
         }
     }
 
+    // Resetting the nonce
+    alice_nonce = alice.account_nonce();
+
     // transfer most of the alice's balance
-    let alice_balance = alice
-        .client
-        .runtime_api()
-        .account_basic(
-            alice.client.as_ref().info().best_hash,
-            Alice.to_account_id().into(),
-        )
-        .unwrap()
-        .balance
-        .as_u128();
-    let target_balance = u32::MAX - 100;
-    let balance_to_transfer = alice_balance - target_balance as u128;
+    let alice_balance = alice.free_balance(Alice.to_account_id());
 
-    // reset alice nonce now
-    alice_nonce = 0;
-
-    let alice_balance_transfer_extrinsic = construct_extrinsic_generic::<TestRuntime, _>(
-        &alice.client,
-        pallet_balances::Call::transfer_allow_death {
-            dest: Charlie.to_account_id(),
-            value: balance_to_transfer,
-        },
-        alice.key,
-        false,
+    let transfer_to_charlie_with_big_tip_1 = alice.construct_extrinsic_with_tip(
         alice_nonce,
-        1,
+        (alice_balance / 3) * 2,
+        dummy_runtime_call.clone(),
     );
+
     alice_nonce += 1;
 
-    alice
-        .send_extrinsic(alice_balance_transfer_extrinsic)
-        .await
-        .expect("Failed to send extrinsic");
-
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    assert!(bundle.is_some());
-    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
-        .await
-        .unwrap();
-    produce_blocks!(ferdie, alice, 10).await.unwrap();
-
-    let transfer_to_charlie_with_big_tip_1 = construct_extrinsic_generic::<TestRuntime, _>(
-        &alice.client,
-        pallet_balances::Call::transfer_allow_death {
-            dest: Charlie.to_account_id(),
-            value: 1,
-        },
-        alice.key,
-        false,
+    let transfer_to_charlie_with_big_tip_2 = alice.construct_extrinsic_with_tip(
         alice_nonce,
-        2000000000u32,
-    );
-    alice_nonce += 1;
-
-    let transfer_to_charlie_with_big_tip_2 = construct_extrinsic_generic::<TestRuntime, _>(
-        &alice.client,
-        pallet_balances::Call::transfer_allow_death {
-            dest: Charlie.to_account_id(),
-            value: 1,
-        },
-        alice.key,
-        false,
-        alice_nonce,
-        2000000000u32,
+        (alice_balance / 3) * 2,
+        dummy_runtime_call.clone(),
     );
 
     // In single tx context both are valid (both tx are identical except nonce), so no need to test both of them independently.
@@ -533,24 +340,16 @@ async fn check_bundle_validity_runtime_api_should_work() {
             .client
             .runtime_api()
             .check_transaction_and_do_pre_dispatch(
-                alice.client.as_ref().info().best_hash,
+                best_hash,
                 &OpaqueExtrinsic::from_bytes(&transfer_to_charlie_with_big_tip_1.encode()).unwrap(),
-                alice.client.as_ref().info().best_number,
-                alice.client.as_ref().info().best_hash,
+                best_number,
+                best_hash,
             )
             .unwrap(),
         Ok(())
     );
 
     // Tx index: 1 is invalid since low balance to pay for the tip
-    let tx_validity_error = CheckTxValidityError::InvalidTransaction {
-        error: TransactionValidityError::Invalid(InvalidTransaction::Payment),
-        storage_keys: get_storage_keys_for_verifying_signed_tx_validity(
-            &alice,
-            transfer_to_charlie_with_big_tip_2.clone(),
-        ),
-    };
-
     let transfer_to_charlie_with_big_tip = vec![
         transfer_to_charlie_with_big_tip_1.clone().into(),
         transfer_to_charlie_with_big_tip_2.clone().into(),
@@ -563,403 +362,30 @@ async fn check_bundle_validity_runtime_api_should_work() {
                 assert_eq!(
                     runtime_instance
                         .check_transaction_and_do_pre_dispatch(
-                            alice.client.as_ref().info().best_hash,
+                            best_hash,
                             extrinsic,
-                            alice.client.as_ref().info().best_number,
-                            alice.client.as_ref().info().best_hash,
+                            best_number,
+                            best_hash,
                         )
                         .unwrap(),
-                    Err(
-                        CheckTxValidityError::decode(&mut tx_validity_error.encode().as_slice())
-                            .unwrap()
-                    )
+                    Err(TransactionValidityError::Invalid(
+                        InvalidTransaction::Payment
+                    ))
                 );
             } else {
                 assert_eq!(
                     runtime_instance
                         .check_transaction_and_do_pre_dispatch(
-                            alice.client.as_ref().info().best_hash,
+                            best_hash,
                             extrinsic,
-                            alice.client.as_ref().info().best_number,
-                            alice.client.as_ref().info().best_hash,
+                            best_number,
+                            best_hash,
                         )
                         .unwrap(),
                     Ok(())
                 );
             }
         }
-    }
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn check_tx_validity_runtime_api_should_work() {
-    let directory = TempDir::new().expect("Must be able to create temporary directory");
-
-    let mut builder = sc_cli::LoggerBuilder::new("");
-    builder.with_colors(false);
-    let _ = builder.init();
-
-    let tokio_handle = tokio::runtime::Handle::current();
-
-    // Start Ferdie
-    let mut ferdie = MockConsensusNode::run(
-        tokio_handle.clone(),
-        Ferdie,
-        BasePath::new(directory.path().join("ferdie")),
-    );
-
-    // Run Alice (a evm domain authority node)
-    let alice = domain_test_service::DomainNodeBuilder::new(
-        tokio_handle.clone(),
-        Alice,
-        BasePath::new(directory.path().join("alice")),
-    )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
-    .await;
-
-    // Run Bob (a evm domain full node)
-    let bob = domain_test_service::DomainNodeBuilder::new(
-        tokio_handle,
-        Bob,
-        BasePath::new(directory.path().join("bob")),
-    )
-    .build_evm_node(Role::Full, GENESIS_DOMAIN_ID, &mut ferdie)
-    .await;
-
-    // Bob is able to sync blocks.
-    produce_blocks!(ferdie, alice, 1, bob).await.unwrap();
-
-    let bob_nonce = bob.account_nonce();
-    let transfer_to_charlie = construct_extrinsic_generic::<TestRuntime, _>(
-        &bob.client,
-        pallet_balances::Call::transfer_allow_death {
-            dest: Charlie.to_account_id(),
-            value: 8,
-        },
-        bob.key,
-        false,
-        bob_nonce + 1,
-        1,
-    );
-
-    produce_blocks!(ferdie, alice, 2, bob).await.unwrap();
-
-    let opaque_extrinsic = OpaqueExtrinsic::from_bytes(&transfer_to_charlie.encode()).unwrap();
-    let extrinsic_best_hash = bob.client.as_ref().info().best_hash;
-    let bob_account_id = Bob.to_account_id().encode();
-    let extrinsic_best_number = bob.client.as_ref().info().best_number;
-
-    let extrinsic_era = bob
-        .client
-        .runtime_api()
-        .extrinsic_era(bob.client.as_ref().info().best_hash, &opaque_extrinsic)
-        .unwrap();
-
-    let test_table = vec![
-        (
-            Some(4),
-            Some(TransactionValidityError::Invalid(
-                InvalidTransaction::AncientBirthBlock,
-            )),
-        ),
-        (
-            Some(3),
-            Some(TransactionValidityError::Invalid(
-                InvalidTransaction::Payment,
-            )),
-        ),
-        (
-            Some(1),
-            Some(TransactionValidityError::Invalid(
-                InvalidTransaction::BadProof,
-            )),
-        ),
-        (
-            Some(0),
-            Some(TransactionValidityError::Invalid(
-                InvalidTransaction::BadProof,
-            )),
-        ),
-        (None, None),
-    ];
-
-    for table_data in test_table {
-        let mut storage_keys_for_tx_validity = bob
-            .client
-            .runtime_api()
-            .storage_keys_for_verifying_transaction_validity(
-                extrinsic_best_hash,
-                Some(bob_account_id.clone()),
-                extrinsic_best_number,
-                extrinsic_era,
-            )
-            .unwrap()
-            .unwrap();
-
-        let maybe_storage_key_to_remove = table_data.0;
-        let original_storage_keys_for_tx_validity = storage_keys_for_tx_validity.clone();
-
-        if let Some(storage_key_to_remove) = maybe_storage_key_to_remove {
-            storage_keys_for_tx_validity = storage_keys_for_tx_validity
-                .drain(..)
-                .enumerate()
-                .filter(|(i, _v)| *i != storage_key_to_remove)
-                .map(|(_i, v)| v)
-                .collect();
-        }
-
-        let maybe_error = table_data.1;
-
-        let expected_out = if let Some(err) = maybe_error {
-            let err_with_storage_keys = CheckTxValidityError::InvalidTransaction {
-                error: err,
-                storage_keys: original_storage_keys_for_tx_validity,
-            };
-            Err(err_with_storage_keys)
-        } else {
-            Ok(())
-        };
-
-        let storage_proof = generate_storage_proof_for_tx_validity(
-            bob.client.as_ref().info().best_hash,
-            bob.client.clone(),
-            storage_keys_for_tx_validity.clone(),
-        );
-
-        let header = bob
-            .client
-            .as_ref()
-            .header(bob.client.as_ref().info().best_hash);
-        let state_root = header.unwrap().unwrap().state_root;
-
-        let wasm_bundle = ferdie
-            .client
-            .runtime_api()
-            .domain_runtime_code(ferdie.client.as_ref().info().best_hash, GENESIS_DOMAIN_ID)
-            .unwrap()
-            .unwrap();
-
-        let mut domain_stateless_runtime =
-            StatelessRuntime::<Block, _>::new(ferdie.executor.clone().into(), wasm_bundle.into());
-
-        let db = storage_proof.into_memory_db::<BlakeTwo256>();
-        let mut top_storage_map = BTreeMap::new();
-        for storage_key in storage_keys_for_tx_validity.iter() {
-            let storage_value = read_trie_value::<LayoutV1<BlakeTwo256>, _>(
-                &db,
-                &state_root,
-                storage_key,
-                None,
-                None,
-            )
-            .unwrap()
-            .unwrap();
-            top_storage_map.insert(storage_key.to_vec(), storage_value);
-        }
-
-        let storage = Storage {
-            top: top_storage_map,
-            children_default: Default::default(),
-        };
-
-        domain_stateless_runtime.set_storage(storage);
-
-        assert_eq!(
-            domain_stateless_runtime
-                .check_transaction_validity(
-                    &opaque_extrinsic,
-                    bob.client.as_ref().info().best_number,
-                    bob.client.as_ref().info().best_hash
-                )
-                .unwrap(),
-            expected_out
-        );
-    }
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn check_tx_validity_and_do_pre_dispatch_runtime_api_should_work() {
-    let directory = TempDir::new().expect("Must be able to create temporary directory");
-
-    let mut builder = sc_cli::LoggerBuilder::new("");
-    builder.with_colors(false);
-    let _ = builder.init();
-
-    let tokio_handle = tokio::runtime::Handle::current();
-
-    // Start Ferdie
-    let mut ferdie = MockConsensusNode::run(
-        tokio_handle.clone(),
-        Ferdie,
-        BasePath::new(directory.path().join("ferdie")),
-    );
-
-    // Run Alice (a evm domain authority node)
-    let alice = domain_test_service::DomainNodeBuilder::new(
-        tokio_handle.clone(),
-        Alice,
-        BasePath::new(directory.path().join("alice")),
-    )
-    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
-    .await;
-
-    // Run Bob (a evm domain full node)
-    let bob = domain_test_service::DomainNodeBuilder::new(
-        tokio_handle,
-        Bob,
-        BasePath::new(directory.path().join("bob")),
-    )
-    .build_evm_node(Role::Full, GENESIS_DOMAIN_ID, &mut ferdie)
-    .await;
-
-    // Bob is able to sync blocks.
-    produce_blocks!(ferdie, alice, 1, bob).await.unwrap();
-
-    let bob_nonce = bob.account_nonce();
-    let transfer_to_charlie = construct_extrinsic_generic::<TestRuntime, _>(
-        &bob.client,
-        pallet_balances::Call::transfer_allow_death {
-            dest: Charlie.to_account_id(),
-            value: 8,
-        },
-        bob.key,
-        false,
-        bob_nonce,
-        1,
-    );
-
-    produce_blocks!(ferdie, alice, 2, bob).await.unwrap();
-
-    let opaque_extrinsic = OpaqueExtrinsic::from_bytes(&transfer_to_charlie.encode()).unwrap();
-    let extrinsic_best_hash = bob.client.as_ref().info().best_hash;
-    let bob_account_id = Bob.to_account_id().encode();
-    let extrinsic_best_number = bob.client.as_ref().info().best_number;
-
-    let extrinsic_era = bob
-        .client
-        .runtime_api()
-        .extrinsic_era(bob.client.as_ref().info().best_hash, &opaque_extrinsic)
-        .unwrap();
-
-    let test_table = vec![
-        (
-            Some(4),
-            Some(TransactionValidityError::Invalid(
-                InvalidTransaction::AncientBirthBlock,
-            )),
-        ),
-        (
-            Some(3),
-            Some(TransactionValidityError::Invalid(
-                InvalidTransaction::Payment,
-            )),
-        ),
-        (
-            Some(1),
-            Some(TransactionValidityError::Invalid(
-                InvalidTransaction::BadProof,
-            )),
-        ),
-        (
-            Some(0),
-            Some(TransactionValidityError::Invalid(
-                InvalidTransaction::BadProof,
-            )),
-        ),
-        (None, None),
-    ];
-
-    for table_data in test_table {
-        let mut storage_keys_for_tx_validity = bob
-            .client
-            .runtime_api()
-            .storage_keys_for_verifying_transaction_validity(
-                extrinsic_best_hash,
-                Some(bob_account_id.clone()),
-                extrinsic_best_number,
-                extrinsic_era,
-            )
-            .unwrap()
-            .unwrap();
-
-        let maybe_storage_key_to_remove = table_data.0;
-        let original_storage_keys_for_tx_validity = storage_keys_for_tx_validity.clone();
-
-        if let Some(storage_key_to_remove) = maybe_storage_key_to_remove {
-            storage_keys_for_tx_validity = storage_keys_for_tx_validity
-                .drain(..)
-                .enumerate()
-                .filter(|(i, _v)| *i != storage_key_to_remove)
-                .map(|(_i, v)| v)
-                .collect();
-        }
-
-        let maybe_error = table_data.1;
-
-        let expected_out = if let Some(err) = maybe_error {
-            let err_with_storage_keys = CheckTxValidityError::InvalidTransaction {
-                error: err,
-                storage_keys: original_storage_keys_for_tx_validity,
-            };
-            Err(err_with_storage_keys)
-        } else {
-            Ok(())
-        };
-
-        let storage_proof = generate_storage_proof_for_tx_validity(
-            bob.client.as_ref().info().best_hash,
-            bob.client.clone(),
-            storage_keys_for_tx_validity.clone(),
-        );
-
-        let header = bob
-            .client
-            .as_ref()
-            .header(bob.client.as_ref().info().best_hash);
-        let state_root = header.unwrap().unwrap().state_root;
-
-        let wasm_bundle = ferdie
-            .client
-            .runtime_api()
-            .domain_runtime_code(ferdie.client.as_ref().info().best_hash, GENESIS_DOMAIN_ID)
-            .unwrap()
-            .unwrap();
-
-        let mut domain_stateless_runtime =
-            StatelessRuntime::<Block, _>::new(ferdie.executor.clone().into(), wasm_bundle.into());
-
-        let db = storage_proof.into_memory_db::<BlakeTwo256>();
-        let mut top_storage_map = BTreeMap::new();
-        for storage_key in storage_keys_for_tx_validity.iter() {
-            let storage_value = read_trie_value::<LayoutV1<BlakeTwo256>, _>(
-                &db,
-                &state_root,
-                storage_key,
-                None,
-                None,
-            )
-            .unwrap()
-            .unwrap();
-            top_storage_map.insert(storage_key.to_vec(), storage_value);
-        }
-
-        let storage = Storage {
-            top: top_storage_map,
-            children_default: Default::default(),
-        };
-
-        domain_stateless_runtime.set_storage(storage);
-
-        assert_eq!(
-            domain_stateless_runtime
-                .check_transaction_and_do_pre_dispatch(
-                    &opaque_extrinsic,
-                    bob.client.as_ref().info().best_number,
-                    bob.client.as_ref().info().best_hash
-                )
-                .unwrap(),
-            expected_out
-        );
     }
 }
 

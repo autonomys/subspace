@@ -177,7 +177,7 @@ pub fn construct_extrinsic_generic<Runtime, Client>(
     caller: EcdsaKeyring,
     immortal: bool,
     nonce: u32,
-    tip: u32,
+    tip: BalanceOf<Runtime>,
 ) -> UncheckedExtrinsicFor<Runtime>
 where
     Runtime: frame_system::Config<Hash = H256> + pallet_transaction_payment::Config + Send + Sync,
@@ -207,7 +207,7 @@ where
         }),
         frame_system::CheckNonce::<Runtime>::from(nonce.into()),
         frame_system::CheckWeight::<Runtime>::new(),
-        pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(tip.into()),
+        pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(tip),
     );
     let raw_payload = generic::SignedPayload::<
         <Runtime as frame_system::Config>::RuntimeCall,

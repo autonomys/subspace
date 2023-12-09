@@ -2,7 +2,9 @@
 #![warn(missing_docs)]
 
 use crate::chain_spec::create_domain_spec;
-use crate::{construct_extrinsic_generic, node_config, EcdsaKeyring, UncheckedExtrinsicFor};
+use crate::{
+    construct_extrinsic_generic, node_config, BalanceOf, EcdsaKeyring, UncheckedExtrinsicFor,
+};
 use domain_client_operator::{BootstrapResult, Bootstrapper, OperatorStreams};
 use domain_runtime_primitives::opaque::Block;
 use domain_runtime_primitives::{Balance, DomainCoreApi};
@@ -338,7 +340,7 @@ where
             self.key,
             false,
             self.account_nonce(),
-            0,
+            0.into(),
         );
         self.rpc_handlers.send_transaction(extrinsic.into()).await
     }
@@ -349,14 +351,21 @@ where
         nonce: u32,
         function: impl Into<<Runtime as frame_system::Config>::RuntimeCall>,
     ) -> UncheckedExtrinsicFor<Runtime> {
-        construct_extrinsic_generic::<Runtime, _>(&self.client, function, self.key, false, nonce, 0)
+        construct_extrinsic_generic::<Runtime, _>(
+            &self.client,
+            function,
+            self.key,
+            false,
+            nonce,
+            0.into(),
+        )
     }
 
     /// Construct an extrinsic with the given transaction tip.
     pub fn construct_extrinsic_with_tip(
         &mut self,
         nonce: u32,
-        tip: u32,
+        tip: BalanceOf<Runtime>,
         function: impl Into<<Runtime as frame_system::Config>::RuntimeCall>,
     ) -> UncheckedExtrinsicFor<Runtime> {
         construct_extrinsic_generic::<Runtime, _>(
