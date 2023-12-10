@@ -10984,7 +10984,6 @@ dependencies = [
  "domain-block-preprocessor",
  "domain-runtime-primitives",
  "domain-test-service",
- "fp-rpc",
  "frame-support",
  "frame-system",
  "futures",
