@@ -11,7 +11,7 @@ use futures::future::Either;
 use rayon::ThreadBuilder;
 use std::future::Future;
 use std::ops::Deref;
-use std::pin::Pin;
+use std::pin::{pin, Pin};
 use std::task::{Context, Poll};
 use std::{io, thread};
 use tokio::runtime::Handle;
@@ -94,12 +94,13 @@ impl Deref for JoinOnDrop {
 
 /// Runs future on a dedicated thread with the specified name, will block on drop until background
 /// thread with future is stopped too, ensuring nothing is left in memory
-pub fn run_future_in_dedicated_thread<Fut, T>(
-    future: Fut,
+pub fn run_future_in_dedicated_thread<CreateFut, Fut, T>(
+    create_future: CreateFut,
     thread_name: String,
 ) -> io::Result<impl Future<Output = Result<T, Canceled>> + Send>
 where
-    Fut: Future<Output = T> + Unpin + Send + 'static,
+    CreateFut: (FnOnce() -> Fut) + Send + 'static,
+    Fut: Future<Output = T> + 'static,
     T: Send + 'static,
 {
     let (drop_tx, drop_rx) = oneshot::channel::<()>();
@@ -107,6 +108,8 @@ where
     let handle = Handle::current();
     let join_handle = thread::Builder::new().name(thread_name).spawn(move || {
         let _tokio_handle_guard = handle.enter();
+
+        let future = pin!(create_future());
 
         let result = match handle.block_on(futures::future::select(future, drop_rx)) {
             Either::Left((result, _)) => result,

@@ -406,7 +406,11 @@ where
     ));
 
     let _piece_cache_worker = run_future_in_dedicated_thread(
-        Box::pin(piece_cache_worker.run(piece_getter.clone())),
+        {
+            let future = piece_cache_worker.run(piece_getter.clone());
+
+            move || future
+        },
         "cache-worker".to_string(),
     );
 
@@ -599,20 +603,20 @@ where
     drop(readers_and_pieces);
 
     let farm_fut = run_future_in_dedicated_thread(
-        Box::pin(async move {
+        move || async move {
             while let Some(result) = single_disk_farms_stream.next().await {
                 let id = result?;
 
                 info!(%id, "Farm exited successfully");
             }
             anyhow::Ok(())
-        }),
+        },
         "farmer-farm".to_string(),
     )?;
     let mut farm_fut = Box::pin(farm_fut).fuse();
 
     let networking_fut = run_future_in_dedicated_thread(
-        Box::pin(async move { node_runner.run().await }),
+        move || async move { node_runner.run().await },
         "farmer-networking".to_string(),
     )?;
     let mut networking_fut = Box::pin(networking_fut).fuse();

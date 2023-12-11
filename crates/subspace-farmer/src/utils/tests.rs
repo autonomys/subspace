@@ -4,13 +4,10 @@ use tokio::sync::oneshot;
 
 #[tokio::test]
 async fn run_future_in_dedicated_thread_ready() {
-    let value = run_future_in_dedicated_thread(
-        Box::pin(async { future::ready(1).await }),
-        "ready".to_string(),
-    )
-    .unwrap()
-    .await
-    .unwrap();
+    let value = run_future_in_dedicated_thread(|| future::ready(1), "ready".to_string())
+        .unwrap()
+        .await
+        .unwrap();
 
     assert_eq!(value, 1);
 }
@@ -19,11 +16,7 @@ async fn run_future_in_dedicated_thread_ready() {
 async fn run_future_in_dedicated_thread_cancellation() {
     // This may hang if not implemented correctly
     drop(
-        run_future_in_dedicated_thread(
-            Box::pin(async { future::pending::<()>().await }),
-            "cancellation".to_string(),
-        )
-        .unwrap(),
+        run_future_in_dedicated_thread(future::pending::<()>, "cancellation".to_string()).unwrap(),
     );
 }
 
@@ -44,11 +37,11 @@ fn run_future_in_dedicated_thread_tokio_on_drop() {
 
     tokio::runtime::Runtime::new().unwrap().block_on(async {
         drop(run_future_in_dedicated_thread(
-            Box::pin(async {
+            move || async move {
                 let s = S;
                 let _ = receiver.await;
                 drop(s);
-            }),
+            },
             "tokio_on_drop".to_string(),
         ));
     });
