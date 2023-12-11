@@ -12,6 +12,8 @@ use sp_core::twox_256;
 use sp_messenger::messages::ChainId;
 use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT};
 use std::collections::{BTreeMap, HashSet};
+use std::future::poll_fn;
+use std::pin::pin;
 use std::sync::Arc;
 
 const LOG_TARGET: &str = "cross_chain_gossip_worker";
@@ -123,37 +125,35 @@ fn topic<Block: BlockT>() -> Block::Hash {
 impl<Block: BlockT, Network> GossipWorker<Block, Network> {
     /// Starts the Gossip message worker.
     pub async fn run(mut self) {
-        let mut incoming_cross_chain_messages = Box::pin(
-            self.gossip_engine
-                .lock()
-                .messages_for(topic::<Block>())
-                .filter_map(|notification| async move {
-                    Message::decode(&mut &notification.message[..])
-                        .ok()
-                        .map(|msg| (notification.sender, msg))
-                }),
-        );
+        let incoming_cross_chain_messages = pin!(self
+            .gossip_engine
+            .lock()
+            .messages_for(topic::<Block>())
+            .filter_map(|notification| async move {
+                Message::decode(&mut &notification.message[..])
+                    .ok()
+                    .map(|msg| (notification.sender, msg))
+            }));
+        let mut incoming_cross_chain_messages = incoming_cross_chain_messages.fuse();
 
         loop {
             let engine = self.gossip_engine.clone();
-            let gossip_engine = futures::future::poll_fn(|cx| engine.lock().poll_unpin(cx));
+            let mut gossip_engine = poll_fn(|cx| engine.lock().poll_unpin(cx)).fuse();
 
             futures::select! {
-                cross_chain_message = incoming_cross_chain_messages.next().fuse() => {
+                cross_chain_message = incoming_cross_chain_messages.next() => {
                     if let Some((maybe_peer, msg)) = cross_chain_message {
                         tracing::debug!(target: LOG_TARGET, "Incoming cross chain message for chain from Network: {:?}", msg.chain_id);
                         self.handle_cross_chain_message(msg, maybe_peer);
                     }
                 },
 
-                cross_chain_message = self.gossip_msg_stream.next().fuse() => {
-                    if let Some(msg) = cross_chain_message {
-                        tracing::debug!(target: LOG_TARGET, "Incoming cross chain message for chain from Relayer: {:?}", msg.chain_id);
-                        self.handle_cross_chain_message(msg, None);
-                    }
+                msg = self.gossip_msg_stream.select_next_some() => {
+                    tracing::debug!(target: LOG_TARGET, "Incoming cross chain message for chain from Relayer: {:?}", msg.chain_id);
+                    self.handle_cross_chain_message(msg, None);
                 }
 
-                _ = gossip_engine.fuse() => {
+                _ = gossip_engine => {
                     tracing::error!(target: LOG_TARGET, "Gossip engine has terminated.");
                     return;
                 }

@@ -25,24 +25,21 @@ pub(crate) fn raise_fd_limit() {
 #[cfg(unix)]
 pub(crate) async fn shutdown_signal() {
     use futures::FutureExt;
+    use std::pin::pin;
 
     futures::future::select(
-        Box::pin(
-            signal::unix::signal(signal::unix::SignalKind::interrupt())
-                .expect("Setting signal handlers must never fail")
-                .recv()
-                .map(|_| {
-                    tracing::info!("Received SIGINT, shutting down farmer...");
-                }),
-        ),
-        Box::pin(
-            signal::unix::signal(signal::unix::SignalKind::terminate())
-                .expect("Setting signal handlers must never fail")
-                .recv()
-                .map(|_| {
-                    tracing::info!("Received SIGTERM, shutting down farmer...");
-                }),
-        ),
+        pin!(signal::unix::signal(signal::unix::SignalKind::interrupt())
+            .expect("Setting signal handlers must never fail")
+            .recv()
+            .map(|_| {
+                tracing::info!("Received SIGINT, shutting down farmer...");
+            }),),
+        pin!(signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("Setting signal handlers must never fail")
+            .recv()
+            .map(|_| {
+                tracing::info!("Received SIGTERM, shutting down farmer...");
+            }),),
     )
     .await;
 }

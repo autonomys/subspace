@@ -16,6 +16,7 @@ use std::fs::File;
 use std::io;
 use std::num::{NonZeroU16, NonZeroUsize};
 use std::ops::Range;
+use std::pin::pin;
 use std::sync::atomic::Ordering;
 use std::sync::Arc;
 use std::time::Duration;
@@ -289,29 +290,31 @@ where
                     let mut sector = Vec::new();
                     let mut sector_metadata = Vec::new();
 
-                    let plot_sector_fut = encode_sector::<PosTable>(
-                        downloaded_sector,
-                        EncodeSectorOptions {
-                            sector_index,
-                            erasure_coding,
-                            pieces_in_sector,
-                            sector_output: &mut sector,
-                            sector_metadata_output: &mut sector_metadata,
-                            encoding_semaphore: Some(encoding_semaphore),
-                            table_generator: &mut table_generator,
-                        },
-                    );
+                    let plotted_sector = {
+                        let plot_sector_fut = pin!(encode_sector::<PosTable>(
+                            downloaded_sector,
+                            EncodeSectorOptions {
+                                sector_index,
+                                erasure_coding,
+                                pieces_in_sector,
+                                sector_output: &mut sector,
+                                sector_metadata_output: &mut sector_metadata,
+                                encoding_semaphore: Some(encoding_semaphore),
+                                table_generator: &mut table_generator,
+                            },
+                        ));
 
-                    let plotted_sector = Handle::current().block_on(async {
-                        select! {
-                            plotting_result = Box::pin(plot_sector_fut).fuse() => {
-                                plotting_result.map_err(PlottingError::from)
+                        Handle::current().block_on(async {
+                            select! {
+                                plotting_result = plot_sector_fut.fuse() => {
+                                    plotting_result.map_err(PlottingError::from)
+                                }
+                                _ = stop_receiver.recv().fuse() => {
+                                    Err(PlottingError::FarmIsShuttingDown)
+                                }
                             }
-                            _ = stop_receiver.recv().fuse() => {
-                                Err(PlottingError::FarmIsShuttingDown)
-                            }
-                        }
-                    })?;
+                        })?
+                    };
 
                     Ok((sector, sector_metadata, table_generator, plotted_sector))
                 })

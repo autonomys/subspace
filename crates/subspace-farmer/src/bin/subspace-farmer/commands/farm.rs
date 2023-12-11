@@ -15,6 +15,7 @@ use std::fs;
 use std::net::SocketAddr;
 use std::num::{NonZeroU8, NonZeroUsize};
 use std::path::PathBuf;
+use std::pin::pin;
 use std::str::FromStr;
 use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
@@ -602,7 +603,7 @@ where
     // event handlers
     drop(readers_and_pieces);
 
-    let farm_fut = run_future_in_dedicated_thread(
+    let farm_fut = pin!(run_future_in_dedicated_thread(
         move || async move {
             while let Some(result) = single_disk_farms_stream.next().await {
                 let id = result?;
@@ -612,26 +613,24 @@ where
             anyhow::Ok(())
         },
         "farmer-farm".to_string(),
-    )?;
-    let mut farm_fut = Box::pin(farm_fut).fuse();
+    )?);
 
-    let networking_fut = run_future_in_dedicated_thread(
+    let networking_fut = pin!(run_future_in_dedicated_thread(
         move || async move { node_runner.run().await },
         "farmer-networking".to_string(),
-    )?;
-    let mut networking_fut = Box::pin(networking_fut).fuse();
+    )?);
 
     futures::select!(
         // Signal future
         _ = signal.fuse() => {},
 
         // Farm future
-        result = farm_fut => {
+        result = farm_fut.fuse() => {
             result??;
         },
 
         // Node runner future
-        _ = networking_fut => {
+        _ = networking_fut.fuse() => {
             info!("Node runner exited.")
         },
     );
