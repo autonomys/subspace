@@ -2,11 +2,12 @@ use crate::{
     topic, BundleFor, BundleReceiver, GossipMessage, GossipMessageHandler, GossipValidator,
     LOG_TARGET,
 };
-use futures::{future, FutureExt, StreamExt};
+use futures::{FutureExt, StreamExt};
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use sc_network_gossip::GossipEngine;
 use sp_runtime::traits::Block as BlockT;
+use std::future::poll_fn;
 use std::pin::pin;
 use std::sync::Arc;
 
@@ -50,20 +51,21 @@ where
     }
 
     pub(super) async fn run(mut self) {
-        let mut incoming = pin!(self
+        let incoming = pin!(self
             .gossip_engine
             .lock()
             .messages_for(topic::<Block>())
             .filter_map(|notification| async move {
                 GossipMessage::<CBlock, Block>::decode(&mut &notification.message[..]).ok()
             }));
+        let mut incoming = incoming.fuse();
 
         loop {
             let engine = self.gossip_engine.clone();
-            let gossip_engine = future::poll_fn(|cx| engine.lock().poll_unpin(cx));
+            let mut gossip_engine = poll_fn(|cx| engine.lock().poll_unpin(cx)).fuse();
 
             futures::select! {
-                gossip_message = incoming.next().fuse() => {
+                gossip_message = incoming.next() => {
                     if let Some(message) = gossip_message {
                         tracing::debug!(target: LOG_TARGET, ?message, "Rebroadcasting an executor gossip message");
                         match message {
@@ -73,12 +75,10 @@ where
                         return
                     }
                 }
-                bundle = self.bundle_receiver.next().fuse() => {
-                    if let Some(bundle) = bundle {
-                        self.gossip_bundle(bundle);
-                    }
+                bundle = self.bundle_receiver.select_next_some() => {
+                    self.gossip_bundle(bundle);
                 }
-                _ = gossip_engine.fuse() => {
+                _ = gossip_engine => {
                     tracing::error!(target: LOG_TARGET, "Gossip engine has terminated.");
                     return;
                 }

@@ -180,17 +180,16 @@ where
         let mut incoming_unverified_messages = incoming_unverified_messages.fuse();
 
         loop {
-            let gossip_engine_poll = poll_fn(|cx| self.engine.lock().poll_unpin(cx));
+            let mut gossip_engine_poll = poll_fn(|cx| self.engine.lock().poll_unpin(cx)).fuse();
+
             futures::select! {
-                message = incoming_unverified_messages.next() => {
-                    if let Some((sender, proof)) = message {
-                        self.handle_proof_candidate(sender, proof).await;
-                    }
+                (sender, proof) = incoming_unverified_messages.select_next_some() => {
+                    self.handle_proof_candidate(sender, proof).await;
                 },
                 message = self.to_gossip_receiver.select_next_some() => {
                     self.handle_to_gossip_messages(message).await
                 },
-                 _ = gossip_engine_poll.fuse() => {
+                 _ = gossip_engine_poll => {
                     error!("Gossip engine has terminated");
                     return;
                 }
