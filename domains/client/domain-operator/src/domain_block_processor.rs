@@ -25,7 +25,7 @@ use sp_domains_fraud_proof::FraudProofApi;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, One, Zero};
 use sp_runtime::Digest;
 use std::cmp::Ordering;
-use std::collections::VecDeque;
+use std::collections::{HashSet, VecDeque};
 use std::sync::Arc;
 
 struct DomainBlockBuildResult<Block>
@@ -781,12 +781,18 @@ where
         receipts: Vec<ExecutionReceiptFor<Block, CBlock>>,
         fraud_proofs: Vec<FraudProof<NumberFor<CBlock>, CBlock::Hash, Block::Header>>,
     ) -> Result<(), sp_blockchain::Error> {
+        let mut checked_receipt = HashSet::new();
         let mut bad_receipts_to_write = vec![];
 
         for execution_receipt in receipts.iter() {
+            let receipt_hash = execution_receipt.hash::<HeaderHashingFor<Block::Header>>();
+
             // Skip check for genesis receipt as it is generated on the domain instantiation by
             // the consensus chain.
-            if execution_receipt.domain_block_number.is_zero() {
+            if execution_receipt.domain_block_number.is_zero()
+                // Skip check if the same receipt is already checked 
+                || !checked_receipt.insert(receipt_hash)
+            {
                 continue;
             }
 
@@ -806,7 +812,7 @@ where
             {
                 bad_receipts_to_write.push((
                     execution_receipt.consensus_block_number,
-                    execution_receipt.hash::<HeaderHashingFor<Block::Header>>(),
+                    receipt_hash,
                     receipt_mismatch_info,
                 ));
 
@@ -818,7 +824,7 @@ where
             {
                 bad_receipts_to_write.push((
                     execution_receipt.consensus_block_number,
-                    execution_receipt.hash::<HeaderHashingFor<Block::Header>>(),
+                    receipt_hash,
                     ReceiptMismatchInfo::DomainExtrinsicsRoot {
                         consensus_block_hash,
                     },
@@ -832,7 +838,7 @@ where
             ) {
                 bad_receipts_to_write.push((
                     execution_receipt.consensus_block_number,
-                    execution_receipt.hash::<HeaderHashingFor<Block::Header>>(),
+                    receipt_hash,
                     (trace_mismatch_index, consensus_block_hash).into(),
                 ));
                 continue;
@@ -841,7 +847,7 @@ where
             if execution_receipt.total_rewards != local_receipt.total_rewards {
                 bad_receipts_to_write.push((
                     execution_receipt.consensus_block_number,
-                    execution_receipt.hash::<HeaderHashingFor<Block::Header>>(),
+                    receipt_hash,
                     ReceiptMismatchInfo::TotalRewards {
                         consensus_block_hash,
                     },
@@ -851,7 +857,7 @@ where
             if execution_receipt.domain_block_hash != local_receipt.domain_block_hash {
                 bad_receipts_to_write.push((
                     execution_receipt.consensus_block_number,
-                    execution_receipt.hash::<HeaderHashingFor<Block::Header>>(),
+                    receipt_hash,
                     ReceiptMismatchInfo::DomainBlockHash {
                         consensus_block_hash,
                     },

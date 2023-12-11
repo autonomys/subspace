@@ -312,6 +312,11 @@ where
     let bad_receipt_hashes_key = (BAD_RECEIPT_HASHES, bad_receipt_number).encode();
     let mut bad_receipt_hashes: Vec<Block::Hash> =
         load_decode(backend, bad_receipt_hashes_key.as_slice())?.unwrap_or_default();
+    // Return early if the bad ER is already tracked
+    if bad_receipt_hashes.contains(&bad_receipt_hash) {
+        return Ok(());
+    }
+
     bad_receipt_hashes.push(bad_receipt_hash);
 
     let mut to_insert = vec![

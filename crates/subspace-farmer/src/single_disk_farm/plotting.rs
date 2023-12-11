@@ -553,14 +553,14 @@ where
             info!("Node is not synced yet, pausing plotting until sync status changes");
 
             loop {
-                if node_sync_status.is_synced() {
-                    info!("Node is synced, resuming plotting");
-                    continue 'outer;
-                }
-
                 match node_sync_status_change_notifications.next().await {
                     Some(new_node_sync_status) => {
                         node_sync_status = new_node_sync_status;
+
+                        if node_sync_status.is_synced() {
+                            info!("Node is synced, resuming plotting");
+                            continue 'outer;
+                        }
                     }
                     None => {
                         // Subscription ended, nothing left to do

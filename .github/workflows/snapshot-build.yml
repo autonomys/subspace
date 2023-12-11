@@ -91,7 +91,7 @@ jobs:
           - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "ubuntu-20.04-x86-64"]' || 'ubuntu-20.04') }}
             target: x86_64-unknown-linux-gnu
             suffix: ubuntu-x86_64-v2-${{ github.ref_name }}
-            rustflags: "-C target-cpu=x86-64-v2"
+            rustflags: "-C target-cpu=x86-64-v2 -C target-feature=+aes"
           - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "ubuntu-20.04-x86-64"]' || 'ubuntu-20.04') }}
             target: aarch64-unknown-linux-gnu
             suffix: ubuntu-aarch64-${{ github.ref_name }}
@@ -115,7 +115,7 @@ jobs:
           - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "windows-server-2022-x86-64"]' || 'windows-2022') }}
             target: x86_64-pc-windows-msvc
             suffix: windows-x86_64-v2-${{ github.ref_name }}
-            rustflags: "-C target-cpu=x86-64-v2"
+            rustflags: "-C target-cpu=x86-64-v2 -C target-feature=+aes"
     runs-on: ${{ matrix.build.os }}
     env:
       PRODUCTION_TARGET: target/${{ matrix.build.target }}/production

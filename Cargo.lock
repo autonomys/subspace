@@ -2839,6 +2839,7 @@ dependencies = [
 name = "domain-test-service"
 version = "0.1.0"
 dependencies = [
+ "cross-domain-message-gossip",
  "domain-client-operator",
  "domain-runtime-primitives",
  "domain-service",
@@ -11832,6 +11833,7 @@ dependencies = [
  "sc-consensus-slots",
  "sc-consensus-subspace",
  "sc-executor",
+ "sc-network",
  "sc-network-sync",
  "sc-service",
  "sc-storage-monitor",

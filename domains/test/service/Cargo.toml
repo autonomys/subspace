@@ -7,11 +7,12 @@ license = "GPL-3.0-or-later"
 homepage = "https://subspace.network"
 repository = "https://github.com/subspace/subspace"
 include = [
-	"/src",
-	"/Cargo.toml",
+    "/src",
+    "/Cargo.toml",
 ]
 
 [dependencies]
+cross-domain-message-gossip = { version = "0.1.0", path = "../../client/cross-domain-message-gossip" }
 domain-client-operator = { version = "0.1.0", path = "../../client/domain-operator" }
 domain-service = { version = "0.1.0", path = "../../service" }
 domain-test-primitives = { version = "0.1.0", path = "../primitives" }

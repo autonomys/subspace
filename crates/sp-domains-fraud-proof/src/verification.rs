@@ -72,9 +72,13 @@ where
     .map(|resp| resp.into_domain_set_code_extrinsic())
     .ok_or(VerificationError::FailedToDeriveDomainSetCodeExtrinsic)?;
 
+    let bad_receipt_valid_bundle_digests = bad_receipt.valid_bundle_digests();
+    if valid_bundle_digests.len() != bad_receipt_valid_bundle_digests.len() {
+        return Err(VerificationError::InvalidBundleDigest);
+    }
+
     let mut bundle_extrinsics_digests = Vec::new();
-    for (bad_receipt_valid_bundle_digest, bundle_digest) in bad_receipt
-        .valid_bundle_digests()
+    for (bad_receipt_valid_bundle_digest, bundle_digest) in bad_receipt_valid_bundle_digests
         .into_iter()
         .zip(valid_bundle_digests)
     {
