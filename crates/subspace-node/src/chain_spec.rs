@@ -157,7 +157,7 @@ pub fn gemini_3g_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, 
                 vesting_schedules,
                 GenesisParams {
                     enable_rewards: false,
-                    enable_storage_access: false,
+                    enable_storage_access: true,
                     allow_authoring_by: AllowAuthoringBy::RootFarmer(
                         FarmerPublicKey::unchecked_from(hex_literal::hex!(
                             "8aecbcf0b404590ddddc01ebacb205a562d12fdb5c2aa6a4035c1a20f23c9515"
@@ -270,7 +270,7 @@ pub fn devnet_config_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfi
                 vesting_schedules,
                 GenesisParams {
                     enable_rewards: false,
-                    enable_storage_access: false,
+                    enable_storage_access: true,
                     allow_authoring_by: AllowAuthoringBy::FirstFarmer,
                     pot_slot_iterations: NonZeroU32::new(150_000_000).expect("Not zero; qed"),
                     enable_domains: true,
@@ -335,7 +335,7 @@ pub fn dev_config() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String> 
                 vec![],
                 GenesisParams {
                     enable_rewards: false,
-                    enable_storage_access: false,
+                    enable_storage_access: true,
                     allow_authoring_by: AllowAuthoringBy::Anyone,
                     pot_slot_iterations: NonZeroU32::new(100_000_000).expect("Not zero; qed"),
                     enable_domains: true,
@@ -403,7 +403,7 @@ pub fn local_config() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String
                 vec![],
                 GenesisParams {
                     enable_rewards: false,
-                    enable_storage_access: false,
+                    enable_storage_access: true,
                     allow_authoring_by: AllowAuthoringBy::Anyone,
                     pot_slot_iterations: NonZeroU32::new(100_000_000).expect("Not zero; qed"),
                     enable_domains: true,
