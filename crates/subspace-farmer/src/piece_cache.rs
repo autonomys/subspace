@@ -407,14 +407,13 @@ where
             }
 
             downloaded_pieces_count += 1;
+            let progress = downloaded_pieces_count as f32 / pieces_to_download_total as f32 * 100.0;
             if downloaded_pieces_count % INTERMEDIATE_CACHE_UPDATE_INTERVAL == 0 {
-                let progress =
-                    downloaded_pieces_count as f32 / pieces_to_download_total as f32 * 100.0;
                 *self.caches.write() = caches.clone();
 
                 info!("Piece cache sync {progress:.2}% complete");
-                self.handlers.progress.call_simple(&progress);
             }
+            self.handlers.progress.call_simple(&progress);
         }
 
         *self.caches.write() = caches;

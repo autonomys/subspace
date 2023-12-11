@@ -136,10 +136,6 @@ impl NodeClient for MockNodeClient {
             .unwrap();
         Ok(())
     }
-
-    async fn last_segment_headers(&self, _limit: u64) -> Result<Vec<Option<SegmentHeader>>, Error> {
-        unimplemented!()
-    }
 }
 
 #[derive(Debug, Clone)]

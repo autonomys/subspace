@@ -40,6 +40,8 @@ const MIN_OFFLINE_PERIOD: Duration = Duration::from_secs(60);
 #[derive(Debug)]
 enum NotificationReason {
     NoImportedBlocks,
+    // TODO: Restore or remove connected peer later
+    #[allow(dead_code)]
     WentOnlineSubspace,
     WentOnlineSubstrate,
 }
@@ -97,38 +99,38 @@ where
 
 async fn create_observer<Block, Client>(
     network_service: &NetworkService<Block, <Block as BlockT>::Hash>,
-    node: &Node,
+    _node: &Node,
     client: &Client,
     notifications_sender: mpsc::Sender<NotificationReason>,
 ) where
     Block: BlockT,
     Client: BlockchainEvents<Block> + Send + Sync + 'static,
 {
-    // Separate reactive observer for Subspace networking that is not a future
-    let _handler_id = node.on_num_established_peer_connections_change({
-        // Assuming node is offline by default
-        let last_online = Atomic::new(None::<Instant>);
-        let notifications_sender = notifications_sender.clone();
-
-        Arc::new(move |&new_connections| {
-            let is_online = new_connections > 0;
-            let was_online = last_online
-                .load(Ordering::AcqRel)
-                .map(|last_online| last_online.elapsed() < MIN_OFFLINE_PERIOD)
-                .unwrap_or_default();
-
-            if is_online && !was_online {
-                // Doesn't matter if sending failed here
-                let _ = notifications_sender
-                    .clone()
-                    .try_send(NotificationReason::WentOnlineSubspace);
-            }
-
-            if is_online {
-                last_online.store(Some(Instant::now()), Ordering::Release);
-            }
-        })
-    });
+    // // Separate reactive observer for Subspace networking that is not a future
+    // let _handler_id = node.on_num_established_peer_connections_change({
+    //     // Assuming node is offline by default
+    //     let last_online = Atomic::new(None::<Instant>);
+    //     let notifications_sender = notifications_sender.clone();
+    //
+    //     Arc::new(move |&new_connections| {
+    //         let is_online = new_connections > 0;
+    //         let was_online = last_online
+    //             .load(Ordering::AcqRel)
+    //             .map(|last_online| last_online.elapsed() < MIN_OFFLINE_PERIOD)
+    //             .unwrap_or_default();
+    //
+    //         if is_online && !was_online {
+    //             // Doesn't matter if sending failed here
+    //             let _ = notifications_sender
+    //                 .clone()
+    //                 .try_send(NotificationReason::WentOnlineSubspace);
+    //         }
+    //
+    //         if is_online {
+    //             last_online.store(Some(Instant::now()), Ordering::Release);
+    //         }
+    //     })
+    // });
     futures::select! {
         _ = create_imported_blocks_observer(client, notifications_sender.clone()).fuse() => {
             // Runs indefinitely

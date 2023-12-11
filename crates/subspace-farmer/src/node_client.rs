@@ -65,7 +65,11 @@ pub trait NodeClient: Clone + fmt::Debug + Send + Sync + 'static {
         &self,
         segment_index: SegmentIndex,
     ) -> Result<(), Error>;
+}
 
+/// Node Client extension methods that are not necessary for farmer as a library, but might be useful for an app
+#[async_trait]
+pub trait NodeClientExt: NodeClient {
     /// Get the last segment headers.
     async fn last_segment_headers(&self, limit: u64) -> Result<Vec<Option<SegmentHeader>>, Error>;
 }

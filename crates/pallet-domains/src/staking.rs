@@ -552,7 +552,13 @@ where
 {
     for (operator_id, reason) in operator_ids {
         Operators::<T>::try_mutate(operator_id, |maybe_operator| {
-            let operator = maybe_operator.as_mut().ok_or(Error::UnknownOperator)?;
+            let operator = match maybe_operator.as_mut() {
+                // If the operator is already slashed and removed due to fraud proof, when the operator
+                // is slash again due to invalid bundle, which happen after the ER is confirmed, we can
+                // not find the operator here thus just return.
+                None => return Ok(()),
+                Some(operator) => operator,
+            };
             let mut pending_slashes =
                 PendingSlashes::<T>::get(operator.current_domain_id).unwrap_or_default();
 
