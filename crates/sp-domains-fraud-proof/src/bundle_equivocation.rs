@@ -95,6 +95,14 @@ where
         if operator_set_1 == operator_set_2 {
             // 2) with different hash
             return if bundle_header.hash() != previous_bundle_header.hash() {
+                log::warn!(
+                    "Bundle equivocation occurred: Operator{}; Slot{}; DomainId{}; First Bundle{}; Second Bundle{}",
+                    operator_set_1.0,
+                    slot,
+                    operator_set_1.1,
+                    previous_bundle_header.hash(),
+                    bundle_header.hash(),
+                );
                 Ok(Some(FraudProof::BundleEquivocation(
                     BundleEquivocationProof {
                         domain_id: bundle_header.header.proof_of_election.domain_id,

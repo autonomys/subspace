@@ -10990,6 +10990,7 @@ dependencies = [
  "frame-support",
  "futures",
  "hash-db 0.16.0",
+ "log",
  "pallet-balances",
  "parity-scale-codec",
  "sc-cli",
