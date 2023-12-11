@@ -7,6 +7,7 @@ use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use sc_network_gossip::GossipEngine;
 use sp_runtime::traits::Block as BlockT;
+use std::pin::pin;
 use std::sync::Arc;
 
 /// A worker plays the executor gossip protocol.
@@ -49,14 +50,13 @@ where
     }
 
     pub(super) async fn run(mut self) {
-        let mut incoming = Box::pin(
-            self.gossip_engine
-                .lock()
-                .messages_for(topic::<Block>())
-                .filter_map(|notification| async move {
-                    GossipMessage::<CBlock, Block>::decode(&mut &notification.message[..]).ok()
-                }),
-        );
+        let mut incoming = pin!(self
+            .gossip_engine
+            .lock()
+            .messages_for(topic::<Block>())
+            .filter_map(|notification| async move {
+                GossipMessage::<CBlock, Block>::decode(&mut &notification.message[..]).ok()
+            }));
 
         loop {
             let engine = self.gossip_engine.clone();

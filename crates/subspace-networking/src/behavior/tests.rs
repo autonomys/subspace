@@ -230,7 +230,7 @@ async fn test_async_handler_works_with_pending_internal_future() {
 
     let (node_2, mut node_runner_2) = crate::construct(config_2).unwrap();
 
-    let bootstrap_fut = Box::pin({
+    tokio::spawn({
         let node = node_2.clone();
 
         async move {
@@ -238,10 +238,6 @@ async fn test_async_handler_works_with_pending_internal_future() {
 
             pending::<()>().await;
         }
-    });
-
-    tokio::spawn(async move {
-        bootstrap_fut.await;
     });
 
     tokio::spawn(async move {

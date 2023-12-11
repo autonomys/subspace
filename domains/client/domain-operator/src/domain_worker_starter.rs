@@ -36,6 +36,7 @@ use sp_domains_fraud_proof::FraudProofApi;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::NumberFor;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
+use std::pin::pin;
 use std::sync::Arc;
 use subspace_runtime_primitives::Balance;
 use tracing::{info, Instrument};
@@ -138,8 +139,8 @@ pub(super) async fn start_worker<
                     .boxed()
             }
         };
-        let mut new_slot_notification_stream = Box::pin(new_slot_notification_stream);
-        let mut acknowledgement_sender_stream = Box::pin(acknowledgement_sender_stream);
+        let mut new_slot_notification_stream = pin!(new_slot_notification_stream);
+        let mut acknowledgement_sender_stream = pin!(acknowledgement_sender_stream);
         loop {
             tokio::select! {
                 // Ensure any new slot/block import must handle first before the `acknowledgement_sender_stream`
