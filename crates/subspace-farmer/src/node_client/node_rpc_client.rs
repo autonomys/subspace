@@ -1,4 +1,4 @@
-use crate::node_client::{Error as RpcError, Error, NodeClient};
+use crate::node_client::{Error as RpcError, Error, NodeClient, NodeClientExt};
 use async_trait::async_trait;
 use futures::{Stream, StreamExt};
 use jsonrpsee::core::client::{ClientT, SubscriptionClientT};
@@ -188,7 +188,10 @@ impl NodeClient for NodeRpcClient {
             )
             .await?)
     }
+}
 
+#[async_trait]
+impl NodeClientExt for NodeRpcClient {
     async fn last_segment_headers(
         &self,
         limit: u64,

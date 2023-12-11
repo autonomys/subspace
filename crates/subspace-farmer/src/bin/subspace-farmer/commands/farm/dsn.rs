@@ -4,6 +4,7 @@ use prometheus_client::registry::Registry;
 use std::collections::HashSet;
 use std::path::Path;
 use std::sync::{Arc, Weak};
+use subspace_farmer::node_client::NodeClientExt;
 use subspace_farmer::piece_cache::PieceCache;
 use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
 use subspace_farmer::{NodeClient, NodeRpcClient, KNOWN_PEERS_CACHE_SIZE};
