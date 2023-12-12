@@ -900,10 +900,10 @@ impl_runtime_apis! {
                 return Err(InvalidTransaction::BadMandatory.into());
             }
 
-            let encoded = uxt.encode();
-            let encoded_len = encoded.len();
+            let encoded_len = uxt.encoded_size();
 
-            // We invoke `pre_dispatch` in addition to `validate_transaction`(even though the validation is almost same) as that will add the side effect of SignedExtension in the storage buffer
+            // We invoke `pre_dispatch` in addition to `validate_transaction`(even though the validation is almost same)
+            // as that will add the side effect of SignedExtension in the storage buffer
             // which would help to maintain context across multiple transaction validity check against same
             // runtime instance.
             match xt.signed {

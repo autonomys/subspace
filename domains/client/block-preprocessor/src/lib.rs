@@ -310,7 +310,6 @@ where
                 .is_ok();
 
             if !is_legal_tx {
-                // TODO: Generate a fraud proof for this invalid bundle
                 return Ok(BundleValidity::Invalid(InvalidBundleType::IllegalTx(
                     index as u32,
                 )));

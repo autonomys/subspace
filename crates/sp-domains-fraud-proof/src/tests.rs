@@ -12,7 +12,7 @@ use subspace_test_service::MockConsensusNode;
 use tempfile::TempDir;
 
 #[tokio::test(flavor = "multi_thread")]
-async fn runtime_instance_storage_assumptions_are_correct() {
+async fn storage_change_of_the_same_runtime_instance_should_perserved_cross_runtime_calls() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
     let mut builder = sc_cli::LoggerBuilder::new("");
