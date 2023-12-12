@@ -1498,11 +1498,6 @@ impl<T: Config> Pallet<T> {
             DomainStakingSummary::<T>::get(domain_id),
         ) {
             (Some(domain_object), Some(stake_summary)) => Some(BundleProducerElectionParams {
-                current_operators: stake_summary
-                    .current_operators
-                    .keys()
-                    .cloned()
-                    .collect::<Vec<OperatorId>>(),
                 total_domain_stake: stake_summary.current_total_stake,
                 bundle_slot_probability: domain_object.domain_config.bundle_slot_probability,
             }),
