@@ -544,9 +544,6 @@ pub struct ProofOfElection<CHash> {
     /// Operator index in the OperatorRegistry.
     pub operator_id: OperatorId,
     /// Consensus block hash at which proof of election was derived.
-    // TODO: skipping encode/decode this field becasue it is mismatch with the struct
-    // on the Gemini-3g runtime, remove `#[codec(skip)]` before new network
-    #[codec(skip)]
     pub consensus_block_hash: CHash,
 }
 

@@ -1668,12 +1668,7 @@ async fn test_invalid_domain_extrinsics_root_proof_creation() {
         .is_none());
 }
 
-// Disable because the `ProofOfElection::consensus_block_hash` is skipped during encode/decode
-// due to incompatible with Gemini-3g, thus it is the empty value in the fraud proof and will
-// failed when used to get the required runtime state during verification.
-// TODO: enable once the field is not skipped.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore]
 async fn test_bundle_equivocation_fraud_proof() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
