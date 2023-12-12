@@ -6,7 +6,7 @@ use domain_block_preprocessor::DomainBlockPreprocessor;
 use domain_runtime_primitives::DomainCoreApi;
 use sc_client_api::{AuxStore, BlockBackend, Finalizer, ProofProvider};
 use sc_consensus::{BlockImportParams, ForkChoiceStrategy, StateAction};
-use sp_api::{ApiExt, NumberFor, ProvideRuntimeApi};
+use sp_api::{NumberFor, ProvideRuntimeApi};
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::BlockOrigin;
 use sp_core::traits::CodeExecutor;
@@ -254,14 +254,6 @@ where
     ) -> sp_blockchain::Result<Option<(Block::Hash, NumberFor<Block>)>> {
         let (consensus_block_hash, consensus_block_number) = consensus_block_info;
         let (parent_hash, parent_number) = parent_info;
-        // TODO: this is used to keep compatible with the gemini-3g network, because some necessary
-        // runtime API are introduced in `#[api_version(2)]`, remove this before the next network
-        let domains_api_version = self
-            .consensus_client
-            .runtime_api()
-            .api_version::<dyn DomainsApi<CBlock, Block::Header>>(consensus_block_hash)?
-            // safe to return default version as 1 since there will always be version 1.
-            .unwrap_or(1);
         let start = Instant::now();
 
         tracing::debug!(
@@ -298,18 +290,16 @@ where
             )?;
 
             // Check the consensus runtime version before submitting fraud proof.
-            if domains_api_version >= 2 {
-                // Even the consensus block doesn't contains bundle it may still contains
-                // fraud proof, thus we need to call `check_state_transition` to remove the
-                // bad ER info that targetted by the potential fraud proof
-                self.domain_receipts_checker
-                    .check_state_transition(consensus_block_hash)?;
+            // Even the consensus block doesn't contains bundle it may still contains
+            // fraud proof, thus we need to call `check_state_transition` to remove the
+            // bad ER info that targetted by the potential fraud proof
+            self.domain_receipts_checker
+                .check_state_transition(consensus_block_hash)?;
 
-                // Try submit fraud proof for the previous detected bad ER
-                self.domain_receipts_checker
-                    .submit_fraud_proof(consensus_block_hash)
-                    .await?;
-            }
+            // Try submit fraud proof for the previous detected bad ER
+            self.domain_receipts_checker
+                .submit_fraud_proof(consensus_block_hash)
+                .await?;
 
             return Ok(None);
         };
@@ -340,24 +330,13 @@ where
         );
 
         let block_execution_took = start.elapsed().as_millis().saturating_sub(preprocess_took);
-        let domain_core_api_version = self
+
+        let reference_block_execution_duration_ms = self
             .client
             .runtime_api()
-            .api_version::<dyn DomainCoreApi<Block>>(domain_block_result.header_hash)?
-            // safe to return default version as 1 since there will always be version 1.
-            .unwrap_or(1);
-        let reference_block_execution_duration_ms = if domain_core_api_version >= 2 {
-            self.client
-                .runtime_api()
-                .block_weight(domain_block_result.header_hash)?
-                .ref_time()
-                / WEIGHT_REF_TIME_PER_MILLIS
-        } else {
-            // TODO: this is used to keep compatible with the gemini-3g network, remove this
-            // before the next network
-            // 2000ms is the maximum compute time set in the max domain block weight
-            2000
-        };
+            .block_weight(domain_block_result.header_hash)?
+            .ref_time()
+            / WEIGHT_REF_TIME_PER_MILLIS;
         if block_execution_took
             >= slow_domain_block_execution_threshold(reference_block_execution_duration_ms).into()
         {
@@ -376,15 +355,13 @@ where
         )?;
 
         // Check the consensus runtime version before checking bad ER and submit fraud proof.
-        if domains_api_version >= 2 {
-            // TODO: Remove as ReceiptsChecker has been superseded by ReceiptValidator in block-preprocessor.
-            self.domain_receipts_checker
-                .check_state_transition(consensus_block_hash)?;
+        // TODO: Remove as ReceiptsChecker has been superseded by ReceiptValidator in block-preprocessor.
+        self.domain_receipts_checker
+            .check_state_transition(consensus_block_hash)?;
 
-            self.domain_receipts_checker
-                .submit_fraud_proof(consensus_block_hash)
-                .await?;
-        }
+        self.domain_receipts_checker
+            .submit_fraud_proof(consensus_block_hash)
+            .await?;
 
         let post_block_execution_took = start
             .elapsed()

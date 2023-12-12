@@ -27,7 +27,6 @@ mod tests;
 
 pub mod block_tree;
 pub mod domain_registry;
-pub mod migrations;
 pub mod runtime_registry;
 mod staking;
 mod staking_epoch;
@@ -111,7 +110,7 @@ pub type DomainHashingFor<T> = <<T as Config>::DomainHeader as Header>::Hashing;
 pub type ReceiptHashFor<T> = <<T as Config>::DomainHeader as Header>::Hash;
 
 /// The current storage version.
-const STORAGE_VERSION: StorageVersion = StorageVersion::new(3);
+const STORAGE_VERSION: StorageVersion = StorageVersion::new(0);
 
 #[frame_support::pallet]
 mod pallet {
@@ -1498,11 +1497,6 @@ impl<T: Config> Pallet<T> {
             DomainStakingSummary::<T>::get(domain_id),
         ) {
             (Some(domain_object), Some(stake_summary)) => Some(BundleProducerElectionParams {
-                current_operators: stake_summary
-                    .current_operators
-                    .keys()
-                    .cloned()
-                    .collect::<Vec<OperatorId>>(),
                 total_domain_stake: stake_summary.current_total_stake,
                 bundle_slot_probability: domain_object.domain_config.bundle_slot_probability,
             }),
