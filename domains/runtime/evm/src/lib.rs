@@ -176,8 +176,8 @@ impl fp_self_contained::SelfContainedCall for RuntimeCall {
 
 impl_opaque_keys! {
     pub struct SessionKeys {
-        /// Primarily used for adding the executor authority key into the keystore in the dev mode.
-        pub executor: sp_domains::OperatorKey,
+        /// Primarily used for adding the operator signing key into the Keystore.
+        pub operator: sp_domains::OperatorKey,
     }
 }
 
@@ -520,6 +520,10 @@ impl pallet_evm::OnChargeEVMTransaction<Runtime> for EVMCurrencyAdapter {
     }
 }
 
+parameter_types! {
+    pub const GasLimitPovSizeRatio: u64 = 4;
+}
+
 impl pallet_evm::Config for Runtime {
     type FeeCalculator = BaseFee;
     type GasWeightMapping = pallet_evm::FixedGasWeightMapping<Self>;
@@ -538,7 +542,7 @@ impl pallet_evm::Config for Runtime {
     type OnChargeTransaction = EVMCurrencyAdapter;
     type OnCreate = ();
     type FindAuthor = FindAuthorTruncated;
-    type GasLimitPovSizeRatio = ();
+    type GasLimitPovSizeRatio = GasLimitPovSizeRatio;
     type Timestamp = Timestamp;
     type WeightInfo = pallet_evm::weights::SubstrateWeight<Self>;
 }

@@ -72,9 +72,13 @@ where
     .map(|resp| resp.into_domain_set_code_extrinsic())
     .ok_or(VerificationError::FailedToDeriveDomainSetCodeExtrinsic)?;
 
+    let bad_receipt_valid_bundle_digests = bad_receipt.valid_bundle_digests();
+    if valid_bundle_digests.len() != bad_receipt_valid_bundle_digests.len() {
+        return Err(VerificationError::InvalidBundleDigest);
+    }
+
     let mut bundle_extrinsics_digests = Vec::new();
-    for (bad_receipt_valid_bundle_digest, bundle_digest) in bad_receipt
-        .valid_bundle_digests()
+    for (bad_receipt_valid_bundle_digest, bundle_digest) in bad_receipt_valid_bundle_digests
         .into_iter()
         .zip(valid_bundle_digests)
     {
@@ -521,9 +525,6 @@ where
         return Err(InvalidBundleEquivocationError::MismatchedOperatorAndDomain);
     }
 
-    // TODO: `consensus_block_hash` is an default/empty value because this field is skipped
-    // during encode/decode due to incompatible with Gemini-3g, thus the verificaion will fail.
-    // This should be fix on new network when the field is not skipped.
     let consensus_block_hash = header_1.header.proof_of_election.consensus_block_hash;
     let domain_id = header_1.header.proof_of_election.domain_id;
     let operator_id = header_1.header.proof_of_election.operator_id;

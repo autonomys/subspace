@@ -1,20 +1,23 @@
 use tokio::signal;
 
 pub(crate) fn raise_fd_limit() {
-    match std::panic::catch_unwind(fdlimit::raise_fd_limit) {
-        Ok(Some(limit)) => {
-            tracing::debug!("Increase file limit from soft to hard (limit is {limit})")
+    match fdlimit::raise_fd_limit() {
+        Ok(fdlimit::Outcome::LimitRaised { from, to }) => {
+            tracing::debug!(
+                "Increased file descriptor limit from previous (most likely soft) limit {} to \
+                new (most likely hard) limit {}",
+                from,
+                to
+            );
         }
-        Ok(None) => tracing::debug!("Failed to increase file limit"),
-        Err(err) => {
-            let err = if let Some(err) = err.downcast_ref::<&str>() {
-                *err
-            } else if let Some(err) = err.downcast_ref::<String>() {
-                err
-            } else {
-                unreachable!("Should be unreachable as `fdlimit` uses panic macro, which should return either `&str` or `String`.")
-            };
-            tracing::warn!("Failed to increase file limit: {err}")
+        Ok(fdlimit::Outcome::Unsupported) => {
+            // Unsupported platform (non-Linux)
+        }
+        Err(error) => {
+            tracing::warn!(
+                "Failed to increase file descriptor limit for the process due to an error: {}.",
+                error
+            );
         }
     }
 }
@@ -22,24 +25,21 @@ pub(crate) fn raise_fd_limit() {
 #[cfg(unix)]
 pub(crate) async fn shutdown_signal() {
     use futures::FutureExt;
+    use std::pin::pin;
 
     futures::future::select(
-        Box::pin(
-            signal::unix::signal(signal::unix::SignalKind::interrupt())
-                .expect("Setting signal handlers must never fail")
-                .recv()
-                .map(|_| {
-                    tracing::info!("Received SIGINT, shutting down farmer...");
-                }),
-        ),
-        Box::pin(
-            signal::unix::signal(signal::unix::SignalKind::terminate())
-                .expect("Setting signal handlers must never fail")
-                .recv()
-                .map(|_| {
-                    tracing::info!("Received SIGTERM, shutting down farmer...");
-                }),
-        ),
+        pin!(signal::unix::signal(signal::unix::SignalKind::interrupt())
+            .expect("Setting signal handlers must never fail")
+            .recv()
+            .map(|_| {
+                tracing::info!("Received SIGINT, shutting down farmer...");
+            }),),
+        pin!(signal::unix::signal(signal::unix::SignalKind::terminate())
+            .expect("Setting signal handlers must never fail")
+            .recv()
+            .map(|_| {
+                tracing::info!("Received SIGTERM, shutting down farmer...");
+            }),),
     )
     .await;
 }

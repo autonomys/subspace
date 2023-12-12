@@ -15,6 +15,7 @@ use std::fs;
 use std::net::SocketAddr;
 use std::num::{NonZeroU8, NonZeroUsize};
 use std::path::PathBuf;
+use std::pin::pin;
 use std::str::FromStr;
 use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
@@ -335,13 +336,12 @@ where
         .await
         .map_err(|error| anyhow::anyhow!(error))?;
 
-    let first_farm_directory = disk_farms
+    let first_farm_directory = &disk_farms
         .first()
         .expect("Disk farm collection is not be empty as checked above; qed")
-        .directory
-        .clone();
+        .directory;
 
-    let identity = Identity::open_or_create(&first_farm_directory)
+    let identity = Identity::open_or_create(first_farm_directory)
         .map_err(|error| anyhow!("Failed to open or create identity: {error}"))?;
     let keypair = derive_libp2p_keypair(identity.secret_key());
     let peer_id = keypair.public().to_peer_id();
@@ -407,7 +407,11 @@ where
     ));
 
     let _piece_cache_worker = run_future_in_dedicated_thread(
-        Box::pin(piece_cache_worker.run(piece_getter.clone())),
+        {
+            let future = piece_cache_worker.run(piece_getter.clone());
+
+            move || future
+        },
         "cache-worker".to_string(),
     );
 
@@ -599,36 +603,34 @@ where
     // event handlers
     drop(readers_and_pieces);
 
-    let farm_fut = run_future_in_dedicated_thread(
-        Box::pin(async move {
+    let farm_fut = pin!(run_future_in_dedicated_thread(
+        move || async move {
             while let Some(result) = single_disk_farms_stream.next().await {
                 let id = result?;
 
                 info!(%id, "Farm exited successfully");
             }
             anyhow::Ok(())
-        }),
+        },
         "farmer-farm".to_string(),
-    )?;
-    let mut farm_fut = Box::pin(farm_fut).fuse();
+    )?);
 
-    let networking_fut = run_future_in_dedicated_thread(
-        Box::pin(async move { node_runner.run().await }),
+    let networking_fut = pin!(run_future_in_dedicated_thread(
+        move || async move { node_runner.run().await },
         "farmer-networking".to_string(),
-    )?;
-    let mut networking_fut = Box::pin(networking_fut).fuse();
+    )?);
 
     futures::select!(
         // Signal future
         _ = signal.fuse() => {},
 
         // Farm future
-        result = farm_fut => {
+        result = farm_fut.fuse() => {
             result??;
         },
 
         // Node runner future
-        _ = networking_fut => {
+        _ = networking_fut.fuse() => {
             info!("Node runner exited.")
         },
     );

@@ -26,7 +26,7 @@ use futures::StreamExt;
 use sc_client_api::{BlockBackend, HeaderBackend};
 use sc_consensus_subspace::archiver::encode_block;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
-use sc_consensus_subspace::{NewSlotNotification, RewardSigningNotification};
+use sc_consensus_subspace::slot_worker::{NewSlotNotification, RewardSigningNotification};
 use sp_api::ProvideRuntimeApi;
 use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi};
 use sp_core::{Decode, Encode};

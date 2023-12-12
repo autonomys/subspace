@@ -403,9 +403,9 @@ impl Default for SolutionRanges {
     }
 }
 
-// TODO: Likely add more stuff here
+// TODO: Remove V0 when we break the protocol
 /// Subspace blockchain constants.
-#[derive(Debug, Encode, Decode, MaxEncodedLen, PartialEq, Eq, Clone, Copy, TypeInfo)]
+#[derive(Debug, Encode, Decode, PartialEq, Eq, Clone, Copy, TypeInfo)]
 pub enum ChainConstants {
     /// V0 of the chain constants.
     #[codec(index = 0)]
@@ -425,65 +425,125 @@ pub enum ChainConstants {
         /// Minimum lifetime of a plotted sector, measured in archived segment.
         min_sector_lifetime: HistorySize,
     },
+    /// V0 of the chain constants.
+    #[codec(index = 1)]
+    V1 {
+        /// Depth `K` after which a block enters the recorded history.
+        confirmation_depth_k: BlockNumber,
+        /// Number of slots between slot arrival and when corresponding block can be produced.
+        block_authoring_delay: Slot,
+        /// Era duration in blocks.
+        era_duration: BlockNumber,
+        /// Slot probability.
+        slot_probability: (u64, u64),
+        /// The slot duration in milliseconds.
+        slot_duration: SlotDuration,
+        /// Number of latest archived segments that are considered "recent history".
+        recent_segments: HistorySize,
+        /// Fraction of pieces from the "recent history" (`recent_segments`) in each sector.
+        recent_history_fraction: (HistorySize, HistorySize),
+        /// Minimum lifetime of a plotted sector, measured in archived segment.
+        min_sector_lifetime: HistorySize,
+    },
 }
 
 impl ChainConstants {
     /// Depth `K` after which a block enters the recorded history.
     pub fn confirmation_depth_k(&self) -> BlockNumber {
-        let Self::V0 {
-            confirmation_depth_k,
-            ..
-        } = self;
-        *confirmation_depth_k
+        match self {
+            Self::V0 {
+                confirmation_depth_k,
+                ..
+            }
+            | Self::V1 {
+                confirmation_depth_k,
+                ..
+            } => *confirmation_depth_k,
+        }
     }
 
     /// Era duration in blocks.
     pub fn era_duration(&self) -> BlockNumber {
-        let Self::V0 { era_duration, .. } = self;
-        *era_duration
+        match self {
+            Self::V0 { era_duration, .. } | Self::V1 { era_duration, .. } => *era_duration,
+        }
     }
 
     /// Number of slots between slot arrival and when corresponding block can be produced.
     pub fn block_authoring_delay(&self) -> Slot {
-        let Self::V0 {
-            block_authoring_delay,
-            ..
-        } = self;
-        *block_authoring_delay
+        match self {
+            Self::V0 {
+                block_authoring_delay,
+                ..
+            }
+            | Self::V1 {
+                block_authoring_delay,
+                ..
+            } => *block_authoring_delay,
+        }
     }
 
     /// Slot probability.
     pub fn slot_probability(&self) -> (u64, u64) {
-        let Self::V0 {
-            slot_probability, ..
-        } = self;
-        *slot_probability
+        match self {
+            Self::V0 {
+                slot_probability, ..
+            }
+            | Self::V1 {
+                slot_probability, ..
+            } => *slot_probability,
+        }
+    }
+
+    /// The slot duration in milliseconds.
+    pub fn slot_duration(&self) -> SlotDuration {
+        match self {
+            Self::V0 { .. } => {
+                // 1000ms is used on most networks, so it is a safe default
+                SlotDuration::from_millis(1000)
+            }
+            Self::V1 { slot_duration, .. } => *slot_duration,
+        }
     }
 
     /// Number of latest archived segments that are considered "recent history".
     pub fn recent_segments(&self) -> HistorySize {
-        let Self::V0 {
-            recent_segments, ..
-        } = self;
-        *recent_segments
+        match self {
+            Self::V0 {
+                recent_segments, ..
+            }
+            | Self::V1 {
+                recent_segments, ..
+            } => *recent_segments,
+        }
     }
 
     /// Fraction of pieces from the "recent history" (`recent_segments`) in each sector.
     pub fn recent_history_fraction(&self) -> (HistorySize, HistorySize) {
-        let Self::V0 {
-            recent_history_fraction,
-            ..
-        } = self;
-        *recent_history_fraction
+        match self {
+            Self::V0 {
+                recent_history_fraction,
+                ..
+            }
+            | Self::V1 {
+                recent_history_fraction,
+                ..
+            } => *recent_history_fraction,
+        }
     }
 
     /// Minimum lifetime of a plotted sector, measured in archived segment.
     pub fn min_sector_lifetime(&self) -> HistorySize {
-        let Self::V0 {
-            min_sector_lifetime,
-            ..
-        } = self;
-        *min_sector_lifetime
+        match self {
+            Self::V0 {
+                min_sector_lifetime,
+                ..
+            }
+            | Self::V1 {
+                min_sector_lifetime,
+                ..
+            } => *min_sector_lifetime,
+        }
     }
 }
 
@@ -688,6 +748,7 @@ sp_api::decl_runtime_apis! {
     /// API necessary for block authorship with Subspace.
     pub trait SubspaceApi<RewardAddress: Encode + Decode> {
         /// The slot duration in milliseconds for Subspace.
+        #[deprecated(note = "Use chain constants instead")]
         fn slot_duration() -> SlotDuration;
 
         /// Proof of time parameters

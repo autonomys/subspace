@@ -514,7 +514,7 @@ where
             // happen at most as many times as there is number of chunks in the record,
             // otherwise `n+1` iterations could happen and update extra `encoded_chunk_used`
             // unnecessarily causing issues down the line
-            .take(record.iter().count())
+            .take(record.len())
             .zip(record.iter_mut())
             // Write encoded chunk back so we can reuse original allocation
             .map(|(input_chunk, output_chunk)| {

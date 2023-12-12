@@ -38,7 +38,6 @@ use domain_runtime_primitives::{
     BlockNumber as DomainNumber, Hash as DomainHash, MultiAccountId, TryConvertBack,
 };
 use frame_support::inherent::ProvideInherent;
-use frame_support::migrations::VersionedMigration;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, ConstU8, Currency, Everything, Get};
 use frame_support::weights::constants::{RocksDbWeight, WEIGHT_REF_TIME_PER_SECOND};
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
@@ -49,7 +48,7 @@ pub use pallet_subspace::AllowAuthoringBy;
 use pallet_transporter::EndpointHandler;
 use scale_info::TypeInfo;
 use sp_api::{impl_runtime_apis, BlockT};
-use sp_consensus_slots::SlotDuration;
+use sp_consensus_slots::{Slot, SlotDuration};
 use sp_consensus_subspace::{
     ChainConstants, EquivocationProof, FarmerPublicKey, PotParameters, SignedVote, SolutionRanges,
     Vote,
@@ -103,10 +102,10 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_name: create_runtime_str!("subspace"),
     impl_name: create_runtime_str!("subspace"),
     authoring_version: 0,
-    spec_version: 4,
+    spec_version: 0,
     impl_version: 0,
     apis: RUNTIME_API_VERSIONS,
-    transaction_version: 1,
+    transaction_version: 0,
     state_version: 0,
 };
 
@@ -313,6 +312,7 @@ parameter_types! {
     pub const PotEntropyInjectionInterval: BlockNumber = POT_ENTROPY_INJECTION_INTERVAL;
     pub const PotEntropyInjectionLookbackDepth: u8 = POT_ENTROPY_INJECTION_LOOKBACK_DEPTH;
     pub const PotEntropyInjectionDelay: SlotNumber = POT_ENTROPY_INJECTION_DELAY;
+    pub const EraDuration: u32 = ERA_DURATION_IN_BLOCKS;
     pub const SlotProbability: (u64, u64) = SLOT_PROBABILITY;
     pub const ExpectedVotesPerBlock: u32 = EXPECTED_VOTES_PER_BLOCK;
     pub const RecentSegments: HistorySize = RECENT_SEGMENTS;
@@ -337,7 +337,7 @@ impl pallet_subspace::Config for Runtime {
     type PotEntropyInjectionInterval = PotEntropyInjectionInterval;
     type PotEntropyInjectionLookbackDepth = PotEntropyInjectionLookbackDepth;
     type PotEntropyInjectionDelay = PotEntropyInjectionDelay;
-    type EraDuration = ConstU32<ERA_DURATION_IN_BLOCKS>;
+    type EraDuration = EraDuration;
     type InitialSolutionRange = ConstU64<INITIAL_SOLUTION_RANGE>;
     type SlotProbability = SlotProbability;
     type ConfirmationDepthK = ConfirmationDepthK;
@@ -602,8 +602,7 @@ parameter_types! {
     pub const StakeEpochDuration: DomainNumber = 100;
     pub TreasuryAccount: AccountId = PalletId(*b"treasury").into_account_truncating();
     pub const MaxPendingStakingOperation: u32 = 100;
-    // TODO: reset `MaxNominators` back to `100` once the gemini-3g chain spec is created
-    pub const MaxNominators: u32 = 0;
+    pub const MaxNominators: u32 = 256;
     pub SudoId: AccountId = Sudo::key().expect("Sudo account must exist");
 }
 
@@ -723,27 +722,6 @@ pub type SignedExtra = (
 pub type UncheckedExtrinsic =
     generic::UncheckedExtrinsic<Address, RuntimeCall, Signature, SignedExtra>;
 
-pub type VersionCheckedMigrateDomainsV1ToV2<T> = VersionedMigration<
-    1,
-    2,
-    pallet_domains::migrations::VersionUncheckedMigrateV1ToV2<T>,
-    pallet_domains::Pallet<T>,
-    <T as frame_system::Config>::DbWeight,
->;
-
-pub type VersionCheckedMigrateDomainsV2ToV3<T> = VersionedMigration<
-    2,
-    3,
-    pallet_domains::migrations::VersionUncheckedMigrateV2ToV3<T>,
-    pallet_domains::Pallet<T>,
-    <T as frame_system::Config>::DbWeight,
->;
-
-pub type Migrations = (
-    VersionCheckedMigrateDomainsV1ToV2<Runtime>,
-    VersionCheckedMigrateDomainsV2ToV3<Runtime>,
-);
-
 /// Executive: handles dispatch to the various modules.
 pub type Executive = frame_executive::Executive<
     Runtime,
@@ -751,7 +729,6 @@ pub type Executive = frame_executive::Executive<
     frame_system::ChainContext<Runtime>,
     Runtime,
     AllPalletsWithSystem,
-    Migrations,
 >;
 
 fn extract_segment_headers(ext: &UncheckedExtrinsic) -> Option<Vec<SegmentHeader>> {
@@ -982,11 +959,19 @@ impl_runtime_apis! {
         }
 
         fn chain_constants() -> ChainConstants {
-            Subspace::chain_constants()
+            ChainConstants::V1 {
+                confirmation_depth_k: ConfirmationDepthK::get(),
+                block_authoring_delay: Slot::from(BlockAuthoringDelay::get()),
+                era_duration: EraDuration::get(),
+                slot_probability: SlotProbability::get(),
+                slot_duration: SlotDuration::from_millis(SLOT_DURATION),
+                recent_segments: RecentSegments::get(),
+                recent_history_fraction: RecentHistoryFraction::get(),
+                min_sector_lifetime: MinSectorLifetime::get(),
+            }
         }
     }
 
-    #[api_version(2)]
     impl sp_domains::DomainsApi<Block, DomainHeader> for Runtime {
         fn submit_bundle_unsigned(
             opaque_bundle: sp_domains::OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, Balance>,

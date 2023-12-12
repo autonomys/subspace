@@ -1,4 +1,5 @@
 *
+!/.cargo
 !/crates
 !/domains
 !/orml

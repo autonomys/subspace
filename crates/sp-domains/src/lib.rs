@@ -544,9 +544,6 @@ pub struct ProofOfElection<CHash> {
     /// Operator index in the OperatorRegistry.
     pub operator_id: OperatorId,
     /// Consensus block hash at which proof of election was derived.
-    // TODO: skipping encode/decode this field becasue it is mismatch with the struct
-    // on the Gemini-3g runtime, remove `#[codec(skip)]` before new network
-    #[codec(skip)]
     pub consensus_block_hash: CHash,
 }
 
@@ -955,11 +952,9 @@ sp_api::decl_runtime_apis! {
         ) -> OpaqueBundles<Block, DomainHeader, Balance>;
 
         /// Extract bundle from the extrinsic if the extrinsic is `submit_bundle`.
-        #[api_version(2)]
         fn extract_bundle(extrinsic: Block::Extrinsic) -> Option<OpaqueBundle<NumberFor<Block>, Block::Hash, DomainHeader, Balance>>;
 
         /// Extract the execution receipt stored successfully from the given extrinsics.
-        #[api_version(2)]
         fn extract_receipts(
             domain_id: DomainId,
             extrinsics: Vec<Block::Extrinsic>,

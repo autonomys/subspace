@@ -23,7 +23,7 @@ use crate::domain::evm_chain_spec::{self, SpecId};
 use hex_literal::hex;
 use parity_scale_codec::Encode;
 use sc_service::{ChainType, NoExtension};
-use sc_subspace_chain_specs::ConsensusChainSpec;
+use sc_subspace_chain_specs::{ConsensusChainSpec, DEVNET_CHAIN_SPEC, GEMINI_3G_CHAIN_SPEC};
 use sc_telemetry::TelemetryEndpoints;
 use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::crypto::{Ss58Codec, UncheckedFrom};
@@ -42,8 +42,6 @@ use subspace_runtime::{
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, SSC};
 
 const SUBSPACE_TELEMETRY_URL: &str = "wss://telemetry.subspace.network/submit/";
-const DEVNET_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-devnet.json");
-const GEMINI_3G_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-gemini-3g.json");
 
 /// List of accounts which should receive token grants, amounts are specified in SSC.
 const TOKEN_GRANTS: &[(&str, u128)] = &[
@@ -159,7 +157,7 @@ pub fn gemini_3g_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, 
                 vesting_schedules,
                 GenesisParams {
                     enable_rewards: false,
-                    enable_storage_access: false,
+                    enable_storage_access: true,
                     allow_authoring_by: AllowAuthoringBy::RootFarmer(
                         FarmerPublicKey::unchecked_from(hex_literal::hex!(
                             "8aecbcf0b404590ddddc01ebacb205a562d12fdb5c2aa6a4035c1a20f23c9515"
@@ -208,11 +206,11 @@ pub fn gemini_3g_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, 
 }
 
 pub fn gemini_3g_config() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String> {
-    ConsensusChainSpec::from_json_bytes(GEMINI_3G_CHAIN_SPEC)
+    ConsensusChainSpec::from_json_bytes(GEMINI_3G_CHAIN_SPEC.as_bytes())
 }
 
 pub fn devnet_config() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String> {
-    ConsensusChainSpec::from_json_bytes(DEVNET_CHAIN_SPEC)
+    ConsensusChainSpec::from_json_bytes(DEVNET_CHAIN_SPEC.as_bytes())
 }
 
 pub fn devnet_config_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String> {
@@ -272,7 +270,7 @@ pub fn devnet_config_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfi
                 vesting_schedules,
                 GenesisParams {
                     enable_rewards: false,
-                    enable_storage_access: false,
+                    enable_storage_access: true,
                     allow_authoring_by: AllowAuthoringBy::FirstFarmer,
                     pot_slot_iterations: NonZeroU32::new(150_000_000).expect("Not zero; qed"),
                     enable_domains: true,
@@ -337,7 +335,7 @@ pub fn dev_config() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String> 
                 vec![],
                 GenesisParams {
                     enable_rewards: false,
-                    enable_storage_access: false,
+                    enable_storage_access: true,
                     allow_authoring_by: AllowAuthoringBy::Anyone,
                     pot_slot_iterations: NonZeroU32::new(100_000_000).expect("Not zero; qed"),
                     enable_domains: true,
@@ -405,7 +403,7 @@ pub fn local_config() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String
                 vec![],
                 GenesisParams {
                     enable_rewards: false,
-                    enable_storage_access: false,
+                    enable_storage_access: true,
                     allow_authoring_by: AllowAuthoringBy::Anyone,
                     pot_slot_iterations: NonZeroU32::new(100_000_000).expect("Not zero; qed"),
                     enable_domains: true,

@@ -44,7 +44,7 @@ pub use pallet_subspace::AllowAuthoringBy;
 use pallet_transporter::EndpointHandler;
 use scale_info::TypeInfo;
 use sp_api::{impl_runtime_apis, BlockT};
-use sp_consensus_slots::SlotDuration;
+use sp_consensus_slots::{Slot, SlotDuration};
 use sp_consensus_subspace::{
     ChainConstants, EquivocationProof, FarmerPublicKey, PotParameters, SignedVote, SolutionRanges,
     Vote,
@@ -266,6 +266,7 @@ parameter_types! {
     pub const PotEntropyInjectionInterval: BlockNumber = POT_ENTROPY_INJECTION_INTERVAL;
     pub const PotEntropyInjectionLookbackDepth: u8 = POT_ENTROPY_INJECTION_LOOKBACK_DEPTH;
     pub const PotEntropyInjectionDelay: SlotNumber = POT_ENTROPY_INJECTION_DELAY;
+    pub const EraDuration: BlockNumber = ERA_DURATION_IN_BLOCKS;
     pub const SlotProbability: (u64, u64) = SLOT_PROBABILITY;
     pub const ShouldAdjustSolutionRange: bool = false;
     pub const ExpectedVotesPerBlock: u32 = 9;
@@ -284,7 +285,7 @@ impl pallet_subspace::Config for Runtime {
     type PotEntropyInjectionInterval = PotEntropyInjectionInterval;
     type PotEntropyInjectionLookbackDepth = PotEntropyInjectionLookbackDepth;
     type PotEntropyInjectionDelay = PotEntropyInjectionDelay;
-    type EraDuration = ConstU32<ERA_DURATION_IN_BLOCKS>;
+    type EraDuration = EraDuration;
     type InitialSolutionRange = ConstU64<INITIAL_SOLUTION_RANGE>;
     type SlotProbability = SlotProbability;
     type ConfirmationDepthK = ConfirmationDepthK;
@@ -1150,11 +1151,19 @@ impl_runtime_apis! {
         }
 
         fn chain_constants() -> ChainConstants {
-            Subspace::chain_constants()
+            ChainConstants::V1 {
+                confirmation_depth_k: ConfirmationDepthK::get(),
+                block_authoring_delay: Slot::from(BlockAuthoringDelay::get()),
+                era_duration: EraDuration::get(),
+                slot_probability: SlotProbability::get(),
+                slot_duration: SlotDuration::from_millis(SLOT_DURATION),
+                recent_segments: RecentSegments::get(),
+                recent_history_fraction: RecentHistoryFraction::get(),
+                min_sector_lifetime: MinSectorLifetime::get(),
+            }
         }
     }
 
-    #[api_version(2)]
     impl sp_domains::DomainsApi<Block, DomainHeader> for Runtime {
         fn submit_bundle_unsigned(
             opaque_bundle: OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, Balance>,

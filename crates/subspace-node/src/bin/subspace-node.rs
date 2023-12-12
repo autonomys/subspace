@@ -450,6 +450,10 @@ fn main() -> Result<(), Error> {
                         })?
                         .unwrap_or_default();
 
+                let consensus_state_pruning_mode = consensus_chain_config
+                    .state_pruning
+                    .clone()
+                    .unwrap_or_default();
                 let consensus_chain_node = {
                     let span = sc_tracing::tracing::info_span!(
                         sc_tracing::logging::PREFIX_LOG_SPAN,
@@ -608,6 +612,7 @@ fn main() -> Result<(), Error> {
                         let relayer_worker =
                             domain_client_message_relayer::worker::relay_consensus_chain_messages(
                                 consensus_chain_node.client.clone(),
+                                consensus_state_pruning_mode,
                                 consensus_chain_node.sync_service.clone(),
                                 xdm_gossip_worker_builder.gossip_msg_sink(),
                             );
@@ -630,6 +635,7 @@ fn main() -> Result<(), Error> {
                                 ChainId::Consensus,
                                 consensus_chain_node.client.clone(),
                                 consensus_chain_node.transaction_pool.clone(),
+                                consensus_chain_node.network_service.clone(),
                                 consensus_msg_receiver,
                             );
 
@@ -662,6 +668,7 @@ fn main() -> Result<(), Error> {
                         consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory::new(
                             consensus_chain_node.transaction_pool.clone(),
                         ),
+                        consensus_network: consensus_chain_node.network_service.clone(),
                         block_importing_notification_stream: consensus_chain_node
                             .block_importing_notification_stream
                             .clone(),

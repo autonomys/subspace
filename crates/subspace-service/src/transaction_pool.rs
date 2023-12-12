@@ -186,58 +186,45 @@ where
                 // If the transaction is `submit_bundle`, then extract the bundle
                 // and check for equivocation.
                 let runtime_api = client.runtime_api();
-                let domains_api_version = runtime_api
-                    .api_version::<dyn DomainsApi<Block, DomainHeader>>(at)
-                    .map_err(|err| {
-                        TxPoolError::RuntimeApi(format!(
-                            "Failed to get `DomainsApi` version for block {at:?}: {err:?}."
-                        ))
-                    })?
-                    // safe to return default version as 1 since there will always be version 1.
-                    .unwrap_or(1);
-                // TODO: this is keep gemini-3g compatible. Remove before a new network launch.
-                if domains_api_version >= 2 {
-                    let maybe_opaque_bundle = runtime_api
-                        .extract_bundle(at, uxt)
-                        .map_err(|err| TxPoolError::RuntimeApi(err.to_string()))?;
-                    if let Some(opaque_bundle) = maybe_opaque_bundle {
-                        let slot = opaque_bundle
-                            .sealed_header
-                            .header
-                            .proof_of_election
-                            .slot_number
-                            .into();
+                let maybe_opaque_bundle = runtime_api
+                    .extract_bundle(at, uxt)
+                    .map_err(|err| TxPoolError::RuntimeApi(err.to_string()))?;
+                if let Some(opaque_bundle) = maybe_opaque_bundle {
+                    let slot = opaque_bundle
+                        .sealed_header
+                        .header
+                        .proof_of_election
+                        .slot_number
+                        .into();
 
-                        let slot_now = if diff_in_blocks > 0 {
-                            slot + Slot::from(
-                                u64::from(diff_in_blocks) * slot_probability.1 / slot_probability.0,
-                            )
-                        } else {
-                            slot
-                        };
+                    let slot_now = if diff_in_blocks > 0 {
+                        slot + Slot::from(
+                            u64::from(diff_in_blocks) * slot_probability.1 / slot_probability.0,
+                        )
+                    } else {
+                        slot
+                    };
 
-                        let maybe_equivocation_fraud_proof = check_equivocation::<_, Block, _>(
-                            &client,
-                            slot_now,
-                            opaque_bundle.sealed_header,
-                        )?;
+                    let maybe_equivocation_fraud_proof = check_equivocation::<_, Block, _>(
+                        &client,
+                        slot_now,
+                        opaque_bundle.sealed_header,
+                    )?;
 
-                        if let Some(equivocation_fraud_proof) = maybe_equivocation_fraud_proof {
-                            let sent_result =
-                                fraud_proof_submit_sink.send(equivocation_fraud_proof);
-                            if let Err(err) = sent_result {
-                                error!(
-                                    target: "consensus-fraud-proof-sender",
-                                    "failed to send fraud proof to be submitted: {err:?}"
-                                );
-                            }
-
-                            return Err(TxPoolError::Pool(
-                                sc_transaction_pool_api::error::Error::InvalidTransaction(
-                                    InvalidTransactionCode::BundleEquivocation.into(),
-                                ),
-                            ));
+                    if let Some(equivocation_fraud_proof) = maybe_equivocation_fraud_proof {
+                        let sent_result = fraud_proof_submit_sink.send(equivocation_fraud_proof);
+                        if let Err(err) = sent_result {
+                            error!(
+                                target: "consensus-fraud-proof-sender",
+                                "failed to send fraud proof to be submitted: {err:?}"
+                            );
                         }
+
+                        return Err(TxPoolError::Pool(
+                            sc_transaction_pool_api::error::Error::InvalidTransaction(
+                                InvalidTransactionCode::BundleEquivocation.into(),
+                            ),
+                        ));
                     }
                 }
             }

@@ -2,6 +2,7 @@ pub(crate) mod node_rpc_client;
 
 use async_trait::async_trait;
 use futures::Stream;
+use std::fmt;
 use std::pin::Pin;
 use subspace_core_primitives::{Piece, PieceIndex, SegmentHeader, SegmentIndex};
 use subspace_rpc_primitives::{
@@ -14,7 +15,7 @@ pub type Error = Box<dyn std::error::Error + Send + Sync + 'static>;
 
 /// Abstraction of the Node Client
 #[async_trait]
-pub trait NodeClient: Clone + Send + Sync + 'static {
+pub trait NodeClient: Clone + fmt::Debug + Send + Sync + 'static {
     /// Get farmer app info
     async fn farmer_app_info(&self) -> Result<FarmerAppInfo, Error>;
 
@@ -64,7 +65,11 @@ pub trait NodeClient: Clone + Send + Sync + 'static {
         &self,
         segment_index: SegmentIndex,
     ) -> Result<(), Error>;
+}
 
+/// Node Client extension methods that are not necessary for farmer as a library, but might be useful for an app
+#[async_trait]
+pub trait NodeClientExt: NodeClient {
     /// Get the last segment headers.
     async fn last_segment_headers(&self, limit: u64) -> Result<Vec<Option<SegmentHeader>>, Error>;
 }

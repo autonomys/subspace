@@ -25,11 +25,12 @@ use sp_blockchain::HeaderBackend;
 use sp_core::H256;
 use sp_domains::extrinsics::deduplicate_and_shuffle_extrinsics;
 use sp_domains::{
-    DomainId, DomainsApi, ExecutionReceipt, HeaderHashingFor, InboxedBundle, InvalidBundleType,
-    OpaqueBundle, OpaqueBundles, ReceiptValidity,
+    DomainId, DomainsApi, ExecutionReceipt, ExtrinsicDigest, HeaderHashingFor, InboxedBundle,
+    InvalidBundleType, OpaqueBundle, OpaqueBundles, ReceiptValidity,
 };
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
+use sp_state_machine::LayoutV1;
 use std::collections::VecDeque;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -219,16 +220,9 @@ where
                         .map(|(signer, tx)| {
                             (
                                 signer.clone(),
-                                HeaderHashingFor::<Block::Header>::hash_of(tx),
-                                // TODO: enable before the new network
-                                // NOTE: we should using the `ExtrinsicDigest` to calculate the `bundle_digest`
-                                // to keep consistency with the `domain_block_extrinsic_root` fraud proof, but
-                                // this is incompatible with Gemini-3g network because operators who have this
-                                // change will produce a different ER than those who don't have, cause the ER
-                                // derivation become non-deterministic.
-                                // ExtrinsicDigest::new::<LayoutV1<HeaderHashingFor<Block::Header>>>(
-                                //     tx.encode(),
-                                // ),
+                                ExtrinsicDigest::new::<LayoutV1<HeaderHashingFor<Block::Header>>>(
+                                    tx.encode(),
+                                ),
                             )
                         })
                         .collect();

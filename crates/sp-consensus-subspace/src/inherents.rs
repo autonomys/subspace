@@ -51,7 +51,8 @@ impl IsFatalError for InherentError {
 #[derive(Debug, Encode, Decode)]
 pub struct InherentType {
     /// Slot at which block was created.
-    pub slot: Slot,
+    // TODO: Remove slot when breaking protocol and probably change the whole data structure to an enum
+    slot: Slot,
     /// Segment headers expected to be included in the block.
     pub segment_headers: Vec<SegmentHeader>,
 }
@@ -83,41 +84,20 @@ pub struct InherentDataProvider {
 
 #[cfg(feature = "std")]
 impl InherentDataProvider {
-    /// Create new inherent data provider from the given `data`.
-    pub fn new(slot: Slot, segment_headers: Vec<SegmentHeader>) -> Self {
+    /// Create new inherent data provider from the given `segment_headers`.
+    pub fn new(segment_headers: Vec<SegmentHeader>) -> Self {
         Self {
             data: InherentType {
-                slot,
+                // TODO: Remove slot when breaking protocol
+                slot: Default::default(),
                 segment_headers,
             },
         }
     }
 
-    /// Creates the inherent data provider by calculating the slot from the given
-    /// `timestamp` and `duration`.
-    pub fn from_timestamp_and_slot_duration(
-        timestamp: sp_timestamp::Timestamp,
-        slot_duration: sp_consensus_slots::SlotDuration,
-        segment_headers: Vec<SegmentHeader>,
-    ) -> Self {
-        let slot = Slot::from_timestamp(timestamp, slot_duration);
-
-        Self::new(slot, segment_headers)
-    }
-
     /// Returns the `data` of this inherent data provider.
     pub fn data(&self) -> &InherentType {
         &self.data
-    }
-}
-
-#[cfg(feature = "std")]
-impl sp_std::ops::Deref for InherentDataProvider {
-    type Target = Slot;
-
-    #[inline]
-    fn deref(&self) -> &Self::Target {
-        &self.data.slot
     }
 }
 

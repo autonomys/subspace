@@ -131,24 +131,41 @@ async fn test_domain_chain_fork_choice() {
         .await
         .unwrap();
 
-    // Fork B produce a consenus block that contains bundles thus derive a domain block
     let mut alice_import_notification_stream = alice.client.every_import_notification_stream();
+
+    // Fork B produce a consenus block that contains bundles
     let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     assert!(bundle.is_some());
-    ferdie
+    let fork_b_block_hash = ferdie
         .produce_block_with_slot_at(slot, common_consensus_hash, None)
         .await
         .unwrap();
 
-    // Because the new domain block is in a stale fork thus we need to use `every_import_notification_stream`
-    let new_domain_block = alice_import_notification_stream.next().await.unwrap();
-    assert_eq!(*new_domain_block.header.number(), 4);
+    // Fork B is still in the non-canonical fork thus the consensus block and bundle
+    // won't be processed
+    assert!(alice_import_notification_stream.try_recv().is_err());
 
     // The consensus fork A is still the best fork, because fork A don't derive any new
     // domain block thus the best domain block is still #3
     assert_eq!(ferdie.client.info().best_hash, fork_a_block_hash);
     assert_eq!(alice.client.info().best_number, 3);
     assert_eq!(alice.client.info().best_hash, domain_hash_3);
+
+    // Produce one more consensus block on fork B to make it the best fork
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert!(bundle.is_some());
+    let fork_b_block_hash = ferdie
+        .produce_block_with_slot_at(slot, fork_b_block_hash, Some(vec![]))
+        .await
+        .unwrap();
+    assert_eq!(ferdie.client.info().best_hash, fork_b_block_hash);
+
+    // It should also trigger the operator to processe consensus blocks at fork B
+    // thus produce more domain blocks
+    let domain_block_4 = alice_import_notification_stream.next().await.unwrap();
+    assert_eq!(*domain_block_4.header.number(), 4);
+    assert_eq!(alice.client.info().best_number, 4);
+    assert_eq!(alice.client.info().best_hash, domain_block_4.header.hash());
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -1531,11 +1548,7 @@ async fn test_invalid_domain_block_hash_proof_creation() {
         .is_none());
 }
 
-// Disable because the `bundle_digest` value used in the ER is inconsistent with the value
-// used in the fraud proof, the fix is not deploy due to incompatible with the Gemini-3g
-// TODO: enable once the fix is deployed
 #[tokio::test(flavor = "multi_thread")]
-#[ignore]
 async fn test_invalid_domain_extrinsics_root_proof_creation() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -1668,12 +1681,7 @@ async fn test_invalid_domain_extrinsics_root_proof_creation() {
         .is_none());
 }
 
-// Disable because the `ProofOfElection::consensus_block_hash` is skipped during encode/decode
-// due to incompatible with Gemini-3g, thus it is the empty value in the fraud proof and will
-// failed when used to get the required runtime state during verification.
-// TODO: enable once the field is not skipped.
 #[tokio::test(flavor = "multi_thread")]
-#[ignore]
 async fn test_bundle_equivocation_fraud_proof() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -2835,6 +2843,13 @@ async fn test_multiple_consensus_blocks_derive_similar_domain_block() {
         )
         .await
         .unwrap();
+    // Produce one more consensus block to make fork B the best fork and trigger processing
+    // on fork B
+    let slot = ferdie.produce_slot();
+    ferdie
+        .produce_block_with_slot_at(slot, consensus_block_hash_fork_b, Some(vec![]))
+        .await
+        .unwrap();
 
     assert_ne!(consensus_block_hash_fork_a, consensus_block_hash_fork_b);
 
@@ -2890,18 +2905,6 @@ async fn test_multiple_consensus_blocks_derive_similar_domain_block() {
     assert_ne!(
         domain_block_header_fork_a.state_root(),
         domain_block_header_fork_b.state_root()
-    );
-
-    // Produce one more block at fork A to make it the canonical chain and the operator
-    // should submit the ER of fork A
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    ferdie
-        .produce_block_with_slot_at(slot, consensus_block_hash_fork_a, None)
-        .await
-        .unwrap();
-    assert_eq!(
-        bundle.unwrap().into_receipt().consensus_block_hash,
-        consensus_block_hash_fork_a
     );
 
     // Simply produce more block

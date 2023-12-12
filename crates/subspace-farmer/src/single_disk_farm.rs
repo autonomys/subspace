@@ -930,44 +930,46 @@ impl SingleDiskFarm {
                     }
                 };
 
-                let plotting_fut = async move {
+                let plotting_options = PlottingOptions {
+                    public_key,
+                    node_client: &node_client,
+                    pieces_in_sector,
+                    sector_size,
+                    sector_metadata_size,
+                    metadata_header,
+                    plot_file,
+                    metadata_file,
+                    sectors_metadata,
+                    piece_getter: &piece_getter,
+                    kzg: &kzg,
+                    erasure_coding: &erasure_coding,
+                    handlers,
+                    modifying_sector_index,
+                    sectors_to_plot_receiver,
+                    downloading_semaphore,
+                    encoding_semaphore: &encoding_semaphore,
+                    plotting_thread_pool,
+                    replotting_thread_pool,
+                    stop_receiver: &mut stop_receiver.resubscribe(),
+                };
+
+                let plotting_fut = async {
                     if start_receiver.recv().await.is_err() {
                         // Dropped before starting
-                        return;
+                        return Ok(());
                     }
 
                     if let Some(plotting_delay) = plotting_delay {
                         if plotting_delay.await.is_err() {
                             // Dropped before resolving
-                            return;
+                            return Ok(());
                         }
                     }
 
-                    let plotting_options = PlottingOptions {
-                        public_key,
-                        node_client: &node_client,
-                        pieces_in_sector,
-                        sector_size,
-                        sector_metadata_size,
-                        metadata_header,
-                        plot_file,
-                        metadata_file,
-                        sectors_metadata,
-                        piece_getter: &piece_getter,
-                        kzg: &kzg,
-                        erasure_coding: &erasure_coding,
-                        handlers,
-                        modifying_sector_index,
-                        sectors_to_plot_receiver,
-                        downloading_semaphore,
-                        encoding_semaphore: &encoding_semaphore,
-                        plotting_thread_pool,
-                        replotting_thread_pool,
-                        stop_receiver: &mut stop_receiver.resubscribe(),
-                    };
+                    plotting::<_, _, PosTable>(plotting_options).await
+                };
 
-                    let plotting_fut = plotting::<_, _, PosTable>(plotting_options);
-
+                Handle::current().block_on(async {
                     select! {
                         plotting_result = plotting_fut.fuse() => {
                             if let Err(error) = plotting_result
@@ -984,9 +986,7 @@ impl SingleDiskFarm {
                             // Nothing, just exit
                         }
                     }
-                };
-
-                Handle::current().block_on(plotting_fut);
+                });
             }
         });
         let plotting_join_handle = AsyncJoinOnDrop::new(plotting_join_handle, false);

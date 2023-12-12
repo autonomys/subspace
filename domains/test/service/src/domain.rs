@@ -5,6 +5,7 @@ use crate::chain_spec::create_domain_spec;
 use crate::{
     construct_extrinsic_generic, node_config, BalanceOf, EcdsaKeyring, UncheckedExtrinsicFor,
 };
+use cross_domain_message_gossip::ChainTxPoolMsg;
 use domain_client_operator::{BootstrapResult, Bootstrapper, OperatorStreams};
 use domain_runtime_primitives::opaque::Block;
 use domain_runtime_primitives::{Balance, DomainCoreApi};
@@ -121,7 +122,7 @@ where
     /// Domain oeprator.
     pub operator: DomainOperator<RuntimeApi, ExecutorDispatch>,
     /// Sink to the node's tx pool
-    pub tx_pool_sink: TracingUnboundedSender<Vec<u8>>,
+    pub tx_pool_sink: TracingUnboundedSender<ChainTxPoolMsg>,
     _phantom_data: PhantomData<(Runtime, AccountId)>,
 }
 
@@ -234,6 +235,7 @@ where
                 mock_consensus_node.transaction_pool.clone(),
             ),
             consensus_network_sync_oracle: mock_consensus_node.sync_service.clone(),
+            consensus_network: mock_consensus_node.network_service.clone(),
             operator_streams,
             gossip_message_sink: gossip_msg_sink,
             domain_message_receiver,
@@ -252,6 +254,7 @@ where
             RuntimeApi,
             ExecutorDispatch,
             AccountId,
+            _,
             _,
         >(domain_params)
         .await

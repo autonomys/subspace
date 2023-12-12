@@ -19,13 +19,11 @@
 //! Contains implementation of archiving process in Subspace blockchain that converts blockchain
 //! history (blocks) into archived history (pieces).
 
-use crate::{
-    ArchivedSegmentNotification, BlockImportingNotification, SubspaceLink,
-    SubspaceNotificationSender, SubspaceSyncOracle,
-};
+use crate::block_import::BlockImportingNotification;
+use crate::slot_worker::SubspaceSyncOracle;
+use crate::{SubspaceLink, SubspaceNotificationSender};
 use codec::{Decode, Encode};
 use futures::StreamExt;
-use log::{debug, info, warn};
 use parking_lot::Mutex;
 use rand::prelude::*;
 use rand_chacha::ChaCha8Rng;
@@ -33,7 +31,7 @@ use rayon::prelude::*;
 use rayon::ThreadPoolBuilder;
 use sc_client_api::{AuxStore, Backend as BackendT, BlockBackend, Finalizer, LockImportRun};
 use sc_telemetry::{telemetry, TelemetryHandle, CONSENSUS_INFO};
-use sc_utils::mpsc::tracing_unbounded;
+use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedSender};
 use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus::SyncOracle;
@@ -44,6 +42,7 @@ use sp_runtime::traits::{Block as BlockT, CheckedSub, Header, NumberFor, One, Ze
 use sp_runtime::{Justifications, Saturating};
 use std::error::Error;
 use std::future::Future;
+use std::num::NonZeroUsize;
 use std::slice;
 use std::sync::atomic::{AtomicU16, Ordering};
 use std::sync::Arc;
@@ -51,9 +50,21 @@ use subspace_archiving::archiver::{Archiver, NewArchivedSegment};
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::objects::BlockObjectMapping;
 use subspace_core_primitives::{BlockNumber, RecordedHistorySegment, SegmentHeader, SegmentIndex};
+use tracing::{debug, info, warn};
 
 /// This corresponds to default value of `--max-runtime-instances` in Substrate
 const BLOCKS_TO_ARCHIVE_CONCURRENCY: usize = 8;
+
+/// How deep (in segments) should block be in order to be finalized.
+///
+/// This is required for full nodes to not prune recent history such that keep-up sync in Substrate
+/// works even without archival nodes (initial sync will be done from DSN).
+///
+/// Ideally, we'd decouple pruning from finalization, but it may require invasive changes in
+/// Substrate and is not worth it right now.
+/// https://github.com/paritytech/substrate/discussions/14359
+pub(crate) const FINALIZATION_DEPTH_IN_SEGMENTS: NonZeroUsize =
+    NonZeroUsize::new(5).expect("Not zero; qed");
 
 #[derive(Debug)]
 struct SegmentHeadersStoreInner<AS> {
@@ -89,10 +100,7 @@ where
         let mut cache = Vec::with_capacity(Self::INITIAL_CACHE_CAPACITY);
         let mut next_key_index = 0;
 
-        debug!(
-            target: "subspace",
-            "Started loading segment headers into cache"
-        );
+        debug!("Started loading segment headers into cache");
         while let Some(segment_headers) =
             aux_store
                 .get_aux(&Self::key(next_key_index))?
@@ -104,10 +112,7 @@ where
             cache.extend(segment_headers);
             next_key_index += 1;
         }
-        debug!(
-            target: "subspace",
-            "Finished loading segment headers into cache"
-        );
+        debug!("Finished loading segment headers into cache");
 
         Ok(Self {
             inner: Arc::new(SegmentHeadersStoreInner {
@@ -198,15 +203,16 @@ where
     }
 }
 
-/// How deep (in segments) should block be in order to be finalized.
-///
-/// This is required for full nodes to not prune recent history such that keep-up sync in Substrate
-/// works even without archival nodes (initial sync will be done from DSN).
-///
-/// Ideally, we'd decouple pruning from finalization, but it may require invasive changes in
-/// Substrate and is not worth it right now.
-/// https://github.com/paritytech/substrate/discussions/14359
-pub(crate) const FINALIZATION_DEPTH_IN_SEGMENTS: usize = 5;
+/// Notification with block header hash that needs to be signed and sender for signature.
+#[derive(Debug, Clone)]
+pub struct ArchivedSegmentNotification {
+    /// Archived segment.
+    pub archived_segment: Arc<NewArchivedSegment>,
+    /// Sender that signified the fact of receiving archived segment by farmer.
+    ///
+    /// This must be used to send a message or else block import pipeline will get stuck.
+    pub acknowledgement_sender: TracingUnboundedSender<()>,
+}
 
 fn find_last_archived_block<Block, Client, AS>(
     client: &Client,
@@ -423,9 +429,8 @@ where
             // Continuing from existing initial state
             let last_archived_block_number = last_segment_header.last_archived_block().number;
             info!(
-                target: "subspace",
-                "Last archived block {}",
-                last_archived_block_number,
+                %last_archived_block_number,
+                "Resuming archiver from last archived block",
             );
 
             // Set initial value, this is needed in case only genesis block was archived and there
@@ -464,7 +469,7 @@ where
 
             archiver
         } else {
-            info!(target: "subspace", "Starting archiving from genesis");
+            info!("Starting archiving from genesis");
 
             Archiver::new(subspace_link.kzg().clone()).expect("Incorrect parameters for archiver")
         };
@@ -497,10 +502,8 @@ where
 
         if let Some(blocks_to_archive_to) = blocks_to_archive_to {
             info!(
-                target: "subspace",
                 "Archiving already produced blocks {}..={}",
-                blocks_to_archive_from,
-                blocks_to_archive_to,
+                blocks_to_archive_from, blocks_to_archive_to,
             );
 
             let thread_pool = ThreadPoolBuilder::new()
@@ -556,7 +559,6 @@ where
                 let encoded_block = encode_block(block);
 
                 debug!(
-                    target: "subspace",
                     "Encoded block {} has size of {:.2} kiB",
                     block_number_to_archive,
                     encoded_block.len() as f32 / 1024.0
@@ -621,11 +623,15 @@ fn finalize_block<Block, Backend, Client>(
         client
             .apply_finality(import_op, hash, None, true)
             .map_err(|error| {
-                warn!(target: "subspace", "Error applying finality to block {:?}: {}", (hash, number), error);
+                warn!(
+                    "Error applying finality to block {:?}: {}",
+                    (hash, number),
+                    error
+                );
                 error
             })?;
 
-        debug!(target: "subspace", "Finalizing blocks up to ({:?}, {})", number, hash);
+        debug!("Finalizing blocks up to ({:?}, {})", number, hash);
 
         telemetry!(
             telemetry;
@@ -725,10 +731,8 @@ where
             let block_hash_to_archive = block.block.hash();
 
             debug!(
-                target: "subspace",
                 "Archiving block {:?} ({})",
-                block_number_to_archive,
-                block_hash_to_archive
+                block_number_to_archive, block_hash_to_archive
             );
 
             if parent_block_hash != best_archived_block_hash {
@@ -762,7 +766,6 @@ where
 
             let encoded_block = encode_block(block);
             debug!(
-                target: "subspace",
                 "Encoded block {} has size of {:.2} kiB",
                 block_number_to_archive,
                 encoded_block.len() as f32 / 1024.0
@@ -796,7 +799,7 @@ where
                     segment_headers
                         .iter()
                         .flat_map(|(_k, v)| v.iter().rev())
-                        .nth(FINALIZATION_DEPTH_IN_SEGMENTS)
+                        .nth(FINALIZATION_DEPTH_IN_SEGMENTS.get())
                         .map(|segment_header| segment_header.last_archived_block().number)
                 };
 
