@@ -38,7 +38,6 @@ use domain_runtime_primitives::{
     BlockNumber as DomainNumber, Hash as DomainHash, MultiAccountId, TryConvertBack,
 };
 use frame_support::inherent::ProvideInherent;
-use frame_support::migrations::VersionedMigration;
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, ConstU8, Currency, Everything, Get};
 use frame_support::weights::constants::{RocksDbWeight, WEIGHT_REF_TIME_PER_SECOND};
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
@@ -103,10 +102,10 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     spec_name: create_runtime_str!("subspace"),
     impl_name: create_runtime_str!("subspace"),
     authoring_version: 0,
-    spec_version: 5,
+    spec_version: 0,
     impl_version: 0,
     apis: RUNTIME_API_VERSIONS,
-    transaction_version: 1,
+    transaction_version: 0,
     state_version: 0,
 };
 
@@ -723,27 +722,6 @@ pub type SignedExtra = (
 pub type UncheckedExtrinsic =
     generic::UncheckedExtrinsic<Address, RuntimeCall, Signature, SignedExtra>;
 
-pub type VersionCheckedMigrateDomainsV1ToV2<T> = VersionedMigration<
-    1,
-    2,
-    pallet_domains::migrations::VersionUncheckedMigrateV1ToV2<T>,
-    pallet_domains::Pallet<T>,
-    <T as frame_system::Config>::DbWeight,
->;
-
-pub type VersionCheckedMigrateDomainsV2ToV3<T> = VersionedMigration<
-    2,
-    3,
-    pallet_domains::migrations::VersionUncheckedMigrateV2ToV3<T>,
-    pallet_domains::Pallet<T>,
-    <T as frame_system::Config>::DbWeight,
->;
-
-pub type Migrations = (
-    VersionCheckedMigrateDomainsV1ToV2<Runtime>,
-    VersionCheckedMigrateDomainsV2ToV3<Runtime>,
-);
-
 /// Executive: handles dispatch to the various modules.
 pub type Executive = frame_executive::Executive<
     Runtime,
@@ -751,7 +729,6 @@ pub type Executive = frame_executive::Executive<
     frame_system::ChainContext<Runtime>,
     Runtime,
     AllPalletsWithSystem,
-    Migrations,
 >;
 
 fn extract_segment_headers(ext: &UncheckedExtrinsic) -> Option<Vec<SegmentHeader>> {
