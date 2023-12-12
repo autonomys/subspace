@@ -995,7 +995,6 @@ impl_runtime_apis! {
         }
     }
 
-    #[api_version(2)]
     impl sp_domains::DomainsApi<Block, DomainHeader> for Runtime {
         fn submit_bundle_unsigned(
             opaque_bundle: sp_domains::OpaqueBundle<NumberFor<Block>, <Block as BlockT>::Hash, DomainHeader, Balance>,

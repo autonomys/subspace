@@ -952,11 +952,9 @@ sp_api::decl_runtime_apis! {
         ) -> OpaqueBundles<Block, DomainHeader, Balance>;
 
         /// Extract bundle from the extrinsic if the extrinsic is `submit_bundle`.
-        #[api_version(2)]
         fn extract_bundle(extrinsic: Block::Extrinsic) -> Option<OpaqueBundle<NumberFor<Block>, Block::Hash, DomainHeader, Balance>>;
 
         /// Extract the execution receipt stored successfully from the given extrinsics.
-        #[api_version(2)]
         fn extract_receipts(
             domain_id: DomainId,
             extrinsics: Vec<Block::Extrinsic>,
