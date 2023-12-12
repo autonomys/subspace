@@ -1531,11 +1531,7 @@ async fn test_invalid_domain_block_hash_proof_creation() {
         .is_none());
 }
 
-// Disable because the `bundle_digest` value used in the ER is inconsistent with the value
-// used in the fraud proof, the fix is not deploy due to incompatible with the Gemini-3g
-// TODO: enable once the fix is deployed
 #[tokio::test(flavor = "multi_thread")]
-#[ignore]
 async fn test_invalid_domain_extrinsics_root_proof_creation() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
