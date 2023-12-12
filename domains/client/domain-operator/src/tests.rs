@@ -2777,7 +2777,7 @@ async fn test_domain_transaction_fee_and_operator_reward() {
     // Transaction fee (including the tip) is deducted from alice's account
     let alice_free_balance_changes =
         pre_alice_free_balance - alice.free_balance(Alice.to_account_id());
-    assert!(alice_free_balance_changes >= tip as u128);
+    assert!(alice_free_balance_changes >= tip);
 
     // All the transaction fee is collected as operator reward
     assert_eq!(alice_free_balance_changes, receipt.total_rewards);
