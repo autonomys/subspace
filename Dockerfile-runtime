@@ -24,6 +24,7 @@ RUN \
 
 RUN /root/.cargo/bin/rustup target add wasm32-unknown-unknown
 
+COPY .cargo /code/.cargo
 COPY Cargo.lock /code/Cargo.lock
 COPY Cargo.toml /code/Cargo.toml
 COPY rust-toolchain.toml /code/rust-toolchain.toml

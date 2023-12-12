@@ -635,6 +635,7 @@ fn main() -> Result<(), Error> {
                                 ChainId::Consensus,
                                 consensus_chain_node.client.clone(),
                                 consensus_chain_node.transaction_pool.clone(),
+                                consensus_chain_node.network_service.clone(),
                                 consensus_msg_receiver,
                             );
 
@@ -667,6 +668,7 @@ fn main() -> Result<(), Error> {
                         consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory::new(
                             consensus_chain_node.transaction_pool.clone(),
                         ),
+                        consensus_network: consensus_chain_node.network_service.clone(),
                         block_importing_notification_stream: consensus_chain_node
                             .block_importing_notification_stream
                             .clone(),

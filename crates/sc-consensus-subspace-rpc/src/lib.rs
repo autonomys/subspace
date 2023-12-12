@@ -41,7 +41,9 @@ use sc_utils::mpsc::TracingUnboundedSender;
 use sp_api::{ApiError, ProvideRuntimeApi};
 use sp_blockchain::HeaderBackend;
 use sp_consensus::SyncOracle;
-use sp_consensus_subspace::{FarmerPublicKey, FarmerSignature, SubspaceApi as SubspaceRuntimeApi};
+use sp_consensus_subspace::{
+    ChainConstants, FarmerPublicKey, FarmerSignature, SubspaceApi as SubspaceRuntimeApi,
+};
 use sp_core::crypto::ByteArray;
 use sp_core::H256;
 use sp_objects::ObjectsApi;
@@ -219,6 +221,7 @@ where
         Arc<Mutex<ArchivedSegmentHeaderAcknowledgementSenders>>,
     next_subscription_id: AtomicU64,
     sync_oracle: SubspaceSyncOracle<SO>,
+    chain_constants: ChainConstants,
     kzg: Kzg,
     deny_unsafe: DenyUnsafe,
     _block: PhantomData<Block>,
@@ -266,6 +269,7 @@ where
             archived_segment_acknowledgement_senders: Arc::default(),
             next_subscription_id: AtomicU64::default(),
             sync_oracle: config.sync_oracle,
+            chain_constants,
             kzg: config.kzg,
             deny_unsafe: config.deny_unsafe,
             _block: PhantomData,
@@ -303,7 +307,7 @@ where
             })?;
 
         let farmer_app_info: Result<FarmerAppInfo, ApiError> = try {
-            let chain_constants = runtime_api.chain_constants(best_hash)?;
+            let chain_constants = &self.chain_constants;
             let protocol_info = FarmerProtocolInfo {
                 history_size: runtime_api.history_size(best_hash)?,
                 max_pieces_in_sector: runtime_api.max_pieces_in_sector(best_hash)?,

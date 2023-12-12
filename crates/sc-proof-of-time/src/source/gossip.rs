@@ -22,6 +22,7 @@ use std::collections::{HashMap, VecDeque};
 use std::future::poll_fn;
 use std::hash::{Hash, Hasher};
 use std::num::{NonZeroU32, NonZeroUsize};
+use std::pin::pin;
 use std::sync::{atomic, Arc};
 use subspace_core_primitives::{PotCheckpoints, PotSeed, SlotNumber};
 use tracing::{debug, error, trace, warn};
@@ -167,31 +168,28 @@ where
     /// should be running on a dedicated thread.
     pub async fn run(mut self) {
         let message_receiver = self.engine.lock().messages_for(self.topic);
-        let mut incoming_unverified_messages = Box::pin(
-            message_receiver
-                .filter_map(|notification| async move {
-                    notification.sender.map(|sender| {
-                        let proof = GossipProof::decode(&mut notification.message.as_ref())
-                            .expect("Only valid messages get here; qed");
+        let incoming_unverified_messages =
+            pin!(message_receiver.filter_map(|notification| async move {
+                notification.sender.map(|sender| {
+                    let proof = GossipProof::decode(&mut notification.message.as_ref())
+                        .expect("Only valid messages get here; qed");
 
-                        (sender, proof)
-                    })
+                    (sender, proof)
                 })
-                .fuse(),
-        );
+            }));
+        let mut incoming_unverified_messages = incoming_unverified_messages.fuse();
 
         loop {
-            let gossip_engine_poll = poll_fn(|cx| self.engine.lock().poll_unpin(cx));
+            let mut gossip_engine_poll = poll_fn(|cx| self.engine.lock().poll_unpin(cx)).fuse();
+
             futures::select! {
-                message = incoming_unverified_messages.next() => {
-                    if let Some((sender, proof)) = message {
-                        self.handle_proof_candidate(sender, proof).await;
-                    }
+                (sender, proof) = incoming_unverified_messages.select_next_some() => {
+                    self.handle_proof_candidate(sender, proof).await;
                 },
                 message = self.to_gossip_receiver.select_next_some() => {
                     self.handle_to_gossip_messages(message).await
                 },
-                 _ = gossip_engine_poll.fuse() => {
+                 _ = gossip_engine_poll => {
                     error!("Gossip engine has terminated");
                     return;
                 }

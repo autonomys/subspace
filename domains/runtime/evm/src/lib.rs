@@ -519,6 +519,10 @@ impl pallet_evm::OnChargeEVMTransaction<Runtime> for EVMCurrencyAdapter {
     }
 }
 
+parameter_types! {
+    pub const GasLimitPovSizeRatio: u64 = 4;
+}
+
 impl pallet_evm::Config for Runtime {
     type FeeCalculator = BaseFee;
     type GasWeightMapping = pallet_evm::FixedGasWeightMapping<Self>;
@@ -537,7 +541,7 @@ impl pallet_evm::Config for Runtime {
     type OnChargeTransaction = EVMCurrencyAdapter;
     type OnCreate = ();
     type FindAuthor = FindAuthorTruncated;
-    type GasLimitPovSizeRatio = ();
+    type GasLimitPovSizeRatio = GasLimitPovSizeRatio;
     type Timestamp = Timestamp;
     type WeightInfo = pallet_evm::weights::SubstrateWeight<Self>;
 }

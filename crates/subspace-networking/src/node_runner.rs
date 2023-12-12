@@ -2,13 +2,10 @@ use crate::behavior::persistent_parameters::{
     append_p2p_suffix, remove_p2p_suffix, KnownPeersRegistry, PeerAddressRemovedEvent,
     PEERS_ADDRESSES_BATCH_SIZE,
 };
-use crate::behavior::{
-    Behavior, Event, GeneralConnectedPeersInstance, SpecialConnectedPeersInstance,
-};
+use crate::behavior::{Behavior, Event};
 use crate::constructor;
 use crate::constructor::temporary_bans::TemporaryBans;
 use crate::constructor::{ConnectedPeersHandler, LocalOnlyRecordStore};
-use crate::protocols::connected_peers::Event as ConnectedPeersEvent;
 use crate::protocols::peer_info::{Event as PeerInfoEvent, PeerInfoSuccess};
 use crate::protocols::request_response::request_response_factory::{
     Event as RequestResponseEvent, IfDisconnected,
@@ -134,10 +131,16 @@ where
     peer_ip_addresses: HashMap<PeerId, HashSet<IpAddr>>,
     /// Defines protocol version for the network peers. Affects network partition.
     protocol_version: String,
+    // TODO: Restore or remove connected peer later
+    #[allow(dead_code)]
     /// Defines whether we maintain a persistent connection for common peers.
     general_connection_decision_handler: Option<ConnectedPeersHandler>,
+    // TODO: Restore or remove connected peer later
+    #[allow(dead_code)]
     /// Defines whether we maintain a persistent connection for special peers.
     special_connection_decision_handler: Option<ConnectedPeersHandler>,
+    // TODO: Restore or remove connected peer later
+    #[allow(dead_code)]
     /// Randomness generator used for choosing Kademlia addresses.
     rng: StdRng,
     /// Addresses to bootstrap Kademlia network
@@ -459,12 +462,13 @@ where
             SwarmEvent::Behaviour(Event::PeerInfo(event)) => {
                 self.handle_peer_info_event(event).await;
             }
-            SwarmEvent::Behaviour(Event::GeneralConnectedPeers(event)) => {
-                self.handle_general_connected_peers_event(event).await;
-            }
-            SwarmEvent::Behaviour(Event::SpecialConnectedPeers(event)) => {
-                self.handle_special_connected_peers_event(event).await;
-            }
+            // TODO: Restore or remove connected peer later
+            // SwarmEvent::Behaviour(Event::GeneralConnectedPeers(event)) => {
+            //     self.handle_general_connected_peers_event(event).await;
+            // }
+            // SwarmEvent::Behaviour(Event::SpecialConnectedPeers(event)) => {
+            //     self.handle_special_connected_peers_event(event).await;
+            // }
             SwarmEvent::Behaviour(Event::Autonat(event)) => {
                 self.handle_autonat_event(event).await;
             }
@@ -1191,61 +1195,63 @@ where
                 });
             }
 
-            if let Some(general_connected_peers) =
-                self.swarm.behaviour_mut().general_connected_peers.as_mut()
-            {
-                let keep_alive = self
-                    .general_connection_decision_handler
-                    .as_ref()
-                    .map(|handler| handler(&peer_info))
-                    .unwrap_or(false);
-
-                general_connected_peers.update_keep_alive_status(event.peer_id, keep_alive);
-            }
-
-            if let Some(special_connected_peers) =
-                self.swarm.behaviour_mut().special_connected_peers.as_mut()
-            {
-                let special_keep_alive = self
-                    .special_connection_decision_handler
-                    .as_ref()
-                    .map(|handler| handler(&peer_info))
-                    .unwrap_or(false);
-
-                special_connected_peers.update_keep_alive_status(event.peer_id, special_keep_alive);
-            }
+            // TODO: Restore or remove connected peer later
+            // if let Some(general_connected_peers) =
+            //     self.swarm.behaviour_mut().general_connected_peers.as_mut()
+            // {
+            //     let keep_alive = self
+            //         .general_connection_decision_handler
+            //         .as_ref()
+            //         .map(|handler| handler(&peer_info))
+            //         .unwrap_or(false);
+            //
+            //     general_connected_peers.update_keep_alive_status(event.peer_id, keep_alive);
+            // }
+            //
+            // if let Some(special_connected_peers) =
+            //     self.swarm.behaviour_mut().special_connected_peers.as_mut()
+            // {
+            //     let special_keep_alive = self
+            //         .special_connection_decision_handler
+            //         .as_ref()
+            //         .map(|handler| handler(&peer_info))
+            //         .unwrap_or(false);
+            //
+            //     special_connected_peers.update_keep_alive_status(event.peer_id, special_keep_alive);
+            // }
         }
     }
 
-    async fn handle_general_connected_peers_event(
-        &mut self,
-        event: ConnectedPeersEvent<GeneralConnectedPeersInstance>,
-    ) {
-        trace!(?event, "General connected peers event.");
-
-        let peers = self.get_peers_to_dial().await;
-
-        if let Some(general_connected_peers) =
-            self.swarm.behaviour_mut().general_connected_peers.as_mut()
-        {
-            general_connected_peers.add_peers_to_dial(&peers);
-        }
-    }
-
-    async fn handle_special_connected_peers_event(
-        &mut self,
-        event: ConnectedPeersEvent<SpecialConnectedPeersInstance>,
-    ) {
-        trace!(?event, "Special connected peers event.");
-
-        let peers = self.get_peers_to_dial().await;
-
-        if let Some(special_connected_peers) =
-            self.swarm.behaviour_mut().special_connected_peers.as_mut()
-        {
-            special_connected_peers.add_peers_to_dial(&peers);
-        }
-    }
+    // TODO: Restore or remove connected peer later
+    // async fn handle_general_connected_peers_event(
+    //     &mut self,
+    //     event: ConnectedPeersEvent<GeneralConnectedPeersInstance>,
+    // ) {
+    //     trace!(?event, "General connected peers event.");
+    //
+    //     let peers = self.get_peers_to_dial().await;
+    //
+    //     if let Some(general_connected_peers) =
+    //         self.swarm.behaviour_mut().general_connected_peers.as_mut()
+    //     {
+    //         general_connected_peers.add_peers_to_dial(&peers);
+    //     }
+    // }
+    //
+    // async fn handle_special_connected_peers_event(
+    //     &mut self,
+    //     event: ConnectedPeersEvent<SpecialConnectedPeersInstance>,
+    // ) {
+    //     trace!(?event, "Special connected peers event.");
+    //
+    //     let peers = self.get_peers_to_dial().await;
+    //
+    //     if let Some(special_connected_peers) =
+    //         self.swarm.behaviour_mut().special_connected_peers.as_mut()
+    //     {
+    //         special_connected_peers.add_peers_to_dial(&peers);
+    //     }
+    // }
 
     async fn handle_autonat_event(&mut self, event: AutonatEvent) {
         trace!(?event, "Autonat event received.");
@@ -1588,6 +1594,8 @@ where
         }
     }
 
+    // TODO: Restore or remove connected peer later
+    #[allow(dead_code)]
     async fn get_peers_to_dial(&mut self) -> Vec<PeerAddress> {
         let mut result_peers =
             Vec::with_capacity(KADEMLIA_PEERS_ADDRESSES_BATCH_SIZE + PEERS_ADDRESSES_BATCH_SIZE);

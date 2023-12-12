@@ -23,9 +23,9 @@ pub use utils::SerializableChainSpec;
 use sc_chain_spec::NoExtension;
 
 /// Devnet chain spec
-pub const DEVNET_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-devnet.json");
+pub const DEVNET_CHAIN_SPEC: &str = include_str!("../res/chain-spec-raw-devnet.json");
 /// Gemini 3g chain spec
-pub const GEMINI_3G_CHAIN_SPEC: &[u8] = include_bytes!("../res/chain-spec-raw-gemini-3g.json");
+pub const GEMINI_3G_CHAIN_SPEC: &str = include_str!("../res/chain-spec-raw-gemini-3g.json");
 
 /// Specialized `ChainSpec` for the consensus runtime.
 pub type ConsensusChainSpec<GenesisConfig> = SerializableChainSpec<GenesisConfig>;
