@@ -189,6 +189,12 @@ where
     ) -> sp_blockchain::Result<()> {
         let (consensus_block_hash, consensus_block_number, is_new_best) = consensus_block_info;
 
+        // Skip processing the blocks of the non-canonical chain, these blocks will be processed if
+        // the chain becomes canonical later
+        if !is_new_best {
+            return Ok(());
+        }
+
         tracing::debug!(
             "Processing consensus block #{consensus_block_number},{consensus_block_hash}"
         );
