@@ -5,7 +5,6 @@ use std::num::NonZeroUsize;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_networking::libp2p::kad::Mode;
-use subspace_networking::libp2p::metrics::Metrics;
 use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::utils::strip_peer_id;
 use subspace_networking::{
@@ -80,8 +79,8 @@ pub(crate) fn create_dsn_instance(
 ) -> Result<(Node, NodeRunner<()>, Option<Registry>), DsnConfigurationError> {
     trace!("Subspace networking starting.");
 
-    let mut metric_registry = Registry::default();
-    let metrics = enable_metrics.then(|| Metrics::new(&mut metric_registry));
+    let mut metrics_registry = Registry::default();
+    let dsn_metrics_registry = enable_metrics.then_some(&mut metrics_registry);
 
     let networking_parameters_registry = {
         let path = dsn_config.base_path;
@@ -110,6 +109,7 @@ pub(crate) fn create_dsn_instance(
         keypair,
         (),
         Some(PeerInfoProvider::new_node()),
+        dsn_metrics_registry,
     );
 
     let networking_config = subspace_networking::Config {
@@ -135,13 +135,18 @@ pub(crate) fn create_dsn_instance(
         bootstrap_addresses: dsn_config.bootstrap_nodes,
         external_addresses: dsn_config.external_addresses,
         kademlia_mode: KademliaMode::Static(Mode::Client),
-        external_metrics: metrics,
         disable_bootstrap_on_start: dsn_config.disable_bootstrap_on_start,
 
         ..default_networking_config
     };
 
     subspace_networking::construct(networking_config)
-        .map(|(node, node_runner)| (node, node_runner, enable_metrics.then_some(metric_registry)))
+        .map(|(node, node_runner)| {
+            (
+                node,
+                node_runner,
+                enable_metrics.then_some(metrics_registry),
+            )
+        })
         .map_err(Into::into)
 }

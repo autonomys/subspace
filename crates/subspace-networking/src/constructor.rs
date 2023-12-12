@@ -35,6 +35,7 @@ use libp2p::multiaddr::Protocol;
 use libp2p::yamux::Config as YamuxConfig;
 use libp2p::{identity, Multiaddr, PeerId, StreamProtocol, SwarmBuilder, TransportError};
 use parking_lot::Mutex;
+use prometheus_client::registry::Registry;
 use std::borrow::Cow;
 use std::iter::Empty;
 use std::num::NonZeroUsize;
@@ -294,6 +295,7 @@ impl Default for Config<()> {
             keypair,
             (),
             Some(PeerInfoProvider::new_client()),
+            None,
         )
     }
 }
@@ -308,7 +310,17 @@ where
         keypair: identity::Keypair,
         local_records_provider: LocalRecordProvider,
         peer_info_provider: Option<PeerInfoProvider>,
+        metrics_registry: Option<&mut Registry>,
     ) -> Self {
+        let (external_metrics, metrics) = metrics_registry
+            .map(|registry| {
+                (
+                    Some(Metrics::new(registry)),
+                    Some(SubspaceMetrics::new(registry)),
+                )
+            })
+            .unwrap_or((None, None));
+
         let mut kademlia = KademliaConfig::default();
         kademlia
             .set_query_timeout(KADEMLIA_QUERY_TIMEOUT)
@@ -381,8 +393,8 @@ where
             max_pending_outgoing_connections: SWARM_MAX_PENDING_OUTGOING_CONNECTIONS,
             temporary_bans_cache_size: TEMPORARY_BANS_CACHE_SIZE,
             temporary_ban_backoff,
-            external_metrics: None,
-            metrics: None,
+            external_metrics,
+            metrics,
             protocol_version,
             peer_info_provider,
             // Don't need to keep additional connections by default

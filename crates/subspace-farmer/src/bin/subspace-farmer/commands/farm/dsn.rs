@@ -9,7 +9,6 @@ use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
 use subspace_farmer::{NodeClient, NodeRpcClient, KNOWN_PEERS_CACHE_SIZE};
 use subspace_networking::libp2p::identity::Keypair;
 use subspace_networking::libp2p::kad::RecordKey;
-use subspace_networking::libp2p::metrics::Metrics;
 use subspace_networking::libp2p::multiaddr::Protocol;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::utils::strip_peer_id;
@@ -64,13 +63,14 @@ pub(super) fn configure_dsn(
 
     // Metrics
     let mut metrics_registry = Registry::default();
-    let metrics = initialize_metrics.then(|| Metrics::new(&mut metrics_registry));
+    let dsn_metric_registry = initialize_metrics.then_some(&mut metrics_registry);
 
     let default_config = Config::new(
         protocol_prefix,
         keypair,
         piece_cache.clone(),
         Some(PeerInfoProvider::new_farmer()),
+        dsn_metric_registry,
     );
     let config = Config {
         reserved_peers,
@@ -202,7 +202,6 @@ pub(super) fn configure_dsn(
         bootstrap_addresses: bootstrap_nodes,
         kademlia_mode: KademliaMode::Dynamic,
         external_addresses,
-        external_metrics: metrics,
         disable_bootstrap_on_start,
         ..default_config
     };

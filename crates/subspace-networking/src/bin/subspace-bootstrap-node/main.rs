@@ -6,7 +6,6 @@ use clap::Parser;
 use futures::{select, FutureExt};
 use libp2p::identity::ed25519::Keypair;
 use libp2p::kad::Mode;
-use libp2p::metrics::Metrics;
 use libp2p::{identity, Multiaddr, PeerId};
 use prometheus_client::registry::Registry;
 use serde::{Deserialize, Serialize};
@@ -19,7 +18,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::libp2p::multiaddr::Protocol;
-use subspace_networking::utils::{strip_peer_id, SubspaceMetrics};
+use subspace_networking::utils::strip_peer_id;
 use subspace_networking::{
     peer_id, Config, KademliaMode, KnownPeersManager, KnownPeersManagerConfig,
 };
@@ -153,21 +152,10 @@ async fn main() -> Result<(), Box<dyn Error>> {
             let keypair = identity::Keypair::from(decoded_keypair);
 
             // Metrics
-            let mut metric_registry = Registry::default();
             let metrics_endpoints_are_specified = !metrics_endpoints.is_empty();
-            let external_metrics =
-                metrics_endpoints_are_specified.then(|| Metrics::new(&mut metric_registry));
-            let metrics =
-                metrics_endpoints_are_specified.then(|| SubspaceMetrics::new(&mut metric_registry));
-
-            let prometheus_task = metrics_endpoints_are_specified
-                .then(|| {
-                    start_prometheus_metrics_server(
-                        metrics_endpoints,
-                        RegistryAdapter::Libp2p(metric_registry),
-                    )
-                })
-                .transpose()?;
+            let mut metrics_registry = Registry::default();
+            let dsn_metrics_registry =
+                metrics_endpoints_are_specified.then_some(&mut metrics_registry);
 
             let known_peers_registry_config = KnownPeersManagerConfig {
                 enable_known_peers_source: false,
@@ -201,11 +189,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 bootstrap_addresses: bootstrap_nodes,
                 kademlia_mode: KademliaMode::Static(Mode::Server),
                 external_addresses,
-                external_metrics,
-                metrics,
                 networking_parameters_registry: known_peers_registry.boxed(),
 
-                ..Config::new(protocol_version.to_string(), keypair, (), None)
+                ..Config::new(
+                    protocol_version.to_string(),
+                    keypair,
+                    (),
+                    None,
+                    dsn_metrics_registry,
+                )
             };
             let (node, mut node_runner) =
                 subspace_networking::construct(config).expect("Networking stack creation failed.");
@@ -223,6 +215,15 @@ async fn main() -> Result<(), Box<dyn Error>> {
             .detach();
 
             info!("Subspace Bootstrap Node started");
+
+            let prometheus_task = metrics_endpoints_are_specified
+                .then(|| {
+                    start_prometheus_metrics_server(
+                        metrics_endpoints,
+                        RegistryAdapter::Libp2p(metrics_registry),
+                    )
+                })
+                .transpose()?;
             if let Some(prometheus_task) = prometheus_task {
                 select! {
                    _ = node_runner.run().fuse() => {},
