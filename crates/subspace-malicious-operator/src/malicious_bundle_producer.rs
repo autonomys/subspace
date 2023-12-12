@@ -88,7 +88,7 @@ pub struct MaliciousBundleProducer<Client, CClient, TransactionPool> {
     consensus_client: Arc<CClient>,
     consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory<CBlock>,
     bundle_producer: DomainBundleProducer<DomainBlock, CBlock, Client, CClient, TransactionPool>,
-    malicious_bundle_makder: MaliciousBundleTamper<DomainBlock, CBlock, Client>,
+    malicious_bundle_tamper: MaliciousBundleTamper<DomainBlock, CBlock, Client>,
     malicious_operator_status: MaliciousOperatorStatus,
 }
 
@@ -139,7 +139,7 @@ where
             false,
         );
 
-        let malicious_bundle_makder =
+        let malicious_bundle_tamper =
             MaliciousBundleTamper::new(domain_client, operator_keystore.clone());
 
         let sudo_acccount = consensus_client
@@ -153,7 +153,7 @@ where
             consensus_keystore,
             operator_keystore,
             bundle_producer,
-            malicious_bundle_makder,
+            malicious_bundle_tamper,
             malicious_operator_status: MaliciousOperatorStatus::NoStatus,
             sudo_acccount,
             consensus_offchain_tx_pool_factory,
@@ -210,7 +210,7 @@ where
 
                 if let Some(mut opaque_bundle) = maybe_opaque_bundle {
                     if let Err(err) = self
-                        .malicious_bundle_makder
+                        .malicious_bundle_tamper
                         .maybe_tamper_bundle(&mut opaque_bundle, signing_key)
                     {
                         tracing::error!(?err, "Got error when try to tamper bundle");

@@ -263,7 +263,11 @@ fn main() -> Result<(), Error> {
         })?;
 
         // Run a domain node.
-        if !cli.domain_args.is_empty() {
+        if cli.domain_args.is_empty() {
+            return Err(Error::Other(
+                "The domain args must be specified for the malicious operator".to_string(),
+            ));
+        } else {
             let span = sc_tracing::tracing::info_span!(
                 sc_tracing::logging::PREFIX_LOG_SPAN,
                 name = "Domain"
