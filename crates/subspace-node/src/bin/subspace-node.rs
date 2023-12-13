@@ -220,6 +220,7 @@ fn main() -> Result<(), Error> {
                     "subspace_gemini_3d",
                     "subspace_gemini_3e",
                     "subspace_gemini_3f",
+                    "subspace_gemini_3g",
                 ] {
                     let _ = std::fs::remove_dir_all(
                         base_dir.join("subspace-node").join("chains").join(chain),
