@@ -28,26 +28,11 @@ pub struct Notification;
 /// Defines a subscription to a peer-info notification.
 pub type NotificationHandler = Arc<dyn Fn(&Notification) + Send + Sync + 'static>;
 
-//TODO: remove on the next networking breaking change
-/// Backward compatibility placeholder for the obsolete CuckooFilterDTO -
-/// "Cuckoo filter data transfer object".
-#[derive(Clone, Encode, Decode, Default, Debug)]
-pub struct PlaceHolder {
-    /// A placeholder for: "Exported cuckoo filter values" field of the CuckooFilterDTO.
-    pub field1: Vec<u8>,
-    /// Cuckoo filter items.
-    /// A placeholder for: "Cuckoo filter items." field of the CuckooFilterDTO.
-    pub field2: u64,
-}
-
 #[derive(Clone, Encode, Decode, Default, Debug)]
 /// Peer info data
 pub enum PeerInfo {
     /// DSN farmer.
-    Farmer {
-        /// Backward compatibility placeholder.
-        placeholder: PlaceHolder,
-    },
+    Farmer,
     /// DSN node.
     Node,
     /// DSN bootstrap node.
@@ -125,9 +110,7 @@ impl PeerInfoProvider {
             PeerInfoProvider::Node => PeerInfo::Node,
             PeerInfoProvider::BootstrapNode => PeerInfo::BootstrapNode,
             PeerInfoProvider::Client => PeerInfo::Client,
-            PeerInfoProvider::Farmer => PeerInfo::Farmer {
-                placeholder: Default::default(),
-            },
+            PeerInfoProvider::Farmer => PeerInfo::Farmer,
         }
     }
 }
