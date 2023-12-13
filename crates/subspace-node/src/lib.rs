@@ -16,7 +16,7 @@
 
 //! Subspace Node library.
 
-mod chain_spec;
+pub mod chain_spec;
 mod chain_spec_utils;
 pub mod domain;
 

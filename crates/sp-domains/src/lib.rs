@@ -49,6 +49,7 @@ use sp_runtime::traits::{
 use sp_runtime::{Digest, DigestItem, OpaqueExtrinsic, Percent};
 use sp_runtime_interface::pass_by;
 use sp_runtime_interface::pass_by::PassBy;
+use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
 use sp_std::fmt::{Display, Formatter};
 use sp_std::vec::Vec;
@@ -1007,6 +1008,15 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the execution receipt
         fn execution_receipt(receipt_hash: HeaderHashFor<DomainHeader>) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>>;
+
+        /// Returns the current epoch and the next epoch operators of the given domain
+        fn domain_operators(domain_id: DomainId) -> Option<(BTreeMap<OperatorId, Balance>, Vec<OperatorId>)>;
+
+        /// Get operator id by signing key
+        fn operator_id_by_signing_key(signing_key: OperatorPublicKey) -> Option<OperatorId>;
+
+        /// Get the consensus chain sudo account id, currently only used in the intentional malicious operator
+        fn sudo_account_id() -> subspace_runtime_primitives::AccountId;
     }
 
     pub trait BundleProducerElectionApi<Balance: Encode + Decode> {

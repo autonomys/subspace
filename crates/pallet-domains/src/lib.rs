@@ -65,6 +65,7 @@ use sp_runtime::{RuntimeAppPublic, SaturatedConversion, Saturating};
 use sp_std::boxed::Box;
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::vec::Vec;
+pub use staking::OperatorConfig;
 use subspace_core_primitives::U256;
 use subspace_runtime_primitives::Balance;
 
@@ -358,10 +359,12 @@ mod pallet {
 
     /// Indexes operator signing key against OperatorId.
     #[pallet::storage]
+    #[pallet::getter(fn operator_signing_key)]
     pub(super) type OperatorSigningKey<T: Config> =
         StorageMap<_, Identity, OperatorPublicKey, OperatorId, OptionQuery>;
 
     #[pallet::storage]
+    #[pallet::getter(fn domain_staking_summary)]
     pub(super) type DomainStakingSummary<T: Config> =
         StorageMap<_, Identity, DomainId, StakingSummary<OperatorId, BalanceOf<T>>, OptionQuery>;
 
@@ -1388,7 +1391,9 @@ mod pallet {
                             _ => {
                                 log::warn!(
                                     target: "runtime::domains",
-                                    "Bad bundle {:?}, error: {e:?}", opaque_bundle.domain_id(),
+                                    "Bad bundle {:?}, operator {}, error: {e:?}",
+                                    opaque_bundle.domain_id(),
+                                    opaque_bundle.operator_id(),
                                 );
                             }
                         }

@@ -7,11 +7,11 @@ use subspace_core_primitives::Randomness;
 
 /// Data required to produce bundles on executor node.
 #[derive(PartialEq, Clone, Debug)]
-pub(super) struct OperatorSlotInfo {
+pub struct OperatorSlotInfo {
     /// Slot
-    pub(super) slot: Slot,
+    pub slot: Slot,
     /// Global randomness
-    pub(super) global_randomness: Randomness,
+    pub global_randomness: Randomness,
 }
 
 #[derive(Debug, Clone)]

@@ -71,6 +71,7 @@ use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
 };
 use sp_runtime::{create_runtime_str, generic, AccountId32, ApplyExtrinsicResult, Perbill};
+use sp_std::collections::btree_map::BTreeMap;
 use sp_std::iter::Peekable;
 use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
@@ -1249,6 +1250,21 @@ impl_runtime_apis! {
 
         fn execution_receipt(receipt_hash: DomainHash) -> Option<ExecutionReceiptFor<DomainHeader, Block, Balance>> {
             Domains::execution_receipt(receipt_hash)
+        }
+
+        fn domain_operators(domain_id: DomainId) -> Option<(BTreeMap<OperatorId, Balance>, Vec<OperatorId>)> {
+            Domains::domain_staking_summary(domain_id).map(|summary| {
+                let next_operators = summary.next_operators.into_iter().collect();
+                (summary.current_operators, next_operators)
+            })
+        }
+
+        fn operator_id_by_signing_key(signing_key: OperatorPublicKey) -> Option<OperatorId> {
+            Domains::operator_signing_key(signing_key)
+        }
+
+        fn sudo_account_id() -> AccountId {
+            SudoId::get()
         }
     }
 

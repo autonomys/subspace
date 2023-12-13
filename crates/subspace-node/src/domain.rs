@@ -16,11 +16,11 @@
 
 pub(crate) mod cli;
 pub(crate) mod domain_instance_starter;
-pub(crate) mod evm_chain_spec;
+pub mod evm_chain_spec;
 
 pub use self::cli::{DomainCli, Subcommand as DomainSubcommand};
-pub use self::domain_instance_starter::DomainInstanceStarter;
-use evm_domain_runtime::AccountId as AccountId20;
+pub use self::domain_instance_starter::{create_configuration, DomainInstanceStarter};
+pub use evm_domain_runtime::AccountId as AccountId20;
 use sc_executor::NativeExecutionDispatch;
 
 /// EVM domain executor instance.

@@ -15,7 +15,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use subspace_runtime_primitives::Balance;
 
-type OpaqueBundleFor<Block, CBlock> =
+pub type OpaqueBundleFor<Block, CBlock> =
     OpaqueBundle<NumberFor<CBlock>, <CBlock as BlockT>::Hash, <Block as BlockT>::Header, Balance>;
 
 /// Throttle the consensus block import notification based on the `consensus_block_import_throttling_buffer_size`
