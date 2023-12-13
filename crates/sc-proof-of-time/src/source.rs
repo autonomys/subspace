@@ -137,13 +137,15 @@ where
             thread::Builder::new()
                 .name("timekeeper".to_string())
                 .spawn(move || {
-                    if let Some(core) = timekeeper_cpu_cores.into_iter().next() {
-                        if !core_affinity::set_for_current(CoreId { id: core }) {
+                    for core in timekeeper_cpu_cores.iter() {
+                        if !core_affinity::set_for_current(CoreId { id: *core }) {
                             warn!(
                                 %core,
                                 "Failed to set core affinity, timekeeper will run on random CPU \
                                 core",
                             );
+                        } else {
+                            break;
                         }
                     }
 
