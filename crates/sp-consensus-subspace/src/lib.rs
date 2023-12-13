@@ -694,10 +694,6 @@ impl PotParameters {
 sp_api::decl_runtime_apis! {
     /// API necessary for block authorship with Subspace.
     pub trait SubspaceApi<RewardAddress: Encode + Decode> {
-        /// The slot duration in milliseconds for Subspace.
-        #[deprecated(note = "Use chain constants instead")]
-        fn slot_duration() -> SlotDuration;
-
         /// Proof of time parameters
         fn pot_parameters() -> PotParameters;
 

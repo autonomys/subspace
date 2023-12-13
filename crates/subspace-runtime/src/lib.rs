@@ -876,10 +876,6 @@ impl_runtime_apis! {
     }
 
     impl sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey> for Runtime {
-        fn slot_duration() -> SlotDuration {
-            SlotDuration::from_millis(SLOT_DURATION)
-        }
-
         fn pot_parameters() -> PotParameters {
             Subspace::pot_parameters()
         }
