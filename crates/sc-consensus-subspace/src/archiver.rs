@@ -98,9 +98,12 @@ where
     /// Create new instance
     pub fn new(aux_store: Arc<AS>) -> sp_blockchain::Result<Self> {
         let mut cache = Vec::with_capacity(Self::INITIAL_CACHE_CAPACITY);
-        let mut next_key_index = 0;
 
         debug!("Started loading segment headers into cache");
+        // Segment headers are stored in batches (which is more efficient to store and retrieve), this is why code deals
+        // with key indices here rather that segment indices. Essentially this iterates over keys from 0 until missing
+        // entry is hit, which becomes the next key index where additional segment headers will be stored.
+        let mut next_key_index = 0;
         while let Some(segment_headers) =
             aux_store
                 .get_aux(&Self::key(next_key_index))?
@@ -129,13 +132,17 @@ where
         Some(SegmentIndex::from(segment_index))
     }
 
-    /// Add segment headers
+    /// Add segment headers.
+    ///
+    /// Multiple can be inserted for efficiency purposes.
     pub fn add_segment_headers(
         &self,
         segment_headers: &[SegmentHeader],
     ) -> sp_blockchain::Result<()> {
         let mut maybe_last_segment_index = self.max_segment_index();
         let mut segment_headers_to_store = Vec::with_capacity(segment_headers.len());
+        // Check all input segment headers to see which ones are not stored yet and verifying that segment indices are
+        // monotonically increasing
         for segment_header in segment_headers {
             let segment_index = segment_header.segment_index();
             match maybe_last_segment_index {
@@ -174,6 +181,7 @@ where
             return Ok(());
         }
 
+        // Insert all new segment headers into vacant key index for efficiency purposes
         // TODO: Do compaction when we have too many keys: combine multiple segment headers into a
         //  single entry for faster retrievals and more compact storage
         {
@@ -290,7 +298,7 @@ where
     Client::Api: ObjectsApi<Block>,
 {
     let genesis_hash = client.info().genesis_hash;
-    let Some(block) = client.block(genesis_hash)? else {
+    let Some(signed_block) = client.block(genesis_hash)? else {
         return Ok(None);
     };
 
@@ -299,14 +307,14 @@ where
         .validated_object_call_hashes(genesis_hash)
         .and_then(|calls| {
             client.runtime_api().extract_block_object_mapping(
-                *block.block.header().parent_hash(),
-                block.block.clone(),
+                *signed_block.block.header().parent_hash(),
+                signed_block.block.clone(),
                 calls,
             )
         })
         .unwrap_or_default();
 
-    let encoded_block = encode_block(block);
+    let encoded_block = encode_block(signed_block);
 
     let new_archived_segment = Archiver::new(kzg)?
         .add_block(encoded_block, block_object_mappings, false)
@@ -328,12 +336,12 @@ where
 }
 
 /// Encode block for archiving purposes
-pub fn encode_block<Block>(mut block: SignedBlock<Block>) -> Vec<u8>
+pub fn encode_block<Block>(mut signed_block: SignedBlock<Block>) -> Vec<u8>
 where
     Block: BlockT,
 {
-    if block.block.header().number().is_zero() {
-        let mut encoded_block = block.encode();
+    if signed_block.block.header().number().is_zero() {
+        let mut encoded_block = signed_block.encode();
 
         let encoded_block_length = encoded_block.len();
 
@@ -345,7 +353,7 @@ where
         // in encoded form.
         encoded_block.resize(RecordedHistorySegment::SIZE, 0);
         let mut rng = ChaCha8Rng::from_seed(
-            block
+            signed_block
                 .block
                 .header()
                 .state_root()
@@ -358,7 +366,7 @@ where
         encoded_block
     } else {
         // Filter out non-canonical justifications
-        if let Some(justifications) = block.justifications.take() {
+        if let Some(justifications) = signed_block.justifications.take() {
             let mut filtered_justifications = justifications.into_iter().filter(|justification| {
                 // Only Subspace justifications are to be archived
                 let Some(subspace_justification) =
@@ -378,11 +386,11 @@ where
                     justifications.append(justification);
                 }
 
-                block.justifications = Some(justifications);
+                signed_block.justifications = Some(justifications);
             }
         }
 
-        block.encode()
+        signed_block.encode()
     }
 }
 
@@ -553,10 +561,10 @@ where
                         (block.block.hash(), *block.block.header().number())
                     });
 
-            for (block, block_object_mappings) in blocks_to_archive {
-                let block_number_to_archive = *block.block.header().number();
+            for (signed_block, block_object_mappings) in blocks_to_archive {
+                let block_number_to_archive = *signed_block.block.header().number();
 
-                let encoded_block = encode_block(block);
+                let encoded_block = encode_block(signed_block);
 
                 debug!(
                     "Encoded block {} has size of {:.2} kiB",
