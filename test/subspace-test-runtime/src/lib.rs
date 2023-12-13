@@ -1151,7 +1151,7 @@ impl_runtime_apis! {
         }
 
         fn chain_constants() -> ChainConstants {
-            ChainConstants::V1 {
+            ChainConstants::V0 {
                 confirmation_depth_k: ConfirmationDepthK::get(),
                 block_authoring_delay: Slot::from(BlockAuthoringDelay::get()),
                 era_duration: EraDuration::get(),
