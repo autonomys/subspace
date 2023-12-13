@@ -20,9 +20,7 @@
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_runtime::generic::{Era, UncheckedExtrinsic};
-use sp_runtime::traits::{
-    Block as BlockT, Convert, IdentifyAccount, LookupError, NumberFor, Verify,
-};
+use sp_runtime::traits::{Block as BlockT, Convert, IdentifyAccount, NumberFor, Verify};
 use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_runtime::{Digest, MultiAddress, MultiSignature};
 use sp_std::vec::Vec;
@@ -136,33 +134,6 @@ pub mod opaque {
     pub type AccountId = Vec<u8>;
 }
 
-#[derive(Debug, PartialEq, Eq, Encode, Decode, TypeInfo)]
-pub enum CheckTxValidityError {
-    /// Can not find the sender from address.
-    Lookup,
-    /// Unable to extract signer from tx
-    UnableToExtractSigner { error: TransactionValidityError },
-    /// Transaction is invalid.
-    InvalidTransaction {
-        /// Concrete transaction validity error type.
-        error: TransactionValidityError,
-        /// Storage keys of state accessed in the validation.
-        storage_keys: Vec<Vec<u8>>,
-    },
-}
-
-impl From<LookupError> for CheckTxValidityError {
-    fn from(_lookup_error: LookupError) -> Self {
-        Self::Lookup
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Encode, Decode, TypeInfo)]
-pub enum VerifyTxValidityError {
-    /// Failed to decode the opaque account id into the runtime account type.
-    FailedToDecodeAccountId,
-}
-
 sp_api::decl_runtime_apis! {
     /// Base API that every domain runtime must implement.
     pub trait DomainCoreApi {
@@ -195,19 +166,12 @@ sp_api::decl_runtime_apis! {
         /// Returns true if the extrinsic is an inherent extrinsic.
         fn is_inherent_extrinsic(extrinsic: &<Block as BlockT>::Extrinsic) -> bool;
 
-        /// Checks the validity of extrinsic in a bundle.
-        fn check_transaction_validity(
+        /// Checks the validity of extrinsic + do pre_dispatch as well.
+        fn check_transaction_and_do_pre_dispatch(
             uxt: &<Block as BlockT>::Extrinsic,
             block_number: NumberFor<Block>,
             block_hash: <Block as BlockT>::Hash
-        ) -> Result<(), CheckTxValidityError>;
-
-        /// Returns the storage keys of states accessed in the API `check_transaction_validity`.
-        fn storage_keys_for_verifying_transaction_validity(
-            account_id: opaque::AccountId,
-            block_number: NumberFor<Block>,
-            tx_era: Option<Era>,
-        ) -> Result<Vec<Vec<u8>>, VerifyTxValidityError>;
+        ) -> Result<(), TransactionValidityError>;
 
         /// Returns extrinsic Era if present
         fn extrinsic_era(

@@ -810,9 +810,9 @@ impl InvalidBundleType {
         match self {
             Self::UndecodableTx(_) => 1,
             Self::OutOfRangeTx(_) => 2,
-            Self::IllegalTx(_) => 3,
-            Self::InvalidXDM(_) => 4,
-            Self::InherentExtrinsic(_) => 5,
+            Self::InherentExtrinsic(_) => 3,
+            Self::IllegalTx(_) => 4,
+            Self::InvalidXDM(_) => 5,
         }
     }
 

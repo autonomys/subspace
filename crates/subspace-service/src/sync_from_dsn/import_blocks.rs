@@ -144,7 +144,7 @@ where
         for (block_number, block_bytes) in blocks {
             let block_number = block_number.into();
             if block_number == 0u32.into() {
-                let block = client
+                let signed_block = client
                     .block(
                         client
                             .hash(block_number)?
@@ -152,7 +152,7 @@ where
                     )?
                     .expect("Block before best block number must always be found; qed");
 
-                if encode_block(block) != block_bytes {
+                if encode_block(signed_block) != block_bytes {
                     return Err(sc_service::Error::Other(
                         "Wrong genesis block, block import failed".to_string(),
                     ));

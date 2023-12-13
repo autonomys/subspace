@@ -23,7 +23,7 @@ use crate::domain::evm_chain_spec::{self, SpecId};
 use hex_literal::hex;
 use parity_scale_codec::Encode;
 use sc_service::{ChainType, NoExtension};
-use sc_subspace_chain_specs::{ConsensusChainSpec, DEVNET_CHAIN_SPEC, GEMINI_3G_CHAIN_SPEC};
+use sc_subspace_chain_specs::{ConsensusChainSpec, DEVNET_CHAIN_SPEC};
 use sc_telemetry::TelemetryEndpoints;
 use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::crypto::{Ss58Codec, UncheckedFrom};
@@ -206,7 +206,7 @@ pub fn gemini_3g_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, 
 }
 
 pub fn gemini_3g_config() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String> {
-    ConsensusChainSpec::from_json_bytes(GEMINI_3G_CHAIN_SPEC.as_bytes())
+    unimplemented!("Please use release prefixed with gemini-3g")
 }
 
 pub fn devnet_config() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String> {

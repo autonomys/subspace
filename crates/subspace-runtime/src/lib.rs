@@ -877,10 +877,6 @@ impl_runtime_apis! {
     }
 
     impl sp_consensus_subspace::SubspaceApi<Block, FarmerPublicKey> for Runtime {
-        fn slot_duration() -> SlotDuration {
-            SlotDuration::from_millis(SLOT_DURATION)
-        }
-
         fn pot_parameters() -> PotParameters {
             Subspace::pot_parameters()
         }
@@ -960,7 +956,7 @@ impl_runtime_apis! {
         }
 
         fn chain_constants() -> ChainConstants {
-            ChainConstants::V1 {
+            ChainConstants::V0 {
                 confirmation_depth_k: ConfirmationDepthK::get(),
                 block_authoring_delay: Slot::from(BlockAuthoringDelay::get()),
                 era_duration: EraDuration::get(),

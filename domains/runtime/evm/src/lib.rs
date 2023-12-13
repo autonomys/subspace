@@ -13,12 +13,12 @@ use domain_runtime_primitives::opaque::Header;
 pub use domain_runtime_primitives::{opaque, Balance, BlockNumber, Hash, Nonce};
 use domain_runtime_primitives::{MultiAccountId, TryConvertBack, SLOT_DURATION};
 use fp_account::EthereumSignature;
-use fp_self_contained::SelfContainedCall;
+use fp_self_contained::{CheckedSignature, SelfContainedCall};
 use frame_support::dispatch::{DispatchClass, GetDispatchInfo};
 use frame_support::inherent::ProvideInherent;
 use frame_support::traits::{
     ConstU16, ConstU32, ConstU64, Currency, Everything, FindAuthor, Imbalance, OnFinalize,
-    OnUnbalanced, PalletInfoAccess,
+    OnUnbalanced,
 };
 use frame_support::weights::constants::{
     BlockExecutionWeight, ExtrinsicBaseWeight, ParityDbWeight, WEIGHT_REF_TIME_PER_MILLIS,
@@ -46,16 +46,17 @@ use sp_messenger::messages::{
 };
 use sp_runtime::generic::Era;
 use sp_runtime::traits::{
-    BlakeTwo256, Block as BlockT, Convert, DispatchInfoOf, Dispatchable, IdentifyAccount,
-    IdentityLookup, PostDispatchInfoOf, UniqueSaturatedInto, Verify,
+    BlakeTwo256, Block as BlockT, Checkable, Convert, DispatchInfoOf, Dispatchable,
+    IdentifyAccount, IdentityLookup, One, PostDispatchInfoOf, SignedExtension, UniqueSaturatedInto,
+    ValidateUnsigned, Verify,
 };
 use sp_runtime::transaction_validity::{
-    TransactionSource, TransactionValidity, TransactionValidityError,
+    InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
 };
 use sp_runtime::{
     create_runtime_str, generic, impl_opaque_keys, ApplyExtrinsicResult, ConsensusEngineId, Digest,
 };
-pub use sp_runtime::{MultiAddress, Perbill, Permill, SaturatedConversion};
+pub use sp_runtime::{MultiAddress, Perbill, Permill};
 use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
 #[cfg(feature = "std")]
@@ -707,30 +708,12 @@ pub fn extract_signer(
         .collect()
 }
 
-fn storage_keys_for_verifying_tx_validity_inner(
-    sender: AccountId,
-    block_number: BlockNumber,
-    maybe_tx_era: Option<Era>,
-) -> Vec<Vec<u8>> {
-    let mut storage_keys = sp_std::vec![
-        frame_system::BlockHash::<Runtime>::hashed_key_for(BlockNumber::from(0u32)),
-        frame_support::storage::storage_prefix(System::name().as_bytes(), b"Number").to_vec(),
-        frame_system::Account::<Runtime>::hashed_key_for(sender),
-        pallet_transaction_payment::NextFeeMultiplier::<Runtime>::hashed_key().to_vec()
-    ];
-
-    match maybe_tx_era {
-        None => storage_keys,
-        Some(era) => {
-            let birth_number = era
-                .birth(block_number.saturated_into::<u64>())
-                .saturated_into::<BlockNumber>();
-            storage_keys.push(frame_system::BlockHash::<Runtime>::hashed_key_for(
-                birth_number,
-            ));
-            storage_keys
-        }
-    }
+fn extrinsic_era(extrinsic: &<Block as BlockT>::Extrinsic) -> Option<Era> {
+    extrinsic
+        .0
+        .signature
+        .as_ref()
+        .map(|(_, _, extra)| extra.4 .0)
 }
 
 #[cfg(feature = "runtime-benchmarks")]
@@ -912,49 +895,54 @@ impl_runtime_apis! {
             }
         }
 
-        fn check_transaction_validity(
+        fn check_transaction_and_do_pre_dispatch(
             uxt: &<Block as BlockT>::Extrinsic,
             block_number: BlockNumber,
             block_hash: <Block as BlockT>::Hash
-        ) -> Result<(), domain_runtime_primitives::CheckTxValidityError> {
+        ) -> Result<(), TransactionValidityError> {
             let lookup = frame_system::ChainContext::<Runtime>::default();
-            let maybe_signer_info = extract_signer_inner(uxt, &lookup);
 
-            if let Some(signer_info) = maybe_signer_info {
-                let signer = signer_info.map_err(|tx_validity_error| {
-                    domain_runtime_primitives::CheckTxValidityError::UnableToExtractSigner {
-                        error: tx_validity_error
-                    }
-                })?;
+            // Initializing block related storage required for validation
+            System::initialize(
+                &(block_number + BlockNumber::one()),
+                &block_hash,
+                &Default::default(),
+            );
 
-                let tx_validity =
-                    Executive::validate_transaction(TransactionSource::External, uxt.clone(), block_hash);
+            let xt = uxt.clone().check(&lookup)?;
 
-                tx_validity.map(|_| ()).map_err(|tx_validity_error| {
-                    domain_runtime_primitives::CheckTxValidityError::InvalidTransaction {
-                        error: tx_validity_error,
-                        storage_keys: storage_keys_for_verifying_tx_validity_inner(signer, block_number, Self::extrinsic_era(uxt)),
-                    }
-                })
-            } else {
-                Ok(())
+            let dispatch_info = xt.get_dispatch_info();
+
+            if dispatch_info.class == DispatchClass::Mandatory {
+                return Err(InvalidTransaction::BadMandatory.into());
             }
-        }
 
-        fn storage_keys_for_verifying_transaction_validity(
-            who: opaque::AccountId,
-            block_number: BlockNumber,
-            maybe_tx_era: Option<Era>
-        ) -> Result<Vec<Vec<u8>>, domain_runtime_primitives::VerifyTxValidityError> {
-            let sender = AccountId::decode(&mut who.as_slice())
-                .map_err(|_| domain_runtime_primitives::VerifyTxValidityError::FailedToDecodeAccountId)?;
-            Ok(storage_keys_for_verifying_tx_validity_inner(sender, block_number, maybe_tx_era))
+            let encoded_len = uxt.encoded_size();
+
+            // We invoke `pre_dispatch` in addition to `validate_transaction`(even though the validation is almost same)
+            // as that will add the side effect of SignedExtension in the storage buffer
+            // which would help to maintain context across multiple transaction validity check against same
+            // runtime instance.
+            match xt.signed {
+                    CheckedSignature::Signed(account_id, extra) => {
+                        extra.pre_dispatch(&account_id, &xt.function, &dispatch_info, encoded_len).map(|_| ())
+                    },
+                    CheckedSignature::Unsigned => {
+                        Runtime::pre_dispatch(&xt.function).map(|_| ())?;
+                        SignedExtra::pre_dispatch_unsigned(&xt.function, &dispatch_info, encoded_len).map(|_| ())
+                    },
+                    CheckedSignature::SelfContained(self_contained_signing_info) => {
+                        xt.function.pre_dispatch_self_contained(&self_contained_signing_info, &dispatch_info, encoded_len).ok_or(TransactionValidityError::Invalid(
+                            InvalidTransaction::Call,
+                        )).map(|_| ())
+                    }
+                }
         }
 
         fn extrinsic_era(
           extrinsic: &<Block as BlockT>::Extrinsic
         ) -> Option<Era> {
-            extrinsic.0.signature.as_ref().map(|(_, _, extra)| extra.4.0)
+            extrinsic_era(extrinsic)
         }
 
         fn extrinsic_weight(ext: &<Block as BlockT>::Extrinsic) -> Weight {

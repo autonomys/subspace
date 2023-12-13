@@ -114,6 +114,7 @@ where
     Block: BlockT,
 {
     engine: Arc<Mutex<GossipEngine<Block>>>,
+    network: Arc<dyn NetworkPeers + Send + Sync>,
     topic: Block::Hash,
     state: Arc<PotState>,
     pot_verifier: PotVerifier,
@@ -149,10 +150,11 @@ where
             sync_oracle,
             network.clone(),
         ));
-        let engine = GossipEngine::new(network, sync, GOSSIP_PROTOCOL, validator, None);
+        let engine = GossipEngine::new(network.clone(), sync, GOSSIP_PROTOCOL, validator, None);
 
         Self {
             engine: Arc::new(Mutex::new(engine)),
+            network: Arc::new(network),
             topic,
             state,
             pot_verifier,
@@ -384,6 +386,7 @@ where
         // Avoid blocking gossip for too long
         rayon::spawn({
             let engine = Arc::clone(&self.engine);
+            let network = Arc::clone(&self.network);
             let pot_verifier = self.pot_verifier.clone();
             let from_gossip_sender = self.from_gossip_sender.clone();
             let topic = self.topic;
@@ -393,6 +396,7 @@ where
                     next_slot_input,
                     potentially_matching_proofs,
                     engine,
+                    network.as_ref(),
                     &pot_verifier,
                     from_gossip_sender,
                     topic,
@@ -403,8 +407,9 @@ where
 
     fn handle_potentially_matching_proofs(
         next_slot_input: PotNextSlotInput,
-        potentially_matching_proofs: Vec<(GossipProof, Vec<PeerId>)>,
+        mut potentially_matching_proofs: Vec<(GossipProof, Vec<PeerId>)>,
         engine: Arc<Mutex<GossipEngine<Block>>>,
+        network: &dyn NetworkPeers,
         pot_verifier: &PotVerifier,
         mut from_gossip_sender: mpsc::Sender<(PeerId, GossipProof)>,
         topic: Block::Hash,
@@ -433,23 +438,43 @@ where
 
             correct_proof
         } else {
-            match subspace_proof_of_time::prove(
-                next_slot_input.seed,
-                next_slot_input.slot_iterations,
+            // This sorts from lowest reputation to highest
+            potentially_matching_proofs.sort_by_cached_key(|(_proof, peer_ids)| {
+                peer_ids
+                    .iter()
+                    .map(|peer_id| network.peer_reputation(peer_id))
+                    .max()
+            });
+            // Last proof includes peer with the highest reputation
+            let (proof, _senders) = potentially_matching_proofs
+                .last()
+                .expect("Guaranteed to be non-empty; qed");
+
+            if pot_verifier.verify_checkpoints(
+                proof.seed,
+                proof.slot_iterations,
+                &proof.checkpoints,
             ) {
-                Ok(checkpoints) => Some(GossipProof {
-                    slot: next_slot_input.slot,
-                    seed: next_slot_input.seed,
-                    slot_iterations: next_slot_input.slot_iterations,
-                    checkpoints,
-                }),
-                Err(error) => {
-                    error!(
-                        %error,
-                        slot = %next_slot_input.slot,
-                        "Failed to run proof of time, this is an implementation bug",
-                    );
-                    return;
+                Some(*proof)
+            } else {
+                match subspace_proof_of_time::prove(
+                    next_slot_input.seed,
+                    next_slot_input.slot_iterations,
+                ) {
+                    Ok(checkpoints) => Some(GossipProof {
+                        slot: next_slot_input.slot,
+                        seed: next_slot_input.seed,
+                        slot_iterations: next_slot_input.slot_iterations,
+                        checkpoints,
+                    }),
+                    Err(error) => {
+                        error!(
+                            %error,
+                            slot = %next_slot_input.slot,
+                            "Failed to run proof of time, this is an implementation bug",
+                        );
+                        return;
+                    }
                 }
             }
         };
