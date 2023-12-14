@@ -27,6 +27,10 @@ mod host_functions;
 mod runtime_interface;
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+pub mod test_ethereum_tx;
+
 pub mod verification;
 
 use crate::fraud_proof::FraudProof;
