@@ -16,9 +16,8 @@ use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::utils::strip_peer_id;
 use subspace_networking::{
     construct, Config, KademliaMode, KnownPeersManager, KnownPeersManagerConfig, Node, NodeRunner,
-    PeerInfo, PeerInfoProvider, PieceByIndexRequest, PieceByIndexRequestHandler,
-    PieceByIndexResponse, SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest,
-    SegmentHeaderResponse,
+    PieceByIndexRequest, PieceByIndexRequestHandler, PieceByIndexResponse,
+    SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
 };
 use subspace_rpc_primitives::MAX_SEGMENT_HEADERS_PER_REQUEST;
 use tracing::{debug, error, info, Instrument};
@@ -27,8 +26,6 @@ use tracing::{debug, error, info, Instrument};
 ///
 /// Must be the same as RPC limit since all requests go to the node anyway.
 const SEGMENT_HEADER_NUMBER_LIMIT: u64 = MAX_SEGMENT_HEADERS_PER_REQUEST as u64;
-/// Should be sufficient number of target connections for everyone, limits are higher
-const TARGET_CONNECTIONS: u32 = 15;
 
 #[allow(clippy::type_complexity, clippy::too_many_arguments)]
 pub(super) fn configure_dsn(
@@ -67,12 +64,7 @@ pub(super) fn configure_dsn(
     let mut metrics_registry = Registry::default();
     let metrics = initialize_metrics.then(|| Metrics::new(&mut metrics_registry));
 
-    let default_config = Config::new(
-        protocol_prefix,
-        keypair,
-        piece_cache.clone(),
-        Some(PeerInfoProvider::new_farmer()),
-    );
+    let default_config = Config::new(protocol_prefix, keypair, piece_cache.clone());
     let config = Config {
         reserved_peers,
         listen_on,
@@ -187,19 +179,6 @@ pub(super) fn configure_dsn(
         max_pending_outgoing_connections: pending_out_connections,
         max_established_incoming_connections: in_connections,
         max_pending_incoming_connections: pending_in_connections,
-        // Non-farmer connections
-        general_connected_peers_handler: Some(Arc::new(|peer_info| {
-            !PeerInfo::is_farmer(peer_info)
-        })),
-        // Proactively maintain permanent connections with farmers
-        special_connected_peers_handler: Some(Arc::new(PeerInfo::is_farmer)),
-        // Do not have any target for general peers
-        general_connected_peers_target: 0,
-        special_connected_peers_target: TARGET_CONNECTIONS,
-        // Allow up to quarter of incoming connections to be maintained
-        general_connected_peers_limit: in_connections / 4,
-        // Allow to maintain some extra farmer connections beyond direct interest too
-        special_connected_peers_limit: TARGET_CONNECTIONS + in_connections / 4,
         bootstrap_addresses: bootstrap_nodes,
         kademlia_mode: KademliaMode::Dynamic,
         external_addresses,

@@ -5,8 +5,6 @@ mod tests;
 use crate::protocols::autonat_wrapper::{
     Behaviour as AutonatWrapper, Config as AutonatWrapperConfig,
 };
-use crate::protocols::connected_peers::Config as ConnectedPeersConfig;
-use crate::protocols::peer_info::Event as PeerInfoEvent;
 use crate::protocols::request_response::request_response_factory::{
     Event as RequestResponseEvent, RequestHandler, RequestResponseFactoryBehaviour,
 };
@@ -14,7 +12,6 @@ use crate::protocols::reserved_peers::{
     Behaviour as ReservedPeersBehaviour, Config as ReservedPeersConfig, Event as ReservedPeersEvent,
 };
 use crate::protocols::subspace_connection_limits::Behaviour as ConnectionLimitsBehaviour;
-use crate::{PeerInfoConfig, PeerInfoProvider};
 use derive_more::From;
 use libp2p::allow_block_list::{Behaviour as AllowBlockListBehaviour, BlockedPeers};
 use libp2p::autonat::Event as AutonatEvent;
@@ -49,22 +46,6 @@ pub(crate) struct BehaviorConfig<RecordStore> {
     pub(crate) connection_limits: ConnectionLimits,
     /// The configuration for the [`ReservedPeersBehaviour`].
     pub(crate) reserved_peers: ReservedPeersConfig,
-    // TODO: Restore or remove connected peer later
-    #[allow(dead_code)]
-    /// The configuration for the [`PeerInfo`] protocol.
-    pub(crate) peer_info_config: PeerInfoConfig,
-    // TODO: Restore or remove connected peer later
-    #[allow(dead_code)]
-    /// Provides peer-info for local peer.
-    pub(crate) peer_info_provider: Option<PeerInfoProvider>,
-    /// The configuration for the [`ConnectedPeers`] protocol (general instance).
-    // TODO: Restore or remove connected peer later
-    #[allow(dead_code)]
-    pub(crate) general_connected_peers_config: Option<ConnectedPeersConfig>,
-    // TODO: Restore or remove connected peer later
-    #[allow(dead_code)]
-    /// The configuration for the [`ConnectedPeers`] protocol (special instance).
-    pub(crate) special_connected_peers_config: Option<ConnectedPeersConfig>,
     /// Autonat configuration.
     pub(crate) autonat: AutonatWrapperConfig,
 }
@@ -138,16 +119,6 @@ where
             .expect("RequestResponse protocols registration failed."),
             block_list: BlockListBehaviour::default(),
             reserved_peers: ReservedPeersBehaviour::new(config.reserved_peers),
-            // TODO: Restore or remove connected peer later
-            //peer_info: peer_info.into(),
-            // general_connected_peers: config
-            //     .general_connected_peers_config
-            //     .map(ConnectedPeersBehaviour::new)
-            //     .into(),
-            // special_connected_peers: config
-            //     .special_connected_peers_config
-            //     .map(ConnectedPeersBehaviour::new)
-            //     .into(),
             autonat: AutonatWrapper::new(config.autonat),
         }
     }
@@ -163,9 +134,5 @@ pub(crate) enum Event {
     /// Event stub for connection limits and block list behaviours. We won't receive such events.
     VoidEventStub(VoidEvent),
     ReservedPeers(ReservedPeersEvent),
-    PeerInfo(PeerInfoEvent),
-    // TODO: Restore or remove connected peer later
-    // GeneralConnectedPeers(ConnectedPeersEvent<GeneralConnectedPeersInstance>),
-    // SpecialConnectedPeers(ConnectedPeersEvent<SpecialConnectedPeersInstance>),
     Autonat(AutonatEvent),
 }

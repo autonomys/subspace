@@ -1,7 +1,6 @@
 //! Data structures shared between node and node runner, facilitating exchange and creation of
 //! queries, subscriptions, various events and shared information.
 
-use crate::protocols::peer_info::PeerInfo;
 use crate::protocols::request_response::request_response_factory::RequestFailure;
 use crate::utils::multihash::Multihash;
 use crate::utils::rate_limiter::{RateLimiter, RateLimiterPermit};
@@ -107,22 +106,10 @@ pub(crate) enum Command {
     },
 }
 
-/// [`PeerInfo`] update and related data container.
-#[derive(Debug)]
-pub struct NewPeerInfo {
-    /// Peer ID for this [`PeerInfo`] update.
-    pub peer_id: PeerId,
-    /// [`PeerInfo`] update.
-    pub peer_info: PeerInfo,
-    /// Currently connected peers.
-    pub connected_peers: Vec<PeerId>,
-}
-
 #[derive(Default, Debug)]
 pub(crate) struct Handlers {
     pub(crate) new_listener: Handler<Multiaddr>,
     pub(crate) num_established_peer_connections_change: Handler<usize>,
-    pub(crate) new_peer_info: Handler<NewPeerInfo>,
     pub(crate) disconnected_peer: Handler<PeerId>,
     pub(crate) connected_peer: Handler<PeerId>,
     pub(crate) peer_discovered: Handler<PeerDiscovered>,

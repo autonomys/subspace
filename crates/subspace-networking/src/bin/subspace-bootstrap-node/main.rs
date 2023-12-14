@@ -190,19 +190,13 @@ async fn main() -> Result<(), Box<dyn Error>> {
                 max_established_outgoing_connections: out_peers,
                 max_pending_incoming_connections: pending_in_peers,
                 max_pending_outgoing_connections: pending_out_peers,
-                // Maintain proactive connections with all peers
-                general_connected_peers_handler: Some(Arc::new(|_| true)),
-                // Maintain some number of persistent connections
-                general_connected_peers_target: in_peers / 8,
-                // Allow some more persistent connections from other peers
-                general_connected_peers_limit: in_peers / 4,
                 bootstrap_addresses: bootstrap_nodes,
                 kademlia_mode: KademliaMode::Static(Mode::Server),
                 external_addresses,
                 metrics,
                 networking_parameters_registry: known_peers_registry.boxed(),
 
-                ..Config::new(protocol_version.to_string(), keypair, (), None)
+                ..Config::new(protocol_version.to_string(), keypair, ())
             };
             let (node, mut node_runner) =
                 subspace_networking::construct(config).expect("Networking stack creation failed.");

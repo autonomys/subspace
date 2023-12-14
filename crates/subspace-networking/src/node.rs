@@ -1,6 +1,5 @@
 use crate::protocols::request_response::handlers::generic_request_handler::GenericRequest;
 use crate::protocols::request_response::request_response_factory;
-pub use crate::shared::NewPeerInfo;
 use crate::shared::{Command, CreatedSubscription, PeerDiscovered, Shared};
 use crate::utils::multihash::Multihash;
 use crate::utils::rate_limiter::RateLimiterPermit;
@@ -544,11 +543,6 @@ impl Node {
         }
 
         Ok(())
-    }
-
-    /// Callback is called when we receive new [`crate::protocols::peer_info::PeerInfo`]
-    pub fn on_peer_info(&self, callback: HandlerFn<NewPeerInfo>) -> HandlerId {
-        self.shared.handlers.new_peer_info.add(callback)
     }
 
     /// Callback is called when a peer is disconnected.

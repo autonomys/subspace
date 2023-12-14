@@ -1,18 +1,16 @@
 use crate::behavior::persistent_parameters::{
     append_p2p_suffix, remove_p2p_suffix, KnownPeersRegistry, PeerAddressRemovedEvent,
-    PEERS_ADDRESSES_BATCH_SIZE,
 };
 use crate::behavior::{Behavior, Event};
 use crate::constructor;
 use crate::constructor::temporary_bans::TemporaryBans;
-use crate::constructor::{ConnectedPeersHandler, LocalOnlyRecordStore};
-use crate::protocols::peer_info::{Event as PeerInfoEvent, PeerInfoSuccess};
+use crate::constructor::LocalOnlyRecordStore;
 use crate::protocols::request_response::request_response_factory::{
     Event as RequestResponseEvent, IfDisconnected,
 };
-use crate::shared::{Command, CreatedSubscription, NewPeerInfo, PeerDiscovered, Shared};
+use crate::shared::{Command, CreatedSubscription, PeerDiscovered, Shared};
 use crate::utils::rate_limiter::RateLimiterPermit;
-use crate::utils::{is_global_address_or_dns, strip_peer_id, PeerAddress};
+use crate::utils::{is_global_address_or_dns, strip_peer_id};
 use async_mutex::Mutex as AsyncMutex;
 use bytes::Bytes;
 use event_listener_primitives::HandlerId;
@@ -34,8 +32,6 @@ use libp2p::swarm::{DialError, SwarmEvent};
 use libp2p::{futures, Multiaddr, PeerId, Swarm, TransportError};
 use nohash_hasher::IntMap;
 use parking_lot::Mutex;
-use rand::rngs::StdRng;
-use rand::{Rng, SeedableRng};
 use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::fmt;
@@ -48,9 +44,6 @@ use std::sync::{Arc, Weak};
 use std::time::Duration;
 use tokio::time::Sleep;
 use tracing::{debug, error, trace, warn};
-
-// Defines a batch size for peer addresses from Kademlia buckets.
-const KADEMLIA_PEERS_ADDRESSES_BATCH_SIZE: usize = 20;
 
 /// How many peers should node be connected to before boosting turns on.
 ///
@@ -129,18 +122,6 @@ where
     peer_ip_addresses: HashMap<PeerId, HashSet<IpAddr>>,
     /// Defines protocol version for the network peers. Affects network partition.
     protocol_version: String,
-    // TODO: Restore or remove connected peer later
-    #[allow(dead_code)]
-    /// Defines whether we maintain a persistent connection for common peers.
-    general_connection_decision_handler: Option<ConnectedPeersHandler>,
-    // TODO: Restore or remove connected peer later
-    #[allow(dead_code)]
-    /// Defines whether we maintain a persistent connection for special peers.
-    special_connection_decision_handler: Option<ConnectedPeersHandler>,
-    // TODO: Restore or remove connected peer later
-    #[allow(dead_code)]
-    /// Randomness generator used for choosing Kademlia addresses.
-    rng: StdRng,
     /// Addresses to bootstrap Kademlia network
     bootstrap_addresses: Vec<Multiaddr>,
     /// Ensures a single bootstrap on run() invocation.
@@ -180,8 +161,6 @@ where
     pub(crate) temporary_bans: Arc<Mutex<TemporaryBans>>,
     pub(crate) metrics: Option<Metrics>,
     pub(crate) protocol_version: String,
-    pub(crate) general_connection_decision_handler: Option<ConnectedPeersHandler>,
-    pub(crate) special_connection_decision_handler: Option<ConnectedPeersHandler>,
     pub(crate) bootstrap_addresses: Vec<Multiaddr>,
     pub(crate) disable_bootstrap_on_start: bool,
 }
@@ -203,8 +182,6 @@ where
             temporary_bans,
             metrics,
             protocol_version,
-            general_connection_decision_handler,
-            special_connection_decision_handler,
             bootstrap_addresses,
             disable_bootstrap_on_start,
         }: NodeRunnerConfig<LocalRecordProvider>,
@@ -242,9 +219,6 @@ where
             metrics,
             peer_ip_addresses: HashMap::new(),
             protocol_version,
-            general_connection_decision_handler,
-            special_connection_decision_handler,
-            rng: StdRng::seed_from_u64(KADEMLIA_PEERS_ADDRESSES_BATCH_SIZE as u64), // any seed
             bootstrap_addresses,
             bootstrap_command_state: Arc::new(AsyncMutex::new(BootstrapCommandState::default())),
             removed_addresses_rx,
@@ -454,16 +428,6 @@ where
             SwarmEvent::Behaviour(Event::RequestResponse(event)) => {
                 self.handle_request_response_event(event).await;
             }
-            SwarmEvent::Behaviour(Event::PeerInfo(event)) => {
-                self.handle_peer_info_event(event).await;
-            }
-            // TODO: Restore or remove connected peer later
-            // SwarmEvent::Behaviour(Event::GeneralConnectedPeers(event)) => {
-            //     self.handle_general_connected_peers_event(event).await;
-            // }
-            // SwarmEvent::Behaviour(Event::SpecialConnectedPeers(event)) => {
-            //     self.handle_special_connected_peers_event(event).await;
-            // }
             SwarmEvent::Behaviour(Event::Autonat(event)) => {
                 self.handle_autonat_event(event).await;
             }
@@ -1168,78 +1132,6 @@ where
         trace!("Request response event: {:?}", event);
     }
 
-    async fn handle_peer_info_event(&mut self, event: PeerInfoEvent) {
-        trace!(?event, "Peer info event.");
-
-        if let Ok(PeerInfoSuccess::Received(peer_info)) = event.result {
-            if let Some(shared) = self.shared_weak.upgrade() {
-                let connected_peers = self.swarm.connected_peers().cloned().collect::<Vec<_>>();
-
-                shared.handlers.new_peer_info.call_simple(&NewPeerInfo {
-                    peer_id: event.peer_id,
-                    peer_info: peer_info.clone(),
-                    connected_peers,
-                });
-            }
-
-            // TODO: Restore or remove connected peer later
-            // if let Some(general_connected_peers) =
-            //     self.swarm.behaviour_mut().general_connected_peers.as_mut()
-            // {
-            //     let keep_alive = self
-            //         .general_connection_decision_handler
-            //         .as_ref()
-            //         .map(|handler| handler(&peer_info))
-            //         .unwrap_or(false);
-            //
-            //     general_connected_peers.update_keep_alive_status(event.peer_id, keep_alive);
-            // }
-            //
-            // if let Some(special_connected_peers) =
-            //     self.swarm.behaviour_mut().special_connected_peers.as_mut()
-            // {
-            //     let special_keep_alive = self
-            //         .special_connection_decision_handler
-            //         .as_ref()
-            //         .map(|handler| handler(&peer_info))
-            //         .unwrap_or(false);
-            //
-            //     special_connected_peers.update_keep_alive_status(event.peer_id, special_keep_alive);
-            // }
-        }
-    }
-
-    // TODO: Restore or remove connected peer later
-    // async fn handle_general_connected_peers_event(
-    //     &mut self,
-    //     event: ConnectedPeersEvent<GeneralConnectedPeersInstance>,
-    // ) {
-    //     trace!(?event, "General connected peers event.");
-    //
-    //     let peers = self.get_peers_to_dial().await;
-    //
-    //     if let Some(general_connected_peers) =
-    //         self.swarm.behaviour_mut().general_connected_peers.as_mut()
-    //     {
-    //         general_connected_peers.add_peers_to_dial(&peers);
-    //     }
-    // }
-    //
-    // async fn handle_special_connected_peers_event(
-    //     &mut self,
-    //     event: ConnectedPeersEvent<SpecialConnectedPeersInstance>,
-    // ) {
-    //     trace!(?event, "Special connected peers event.");
-    //
-    //     let peers = self.get_peers_to_dial().await;
-    //
-    //     if let Some(special_connected_peers) =
-    //         self.swarm.behaviour_mut().special_connected_peers.as_mut()
-    //     {
-    //         special_connected_peers.add_peers_to_dial(&peers);
-    //     }
-    // }
-
     async fn handle_autonat_event(&mut self, event: AutonatEvent) {
         trace!(?event, "Autonat event received.");
         let autonat = &self.swarm.behaviour().autonat;
@@ -1579,81 +1471,6 @@ where
                 }
             }
         }
-    }
-
-    // TODO: Restore or remove connected peer later
-    #[allow(dead_code)]
-    async fn get_peers_to_dial(&mut self) -> Vec<PeerAddress> {
-        let mut result_peers =
-            Vec::with_capacity(KADEMLIA_PEERS_ADDRESSES_BATCH_SIZE + PEERS_ADDRESSES_BATCH_SIZE);
-
-        // Get addresses from Kademlia buckets
-        let mut kademlia_addresses = Vec::new();
-        let mut kademlia_peers = HashSet::new();
-        for kbucket in self.swarm.behaviour_mut().kademlia.kbuckets() {
-            for entry in kbucket.iter() {
-                let peer_id = *entry.node.key.preimage();
-                let addresses = entry.node.value.clone().into_vec();
-
-                for address in addresses {
-                    kademlia_addresses.push((peer_id, address));
-                }
-            }
-        }
-
-        // Take random batch from kademlia addresses.
-        for _ in 0..KADEMLIA_PEERS_ADDRESSES_BATCH_SIZE {
-            if kademlia_addresses.is_empty() {
-                break;
-            }
-            let random_index = self.rng.gen_range(0..kademlia_addresses.len());
-
-            let (peer_id, peer_address) = kademlia_addresses.swap_remove(random_index);
-            result_peers.push((peer_id, peer_address));
-            kademlia_peers.insert(peer_id);
-        }
-
-        // Get peer batch from the known peers registry
-        let connected_peers = self.swarm.connected_peers().cloned().collect::<Vec<_>>();
-        let local_peer_id = *self.swarm.local_peer_id();
-        let allow_non_global_addresses_in_dht = self.allow_non_global_addresses_in_dht;
-
-        let addresses = self
-            .networking_parameters_registry
-            .next_known_addresses_batch()
-            .await
-            .into_iter()
-            .filter(|(peer_id, address)| {
-                if !allow_non_global_addresses_in_dht && !is_global_address_or_dns(address) {
-                    trace!(
-                        %local_peer_id,
-                        %peer_id,
-                        %address,
-                        "Ignoring non-global address read from parameters registry.",
-                    );
-                    false
-                } else {
-                    true
-                }
-            });
-
-        trace!(%local_peer_id, "Processing addresses batch: {:?}", addresses);
-
-        for (peer_id, addr) in addresses {
-            if connected_peers.contains(&peer_id) || kademlia_peers.contains(&peer_id) {
-                continue;
-            }
-
-            result_peers.push((peer_id, addr))
-        }
-
-        let bootstrap_nodes = strip_peer_id(self.bootstrap_addresses.clone())
-            .into_iter()
-            .map(|(peer_id, _)| peer_id)
-            .collect::<HashSet<_>>();
-
-        result_peers.retain(|(peer_id, _)| !bootstrap_nodes.contains(peer_id));
-        result_peers
     }
 
     fn log_kademlia_stats(&mut self) {

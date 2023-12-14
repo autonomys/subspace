@@ -11,7 +11,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use subspace_core_primitives::PieceIndex;
 use subspace_networking::utils::piece_provider::{NoPieceValidator, PieceProvider, RetryPolicy};
-use subspace_networking::{Config, Node, PeerInfoProvider, PieceByIndexRequestHandler};
+use subspace_networking::{Config, Node, PieceByIndexRequestHandler};
 use tokio::sync::Semaphore;
 use tracing::{error, info, warn, Level};
 use tracing_subscriber::fmt::Subscriber;
@@ -281,7 +281,7 @@ pub async fn configure_dsn(
 ) -> Node {
     let keypair = Keypair::generate_ed25519();
 
-    let default_config = Config::new(protocol_prefix, keypair, (), Some(PeerInfoProvider::Client));
+    let default_config = Config::new(protocol_prefix, keypair, ());
 
     let config = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
