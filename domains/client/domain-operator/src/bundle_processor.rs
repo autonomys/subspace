@@ -232,7 +232,7 @@ where
             // Note: this may cause the best domain fork switch to a shorter fork or in some case the best domain
             // block become the ancestor block of the current best block.
             let domain_tip = domain_parent.0;
-            if is_new_best && self.client.info().best_hash != domain_tip {
+            if self.client.info().best_hash != domain_tip {
                 let header = self.client.header(domain_tip)?.ok_or_else(|| {
                     sp_blockchain::Error::Backend(format!("Header for #{:?} not found", domain_tip))
                 })?;
@@ -248,6 +248,11 @@ where
                     .await?;
                 assert_eq!(domain_tip, self.client.info().best_hash);
             }
+
+            // Check the ER submitted to consensus chain and submit fraud proof if there is bad ER
+            // NOTE: this have to be done after the recorrect of the best domain fork happen above
+            self.domain_receipts_checker
+                .maybe_submit_fraud_proof(consensus_block_hash)?;
         }
 
         Ok(())
@@ -294,19 +299,6 @@ where
                 None,
                 head_receipt_number,
             )?;
-
-            // Check the consensus runtime version before submitting fraud proof.
-            // Even the consensus block doesn't contains bundle it may still contains
-            // fraud proof, thus we need to call `check_state_transition` to remove the
-            // bad ER info that targetted by the potential fraud proof
-            self.domain_receipts_checker
-                .check_state_transition(consensus_block_hash)?;
-
-            // Try submit fraud proof for the previous detected bad ER
-            self.domain_receipts_checker
-                .submit_fraud_proof(consensus_block_hash)
-                .await?;
-
             return Ok(None);
         };
 
@@ -359,15 +351,6 @@ where
             Some(domain_block_result),
             head_receipt_number,
         )?;
-
-        // Check the consensus runtime version before checking bad ER and submit fraud proof.
-        // TODO: Remove as ReceiptsChecker has been superseded by ReceiptValidator in block-preprocessor.
-        self.domain_receipts_checker
-            .check_state_transition(consensus_block_hash)?;
-
-        self.domain_receipts_checker
-            .submit_fraud_proof(consensus_block_hash)
-            .await?;
 
         let post_block_execution_took = start
             .elapsed()

@@ -23,7 +23,7 @@ use sp_domains::{BundleValidity, DomainId, DomainsApi, ExecutionReceipt, HeaderH
 use sp_domains_fraud_proof::fraud_proof::{FraudProof, ValidBundleProof};
 use sp_domains_fraud_proof::FraudProofApi;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, One, Zero};
-use sp_runtime::Digest;
+use sp_runtime::{Digest, Saturating};
 use std::cmp::Ordering;
 use std::collections::{HashSet, VecDeque};
 use std::sync::Arc;
@@ -691,6 +691,15 @@ where
     }
 }
 
+pub struct MismatchedReceipts<Block, CBlock>
+where
+    Block: BlockT,
+    CBlock: BlockT,
+{
+    local_receipt: ExecutionReceiptFor<Block, CBlock>,
+    bad_receipt: ExecutionReceiptFor<Block, CBlock>,
+}
+
 impl<Block, Client, CBlock, CClient, Backend, E>
     ReceiptsChecker<Block, Client, CBlock, CClient, Backend, E>
 where
@@ -715,6 +724,212 @@ where
     Backend: sc_client_api::Backend<Block> + 'static,
     E: CodeExecutor,
 {
+    pub(crate) fn maybe_submit_fraud_proof(
+        &self,
+        consensus_block_hash: CBlock::Hash,
+    ) -> sp_blockchain::Result<()> {
+        if self.consensus_network_sync_oracle.is_major_syncing() {
+            tracing::debug!(
+                "Skip reporting unconfirmed bad receipt as the consensus node is still major syncing..."
+            );
+            return Ok(());
+        }
+
+        if let Some(mismatched_receipts) = self.find_mismatch_receipt(consensus_block_hash)? {
+            let fraud_proof = self.generate_fraud_proof(mismatched_receipts)?;
+
+            let consensus_best_hash = self.consensus_client.info().best_hash;
+            let mut runtime_api = self.consensus_client.runtime_api();
+            runtime_api.register_extension(
+                self.consensus_offchain_tx_pool_factory
+                    .offchain_transaction_pool(consensus_best_hash),
+            );
+            runtime_api.submit_fraud_proof_unsigned(consensus_best_hash, fraud_proof)?;
+        }
+
+        Ok(())
+    }
+
+    pub fn find_mismatch_receipt(
+        &self,
+        consensus_block_hash: CBlock::Hash,
+    ) -> sp_blockchain::Result<Option<MismatchedReceipts<Block, CBlock>>> {
+        let mut oldest_mismatch = None;
+        let mut to_check = self
+            .consensus_client
+            .runtime_api()
+            .head_receipt_number(consensus_block_hash, self.domain_id)?;
+        let oldest_receipt_number = self
+            .consensus_client
+            .runtime_api()
+            .oldest_receipt_number(consensus_block_hash, self.domain_id)?;
+
+        while !to_check.is_zero() && oldest_receipt_number < to_check {
+            let onchain_receipt_hash = self
+                .consensus_client
+                .runtime_api()
+                .receipt_hash(consensus_block_hash, self.domain_id, to_check)?
+                .ok_or_else(|| {
+                    sp_blockchain::Error::Application(
+                        format!("Receipt hash for #{to_check:?} not found").into(),
+                    )
+                })?;
+            let local_receipt = {
+                // Get the domain block hash corresponding to `to_check` in the
+                // domain canonical chain
+                let domain_hash = self.client.hash(to_check)?.ok_or_else(|| {
+                    sp_blockchain::Error::Backend(format!(
+                        "Domain block hash for #{to_check:?} not found"
+                    ))
+                })?;
+                crate::load_execution_receipt_by_domain_hash::<Block, CBlock, _>(
+                    &*self.client,
+                    domain_hash,
+                    to_check,
+                )?
+            };
+            if local_receipt.hash::<HeaderHashingFor<Block::Header>>() != onchain_receipt_hash {
+                oldest_mismatch.replace((local_receipt, onchain_receipt_hash));
+                to_check = to_check.saturating_sub(One::one());
+            } else {
+                break;
+            }
+        }
+
+        match oldest_mismatch {
+            None => Ok(None),
+            Some((local_receipt, bad_receipt_hash)) => {
+                let bad_receipt = self
+                    .consensus_client
+                    .runtime_api()
+                    .execution_receipt(consensus_block_hash, bad_receipt_hash)?
+                    .ok_or_else(|| {
+                        sp_blockchain::Error::Application(
+                            format!("Receipt for #{bad_receipt_hash:?} not found").into(),
+                        )
+                    })?;
+                debug_assert_eq!(
+                    local_receipt.consensus_block_hash,
+                    bad_receipt.consensus_block_hash,
+                );
+                Ok(Some(MismatchedReceipts {
+                    local_receipt,
+                    bad_receipt,
+                }))
+            }
+        }
+    }
+
+    pub fn generate_fraud_proof(
+        &self,
+        mismatched_receipts: MismatchedReceipts<Block, CBlock>,
+    ) -> sp_blockchain::Result<FraudProof<NumberFor<CBlock>, CBlock::Hash, Block::Header>> {
+        let MismatchedReceipts {
+            local_receipt,
+            bad_receipt,
+        } = mismatched_receipts;
+
+        let bad_receipt_hash = bad_receipt.hash::<HeaderHashingFor<Block::Header>>();
+
+        // NOTE: the checking order MUST follow exactly as the dependency order of fraud proof
+        // see https://github.com/subspace/subspace/issues/1892
+        if let Some(InboxedBundleMismatchInfo {
+            bundle_index,
+            mismatch_type,
+        }) = find_inboxed_bundles_mismatch::<Block, CBlock>(&local_receipt, &bad_receipt)?
+        {
+            return match mismatch_type {
+                BundleMismatchType::Valid => Ok(FraudProof::ValidBundle(ValidBundleProof {
+                    domain_id: self.domain_id,
+                    bad_receipt_hash,
+                    bundle_index,
+                })),
+                _ => self
+                    .fraud_proof_generator
+                    .generate_invalid_bundle_field_proof(
+                        self.domain_id,
+                        &local_receipt,
+                        mismatch_type,
+                        bundle_index,
+                        bad_receipt_hash,
+                    )
+                    .map_err(|err| {
+                        sp_blockchain::Error::Application(Box::from(format!(
+                            "Failed to generate invalid bundles field fraud proof: {err}"
+                        )))
+                    }),
+            };
+        }
+
+        if bad_receipt.domain_block_extrinsic_root != local_receipt.domain_block_extrinsic_root {
+            return self
+                .fraud_proof_generator
+                .generate_invalid_domain_extrinsics_root_proof(
+                    self.domain_id,
+                    &local_receipt,
+                    bad_receipt_hash,
+                )
+                .map_err(|err| {
+                    sp_blockchain::Error::Application(Box::from(format!(
+                        "Failed to generate invalid domain extrinsics root fraud proof: {err}"
+                    )))
+                });
+        }
+
+        if let Some(trace_mismatch_index) =
+            find_trace_mismatch(&local_receipt.execution_trace, &bad_receipt.execution_trace)
+        {
+            return self
+                .fraud_proof_generator
+                .generate_invalid_state_transition_proof(
+                    self.domain_id,
+                    trace_mismatch_index,
+                    &local_receipt,
+                    bad_receipt_hash,
+                )
+                .map_err(|err| {
+                    sp_blockchain::Error::Application(Box::from(format!(
+                        "Failed to generate invalid state transition fraud proof: {err}"
+                    )))
+                });
+        }
+
+        if bad_receipt.total_rewards != local_receipt.total_rewards {
+            return self
+                .fraud_proof_generator
+                .generate_invalid_total_rewards_proof(
+                    self.domain_id,
+                    &local_receipt,
+                    bad_receipt_hash,
+                )
+                .map_err(|err| {
+                    sp_blockchain::Error::Application(Box::from(format!(
+                        "Failed to generate invalid block rewards fraud proof: {err}"
+                    )))
+                });
+        }
+
+        if bad_receipt.domain_block_hash != local_receipt.domain_block_hash {
+            return self
+                .fraud_proof_generator
+                .generate_invalid_domain_block_hash_proof(
+                    self.domain_id,
+                    &local_receipt,
+                    bad_receipt_hash,
+                )
+                .map_err(|err| {
+                    sp_blockchain::Error::Application(Box::from(format!(
+                        "Failed to generate invalid domain block hash fraud proof: {err}"
+                    )))
+                });
+        }
+
+        Err(sp_blockchain::Error::Application(Box::from(format!(
+            "No fraudulent field fonud for the mismatched ER, this should not happen, \
+            local_receipt {local_receipt:?}, bad_receipt {bad_receipt:?}"
+        ))))
+    }
+
     pub(crate) fn check_state_transition(
         &self,
         consensus_block_hash: CBlock::Hash,
