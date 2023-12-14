@@ -1908,6 +1908,13 @@ impl<T: Config> Pallet<T> {
     pub fn execution_receipt(receipt_hash: ReceiptHashFor<T>) -> Option<ExecutionReceiptOf<T>> {
         BlockTreeNodes::<T>::get(receipt_hash).map(|db| db.execution_receipt)
     }
+
+    pub fn receipt_hash(
+        domain_id: DomainId,
+        domain_number: DomainBlockNumberFor<T>,
+    ) -> Option<ReceiptHashFor<T>> {
+        BlockTree::<T>::get(domain_id, domain_number)
+    }
 }
 
 impl<T> Pallet<T>

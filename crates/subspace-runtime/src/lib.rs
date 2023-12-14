@@ -1073,6 +1073,10 @@ impl_runtime_apis! {
         fn sudo_account_id() -> AccountId {
             SudoId::get()
         }
+
+        fn receipt_hash(domain_id: DomainId, domain_number: DomainNumber) -> Option<DomainHash> {
+            Domains::receipt_hash(domain_id, domain_number)
+        }
     }
 
     impl sp_domains::BundleProducerElectionApi<Block, Balance> for Runtime {
