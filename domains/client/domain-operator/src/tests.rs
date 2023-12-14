@@ -1,4 +1,7 @@
 use crate::domain_block_processor::{DomainBlockProcessor, PendingConsensusBlocks};
+use crate::domain_bundle_producer::DomainBundleProducer;
+use crate::domain_bundle_proposer::DomainBundleProposer;
+use crate::utils::OperatorSlotInfo;
 use codec::{Decode, Encode};
 use domain_runtime_primitives::Hash;
 use domain_test_primitives::TimestampApi;
@@ -2792,4 +2795,163 @@ async fn test_skip_empty_bundle_production() {
     assert!(bundle.is_some());
     assert_eq!(ferdie.client.info().best_number, consensus_block_number + 2);
     assert_eq!(alice.client.info().best_number, domain_block_number + 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_bad_receipt_chain() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a evm domain authority node)
+    let alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .await;
+
+    let bundle_to_tx = |opaque_bundle| {
+        subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+            pallet_domains::Call::submit_bundle { opaque_bundle }.into(),
+        )
+        .into()
+    };
+
+    let bundle_producer = {
+        let domain_bundle_proposer = DomainBundleProposer::new(
+            GENESIS_DOMAIN_ID,
+            alice.client.clone(),
+            ferdie.client.clone(),
+            alice.operator.transaction_pool.clone(),
+        );
+        let (bundle_sender, _bundle_receiver) =
+            sc_utils::mpsc::tracing_unbounded("domain_bundle_stream", 100);
+        DomainBundleProducer::new(
+            GENESIS_DOMAIN_ID,
+            ferdie.client.clone(),
+            alice.client.clone(),
+            domain_bundle_proposer,
+            Arc::new(bundle_sender),
+            alice.operator.keystore.clone(),
+            false,
+        )
+    };
+
+    produce_blocks!(ferdie, alice, 5).await.unwrap();
+
+    // Get a bundle from the txn pool and modify the receipt of the target bundle to an invalid one
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let original_submit_bundle_tx = bundle_to_tx(bundle.clone().unwrap());
+    let (bad_receipt_hash, bad_submit_bundle_tx) = {
+        let mut opaque_bundle = bundle.unwrap();
+        let receipt = &mut opaque_bundle.sealed_header.header.receipt;
+        receipt.total_rewards = 100;
+        opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
+            .pair()
+            .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
+            .into();
+        (
+            opaque_bundle.receipt().hash::<BlakeTwo256>(),
+            bundle_to_tx(opaque_bundle),
+        )
+    };
+
+    // Replace `original_submit_bundle_tx` with `bad_submit_bundle_tx` in the tx pool
+    ferdie
+        .prune_tx_from_pool(&original_submit_bundle_tx)
+        .await
+        .unwrap();
+    assert!(ferdie.get_bundle_from_tx_pool(slot.into()).is_none());
+    ferdie
+        .submit_transaction(bad_submit_bundle_tx)
+        .await
+        .unwrap();
+
+    // Produce a consensus block that contains the `bad_submit_bundle_tx` and the bad receipt should
+    // be added to the consensus chain block tree
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+    assert!(ferdie.is_receipt_exist(bad_receipt_hash).unwrap());
+
+    // Remove the fraud proof from tx pool
+    ferdie.clear_tx_pool().await.unwrap();
+
+    // Produce a bundle with another bad ER that use previous bad ER as parent
+    let parent_bad_receipt_hash = bad_receipt_hash;
+    let slot = ferdie.produce_slot();
+    let bundle = {
+        let consensus_block_info = sp_blockchain::HashAndNumber {
+            number: ferdie.client.info().best_number,
+            hash: ferdie.client.info().best_hash,
+        };
+        bundle_producer
+            .clone()
+            .produce_bundle(
+                0,
+                consensus_block_info,
+                OperatorSlotInfo {
+                    slot,
+                    global_randomness: Randomness::from(Hash::random().to_fixed_bytes()),
+                },
+            )
+            .await
+            .expect("produce bundle must success")
+            .expect("must win the challenge")
+    };
+    let (bad_receipt_hash, bad_submit_bundle_tx) = {
+        let mut opaque_bundle = bundle;
+        let receipt = &mut opaque_bundle.sealed_header.header.receipt;
+        receipt.parent_domain_block_receipt_hash = parent_bad_receipt_hash;
+        receipt.total_rewards = 100;
+        opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
+            .pair()
+            .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
+            .into();
+        (
+            opaque_bundle.receipt().hash::<BlakeTwo256>(),
+            bundle_to_tx(opaque_bundle),
+        )
+    };
+    ferdie
+        .submit_transaction(bad_submit_bundle_tx)
+        .await
+        .unwrap();
+
+    // Wait for a fraud proof that target the first bad ER
+    let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
+        matches!(
+            fp,
+            FraudProof::InvalidTotalRewards(InvalidTotalRewardsProof { .. })
+        ) && fp.targeted_bad_receipt_hash() == Some(parent_bad_receipt_hash)
+    });
+
+    // Produce a consensus block that contains the bad receipt and it should
+    // be added to the consensus chain block tree
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+    assert!(ferdie.is_receipt_exist(bad_receipt_hash).unwrap());
+
+    // The fraud proof should be submitted
+    let _ = wait_for_fraud_proof_fut.await;
+
+    // Both bad ER should be pruned
+    ferdie.produce_blocks(1).await.unwrap();
+    for er_hash in [parent_bad_receipt_hash, bad_receipt_hash] {
+        assert!(!ferdie.is_receipt_exist(er_hash).unwrap());
+    }
 }

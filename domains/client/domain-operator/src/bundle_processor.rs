@@ -14,7 +14,6 @@ use sp_core::H256;
 use sp_domain_digests::AsPredigest;
 use sp_domains::{DomainId, DomainsApi, ReceiptValidity};
 use sp_domains_fraud_proof::FraudProofApi;
-use sp_keystore::KeystorePtr;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, Zero};
 use sp_runtime::{Digest, DigestItem};
@@ -47,7 +46,6 @@ where
     consensus_client: Arc<CClient>,
     client: Arc<Client>,
     backend: Arc<Backend>,
-    keystore: KeystorePtr,
     domain_receipts_checker: DomainReceiptsChecker<Block, CBlock, Client, CClient, Backend, E>,
     domain_block_preprocessor:
         DomainBlockPreprocessor<Block, CBlock, Client, CClient, ReceiptValidator<Client>>,
@@ -66,7 +64,6 @@ where
             consensus_client: self.consensus_client.clone(),
             client: self.client.clone(),
             backend: self.backend.clone(),
-            keystore: self.keystore.clone(),
             domain_receipts_checker: self.domain_receipts_checker.clone(),
             domain_block_preprocessor: self.domain_block_preprocessor.clone(),
             domain_block_processor: self.domain_block_processor.clone(),
@@ -160,7 +157,6 @@ where
         consensus_client: Arc<CClient>,
         client: Arc<Client>,
         backend: Arc<Backend>,
-        keystore: KeystorePtr,
         domain_receipts_checker: DomainReceiptsChecker<Block, CBlock, Client, CClient, Backend, E>,
         domain_block_processor: DomainBlockProcessor<Block, CBlock, Client, CClient, Backend>,
     ) -> Self {
@@ -175,7 +171,6 @@ where
             consensus_client,
             client,
             backend,
-            keystore,
             domain_receipts_checker,
             domain_block_preprocessor,
             domain_block_processor,
