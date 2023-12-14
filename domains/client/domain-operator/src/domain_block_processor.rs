@@ -572,11 +572,17 @@ where
     }
 }
 
+#[derive(Debug, PartialEq)]
+pub(crate) struct InboxedBundleMismatchInfo {
+    bundle_index: u32,
+    mismatch_type: BundleMismatchType,
+}
+
 // Find the first mismatch of the `InboxedBundle` in the `ER::inboxed_bundles` list
 pub(crate) fn find_inboxed_bundles_mismatch<Block, CBlock>(
     local_receipt: &ExecutionReceiptFor<Block, CBlock>,
     external_receipt: &ExecutionReceiptFor<Block, CBlock>,
-) -> Result<Option<ReceiptMismatchInfo<CBlock::Hash>>, sp_blockchain::Error>
+) -> Result<Option<InboxedBundleMismatchInfo>, sp_blockchain::Error>
 where
     Block: BlockT,
     CBlock: BlockT,
@@ -648,10 +654,9 @@ where
         }
     };
 
-    Ok(Some(ReceiptMismatchInfo::Bundles {
+    Ok(Some(InboxedBundleMismatchInfo {
         mismatch_type,
         bundle_index: bundle_index as u32,
-        consensus_block_hash: local_receipt.consensus_block_hash,
     }))
 }
 
@@ -807,13 +812,20 @@ where
                 execution_receipt.consensus_block_number
             )))?;
 
-            if let Some(receipt_mismatch_info) =
+            if let Some(InboxedBundleMismatchInfo {
+                bundle_index,
+                mismatch_type,
+            }) =
                 find_inboxed_bundles_mismatch::<Block, CBlock>(&local_receipt, execution_receipt)?
             {
                 bad_receipts_to_write.push((
                     execution_receipt.consensus_block_number,
                     receipt_hash,
-                    receipt_mismatch_info,
+                    ReceiptMismatchInfo::Bundles {
+                        mismatch_type,
+                        bundle_index,
+                        consensus_block_hash,
+                    },
                 ));
 
                 continue;
@@ -973,7 +985,6 @@ where
                         &local_receipt,
                         bad_receipt_hash,
                     )
-                    .await
                     .map_err(|err| {
                         sp_blockchain::Error::Application(Box::from(format!(
                             "Failed to generate fraud proof: {err}"
@@ -1119,10 +1130,9 @@ mod tests {
                 ]),
             )
             .unwrap(),
-            Some(ReceiptMismatchInfo::Bundles {
+            Some(InboxedBundleMismatchInfo {
                 mismatch_type: BundleMismatchType::Valid,
                 bundle_index: 1,
-                consensus_block_hash: Default::default()
             })
         );
 
@@ -1139,10 +1149,9 @@ mod tests {
                 ]),
             )
             .unwrap(),
-            Some(ReceiptMismatchInfo::Bundles {
+            Some(InboxedBundleMismatchInfo {
                 mismatch_type: BundleMismatchType::TrueInvalid(InvalidBundleType::UndecodableTx(1)),
                 bundle_index: 1,
-                consensus_block_hash: Default::default()
             })
         );
         assert_eq!(
@@ -1157,12 +1166,11 @@ mod tests {
                 ]),
             )
             .unwrap(),
-            Some(ReceiptMismatchInfo::Bundles {
+            Some(InboxedBundleMismatchInfo {
                 mismatch_type: BundleMismatchType::FalseInvalid(InvalidBundleType::UndecodableTx(
                     3
                 )),
                 bundle_index: 1,
-                consensus_block_hash: Default::default()
             })
         );
         // Even the invalid type is mismatch, the extrinsic index mismatch should be considered first
@@ -1178,10 +1186,9 @@ mod tests {
                 ]),
             )
             .unwrap(),
-            Some(ReceiptMismatchInfo::Bundles {
+            Some(InboxedBundleMismatchInfo {
                 mismatch_type: BundleMismatchType::FalseInvalid(InvalidBundleType::IllegalTx(3)),
                 bundle_index: 1,
-                consensus_block_hash: Default::default()
             })
         );
 
@@ -1198,10 +1205,9 @@ mod tests {
                 ]),
             )
             .unwrap(),
-            Some(ReceiptMismatchInfo::Bundles {
+            Some(InboxedBundleMismatchInfo {
                 mismatch_type: BundleMismatchType::TrueInvalid(InvalidBundleType::IllegalTx(3)),
                 bundle_index: 1,
-                consensus_block_hash: Default::default()
             })
         );
         assert_eq!(
@@ -1216,10 +1222,9 @@ mod tests {
                 ]),
             )
             .unwrap(),
-            Some(ReceiptMismatchInfo::Bundles {
+            Some(InboxedBundleMismatchInfo {
                 mismatch_type: BundleMismatchType::FalseInvalid(InvalidBundleType::IllegalTx(3)),
                 bundle_index: 1,
-                consensus_block_hash: Default::default()
             })
         );
 
@@ -1236,10 +1241,9 @@ mod tests {
                 ]),
             )
             .unwrap(),
-            Some(ReceiptMismatchInfo::Bundles {
+            Some(InboxedBundleMismatchInfo {
                 mismatch_type: BundleMismatchType::Valid,
                 bundle_index: 0,
-                consensus_block_hash: Default::default()
             })
         );
 
@@ -1256,10 +1260,9 @@ mod tests {
                 ),]),
             )
             .unwrap(),
-            Some(ReceiptMismatchInfo::Bundles {
+            Some(InboxedBundleMismatchInfo {
                 mismatch_type: BundleMismatchType::FalseInvalid(InvalidBundleType::IllegalTx(3)),
                 bundle_index: 0,
-                consensus_block_hash: Default::default()
             })
         );
 
@@ -1276,10 +1279,9 @@ mod tests {
                 ),]),
             )
             .unwrap(),
-            Some(ReceiptMismatchInfo::Bundles {
+            Some(InboxedBundleMismatchInfo {
                 mismatch_type: BundleMismatchType::TrueInvalid(InvalidBundleType::IllegalTx(3)),
                 bundle_index: 0,
-                consensus_block_hash: Default::default()
             })
         );
     }
