@@ -123,8 +123,8 @@ where
     reserved_peers: HashMap<PeerId, Multiaddr>,
     /// Temporarily banned peers.
     temporary_bans: Arc<Mutex<TemporaryBans>>,
-    /// External Prometheus metrics.
-    external_metrics: Option<Metrics>,
+    /// Libp2p Prometheus metrics.
+    libp2p_metrics: Option<Metrics>,
     /// Subspace Prometheus metrics.
     metrics: Option<SubspaceMetrics>,
     /// Mapping from specific peer to ip addresses
@@ -180,7 +180,7 @@ where
     pub(crate) networking_parameters_registry: Box<dyn KnownPeersRegistry>,
     pub(crate) reserved_peers: HashMap<PeerId, Multiaddr>,
     pub(crate) temporary_bans: Arc<Mutex<TemporaryBans>>,
-    pub(crate) external_metrics: Option<Metrics>,
+    pub(crate) libp2p_metrics: Option<Metrics>,
     pub(crate) metrics: Option<SubspaceMetrics>,
     pub(crate) protocol_version: String,
     pub(crate) general_connection_decision_handler: Option<ConnectedPeersHandler>,
@@ -204,7 +204,7 @@ where
             mut networking_parameters_registry,
             reserved_peers,
             temporary_bans,
-            external_metrics,
+            libp2p_metrics,
             metrics,
             protocol_version,
             general_connection_decision_handler,
@@ -243,7 +243,7 @@ where
             networking_parameters_registry,
             reserved_peers,
             temporary_bans,
-            external_metrics,
+            libp2p_metrics,
             metrics,
             peer_ip_addresses: HashMap::new(),
             protocol_version,
@@ -1569,7 +1569,7 @@ where
     }
 
     fn register_event_metrics(&mut self, swarm_event: &SwarmEvent<Event>) {
-        if let Some(ref mut metrics) = self.external_metrics {
+        if let Some(ref mut metrics) = self.libp2p_metrics {
             match swarm_event {
                 SwarmEvent::Behaviour(Event::Ping(ping_event)) => {
                     metrics.record(ping_event);

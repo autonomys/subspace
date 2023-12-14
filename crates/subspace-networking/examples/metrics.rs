@@ -22,7 +22,7 @@ async fn main() {
     let config_1 = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
         allow_non_global_addresses_in_dht: true,
-        external_metrics: Some(metrics),
+        libp2p_metrics: Some(metrics),
         ..Config::default()
     };
     let (node_1, mut node_runner_1) = subspace_networking::construct(config_1).unwrap();

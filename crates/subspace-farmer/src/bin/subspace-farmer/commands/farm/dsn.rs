@@ -49,8 +49,8 @@ pub(super) fn configure_dsn(
     weak_readers_and_pieces: Weak<Mutex<Option<ReadersAndPieces>>>,
     node_client: NodeRpcClient,
     piece_cache: PieceCache,
-    initialize_metrics: bool,
-) -> Result<(Node, NodeRunner<PieceCache>, Registry), anyhow::Error> {
+    prometheus_metrics_registry: Option<&mut Registry>,
+) -> Result<(Node, NodeRunner<PieceCache>), anyhow::Error> {
     let networking_parameters_registry = KnownPeersManager::new(KnownPeersManagerConfig {
         path: Some(base_path.join("known_addresses.bin").into_boxed_path()),
         ignore_peer_list: strip_peer_id(bootstrap_nodes.clone())
@@ -62,16 +62,12 @@ pub(super) fn configure_dsn(
     })
     .map(Box::new)?;
 
-    // Metrics
-    let mut metrics_registry = Registry::default();
-    let dsn_metric_registry = initialize_metrics.then_some(&mut metrics_registry);
-
     let default_config = Config::new(
         protocol_prefix,
         keypair,
         piece_cache.clone(),
         Some(PeerInfoProvider::new_farmer()),
-        dsn_metric_registry,
+        prometheus_metrics_registry,
     );
     let config = Config {
         reserved_peers,
@@ -222,7 +218,7 @@ pub(super) fn configure_dsn(
             .detach();
 
             // Consider returning HandlerId instead of each `detach()` calls for other usages.
-            (node, node_runner, metrics_registry)
+            (node, node_runner)
         })
         .map_err(Into::into)
 }

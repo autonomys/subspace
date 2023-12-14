@@ -239,8 +239,8 @@ pub struct Config<LocalRecordProvider> {
     pub temporary_bans_cache_size: NonZeroUsize,
     /// Backoff policy for temporary banning of unreachable peers.
     pub temporary_ban_backoff: ExponentialBackoff,
-    /// Optional external prometheus metrics. None will disable metrics gathering.
-    pub external_metrics: Option<Metrics>,
+    /// Optional libp2p prometheus metrics. None will disable metrics gathering.
+    pub libp2p_metrics: Option<Metrics>,
     /// Internal prometheus metrics. None will disable metrics gathering.
     pub metrics: Option<SubspaceMetrics>,
     /// Defines protocol version for the network peers. Affects network partition.
@@ -310,9 +310,9 @@ where
         keypair: identity::Keypair,
         local_records_provider: LocalRecordProvider,
         peer_info_provider: Option<PeerInfoProvider>,
-        metrics_registry: Option<&mut Registry>,
+        prometheus_registry: Option<&mut Registry>,
     ) -> Self {
-        let (external_metrics, metrics) = metrics_registry
+        let (libp2p_metrics, metrics) = prometheus_registry
             .map(|registry| {
                 (
                     Some(Metrics::new(registry)),
@@ -393,7 +393,7 @@ where
             max_pending_outgoing_connections: SWARM_MAX_PENDING_OUTGOING_CONNECTIONS,
             temporary_bans_cache_size: TEMPORARY_BANS_CACHE_SIZE,
             temporary_ban_backoff,
-            external_metrics,
+            libp2p_metrics,
             metrics,
             protocol_version,
             peer_info_provider,
@@ -465,7 +465,7 @@ where
         max_pending_outgoing_connections,
         temporary_bans_cache_size,
         temporary_ban_backoff,
-        external_metrics,
+        libp2p_metrics,
         metrics,
         protocol_version,
         peer_info_provider,
@@ -655,7 +655,7 @@ where
         networking_parameters_registry,
         reserved_peers: strip_peer_id(reserved_peers).into_iter().collect(),
         temporary_bans,
-        external_metrics,
+        libp2p_metrics,
         metrics,
         protocol_version,
         general_connection_decision_handler,
