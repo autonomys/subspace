@@ -11,6 +11,7 @@ use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use lru::LruCache;
 use parking_lot::Mutex;
+use prometheus_client::registry::Registry;
 use std::fs;
 use std::net::SocketAddr;
 use std::num::{NonZeroU8, NonZeroUsize};
@@ -348,9 +349,11 @@ where
 
     let (piece_cache, piece_cache_worker) = PieceCache::new(node_client.clone(), peer_id);
 
+    // Metrics
+    let mut prometheus_metrics_registry = Registry::default();
     let metrics_endpoints_are_specified = !metrics_endpoints.is_empty();
 
-    let (node, mut node_runner, metrics_registry) = {
+    let (node, mut node_runner) = {
         if dsn.bootstrap_nodes.is_empty() {
             dsn.bootstrap_nodes = farmer_app_info.dsn_bootstrap_nodes.clone();
         }
@@ -363,14 +366,14 @@ where
             Arc::downgrade(&readers_and_pieces),
             node_client.clone(),
             piece_cache.clone(),
-            metrics_endpoints_are_specified,
+            metrics_endpoints_are_specified.then_some(&mut prometheus_metrics_registry),
         )?
     };
 
     let _prometheus_worker = if metrics_endpoints_are_specified {
         let prometheus_task = start_prometheus_metrics_server(
             metrics_endpoints,
-            RegistryAdapter::Libp2p(metrics_registry),
+            RegistryAdapter::Libp2p(prometheus_metrics_registry),
         )?;
 
         let join_handle = tokio::spawn(prometheus_task);

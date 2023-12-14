@@ -281,7 +281,13 @@ pub async fn configure_dsn(
 ) -> Node {
     let keypair = Keypair::generate_ed25519();
 
-    let default_config = Config::new(protocol_prefix, keypair, (), Some(PeerInfoProvider::Client));
+    let default_config = Config::new(
+        protocol_prefix,
+        keypair,
+        (),
+        Some(PeerInfoProvider::Client),
+        None,
+    );
 
     let config = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
