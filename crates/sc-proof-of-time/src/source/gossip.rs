@@ -419,13 +419,21 @@ where
             return;
         }
 
+        // This sorts from lowest reputation to highest
+        potentially_matching_proofs.sort_by_cached_key(|(_proof, peer_ids)| {
+            peer_ids
+                .iter()
+                .map(|peer_id| network.peer_reputation(peer_id))
+                .max()
+        });
+
         // If we have too many unique proofs to verify it might be cheaper to prove it ourselves
         let correct_proof = if potentially_matching_proofs.len() < EXPECTED_POT_VERIFICATION_SPEEDUP
         {
             let mut correct_proof = None;
 
-            // Verify all proofs
-            for (proof, _senders) in &potentially_matching_proofs {
+            // Verify all proofs, starting with those sent by most reputable peers
+            for (proof, _senders) in potentially_matching_proofs.iter().rev() {
                 if pot_verifier.verify_checkpoints(
                     proof.seed,
                     proof.slot_iterations,
@@ -438,13 +446,6 @@ where
 
             correct_proof
         } else {
-            // This sorts from lowest reputation to highest
-            potentially_matching_proofs.sort_by_cached_key(|(_proof, peer_ids)| {
-                peer_ids
-                    .iter()
-                    .map(|peer_id| network.peer_reputation(peer_id))
-                    .max()
-            });
             // Last proof includes peer with the highest reputation
             let (proof, _senders) = potentially_matching_proofs
                 .last()
