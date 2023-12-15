@@ -37,6 +37,7 @@ use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::utils::piece_provider::PieceProvider;
+use subspace_networking::utils::random_walking_piece_provider::RandomWalkingPieceProvider;
 use subspace_proof_of_space::Table;
 use tempfile::TempDir;
 use tokio::sync::Semaphore;
@@ -390,20 +391,23 @@ where
     .map_err(|error| anyhow::anyhow!(error))?;
     // TODO: Consider introducing and using global in-memory segment header cache (this comment is
     //  in multiple files)
-    let segment_commitments_cache = Mutex::new(LruCache::new(RECORDS_ROOTS_CACHE_SIZE));
-    let piece_provider = PieceProvider::new(
+    let segment_commitments_cache = Arc::new(Mutex::new(LruCache::new(RECORDS_ROOTS_CACHE_SIZE)));
+    let validator = Some(SegmentCommitmentPieceValidator::new(
         node.clone(),
-        Some(SegmentCommitmentPieceValidator::new(
-            node.clone(),
-            node_client.clone(),
-            kzg.clone(),
-            segment_commitments_cache,
-        )),
-    );
+        node_client.clone(),
+        kzg.clone(),
+        segment_commitments_cache,
+    ));
+
+    let piece_provider = PieceProvider::new(node.clone(), validator.clone());
+
+    let random_walking_piece_provider =
+        RandomWalkingPieceProvider::new(node.clone(), validator.clone());
 
     let piece_getter = Arc::new(FarmerPieceGetter::new(
         node.clone(),
         piece_provider,
+        random_walking_piece_provider,
         piece_cache.clone(),
         node_client.clone(),
         Arc::clone(&readers_and_pieces),

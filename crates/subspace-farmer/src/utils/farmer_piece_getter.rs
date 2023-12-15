@@ -12,12 +12,16 @@ use subspace_networking::libp2p::kad::RecordKey;
 use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator, RetryPolicy};
+use subspace_networking::utils::random_walking_piece_provider::RandomWalkingPieceProvider;
 use subspace_networking::Node;
 use tracing::{debug, error, trace};
+
+const MAX_RANDOM_WALK_ROUNDS: usize = 50;
 
 pub struct FarmerPieceGetter<PV, NC> {
     node: Node,
     piece_provider: PieceProvider<PV>,
+    random_walking_piece_provider: RandomWalkingPieceProvider<PV>,
     piece_cache: PieceCache,
     node_client: NC,
     readers_and_pieces: Arc<Mutex<Option<ReadersAndPieces>>>,
@@ -27,6 +31,7 @@ impl<PV, NC> FarmerPieceGetter<PV, NC> {
     pub fn new(
         node: Node,
         piece_provider: PieceProvider<PV>,
+        random_walking_piece_provider: RandomWalkingPieceProvider<PV>,
         piece_cache: PieceCache,
         node_client: NC,
         readers_and_pieces: Arc<Mutex<Option<ReadersAndPieces>>>,
@@ -34,6 +39,7 @@ impl<PV, NC> FarmerPieceGetter<PV, NC> {
         Self {
             node,
             piece_provider,
+            random_walking_piece_provider,
             piece_cache,
             node_client,
             readers_and_pieces,
@@ -118,21 +124,37 @@ where
         let connected_peers = HashSet::<PeerId>::from_iter(self.node.connected_peers().await?);
         if connected_peers.is_empty() {
             debug!(%piece_index, "Cannot acquire piece from DSN L1: no connected peers");
+        } else {
+            for peer_id in connected_peers.iter() {
+                let maybe_piece = self
+                    .piece_provider
+                    .get_piece_from_peer(*peer_id, piece_index)
+                    .await;
 
-            return Ok(None);
+                if maybe_piece.is_some() {
+                    trace!(%piece_index, %peer_id, "DSN L1 lookup succeeded");
+
+                    return Ok(maybe_piece);
+                }
+            }
         }
 
-        for peer_id in connected_peers.iter() {
-            let maybe_piece = self
-                .piece_provider
-                .get_piece_from_peer(*peer_id, piece_index)
-                .await;
+        trace!(%piece_index, "Getting piece from DSN L1 using random walk.");
+        let random_walk_result = self
+            .random_walking_piece_provider
+            .get_piece(piece_index, MAX_RANDOM_WALK_ROUNDS)
+            .await;
 
-            if maybe_piece.is_some() {
-                trace!(%piece_index, %peer_id, "DSN L1 lookup succeeded");
+        if random_walk_result.is_some() {
+            trace!(%piece_index, "DSN L1 lookup via random walk succeeded");
 
-                return Ok(maybe_piece);
-            }
+            return Ok(random_walk_result);
+        } else {
+            debug!(
+                %piece_index,
+                max_rounds=%MAX_RANDOM_WALK_ROUNDS,
+                "Cannot acquire piece from DSN L1: random walk failed"
+            );
         }
 
         debug!(
