@@ -2,6 +2,7 @@
 
 pub mod multihash;
 pub mod piece_provider;
+pub mod random_walking_piece_provider;
 pub(crate) mod rate_limiter;
 #[cfg(test)]
 mod tests;

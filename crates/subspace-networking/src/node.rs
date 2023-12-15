@@ -400,6 +400,14 @@ impl Node {
         &self,
         key: Multihash,
     ) -> Result<impl Stream<Item = PeerId>, GetClosestPeersError> {
+        self.get_closest_peers_internal(key).await
+    }
+
+    /// Get closest peers by multihash key using Kademlia DHT.
+    async fn get_closest_peers_internal(
+        &self,
+        key: Multihash,
+    ) -> Result<impl Stream<Item = PeerId>, GetClosestPeersError> {
         let permit = self.shared.rate_limiter.acquire_kademlia_permit().await;
         trace!(?key, "Starting 'GetClosestPeers' request.");
 
@@ -587,6 +595,14 @@ impl NodeRequestsBatchHandle {
         key: Multihash,
     ) -> Result<impl Stream<Item = PeerId>, GetProvidersError> {
         self.node.get_providers_internal(key, false).await
+    }
+
+    /// Get closest peers by key. Initiate 'find_node' Kademlia operation.
+    pub async fn get_closest_peers(
+        &mut self,
+        key: Multihash,
+    ) -> Result<impl Stream<Item = PeerId>, GetClosestPeersError> {
+        self.node.get_closest_peers_internal(key).await
     }
     /// Sends the generic request to the peer and awaits the result.
     pub async fn send_generic_request<Request>(
