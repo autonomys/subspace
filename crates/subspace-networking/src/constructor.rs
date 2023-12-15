@@ -12,7 +12,7 @@ use crate::protocols::request_response::request_response_factory::RequestHandler
 use crate::protocols::reserved_peers::Config as ReservedPeersConfig;
 use crate::shared::Shared;
 use crate::utils::rate_limiter::RateLimiter;
-use crate::utils::strip_peer_id;
+use crate::utils::{strip_peer_id, SubspaceMetrics};
 use backoff::{ExponentialBackoff, SystemClock};
 use futures::channel::mpsc;
 use libp2p::autonat::Config as AutonatConfig;
@@ -32,6 +32,7 @@ use libp2p::multiaddr::Protocol;
 use libp2p::yamux::Config as YamuxConfig;
 use libp2p::{identity, Multiaddr, PeerId, StreamProtocol, SwarmBuilder, TransportError};
 use parking_lot::Mutex;
+use prometheus_client::registry::Registry;
 use std::borrow::Cow;
 use std::iter::Empty;
 use std::num::NonZeroUsize;
@@ -229,8 +230,10 @@ pub struct Config<LocalRecordProvider> {
     pub temporary_bans_cache_size: NonZeroUsize,
     /// Backoff policy for temporary banning of unreachable peers.
     pub temporary_ban_backoff: ExponentialBackoff,
-    /// Optional external prometheus metrics. None will disable metrics gathering.
-    pub metrics: Option<Metrics>,
+    /// Optional libp2p prometheus metrics. None will disable metrics gathering.
+    pub libp2p_metrics: Option<Metrics>,
+    /// Internal prometheus metrics. None will disable metrics gathering.
+    pub metrics: Option<SubspaceMetrics>,
     /// Defines protocol version for the network peers. Affects network partition.
     pub protocol_version: String,
     /// Addresses to bootstrap Kademlia network
@@ -258,7 +261,12 @@ impl Default for Config<()> {
         let ed25519_keypair = identity::ed25519::Keypair::generate();
         let keypair = identity::Keypair::from(ed25519_keypair);
 
-        Self::new(DEFAULT_NETWORK_PROTOCOL_VERSION.to_string(), keypair, ())
+        Self::new(
+            DEFAULT_NETWORK_PROTOCOL_VERSION.to_string(),
+            keypair,
+            (),
+            None,
+        )
     }
 }
 
@@ -271,7 +279,17 @@ where
         protocol_version: String,
         keypair: identity::Keypair,
         local_records_provider: LocalRecordProvider,
+        prometheus_registry: Option<&mut Registry>,
     ) -> Self {
+        let (libp2p_metrics, metrics) = prometheus_registry
+            .map(|registry| {
+                (
+                    Some(Metrics::new(registry)),
+                    Some(SubspaceMetrics::new(registry)),
+                )
+            })
+            .unwrap_or((None, None));
+
         let mut kademlia = KademliaConfig::default();
         kademlia
             .set_query_timeout(KADEMLIA_QUERY_TIMEOUT)
@@ -344,7 +362,8 @@ where
             max_pending_outgoing_connections: SWARM_MAX_PENDING_OUTGOING_CONNECTIONS,
             temporary_bans_cache_size: TEMPORARY_BANS_CACHE_SIZE,
             temporary_ban_backoff,
-            metrics: None,
+            libp2p_metrics,
+            metrics,
             protocol_version,
             bootstrap_addresses: Vec::new(),
             kademlia_mode: KademliaMode::Static(Mode::Client),
@@ -407,6 +426,7 @@ where
         max_pending_outgoing_connections,
         temporary_bans_cache_size,
         temporary_ban_backoff,
+        libp2p_metrics,
         metrics,
         protocol_version,
         bootstrap_addresses,
@@ -569,6 +589,7 @@ where
         networking_parameters_registry,
         reserved_peers: strip_peer_id(reserved_peers).into_iter().collect(),
         temporary_bans,
+        libp2p_metrics,
         metrics,
         protocol_version,
         bootstrap_addresses,
