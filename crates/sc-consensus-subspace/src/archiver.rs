@@ -458,21 +458,28 @@ where
             )
             .expect("Incorrect parameters for archiver");
 
-            // Due to sync from DSN it is possible that the very first segment header is known even
-            // though only genesis block exists, in this case there is nothing else left to archive
-            // and we need to insert segment header to be included in the block 1 explicitly here or
-            // else it'll be missing and block import will fail.
-            //
-            // Checking for segment index instead of best block number ensures we support
-            // hypothetical reorgs of the early blocks within confirmation depth distance from
-            // genesis.
             if last_segment_header.segment_index() == SegmentIndex::ZERO {
-                // Set list of expected segment headers for the block where we expect segment
-                // header extrinsic to be included
+                // Due to sync from DSN it is possible that the very first segment header is known
+                // even though only genesis block exists, in this case there is nothing else left to
+                // archive and we need to insert segment header to be included in the block 1
+                // explicitly here or else it'll be missing and block import will fail.
+                //
+                // Checking for segment index instead of best block number ensures we support
+                // hypothetical reorgs of the early blocks within confirmation depth distance from
+                // genesis.
                 subspace_link
                     .segment_headers
                     .lock()
                     .put(One::one(), vec![last_segment_header]);
+            } else {
+                // Otherwise segment header is expected to be included in
+                // `+ confirmation_depth_k + 1`'s block (+1 because we will archive it in when
+                // processing block `+ confirmation_depth_k` and corresponding segment header will
+                // be included in the next block after that
+                subspace_link.segment_headers.lock().put(
+                    (last_archived_block_number + confirmation_depth_k + 1).into(),
+                    vec![last_segment_header],
+                );
             }
 
             archiver
