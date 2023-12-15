@@ -1278,7 +1278,7 @@ impl SingleDiskFarm {
     }
 
     /// Number of sectors in this farm
-    pub async fn total_sectors_count(&self) -> SectorIndex {
+    pub fn total_sectors_count(&self) -> SectorIndex {
         self.total_sectors_count
     }
 
