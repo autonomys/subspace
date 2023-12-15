@@ -549,6 +549,7 @@ pub struct SingleDiskFarm {
     /// Metadata of all sectors plotted so far
     sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
     pieces_in_sector: u16,
+    total_sectors_count: SectorIndex,
     span: Span,
     tasks: FuturesUnordered<BackgroundTask>,
     handlers: Arc<Handlers>,
@@ -1186,6 +1187,7 @@ impl SingleDiskFarm {
             single_disk_farm_info,
             sectors_metadata,
             pieces_in_sector,
+            total_sectors_count: target_sector_count,
             span,
             tasks,
             handlers,
@@ -1273,6 +1275,11 @@ impl SingleDiskFarm {
     /// ID of this farm
     pub fn id(&self) -> &SingleDiskFarmId {
         self.single_disk_farm_info.id()
+    }
+
+    /// Number of sectors in this farm
+    pub async fn total_sectors_count(&self) -> SectorIndex {
+        self.total_sectors_count
     }
 
     /// Number of sectors successfully plotted so far
