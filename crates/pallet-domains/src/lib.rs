@@ -275,6 +275,10 @@ mod pallet {
         #[pallet::constant]
         type MinOperatorStake: Get<BalanceOf<Self>>;
 
+        /// Minimum nominator stake required to nominate and operator.
+        #[pallet::constant]
+        type MinNominatorStake: Get<BalanceOf<Self>>;
+
         /// Minimum number of blocks after which any finalized withdrawals are released to nominators.
         #[pallet::constant]
         type StakeWithdrawalLockingPeriod: Get<DomainBlockNumberFor<Self>>;
