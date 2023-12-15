@@ -35,9 +35,6 @@ pub use crate::node::{
     GetClosestPeersError, Node, SendRequestError, SubscribeError, TopicSubscription,
 };
 pub use crate::node_runner::NodeRunner;
-pub use crate::protocols::peer_info::{
-    Config as PeerInfoConfig, Notification, NotificationHandler, PeerInfo, PeerInfoProvider,
-};
 pub use constructor::{
     construct, peer_id, Config, CreationError, KademliaMode, LocalRecordProvider,
 };
@@ -51,7 +48,7 @@ pub use protocols::request_response::handlers::piece_by_index::{
 pub use protocols::request_response::handlers::segment_header::{
     SegmentHeaderBySegmentIndexesRequestHandler, SegmentHeaderRequest, SegmentHeaderResponse,
 };
-pub use shared::{NewPeerInfo, PeerDiscovered};
+pub use shared::PeerDiscovered;
 pub use utils::multihash::Multihash;
 pub use utils::unique_record_binary_heap::{KeyWrapper, UniqueRecordBinaryHeap};
 pub use utils::PeerAddress;

@@ -11,8 +11,8 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use subspace_core_primitives::PieceIndex;
 use subspace_networking::{
-    Config, Multihash, Node, PeerDiscovered, PeerInfoProvider, PieceByIndexRequest,
-    PieceByIndexRequestHandler, PieceByIndexResponse, SendRequestError,
+    Config, Multihash, Node, PeerDiscovered, PieceByIndexRequest, PieceByIndexRequestHandler,
+    PieceByIndexResponse, SendRequestError,
 };
 use tracing::{debug, error, info, warn, Level};
 use tracing_subscriber::fmt::Subscriber;
@@ -360,13 +360,7 @@ async fn configure_dsn(
 ) -> Node {
     let keypair = Keypair::generate_ed25519();
 
-    let default_config = Config::new(
-        protocol_prefix,
-        keypair,
-        (),
-        Some(PeerInfoProvider::Client),
-        None,
-    );
+    let default_config = Config::new(protocol_prefix, keypair, (), None);
 
     let config = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],

@@ -3,20 +3,16 @@ use std::collections::HashSet;
 use std::fs;
 use std::num::NonZeroUsize;
 use std::path::PathBuf;
-use std::sync::Arc;
 use subspace_networking::libp2p::kad::Mode;
 use subspace_networking::libp2p::{identity, Multiaddr};
 use subspace_networking::utils::strip_peer_id;
 use subspace_networking::{
     CreationError, KademliaMode, KnownPeersManager, KnownPeersManagerConfig,
-    KnownPeersManagerPersistenceError, Node, NodeRunner, PeerInfoProvider,
-    PieceByIndexRequestHandler, SegmentHeaderBySegmentIndexesRequestHandler,
+    KnownPeersManagerPersistenceError, Node, NodeRunner, PieceByIndexRequestHandler,
+    SegmentHeaderBySegmentIndexesRequestHandler,
 };
 use thiserror::Error;
 use tracing::{error, trace};
-
-/// Should be sufficient number of target connections for everyone, limits are higher
-const TARGET_CONNECTIONS: u32 = 15;
 
 /// Size of the LRU cache for peers.
 pub const KNOWN_PEERS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(100).expect("Not zero; qed");
@@ -116,13 +112,8 @@ pub(crate) fn create_dsn_instance(
     };
 
     let keypair = dsn_config.keypair.clone();
-    let default_networking_config = subspace_networking::Config::new(
-        dsn_protocol_version,
-        keypair,
-        (),
-        Some(PeerInfoProvider::new_node()),
-        dsn_metrics_registry,
-    );
+    let default_networking_config =
+        subspace_networking::Config::new(dsn_protocol_version, keypair, (), dsn_metrics_registry);
 
     let networking_config = subspace_networking::Config {
         keypair: dsn_config.keypair.clone(),
@@ -138,11 +129,6 @@ pub(crate) fn create_dsn_instance(
         max_established_outgoing_connections: dsn_config.max_out_connections,
         max_pending_incoming_connections: dsn_config.max_pending_in_connections,
         max_pending_outgoing_connections: dsn_config.max_pending_out_connections,
-        // Maintain proactive connections with all peers
-        general_connected_peers_handler: Some(Arc::new(|_| true)),
-        general_connected_peers_target: TARGET_CONNECTIONS,
-        // Allow to maintain some extra general connections beyond direct interest too
-        general_connected_peers_limit: TARGET_CONNECTIONS + dsn_config.max_in_connections / 4,
         reserved_peers: dsn_config.reserved_peers,
         bootstrap_addresses: dsn_config.bootstrap_nodes,
         external_addresses: dsn_config.external_addresses,

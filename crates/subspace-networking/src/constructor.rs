@@ -8,14 +8,11 @@ use crate::constructor::transport::build_transport;
 use crate::node::Node;
 use crate::node_runner::{NodeRunner, NodeRunnerConfig};
 use crate::protocols::autonat_wrapper::Config as AutonatWrapperConfig;
-use crate::protocols::connected_peers::Config as ConnectedPeersConfig;
-use crate::protocols::peer_info::PeerInfoProvider;
 use crate::protocols::request_response::request_response_factory::RequestHandler;
 use crate::protocols::reserved_peers::Config as ReservedPeersConfig;
 use crate::shared::Shared;
 use crate::utils::rate_limiter::RateLimiter;
 use crate::utils::{strip_peer_id, SubspaceMetrics};
-use crate::{PeerInfo, PeerInfoConfig};
 use backoff::{ExponentialBackoff, SystemClock};
 use futures::channel::mpsc;
 use libp2p::autonat::Config as AutonatConfig;
@@ -47,15 +44,9 @@ use subspace_core_primitives::{crypto, Piece};
 use thiserror::Error;
 use tracing::{debug, error, info};
 
-/// Defines whether connection should be maintained permanently.
-pub type ConnectedPeersHandler = Arc<dyn Fn(&PeerInfo) -> bool + Send + Sync + 'static>;
-
 const DEFAULT_NETWORK_PROTOCOL_VERSION: &str = "dev";
 const KADEMLIA_PROTOCOL: &str = "/subspace/kad/0.1.0";
 const GOSSIPSUB_PROTOCOL_PREFIX: &str = "subspace/gossipsub";
-const PEER_INFO_PROTOCOL_NAME: &str = "/subspace/peer-info/1.0.0";
-const GENERAL_CONNECTED_PEERS_PROTOCOL_LOG_TARGET: &str = "general-connected-peers";
-const SPECIAL_CONNECTED_PEERS_PROTOCOL_LOG_TARGET: &str = "special-connected-peers";
 
 /// Defines max_negotiating_inbound_streams constant for the swarm.
 /// It must be set for large plots.
@@ -245,26 +236,6 @@ pub struct Config<LocalRecordProvider> {
     pub metrics: Option<SubspaceMetrics>,
     /// Defines protocol version for the network peers. Affects network partition.
     pub protocol_version: String,
-    /// Specifies a source for peer information. None disables the protocol.
-    pub peer_info_provider: Option<PeerInfoProvider>,
-    /// Defines whether we maintain a persistent connection for common peers.
-    /// `None` (the default) disables the protocol.
-    pub general_connected_peers_handler: Option<ConnectedPeersHandler>,
-    /// Defines whether we maintain a persistent connection for special peers.
-    /// `None` (the default) disables the protocol.
-    pub special_connected_peers_handler: Option<ConnectedPeersHandler>,
-    /// Defines target total (in and out) connection number that should be maintained for general
-    /// peers (defaults to 0).
-    pub general_connected_peers_target: u32,
-    /// Defines target total (in and out) connection number that should be maintained for special
-    /// peers (defaults to 0).
-    pub special_connected_peers_target: u32,
-    /// Defines max total (in and out) connection number that should be maintained for general
-    /// peers (defaults to 0, will be automatically raised if set lower than target).
-    pub general_connected_peers_limit: u32,
-    /// Defines max total (in and out) connection number that should be maintained for special
-    /// peers (defaults to 0, will be automatically raised if set lower than target).
-    pub special_connected_peers_limit: u32,
     /// Addresses to bootstrap Kademlia network
     pub bootstrap_addresses: Vec<Multiaddr>,
     /// Kademlia mode. The default value is set to Static(Client). The peer won't add its address
@@ -294,7 +265,6 @@ impl Default for Config<()> {
             DEFAULT_NETWORK_PROTOCOL_VERSION.to_string(),
             keypair,
             (),
-            Some(PeerInfoProvider::new_client()),
             None,
         )
     }
@@ -309,7 +279,6 @@ where
         protocol_version: String,
         keypair: identity::Keypair,
         local_records_provider: LocalRecordProvider,
-        peer_info_provider: Option<PeerInfoProvider>,
         prometheus_registry: Option<&mut Registry>,
     ) -> Self {
         let (libp2p_metrics, metrics) = prometheus_registry
@@ -396,14 +365,6 @@ where
             libp2p_metrics,
             metrics,
             protocol_version,
-            peer_info_provider,
-            // Don't need to keep additional connections by default
-            general_connected_peers_handler: None,
-            special_connected_peers_handler: None,
-            general_connected_peers_target: 0,
-            special_connected_peers_target: 0,
-            general_connected_peers_limit: 0,
-            special_connected_peers_limit: 0,
             bootstrap_addresses: Vec::new(),
             kademlia_mode: KademliaMode::Static(Mode::Client),
             external_addresses: Vec::new(),
@@ -468,13 +429,6 @@ where
         libp2p_metrics,
         metrics,
         protocol_version,
-        peer_info_provider,
-        general_connected_peers_handler: general_connection_decision_handler,
-        special_connected_peers_handler: special_connection_decision_handler,
-        general_connected_peers_target,
-        special_connected_peers_target,
-        general_connected_peers_limit,
-        special_connected_peers_limit,
         bootstrap_addresses,
         kademlia_mode,
         external_addresses,
@@ -523,26 +477,6 @@ where
             reserved_peers: reserved_peers.clone(),
             dialing_interval: DIALING_INTERVAL_IN_SECS,
         },
-        peer_info_config: PeerInfoConfig::new(PEER_INFO_PROTOCOL_NAME),
-        peer_info_provider,
-        general_connected_peers_config: general_connection_decision_handler.as_ref().map(|_| {
-            ConnectedPeersConfig {
-                log_target: GENERAL_CONNECTED_PEERS_PROTOCOL_LOG_TARGET,
-                target_connected_peers: general_connected_peers_target,
-                max_connected_peers: general_connected_peers_limit
-                    .max(general_connected_peers_target),
-                ..ConnectedPeersConfig::default()
-            }
-        }),
-        special_connected_peers_config: special_connection_decision_handler.as_ref().map(|_| {
-            ConnectedPeersConfig {
-                log_target: SPECIAL_CONNECTED_PEERS_PROTOCOL_LOG_TARGET,
-                target_connected_peers: special_connected_peers_target,
-                max_connected_peers: special_connected_peers_limit
-                    .max(special_connected_peers_target),
-                ..ConnectedPeersConfig::default()
-            }
-        }),
         autonat: AutonatWrapperConfig {
             inner_config: AutonatConfig {
                 use_connected: true,
@@ -658,8 +592,6 @@ where
         libp2p_metrics,
         metrics,
         protocol_version,
-        general_connection_decision_handler,
-        special_connection_decision_handler,
         bootstrap_addresses,
         disable_bootstrap_on_start,
     });
