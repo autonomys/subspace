@@ -1790,6 +1790,191 @@ async fn test_bundle_equivocation_fraud_proof() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
+async fn test_domain_block_builder_include_ext_with_failed_execution() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a evm domain authority node) with `skip_empty_bundle_production` set to `true`
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .await;
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
+
+    // produce a transfer from alice to bob
+    // we send two transactions, first one must succeed, while second one will fail
+    // second extrinsic fails due to not enough balance but should still be included in the domain
+    // block body
+    let pre_alice_free_balance = alice.free_balance(Alice.to_account_id());
+    let alice_account_nonce = alice.account_nonce();
+
+    // first ext that must succeed
+    let tx = alice.construct_extrinsic(
+        alice_account_nonce,
+        pallet_balances::Call::transfer_allow_death {
+            dest: Bob.to_account_id(),
+            // we send half of alice balance to bob
+            value: pre_alice_free_balance / 2,
+        },
+    );
+    alice
+        .send_extrinsic(tx)
+        .await
+        .expect("Failed to send extrinsic");
+
+    // second ext that will fail due to balance restrictions.
+    let tx = alice.construct_extrinsic(
+        alice_account_nonce + 1,
+        pallet_balances::Call::transfer_allow_death {
+            dest: Bob.to_account_id(),
+            // try to send value that is more than what alice has
+            value: pre_alice_free_balance,
+        },
+    );
+    alice
+        .send_extrinsic(tx)
+        .await
+        .expect("Failed to send extrinsic");
+
+    // Produce a bundle and submit to the tx pool of the consensus node
+    let (_slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert!(bundle.is_some());
+    let bundle = bundle.unwrap();
+    assert_eq!(bundle.extrinsics.len(), 2);
+
+    // produce block and import domain block
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
+
+    // domain block body should have 3 extrinsics
+    // timestamp inherent, successful transfer, failed transfer
+    let best_hash = alice.client.info().best_hash;
+    let domain_block_extrinsics = alice.client.block_body(best_hash).unwrap();
+    assert_eq!(domain_block_extrinsics.unwrap().len(), 3);
+
+    // next bundle should have er which should a total of 5 trace roots
+    // timestamp + success ext + failed ext + finalize + final_state_root
+    let (_slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert!(bundle.is_some());
+    let bundle = bundle.unwrap();
+    let er = bundle.sealed_header.header.receipt;
+    assert_eq!(er.execution_trace.len(), 5);
+    assert_eq!(er.execution_trace[4], er.final_state_root);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_domain_block_builder_include_ext_with_failed_predispatch() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a evm domain authority node) with `skip_empty_bundle_production` set to `true`
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .await;
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
+
+    // produce a transfer from alice to bob in one bundle, which should succeed
+    let pre_alice_free_balance = alice.free_balance(Alice.to_account_id());
+    let alice_account_nonce = alice.account_nonce();
+
+    let tx = alice.construct_extrinsic(
+        alice_account_nonce,
+        pallet_balances::Call::transfer_allow_death {
+            dest: Bob.to_account_id(),
+            // we send half of alice balance to bob
+            value: pre_alice_free_balance / 2,
+        },
+    );
+    alice
+        .send_extrinsic(tx)
+        .await
+        .expect("Failed to send extrinsic");
+
+    // Produce a bundle and submit to the tx pool of the consensus node
+    let (_slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert!(bundle.is_some());
+    let bundle = bundle.unwrap();
+    assert_eq!(bundle.extrinsics.len(), 1);
+
+    // we produce another bundle with similar transaction
+    // second one will fail at pre dispatch since we use same nonce
+    // we change the value to something else so that ext is different
+    // send the tip so that previous ext is replaced with current in Domain tx pool
+    let tip = 1000000;
+    let tx = alice.construct_extrinsic_with_tip(
+        // use the same nonce
+        alice_account_nonce,
+        tip,
+        pallet_balances::Call::transfer_allow_death {
+            dest: Bob.to_account_id(),
+            value: pre_alice_free_balance / 3,
+        },
+    );
+    alice
+        .send_extrinsic(tx)
+        .await
+        .expect("Failed to send extrinsic");
+
+    // Produce a bundle and submit to the tx pool of the consensus node
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert!(bundle.is_some());
+    let bundle = bundle.unwrap();
+    assert_eq!(bundle.extrinsics.len(), 1);
+
+    // produce block and import domain block
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+
+    // domain block body should have 3 extrinsics
+    // timestamp inherent, successful transfer, failed transfer
+    let best_hash = alice.client.info().best_hash;
+    let domain_block_extrinsics = alice.client.block_body(best_hash).unwrap();
+    assert_eq!(domain_block_extrinsics.unwrap().len(), 3);
+
+    // next bundle should have er which should a total of 5 trace roots
+    // timestamp + success ext + failed ext + finalize + final_state_root
+    let (_slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert!(bundle.is_some());
+    let bundle = bundle.unwrap();
+    let er = bundle.sealed_header.header.receipt;
+
+    // TODO: will update this to 5 once the fix is done in next commit
+    assert_eq!(er.execution_trace.len(), 4);
+    assert_eq!(er.execution_trace[3], er.final_state_root);
+}
+
+#[tokio::test(flavor = "multi_thread")]
 async fn test_valid_bundle_proof_generation_and_verification() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 

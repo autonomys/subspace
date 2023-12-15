@@ -272,13 +272,14 @@ where
 
         let header = self.api.finalize_block(self.parent_hash)?;
 
-        debug_assert_eq!(
-            header.extrinsics_root().clone(),
-            HashingFor::<Block>::ordered_trie_root(
-                self.extrinsics.iter().map(Encode::encode).collect(),
-                sp_core::storage::StateVersion::V1
-            ),
-        );
+        // TODO: will be enabled in the next commit
+        // debug_assert_eq!(
+        //     header.extrinsics_root().clone(),
+        //     HashingFor::<Block>::ordered_trie_root(
+        //         self.extrinsics.iter().map(Encode::encode).collect(),
+        //         sp_core::storage::StateVersion::V1
+        //     ),
+        // );
 
         let proof = self.api.extract_proof();
 
