@@ -838,7 +838,7 @@ mod pallet {
         pub fn submit_bundle(
             origin: OriginFor<T>,
             opaque_bundle: OpaqueBundleOf<T>,
-        ) -> DispatchResult {
+        ) -> DispatchResultWithPostInfo {
             ensure_none(origin)?;
 
             log::trace!(target: "runtime::domains", "Processing bundle: {opaque_bundle:?}");
@@ -849,6 +849,11 @@ mod pallet {
             let extrinsics_root = opaque_bundle.extrinsics_root();
             let operator_id = opaque_bundle.operator_id();
             let receipt = opaque_bundle.into_receipt();
+
+            #[cfg(not(feature = "runtime-benchmarks"))]
+            let mut epoch_transitted = false;
+            #[cfg(feature = "runtime-benchmarks")]
+            let epoch_transitted = false;
 
             match execution_receipt_type::<T>(domain_id, &receipt) {
                 ReceiptType::Rejected(rejected_receipt_type) => {
@@ -870,6 +875,9 @@ mod pallet {
                     //
                     // NOTE: Skip the following staking related operations when benchmarking the
                     // `submit_bundle` call, these operations will be benchmarked separately.
+                    // TODO: in order to get a more accurate actual weight, separately benchmark:
+                    // - `do_reward_operators`,`do_slash_operators`,`do_unlock_pending_withdrawals`
+                    // - `do_finalize_domain_current_epoch`
                     #[cfg(not(feature = "runtime-benchmarks"))]
                     if let Some(confirmed_block_info) = maybe_confirmed_domain_block_info {
                         do_reward_operators::<T>(
@@ -906,6 +914,7 @@ mod pallet {
                                 domain_id,
                                 completed_epoch_index,
                             });
+                            epoch_transitted = true;
                         }
 
                         do_unlock_pending_withdrawals::<T>(
@@ -948,7 +957,15 @@ mod pallet {
                 bundle_author: operator_id,
             });
 
-            Ok(())
+            let actual_weight = if !epoch_transitted {
+                Some(T::WeightInfo::submit_bundle())
+            } else {
+                Some(
+                    T::WeightInfo::submit_bundle()
+                        .saturating_add(T::WeightInfo::pending_staking_operation()),
+                )
+            };
+            Ok(actual_weight.into())
         }
 
         #[pallet::call_index(1)]
