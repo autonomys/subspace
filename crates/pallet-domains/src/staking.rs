@@ -150,6 +150,11 @@ pub(crate) fn do_register_operator<T: Config>(
             Error::DuplicateOperatorSigningKey
         );
 
+        ensure!(
+            config.minimum_nominator_stake >= T::MinNominatorStake::get(),
+            Error::MinimumNominatorStake
+        );
+
         let domain_obj = DomainRegistry::<T>::get(domain_id).ok_or(Error::DomainNotInitialized)?;
         ensure!(
             domain_obj
@@ -778,6 +783,33 @@ pub(crate) mod tests {
     }
 
     #[test]
+    fn test_register_operator_minimum_nominator_stake() {
+        let domain_id = DomainId::new(0);
+        let operator_account = 1;
+        let pair = OperatorPair::from_seed(&U256::from(0u32).into());
+
+        let mut ext = new_test_ext();
+        ext.execute_with(|| {
+            let operator_config = OperatorConfig {
+                signing_key: pair.public(),
+                minimum_nominator_stake: Default::default(),
+                nomination_tax: Default::default(),
+            };
+
+            let res = Domains::register_operator(
+                RuntimeOrigin::signed(operator_account),
+                domain_id,
+                Default::default(),
+                operator_config,
+            );
+            assert_err!(
+                res,
+                Error::<Test>::Staking(StakingError::MinimumNominatorStake)
+            );
+        });
+    }
+
+    #[test]
     fn test_register_operator() {
         let domain_id = DomainId::new(0);
         let operator_account = 1;
@@ -792,7 +824,7 @@ pub(crate) mod tests {
                 operator_account,
                 operator_free_balance,
                 operator_stake,
-                0,
+                SSC,
                 pair.public(),
                 BTreeMap::new(),
             );
@@ -809,7 +841,7 @@ pub(crate) mod tests {
                     signing_key: pair.public(),
                     current_domain_id: domain_id,
                     next_domain_id: domain_id,
-                    minimum_nominator_stake: 0,
+                    minimum_nominator_stake: SSC,
                     nomination_tax: Default::default(),
                     current_total_stake: operator_stake,
                     current_epoch_rewards: 0,
@@ -972,7 +1004,7 @@ pub(crate) mod tests {
                 operator_account,
                 operator_free_balance,
                 operator_stake,
-                0,
+                SSC,
                 pair.public(),
                 BTreeMap::new(),
             );
@@ -1062,7 +1094,7 @@ pub(crate) mod tests {
                 operator_account,
                 operator_free_balance,
                 operator_stake,
-                0,
+                SSC,
                 pair.public(),
                 BTreeMap::new(),
             );

@@ -191,6 +191,7 @@ impl pallet_balances::Config for Test {
 
 parameter_types! {
     pub const MinOperatorStake: Balance = 100 * SSC;
+    pub const MinNominatorStake: Balance = SSC;
     pub const StakeWithdrawalLockingPeriod: DomainBlockNumber = 5;
     pub const StakeEpochDuration: DomainBlockNumber = 5;
     pub TreasuryAccount: u64 = PalletId(*b"treasury").into_account_truncating();
@@ -228,6 +229,7 @@ impl pallet_domains::Config for Test {
     type InitialDomainTxRange = InitialDomainTxRange;
     type DomainTxRangeAdjustmentInterval = DomainTxRangeAdjustmentInterval;
     type MinOperatorStake = MinOperatorStake;
+    type MinNominatorStake = MinNominatorStake;
     type MaxDomainBlockSize = MaxDomainBlockSize;
     type MaxDomainBlockWeight = MaxDomainBlockWeight;
     type MaxBundlesPerBlock = MaxBundlesPerBlock;
