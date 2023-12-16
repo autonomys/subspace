@@ -1969,9 +1969,8 @@ async fn test_domain_block_builder_include_ext_with_failed_predispatch() {
     let bundle = bundle.unwrap();
     let er = bundle.sealed_header.header.receipt;
 
-    // TODO: will update this to 5 once the fix is done in next commit
-    assert_eq!(er.execution_trace.len(), 4);
-    assert_eq!(er.execution_trace[3], er.final_state_root);
+    assert_eq!(er.execution_trace.len(), 5);
+    assert_eq!(er.execution_trace[4], er.final_state_root);
 }
 
 #[tokio::test(flavor = "multi_thread")]

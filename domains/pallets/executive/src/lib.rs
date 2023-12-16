@@ -33,8 +33,11 @@ mod tests;
 
 pub mod weights;
 
-use codec::Codec;
-use frame_support::dispatch::{DispatchClass, DispatchInfo, GetDispatchInfo, PostDispatchInfo};
+use codec::{Codec, Encode};
+use frame_support::dispatch::{
+    DispatchClass, DispatchErrorWithPostInfo, DispatchInfo, GetDispatchInfo, Pays, PostDispatchInfo,
+};
+use frame_support::storage::with_storage_layer;
 use frame_support::traits::{
     EnsureInherentsAreFirst, ExecuteBlock, Get, OffchainWorker, OnFinalize, OnIdle, OnInitialize,
     OnRuntimeUpgrade,
@@ -46,8 +49,10 @@ use sp_runtime::traits::{
     self, Applyable, CheckEqual, Checkable, Dispatchable, Header, NumberFor, One, ValidateUnsigned,
     Zero,
 };
-use sp_runtime::transaction_validity::{TransactionSource, TransactionValidity};
-use sp_runtime::ApplyExtrinsicResult;
+use sp_runtime::transaction_validity::{
+    InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
+};
+use sp_runtime::{ApplyExtrinsicResult, DispatchError};
 use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
 
@@ -426,14 +431,66 @@ where
     /// Note the storage root in the end.
     pub fn apply_extrinsic(uxt: Block::Extrinsic) -> ApplyExtrinsicResult {
         Pallet::<ExecutiveConfig>::push_root(Self::storage_root());
-        let res = frame_executive::Executive::<
-            System,
-            Block,
-            Context,
-            UnsignedValidator,
-            AllPalletsWithSystem,
-            COnRuntimeUpgrade,
-        >::apply_extrinsic(uxt);
+
+        // apply the extrinsic within another transaction so that changes can be reverted.
+        let res = with_storage_layer(|| {
+            frame_executive::Executive::<
+                System,
+                Block,
+                Context,
+                UnsignedValidator,
+                AllPalletsWithSystem,
+                COnRuntimeUpgrade,
+            >::apply_extrinsic(uxt.clone())
+            .map_err(|err| DispatchError::Other(err.into()))
+        });
+
+        // apply extrinsic failed with transaction validity error
+        // this could happen for following scenarios
+        // - Bad extrinsic Signature
+        //      This extrinsic will be ignored by the operators during the bundle check
+        //      and marks such bundle as Invalid.
+        // - Extrinsic execution failed
+        //      There are multiple scenarios why this can happen
+        //      - Inherent extrinsic failed. If this happens, we should fail to apply extrinsic
+        //      - Pre and Post dispatch fails. Check the test `test_domain_block_builder_include_ext_with_failed_predispatch`
+        //        why this could happen. If it fail due to this, then we revert the inner storage changes
+        //        but still include extrinsic so that we can clear inconsistency between block body and trace roots.
+        let res = match res {
+            Ok(dispatch_outcome) => Ok(dispatch_outcome),
+            Err(err) => {
+                // check the extrinsic, this should never fail
+                // if the check failed, then we have bug in the bundle check
+                let encoded = uxt.encode();
+                let checked_ext = uxt.check(&Default::default())?;
+                let dispatch_info = checked_ext.get_dispatch_info();
+                // if this is not a normal extrinsic, then transaction should not execute
+                // we should fail here.
+                if dispatch_info.class != DispatchClass::Normal {
+                    return Err(TransactionValidityError::Invalid(
+                        InvalidTransaction::BadMandatory,
+                    ));
+                }
+
+                // TODO: charge user for the storage of extrinsic
+                // note the extrinsic into system storage
+                <frame_system::Pallet<System>>::note_extrinsic(encoded);
+
+                // note extrinsic applied. it pays no fees since there was no execution.
+                // we also set the weight to zero since there was no execution done.
+                let r = Err(DispatchErrorWithPostInfo {
+                    post_info: PostDispatchInfo {
+                        actual_weight: None,
+                        pays_fee: Pays::No,
+                    },
+                    error: err,
+                });
+
+                <frame_system::Pallet<System>>::note_applied_extrinsic(&r, dispatch_info);
+                Ok(Err(err))
+            }
+        };
+
         // TODO: Critical!!! https://github.com/paritytech/substrate/pull/10922#issuecomment-1068997467
         log::debug!(
             target: "domain::runtime::executive",
