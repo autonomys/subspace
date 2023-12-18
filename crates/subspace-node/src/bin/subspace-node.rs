@@ -22,6 +22,7 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 use cross_domain_message_gossip::GossipWorkerBuilder;
 use domain_client_operator::Bootstrapper;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
+use evm_domain_runtime::ExecutorDispatch as EVMDomainExecutorDispatch;
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
 use log::warn;
@@ -37,12 +38,10 @@ use sp_core::traits::SpawnEssentialNamed;
 use sp_io::SubstrateHostFunctions;
 use sp_messenger::messages::ChainId;
 use sp_wasm_interface::ExtendedHostFunctions;
-use subspace_node::domain::{
-    DomainCli, DomainInstanceStarter, DomainSubcommand, EVMDomainExecutorDispatch,
-};
-use subspace_node::{Cli, ExecutorDispatch, Subcommand};
+use subspace_node::domain::{DomainCli, DomainInstanceStarter, DomainSubcommand};
+use subspace_node::{Cli, Subcommand};
 use subspace_proof_of_space::chia::ChiaTable;
-use subspace_runtime::{Block, RuntimeApi};
+use subspace_runtime::{Block, ExecutorDispatch, RuntimeApi};
 use subspace_service::{DsnConfig, SubspaceConfiguration, SubspaceNetworking};
 
 type PosTable = ChiaTable;
