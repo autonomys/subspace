@@ -934,7 +934,7 @@ impl_runtime_apis! {
             let dispatch_info = xt.get_dispatch_info();
 
             if dispatch_info.class == DispatchClass::Mandatory {
-                return Err(InvalidTransaction::BadMandatory.into());
+                return Err(InvalidTransaction::MandatoryValidation.into());
             }
 
             let encoded_len = uxt.encoded_size();
