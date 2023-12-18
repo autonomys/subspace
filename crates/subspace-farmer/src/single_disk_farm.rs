@@ -88,6 +88,12 @@ impl SingleDiskFarmId {
     }
 }
 
+/// Exclusive lock for single disk farm info file, ensuring no concurrent edits by cooperating processes is done
+#[must_use = "Lock file must be kept around or as long as farm is used"]
+pub struct SingleDiskFarmInfoLock {
+    _file: File,
+}
+
 /// Important information about the contents of the `SingleDiskFarm`
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -160,6 +166,15 @@ impl SingleDiskFarmInfo {
             directory.join(Self::FILE_NAME),
             serde_json::to_vec(self).expect("Info serialization never fails; qed"),
         )
+    }
+
+    /// Try to acquire exclusive lock on the single disk farm info file, ensuring no concurrent edits by cooperating
+    /// processes is done
+    pub fn try_lock(directory: &Path) -> io::Result<SingleDiskFarmInfoLock> {
+        let file = File::open(directory.join(Self::FILE_NAME))?;
+        fs4::FileExt::try_lock_exclusive(&file)?;
+
+        Ok(SingleDiskFarmInfoLock { _file: file })
     }
 
     // ID of the farm
@@ -287,6 +302,9 @@ pub enum SingleDiskFarmError {
     /// Failed to open or create identity
     #[error("Failed to open or create identity: {0}")]
     FailedToOpenIdentity(#[from] IdentityError),
+    /// Farm is likely already in use, make sure no other farmer is using it
+    #[error("Farm is likely already in use, make sure no other farmer is using it: {0}")]
+    LikelyAlreadyInUse(io::Error),
     // TODO: Make more variants out of this generic one
     /// I/O error occurred
     #[error("I/O error: {0}")]
@@ -378,6 +396,9 @@ pub enum SingleDiskFarmError {
 /// Errors happening during scrubbing
 #[derive(Debug, Error)]
 pub enum SingleDiskFarmScrubError {
+    /// Farm is likely already in use, make sure no other farmer is using it
+    #[error("Farm is likely already in use, make sure no other farmer is using it: {0}")]
+    LikelyAlreadyInUse(io::Error),
     /// Failed to determine file size
     #[error("Failed to file size of {file}: {error}")]
     FailedToDetermineFileSize {
@@ -559,6 +580,7 @@ pub struct SingleDiskFarm {
     start_sender: Option<broadcast::Sender<()>>,
     /// Sender that will be used to signal to background threads that they must stop
     stop_sender: Option<broadcast::Sender<()>>,
+    _single_disk_farm_info_lock: SingleDiskFarmInfoLock,
 }
 
 impl Drop for SingleDiskFarm {
@@ -684,6 +706,9 @@ impl SingleDiskFarm {
             }
         };
 
+        let single_disk_farm_info_lock = SingleDiskFarmInfo::try_lock(&directory)
+            .map_err(SingleDiskFarmError::LikelyAlreadyInUse)?;
+
         let pieces_in_sector = single_disk_farm_info.pieces_in_sector();
         let sector_size = sector_size(pieces_in_sector);
         let sector_metadata_size = SectorMetadataChecksummed::encoded_size();
@@ -745,7 +770,6 @@ impl SingleDiskFarm {
             }
         };
 
-        // TODO: Consider file locking to prevent other apps from modifying it
         let mut metadata_file = OpenOptions::new()
             .read(true)
             .write(true)
@@ -1195,6 +1219,7 @@ impl SingleDiskFarm {
             piece_reader,
             start_sender: Some(start_sender),
             stop_sender: Some(stop_sender),
+            _single_disk_farm_info_lock: single_disk_farm_info_lock,
         };
 
         Ok(farm)
@@ -1446,6 +1471,10 @@ impl SingleDiskFarm {
                 }
             }
         };
+
+        let _single_disk_farm_info_lock = SingleDiskFarmInfo::try_lock(directory)
+            .map_err(SingleDiskFarmScrubError::LikelyAlreadyInUse)?;
+
         let identity = {
             let file = directory.join(Identity::FILE_NAME);
             info!(path = %file.display(), "Checking identity file");
