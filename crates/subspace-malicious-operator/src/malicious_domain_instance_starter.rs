@@ -21,8 +21,7 @@ use std::sync::Arc;
 use subspace_node::domain::{
     create_configuration, evm_chain_spec, AccountId20, DomainCli, EVMDomainExecutorDispatch,
 };
-use subspace_node::ExecutorDispatch as CExecutorDispatch;
-use subspace_runtime::RuntimeApi as CRuntimeApi;
+use subspace_runtime::{ExecutorDispatch as CExecutorDispatch, RuntimeApi as CRuntimeApi};
 use subspace_runtime_primitives::opaque::Block as CBlock;
 use subspace_service::FullClient as CFullClient;
 

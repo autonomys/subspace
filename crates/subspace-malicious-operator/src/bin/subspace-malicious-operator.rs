@@ -34,9 +34,9 @@ use sp_core::traits::SpawnEssentialNamed;
 use sp_messenger::messages::ChainId;
 use subspace_malicious_operator::malicious_domain_instance_starter::DomainInstanceStarter;
 use subspace_node::domain::DomainCli;
-use subspace_node::{Cli, ExecutorDispatch};
+use subspace_node::Cli;
 use subspace_proof_of_space::chia::ChiaTable;
-use subspace_runtime::{Block, RuntimeApi};
+use subspace_runtime::{Block, ExecutorDispatch, RuntimeApi};
 use subspace_service::{DsnConfig, SubspaceConfiguration, SubspaceNetworking};
 
 type PosTable = ChiaTable;
