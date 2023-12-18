@@ -38,16 +38,18 @@ use frame_support::dispatch::{
     DispatchClass, DispatchErrorWithPostInfo, DispatchInfo, GetDispatchInfo, Pays, PostDispatchInfo,
 };
 use frame_support::storage::with_storage_layer;
+use frame_support::traits::fungible::{Inspect, Mutate};
+use frame_support::traits::tokens::{Fortitude, Precision};
 use frame_support::traits::{
     EnsureInherentsAreFirst, ExecuteBlock, Get, OffchainWorker, OnFinalize, OnIdle, OnInitialize,
     OnRuntimeUpgrade,
 };
-use frame_support::weights::Weight;
+use frame_support::weights::{Weight, WeightToFee};
 use frame_system::pallet_prelude::*;
 pub use pallet::*;
 use sp_runtime::traits::{
-    self, Applyable, CheckEqual, Checkable, Dispatchable, Header, NumberFor, One, ValidateUnsigned,
-    Zero,
+    Applyable, Block as BlockT, CheckEqual, Checkable, Dispatchable, Header, NumberFor, One,
+    ValidateUnsigned, Zero,
 };
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
@@ -60,12 +62,29 @@ pub type CheckedOf<E, C> = <E as Checkable<C>>::Checked;
 pub type CallOf<E, C> = <CheckedOf<E, C> as Applyable>::Call;
 pub type OriginOf<E, C> = <CallOf<E, C> as Dispatchable>::RuntimeOrigin;
 
+/// Trait trait used to charge the extrinsic storage.
+pub trait ExtrinsicStorageFees<T: Config> {
+    /// Extracts signer from given extrinsic and its dispatch info.
+    fn extract_signer(xt: ExtrinsicOf<T>) -> (Option<AccountIdOf<T>>, DispatchInfo);
+    /// Hook to note operator rewards for charged storage fees.
+    fn on_storage_fees_charged(charged_fees: BalanceOf<T>);
+}
+
+type AccountIdOf<T> = <T as frame_system::Config>::AccountId;
+type BalanceOf<T> = <<T as Config>::Currency as Inspect<AccountIdOf<T>>>::Balance;
+type ExtrinsicOf<T> = <BlockOf<T> as BlockT>::Extrinsic;
+type BlockOf<T> = <T as frame_system::Config>::Block;
+type BlockHashOf<T> = <BlockOf<T> as BlockT>::Hash;
+
 // TODO: not store the intermediate storage root in the state but
 // calculate the storage root outside the runtime after executing the extrinsic directly.
 #[frame_support::pallet]
 mod pallet {
     use crate::weights::WeightInfo;
+    use crate::{BalanceOf, ExtrinsicStorageFees};
     use frame_support::pallet_prelude::*;
+    use frame_support::traits::fungible::Mutate;
+    use frame_support::weights::WeightToFee;
     use frame_system::pallet_prelude::*;
     use frame_system::SetCode;
     use sp_executive::{InherentError, InherentType, INHERENT_IDENTIFIER};
@@ -75,6 +94,9 @@ mod pallet {
     pub trait Config: frame_system::Config {
         type RuntimeEvent: From<Event<Self>> + IsType<<Self as frame_system::Config>::RuntimeEvent>;
         type WeightInfo: WeightInfo;
+        type Currency: Mutate<Self::AccountId>;
+        type LengthToFee: WeightToFee<Balance = BalanceOf<Self>>;
+        type ExtrinsicStorageFees: ExtrinsicStorageFees<Self>;
     }
 
     #[pallet::pallet]
@@ -180,109 +202,89 @@ impl<T: Config> Pallet<T> {
 /// One extra generic parameter:
 /// - `ExecutiveConfig`: Something that implements `domain_pallet_executive::Config`.
 pub struct Executive<
-    System,
-    Block,
+    ExecutiveConfig,
     Context,
     UnsignedValidator,
     AllPalletsWithSystem,
-    ExecutiveConfig,
     OnRuntimeUpgrade = (),
 >(
     PhantomData<(
-        System,
-        Block,
+        ExecutiveConfig,
         Context,
         UnsignedValidator,
         AllPalletsWithSystem,
-        ExecutiveConfig,
         OnRuntimeUpgrade,
     )>,
 );
 
 impl<
-        System: frame_system::Config + EnsureInherentsAreFirst<Block>,
-        Block: traits::Block<Header = HeaderFor<System>, Hash = System::Hash>,
+        ExecutiveConfig: Config + frame_system::Config + EnsureInherentsAreFirst<BlockOf<ExecutiveConfig>>,
         Context: Default,
         UnsignedValidator,
         AllPalletsWithSystem: OnRuntimeUpgrade
-            + OnInitialize<BlockNumberFor<System>>
-            + OnIdle<BlockNumberFor<System>>
-            + OnFinalize<BlockNumberFor<System>>
-            + OffchainWorker<BlockNumberFor<System>>,
-        ExecutiveConfig: Config,
+            + OnInitialize<BlockNumberFor<ExecutiveConfig>>
+            + OnIdle<BlockNumberFor<ExecutiveConfig>>
+            + OnFinalize<BlockNumberFor<ExecutiveConfig>>
+            + OffchainWorker<BlockNumberFor<ExecutiveConfig>>,
         COnRuntimeUpgrade: OnRuntimeUpgrade,
-    > ExecuteBlock<Block>
+    > ExecuteBlock<BlockOf<ExecutiveConfig>>
     for Executive<
-        System,
-        Block,
+        ExecutiveConfig,
         Context,
         UnsignedValidator,
         AllPalletsWithSystem,
-        ExecutiveConfig,
         COnRuntimeUpgrade,
     >
 where
-    Block::Extrinsic: Checkable<Context> + Codec,
-    CheckedOf<Block::Extrinsic, Context>: Applyable + GetDispatchInfo,
-    CallOf<Block::Extrinsic, Context>:
+    ExtrinsicOf<ExecutiveConfig>: Checkable<Context> + Codec,
+    CheckedOf<ExtrinsicOf<ExecutiveConfig>, Context>: Applyable + GetDispatchInfo,
+    CallOf<ExtrinsicOf<ExecutiveConfig>, Context>:
         Dispatchable<Info = DispatchInfo, PostInfo = PostDispatchInfo>,
-    OriginOf<Block::Extrinsic, Context>: From<Option<System::AccountId>>,
-    UnsignedValidator: ValidateUnsigned<Call = CallOf<Block::Extrinsic, Context>>,
+    OriginOf<ExtrinsicOf<ExecutiveConfig>, Context>: From<Option<AccountIdOf<ExecutiveConfig>>>,
+    UnsignedValidator: ValidateUnsigned<Call = CallOf<ExtrinsicOf<ExecutiveConfig>, Context>>,
 {
-    fn execute_block(block: Block) {
+    fn execute_block(block: BlockOf<ExecutiveConfig>) {
         Executive::<
-            System,
-            Block,
+            ExecutiveConfig,
             Context,
             UnsignedValidator,
             AllPalletsWithSystem,
-            ExecutiveConfig,
             COnRuntimeUpgrade,
         >::execute_block(block);
     }
 }
 
 impl<
-        System: frame_system::Config + EnsureInherentsAreFirst<Block>,
-        Block: traits::Block<Header = HeaderFor<System>, Hash = System::Hash>,
+        ExecutiveConfig: Config + frame_system::Config + EnsureInherentsAreFirst<BlockOf<ExecutiveConfig>>,
         Context: Default,
         UnsignedValidator,
         AllPalletsWithSystem: OnRuntimeUpgrade
-            + OnInitialize<BlockNumberFor<System>>
-            + OnIdle<BlockNumberFor<System>>
-            + OnFinalize<BlockNumberFor<System>>
-            + OffchainWorker<BlockNumberFor<System>>,
-        ExecutiveConfig: Config,
+            + OnInitialize<BlockNumberFor<ExecutiveConfig>>
+            + OnIdle<BlockNumberFor<ExecutiveConfig>>
+            + OnFinalize<BlockNumberFor<ExecutiveConfig>>
+            + OffchainWorker<BlockNumberFor<ExecutiveConfig>>,
         COnRuntimeUpgrade: OnRuntimeUpgrade,
     >
-    Executive<
-        System,
-        Block,
-        Context,
-        UnsignedValidator,
-        AllPalletsWithSystem,
-        ExecutiveConfig,
-        COnRuntimeUpgrade,
-    >
+    Executive<ExecutiveConfig, Context, UnsignedValidator, AllPalletsWithSystem, COnRuntimeUpgrade>
 where
-    Block::Extrinsic: Checkable<Context> + Codec,
-    CheckedOf<Block::Extrinsic, Context>: Applyable + GetDispatchInfo,
-    CallOf<Block::Extrinsic, Context>:
+    ExtrinsicOf<ExecutiveConfig>: Checkable<Context> + Codec,
+    CheckedOf<ExtrinsicOf<ExecutiveConfig>, Context>: Applyable + GetDispatchInfo,
+    CallOf<ExtrinsicOf<ExecutiveConfig>, Context>:
         Dispatchable<Info = DispatchInfo, PostInfo = PostDispatchInfo>,
-    OriginOf<Block::Extrinsic, Context>: From<Option<System::AccountId>>,
-    UnsignedValidator: ValidateUnsigned<Call = CallOf<Block::Extrinsic, Context>>,
+    OriginOf<ExtrinsicOf<ExecutiveConfig>, Context>: From<Option<AccountIdOf<ExecutiveConfig>>>,
+    UnsignedValidator: ValidateUnsigned<Call = CallOf<ExtrinsicOf<ExecutiveConfig>, Context>>,
 {
     /// Returns the latest storage root.
     pub fn storage_root() -> Vec<u8> {
-        let version = System::Version::get().state_version();
+        let version = <ExecutiveConfig as frame_system::Config>::Version::get().state_version();
         sp_io::storage::root(version)
     }
 
     /// Wrapped `frame_executive::Executive::execute_on_runtime_upgrade`.
     pub fn execute_on_runtime_upgrade() -> Weight {
         frame_executive::Executive::<
-            System,
-            Block,
+            ExecutiveConfig,
+            BlockOf<ExecutiveConfig>,
             Context,
             UnsignedValidator,
             AllPalletsWithSystem,
@@ -292,10 +294,10 @@ where
 
     /// Wrapped `frame_executive::Executive::execute_block_no_check`.
     #[cfg(feature = "try-runtime")]
-    pub fn execute_block_no_check(block: Block) -> Weight {
+    pub fn execute_block_no_check(block: BlockOf<ExecutiveConfig>) -> Weight {
         frame_executive::Executive::<
-            System,
-            Block,
+            ExecutiveConfig,
+            BlockOf<ExecutiveConfig>,
             Context,
             UnsignedValidator,
             AllPalletsWithSystem,
@@ -307,8 +309,8 @@ where
     #[cfg(feature = "try-runtime")]
     pub fn try_runtime_upgrade() -> Result<Weight, &'static str> {
         frame_executive::Executive::<
-            System,
-            Block,
+            ExecutiveConfig,
+            BlockOf<ExecutiveConfig>,
             Context,
             UnsignedValidator,
             AllPalletsWithSystem,
@@ -319,10 +321,10 @@ where
     /// Wrapped `frame_executive::Executive::initialize_block`.
     ///
     /// Note the storage root in the end.
-    pub fn initialize_block(header: &HeaderFor<System>) {
+    pub fn initialize_block(header: &HeaderFor<ExecutiveConfig>) {
         frame_executive::Executive::<
-            System,
-            Block,
+            ExecutiveConfig,
+            BlockOf<ExecutiveConfig>,
             Context,
             UnsignedValidator,
             AllPalletsWithSystem,
@@ -331,20 +333,21 @@ where
     }
 
     // TODO: https://github.com/paritytech/substrate/issues/10711
-    fn initial_checks(block: &Block) {
+    fn initial_checks(block: &BlockOf<ExecutiveConfig>) {
         sp_tracing::enter_span!(sp_tracing::Level::TRACE, "initial_checks");
         let header = block.header();
 
         // Check that `parent_hash` is correct.
         let n = *header.number();
         assert!(
-            n > BlockNumberFor::<System>::zero()
-                && <frame_system::Pallet<System>>::block_hash(n - BlockNumberFor::<System>::one())
-                    == *header.parent_hash(),
+            n > BlockNumberFor::<ExecutiveConfig>::zero()
+                && <frame_system::Pallet<ExecutiveConfig>>::block_hash(
+                    n - BlockNumberFor::<ExecutiveConfig>::one()
+                ) == *header.parent_hash(),
             "Parent hash should be valid.",
         );
 
-        if let Err(i) = System::ensure_inherents_are_first(block) {
+        if let Err(i) = ExecutiveConfig::ensure_inherents_are_first(block) {
             panic!("Invalid inherent position for extrinsic at index {i}");
         }
     }
@@ -353,7 +356,7 @@ where
     ///
     /// The purpose is to use our custom [`Executive::initialize_block`] and
     /// [`Executive::apply_extrinsic`].
-    pub fn execute_block(block: Block) {
+    pub fn execute_block(block: BlockOf<ExecutiveConfig>) {
         sp_io::init_tracing();
         sp_tracing::within_span! {
             sp_tracing::info_span!("execute_block", ?block);
@@ -372,8 +375,8 @@ where
 
     /// Exactly same with `frame_executive::executive::execute_extrinsics_with_book_keeping`.
     fn execute_extrinsics_with_book_keeping(
-        extrinsics: Vec<Block::Extrinsic>,
-        block_number: NumberFor<Block>,
+        extrinsics: Vec<ExtrinsicOf<ExecutiveConfig>>,
+        block_number: NumberFor<BlockOf<ExecutiveConfig>>,
     ) {
         extrinsics.into_iter().for_each(|e| {
             if let Err(e) = Self::apply_extrinsic(e) {
@@ -388,17 +391,17 @@ where
         Pallet::<ExecutiveConfig>::push_root(Self::storage_root());
 
         // post-extrinsics book-keeping
-        <frame_system::Pallet<System>>::note_finished_extrinsics();
+        <frame_system::Pallet<ExecutiveConfig>>::note_finished_extrinsics();
 
         Self::idle_and_finalize_hook(block_number);
     }
 
     /// Wrapped `frame_executive::Executive::finalize_block`.
-    pub fn finalize_block() -> HeaderFor<System> {
+    pub fn finalize_block() -> HeaderFor<ExecutiveConfig> {
         Pallet::<ExecutiveConfig>::push_root(Self::storage_root());
         frame_executive::Executive::<
-            System,
-            Block,
+            ExecutiveConfig,
+            BlockOf<ExecutiveConfig>,
             Context,
             UnsignedValidator,
             AllPalletsWithSystem,
@@ -407,36 +410,39 @@ where
     }
 
     // TODO: https://github.com/paritytech/substrate/issues/10711
-    fn idle_and_finalize_hook(block_number: NumberFor<Block>) {
-        let weight = <frame_system::Pallet<System>>::block_weight();
-        let max_weight = <System::BlockWeights as frame_support::traits::Get<_>>::get().max_block;
+    fn idle_and_finalize_hook(block_number: NumberFor<BlockOf<ExecutiveConfig>>) {
+        let weight = <frame_system::Pallet<ExecutiveConfig>>::block_weight();
+        let max_weight = <<ExecutiveConfig as frame_system::Config>::BlockWeights as frame_support::traits::Get<_>>::get().max_block;
         let remaining_weight = max_weight.saturating_sub(weight.total());
 
         if remaining_weight.all_gt(Weight::zero()) {
-            let used_weight = <AllPalletsWithSystem as OnIdle<BlockNumberFor<System>>>::on_idle(
-                block_number,
-                remaining_weight,
-            );
-            <frame_system::Pallet<System>>::register_extra_weight_unchecked(
+            let used_weight =
+                <AllPalletsWithSystem as OnIdle<BlockNumberFor<ExecutiveConfig>>>::on_idle(
+                    block_number,
+                    remaining_weight,
+                );
+            <frame_system::Pallet<ExecutiveConfig>>::register_extra_weight_unchecked(
                 used_weight,
                 DispatchClass::Mandatory,
             );
         }
 
-        <AllPalletsWithSystem as OnFinalize<BlockNumberFor<System>>>::on_finalize(block_number);
+        <AllPalletsWithSystem as OnFinalize<BlockNumberFor<ExecutiveConfig>>>::on_finalize(
+            block_number,
+        );
     }
 
     /// Wrapped `frame_executive::Executive::apply_extrinsic`.
     ///
     /// Note the storage root in the end.
-    pub fn apply_extrinsic(uxt: Block::Extrinsic) -> ApplyExtrinsicResult {
+    pub fn apply_extrinsic(uxt: ExtrinsicOf<ExecutiveConfig>) -> ApplyExtrinsicResult {
         Pallet::<ExecutiveConfig>::push_root(Self::storage_root());
 
         // apply the extrinsic within another transaction so that changes can be reverted.
         let res = with_storage_layer(|| {
             frame_executive::Executive::<
-                System,
-                Block,
+                ExecutiveConfig,
+                BlockOf<ExecutiveConfig>,
                 Context,
                 UnsignedValidator,
                 AllPalletsWithSystem,
@@ -459,11 +465,9 @@ where
         let res = match res {
             Ok(dispatch_outcome) => Ok(dispatch_outcome),
             Err(err) => {
-                // check the extrinsic, this should never fail
-                // if the check failed, then we have bug in the bundle check
                 let encoded = uxt.encode();
-                let checked_ext = uxt.check(&Default::default())?;
-                let dispatch_info = checked_ext.get_dispatch_info();
+                let (maybe_signer, dispatch_info) =
+                    ExecutiveConfig::ExtrinsicStorageFees::extract_signer(uxt);
                 // if this is not a normal extrinsic, then transaction should not execute
                 // we should fail here.
                 if dispatch_info.class != DispatchClass::Normal {
@@ -472,9 +476,29 @@ where
                     ));
                 }
 
-                // TODO: charge user for the storage of extrinsic
+                // charge signer for extrinsic storage
+                // TODO: charge user for the storage of extrinsic on consensus chain
+                if let Some(signer) = maybe_signer {
+                    let storage_fees = ExecutiveConfig::LengthToFee::weight_to_fee(
+                        &Weight::from_parts(encoded.len() as u64, 0),
+                    );
+
+                    // best effort to charge the fees to signer.
+                    // if signer does not have enough balance, we continue
+                    let maybe_charged_fees = ExecutiveConfig::Currency::burn_from(
+                        &signer,
+                        storage_fees,
+                        Precision::BestEffort,
+                        Fortitude::Force,
+                    );
+
+                    if let Ok(charged_fees) = maybe_charged_fees {
+                        ExecutiveConfig::ExtrinsicStorageFees::on_storage_fees_charged(charged_fees)
+                    }
+                }
+
                 // note the extrinsic into system storage
-                <frame_system::Pallet<System>>::note_extrinsic(encoded);
+                <frame_system::Pallet<ExecutiveConfig>>::note_extrinsic(encoded);
 
                 // note extrinsic applied. it pays no fees since there was no execution.
                 // we also set the weight to zero since there was no execution done.
@@ -486,7 +510,7 @@ where
                     error: err,
                 });
 
-                <frame_system::Pallet<System>>::note_applied_extrinsic(&r, dispatch_info);
+                <frame_system::Pallet<ExecutiveConfig>>::note_applied_extrinsic(&r, dispatch_info);
                 Ok(Err(err))
             }
         };
@@ -497,17 +521,17 @@ where
             "[apply_extrinsic] after: {:?}",
             {
                 use codec::Decode;
-                Block::Hash::decode(&mut Self::storage_root().as_slice()).unwrap()
+                BlockHashOf::<ExecutiveConfig>::decode(&mut Self::storage_root().as_slice()).unwrap()
             }
         );
         res
     }
 
     // TODO: https://github.com/paritytech/substrate/issues/10711
-    fn final_checks(header: &HeaderFor<System>) {
+    fn final_checks(header: &HeaderFor<ExecutiveConfig>) {
         sp_tracing::enter_span!(sp_tracing::Level::TRACE, "final_checks");
         // remove temporaries
-        let new_header = <frame_system::Pallet<System>>::finalize();
+        let new_header = <frame_system::Pallet<ExecutiveConfig>>::finalize();
 
         // check digest
         assert_eq!(
@@ -545,12 +569,12 @@ where
     /// Wrapped `frame_executive::Executive::validate_transaction`.
     pub fn validate_transaction(
         source: TransactionSource,
-        uxt: Block::Extrinsic,
-        block_hash: Block::Hash,
+        uxt: ExtrinsicOf<ExecutiveConfig>,
+        block_hash: BlockHashOf<ExecutiveConfig>,
     ) -> TransactionValidity {
         frame_executive::Executive::<
-            System,
-            Block,
+            ExecutiveConfig,
+            BlockOf<ExecutiveConfig>,
             Context,
             UnsignedValidator,
             AllPalletsWithSystem,
@@ -559,10 +583,10 @@ where
     }
 
     /// Wrapped `frame_executive::Executive::offchain_worker`.
-    pub fn offchain_worker(header: &HeaderFor<System>) {
+    pub fn offchain_worker(header: &HeaderFor<ExecutiveConfig>) {
         frame_executive::Executive::<
-            System,
-            Block,
+            ExecutiveConfig,
+            BlockOf<ExecutiveConfig>,
             Context,
             UnsignedValidator,
             AllPalletsWithSystem,
