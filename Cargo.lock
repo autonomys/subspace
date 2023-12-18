@@ -11932,6 +11932,7 @@ dependencies = [
  "pallet-transporter",
  "pallet-utility",
  "parity-scale-codec",
+ "sc-executor",
  "scale-info",
  "sp-api",
  "sp-block-builder",

@@ -40,9 +40,9 @@ use sp_wasm_interface::ExtendedHostFunctions;
 use subspace_node::domain::{
     DomainCli, DomainInstanceStarter, DomainSubcommand, EVMDomainExecutorDispatch,
 };
-use subspace_node::{Cli, ExecutorDispatch, Subcommand};
+use subspace_node::{Cli, Subcommand};
 use subspace_proof_of_space::chia::ChiaTable;
-use subspace_runtime::{Block, RuntimeApi};
+use subspace_runtime::{Block, ExecutorDispatch, RuntimeApi};
 use subspace_service::{DsnConfig, SubspaceConfiguration, SubspaceNetworking};
 
 type PosTable = ChiaTable;

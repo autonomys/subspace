@@ -1,6 +1,5 @@
 use super::{evm_chain_spec, DomainCli};
 use crate::domain::{AccountId20, EVMDomainExecutorDispatch};
-use crate::ExecutorDispatch as CExecutorDispatch;
 use cross_domain_message_gossip::{ChainTxPoolMsg, Message};
 use domain_client_operator::{BootstrapResult, OperatorStreams};
 use domain_eth_service::provider::EthProvider;
@@ -19,7 +18,7 @@ use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::{TracingUnboundedReceiver, TracingUnboundedSender};
 use sp_domains::{DomainInstanceData, RuntimeType};
 use std::sync::Arc;
-use subspace_runtime::RuntimeApi as CRuntimeApi;
+use subspace_runtime::{ExecutorDispatch as CExecutorDispatch, RuntimeApi as CRuntimeApi};
 use subspace_runtime_primitives::opaque::Block as CBlock;
 use subspace_service::FullClient as CFullClient;
 
