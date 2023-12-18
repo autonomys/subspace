@@ -1,11 +1,12 @@
 use super::{evm_chain_spec, DomainCli};
-use crate::domain::{AccountId20, EVMDomainExecutorDispatch};
+use crate::domain::AccountId20;
 use cross_domain_message_gossip::{ChainTxPoolMsg, Message};
 use domain_client_operator::{BootstrapResult, OperatorStreams};
 use domain_eth_service::provider::EthProvider;
 use domain_eth_service::DefaultEthConfig;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
 use domain_service::{FullBackend, FullClient};
+use evm_domain_runtime::ExecutorDispatch as EVMDomainExecutorDispatch;
 use futures::StreamExt;
 use sc_chain_spec::ChainSpec;
 use sc_cli::{CliConfiguration, Database, DefaultConfigurationValues, SubstrateCli};
