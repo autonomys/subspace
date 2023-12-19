@@ -48,6 +48,7 @@ use subspace_core_primitives::{
     SegmentIndex,
 };
 use subspace_erasure_coding::ErasureCoding;
+use subspace_farmer_components::auditing::AuditEventHandler;
 use subspace_farmer_components::file_ext::{FileExt, OpenOptionsExt};
 use subspace_farmer_components::plotting::{PieceGetter, PlottedSector};
 use subspace_farmer_components::sector::{sector_size, SectorMetadata, SectorMetadataChecksummed};
@@ -557,6 +558,7 @@ struct Handlers {
     sector_plotting: Handler<SectorPlottingDetails>,
     sector_plotted: Handler<(PlottedSector, Option<PlottedSector>)>,
     solution: Handler<SolutionResponse>,
+    plot_audited: AuditEventHandler,
 }
 
 /// Single disk farm abstraction is a container for everything necessary to plot/farm with a single

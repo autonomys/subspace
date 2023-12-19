@@ -11745,6 +11745,7 @@ dependencies = [
  "backoff",
  "bitvec",
  "criterion",
+ "event-listener-primitives",
  "fs2",
  "futures",
  "hex",

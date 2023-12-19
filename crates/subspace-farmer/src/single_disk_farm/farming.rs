@@ -14,7 +14,7 @@ use std::time::Instant;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{PosSeed, PublicKey, SectorIndex, Solution, SolutionRange};
 use subspace_erasure_coding::ErasureCoding;
-use subspace_farmer_components::auditing::audit_plot_sync;
+use subspace_farmer_components::auditing::{audit_plot_sync, AuditEventHandler};
 use subspace_farmer_components::proving::{ProvableSolutions, ProvingError};
 use subspace_farmer_components::sector::SectorMetadataChecksummed;
 use subspace_farmer_components::{proving, ReadAtSync};
@@ -101,6 +101,8 @@ where
     pub maybe_sector_being_modified: Option<SectorIndex>,
     /// Proof of space table generator
     pub table_generator: &'a Mutex<PosTable::Generator>,
+    /// Provides an event handler for audit events
+    pub audit_event_handler: Option<&'a AuditEventHandler>,
 }
 
 impl<'a, PosTable> Clone for PlotAuditOptions<'a, PosTable>
@@ -147,6 +149,7 @@ where
             erasure_coding,
             maybe_sector_being_modified,
             table_generator,
+            audit_event_handler,
         } = options;
 
         let audit_results = audit_plot_sync(
@@ -156,6 +159,7 @@ where
             &self.0,
             sectors_metadata,
             maybe_sector_being_modified,
+            audit_event_handler,
         );
 
         audit_results
@@ -261,6 +265,7 @@ where
                 erasure_coding: &erasure_coding,
                 maybe_sector_being_modified,
                 table_generator: &table_generator,
+                audit_event_handler: Some(&handlers.plot_audited),
             })
         };
 

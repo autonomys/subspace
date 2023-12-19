@@ -134,6 +134,7 @@ fn audit(sample_size: usize, disk_farm: PathBuf, filter: Option<String>) -> anyh
                             erasure_coding: &erasure_coding,
                             maybe_sector_being_modified: None,
                             table_generator: &table_generator,
+                            audit_event_handler: None,
                         };
 
                         black_box(plot_audit.audit(black_box(options)))
@@ -167,6 +168,7 @@ fn audit(sample_size: usize, disk_farm: PathBuf, filter: Option<String>) -> anyh
                             erasure_coding: &erasure_coding,
                             maybe_sector_being_modified: None,
                             table_generator: &table_generator,
+                            audit_event_handler: None,
                         };
 
                         black_box(plot_audit.audit(black_box(options)))
@@ -248,6 +250,7 @@ fn prove(
                 erasure_coding: &erasure_coding,
                 maybe_sector_being_modified: None,
                 table_generator: &table_generator,
+                audit_event_handler: None,
             };
 
             let mut audit_results = plot_audit.audit(options);
@@ -292,6 +295,7 @@ fn prove(
                 erasure_coding: &erasure_coding,
                 maybe_sector_being_modified: None,
                 table_generator: &table_generator,
+                audit_event_handler: None,
             };
             let mut audit_results = plot_audit.audit(options);
 

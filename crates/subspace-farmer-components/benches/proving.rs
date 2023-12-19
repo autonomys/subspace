@@ -166,6 +166,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
             &plotted_sector_bytes,
             slice::from_ref(&plotted_sector.sector_metadata),
             None,
+            None,
         );
 
         let solution_candidates = match audit_results.into_iter().next() {
@@ -248,6 +249,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                 solution_range,
                 &plot_file,
                 &sectors_metadata,
+                None,
                 None,
             );
             let solution_candidates = audit_results

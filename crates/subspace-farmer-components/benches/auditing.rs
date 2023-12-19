@@ -158,6 +158,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                 black_box(&plotted_sector_bytes),
                 black_box(slice::from_ref(&plotted_sector.sector_metadata)),
                 black_box(None),
+                black_box(None),
             ));
         })
     });
@@ -199,6 +200,7 @@ pub fn criterion_benchmark(c: &mut Criterion) {
                     black_box(solution_range),
                     black_box(&plot_file),
                     black_box(&sectors_metadata),
+                    black_box(None),
                     black_box(None),
                 ));
             });
