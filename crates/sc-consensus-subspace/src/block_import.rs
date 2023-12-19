@@ -14,9 +14,18 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-//! Block import module.
+//! Block import for Subspace, which includes stateful verification and corresponding notifications.
 //!
-//! Contains implementation of block import with corresponding checks and notifications.
+//! In most cases block import happens after stateless block verification using [`verifier`](crate::verifier),
+//! the only exception to that is locally authored blocks.
+//!
+//! Since [`verifier`](crate::verifier) is stateless, the remaining checks in block import are those
+//! that require presence of the parent block or its state in the database. Specifically for Proof
+//! of Time individual checkpoints are assumed to be checked already and only PoT inputs need to be
+//! checked to correspond to the state of the parent block.
+//!
+//! After all checks and right before importing the block notification ([`SubspaceLink::block_importing_notification_stream`])
+//! will be sent that [`archiver`](crate::archiver) among other things is subscribed to.
 
 use crate::archiver::SegmentHeadersStore;
 use crate::verifier::VerificationError;
