@@ -925,7 +925,7 @@ where
         }
 
         Err(sp_blockchain::Error::Application(Box::from(format!(
-            "No fraudulent field fonud for the mismatched ER, this should not happen, \
+            "No fraudulent field found for the mismatched ER, this should not happen, \
             local_receipt {local_receipt:?}, bad_receipt {bad_receipt:?}"
         ))))
     }

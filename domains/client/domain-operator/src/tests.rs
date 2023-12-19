@@ -939,7 +939,7 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
         .unwrap();
-    assert!(ferdie.is_receipt_exist(bad_receipt_hash).unwrap());
+    assert!(ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 
     // When the system domain node process the primary block that contains the `bad_submit_bundle_tx`,
     // it will generate and submit a fraud proof
@@ -948,7 +948,7 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
     // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
     // and executed, thus pruned the bad receipt from the block tree
     ferdie.produce_blocks(1).await.unwrap();
-    assert!(!ferdie.is_receipt_exist(bad_receipt_hash).unwrap());
+    assert!(!ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -1099,14 +1099,14 @@ async fn test_true_invalid_bundles_inherent_extrinsic_proof_creation_and_verific
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
         .unwrap();
-    assert!(ferdie.is_receipt_exist(bad_receipt_hash).unwrap());
+    assert!(ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 
     let _ = wait_for_fraud_proof_fut.await;
 
     // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
     // and executed, thus pruned the bad receipt from the block tree
     ferdie.produce_blocks(1).await.unwrap();
-    assert!(!ferdie.is_receipt_exist(bad_receipt_hash).unwrap());
+    assert!(!ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -1220,14 +1220,14 @@ async fn test_false_invalid_bundles_inherent_extrinsic_proof_creation_and_verifi
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
         .unwrap();
-    assert!(ferdie.is_receipt_exist(bad_receipt_hash).unwrap());
+    assert!(ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 
     let _ = wait_for_fraud_proof_fut.await;
 
     // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
     // and executed, thus pruned the bad receipt from the block tree
     ferdie.produce_blocks(1).await.unwrap();
-    assert!(!ferdie.is_receipt_exist(bad_receipt_hash).unwrap());
+    assert!(!ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -1323,7 +1323,7 @@ async fn test_invalid_total_rewards_proof_creation() {
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
         .unwrap();
-    assert!(ferdie.is_receipt_exist(bad_receipt_hash).unwrap());
+    assert!(ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 
     // When the domain node operator process the primary block that contains the `bad_submit_bundle_tx`,
     // it will generate and submit a fraud proof
@@ -1332,7 +1332,7 @@ async fn test_invalid_total_rewards_proof_creation() {
     // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
     // and executed, thus pruned the bad receipt from the block tree
     ferdie.produce_blocks(1).await.unwrap();
-    assert!(!ferdie.is_receipt_exist(bad_receipt_hash).unwrap());
+    assert!(!ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -1428,7 +1428,7 @@ async fn test_invalid_domain_block_hash_proof_creation() {
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
         .unwrap();
-    assert!(ferdie.is_receipt_exist(bad_receipt_hash).unwrap());
+    assert!(ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 
     // When the domain node operator process the primary block that contains the `bad_submit_bundle_tx`,
     // it will generate and submit a fraud proof
@@ -1437,7 +1437,7 @@ async fn test_invalid_domain_block_hash_proof_creation() {
     // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
     // and executed, thus pruned the bad receipt from the block tree
     ferdie.produce_blocks(1).await.unwrap();
-    assert!(!ferdie.is_receipt_exist(bad_receipt_hash).unwrap());
+    assert!(!ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -1533,7 +1533,7 @@ async fn test_invalid_domain_extrinsics_root_proof_creation() {
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
         .unwrap();
-    assert!(ferdie.is_receipt_exist(bad_receipt_hash).unwrap());
+    assert!(ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 
     // When the domain node operator process the primary block that contains the `bad_submit_bundle_tx`,
     // it will generate and submit a fraud proof
@@ -1542,7 +1542,7 @@ async fn test_invalid_domain_extrinsics_root_proof_creation() {
     // Produce a consensus block that contains the fraud proof, the fraud proof wil be verified
     // and executed, thus pruned the bad receipt from the block tree
     ferdie.produce_blocks(1).await.unwrap();
-    assert!(!ferdie.is_receipt_exist(bad_receipt_hash).unwrap());
+    assert!(!ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -1739,7 +1739,7 @@ async fn test_valid_bundle_proof_generation_and_verification() {
         .await
         .unwrap();
     assert!(ferdie
-        .is_receipt_exist(bad_receipt.hash::<BlakeTwo256>())
+        .does_receipt_exist(bad_receipt.hash::<BlakeTwo256>())
         .unwrap());
 
     // When the domain node operator process the primary block that contains the `bad_submit_bundle_tx`,
@@ -1789,7 +1789,7 @@ async fn test_valid_bundle_proof_generation_and_verification() {
     // and executed, thus pruned the bad receipt from the block tree
     ferdie.produce_blocks(1).await.unwrap();
     assert!(!ferdie
-        .is_receipt_exist(bad_receipt.hash::<BlakeTwo256>())
+        .does_receipt_exist(bad_receipt.hash::<BlakeTwo256>())
         .unwrap());
 }
 
@@ -2885,7 +2885,7 @@ async fn test_bad_receipt_chain() {
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
         .unwrap();
-    assert!(ferdie.is_receipt_exist(bad_receipt_hash).unwrap());
+    assert!(ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 
     // Remove the fraud proof from tx pool
     ferdie.clear_tx_pool().await.unwrap();
@@ -2944,7 +2944,7 @@ async fn test_bad_receipt_chain() {
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
         .unwrap();
-    assert!(ferdie.is_receipt_exist(bad_receipt_hash).unwrap());
+    assert!(ferdie.does_receipt_exist(bad_receipt_hash).unwrap());
 
     // The fraud proof should be submitted
     let _ = wait_for_fraud_proof_fut.await;
@@ -2952,6 +2952,6 @@ async fn test_bad_receipt_chain() {
     // Both bad ER should be pruned
     ferdie.produce_blocks(1).await.unwrap();
     for er_hash in [parent_bad_receipt_hash, bad_receipt_hash] {
-        assert!(!ferdie.is_receipt_exist(er_hash).unwrap());
+        assert!(!ferdie.does_receipt_exist(er_hash).unwrap());
     }
 }

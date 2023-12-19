@@ -575,7 +575,7 @@ impl MockConsensusNode {
     }
 
     /// Return if the given ER exist in the consensus state
-    pub fn is_receipt_exist(
+    pub fn does_receipt_exist(
         &self,
         er_hash: <DomainBlock as BlockT>::Hash,
     ) -> Result<bool, Box<dyn Error>> {

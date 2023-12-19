@@ -1856,7 +1856,7 @@ impl<T: Config> Pallet<T> {
 
     /// Returns the block number of oldest execution receipt.
     // FIXME: the `oldest_receipt_number` may not be correct if fraud proof is submitted
-    // and bad ER were pruned
+    // and bad ER were pruned, see https://github.com/subspace/subspace/issues/2354
     pub fn oldest_receipt_number(domain_id: DomainId) -> DomainBlockNumberFor<T> {
         Self::head_receipt_number(domain_id).saturating_sub(Self::block_tree_pruning_depth())
     }
