@@ -1,4 +1,27 @@
+use prometheus_client::metrics::histogram::{exponential_buckets, Histogram};
+use prometheus_client::registry::{Registry, Unit};
+use subspace_farmer_components::auditing::AuditEvent;
 use tokio::signal;
+
+#[derive(Debug, Clone)]
+pub(crate) struct FarmerMetrics {
+    audit: Histogram,
+}
+
+impl FarmerMetrics {
+    pub(crate) fn new(registry: &mut Registry) -> Self {
+        let sub_registry = registry.sub_registry_with_prefix("farmer");
+
+        let audit = Histogram::new(exponential_buckets(0.001, 2.0, 12));
+        sub_registry.register_with_unit("audit", "Audit time", Unit::Seconds, audit.clone());
+
+        Self { audit }
+    }
+
+    pub(crate) fn observe_audit_event(&self, event: &AuditEvent) {
+        self.audit.observe(event.duration)
+    }
+}
 
 pub(crate) fn raise_fd_limit() {
     match fdlimit::raise_fd_limit() {

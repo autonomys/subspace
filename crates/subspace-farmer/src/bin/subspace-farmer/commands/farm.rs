@@ -2,7 +2,7 @@ mod dsn;
 
 use crate::commands::farm::dsn::configure_dsn;
 use crate::commands::shared::print_disk_farm_info;
-use crate::utils::shutdown_signal;
+use crate::utils::{shutdown_signal, FarmerMetrics};
 use anyhow::anyhow;
 use bytesize::ByteSize;
 use clap::{Parser, ValueHint};
@@ -351,6 +351,7 @@ where
 
     // Metrics
     let mut prometheus_metrics_registry = Registry::default();
+    let farmer_metrics = FarmerMetrics::new(&mut prometheus_metrics_registry);
     let metrics_endpoints_are_specified = !metrics_endpoints.is_empty();
 
     let (node, mut node_runner) = {
@@ -594,8 +595,18 @@ where
                     }
                 };
 
+            // Register audit plot events
+            let farmer_metrics = farmer_metrics.clone();
+            let on_plot_audited_callback = move |audit_event: &_| {
+                farmer_metrics.observe_audit_event(audit_event);
+            };
+
             single_disk_farm
                 .on_sector_plotted(Arc::new(on_plotted_sector_callback))
+                .detach();
+
+            single_disk_farm
+                .on_plot_audited(Arc::new(on_plot_audited_callback))
                 .detach();
 
             single_disk_farm.run()

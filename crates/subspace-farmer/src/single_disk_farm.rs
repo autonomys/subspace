@@ -48,7 +48,7 @@ use subspace_core_primitives::{
     SegmentIndex,
 };
 use subspace_erasure_coding::ErasureCoding;
-use subspace_farmer_components::auditing::AuditEventHandler;
+use subspace_farmer_components::auditing::{AuditEvent, AuditEventHandler};
 use subspace_farmer_components::file_ext::{FileExt, OpenOptionsExt};
 use subspace_farmer_components::plotting::{PieceGetter, PlottedSector};
 use subspace_farmer_components::sector::{sector_size, SectorMetadata, SectorMetadataChecksummed};
@@ -1370,6 +1370,11 @@ impl SingleDiskFarm {
         callback: HandlerFn<(PlottedSector, Option<PlottedSector>)>,
     ) -> HandlerId {
         self.handlers.sector_plotted.add(callback)
+    }
+
+    /// Subscribe to notification about audited plots
+    pub fn on_plot_audited(&self, callback: HandlerFn<AuditEvent>) -> HandlerId {
+        self.handlers.plot_audited.add(callback)
     }
 
     /// Subscribe to new solution notification
