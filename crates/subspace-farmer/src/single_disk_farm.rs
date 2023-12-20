@@ -91,17 +91,7 @@ impl SingleDiskFarmId {
 /// Exclusive lock for single disk farm info file, ensuring no concurrent edits by cooperating processes is done
 #[must_use = "Lock file must be kept around or as long as farm is used"]
 pub struct SingleDiskFarmInfoLock {
-    file: File,
-}
-
-impl Drop for SingleDiskFarmInfoLock {
-    fn drop(&mut self) {
-        use fs4::FileExt;
-
-        if let Err(error) = self.file.unlock() {
-            error!(%error, "Failed to unlock single disk farm lock");
-        }
-    }
+    _file: File,
 }
 
 /// Important information about the contents of the `SingleDiskFarm`
@@ -184,7 +174,7 @@ impl SingleDiskFarmInfo {
         let file = File::open(directory.join(Self::FILE_NAME))?;
         fs4::FileExt::try_lock_exclusive(&file)?;
 
-        Ok(SingleDiskFarmInfoLock { file })
+        Ok(SingleDiskFarmInfoLock { _file: file })
     }
 
     // ID of the farm
@@ -223,6 +213,7 @@ impl SingleDiskFarmInfo {
 }
 
 /// Summary of single disk farm for presentational purposes
+#[derive(Debug)]
 pub enum SingleDiskFarmSummary {
     /// Farm was found and read successfully
     Found {
@@ -1310,6 +1301,11 @@ impl SingleDiskFarm {
     /// ID of this farm
     pub fn id(&self) -> &SingleDiskFarmId {
         self.single_disk_farm_info.id()
+    }
+
+    /// Info of this farm
+    pub fn info(&self) -> &SingleDiskFarmInfo {
+        &self.single_disk_farm_info
     }
 
     /// Number of sectors in this farm

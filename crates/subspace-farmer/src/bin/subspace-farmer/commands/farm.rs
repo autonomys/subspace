@@ -1,7 +1,6 @@
 mod dsn;
 
 use crate::commands::farm::dsn::configure_dsn;
-use crate::commands::shared::print_disk_farm_info;
 use crate::utils::shutdown_signal;
 use anyhow::anyhow;
 use bytesize::ByteSize;
@@ -490,7 +489,17 @@ where
         };
 
         if !no_info {
-            print_disk_farm_info(disk_farm.directory, disk_farm_index);
+            let info = single_disk_farm.info();
+            println!("Single disk farm {disk_farm_index}:");
+            println!("  ID: {}", info.id());
+            println!("  Genesis hash: 0x{}", hex::encode(info.genesis_hash()));
+            println!("  Public key: 0x{}", hex::encode(info.public_key()));
+            println!(
+                "  Allocated space: {} ({})",
+                bytesize::to_string(info.allocated_space(), true),
+                bytesize::to_string(info.allocated_space(), false)
+            );
+            println!("  Directory: {}", disk_farm.directory.display());
         }
 
         single_disk_farms.push(single_disk_farm);
