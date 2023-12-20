@@ -522,6 +522,24 @@ where
                 Err(VerificationError::InvalidProof)
             }
         }
+        InvalidBundleType::UndecodableTx(_) => {
+            let is_decodable = get_fraud_proof_verification_info(
+                H256::from_slice(bad_receipt.consensus_block_hash.as_ref()),
+                FraudProofVerificationInfoRequest::ExtrinsicDecodableCheck(extrinsic),
+            )
+            .and_then(FraudProofVerificationInfoResponse::into_extrinsic_decodable_check)
+            .ok_or(VerificationError::FailedToCheckExtrinsicDecodable)?;
+
+            if invalid_bundles_fraud_proof.is_true_invalid_fraud_proof {
+                if !is_decodable {
+                    Ok(())
+                } else {
+                    Err(VerificationError::InvalidProof)
+                }
+            } else {
+                Err(VerificationError::InvalidProof)
+            }
+        }
 
         // TODO: implement the other invalid bundle types
         _ => Err(VerificationError::InvalidProof),

@@ -110,6 +110,8 @@ pub enum FraudProofVerificationInfoRequest {
         /// Extrinsic for which we need to if it is inherent or not.
         opaque_extrinsic: OpaqueExtrinsic,
     },
+    /// Request to check if the domain extrinsic is decodable or not.
+    ExtrinsicDecodableCheck(OpaqueExtrinsic),
     /// Request to get Domain election params.
     DomainElectionParams { domain_id: DomainId },
     /// Request to get Operator stake.
@@ -160,6 +162,8 @@ pub enum FraudProofVerificationInfoResponse {
     TxRangeCheck(bool),
     /// If the particular extrinsic provided is either inherent or not.
     InherentExtrinsicCheck(bool),
+    /// If the domain extrinsic is decodable or not.
+    ExtrinsicDecodableCheck(bool),
     /// Domain's total stake at a given Consensus hash.
     DomainElectionParams {
         domain_total_stake: Balance,
@@ -222,6 +226,15 @@ impl FraudProofVerificationInfoResponse {
         match self {
             FraudProofVerificationInfoResponse::InherentExtrinsicCheck(is_inherent) => {
                 Some(is_inherent)
+            }
+            _ => None,
+        }
+    }
+
+    pub fn into_extrinsic_decodable_check(self) -> Option<bool> {
+        match self {
+            FraudProofVerificationInfoResponse::ExtrinsicDecodableCheck(is_decodable) => {
+                Some(is_decodable)
             }
             _ => None,
         }

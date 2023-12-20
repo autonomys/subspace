@@ -279,6 +279,7 @@ pub(crate) struct MockDomainFraudProofExtension {
     runtime_code: Vec<u8>,
     tx_range: bool,
     is_inherent: bool,
+    is_decodable: bool,
     domain_total_stake: Balance,
     bundle_slot_probability: (u64, u64),
     operator_stake: Balance,
@@ -330,6 +331,9 @@ impl FraudProofHostFunctions for MockDomainFraudProofExtension {
             }
             FraudProofVerificationInfoRequest::InherentExtrinsicCheck { .. } => {
                 FraudProofVerificationInfoResponse::InherentExtrinsicCheck(self.is_inherent)
+            }
+            FraudProofVerificationInfoRequest::ExtrinsicDecodableCheck { .. } => {
+                FraudProofVerificationInfoResponse::InherentExtrinsicCheck(self.is_decodable)
             }
             FraudProofVerificationInfoRequest::DomainElectionParams { .. } => {
                 FraudProofVerificationInfoResponse::DomainElectionParams {
@@ -1032,6 +1036,7 @@ fn test_invalid_domain_extrinsic_root_proof() {
         runtime_code: vec![1, 2, 3, 4],
         tx_range: true,
         is_inherent: true,
+        is_decodable: true,
         domain_total_stake: 100 * SSC,
         operator_stake: 10 * SSC,
         bundle_slot_probability: (0, 0),
@@ -1112,6 +1117,7 @@ fn test_true_invalid_bundles_inherent_extrinsic_proof() {
         tx_range: true,
         // return `true` indicating this is an inherent extrinsic
         is_inherent: true,
+        is_decodable: true,
         domain_total_stake: 100 * SSC,
         operator_stake: 10 * SSC,
         bundle_slot_probability: (0, 0),
@@ -1178,6 +1184,7 @@ fn test_false_invalid_bundles_inherent_extrinsic_proof() {
         tx_range: true,
         // return `false` indicating this is not an inherent extrinsic
         is_inherent: false,
+        is_decodable: true,
         domain_total_stake: 100 * SSC,
         operator_stake: 10 * SSC,
         bundle_slot_probability: (0, 0),

@@ -390,6 +390,13 @@ where
                 .map(|is_inherent| {
                     FraudProofVerificationInfoResponse::InherentExtrinsicCheck(is_inherent)
                 }),
+            FraudProofVerificationInfoRequest::ExtrinsicDecodableCheck(opaque_extrinsic) => {
+                let encoded_extrinsic = opaque_extrinsic.encode();
+                Some(FraudProofVerificationInfoResponse::ExtrinsicDecodableCheck(
+                    <DomainBlock as BlockT>::Extrinsic::decode(&mut encoded_extrinsic.as_slice())
+                        .is_ok(),
+                ))
+            }
             FraudProofVerificationInfoRequest::DomainElectionParams { domain_id } => self
                 .get_domain_election_params(consensus_block_hash, domain_id)
                 .map(|domain_election_params| {
