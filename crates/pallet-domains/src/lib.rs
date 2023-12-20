@@ -1876,6 +1876,8 @@ impl<T: Config> Pallet<T> {
     }
 
     /// Returns the block number of oldest execution receipt.
+    // FIXME: the `oldest_receipt_number` may not be correct if fraud proof is submitted
+    // and bad ER were pruned, see https://github.com/subspace/subspace/issues/2354
     pub fn oldest_receipt_number(domain_id: DomainId) -> DomainBlockNumberFor<T> {
         Self::head_receipt_number(domain_id).saturating_sub(Self::block_tree_pruning_depth())
     }
@@ -1928,6 +1930,13 @@ impl<T: Config> Pallet<T> {
 
     pub fn execution_receipt(receipt_hash: ReceiptHashFor<T>) -> Option<ExecutionReceiptOf<T>> {
         BlockTreeNodes::<T>::get(receipt_hash).map(|db| db.execution_receipt)
+    }
+
+    pub fn receipt_hash(
+        domain_id: DomainId,
+        domain_number: DomainBlockNumberFor<T>,
+    ) -> Option<ReceiptHashFor<T>> {
+        BlockTree::<T>::get(domain_id, domain_number)
     }
 }
 
