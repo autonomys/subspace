@@ -37,7 +37,6 @@ use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::libp2p::identity::{ed25519, Keypair};
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::utils::piece_provider::PieceProvider;
-use subspace_networking::utils::random_walking_piece_provider::RandomWalkingPieceProvider;
 use subspace_proof_of_space::Table;
 use tempfile::TempDir;
 use tokio::sync::Semaphore;
@@ -398,16 +397,10 @@ where
         kzg.clone(),
         segment_commitments_cache,
     ));
-
     let piece_provider = PieceProvider::new(node.clone(), validator.clone());
 
-    let random_walking_piece_provider =
-        RandomWalkingPieceProvider::new(node.clone(), validator.clone());
-
     let piece_getter = Arc::new(FarmerPieceGetter::new(
-        node.clone(),
         piece_provider,
-        random_walking_piece_provider,
         piece_cache.clone(),
         node_client.clone(),
         Arc::clone(&readers_and_pieces),
