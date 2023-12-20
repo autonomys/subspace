@@ -35,13 +35,13 @@
 //!
 //! [`SegmentHeadersStore`] is maintained as a data structure containing all known (including future
 //! in case of syncing) segment headers. This data structure contents is then made available to
-//! other parts of the protocol that need to! know what correct archival history of the blockchain
-//! looks like. For example it is used during node sync and farmer plotting in order to verify
+//! other parts of the protocol that need to know what correct archival history of the blockchain
+//! looks like. For example, it is used during node sync and farmer plotting in order to verify
 //! pieces of archival history received from other network participants.
 //!
 //! [`recreate_genesis_segment`] is a bit of a hack and is useful for deriving of the genesis
 //! segment that is special case since we don't have enough data in the blockchain history itself
-//! during genesis in order to to the archiving.
+//! during genesis in order to do the archiving.
 //!
 //! [`encode_block`] and [`decode_block`] are symmetric encoding/decoding functions turning
 //! [`SignedBlock`]s into bytes and back.

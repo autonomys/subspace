@@ -16,8 +16,8 @@
 
 //! Slot worker drives block and vote production based on slots produced in [`sc_proof_of_time`].
 //!
-//! While slot worker uses [`sc_consensus_slots`], it is not driven by time, but instead of Proof of
-//! Time that are produced by [`PotSourceWorker`](sc_proof_of_time::source::PotSourceWorker).
+//! While slot worker uses [`sc_consensus_slots`], it is not driven by time, but instead by Proof of
+//! Time that is produced by [`PotSourceWorker`](sc_proof_of_time::source::PotSourceWorker).
 //!
 //! Each time a new proof is found, [`PotSlotWorker::on_proof`] is called and corresponding
 //! [`SlotInfo`] notification is sent ([`SubspaceLink::new_slot_notification_stream`]) to farmers to

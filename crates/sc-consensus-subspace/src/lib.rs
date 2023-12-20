@@ -18,7 +18,7 @@
 //!
 //! You should familiarize yourself with [Subnomicon](https://subnomicon.subspace.network/) and, ideally, protocol
 //! specifications. Documentation here assumes decent prior knowledge of the protocol on conceptual level and will not
-//! explain how protocol works, it will instead explain how protocol is implemented.
+//! explain how the protocol works, it will instead explain how the protocol is implemented.
 //!
 //! All of the modules here are crucial for consensus, open each module for specific details.
 
