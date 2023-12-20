@@ -58,6 +58,10 @@ fn available_parallelism() -> usize {
     }
 }
 
+fn should_farm_during_initial_plotting() -> bool {
+    available_parallelism() > 8
+}
+
 /// Arguments for farmer
 #[derive(Debug, Parser)]
 pub(crate) struct FarmingArgs {
@@ -124,7 +128,7 @@ pub(crate) struct FarmingArgs {
     /// intense on CPU and memory that farming will likely not work properly, yet it will
     /// significantly impact plotting speed, delaying the time when farming can actually work
     /// properly.
-    #[arg(long)]
+    #[arg(long, default_value_t = should_farm_during_initial_plotting(), action = clap::ArgAction::Set)]
     farm_during_initial_plotting: bool,
     /// Size of PER FARM thread pool used for farming (mostly for blocking I/O, but also for some
     /// compute-intensive operations during proving), defaults to number of CPU cores available in
@@ -169,8 +173,8 @@ struct DsnArgs {
     /// Multiaddr to listen on for subspace networking, for instance `/ip4/0.0.0.0/tcp/0`,
     /// multiple are supported.
     #[arg(long, default_values_t = [
-    "/ip4/0.0.0.0/udp/30533/quic-v1".parse::<Multiaddr>().expect("Manual setting"),
-    "/ip4/0.0.0.0/tcp/30533".parse::<Multiaddr>().expect("Manual setting"),
+        "/ip4/0.0.0.0/udp/30533/quic-v1".parse::<Multiaddr>().expect("Statically correct; qed"),
+        "/ip4/0.0.0.0/tcp/30533".parse::<Multiaddr>().expect("Statically correct; qed"),
     ])]
     listen_on: Vec<Multiaddr>,
     /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses in
