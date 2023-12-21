@@ -14,10 +14,37 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-//! Consensus archiver module.
+//! Consensus archiver responsible for archival of blockchain history, it is driven by block import
+//! pipeline.
 //!
-//! Contains implementation of archiving process in Subspace blockchain that converts blockchain
-//! history (blocks) into archived history (pieces).
+//! Implements archiving process in Subspace blockchain that converts blockchain history (blocks)
+//! into archived history (pieces).
+//!
+//! The main entry point here is [`create_subspace_archiver`] that will create a task, which while
+//! driven will perform the archiving itself.
+//!
+//! Archiving is triggered by block importing notification ([`SubspaceLink::block_importing_notification_stream`])
+//! and tries to archive the block at [`ChainConstants::confirmation_depth_k`](sp_consensus_subspace::ChainConstants::confirmation_depth_k)
+//! depth from the block being imported. Block import will then wait for archiver to acknowledge
+//! processing, which is necessary for ensuring that when the next block is imported, inherents will
+//! contain segment header of newly archived block (must happen exactly in the next block).
+//!
+//! Archiving itself will also wait for acknowledgement by various subscribers before proceeding,
+//! which includes farmer subscription, in case of reference implementation via RPC
+//! (`sc-consensus-subspace-rpc`), but could also be in other ways.
+//!
+//! [`SegmentHeadersStore`] is maintained as a data structure containing all known (including future
+//! in case of syncing) segment headers. This data structure contents is then made available to
+//! other parts of the protocol that need to know what correct archival history of the blockchain
+//! looks like. For example, it is used during node sync and farmer plotting in order to verify
+//! pieces of archival history received from other network participants.
+//!
+//! [`recreate_genesis_segment`] is a bit of a hack and is useful for deriving of the genesis
+//! segment that is special case since we don't have enough data in the blockchain history itself
+//! during genesis in order to do the archiving.
+//!
+//! [`encode_block`] and [`decode_block`] are symmetric encoding/decoding functions turning
+//! [`SignedBlock`]s into bytes and back.
 
 use crate::block_import::BlockImportingNotification;
 use crate::slot_worker::SubspaceSyncOracle;
@@ -74,7 +101,16 @@ struct SegmentHeadersStoreInner<AS> {
     cache: Mutex<Vec<SegmentHeader>>,
 }
 
-/// Persistent storage of segment headers
+/// Persistent storage of segment headers.
+///
+/// It maintains all known segment headers. During sync from DSN it is possible that this data structure contains
+/// segment headers that from the point of view of the tip of the current chain are "in the future". This is expected
+/// and must be accounted for in the archiver and other places.
+///
+/// Segment headers are stored in batches (which is more efficient to store and retrieve). Each next batch contains
+/// distinct segment headers with monotonically increasing segment indices. During instantiation all previously stored
+/// batches will be read and in-memory representation of the whole contents will be created such that queries to this
+/// data structure are quick and not involving any disk I/O.
 #[derive(Debug)]
 pub struct SegmentHeadersStore<AS> {
     inner: Arc<SegmentHeadersStoreInner<AS>>,
@@ -335,7 +371,10 @@ where
     best_archived_block: (Block::Hash, NumberFor<Block>),
 }
 
-/// Encode block for archiving purposes
+/// Encode block for archiving purposes.
+///
+/// Only specific Subspace justifications are included in the encoding, determined by result of
+/// [`SubspaceJustification::must_be_archived`], other justifications are filtered-out.
 pub fn encode_block<Block>(mut signed_block: SignedBlock<Block>) -> Vec<u8>
 where
     Block: BlockT,
@@ -664,6 +703,24 @@ fn finalize_block<Block, Backend, Client>(
 /// `store_segment_header` extrinsic).
 ///
 /// NOTE: Archiver is doing blocking operations and must run in a dedicated task.
+///
+/// Archiver is only able to move forward and doesn't support reorgs. Upon restart it will check
+/// [`SegmentHeadersStore`] and chain history to reconstruct "current" state it was in before last
+/// shutdown and continue incrementally archiving blockchain history from there.
+///
+/// Archiving is triggered by block importing notification ([`SubspaceLink::block_importing_notification_stream`])
+/// and tries to archive the block at [`ChainConstants::confirmation_depth_k`](sp_consensus_subspace::ChainConstants::confirmation_depth_k)
+/// depth from the block being imported. Block import will then wait for archiver to acknowledge
+/// processing, which is necessary for ensuring that when the next block is imported, inherents will
+/// contain segment header of newly archived block (must happen exactly in the next block).
+///
+/// Once segment header is archived, notification ([`SubspaceLink::archived_segment_notification_stream`])
+/// will be sent and archiver will be paused until all receivers have provided an acknowledgement
+/// for it.
+///
+/// Archiving will be incremental during normal operation to decrease impact on block import and
+/// non-incremental heavily parallel during sync process since parallel implementation is more
+/// efficient overall and during sync only total sync time matters.
 pub fn create_subspace_archiver<Block, Backend, Client, AS, SO>(
     segment_headers_store: SegmentHeadersStore<AS>,
     subspace_link: &SubspaceLink<Block>,

@@ -14,9 +14,22 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-//! Slot worker module.
+//! Slot worker drives block and vote production based on slots produced in [`sc_proof_of_time`].
 //!
-//! Contains implementation of Subspace slot worker that produces block and votes.
+//! While slot worker uses [`sc_consensus_slots`], it is not driven by time, but instead by Proof of
+//! Time that is produced by [`PotSourceWorker`](sc_proof_of_time::source::PotSourceWorker).
+//!
+//! Each time a new proof is found, [`PotSlotWorker::on_proof`] is called and corresponding
+//! [`SlotInfo`] notification is sent ([`SubspaceLink::new_slot_notification_stream`]) to farmers to
+//! do the audit and try to prove they have a solution without actually waiting for the response.
+//! [`ChainConstants::block_authoring_delay`](sp_consensus_subspace::ChainConstants::block_authoring_delay)
+//! slots later (when corresponding future proof arrives) all the solutions produced by farmers so
+//! far are collected and corresponding block and/or votes are produced. In case PoT chain reorg
+//! happens, outdated solutions (they are tied to proofs of time) are thrown away.
+//!
+//! Custom [`SubspaceSyncOracle`] wrapper is introduced due to Subspace-specific changes comparing
+//! to the base Substrate behavior where major syncing is assumed to not happen in case authoring is
+//! forced.
 
 use crate::archiver::SegmentHeadersStore;
 use crate::SubspaceLink;
