@@ -2,7 +2,7 @@ use crate::test_ethereum_tx::{
     EIP1559UnsignedTransaction, EIP2930UnsignedTransaction, LegacyUnsignedTransaction,
 };
 use codec::Encode;
-use domain_runtime_primitives::DomainCoreApi;
+use domain_runtime_primitives::{CheckExtrinsicsValidityError, DomainCoreApi};
 use domain_test_service::evm_domain_test_runtime::{
     Runtime as TestRuntime, RuntimeCall, UncheckedExtrinsic as RuntimeUncheckedExtrinsic,
 };
@@ -229,9 +229,9 @@ async fn benchmark_bundle_with_evm_tx(
 
         assert_eq!(
             runtime_instance
-                .check_transaction_and_do_pre_dispatch(
+                .check_extrinsics_and_do_pre_dispatch(
                     alice.client.as_ref().info().best_hash,
-                    &extrinsic.clone().into(),
+                    vec![extrinsic.clone().into()],
                     alice.client.as_ref().info().best_number,
                     alice.client.as_ref().info().best_hash,
                 )
@@ -352,32 +352,26 @@ async fn storage_change_of_the_same_runtime_instance_should_perserved_cross_runt
     let runtime_instance = alice.client.runtime_api();
 
     // First transaction should be okay
-    assert_eq!(
-        runtime_instance
-            .check_transaction_and_do_pre_dispatch(
-                best_hash,
-                &transfer_to_charlie_with_big_tip_1.clone().into(),
-                best_number,
-                best_hash,
-            )
-            .unwrap(),
-        Ok(())
-    );
-
     // Second transaction  should error out with exact error encountered during check of bundle validity
     // to prove that state is preserved between two calls to same runtime instance
     assert_eq!(
         runtime_instance
-            .check_transaction_and_do_pre_dispatch(
+            .check_extrinsics_and_do_pre_dispatch(
                 best_hash,
-                &transfer_to_charlie_with_big_tip_2.clone().into(),
+                vec![
+                    transfer_to_charlie_with_big_tip_1.clone().into(),
+                    transfer_to_charlie_with_big_tip_2.clone().into()
+                ],
                 best_number,
                 best_hash,
             )
             .unwrap(),
-        Err(TransactionValidityError::Invalid(
-            InvalidTransaction::Payment
-        ))
+        Err(CheckExtrinsicsValidityError {
+            extrinsic_index: 1,
+            transaction_validity_error: TransactionValidityError::Invalid(
+                InvalidTransaction::Payment
+            )
+        })
     );
 
     // If second tx is executed in dedicated runtime instance it would error with `InvalidTransaction::Future`
@@ -387,16 +381,19 @@ async fn storage_change_of_the_same_runtime_instance_should_perserved_cross_runt
         alice
             .client
             .runtime_api()
-            .check_transaction_and_do_pre_dispatch(
+            .check_extrinsics_and_do_pre_dispatch(
                 best_hash,
-                &transfer_to_charlie_with_big_tip_2.clone().into(),
+                vec![transfer_to_charlie_with_big_tip_2.clone().into()],
                 best_number,
                 best_hash,
             )
             .unwrap(),
-        Err(TransactionValidityError::Invalid(
-            InvalidTransaction::Future
-        ))
+        Err(CheckExtrinsicsValidityError {
+            extrinsic_index: 0,
+            transaction_validity_error: TransactionValidityError::Invalid(
+                InvalidTransaction::Future
+            )
+        })
     );
 
     let test_commit_mode = vec![true, false];
@@ -440,9 +437,9 @@ async fn storage_change_of_the_same_runtime_instance_should_perserved_cross_runt
         let runtime_instance = alice.client.runtime_api();
 
         assert!(runtime_instance
-            .check_transaction_and_do_pre_dispatch(
+            .check_extrinsics_and_do_pre_dispatch(
                 best_hash,
-                &transfer_with_big_tip_1.clone().into(),
+                vec![transfer_with_big_tip_1.clone().into()],
                 best_number,
                 best_hash
             )
@@ -452,16 +449,16 @@ async fn storage_change_of_the_same_runtime_instance_should_perserved_cross_runt
         assert!(runtime_instance
             .execute_in_transaction(|api| {
                 if commit_mode {
-                    TransactionOutcome::Commit(api.check_transaction_and_do_pre_dispatch(
+                    TransactionOutcome::Commit(api.check_extrinsics_and_do_pre_dispatch(
                         best_hash,
-                        &transfer_with_big_tip_2.clone().into(),
+                        vec![transfer_with_big_tip_2.clone().into()],
                         best_number,
                         best_hash,
                     ))
                 } else {
-                    TransactionOutcome::Rollback(api.check_transaction_and_do_pre_dispatch(
+                    TransactionOutcome::Rollback(api.check_extrinsics_and_do_pre_dispatch(
                         best_hash,
-                        &transfer_with_big_tip_2.clone().into(),
+                        vec![transfer_with_big_tip_2.clone().into()],
                         best_number,
                         best_hash,
                     ))
@@ -471,17 +468,20 @@ async fn storage_change_of_the_same_runtime_instance_should_perserved_cross_runt
 
         assert_eq!(
             runtime_instance
-                .check_transaction_and_do_pre_dispatch(
+                .check_extrinsics_and_do_pre_dispatch(
                     best_hash,
-                    &transfer_with_big_tip_3.clone().into(),
+                    vec![transfer_with_big_tip_3.clone().into()],
                     best_number,
                     best_hash
                 )
                 .unwrap(),
             if commit_mode {
-                Err(TransactionValidityError::Invalid(
-                    InvalidTransaction::Payment,
-                ))
+                Err(CheckExtrinsicsValidityError {
+                    extrinsic_index: 0,
+                    transaction_validity_error: TransactionValidityError::Invalid(
+                        InvalidTransaction::Payment,
+                    ),
+                })
             } else {
                 Ok(())
             }
@@ -537,19 +537,17 @@ async fn check_bundle_validity_runtime_api_should_work() {
 
     {
         let runtime_instance = alice.client.runtime_api();
-        for extrinsic in sample_valid_bundle_extrinsics {
-            assert_eq!(
-                runtime_instance
-                    .check_transaction_and_do_pre_dispatch(
-                        best_hash,
-                        &extrinsic,
-                        best_number,
-                        best_hash,
-                    )
-                    .unwrap(),
-                Ok(())
-            );
-        }
+        assert_eq!(
+            runtime_instance
+                .check_extrinsics_and_do_pre_dispatch(
+                    best_hash,
+                    sample_valid_bundle_extrinsics,
+                    best_number,
+                    best_hash,
+                )
+                .unwrap(),
+            Ok(())
+        );
     }
 
     let transfer_to_charlie_3_duplicate_nonce_extrinsic =
@@ -565,36 +563,22 @@ async fn check_bundle_validity_runtime_api_should_work() {
 
     {
         let runtime_instance = alice.client.runtime_api();
-        for (i, extrinsic) in sample_invalid_bundle_with_same_nonce_extrinsic
-            .iter()
-            .enumerate()
-        {
-            if i != 2 {
-                assert_eq!(
-                    runtime_instance
-                        .check_transaction_and_do_pre_dispatch(
-                            best_hash,
-                            extrinsic,
-                            best_number,
-                            best_hash,
-                        )
-                        .unwrap(),
-                    Ok(())
-                );
-            } else {
-                assert_eq!(
-                    runtime_instance
-                        .check_transaction_and_do_pre_dispatch(
-                            best_hash,
-                            extrinsic,
-                            best_number,
-                            best_hash,
-                        )
-                        .unwrap(),
-                    Err(TransactionValidityError::Invalid(InvalidTransaction::Stale))
-                );
-            }
-        }
+        assert_eq!(
+            runtime_instance
+                .check_extrinsics_and_do_pre_dispatch(
+                    best_hash,
+                    sample_invalid_bundle_with_same_nonce_extrinsic,
+                    best_number,
+                    best_hash,
+                )
+                .unwrap(),
+            Err(CheckExtrinsicsValidityError {
+                extrinsic_index: 2,
+                transaction_validity_error: TransactionValidityError::Invalid(
+                    InvalidTransaction::Stale
+                ),
+            })
+        );
     }
 
     // Resetting the nonce
@@ -623,9 +607,12 @@ async fn check_bundle_validity_runtime_api_should_work() {
         alice
             .client
             .runtime_api()
-            .check_transaction_and_do_pre_dispatch(
+            .check_extrinsics_and_do_pre_dispatch(
                 best_hash,
-                &OpaqueExtrinsic::from_bytes(&transfer_to_charlie_with_big_tip_1.encode()).unwrap(),
+                vec![
+                    OpaqueExtrinsic::from_bytes(&transfer_to_charlie_with_big_tip_1.encode())
+                        .unwrap()
+                ],
                 best_number,
                 best_hash,
             )
@@ -641,35 +628,22 @@ async fn check_bundle_validity_runtime_api_should_work() {
 
     {
         let runtime_instance = alice.client.runtime_api();
-        for (i, extrinsic) in transfer_to_charlie_with_big_tip.iter().enumerate() {
-            if i == 1 {
-                assert_eq!(
-                    runtime_instance
-                        .check_transaction_and_do_pre_dispatch(
-                            best_hash,
-                            extrinsic,
-                            best_number,
-                            best_hash,
-                        )
-                        .unwrap(),
-                    Err(TransactionValidityError::Invalid(
-                        InvalidTransaction::Payment
-                    ))
-                );
-            } else {
-                assert_eq!(
-                    runtime_instance
-                        .check_transaction_and_do_pre_dispatch(
-                            best_hash,
-                            extrinsic,
-                            best_number,
-                            best_hash,
-                        )
-                        .unwrap(),
-                    Ok(())
-                );
-            }
-        }
+        assert_eq!(
+            runtime_instance
+                .check_extrinsics_and_do_pre_dispatch(
+                    best_hash,
+                    transfer_to_charlie_with_big_tip,
+                    best_number,
+                    best_hash,
+                )
+                .unwrap(),
+            Err(CheckExtrinsicsValidityError {
+                extrinsic_index: 1,
+                transaction_validity_error: TransactionValidityError::Invalid(
+                    InvalidTransaction::Payment
+                ),
+            })
+        );
     }
 }
 

@@ -297,10 +297,15 @@ where
 
             // Using one instance of runtime_api throughout the loop in order to maintain context
             // between them.
-            // Using `check_transaction_and_do_pre_dispatch` instead of `check_transaction_validity`
+            // Using `check_extrinsics_and_do_pre_dispatch` instead of `check_transaction_validity`
             // to maintain side-effect in the storage buffer.
             let is_legal_tx = runtime_api
-                .check_transaction_and_do_pre_dispatch(at, &extrinsic, domain_block_number, at)?
+                .check_extrinsics_and_do_pre_dispatch(
+                    at,
+                    vec![extrinsic.clone()],
+                    domain_block_number,
+                    at,
+                )?
                 .is_ok();
 
             if !is_legal_tx {
