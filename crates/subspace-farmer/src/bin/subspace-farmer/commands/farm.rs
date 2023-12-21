@@ -393,19 +393,16 @@ where
     .map_err(|error| anyhow::anyhow!(error))?;
     // TODO: Consider introducing and using global in-memory segment header cache (this comment is
     //  in multiple files)
-    let segment_commitments_cache = Mutex::new(LruCache::new(RECORDS_ROOTS_CACHE_SIZE));
-    let piece_provider = PieceProvider::new(
+    let segment_commitments_cache = Arc::new(Mutex::new(LruCache::new(RECORDS_ROOTS_CACHE_SIZE)));
+    let validator = Some(SegmentCommitmentPieceValidator::new(
         node.clone(),
-        Some(SegmentCommitmentPieceValidator::new(
-            node.clone(),
-            node_client.clone(),
-            kzg.clone(),
-            segment_commitments_cache,
-        )),
-    );
+        node_client.clone(),
+        kzg.clone(),
+        segment_commitments_cache,
+    ));
+    let piece_provider = PieceProvider::new(node.clone(), validator.clone());
 
     let piece_getter = Arc::new(FarmerPieceGetter::new(
-        node.clone(),
         piece_provider,
         piece_cache.clone(),
         node_client.clone(),

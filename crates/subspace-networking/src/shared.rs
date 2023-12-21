@@ -79,7 +79,7 @@ pub(crate) enum Command {
     GetClosestPeers {
         key: Multihash,
         result_sender: mpsc::UnboundedSender<PeerId>,
-        permit: RateLimiterPermit,
+        permit: Option<RateLimiterPermit>,
     },
     GenericRequest {
         peer_id: PeerId,

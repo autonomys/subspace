@@ -2,6 +2,7 @@ use crate::NodeClient;
 use async_trait::async_trait;
 use lru::LruCache;
 use parking_lot::Mutex;
+use std::sync::Arc;
 use subspace_archiving::archiver::is_piece_valid;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{Piece, PieceIndex, SegmentCommitment, SegmentIndex};
@@ -10,11 +11,12 @@ use subspace_networking::utils::piece_provider::PieceValidator;
 use subspace_networking::Node;
 use tracing::{error, warn};
 
+#[derive(Clone)]
 pub struct SegmentCommitmentPieceValidator<NC> {
     dsn_node: Node,
     node_client: NC,
     kzg: Kzg,
-    segment_commitment_cache: Mutex<LruCache<SegmentIndex, SegmentCommitment>>,
+    segment_commitment_cache: Arc<Mutex<LruCache<SegmentIndex, SegmentCommitment>>>,
 }
 
 impl<NC> SegmentCommitmentPieceValidator<NC> {
@@ -22,7 +24,7 @@ impl<NC> SegmentCommitmentPieceValidator<NC> {
         dsn_node: Node,
         node_client: NC,
         kzg: Kzg,
-        segment_commitment_cache: Mutex<LruCache<SegmentIndex, SegmentCommitment>>,
+        segment_commitment_cache: Arc<Mutex<LruCache<SegmentIndex, SegmentCommitment>>>,
     ) -> Self {
         Self {
             dsn_node,
