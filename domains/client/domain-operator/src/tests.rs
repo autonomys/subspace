@@ -1806,7 +1806,7 @@ async fn test_domain_block_builder_include_ext_with_failed_execution() {
         BasePath::new(directory.path().join("ferdie")),
     );
 
-    // Run Alice (a evm domain authority node) with `skip_empty_bundle_production` set to `true`
+    // Run Alice (a evm domain authority node)
     let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
@@ -1867,11 +1867,12 @@ async fn test_domain_block_builder_include_ext_with_failed_execution() {
     assert_eq!(domain_block_extrinsics.unwrap().len(), 3);
 
     // next bundle should have er which should a total of 5 trace roots
-    // timestamp + success ext + failed ext + finalize + final_state_root
+    // pre_timestamp_root + pre_success_ext_root + pre_failed_ext_root + pre_finalize_block_root
+    // + post_finalize_block_root
     let (_slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     assert!(bundle.is_some());
     let bundle = bundle.unwrap();
-    let er = bundle.sealed_header.header.receipt;
+    let er = bundle.receipt();
     assert_eq!(er.execution_trace.len(), 5);
     assert_eq!(er.execution_trace[4], er.final_state_root);
 }
@@ -1893,7 +1894,7 @@ async fn test_domain_block_builder_include_ext_with_failed_predispatch() {
         BasePath::new(directory.path().join("ferdie")),
     );
 
-    // Run Alice (a evm domain authority node) with `skip_empty_bundle_production` set to `true`
+    // Run Alice (a evm domain authority node)
     let mut alice = domain_test_service::DomainNodeBuilder::new(
         tokio_handle.clone(),
         Alice,
@@ -1960,10 +1961,11 @@ async fn test_domain_block_builder_include_ext_with_failed_predispatch() {
     // timestamp inherent, successful transfer, failed transfer
     let best_hash = alice.client.info().best_hash;
     let domain_block_extrinsics = alice.client.block_body(best_hash).unwrap();
-    assert_eq!(domain_block_extrinsics.unwrap().len(), 3);
+    assert_eq!(domain_block_extrinsics.clone().unwrap().len(), 3);
 
     // next bundle should have er which should a total of 5 trace roots
-    // timestamp + success ext + failed ext + finalize + final_state_root
+    // pre_timestamp_root + pre_success_ext_root + pre_failed_ext_root + pre_finalize_block_root
+    // + post_finalize_block_root
     let (_slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     assert!(bundle.is_some());
     let bundle = bundle.unwrap();
@@ -1971,6 +1973,19 @@ async fn test_domain_block_builder_include_ext_with_failed_predispatch() {
 
     assert_eq!(er.execution_trace.len(), 5);
     assert_eq!(er.execution_trace[4], er.final_state_root);
+
+    let header = alice.client.header(best_hash).unwrap().unwrap();
+    assert_eq!(
+        *header.extrinsics_root(),
+        BlakeTwo256::ordered_trie_root(
+            domain_block_extrinsics
+                .unwrap()
+                .iter()
+                .map(Encode::encode)
+                .collect(),
+            sp_core::storage::StateVersion::V1
+        )
+    );
 }
 
 #[tokio::test(flavor = "multi_thread")]

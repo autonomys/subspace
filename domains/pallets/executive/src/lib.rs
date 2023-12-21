@@ -468,11 +468,11 @@ where
                 let encoded = uxt.encode();
                 let (maybe_signer, dispatch_info) =
                     ExecutiveConfig::ExtrinsicStorageFees::extract_signer(uxt);
-                // if this is not a normal extrinsic, then transaction should not execute
+                // if this is mandatory extrinsic, then transaction should not execute
                 // we should fail here.
-                if dispatch_info.class != DispatchClass::Normal {
+                if dispatch_info.class == DispatchClass::Mandatory {
                     return Err(TransactionValidityError::Invalid(
-                        InvalidTransaction::BadMandatory,
+                        InvalidTransaction::MandatoryValidation,
                     ));
                 }
 
