@@ -1,7 +1,6 @@
 mod dsn;
 
 use crate::commands::farm::dsn::configure_dsn;
-use crate::commands::shared::print_disk_farm_info;
 use crate::utils::shutdown_signal;
 use anyhow::anyhow;
 use bytesize::ByteSize;
@@ -58,6 +57,10 @@ fn available_parallelism() -> usize {
             0
         }
     }
+}
+
+fn should_farm_during_initial_plotting() -> bool {
+    available_parallelism() > 8
 }
 
 /// Arguments for farmer
@@ -126,7 +129,7 @@ pub(crate) struct FarmingArgs {
     /// intense on CPU and memory that farming will likely not work properly, yet it will
     /// significantly impact plotting speed, delaying the time when farming can actually work
     /// properly.
-    #[arg(long)]
+    #[arg(long, default_value_t = should_farm_during_initial_plotting(), action = clap::ArgAction::Set)]
     farm_during_initial_plotting: bool,
     /// Size of PER FARM thread pool used for farming (mostly for blocking I/O, but also for some
     /// compute-intensive operations during proving), defaults to number of CPU cores available in
@@ -171,8 +174,8 @@ struct DsnArgs {
     /// Multiaddr to listen on for subspace networking, for instance `/ip4/0.0.0.0/tcp/0`,
     /// multiple are supported.
     #[arg(long, default_values_t = [
-    "/ip4/0.0.0.0/udp/30533/quic-v1".parse::<Multiaddr>().expect("Manual setting"),
-    "/ip4/0.0.0.0/tcp/30533".parse::<Multiaddr>().expect("Manual setting"),
+        "/ip4/0.0.0.0/udp/30533/quic-v1".parse::<Multiaddr>().expect("Statically correct; qed"),
+        "/ip4/0.0.0.0/tcp/30533".parse::<Multiaddr>().expect("Statically correct; qed"),
     ])]
     listen_on: Vec<Multiaddr>,
     /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses in
@@ -490,7 +493,17 @@ where
         };
 
         if !no_info {
-            print_disk_farm_info(disk_farm.directory, disk_farm_index);
+            let info = single_disk_farm.info();
+            println!("Single disk farm {disk_farm_index}:");
+            println!("  ID: {}", info.id());
+            println!("  Genesis hash: 0x{}", hex::encode(info.genesis_hash()));
+            println!("  Public key: 0x{}", hex::encode(info.public_key()));
+            println!(
+                "  Allocated space: {} ({})",
+                bytesize::to_string(info.allocated_space(), true),
+                bytesize::to_string(info.allocated_space(), false)
+            );
+            println!("  Directory: {}", disk_farm.directory.display());
         }
 
         single_disk_farms.push(single_disk_farm);

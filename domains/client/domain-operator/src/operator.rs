@@ -17,6 +17,7 @@ use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
 use sp_core::H256;
 use sp_domains::{BundleProducerElectionApi, DomainsApi};
 use sp_domains_fraud_proof::FraudProofApi;
+use sp_keystore::KeystorePtr;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
@@ -31,11 +32,12 @@ where
 {
     consensus_client: Arc<CClient>,
     client: Arc<Client>,
-    transaction_pool: Arc<TransactionPool>,
+    pub transaction_pool: Arc<TransactionPool>,
     backend: Arc<Backend>,
     fraud_proof_generator: FraudProofGenerator<Block, CBlock, Client, CClient, Backend, E>,
     bundle_processor: BundleProcessor<Block, CBlock, Client, CClient, Backend, E>,
     domain_block_processor: DomainBlockProcessor<Block, CBlock, Client, CClient, Backend>,
+    pub keystore: KeystorePtr,
 }
 
 impl<Block, CBlock, Client, CClient, TransactionPool, Backend, E> Clone
@@ -53,6 +55,7 @@ where
             fraud_proof_generator: self.fraud_proof_generator.clone(),
             bundle_processor: self.bundle_processor.clone(),
             domain_block_processor: self.domain_block_processor.clone(),
+            keystore: self.keystore.clone(),
         }
     }
 }
@@ -167,7 +170,6 @@ where
             params.consensus_client.clone(),
             params.client.clone(),
             params.backend.clone(),
-            params.keystore,
             receipts_checker,
             domain_block_processor.clone(),
         );
@@ -195,6 +197,7 @@ where
             fraud_proof_generator,
             bundle_processor,
             domain_block_processor,
+            keystore: params.keystore,
         })
     }
 
