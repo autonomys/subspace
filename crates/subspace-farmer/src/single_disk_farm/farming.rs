@@ -2,7 +2,7 @@ pub mod rayon_files;
 
 use crate::node_client;
 use crate::node_client::NodeClient;
-use crate::single_disk_farm::Handlers;
+use crate::single_disk_farm::{Handler, Handlers, SingleDiskFarmId};
 use async_lock::RwLock;
 use futures::channel::mpsc;
 use futures::StreamExt;
@@ -14,7 +14,7 @@ use std::time::Instant;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::{PosSeed, PublicKey, SectorIndex, Solution, SolutionRange};
 use subspace_erasure_coding::ErasureCoding;
-use subspace_farmer_components::auditing::{audit_plot_sync, AuditEventHandler};
+use subspace_farmer_components::auditing::audit_plot_sync;
 use subspace_farmer_components::proving::{ProvableSolutions, ProvingError};
 use subspace_farmer_components::sector::SectorMetadataChecksummed;
 use subspace_farmer_components::{proving, ReadAtSync};
@@ -22,6 +22,16 @@ use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_rpc_primitives::{SlotInfo, SolutionResponse};
 use thiserror::Error;
 use tracing::{debug, error, info, trace, warn};
+
+#[derive(Debug, Clone)]
+pub struct AuditEvent {
+    /// Defines how much time took the audit in secs
+    pub duration: f64,
+    /// ID of the farm
+    pub farm_id: SingleDiskFarmId,
+    /// Number of sectors for this audit
+    pub sectors_number: usize,
+}
 
 /// Errors that happen during farming
 #[derive(Debug, Error)]
@@ -102,7 +112,9 @@ where
     /// Proof of space table generator
     pub table_generator: &'a Mutex<PosTable::Generator>,
     /// Provides an event handler for audit events
-    pub audit_event_handler: Option<&'a AuditEventHandler>,
+    pub audit_event_handler: Option<&'a Handler<AuditEvent>>,
+    /// ID of the farm
+    pub farm_id: SingleDiskFarmId,
 }
 
 impl<'a, PosTable> Clone for PlotAuditOptions<'a, PosTable>
@@ -150,7 +162,10 @@ where
             maybe_sector_being_modified,
             table_generator,
             audit_event_handler,
+            farm_id,
         } = options;
+
+        let start = Instant::now();
 
         let audit_results = audit_plot_sync(
             public_key,
@@ -159,8 +174,18 @@ where
             &self.0,
             sectors_metadata,
             maybe_sector_being_modified,
-            audit_event_handler,
         );
+
+        if let Some(audit_event_handler) = audit_event_handler {
+            let duration = start.elapsed();
+            let duration_secs = duration.as_secs_f64();
+
+            audit_event_handler.call_simple(&AuditEvent {
+                duration: duration_secs,
+                farm_id,
+                sectors_number: sectors_metadata.len(),
+            });
+        }
 
         audit_results
             .into_iter()
@@ -208,6 +233,7 @@ pub(super) struct FarmingOptions<NC, PlotAudit> {
     pub(super) handlers: Arc<Handlers>,
     pub(super) modifying_sector_index: Arc<RwLock<Option<SectorIndex>>>,
     pub(super) slot_info_notifications: mpsc::Receiver<SlotInfo>,
+    pub(super) farm_id: SingleDiskFarmId,
 }
 
 /// Starts farming process.
@@ -233,6 +259,7 @@ where
         handlers,
         modifying_sector_index,
         mut slot_info_notifications,
+        farm_id,
     } = farming_options;
 
     let farmer_app_info = node_client
@@ -266,6 +293,7 @@ where
                 maybe_sector_being_modified,
                 table_generator: &table_generator,
                 audit_event_handler: Some(&handlers.plot_audited),
+                farm_id,
             })
         };
 

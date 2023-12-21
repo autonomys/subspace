@@ -1,24 +1,13 @@
 use crate::proving::SolutionCandidates;
 use crate::sector::{sector_size, SectorContentsMap, SectorMetadataChecksummed};
 use crate::{ReadAtOffset, ReadAtSync};
-use event_listener_primitives::Bag;
 use rayon::prelude::*;
-use std::sync::Arc;
-use std::time::Instant;
 use subspace_core_primitives::crypto::Scalar;
 use subspace_core_primitives::{
     Blake3Hash, PublicKey, SBucket, SectorId, SectorIndex, SectorSlotChallenge, SolutionRange,
 };
 use subspace_verification::is_within_solution_range;
 use tracing::warn;
-
-#[derive(Debug, Clone, Copy)]
-pub struct AuditEvent {
-    /// Defines how much time took the audit in secs
-    pub duration: f64,
-}
-pub type AuditEventHandlerFn = Arc<dyn Fn(&AuditEvent) + Send + Sync + 'static>;
-pub type AuditEventHandler = Bag<AuditEventHandlerFn, AuditEvent>;
 
 /// Result of sector audit
 #[derive(Debug, Clone)]
@@ -107,12 +96,10 @@ pub fn audit_plot_sync<'a, Plot>(
     plot: &'a Plot,
     sectors_metadata: &'a [SectorMetadataChecksummed],
     maybe_sector_being_modified: Option<SectorIndex>,
-    audit_event_handler: Option<&'a AuditEventHandler>,
 ) -> Vec<AuditResult<'a, ReadAtOffset<'a, Plot>>>
 where
     Plot: ReadAtSync + 'a,
 {
-    let start = Instant::now();
     let public_key_hash = public_key.hash();
 
     // Create auditing info for all sectors in parallel
@@ -179,15 +166,6 @@ where
             })
         })
         .collect();
-
-    if let Some(audit_event_handler) = audit_event_handler {
-        let duration = Instant::now().duration_since(start);
-        let duration_secs = duration.as_secs_f64();
-
-        audit_event_handler.call_simple(&AuditEvent {
-            duration: duration_secs,
-        });
-    }
 
     result
 }

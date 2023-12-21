@@ -1,25 +1,32 @@
+use prometheus_client::metrics::family::Family;
 use prometheus_client::metrics::histogram::{exponential_buckets, Histogram};
 use prometheus_client::registry::{Registry, Unit};
-use subspace_farmer_components::auditing::AuditEvent;
+use subspace_farmer::single_disk_farm::farming::AuditEvent;
 use tokio::signal;
 
 #[derive(Debug, Clone)]
 pub(crate) struct FarmerMetrics {
-    audit: Histogram,
+    // Type comment: we need (String, String) instead of just String for farm_id because of
+    // trait definition within prometheus_client library.
+    audit: Family<Vec<(String, String)>, Histogram>,
 }
 
 impl FarmerMetrics {
     pub(crate) fn new(registry: &mut Registry) -> Self {
-        let sub_registry = registry.sub_registry_with_prefix("farmer");
+        let sub_registry = registry.sub_registry_with_prefix("subspace_farmer");
 
-        let audit = Histogram::new(exponential_buckets(0.001, 2.0, 12));
+        let audit: Family<_, _> =
+            Family::new_with_constructor(|| Histogram::new(exponential_buckets(0.0001, 2.0, 15)));
+
         sub_registry.register_with_unit("audit", "Audit time", Unit::Seconds, audit.clone());
 
         Self { audit }
     }
 
     pub(crate) fn observe_audit_event(&self, event: &AuditEvent) {
-        self.audit.observe(event.duration)
+        self.audit
+            .get_or_create(&vec![(event.farm_id.to_string(), Default::default())])
+            .observe(event.duration);
     }
 }
 

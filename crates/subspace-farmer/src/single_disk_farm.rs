@@ -9,7 +9,7 @@ use crate::reward_signing::reward_signing;
 use crate::single_disk_farm::farming::rayon_files::RayonFiles;
 pub use crate::single_disk_farm::farming::FarmingError;
 use crate::single_disk_farm::farming::{
-    farming, slot_notification_forwarder, FarmingOptions, PlotAudit,
+    farming, slot_notification_forwarder, AuditEvent, FarmingOptions, PlotAudit,
 };
 use crate::single_disk_farm::piece_cache::{DiskPieceCache, DiskPieceCacheError};
 use crate::single_disk_farm::piece_reader::PieceReader;
@@ -48,7 +48,6 @@ use subspace_core_primitives::{
     SegmentIndex,
 };
 use subspace_erasure_coding::ErasureCoding;
-use subspace_farmer_components::auditing::{AuditEvent, AuditEventHandler};
 use subspace_farmer_components::file_ext::{FileExt, OpenOptionsExt};
 use subspace_farmer_components::plotting::{PieceGetter, PlottedSector};
 use subspace_farmer_components::sector::{sector_size, SectorMetadata, SectorMetadataChecksummed};
@@ -558,7 +557,7 @@ struct Handlers {
     sector_plotting: Handler<SectorPlottingDetails>,
     sector_plotted: Handler<(PlottedSector, Option<PlottedSector>)>,
     solution: Handler<SolutionResponse>,
-    plot_audited: AuditEventHandler,
+    plot_audited: Handler<AuditEvent>,
 }
 
 /// Single disk farm abstraction is a container for everything necessary to plot/farm with a single
@@ -707,6 +706,7 @@ impl SingleDiskFarm {
                 single_disk_farm_info
             }
         };
+        let farm_id = *single_disk_farm_info.id();
 
         let single_disk_farm_info_lock = SingleDiskFarmInfo::try_lock(&directory)
             .map_err(SingleDiskFarmError::LikelyAlreadyInUse)?;
@@ -1119,6 +1119,7 @@ impl SingleDiskFarm {
                             handlers,
                             modifying_sector_index,
                             slot_info_notifications: slot_info_forwarder_receiver,
+                            farm_id,
                         };
                         farming::<PosTable, _, _>(farming_options).await
                     };

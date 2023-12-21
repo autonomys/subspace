@@ -11,7 +11,7 @@ use subspace_core_primitives::{Record, SolutionRange};
 use subspace_erasure_coding::ErasureCoding;
 use subspace_farmer::single_disk_farm::farming::rayon_files::RayonFiles;
 use subspace_farmer::single_disk_farm::farming::{PlotAudit, PlotAuditOptions};
-use subspace_farmer::single_disk_farm::{SingleDiskFarm, SingleDiskFarmSummary};
+use subspace_farmer::single_disk_farm::{SingleDiskFarm, SingleDiskFarmId, SingleDiskFarmSummary};
 use subspace_farmer_components::sector::sector_size;
 use subspace_proof_of_space::Table;
 use subspace_rpc_primitives::SlotInfo;
@@ -135,6 +135,7 @@ fn audit(sample_size: usize, disk_farm: PathBuf, filter: Option<String>) -> anyh
                             maybe_sector_being_modified: None,
                             table_generator: &table_generator,
                             audit_event_handler: None,
+                            farm_id: SingleDiskFarmId::new(),
                         };
 
                         black_box(plot_audit.audit(black_box(options)))
@@ -169,6 +170,7 @@ fn audit(sample_size: usize, disk_farm: PathBuf, filter: Option<String>) -> anyh
                             maybe_sector_being_modified: None,
                             table_generator: &table_generator,
                             audit_event_handler: None,
+                            farm_id: SingleDiskFarmId::new(),
                         };
 
                         black_box(plot_audit.audit(black_box(options)))
@@ -251,6 +253,7 @@ fn prove(
                 maybe_sector_being_modified: None,
                 table_generator: &table_generator,
                 audit_event_handler: None,
+                farm_id: SingleDiskFarmId::new(),
             };
 
             let mut audit_results = plot_audit.audit(options);
@@ -296,6 +299,7 @@ fn prove(
                 maybe_sector_being_modified: None,
                 table_generator: &table_generator,
                 audit_event_handler: None,
+                farm_id: SingleDiskFarmId::new(),
             };
             let mut audit_results = plot_audit.audit(options);
 
