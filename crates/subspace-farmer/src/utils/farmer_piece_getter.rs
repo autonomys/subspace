@@ -12,7 +12,7 @@ use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator, RetryPolicy};
 use tracing::{debug, error, trace};
 
-const MAX_RANDOM_WALK_ROUNDS: usize = 50;
+const MAX_RANDOM_WALK_ROUNDS: usize = 35;
 
 pub struct FarmerPieceGetter<PV, NC> {
     piece_provider: PieceProvider<PV>,
@@ -67,7 +67,7 @@ where
         trace!(%piece_index, "Getting piece from DSN L2 cache");
         let maybe_piece = self
             .piece_provider
-            .get_piece(piece_index, Self::convert_retry_policy(retry_policy))
+            .get_piece_from_dsn_cache(piece_index, Self::convert_retry_policy(retry_policy))
             .await?;
 
         if maybe_piece.is_some() {
@@ -120,8 +120,6 @@ where
             trace!(%piece_index, "DSN L1 lookup succeeded");
 
             return Ok(archival_storage_search_result);
-        } else {
-            debug!(%piece_index, "Cannot acquire piece from DSN L1");
         }
 
         debug!(

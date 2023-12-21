@@ -120,8 +120,9 @@ where
         None
     }
 
-    /// Returns piece by its index. Uses retry policy for error handling.
-    pub async fn get_piece(
+    /// Returns piece by its index from farmer's piece cache (L2).
+    /// Uses retry policy for error handling.
+    pub async fn get_piece_from_dsn_cache(
         &self,
         piece_index: PieceIndex,
         retry_policy: RetryPolicy,
