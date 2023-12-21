@@ -1716,8 +1716,14 @@ impl<T: Config> Pallet<T> {
                     })?;
                 }
                 FraudProof::InvalidBundles(invalid_bundles_fraud_proof) => {
+                    let bad_receipt_parent =
+                        BlockTreeNodes::<T>::get(bad_receipt.parent_domain_block_receipt_hash)
+                            .ok_or(FraudProofError::ParentReceiptNotFound)?
+                            .execution_receipt;
+
                     verify_invalid_bundles_fraud_proof::<T::Block, T::DomainHeader, BalanceOf<T>>(
                         bad_receipt,
+                        bad_receipt_parent,
                         invalid_bundles_fraud_proof,
                     )
                     .map_err(|err| {
