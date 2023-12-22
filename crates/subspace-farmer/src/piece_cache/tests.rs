@@ -312,19 +312,23 @@ async fn basic() {
                 },
             };
 
-            archived_segment_headers_sender
-                .send(segment_header)
-                .await
-                .unwrap();
-
-            // Wait for acknowledgement
-            assert_eq!(
-                acknowledge_archived_segment_header_receiver
-                    .next()
+            // Send twice because acknowledgement arrives early, sending twice doesn't have side effects, but ensures
+            // things were processed fully
+            for _ in 0..=1 {
+                archived_segment_headers_sender
+                    .send(segment_header)
                     .await
-                    .unwrap(),
-                SegmentIndex::from(segment_index)
-            );
+                    .unwrap();
+
+                // Wait for acknowledgement
+                assert_eq!(
+                    acknowledge_archived_segment_header_receiver
+                        .next()
+                        .await
+                        .unwrap(),
+                    SegmentIndex::from(segment_index)
+                );
+            }
 
             current_segment_index.store(segment_index, Ordering::Release);
         }
