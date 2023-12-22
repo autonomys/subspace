@@ -40,6 +40,7 @@ use std::path::{Path, PathBuf};
 use std::pin::Pin;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
+use std::time::Duration;
 use std::{fs, io, mem};
 use subspace_core_primitives::crypto::blake3_hash;
 use subspace_core_primitives::crypto::kzg::Kzg;
@@ -63,12 +64,13 @@ use ulid::Ulid;
 
 // Refuse to compile on non-64-bit platforms, offsets may fail on those when converting from u64 to
 // usize depending on chain parameters
-const_assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<u64>());
+const_assert!(mem::size_of::<usize>() >= mem::size_of::<u64>());
 
 /// Reserve 1M of space for plot metadata (for potential future expansion)
 const RESERVED_PLOT_METADATA: u64 = 1024 * 1024;
 /// Reserve 1M of space for farm info (for potential future expansion)
 const RESERVED_FARM_INFO: u64 = 1024 * 1024;
+const NEW_SEGMENT_PROCESSING_DELAY: Duration = Duration::from_secs(30);
 
 /// An identifier for single disk farm, can be used for in logs, thread names, etc.
 #[derive(
@@ -1036,6 +1038,7 @@ impl SingleDiskFarm {
             sectors_metadata: Arc::clone(&sectors_metadata),
             sectors_to_plot_sender,
             initial_plotting_finished: farming_delay_sender,
+            new_segment_processing_delay: NEW_SEGMENT_PROCESSING_DELAY,
         };
         tasks.push(Box::pin(plotting_scheduler(plotting_scheduler_options)));
 

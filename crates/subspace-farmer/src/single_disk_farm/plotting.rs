@@ -413,6 +413,9 @@ pub(super) struct PlottingSchedulerOptions<NC> {
     pub(super) sectors_metadata: Arc<RwLock<Vec<SectorMetadataChecksummed>>>,
     pub(super) sectors_to_plot_sender: mpsc::Sender<SectorToPlot>,
     pub(super) initial_plotting_finished: Option<oneshot::Sender<()>>,
+    // Delay between segment header being acknowledged by farmer and potentially triggering
+    // replotting
+    pub(super) new_segment_processing_delay: Duration,
 }
 
 pub(super) async fn plotting_scheduler<NC>(
@@ -431,6 +434,7 @@ where
         sectors_metadata,
         sectors_to_plot_sender,
         initial_plotting_finished,
+        new_segment_processing_delay,
     } = plotting_scheduler_options;
 
     // Create a proxy channel with atomically updatable last archived segment that
@@ -457,6 +461,7 @@ where
         &node_client,
         &last_archived_segment,
         archived_segments_sender,
+        new_segment_processing_delay,
     );
 
     let (sectors_to_plot_proxy_sender, sectors_to_plot_proxy_receiver) = mpsc::channel(0);
@@ -497,6 +502,7 @@ async fn read_archived_segments_notifications<NC>(
     node_client: &NC,
     last_archived_segment: &Atomic<SegmentHeader>,
     mut archived_segments_sender: mpsc::Sender<()>,
+    new_segment_processing_delay: Duration,
 ) -> Result<(), BackgroundTaskError>
 where
     NC: NodeClient,
@@ -516,6 +522,10 @@ where
         {
             debug!(%error, "Failed to acknowledge segment header");
         }
+
+        // There is no urgent need to rush replotting sectors immediately and this delay allows for
+        // newly archived pieces to be both cached locally and on other farmers on the network
+        tokio::time::sleep(new_segment_processing_delay).await;
 
         last_archived_segment.store(segment_header, Ordering::SeqCst);
         // Just a notification such that receiving side can read updated
