@@ -1355,7 +1355,7 @@ async fn test_true_invalid_bundles_illegal_extrinsic_proof_creation_and_verifica
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
         let mut opaque_bundle = bundle.unwrap();
         let bad_receipt = &mut opaque_bundle.sealed_header.header.receipt;
-        // bad receipt marks this particular bundle as valid even though bundle contains inherent extrinsic
+        // bad receipt marks this particular bundle as valid even though bundle contains illegal extrinsic
         bad_receipt.inboxed_bundles =
             vec![InboxedBundle::valid(H256::random(), bundle_extrinsic_root)];
 
@@ -1481,14 +1481,7 @@ async fn test_false_invalid_bundles_illegal_extrinsic_proof_creation_and_verific
     let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let target_bundle = bundle.unwrap();
     assert_eq!(target_bundle.extrinsics.len(), 2);
-    let extrinsics: Vec<Vec<u8>> = target_bundle
-        .extrinsics
-        .clone()
-        .into_iter()
-        .map(|ext| ext.encode())
-        .collect();
-    let bundle_extrinsic_root =
-        BlakeTwo256::ordered_trie_root(extrinsics.clone(), StateVersion::V1);
+    let bundle_extrinsic_root = target_bundle.extrinsics_root();
     produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
         .await
         .unwrap();

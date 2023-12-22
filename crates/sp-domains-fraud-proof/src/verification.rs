@@ -469,7 +469,7 @@ where
             }
         }
         InvalidBundlesFraudProofType::IllegalTx(extrinsic_index, storage_proof) => {
-            let bundle_body = get_fraud_proof_verification_info(
+            let mut bundle_body = get_fraud_proof_verification_info(
                 bad_receipt.consensus_block_hash.into(),
                 FraudProofVerificationInfoRequest::DomainBundleBody {
                     domain_id: invalid_bundles_fraud_proof.domain_id,
@@ -479,6 +479,11 @@ where
             .and_then(FraudProofVerificationInfoResponse::into_bundle_body)
             .ok_or(VerificationError::FailedToGetDomainBundleBody)?;
 
+            let extrinsics = bundle_body
+                .drain(..)
+                .take((*extrinsic_index + 1) as usize)
+                .collect();
+
             // Make host call for check extrinsic in single context
             let check_extrinsic_result = get_fraud_proof_verification_info(
                 bad_receipt.consensus_block_hash.into(),
@@ -487,7 +492,7 @@ where
                     domain_block_number: bad_receipt_parent.domain_block_number.saturated_into(),
                     domain_block_hash: bad_receipt_parent.domain_block_hash.into(),
                     domain_block_state_root: bad_receipt_parent.final_state_root.into(),
-                    extrinsics: bundle_body,
+                    extrinsics,
                     storage_proof: storage_proof.clone(),
                 },
             )

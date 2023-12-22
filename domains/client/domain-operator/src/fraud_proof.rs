@@ -252,7 +252,12 @@ where
                     .expect("we enabled proof recording just above; qed");
 
                 let mut block_extrinsics = vec![];
-                for (extrinsic_index, extrinsic) in bundle.extrinsics.iter().enumerate() {
+                for (extrinsic_index, extrinsic) in bundle
+                    .extrinsics
+                    .iter()
+                    .enumerate()
+                    .take((expected_extrinsic_index + 1) as usize)
+                {
                     let encoded_extrinsic = extrinsic.encode();
                     block_extrinsics.push(
                         <Block as BlockT>::Extrinsic::decode(&mut encoded_extrinsic.as_slice())
