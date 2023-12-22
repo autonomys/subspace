@@ -12,7 +12,7 @@ use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator, RetryPolicy};
 use tracing::{debug, error, trace};
 
-const MAX_RANDOM_WALK_ROUNDS: usize = 35;
+const MAX_RANDOM_WALK_ROUNDS: usize = 15;
 
 pub struct FarmerPieceGetter<PV, NC> {
     piece_provider: PieceProvider<PV>,
