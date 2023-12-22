@@ -22,7 +22,6 @@ pub mod domain;
 
 use clap::Parser;
 use sc_cli::{RunCmd, SubstrateCli};
-use sc_executor::NativeExecutionDispatch;
 use sc_service::ChainSpec;
 use sc_storage_monitor::StorageMonitorParams;
 use sc_subspace_chain_specs::ConsensusChainSpec;
@@ -32,33 +31,6 @@ use std::collections::HashSet;
 use std::io::Write;
 use std::{fs, io};
 use subspace_networking::libp2p::Multiaddr;
-
-/// Executor dispatch for subspace runtime
-pub struct ExecutorDispatch;
-
-impl NativeExecutionDispatch for ExecutorDispatch {
-    /// Only enable the benchmarking host functions when we actually want to benchmark.
-    #[cfg(feature = "runtime-benchmarks")]
-    type ExtendHostFunctions = (
-        frame_benchmarking::benchmarking::HostFunctions,
-        sp_consensus_subspace::consensus::HostFunctions,
-        sp_domains_fraud_proof::HostFunctions,
-    );
-    /// Otherwise we only use the default Substrate host functions.
-    #[cfg(not(feature = "runtime-benchmarks"))]
-    type ExtendHostFunctions = (
-        sp_consensus_subspace::consensus::HostFunctions,
-        sp_domains_fraud_proof::HostFunctions,
-    );
-
-    fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
-        subspace_runtime::api::dispatch(method, data)
-    }
-
-    fn native_version() -> sc_executor::NativeVersion {
-        subspace_runtime::native_version()
-    }
-}
 
 /// This `purge-chain` command used to remove both consensus chain and domain.
 #[derive(Debug, Clone, Parser)]

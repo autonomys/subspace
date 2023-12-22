@@ -22,7 +22,7 @@ use codec::{Decode, Encode};
 use cross_domain_message_gossip::GossipWorkerBuilder;
 use domain_runtime_primitives::opaque::{Block as DomainBlock, Header as DomainHeader};
 use futures::channel::mpsc;
-use futures::{select, FutureExt, StreamExt};
+use futures::{select, Future, FutureExt, StreamExt};
 use jsonrpsee::RpcModule;
 use parking_lot::Mutex;
 use sc_block_builder::BlockBuilderProvider;
@@ -57,6 +57,7 @@ use sp_consensus_subspace::FarmerPublicKey;
 use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
 use sp_core::H256;
 use sp_domains::{BundleProducerElectionApi, DomainsApi, OpaqueBundle};
+use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_domains_fraud_proof::{FraudProofExtension, FraudProofHostFunctionsImpl};
 use sp_externalities::Extensions;
 use sp_inherents::{InherentData, InherentDataProvider};
@@ -67,6 +68,7 @@ use sp_runtime::{DigestItem, OpaqueExtrinsic};
 use sp_timestamp::Timestamp;
 use std::error::Error;
 use std::marker::PhantomData;
+use std::pin::Pin;
 use std::sync::atomic::AtomicU32;
 use std::sync::Arc;
 use std::time;
@@ -77,6 +79,9 @@ use subspace_service::transaction_pool::FullPool;
 use subspace_service::FullSelectChain;
 use subspace_test_client::{chain_spec, Backend, Client, TestExecutorDispatch};
 use subspace_test_runtime::{RuntimeApi, RuntimeCall, UncheckedExtrinsic, SLOT_DURATION};
+
+type FraudProofFor<Block, DomainBlock> =
+    FraudProof<NumberFor<Block>, <Block as BlockT>::Hash, <DomainBlock as BlockT>::Header>;
 
 /// Create a Subspace `Configuration`.
 ///
@@ -567,6 +572,50 @@ impl MockConsensusNode {
             .validated_pool()
             .clear_stale(&BlockId::Number(self.client.info().best_number))?;
         Ok(())
+    }
+
+    /// Return if the given ER exist in the consensus state
+    pub fn does_receipt_exist(
+        &self,
+        er_hash: <DomainBlock as BlockT>::Hash,
+    ) -> Result<bool, Box<dyn Error>> {
+        Ok(self
+            .client
+            .runtime_api()
+            .execution_receipt(self.client.info().best_hash, er_hash)?
+            .is_some())
+    }
+
+    /// Return a future that only resolve if a fraud proof that the given `fraud_proof_predict`
+    /// return true is submitted to the consensus tx pool
+    pub fn wait_for_fraud_proof<FP>(
+        &self,
+        fraud_proof_predict: FP,
+    ) -> Pin<Box<dyn Future<Output = ()> + Send>>
+    where
+        FP: Fn(&FraudProofFor<Block, DomainBlock>) -> bool + Send + 'static,
+    {
+        let tx_pool = self.transaction_pool.clone();
+        let mut import_tx_stream = self.transaction_pool.import_notification_stream();
+        Box::pin(async move {
+            while let Some(ready_tx_hash) = import_tx_stream.next().await {
+                let ready_tx = tx_pool
+                    .ready_transaction(&ready_tx_hash)
+                    .expect("Just get the ready tx hash from import stream; qed");
+                let ext = subspace_test_runtime::UncheckedExtrinsic::decode(
+                    &mut ready_tx.data.encode().as_slice(),
+                )
+                .expect("Decode tx must success");
+                if let subspace_test_runtime::RuntimeCall::Domains(
+                    pallet_domains::Call::submit_fraud_proof { fraud_proof },
+                ) = ext.function
+                {
+                    if fraud_proof_predict(&fraud_proof) {
+                        break;
+                    }
+                }
+            }
+        })
     }
 }
 

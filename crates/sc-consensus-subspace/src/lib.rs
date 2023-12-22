@@ -14,7 +14,14 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-#![doc = include_str!("../README.md")]
+//! `sc-consensus-subspace` is the core of Subspace consensus implementation.
+//!
+//! You should familiarize yourself with [Subnomicon](https://subnomicon.subspace.network/) and, ideally, protocol
+//! specifications. Documentation here assumes decent prior knowledge of the protocol on conceptual level and will not
+//! explain how the protocol works, it will instead explain how the protocol is implemented.
+//!
+//! All of the modules here are crucial for consensus, open each module for specific details.
+
 #![feature(const_option, let_chains, try_blocks)]
 #![forbid(unsafe_code)]
 #![warn(missing_docs)]
@@ -40,7 +47,7 @@ use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::SegmentHeader;
 
-/// State that must be shared between the import queue and the authoring logic.
+/// State that must be shared between various consensus components.
 #[derive(Clone)]
 pub struct SubspaceLink<Block: BlockT> {
     new_slot_notification_sender: SubspaceNotificationSender<NewSlotNotification>,

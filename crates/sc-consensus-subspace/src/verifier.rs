@@ -1,4 +1,17 @@
-//! Subspace block import implementation
+//! Stateless and parallelized block verification that happens before block is imported (except for locally produced
+//! blocks that are imported directly).
+//!
+//! The goal of verifier is to check internal consistency of the block, which includes things like
+//! solution according to claimed inputs, signature, Proof of Time checkpoints in justifications,
+//! etc.
+//!
+//! This should be the majority of the block verification computation such that all that is left for
+//! [`block_import`](crate::block_import) to check is that information in the block corresponds to
+//! the state of the parent block, which for the most part is comparing bytes against known good
+//! values.
+//!
+//! This is a significant tradeoff in the protocol: having a smaller header vs being able to verify
+//! a lot of things stateless and in parallel.
 
 use futures::lock::Mutex;
 use rand::prelude::*;

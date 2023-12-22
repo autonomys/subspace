@@ -119,6 +119,35 @@ pub fn native_version() -> NativeVersion {
     }
 }
 
+/// Executor dispatch for subspace runtime
+#[cfg(feature = "std")]
+pub struct ExecutorDispatch;
+
+#[cfg(feature = "std")]
+impl sc_executor::NativeExecutionDispatch for ExecutorDispatch {
+    /// Only enable the benchmarking host functions when we actually want to benchmark.
+    #[cfg(feature = "runtime-benchmarks")]
+    type ExtendHostFunctions = (
+        frame_benchmarking::benchmarking::HostFunctions,
+        sp_consensus_subspace::consensus::HostFunctions,
+        sp_domains_fraud_proof::HostFunctions,
+    );
+    /// Otherwise we only use the default Substrate host functions.
+    #[cfg(not(feature = "runtime-benchmarks"))]
+    type ExtendHostFunctions = (
+        sp_consensus_subspace::consensus::HostFunctions,
+        sp_domains_fraud_proof::HostFunctions,
+    );
+
+    fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
+        api::dispatch(method, data)
+    }
+
+    fn native_version() -> sc_executor::NativeVersion {
+        native_version()
+    }
+}
+
 // TODO: Many of below constants should probably be updatable but currently they are not
 
 /// Since Subspace is probabilistic this is the average expected block time that
@@ -1081,6 +1110,10 @@ impl_runtime_apis! {
 
         fn sudo_account_id() -> AccountId {
             SudoId::get()
+        }
+
+        fn receipt_hash(domain_id: DomainId, domain_number: DomainNumber) -> Option<DomainHash> {
+            Domains::receipt_hash(domain_id, domain_number)
         }
     }
 

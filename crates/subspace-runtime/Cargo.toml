@@ -40,6 +40,7 @@ pallet-transaction-payment-rpc-runtime-api = { version = "4.0.0-dev", default-fe
 pallet-transporter = { version = "0.1.0", path = "../../domains/pallets/transporter", default-features = false }
 pallet-utility = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0831dfc3c54b10ab46e82acf98603b4af1a47bd5" }
 scale-info = { version = "2.7.0", default-features = false, features = ["derive"] }
+sc-executor = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "0831dfc3c54b10ab46e82acf98603b4af1a47bd5", optional = true }
 sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0831dfc3c54b10ab46e82acf98603b4af1a47bd5" }
 sp-block-builder = { git = "https://github.com/subspace/polkadot-sdk", rev = "0831dfc3c54b10ab46e82acf98603b4af1a47bd5", default-features = false, version = "4.0.0-dev" }
 sp-consensus-subspace = { version = "0.1.0", default-features = false, path = "../sp-consensus-subspace" }
@@ -95,6 +96,7 @@ std = [
     "pallet-transporter/std",
     "pallet-utility/std",
     "scale-info/std",
+    "sc-executor",
     "sp-api/std",
     "sp-block-builder/std",
     "sp-consensus-subspace/std",

@@ -280,7 +280,7 @@ where
                     }
                 };
                 let maybe_piece = match piece_provider
-                    .get_piece(
+                    .get_piece_from_dsn_cache(
                         piece_index,
                         RetryPolicy::Limited(PIECE_GETTER_RETRY_NUMBER.get()),
                     )

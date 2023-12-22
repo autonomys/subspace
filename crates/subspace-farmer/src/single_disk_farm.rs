@@ -213,6 +213,7 @@ impl SingleDiskFarmInfo {
 }
 
 /// Summary of single disk farm for presentational purposes
+#[derive(Debug)]
 pub enum SingleDiskFarmSummary {
     /// Farm was found and read successfully
     Found {
@@ -1303,6 +1304,11 @@ impl SingleDiskFarm {
     /// ID of this farm
     pub fn id(&self) -> &SingleDiskFarmId {
         self.single_disk_farm_info.id()
+    }
+
+    /// Info of this farm
+    pub fn info(&self) -> &SingleDiskFarmInfo {
+        &self.single_disk_farm_info
     }
 
     /// Number of sectors in this farm

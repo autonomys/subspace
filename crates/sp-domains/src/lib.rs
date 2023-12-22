@@ -1017,6 +1017,9 @@ sp_api::decl_runtime_apis! {
 
         /// Get the consensus chain sudo account id, currently only used in the intentional malicious operator
         fn sudo_account_id() -> subspace_runtime_primitives::AccountId;
+
+        /// Returns the execution receipt hash of the given domain and domain block number
+        fn receipt_hash(domain_id: DomainId, domain_number: HeaderNumberFor<DomainHeader>) -> Option<HeaderHashFor<DomainHeader>>;
     }
 
     pub trait BundleProducerElectionApi<Balance: Encode + Decode> {

@@ -271,7 +271,7 @@ where
         ))
     }
 
-    pub(crate) async fn generate_invalid_state_transition_proof(
+    pub(crate) fn generate_invalid_state_transition_proof(
         &self,
         domain_id: DomainId,
         local_trace_index: u32,
@@ -351,15 +351,13 @@ where
             }
         } else {
             // Regular extrinsic execution proof.
-            let (proof, execution_phase) = self
-                .create_extrinsic_execution_proof(
-                    local_trace_index,
-                    &parent_header,
-                    block_hash,
-                    &prover,
-                    inherent_digests,
-                )
-                .await?;
+            let (proof, execution_phase) = self.create_extrinsic_execution_proof(
+                local_trace_index,
+                &parent_header,
+                block_hash,
+                &prover,
+                inherent_digests,
+            )?;
 
             // TODO: proof should be a CompactProof.
             InvalidStateTransitionProof {
@@ -388,7 +386,7 @@ where
     }
 
     #[allow(clippy::too_many_arguments)]
-    async fn create_extrinsic_execution_proof(
+    fn create_extrinsic_execution_proof(
         &self,
         trace_mismatch_index: u32,
         parent_header: &Block::Header,

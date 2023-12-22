@@ -220,6 +220,26 @@ pub fn native_version() -> NativeVersion {
     }
 }
 
+/// EVM domain executor instance.
+#[cfg(feature = "std")]
+pub struct ExecutorDispatch;
+
+#[cfg(feature = "std")]
+impl sc_executor::NativeExecutionDispatch for ExecutorDispatch {
+    #[cfg(feature = "runtime-benchmarks")]
+    type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
+    #[cfg(not(feature = "runtime-benchmarks"))]
+    type ExtendHostFunctions = ();
+
+    fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
+        api::dispatch(method, data)
+    }
+
+    fn native_version() -> sc_executor::NativeVersion {
+        native_version()
+    }
+}
+
 parameter_types! {
     pub const Version: RuntimeVersion = VERSION;
     pub const BlockHashCount: BlockNumber = 2400;
@@ -914,7 +934,7 @@ impl_runtime_apis! {
             let dispatch_info = xt.get_dispatch_info();
 
             if dispatch_info.class == DispatchClass::Mandatory {
-                return Err(InvalidTransaction::BadMandatory.into());
+                return Err(InvalidTransaction::MandatoryValidation.into());
             }
 
             let encoded_len = uxt.encoded_size();
