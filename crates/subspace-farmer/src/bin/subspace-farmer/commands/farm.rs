@@ -1,7 +1,7 @@
 mod dsn;
 
 use crate::commands::farm::dsn::configure_dsn;
-use crate::utils::shutdown_signal;
+use crate::utils::{shutdown_signal, FarmerMetrics};
 use anyhow::anyhow;
 use bytesize::ByteSize;
 use clap::{Parser, ValueHint};
@@ -354,6 +354,7 @@ where
 
     // Metrics
     let mut prometheus_metrics_registry = Registry::default();
+    let farmer_metrics = FarmerMetrics::new(&mut prometheus_metrics_registry);
     let metrics_endpoints_are_specified = !metrics_endpoints.is_empty();
 
     let (node, mut node_runner) = {
@@ -393,19 +394,16 @@ where
     .map_err(|error| anyhow::anyhow!(error))?;
     // TODO: Consider introducing and using global in-memory segment header cache (this comment is
     //  in multiple files)
-    let segment_commitments_cache = Mutex::new(LruCache::new(RECORDS_ROOTS_CACHE_SIZE));
-    let piece_provider = PieceProvider::new(
+    let segment_commitments_cache = Arc::new(Mutex::new(LruCache::new(RECORDS_ROOTS_CACHE_SIZE)));
+    let validator = Some(SegmentCommitmentPieceValidator::new(
         node.clone(),
-        Some(SegmentCommitmentPieceValidator::new(
-            node.clone(),
-            node_client.clone(),
-            kzg.clone(),
-            segment_commitments_cache,
-        )),
-    );
+        node_client.clone(),
+        kzg.clone(),
+        segment_commitments_cache,
+    ));
+    let piece_provider = PieceProvider::new(node.clone(), validator.clone());
 
     let piece_getter = Arc::new(FarmerPieceGetter::new(
-        node.clone(),
         piece_provider,
         piece_cache.clone(),
         node_client.clone(),
@@ -607,8 +605,18 @@ where
                     }
                 };
 
+            // Register audit plot events
+            let farmer_metrics = farmer_metrics.clone();
+            let on_plot_audited_callback = move |audit_event: &_| {
+                farmer_metrics.observe_audit_event(audit_event);
+            };
+
             single_disk_farm
                 .on_sector_plotted(Arc::new(on_plotted_sector_callback))
+                .detach();
+
+            single_disk_farm
+                .on_plot_audited(Arc::new(on_plot_audited_callback))
                 .detach();
 
             single_disk_farm.run()

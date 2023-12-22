@@ -16,7 +16,7 @@ pub use domain_runtime_primitives::{
 use domain_runtime_primitives::{MultiAccountId, TryConvertBack, SLOT_DURATION};
 use fp_account::EthereumSignature;
 use fp_self_contained::{CheckedSignature, SelfContainedCall};
-use frame_support::dispatch::{DispatchClass, GetDispatchInfo};
+use frame_support::dispatch::{DispatchClass, DispatchInfo, GetDispatchInfo};
 use frame_support::inherent::ProvideInherent;
 use frame_support::traits::{
     ConstU16, ConstU32, ConstU64, Currency, Everything, FindAuthor, Imbalance, OnFinalize,
@@ -111,11 +111,9 @@ pub type CheckedExtrinsic =
 /// Executive: handles dispatch to the various modules.
 pub type Executive = domain_pallet_executive::Executive<
     Runtime,
-    Block,
     frame_system::ChainContext<Runtime>,
     Runtime,
     AllPalletsWithSystem,
-    Runtime,
 >;
 
 impl fp_self_contained::SelfContainedCall for RuntimeCall {
@@ -364,9 +362,26 @@ impl pallet_transaction_payment::Config for Runtime {
     type OperationalFeeMultiplier = OperationalFeeMultiplier;
 }
 
+pub struct ExtrinsicStorageFees;
+impl domain_pallet_executive::ExtrinsicStorageFees<Runtime> for ExtrinsicStorageFees {
+    fn extract_signer(xt: UncheckedExtrinsic) -> (Option<AccountId>, DispatchInfo) {
+        let dispatch_info = xt.get_dispatch_info();
+        let lookup = frame_system::ChainContext::<Runtime>::default();
+        let maybe_signer = extract_signer_inner(&xt, &lookup).and_then(|res| res.ok());
+        (maybe_signer, dispatch_info)
+    }
+
+    fn on_storage_fees_charged(charged_fees: Balance) {
+        OperatorRewards::note_operator_rewards(charged_fees)
+    }
+}
+
 impl domain_pallet_executive::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
     type WeightInfo = domain_pallet_executive::weights::SubstrateWeight<Runtime>;
+    type Currency = Balances;
+    type LengthToFee = <Runtime as pallet_transaction_payment::Config>::LengthToFee;
+    type ExtrinsicStorageFees = ExtrinsicStorageFees;
 }
 
 impl pallet_sudo::Config for Runtime {

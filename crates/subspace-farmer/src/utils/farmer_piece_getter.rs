@@ -3,20 +3,18 @@ use crate::utils::readers_and_pieces::ReadersAndPieces;
 use crate::NodeClient;
 use async_trait::async_trait;
 use parking_lot::Mutex;
-use std::collections::HashSet;
 use std::error::Error;
 use std::sync::Arc;
 use subspace_core_primitives::{Piece, PieceIndex};
 use subspace_farmer_components::plotting::{PieceGetter, PieceGetterRetryPolicy};
 use subspace_networking::libp2p::kad::RecordKey;
-use subspace_networking::libp2p::PeerId;
 use subspace_networking::utils::multihash::ToMultihash;
 use subspace_networking::utils::piece_provider::{PieceProvider, PieceValidator, RetryPolicy};
-use subspace_networking::Node;
 use tracing::{debug, error, trace};
 
+const MAX_RANDOM_WALK_ROUNDS: usize = 15;
+
 pub struct FarmerPieceGetter<PV, NC> {
-    node: Node,
     piece_provider: PieceProvider<PV>,
     piece_cache: PieceCache,
     node_client: NC,
@@ -25,14 +23,12 @@ pub struct FarmerPieceGetter<PV, NC> {
 
 impl<PV, NC> FarmerPieceGetter<PV, NC> {
     pub fn new(
-        node: Node,
         piece_provider: PieceProvider<PV>,
         piece_cache: PieceCache,
         node_client: NC,
         readers_and_pieces: Arc<Mutex<Option<ReadersAndPieces>>>,
     ) -> Self {
         Self {
-            node,
             piece_provider,
             piece_cache,
             node_client,
@@ -71,7 +67,7 @@ where
         trace!(%piece_index, "Getting piece from DSN L2 cache");
         let maybe_piece = self
             .piece_provider
-            .get_piece(piece_index, Self::convert_retry_policy(retry_policy))
+            .get_piece_from_dsn_cache(piece_index, Self::convert_retry_policy(retry_policy))
             .await?;
 
         if maybe_piece.is_some() {
@@ -113,31 +109,21 @@ where
         }
 
         // L1 piece acquisition
-        // TODO: consider using retry policy for L1 lookups as well.
-        trace!(%piece_index, "Getting piece from DSN L1");
-        let connected_peers = HashSet::<PeerId>::from_iter(self.node.connected_peers().await?);
-        if connected_peers.is_empty() {
-            debug!(%piece_index, "Cannot acquire piece from DSN L1: no connected peers");
+        trace!(%piece_index, "Getting piece from DSN L1.");
 
-            return Ok(None);
-        }
+        let archival_storage_search_result = self
+            .piece_provider
+            .get_piece_from_archival_storage(piece_index, MAX_RANDOM_WALK_ROUNDS)
+            .await;
 
-        for peer_id in connected_peers.iter() {
-            let maybe_piece = self
-                .piece_provider
-                .get_piece_from_peer(*peer_id, piece_index)
-                .await;
+        if archival_storage_search_result.is_some() {
+            trace!(%piece_index, "DSN L1 lookup succeeded");
 
-            if maybe_piece.is_some() {
-                trace!(%piece_index, %peer_id, "DSN L1 lookup succeeded");
-
-                return Ok(maybe_piece);
-            }
+            return Ok(archival_storage_search_result);
         }
 
         debug!(
             %piece_index,
-            connected_peers=%connected_peers.len(),
             "Cannot acquire piece: all methods yielded empty result"
         );
         Ok(None)

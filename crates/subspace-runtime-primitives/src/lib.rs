@@ -27,8 +27,7 @@ pub use subspace_core_primitives::BlockNumber;
 
 /// Minimum desired number of replicas of the blockchain to be stored by the network,
 /// impacts storage fees.
-// TODO: Proper value here
-pub const MIN_REPLICATION_FACTOR: u16 = 1;
+pub const MIN_REPLICATION_FACTOR: u16 = 50;
 /// How much (ratio) of storage fees escrow should be given to farmer each block as a reward.
 // TODO: Proper value here
 pub const STORAGE_FEES_ESCROW_BLOCK_REWARD: (u64, u64) = (1, 10000);
