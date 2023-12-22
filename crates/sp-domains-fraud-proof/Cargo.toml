@@ -41,9 +41,19 @@ thiserror = { version = "1.0.48", optional = true }
 domain-block-builder = { version = "0.1.0", path = "../../domains/client/block-builder" }
 domain-block-preprocessor = { version = "0.1.0", path = "../../domains/client/block-preprocessor" }
 domain-test-service = { version = "0.1.0", path = "../../domains/test/service" }
+ethereum = "0.14.0"
+fp-rpc = { version = "3.0.0-dev", git = "https://github.com/subspace/frontier", rev = "1c667eb43c3d087ac66dc9ed0aa44128373f5b0a", features = ['default'] }
+fp-self-contained = { version = "1.0.0-dev", git = "https://github.com/subspace/frontier", rev = "1c667eb43c3d087ac66dc9ed0aa44128373f5b0a", features = ['default'] }
+frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0831dfc3c54b10ab46e82acf98603b4af1a47bd5" }
 frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0831dfc3c54b10ab46e82acf98603b4af1a47bd5" }
 futures = "0.3.29"
+libsecp256k1 = { version = "0.7.1", features = ["static-context", "hmac"] }
 pallet-balances = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "0831dfc3c54b10ab46e82acf98603b4af1a47bd5" }
+pallet-ethereum = { version = "4.0.0-dev", git = "https://github.com/subspace/frontier", rev = "1c667eb43c3d087ac66dc9ed0aa44128373f5b0a", features = ['default'] }
+pallet-evm = { version = "6.0.0-dev", git = "https://github.com/subspace/frontier", rev = "1c667eb43c3d087ac66dc9ed0aa44128373f5b0a", default-features = false }
+rand = { version = "0.8.5", features = ["min_const_gen"] }
+rlp = "0.5.2"
+sp-core = { version = "21.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0831dfc3c54b10ab46e82acf98603b4af1a47bd5" }
 sc-cli = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "0831dfc3c54b10ab46e82acf98603b4af1a47bd5", default-features = false }
 sc-executor = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "0831dfc3c54b10ab46e82acf98603b4af1a47bd5", default-features = false }
 sc-service = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "0831dfc3c54b10ab46e82acf98603b4af1a47bd5", default-features = false }

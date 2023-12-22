@@ -324,6 +324,12 @@ pub enum VerificationError<DomainHash> {
         error("Invalid bundle equivocation fraud proof: {0}")
     )]
     InvalidBundleEquivocationFraudProof(InvalidBundleEquivocationError),
+    /// Failed to check extrinsics in single context
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Failed to check extrinsics in single context")
+    )]
+    FailedToCheckExtrinsicsInSingleContext,
 }
 
 impl<DomainHash> From<InvalidBundleEquivocationError> for VerificationError<DomainHash> {
@@ -338,7 +344,7 @@ pub struct InvalidBundlesFraudProof<ReceiptHash> {
     pub domain_id: DomainId,
     pub bundle_index: u32,
     pub invalid_bundle_type: InvalidBundleType,
-    pub extrinsic_inclusion_proof: StorageProof,
+    pub proof_data: StorageProof,
     pub is_true_invalid_fraud_proof: bool,
 }
 
@@ -348,7 +354,7 @@ impl<ReceiptHash> InvalidBundlesFraudProof<ReceiptHash> {
         domain_id: DomainId,
         bundle_index: u32,
         invalid_bundle_type: InvalidBundleType,
-        extrinsic_inclusion_proof: StorageProof,
+        proof_data: StorageProof,
         is_true_invalid_fraud_proof: bool,
     ) -> Self {
         Self {
@@ -356,7 +362,7 @@ impl<ReceiptHash> InvalidBundlesFraudProof<ReceiptHash> {
             domain_id,
             bundle_index,
             invalid_bundle_type,
-            extrinsic_inclusion_proof,
+            proof_data,
             is_true_invalid_fraud_proof,
         }
     }

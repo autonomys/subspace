@@ -27,6 +27,10 @@ mod host_functions;
 mod runtime_interface;
 #[cfg(test)]
 mod tests;
+
+#[cfg(test)]
+pub mod test_ethereum_tx;
+
 pub mod verification;
 
 use crate::fraud_proof::FraudProof;
@@ -40,6 +44,7 @@ pub use runtime_interface::fraud_proof_runtime_interface;
 pub use runtime_interface::fraud_proof_runtime_interface::HostFunctions;
 use sp_api::scale_info::TypeInfo;
 use sp_api::HeaderT;
+use sp_core::H256;
 use sp_domains::{DomainId, OperatorId};
 use sp_runtime::traits::NumberFor;
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidity};
@@ -47,6 +52,7 @@ use sp_runtime::OpaqueExtrinsic;
 use sp_runtime_interface::pass_by;
 use sp_runtime_interface::pass_by::PassBy;
 use sp_std::vec::Vec;
+use sp_trie::StorageProof;
 use subspace_core_primitives::Randomness;
 use subspace_runtime_primitives::Balance;
 
@@ -108,6 +114,20 @@ pub enum FraudProofVerificationInfoRequest {
     DomainElectionParams { domain_id: DomainId },
     /// Request to get Operator stake.
     OperatorStake { operator_id: OperatorId },
+    /// Request to check extrinsics in single context
+    CheckExtrinsicsInSingleContext {
+        domain_id: DomainId,
+        /// Domain block number from ER
+        domain_block_number: u32,
+        /// Domain block hash from ER
+        domain_block_hash: H256,
+        /// Domain block state root from ER
+        domain_block_state_root: H256,
+        /// Extrinsics which we want to check in single context
+        extrinsics: Vec<OpaqueExtrinsic>,
+        /// Storage proof for the keys used in validating the extrinsic
+        storage_proof: StorageProof,
+    },
 }
 
 impl PassBy for FraudProofVerificationInfoRequest {
@@ -147,6 +167,8 @@ pub enum FraudProofVerificationInfoResponse {
     },
     /// Operators Stake at a given Consensus hash.
     OperatorStake(Balance),
+    /// Result of check extrinsics in single context
+    CheckExtrinsicsInSingleContext(Option<u32>),
 }
 
 impl FraudProofVerificationInfoResponse {
@@ -218,6 +240,15 @@ impl FraudProofVerificationInfoResponse {
     pub fn into_operator_stake(self) -> Option<Balance> {
         match self {
             FraudProofVerificationInfoResponse::OperatorStake(stake) => Some(stake),
+            _ => None,
+        }
+    }
+
+    pub fn into_single_context_extrinsic_check(self) -> Option<Option<u32>> {
+        match self {
+            FraudProofVerificationInfoResponse::CheckExtrinsicsInSingleContext(result) => {
+                Some(result)
+            }
             _ => None,
         }
     }

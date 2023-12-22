@@ -21,7 +21,7 @@ use sp_domains::{
 };
 use sp_runtime::generic::Digest;
 use sp_runtime::traits::{Block as BlockT, Hash, Header as HeaderT, NumberFor};
-use sp_runtime::{RuntimeAppPublic, SaturatedConversion};
+use sp_runtime::{OpaqueExtrinsic, RuntimeAppPublic, SaturatedConversion};
 use sp_std::vec::Vec;
 use sp_trie::{LayoutV1, StorageProof};
 use subspace_core_primitives::Randomness;
@@ -384,8 +384,32 @@ where
     Ok(targeted_invalid_bundle_entry.clone())
 }
 
+fn get_extrinsic_from_proof<DomainHeader: HeaderT>(
+    extrinsic_index: u32,
+    extrinsics_root: <HeaderHashingFor<DomainHeader> as Hasher>::Out,
+    proof_data: StorageProof,
+) -> Result<OpaqueExtrinsic, VerificationError<DomainHeader::Hash>> {
+    let storage_key =
+        StorageProofVerifier::<HeaderHashingFor<DomainHeader>>::enumerated_storage_key(
+            extrinsic_index,
+        );
+    StorageProofVerifier::<HeaderHashingFor<DomainHeader>>::get_decoded_value(
+        &extrinsics_root,
+        proof_data,
+        storage_key,
+    )
+    .map_err(|_e| VerificationError::InvalidProof)
+}
+
 pub fn verify_invalid_bundles_fraud_proof<CBlock, DomainHeader, Balance>(
     bad_receipt: ExecutionReceipt<
+        NumberFor<CBlock>,
+        CBlock::Hash,
+        HeaderNumberFor<DomainHeader>,
+        HeaderHashFor<DomainHeader>,
+        Balance,
+    >,
+    bad_receipt_parent: ExecutionReceipt<
         NumberFor<CBlock>,
         CBlock::Hash,
         HeaderNumberFor<DomainHeader>,
@@ -397,29 +421,21 @@ pub fn verify_invalid_bundles_fraud_proof<CBlock, DomainHeader, Balance>(
 where
     CBlock: BlockT,
     DomainHeader: HeaderT,
+    CBlock::Hash: Into<H256>,
+    DomainHeader::Hash: Into<H256>,
 {
     let invalid_bundle_entry = check_expected_bundle_entry::<CBlock, DomainHeader, Balance>(
         &bad_receipt,
         invalid_bundles_fraud_proof,
     )?;
 
-    let storage_key =
-        StorageProofVerifier::<HeaderHashingFor<DomainHeader>>::enumerated_storage_key(
-            invalid_bundles_fraud_proof
-                .invalid_bundle_type
-                .extrinsic_index(),
-        );
-    let extrinsic = StorageProofVerifier::<HeaderHashingFor<DomainHeader>>::get_decoded_value(
-        &invalid_bundle_entry.extrinsics_root,
-        invalid_bundles_fraud_proof
-            .extrinsic_inclusion_proof
-            .clone(),
-        storage_key,
-    )
-    .map_err(|_e| VerificationError::InvalidProof)?;
-
-    match invalid_bundles_fraud_proof.invalid_bundle_type {
-        InvalidBundleType::OutOfRangeTx(_) => {
+    match &invalid_bundles_fraud_proof.invalid_bundle_type {
+        InvalidBundleType::OutOfRangeTx(extrinsic_index) => {
+            let extrinsic = get_extrinsic_from_proof::<DomainHeader>(
+                *extrinsic_index,
+                invalid_bundle_entry.extrinsics_root,
+                invalid_bundles_fraud_proof.proof_data.clone(),
+            )?;
             let is_tx_in_range = get_fraud_proof_verification_info(
                 H256::from_slice(bad_receipt.consensus_block_hash.as_ref()),
                 FraudProofVerificationInfoRequest::TxRangeCheck {
@@ -439,7 +455,12 @@ where
             }
             Ok(())
         }
-        InvalidBundleType::InherentExtrinsic(_) => {
+        InvalidBundleType::InherentExtrinsic(extrinsic_index) => {
+            let extrinsic = get_extrinsic_from_proof::<DomainHeader>(
+                *extrinsic_index,
+                invalid_bundle_entry.extrinsics_root,
+                invalid_bundles_fraud_proof.proof_data.clone(),
+            )?;
             let is_inherent = get_fraud_proof_verification_info(
                 H256::from_slice(bad_receipt.consensus_block_hash.as_ref()),
                 FraudProofVerificationInfoRequest::InherentExtrinsicCheck {
@@ -454,6 +475,48 @@ where
             // If it is true invalid fraud proof then extrinsic must be an inherent and
             // If it is false invalid fraud proof then extrinsic must not be an inherent
             if is_inherent == invalid_bundles_fraud_proof.is_true_invalid_fraud_proof {
+                Ok(())
+            } else {
+                Err(VerificationError::InvalidProof)
+            }
+        }
+        InvalidBundleType::IllegalTx(extrinsic_index) => {
+            let mut bundle_body = get_fraud_proof_verification_info(
+                bad_receipt.consensus_block_hash.into(),
+                FraudProofVerificationInfoRequest::DomainBundleBody {
+                    domain_id: invalid_bundles_fraud_proof.domain_id,
+                    bundle_index: invalid_bundles_fraud_proof.bundle_index,
+                },
+            )
+            .and_then(FraudProofVerificationInfoResponse::into_bundle_body)
+            .ok_or(VerificationError::FailedToGetDomainBundleBody)?;
+
+            let extrinsics = bundle_body
+                .drain(..)
+                .take((*extrinsic_index + 1) as usize)
+                .collect();
+
+            // Make host call for check extrinsic in single context
+            let check_extrinsic_result = get_fraud_proof_verification_info(
+                bad_receipt.consensus_block_hash.into(),
+                FraudProofVerificationInfoRequest::CheckExtrinsicsInSingleContext {
+                    domain_id: invalid_bundles_fraud_proof.domain_id,
+                    domain_block_number: bad_receipt_parent.domain_block_number.saturated_into(),
+                    domain_block_hash: bad_receipt_parent.domain_block_hash.into(),
+                    domain_block_state_root: bad_receipt_parent.final_state_root.into(),
+                    extrinsics,
+                    storage_proof: invalid_bundles_fraud_proof.proof_data.clone(),
+                },
+            )
+            .and_then(FraudProofVerificationInfoResponse::into_single_context_extrinsic_check)
+            .ok_or(VerificationError::FailedToCheckExtrinsicsInSingleContext)?;
+
+            let is_extrinsic_invalid = check_extrinsic_result == Some(*extrinsic_index);
+
+            // Proof to be considered valid only,
+            // If it is true invalid fraud proof then extrinsic must be an invalid extrinsic and
+            // If it is false invalid fraud proof then extrinsic must not be an invalid extrinsic
+            if is_extrinsic_invalid == invalid_bundles_fraud_proof.is_true_invalid_fraud_proof {
                 Ok(())
             } else {
                 Err(VerificationError::InvalidProof)

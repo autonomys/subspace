@@ -41,10 +41,11 @@ use sc_service::{
 };
 use sp_arithmetic::traits::SaturatedConversion;
 use sp_blockchain::HeaderBackend;
-use sp_core::{Get, H256};
+use sp_core::{ecdsa, keccak_256, Get, Pair, H256};
 use sp_domains::DomainId;
 use sp_runtime::codec::Encode;
 use sp_runtime::generic;
+use sp_runtime::generic::SignedPayload;
 use sp_runtime::traits::Dispatchable;
 
 pub use domain::*;
@@ -170,15 +171,16 @@ type UncheckedExtrinsicFor<Runtime> = generic::UncheckedExtrinsic<
 
 type BalanceOf<T> = <<T as pallet_transaction_payment::Config>::OnChargeTransaction as pallet_transaction_payment::OnChargeTransaction<T>>::Balance;
 
-/// Construct an extrinsic that can be applied to the test runtime.
-pub fn construct_extrinsic_generic<Runtime, Client>(
+fn construct_extrinsic_raw_payload<Runtime, Client>(
     client: impl AsRef<Client>,
-    function: impl Into<<Runtime as frame_system::Config>::RuntimeCall>,
-    caller: EcdsaKeyring,
+    function: <Runtime as frame_system::Config>::RuntimeCall,
     immortal: bool,
     nonce: u32,
     tip: BalanceOf<Runtime>,
-) -> UncheckedExtrinsicFor<Runtime>
+) -> (
+    SignedPayload<<Runtime as frame_system::Config>::RuntimeCall, SignedExtraFor<Runtime>>,
+    SignedExtraFor<Runtime>,
+)
 where
     Runtime: frame_system::Config<Hash = H256> + pallet_transaction_payment::Config + Send + Sync,
     Runtime::RuntimeCall:
@@ -187,7 +189,6 @@ where
     u64: From<BlockNumberFor<Runtime>>,
     Client: HeaderBackend<Block>,
 {
-    let function = function.into();
     let current_block_hash = client.as_ref().info().best_hash;
     let current_block = client.as_ref().info().best_number.saturated_into();
     let genesis_block = client.as_ref().hash(0).unwrap().unwrap();
@@ -209,14 +210,71 @@ where
         frame_system::CheckWeight::<Runtime>::new(),
         pallet_transaction_payment::ChargeTransactionPayment::<Runtime>::from(tip),
     );
-    let raw_payload = generic::SignedPayload::<
-        <Runtime as frame_system::Config>::RuntimeCall,
-        SignedExtraFor<Runtime>,
-    >::from_raw(
+    (
+        generic::SignedPayload::<
+            <Runtime as frame_system::Config>::RuntimeCall,
+            SignedExtraFor<Runtime>,
+        >::from_raw(
+            function,
+            extra.clone(),
+            ((), 1, 0, genesis_block, current_block_hash, (), (), ()),
+        ),
+        extra,
+    )
+}
+
+/// Construct a generic extrinsic signed by custom key
+pub fn construct_extrinsic_generic_with_custom_key<Runtime, Client>(
+    client: impl AsRef<Client>,
+    function: impl Into<<Runtime as frame_system::Config>::RuntimeCall>,
+    caller: ecdsa::Pair,
+    immortal: bool,
+    nonce: u32,
+    tip: BalanceOf<Runtime>,
+) -> UncheckedExtrinsicFor<Runtime>
+where
+    Runtime: frame_system::Config<Hash = H256> + pallet_transaction_payment::Config + Send + Sync,
+    Runtime::RuntimeCall:
+        Dispatchable<Info = DispatchInfo, PostInfo = PostDispatchInfo> + Send + Sync,
+    BalanceOf<Runtime>: Send + Sync + From<u64> + sp_runtime::FixedPointOperand,
+    u64: From<BlockNumberFor<Runtime>>,
+    Client: HeaderBackend<Block>,
+{
+    let function = function.into();
+    let (raw_payload, extra) =
+        construct_extrinsic_raw_payload(client, function.clone(), immortal, nonce, tip);
+    let signature = raw_payload.using_encoded(|e| {
+        let msg = keccak_256(e);
+        caller.sign_prehashed(&msg)
+    });
+    UncheckedExtrinsicFor::<Runtime>::new_signed(
         function.clone(),
-        extra.clone(),
-        ((), 1, 0, genesis_block, current_block_hash, (), (), ()),
-    );
+        caller.public().into(),
+        Signature::new(signature),
+        extra,
+    )
+}
+
+/// Construct an extrinsic that can be applied to the test runtime.
+pub fn construct_extrinsic_generic<Runtime, Client>(
+    client: impl AsRef<Client>,
+    function: impl Into<<Runtime as frame_system::Config>::RuntimeCall>,
+    caller: EcdsaKeyring,
+    immortal: bool,
+    nonce: u32,
+    tip: BalanceOf<Runtime>,
+) -> UncheckedExtrinsicFor<Runtime>
+where
+    Runtime: frame_system::Config<Hash = H256> + pallet_transaction_payment::Config + Send + Sync,
+    Runtime::RuntimeCall:
+        Dispatchable<Info = DispatchInfo, PostInfo = PostDispatchInfo> + Send + Sync,
+    BalanceOf<Runtime>: Send + Sync + From<u64> + sp_runtime::FixedPointOperand,
+    u64: From<BlockNumberFor<Runtime>>,
+    Client: HeaderBackend<Block>,
+{
+    let function = function.into();
+    let (raw_payload, extra) =
+        construct_extrinsic_raw_payload(client, function.clone(), immortal, nonce, tip);
     let signature = raw_payload.using_encoded(|e| caller.sign(e));
     UncheckedExtrinsicFor::<Runtime>::new_signed(
         function,

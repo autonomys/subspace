@@ -1,13 +1,12 @@
 use codec::{Codec, Encode};
 use domain_runtime_primitives::opaque::AccountId;
-use domain_runtime_primitives::DomainCoreApi;
+use domain_runtime_primitives::{CheckExtrinsicsValidityError, DomainCoreApi};
 use sc_executor::RuntimeVersionOf;
 use sp_api::{ApiError, BlockT, Core, Hasher, RuntimeVersion};
 use sp_core::traits::{CallContext, CodeExecutor, FetchRuntimeCode, RuntimeCode};
 use sp_messenger::messages::ExtractedStateRootsFromProof;
 use sp_messenger::MessengerApi;
 use sp_runtime::traits::NumberFor;
-use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_runtime::Storage;
 use sp_state_machine::BasicExternalities;
 use std::borrow::Cow;
@@ -214,16 +213,16 @@ where
     }
 
     /// This is stateful runtime api call and require setting of storage keys.
-    pub fn check_transaction_and_do_pre_dispatch(
+    pub fn check_extrinsics_and_do_pre_dispatch(
         &self,
-        uxt: &<Block as BlockT>::Extrinsic,
+        uxts: Vec<<Block as BlockT>::Extrinsic>,
         block_number: NumberFor<Block>,
         block_hash: <Block as BlockT>::Hash,
-    ) -> Result<Result<(), TransactionValidityError>, ApiError> {
-        <Self as DomainCoreApi<Block>>::check_transaction_and_do_pre_dispatch(
+    ) -> Result<Result<(), CheckExtrinsicsValidityError>, ApiError> {
+        <Self as DomainCoreApi<Block>>::check_extrinsics_and_do_pre_dispatch(
             self,
             Default::default(),
-            uxt,
+            uxts,
             block_number,
             block_hash,
         )

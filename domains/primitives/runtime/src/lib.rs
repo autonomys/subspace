@@ -113,6 +113,18 @@ impl TryConvertBack<AccountId, MultiAccountId> for AccountIdConverter {
     }
 }
 
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub struct CheckExtrinsicsValidityError {
+    pub extrinsic_index: u32,
+    pub transaction_validity_error: TransactionValidityError,
+}
+
+/// fullu qualified method name of check_extrinsics_and_do_pre_dispatch runtime api.
+/// Used to call state machine.
+/// Change it when the runtime api's name is changed in the interface.
+pub const CHECK_EXTRINSICS_AND_DO_PRE_DISPATCH_METHOD_NAME: &str =
+    "DomainCoreApi_check_extrinsics_and_do_pre_dispatch";
+
 /// Opaque types. These are used by the CLI to instantiate machinery that don't need to know
 /// the specifics of the runtime. They can then be made to be agnostic over specific formats
 /// of data like extrinsics, allowing for them to continue syncing the network through upgrades
@@ -166,12 +178,11 @@ sp_api::decl_runtime_apis! {
         /// Returns true if the extrinsic is an inherent extrinsic.
         fn is_inherent_extrinsic(extrinsic: &<Block as BlockT>::Extrinsic) -> bool;
 
-        /// Checks the validity of extrinsic + do pre_dispatch as well.
-        fn check_transaction_and_do_pre_dispatch(
-            uxt: &<Block as BlockT>::Extrinsic,
-            block_number: NumberFor<Block>,
-            block_hash: <Block as BlockT>::Hash
-        ) -> Result<(), TransactionValidityError>;
+        /// Checks the validity of array of extrinsics + pre_dispatch
+        /// returning failure on first extrinsic that fails runtime call.
+        /// IMPORTANT: Change `CHECK_EXTRINSICS_AND_DO_PRE_DISPATCH_METHOD_NAME` constant when this method name is changed
+        fn check_extrinsics_and_do_pre_dispatch(uxts: Vec<<Block as BlockT>::Extrinsic>, block_number: NumberFor<Block>,
+            block_hash: <Block as BlockT>::Hash) -> Result<(), CheckExtrinsicsValidityError>;
 
         /// Returns extrinsic Era if present
         fn extrinsic_era(

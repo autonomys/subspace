@@ -282,6 +282,7 @@ pub(crate) struct MockDomainFraudProofExtension {
     domain_total_stake: Balance,
     bundle_slot_probability: (u64, u64),
     operator_stake: Balance,
+    maybe_illegal_extrinsic_index: Option<u32>,
 }
 
 impl FraudProofHostFunctions for MockDomainFraudProofExtension {
@@ -338,6 +339,11 @@ impl FraudProofHostFunctions for MockDomainFraudProofExtension {
             }
             FraudProofVerificationInfoRequest::OperatorStake { .. } => {
                 FraudProofVerificationInfoResponse::OperatorStake(self.operator_stake)
+            }
+            FraudProofVerificationInfoRequest::CheckExtrinsicsInSingleContext { .. } => {
+                FraudProofVerificationInfoResponse::CheckExtrinsicsInSingleContext(
+                    self.maybe_illegal_extrinsic_index,
+                )
             }
         };
 
@@ -1029,6 +1035,7 @@ fn test_invalid_domain_extrinsic_root_proof() {
         domain_total_stake: 100 * SSC,
         operator_stake: 10 * SSC,
         bundle_slot_probability: (0, 0),
+        maybe_illegal_extrinsic_index: None,
     }));
     ext.register_extension(fraud_proof_ext);
 
@@ -1108,6 +1115,7 @@ fn test_true_invalid_bundles_inherent_extrinsic_proof() {
         domain_total_stake: 100 * SSC,
         operator_stake: 10 * SSC,
         bundle_slot_probability: (0, 0),
+        maybe_illegal_extrinsic_index: None,
     }));
     ext.register_extension(fraud_proof_ext);
 
@@ -1173,6 +1181,7 @@ fn test_false_invalid_bundles_inherent_extrinsic_proof() {
         domain_total_stake: 100 * SSC,
         operator_stake: 10 * SSC,
         bundle_slot_probability: (0, 0),
+        maybe_illegal_extrinsic_index: None,
     }));
     ext.register_extension(fraud_proof_ext);
 
@@ -1200,7 +1209,7 @@ fn generate_invalid_bundle_inherent_extrinsic_fraud_proof<T: Config>(
         bad_receipt_hash,
         bundle_index,
         invalid_bundle_type: InvalidBundleType::InherentExtrinsic(bundle_extrinsic_index),
-        extrinsic_inclusion_proof,
+        proof_data: extrinsic_inclusion_proof,
         is_true_invalid_fraud_proof,
     })
 }

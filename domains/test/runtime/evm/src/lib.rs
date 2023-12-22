@@ -10,7 +10,9 @@ include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use codec::{Decode, Encode};
 pub use domain_runtime_primitives::opaque::Header;
-pub use domain_runtime_primitives::{opaque, Balance, BlockNumber, Hash, Nonce};
+pub use domain_runtime_primitives::{
+    opaque, Balance, BlockNumber, CheckExtrinsicsValidityError, Hash, Nonce,
+};
 use domain_runtime_primitives::{MultiAccountId, TryConvertBack, SLOT_DURATION};
 use fp_account::EthereumSignature;
 use fp_self_contained::{CheckedSignature, SelfContainedCall};
@@ -725,6 +727,42 @@ fn extrinsic_era(extrinsic: &<Block as BlockT>::Extrinsic) -> Option<Era> {
         .map(|(_, _, extra)| extra.4 .0)
 }
 
+fn check_transaction_and_do_pre_dispatch_inner(
+    uxt: &<Block as BlockT>::Extrinsic,
+) -> Result<(), TransactionValidityError> {
+    let lookup = frame_system::ChainContext::<Runtime>::default();
+
+    let xt = uxt.clone().check(&lookup)?;
+
+    let dispatch_info = xt.get_dispatch_info();
+
+    if dispatch_info.class == DispatchClass::Mandatory {
+        return Err(InvalidTransaction::MandatoryValidation.into());
+    }
+
+    let encoded_len = uxt.encoded_size();
+
+    // We invoke `pre_dispatch` in addition to `validate_transaction`(even though the validation is almost same)
+    // as that will add the side effect of SignedExtension in the storage buffer
+    // which would help to maintain context across multiple transaction validity check against same
+    // runtime instance.
+    match xt.signed {
+        CheckedSignature::Signed(account_id, extra) => extra
+            .pre_dispatch(&account_id, &xt.function, &dispatch_info, encoded_len)
+            .map(|_| ()),
+        CheckedSignature::Unsigned => {
+            Runtime::pre_dispatch(&xt.function).map(|_| ())?;
+            SignedExtra::pre_dispatch_unsigned(&xt.function, &dispatch_info, encoded_len)
+                .map(|_| ())
+        }
+        CheckedSignature::SelfContained(self_contained_signing_info) => xt
+            .function
+            .pre_dispatch_self_contained(&self_contained_signing_info, &dispatch_info, encoded_len)
+            .ok_or(TransactionValidityError::Invalid(InvalidTransaction::Call))
+            .map(|_| ()),
+    }
+}
+
 impl_runtime_apis! {
     impl sp_api::Core<Block> for Runtime {
         fn version() -> RuntimeVersion {
@@ -893,13 +931,10 @@ impl_runtime_apis! {
             }
         }
 
-        fn check_transaction_and_do_pre_dispatch(
-            uxt: &<Block as BlockT>::Extrinsic,
+        fn check_extrinsics_and_do_pre_dispatch(
+            uxts: Vec<<Block as BlockT>::Extrinsic>,
             block_number: BlockNumber,
-            block_hash: <Block as BlockT>::Hash
-        ) -> Result<(), TransactionValidityError> {
-            let lookup = frame_system::ChainContext::<Runtime>::default();
-
+            block_hash: <Block as BlockT>::Hash) -> Result<(), CheckExtrinsicsValidityError> {
             // Initializing block related storage required for validation
             System::initialize(
                 &(block_number + BlockNumber::one()),
@@ -907,34 +942,16 @@ impl_runtime_apis! {
                 &Default::default(),
             );
 
-            let xt = uxt.clone().check(&lookup)?;
-
-            let dispatch_info = xt.get_dispatch_info();
-
-            if dispatch_info.class == DispatchClass::Mandatory {
-                return Err(InvalidTransaction::MandatoryValidation.into());
+            for (extrinsic_index, uxt) in uxts.iter().enumerate() {
+                check_transaction_and_do_pre_dispatch_inner(uxt).map_err(|e| {
+                    CheckExtrinsicsValidityError {
+                        extrinsic_index: extrinsic_index as u32,
+                        transaction_validity_error: e
+                    }
+                })?;
             }
 
-            let encoded_len = uxt.encoded_size();
-
-            // We invoke `pre_dispatch` in addition to `validate_transaction`(even though the validation is almost same)
-            // as that will add the side effect of SignedExtension in the storage buffer
-            // which would help to maintain context across multiple transaction validity check against same
-            // runtime instance.
-            match xt.signed {
-                    CheckedSignature::Signed(account_id, extra) => {
-                        extra.pre_dispatch(&account_id, &xt.function, &dispatch_info, encoded_len).map(|_| ())
-                    },
-                    CheckedSignature::Unsigned => {
-                        Runtime::pre_dispatch(&xt.function).map(|_| ())?;
-                        SignedExtra::pre_dispatch_unsigned(&xt.function, &dispatch_info, encoded_len).map(|_| ())
-                    },
-                    CheckedSignature::SelfContained(self_contained_signing_info) => {
-                        xt.function.pre_dispatch_self_contained(&self_contained_signing_info, &dispatch_info, encoded_len).ok_or(TransactionValidityError::Invalid(
-                            InvalidTransaction::Call,
-                        )).map(|_| ())
-                    }
-                }
+            Ok(())
         }
 
         fn extrinsic_era(
