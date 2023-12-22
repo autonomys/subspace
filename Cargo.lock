@@ -2759,6 +2759,8 @@ dependencies = [
 name = "domain-runtime-primitives"
 version = "0.1.0"
 dependencies = [
+ "frame-support",
+ "frame-system",
  "parity-scale-codec",
  "scale-info",
  "sp-api",

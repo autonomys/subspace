@@ -17,6 +17,8 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+use frame_support::dispatch::{DispatchClass, PerDispatchClass};
+use frame_system::limits::BlockLength;
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_runtime::generic::{Era, UncheckedExtrinsic};
@@ -55,6 +57,24 @@ pub const SLOT_DURATION: u64 = 1000;
 
 /// The EVM chain Id type
 pub type EVMChainId = u64;
+
+/// Maximum block length for mandatory dispatch.
+pub const MAXIMUM_MANDATORY_BLOCK_LENGTH: u32 = 5 * 1024 * 1024;
+
+/// Maximum block length for operational and normal dispatches.
+pub const MAXIMUM_OPERATIONAL_AND_NORMAL_BLOCK_LENGTH: u32 = u32::MAX;
+
+/// Maximum block length for all dispatches.
+pub fn maximum_block_length() -> BlockLength {
+    BlockLength {
+        max: PerDispatchClass::new(|class| match class {
+            DispatchClass::Normal | DispatchClass::Operational => {
+                MAXIMUM_OPERATIONAL_AND_NORMAL_BLOCK_LENGTH
+            }
+            DispatchClass::Mandatory => MAXIMUM_MANDATORY_BLOCK_LENGTH,
+        }),
+    }
+}
 
 /// Extracts the signer from an unchecked extrinsic.
 ///

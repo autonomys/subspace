@@ -10,10 +10,12 @@ include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use codec::{Decode, Encode};
 pub use domain_runtime_primitives::opaque::Header;
+use domain_runtime_primitives::{
+    maximum_block_length, MultiAccountId, TryConvertBack, SLOT_DURATION,
+};
 pub use domain_runtime_primitives::{
     opaque, Balance, BlockNumber, CheckExtrinsicsValidityError, Hash, Nonce,
 };
-use domain_runtime_primitives::{MultiAccountId, TryConvertBack, SLOT_DURATION};
 use fp_account::EthereumSignature;
 use fp_self_contained::{CheckedSignature, SelfContainedCall};
 use frame_support::dispatch::{DispatchClass, DispatchInfo, GetDispatchInfo};
@@ -209,7 +211,6 @@ pub const MAXIMUM_BLOCK_WEIGHT: Weight = Weight::from_parts(
     WEIGHT_MILLISECS_PER_BLOCK * WEIGHT_REF_TIME_PER_MILLIS,
     u64::MAX,
 );
-pub const MAXIMUM_BLOCK_LENGTH: u32 = 5 * 1024 * 1024;
 
 /// The version information used to identify this runtime when compiled natively.
 #[cfg(feature = "std")]
@@ -228,8 +229,7 @@ parameter_types! {
     //  The `RuntimeBlockLength` and `RuntimeBlockWeights` exist here because the
     // `DeletionWeightLimit` and `DeletionQueueDepth` depend on those to parameterize
     // the lazy contract deletion.
-    pub RuntimeBlockLength: BlockLength =
-        BlockLength::max_with_normal_ratio(5 * 1024 * 1024, NORMAL_DISPATCH_RATIO);
+    pub RuntimeBlockLength: BlockLength = maximum_block_length();
     pub RuntimeBlockWeights: BlockWeights = BlockWeights::builder()
         .base_block(BlockExecutionWeight::get())
         .for_class(DispatchClass::all(), |weights| {
