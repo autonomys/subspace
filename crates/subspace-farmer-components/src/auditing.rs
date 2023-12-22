@@ -103,7 +103,7 @@ where
     let public_key_hash = public_key.hash();
 
     // Create auditing info for all sectors in parallel
-    let result = sectors_metadata
+    sectors_metadata
         .par_iter()
         .map(|sector_metadata| {
             (
@@ -165,9 +165,7 @@ where
                 best_solution_distance,
             })
         })
-        .collect();
-
-    result
+        .collect()
 }
 
 struct SectorAuditingDetails {

@@ -20,7 +20,6 @@ async-lock = "2.8.0"
 async-trait = "0.1.73"
 backoff = { version = "0.4.0", features = ["futures", "tokio"] }
 bitvec = "1.0.1"
-event-listener-primitives = "2.0.1"
 fs2 = "0.4.3"
 futures = "0.3.29"
 hex = "0.4.3"
