@@ -2,7 +2,7 @@ pub mod rayon_files;
 
 use crate::node_client;
 use crate::node_client::NodeClient;
-use crate::single_disk_farm::Handlers;
+use crate::single_disk_farm::{Handlers, SingleDiskFarmId};
 use async_lock::RwLock;
 use futures::channel::mpsc;
 use futures::StreamExt;
@@ -22,6 +22,16 @@ use subspace_proof_of_space::{Table, TableGenerator};
 use subspace_rpc_primitives::{SlotInfo, SolutionResponse};
 use thiserror::Error;
 use tracing::{debug, error, info, trace, warn};
+
+#[derive(Debug, Clone)]
+pub struct AuditEvent {
+    /// Defines how much time took the audit in secs
+    pub duration: f64,
+    /// ID of the farm
+    pub farm_id: SingleDiskFarmId,
+    /// Number of sectors for this audit
+    pub sectors_number: usize,
+}
 
 /// Errors that happen during farming
 #[derive(Debug, Error)]
@@ -204,6 +214,7 @@ pub(super) struct FarmingOptions<NC, PlotAudit> {
     pub(super) handlers: Arc<Handlers>,
     pub(super) modifying_sector_index: Arc<RwLock<Option<SectorIndex>>>,
     pub(super) slot_info_notifications: mpsc::Receiver<SlotInfo>,
+    pub(super) farm_id: SingleDiskFarmId,
 }
 
 /// Starts farming process.
@@ -229,6 +240,7 @@ where
         handlers,
         modifying_sector_index,
         mut slot_info_notifications,
+        farm_id,
     } = farming_options;
 
     let farmer_app_info = node_client
@@ -252,7 +264,9 @@ where
             let modifying_sector_guard = modifying_sector_index.read().await;
             let maybe_sector_being_modified = modifying_sector_guard.as_ref().copied();
 
-            plot_audit.audit(PlotAuditOptions::<PosTable> {
+            let start = Instant::now();
+
+            let sectors_solutions = plot_audit.audit(PlotAuditOptions::<PosTable> {
                 public_key: &public_key,
                 reward_address: &reward_address,
                 slot_info,
@@ -261,7 +275,15 @@ where
                 erasure_coding: &erasure_coding,
                 maybe_sector_being_modified,
                 table_generator: &table_generator,
-            })
+            });
+
+            handlers.plot_audited.call_simple(&AuditEvent {
+                duration: start.elapsed().as_secs_f64(),
+                farm_id,
+                sectors_number: sectors_metadata.len(),
+            });
+
+            sectors_solutions
         };
 
         sectors_solutions.sort_by(|a, b| {
