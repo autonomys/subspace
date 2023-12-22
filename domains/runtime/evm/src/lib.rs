@@ -16,6 +16,7 @@ use fp_account::EthereumSignature;
 use fp_self_contained::{CheckedSignature, SelfContainedCall};
 use frame_support::dispatch::{DispatchClass, DispatchInfo, GetDispatchInfo};
 use frame_support::inherent::ProvideInherent;
+use frame_support::traits::fungible::Credit;
 use frame_support::traits::{
     ConstU16, ConstU32, ConstU64, Currency, Everything, FindAuthor, Imbalance, OnFinalize,
     OnUnbalanced,
@@ -331,13 +332,25 @@ parameter_types! {
     pub const MaxReserves: u32 = 50;
 }
 
+/// `DustRemovalHandler` used to collect all the SSC dust left when the account is reaped.
+pub struct DustRemovalHandler;
+
+impl OnUnbalanced<Credit<AccountId, Balances>> for DustRemovalHandler {
+    // Since we do not have a notion of treasury on Domains.
+    // If an account is reaped, instead of burning the dust from total_issuance
+    // give it operator instead.
+    fn on_nonzero_unbalanced(dusted_amount: Credit<AccountId, Balances>) {
+        OperatorRewards::note_operator_rewards(dusted_amount.peek());
+    }
+}
+
 impl pallet_balances::Config for Runtime {
     type MaxLocks = MaxLocks;
     /// The type for recording an account's balance.
     type Balance = Balance;
     /// The ubiquitous event type.
     type RuntimeEvent = RuntimeEvent;
-    type DustRemoval = ();
+    type DustRemoval = DustRemovalHandler;
     type ExistentialDeposit = ExistentialDeposit;
     type AccountStore = System;
     type WeightInfo = pallet_balances::weights::SubstrateWeight<Runtime>;
