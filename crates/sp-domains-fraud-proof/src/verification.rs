@@ -1,6 +1,6 @@
 use crate::fraud_proof::{
-    InvalidBundlesFraudProof, InvalidBundlesFraudProofType, InvalidExtrinsicsRootProof,
-    InvalidStateTransitionProof, ValidBundleProof, VerificationError,
+    InvalidBundlesFraudProof, InvalidExtrinsicsRootProof, InvalidStateTransitionProof,
+    ValidBundleProof, VerificationError,
 };
 use crate::fraud_proof_runtime_interface::get_fraud_proof_verification_info;
 use crate::{
@@ -17,11 +17,11 @@ use sp_domains::proof_provider_and_verifier::StorageProofVerifier;
 use sp_domains::valued_trie::valued_ordered_trie_root;
 use sp_domains::{
     BundleValidity, ExecutionReceipt, ExtrinsicDigest, HeaderHashFor, HeaderHashingFor,
-    HeaderNumberFor, InboxedBundle, OperatorPublicKey, SealedBundleHeader,
+    HeaderNumberFor, InboxedBundle, InvalidBundleType, OperatorPublicKey, SealedBundleHeader,
 };
 use sp_runtime::generic::Digest;
 use sp_runtime::traits::{Block as BlockT, Hash, Header as HeaderT, NumberFor};
-use sp_runtime::{RuntimeAppPublic, SaturatedConversion};
+use sp_runtime::{OpaqueExtrinsic, RuntimeAppPublic, SaturatedConversion};
 use sp_std::vec::Vec;
 use sp_trie::{LayoutV1, StorageProof};
 use subspace_core_primitives::Randomness;
@@ -349,7 +349,7 @@ where
         .get(invalid_bundle_fraud_proof.bundle_index as usize)
         .ok_or(VerificationError::BundleNotFound)?;
 
-    let invalid_bundle_type = invalid_bundle_fraud_proof.invalid_bundle_type();
+    let invalid_bundle_type = invalid_bundle_fraud_proof.invalid_bundle_type.clone();
     let is_expected = if !invalid_bundle_fraud_proof.is_true_invalid_fraud_proof {
         // `FalseInvalid`
         // The proof trying to prove `bad_receipt_bundle`'s `invalid_bundle_type` is wrong,
@@ -384,6 +384,23 @@ where
     Ok(targeted_invalid_bundle_entry.clone())
 }
 
+fn get_extrinsic_from_proof<DomainHeader: HeaderT>(
+    extrinsic_index: u32,
+    extrinsics_root: <HeaderHashingFor<DomainHeader> as Hasher>::Out,
+    proof_data: StorageProof,
+) -> Result<OpaqueExtrinsic, VerificationError<DomainHeader::Hash>> {
+    let storage_key =
+        StorageProofVerifier::<HeaderHashingFor<DomainHeader>>::enumerated_storage_key(
+            extrinsic_index,
+        );
+    StorageProofVerifier::<HeaderHashingFor<DomainHeader>>::get_decoded_value(
+        &extrinsics_root,
+        proof_data,
+        storage_key,
+    )
+    .map_err(|_e| VerificationError::InvalidProof)
+}
+
 pub fn verify_invalid_bundles_fraud_proof<CBlock, DomainHeader, Balance>(
     bad_receipt: ExecutionReceipt<
         NumberFor<CBlock>,
@@ -412,23 +429,13 @@ where
         invalid_bundles_fraud_proof,
     )?;
 
-    let storage_key =
-        StorageProofVerifier::<HeaderHashingFor<DomainHeader>>::enumerated_storage_key(
-            invalid_bundles_fraud_proof
-                .invalid_bundle_fraud_proof_type
-                .extrinsic_index(),
-        );
-    let extrinsic = StorageProofVerifier::<HeaderHashingFor<DomainHeader>>::get_decoded_value(
-        &invalid_bundle_entry.extrinsics_root,
-        invalid_bundles_fraud_proof
-            .extrinsic_inclusion_proof
-            .clone(),
-        storage_key,
-    )
-    .map_err(|_e| VerificationError::InvalidProof)?;
-
-    match &invalid_bundles_fraud_proof.invalid_bundle_fraud_proof_type {
-        InvalidBundlesFraudProofType::OutOfRangeTx(_) => {
+    match &invalid_bundles_fraud_proof.invalid_bundle_type {
+        InvalidBundleType::OutOfRangeTx(extrinsic_index) => {
+            let extrinsic = get_extrinsic_from_proof::<DomainHeader>(
+                *extrinsic_index,
+                invalid_bundle_entry.extrinsics_root,
+                invalid_bundles_fraud_proof.proof_data.clone(),
+            )?;
             let is_tx_in_range = get_fraud_proof_verification_info(
                 H256::from_slice(bad_receipt.consensus_block_hash.as_ref()),
                 FraudProofVerificationInfoRequest::TxRangeCheck {
@@ -448,7 +455,12 @@ where
             }
             Ok(())
         }
-        InvalidBundlesFraudProofType::InherentExtrinsic(_) => {
+        InvalidBundleType::InherentExtrinsic(extrinsic_index) => {
+            let extrinsic = get_extrinsic_from_proof::<DomainHeader>(
+                *extrinsic_index,
+                invalid_bundle_entry.extrinsics_root,
+                invalid_bundles_fraud_proof.proof_data.clone(),
+            )?;
             let is_inherent = get_fraud_proof_verification_info(
                 H256::from_slice(bad_receipt.consensus_block_hash.as_ref()),
                 FraudProofVerificationInfoRequest::InherentExtrinsicCheck {
@@ -468,7 +480,7 @@ where
                 Err(VerificationError::InvalidProof)
             }
         }
-        InvalidBundlesFraudProofType::IllegalTx(extrinsic_index, storage_proof) => {
+        InvalidBundleType::IllegalTx(extrinsic_index) => {
             let mut bundle_body = get_fraud_proof_verification_info(
                 bad_receipt.consensus_block_hash.into(),
                 FraudProofVerificationInfoRequest::DomainBundleBody {
@@ -493,7 +505,7 @@ where
                     domain_block_hash: bad_receipt_parent.domain_block_hash.into(),
                     domain_block_state_root: bad_receipt_parent.final_state_root.into(),
                     extrinsics,
-                    storage_proof: storage_proof.clone(),
+                    storage_proof: invalid_bundles_fraud_proof.proof_data.clone(),
                 },
             )
             .and_then(FraudProofVerificationInfoResponse::into_single_context_extrinsic_check)

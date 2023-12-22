@@ -1086,7 +1086,7 @@ async fn test_true_invalid_bundles_inherent_extrinsic_proof_creation_and_verific
     // Wait for the fraud proof that target the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         if let FraudProof::InvalidBundles(proof) = fp {
-            if let InvalidBundleType::InherentExtrinsic(_) = proof.invalid_bundle_type() {
+            if let InvalidBundleType::InherentExtrinsic(_) = proof.invalid_bundle_type {
                 assert!(proof.is_true_invalid_fraud_proof);
                 return true;
             }
@@ -1207,7 +1207,7 @@ async fn test_false_invalid_bundles_inherent_extrinsic_proof_creation_and_verifi
     // Wait for the fraud proof that target the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         if let FraudProof::InvalidBundles(proof) = fp {
-            if let InvalidBundleType::InherentExtrinsic(_) = proof.invalid_bundle_type() {
+            if let InvalidBundleType::InherentExtrinsic(_) = proof.invalid_bundle_type {
                 assert!(!proof.is_true_invalid_fraud_proof);
                 return true;
             }
@@ -1384,7 +1384,7 @@ async fn test_true_invalid_bundles_illegal_extrinsic_proof_creation_and_verifica
     // Wait for the fraud proof that target the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         if let FraudProof::InvalidBundles(proof) = fp {
-            if let InvalidBundleType::IllegalTx(extrinsic_index) = proof.invalid_bundle_type() {
+            if let InvalidBundleType::IllegalTx(extrinsic_index) = proof.invalid_bundle_type {
                 assert!(proof.is_true_invalid_fraud_proof);
                 assert_eq!(extrinsic_index, 2);
                 return true;
@@ -1525,7 +1525,7 @@ async fn test_false_invalid_bundles_illegal_extrinsic_proof_creation_and_verific
     // Wait for the fraud proof that target the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         if let FraudProof::InvalidBundles(proof) = fp {
-            if let InvalidBundleType::IllegalTx(extrinsic_index) = proof.invalid_bundle_type() {
+            if let InvalidBundleType::IllegalTx(extrinsic_index) = proof.invalid_bundle_type {
                 assert!(!proof.is_true_invalid_fraud_proof);
                 assert_eq!(extrinsic_index, 1);
                 return true;

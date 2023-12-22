@@ -14,13 +14,13 @@ use sp_domains::proof_provider_and_verifier::StorageProofProvider;
 use sp_domains::{DomainId, DomainsApi, ExtrinsicDigest, HeaderHashingFor, InvalidBundleType};
 use sp_domains_fraud_proof::execution_prover::ExecutionProver;
 use sp_domains_fraud_proof::fraud_proof::{
-    ExecutionPhase, FraudProof, InvalidBundlesFraudProof, InvalidBundlesFraudProofType,
-    InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof, InvalidStateTransitionProof,
-    InvalidTotalRewardsProof, ValidBundleDigest,
+    ExecutionPhase, FraudProof, InvalidBundlesFraudProof, InvalidDomainBlockHashProof,
+    InvalidExtrinsicsRootProof, InvalidStateTransitionProof, InvalidTotalRewardsProof,
+    ValidBundleDigest,
 };
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, HashingFor, Header as HeaderT, NumberFor};
-use sp_runtime::{Digest, DigestItem, SaturatedConversion};
+use sp_runtime::{Digest, DigestItem};
 use sp_trie::{LayoutV1, StorageProof};
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -202,118 +202,102 @@ where
 
         let extrinsic_index = invalid_type.extrinsic_index();
         let encoded_extrinsics: Vec<_> = bundle.extrinsics.iter().map(Encode::encode).collect();
-        let extrinsic_inclusion_proof = StorageProofProvider::<
-            LayoutV1<HeaderHashingFor<Block::Header>>,
-        >::generate_enumerated_proof_of_inclusion(
-            encoded_extrinsics.as_slice(), extrinsic_index
-        )
-        .ok_or(FraudProofError::FailToGenerateProofOfInclusion)?;
-
-        let invalid_bundles_fraud_proof_type = match invalid_type {
-            InvalidBundleType::UndecodableTx(extrinsic_index) => {
-                InvalidBundlesFraudProofType::UndecodableTx(extrinsic_index)
+        let proof_data = if let InvalidBundleType::IllegalTx(expected_extrinsic_index) =
+            invalid_type
+        {
+            if expected_extrinsic_index as usize >= bundle.extrinsics.len() {
+                return Err(FraudProofError::OutOfBoundsExtrinsicIndex {
+                    index: expected_extrinsic_index as usize,
+                    max: bundle.extrinsics.len(),
+                });
             }
-            InvalidBundleType::OutOfRangeTx(extrinsic_index) => {
-                InvalidBundlesFraudProofType::OutOfRangeTx(extrinsic_index)
+
+            let domain_block_parent_hash = *self
+                .client
+                .header(local_receipt.domain_block_hash)?
+                .ok_or_else(|| {
+                    FraudProofError::Blockchain(sp_blockchain::Error::MissingHeader(format!(
+                        "{:?}",
+                        local_receipt.domain_block_hash
+                    )))
+                })?
+                .parent_hash();
+
+            let domain_block_parent_number = self
+                .client
+                .block_number_from_id(&BlockId::Hash(domain_block_parent_hash))?
+                .ok_or_else(|| {
+                    FraudProofError::Blockchain(sp_blockchain::Error::Backend(format!(
+                        "unable to get block number for domain block:{:?}",
+                        domain_block_parent_hash
+                    )))
+                })?;
+
+            let mut runtime_api_instance = self.client.runtime_api();
+            runtime_api_instance.record_proof();
+            let proof_recorder = runtime_api_instance
+                .proof_recorder()
+                .expect("we enabled proof recording just above; qed");
+
+            let mut block_extrinsics = vec![];
+            for (extrinsic_index, extrinsic) in bundle
+                .extrinsics
+                .iter()
+                .enumerate()
+                .take((expected_extrinsic_index + 1) as usize)
+            {
+                let encoded_extrinsic = extrinsic.encode();
+                block_extrinsics.push(
+                    <Block as BlockT>::Extrinsic::decode(&mut encoded_extrinsic.as_slice())
+                        .map_err(|decoding_error| {
+                            FraudProofError::UnableToDecodeOpaqueBundleExtrinsic {
+                                extrinsic_index,
+                                decoding_error,
+                            }
+                        })?,
+                );
             }
-            InvalidBundleType::IllegalTx(expected_extrinsic_index) => {
-                if expected_extrinsic_index as usize >= bundle.extrinsics.len() {
-                    return Err(FraudProofError::OutOfBoundsExtrinsicIndex {
-                        index: expected_extrinsic_index as usize,
-                        max: bundle.extrinsics.len(),
-                    });
-                }
 
-                let domain_block_parent_hash = *self
-                    .client
-                    .header(local_receipt.domain_block_hash)?
-                    .ok_or_else(|| {
-                        FraudProofError::Blockchain(sp_blockchain::Error::MissingHeader(format!(
-                            "{:?}",
-                            local_receipt.domain_block_hash
-                        )))
-                    })?
-                    .parent_hash();
+            let validation_response = runtime_api_instance.check_extrinsics_and_do_pre_dispatch(
+                domain_block_parent_hash,
+                block_extrinsics,
+                domain_block_parent_number,
+                domain_block_parent_hash,
+            )?;
 
-                let domain_block_parent_number = self
-                    .client
-                    .block_number_from_id(&BlockId::Hash(domain_block_parent_hash))?
-                    .ok_or_else(|| {
-                        FraudProofError::Blockchain(sp_blockchain::Error::Backend(format!(
-                            "unable to get block number for domain block:{:?}",
-                            domain_block_parent_hash
-                        )))
-                    })?;
-
-                let mut runtime_api_instance = self.client.runtime_api();
-                runtime_api_instance.record_proof();
-                let proof_recorder = runtime_api_instance
-                    .proof_recorder()
-                    .expect("we enabled proof recording just above; qed");
-
-                let mut block_extrinsics = vec![];
-                for (extrinsic_index, extrinsic) in bundle
-                    .extrinsics
-                    .iter()
-                    .enumerate()
-                    .take((expected_extrinsic_index + 1) as usize)
-                {
-                    let encoded_extrinsic = extrinsic.encode();
-                    block_extrinsics.push(
-                        <Block as BlockT>::Extrinsic::decode(&mut encoded_extrinsic.as_slice())
-                            .map_err(|decoding_error| {
-                                FraudProofError::UnableToDecodeOpaqueBundleExtrinsic {
-                                    extrinsic_index,
-                                    decoding_error,
-                                }
-                            })?,
-                    );
-                }
-
-                let validation_response = runtime_api_instance
-                    .check_extrinsics_and_do_pre_dispatch(
-                        domain_block_parent_hash,
-                        block_extrinsics,
-                        domain_block_parent_number,
-                        domain_block_parent_hash,
-                    )?;
-
-                // If the proof is true invalid then validation response should not be Ok.
-                // If the proof is false invalid then validation response should not be Err.
-                // OR
-                // If it is true invalid and expected extrinsic index does not match
-                if (is_true_invalid == validation_response.is_ok())
-                    || (is_true_invalid
-                        && validation_response
-                            .as_ref()
-                            .is_err_and(|e| e.extrinsic_index != expected_extrinsic_index))
-                {
-                    return Err(FraudProofError::InvalidIllegalTxFraudProofExtrinsicIndex {
-                        index: expected_extrinsic_index as usize,
-                        is_true_invalid,
-                        extrinsics_validity_response: validation_response,
-                    });
-                }
-
-                InvalidBundlesFraudProofType::IllegalTx(
-                    expected_extrinsic_index.saturated_into(),
-                    proof_recorder.drain_storage_proof(),
-                )
+            // If the proof is true invalid then validation response should not be Ok.
+            // If the proof is false invalid then validation response should not be Err.
+            // OR
+            // If it is true invalid and expected extrinsic index does not match
+            if (is_true_invalid == validation_response.is_ok())
+                || (is_true_invalid
+                    && validation_response
+                        .as_ref()
+                        .is_err_and(|e| e.extrinsic_index != expected_extrinsic_index))
+            {
+                return Err(FraudProofError::InvalidIllegalTxFraudProofExtrinsicIndex {
+                    index: expected_extrinsic_index as usize,
+                    is_true_invalid,
+                    extrinsics_validity_response: validation_response,
+                });
             }
-            InvalidBundleType::InvalidXDM(extrinsic_index) => {
-                InvalidBundlesFraudProofType::InvalidXDM(extrinsic_index)
-            }
-            InvalidBundleType::InherentExtrinsic(extrinsic_index) => {
-                InvalidBundlesFraudProofType::InherentExtrinsic(extrinsic_index)
-            }
+
+            proof_recorder.drain_storage_proof()
+        } else {
+            StorageProofProvider::<
+                LayoutV1<HeaderHashingFor<Block::Header>>,
+            >::generate_enumerated_proof_of_inclusion(
+                encoded_extrinsics.as_slice(), extrinsic_index
+            )
+                .ok_or(FraudProofError::FailToGenerateProofOfInclusion)?
         };
 
         Ok(FraudProof::InvalidBundles(InvalidBundlesFraudProof::new(
             bad_receipt_hash,
             domain_id,
             bundle_index,
-            invalid_bundles_fraud_proof_type,
-            extrinsic_inclusion_proof,
+            invalid_type,
+            proof_data,
             is_true_invalid,
         )))
     }

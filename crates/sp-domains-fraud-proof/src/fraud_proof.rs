@@ -338,61 +338,13 @@ impl<DomainHash> From<InvalidBundleEquivocationError> for VerificationError<Doma
     }
 }
 
-#[derive(Debug, Encode, Decode, TypeInfo, PartialEq, Eq, Clone)]
-pub enum InvalidBundlesFraudProofType {
-    /// Failed to decode the opaque extrinsic.
-    UndecodableTx(u32),
-    /// Transaction is out of the tx range.
-    OutOfRangeTx(u32),
-    /// Transaction is illegal (unable to pay the fee, etc).
-    IllegalTx(u32, StorageProof),
-    /// Transaction is an invalid XDM
-    InvalidXDM(u32),
-    /// Transaction is an inherent extrinsic.
-    InherentExtrinsic(u32),
-}
-
-impl InvalidBundlesFraudProofType {
-    pub fn invalid_bundle_type(&self) -> InvalidBundleType {
-        match self {
-            InvalidBundlesFraudProofType::UndecodableTx(extrinsic_index) => {
-                InvalidBundleType::UndecodableTx(*extrinsic_index)
-            }
-            InvalidBundlesFraudProofType::OutOfRangeTx(extrinsic_index) => {
-                InvalidBundleType::OutOfRangeTx(*extrinsic_index)
-            }
-            InvalidBundlesFraudProofType::IllegalTx(extrinsic_index, _storage_proof) => {
-                InvalidBundleType::IllegalTx(*extrinsic_index)
-            }
-            InvalidBundlesFraudProofType::InvalidXDM(extrinsic_index) => {
-                InvalidBundleType::InvalidXDM(*extrinsic_index)
-            }
-            InvalidBundlesFraudProofType::InherentExtrinsic(extrinsic_index) => {
-                InvalidBundleType::InherentExtrinsic(*extrinsic_index)
-            }
-        }
-    }
-
-    pub fn extrinsic_index(&self) -> u32 {
-        match self {
-            InvalidBundlesFraudProofType::UndecodableTx(extrinsic_index) => *extrinsic_index,
-            InvalidBundlesFraudProofType::OutOfRangeTx(extrinsic_index) => *extrinsic_index,
-            InvalidBundlesFraudProofType::IllegalTx(extrinsic_index, _storage_proof) => {
-                *extrinsic_index
-            }
-            InvalidBundlesFraudProofType::InvalidXDM(extrinsic_index) => *extrinsic_index,
-            InvalidBundlesFraudProofType::InherentExtrinsic(extrinsic_index) => *extrinsic_index,
-        }
-    }
-}
-
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
 pub struct InvalidBundlesFraudProof<ReceiptHash> {
     pub bad_receipt_hash: ReceiptHash,
     pub domain_id: DomainId,
     pub bundle_index: u32,
-    pub invalid_bundle_fraud_proof_type: InvalidBundlesFraudProofType,
-    pub extrinsic_inclusion_proof: StorageProof,
+    pub invalid_bundle_type: InvalidBundleType,
+    pub proof_data: StorageProof,
     pub is_true_invalid_fraud_proof: bool,
 }
 
@@ -401,22 +353,18 @@ impl<ReceiptHash> InvalidBundlesFraudProof<ReceiptHash> {
         bad_receipt_hash: ReceiptHash,
         domain_id: DomainId,
         bundle_index: u32,
-        invalid_bundle_type: InvalidBundlesFraudProofType,
-        extrinsic_inclusion_proof: StorageProof,
+        invalid_bundle_type: InvalidBundleType,
+        proof_data: StorageProof,
         is_true_invalid_fraud_proof: bool,
     ) -> Self {
         Self {
             bad_receipt_hash,
             domain_id,
             bundle_index,
-            invalid_bundle_fraud_proof_type: invalid_bundle_type,
-            extrinsic_inclusion_proof,
+            invalid_bundle_type,
+            proof_data,
             is_true_invalid_fraud_proof,
         }
-    }
-
-    pub fn invalid_bundle_type(&self) -> InvalidBundleType {
-        self.invalid_bundle_fraud_proof_type.invalid_bundle_type()
     }
 }
 

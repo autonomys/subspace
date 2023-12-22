@@ -29,9 +29,8 @@ use sp_domains::{
     ProofOfElection, RuntimeType, SealedBundleHeader, StakingHoldIdentifier,
 };
 use sp_domains_fraud_proof::fraud_proof::{
-    FraudProof, InvalidBundlesFraudProof, InvalidBundlesFraudProofType,
-    InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof, InvalidTotalRewardsProof,
-    ValidBundleDigest,
+    FraudProof, InvalidBundlesFraudProof, InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof,
+    InvalidTotalRewardsProof, ValidBundleDigest,
 };
 use sp_domains_fraud_proof::{
     FraudProofExtension, FraudProofHostFunctions, FraudProofVerificationInfoRequest,
@@ -1195,10 +1194,8 @@ fn generate_invalid_bundle_inherent_extrinsic_fraud_proof<T: Config>(
         domain_id,
         bad_receipt_hash,
         bundle_index,
-        invalid_bundle_fraud_proof_type: InvalidBundlesFraudProofType::InherentExtrinsic(
-            bundle_extrinsic_index,
-        ),
-        extrinsic_inclusion_proof,
+        invalid_bundle_type: InvalidBundleType::InherentExtrinsic(bundle_extrinsic_index),
+        proof_data: extrinsic_inclusion_proof,
         is_true_invalid_fraud_proof,
     })
 }
