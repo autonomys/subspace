@@ -876,14 +876,14 @@ where
                 });
         }
 
-        if let Some(trace_mismatch_index) =
+        if let Some(trace_mismatch) =
             find_trace_mismatch(&local_receipt.execution_trace, &bad_receipt.execution_trace)
         {
             return self
                 .fraud_proof_generator
                 .generate_invalid_state_transition_proof(
                     self.domain_id,
-                    trace_mismatch_index,
+                    trace_mismatch,
                     &local_receipt,
                     bad_receipt_hash,
                 )
