@@ -261,6 +261,25 @@ where
             .ok()
     }
 
+    fn is_decodable_extrinsic(
+        &self,
+        consensus_block_hash: H256,
+        domain_id: DomainId,
+        opaque_extrinsic: OpaqueExtrinsic,
+    ) -> Option<bool> {
+        let runtime_code = self.get_domain_runtime_code(consensus_block_hash, domain_id)?;
+        let domain_stateless_runtime =
+            StatelessRuntime::<DomainBlock, _>::new(self.executor.clone(), runtime_code.into());
+
+        let encoded_extrinsic = opaque_extrinsic.encode();
+        let extrinsic =
+            <DomainBlock as BlockT>::Extrinsic::decode(&mut encoded_extrinsic.as_slice()).ok()?;
+
+        domain_stateless_runtime
+            .is_decodable_extrinsic(&extrinsic)
+            .ok()
+    }
+
     fn get_domain_election_params(
         &self,
         consensus_block_hash: H256,
@@ -390,13 +409,14 @@ where
                 .map(|is_inherent| {
                     FraudProofVerificationInfoResponse::InherentExtrinsicCheck(is_inherent)
                 }),
-            FraudProofVerificationInfoRequest::ExtrinsicDecodableCheck(opaque_extrinsic) => {
-                let encoded_extrinsic = opaque_extrinsic.encode();
-                Some(FraudProofVerificationInfoResponse::ExtrinsicDecodableCheck(
-                    <DomainBlock as BlockT>::Extrinsic::decode(&mut encoded_extrinsic.as_slice())
-                        .is_ok(),
-                ))
-            }
+            FraudProofVerificationInfoRequest::ExtrinsicDecodableCheck {
+                domain_id,
+                opaque_extrinsic,
+            } => self
+                .is_decodable_extrinsic(consensus_block_hash, domain_id, opaque_extrinsic)
+                .map(|is_decodable| {
+                    FraudProofVerificationInfoResponse::ExtrinsicDecodableCheck(is_decodable)
+                }),
             FraudProofVerificationInfoRequest::DomainElectionParams { domain_id } => self
                 .get_domain_election_params(consensus_block_hash, domain_id)
                 .map(|domain_election_params| {

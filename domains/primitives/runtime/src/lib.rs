@@ -233,6 +233,9 @@ sp_api::decl_runtime_apis! {
         fn check_extrinsics_and_do_pre_dispatch(uxts: Vec<<Block as BlockT>::Extrinsic>, block_number: NumberFor<Block>,
             block_hash: <Block as BlockT>::Hash) -> Result<(), CheckExtrinsicsValidityError>;
 
+        /// Checks if the extrinsic is decodable.
+        fn is_decodable_extrinsic(extrinsic: &<Block as BlockT>::Extrinsic) -> bool;
+
         /// Returns extrinsic Era if present
         fn extrinsic_era(
           extrinsic: &<Block as BlockT>::Extrinsic

@@ -197,6 +197,13 @@ where
         <Self as DomainCoreApi<Block>>::is_inherent_extrinsic(self, Default::default(), extrinsic)
     }
 
+    pub fn is_decodable_extrinsic(
+        &self,
+        extrinsic: &<Block as BlockT>::Extrinsic,
+    ) -> Result<bool, ApiError> {
+        <Self as DomainCoreApi<Block>>::is_decodable_extrinsic(self, Default::default(), extrinsic)
+    }
+
     pub fn is_within_tx_range(
         &self,
         extrinsic: &<Block as BlockT>::Extrinsic,

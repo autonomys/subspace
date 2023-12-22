@@ -951,6 +951,11 @@ impl_runtime_apis! {
             Ok(())
         }
 
+        fn is_decodable_extrinsic(extrinsic: &<Block as BlockT>::Extrinsic) -> bool {
+            let encoded = extrinsic.encode();
+            UncheckedExtrinsic::decode(&mut encoded.as_slice()).is_ok()
+        }
+
         fn extrinsic_era(
           extrinsic: &<Block as BlockT>::Extrinsic
         ) -> Option<Era> {

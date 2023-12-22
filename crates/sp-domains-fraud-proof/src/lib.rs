@@ -111,7 +111,11 @@ pub enum FraudProofVerificationInfoRequest {
         opaque_extrinsic: OpaqueExtrinsic,
     },
     /// Request to check if the domain extrinsic is decodable or not.
-    ExtrinsicDecodableCheck(OpaqueExtrinsic),
+    ExtrinsicDecodableCheck {
+        domain_id: DomainId,
+        /// Extrinsic for which we need to if it is decodable or not.
+        opaque_extrinsic: OpaqueExtrinsic,
+    },
     /// Request to get Domain election params.
     DomainElectionParams { domain_id: DomainId },
     /// Request to get Operator stake.

@@ -333,7 +333,7 @@ impl FraudProofHostFunctions for MockDomainFraudProofExtension {
                 FraudProofVerificationInfoResponse::InherentExtrinsicCheck(self.is_inherent)
             }
             FraudProofVerificationInfoRequest::ExtrinsicDecodableCheck { .. } => {
-                FraudProofVerificationInfoResponse::InherentExtrinsicCheck(self.is_decodable)
+                FraudProofVerificationInfoResponse::ExtrinsicDecodableCheck(self.is_decodable)
             }
             FraudProofVerificationInfoRequest::DomainElectionParams { .. } => {
                 FraudProofVerificationInfoResponse::DomainElectionParams {
