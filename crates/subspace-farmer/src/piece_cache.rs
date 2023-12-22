@@ -432,49 +432,90 @@ where
         debug!(%segment_index, "Starting to process newly archived segment");
 
         if worker_state.last_segment_index < segment_index {
-            // TODO: Can probably do concurrency here
-            for piece_index in segment_index.segment_piece_indexes() {
+            debug!(%segment_index, "Downloading potentially useful pieces");
+
+            // We do not insert pieces into cache/heap yet, so we don't know if all of these pieces
+            // will be included, but there is a good chance they will be and we want to acknowledge
+            // new segment header as soon as possible
+            let pieces_to_maybe_include = segment_index
+                .segment_piece_indexes()
+                .into_iter()
+                .filter(|&piece_index| {
+                    let maybe_include = worker_state
+                        .heap
+                        .should_include_key(KeyWrapper(piece_index));
+                    if !maybe_include {
+                        trace!(%piece_index, "Piece doesn't need to be cached #1");
+                    }
+
+                    maybe_include
+                })
+                .map(|piece_index| async move {
+                    let maybe_piece = match self.node_client.piece(piece_index).await {
+                        Ok(maybe_piece) => maybe_piece,
+                        Err(error) => {
+                            error!(
+                                %error,
+                                %segment_index,
+                                %piece_index,
+                                "Failed to retrieve piece from node right after archiving, this \
+                                should never happen and is an implementation bug"
+                            );
+
+                            return None;
+                        }
+                    };
+
+                    let Some(piece) = maybe_piece else {
+                        error!(
+                            %segment_index,
+                            %piece_index,
+                            "Failed to retrieve piece from node right after archiving, this should \
+                            never happen and is an implementation bug"
+                        );
+
+                        return None;
+                    };
+
+                    Some((piece_index, piece))
+                })
+                .collect::<FuturesUnordered<_>>()
+                .filter_map(|maybe_piece| async move { maybe_piece })
+                .collect::<Vec<_>>()
+                .await;
+
+            debug!(%segment_index, "Downloaded potentially useful pieces");
+
+            self.acknowledge_archived_segment_processing(segment_index)
+                .await;
+
+            // Go through potentially matching pieces again now that segment was acknowledged and
+            // try to persist them if necessary
+            for (piece_index, piece) in pieces_to_maybe_include {
                 if !worker_state
                     .heap
                     .should_include_key(KeyWrapper(piece_index))
                 {
-                    trace!(%piece_index, "Piece doesn't need to be cached #1");
+                    trace!(%piece_index, "Piece doesn't need to be cached #2");
 
                     continue;
                 }
 
                 trace!(%piece_index, "Piece needs to be cached #1");
 
-                let maybe_piece = match self.node_client.piece(piece_index).await {
-                    Ok(maybe_piece) => maybe_piece,
-                    Err(error) => {
-                        error!(
-                            %error,
-                            %segment_index,
-                            %piece_index,
-                            "Failed to retrieve piece from node right after archiving, this \
-                            should never happen and is an implementation bug"
-                        );
-                        continue;
-                    }
-                };
-
-                let Some(piece) = maybe_piece else {
-                    error!(
-                        %segment_index,
-                        %piece_index,
-                        "Failed to retrieve piece from node right after archiving, this should \
-                        never happen and is an implementation bug"
-                    );
-                    continue;
-                };
-
                 self.persist_piece_in_cache(piece_index, piece, worker_state);
             }
 
             worker_state.last_segment_index = segment_index;
+        } else {
+            self.acknowledge_archived_segment_processing(segment_index)
+                .await;
         }
 
+        debug!(%segment_index, "Finished processing newly archived segment");
+    }
+
+    async fn acknowledge_archived_segment_processing(&self, segment_index: SegmentIndex) {
         match self
             .node_client
             .acknowledge_archived_segment_header(segment_index)
@@ -487,8 +528,6 @@ where
                 error!(%segment_index, ?error, "Failed to acknowledge archived segment");
             }
         };
-
-        debug!(%segment_index, "Finished processing newly archived segment");
     }
 
     async fn keep_up_after_initial_sync<PG>(
@@ -527,7 +566,7 @@ where
         for piece_index in piece_indices {
             let key = KeyWrapper(piece_index);
             if !worker_state.heap.should_include_key(key) {
-                trace!(%piece_index, "Piece doesn't need to be cached #2");
+                trace!(%piece_index, "Piece doesn't need to be cached #3");
 
                 continue;
             }
