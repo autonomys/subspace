@@ -10,11 +10,12 @@ use crate::{
 use codec::{Decode, Encode, MaxEncodedLen};
 use domain_runtime_primitives::opaque::Header as DomainHeader;
 use domain_runtime_primitives::BlockNumber as DomainBlockNumber;
-use frame_support::dispatch::RawOrigin;
+use frame_support::dispatch::{DispatchInfo, RawOrigin};
 use frame_support::traits::{ConstU16, ConstU32, ConstU64, Currency, Hooks};
 use frame_support::weights::constants::RocksDbWeight;
-use frame_support::weights::Weight;
+use frame_support::weights::{IdentityFee, Weight};
 use frame_support::{assert_err, assert_ok, parameter_types, PalletId};
+use frame_system::mocking::MockUncheckedExtrinsic;
 use frame_system::pallet_prelude::*;
 use scale_info::TypeInfo;
 use sp_core::crypto::Pair;
@@ -72,6 +73,7 @@ frame_support::construct_runtime!(
 
 type BlockNumber = u64;
 type Hash = H256;
+type AccountId = u64;
 
 parameter_types! {
     pub const ExtrinsicsRootStateVersion: StateVersion = StateVersion::V0;
@@ -87,7 +89,7 @@ impl frame_system::Config for Test {
     type Nonce = u64;
     type Hash = Hash;
     type Hashing = BlakeTwo256;
-    type AccountId = u64;
+    type AccountId = AccountId;
     type Lookup = IdentityLookup<Self::AccountId>;
     type Block = Block;
     type RuntimeEvent = RuntimeEvent;
@@ -246,9 +248,21 @@ impl pallet_domains::Config for Test {
     type SudoId = ();
 }
 
+pub struct ExtrinsicStorageFees;
+impl domain_pallet_executive::ExtrinsicStorageFees<Test> for ExtrinsicStorageFees {
+    fn extract_signer(_xt: MockUncheckedExtrinsic<Test>) -> (Option<AccountId>, DispatchInfo) {
+        (None, DispatchInfo::default())
+    }
+
+    fn on_storage_fees_charged(_charged_fees: Balance) {}
+}
+
 impl domain_pallet_executive::Config for Test {
     type RuntimeEvent = RuntimeEvent;
     type WeightInfo = ();
+    type Currency = Balances;
+    type LengthToFee = IdentityFee<Balance>;
+    type ExtrinsicStorageFees = ExtrinsicStorageFees;
 }
 
 pub(crate) fn new_test_ext() -> sp_io::TestExternalities {
