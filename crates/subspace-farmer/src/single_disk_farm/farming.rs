@@ -2,7 +2,7 @@ pub mod rayon_files;
 
 use crate::node_client;
 use crate::node_client::NodeClient;
-use crate::single_disk_farm::{Handler, Handlers, SingleDiskFarmId};
+use crate::single_disk_farm::{Handlers, SingleDiskFarmId};
 use async_lock::RwLock;
 use futures::channel::mpsc;
 use futures::StreamExt;
@@ -111,10 +111,6 @@ where
     pub maybe_sector_being_modified: Option<SectorIndex>,
     /// Proof of space table generator
     pub table_generator: &'a Mutex<PosTable::Generator>,
-    /// Provides an event handler for audit events
-    pub audit_event_handler: Option<&'a Handler<AuditEvent>>,
-    /// ID of the farm
-    pub farm_id: SingleDiskFarmId,
 }
 
 impl<'a, PosTable> Clone for PlotAuditOptions<'a, PosTable>
@@ -161,11 +157,7 @@ where
             erasure_coding,
             maybe_sector_being_modified,
             table_generator,
-            audit_event_handler,
-            farm_id,
         } = options;
-
-        let start = Instant::now();
 
         let audit_results = audit_plot_sync(
             public_key,
@@ -175,17 +167,6 @@ where
             sectors_metadata,
             maybe_sector_being_modified,
         );
-
-        if let Some(audit_event_handler) = audit_event_handler {
-            let duration = start.elapsed();
-            let duration_secs = duration.as_secs_f64();
-
-            audit_event_handler.call_simple(&AuditEvent {
-                duration: duration_secs,
-                farm_id,
-                sectors_number: sectors_metadata.len(),
-            });
-        }
 
         audit_results
             .into_iter()
@@ -283,7 +264,9 @@ where
             let modifying_sector_guard = modifying_sector_index.read().await;
             let maybe_sector_being_modified = modifying_sector_guard.as_ref().copied();
 
-            plot_audit.audit(PlotAuditOptions::<PosTable> {
+            let start = Instant::now();
+
+            let sectors_solutions = plot_audit.audit(PlotAuditOptions::<PosTable> {
                 public_key: &public_key,
                 reward_address: &reward_address,
                 slot_info,
@@ -292,9 +275,15 @@ where
                 erasure_coding: &erasure_coding,
                 maybe_sector_being_modified,
                 table_generator: &table_generator,
-                audit_event_handler: Some(&handlers.plot_audited),
+            });
+
+            handlers.plot_audited.call_simple(&AuditEvent {
+                duration: start.elapsed().as_secs_f64(),
                 farm_id,
-            })
+                sectors_number: sectors_metadata.len(),
+            });
+
+            sectors_solutions
         };
 
         sectors_solutions.sort_by(|a, b| {
