@@ -655,6 +655,18 @@ where
 
                 // Update subscriber if value has changed
                 if last_is_major_syncing != Some(is_major_syncing) {
+                    // In case change is detected, wait for another interval to confirm.
+                    // TODO: This is primarily because Substrate seems to lose peers for brief
+                    //  periods of time sometimes that needs to be investigated separately
+                    futures_timer::Delay::new(NODE_SYNC_STATUS_CHECK_INTERVAL).await;
+
+                    // If status returned back to what it was, ignore
+                    if last_is_major_syncing == Some(sync_oracle.is_major_syncing()) {
+                        futures_timer::Delay::new(NODE_SYNC_STATUS_CHECK_INTERVAL).await;
+                        continue;
+                    }
+
+                    // Otherwise save new status
                     last_is_major_syncing.replace(is_major_syncing);
 
                     let node_sync_status = if is_major_syncing {
