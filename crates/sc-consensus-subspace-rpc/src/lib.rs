@@ -649,18 +649,19 @@ where
     fn subscribe_node_sync_status_change(&self, mut sink: SubscriptionSink) -> SubscriptionResult {
         let sync_oracle = self.sync_oracle.clone();
         let fut = async move {
-            let mut last_node_sync_status = None;
+            let mut last_is_major_syncing = None;
             loop {
-                let node_sync_status = if sync_oracle.is_major_syncing() {
-                    NodeSyncStatus::MajorSyncing
-                } else {
-                    NodeSyncStatus::Synced
-                };
+                let is_major_syncing = sync_oracle.is_major_syncing();
 
                 // Update subscriber if value has changed
-                if last_node_sync_status != Some(node_sync_status) {
-                    last_node_sync_status.replace(node_sync_status);
+                if last_is_major_syncing != Some(is_major_syncing) {
+                    last_is_major_syncing.replace(is_major_syncing);
 
+                    let node_sync_status = if is_major_syncing {
+                        NodeSyncStatus::MajorSyncing
+                    } else {
+                        NodeSyncStatus::Synced
+                    };
                     match sink.send(&node_sync_status) {
                         Ok(true) => {
                             // Success
