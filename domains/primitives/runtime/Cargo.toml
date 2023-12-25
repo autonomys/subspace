@@ -12,6 +12,8 @@ description = "Common primitives of subspace domain runtime"
 targets = ["x86_64-unknown-linux-gnu"]
 
 [dependencies]
+frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0831dfc3c54b10ab46e82acf98603b4af1a47bd5" }
+frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0831dfc3c54b10ab46e82acf98603b4af1a47bd5" }
 parity-scale-codec = { version = "3.6.5", default-features = false, features = ["derive"] }
 scale-info = { version = "2.7.0", default-features = false, features = ["derive"] }
 sp-api = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0831dfc3c54b10ab46e82acf98603b4af1a47bd5" }
@@ -25,13 +27,15 @@ sp-weights = { version = "20.0.0", default-features = false, git = "https://gith
 [features]
 default = ["std"]
 std = [
-	"parity-scale-codec/std",
-	"scale-info/std",
-	"sp-api/std",
-	"sp-core/std",
-	"sp-runtime/std",
-	"sp-std/std",
-	"sp-weights/std",
-	"subspace-core-primitives/std",
-	"subspace-runtime-primitives/std",
+    "frame-support/std",
+    "frame-system/std",
+    "parity-scale-codec/std",
+    "scale-info/std",
+    "sp-api/std",
+    "sp-core/std",
+    "sp-runtime/std",
+    "sp-std/std",
+    "sp-weights/std",
+    "subspace-core-primitives/std",
+    "subspace-runtime-primitives/std",
 ]

@@ -183,7 +183,7 @@ pub mod tests_utils {
             // if the min is too small, then this will not change, and we are doomed forever.
             // the block ref time is 1/100th bigger than target.
             Self::run_with_system_weight(
-                Self::target().set_ref_time(Self::target().ref_time() * 101 / 100),
+                Self::target().set_ref_time((Self::target().ref_time() / 100) * 101),
                 || {
                     let next = Self::runtime_multiplier_update(Self::min_multiplier());
                     assert!(

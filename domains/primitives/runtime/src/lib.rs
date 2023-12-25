@@ -17,16 +17,19 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+use frame_support::dispatch::{DispatchClass, PerDispatchClass};
+use frame_support::weights::constants::{BlockExecutionWeight, ExtrinsicBaseWeight};
+use frame_system::limits::{BlockLength, BlockWeights};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_runtime::generic::{Era, UncheckedExtrinsic};
 use sp_runtime::traits::{Block as BlockT, Convert, IdentifyAccount, NumberFor, Verify};
 use sp_runtime::transaction_validity::TransactionValidityError;
-use sp_runtime::{Digest, MultiAddress, MultiSignature};
+use sp_runtime::{Digest, MultiAddress, MultiSignature, Perbill};
 use sp_std::vec::Vec;
 use sp_weights::Weight;
 use subspace_core_primitives::U256;
-use subspace_runtime_primitives::Moment;
+use subspace_runtime_primitives::{Moment, SHANNON};
 
 /// Alias to 512-bit hash when used in the context of a transaction signature on the chain.
 pub type Signature = MultiSignature;
@@ -55,6 +58,52 @@ pub const SLOT_DURATION: u64 = 1000;
 
 /// The EVM chain Id type
 pub type EVMChainId = u64;
+
+/// Maximum block length for mandatory dispatch.
+pub const MAXIMUM_MANDATORY_BLOCK_LENGTH: u32 = 5 * 1024 * 1024;
+
+/// Maximum block length for operational and normal dispatches.
+pub const MAXIMUM_OPERATIONAL_AND_NORMAL_BLOCK_LENGTH: u32 = u32::MAX;
+
+/// Maximum block length for all dispatches.
+pub fn maximum_block_length() -> BlockLength {
+    BlockLength {
+        max: PerDispatchClass::new(|class| match class {
+            DispatchClass::Normal | DispatchClass::Operational => {
+                MAXIMUM_OPERATIONAL_AND_NORMAL_BLOCK_LENGTH
+            }
+            DispatchClass::Mandatory => MAXIMUM_MANDATORY_BLOCK_LENGTH,
+        }),
+    }
+}
+
+/// The existential deposit. Same with the one on primary chain.
+pub const EXISTENTIAL_DEPOSIT: Balance = 500 * SHANNON;
+
+/// We assume that ~5% of the block weight is consumed by `on_initialize` handlers. This is
+/// used to limit the maximal weight of a single extrinsic.
+const AVERAGE_ON_INITIALIZE_RATIO: Perbill = Perbill::from_percent(5);
+
+/// Maximum total block weight.
+pub const MAXIMUM_BLOCK_WEIGHT: Weight = Weight::from_parts(u64::MAX, u64::MAX);
+
+pub fn block_weights() -> BlockWeights {
+    BlockWeights::builder()
+        .base_block(BlockExecutionWeight::get())
+        .for_class(DispatchClass::all(), |weights| {
+            weights.base_extrinsic = ExtrinsicBaseWeight::get();
+        })
+        .for_class(DispatchClass::Normal, |weights| {
+            // explicitly set max_total weight for normal dispatches to maximum
+            weights.max_total = Some(MAXIMUM_BLOCK_WEIGHT);
+        })
+        .for_class(DispatchClass::Operational, |weights| {
+            // explicitly set max_total weight for operational dispatches to maximum
+            weights.max_total = Some(MAXIMUM_BLOCK_WEIGHT);
+        })
+        .avg_block_initialization(AVERAGE_ON_INITIALIZE_RATIO)
+        .build_or_panic()
+}
 
 /// Extracts the signer from an unchecked extrinsic.
 ///
@@ -201,5 +250,15 @@ sp_api::decl_runtime_apis! {
         /// Return the consumed weight of the block
         #[api_version(2)]
         fn block_weight() -> Weight;
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::block_weights;
+    #[test]
+    fn test_block_weights() {
+        // validate and build block weights
+        let _block_weights = block_weights();
     }
 }
