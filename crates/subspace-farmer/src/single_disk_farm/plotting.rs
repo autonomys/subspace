@@ -36,7 +36,7 @@ use subspace_farmer_components::sector::SectorMetadataChecksummed;
 use subspace_proof_of_space::Table;
 use thiserror::Error;
 use tokio::runtime::Handle;
-use tokio::sync::{broadcast, Semaphore};
+use tokio::sync::{broadcast, OwnedSemaphorePermit, Semaphore};
 use tokio::task::yield_now;
 use tracing::{debug, info, trace, warn, Instrument};
 
@@ -157,8 +157,9 @@ where
 
     let mut table_generator = PosTable::generator();
 
-    let mut maybe_next_downloaded_sector_fut =
-        None::<AsyncJoinOnDrop<Result<DownloadedSector, plotting::PlottingError>>>;
+    let mut maybe_next_downloaded_sector_fut = None::<
+        AsyncJoinOnDrop<Result<(OwnedSemaphorePermit, DownloadedSector), plotting::PlottingError>>,
+    >;
     while let Some(sector_to_plot) = sectors_to_plot_receiver.next().await {
         let SectorToPlot {
             sector_index,
@@ -221,12 +222,17 @@ where
             break farmer_app_info;
         };
 
-        let downloaded_sector =
+        let (_downloading_permit, downloaded_sector) =
             if let Some(downloaded_sector_fut) = maybe_next_downloaded_sector_fut.take() {
                 downloaded_sector_fut
                     .await
                     .map_err(|_error| PlottingError::BackgroundDownloadingPanicked)??
             } else {
+                let downloading_permit = Arc::clone(&downloading_semaphore)
+                    .acquire_owned()
+                    .await
+                    .map_err(plotting::PlottingError::from)?;
+
                 let downloaded_sector_fut = download_sector(DownloadSectorOptions {
                     public_key: &public_key,
                     sector_index,
@@ -237,20 +243,25 @@ where
                     farmer_protocol_info: farmer_app_info.protocol_info,
                     kzg,
                     pieces_in_sector,
-                    downloading_semaphore: Some(Arc::clone(&downloading_semaphore)),
                 });
-                downloaded_sector_fut.await?
+
+                (downloading_permit, downloaded_sector_fut.await?)
             };
 
         // Initiate downloading of pieces for the next segment index if already known
         if let Some(sector_index) = next_segment_index_hint {
             let piece_getter = piece_getter.clone();
-            let downloading_semaphore = Some(Arc::clone(&downloading_semaphore));
+            let downloading_semaphore = Arc::clone(&downloading_semaphore);
             let kzg = kzg.clone();
 
             maybe_next_downloaded_sector_fut.replace(AsyncJoinOnDrop::new(
                 tokio::spawn(
                     async move {
+                        let downloading_permit = downloading_semaphore
+                            .acquire_owned()
+                            .await
+                            .map_err(plotting::PlottingError::from)?;
+
                         let downloaded_sector_fut = download_sector(DownloadSectorOptions {
                             public_key: &public_key,
                             sector_index,
@@ -261,9 +272,9 @@ where
                             farmer_protocol_info: farmer_app_info.protocol_info,
                             kzg: &kzg,
                             pieces_in_sector,
-                            downloading_semaphore,
                         });
-                        downloaded_sector_fut.await
+
+                        Ok((downloading_permit, downloaded_sector_fut.await?))
                     }
                     .in_current_span(),
                 ),
