@@ -2,6 +2,7 @@ use crate::single_disk_farm::{
     BackgroundTaskError, Handlers, PlotMetadataHeader, SectorPlottingDetails,
     RESERVED_PLOT_METADATA,
 };
+use crate::thread_pool_manager::ThreadPoolManager;
 use crate::utils::AsyncJoinOnDrop;
 use crate::{node_client, NodeClient};
 use async_lock::RwLock;
@@ -10,7 +11,6 @@ use futures::channel::{mpsc, oneshot};
 use futures::{select, FutureExt, SinkExt, StreamExt};
 use lru::LruCache;
 use parity_scale_codec::Encode;
-use rayon::{ThreadPool, ThreadPoolBuildError};
 use std::collections::HashMap;
 use std::fs::File;
 use std::io;
@@ -37,6 +37,7 @@ use subspace_proof_of_space::Table;
 use thiserror::Error;
 use tokio::runtime::Handle;
 use tokio::sync::{broadcast, Semaphore};
+use tokio::task::yield_now;
 use tracing::{debug, info, trace, warn, Instrument};
 
 const FARMER_APP_INFO_RETRY_INTERVAL: Duration = Duration::from_millis(500);
@@ -91,9 +92,6 @@ pub enum PlottingError {
     /// I/O error occurred
     #[error("I/O error: {0}")]
     Io(#[from] io::Error),
-    /// Failed to create thread pool
-    #[error("Failed to create thread pool: {0}")]
-    FailedToCreateThreadPool(#[from] ThreadPoolBuildError),
     /// Background downloading panicked
     #[error("Background downloading panicked")]
     BackgroundDownloadingPanicked,
@@ -118,11 +116,8 @@ pub(super) struct PlottingOptions<'a, NC, PG> {
     /// Semaphore for part of the plotting when farmer downloads new sector, allows to limit memory
     /// usage of the plotting process, permit will be held until the end of the plotting process
     pub(crate) downloading_semaphore: Arc<Semaphore>,
-    /// Semaphore for part of the plotting when farmer encodes downloaded sector, should typically
-    /// allow one permit at a time for efficient CPU utilization
-    pub(crate) encoding_semaphore: &'a Semaphore,
-    pub(super) plotting_thread_pool: ThreadPool,
-    pub(super) replotting_thread_pool: ThreadPool,
+    pub(super) plotting_thread_pool_manager: ThreadPoolManager,
+    pub(super) replotting_thread_pool_manager: ThreadPoolManager,
     pub(super) stop_receiver: &'a mut broadcast::Receiver<()>,
 }
 
@@ -155,9 +150,8 @@ where
         modifying_sector_index,
         mut sectors_to_plot_receiver,
         downloading_semaphore,
-        encoding_semaphore,
-        plotting_thread_pool,
-        replotting_thread_pool,
+        plotting_thread_pool_manager,
+        replotting_thread_pool_manager,
         stop_receiver,
     } = plotting_options;
 
@@ -299,7 +293,6 @@ where
                                 pieces_in_sector,
                                 sector_output: &mut sector,
                                 sector_metadata_output: &mut sector_metadata,
-                                encoding_semaphore: Some(encoding_semaphore),
                                 table_generator: &mut table_generator,
                             },
                         ));
@@ -320,11 +313,16 @@ where
                 })
             };
 
-            let plotting_result = if replotting {
-                replotting_thread_pool.install(plotting_fn)
+            let thread_pool = if replotting {
+                replotting_thread_pool_manager.get_thread_pool()
             } else {
-                plotting_thread_pool.install(plotting_fn)
+                plotting_thread_pool_manager.get_thread_pool()
             };
+
+            // Give a chance to interrupt plotting if necessary
+            yield_now().await;
+
+            let plotting_result = thread_pool.install(plotting_fn);
 
             if matches!(plotting_result, Err(PlottingError::FarmIsShuttingDown)) {
                 return Ok(());
