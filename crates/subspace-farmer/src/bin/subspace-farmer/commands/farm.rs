@@ -10,6 +10,7 @@ use futures::stream::FuturesUnordered;
 use futures::{FutureExt, StreamExt};
 use lru::LruCache;
 use parking_lot::Mutex;
+use rayon::ThreadPoolBuilder;
 use std::fs;
 use std::net::SocketAddr;
 use std::num::{NonZeroU8, NonZeroUsize};
@@ -24,11 +25,14 @@ use subspace_farmer::piece_cache::PieceCache;
 use subspace_farmer::single_disk_farm::{
     SingleDiskFarm, SingleDiskFarmError, SingleDiskFarmOptions,
 };
+use subspace_farmer::thread_pool_manager::ThreadPoolManager;
 use subspace_farmer::utils::farmer_piece_getter::FarmerPieceGetter;
 use subspace_farmer::utils::piece_validator::SegmentCommitmentPieceValidator;
 use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
 use subspace_farmer::utils::ss58::parse_ss58_reward_address;
-use subspace_farmer::utils::{run_future_in_dedicated_thread, AsyncJoinOnDrop};
+use subspace_farmer::utils::{
+    run_future_in_dedicated_thread, tokio_rayon_spawn_handler, AsyncJoinOnDrop,
+};
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_farmer_components::plotting::PlottedSector;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
@@ -438,7 +442,32 @@ where
     };
 
     let downloading_semaphore = Arc::new(Semaphore::new(sector_downloading_concurrency.get()));
-    let encoding_semaphore = Arc::new(Semaphore::new(sector_encoding_concurrency.get()));
+
+    let plotting_thread_pool_manager = ThreadPoolManager::new(
+        |thread_pool_index| {
+            ThreadPoolBuilder::new()
+                .thread_name(move |thread_index| {
+                    format!("plotting-{thread_pool_index}.{thread_index}")
+                })
+                .num_threads(plotting_thread_pool_size)
+                .spawn_handler(tokio_rayon_spawn_handler())
+                .build()
+        },
+        sector_encoding_concurrency,
+    )?;
+
+    let replotting_thread_pool_manager = ThreadPoolManager::new(
+        |thread_pool_index| {
+            ThreadPoolBuilder::new()
+                .thread_name(move |thread_index| {
+                    format!("replotting-{thread_pool_index}.{thread_index}")
+                })
+                .num_threads(replotting_thread_pool_size)
+                .spawn_handler(tokio_rayon_spawn_handler())
+                .build()
+        },
+        sector_encoding_concurrency,
+    )?;
 
     let mut plotting_delay_senders = Vec::with_capacity(disk_farms.len());
 
@@ -461,11 +490,10 @@ where
                 piece_getter: piece_getter.clone(),
                 cache_percentage,
                 downloading_semaphore: Arc::clone(&downloading_semaphore),
-                encoding_semaphore: Arc::clone(&encoding_semaphore),
                 farm_during_initial_plotting,
                 farming_thread_pool_size,
-                plotting_thread_pool_size,
-                replotting_thread_pool_size,
+                plotting_thread_pool_manager: plotting_thread_pool_manager.clone(),
+                replotting_thread_pool_manager: replotting_thread_pool_manager.clone(),
                 plotting_delay: Some(plotting_delay_receiver),
             },
             disk_farm_index,

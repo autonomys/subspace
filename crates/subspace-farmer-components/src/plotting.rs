@@ -241,6 +241,11 @@ where
         downloading_semaphore,
     });
 
+    let _encoding_permit = match encoding_semaphore {
+        Some(encoding_semaphore) => Some(encoding_semaphore.acquire().await?),
+        None => None,
+    };
+
     encode_sector(
         download_sector_fut.await?,
         EncodeSectorOptions::<PosTable> {
@@ -249,7 +254,6 @@ where
             pieces_in_sector,
             sector_output,
             sector_metadata_output,
-            encoding_semaphore,
             table_generator,
         },
     )
@@ -399,9 +403,6 @@ where
     /// Where plotted sector metadata should be written, vector must either be empty (in which case
     /// it'll be resized to correct size automatically) or correctly sized from the beginning
     pub sector_metadata_output: &'a mut Vec<u8>,
-    /// Semaphore for part of the plotting when farmer encodes downloaded sector, should typically
-    /// allow one permit at a time for efficient CPU utilization
-    pub encoding_semaphore: Option<&'a Semaphore>,
     /// Proof of space table generator
     pub table_generator: &'a mut PosTable::Generator,
 }
@@ -426,7 +427,6 @@ where
         pieces_in_sector,
         sector_output,
         sector_metadata_output,
-        encoding_semaphore,
         table_generator,
     } = encoding_options;
 
@@ -451,11 +451,6 @@ where
             expected: SectorMetadataChecksummed::encoded_size(),
         });
     }
-
-    let _encoding_permit = match encoding_semaphore {
-        Some(encoding_semaphore) => Some(encoding_semaphore.acquire().await?),
-        None => None,
-    };
 
     let mut sector_contents_map = SectorContentsMap::new(pieces_in_sector);
     let mut chunks_scratch = Vec::with_capacity(Record::NUM_S_BUCKETS);
