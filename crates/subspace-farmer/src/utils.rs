@@ -137,10 +137,18 @@ where
 }
 
 /// This function is supposed to be used with [`rayon::ThreadPoolBuilder::spawn_handler()`] to
-/// inherit current tokio runtime.
-pub fn tokio_rayon_spawn_handler() -> impl FnMut(ThreadBuilder) -> io::Result<()> {
-    let handle = Handle::current();
-
+/// spawn handler with a custom logic defined by `spawn_hook_builder`.
+///
+/// `spawn_hook_builder` is called with thread builder to create `spawn_handler` that in turn will
+/// be spawn rayon's thread with desired environment.
+pub fn rayon_custom_spawn_handler<SpawnHandlerBuilder, SpawnHandler, SpawnHandlerResult>(
+    mut spawn_handler_builder: SpawnHandlerBuilder,
+) -> impl FnMut(ThreadBuilder) -> io::Result<()>
+where
+    SpawnHandlerBuilder: (FnMut(ThreadBuilder) -> SpawnHandler) + Clone,
+    SpawnHandler: (FnOnce() -> SpawnHandlerResult) + Send + 'static,
+    SpawnHandlerResult: Send + 'static,
+{
     move |thread: ThreadBuilder| {
         let mut b = thread::Builder::new();
         if let Some(name) = thread.name() {
@@ -150,12 +158,23 @@ pub fn tokio_rayon_spawn_handler() -> impl FnMut(ThreadBuilder) -> io::Result<()
             b = b.stack_size(stack_size);
         }
 
-        let handle = handle.clone();
-        b.spawn(move || {
-            let _guard = handle.enter();
-
-            tokio::task::block_in_place(|| thread.run())
-        })?;
+        b.spawn(spawn_handler_builder(thread))?;
         Ok(())
     }
+}
+
+/// This function is supposed to be used with [`rayon::ThreadPoolBuilder::spawn_handler()`] to
+/// inherit current tokio runtime.
+pub fn tokio_rayon_spawn_handler() -> impl FnMut(ThreadBuilder) -> io::Result<()> {
+    let handle = Handle::current();
+
+    rayon_custom_spawn_handler(move |thread| {
+        let handle = handle.clone();
+
+        move || {
+            let _guard = handle.enter();
+
+            task::block_in_place(|| thread.run())
+        }
+    })
 }
