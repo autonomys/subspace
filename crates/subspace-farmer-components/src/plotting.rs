@@ -26,7 +26,7 @@ use subspace_core_primitives::{
 use subspace_erasure_coding::ErasureCoding;
 use subspace_proof_of_space::{Table, TableGenerator};
 use thiserror::Error;
-use tokio::sync::{AcquireError, OwnedSemaphorePermit, Semaphore};
+use tokio::sync::{AcquireError, Semaphore};
 use tokio::task::yield_now;
 use tracing::{debug, trace, warn};
 
@@ -230,6 +230,11 @@ where
         table_generator,
     } = options;
 
+    let _downloading_permit = match downloading_semaphore {
+        Some(downloading_semaphore) => Some(downloading_semaphore.acquire_owned().await?),
+        None => None,
+    };
+
     let download_sector_fut = download_sector(DownloadSectorOptions {
         public_key,
         sector_index,
@@ -238,7 +243,6 @@ where
         farmer_protocol_info,
         kzg,
         pieces_in_sector,
-        downloading_semaphore,
     });
 
     let _encoding_permit = match encoding_semaphore {
@@ -266,7 +270,6 @@ pub struct DownloadedSector {
     piece_indices: Vec<PieceIndex>,
     raw_sector: RawSector,
     farmer_protocol_info: FarmerProtocolInfo,
-    downloading_permit: Option<OwnedSemaphorePermit>,
 }
 
 /// Options for sector downloading
@@ -285,9 +288,6 @@ pub struct DownloadSectorOptions<'a, PG> {
     pub kzg: &'a Kzg,
     /// How many pieces should sector contain
     pub pieces_in_sector: u16,
-    /// Semaphore for part of the plotting when farmer downloads new sector, allows to limit memory
-    /// usage of the plotting process, permit will be held until the end of the plotting process
-    pub downloading_semaphore: Option<Arc<Semaphore>>,
 }
 
 /// Download sector for plotting.
@@ -308,13 +308,7 @@ where
         farmer_protocol_info,
         kzg,
         pieces_in_sector,
-        downloading_semaphore,
     } = options;
-
-    let downloading_permit = match downloading_semaphore {
-        Some(downloading_semaphore) => Some(downloading_semaphore.acquire_owned().await?),
-        None => None,
-    };
 
     let sector_id = SectorId::new(public_key.hash(), sector_index);
 
@@ -378,7 +372,6 @@ where
         piece_indices,
         raw_sector: raw_sector.into_inner(),
         farmer_protocol_info,
-        downloading_permit,
     })
 }
 
@@ -419,7 +412,6 @@ where
         piece_indices,
         mut raw_sector,
         farmer_protocol_info,
-        downloading_permit: _downloading_permit,
     } = downloaded_sector;
     let EncodeSectorOptions {
         sector_index,
