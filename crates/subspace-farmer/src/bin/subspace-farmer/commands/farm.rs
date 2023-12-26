@@ -453,6 +453,7 @@ where
             .unwrap_or(plotting_thread_pool_core_indices.len() + 1),
     ));
 
+    let all_cpus = all_cpus();
     let plotting_thread_pool_manager = create_tokio_thread_pool_manager_for_pinned_cores(
         "plotting",
         plotting_thread_pool_core_indices,
@@ -464,11 +465,21 @@ where
     let farming_thread_pool_size = farming_thread_pool_size
         .map(|farming_thread_pool_size| farming_thread_pool_size.get())
         .unwrap_or_else(|| {
-            all_cpus()
+            all_cpus
                 .first()
                 .expect("Not empty according to `all_cpus` function description; qed")
                 .len()
         });
+
+    // TODO: Remove code or environment variable once identified whether it helps or not
+    if std::env::var("NUMA_ALLOCATOR").is_ok() && all_cpus.len() > 1 {
+        unsafe {
+            libmimalloc_sys::mi_option_set(
+                libmimalloc_sys::mi_option_use_numa_nodes,
+                all_cpus.len() as std::ffi::c_long,
+            );
+        }
+    }
 
     let mut plotting_delay_senders = Vec::with_capacity(disk_farms.len());
 
