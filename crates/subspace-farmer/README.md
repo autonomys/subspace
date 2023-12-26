@@ -10,10 +10,41 @@ It is recommended to follow general farming instructions that explain how to run
 
 Rust toolchain is expected to be installed for anything in this repository to compile, but there are some extra dependencies for farmer specifically.
 
-Prost library from libp2p dependency needs CMake, also LLVM/Clang is necessary:
+`automake`,`libtool` and `pkg-config` on Linux/macOS or CMake on Windows for `hwlocality-sys` (if `numa` features is enabled, it is by default), also LLVM/Clang is necessary.
+
+### Ubuntu
+
 ```bash
-sudo apt-get install llvm clang cmake
+sudo apt-get install automake libtool pkg-config llvm clang
 ```
+
+### macOS
+
+1. Install via Homebrew:
+
+```bash
+brew install automake libtool llvm@15 clang
+```
+
+2. Add `llvm` to your `~/.zshrc` or `~/.bashrc`:
+
+```bash
+export PATH="/opt/homebrew/opt/llvm@15/bin:$PATH"
+```
+
+3. Activate the changes:
+
+```bash
+source ~/.zshrc
+```
+
+4. Verify that `llvm` is installed:
+
+```bash
+llvm-config --version
+```
+
+### Build
 
 Then build the farmer using Cargo:
 ```

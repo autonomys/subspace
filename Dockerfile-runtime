@@ -14,11 +14,14 @@ RUN \
     apt-get update && \
     DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         ca-certificates \
+        protobuf-compiler \
         curl \
         git \
         llvm \
         clang \
-        cmake \
+        automake \
+        libtool \
+        pkg-config \
         make && \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain $RUSTC_VERSION
 

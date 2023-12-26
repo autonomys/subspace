@@ -142,7 +142,29 @@ where
 ///
 /// Returned vector is guaranteed to have at least one non-empty element.
 pub fn all_cpus() -> Vec<Vec<usize>> {
-    // TODO: NUMA support
+    #[cfg(feature = "numa")]
+    match hwlocality::Topology::new() {
+        Ok(topology) => {
+            let cpus = topology
+                // Iterate over NUMA nodes
+                .objects_at_depth(hwlocality::object::depth::Depth::NUMANode)
+                // For each NUMA nodes get CPU set
+                .filter_map(|node| node.cpuset())
+                // For each CPU set extract individual cores
+                .map(|cpuset| cpuset.iter_set().map(usize::from).collect::<Vec<_>>())
+                .filter(|cores| !cores.is_empty())
+                .collect::<Vec<_>>();
+
+            if !cpus.is_empty() {
+                return cpus;
+            } else {
+                warn!("No CPU cores found in NUMA nodes");
+            }
+        }
+        Err(error) => {
+            warn!(%error, "Failed to get CPU topology");
+        }
+    }
     vec![(0..num_cpus::get()).collect()]
 }
 
