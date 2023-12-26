@@ -30,8 +30,8 @@ use subspace_farmer::utils::piece_validator::SegmentCommitmentPieceValidator;
 use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
 use subspace_farmer::utils::ss58::parse_ss58_reward_address;
 use subspace_farmer::utils::{
-    all_cpus, create_tokio_thread_pool_manager_for_pinned_cores, run_future_in_dedicated_thread,
-    thread_pool_core_indices, AsyncJoinOnDrop,
+    all_cpu_cores, create_tokio_thread_pool_manager_for_pinned_nodes,
+    run_future_in_dedicated_thread, thread_pool_core_indices, AsyncJoinOnDrop,
 };
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_farmer_components::plotting::PlottedSector;
@@ -48,9 +48,9 @@ use zeroize::Zeroizing;
 const RECORDS_ROOTS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(1_000_000).expect("Not zero; qed");
 
 fn should_farm_during_initial_plotting() -> bool {
-    let total_cpu_cores = all_cpus()
-        .into_iter()
-        .flat_map(|cores| cores.into_iter())
+    let total_cpu_cores = all_cpu_cores()
+        .iter()
+        .flat_map(|set| set.cpu_cores())
         .count();
     total_cpu_cores > 8
 }
@@ -443,7 +443,7 @@ where
             // The default behavior is to use all CPU cores, but for replotting we just want half
             replotting_thread_pool_core_indices
                 .iter_mut()
-                .for_each(|cores| cores.truncate((cores.len() / 2).max(1)));
+                .for_each(|set| set.truncate(set.cpu_cores().len() / 2));
         }
         replotting_thread_pool_core_indices
     };
@@ -454,30 +454,31 @@ where
             .unwrap_or(plotting_thread_pool_core_indices.len() + 1),
     ));
 
-    let all_cpus = all_cpus();
-    let plotting_thread_pool_manager = create_tokio_thread_pool_manager_for_pinned_cores(
+    let all_cpu_cores = all_cpu_cores();
+    let plotting_thread_pool_manager = create_tokio_thread_pool_manager_for_pinned_nodes(
         "plotting",
         plotting_thread_pool_core_indices,
     )?;
-    let replotting_thread_pool_manager = create_tokio_thread_pool_manager_for_pinned_cores(
+    let replotting_thread_pool_manager = create_tokio_thread_pool_manager_for_pinned_nodes(
         "replotting",
         replotting_thread_pool_core_indices,
     )?;
     let farming_thread_pool_size = farming_thread_pool_size
         .map(|farming_thread_pool_size| farming_thread_pool_size.get())
         .unwrap_or_else(|| {
-            all_cpus
+            all_cpu_cores
                 .first()
-                .expect("Not empty according to `all_cpus` function description; qed")
+                .expect("Not empty according to function description; qed")
+                .cpu_cores()
                 .len()
         });
 
     // TODO: Remove code or environment variable once identified whether it helps or not
-    if std::env::var("NUMA_ALLOCATOR").is_ok() && all_cpus.len() > 1 {
+    if std::env::var("NUMA_ALLOCATOR").is_ok() && all_cpu_cores.len() > 1 {
         unsafe {
             libmimalloc_sys::mi_option_set(
                 libmimalloc_sys::mi_option_use_numa_nodes,
-                all_cpus.len() as std::ffi::c_long,
+                all_cpu_cores.len() as std::ffi::c_long,
             );
         }
     }
