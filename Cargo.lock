@@ -11771,7 +11771,6 @@ dependencies = [
  "blake3",
  "bytesize",
  "clap",
- "core_affinity",
  "criterion",
  "derive_more",
  "event-listener-primitives",
@@ -11781,6 +11780,7 @@ dependencies = [
  "hex",
  "hwlocality",
  "jsonrpsee",
+ "libc",
  "libmimalloc-sys",
  "lru 0.11.1",
  "mimalloc",
@@ -11811,6 +11811,7 @@ dependencies = [
  "tracing",
  "tracing-subscriber 0.3.17",
  "ulid",
+ "windows-sys 0.52.0",
  "zeroize",
 ]
 

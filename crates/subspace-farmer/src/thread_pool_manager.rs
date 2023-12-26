@@ -62,7 +62,7 @@ impl ThreadPoolManager {
         thread_pools: NonZeroUsize,
     ) -> Result<Self, ThreadPoolBuildError>
     where
-        C: Fn(usize) -> Result<ThreadPool, ThreadPoolBuildError>,
+        C: FnMut(usize) -> Result<ThreadPool, ThreadPoolBuildError>,
     {
         let inner = Inner {
             thread_pools: (0..thread_pools.get())
