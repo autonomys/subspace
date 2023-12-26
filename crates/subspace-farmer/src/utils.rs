@@ -5,18 +5,20 @@ pub mod ss58;
 #[cfg(test)]
 mod tests;
 
+use crate::thread_pool_manager::ThreadPoolManager;
 use futures::channel::oneshot;
 use futures::channel::oneshot::Canceled;
 use futures::future::Either;
-use rayon::ThreadBuilder;
+use rayon::{ThreadBuilder, ThreadPoolBuildError, ThreadPoolBuilder};
 use std::future::Future;
+use std::num::NonZeroUsize;
 use std::ops::Deref;
 use std::pin::{pin, Pin};
 use std::task::{Context, Poll};
 use std::{io, thread};
 use tokio::runtime::Handle;
 use tokio::task;
-use tracing::debug;
+use tracing::{debug, warn};
 
 /// Joins async join handle on drop
 pub struct AsyncJoinOnDrop<T> {
@@ -134,6 +136,129 @@ where
         drop(join_on_drop);
         result
     })
+}
+
+/// All CPU cores as numbers, grouped by NUMA nodes.
+///
+/// Returned vector is guaranteed to have at least one non-empty element.
+pub fn all_cpus() -> Vec<Vec<usize>> {
+    // TODO: NUMA support
+    vec![(0..num_cpus::get()).collect()]
+}
+
+/// Thread indices for each thread pool
+pub fn thread_pool_core_indices(
+    thread_pool_size: Option<NonZeroUsize>,
+    thread_pools: Option<NonZeroUsize>,
+) -> Vec<Vec<usize>> {
+    let all_cpus = all_cpus();
+
+    if let Some(thread_pools) = thread_pools {
+        let mut thread_pool_core_indices = Vec::<Vec<usize>>::with_capacity(thread_pools.get());
+
+        if let Some(thread_pool_size) = thread_pool_size {
+            // If thread pool size is fixed, loop over all CPU cores as many times as necessary and
+            // assign contiguous ranges of CPU cores to corresponding thread pools
+
+            let total_cpu_cores = all_cpus
+                .into_iter()
+                .flat_map(|cores| cores.into_iter())
+                .count();
+            for _ in 0..thread_pools.get() {
+                let cpu_cores_range = if let Some(last_cpu_index) = thread_pool_core_indices
+                    .last()
+                    .and_then(|thread_indices| thread_indices.last())
+                    .copied()
+                {
+                    last_cpu_index + 1..
+                } else {
+                    0..
+                };
+
+                let cpu_cores = cpu_cores_range
+                    .take(thread_pool_size.get())
+                    // To loop over all CPU cores multiple times, modulo naively obtained CPU
+                    // cores by the total available number of CPU cores
+                    .map(|core_index| core_index % total_cpu_cores)
+                    .collect();
+
+                thread_pool_core_indices.push(cpu_cores);
+            }
+        } else {
+            // If thread pool size is not fixed, we iterate over all NUMA nodes as many times as
+            // necessary
+
+            for thread_pool_index in 0..thread_pools.get() {
+                thread_pool_core_indices.push(all_cpus[thread_pool_index % all_cpus.len()].clone());
+            }
+        }
+        thread_pool_core_indices
+    } else {
+        // If everything is set to defaults, use physical layout of CPUs
+        all_cpus
+    }
+}
+
+#[inline(never)]
+fn pin_to_cpu_core(
+    thread_prefix: &'static str,
+    thread_pool_index: usize,
+    thread_index: usize,
+    core: usize,
+) {
+    if !core_affinity::set_for_current(core_affinity::CoreId { id: core }) {
+        warn!(
+            %thread_prefix,
+            %thread_pool_index,
+            %thread_index,
+            %core,
+            "Failed to set core affinity, timekeeper will run on random \
+            CPU core",
+        );
+    }
+}
+
+/// Creates thread pools for each of CPUs with number of threads corresponding to number of cores in
+/// each CPU and pins threads to those CPU cores. Each thread will have Tokio context available.
+///
+/// The easiest way to obtain CPUs is using [`all_cpus`], but [`thread_pool_core_indices`] in case
+/// support for user customizations is desired.
+pub fn create_tokio_thread_pool_manager_for_pinned_cores(
+    thread_prefix: &'static str,
+    cpus: Vec<Vec<usize>>,
+) -> Result<ThreadPoolManager, ThreadPoolBuildError> {
+    let total_thread_pools = cpus.len();
+
+    ThreadPoolManager::new(
+        |thread_pool_index| {
+            let cores = cpus[thread_pool_index].clone();
+
+            ThreadPoolBuilder::new()
+                .thread_name(move |thread_index| {
+                    format!("{thread_prefix}-{thread_pool_index}.{thread_index}")
+                })
+                .num_threads(cores.len())
+                .spawn_handler({
+                    let handle = Handle::current();
+
+                    rayon_custom_spawn_handler(move |thread| {
+                        let core = cores[thread.index()];
+                        let handle = handle.clone();
+
+                        move || {
+                            pin_to_cpu_core(thread_prefix, thread_pool_index, thread.index(), core);
+
+                            let _guard = handle.enter();
+
+                            task::block_in_place(|| thread.run())
+                        }
+                    })
+                })
+                .build()
+        },
+        NonZeroUsize::new(total_thread_pools)
+            .expect("Thread pool is guaranteed to be non-empty; qed"),
+    )
 }
 
 /// This function is supposed to be used with [`rayon::ThreadPoolBuilder::spawn_handler()`] to
