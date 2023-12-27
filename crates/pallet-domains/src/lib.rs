@@ -18,6 +18,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![feature(array_windows)]
 #![feature(associated_type_bounds)]
+#![feature(let_chains)]
 
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
@@ -134,8 +135,8 @@ mod pallet {
     use crate::staking::do_reward_operators;
     use crate::staking::{
         do_deregister_operator, do_nominate_operator, do_register_operator, do_slash_operators,
-        do_switch_operator_domain, do_withdraw_stake, Error as StakingError, Nominator, Operator,
-        OperatorConfig, StakingSummary, Withdraw,
+        do_switch_operator_domain, do_withdraw_stake, Deposit, Error as StakingError, Nominator,
+        Operator, OperatorConfig, StakingSummary, Withdraw, Withdrawal,
     };
     #[cfg(not(feature = "runtime-benchmarks"))]
     use crate::staking_epoch::do_unlock_pending_withdrawals;
@@ -170,7 +171,7 @@ mod pallet {
         AtLeast32BitUnsigned, BlockNumberProvider, CheckEqual, CheckedAdd, Header as HeaderT,
         MaybeDisplay, One, SimpleBitOps, Zero,
     };
-    use sp_runtime::{SaturatedConversion, Saturating};
+    use sp_runtime::{Perbill, SaturatedConversion, Saturating};
     use sp_std::boxed::Box;
     use sp_std::collections::btree_map::BTreeMap;
     use sp_std::collections::btree_set::BTreeSet;
@@ -392,6 +393,57 @@ mod pallet {
         Identity,
         NominatorId<T>,
         Nominator<T::Share>,
+        OptionQuery,
+    >;
+
+    /// Domain block number at which given epoch is completed.
+    // TODO: currently unbounded storage.
+    #[pallet::storage]
+    pub(super) type DomainEpochCompleteAt<T: Config> = StorageDoubleMap<
+        _,
+        Identity,
+        DomainId,
+        Identity,
+        EpochIndex,
+        DomainBlockNumberFor<T>,
+        OptionQuery,
+    >;
+
+    /// Share price for the operator pool at the end of Domain epoch.
+    // TODO: currently unbounded storage.
+    #[pallet::storage]
+    pub type OperatorEpochSharePrice<T: Config> = StorageNMap<
+        _,
+        (
+            NMapKey<Identity, DomainId>,
+            NMapKey<Identity, EpochIndex>,
+            NMapKey<Identity, OperatorId>,
+        ),
+        Perbill,
+        OptionQuery,
+    >;
+
+    /// List of all deposits for given Operator.
+    #[pallet::storage]
+    pub(super) type Deposits<T: Config> = StorageDoubleMap<
+        _,
+        Identity,
+        OperatorId,
+        Identity,
+        NominatorId<T>,
+        Deposit<T::Share, BalanceOf<T>>,
+        OptionQuery,
+    >;
+
+    /// List of all withdrawals for a given operator.
+    #[pallet::storage]
+    pub(super) type Withdrawals<T: Config> = StorageDoubleMap<
+        _,
+        Identity,
+        OperatorId,
+        Identity,
+        NominatorId<T>,
+        Vec<Withdrawal<T::Share>>,
         OptionQuery,
     >;
 

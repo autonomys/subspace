@@ -1,15 +1,15 @@
 //! Staking for domains
 
 use crate::pallet::{
-    DomainRegistry, DomainStakingSummary, NextOperatorId, NominatorCount, Nominators,
+    Deposits, DomainRegistry, DomainStakingSummary, NextOperatorId, NominatorCount, Nominators,
     OperatorIdOwner, OperatorSigningKey, Operators, PendingDeposits, PendingNominatorUnlocks,
     PendingOperatorDeregistrations, PendingOperatorSwitches, PendingOperatorUnlocks,
     PendingSlashes, PendingStakingOperationCount, PendingWithdrawals,
 };
 use crate::staking_epoch::{mint_funds, PendingNominatorUnlock, PendingOperatorSlashInfo};
 use crate::{
-    BalanceOf, Config, DomainBlockNumberFor, Event, HoldIdentifier, NominatorId, Pallet,
-    ReceiptHashFor, SlashedReason,
+    BalanceOf, Config, DomainBlockNumberFor, Event, HoldIdentifier, NominatorId,
+    OperatorEpochSharePrice, Pallet, ReceiptHashFor, SlashedReason,
 };
 use codec::{Decode, Encode};
 use frame_support::traits::fungible::{Inspect, MutateHold};
@@ -24,6 +24,49 @@ use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
 use sp_std::iter::Iterator;
 use sp_std::vec::{IntoIter, Vec};
+
+/// A nominators deposit.
+#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq, Default)]
+pub(crate) struct Deposit<Share: Copy, Balance: Copy> {
+    pub(crate) known: KnownDeposit<Share>,
+    pub(crate) pending: Option<PendingDeposit<Balance>>,
+}
+
+/// Unique epoch identifier across all domains. A combination of Domain and its epoch.
+#[derive(TypeInfo, Debug, Encode, Decode, Copy, Clone, PartialEq, Eq)]
+pub(crate) struct DomainEpoch(DomainId, EpochIndex);
+
+impl DomainEpoch {
+    pub(crate) fn deconstruct(self) -> (DomainId, EpochIndex) {
+        (self.0, self.1)
+    }
+}
+
+impl From<(DomainId, EpochIndex)> for DomainEpoch {
+    fn from((domain_id, epoch_idx): (DomainId, EpochIndex)) -> Self {
+        Self(domain_id, epoch_idx)
+    }
+}
+
+/// A nominator's shares against their deposits to given operator pool.
+#[derive(TypeInfo, Debug, Encode, Decode, Copy, Clone, PartialEq, Eq, Default)]
+pub(crate) struct KnownDeposit<Share: Copy> {
+    pub(crate) shares: Share,
+}
+
+/// A nominators pending deposit in SSC that needs to be converted to shares once domain epoch is complete.
+#[derive(TypeInfo, Debug, Encode, Decode, Copy, Clone, PartialEq, Eq)]
+pub(crate) struct PendingDeposit<Balance: Copy> {
+    pub(crate) effective_domain_epoch: DomainEpoch,
+    pub(crate) amount: Balance,
+}
+
+/// A nominator's withdrawal from a given operator pool.
+#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
+pub(crate) struct Withdrawal<Share> {
+    pub(crate) allowed_since_domain_epoch: DomainEpoch,
+    pub(crate) shares: Share,
+}
 
 /// Type that represents an operator status.
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
@@ -114,6 +157,7 @@ pub enum Error {
     InvalidOperatorSigningKey,
     MaximumNominators,
     DuplicateOperatorSigningKey,
+    MissingOperatorEpochSharePrice,
 }
 
 // Increase `PendingStakingOperationCount` by one and check if the `MaxPendingStakingOperation`
@@ -204,9 +248,109 @@ pub(crate) fn do_register_operator<T: Config>(
         // update stake summary to include new operator for next epoch
         domain_stake_summary.next_operators.insert(operator_id);
         // update pending transfers
-        PendingDeposits::<T>::insert(operator_id, operator_owner, amount);
+        let current_domain_epoch = (domain_id, domain_stake_summary.current_epoch_index).into();
+        do_calculate_previous_epoch_deposit_shares_and_maybe_add_new_deposit::<T>(
+            operator_id,
+            operator_owner,
+            current_domain_epoch,
+            Some(amount),
+        )?;
 
         Ok((operator_id, domain_stake_summary.current_epoch_index))
+    })
+}
+
+struct DepositInfo<Balance> {
+    /// If this nominator is currently nominating the operator.
+    /// If there are multiple deposits in same epoch, still returns true
+    nominating: bool,
+    /// Final current deposit in this epoch.
+    total_deposit: Balance,
+    /// If this is the first deposit in this epoch.
+    first_deposit_in_epoch: bool,
+}
+
+/// Calculates shares for any pending deposit for previous epoch using the the epoch share price and
+/// then maybe create a new pending deposit in the current epoch.
+/// If there is a pending deposit for the current epoch, then simply increment the amount.
+/// Returns updated deposit info if there was a new deposit.
+fn do_calculate_previous_epoch_deposit_shares_and_maybe_add_new_deposit<T: Config>(
+    operator_id: OperatorId,
+    nominator_id: NominatorId<T>,
+    current_domain_epoch: DomainEpoch,
+    maybe_new_deposit: Option<BalanceOf<T>>,
+) -> Result<Option<DepositInfo<BalanceOf<T>>>, Error> {
+    Deposits::<T>::try_mutate(operator_id, nominator_id, |maybe_deposit| {
+        let mut deposit = maybe_deposit.take().unwrap_or_default();
+        let maybe_pending_deposit = deposit.pending.take();
+
+        // if it is one of the previous domain epoch, then calculate shares for the epoch and update known deposit
+        let maybe_pending_deposit = if let Some(PendingDeposit {
+                                                    effective_domain_epoch,
+                                                    amount,
+                                                }) = maybe_pending_deposit && effective_domain_epoch != current_domain_epoch
+        {
+            let (domain_id, epoch_index) = effective_domain_epoch.deconstruct();
+            let epoch_share_price =
+                OperatorEpochSharePrice::<T>::get((domain_id, epoch_index, operator_id))
+                    .ok_or(Error::MissingOperatorEpochSharePrice)?;
+
+            let new_shares = T::Share::from(epoch_share_price.mul_floor(amount));
+            deposit.known.shares = deposit
+                .known
+                .shares
+                .checked_add(&new_shares)
+                .ok_or(Error::ShareOverflow)?;
+            None
+        } else {
+            maybe_pending_deposit
+        };
+
+        // add or create new pending deposit
+        let (maybe_pending_deposit, maybe_deposit_info) =
+            if let Some(new_deposit) = maybe_new_deposit {
+                let (pending_deposit, deposit_info) = match maybe_pending_deposit {
+                    None => {
+                        let pending_deposit = PendingDeposit {
+                            effective_domain_epoch: current_domain_epoch,
+                            amount: new_deposit,
+                        };
+
+                        let deposit_info = DepositInfo {
+                            nominating: !deposit.known.shares.is_zero(),
+                            total_deposit: new_deposit,
+                            first_deposit_in_epoch: true,
+                        };
+
+                        (pending_deposit, deposit_info)
+                    }
+                    Some(pending_deposit) => {
+                        let pending_deposit = PendingDeposit {
+                            effective_domain_epoch: current_domain_epoch,
+                            amount: pending_deposit
+                                .amount
+                                .checked_add(&new_deposit)
+                                .ok_or(Error::BalanceOverflow)?,
+                        };
+
+                        let deposit_info = DepositInfo {
+                            nominating: !deposit.known.shares.is_zero(),
+                            total_deposit: pending_deposit.amount,
+                            first_deposit_in_epoch: false,
+                        };
+
+                        (pending_deposit, deposit_info)
+                    }
+                };
+
+                (Some(pending_deposit), Some(deposit_info))
+            } else {
+                (maybe_pending_deposit, None)
+            };
+
+        deposit.pending = maybe_pending_deposit;
+        *maybe_deposit = Some(deposit);
+        Ok(maybe_deposit_info)
     })
 }
 
@@ -217,50 +361,55 @@ pub(crate) fn do_nominate_operator<T: Config>(
 ) -> Result<(), Error> {
     let operator = Operators::<T>::get(operator_id).ok_or(Error::UnknownOperator)?;
 
-    note_pending_staking_operation::<T>(operator.current_domain_id)?;
-
     ensure!(
         operator.status == OperatorStatus::Registered,
         Error::OperatorNotRegistered
     );
 
-    ensure!(
-        !PendingWithdrawals::<T>::contains_key(operator_id, nominator_id.clone()),
-        Error::TryDepositWithPendingWithdraw,
-    );
-
-    let (updated_total_deposit, first_nomination) =
-        match PendingDeposits::<T>::get(operator_id, nominator_id.clone()) {
-            None => (amount, true),
-            Some(existing_deposit) => (
-                existing_deposit
-                    .checked_add(&amount)
-                    .ok_or(Error::BalanceOverflow)?,
-                false,
-            ),
-        };
-
-    // if not a nominator, then ensure
-    // - amount >= operator's minimum nominator stake amount.
-    // - nominator count does not exceed max nominators.
-    // - if first nomination, then increment the nominator count.
-    if !Nominators::<T>::contains_key(operator_id, nominator_id.clone()) {
-        ensure!(
-            updated_total_deposit >= operator.minimum_nominator_stake,
-            Error::MinimumNominatorStake
-        );
-
-        if first_nomination {
-            NominatorCount::<T>::try_mutate(operator_id, |count| {
-                *count += 1;
-                ensure!(*count <= T::MaxNominators::get(), Error::MaximumNominators);
-                Ok(())
-            })?;
-        }
-    }
+    let domain_stake_summary = DomainStakingSummary::<T>::get(operator.current_domain_id)
+        .ok_or(Error::DomainNotInitialized)?;
 
     hold_pending_deposit::<T>(&nominator_id, operator_id, amount)?;
-    PendingDeposits::<T>::insert(operator_id, nominator_id, updated_total_deposit);
+
+    let current_domain_epoch = (
+        operator.current_domain_id,
+        domain_stake_summary.current_epoch_index,
+    )
+        .into();
+
+    let maybe_deposit_info =
+        do_calculate_previous_epoch_deposit_shares_and_maybe_add_new_deposit::<T>(
+            operator_id,
+            nominator_id,
+            current_domain_epoch,
+            Some(amount),
+        )?;
+
+    if let Some(DepositInfo {
+        nominating,
+        total_deposit,
+        first_deposit_in_epoch,
+    }) = maybe_deposit_info
+    {
+        // if not a nominator, then ensure
+        // - amount >= operator's minimum nominator stake amount.
+        // - nominator count does not exceed max nominators.
+        // - if first nomination, then increment the nominator count.
+        if !nominating {
+            ensure!(
+                total_deposit >= operator.minimum_nominator_stake,
+                Error::MinimumNominatorStake
+            );
+
+            if first_deposit_in_epoch {
+                NominatorCount::<T>::try_mutate(operator_id, |count| {
+                    *count += 1;
+                    ensure!(*count <= T::MaxNominators::get(), Error::MaximumNominators);
+                    Ok(())
+                })?;
+            }
+        }
+    }
 
     Ok(())
 }
