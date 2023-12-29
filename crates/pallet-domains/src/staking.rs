@@ -1,10 +1,10 @@
 //! Staking for domains
 
 use crate::pallet::{
-    Deposits, DomainRegistry, DomainStakingSummary, NextOperatorId, NominatorCount, Nominators,
-    OperatorIdOwner, OperatorSigningKey, Operators, PendingDeposits, PendingNominatorUnlocks,
+    Deposits, DomainRegistry, DomainStakingSummary, NextOperatorId, NominatorCount,
+    OperatorIdOwner, OperatorSigningKey, Operators, PendingNominatorUnlocks,
     PendingOperatorDeregistrations, PendingOperatorSwitches, PendingOperatorUnlocks,
-    PendingSlashes, PendingStakingOperationCount, PendingWithdrawals,
+    PendingSlashes, PendingStakingOperationCount, Withdrawals,
 };
 use crate::staking_epoch::{mint_funds, PendingNominatorUnlock, PendingOperatorSlashInfo};
 use crate::{
@@ -100,9 +100,9 @@ pub struct Nominator<Share> {
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
-pub enum Withdraw<Balance> {
+pub enum Withdraw<Share> {
     All,
-    Some(Balance),
+    Some(Share),
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
@@ -132,6 +132,8 @@ pub enum Error {
     DomainNotInitialized,
     PendingOperatorSwitch,
     InsufficientBalance,
+    InsufficientShares,
+    ZeroWithdrawShares,
     BalanceFreeze,
     MinimumOperatorStake,
     UnknownOperator,
@@ -536,121 +538,113 @@ pub(crate) fn do_deregister_operator<T: Config>(
 pub(crate) fn do_withdraw_stake<T: Config>(
     operator_id: OperatorId,
     nominator_id: NominatorId<T>,
-    withdraw: Withdraw<BalanceOf<T>>,
+    withdraw: Withdraw<T::Share>,
 ) -> Result<(), Error> {
-    ensure!(
-        !PendingDeposits::<T>::contains_key(operator_id, nominator_id.clone()),
-        Error::TryWithdrawWithPendingDeposit,
-    );
     Operators::<T>::try_mutate(operator_id, |maybe_operator| {
         let operator = maybe_operator.as_mut().ok_or(Error::UnknownOperator)?;
-
-        note_pending_staking_operation::<T>(operator.current_domain_id)?;
-
         ensure!(
             operator.status == OperatorStatus::Registered,
             Error::OperatorNotRegistered
         );
 
-        let nominator = Nominators::<T>::get(operator_id, nominator_id.clone())
-            .ok_or(Error::UnknownNominator)?;
+        // calculate shares for any previous epoch
+        let domain_stake_summary = DomainStakingSummary::<T>::get(operator.current_domain_id)
+            .ok_or(Error::DomainNotInitialized)?;
+        let domain_current_epoch = (
+            operator.current_domain_id,
+            domain_stake_summary.current_epoch_index,
+        )
+            .into();
+
+        do_calculate_previous_epoch_deposit_shares_and_maybe_add_new_deposit::<T>(
+            operator_id,
+            nominator_id.clone(),
+            domain_current_epoch,
+            None,
+        )?;
 
         let operator_owner =
             OperatorIdOwner::<T>::get(operator_id).ok_or(Error::UnknownOperator)?;
 
-        let withdraw = match PendingWithdrawals::<T>::get(operator_id, nominator_id.clone()) {
-            None => withdraw,
-            Some(existing_withdraw) => match (existing_withdraw, withdraw) {
-                (Withdraw::All, _) => {
-                    // there is an existing full withdraw, error out
-                    return Err(Error::ExistingFullWithdraw);
-                }
-                (_, Withdraw::All) => {
-                    // there is exisiting withdrawal with specific amount,
-                    // since the new intent is complete withdrawl, use this instead
-                    Withdraw::All
-                }
-                (Withdraw::Some(previous_withdraw), Withdraw::Some(new_withdraw)) => {
-                    // combine both withdrawls into single one
-                    Withdraw::Some(
-                        previous_withdraw
-                            .checked_add(&new_withdraw)
-                            .ok_or(Error::BalanceOverflow)?,
-                    )
-                }
-            },
-        };
+        let is_operator_owner = operator_owner == nominator_id;
 
-        match withdraw {
-            Withdraw::All => {
-                // if nominator is the operator owner and trying to withdraw all, then error out
-                if operator_owner == nominator_id {
-                    return Err(Error::MinimumOperatorStake);
+        Deposits::<T>::try_mutate(operator_id, nominator_id.clone(), |maybe_deposit| {
+            let deposit = maybe_deposit.as_mut().ok_or(Error::UnknownNominator)?;
+            let known_shares = deposit.known.shares;
+
+            let (remaining_shares, shares_withdrew) = {
+                let shares_withdrew = match withdraw {
+                    Withdraw::All => known_shares,
+                    Withdraw::Some(shares) => shares,
+                };
+
+                ensure!(!shares_withdrew.is_zero(), Error::ZeroWithdrawShares);
+                let remaining_shares = known_shares
+                    .checked_sub(&shares_withdrew)
+                    .ok_or(Error::InsufficientShares)?;
+
+                // short circuit to check if remaining shares can be zero
+                if remaining_shares.is_zero() {
+                    if is_operator_owner {
+                        return Err(Error::MinimumOperatorStake);
+                    }
+
+                    (remaining_shares, shares_withdrew)
+                } else {
+                    // total stake including any reward within this epoch.
+                    // used to calculate the share price at this instant.
+                    let total_stake = domain_stake_summary
+                        .current_epoch_rewards
+                        .get(&operator_id)
+                        .and_then(|rewards| {
+                            let operator_tax = operator.nomination_tax.mul_floor(*rewards);
+                            operator
+                                .current_total_stake
+                                .checked_add(rewards)?
+                                // deduct operator tax
+                                .checked_sub(&operator_tax)
+                        })
+                        .unwrap_or(operator.current_total_stake);
+
+                    let share_price =
+                        Perbill::from_rational(total_stake, operator.total_shares.into());
+                    let remaining_stake: BalanceOf<T> =
+                        share_price.mul_floor(remaining_shares.into());
+
+                    // ensure the remaining share value is atleast the defined minimum
+                    // MinOperatorStake if a nominator is operator pool owner
+                    if is_operator_owner && remaining_stake.lt(&T::MinOperatorStake::get()) {
+                        return Err(Error::MinimumOperatorStake);
+                    }
+
+                    // if not an owner, if remaining balance < MinNominatorStake, then withdraw all shares.
+                    if !is_operator_owner && remaining_stake.lt(&operator.minimum_nominator_stake) {
+                        (T::Share::zero(), known_shares)
+                    } else {
+                        (remaining_shares, shares_withdrew)
+                    }
                 }
+            };
 
-                PendingWithdrawals::<T>::insert(operator_id, nominator_id, withdraw);
-
+            if remaining_shares.is_zero() {
                 // reduce nominator count if withdraw all
                 NominatorCount::<T>::mutate(operator_id, |count| {
                     *count -= 1;
                 });
             }
-            Withdraw::Some(withdraw_amount) => {
-                if withdraw_amount.is_zero() {
-                    return Ok(());
-                }
 
-                let domain_stake_summary =
-                    DomainStakingSummary::<T>::get(operator.current_domain_id)
-                        .ok_or(Error::DomainNotInitialized)?;
+            deposit.known.shares = remaining_shares;
+            Withdrawals::<T>::append(
+                operator_id,
+                nominator_id,
+                Withdrawal {
+                    allowed_since_domain_epoch: domain_current_epoch,
+                    shares: shares_withdrew,
+                },
+            );
 
-                let total_stake = match domain_stake_summary.current_epoch_rewards.get(&operator_id)
-                {
-                    None => operator.current_total_stake,
-                    Some(rewards) => {
-                        let operator_tax = operator.nomination_tax.mul_floor(*rewards);
-                        operator
-                            .current_total_stake
-                            .checked_add(rewards)
-                            .ok_or(Error::BalanceOverflow)?
-                            // deduct operator tax
-                            .checked_sub(&operator_tax)
-                            .ok_or(Error::BalanceUnderflow)?
-                    }
-                };
-
-                let nominator_share =
-                    Perbill::from_rational(nominator.shares, operator.total_shares);
-
-                let nominator_staked_amount = nominator_share.mul_floor(total_stake);
-
-                let nominator_remaining_amount = nominator_staked_amount
-                    .checked_sub(&withdraw_amount)
-                    .ok_or(Error::BalanceUnderflow)?;
-
-                if operator_owner == nominator_id {
-                    // for operator owner, the remaining amount should not be less than MinimumOperatorStake,
-                    if nominator_remaining_amount < T::MinOperatorStake::get() {
-                        return Err(Error::MinimumOperatorStake);
-                    }
-
-                    PendingWithdrawals::<T>::insert(operator_id, nominator_id, withdraw);
-
-                    // for just a nominator, if remaining amount falls below MinimumNominator stake, then withdraw all
-                    // else withdraw the asked amount only
-                } else if nominator_remaining_amount < operator.minimum_nominator_stake {
-                    PendingWithdrawals::<T>::insert(operator_id, nominator_id, Withdraw::All);
-                    // reduce nominator count if withdraw all
-                    NominatorCount::<T>::mutate(operator_id, |count| {
-                        *count -= 1;
-                    });
-                } else {
-                    PendingWithdrawals::<T>::insert(operator_id, nominator_id, withdraw);
-                }
-            }
-        }
-
-        Ok(())
+            Ok(())
+        })
     })
 }
 

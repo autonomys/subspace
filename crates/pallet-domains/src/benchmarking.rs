@@ -127,7 +127,7 @@ mod benchmarks {
             assert_ok!(Domains::<T>::withdraw_stake(
                 RawOrigin::Signed(nominator).into(),
                 operator_id,
-                Withdraw::Some(withdraw_amount),
+                Withdraw::Some(withdraw_amount.into()),
             ));
         }
         assert_eq!(
@@ -403,14 +403,14 @@ mod benchmarks {
         assert_ok!(Domains::<T>::withdraw_stake(
             RawOrigin::Signed(nominator.clone()).into(),
             operator_id,
-            Withdraw::Some(withdraw_amount),
+            Withdraw::Some(withdraw_amount.into()),
         ));
 
         #[extrinsic_call]
         _(
             RawOrigin::Signed(nominator.clone()),
             operator_id,
-            Withdraw::Some(withdraw_amount),
+            Withdraw::Some(withdraw_amount.into()),
         );
 
         assert_eq!(

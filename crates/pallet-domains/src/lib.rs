@@ -1273,7 +1273,7 @@ mod pallet {
         pub fn withdraw_stake(
             origin: OriginFor<T>,
             operator_id: OperatorId,
-            withdraw: Withdraw<BalanceOf<T>>,
+            withdraw: Withdraw<T::Share>,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
