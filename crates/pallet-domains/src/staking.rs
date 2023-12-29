@@ -1,8 +1,8 @@
 //! Staking for domains
 
 use crate::pallet::{
-    Deposits, DomainRegistry, DomainStakingSummary, NextOperatorId, NominatorCount,
-    OperatorIdOwner, OperatorSigningKey, Operators, PendingNominatorUnlocks,
+    Deposits, DomainEpochCompleteAt, DomainRegistry, DomainStakingSummary, NextOperatorId,
+    NominatorCount, OperatorIdOwner, OperatorSigningKey, Operators, PendingNominatorUnlocks,
     PendingOperatorDeregistrations, PendingOperatorSwitches, PendingOperatorUnlocks,
     PendingSlashes, PendingStakingOperationCount, Withdrawals,
 };
@@ -12,8 +12,8 @@ use crate::{
     OperatorEpochSharePrice, Pallet, ReceiptHashFor, SlashedReason,
 };
 use codec::{Decode, Encode};
-use frame_support::traits::fungible::{Inspect, MutateHold};
-use frame_support::traits::tokens::{Fortitude, Preservation};
+use frame_support::traits::fungible::{Inspect, InspectHold, MutateHold};
+use frame_support::traits::tokens::{Fortitude, Precision, Preservation};
 use frame_support::{ensure, PalletError};
 use scale_info::TypeInfo;
 use sp_core::Get;
@@ -160,6 +160,9 @@ pub enum Error {
     MaximumNominators,
     DuplicateOperatorSigningKey,
     MissingOperatorEpochSharePrice,
+    MissingWithdrawal,
+    EpochNotComplete,
+    UnlockPeriodNotComplete,
 }
 
 // Increase `PendingStakingOperationCount` by one and check if the `MaxPendingStakingOperation`
@@ -634,17 +637,88 @@ pub(crate) fn do_withdraw_stake<T: Config>(
             }
 
             deposit.known.shares = remaining_shares;
-            Withdrawals::<T>::append(
-                operator_id,
-                nominator_id,
-                Withdrawal {
+            Withdrawals::<T>::mutate(operator_id, nominator_id, |maybe_withdrawals| {
+                let mut withdrawals = maybe_withdrawals.take().unwrap_or_default();
+                withdrawals.push_back(Withdrawal {
                     allowed_since_domain_epoch: domain_current_epoch,
                     shares: shares_withdrew,
-                },
-            );
+                });
+
+                *maybe_withdrawals = Some(withdrawals)
+            });
 
             Ok(())
         })
+    })
+}
+
+/// Unlocks any withdraws that are ready to be unlocked.
+pub(crate) fn do_unlock_funds<T: Config>(
+    operator_id: OperatorId,
+    nominator_id: NominatorId<T>,
+) -> Result<BalanceOf<T>, Error> {
+    Withdrawals::<T>::try_mutate(operator_id, nominator_id.clone(), |maybe_withdrawals| {
+        let Withdrawal {
+            allowed_since_domain_epoch,
+            shares,
+        } = maybe_withdrawals
+            .as_mut()
+            .and_then(|withdrawals| withdrawals.pop_front())
+            .ok_or(Error::MissingWithdrawal)?;
+
+        let (domain_id, epoch_idx) = allowed_since_domain_epoch.deconstruct();
+
+        let epoch_completed_block =
+            DomainEpochCompleteAt::<T>::get(domain_id, epoch_idx).ok_or(Error::EpochNotComplete)?;
+
+        let unlock_block_number = epoch_completed_block
+            .checked_add(&T::StakeWithdrawalLockingPeriod::get())
+            .ok_or(Error::BlockNumberOverflow)?;
+
+        let confirmed_domain_block = Pallet::<T>::oldest_receipt_number(domain_id);
+        ensure!(
+            unlock_block_number <= confirmed_domain_block,
+            Error::UnlockPeriodNotComplete
+        );
+
+        let epoch_share_price =
+            OperatorEpochSharePrice::<T>::get((domain_id, epoch_idx, operator_id))
+                .ok_or(Error::MissingOperatorEpochSharePrice)?;
+
+        let staked_hold_id = T::HoldIdentifier::staking_staked(operator_id);
+        let locked_amount = T::Currency::balance_on_hold(&staked_hold_id, &nominator_id);
+        let amount_to_unlock: BalanceOf<T> = {
+            // if the share price is one, just convert shares to ssc
+            let amount_to_unlock = if epoch_share_price.is_one() {
+                shares.into()
+            } else {
+                epoch_share_price.mul_floor(shares.into())
+            };
+
+            // if the amount to release is more than currently locked,
+            // mint the diff and release the rest
+            if amount_to_unlock.gt(&locked_amount) {
+                let amount_to_mint = amount_to_unlock
+                    .checked_sub(&locked_amount)
+                    .unwrap_or(Zero::zero());
+
+                // mint any gains
+                mint_funds::<T>(&nominator_id, amount_to_mint)?;
+                locked_amount
+            } else {
+                amount_to_unlock
+            }
+        };
+
+        T::Currency::release(
+            &staked_hold_id,
+            &nominator_id,
+            amount_to_unlock,
+            Precision::Exact,
+        )
+        .map_err(|_| Error::RemoveLock)?;
+
+        Ok(amount_to_unlock)
     })
 }
 

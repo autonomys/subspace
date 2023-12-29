@@ -79,6 +79,7 @@ pub(crate) type FungibleHoldId<T> =
 pub(crate) type NominatorId<T> = <T as frame_system::Config>::AccountId;
 
 pub trait HoldIdentifier<T: Config> {
+    // TODO: remove pending deposit and unlock holds as they are not required anymore.
     fn staking_pending_deposit(operator_id: OperatorId) -> FungibleHoldId<T>;
     fn staking_staked(operator_id: OperatorId) -> FungibleHoldId<T>;
     fn staking_pending_unlock(operator_id: OperatorId) -> FungibleHoldId<T>;
@@ -135,8 +136,9 @@ mod pallet {
     use crate::staking::do_reward_operators;
     use crate::staking::{
         do_deregister_operator, do_nominate_operator, do_register_operator, do_slash_operators,
-        do_switch_operator_domain, do_withdraw_stake, Deposit, Error as StakingError, Nominator,
-        Operator, OperatorConfig, StakingSummary, Withdraw, Withdrawal,
+        do_switch_operator_domain, do_unlock_funds, do_withdraw_stake, Deposit,
+        Error as StakingError, Nominator, Operator, OperatorConfig, StakingSummary, Withdraw,
+        Withdrawal,
     };
     #[cfg(not(feature = "runtime-benchmarks"))]
     use crate::staking_epoch::do_unlock_pending_withdrawals;
@@ -175,6 +177,7 @@ mod pallet {
     use sp_std::boxed::Box;
     use sp_std::collections::btree_map::BTreeMap;
     use sp_std::collections::btree_set::BTreeSet;
+    use sp_std::collections::vec_deque::VecDeque;
     use sp_std::fmt::Debug;
     use sp_std::vec;
     use sp_std::vec::Vec;
@@ -443,7 +446,7 @@ mod pallet {
         OperatorId,
         Identity,
         NominatorId<T>,
-        Vec<Withdrawal<T::Share>>,
+        VecDeque<Withdrawal<T::Share>>,
         OptionQuery,
     >;
 
@@ -829,6 +832,11 @@ mod pallet {
         WithdrewStake {
             operator_id: OperatorId,
             nominator_id: NominatorId<T>,
+        },
+        FundsUnlocked {
+            operator_id: OperatorId,
+            nominator_id: NominatorId<T>,
+            amount: BalanceOf<T>,
         },
         PreferredOperator {
             operator_id: OperatorId,
@@ -1287,6 +1295,20 @@ mod pallet {
             Ok(())
         }
 
+        #[pallet::call_index(10)]
+        #[pallet::weight(Weight::from_all(10_000))]
+        pub fn unlock_funds(origin: OriginFor<T>, operator_id: OperatorId) -> DispatchResult {
+            let nominator_id = ensure_signed(origin)?;
+            let unlocked_funds = do_unlock_funds::<T>(operator_id, nominator_id.clone())
+                .map_err(crate::pallet::Error::<T>::from)?;
+            Self::deposit_event(Event::FundsUnlocked {
+                operator_id,
+                nominator_id,
+                amount: unlocked_funds,
+            });
+            Ok(())
+        }
+
         /// Extrinsic to update domain's operator allow list.
         /// Note:
         /// - If the previous allowed list is set to specific operators and new allow list is set
@@ -1294,7 +1316,7 @@ mod pallet {
         /// - If the previous allowed list is set to `Anyone` or specific operators and the new
         ///   allow list is set to specific operators, then all the registered not allowed operators
         ///   will continue to operate until they de-register themselves.
-        #[pallet::call_index(10)]
+        #[pallet::call_index(11)]
         #[pallet::weight(Weight::from_all(10_000))]
         pub fn update_domain_operator_allow_list(
             origin: OriginFor<T>,
@@ -1309,7 +1331,7 @@ mod pallet {
         }
 
         /// Force staking epoch transition for a given domain
-        #[pallet::call_index(11)]
+        #[pallet::call_index(12)]
         #[pallet::weight(T::WeightInfo::pending_staking_operation())]
         pub fn force_staking_epoch_transition(
             origin: OriginFor<T>,
