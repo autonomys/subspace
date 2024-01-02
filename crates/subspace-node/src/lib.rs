@@ -39,44 +39,25 @@ pub struct PurgeChainCmd {
     /// The base struct of the purge-chain command.
     #[clap(flatten)]
     pub base: sc_cli::PurgeChainCmd,
-
-    /// Domain arguments
-    ///
-    /// The command-line arguments provided first will be passed to the embedded consensus node,
-    /// while the arguments provided after `--` will be passed to the domain node.
-    ///
-    /// subspace-node purge-chain [consensus-chain-args] -- [domain-args]
-    #[arg(raw = true)]
-    pub domain_args: Vec<String>,
 }
 
 impl PurgeChainCmd {
     /// Run the purge command
-    pub fn run(
-        &self,
-        consensus_chain_config: sc_service::Configuration,
-        domain_config: Option<sc_service::Configuration>,
-    ) -> sc_cli::Result<()> {
-        let mut db_paths = domain_config.map_or(vec![], |dc| {
-            vec![dc
-                .database
-                .path()
-                .expect("No custom database used here; qed")
-                .to_path_buf()
-                .clone()]
-        });
-
-        db_paths.push(
-            consensus_chain_config
-                .database
-                .path()
-                .expect("No custom database used here; qed")
-                .to_path_buf(),
-        );
+    pub fn run(&self, consensus_chain_config: sc_service::Configuration) -> sc_cli::Result<()> {
+        let paths = vec![
+            consensus_chain_config.base_path.path().join("db"),
+            consensus_chain_config.base_path.path().join("domains"),
+            consensus_chain_config.base_path.path().join("network"),
+            // TODO: Following three are temporary workaround for wiping old chains, remove once enough time has passed
+            consensus_chain_config.base_path.path().join("chains"),
+            consensus_chain_config.base_path.path().join("domain-0"),
+            consensus_chain_config.base_path.path().join("domain-1"),
+        ];
 
         if !self.base.yes {
-            for db_path in &db_paths {
-                println!("{}", db_path.display());
+            println!("Following paths (if exist) are about to be removed:");
+            for path in &paths {
+                println!(" {}", path.display());
             }
             print!("Are you sure to remove? [y/N]: ");
             io::stdout().flush().expect("failed to flush stdout");
@@ -94,13 +75,13 @@ impl PurgeChainCmd {
             }
         }
 
-        for db_path in &db_paths {
+        for db_path in &paths {
             match fs::remove_dir_all(db_path) {
                 Ok(_) => {
                     println!("{:?} removed.", &db_path);
                 }
                 Err(ref err) if err.kind() == io::ErrorKind::NotFound => {
-                    eprintln!("{:?} did not exist.", &db_path);
+                    eprintln!("{:?} did not exist already, skipping.", &db_path);
                 }
                 Err(err) => return Err(err.into()),
             }
