@@ -89,8 +89,12 @@ pub struct Operator<Balance, Share> {
     /// Total rewards this operator received this current epoch.
     pub current_epoch_rewards: Balance,
     /// Total shares of all the nominators under this operator.
-    pub total_shares: Share,
+    pub current_total_shares: Share,
     pub status: OperatorStatus,
+    /// Total deposits during the previous epoch
+    pub deposits_in_epoch: Balance,
+    /// Total withdrew shares during the previous epoch
+    pub withdrawals_in_epoch: Share,
 }
 
 /// Type that represents a nominator's details under a specific operator.
@@ -245,8 +249,11 @@ pub(crate) fn do_register_operator<T: Config>(
             nomination_tax,
             current_total_stake: Zero::zero(),
             current_epoch_rewards: Zero::zero(),
-            total_shares: Zero::zero(),
+            current_total_shares: Zero::zero(),
             status: OperatorStatus::Registered,
+            // sum total deposits added during this epoch.
+            deposits_in_epoch: amount,
+            withdrawals_in_epoch: Zero::zero(),
         };
         Operators::<T>::insert(operator_id, operator);
         OperatorSigningKey::<T>::insert(signing_key, operator_id);
@@ -300,7 +307,7 @@ fn do_calculate_previous_epoch_deposit_shares_and_maybe_add_new_deposit<T: Confi
                 OperatorEpochSharePrice::<T>::get((domain_id, epoch_index, operator_id))
                     .ok_or(Error::MissingOperatorEpochSharePrice)?;
 
-            let new_shares = T::Share::from(epoch_share_price.mul_floor(amount));
+            let new_shares = T::Share::from(epoch_share_price.saturating_reciprocal_mul_floor(amount));
             deposit.known.shares = deposit
                 .known
                 .shares
@@ -364,59 +371,67 @@ pub(crate) fn do_nominate_operator<T: Config>(
     nominator_id: T::AccountId,
     amount: BalanceOf<T>,
 ) -> Result<(), Error> {
-    let operator = Operators::<T>::get(operator_id).ok_or(Error::UnknownOperator)?;
+    Operators::<T>::try_mutate(operator_id, |maybe_operator| {
+        let operator = maybe_operator.as_mut().ok_or(Error::UnknownOperator)?;
 
-    ensure!(
-        operator.status == OperatorStatus::Registered,
-        Error::OperatorNotRegistered
-    );
+        ensure!(
+            operator.status == OperatorStatus::Registered,
+            Error::OperatorNotRegistered
+        );
 
-    let domain_stake_summary = DomainStakingSummary::<T>::get(operator.current_domain_id)
-        .ok_or(Error::DomainNotInitialized)?;
+        let domain_stake_summary = DomainStakingSummary::<T>::get(operator.current_domain_id)
+            .ok_or(Error::DomainNotInitialized)?;
 
-    hold_pending_deposit::<T>(&nominator_id, operator_id, amount)?;
+        hold_pending_deposit::<T>(&nominator_id, operator_id, amount)?;
 
-    let current_domain_epoch = (
-        operator.current_domain_id,
-        domain_stake_summary.current_epoch_index,
-    )
-        .into();
+        // increment total deposit for operator pool within this epoch
+        operator.deposits_in_epoch = operator
+            .deposits_in_epoch
+            .checked_add(&amount)
+            .ok_or(Error::BalanceOverflow)?;
 
-    let maybe_deposit_info =
-        do_calculate_previous_epoch_deposit_shares_and_maybe_add_new_deposit::<T>(
-            operator_id,
-            nominator_id,
-            current_domain_epoch,
-            Some(amount),
-        )?;
+        let current_domain_epoch = (
+            operator.current_domain_id,
+            domain_stake_summary.current_epoch_index,
+        )
+            .into();
 
-    if let Some(DepositInfo {
-        nominating,
-        total_deposit,
-        first_deposit_in_epoch,
-    }) = maybe_deposit_info
-    {
-        // if not a nominator, then ensure
-        // - amount >= operator's minimum nominator stake amount.
-        // - nominator count does not exceed max nominators.
-        // - if first nomination, then increment the nominator count.
-        if !nominating {
-            ensure!(
-                total_deposit >= operator.minimum_nominator_stake,
-                Error::MinimumNominatorStake
-            );
+        let maybe_deposit_info =
+            do_calculate_previous_epoch_deposit_shares_and_maybe_add_new_deposit::<T>(
+                operator_id,
+                nominator_id,
+                current_domain_epoch,
+                Some(amount),
+            )?;
 
-            if first_deposit_in_epoch {
-                NominatorCount::<T>::try_mutate(operator_id, |count| {
-                    *count += 1;
-                    ensure!(*count <= T::MaxNominators::get(), Error::MaximumNominators);
-                    Ok(())
-                })?;
+        if let Some(DepositInfo {
+            nominating,
+            total_deposit,
+            first_deposit_in_epoch,
+        }) = maybe_deposit_info
+        {
+            // if not a nominator, then ensure
+            // - amount >= operator's minimum nominator stake amount.
+            // - nominator count does not exceed max nominators.
+            // - if first nomination, then increment the nominator count.
+            if !nominating {
+                ensure!(
+                    total_deposit >= operator.minimum_nominator_stake,
+                    Error::MinimumNominatorStake
+                );
+
+                if first_deposit_in_epoch {
+                    NominatorCount::<T>::try_mutate(operator_id, |count| {
+                        *count += 1;
+                        ensure!(*count <= T::MaxNominators::get(), Error::MaximumNominators);
+                        Ok(())
+                    })?;
+                }
             }
         }
-    }
 
-    Ok(())
+        Ok(())
+    })
 }
 
 pub(crate) fn hold_pending_deposit<T: Config>(
@@ -610,7 +625,7 @@ pub(crate) fn do_withdraw_stake<T: Config>(
                         .unwrap_or(operator.current_total_stake);
 
                     let share_price =
-                        Perbill::from_rational(total_stake, operator.total_shares.into());
+                        Perbill::from_rational(total_stake, operator.current_total_shares.into());
                     let remaining_stake: BalanceOf<T> =
                         share_price.mul_floor(remaining_shares.into());
 
@@ -628,6 +643,12 @@ pub(crate) fn do_withdraw_stake<T: Config>(
                     }
                 }
             };
+
+            // update operator pool to note withdrew shares in the epoch
+            operator.withdrawals_in_epoch = operator
+                .withdrawals_in_epoch
+                .checked_add(&shares_withdrew)
+                .ok_or(Error::ShareOverflow)?;
 
             if remaining_shares.is_zero() {
                 // reduce nominator count if withdraw all
@@ -1062,8 +1083,10 @@ pub(crate) mod tests {
                     nomination_tax: Default::default(),
                     current_total_stake: operator_stake,
                     current_epoch_rewards: 0,
-                    total_shares: operator_stake,
+                    current_total_shares: operator_stake,
                     status: OperatorStatus::Registered,
+                    deposits_in_epoch: 0,
+                    withdrawals_in_epoch: 0,
                 }
             );
 

@@ -538,8 +538,10 @@ pub(crate) fn register_genesis_domain(creator: u64, operator_ids: Vec<OperatorId
                 nomination_tax: Default::default(),
                 current_total_stake: Zero::zero(),
                 current_epoch_rewards: Zero::zero(),
-                total_shares: Zero::zero(),
+                current_total_shares: Zero::zero(),
                 status: OperatorStatus::Registered,
+                deposits_in_epoch: Zero::zero(),
+                withdrawals_in_epoch: Zero::zero(),
             },
         );
     }
