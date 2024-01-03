@@ -26,10 +26,12 @@ use evm_domain_runtime::ExecutorDispatch as EVMDomainExecutorDispatch;
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
 use log::warn;
-use sc_cli::{ChainSpec, CliConfiguration, SubstrateCli};
+use sc_cli::{ChainSpec, SubstrateCli};
 use sc_consensus_slots::SlotProportion;
 use sc_executor::NativeExecutionDispatch;
-use sc_service::{Configuration, PartialComponents};
+use sc_network::config::NodeKeyConfig;
+use sc_service::config::KeystoreConfig;
+use sc_service::{Configuration, DatabaseSource, PartialComponents};
 use sc_storage_monitor::StorageMonitorService;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::tracing_unbounded;
@@ -225,37 +227,13 @@ fn main() -> Result<(), Error> {
                         base_dir.join("subspace-node").join("chains").join(chain),
                     );
                 }
+                let _ = std::fs::remove_dir_all(base_dir.join("subspace-node").join("domain-0"));
+                let _ = std::fs::remove_dir_all(base_dir.join("subspace-node").join("domain-1"));
             }
 
             let runner = cli.create_runner(&cmd.base)?;
 
-            runner.sync_run(|consensus_chain_config| {
-                let domain_config = if cmd.domain_args.is_empty() {
-                    None
-                } else {
-                    let domain_cli = DomainCli::new(
-                        cmd.base
-                            .base_path()?
-                            .map(|base_path| base_path.path().to_path_buf()),
-                        cmd.domain_args.clone().into_iter(),
-                    );
-
-                    let domain_config = SubstrateCli::create_configuration(
-                        &domain_cli,
-                        &domain_cli,
-                        consensus_chain_config.tokio_handle.clone(),
-                    )
-                    .map_err(|error| {
-                        sc_service::Error::Other(format!(
-                            "Failed to create domain configuration: {error:?}"
-                        ))
-                    })?;
-
-                    Some(domain_config)
-                };
-
-                cmd.run(consensus_chain_config, domain_config)
-            })?;
+            runner.sync_run(|consensus_chain_config| cmd.run(consensus_chain_config))?;
         }
         Some(Subcommand::Revert(cmd)) => {
             let runner = cli.create_runner(cmd)?;
@@ -365,15 +343,15 @@ fn main() -> Result<(), Error> {
                 let runner = cli.create_runner(cmd)?;
                 runner.sync_run(|consensus_chain_config| {
                     let domain_cli = DomainCli::new(
-                        cli.run
-                            .base_path()?
-                            .map(|base_path| base_path.path().to_path_buf()),
                         // pass the domain-id manually for benchmark since this is
                         // not possible through cli commands at this moment.
                         vec!["--domain-id".to_owned(), "0".to_owned()].into_iter(),
                     );
                     let domain_config = domain_cli
-                        .create_domain_configuration(consensus_chain_config.tokio_handle)
+                        .create_domain_configuration(
+                            &consensus_chain_config.base_path.path().join("domains"),
+                            consensus_chain_config.tokio_handle,
+                        )
                         .map_err(|error| {
                             sc_service::Error::Other(format!(
                                 "Failed to create domain configuration: {error:?}"
@@ -401,14 +379,12 @@ fn main() -> Result<(), Error> {
             DomainSubcommand::ExportExecutionReceipt(cmd) => {
                 let runner = cli.create_runner(cmd)?;
                 runner.sync_run(|consensus_chain_config| {
-                    let domain_cli = DomainCli::new(
-                        cli.run
-                            .base_path()?
-                            .map(|base_path| base_path.path().to_path_buf()),
-                        cmd.domain_args.clone().into_iter(),
-                    );
+                    let domain_cli = DomainCli::new(cmd.domain_args.clone().into_iter());
                     let domain_config = domain_cli
-                        .create_domain_configuration(consensus_chain_config.tokio_handle)
+                        .create_domain_configuration(
+                            &consensus_chain_config.base_path.path().join("domains"),
+                            consensus_chain_config.tokio_handle,
+                        )
                         .map_err(|error| {
                             sc_service::Error::Other(format!(
                                 "Failed to create domain configuration: {error:?}"
@@ -430,10 +406,26 @@ fn main() -> Result<(), Error> {
             _ => unimplemented!("Domain subcommand"),
         },
         None => {
-            let runner = cli.create_runner(&cli.run)?;
+            let mut runner = cli.create_runner(&cli.run)?;
             set_default_ss58_version(&runner.config().chain_spec);
+            // Change default paths to Subspace structure
+            {
+                let config = runner.config_mut();
+                config.database = DatabaseSource::ParityDb {
+                    path: config.base_path.path().join("db"),
+                };
+                // Consensus node doesn't use keystore
+                config.keystore = KeystoreConfig::InMemory;
+                if let Some(net_config_path) = &mut config.network.net_config_path {
+                    *net_config_path = config.base_path.path().join("network");
+                    config.network.node_key = NodeKeyConfig::Ed25519(
+                        sc_network::config::Secret::File(net_config_path.join("secret_ed25519")),
+                    );
+                }
+            }
             runner.run_node_until_exit(|consensus_chain_config| async move {
                 let tokio_handle = consensus_chain_config.tokio_handle.clone();
+                let base_path = consensus_chain_config.base_path.path().to_path_buf();
                 let database_source = consensus_chain_config.database.clone();
 
                 let domains_bootstrap_nodes: serde_json::map::Map<String, serde_json::Value> =
@@ -505,7 +497,7 @@ fn main() -> Result<(), Error> {
 
                         DsnConfig {
                             keypair,
-                            base_path: consensus_chain_config.base_path.path().into(),
+                            base_path: base_path.clone(),
                             listen_on: cli.dsn_listen_on,
                             bootstrap_nodes: dsn_bootstrap_nodes,
                             reserved_peers: cli.dsn_reserved_peers,
@@ -577,12 +569,7 @@ fn main() -> Result<(), Error> {
                     );
                     let _enter = span.enter();
 
-                    let mut domain_cli = DomainCli::new(
-                        cli.run
-                            .base_path()?
-                            .map(|base_path| base_path.path().to_path_buf()),
-                        cli.domain_args.into_iter(),
-                    );
+                    let mut domain_cli = DomainCli::new(cli.domain_args.into_iter());
 
                     let domain_id = domain_cli.domain_id;
 
@@ -663,6 +650,7 @@ fn main() -> Result<(), Error> {
 
                     let domain_starter = DomainInstanceStarter {
                         domain_cli,
+                        base_path,
                         tokio_handle,
                         consensus_client: consensus_chain_node.client.clone(),
                         consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory::new(

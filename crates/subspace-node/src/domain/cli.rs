@@ -14,18 +14,18 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-use crate::domain::evm_chain_spec::{self, SpecId};
+use crate::domain::evm_chain_spec;
+use crate::domain::evm_chain_spec::SpecId;
 use clap::Parser;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
 use parity_scale_codec::Encode;
 use sc_cli::{
     BlockNumberOrHash, ChainSpec, CliConfiguration, DefaultConfigurationValues, ImportParams,
-    KeystoreParams, NetworkParams, Result, Role, RunCmd as SubstrateRunCmd, SharedParams,
-    SubstrateCli,
+    KeystoreParams, NetworkParams, Role, RunCmd as SubstrateRunCmd, SharedParams, SubstrateCli,
 };
 use sc_client_api::backend::AuxStore;
-use sc_service::config::PrometheusConfig;
-use sc_service::{BasePath, Configuration};
+use sc_service::config::{KeystoreConfig, PrometheusConfig};
+use sc_service::{BasePath, Configuration, DatabaseSource};
 use sp_blockchain::HeaderBackend;
 use sp_domain_digests::AsPredigest;
 use sp_domains::storage::RawGenesis;
@@ -36,7 +36,7 @@ use sp_runtime::{BuildStorage, DigestItem};
 use std::io::Write;
 use std::net::SocketAddr;
 use std::num::ParseIntError;
-use std::path::PathBuf;
+use std::path::Path;
 use subspace_runtime::Block;
 
 /// Sub-commands supported by the executor.
@@ -60,11 +60,11 @@ pub enum Subcommand {
     ExportExecutionReceipt(ExportExecutionReceiptCmd),
 }
 
-fn parse_domain_id(s: &str) -> std::result::Result<DomainId, ParseIntError> {
+fn parse_domain_id(s: &str) -> Result<DomainId, ParseIntError> {
     s.parse::<u32>().map(Into::into)
 }
 
-fn parse_operator_id(s: &str) -> std::result::Result<OperatorId, ParseIntError> {
+fn parse_operator_id(s: &str) -> Result<OperatorId, ParseIntError> {
     s.parse::<u64>().map(OperatorId::from)
 }
 
@@ -88,26 +88,8 @@ pub struct DomainCli {
 
 impl DomainCli {
     /// Constructs a new instance of [`DomainCli`].
-    pub fn new(
-        consensus_base_path: Option<PathBuf>,
-        domain_args: impl Iterator<Item = String>,
-    ) -> Self {
-        let mut cli =
-            DomainCli::parse_from([Self::executable_name()].into_iter().chain(domain_args));
-
-        // Use `consensus_base_path/domain-{domain_id}` as the domain base path if it's not
-        // specified explicitly but there is an explicit consensus base path.
-        match consensus_base_path {
-            Some(c_path) if cli.run.shared_params.base_path.is_none() => {
-                cli.run
-                    .shared_params
-                    .base_path
-                    .replace(c_path.join(format!("domain-{}", u32::from(cli.domain_id))));
-            }
-            _ => {}
-        }
-
-        cli
+    pub fn new(domain_args: impl Iterator<Item = String>) -> Self {
+        DomainCli::parse_from([Self::executable_name()].into_iter().chain(domain_args))
     }
 
     pub fn additional_args(&self) -> impl Iterator<Item = String> {
@@ -119,10 +101,30 @@ impl DomainCli {
     /// Creates domain configuration from domain cli.
     pub fn create_domain_configuration(
         &self,
+        base_path: &Path,
         tokio_handle: tokio::runtime::Handle,
     ) -> sc_cli::Result<Configuration> {
-        let service_config = SubstrateCli::create_configuration(self, self, tokio_handle)?;
-        Ok(service_config)
+        let mut domain_config = SubstrateCli::create_configuration(self, self, tokio_handle)?;
+
+        // Change default paths to Subspace structure
+        {
+            let domain_base_path = base_path.join(self.domain_id.to_string());
+            domain_config.database = DatabaseSource::ParityDb {
+                path: domain_base_path.join("db"),
+            };
+            domain_config.keystore = KeystoreConfig::Path {
+                path: domain_base_path.join("keystore"),
+                password: match domain_config.keystore {
+                    KeystoreConfig::Path { password, .. } => password,
+                    KeystoreConfig::InMemory => None,
+                },
+            };
+            // Network directory is shared with consensus chain
+            if let Some(net_config_path) = &mut domain_config.network.net_config_path {
+                *net_config_path = base_path.join("network");
+            }
+        }
+        Ok(domain_config)
     }
 }
 
@@ -157,7 +159,7 @@ impl SubstrateCli for DomainCli {
         2022
     }
 
-    fn load_spec(&self, id: &str) -> std::result::Result<Box<dyn ChainSpec>, String> {
+    fn load_spec(&self, id: &str) -> Result<Box<dyn ChainSpec>, String> {
         // TODO: Fetch the runtime name of `self.domain_id` properly.
         let runtime_name = "evm";
         match runtime_name {
@@ -198,11 +200,11 @@ impl CliConfiguration<Self> for DomainCli {
         self.run.keystore_params()
     }
 
-    fn base_path(&self) -> Result<Option<BasePath>> {
+    fn base_path(&self) -> sc_cli::Result<Option<BasePath>> {
         self.shared_params().base_path()
     }
 
-    fn rpc_addr(&self, default_listen_port: u16) -> Result<Option<SocketAddr>> {
+    fn rpc_addr(&self, default_listen_port: u16) -> sc_cli::Result<Option<SocketAddr>> {
         self.run.rpc_addr(default_listen_port)
     }
 
@@ -210,15 +212,15 @@ impl CliConfiguration<Self> for DomainCli {
         &self,
         default_listen_port: u16,
         chain_spec: &Box<dyn ChainSpec>,
-    ) -> Result<Option<PrometheusConfig>> {
+    ) -> sc_cli::Result<Option<PrometheusConfig>> {
         self.run.prometheus_config(default_listen_port, chain_spec)
     }
 
-    fn chain_id(&self, is_dev: bool) -> Result<String> {
+    fn chain_id(&self, is_dev: bool) -> sc_cli::Result<String> {
         self.run.chain_id(is_dev)
     }
 
-    fn role(&self, _is_dev: bool) -> Result<sc_service::Role> {
+    fn role(&self, _is_dev: bool) -> sc_cli::Result<sc_service::Role> {
         if self.run.validator {
             return Err(sc_cli::Error::Input(
                 "use `--operator-id` argument to run as operator".to_string(),
@@ -235,54 +237,57 @@ impl CliConfiguration<Self> for DomainCli {
         })
     }
 
-    fn transaction_pool(&self, is_dev: bool) -> Result<sc_service::config::TransactionPoolOptions> {
+    fn transaction_pool(
+        &self,
+        is_dev: bool,
+    ) -> sc_cli::Result<sc_service::config::TransactionPoolOptions> {
         self.run.transaction_pool(is_dev)
     }
 
-    fn trie_cache_maximum_size(&self) -> Result<Option<usize>> {
+    fn trie_cache_maximum_size(&self) -> sc_cli::Result<Option<usize>> {
         self.run.trie_cache_maximum_size()
     }
 
-    fn rpc_methods(&self) -> Result<sc_service::config::RpcMethods> {
+    fn rpc_methods(&self) -> sc_cli::Result<sc_service::config::RpcMethods> {
         self.run.rpc_methods()
     }
 
-    fn rpc_max_connections(&self) -> Result<u32> {
+    fn rpc_max_connections(&self) -> sc_cli::Result<u32> {
         self.run.rpc_max_connections()
     }
 
-    fn rpc_cors(&self, is_dev: bool) -> Result<Option<Vec<String>>> {
+    fn rpc_cors(&self, is_dev: bool) -> sc_cli::Result<Option<Vec<String>>> {
         self.run.rpc_cors(is_dev)
     }
 
-    fn default_heap_pages(&self) -> Result<Option<u64>> {
+    fn default_heap_pages(&self) -> sc_cli::Result<Option<u64>> {
         self.run.default_heap_pages()
     }
 
-    fn force_authoring(&self) -> Result<bool> {
+    fn force_authoring(&self) -> sc_cli::Result<bool> {
         self.run.force_authoring()
     }
 
-    fn disable_grandpa(&self) -> Result<bool> {
+    fn disable_grandpa(&self) -> sc_cli::Result<bool> {
         self.run.disable_grandpa()
     }
 
-    fn max_runtime_instances(&self) -> Result<Option<usize>> {
+    fn max_runtime_instances(&self) -> sc_cli::Result<Option<usize>> {
         self.run.max_runtime_instances()
     }
 
-    fn announce_block(&self) -> Result<bool> {
+    fn announce_block(&self) -> sc_cli::Result<bool> {
         self.run.announce_block()
     }
 
-    fn dev_key_seed(&self, is_dev: bool) -> Result<Option<String>> {
+    fn dev_key_seed(&self, is_dev: bool) -> sc_cli::Result<Option<String>> {
         self.run.dev_key_seed(is_dev)
     }
 
     fn telemetry_endpoints(
         &self,
         chain_spec: &Box<dyn ChainSpec>,
-    ) -> Result<Option<sc_telemetry::TelemetryEndpoints>> {
+    ) -> sc_cli::Result<Option<sc_telemetry::TelemetryEndpoints>> {
         self.run.telemetry_endpoints(chain_spec)
     }
 }

@@ -14,10 +14,12 @@ use sc_consensus_subspace::block_import::BlockImportingNotification;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::slot_worker::NewSlotNotification;
 use sc_network::NetworkPeers;
-use sc_service::{BasePath, Configuration};
+use sc_service::config::KeystoreConfig;
+use sc_service::{BasePath, Configuration, DatabaseSource};
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::{TracingUnboundedReceiver, TracingUnboundedSender};
 use sp_domains::{DomainInstanceData, RuntimeType};
+use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_runtime::{ExecutorDispatch as CExecutorDispatch, RuntimeApi as CRuntimeApi};
 use subspace_runtime_primitives::opaque::Block as CBlock;
@@ -27,6 +29,7 @@ use subspace_service::FullClient as CFullClient;
 /// bootstrap result
 pub struct DomainInstanceStarter<CNetwork> {
     pub domain_cli: DomainCli,
+    pub base_path: PathBuf,
     pub tokio_handle: tokio::runtime::Handle,
     pub consensus_client: Arc<CFullClient<CRuntimeApi, CExecutorDispatch>>,
     pub consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory<CBlock>,
@@ -46,7 +49,7 @@ where
     pub async fn start(
         self,
         bootstrap_result: BootstrapResult<CBlock>,
-    ) -> std::result::Result<(), Box<dyn std::error::Error>> {
+    ) -> Result<(), Box<dyn std::error::Error>> {
         let BootstrapResult {
             domain_instance_data,
             domain_created_at,
@@ -60,6 +63,7 @@ where
 
         let DomainInstanceStarter {
             domain_cli,
+            base_path,
             tokio_handle,
             consensus_client,
             consensus_offchain_tx_pool_factory,
@@ -72,13 +76,34 @@ where
         } = self;
 
         let domain_id = domain_cli.domain_id;
-        let domain_config = {
+        let mut domain_config = {
             let chain_id = domain_cli.chain_id(domain_cli.is_dev()?)?;
 
             let domain_spec = evm_chain_spec::create_domain_spec(chain_id.as_str(), raw_genesis)?;
 
             create_configuration::<_, DomainCli, DomainCli>(&domain_cli, domain_spec, tokio_handle)?
         };
+
+        // Change default paths to Subspace structure
+        // TODO: Similar copy-paste exists in `DomainCli::create_domain_configuration()` and should
+        //  be de-duplicated
+        {
+            let domain_base_path = base_path.join("domains").join(domain_id.to_string());
+            domain_config.database = DatabaseSource::ParityDb {
+                path: domain_base_path.join("db"),
+            };
+            domain_config.keystore = KeystoreConfig::Path {
+                path: domain_base_path.join("keystore"),
+                password: match domain_config.keystore {
+                    KeystoreConfig::Path { password, .. } => password,
+                    KeystoreConfig::InMemory => None,
+                },
+            };
+            // Network directory is shared with consensus chain
+            if let Some(net_config_path) = &mut domain_config.network.net_config_path {
+                *net_config_path = base_path.join("network");
+            }
+        }
 
         let block_importing_notification_stream = || {
             block_importing_notification_stream.subscribe().then(

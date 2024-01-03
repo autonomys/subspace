@@ -23,7 +23,7 @@ use cross_domain_message_gossip::GossipWorkerBuilder;
 use domain_client_operator::Bootstrapper;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
 use log::warn;
-use sc_cli::{ChainSpec, CliConfiguration, SubstrateCli};
+use sc_cli::{ChainSpec, SubstrateCli};
 use sc_consensus_slots::SlotProportion;
 use sc_service::Configuration;
 use sc_storage_monitor::StorageMonitorService;
@@ -125,6 +125,7 @@ fn main() -> Result<(), Error> {
     set_default_ss58_version(&runner.config().chain_spec);
     runner.run_node_until_exit(|consensus_chain_config| async move {
         let tokio_handle = consensus_chain_config.tokio_handle.clone();
+        let base_path = consensus_chain_config.base_path.path().to_path_buf();
         let database_source = consensus_chain_config.database.clone();
 
         let domains_bootstrap_nodes: serde_json::map::Map<String, serde_json::Value> =
@@ -274,12 +275,7 @@ fn main() -> Result<(), Error> {
             );
             let _enter = span.enter();
 
-            let mut domain_cli = DomainCli::new(
-                cli.run
-                    .base_path()?
-                    .map(|base_path| base_path.path().to_path_buf()),
-                cli.domain_args.into_iter(),
-            );
+            let mut domain_cli = DomainCli::new(cli.domain_args.into_iter());
 
             let domain_id = domain_cli.domain_id;
 
@@ -360,6 +356,7 @@ fn main() -> Result<(), Error> {
 
             let domain_starter = DomainInstanceStarter {
                 domain_cli,
+                base_path,
                 tokio_handle,
                 consensus_client: consensus_chain_node.client.clone(),
                 consensus_keystore,
