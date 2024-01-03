@@ -972,6 +972,12 @@ impl_runtime_apis! {
         fn block_weight() -> Weight {
             System::block_weight().total()
         }
+
+        fn construct_domain_transaction_byte_fee_extrinsic(transaction_byte_fee: Balance) -> <Block as BlockT>::Extrinsic {
+            UncheckedExtrinsic::new_unsigned(
+                pallet_operator_rewards::Call::set_next_domain_transaction_byte_fee{ transaction_byte_fee }.into()
+            )
+        }
     }
 
     impl sp_messenger::MessengerApi<Block, BlockNumber> for Runtime {

@@ -1,6 +1,6 @@
 use codec::{Codec, Encode};
 use domain_runtime_primitives::opaque::AccountId;
-use domain_runtime_primitives::{CheckExtrinsicsValidityError, DomainCoreApi};
+use domain_runtime_primitives::{Balance, CheckExtrinsicsValidityError, DomainCoreApi};
 use sc_executor::RuntimeVersionOf;
 use sp_api::{ApiError, BlockT, Core, Hasher, RuntimeVersion};
 use sp_core::traits::{CallContext, CodeExecutor, FetchRuntimeCode, RuntimeCode};
@@ -187,6 +187,17 @@ where
             self,
             Default::default(),
             moment,
+        )
+    }
+
+    pub fn construct_domain_transaction_byte_fee_extrinsic(
+        &self,
+        domain_transaction_byte_fee: Balance,
+    ) -> Result<Block::Extrinsic, ApiError> {
+        <Self as DomainCoreApi<Block>>::construct_domain_transaction_byte_fee_extrinsic(
+            self,
+            Default::default(),
+            domain_transaction_byte_fee,
         )
     }
 

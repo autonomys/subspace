@@ -72,6 +72,13 @@ where
     .map(|resp| resp.into_domain_set_code_extrinsic())
     .ok_or(VerificationError::FailedToDeriveDomainSetCodeExtrinsic)?;
 
+    let domain_transaction_byte_fee_extrinsic = get_fraud_proof_verification_info(
+        H256::from_slice(consensus_block_hash.as_ref()),
+        FraudProofVerificationInfoRequest::DomainTransactionByteFeeExtrinsic(*domain_id),
+    )
+    .and_then(|resp| resp.into_domain_transaction_byte_fee_extrinsic())
+    .ok_or(VerificationError::FailedToDeriveDomainTransactionByteFeeExtrinsic)?;
+
     let bad_receipt_valid_bundle_digests = bad_receipt.valid_bundle_digests();
     if valid_bundle_digests.len() != bad_receipt_valid_bundle_digests.len() {
         return Err(VerificationError::InvalidBundleDigest);
@@ -99,6 +106,8 @@ where
         Randomness::from(shuffling_seed.to_fixed_bytes()),
     );
 
+    // NOTE: the order of the inherent extrinsic MUST aligned with the
+    // `domain-block-preprocessor::CreateInherentDataProvider`
     if let SetCodeExtrinsic::EncodedExtrinsic(domain_set_code_extrinsic) =
         maybe_domain_set_code_extrinsic
     {
@@ -107,6 +116,11 @@ where
         >(domain_set_code_extrinsic);
         ordered_extrinsics.push_front(domain_set_code_extrinsic);
     }
+
+    let transaction_byte_fee_extrinsic = ExtrinsicDigest::new::<
+        LayoutV1<HeaderHashingFor<DomainHeader>>,
+    >(domain_transaction_byte_fee_extrinsic);
+    ordered_extrinsics.push_front(transaction_byte_fee_extrinsic);
 
     let timestamp_extrinsic = ExtrinsicDigest::new::<LayoutV1<HeaderHashingFor<DomainHeader>>>(
         domain_timestamp_extrinsic,

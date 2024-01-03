@@ -224,6 +224,9 @@ sp_api::decl_runtime_apis! {
         /// Returns an encoded extrinsic to set timestamp.
         fn construct_timestamp_extrinsic(moment: Moment) -> Block::Extrinsic;
 
+        /// Returns an encoded extrinsic to set domain transaction byte fee.
+        fn construct_domain_transaction_byte_fee_extrinsic(domain_transaction_byte_fee: Balance) -> Block::Extrinsic;
+
         /// Returns true if the extrinsic is an inherent extrinsic.
         fn is_inherent_extrinsic(extrinsic: &<Block as BlockT>::Extrinsic) -> bool;
 

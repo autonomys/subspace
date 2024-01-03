@@ -68,6 +68,7 @@ frame_support::construct_runtime!(
         Balances: pallet_balances,
         Domains: pallet_domains,
         DomainExecutive: domain_pallet_executive,
+        OperatorRewards: pallet_operator_rewards,
     }
 );
 
@@ -265,6 +266,10 @@ impl domain_pallet_executive::Config for Test {
     type ExtrinsicStorageFees = ExtrinsicStorageFees;
 }
 
+impl pallet_operator_rewards::Config for Test {
+    type Balance = Balance;
+}
+
 pub(crate) fn new_test_ext() -> sp_io::TestExternalities {
     let t = frame_system::GenesisConfig::<Test>::default()
         .build_storage()
@@ -300,6 +305,17 @@ impl FraudProofHostFunctions for MockDomainFraudProofExtension {
                     UncheckedExtrinsic::new_unsigned(
                         pallet_timestamp::Call::<Test>::set {
                             now: self.timestamp,
+                        }
+                        .into(),
+                    )
+                    .encode(),
+                )
+            }
+            FraudProofVerificationInfoRequest::DomainTransactionByteFeeExtrinsic(_) => {
+                FraudProofVerificationInfoResponse::DomainTransactionByteFeeExtrinsic(
+                    UncheckedExtrinsic::new_unsigned(
+                        pallet_operator_rewards::Call::<Test>::set_next_domain_transaction_byte_fee {
+                            transaction_byte_fee: Default::default(),
                         }
                         .into(),
                     )
