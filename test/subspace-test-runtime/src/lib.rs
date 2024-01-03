@@ -94,6 +94,11 @@ sp_runtime::impl_opaque_keys! {
     }
 }
 
+// The domain storage fee multiplier used to charge a higher storage fee to the domain
+// transaction to even out the duplicated/illegal domain transaction storage cost, which
+// can not be eliminated currently.
+const DOMAIN_STORAGE_FEE_MULTIPLIER: Balance = 2;
+
 // Smaller value for testing purposes
 const MAX_PIECES_IN_SECTOR: u16 = 32;
 
@@ -1274,6 +1279,10 @@ impl_runtime_apis! {
 
         fn receipt_hash(domain_id: DomainId, domain_number: DomainNumber) -> Option<DomainHash> {
             Domains::receipt_hash(domain_id, domain_number)
+        }
+
+        fn domain_transaction_byte_fee() -> Balance {
+            DOMAIN_STORAGE_FEE_MULTIPLIER * TransactionFees::transaction_byte_fee()
         }
     }
 
