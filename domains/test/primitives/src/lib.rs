@@ -25,5 +25,8 @@ sp_api::decl_runtime_apis! {
 
         /// Returns the last open channel for a given domain.
         fn get_open_channel_for_chain(dst_chain_id: ChainId) -> Option<ChannelId>;
+
+        /// Api to get the current domain transaction byte fee
+        fn domain_transaction_byte_fee() -> Balance;
     }
 }

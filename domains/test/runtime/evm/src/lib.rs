@@ -1198,5 +1198,9 @@ impl_runtime_apis! {
         fn get_open_channel_for_chain(dst_chain_id: ChainId) -> Option<ChannelId> {
             Messenger::get_open_channel_for_chain(dst_chain_id).map(|(c, _)| c)
         }
+
+        fn domain_transaction_byte_fee() -> Balance {
+            OperatorRewards::domain_transaction_byte_fee()
+        }
     }
 }

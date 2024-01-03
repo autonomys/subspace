@@ -2,7 +2,7 @@ use crate::test_ethereum_tx::{
     EIP1559UnsignedTransaction, EIP2930UnsignedTransaction, LegacyUnsignedTransaction,
 };
 use codec::Encode;
-use domain_runtime_primitives::{CheckExtrinsicsValidityError, DomainCoreApi};
+use domain_runtime_primitives::{Balance, CheckExtrinsicsValidityError, DomainCoreApi};
 use domain_test_service::evm_domain_test_runtime::{
     Runtime as TestRuntime, RuntimeCall, UncheckedExtrinsic as RuntimeUncheckedExtrinsic,
 };
@@ -12,6 +12,7 @@ use domain_test_service::{
     construct_extrinsic_generic_with_custom_key, EvmDomainNode, GENESIS_DOMAIN_ID,
 };
 use ethereum::TransactionV2 as Transaction;
+use fp_rpc::EthereumRuntimeRPCApi;
 use frame_support::pallet_prelude::DispatchClass;
 use pallet_ethereum::Call;
 use pallet_evm::GasWeightMapping;
@@ -22,7 +23,7 @@ use sp_api::{ApiExt, ProvideRuntimeApi, TransactionOutcome};
 use sp_core::crypto::AccountId32;
 use sp_core::ecdsa::Pair;
 use sp_core::{keccak_256, Pair as _, H160, H256, U256};
-use sp_runtime::traits::Extrinsic;
+use sp_runtime::traits::{Extrinsic, Zero};
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidityError};
 use sp_runtime::OpaqueExtrinsic;
 use subspace_test_service::{produce_block_with, produce_blocks, MockConsensusNode};
@@ -58,16 +59,19 @@ fn generate_legacy_tx(
     nonce: U256,
     action: ethereum::TransactionAction,
     input: Vec<u8>,
+    gas_price: U256,
 ) -> Transaction {
     let limits: frame_system::limits::BlockWeights =
         <TestRuntime as frame_system::Config>::BlockWeights::get();
-    let max_extrinsic = limits.get(DispatchClass::Normal).max_extrinsic.unwrap();
+    // `limits.get(DispatchClass::Normal).max_extrinsic` is too large to use as `gas_limit`
+    // thus use `base_extrinsic`
+    let max_extrinsic = limits.get(DispatchClass::Normal).base_extrinsic * 1000;
     let max_extrinsic_gas =
         <TestRuntime as pallet_evm::Config>::GasWeightMapping::weight_to_gas(max_extrinsic);
 
     LegacyUnsignedTransaction {
         nonce,
-        gas_price: U256::from(1),
+        gas_price,
         gas_limit: U256::from(max_extrinsic_gas),
         action,
         value: U256::zero(),
@@ -81,16 +85,19 @@ fn generate_eip2930_tx(
     nonce: U256,
     action: ethereum::TransactionAction,
     input: Vec<u8>,
+    gas_price: U256,
 ) -> Transaction {
     let limits: frame_system::limits::BlockWeights =
         <TestRuntime as frame_system::Config>::BlockWeights::get();
-    let max_extrinsic = limits.get(DispatchClass::Normal).max_extrinsic.unwrap();
+    // `limits.get(DispatchClass::Normal).max_extrinsic` is too large to use as `gas_limit`
+    // thus use `base_extrinsic`
+    let max_extrinsic = limits.get(DispatchClass::Normal).base_extrinsic * 1000;
     let max_extrinsic_gas =
         <TestRuntime as pallet_evm::Config>::GasWeightMapping::weight_to_gas(max_extrinsic);
 
     EIP2930UnsignedTransaction {
         nonce,
-        gas_price: U256::from(1),
+        gas_price,
         gas_limit: U256::from(max_extrinsic_gas),
         action,
         value: U256::one(),
@@ -104,17 +111,20 @@ fn generate_eip1559_tx(
     nonce: U256,
     action: ethereum::TransactionAction,
     input: Vec<u8>,
+    gas_price: U256,
 ) -> Transaction {
     let limits: frame_system::limits::BlockWeights =
         <TestRuntime as frame_system::Config>::BlockWeights::get();
-    let max_extrinsic = limits.get(DispatchClass::Normal).max_extrinsic.unwrap();
+    // `limits.get(DispatchClass::Normal).max_extrinsic` is too large to use as `gas_limit`
+    // thus use `base_extrinsic`
+    let max_extrinsic = limits.get(DispatchClass::Normal).base_extrinsic * 1000;
     let max_extrinsic_gas =
         <TestRuntime as pallet_evm::Config>::GasWeightMapping::weight_to_gas(max_extrinsic);
 
     EIP1559UnsignedTransaction {
         nonce,
         max_priority_fee_per_gas: U256::from(1),
-        max_fee_per_gas: U256::from(1),
+        max_fee_per_gas: gas_price,
         gas_limit: U256::from(max_extrinsic_gas),
         action,
         value: U256::zero(),
@@ -167,6 +177,12 @@ async fn benchmark_bundle_with_evm_tx(
         .unwrap();
     produce_blocks!(ferdie, alice, 1).await.unwrap();
 
+    let gas_price = alice
+        .client
+        .runtime_api()
+        .gas_price(alice.client.info().best_hash)
+        .unwrap();
+
     let mut runtime_instance = alice.client.runtime_api();
     runtime_instance.record_proof();
 
@@ -185,6 +201,7 @@ async fn benchmark_bundle_with_evm_tx(
                     U256::zero(),
                     ethereum::TransactionAction::Create,
                     vec![1u8; 100],
+                    gas_price,
                 );
                 generate_evm_domain_extrinsic(evm_tx)
             }
@@ -194,6 +211,7 @@ async fn benchmark_bundle_with_evm_tx(
                     U256::zero(),
                     ethereum::TransactionAction::Create,
                     vec![1u8; 100],
+                    gas_price,
                 );
                 generate_evm_domain_extrinsic(evm_tx)
             }
@@ -203,6 +221,7 @@ async fn benchmark_bundle_with_evm_tx(
                     U256::zero(),
                     ethereum::TransactionAction::Create,
                     vec![1u8; 100],
+                    gas_price,
                 );
                 generate_evm_domain_extrinsic(evm_tx)
             }
@@ -645,6 +664,125 @@ async fn check_bundle_validity_runtime_api_should_work() {
             })
         );
     }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_evm_domain_transaction_fee_and_operator_reward() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a evm domain authority node)
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .await;
+
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    // Create more accounts and fund these accounts
+    let tx_to_create = 3;
+    let account_infos = (0..tx_to_create)
+        .map(|i| address_build(i as u128 + 1))
+        .collect::<Vec<AccountInfo>>();
+    let alice_balance = alice.free_balance(Alice.to_account_id());
+    for (i, account_info) in account_infos.iter().enumerate() {
+        let alice_balance_transfer_extrinsic = alice.construct_extrinsic(
+            alice.account_nonce() + i as u32,
+            pallet_balances::Call::transfer_allow_death {
+                dest: account_info.address.0.into(),
+                value: alice_balance / (tx_to_create as u128 + 2),
+            },
+        );
+        alice
+            .send_extrinsic(alice_balance_transfer_extrinsic)
+            .await
+            .expect("Failed to send extrinsic");
+    }
+    produce_blocks!(ferdie, alice, 3).await.unwrap();
+
+    let pre_free_balance: Balance = account_infos
+        .iter()
+        .map(|acc| alice.free_balance(acc.address.0.into()))
+        .sum();
+    let gas_price = alice
+        .client
+        .runtime_api()
+        .gas_price(alice.client.info().best_hash)
+        .unwrap();
+
+    // Construct and send evm transaction
+    #[allow(clippy::type_complexity)]
+    let tx_generators: Vec<
+        Box<dyn Fn(AccountInfo, U256, ethereum::TransactionAction, Vec<u8>, U256) -> Transaction>,
+    > = vec![
+        Box::new(generate_eip2930_tx),
+        Box::new(generate_eip1559_tx),
+        Box::new(generate_legacy_tx),
+    ];
+    for (i, (acc, tx_generator)) in account_infos
+        .iter()
+        .zip(tx_generators.into_iter())
+        .enumerate()
+    {
+        let tx = generate_evm_domain_extrinsic(tx_generator(
+            acc.clone(),
+            U256::zero(),
+            ethereum::TransactionAction::Create,
+            vec![(i + 1) as u8; 100],
+            gas_price,
+        ));
+        alice
+            .send_extrinsic(tx)
+            .await
+            .expect("Failed to send extrinsic");
+    }
+
+    // Produce a bundle that contains the just sent extrinsic
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    assert_eq!(bundle.unwrap().extrinsics.len(), 3);
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+    let consensus_block_hash = ferdie.client.info().best_hash;
+
+    // Produce one more bundle, this bundle should contains the ER of the previous bundle
+    let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let receipt = bundle.unwrap().into_receipt();
+    assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
+
+    // All the transaction fee is collected as operator reward
+    let domain_block_rewards = alice
+        .client
+        .runtime_api()
+        .block_rewards(receipt.domain_block_hash)
+        .unwrap();
+    let free_balance_changes = pre_free_balance
+        - account_infos
+            .iter()
+            .map(|acc| alice.free_balance(acc.address.0.into()))
+            .sum::<Balance>();
+
+    assert_eq!(
+        free_balance_changes,
+        domain_block_rewards.execution_fee + domain_block_rewards.storage_fee
+    );
+    assert!(!domain_block_rewards.storage_fee.is_zero());
+    assert_eq!(domain_block_rewards.execution_fee, receipt.total_rewards);
 }
 
 // #[tokio::test(flavor = "multi_thread")]

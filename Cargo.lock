@@ -2611,6 +2611,7 @@ dependencies = [
  "sp-inherents",
  "sp-keyring",
  "sp-messenger",
+ "sp-operator-rewards",
  "sp-runtime",
  "sp-state-machine",
  "sp-timestamp",
@@ -7389,6 +7390,7 @@ dependencies = [
  "frame-system",
  "log",
  "pallet-balances",
+ "pallet-operator-rewards",
  "pallet-timestamp",
  "parity-scale-codec",
  "scale-info",
@@ -7590,10 +7592,12 @@ dependencies = [
 name = "pallet-operator-rewards"
 version = "0.1.0"
 dependencies = [
+ "domain-runtime-primitives",
  "frame-support",
  "frame-system",
  "parity-scale-codec",
  "scale-info",
+ "sp-operator-rewards",
  "sp-runtime",
  "sp-std",
 ]
@@ -11246,6 +11250,17 @@ dependencies = [
  "sp-api",
  "sp-core",
  "sp-runtime",
+]
+
+[[package]]
+name = "sp-operator-rewards"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "domain-runtime-primitives",
+ "parity-scale-codec",
+ "sp-inherents",
+ "sp-std",
 ]
 
 [[package]]

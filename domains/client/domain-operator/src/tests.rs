@@ -3,8 +3,8 @@ use crate::domain_bundle_producer::DomainBundleProducer;
 use crate::domain_bundle_proposer::DomainBundleProposer;
 use crate::utils::OperatorSlotInfo;
 use codec::{Decode, Encode};
-use domain_runtime_primitives::Hash;
-use domain_test_primitives::TimestampApi;
+use domain_runtime_primitives::{DomainCoreApi, Hash};
+use domain_test_primitives::{OnchainStateApi, TimestampApi};
 use domain_test_service::evm_domain_test_runtime::{Header, UncheckedExtrinsic};
 use domain_test_service::EcdsaKeyring::{Alice, Bob, Charlie};
 use domain_test_service::Sr25519Keyring::{self, Ferdie};
@@ -31,7 +31,7 @@ use sp_domains_fraud_proof::fraud_proof::{
 };
 use sp_domains_fraud_proof::InvalidTransactionCode;
 use sp_runtime::generic::{BlockId, DigestItem};
-use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Header as HeaderT};
+use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Header as HeaderT, Zero};
 use sp_runtime::OpaqueExtrinsic;
 use std::sync::Arc;
 use subspace_core_primitives::Randomness;
@@ -3104,7 +3104,9 @@ async fn test_domain_transaction_fee_and_operator_reward() {
     let tx = alice.construct_extrinsic_with_tip(
         alice.account_nonce(),
         tip,
-        frame_system::Call::remark { remark: vec![] },
+        frame_system::Call::remark {
+            remark: vec![1; 10 * 1024],
+        },
     );
     alice
         .send_extrinsic(tx)
@@ -3120,20 +3122,28 @@ async fn test_domain_transaction_fee_and_operator_reward() {
     let consensus_block_hash = ferdie.client.info().best_hash;
 
     // Produce one more bundle, this bundle should contains the ER of the previous bundle
-    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let (_, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let receipt = bundle.unwrap().into_receipt();
     assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
-    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
-        .await
-        .unwrap();
 
     // Transaction fee (including the tip) is deducted from alice's account
     let alice_free_balance_changes =
         pre_alice_free_balance - alice.free_balance(Alice.to_account_id());
     assert!(alice_free_balance_changes >= tip);
 
+    let domain_block_rewards = alice
+        .client
+        .runtime_api()
+        .block_rewards(receipt.domain_block_hash)
+        .unwrap();
+
     // All the transaction fee is collected as operator reward
-    assert_eq!(alice_free_balance_changes, receipt.total_rewards);
+    assert_eq!(
+        alice_free_balance_changes,
+        domain_block_rewards.execution_fee + domain_block_rewards.storage_fee
+    );
+    assert_eq!(domain_block_rewards.execution_fee, receipt.total_rewards);
+    assert!(!domain_block_rewards.storage_fee.is_zero());
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -3473,4 +3483,65 @@ async fn test_bad_receipt_chain() {
     for er_hash in [parent_bad_receipt_hash, bad_receipt_hash] {
         assert!(!ferdie.does_receipt_exist(er_hash).unwrap());
     }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_domain_chain_storage_price_should_be_aligned_with_the_consensus_chain() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a evm domain authority node)
+    let alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .await;
+
+    // The domain transaction byte is non-zero on the consensus chain genesis but
+    // it is zero in the domain chain genesis
+    let consensus_domain_transaction_byte_fee = ferdie
+        .client
+        .runtime_api()
+        .domain_transaction_byte_fee(ferdie.client.info().best_hash)
+        .unwrap();
+    let operator_domain_transaction_byte_fee = alice
+        .client
+        .runtime_api()
+        .domain_transaction_byte_fee(alice.client.info().best_hash)
+        .unwrap();
+    assert!(operator_domain_transaction_byte_fee.is_zero());
+    assert!(!consensus_domain_transaction_byte_fee.is_zero());
+
+    produce_blocks!(ferdie, alice, 1).await.unwrap();
+
+    // The domain transaction byte of the domain chain should be updated to the consensus chain's
+    // through the inherent extrinsic of domain block #1
+    let consensus_domain_transaction_byte_fee = ferdie
+        .client
+        .runtime_api()
+        .domain_transaction_byte_fee(ferdie.client.info().best_hash)
+        .unwrap();
+    let operator_domain_transaction_byte_fee = alice
+        .client
+        .runtime_api()
+        .domain_transaction_byte_fee(alice.client.info().best_hash)
+        .unwrap();
+    assert_eq!(
+        consensus_domain_transaction_byte_fee,
+        operator_domain_transaction_byte_fee
+    );
 }
