@@ -29,6 +29,7 @@ use log::warn;
 use sc_cli::{ChainSpec, SubstrateCli};
 use sc_consensus_slots::SlotProportion;
 use sc_executor::NativeExecutionDispatch;
+use sc_network::config::NodeKeyConfig;
 use sc_service::config::KeystoreConfig;
 use sc_service::{Configuration, DatabaseSource, PartialComponents};
 use sc_storage_monitor::StorageMonitorService;
@@ -417,6 +418,9 @@ fn main() -> Result<(), Error> {
                 config.keystore = KeystoreConfig::InMemory;
                 if let Some(net_config_path) = &mut config.network.net_config_path {
                     *net_config_path = config.base_path.path().join("network");
+                    config.network.node_key = NodeKeyConfig::Ed25519(
+                        sc_network::config::Secret::File(net_config_path.join("secret_ed25519")),
+                    );
                 }
             }
             runner.run_node_until_exit(|consensus_chain_config| async move {
