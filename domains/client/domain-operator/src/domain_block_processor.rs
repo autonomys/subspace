@@ -379,9 +379,15 @@ where
             )?
         };
 
+        // TODO: include the domain storage fee in the receipt and introduce the corresponding
+        // fraud proof
         // Get the accumulated transaction fee of all transactions included in the block
         // and used as the operator reward
-        let total_rewards = self.client.runtime_api().block_rewards(header_hash)?;
+        let total_rewards = self
+            .client
+            .runtime_api()
+            .block_rewards(header_hash)?
+            .execution_fee;
 
         let execution_receipt = ExecutionReceipt {
             domain_block_number: header_number,

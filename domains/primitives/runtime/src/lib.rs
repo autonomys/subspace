@@ -174,6 +174,12 @@ pub struct CheckExtrinsicsValidityError {
 pub const CHECK_EXTRINSICS_AND_DO_PRE_DISPATCH_METHOD_NAME: &str =
     "DomainCoreApi_check_extrinsics_and_do_pre_dispatch";
 
+#[derive(Clone, Debug, Default, Decode, Encode, Eq, PartialEq, TypeInfo)]
+pub struct DomainBlockReward<Balance> {
+    pub storage_fee: Balance,
+    pub execution_fee: Balance,
+}
+
 /// Opaque types. These are used by the CLI to instantiate machinery that don't need to know
 /// the specifics of the runtime. They can then be made to be agnostic over specific formats
 /// of data like extrinsics, allowing for them to continue syncing the network through upgrades
@@ -245,7 +251,7 @@ sp_api::decl_runtime_apis! {
         fn extrinsic_weight(ext: &Block::Extrinsic) -> Weight;
 
         /// The accumulated transaction fee of all transactions included in the block
-        fn block_rewards() -> Balance;
+        fn block_rewards() -> DomainBlockReward<Balance>;
 
         /// Return the block digest
         fn block_digest() -> Digest;

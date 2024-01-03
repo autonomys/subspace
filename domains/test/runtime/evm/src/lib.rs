@@ -2,6 +2,7 @@
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
 
+mod fees;
 mod precompiles;
 
 // Make the WASM binary available.
@@ -11,19 +12,19 @@ include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 use codec::{Decode, Encode};
 pub use domain_runtime_primitives::opaque::Header;
 use domain_runtime_primitives::{
-    block_weights, maximum_block_length, MultiAccountId, TryConvertBack, EXISTENTIAL_DEPOSIT,
-    MAXIMUM_BLOCK_WEIGHT, SLOT_DURATION,
+    block_weights, maximum_block_length, DomainBlockReward, MultiAccountId, TryConvertBack,
+    EXISTENTIAL_DEPOSIT, MAXIMUM_BLOCK_WEIGHT, SLOT_DURATION,
 };
 pub use domain_runtime_primitives::{
     opaque, Balance, BlockNumber, CheckExtrinsicsValidityError, Hash, Nonce,
 };
+use fees::{DomainTransactionByteFee, OnChargeDomainTransaction};
 use fp_account::EthereumSignature;
 use fp_self_contained::{CheckedSignature, SelfContainedCall};
 use frame_support::dispatch::{DispatchClass, DispatchInfo, GetDispatchInfo};
 use frame_support::inherent::ProvideInherent;
 use frame_support::traits::{
     ConstU16, ConstU32, ConstU64, Currency, Everything, FindAuthor, Imbalance, OnFinalize,
-    OnUnbalanced,
 };
 use frame_support::weights::constants::{ParityDbWeight, WEIGHT_REF_TIME_PER_SECOND};
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
@@ -140,7 +141,20 @@ impl fp_self_contained::SelfContainedCall for RuntimeCall {
         len: usize,
     ) -> Option<TransactionValidity> {
         match self {
-            RuntimeCall::Ethereum(call) => call.validate_self_contained(info, dispatch_info, len),
+            RuntimeCall::Ethereum(call) => {
+                // Ensure the caller can pay the consensus chain storage fee
+                let storage_fee = DomainTransactionByteFee::get()
+                    * Balance::try_from(len)
+                        .expect("Size of the call never exceeds balance units; qed");
+                let withdraw_res = <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<
+                    Runtime,
+                >>::withdraw_fee(info, storage_fee.into());
+                if withdraw_res.is_err() {
+                    return Some(Err(InvalidTransaction::Payment.into()));
+                }
+
+                call.validate_self_contained(info, dispatch_info, len)
+            }
             _ => None,
         }
     }
@@ -153,6 +167,22 @@ impl fp_self_contained::SelfContainedCall for RuntimeCall {
     ) -> Option<Result<(), TransactionValidityError>> {
         match self {
             RuntimeCall::Ethereum(call) => {
+                // Withdraw the consensus chain storage fee from the caller and record
+                // it in the `OperatorRewards`
+                let storage_fee = DomainTransactionByteFee::get()
+                    * Balance::try_from(len)
+                        .expect("Size of the call never exceeds balance units; qed");
+                match <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<Runtime>>::withdraw_fee(
+                    info,
+                    storage_fee.into(),
+                ) {
+                    Ok(None) => {}
+                    Ok(Some(paid_storage_fee)) => {
+                        OperatorRewards::note_storage_fee(paid_storage_fee.peek())
+                    }
+                    Err(_) => return Some(Err(InvalidTransaction::Payment.into())),
+                }
+
                 call.pre_dispatch_self_contained(info, dispatch_info, len)
             }
             _ => None,
@@ -299,29 +329,15 @@ impl pallet_operator_rewards::Config for Runtime {
     type Balance = Balance;
 }
 
-/// `ActualPaidFeesHandler` used to collect all the fee in `pallet_operator_rewards`
-pub struct ActualPaidFeesHandler;
-
-impl OnUnbalanced<NegativeImbalance> for ActualPaidFeesHandler {
-    fn on_unbalanceds<B>(fees_then_tips: impl Iterator<Item = NegativeImbalance>) {
-        // Record both actual paid transaction fee and tip in `pallet_operator_rewards`
-        for fee in fees_then_tips {
-            OperatorRewards::note_operator_rewards(fee.peek());
-        }
-    }
-}
-
 parameter_types! {
-    pub const TransactionByteFee: Balance = 1;
     pub const OperationalFeeMultiplier: u8 = 5;
 }
 
 impl pallet_transaction_payment::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type OnChargeTransaction =
-        pallet_transaction_payment::CurrencyAdapter<Balances, ActualPaidFeesHandler>;
+    type OnChargeTransaction = OnChargeDomainTransaction;
     type WeightToFee = IdentityFee<Balance>;
-    type LengthToFee = ConstantMultiplier<Balance, TransactionByteFee>;
+    type LengthToFee = ConstantMultiplier<Balance, DomainTransactionByteFee>;
     type FeeMultiplierUpdate = ();
     type OperationalFeeMultiplier = OperationalFeeMultiplier;
 }
@@ -926,7 +942,7 @@ impl_runtime_apis! {
             ext.get_dispatch_info().weight
         }
 
-        fn block_rewards() -> Balance {
+        fn block_rewards() -> DomainBlockReward<Balance> {
             OperatorRewards::block_rewards()
         }
 
