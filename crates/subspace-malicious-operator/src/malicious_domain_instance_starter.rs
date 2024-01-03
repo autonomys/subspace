@@ -97,7 +97,10 @@ where
             };
             domain_config.keystore = KeystoreConfig::Path {
                 path: domain_base_path.join("keystore"),
-                password: None,
+                password: match domain_config.keystore {
+                    KeystoreConfig::Path { password, .. } => password,
+                    KeystoreConfig::InMemory => None,
+                },
             };
             // Network directory is shared with consensus chain
             if let Some(net_config_path) = &mut domain_config.network.net_config_path {
