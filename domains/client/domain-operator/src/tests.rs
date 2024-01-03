@@ -800,12 +800,12 @@ async fn test_initialize_block_proof_creation_and_verification_should_work() {
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_apply_extrinsic_proof_creation_and_verification_should_work() {
-    test_invalid_state_transition_proof_creation_and_verification(2).await
+    test_invalid_state_transition_proof_creation_and_verification(3).await
 }
 
 #[tokio::test(flavor = "multi_thread")]
 async fn test_finalize_block_proof_creation_and_verification_should_work() {
-    test_invalid_state_transition_proof_creation_and_verification(3).await
+    test_invalid_state_transition_proof_creation_and_verification(4).await
 }
 
 /// This test will create and verify a invalid state transition proof that targets the receipt of
@@ -813,8 +813,9 @@ async fn test_finalize_block_proof_creation_and_verification_should_work() {
 /// 4 trace roots in total, passing the `mismatch_trace_index` as:
 /// - 0 to test the `initialize_block` invalid state transition
 /// - 1 to test the `apply_extrinsic` invalid state transition with the inherent timestamp extrinsic
-/// - 2 to test the `apply_extrinsic` invalid state transition with regular domain extrinsic
-/// - 3 to test the `finalize_block` invalid state transition
+/// - 2 to test the `apply_extrinsic` invalid state transition with the inherent `domain_transaction_byte_fee` extrinsic
+/// - 3 to test the `apply_extrinsic` invalid state transition with regular domain extrinsic
+/// - 4 to test the `finalize_block` invalid state transition
 async fn test_invalid_state_transition_proof_creation_and_verification(
     mismatch_trace_index: usize,
 ) {
@@ -873,7 +874,7 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
         let mut opaque_bundle = bundle.unwrap();
         let receipt = &mut opaque_bundle.sealed_header.header.receipt;
-        assert_eq!(receipt.execution_trace.len(), 4);
+        assert_eq!(receipt.execution_trace.len(), 5);
 
         receipt.execution_trace[mismatch_trace_index] = Default::default();
         receipt.execution_trace_root = {
@@ -917,12 +918,12 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
                     proof.execution_phase,
                     ExecutionPhase::InitializeBlock
                 )),
-                // 1 for the inherent timestamp extrinsic, 2 for the above `transfer_allow_death` extrinsic
-                1 | 2 => assert!(matches!(
+                // 1 and 2 for the inherent extrinsic, 3 for the above `transfer_allow_death` extrinsic
+                1..=3 => assert!(matches!(
                     proof.execution_phase,
                     ExecutionPhase::ApplyExtrinsic { .. }
                 )),
-                3 => assert!(matches!(
+                4 => assert!(matches!(
                     proof.execution_phase,
                     ExecutionPhase::FinalizeBlock
                 )),
@@ -2028,20 +2029,20 @@ async fn test_domain_block_builder_include_ext_with_failed_execution() {
     produce_blocks!(ferdie, alice, 1).await.unwrap();
 
     // domain block body should have 3 extrinsics
-    // timestamp inherent, successful transfer, failed transfer
+    // timestamp inherent, `domain_transaction_byte_fee` inherent, successful transfer, failed transfer
     let best_hash = alice.client.info().best_hash;
     let domain_block_extrinsics = alice.client.block_body(best_hash).unwrap();
-    assert_eq!(domain_block_extrinsics.unwrap().len(), 3);
+    assert_eq!(domain_block_extrinsics.unwrap().len(), 4);
 
     // next bundle should have er which should a total of 5 trace roots
-    // pre_timestamp_root + pre_success_ext_root + pre_failed_ext_root + pre_finalize_block_root
-    // + post_finalize_block_root
+    // pre_timestamp_root + pre_domain_transaction_byte_fee_root + pre_success_ext_root + pre_failed_ext_root
+    // + pre_finalize_block_root + post_finalize_block_root
     let (_slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     assert!(bundle.is_some());
     let bundle = bundle.unwrap();
     let er = bundle.receipt();
-    assert_eq!(er.execution_trace.len(), 5);
-    assert_eq!(er.execution_trace[4], er.final_state_root);
+    assert_eq!(er.execution_trace.len(), 6);
+    assert_eq!(er.execution_trace[5], er.final_state_root);
 }
 
 #[tokio::test(flavor = "multi_thread")]
@@ -2128,18 +2129,18 @@ async fn test_domain_block_builder_include_ext_with_failed_predispatch() {
     // timestamp inherent, successful transfer, failed transfer
     let best_hash = alice.client.info().best_hash;
     let domain_block_extrinsics = alice.client.block_body(best_hash).unwrap();
-    assert_eq!(domain_block_extrinsics.clone().unwrap().len(), 3);
+    assert_eq!(domain_block_extrinsics.clone().unwrap().len(), 4);
 
     // next bundle should have er which should a total of 5 trace roots
-    // pre_timestamp_root + pre_success_ext_root + pre_failed_ext_root + pre_finalize_block_root
-    // + post_finalize_block_root
+    // pre_timestamp_root + pre_domain_transaction_byte_fee_root + pre_success_ext_root + pre_failed_ext_root
+    // + pre_finalize_block_root + post_finalize_block_root
     let (_slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     assert!(bundle.is_some());
     let bundle = bundle.unwrap();
     let er = bundle.sealed_header.header.receipt;
 
-    assert_eq!(er.execution_trace.len(), 5);
-    assert_eq!(er.execution_trace[4], er.final_state_root);
+    assert_eq!(er.execution_trace.len(), 6);
+    assert_eq!(er.execution_trace[5], er.final_state_root);
 
     let header = alice.client.header(best_hash).unwrap().unwrap();
     assert_eq!(

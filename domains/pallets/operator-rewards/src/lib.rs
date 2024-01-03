@@ -25,9 +25,11 @@ mod pallet {
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
     use scale_info::TypeInfo;
+    use sp_operator_rewards::{InherentError, InherentType, INHERENT_IDENTIFIER};
     use sp_runtime::traits::{AtLeast32BitUnsigned, MaybeSerializeDeserialize, Saturating, Zero};
-    use sp_runtime::FixedPointOperand;
+    use sp_runtime::{FixedPointOperand, SaturatedConversion};
     use sp_std::fmt::Debug;
+    use sp_std::result;
 
     #[pallet::config]
     pub trait Config: frame_system::Config {
@@ -53,6 +55,21 @@ mod pallet {
     #[pallet::getter(fn block_rewards)]
     pub(super) type BlockRewards<T: Config> = StorageValue<_, T::Balance, ValueQuery>;
 
+    /// The domain transaction byte fee
+    ///
+    /// NOTE: we are using `ValueQuery` for convenience, which means the transactions in the domain block #1
+    // are not charged for storage fees.
+    #[pallet::storage]
+    #[pallet::getter(fn domain_transaction_byte_fee)]
+    pub(super) type DomainTransactionByteFee<T: Config> = StorageValue<_, T::Balance, ValueQuery>;
+
+    /// The next domain transaction byte fee, it will take affect after the execution of the current
+    /// block to ensure the operator are using the same fee for both validating and executing the domain
+    /// transaction in the next block.
+    #[pallet::storage]
+    pub(super) type NextDomainTransactionByteFee<T: Config> =
+        StorageValue<_, T::Balance, ValueQuery>;
+
     /// Pallet operator-rewards to store the accumulated rewards of the current block
     #[pallet::pallet]
     #[pallet::without_storage_info]
@@ -63,6 +80,76 @@ mod pallet {
         fn on_initialize(_now: BlockNumberFor<T>) -> Weight {
             BlockRewards::<T>::set(Zero::zero());
             T::DbWeight::get().writes(1)
+        }
+
+        fn on_finalize(_now: BlockNumberFor<T>) {
+            let transaction_byte_fee = NextDomainTransactionByteFee::<T>::get();
+            DomainTransactionByteFee::<T>::put(transaction_byte_fee);
+        }
+    }
+
+    #[pallet::call]
+    impl<T: Config> Pallet<T> {
+        #[pallet::call_index(0)]
+        #[pallet::weight((
+            // TODO: proper weight
+			Weight::from_all(10_000),
+			DispatchClass::Mandatory
+		))]
+        pub fn set_next_domain_transaction_byte_fee(
+            origin: OriginFor<T>,
+            #[pallet::compact] transaction_byte_fee: T::Balance,
+        ) -> DispatchResult {
+            ensure_none(origin)?;
+            NextDomainTransactionByteFee::<T>::put(transaction_byte_fee);
+            Ok(())
+        }
+    }
+
+    #[pallet::inherent]
+    impl<T: Config> ProvideInherent for Pallet<T> {
+        type Call = Call<T>;
+        type Error = InherentError;
+        const INHERENT_IDENTIFIER: InherentIdentifier = INHERENT_IDENTIFIER;
+
+        fn create_inherent(data: &InherentData) -> Option<Self::Call> {
+            let inherent_data = data
+                .get_data::<InherentType>(&INHERENT_IDENTIFIER)
+                .expect("Operator rewards inherent data not correctly encoded")
+                .expect("Operator rewards inherent data must be provided");
+
+            let transaction_byte_fee = inherent_data.saturated_into::<T::Balance>();
+
+            Some(Call::set_next_domain_transaction_byte_fee {
+                transaction_byte_fee,
+            })
+        }
+
+        fn check_inherent(
+            call: &Self::Call,
+            data: &InherentData,
+        ) -> result::Result<(), Self::Error> {
+            let inherent_data = data
+                .get_data::<InherentType>(&INHERENT_IDENTIFIER)
+                .expect("Operator rewards inherent data not correctly encoded")
+                .expect("Operator rewards inherent data must be provided");
+
+            let provided_transaction_byte_fee = inherent_data.saturated_into::<T::Balance>();
+
+            if let Call::set_next_domain_transaction_byte_fee {
+                transaction_byte_fee,
+            } = call
+            {
+                if transaction_byte_fee != &provided_transaction_byte_fee {
+                    return Err(InherentError::IncorrectDomainTransactionByteFee);
+                }
+            }
+
+            Ok(())
+        }
+
+        fn is_inherent(call: &Self::Call) -> bool {
+            matches!(call, Call::set_next_domain_transaction_byte_fee { .. })
         }
     }
 
