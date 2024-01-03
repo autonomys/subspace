@@ -2,39 +2,7 @@
 
 You'll have to have [Rust toolchain](https://rustup.rs/) installed as well as LLVM, Clang and CMake in addition to usual developer tooling.
 
-Below are some examples of how to install these dependencies on different operating systems.
-
-### Ubuntu
-
-```bash
-sudo apt-get install llvm clang cmake
-```
-
-### macOS
-
-1. Install via Homebrew:
-
-```bash
-brew install llvm@15 clang cmake
-```
-
-2. Add `llvm` to your `~/.zshrc` or `~/.bashrc`:
-
-```bash
-export PATH="/opt/homebrew/opt/llvm@15/bin:$PATH"
-```
-
-3. Activate the changes:
-
-```bash
-source ~/.zshrc
-```
-
-4. Verify that `llvm` is installed:
-
-```bash
-llvm-config --version
-```
+Check [crates/subspace-node](../crates/subspace-node/README.md) and [crates/subspace-farmer](../crates/subspace-farmer/README.md) for required dependencies.
 
 ## To Farm By Yourself (Offline)
 
@@ -43,7 +11,7 @@ llvm-config --version
 
 **Linux/MacOS:**
 
-1. Make them executable: `chmod +x subspace-farmer-x86_64-*-snapshot subspace-node-x86_64-*-snapshot`
+1. Make files executable: `chmod +x subspace-farmer-x86_64-*-snapshot subspace-node-x86_64-*-snapshot`
 2. Run the node: `./subspace-node-x86_64-*-snapshot --dev --tmp`
 3. In macOS, it may prompt that this app is not verified. Click on `cancel` instead of moving it to trash.
    To allow execution, go to `System Preferences -> Security & Privacy -> General`, and click on `allow`.

@@ -19,7 +19,9 @@ RUN \
         git \
         llvm \
         clang \
-        cmake \
+        automake \
+        libtool \
+        pkg-config \
         make && \
     curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain $RUSTC_VERSION
 
@@ -39,6 +41,7 @@ COPY test /code/test
 # Up until this line all Rust images in this repo should be the same to share the same layers
 
 ENV RUSTFLAGS="${RUSTFLAGS} -C linker=aarch64-linux-gnu-gcc"
+ENV PKG_CONFIG_ALLOW_CROSS=true
 
 # Dependencies necessary for successful cross-compilation
 RUN \

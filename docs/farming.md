@@ -349,10 +349,7 @@ If you're running unsupported Linux distribution or CPU architecture, you may tr
 NOTE: This is primarily targeted at tech-savvy users and not recommended unless you know what you're doing.
 Please try to find answer to your question online before reaching out to maintainers.
 
-You'll have to have [Rust toolchain](https://rustup.rs/) installed as well as LLVM, Clang and CMake in addition to usual developer tooling (Ubuntu example):
-```bash
-sudo apt-get install llvm clang cmake
-```
+Check [crates/subspace-node](../crates/subspace-node/README.md) and [crates/subspace-farmer](../crates/subspace-farmer/README.md) for required dependencies.
 
 Now clone the source and build snapshot `snapshot-2022-apr-29` (replace occurrences with the snapshot you want to build):
 ```bash

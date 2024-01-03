@@ -28,9 +28,12 @@ fdlimit = "0.3.0"
 fs4 = "0.7.0"
 futures = "0.3.29"
 hex = { version = "0.4.3", features = ["serde"] }
+hwlocality = { version = "1.0.0-alpha.1", features = ["vendored"], optional = true }
 jsonrpsee = { version = "0.16.3", features = ["client"] }
 lru = "0.11.0"
 mimalloc = "0.1.39"
+libmimalloc-sys = { version = "0.1.35", features = ["extended"] }
+num_cpus = "1.16.0"
 parity-scale-codec = "3.6.5"
 parking_lot = "0.12.1"
 prometheus-client = "0.22.0"
@@ -58,3 +61,13 @@ tracing = "0.1.37"
 tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
 ulid = { version = "1.0.0", features = ["serde"] }
 zeroize = "1.6.0"
+
+[target.'cfg(not(windows))'.dependencies]
+libc = "0.2.146"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = "0.52.0"
+
+[features]
+default = ["numa"]
+numa = ["dep:hwlocality"]
