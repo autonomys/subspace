@@ -4,7 +4,7 @@ use super::*;
 use crate::alloc::borrow::ToOwned;
 use crate::domain_registry::DomainConfig;
 use crate::staking::{do_reward_operators, OperatorConfig, OperatorStatus, Withdraw};
-use crate::staking_epoch::{do_finalize_domain_current_epoch, do_finalize_domain_staking};
+use crate::staking_epoch::{do_finalize_domain_current_epoch, do_finalize_domain_epoch_staking};
 use crate::Pallet as Domains;
 use frame_benchmarking::v2::*;
 use frame_support::assert_ok;
@@ -339,7 +339,10 @@ mod benchmarks {
         _(RawOrigin::Signed(operator_owner.clone()), operator_id);
 
         let operator = Operators::<T>::get(operator_id).expect("operator must exist");
-        assert_eq!(operator.status, OperatorStatus::Deregistered);
+        assert_eq!(
+            operator.status,
+            OperatorStatus::Deregistered((domain_id, 0).into())
+        );
 
         let pending_deregistration = PendingOperatorDeregistrations::<T>::get(domain_id)
             .expect("pending deregistration must exist");
@@ -367,7 +370,7 @@ mod benchmarks {
             operator_id,
             withdraw_amount * 3u32.into(),
         ));
-        do_finalize_domain_staking::<T>(domain_id, 1u32.into())
+        do_finalize_domain_epoch_staking::<T>(domain_id, 1u32.into())
             .expect("finalize domain staking should success");
 
         // Add reward to the operator

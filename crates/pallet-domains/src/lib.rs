@@ -136,15 +136,11 @@ mod pallet {
     use crate::staking::do_reward_operators;
     use crate::staking::{
         do_deregister_operator, do_nominate_operator, do_register_operator, do_slash_operators,
-        do_switch_operator_domain, do_unlock_funds, do_withdraw_stake, Deposit,
-        Error as StakingError, Nominator, Operator, OperatorConfig, StakingSummary, Withdraw,
+        do_switch_operator_domain, do_unlock_funds, do_unlock_operator, do_withdraw_stake, Deposit,
+        DomainEpoch, Error as StakingError, Operator, OperatorConfig, StakingSummary, Withdraw,
         Withdrawal,
     };
-    #[cfg(not(feature = "runtime-benchmarks"))]
-    use crate::staking_epoch::do_unlock_pending_withdrawals;
-    use crate::staking_epoch::{
-        do_finalize_domain_current_epoch, Error as StakingEpochError, PendingOperatorSlashInfo,
-    };
+    use crate::staking_epoch::{do_finalize_domain_current_epoch, Error as StakingEpochError};
     use crate::weights::WeightInfo;
     use crate::{
         BalanceOf, DomainBlockNumberFor, ElectionVerificationParams, HoldIdentifier, NominatorId,
@@ -386,18 +382,6 @@ mod pallet {
     pub(super) type PendingOperatorSwitches<T: Config> =
         StorageMap<_, Identity, DomainId, BTreeSet<OperatorId>, OptionQuery>;
 
-    /// List of all current epoch's nominators and their shares under a given operator,
-    #[pallet::storage]
-    pub(super) type Nominators<T: Config> = StorageDoubleMap<
-        _,
-        Identity,
-        OperatorId,
-        Identity,
-        NominatorId<T>,
-        Nominator<T::Share>,
-        OptionQuery,
-    >;
-
     /// Domain block number at which given epoch is completed.
     // TODO: currently unbounded storage.
     #[pallet::storage]
@@ -414,16 +398,8 @@ mod pallet {
     /// Share price for the operator pool at the end of Domain epoch.
     // TODO: currently unbounded storage.
     #[pallet::storage]
-    pub type OperatorEpochSharePrice<T: Config> = StorageNMap<
-        _,
-        (
-            NMapKey<Identity, DomainId>,
-            NMapKey<Identity, EpochIndex>,
-            NMapKey<Identity, OperatorId>,
-        ),
-        Perbill,
-        OptionQuery,
-    >;
+    pub type OperatorEpochSharePrice<T: Config> =
+        StorageDoubleMap<_, Identity, OperatorId, Identity, DomainEpoch, Perbill, OptionQuery>;
 
     /// List of all deposits for given Operator.
     #[pallet::storage]
@@ -465,35 +441,12 @@ mod pallet {
     pub(super) type PendingOperatorDeregistrations<T: Config> =
         StorageMap<_, Identity, DomainId, BTreeSet<OperatorId>, OptionQuery>;
 
-    /// Stores a list of operators who are unlocking in the coming blocks.
-    /// The operator will be removed when the wait period is over
-    /// or when the operator is slashed.
-    #[pallet::storage]
-    pub(super) type PendingOperatorUnlocks<T: Config> =
-        StorageValue<_, BTreeSet<OperatorId>, ValueQuery>;
-
-    /// A list of operators that are either unregistering or one more of the nominators
-    /// are withdrawing some staked funds.
-    #[pallet::storage]
-    pub(super) type PendingUnlocks<T: Config> = StorageMap<
-        _,
-        Identity,
-        (DomainId, DomainBlockNumberFor<T>),
-        BTreeSet<OperatorId>,
-        OptionQuery,
-    >;
-
     /// A list operators who were slashed during the current epoch associated with the domain.
     /// When the epoch for a given domain is complete, operator total stake is moved to treasury and
     /// then deleted.
     #[pallet::storage]
-    pub(super) type PendingSlashes<T: Config> = StorageMap<
-        _,
-        Identity,
-        DomainId,
-        BTreeMap<OperatorId, PendingOperatorSlashInfo<NominatorId<T>, BalanceOf<T>>>,
-        OptionQuery,
-    >;
+    pub(super) type PendingSlashes<T: Config> =
+        StorageMap<_, Identity, DomainId, BTreeSet<OperatorId>, OptionQuery>;
 
     /// The pending staking operation count of the current epoch, it should not larger than
     /// `MaxPendingStakingOperation` and will be resetted to 0 upon epoch transition.
@@ -787,6 +740,9 @@ mod pallet {
         OperatorDeregistered {
             operator_id: OperatorId,
         },
+        OperatorUnlocked {
+            operator_id: OperatorId,
+        },
         WithdrewStake {
             operator_id: OperatorId,
             nominator_id: NominatorId<T>,
@@ -938,13 +894,6 @@ mod pallet {
                             });
                             epoch_transitted = true;
                         }
-
-                        // TODO: remove once the operator deregistration is moved into its extrinsics
-                        do_unlock_pending_withdrawals::<T>(
-                            domain_id,
-                            confirmed_block_info.domain_block_number,
-                        )
-                        .map_err(Error::<T>::from)?;
                     }
                 }
             }
@@ -1258,6 +1207,7 @@ mod pallet {
             Ok(())
         }
 
+        /// Unlocks the nominator funds given the unlocking period is complete.
         #[pallet::call_index(10)]
         #[pallet::weight(Weight::from_all(10_000))]
         pub fn unlock_funds(origin: OriginFor<T>, operator_id: OperatorId) -> DispatchResult {
@@ -1272,6 +1222,17 @@ mod pallet {
             Ok(())
         }
 
+        /// Unlocks the operator given the unlocking period is complete.
+        /// Anyone can initiate the operator unlock.
+        #[pallet::call_index(11)]
+        #[pallet::weight(Weight::from_all(10_000))]
+        pub fn unlock_operator(origin: OriginFor<T>, operator_id: OperatorId) -> DispatchResult {
+            ensure_signed(origin)?;
+            do_unlock_operator::<T>(operator_id).map_err(crate::pallet::Error::<T>::from)?;
+            Self::deposit_event(Event::OperatorUnlocked { operator_id });
+            Ok(())
+        }
+
         /// Extrinsic to update domain's operator allow list.
         /// Note:
         /// - If the previous allowed list is set to specific operators and new allow list is set
@@ -1279,7 +1240,7 @@ mod pallet {
         /// - If the previous allowed list is set to `Anyone` or specific operators and the new
         ///   allow list is set to specific operators, then all the registered not allowed operators
         ///   will continue to operate until they de-register themselves.
-        #[pallet::call_index(11)]
+        #[pallet::call_index(12)]
         #[pallet::weight(Weight::from_all(10_000))]
         pub fn update_domain_operator_allow_list(
             origin: OriginFor<T>,
@@ -1294,7 +1255,7 @@ mod pallet {
         }
 
         /// Force staking epoch transition for a given domain
-        #[pallet::call_index(12)]
+        #[pallet::call_index(13)]
         #[pallet::weight(T::WeightInfo::pending_staking_operation())]
         pub fn force_staking_epoch_transition(
             origin: OriginFor<T>,
