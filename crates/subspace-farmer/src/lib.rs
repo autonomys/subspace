@@ -40,6 +40,7 @@ pub mod node_client;
 pub mod piece_cache;
 pub mod reward_signing;
 pub mod single_disk_farm;
+pub mod thread_pool_manager;
 pub mod utils;
 
 /// Size of the LRU cache for peers.

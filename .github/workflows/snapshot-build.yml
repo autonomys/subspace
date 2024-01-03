@@ -18,7 +18,7 @@ env:
 
 jobs:
   container-linux:
-    runs-on: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "ubuntu-20.04-x86-64"]' || 'ubuntu-22.04') }}
+    runs-on: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "ubuntu-20.04-x86-64"]' || '"ubuntu-22.04"') }}
     permissions:
       contents: write
       packages: write
@@ -84,35 +84,35 @@ jobs:
     strategy:
       matrix:
         build:
-          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "ubuntu-20.04-x86-64"]' || 'ubuntu-20.04') }}
+          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "ubuntu-20.04-x86-64"]' || '"ubuntu-20.04"') }}
             target: x86_64-unknown-linux-gnu
             suffix: ubuntu-x86_64-skylake-${{ github.ref_name }}
             rustflags: "-C target-cpu=skylake"
-          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "ubuntu-20.04-x86-64"]' || 'ubuntu-20.04') }}
+          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "ubuntu-20.04-x86-64"]' || '"ubuntu-20.04"') }}
             target: x86_64-unknown-linux-gnu
             suffix: ubuntu-x86_64-v2-${{ github.ref_name }}
             rustflags: "-C target-cpu=x86-64-v2 -C target-feature=+aes"
-          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "ubuntu-20.04-x86-64"]' || 'ubuntu-20.04') }}
+          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "ubuntu-20.04-x86-64"]' || '"ubuntu-20.04"') }}
             target: aarch64-unknown-linux-gnu
             suffix: ubuntu-aarch64-${{ github.ref_name }}
             # TODO: AES flag is such that we have decent performance on ARMv8, remove once `aes` crate bumps MSRV to
             #  at least 1.61: https://github.com/RustCrypto/block-ciphers/issues/373
             rustflags: "-C linker=aarch64-linux-gnu-gcc --cfg aes_armv8"
-          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "macos-12-arm64"]' || 'macos-12') }}
+          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "macos-12-arm64"]' || '"macos-12"') }}
             target: aarch64-apple-darwin
             suffix: macos-aarch64-${{ github.ref_name }}
             # TODO: AES flag is such that we have decent performance on ARMv8, remove once `aes` crate bumps MSRV to
             #  at least 1.61: https://github.com/RustCrypto/block-ciphers/issues/373
             rustflags: "--cfg aes_armv8"
-          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "macos-12-arm64"]' || 'macos-12') }}
+          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "macos-12-arm64"]' || '"macos-12"') }}
             target: x86_64-apple-darwin
             suffix: macos-x86_64-${{ github.ref_name }}
             rustflags: ""
-          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "windows-server-2022-x86-64"]' || 'windows-2022') }}
+          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "windows-server-2022-x86-64"]' || '"windows-2022"') }}
             target: x86_64-pc-windows-msvc
             suffix: windows-x86_64-skylake-${{ github.ref_name }}
             rustflags: "-C target-cpu=skylake"
-          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "windows-server-2022-x86-64"]' || 'windows-2022') }}
+          - os: ${{ fromJson(github.repository_owner == 'subspace' && '["self-hosted", "windows-server-2022-x86-64"]' || '"windows-2022"') }}
             target: x86_64-pc-windows-msvc
             suffix: windows-x86_64-v2-${{ github.ref_name }}
             rustflags: "-C target-cpu=x86-64-v2 -C target-feature=+aes"
@@ -148,6 +148,11 @@ jobs:
         with:
           repo-token: ${{ secrets.GITHUB_TOKEN }}
 
+      # Needed for hwloc
+      - name: Install automake (macOS)
+        run: brew install automake
+        if: runner.os == 'macOS'
+
       # Workaround to resolve link error with C:\msys64\mingw64\bin\libclang.dll
       - name: Remove msys64
         run: Remove-Item -LiteralPath "C:\msys64\" -Force -Recurse
@@ -156,7 +161,33 @@ jobs:
         continue-on-error: true
 
       - name: AArch64 cross-compile packages
-        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends g++-aarch64-linux-gnu gcc-aarch64-linux-gnu libc6-dev-arm64-cross
+        run: |
+          FLAVOR="$(lsb_release -sc)"
+
+          sudo tee /etc/apt/sources.list.d/arm64.list <<LIST
+            deb [arch=arm64] http://ports.ubuntu.com/ ${FLAVOR} main restricted
+            deb [arch=arm64] http://ports.ubuntu.com/ ${FLAVOR}-updates main restricted
+            deb [arch=arm64] http://ports.ubuntu.com/ ${FLAVOR} universe
+            deb [arch=arm64] http://ports.ubuntu.com/ ${FLAVOR}-updates universe
+            deb [arch=arm64] http://ports.ubuntu.com/ ${FLAVOR} multiverse
+            deb [arch=arm64] http://ports.ubuntu.com/ ${FLAVOR}-updates multiverse
+            deb [arch=arm64] http://ports.ubuntu.com/ ${FLAVOR}-backports main restricted universe multiverse
+          LIST
+          sudo sed -i 's/deb http/deb [arch=amd64] http/' /etc/apt/sources.list
+          # GitHub runners use mirror file
+          sudo sed -i 's/deb mirror/deb [arch=amd64] mirror/' /etc/apt/sources.list
+
+          sudo dpkg --add-architecture arm64
+          sudo apt-get update
+          # zlib1g-dev:arm64 is only necessary because amd64 version is present on the host and cross-compilation of
+          # hwlocality-sys fails otherwise
+          sudo apt-get install -y --no-install-recommends \
+            g++-aarch64-linux-gnu \
+            gcc-aarch64-linux-gnu \
+            libc6-dev-arm64-cross \
+            zlib1g-dev:arm64
+          
+          echo "PKG_CONFIG_ALLOW_CROSS=true" >> $GITHUB_ENV
         if: matrix.build.target == 'aarch64-unknown-linux-gnu'
 
       - name: Configure cache
@@ -169,11 +200,20 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      - name: Build farmer
+      - name: Build farmer (Linux and Windows)
         uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b # @v1.0.1
         with:
           command: build
           args: --locked -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-farmer
+        if: runner.os != 'macOS'
+
+      # We build macOS without `numa` feature, primarily because of https://github.com/HadrienG2/hwlocality/issues/31
+      - name: Build farmer (macOS)
+        uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b # @v1.0.1
+        with:
+          command: build
+          args: --locked -Z build-std --target ${{ matrix.build.target }} --profile production --bin subspace-farmer --no-default-features
+        if: runner.os == 'macOS'
 
       - name: Build node
         uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b # @v1.0.1

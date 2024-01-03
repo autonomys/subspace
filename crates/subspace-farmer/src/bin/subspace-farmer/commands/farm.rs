@@ -29,7 +29,10 @@ use subspace_farmer::utils::farmer_piece_getter::FarmerPieceGetter;
 use subspace_farmer::utils::piece_validator::SegmentCommitmentPieceValidator;
 use subspace_farmer::utils::readers_and_pieces::ReadersAndPieces;
 use subspace_farmer::utils::ss58::parse_ss58_reward_address;
-use subspace_farmer::utils::{run_future_in_dedicated_thread, AsyncJoinOnDrop};
+use subspace_farmer::utils::{
+    all_cpu_cores, create_tokio_thread_pool_manager_for_pinned_nodes,
+    run_future_in_dedicated_thread, thread_pool_core_indices, AsyncJoinOnDrop,
+};
 use subspace_farmer::{Identity, NodeClient, NodeRpcClient};
 use subspace_farmer_components::plotting::PlottedSector;
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
@@ -44,23 +47,12 @@ use zeroize::Zeroizing;
 
 const RECORDS_ROOTS_CACHE_SIZE: NonZeroUsize = NonZeroUsize::new(1_000_000).expect("Not zero; qed");
 
-fn available_parallelism() -> usize {
-    match std::thread::available_parallelism() {
-        Ok(parallelism) => parallelism.get(),
-        Err(error) => {
-            warn!(
-                %error,
-                "Unable to identify available parallelism, you might want to configure thread pool sizes with CLI \
-                options manually"
-            );
-
-            0
-        }
-    }
-}
-
 fn should_farm_during_initial_plotting() -> bool {
-    available_parallelism() > 8
+    let total_cpu_cores = all_cpu_cores()
+        .iter()
+        .flat_map(|set| set.cpu_cores())
+        .count();
+    total_cpu_cores > 8
 }
 
 /// Arguments for farmer
@@ -117,42 +109,46 @@ pub(crate) struct FarmingArgs {
     #[arg(long, alias = "metrics-endpoint")]
     metrics_endpoints: Vec<SocketAddr>,
     /// Defines how many sectors farmer will download concurrently, allows to limit memory usage of
-    /// the plotting process, increasing beyond 2 makes practical sense due to limited networking
-    /// concurrency and will likely result in slower plotting overall
-    #[arg(long, default_value = "2")]
-    sector_downloading_concurrency: NonZeroUsize,
-    /// Defines how many sectors farmer will encode concurrently, should generally never be set to
-    /// more than 1 because it will most likely result in slower plotting overall
-    #[arg(long, default_value = "1")]
-    sector_encoding_concurrency: NonZeroUsize,
-    /// Allows to enable farming during initial plotting. Not used by default because plotting is so
-    /// intense on CPU and memory that farming will likely not work properly, yet it will
-    /// significantly impact plotting speed, delaying the time when farming can actually work
-    /// properly.
+    /// the plotting process, defaults to `--sector-downloading-concurrency` + 1 to download future
+    /// sector ahead of time
+    #[arg(long)]
+    sector_downloading_concurrency: Option<NonZeroUsize>,
+    /// Defines how many sectors farmer will encode concurrently, defaults to 1 on UMA system and
+    /// number of NUMA nodes on NUMA system. It is further restricted by
+    /// `--sector-downloading-concurrency` and setting this option higher than
+    /// `--sector-downloading-concurrency` will have no effect.
+    #[arg(long)]
+    sector_encoding_concurrency: Option<NonZeroUsize>,
+    /// Allows to enable farming during initial plotting. Not used by default on machines with 8 or
+    /// less logical cores because plotting is so intense on CPU and memory that farming will likely
+    /// not work properly, yet it will significantly impact plotting speed, delaying the time when
+    /// farming can actually start properly.
     #[arg(long, default_value_t = should_farm_during_initial_plotting(), action = clap::ArgAction::Set)]
     farm_during_initial_plotting: bool,
     /// Size of PER FARM thread pool used for farming (mostly for blocking I/O, but also for some
-    /// compute-intensive operations during proving), defaults to number of CPU cores available in
-    /// the system
-    #[arg(long, default_value_t = available_parallelism())]
-    farming_thread_pool_size: usize,
-    /// Size of PER FARM thread pool used for plotting, defaults to number of CPU cores available
-    /// in the system.
+    /// compute-intensive operations during proving), defaults to number of logical CPUs
+    /// available on UMA system and number of logical CPUs in first NUMA node on NUMA system
+    #[arg(long)]
+    farming_thread_pool_size: Option<NonZeroUsize>,
+    /// Size of one thread pool used for plotting, defaults to number of logical CPUs available
+    /// on UMA system and number of logical CPUs available in NUMA node on NUMA system.
     ///
-    /// NOTE: The fact that this parameter is per farm doesn't mean farmer will plot multiple
-    /// sectors concurrently, see `--sector-downloading-concurrency` and
-    /// `--sector-encoding-concurrency` options.
-    #[arg(long, default_value_t = available_parallelism())]
-    plotting_thread_pool_size: usize,
-    /// Size of PER FARM thread pool used for replotting, typically smaller pool than for plotting
-    /// to not affect farming as much, defaults to half of the number of CPU cores available in the
-    /// system.
+    /// Number of thread pools is defined by `--sector-encoding-concurrency` option, different
+    /// thread pools might have different number of threads if NUMA nodes do not have the same size.
     ///
-    /// NOTE: The fact that this parameter is per farm doesn't mean farmer will replot multiple
-    /// sectors concurrently, see `--sector-downloading-concurrency` and
-    /// `--sector-encoding-concurrency` options.
-    #[arg(long, default_value_t = available_parallelism() / 2)]
-    replotting_thread_pool_size: usize,
+    /// Threads will be pinned to corresponding CPU cores at creation.
+    #[arg(long)]
+    plotting_thread_pool_size: Option<NonZeroUsize>,
+    /// Size of one thread pool used for replotting, typically smaller pool than for plotting
+    /// to not affect farming as much, defaults to half of the number of logical CPUs available on
+    /// UMA system and number of logical CPUs available in NUMA node on NUMA system.
+    ///
+    /// Number of thread pools is defined by `--sector-encoding-concurrency` option, different
+    /// thread pools might have different number of threads if NUMA nodes do not have the same size.
+    ///
+    /// Threads will be pinned to corresponding CPU cores at creation.
+    #[arg(long)]
+    replotting_thread_pool_size: Option<NonZeroUsize>,
 }
 
 fn cache_percentage_parser(s: &str) -> anyhow::Result<NonZeroU8> {
@@ -438,8 +434,67 @@ where
         None => farmer_app_info.protocol_info.max_pieces_in_sector,
     };
 
-    let downloading_semaphore = Arc::new(Semaphore::new(sector_downloading_concurrency.get()));
-    let encoding_semaphore = Arc::new(Semaphore::new(sector_encoding_concurrency.get()));
+    let plotting_thread_pool_core_indices =
+        thread_pool_core_indices(plotting_thread_pool_size, sector_encoding_concurrency);
+    let replotting_thread_pool_core_indices = {
+        let mut replotting_thread_pool_core_indices =
+            thread_pool_core_indices(replotting_thread_pool_size, sector_encoding_concurrency);
+        if replotting_thread_pool_size.is_none() {
+            // The default behavior is to use all CPU cores, but for replotting we just want half
+            replotting_thread_pool_core_indices
+                .iter_mut()
+                .for_each(|set| set.truncate(set.cpu_cores().len() / 2));
+        }
+        replotting_thread_pool_core_indices
+    };
+
+    let downloading_semaphore = Arc::new(Semaphore::new(
+        sector_downloading_concurrency
+            .map(|sector_downloading_concurrency| sector_downloading_concurrency.get())
+            .unwrap_or(plotting_thread_pool_core_indices.len() + 1),
+    ));
+
+    let all_cpu_cores = all_cpu_cores();
+    let plotting_thread_pool_manager = create_tokio_thread_pool_manager_for_pinned_nodes(
+        "plotting",
+        plotting_thread_pool_core_indices,
+    )?;
+    let replotting_thread_pool_manager = create_tokio_thread_pool_manager_for_pinned_nodes(
+        "replotting",
+        replotting_thread_pool_core_indices,
+    )?;
+    let farming_thread_pool_size = farming_thread_pool_size
+        .map(|farming_thread_pool_size| farming_thread_pool_size.get())
+        .unwrap_or_else(|| {
+            all_cpu_cores
+                .first()
+                .expect("Not empty according to function description; qed")
+                .cpu_cores()
+                .len()
+        });
+
+    if all_cpu_cores.len() > 1 {
+        info!(numa_nodes = %all_cpu_cores.len(), "NUMA system detected");
+
+        if all_cpu_cores.len() < disk_farms.len() {
+            warn!(
+                numa_nodes = %all_cpu_cores.len(),
+                farms_count = %disk_farms.len(),
+                "Too few disk farms, CPU will not be utilized fully during plotting, same number of farms as NUMA \
+                nodes or more is recommended"
+            );
+        }
+    }
+
+    // TODO: Remove code or environment variable once identified whether it helps or not
+    if std::env::var("NUMA_ALLOCATOR").is_ok() && all_cpu_cores.len() > 1 {
+        unsafe {
+            libmimalloc_sys::mi_option_set(
+                libmimalloc_sys::mi_option_use_numa_nodes,
+                all_cpu_cores.len() as std::ffi::c_long,
+            );
+        }
+    }
 
     let mut plotting_delay_senders = Vec::with_capacity(disk_farms.len());
 
@@ -462,11 +517,10 @@ where
                 piece_getter: piece_getter.clone(),
                 cache_percentage,
                 downloading_semaphore: Arc::clone(&downloading_semaphore),
-                encoding_semaphore: Arc::clone(&encoding_semaphore),
                 farm_during_initial_plotting,
                 farming_thread_pool_size,
-                plotting_thread_pool_size,
-                replotting_thread_pool_size,
+                plotting_thread_pool_manager: plotting_thread_pool_manager.clone(),
+                replotting_thread_pool_manager: replotting_thread_pool_manager.clone(),
                 plotting_delay: Some(plotting_delay_receiver),
             },
             disk_farm_index,

@@ -17,6 +17,7 @@ pub use crate::single_disk_farm::plotting::PlottingError;
 use crate::single_disk_farm::plotting::{
     plotting, plotting_scheduler, PlottingOptions, PlottingSchedulerOptions,
 };
+use crate::thread_pool_manager::ThreadPoolManager;
 use crate::utils::{tokio_rayon_spawn_handler, AsyncJoinOnDrop};
 use crate::KNOWN_PEERS_CACHE_SIZE;
 use async_lock::RwLock;
@@ -281,19 +282,16 @@ pub struct SingleDiskFarmOptions<NC, PG> {
     /// Semaphore for part of the plotting when farmer downloads new sector, allows to limit memory
     /// usage of the plotting process, permit will be held until the end of the plotting process
     pub downloading_semaphore: Arc<Semaphore>,
-    /// Semaphore for part of the plotting when farmer encodes downloaded sector, should typically
-    /// allow one permit at a time for efficient CPU utilization
-    pub encoding_semaphore: Arc<Semaphore>,
     /// Whether to farm during initial plotting
     pub farm_during_initial_plotting: bool,
     /// Thread pool size used for farming (mostly for blocking I/O, but also for some
     /// compute-intensive operations during proving)
     pub farming_thread_pool_size: usize,
-    /// Thread pool size used for plotting
-    pub plotting_thread_pool_size: usize,
-    /// Thread pool size used for replotting, typically smaller pool than for plotting to not affect
-    /// farming as much
-    pub replotting_thread_pool_size: usize,
+    /// Thread pool manager used for plotting
+    pub plotting_thread_pool_manager: ThreadPoolManager,
+    /// Thread pool manager used for replotting, typically smaller pool than for plotting to not
+    /// affect farming as much
+    pub replotting_thread_pool_manager: ThreadPoolManager,
     /// Notification for plotter to start, can be used to delay plotting until some initialization
     /// has happened externally
     pub plotting_delay: Option<oneshot::Receiver<()>>,
@@ -626,10 +624,9 @@ impl SingleDiskFarm {
             erasure_coding,
             cache_percentage,
             downloading_semaphore,
-            encoding_semaphore,
             farming_thread_pool_size,
-            plotting_thread_pool_size,
-            replotting_thread_pool_size,
+            plotting_thread_pool_manager,
+            replotting_thread_pool_manager,
             plotting_delay,
             farm_during_initial_plotting,
         } = options;
@@ -915,50 +912,6 @@ impl SingleDiskFarm {
 
             move || {
                 let _span_guard = span.enter();
-                let plotting_thread_pool = match ThreadPoolBuilder::new()
-                    .thread_name(move |thread_index| {
-                        format!("plotting-{disk_farm_index}.{thread_index}")
-                    })
-                    .num_threads(plotting_thread_pool_size)
-                    .spawn_handler(tokio_rayon_spawn_handler())
-                    .build()
-                    .map_err(PlottingError::FailedToCreateThreadPool)
-                {
-                    Ok(thread_pool) => thread_pool,
-                    Err(error) => {
-                        if let Some(error_sender) = error_sender.lock().take() {
-                            if let Err(error) = error_sender.send(error.into()) {
-                                error!(
-                                    %error,
-                                    "Plotting failed to send error to background task",
-                                );
-                            }
-                        }
-                        return;
-                    }
-                };
-                let replotting_thread_pool = match ThreadPoolBuilder::new()
-                    .thread_name(move |thread_index| {
-                        format!("replotting-{disk_farm_index}.{thread_index}")
-                    })
-                    .num_threads(replotting_thread_pool_size)
-                    .spawn_handler(tokio_rayon_spawn_handler())
-                    .build()
-                    .map_err(PlottingError::FailedToCreateThreadPool)
-                {
-                    Ok(thread_pool) => thread_pool,
-                    Err(error) => {
-                        if let Some(error_sender) = error_sender.lock().take() {
-                            if let Err(error) = error_sender.send(error.into()) {
-                                error!(
-                                    %error,
-                                    "Plotting failed to send error to background task",
-                                );
-                            }
-                        }
-                        return;
-                    }
-                };
 
                 let plotting_options = PlottingOptions {
                     public_key,
@@ -977,9 +930,8 @@ impl SingleDiskFarm {
                     modifying_sector_index,
                     sectors_to_plot_receiver,
                     downloading_semaphore,
-                    encoding_semaphore: &encoding_semaphore,
-                    plotting_thread_pool,
-                    replotting_thread_pool,
+                    plotting_thread_pool_manager,
+                    replotting_thread_pool_manager,
                     stop_receiver: &mut stop_receiver.resubscribe(),
                 };
 
