@@ -1,7 +1,9 @@
 //! Utilities for working with test accounts.
 
 use codec::Encode;
-use ed25519_dalek::{Keypair, PublicKey, SecretKey, Signature};
+use ed25519_dalek::{
+    SecretKey, Signature, Signer, SigningKey, PUBLIC_KEY_LENGTH, SECRET_KEY_LENGTH,
+};
 use finality_grandpa::voter_set::VoterSet;
 use sp_consensus_grandpa::{AuthorityId, AuthorityList, AuthorityWeight};
 use sp_std::prelude::*;
@@ -18,41 +20,29 @@ pub(crate) const EVE: Account = Account(4);
 pub(crate) struct Account(pub u16);
 
 impl Account {
-    pub(crate) fn public(&self) -> PublicKey {
-        PublicKey::from(&self.secret())
+    pub(crate) fn public(&self) -> [u8; PUBLIC_KEY_LENGTH] {
+        self.signing_key().to_keypair_bytes()[SECRET_KEY_LENGTH..][..PUBLIC_KEY_LENGTH]
+            .try_into()
+            .unwrap()
     }
 
-    pub(crate) fn secret(&self) -> SecretKey {
+    pub(crate) fn signing_key(&self) -> SigningKey {
         let data = self.0.encode();
-        let mut bytes = [0_u8; 32];
-        bytes[0..data.len()].copy_from_slice(&data);
-        SecretKey::from_bytes(&bytes)
-            .expect("A static array of the correct length is a known good.")
-    }
+        let mut secret_key: SecretKey = [0_u8; 32];
+        secret_key[0..data.len()].copy_from_slice(&data);
 
-    pub(crate) fn pair(&self) -> Keypair {
-        let mut pair: [u8; 64] = [0; 64];
-
-        let secret = self.secret();
-        pair[..32].copy_from_slice(&secret.to_bytes());
-
-        let public = self.public();
-        pair[32..].copy_from_slice(&public.to_bytes());
-
-        Keypair::from_bytes(&pair)
-            .expect("We expect the SecretKey to be good, so this must also be good.")
+        SigningKey::from_bytes(&secret_key)
     }
 
     pub(crate) fn sign(&self, msg: &[u8]) -> Signature {
-        use ed25519_dalek::Signer;
-        self.pair().sign(msg)
+        self.signing_key().sign(msg)
     }
 }
 
 impl From<Account> for AuthorityId {
     #[inline]
     fn from(p: Account) -> Self {
-        sp_application_crypto::UncheckedFrom::unchecked_from(p.public().to_bytes())
+        sp_application_crypto::UncheckedFrom::unchecked_from(p.public())
     }
 }
 
