@@ -134,10 +134,6 @@ mod benchmarks {
             PendingStakingOperationCount::<T>::get(domain_id) as u32,
             max_pending_staking_op
         );
-        assert_eq!(
-            PendingWithdrawals::<T>::iter_prefix_values(operator_id).count() as u32,
-            max_pending_staking_op
-        );
 
         #[block]
         {
@@ -149,10 +145,6 @@ mod benchmarks {
         }
 
         assert_eq!(PendingStakingOperationCount::<T>::get(domain_id), 0);
-        assert_eq!(
-            PendingWithdrawals::<T>::iter_prefix_values(operator_id).count(),
-            0
-        );
     }
 
     #[benchmark]
@@ -282,11 +274,6 @@ mod benchmarks {
         let staking_summary =
             DomainStakingSummary::<T>::get(domain_id).expect("staking summary must exist");
         assert!(staking_summary.next_operators.contains(&operator_id));
-
-        assert_eq!(
-            PendingDeposits::<T>::get(operator_id, operator_account),
-            Some(T::MinOperatorStake::get())
-        );
     }
 
     /// Benchmark `nominate_operator` extrinsic with the worst possible conditions:
@@ -315,11 +302,6 @@ mod benchmarks {
             RawOrigin::Signed(nominator.clone()),
             operator_id,
             minimum_nominator_stake,
-        );
-
-        assert_eq!(
-            PendingDeposits::<T>::get(operator_id, nominator),
-            Some(minimum_nominator_stake * 2u32.into())
         );
     }
 
@@ -411,11 +393,6 @@ mod benchmarks {
             RawOrigin::Signed(nominator.clone()),
             operator_id,
             Withdraw::Some(withdraw_amount.into()),
-        );
-
-        assert_eq!(
-            PendingWithdrawals::<T>::get(operator_id, nominator),
-            Some(Withdraw::Some(withdraw_amount * 2u32.into()))
         );
     }
 

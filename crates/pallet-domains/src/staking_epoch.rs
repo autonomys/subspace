@@ -2,18 +2,15 @@
 
 #[cfg(any(not(feature = "runtime-benchmarks"), test))]
 use crate::pallet::OperatorSigningKey;
-#[cfg(any(not(feature = "runtime-benchmarks"), test))]
-use crate::pallet::PendingNominatorUnlocks;
 use crate::pallet::{
     DomainEpochCompleteAt, DomainStakingSummary, LastEpochStakingDistribution, Nominators,
-    OperatorIdOwner, Operators, PendingDeposits, PendingOperatorDeregistrations,
-    PendingOperatorSwitches, PendingOperatorUnlocks, PendingSlashes, PendingStakingOperationCount,
-    PendingUnlocks, PendingWithdrawals,
+    OperatorIdOwner, Operators, PendingOperatorDeregistrations, PendingOperatorSwitches,
+    PendingOperatorUnlocks, PendingSlashes, PendingStakingOperationCount, PendingUnlocks,
 };
 use crate::staking::{Error as TransitionError, OperatorStatus};
 use crate::{
-    BalanceOf, Config, DomainBlockNumberFor, ElectionVerificationParams, HoldIdentifier,
-    OperatorEpochSharePrice,
+    BalanceOf, Config, DomainBlockNumberFor, ElectionVerificationParams, Event, HoldIdentifier,
+    OperatorEpochSharePrice, Pallet,
 };
 use codec::{Decode, Encode};
 use frame_support::traits::fungible::{InspectHold, Mutate, MutateHold};
@@ -75,8 +72,6 @@ pub(crate) fn do_unlock_pending_withdrawals<T: Config>(
                 if unlocking_operator_ids.contains(&operator_id) {
                     unlock_operator::<T>(operator_id)?;
                     unlocking_operator_ids.remove(&operator_id);
-                } else {
-                    unlock_nominator_withdrawals::<T>(operator_id, domain_block_number)?;
                 }
             }
 
@@ -112,21 +107,24 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
                     T::Currency::mint_into(&nominator_id, operator_tax)
                         .map_err(|_| TransitionError::MintBalance)?;
 
-                    // add an pending deposit for the operator tax
-                    let updated_total_deposit =
-                        match PendingDeposits::<T>::get(operator_id, nominator_id.clone()) {
-                            None => operator_tax,
-                            Some(existing_deposit) => existing_deposit
-                                .checked_add(&operator_tax)
-                                .ok_or(TransitionError::BalanceOverflow)?,
-                        };
-
                     crate::staking::hold_pending_deposit::<T>(
                         &nominator_id,
                         operator_id,
                         operator_tax,
                     )?;
-                    PendingDeposits::<T>::insert(operator_id, nominator_id, updated_total_deposit);
+
+                    let current_domain_epoch = (domain_id, stake_summary.current_epoch_index).into();
+                    crate::staking::do_calculate_previous_epoch_deposit_shares_and_maybe_add_new_deposit::<T>(
+                            operator_id,
+                            nominator_id,
+                            current_domain_epoch,
+                            Some(operator_tax),
+                        )?;
+
+                    Pallet::<T>::deposit_event(Event::OperatorTaxCollected {
+                        operator_id,
+                        tax: operator_tax,
+                    });
                 }
 
                 // add remaining rewards to nominators to be distributed during the epoch transition
@@ -264,13 +262,6 @@ fn unlock_operator<T: Config>(operator_id: OperatorId) -> Result<(), Error> {
         // transfer any remaining amount to treasury
         mint_funds::<T>(&T::TreasuryAccount::get(), total_stake)?;
 
-        // remove all of the pending deposits since we initiated withdrawal for all nominators.
-        let _ = PendingWithdrawals::<T>::clear_prefix(operator_id, u32::MAX, None);
-
-        // remove lock on any remaining deposits, all these deposits are recorded after start
-        // of new epoch and before operator de-registered
-        release_pending_deposits::<T>(operator_id)?;
-
         // remove OperatorOwner Details
         OperatorIdOwner::<T>::remove(operator_id);
 
@@ -283,57 +274,6 @@ fn unlock_operator<T: Config>(operator_id: OperatorId) -> Result<(), Error> {
         Ok(())
     })
     .map_err(Error::UnlockOperator)
-}
-
-fn release_pending_deposits<T: Config>(operator_id: OperatorId) -> Result<(), TransitionError> {
-    let pending_deposit_hold_id = T::HoldIdentifier::staking_pending_deposit(operator_id);
-    for (nominator_id, deposit) in PendingDeposits::<T>::drain_prefix(operator_id) {
-        T::Currency::release(
-            &pending_deposit_hold_id,
-            &nominator_id,
-            deposit,
-            Precision::Exact,
-        )
-        .map_err(|_| TransitionError::RemoveLock)?;
-    }
-
-    Ok(())
-}
-
-#[cfg(any(not(feature = "runtime-benchmarks"), test))]
-fn unlock_nominator_withdrawals<T: Config>(
-    operator_id: OperatorId,
-    domain_block_number: DomainBlockNumberFor<T>,
-) -> Result<(), Error> {
-    let pending_unlock_hold_id = T::HoldIdentifier::staking_pending_unlock(operator_id);
-    match PendingNominatorUnlocks::<T>::take(operator_id, domain_block_number) {
-        None => Ok(()),
-        Some(withdrawals) => withdrawals.into_iter().try_for_each(|withdrawal| {
-            let total_unlocking_balance =
-                T::Currency::balance_on_hold(&pending_unlock_hold_id, &withdrawal.nominator_id);
-            T::Currency::release(
-                &pending_unlock_hold_id,
-                &withdrawal.nominator_id,
-                total_unlocking_balance,
-                Precision::Exact,
-            )
-            .map_err(|_| TransitionError::RemoveLock)?;
-
-            let remaining_unlocking_balance = total_unlocking_balance
-                .checked_sub(&withdrawal.balance)
-                .ok_or(TransitionError::BalanceUnderflow)?;
-
-            T::Currency::hold(
-                &pending_unlock_hold_id,
-                &withdrawal.nominator_id,
-                remaining_unlocking_balance,
-            )
-            .map_err(|_| TransitionError::UpdateLock)?;
-
-            Ok(())
-        }),
-    }
-    .map_err(Error::UnlockNominator)
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
@@ -513,9 +453,6 @@ pub(crate) fn do_finalize_slashed_operators<T: Config>(
             // mint any gains to treasury account
             mint_funds::<T>(&T::TreasuryAccount::get(), total_stake)?;
 
-            // remove all of the pending withdrawals as the operator and all its nominators are slashed.
-            let _ = PendingWithdrawals::<T>::clear_prefix(operator_id, u32::MAX, None);
-
             // transfer all the unlocking withdrawals to treasury account
             let unlocking_nominators = slash_info
                 .unlocking_nominators
@@ -541,9 +478,7 @@ pub(crate) fn do_finalize_slashed_operators<T: Config>(
                 .map_err(|_| TransitionError::RemoveLock)?;
             }
 
-            // remove any nominator deposits
-            // all these are new deposits recorded after start of new epoch and before operator was slashed
-            release_pending_deposits::<T>(operator_id)
+            Ok(())
         })?;
     }
 
@@ -559,9 +494,9 @@ pub struct PendingOperatorSlashInfo<NominatorId, Balance> {
 mod tests {
     use crate::domain_registry::{DomainConfig, DomainObject};
     use crate::pallet::{
-        DomainRegistry, DomainStakingSummary, LastEpochStakingDistribution, NominatorCount,
-        Nominators, OperatorIdOwner, OperatorSigningKey, Operators, PendingDeposits,
-        PendingOperatorSwitches, PendingOperatorUnlocks, PendingUnlocks, PendingWithdrawals,
+        Deposits, DomainRegistry, DomainStakingSummary, LastEpochStakingDistribution,
+        NominatorCount, Nominators, OperatorIdOwner, OperatorSigningKey, Operators,
+        PendingOperatorSwitches, PendingOperatorUnlocks, PendingUnlocks,
     };
     use crate::staking::tests::register_operator;
     use crate::staking::{
@@ -733,14 +668,6 @@ mod tests {
                     Balances::balance_on_hold(&hold_id, nominator.0),
                     Zero::zero()
                 );
-                assert_eq!(
-                    PendingDeposits::<Test>::get(operator_id, *nominator.0),
-                    None
-                );
-                assert_eq!(
-                    PendingWithdrawals::<Test>::get(operator_id, *nominator.0),
-                    None
-                );
             }
 
             assert_eq!(Operators::<Test>::get(operator_id), None);
@@ -876,7 +803,6 @@ mod tests {
             let current_block = 100;
             do_finalize_domain_current_epoch::<Test>(domain_id, current_block).unwrap();
             for deposit in deposits {
-                assert_eq!(PendingDeposits::<Test>::get(operator_id, deposit.0), None);
                 Nominators::<Test>::contains_key(operator_id, deposit.0);
             }
 
@@ -965,7 +891,11 @@ mod tests {
                 (10 * SSC - expected_operator_tax)
             );
 
-            let deposit = PendingDeposits::<Test>::get(operator_id, operator_account).unwrap();
+            let deposit = Deposits::<Test>::get(operator_id, operator_account)
+                .unwrap()
+                .pending
+                .unwrap()
+                .amount;
             assert_eq!(deposit, expected_operator_tax);
 
             let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();

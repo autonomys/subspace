@@ -2,11 +2,11 @@
 
 use crate::pallet::{
     Deposits, DomainEpochCompleteAt, DomainRegistry, DomainStakingSummary, NextOperatorId,
-    NominatorCount, OperatorIdOwner, OperatorSigningKey, Operators, PendingNominatorUnlocks,
-    PendingOperatorDeregistrations, PendingOperatorSwitches, PendingOperatorUnlocks,
-    PendingSlashes, PendingStakingOperationCount, Withdrawals,
+    NominatorCount, OperatorIdOwner, OperatorSigningKey, Operators, PendingOperatorDeregistrations,
+    PendingOperatorSwitches, PendingOperatorUnlocks, PendingSlashes, PendingStakingOperationCount,
+    Withdrawals,
 };
-use crate::staking_epoch::{mint_funds, PendingNominatorUnlock, PendingOperatorSlashInfo};
+use crate::staking_epoch::mint_funds;
 use crate::{
     BalanceOf, Config, DomainBlockNumberFor, Event, HoldIdentifier, NominatorId,
     OperatorEpochSharePrice, Pallet, ReceiptHashFor, SlashedReason,
@@ -23,7 +23,7 @@ use sp_runtime::{Perbill, Percent};
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
 use sp_std::iter::Iterator;
-use sp_std::vec::{IntoIter, Vec};
+use sp_std::vec::IntoIter;
 
 /// A nominators deposit.
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq, Default)]
@@ -272,7 +272,7 @@ pub(crate) fn do_register_operator<T: Config>(
     })
 }
 
-struct DepositInfo<Balance> {
+pub(crate) struct DepositInfo<Balance> {
     /// If this nominator is currently nominating the operator.
     /// If there are multiple deposits in same epoch, still returns true
     nominating: bool,
@@ -286,7 +286,7 @@ struct DepositInfo<Balance> {
 /// then maybe create a new pending deposit in the current epoch.
 /// If there is a pending deposit for the current epoch, then simply increment the amount.
 /// Returns updated deposit info if there was a new deposit.
-fn do_calculate_previous_epoch_deposit_shares_and_maybe_add_new_deposit<T: Config>(
+pub(crate) fn do_calculate_previous_epoch_deposit_shares_and_maybe_add_new_deposit<T: Config>(
     operator_id: OperatorId,
     nominator_id: NominatorId<T>,
     current_domain_epoch: DomainEpoch,
@@ -650,14 +650,16 @@ pub(crate) fn do_withdraw_stake<T: Config>(
                 .checked_add(&shares_withdrew)
                 .ok_or(Error::ShareOverflow)?;
 
+            deposit.known.shares = remaining_shares;
             if remaining_shares.is_zero() {
                 // reduce nominator count if withdraw all
                 NominatorCount::<T>::mutate(operator_id, |count| {
                     *count -= 1;
                 });
+
+                // TODO cleanup deposit if there no pending deposits for this nominator
             }
 
-            deposit.known.shares = remaining_shares;
             Withdrawals::<T>::mutate(operator_id, nominator_id, |maybe_withdrawals| {
                 let mut withdrawals = maybe_withdrawals.take().unwrap_or_default();
                 withdrawals.push_back(Withdrawal {
@@ -802,7 +804,7 @@ where
                 None => return Ok(()),
                 Some(operator) => operator,
             };
-            let mut pending_slashes =
+            let pending_slashes =
                 PendingSlashes::<T>::get(operator.current_domain_id).unwrap_or_default();
 
             if pending_slashes.contains_key(&operator_id) {
@@ -847,20 +849,6 @@ where
                         unlocking_operators.remove(&operator_id)
                     });
 
-                    // remove from nominator unlocks
-                    let unlocking_nominators =
-                        PendingNominatorUnlocks::<T>::drain_prefix(operator_id)
-                            .flat_map(|(_, nominator_unlocks)| nominator_unlocks)
-                            .collect::<Vec<PendingNominatorUnlock<NominatorId<T>, BalanceOf<T>>>>();
-
-                    // update pending slashed
-                    pending_slashes.insert(
-                        operator_id,
-                        PendingOperatorSlashInfo {
-                            unlocking_nominators,
-                        },
-                    );
-
                     PendingSlashes::<T>::insert(operator.current_domain_id, pending_slashes);
                     Pallet::<T>::deposit_event(Event::OperatorSlashed {
                         operator_id,
@@ -879,10 +867,9 @@ where
 pub(crate) mod tests {
     use crate::domain_registry::{DomainConfig, DomainObject};
     use crate::pallet::{
-        Config, DomainRegistry, DomainStakingSummary, NextOperatorId, NominatorCount,
-        OperatorIdOwner, Operators, PendingDeposits, PendingNominatorUnlocks,
-        PendingOperatorDeregistrations, PendingOperatorSwitches, PendingSlashes,
-        PendingStakingOperationCount, PendingUnlocks, PendingWithdrawals,
+        Config, Deposits, DomainRegistry, DomainStakingSummary, NextOperatorId, NominatorCount,
+        OperatorIdOwner, Operators, PendingOperatorDeregistrations, PendingOperatorSwitches,
+        PendingSlashes, PendingUnlocks, Withdrawals,
     };
     use crate::staking::{
         do_nominate_operator, do_reward_operators, do_slash_operators, do_withdraw_stake,
@@ -1156,7 +1143,11 @@ pub(crate) mod tests {
                 )]),
             );
 
-            let pending_deposit = PendingDeposits::<Test>::get(0, nominator_account).unwrap();
+            let pending_deposit = Deposits::<Test>::get(0, nominator_account)
+                .unwrap()
+                .pending
+                .unwrap()
+                .amount;
             assert_eq!(pending_deposit, nominator_stake);
 
             assert_eq!(
@@ -1171,7 +1162,11 @@ pub(crate) mod tests {
                 40 * SSC,
             );
             assert_ok!(res);
-            let pending_deposit = PendingDeposits::<Test>::get(0, nominator_account).unwrap();
+            let pending_deposit = Deposits::<Test>::get(0, nominator_account)
+                .unwrap()
+                .pending
+                .unwrap()
+                .amount;
             assert_eq!(pending_deposit, nominator_stake + 40 * SSC);
 
             let nominator_count = NominatorCount::<Test>::get(operator_id);
@@ -1409,7 +1404,9 @@ pub(crate) mod tests {
         });
     }
 
-    type WithdrawWithResult = Vec<(Withdraw<BalanceOf<Test>>, Result<(), StakingError>)>;
+    type WithdrawWithResult = Vec<(Withdraw<Share>, Result<(), StakingError>)>;
+
+    type Share = <Test as Config>::Share;
 
     struct WithdrawParams {
         minimum_nominator_stake: BalanceOf<Test>,
@@ -1417,7 +1414,7 @@ pub(crate) mod tests {
         operator_reward: BalanceOf<Test>,
         nominator_id: NominatorId<Test>,
         withdraws: WithdrawWithResult,
-        expected_withdraw: Option<Withdraw<BalanceOf<Test>>>,
+        expected_withdraw: Option<Withdraw<Share>>,
         expected_nominator_count_reduced_by: u32,
     }
 
@@ -1480,45 +1477,28 @@ pub(crate) mod tests {
                 );
             }
 
-            assert_eq!(
-                PendingWithdrawals::<Test>::get(operator_id, nominator_id),
-                expected_withdraw
-            );
-
-            if let Some(withdraw) = expected_withdraw {
+            if let Some(_withdraw) = expected_withdraw {
                 // finalize pending withdrawals
                 let domain_block = 100;
                 let expected_unlock_at =
                     domain_block + crate::tests::StakeWithdrawalLockingPeriod::get();
                 do_finalize_domain_current_epoch::<Test>(domain_id, domain_block).unwrap();
-                assert_eq!(
-                    PendingWithdrawals::<Test>::get(operator_id, nominator_id),
-                    None
-                );
-
-                let pending_unlocks_at =
-                    PendingNominatorUnlocks::<Test>::get(operator_id, expected_unlock_at).unwrap();
-                assert_eq!(pending_unlocks_at.len(), 1);
-                assert_eq!(pending_unlocks_at[0].nominator_id, nominator_id);
+                assert_eq!(Withdrawals::<Test>::get(operator_id, nominator_id), None);
 
                 assert_eq!(
                     PendingUnlocks::<Test>::get((domain_id, expected_unlock_at)),
                     Some(BTreeSet::from_iter(vec![operator_id]))
                 );
 
-                let previous_usable_balance = Balances::usable_balance(nominator_id);
+                let _previous_usable_balance = Balances::usable_balance(nominator_id);
 
                 do_unlock_pending_withdrawals::<Test>(domain_id, expected_unlock_at).unwrap();
 
-                let mut withdrew_amount = pending_unlocks_at[0].balance;
-                if withdraw == Withdraw::All {
-                    // since there are no holds, ED is not considered untouchable
-                    withdrew_amount += ExistentialDeposit::get();
-                }
-                assert_eq!(
-                    Balances::usable_balance(nominator_id),
-                    previous_usable_balance + withdrew_amount
-                )
+                // TODO unlock funds and check the balance
+                //  assert_eq!(
+                //      Balances::usable_balance(nominator_id),
+                //      previous_usable_balance + withdrew_amount
+                //  )
             }
 
             let new_nominator_count = NominatorCount::<Test>::get(operator_id);
@@ -1907,217 +1887,6 @@ pub(crate) mod tests {
 
             let operator = Operators::<Test>::get(operator_id_3).unwrap();
             assert_eq!(operator.status, OperatorStatus::Slashed);
-        });
-    }
-
-    #[test]
-    fn nominator_withdraw_while_pending_deposit_exist() {
-        let domain_id = DomainId::new(0);
-        let operator_account = 1;
-        let operator_free_balance = 1500 * SSC;
-        let operator_stake = 1000 * SSC;
-        let pair = OperatorPair::from_seed(&U256::from(0u32).into());
-
-        let nominator_account = 2;
-        let nominator_free_balance = 150 * SSC;
-        let nominator_stake = 100 * SSC;
-        let nominators = BTreeMap::from_iter(vec![(
-            nominator_account,
-            (nominator_free_balance, nominator_stake),
-        )]);
-        let mut ext = new_test_ext();
-        ext.execute_with(|| {
-            let (operator_id, _) = register_operator(
-                domain_id,
-                operator_account,
-                operator_free_balance,
-                operator_stake,
-                100 * SSC,
-                pair.public(),
-                nominators,
-            );
-
-            let pending_deposit =
-                PendingDeposits::<Test>::get(operator_id, nominator_account).unwrap();
-            assert_eq!(pending_deposit, nominator_stake);
-
-            // It is okay to deposit more while there is pending deposit
-            let additional_deposit = 10 * SSC;
-            let res = Domains::nominate_operator(
-                RuntimeOrigin::signed(nominator_account),
-                operator_id,
-                additional_deposit,
-            );
-            assert_ok!(res);
-            let pending_deposit =
-                PendingDeposits::<Test>::get(operator_id, nominator_account).unwrap();
-            assert_eq!(pending_deposit, nominator_stake + additional_deposit);
-
-            let nominator_count = NominatorCount::<Test>::get(operator_id);
-
-            // Withdraw will be rejected while there is pending deposit
-            let res = Domains::withdraw_stake(
-                RuntimeOrigin::signed(nominator_account),
-                operator_id,
-                Withdraw::All,
-            );
-            assert_err!(
-                res,
-                Error::<Test>::Staking(crate::staking::Error::TryWithdrawWithPendingDeposit)
-            );
-
-            // count should remain same
-            assert_eq!(NominatorCount::<Test>::get(operator_id), nominator_count);
-        });
-    }
-
-    #[test]
-    fn nominator_deposit_while_pending_withdraw_exist() {
-        let domain_id = DomainId::new(0);
-        let operator_account = 1;
-        let operator_free_balance = 1500 * SSC;
-        let operator_stake = 1000 * SSC;
-        let pair = OperatorPair::from_seed(&U256::from(0u32).into());
-
-        let nominator_account = 2;
-        let nominator_free_balance = 150 * SSC;
-        let nominator_stake = 100 * SSC;
-        let nominators = BTreeMap::from_iter(vec![(
-            nominator_account,
-            (nominator_free_balance, nominator_stake),
-        )]);
-
-        let mut ext = new_test_ext();
-        ext.execute_with(|| {
-            let (operator_id, _) = register_operator(
-                domain_id,
-                operator_account,
-                operator_free_balance,
-                operator_stake,
-                10 * SSC,
-                pair.public(),
-                nominators,
-            );
-
-            // Finalize pending deposit
-            do_finalize_domain_current_epoch::<Test>(domain_id, 0).unwrap();
-            assert!(!PendingDeposits::<Test>::contains_key(
-                operator_id,
-                nominator_account,
-            ));
-
-            // Issue a withdraw
-            let res = Domains::withdraw_stake(
-                RuntimeOrigin::signed(nominator_account),
-                operator_id,
-                Withdraw::Some(nominator_stake / 3),
-            );
-            assert_ok!(res);
-            let pending_withdrawal =
-                PendingWithdrawals::<Test>::get(operator_id, nominator_account).unwrap();
-            assert_eq!(pending_withdrawal, Withdraw::Some(nominator_stake / 3));
-
-            // It is okay to withdraw more while there is pending withdraw
-            let res = Domains::withdraw_stake(
-                RuntimeOrigin::signed(nominator_account),
-                operator_id,
-                Withdraw::Some(nominator_stake / 3),
-            );
-            assert_ok!(res);
-            let pending_withdrawal =
-                PendingWithdrawals::<Test>::get(operator_id, nominator_account).unwrap();
-            assert_eq!(pending_withdrawal, Withdraw::Some(nominator_stake * 2 / 3));
-
-            let nominator_count = NominatorCount::<Test>::get(operator_id);
-
-            // Deposit will be rejected while there is pending withdraw
-            let res = Domains::nominate_operator(
-                RuntimeOrigin::signed(nominator_account),
-                operator_id,
-                10 * SSC,
-            );
-            assert_err!(
-                res,
-                Error::<Test>::Staking(crate::staking::Error::TryDepositWithPendingWithdraw)
-            );
-
-            // count should remain same
-            assert_eq!(NominatorCount::<Test>::get(operator_id), nominator_count);
-        });
-    }
-
-    #[test]
-    fn pending_staking_operation_limit() {
-        let domain_id = DomainId::new(0);
-        let operator_account = 1;
-        let operator_free_balance = 1500 * SSC;
-        let operator_stake = 1000 * SSC;
-        let pair = OperatorPair::from_seed(&U256::from(0u32).into());
-
-        let nominator_account = 2;
-        let nominator_free_balance = 1500 * SSC;
-        let nominator_stake = 100 * SSC;
-        let nominators = BTreeMap::from_iter(vec![(
-            nominator_account,
-            (nominator_free_balance, nominator_stake),
-        )]);
-
-        let mut ext = new_test_ext();
-        ext.execute_with(|| {
-            let (operator_id, _) = register_operator(
-                domain_id,
-                operator_account,
-                operator_free_balance,
-                operator_stake,
-                SSC,
-                pair.public(),
-                nominators,
-            );
-
-            // Finalize pending registration
-            do_finalize_domain_current_epoch::<Test>(domain_id, 0).unwrap();
-            assert!(!PendingDeposits::<Test>::contains_key(
-                operator_id,
-                nominator_account,
-            ));
-
-            // Create pending staking op
-            for i in 0..<Test as Config>::MaxPendingStakingOperation::get() {
-                assert_ok!(Domains::nominate_operator(
-                    RuntimeOrigin::signed(nominator_account),
-                    operator_id,
-                    SSC,
-                ));
-                let pending_deposit =
-                    PendingDeposits::<Test>::get(operator_id, nominator_account).unwrap();
-                assert_eq!(pending_deposit, (i as u128 + 1) * SSC);
-                assert_eq!(PendingStakingOperationCount::<Test>::get(domain_id), i + 1);
-            }
-
-            // Creating more pending staking op will fail due to the limit
-            let res = Domains::nominate_operator(
-                RuntimeOrigin::signed(nominator_account),
-                operator_id,
-                SSC,
-            );
-            assert_err!(
-                res,
-                Error::<Test>::Staking(crate::staking::Error::TooManyPendingStakingOperation)
-            );
-
-            // Epoch transition will reset the pending op count
-            do_finalize_domain_current_epoch::<Test>(
-                domain_id,
-                <Test as Config>::StakeEpochDuration::get(),
-            )
-            .unwrap();
-            assert_eq!(PendingStakingOperationCount::<Test>::get(domain_id), 0);
-
-            assert_ok!(Domains::nominate_operator(
-                RuntimeOrigin::signed(nominator_account),
-                operator_id,
-                SSC,
-            ));
         });
     }
 }

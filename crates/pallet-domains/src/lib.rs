@@ -143,8 +143,7 @@ mod pallet {
     #[cfg(not(feature = "runtime-benchmarks"))]
     use crate::staking_epoch::do_unlock_pending_withdrawals;
     use crate::staking_epoch::{
-        do_finalize_domain_current_epoch, Error as StakingEpochError, PendingNominatorUnlock,
-        PendingOperatorSlashInfo,
+        do_finalize_domain_current_epoch, Error as StakingEpochError, PendingOperatorSlashInfo,
     };
     use crate::weights::WeightInfo;
     use crate::{
@@ -460,34 +459,6 @@ mod pallet {
     pub(super) type NominatorCount<T: Config> =
         StorageMap<_, Identity, OperatorId, u32, ValueQuery>;
 
-    /// Deposits initiated a nominator under this operator.
-    /// Will be stored temporarily until the current epoch is complete.
-    /// Once, epoch is complete, these deposits are staked beginning next epoch.
-    #[pallet::storage]
-    pub(super) type PendingDeposits<T: Config> = StorageDoubleMap<
-        _,
-        Identity,
-        OperatorId,
-        Identity,
-        NominatorId<T>,
-        BalanceOf<T>,
-        OptionQuery,
-    >;
-
-    /// Withdrawals initiated a nominator under this operator.
-    /// Will be stored temporarily until the current epoch is complete.
-    /// Once, epoch is complete, these will be moved to PendingNominatorUnlocks.
-    #[pallet::storage]
-    pub(super) type PendingWithdrawals<T: Config> = StorageDoubleMap<
-        _,
-        Identity,
-        OperatorId,
-        Identity,
-        NominatorId<T>,
-        Withdraw<BalanceOf<T>>,
-        OptionQuery,
-    >;
-
     /// Operators who chose to deregister from a domain.
     /// Stored here temporarily until domain epoch is complete.
     #[pallet::storage]
@@ -500,19 +471,6 @@ mod pallet {
     #[pallet::storage]
     pub(super) type PendingOperatorUnlocks<T: Config> =
         StorageValue<_, BTreeSet<OperatorId>, ValueQuery>;
-
-    /// All the pending unlocks for the nominators.
-    /// We use this storage to fetch all the pending unlocks under a operator pool at the time of slashing.
-    #[pallet::storage]
-    pub(super) type PendingNominatorUnlocks<T: Config> = StorageDoubleMap<
-        _,
-        Identity,
-        OperatorId,
-        Identity,
-        DomainBlockNumberFor<T>,
-        Vec<PendingNominatorUnlock<NominatorId<T>, BalanceOf<T>>>,
-        OptionQuery,
-    >;
 
     /// A list of operators that are either unregistering or one more of the nominators
     /// are withdrawing some staked funds.
@@ -846,6 +804,10 @@ mod pallet {
             operator_id: OperatorId,
             reward: BalanceOf<T>,
         },
+        OperatorTaxCollected {
+            operator_id: OperatorId,
+            tax: BalanceOf<T>,
+        },
         DomainEpochCompleted {
             domain_id: DomainId,
             completed_epoch_index: EpochIndex,
@@ -977,6 +939,7 @@ mod pallet {
                             epoch_transitted = true;
                         }
 
+                        // TODO: remove once the operator deregistration is moved into its extrinsics
                         do_unlock_pending_withdrawals::<T>(
                             domain_id,
                             confirmed_block_info.domain_block_number,
