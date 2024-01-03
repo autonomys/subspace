@@ -190,6 +190,16 @@ jobs:
           echo "PKG_CONFIG_ALLOW_CROSS=true" >> $GITHUB_ENV
         if: matrix.build.target == 'aarch64-unknown-linux-gnu'
 
+      - name: Configure cache
+        uses: actions/cache@704facf57e6136b1bc63b828d79edcd491f0ee84 # @v3.3.2
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
       - name: Build farmer (Linux and Windows)
         uses: actions-rs/cargo@ae10961054e4aa8b4aa7dffede299aaf087aa33b # @v1.0.1
         with:
