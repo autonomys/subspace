@@ -225,11 +225,9 @@ fn main() -> Result<(), Error> {
                     let _ = std::fs::remove_dir_all(
                         base_dir.join("subspace-node").join("chains").join(chain),
                     );
-                    let _ =
-                        std::fs::remove_dir_all(base_dir.join("subspace-node").join("domain-0"));
-                    let _ =
-                        std::fs::remove_dir_all(base_dir.join("subspace-node").join("domain-1"));
                 }
+                let _ = std::fs::remove_dir_all(base_dir.join("subspace-node").join("domain-0"));
+                let _ = std::fs::remove_dir_all(base_dir.join("subspace-node").join("domain-1"));
             }
 
             let runner = cli.create_runner(&cmd.base)?;
