@@ -147,21 +147,9 @@ pub enum HoldIdentifier {
 }
 
 impl pallet_domains::HoldIdentifier<Test> for HoldIdentifier {
-    fn staking_pending_deposit(operator_id: OperatorId) -> FungibleHoldId<Test> {
-        Self::Domains(DomainsHoldIdentifier::Staking(
-            StakingHoldIdentifier::PendingDeposit(operator_id),
-        ))
-    }
-
     fn staking_staked(operator_id: OperatorId) -> FungibleHoldId<Test> {
         Self::Domains(DomainsHoldIdentifier::Staking(
             StakingHoldIdentifier::Staked(operator_id),
-        ))
-    }
-
-    fn staking_pending_unlock(operator_id: OperatorId) -> FungibleHoldId<Test> {
-        Self::Domains(DomainsHoldIdentifier::Staking(
-            StakingHoldIdentifier::PendingUnlock(operator_id),
         ))
     }
 

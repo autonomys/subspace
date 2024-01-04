@@ -4,7 +4,10 @@ use crate::pallet::{
     OperatorIdOwner, Operators, PendingOperatorSwitches, PendingSlashes,
     PendingStakingOperationCount,
 };
-use crate::staking::{DomainEpoch, Error as TransitionError, OperatorStatus};
+use crate::staking::{
+    calculate_withdraw_share_ssc, do_convert_previous_epoch_deposits, DomainEpoch,
+    Error as TransitionError, OperatorStatus,
+};
 use crate::{
     BalanceOf, Config, DomainBlockNumberFor, ElectionVerificationParams, Event, HoldIdentifier,
     OperatorEpochSharePrice, Pallet,
@@ -76,7 +79,7 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
                     T::Currency::mint_into(&nominator_id, operator_tax)
                         .map_err(|_| TransitionError::MintBalance)?;
 
-                    crate::staking::hold_pending_deposit::<T>(
+                    crate::staking::hold_deposit::<T>(
                         &nominator_id,
                         operator_id,
                         operator_tax,
@@ -216,16 +219,17 @@ fn finalize_operator_epoch_staking<T: Config>(
 
         let total_shares = operator.current_total_shares;
 
-        let ssc_per_share = {
+        let share_price = {
             if total_stake.is_zero() || total_shares.is_zero() {
                 Perbill::one()
             } else {
-                Perbill::from_rational(total_stake, total_shares.into())
+                Perbill::from_rational(total_shares, total_stake.into())
             }
         };
 
         // calculate and subtract total withdrew shares from previous epoch
-        let withdraw_stake = ssc_per_share.mul_floor(operator.withdrawals_in_epoch.into());
+        let withdraw_stake =
+            share_price.saturating_reciprocal_mul_floor(operator.withdrawals_in_epoch.into());
         let total_stake = total_stake
             .checked_sub(&withdraw_stake)
             .ok_or(TransitionError::BalanceUnderflow)?;
@@ -234,8 +238,7 @@ fn finalize_operator_epoch_staking<T: Config>(
             .ok_or(TransitionError::ShareUnderflow)?;
 
         // calculate and add total deposits from the previous epoch
-        let deposited_shares =
-            ssc_per_share.saturating_reciprocal_mul_floor(operator.deposits_in_epoch.into());
+        let deposited_shares = share_price.mul_floor(operator.deposits_in_epoch.into());
         let total_stake = total_stake
             .checked_add(&operator.deposits_in_epoch)
             .ok_or(TransitionError::BalanceOverflow)?;
@@ -250,7 +253,7 @@ fn finalize_operator_epoch_staking<T: Config>(
         OperatorEpochSharePrice::<T>::insert(
             operator_id,
             DomainEpoch::from((domain_id, previous_epoch)),
-            ssc_per_share,
+            share_price,
         );
 
         // update operator state
@@ -279,6 +282,9 @@ pub(crate) fn mint_funds<T: Config>(
 pub(crate) fn do_finalize_slashed_operators<T: Config>(
     domain_id: DomainId,
 ) -> Result<(), TransitionError> {
+    let domain_staking_summary =
+        DomainStakingSummary::<T>::get(domain_id).ok_or(TransitionError::DomainNotInitialized)?;
+    let domain_epoch = (domain_id, domain_staking_summary.current_epoch_index).into();
     for operator_id in PendingSlashes::<T>::take(domain_id).unwrap_or_default() {
         Operators::<T>::try_mutate_exists(operator_id, |maybe_operator| {
             // take the operator so this operator info is removed once we slash the operator.
@@ -297,48 +303,65 @@ pub(crate) fn do_finalize_slashed_operators<T: Config>(
 
             // transfer all the staked funds to the treasury account
             // any gains will be minted to treasury account
-            Deposits::<T>::drain_prefix(operator_id).try_for_each(|(nominator_id, deposit)| {
-                let locked_amount = T::Currency::balance_on_hold(&staked_hold_id, &nominator_id);
+            Deposits::<T>::drain_prefix(operator_id).try_for_each(
+                |(nominator_id, mut deposit)| {
+                    let locked_amount =
+                        T::Currency::balance_on_hold(&staked_hold_id, &nominator_id);
+                    // convert any previous epoch deposits
+                    deposit.pending = do_convert_previous_epoch_deposits::<T>(
+                        operator_id,
+                        &mut deposit,
+                        domain_epoch,
+                    )?;
 
-                // if there was a pending deposit, deduct that amount from the slashable amount.
-                let (amount_to_slash, amount_to_release) =
-                    if let Some(pending_deposit) = deposit.pending {
-                        (
-                            locked_amount
-                                .checked_sub(&pending_deposit.amount)
-                                .ok_or(TransitionError::BalanceUnderflow)?,
-                            pending_deposit.amount,
-                        )
-                    } else {
-                        (locked_amount, Zero::zero())
-                    };
+                    // if there was a pending deposit, deduct that amount from the slashable amount.
+                    let (amount_to_slash, amount_to_release) =
+                        if let Some(pending_deposit) = deposit.pending {
+                            (
+                                locked_amount
+                                    .checked_sub(&pending_deposit.amount)
+                                    .ok_or(TransitionError::BalanceUnderflow)?,
+                                pending_deposit.amount,
+                            )
+                        } else {
+                            (locked_amount, Zero::zero())
+                        };
 
-                T::Currency::transfer_on_hold(
-                    &staked_hold_id,
-                    &nominator_id,
-                    &T::TreasuryAccount::get(),
-                    amount_to_slash,
-                    Precision::Exact,
-                    Restriction::Free,
-                    Fortitude::Force,
-                )
-                .map_err(|_| TransitionError::RemoveLock)?;
+                    // there maybe some withdrawals that are initiated, so calculate withdrawal amount
+                    let amount_being_withdrawn =
+                        calculate_withdraw_share_ssc::<T>(operator_id, nominator_id.clone())?;
 
-                total_stake = total_stake
-                    .checked_sub(&amount_to_slash)
-                    .ok_or(TransitionError::BalanceUnderflow)?;
+                    T::Currency::transfer_on_hold(
+                        &staked_hold_id,
+                        &nominator_id,
+                        &T::TreasuryAccount::get(),
+                        amount_to_slash,
+                        Precision::Exact,
+                        Restriction::Free,
+                        Fortitude::Force,
+                    )
+                    .map_err(|_| TransitionError::RemoveLock)?;
 
-                // release the pending deposit amount back to the nominator.
-                T::Currency::release(
-                    &staked_hold_id,
-                    &nominator_id,
-                    amount_to_release,
-                    Precision::BestEffort,
-                )
-                .map_err(|_| TransitionError::RemoveLock)?;
+                    let amount_currently_staked = amount_to_slash
+                        .checked_sub(&amount_being_withdrawn)
+                        .ok_or(TransitionError::BalanceUnderflow)?;
 
-                Ok(())
-            })?;
+                    total_stake = total_stake
+                        .checked_sub(&amount_currently_staked)
+                        .ok_or(TransitionError::BalanceUnderflow)?;
+
+                    // release the pending deposit amount back to the nominator.
+                    T::Currency::release(
+                        &staked_hold_id,
+                        &nominator_id,
+                        amount_to_release,
+                        Precision::BestEffort,
+                    )
+                    .map_err(|_| TransitionError::RemoveLock)?;
+
+                    Ok(())
+                },
+            )?;
 
             // mint any gains to treasury account
             mint_funds::<T>(&T::TreasuryAccount::get(), total_stake)?;
@@ -366,7 +389,7 @@ mod tests {
         operator_take_reward_tax_and_stake,
     };
     use crate::tests::{new_test_ext, RuntimeOrigin, Test};
-    use crate::{BalanceOf, Config, HoldIdentifier as FreezeIdentifierT, NominatorId};
+    use crate::{BalanceOf, Config, HoldIdentifier, NominatorId};
     use frame_support::assert_ok;
     use frame_support::traits::fungible::InspectHold;
     use frame_support::weights::Weight;
@@ -515,7 +538,7 @@ mod tests {
                 Some(operator_id)
             );
 
-            let hold_id = crate::tests::HoldIdentifier::staking_pending_unlock(operator_id);
+            let hold_id = crate::tests::HoldIdentifier::staking_staked(operator_id);
             for nominator in &nominators {
                 let required_minimum_free_balance = nominator.1 .0;
                 assert_eq!(Deposits::<Test>::get(operator_id, nominator.0), None);

@@ -79,10 +79,7 @@ pub(crate) type FungibleHoldId<T> =
 pub(crate) type NominatorId<T> = <T as frame_system::Config>::AccountId;
 
 pub trait HoldIdentifier<T: Config> {
-    // TODO: remove pending deposit and unlock holds as they are not required anymore.
-    fn staking_pending_deposit(operator_id: OperatorId) -> FungibleHoldId<T>;
     fn staking_staked(operator_id: OperatorId) -> FungibleHoldId<T>;
-    fn staking_pending_unlock(operator_id: OperatorId) -> FungibleHoldId<T>;
     fn domain_instantiation_id(domain_id: DomainId) -> FungibleHoldId<T>;
 }
 
@@ -434,12 +431,6 @@ mod pallet {
     #[pallet::storage]
     pub(super) type NominatorCount<T: Config> =
         StorageMap<_, Identity, OperatorId, u32, ValueQuery>;
-
-    /// Operators who chose to deregister from a domain.
-    /// Stored here temporarily until domain epoch is complete.
-    #[pallet::storage]
-    pub(super) type PendingOperatorDeregistrations<T: Config> =
-        StorageMap<_, Identity, DomainId, BTreeSet<OperatorId>, OptionQuery>;
 
     /// A list operators who were slashed during the current epoch associated with the domain.
     /// When the epoch for a given domain is complete, operator total stake is moved to treasury and

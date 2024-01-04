@@ -343,10 +343,6 @@ mod benchmarks {
             operator.status,
             OperatorStatus::Deregistered((domain_id, 0).into())
         );
-
-        let pending_deregistration = PendingOperatorDeregistrations::<T>::get(domain_id)
-            .expect("pending deregistration must exist");
-        assert!(pending_deregistration.contains(&operator_id));
     }
 
     /// Benchmark `withdraw_stake` extrinsic with the worst possible conditions:

@@ -658,12 +658,8 @@ pub type OperatorId = u64;
     PartialEq, Eq, Clone, Encode, Decode, TypeInfo, MaxEncodedLen, Ord, PartialOrd, Copy, Debug,
 )]
 pub enum StakingHoldIdentifier {
-    /// Holds all the pending deposits to an Operator.
-    PendingDeposit(OperatorId),
     /// Holds all the currently staked funds to an Operator.
     Staked(OperatorId),
-    /// Holds all the currently unlocking funds.
-    PendingUnlock(OperatorId),
 }
 
 /// Domains specific Identifier for Balances holds.
