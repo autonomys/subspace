@@ -475,7 +475,7 @@ where
     if all_cpu_cores.len() > 1 {
         info!(numa_nodes = %all_cpu_cores.len(), "NUMA system detected");
 
-        if all_cpu_cores.len() < disk_farms.len() {
+        if all_cpu_cores.len() > disk_farms.len() {
             warn!(
                 numa_nodes = %all_cpu_cores.len(),
                 farms_count = %disk_farms.len(),
