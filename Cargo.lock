@@ -11841,6 +11841,7 @@ dependencies = [
 name = "subspace-malicious-operator"
 version = "0.1.0"
 dependencies = [
+ "clap",
  "cross-domain-message-gossip",
  "domain-client-message-relayer",
  "domain-client-operator",
@@ -11867,6 +11868,7 @@ dependencies = [
  "sc-network-sync",
  "sc-service",
  "sc-storage-monitor",
+ "sc-subspace-chain-specs",
  "sc-tracing",
  "sc-transaction-pool-api",
  "sc-utils",

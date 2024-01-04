@@ -1,11 +1,12 @@
 use crate::malicious_bundle_producer::MaliciousBundleProducer;
+use crate::{create_malicious_operator_configuration, DomainCli};
 use cross_domain_message_gossip::{ChainTxPoolMsg, Message};
 use domain_client_operator::{BootstrapResult, OperatorStreams};
 use domain_eth_service::provider::EthProvider;
 use domain_eth_service::DefaultEthConfig;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
 use domain_service::{FullBackend, FullClient};
-use evm_domain_runtime::ExecutorDispatch as EVMDomainExecutorDispatch;
+use evm_domain_runtime::{AccountId as AccountId20, ExecutorDispatch as EVMDomainExecutorDispatch};
 use futures::StreamExt;
 use sc_cli::CliConfiguration;
 use sc_consensus_subspace::block_import::BlockImportingNotification;
@@ -21,7 +22,7 @@ use sp_domains::{DomainInstanceData, RuntimeType};
 use sp_keystore::KeystorePtr;
 use std::path::PathBuf;
 use std::sync::Arc;
-use subspace_node::domain::{create_configuration, evm_chain_spec, AccountId20, DomainCli};
+use subspace_node::domain::evm_chain_spec;
 use subspace_runtime::{ExecutorDispatch as CExecutorDispatch, RuntimeApi as CRuntimeApi};
 use subspace_runtime_primitives::opaque::Block as CBlock;
 use subspace_service::FullClient as CFullClient;
@@ -80,11 +81,13 @@ where
 
         let domain_id = domain_cli.domain_id;
         let mut domain_config = {
-            let chain_id = domain_cli.chain_id(domain_cli.is_dev()?)?;
-
+            let chain_id = domain_cli.run.chain_id(domain_cli.run.is_dev()?)?;
             let domain_spec = evm_chain_spec::create_domain_spec(chain_id.as_str(), raw_genesis)?;
-
-            create_configuration::<_, DomainCli, DomainCli>(&domain_cli, domain_spec, tokio_handle)?
+            create_malicious_operator_configuration::<DomainCli>(
+                &domain_cli,
+                domain_spec,
+                tokio_handle,
+            )?
         };
 
         // Change default paths to Subspace structure
