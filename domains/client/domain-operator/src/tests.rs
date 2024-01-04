@@ -1,6 +1,8 @@
 use crate::domain_block_processor::{DomainBlockProcessor, PendingConsensusBlocks};
 use crate::domain_bundle_producer::DomainBundleProducer;
 use crate::domain_bundle_proposer::DomainBundleProposer;
+use crate::fraud_proof::FraudProofGenerator;
+use crate::tests::TxPoolError::InvalidTransaction as TxPoolInvalidTransaction;
 use crate::utils::OperatorSlotInfo;
 use codec::{Decode, Encode};
 use domain_runtime_primitives::Hash;
@@ -13,6 +15,7 @@ use futures::StreamExt;
 use sc_client_api::{Backend, BlockBackend, BlockchainEvents, HeaderBackend};
 use sc_consensus::SharedBlockImport;
 use sc_service::{BasePath, Role};
+use sc_transaction_pool::error::Error as PoolError;
 use sc_transaction_pool_api::error::Error as TxPoolError;
 use sc_transaction_pool_api::TransactionPool;
 use sp_api::{AsTrieBackend, HashT, ProvideRuntimeApi};
@@ -32,6 +35,7 @@ use sp_domains_fraud_proof::fraud_proof::{
 use sp_domains_fraud_proof::InvalidTransactionCode;
 use sp_runtime::generic::{BlockId, DigestItem};
 use sp_runtime::traits::{BlakeTwo256, Block as BlockT, Header as HeaderT};
+use sp_runtime::transaction_validity::InvalidTransaction;
 use sp_runtime::OpaqueExtrinsic;
 use std::sync::Arc;
 use subspace_core_primitives::Randomness;
@@ -806,6 +810,104 @@ async fn test_apply_extrinsic_proof_creation_and_verification_should_work() {
 #[tokio::test(flavor = "multi_thread")]
 async fn test_finalize_block_proof_creation_and_verification_should_work() {
     test_invalid_state_transition_proof_creation_and_verification(3).await
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_false_invalid_state_transition_proof_is_rejected() {
+    let directory = TempDir::new().expect("Must be able to create temporary directory");
+
+    let mut builder = sc_cli::LoggerBuilder::new("");
+    builder.with_colors(false);
+    let _ = builder.init();
+
+    let tokio_handle = tokio::runtime::Handle::current();
+
+    // Start Ferdie
+    let mut ferdie = MockConsensusNode::run(
+        tokio_handle.clone(),
+        Ferdie,
+        BasePath::new(directory.path().join("ferdie")),
+    );
+
+    // Run Alice (a evm domain authority node)
+    let mut alice = domain_test_service::DomainNodeBuilder::new(
+        tokio_handle.clone(),
+        Alice,
+        BasePath::new(directory.path().join("alice")),
+    )
+    .build_evm_node(Role::Authority, GENESIS_DOMAIN_ID, &mut ferdie)
+    .await;
+
+    let fraud_proof_generator = FraudProofGenerator::new(
+        alice.client.clone(),
+        ferdie.client.clone(),
+        alice.backend.clone(),
+        alice.code_executor.clone(),
+    );
+
+    produce_blocks!(ferdie, alice, 5).await.unwrap();
+
+    alice
+        .construct_and_send_extrinsic(pallet_balances::Call::transfer_allow_death {
+            dest: Bob.to_account_id(),
+            value: 1,
+        })
+        .await
+        .expect("Failed to send extrinsic");
+
+    // Produce a bundle that contains the previously sent extrinsic and record that bundle for later use
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let target_bundle = bundle.unwrap();
+    assert_eq!(target_bundle.extrinsics.len(), 1);
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+
+    // We get the receipt of target bundle
+    let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
+    let valid_receipt = bundle.unwrap().sealed_header.header.receipt;
+    assert_eq!(valid_receipt.execution_trace.len(), 4);
+    let valid_receipt_hash = valid_receipt.hash::<BlakeTwo256>();
+
+    produce_block_with!(ferdie.produce_block_with_slot(slot), alice)
+        .await
+        .unwrap();
+
+    // trace index 0 is the index of the state root after applying DomainCoreApi::initialize_block_with_post_state_root
+    // trace index 1 is the index of the state root after applying inherent timestamp extrinsic
+    // trace index 2 is the index of the state root after applying above balance transfer extrinsic
+    // trace index 3 is the index of the state root after applying BlockBuilder::finalize_block
+    for mismatch_index in 0..valid_receipt.execution_trace.len() {
+        let fraud_proof = fraud_proof_generator
+            .generate_invalid_state_transition_proof(
+                GENESIS_DOMAIN_ID,
+                mismatch_index.try_into().expect(
+                    "execution trace index should always be convertible into u32 from usize; qed",
+                ),
+                &valid_receipt,
+                valid_receipt_hash,
+            )
+            .unwrap();
+
+        let submit_fraud_proof_extrinsic = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+            pallet_domains::Call::submit_fraud_proof {
+                fraud_proof: Box::new(fraud_proof),
+            }
+            .into(),
+        )
+        .into();
+
+        let response = ferdie
+            .submit_transaction(submit_fraud_proof_extrinsic)
+            .await;
+
+        assert!(matches!(
+            response,
+            Err(PoolError::Pool(TxPoolInvalidTransaction(
+                InvalidTransaction::Custom(105)
+            )))
+        ));
+    }
 }
 
 /// This test will create and verify a invalid state transition proof that targets the receipt of
