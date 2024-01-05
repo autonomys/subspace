@@ -440,7 +440,7 @@ pub mod pallet {
     #[pallet::storage]
     pub(super) type EnableRewards<T: Config> = StorageValue<_, BlockNumberFor<T>>;
 
-    /// Enable rewards when solution range is blow this threshold.
+    /// Enable rewards when solution range is below this threshold.
     #[pallet::storage]
     pub(super) type EnableRewardsBelowSolutionRange<T: Config> = StorageValue<_, u64>;
 
