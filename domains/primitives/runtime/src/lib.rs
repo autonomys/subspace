@@ -17,6 +17,9 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+extern crate alloc;
+
+use alloc::string::String;
 use frame_support::dispatch::{DispatchClass, PerDispatchClass};
 use frame_support::weights::constants::{BlockExecutionWeight, ExtrinsicBaseWeight};
 use frame_system::limits::{BlockLength, BlockWeights};
@@ -168,6 +171,9 @@ pub struct CheckExtrinsicsValidityError {
     pub transaction_validity_error: TransactionValidityError,
 }
 
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub struct DecodeExtrinsicError(pub String);
+
 /// fullu qualified method name of check_extrinsics_and_do_pre_dispatch runtime api.
 /// Used to call state machine.
 /// Change it when the runtime api's name is changed in the interface.
@@ -233,8 +239,10 @@ sp_api::decl_runtime_apis! {
         fn check_extrinsics_and_do_pre_dispatch(uxts: Vec<<Block as BlockT>::Extrinsic>, block_number: NumberFor<Block>,
             block_hash: <Block as BlockT>::Hash) -> Result<(), CheckExtrinsicsValidityError>;
 
-        /// Checks if the extrinsic is decodable.
-        fn is_decodable_extrinsic(extrinsic: &<Block as BlockT>::Extrinsic) -> bool;
+        /// Decodes the domain specific extrinsic from the opaque extrinsic.
+        fn decode_extrinsic(
+            opaque_extrinsic: sp_runtime::OpaqueExtrinsic,
+        ) -> Result<<Block as BlockT>::Extrinsic, DecodeExtrinsicError>;
 
         /// Returns extrinsic Era if present
         fn extrinsic_era(

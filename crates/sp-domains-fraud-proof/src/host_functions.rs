@@ -271,13 +271,10 @@ where
         let domain_stateless_runtime =
             StatelessRuntime::<DomainBlock, _>::new(self.executor.clone(), runtime_code.into());
 
-        let encoded_extrinsic = opaque_extrinsic.encode();
-        let extrinsic =
-            <DomainBlock as BlockT>::Extrinsic::decode(&mut encoded_extrinsic.as_slice()).ok()?;
-
-        domain_stateless_runtime
-            .is_decodable_extrinsic(&extrinsic)
-            .ok()
+        Some(matches!(
+            domain_stateless_runtime.decode_extrinsic(opaque_extrinsic),
+            Ok(Ok(_))
+        ))
     }
 
     fn get_domain_election_params(
