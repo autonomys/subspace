@@ -40,7 +40,7 @@ pub trait FraudProofRuntimeInterface {
         &mut self,
         pre_state_root: H256,
         encoded_proof: Vec<u8>,
-        verifying_method: &str,
+        execution_method: &str,
         call_data: &[u8],
         domain_runtime_code: Vec<u8>,
     ) -> Option<Vec<u8>> {
@@ -49,7 +49,7 @@ pub trait FraudProofRuntimeInterface {
             .execution_proof_check(
                 pre_state_root,
                 encoded_proof,
-                verifying_method,
+                execution_method,
                 call_data,
                 domain_runtime_code,
             )

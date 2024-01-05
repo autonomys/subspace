@@ -363,7 +363,7 @@ impl FraudProofHostFunctions for MockDomainFraudProofExtension {
         &self,
         _pre_state_root: H256,
         _encoded_proof: Vec<u8>,
-        _verifying_method: &str,
+        _execution_method: &str,
         _call_data: &[u8],
         _domain_runtime_code: Vec<u8>,
     ) -> Option<Vec<u8>> {
