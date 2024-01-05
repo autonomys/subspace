@@ -1,15 +1,19 @@
 use frame_support::PalletError;
 use hash_db::Hasher;
-use parity_scale_codec::{Codec, Compact, Decode, Encode};
+#[cfg(feature = "std")]
+use parity_scale_codec::Codec;
+use parity_scale_codec::{Compact, Decode, Encode};
 use scale_info::TypeInfo;
 use sp_core::storage::StorageKey;
 #[cfg(feature = "std")]
 use sp_state_machine::prove_read;
+#[cfg(feature = "std")]
 use sp_state_machine::TrieBackendBuilder;
 use sp_std::fmt::Debug;
 use sp_std::marker::PhantomData;
 use sp_std::vec::Vec;
 use sp_trie::{read_trie_value, LayoutV1, StorageProof};
+#[cfg(feature = "std")]
 use trie_db::{DBValue, TrieDBMutBuilder, TrieLayout, TrieMut};
 
 /// Verification error.
@@ -59,6 +63,7 @@ impl<H: Hasher> StorageProofVerifier<H> {
     }
 }
 
+#[cfg(feature = "std")]
 type MemoryDB<T> = memory_db::MemoryDB<
     <T as TrieLayout>::Hash,
     memory_db::HashKey<<T as TrieLayout>::Hash>,

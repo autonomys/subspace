@@ -35,9 +35,9 @@ use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use subspace_core_primitives::PotKey;
 use subspace_runtime::{
-    AllowAuthoringBy, BalancesConfig, DomainsConfig, MaxDomainBlockSize, MaxDomainBlockWeight,
-    RuntimeConfigsConfig, RuntimeGenesisConfig, SubspaceConfig, SudoConfig, SystemConfig,
-    VestingConfig, MILLISECS_PER_BLOCK, WASM_BINARY,
+    AllowAuthoringBy, BalancesConfig, DomainsConfig, EnableRewardsAt, MaxDomainBlockSize,
+    MaxDomainBlockWeight, RuntimeConfigsConfig, RuntimeGenesisConfig, SubspaceConfig, SudoConfig,
+    SystemConfig, VestingConfig, MILLISECS_PER_BLOCK, WASM_BINARY,
 };
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, SSC};
 
@@ -97,7 +97,7 @@ const TOKEN_GRANTS: &[(&str, u128)] = &[
 
 /// Additional subspace specific genesis parameters.
 struct GenesisParams {
-    enable_rewards: bool,
+    enable_rewards_at: EnableRewardsAt<BlockNumber>,
     enable_storage_access: bool,
     allow_authoring_by: AllowAuthoringBy,
     pot_slot_iterations: NonZeroU32,
@@ -168,7 +168,7 @@ pub fn gemini_3g_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, 
                 balances,
                 vesting_schedules,
                 GenesisParams {
-                    enable_rewards: false,
+                    enable_rewards_at: EnableRewardsAt::Manually,
                     enable_storage_access: true,
                     allow_authoring_by: AllowAuthoringBy::RootFarmer(
                         FarmerPublicKey::unchecked_from(hex_literal::hex!(
@@ -281,7 +281,7 @@ pub fn devnet_config_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfi
                 balances,
                 vesting_schedules,
                 GenesisParams {
-                    enable_rewards: false,
+                    enable_rewards_at: EnableRewardsAt::Manually,
                     enable_storage_access: true,
                     allow_authoring_by: AllowAuthoringBy::FirstFarmer,
                     pot_slot_iterations: NonZeroU32::new(150_000_000).expect("Not zero; qed"),
@@ -346,7 +346,7 @@ pub fn dev_config() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String> 
                 ],
                 vec![],
                 GenesisParams {
-                    enable_rewards: false,
+                    enable_rewards_at: EnableRewardsAt::Manually,
                     enable_storage_access: true,
                     allow_authoring_by: AllowAuthoringBy::Anyone,
                     pot_slot_iterations: NonZeroU32::new(100_000_000).expect("Not zero; qed"),
@@ -414,7 +414,7 @@ pub fn local_config() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String
                 ],
                 vec![],
                 GenesisParams {
-                    enable_rewards: false,
+                    enable_rewards_at: EnableRewardsAt::Manually,
                     enable_storage_access: true,
                     allow_authoring_by: AllowAuthoringBy::Anyone,
                     pot_slot_iterations: NonZeroU32::new(100_000_000).expect("Not zero; qed"),
@@ -462,7 +462,7 @@ fn subspace_genesis_config(
     genesis_domain_params: GenesisDomainParams,
 ) -> RuntimeGenesisConfig {
     let GenesisParams {
-        enable_rewards,
+        enable_rewards_at,
         enable_storage_access,
         allow_authoring_by,
         pot_slot_iterations,
@@ -493,7 +493,7 @@ fn subspace_genesis_config(
             key: Some(sudo_account.clone()),
         },
         subspace: SubspaceConfig {
-            enable_rewards,
+            enable_rewards_at,
             enable_storage_access,
             allow_authoring_by,
             pot_slot_iterations,

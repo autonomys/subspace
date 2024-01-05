@@ -24,8 +24,8 @@ use crate::mock::{
 };
 use crate::{
     pallet, AllowAuthoringByAnyone, BlockList, Call, CheckVoteError, Config,
-    CurrentBlockAuthorInfo, CurrentBlockVoters, CurrentSlot, ParentBlockAuthorInfo,
-    ParentBlockVoters, SegmentCommitment, SubspaceEquivocationOffence,
+    CurrentBlockAuthorInfo, CurrentBlockVoters, CurrentSlot, EnableRewardsAt,
+    ParentBlockAuthorInfo, ParentBlockVoters, SegmentCommitment, SubspaceEquivocationOffence,
 };
 use codec::Encode;
 use frame_support::dispatch::{GetDispatchInfo, Pays};
@@ -1600,7 +1600,12 @@ fn enabling_block_rewards_works() {
         assert_eq!(Subspace::find_voting_reward_addresses().len(), 0);
 
         // Enable since next block only rewards
-        crate::EnableRewards::<Test>::put(frame_system::Pallet::<Test>::current_block_number() + 1);
+        assert_ok!(Subspace::enable_rewards_at(
+            RuntimeOrigin::root(),
+            EnableRewardsAt::Height(Some(
+                frame_system::Pallet::<Test>::current_block_number() + 1,
+            )),
+        ));
         // No rewards yet
         assert_matches!(Subspace::find_block_reward_address(), None);
         assert_eq!(Subspace::find_voting_reward_addresses().len(), 0);
@@ -1616,6 +1621,61 @@ fn enabling_block_rewards_works() {
         assert_matches!(Subspace::find_block_reward_address(), Some(1));
         assert_eq!(Subspace::find_voting_reward_addresses(), vec![2]);
     });
+}
+
+#[test]
+fn enabling_block_rewards_at_solution_range_works() {
+    new_test_ext(allow_all_pot_extension()).execute_with(|| {
+        let keypair = Keypair::generate();
+
+        assert_eq!(<Test as Config>::EraDuration::get(), 4);
+        assert_eq!(
+            <Test as Config>::InitialSolutionRange::get(),
+            INITIAL_SOLUTION_RANGE
+        );
+        let initial_solution_ranges = SolutionRanges {
+            current: INITIAL_SOLUTION_RANGE,
+            next: None,
+            voting_current: INITIAL_SOLUTION_RANGE,
+            voting_next: None,
+        };
+        assert_eq!(Subspace::solution_ranges(), initial_solution_ranges);
+        // enable solution range adjustment
+        assert_ok!(Subspace::enable_solution_range_adjustment(
+            RuntimeOrigin::root(),
+            None,
+            None
+        ));
+        // Disable rewards
+        crate::EnableRewards::<Test>::take();
+        // Enable rewards below current solution range
+        assert_ok!(Subspace::enable_rewards_at(
+            RuntimeOrigin::root(),
+            EnableRewardsAt::SolutionRange(INITIAL_SOLUTION_RANGE - 1),
+        ));
+
+        // Progress to almost era edge
+        progress_to_block(&keypair, 3, 1);
+        // No solution range update
+        assert_eq!(Subspace::solution_ranges(), initial_solution_ranges);
+        // Rewards are not enabled
+        assert_eq!(crate::EnableRewards::<Test>::get(), None);
+
+        // Era edge
+        progress_to_block(&keypair, 4, 1);
+        // Next solution range should be updated, but current is still unchanged
+        let updated_solution_ranges = Subspace::solution_ranges();
+        assert_eq!(
+            updated_solution_ranges.current,
+            initial_solution_ranges.current
+        );
+        assert!(updated_solution_ranges.next.is_some());
+        // Rewards will be enabled in the next block
+        assert_eq!(
+            crate::EnableRewards::<Test>::get(),
+            Some(frame_system::Pallet::<Test>::current_block_number() + 1)
+        );
+    })
 }
 
 #[test]

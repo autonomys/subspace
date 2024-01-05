@@ -18,8 +18,8 @@
 
 use crate::equivocation::EquivocationHandler;
 use crate::{
-    self as pallet_subspace, AllowAuthoringBy, Config, CurrentSlot, FarmerPublicKey,
-    NormalEraChange,
+    self as pallet_subspace, AllowAuthoringBy, Config, CurrentSlot, EnableRewardsAt,
+    FarmerPublicKey, NormalEraChange,
 };
 use frame_support::parameter_types;
 use frame_support::traits::{ConstU128, ConstU16, ConstU32, ConstU64, OnInitialize};
@@ -297,7 +297,7 @@ pub fn new_test_ext(pot_extension: PotExtension) -> TestExternalities {
         .unwrap();
 
     pallet_subspace::GenesisConfig::<Test> {
-        enable_rewards: true,
+        enable_rewards_at: EnableRewardsAt::Height(Some(1)),
         enable_storage_access: true,
         allow_authoring_by: AllowAuthoringBy::Anyone,
         pot_slot_iterations: NonZeroU32::new(100_000).unwrap(),

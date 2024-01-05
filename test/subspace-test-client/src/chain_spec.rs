@@ -12,9 +12,9 @@ use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, Signature};
 use subspace_test_runtime::{
-    AllowAuthoringBy, BalancesConfig, DomainsConfig, MaxDomainBlockSize, MaxDomainBlockWeight,
-    RuntimeGenesisConfig, SubspaceConfig, SudoConfig, SystemConfig, VestingConfig, SSC,
-    WASM_BINARY,
+    AllowAuthoringBy, BalancesConfig, DomainsConfig, EnableRewardsAt, MaxDomainBlockSize,
+    MaxDomainBlockWeight, RuntimeGenesisConfig, SubspaceConfig, SudoConfig, SystemConfig,
+    VestingConfig, SSC, WASM_BINARY,
 };
 
 /// The `ChainSpec` parameterized for subspace test runtime.
@@ -102,7 +102,7 @@ fn create_genesis_config(
             key: Some(sudo_account.clone()),
         },
         subspace: SubspaceConfig {
-            enable_rewards: false,
+            enable_rewards_at: EnableRewardsAt::Manually,
             enable_storage_access: false,
             allow_authoring_by: AllowAuthoringBy::Anyone,
             pot_slot_iterations: NonZeroU32::new(50_000_000).expect("Not zero; qed"),
