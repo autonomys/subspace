@@ -20,10 +20,10 @@ sc-executor = { version = "0.10.0-dev", git = "https://github.com/subspace/polka
 sc-executor-common = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "0831dfc3c54b10ab46e82acf98603b4af1a47bd5" }
 sp-api = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "0831dfc3c54b10ab46e82acf98603b4af1a47bd5" }
 sp-blockchain = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "0831dfc3c54b10ab46e82acf98603b4af1a47bd5" }
+sp-block-fees = { version = "0.1.0", path = "../../primitives/block-fees" }
 sp-core = { version = "21.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "0831dfc3c54b10ab46e82acf98603b4af1a47bd5" }
 sp-domains = { version = "0.1.0", path = "../../../crates/sp-domains" }
 sp-executive = { version = "0.1.0", path = "../../primitives/executive" }
-sp-operator-rewards = { version = "0.1.0", path = "../../primitives/operator-rewards" }
 sp-inherents = { version = "4.0.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "0831dfc3c54b10ab46e82acf98603b4af1a47bd5" }
 sp-messenger = { version = "0.1.0", path = "../../primitives/messenger" }
 sp-runtime = { version = "24.0.0", git = "https://github.com/subspace/polkadot-sdk", rev = "0831dfc3c54b10ab46e82acf98603b4af1a47bd5" }

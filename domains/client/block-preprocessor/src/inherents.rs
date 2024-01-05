@@ -175,7 +175,7 @@ where
 {
     type InherentDataProviders = (
         sp_timestamp::InherentDataProvider,
-        sp_operator_rewards::InherentDataProvider,
+        sp_block_fees::InherentDataProvider,
         sp_executive::InherentDataProvider,
     );
 
@@ -208,7 +208,7 @@ where
         let domain_transaction_byte_fee =
             runtime_api.domain_transaction_byte_fee(consensus_block_hash)?;
         let storage_price_provider =
-            sp_operator_rewards::InherentDataProvider::new(domain_transaction_byte_fee);
+            sp_block_fees::InherentDataProvider::new(domain_transaction_byte_fee);
 
         Ok((
             timestamp_provider,

@@ -766,10 +766,10 @@ async fn test_evm_domain_transaction_fee_and_operator_reward() {
     assert_eq!(receipt.consensus_block_hash, consensus_block_hash);
 
     // All the transaction fee is collected as operator reward
-    let domain_block_rewards = alice
+    let domain_block_fees = alice
         .client
         .runtime_api()
-        .block_rewards(receipt.domain_block_hash)
+        .block_fees(receipt.domain_block_hash)
         .unwrap();
     let free_balance_changes = pre_free_balance
         - account_infos
@@ -779,10 +779,10 @@ async fn test_evm_domain_transaction_fee_and_operator_reward() {
 
     assert_eq!(
         free_balance_changes,
-        domain_block_rewards.execution_fee + domain_block_rewards.storage_fee
+        domain_block_fees.execution_fee + domain_block_fees.storage_fee
     );
-    assert!(!domain_block_rewards.storage_fee.is_zero());
-    assert_eq!(domain_block_rewards.execution_fee, receipt.total_rewards);
+    assert!(!domain_block_fees.storage_fee.is_zero());
+    assert_eq!(domain_block_fees.execution_fee, receipt.total_rewards);
 }
 
 // #[tokio::test(flavor = "multi_thread")]

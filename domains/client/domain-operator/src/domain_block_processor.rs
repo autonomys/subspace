@@ -386,7 +386,7 @@ where
         let total_rewards = self
             .client
             .runtime_api()
-            .block_rewards(header_hash)?
+            .block_fees(header_hash)?
             .execution_fee;
 
         let execution_receipt = ExecutionReceipt {

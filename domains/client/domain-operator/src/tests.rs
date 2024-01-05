@@ -3131,19 +3131,19 @@ async fn test_domain_transaction_fee_and_operator_reward() {
         pre_alice_free_balance - alice.free_balance(Alice.to_account_id());
     assert!(alice_free_balance_changes >= tip);
 
-    let domain_block_rewards = alice
+    let domain_block_fees = alice
         .client
         .runtime_api()
-        .block_rewards(receipt.domain_block_hash)
+        .block_fees(receipt.domain_block_hash)
         .unwrap();
 
     // All the transaction fee is collected as operator reward
     assert_eq!(
         alice_free_balance_changes,
-        domain_block_rewards.execution_fee + domain_block_rewards.storage_fee
+        domain_block_fees.execution_fee + domain_block_fees.storage_fee
     );
-    assert_eq!(domain_block_rewards.execution_fee, receipt.total_rewards);
-    assert!(!domain_block_rewards.storage_fee.is_zero());
+    assert_eq!(domain_block_fees.execution_fee, receipt.total_rewards);
+    assert!(!domain_block_fees.storage_fee.is_zero());
 }
 
 #[tokio::test(flavor = "multi_thread")]

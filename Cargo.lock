@@ -2604,6 +2604,7 @@ dependencies = [
  "sc-executor",
  "sc-executor-common",
  "sp-api",
+ "sp-block-fees",
  "sp-blockchain",
  "sp-core",
  "sp-domains",
@@ -2611,7 +2612,6 @@ dependencies = [
  "sp-inherents",
  "sp-keyring",
  "sp-messenger",
- "sp-operator-rewards",
  "sp-runtime",
  "sp-state-machine",
  "sp-timestamp",
@@ -3273,6 +3273,7 @@ dependencies = [
  "frame-system-rpc-runtime-api",
  "pallet-balances",
  "pallet-base-fee",
+ "pallet-block-fees",
  "pallet-domain-id",
  "pallet-ethereum",
  "pallet-evm",
@@ -3281,7 +3282,6 @@ dependencies = [
  "pallet-evm-precompile-sha3fips",
  "pallet-evm-precompile-simple",
  "pallet-messenger",
- "pallet-operator-rewards",
  "pallet-sudo",
  "pallet-timestamp",
  "pallet-transaction-payment",
@@ -3323,6 +3323,7 @@ dependencies = [
  "frame-system-rpc-runtime-api",
  "pallet-balances",
  "pallet-base-fee",
+ "pallet-block-fees",
  "pallet-domain-id",
  "pallet-ethereum",
  "pallet-evm",
@@ -3331,7 +3332,6 @@ dependencies = [
  "pallet-evm-precompile-sha3fips",
  "pallet-evm-precompile-simple",
  "pallet-messenger",
- "pallet-operator-rewards",
  "pallet-sudo",
  "pallet-timestamp",
  "pallet-transaction-payment",
@@ -7366,6 +7366,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "pallet-block-fees"
+version = "0.1.0"
+dependencies = [
+ "domain-runtime-primitives",
+ "frame-support",
+ "frame-system",
+ "parity-scale-codec",
+ "scale-info",
+ "sp-block-fees",
+ "sp-runtime",
+ "sp-std",
+]
+
+[[package]]
 name = "pallet-domain-id"
 version = "0.1.0"
 dependencies = [
@@ -7390,7 +7404,7 @@ dependencies = [
  "frame-system",
  "log",
  "pallet-balances",
- "pallet-operator-rewards",
+ "pallet-block-fees",
  "pallet-timestamp",
  "parity-scale-codec",
  "scale-info",
@@ -7584,20 +7598,6 @@ dependencies = [
  "sp-consensus-subspace",
  "sp-core",
  "sp-io",
- "sp-runtime",
- "sp-std",
-]
-
-[[package]]
-name = "pallet-operator-rewards"
-version = "0.1.0"
-dependencies = [
- "domain-runtime-primitives",
- "frame-support",
- "frame-system",
- "parity-scale-codec",
- "scale-info",
- "sp-operator-rewards",
  "sp-runtime",
  "sp-std",
 ]
@@ -10799,6 +10799,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "sp-block-fees"
+version = "0.1.0"
+dependencies = [
+ "async-trait",
+ "domain-runtime-primitives",
+ "parity-scale-codec",
+ "sp-inherents",
+ "sp-std",
+]
+
+[[package]]
 name = "sp-blockchain"
 version = "4.0.0-dev"
 source = "git+https://github.com/subspace/polkadot-sdk?rev=0831dfc3c54b10ab46e82acf98603b4af1a47bd5#0831dfc3c54b10ab46e82acf98603b4af1a47bd5"
@@ -11250,17 +11261,6 @@ dependencies = [
  "sp-api",
  "sp-core",
  "sp-runtime",
-]
-
-[[package]]
-name = "sp-operator-rewards"
-version = "0.1.0"
-dependencies = [
- "async-trait",
- "domain-runtime-primitives",
- "parity-scale-codec",
- "sp-inherents",
- "sp-std",
 ]
 
 [[package]]

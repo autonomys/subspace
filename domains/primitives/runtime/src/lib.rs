@@ -175,7 +175,7 @@ pub const CHECK_EXTRINSICS_AND_DO_PRE_DISPATCH_METHOD_NAME: &str =
     "DomainCoreApi_check_extrinsics_and_do_pre_dispatch";
 
 #[derive(Clone, Debug, Default, Decode, Encode, Eq, PartialEq, TypeInfo)]
-pub struct DomainBlockReward<Balance> {
+pub struct BlockFees<Balance> {
     pub storage_fee: Balance,
     pub execution_fee: Balance,
 }
@@ -251,7 +251,7 @@ sp_api::decl_runtime_apis! {
         fn extrinsic_weight(ext: &Block::Extrinsic) -> Weight;
 
         /// The accumulated transaction fee of all transactions included in the block
-        fn block_rewards() -> DomainBlockReward<Balance>;
+        fn block_fees() -> BlockFees<Balance>;
 
         /// Return the block digest
         fn block_digest() -> Digest;

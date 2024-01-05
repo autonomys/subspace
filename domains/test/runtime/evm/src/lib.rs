@@ -12,8 +12,8 @@ include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 use codec::{Decode, Encode};
 pub use domain_runtime_primitives::opaque::Header;
 use domain_runtime_primitives::{
-    block_weights, maximum_block_length, DomainBlockReward, MultiAccountId, TryConvertBack,
-    EXISTENTIAL_DEPOSIT, MAXIMUM_BLOCK_WEIGHT, SLOT_DURATION,
+    block_weights, maximum_block_length, MultiAccountId, TryConvertBack, EXISTENTIAL_DEPOSIT,
+    MAXIMUM_BLOCK_WEIGHT, SLOT_DURATION,
 };
 pub use domain_runtime_primitives::{
     opaque, Balance, BlockNumber, CheckExtrinsicsValidityError, Hash, Nonce,
@@ -168,7 +168,7 @@ impl fp_self_contained::SelfContainedCall for RuntimeCall {
         match self {
             RuntimeCall::Ethereum(call) => {
                 // Withdraw the consensus chain storage fee from the caller and record
-                // it in the `OperatorRewards`
+                // it in the `BlockFees`
                 let storage_fee = DomainTransactionByteFee::get()
                     * Balance::try_from(len)
                         .expect("Size of the call never exceeds balance units; qed");
@@ -178,7 +178,7 @@ impl fp_self_contained::SelfContainedCall for RuntimeCall {
                 ) {
                     Ok(None) => {}
                     Ok(Some(paid_storage_fee)) => {
-                        OperatorRewards::note_storage_fee(paid_storage_fee.peek())
+                        BlockFees::note_storage_fee(paid_storage_fee.peek())
                     }
                     Err(_) => return Some(Err(InvalidTransaction::Payment.into())),
                 }
@@ -325,7 +325,7 @@ impl pallet_balances::Config for Runtime {
     type MaxHolds = ();
 }
 
-impl pallet_operator_rewards::Config for Runtime {
+impl pallet_block_fees::Config for Runtime {
     type Balance = Balance;
 }
 
@@ -352,7 +352,7 @@ impl domain_pallet_executive::ExtrinsicStorageFees<Runtime> for ExtrinsicStorage
     }
 
     fn on_storage_fees_charged(charged_fees: Balance) {
-        OperatorRewards::note_operator_rewards(charged_fees)
+        BlockFees::note_execution_fee(charged_fees)
     }
 }
 
@@ -380,7 +380,7 @@ pub struct OnXDMRewards;
 
 impl sp_messenger::OnXDMRewards<Balance> for OnXDMRewards {
     fn on_xdm_rewards(rewards: Balance) {
-        OperatorRewards::note_operator_rewards(rewards)
+        BlockFees::note_execution_fee(rewards)
     }
 }
 
@@ -480,7 +480,7 @@ type InnerEVMCurrencyAdapter = pallet_evm::EVMCurrencyAdapter<Balances, ()>;
 
 // Implementation of [`pallet_transaction_payment::OnChargeTransaction`] that charges evm transaction
 // fees from the transaction sender and collect all the fees (including both the base fee and tip) in
-// `pallet_operator_rewards`
+// `pallet_block_fees`
 pub struct EVMCurrencyAdapter;
 
 impl pallet_evm::OnChargeEVMTransaction<Runtime> for EVMCurrencyAdapter {
@@ -501,7 +501,7 @@ impl pallet_evm::OnChargeEVMTransaction<Runtime> for EVMCurrencyAdapter {
     ) -> Self::LiquidityInfo {
         if already_withdrawn.is_some() {
             // Record the evm actual transaction fee
-            OperatorRewards::note_operator_rewards(corrected_fee.as_u128());
+            BlockFees::note_execution_fee(corrected_fee.as_u128());
         }
 
         <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<
@@ -610,7 +610,7 @@ construct_runtime!(
 
         // domain instance stuff
         SelfDomainId: pallet_domain_id = 90,
-        OperatorRewards: pallet_operator_rewards = 91,
+        BlockFees: pallet_block_fees = 91,
 
         // Sudo account
         Sudo: pallet_sudo = 100,
@@ -942,8 +942,8 @@ impl_runtime_apis! {
             ext.get_dispatch_info().weight
         }
 
-        fn block_rewards() -> DomainBlockReward<Balance> {
-            OperatorRewards::block_rewards()
+        fn block_fees() -> domain_runtime_primitives::BlockFees<Balance> {
+            BlockFees::collected_block_fees()
         }
 
         fn block_digest() -> Digest {
@@ -956,7 +956,7 @@ impl_runtime_apis! {
 
         fn construct_domain_transaction_byte_fee_extrinsic(transaction_byte_fee: Balance) -> <Block as BlockT>::Extrinsic {
             UncheckedExtrinsic::new_unsigned(
-                pallet_operator_rewards::Call::set_next_domain_transaction_byte_fee{ transaction_byte_fee }.into()
+                pallet_block_fees::Call::set_next_domain_transaction_byte_fee{ transaction_byte_fee }.into()
             )
         }
     }
@@ -1200,7 +1200,7 @@ impl_runtime_apis! {
         }
 
         fn domain_transaction_byte_fee() -> Balance {
-            OperatorRewards::domain_transaction_byte_fee()
+            BlockFees::domain_transaction_byte_fee()
         }
     }
 }

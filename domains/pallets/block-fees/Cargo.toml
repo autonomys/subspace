@@ -1,5 +1,5 @@
 [package]
-name = "pallet-operator-rewards"
+name = "pallet-block-fees"
 version = "0.1.0"
 authors = ["Subspace Labs <https://subspace.network>"]
 edition = "2021"
@@ -18,7 +18,7 @@ domain-runtime-primitives = { version = "0.1.0", path = "../../primitives/runtim
 frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0831dfc3c54b10ab46e82acf98603b4af1a47bd5" }
 frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0831dfc3c54b10ab46e82acf98603b4af1a47bd5" }
 scale-info = { version = "2.7.0", default-features = false, features = ["derive"] }
-sp-operator-rewards = { version = "0.1.0", path = "../../primitives/operator-rewards", default-features = false }
+sp-block-fees = { version = "0.1.0", path = "../../primitives/block-fees", default-features = false }
 sp-runtime = { version = "24.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0831dfc3c54b10ab46e82acf98603b4af1a47bd5" }
 sp-std = { version = "8.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0831dfc3c54b10ab46e82acf98603b4af1a47bd5" }
 
@@ -30,7 +30,7 @@ std = [
   "frame-support/std",
   "frame-system/std",
   "scale-info/std",
-  "sp-operator-rewards/std",
+  "sp-block-fees/std",
   "sp-runtime/std",
   "sp-std/std",
 ]

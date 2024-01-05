@@ -22,11 +22,11 @@ pub use pallet::*;
 #[frame_support::pallet]
 mod pallet {
     use codec::{Codec, MaxEncodedLen};
-    use domain_runtime_primitives::DomainBlockReward;
+    use domain_runtime_primitives::BlockFees;
     use frame_support::pallet_prelude::*;
     use frame_system::pallet_prelude::*;
     use scale_info::TypeInfo;
-    use sp_operator_rewards::{InherentError, InherentType, INHERENT_IDENTIFIER};
+    use sp_block_fees::{InherentError, InherentType, INHERENT_IDENTIFIER};
     use sp_runtime::traits::{AtLeast32BitUnsigned, MaybeSerializeDeserialize, Saturating};
     use sp_runtime::{FixedPointOperand, SaturatedConversion};
     use sp_std::fmt::Debug;
@@ -53,9 +53,9 @@ mod pallet {
     /// Currently, the only source of rewards is the transaction fees, in the future it
     /// will include the XDM reward.
     #[pallet::storage]
-    #[pallet::getter(fn block_rewards)]
-    pub(super) type BlockRewards<T: Config> =
-        StorageValue<_, DomainBlockReward<T::Balance>, ValueQuery>;
+    #[pallet::getter(fn collected_block_fees)]
+    pub(super) type CollectedBlockFees<T: Config> =
+        StorageValue<_, BlockFees<T::Balance>, ValueQuery>;
 
     /// The domain transaction byte fee
     ///
@@ -72,7 +72,7 @@ mod pallet {
     pub(super) type NextDomainTransactionByteFee<T: Config> =
         StorageValue<_, T::Balance, ValueQuery>;
 
-    /// Pallet operator-rewards to store the accumulated rewards of the current block
+    /// Pallet block-fees to store the accumulated rewards of the current block
     #[pallet::pallet]
     #[pallet::without_storage_info]
     pub struct Pallet<T>(_);
@@ -80,7 +80,7 @@ mod pallet {
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
         fn on_initialize(_now: BlockNumberFor<T>) -> Weight {
-            BlockRewards::<T>::set(Default::default());
+            CollectedBlockFees::<T>::set(Default::default());
             T::DbWeight::get().writes(1)
         }
 
@@ -156,18 +156,16 @@ mod pallet {
     }
 
     impl<T: Config> Pallet<T> {
-        pub fn note_operator_rewards(rewards: T::Balance) {
-            let mut next_block_rewards = BlockRewards::<T>::get();
-            next_block_rewards.execution_fee =
-                next_block_rewards.execution_fee.saturating_add(rewards);
-            BlockRewards::<T>::set(next_block_rewards);
+        pub fn note_execution_fee(rewards: T::Balance) {
+            let mut next_block_fees = CollectedBlockFees::<T>::get();
+            next_block_fees.execution_fee = next_block_fees.execution_fee.saturating_add(rewards);
+            CollectedBlockFees::<T>::set(next_block_fees);
         }
 
         pub fn note_storage_fee(storage_fee: T::Balance) {
-            let mut next_block_rewards = BlockRewards::<T>::get();
-            next_block_rewards.storage_fee =
-                next_block_rewards.storage_fee.saturating_add(storage_fee);
-            BlockRewards::<T>::set(next_block_rewards);
+            let mut next_block_fees = CollectedBlockFees::<T>::get();
+            next_block_fees.storage_fee = next_block_fees.storage_fee.saturating_add(storage_fee);
+            CollectedBlockFees::<T>::set(next_block_fees);
         }
     }
 }

@@ -608,10 +608,10 @@ impl<ReceiptHash: Copy> InvalidTotalRewardsProof<ReceiptHash> {
 
 //TODO: remove there key generations from here and instead use the fraud proof host function to fetch them
 
-/// This is a representation of actual Block Rewards storage in pallet-operator-rewards.
+/// This is a representation of actual Block Rewards storage in pallet-block-fees.
 /// Any change in key or value there should be changed here accordingly.
 pub fn operator_block_rewards_final_key() -> Vec<u8> {
-    frame_support::storage::storage_prefix("OperatorRewards".as_ref(), "BlockRewards".as_ref())
+    frame_support::storage::storage_prefix("BlockFees".as_ref(), "CollectedBlockFees".as_ref())
         .to_vec()
 }
 

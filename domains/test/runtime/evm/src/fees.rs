@@ -1,4 +1,4 @@
-use crate::{AccountId, Balance, Balances, OperatorRewards, Runtime, RuntimeCall};
+use crate::{AccountId, Balance, Balances, BlockFees, Runtime, RuntimeCall};
 use codec::Encode;
 use frame_support::traits::{Currency, ExistenceRequirement, Get, Imbalance, WithdrawReasons};
 use pallet_balances::NegativeImbalance;
@@ -9,7 +9,7 @@ pub struct DomainTransactionByteFee;
 
 impl Get<Balance> for DomainTransactionByteFee {
     fn get() -> Balance {
-        OperatorRewards::domain_transaction_byte_fee()
+        BlockFees::domain_transaction_byte_fee()
     }
 }
 
@@ -90,8 +90,8 @@ impl pallet_transaction_payment::OnChargeTransaction<Runtime> for OnChargeDomain
             // Split paid storage and th compute fees so that they can be distributed separately.
             let (paid_storage_fee, compute_fee_and_tip) = adjusted_paid.split(storage_fee);
 
-            OperatorRewards::note_storage_fee(paid_storage_fee.peek());
-            OperatorRewards::note_operator_rewards(compute_fee_and_tip.peek());
+            BlockFees::note_storage_fee(paid_storage_fee.peek());
+            BlockFees::note_execution_fee(compute_fee_and_tip.peek());
         }
         Ok(())
     }

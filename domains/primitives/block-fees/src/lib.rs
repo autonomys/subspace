@@ -1,4 +1,4 @@
-//! Inherents for operator-rewards pallet
+//! Inherents for block-fees pallet
 #![cfg_attr(not(feature = "std"), no_std)]
 
 use codec::{Decode, Encode};
@@ -6,8 +6,8 @@ use domain_runtime_primitives::Balance;
 use sp_inherents::{Error, InherentData, InherentIdentifier, IsFatalError};
 use sp_std::result::Result;
 
-/// Operator-rewards inherent identifier.
-pub const INHERENT_IDENTIFIER: InherentIdentifier = *b"operewrd";
+/// Block-fees inherent identifier.
+pub const INHERENT_IDENTIFIER: InherentIdentifier = *b"blockfee";
 
 #[derive(Debug, Encode)]
 #[cfg_attr(feature = "std", derive(Decode))]
