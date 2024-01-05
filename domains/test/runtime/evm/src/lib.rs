@@ -8,6 +8,8 @@ mod precompiles;
 #[cfg(feature = "std")]
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
+extern crate alloc;
+
 use codec::{Decode, Encode};
 pub use domain_runtime_primitives::opaque::Header;
 use domain_runtime_primitives::{
@@ -15,7 +17,7 @@ use domain_runtime_primitives::{
     MAXIMUM_BLOCK_WEIGHT, SLOT_DURATION,
 };
 pub use domain_runtime_primitives::{
-    opaque, Balance, BlockNumber, CheckExtrinsicsValidityError, Hash, Nonce,
+    opaque, Balance, BlockNumber, CheckExtrinsicsValidityError, DecodeExtrinsicError, Hash, Nonce,
 };
 use fp_account::EthereumSignature;
 use fp_self_contained::{CheckedSignature, SelfContainedCall};
@@ -914,6 +916,14 @@ impl_runtime_apis! {
             }
 
             Ok(())
+        }
+
+        fn decode_extrinsic(
+            opaque_extrinsic: sp_runtime::OpaqueExtrinsic,
+        ) -> Result<<Block as BlockT>::Extrinsic, DecodeExtrinsicError> {
+            let encoded = opaque_extrinsic.encode();
+            UncheckedExtrinsic::decode(&mut encoded.as_slice())
+                .map_err(|err| DecodeExtrinsicError(alloc::format!("{}", err)))
         }
 
         fn extrinsic_era(

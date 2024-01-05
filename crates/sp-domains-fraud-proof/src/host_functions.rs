@@ -261,6 +261,22 @@ where
             .ok()
     }
 
+    fn is_decodable_extrinsic(
+        &self,
+        consensus_block_hash: H256,
+        domain_id: DomainId,
+        opaque_extrinsic: OpaqueExtrinsic,
+    ) -> Option<bool> {
+        let runtime_code = self.get_domain_runtime_code(consensus_block_hash, domain_id)?;
+        let domain_stateless_runtime =
+            StatelessRuntime::<DomainBlock, _>::new(self.executor.clone(), runtime_code.into());
+
+        Some(matches!(
+            domain_stateless_runtime.decode_extrinsic(opaque_extrinsic),
+            Ok(Ok(_))
+        ))
+    }
+
     fn get_domain_election_params(
         &self,
         consensus_block_hash: H256,
@@ -389,6 +405,14 @@ where
                 .is_inherent_extrinsic(consensus_block_hash, domain_id, opaque_extrinsic)
                 .map(|is_inherent| {
                     FraudProofVerificationInfoResponse::InherentExtrinsicCheck(is_inherent)
+                }),
+            FraudProofVerificationInfoRequest::ExtrinsicDecodableCheck {
+                domain_id,
+                opaque_extrinsic,
+            } => self
+                .is_decodable_extrinsic(consensus_block_hash, domain_id, opaque_extrinsic)
+                .map(|is_decodable| {
+                    FraudProofVerificationInfoResponse::ExtrinsicDecodableCheck(is_decodable)
                 }),
             FraudProofVerificationInfoRequest::DomainElectionParams { domain_id } => self
                 .get_domain_election_params(consensus_block_hash, domain_id)

@@ -305,6 +305,12 @@ pub enum VerificationError<DomainHash> {
         error("Failed to check if a given extrinsic is inherent or not")
     )]
     FailedToCheckInherentExtrinsic,
+    /// Failed to check if a given extrinsic is decodable or not.
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Failed to check if a given extrinsic is decodable or not")
+    )]
+    FailedToCheckExtrinsicDecodable,
     /// Invalid bundle equivocation fraud proof.
     #[cfg_attr(
         feature = "thiserror",
