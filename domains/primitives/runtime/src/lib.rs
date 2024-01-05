@@ -23,7 +23,7 @@ use frame_system::limits::{BlockLength, BlockWeights};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_runtime::generic::{Era, UncheckedExtrinsic};
-use sp_runtime::traits::{Block as BlockT, Convert, IdentifyAccount, NumberFor, Verify};
+use sp_runtime::traits::{Block as BlockT, Convert, IdentifyAccount, NumberFor, Verify, Zero};
 use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_runtime::{Digest, MultiAddress, MultiSignature, Perbill};
 use sp_std::vec::Vec;
@@ -174,10 +174,28 @@ pub struct CheckExtrinsicsValidityError {
 pub const CHECK_EXTRINSICS_AND_DO_PRE_DISPATCH_METHOD_NAME: &str =
     "DomainCoreApi_check_extrinsics_and_do_pre_dispatch";
 
-#[derive(Clone, Debug, Default, Decode, Encode, Eq, PartialEq, TypeInfo)]
+#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
 pub struct BlockFees<Balance> {
     pub storage_fee: Balance,
     pub execution_fee: Balance,
+}
+
+impl<Balance> BlockFees<Balance> {
+    pub fn new(execution_fee: Balance, storage_fee: Balance) -> Self {
+        BlockFees {
+            storage_fee,
+            execution_fee,
+        }
+    }
+}
+
+impl<Balance: Zero> Default for BlockFees<Balance> {
+    fn default() -> Self {
+        BlockFees {
+            storage_fee: Balance::zero(),
+            execution_fee: Balance::zero(),
+        }
+    }
 }
 
 /// Opaque types. These are used by the CLI to instantiate machinery that don't need to know

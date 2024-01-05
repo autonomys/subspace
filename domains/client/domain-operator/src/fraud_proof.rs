@@ -15,7 +15,7 @@ use sp_domains::{DomainId, DomainsApi, ExtrinsicDigest, HeaderHashingFor, Invali
 use sp_domains_fraud_proof::execution_prover::ExecutionProver;
 use sp_domains_fraud_proof::fraud_proof::{
     ExecutionPhase, FraudProof, InvalidBundlesFraudProof, InvalidDomainBlockHashProof,
-    InvalidExtrinsicsRootProof, InvalidStateTransitionProof, InvalidTotalRewardsProof,
+    InvalidExtrinsicsRootProof, InvalidStateTransitionProof, InvalidTotalFeesProof,
     ValidBundleDigest,
 };
 use sp_runtime::generic::BlockId;
@@ -124,18 +124,18 @@ where
         }
     }
 
-    pub(crate) fn generate_invalid_total_rewards_proof(
+    pub(crate) fn generate_invalid_total_fees_proof(
         &self,
         domain_id: DomainId,
         local_receipt: &ExecutionReceiptFor<Block, CBlock>,
         bad_receipt_hash: Block::Hash,
     ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
         let block_hash = local_receipt.domain_block_hash;
-        let key = sp_domains_fraud_proof::fraud_proof::operator_block_rewards_final_key();
+        let key = sp_domains_fraud_proof::fraud_proof::operator_block_fees_final_key();
         let proof = self
             .client
             .read_proof(block_hash, &mut [key.as_slice()].into_iter())?;
-        Ok(FraudProof::InvalidTotalRewards(InvalidTotalRewardsProof {
+        Ok(FraudProof::InvalidTotalFees(InvalidTotalFeesProof {
             domain_id,
             bad_receipt_hash,
             storage_proof: proof,

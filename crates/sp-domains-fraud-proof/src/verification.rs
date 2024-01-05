@@ -8,6 +8,7 @@ use crate::{
     FraudProofVerificationInfoResponse, SetCodeExtrinsic,
 };
 use codec::{Decode, Encode};
+use domain_runtime_primitives::BlockFees;
 use hash_db::Hasher;
 use sp_core::storage::StorageKey;
 use sp_core::H256;
@@ -301,8 +302,8 @@ where
     Ok(())
 }
 
-/// Verifies invalid total rewards fraud proof.
-pub fn verify_invalid_total_rewards_fraud_proof<
+/// Verifies invalid total fees fraud proof.
+pub fn verify_invalid_total_fees_fraud_proof<
     CBlock,
     DomainNumber,
     DomainHash,
@@ -323,18 +324,19 @@ where
     Balance: PartialEq + Decode,
     DomainHashing: Hasher<Out = DomainHash>,
 {
-    let storage_key = StorageKey(crate::fraud_proof::operator_block_rewards_final_key());
+    let storage_key = StorageKey(crate::fraud_proof::operator_block_fees_final_key());
     let storage_proof = storage_proof.clone();
 
-    let total_rewards = StorageProofVerifier::<DomainHashing>::get_decoded_value::<Balance>(
-        &bad_receipt.final_state_root,
-        storage_proof,
-        storage_key,
-    )
-    .map_err(|_| VerificationError::InvalidStorageProof)?;
+    let total_fees =
+        StorageProofVerifier::<DomainHashing>::get_decoded_value::<BlockFees<Balance>>(
+            &bad_receipt.final_state_root,
+            storage_proof,
+            storage_key,
+        )
+        .map_err(|_| VerificationError::InvalidStorageProof)?;
 
     // if the rewards matches, then this is an invalid fraud proof since rewards must be different.
-    if bad_receipt.total_rewards == total_rewards {
+    if bad_receipt.total_fees == total_fees {
         return Err(VerificationError::InvalidProof);
     }
 

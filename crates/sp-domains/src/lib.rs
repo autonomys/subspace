@@ -31,6 +31,7 @@ extern crate alloc;
 use crate::storage::{RawGenesis, StorageKey};
 use alloc::string::String;
 use bundle_producer_election::{BundleProducerElectionParams, ProofOfElectionError};
+use domain_runtime_primitives::BlockFees;
 use hexlit::hex;
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
@@ -413,8 +414,8 @@ pub struct ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance> {
     ///
     /// Used for verifying fraud proofs.
     pub execution_trace_root: H256,
-    /// All SSC rewards for this ER to be shared across operators.
-    pub total_rewards: Balance,
+    /// All SSC fees for this ER to be shared across operators.
+    pub total_fees: BlockFees<Balance>,
 }
 
 impl<Number, Hash, DomainNumber, DomainHash, Balance>
@@ -491,7 +492,7 @@ impl<
             final_state_root: genesis_state_root.clone(),
             execution_trace: sp_std::vec![genesis_state_root],
             execution_trace_root: Default::default(),
-            total_rewards: Zero::zero(),
+            total_fees: Default::default(),
         }
     }
 
@@ -527,7 +528,7 @@ impl<
             final_state_root: Default::default(),
             execution_trace,
             execution_trace_root,
-            total_rewards: Zero::zero(),
+            total_fees: Default::default(),
         }
     }
 }

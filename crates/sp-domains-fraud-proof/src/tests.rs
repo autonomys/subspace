@@ -782,7 +782,7 @@ async fn test_evm_domain_transaction_fee_and_operator_reward() {
         domain_block_fees.execution_fee + domain_block_fees.storage_fee
     );
     assert!(!domain_block_fees.storage_fee.is_zero());
-    assert_eq!(domain_block_fees.execution_fee, receipt.total_rewards);
+    assert_eq!(domain_block_fees, receipt.total_fees);
 }
 
 // #[tokio::test(flavor = "multi_thread")]

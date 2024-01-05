@@ -52,13 +52,13 @@ use sp_domains::{
     OperatorPublicKey, RuntimeId, DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT, EMPTY_EXTRINSIC_ROOT,
 };
 use sp_domains_fraud_proof::fraud_proof::{
-    FraudProof, InvalidDomainBlockHashProof, InvalidTotalRewardsProof,
+    FraudProof, InvalidDomainBlockHashProof, InvalidTotalFeesProof,
 };
 use sp_domains_fraud_proof::verification::{
     verify_bundle_equivocation_fraud_proof, verify_invalid_bundles_fraud_proof,
     verify_invalid_domain_block_hash_fraud_proof,
     verify_invalid_domain_extrinsics_root_fraud_proof, verify_invalid_state_transition_fraud_proof,
-    verify_invalid_total_rewards_fraud_proof, verify_valid_bundle_fraud_proof,
+    verify_invalid_total_fees_fraud_proof, verify_valid_bundle_fraud_proof,
 };
 use sp_runtime::traits::{CheckedSub, Hash, Header, One, Zero};
 use sp_runtime::{RuntimeAppPublic, SaturatedConversion, Saturating};
@@ -642,8 +642,8 @@ mod pallet {
         ChallengingGenesisReceipt,
         /// The descendants of the fraudulent ER is not pruned
         DescendantsOfFraudulentERNotPruned,
-        /// Invalid fraud proof since total rewards are not mismatched.
-        InvalidTotalRewardsFraudProof,
+        /// Invalid fraud proof since total fees are not mismatched.
+        InvalidTotalFeesFraudProof,
         /// Invalid domain block hash fraud proof.
         InvalidDomainBlockHashFraudProof,
         /// Invalid domain extrinsic fraud proof
@@ -1638,10 +1638,8 @@ impl<T: Config> Pallet<T> {
             );
 
             match fraud_proof {
-                FraudProof::InvalidTotalRewards(InvalidTotalRewardsProof {
-                    storage_proof, ..
-                }) => {
-                    verify_invalid_total_rewards_fraud_proof::<
+                FraudProof::InvalidTotalFees(InvalidTotalFeesProof { storage_proof, .. }) => {
+                    verify_invalid_total_fees_fraud_proof::<
                         T::Block,
                         DomainBlockNumberFor<T>,
                         T::DomainHash,
@@ -1651,9 +1649,9 @@ impl<T: Config> Pallet<T> {
                     .map_err(|err| {
                         log::error!(
                             target: "runtime::domains",
-                            "Total rewards proof verification failed: {err:?}"
+                            "Total fees proof verification failed: {err:?}"
                         );
-                        FraudProofError::InvalidTotalRewardsFraudProof
+                        FraudProofError::InvalidTotalFeesFraudProof
                     })?;
                 }
                 FraudProof::InvalidDomainBlockHash(InvalidDomainBlockHashProof {

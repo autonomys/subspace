@@ -1,5 +1,5 @@
 use domain_client_operator::{ExecutionReceiptFor, OpaqueBundleFor};
-use domain_runtime_primitives::DomainCoreApi;
+use domain_runtime_primitives::{BlockFees, DomainCoreApi};
 use parity_scale_codec::{Decode, Encode};
 use sc_client_api::HeaderBackend;
 use sp_api::{HashT, HeaderT, ProvideRuntimeApi};
@@ -20,7 +20,7 @@ const MAX_BAD_RECEIPT_CACHE: u32 = 128;
 #[allow(dead_code)]
 #[derive(Debug)]
 enum BadReceiptType {
-    TotalRewards,
+    TotalFees,
     ExecutionTrace,
     ExtrinsicsRoot,
     DomainBlockHash,
@@ -105,7 +105,7 @@ where
 
         let random_seed = Random::seed();
         let bad_receipt_type = match random_seed % 5 {
-            0 => BadReceiptType::TotalRewards,
+            0 => BadReceiptType::TotalFees,
             1 => BadReceiptType::ExecutionTrace,
             2 => BadReceiptType::ExtrinsicsRoot,
             3 => BadReceiptType::DomainBlockHash,
@@ -123,8 +123,8 @@ where
         );
 
         match bad_receipt_type {
-            BadReceiptType::TotalRewards => {
-                receipt.total_rewards = random_seed.into();
+            BadReceiptType::TotalFees => {
+                receipt.total_fees = BlockFees::new(random_seed.into(), random_seed.into());
             }
             // TODO: modify the length of `execution_trace` once the honest operator can handle
             BadReceiptType::ExecutionTrace => {
