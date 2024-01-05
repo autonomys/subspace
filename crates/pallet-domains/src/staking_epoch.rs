@@ -20,7 +20,7 @@ use scale_info::TypeInfo;
 use sp_core::Get;
 use sp_domains::{DomainId, EpochIndex, OperatorId};
 use sp_runtime::traits::{CheckedAdd, CheckedSub, One, Zero};
-use sp_runtime::Perbill;
+use sp_runtime::{Perbill, Saturating};
 use sp_std::collections::btree_map::BTreeMap;
 
 #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
@@ -40,11 +40,11 @@ pub(crate) fn do_finalize_domain_current_epoch<T: Config>(
     // Reset pending staking operation count to 0
     PendingStakingOperationCount::<T>::set(domain_id, 0);
 
-    // slash the operators
-    do_finalize_slashed_operators::<T>(domain_id).map_err(Error::SlashOperator)?;
-
     // re stake operator's tax from the rewards
     operator_take_reward_tax_and_stake::<T>(domain_id)?;
+
+    // slash the operators
+    do_finalize_slashed_operators::<T>(domain_id).map_err(Error::SlashOperator)?;
 
     // finalize any operator switches
     do_finalize_switch_operator_domain::<T>(domain_id)?;
@@ -123,14 +123,29 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
 fn do_finalize_switch_operator_domain<T: Config>(domain_id: DomainId) -> Result<(), Error> {
     if let Some(operators) = PendingOperatorSwitches::<T>::take(domain_id) {
         operators.into_iter().try_for_each(|operator_id| {
-            switch_operator::<T>(operator_id).map_err(Error::FinalizeSwitchOperatorDomain)
+            switch_operator::<T>(domain_id, operator_id)
+                .map_err(Error::FinalizeSwitchOperatorDomain)
         })?;
     }
 
     Ok(())
 }
 
-fn switch_operator<T: Config>(operator_id: OperatorId) -> Result<(), TransitionError> {
+fn switch_operator<T: Config>(
+    domain_id: DomainId,
+    operator_id: OperatorId,
+) -> Result<(), TransitionError> {
+    let previous_domain_summary =
+        DomainStakingSummary::<T>::get(domain_id).ok_or(TransitionError::DomainNotInitialized)?;
+
+    // finalize operator staking before moving to next domain
+    // this also sets the operator epoch price.
+    do_finalize_operator_epoch_staking::<T>(
+        domain_id,
+        operator_id,
+        previous_domain_summary.current_epoch_index,
+    )?;
+
     Operators::<T>::try_mutate(operator_id, |maybe_operator| {
         let operator = maybe_operator
             .as_mut()
@@ -171,8 +186,11 @@ pub(crate) fn do_finalize_domain_epoch_staking<T: Config>(
         let mut total_domain_stake = BalanceOf::<T>::zero();
         let mut current_operators = BTreeMap::new();
         for next_operator_id in &stake_summary.next_operators {
-            let operator_stake =
-                finalize_operator_epoch_staking::<T>(domain_id, *next_operator_id, previous_epoch)?;
+            let operator_stake = do_finalize_operator_epoch_staking::<T>(
+                domain_id,
+                *next_operator_id,
+                previous_epoch,
+            )?;
 
             total_domain_stake = total_domain_stake
                 .checked_add(&operator_stake)
@@ -198,7 +216,7 @@ pub(crate) fn do_finalize_domain_epoch_staking<T: Config>(
     .map_err(Error::FinalizeDomainEpochStaking)
 }
 
-fn finalize_operator_epoch_staking<T: Config>(
+pub(crate) fn do_finalize_operator_epoch_staking<T: Config>(
     domain_id: DomainId,
     operator_id: OperatorId,
     previous_epoch: EpochIndex,
@@ -300,6 +318,8 @@ pub(crate) fn do_finalize_slashed_operators<T: Config>(
                 .current_total_stake
                 .checked_add(&operator.current_epoch_rewards)
                 .ok_or(TransitionError::BalanceOverflow)?;
+            let total_shares = operator.current_total_shares;
+            let share_price = Perbill::from_rational(total_shares, total_stake.into());
 
             // transfer all the staked funds to the treasury account
             // any gains will be minted to treasury account
@@ -307,6 +327,7 @@ pub(crate) fn do_finalize_slashed_operators<T: Config>(
                 |(nominator_id, mut deposit)| {
                     let locked_amount =
                         T::Currency::balance_on_hold(&staked_hold_id, &nominator_id);
+
                     // convert any previous epoch deposits
                     deposit.pending = do_convert_previous_epoch_deposits::<T>(
                         operator_id,
@@ -314,50 +335,66 @@ pub(crate) fn do_finalize_slashed_operators<T: Config>(
                         domain_epoch,
                     )?;
 
-                    // if there was a pending deposit, deduct that amount from the slashable amount.
-                    let (amount_to_slash, amount_to_release) =
-                        if let Some(pending_deposit) = deposit.pending {
-                            (
-                                locked_amount
-                                    .checked_sub(&pending_deposit.amount)
-                                    .ok_or(TransitionError::BalanceUnderflow)?,
-                                pending_deposit.amount,
-                            )
-                        } else {
-                            (locked_amount, Zero::zero())
-                        };
+                    // there maybe some withdrawals that are initiated in this epoch where operator was slashed
+                    // then collect and include them to find the final stake amount
+                    let (amount_ready_to_withdraw, shares_withdrew_in_current_epoch) =
+                        calculate_withdraw_share_ssc::<T>(operator_id, nominator_id.clone());
 
-                    // there maybe some withdrawals that are initiated, so calculate withdrawal amount
-                    let amount_being_withdrawn =
-                        calculate_withdraw_share_ssc::<T>(operator_id, nominator_id.clone())?;
+                    // include all the known shares and shares that were withdrawn in the current epoch
+                    let nominator_shares = if shares_withdrew_in_current_epoch.is_zero() {
+                        deposit.known.shares
+                    } else {
+                        deposit
+                            .known
+                            .shares
+                            .checked_add(&shares_withdrew_in_current_epoch)
+                            .ok_or(TransitionError::ShareOverflow)?
+                    };
+
+                    // current staked amount
+                    let nominator_staked_amount = if share_price.is_one() {
+                        nominator_shares.into()
+                    } else {
+                        share_price
+                            .saturating_reciprocal_mul_floor(nominator_shares)
+                            .into()
+                    };
+
+                    // do not slash the deposit that is not staked yet
+                    let amount_to_slash_in_holding = locked_amount
+                        .checked_sub(
+                            &deposit
+                                .pending
+                                .map(|pending_deposit| pending_deposit.amount)
+                                .unwrap_or_default(),
+                        )
+                        .ok_or(TransitionError::BalanceUnderflow)?;
 
                     T::Currency::transfer_on_hold(
                         &staked_hold_id,
                         &nominator_id,
                         &T::TreasuryAccount::get(),
-                        amount_to_slash,
+                        amount_to_slash_in_holding,
                         Precision::Exact,
                         Restriction::Free,
                         Fortitude::Force,
                     )
                     .map_err(|_| TransitionError::RemoveLock)?;
 
-                    let amount_currently_staked = amount_to_slash
-                        .checked_sub(&amount_being_withdrawn)
+                    // these are nominator rewards that will be minted to treasury
+                    // include amount ready to be withdrawn to calculate the final reward
+                    let nominator_reward = nominator_staked_amount
+                        .checked_add(&amount_ready_to_withdraw)
+                        .ok_or(TransitionError::BalanceOverflow)?
+                        .checked_sub(&amount_to_slash_in_holding)
                         .ok_or(TransitionError::BalanceUnderflow)?;
+                    mint_funds::<T>(&T::TreasuryAccount::get(), nominator_reward)?;
 
-                    total_stake = total_stake
-                        .checked_sub(&amount_currently_staked)
-                        .ok_or(TransitionError::BalanceUnderflow)?;
+                    total_stake = total_stake.saturating_sub(nominator_staked_amount);
 
-                    // release the pending deposit amount back to the nominator.
-                    T::Currency::release(
-                        &staked_hold_id,
-                        &nominator_id,
-                        amount_to_release,
-                        Precision::BestEffort,
-                    )
-                    .map_err(|_| TransitionError::RemoveLock)?;
+                    // release rest of the deposited un staked amount back to nominator
+                    T::Currency::release_all(&staked_hold_id, &nominator_id, Precision::BestEffort)
+                        .map_err(|_| TransitionError::RemoveLock)?;
 
                     Ok(())
                 },
@@ -377,12 +414,14 @@ pub(crate) fn do_finalize_slashed_operators<T: Config>(
 mod tests {
     use crate::domain_registry::{DomainConfig, DomainObject};
     use crate::pallet::{
-        Deposits, DomainRegistry, DomainStakingSummary, LastEpochStakingDistribution,
-        NominatorCount, OperatorIdOwner, OperatorSigningKey, Operators, PendingOperatorSwitches,
+        Deposits, DomainRegistry, DomainStakingSummary, HeadReceiptNumber,
+        LastEpochStakingDistribution, NominatorCount, OperatorIdOwner, OperatorSigningKey,
+        Operators, PendingOperatorSwitches, Withdrawals,
     };
-    use crate::staking::tests::register_operator;
+    use crate::staking::tests::{register_operator, Share};
     use crate::staking::{
-        do_deregister_operator, do_nominate_operator, do_reward_operators, StakingSummary,
+        do_deregister_operator, do_nominate_operator, do_reward_operators, do_unlock_operator,
+        do_withdraw_stake, StakingSummary, Withdraw,
     };
     use crate::staking_epoch::{
         do_finalize_domain_current_epoch, do_finalize_switch_operator_domain,
@@ -476,6 +515,8 @@ mod tests {
     fn unlock_operator(
         nominators: Vec<(NominatorId<Test>, BalanceOf<Test>)>,
         pending_deposits: Vec<(NominatorId<Test>, BalanceOf<Test>)>,
+        withdrawals: Vec<(NominatorId<Test>, Share)>,
+        expected_usable_balances: Vec<(NominatorId<Test>, BalanceOf<Test>)>,
         rewards: BalanceOf<Test>,
     ) {
         let domain_id = DomainId::new(0);
@@ -520,6 +561,11 @@ mod tests {
                     .unwrap();
             }
 
+            for (nominator_id, shares) in withdrawals {
+                do_withdraw_stake::<Test>(operator_id, nominator_id, Withdraw::Some(shares))
+                    .unwrap();
+            }
+
             if !rewards.is_zero() {
                 do_reward_operators::<Test>(domain_id, vec![operator_id].into_iter(), rewards)
                     .unwrap()
@@ -532,19 +578,29 @@ mod tests {
             let domain_block_number = 100;
             do_finalize_domain_current_epoch::<Test>(domain_id, domain_block_number).unwrap();
 
-            // unlock operator
-            assert_eq!(
-                OperatorSigningKey::<Test>::get(pair.public()),
-                Some(operator_id)
+            // staking withdrawal is 5 blocks, and block pruning depth is 16
+            // to unlock funds, confirmed block should be atleast 106 so +1 in the end
+            HeadReceiptNumber::<Test>::insert(
+                domain_id,
+                domain_block_number
+                    + crate::tests::StakeWithdrawalLockingPeriod::get()
+                    + crate::tests::BlockTreePruningDepth::get()
+                    + 1,
             );
 
+            assert_ok!(do_unlock_operator::<Test>(operator_id));
+
             let hold_id = crate::tests::HoldIdentifier::staking_staked(operator_id);
-            for nominator in &nominators {
-                let required_minimum_free_balance = nominator.1 .0;
-                assert_eq!(Deposits::<Test>::get(operator_id, nominator.0), None);
-                assert!(Balances::usable_balance(nominator.0) >= required_minimum_free_balance);
+            for (nominator_id, mut expected_usable_balance) in expected_usable_balances {
+                expected_usable_balance += minimum_free_balance;
+                assert_eq!(Deposits::<Test>::get(operator_id, nominator_id), None);
+                assert_eq!(Withdrawals::<Test>::get(operator_id, nominator_id), None);
                 assert_eq!(
-                    Balances::balance_on_hold(&hold_id, nominator.0),
+                    Balances::usable_balance(nominator_id),
+                    expected_usable_balance
+                );
+                assert_eq!(
+                    Balances::balance_on_hold(&hold_id, &nominator_id),
                     Zero::zero()
                 );
             }
@@ -561,6 +617,8 @@ mod tests {
         unlock_operator(
             vec![(1, 150 * SSC), (2, 50 * SSC), (3, 10 * SSC)],
             vec![(2, 10 * SSC), (4, 10 * SSC)],
+            vec![(1, 20 * SSC), (2, 10 * SSC)],
+            vec![(1, 150 * SSC), (2, 60 * SSC), (3, 10 * SSC), (4, 10 * SSC)],
             0,
         );
     }
@@ -570,6 +628,13 @@ mod tests {
         unlock_operator(
             vec![(1, 150 * SSC), (2, 50 * SSC), (3, 10 * SSC)],
             vec![(2, 10 * SSC), (4, 10 * SSC)],
+            vec![(1, 20 * SSC), (2, 10 * SSC)],
+            vec![
+                (1, 164285714332653061237),
+                (2, 64761904777551020412),
+                (3, 10952380955510204082),
+                (4, 10 * SSC),
+            ],
             20 * SSC,
         );
     }

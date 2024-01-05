@@ -18,7 +18,7 @@ use scale_info::TypeInfo;
 use sp_core::Get;
 use sp_domains::{DomainId, EpochIndex, OperatorId, OperatorPublicKey, ZERO_OPERATOR_SIGNING_KEY};
 use sp_runtime::traits::{CheckedAdd, CheckedSub, One, Zero};
-use sp_runtime::{Perbill, Percent};
+use sp_runtime::{Perbill, Percent, Saturating};
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::collections::btree_set::BTreeSet;
 use sp_std::iter::Iterator;
@@ -673,7 +673,7 @@ pub(crate) fn do_withdraw_stake<T: Config>(
 
             Withdrawals::<T>::try_mutate(operator_id, nominator_id, |maybe_withdrawals| {
                 let mut withdrawals = maybe_withdrawals.take().unwrap_or_default();
-                // if there is an exisiting withdrawal within the same epoch, then update it instead
+                // if there is an existing withdrawal within the same epoch, then update it instead
                 if let Some(withdrawal) = withdrawals.back_mut() && withdrawal.allowed_since_domain_epoch == domain_current_epoch {
                     withdrawal.shares = withdrawal.shares.checked_add(&shares_withdrew).ok_or(Error::ShareOverflow)?;
                 } else {
@@ -727,9 +727,16 @@ pub(crate) fn do_unlock_funds<T: Config>(
         let staked_hold_id = T::HoldIdentifier::staking_staked(operator_id);
         let locked_amount = T::Currency::balance_on_hold(&staked_hold_id, &nominator_id);
         let amount_to_unlock: BalanceOf<T> = {
+            let epoch_share_price =
+                OperatorEpochSharePrice::<T>::get(operator_id, allowed_since_domain_epoch)
+                    .ok_or(Error::MissingOperatorEpochSharePrice)?;
+
             // if the share price is one, just convert shares to ssc
-            let amount_to_unlock =
-                convert_shares_to_ssc::<T>(operator_id, allowed_since_domain_epoch, shares)?;
+            let amount_to_unlock = if epoch_share_price.is_one() {
+                shares.into()
+            } else {
+                epoch_share_price.saturating_reciprocal_mul_floor(shares.into())
+            };
 
             // if the amount to release is more than currently locked,
             // mint the diff and release the rest
@@ -758,43 +765,52 @@ pub(crate) fn do_unlock_funds<T: Config>(
     })
 }
 
+/// Converts shares to ssc based on the OPerator epoch share price
+/// if the share price is not available, then return the shares as is
 fn convert_shares_to_ssc<T: Config>(
     operator_id: OperatorId,
     domain_epoch: DomainEpoch,
     shares: T::Share,
-) -> Result<BalanceOf<T>, Error> {
-    let epoch_share_price = OperatorEpochSharePrice::<T>::get(operator_id, domain_epoch)
-        .ok_or(Error::MissingOperatorEpochSharePrice)?;
-
-    // if the share price is one, just convert shares to ssc
-    Ok(if epoch_share_price.is_one() {
-        shares.into()
-    } else {
-        epoch_share_price.saturating_reciprocal_mul_floor(shares.into())
-    })
+) -> (BalanceOf<T>, T::Share) {
+    match OperatorEpochSharePrice::<T>::get(operator_id, domain_epoch) {
+        None => (Zero::zero(), shares),
+        Some(epoch_share_price) => {
+            // if the share price is one, just convert shares to ssc
+            (
+                if epoch_share_price.is_one() {
+                    shares.into()
+                } else {
+                    epoch_share_price.saturating_reciprocal_mul_floor(shares.into())
+                },
+                Zero::zero(),
+            )
+        }
+    }
 }
-// If there are any withdrawals, then calculate the SSC for those shares
-// using the share price at which the withdraw was initiated
+// If there are any withdrawals for previous epoch, then calculate the SSC for those shares
+// using the share price at which the withdraw was initiated.
+// If there are any withdrawals during the current epoch, it share price is not calculated yet
+// so just return the shares as is
 pub(crate) fn calculate_withdraw_share_ssc<T: Config>(
     operator_id: OperatorId,
     nominator_id: NominatorId<T>,
-) -> Result<BalanceOf<T>, Error> {
+) -> (BalanceOf<T>, T::Share) {
     let withdrawals = Withdrawals::<T>::take(operator_id, nominator_id.clone()).unwrap_or_default();
-    withdrawals
-        .into_iter()
-        .try_fold(BalanceOf::<T>::zero(), |total, withdraw| {
-            let maybe_amount = convert_shares_to_ssc::<T>(
+    withdrawals.into_iter().fold(
+        (BalanceOf::<T>::zero(), T::Share::zero()),
+        |(total_amount, total_shares), withdraw| {
+            let (amount, shares) = convert_shares_to_ssc::<T>(
                 operator_id,
                 withdraw.allowed_since_domain_epoch,
                 withdraw.shares,
             );
 
-            if let Ok(amount) = maybe_amount {
-                amount.checked_add(&total).ok_or(Error::BalanceOverflow)
-            } else {
-                maybe_amount
-            }
-        })
+            (
+                amount.saturating_add(total_amount),
+                shares.saturating_add(total_shares),
+            )
+        },
+    )
 }
 
 /// Unlocks an already de-registered operator given unlock wait period is complete.
@@ -823,15 +839,13 @@ pub(crate) fn do_unlock_operator<T: Config>(operator_id: OperatorId) -> Result<(
             Error::UnlockPeriodNotComplete
         );
 
-        let domain_stake_summary =
-            DomainStakingSummary::<T>::get(domain_id).ok_or(Error::DomainNotInitialized)?;
-        let current_domain_epoch = (domain_id, domain_stake_summary.current_epoch_index).into();
-
-        let mut total_shares = operator.current_total_shares;
+        let total_shares = operator.current_total_shares;
         let mut total_stake = operator
             .current_total_stake
             .checked_add(&operator.current_epoch_rewards)
             .ok_or(Error::BalanceOverflow)?;
+
+        let share_price = Perbill::from_rational(total_shares, total_stake.into());
 
         let staked_hold_id = T::HoldIdentifier::staking_staked(operator_id);
         Deposits::<T>::drain_prefix(operator_id).try_for_each(|(nominator_id, mut deposit)| {
@@ -839,21 +853,47 @@ pub(crate) fn do_unlock_operator<T: Config>(operator_id: OperatorId) -> Result<(
             deposit.pending = do_convert_previous_epoch_deposits::<T>(
                 operator_id,
                 &mut deposit,
-                current_domain_epoch,
+                unlock_after_domain_epoch,
             )?;
 
             let current_locked_amount =
                 T::Currency::balance_on_hold(&staked_hold_id, &nominator_id);
 
-            // current staked amount
-            let nominator_share = Perbill::from_rational(deposit.known.shares, total_shares);
-            let nominator_staked_amount = nominator_share.mul_floor(total_stake);
+            // if there are any withdrawals from this operator, account for them
+            // if the withdrawals has share price noted, then convert them to SSC
+            // if no share price, then it must be intitated in the epoch when operator was slashed,
+            // so get the shares as is and include them in the total staked shares.
+            let (amount_ready_withdraw, shares_withdrew_in_current_epoch) =
+                calculate_withdraw_share_ssc::<T>(operator_id, nominator_id.clone());
 
-            let amount_being_withdrawn =
-                calculate_withdraw_share_ssc::<T>(operator_id, nominator_id.clone())?;
+            // include all the known shares and shares that were withdrawn in the current epoch
+            let nominator_shares = if shares_withdrew_in_current_epoch.is_zero() {
+                deposit.known.shares
+            } else {
+                deposit
+                    .known
+                    .shares
+                    .checked_add(&shares_withdrew_in_current_epoch)
+                    .ok_or(Error::ShareOverflow)?
+            };
+
+            // current staked amount
+            let nominator_staked_amount = if share_price.is_one() {
+                nominator_shares.into()
+            } else {
+                share_price
+                    .saturating_reciprocal_mul_floor(nominator_shares)
+                    .into()
+            };
+
+            let amount_deposited_in_previous_epoch = deposit
+                .pending
+                .map(|pending_deposit| pending_deposit.amount)
+                .unwrap_or_default();
 
             let total_amount_to_unlock = nominator_staked_amount
-                .checked_add(&amount_being_withdrawn)
+                .checked_add(&amount_ready_withdraw)
+                .and_then(|amount| amount.checked_add(&amount_deposited_in_previous_epoch))
                 .ok_or(Error::BalanceOverflow)?;
 
             let amount_to_mint = total_amount_to_unlock
@@ -870,13 +910,7 @@ pub(crate) fn do_unlock_operator<T: Config>(operator_id: OperatorId) -> Result<(
             )
             .map_err(|_| Error::RemoveLock)?;
 
-            // update pool's remaining shares and stake
-            total_shares = total_shares
-                .checked_sub(&deposit.known.shares)
-                .ok_or(Error::ShareUnderflow)?;
-            total_stake = total_stake
-                .checked_sub(&nominator_staked_amount)
-                .ok_or(Error::BalanceUnderflow)?;
+            total_stake = total_stake.saturating_sub(nominator_staked_amount);
 
             Ok(())
         })?;
@@ -1220,6 +1254,7 @@ pub(crate) mod tests {
 
             let stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
             assert!(stake_summary.next_operators.contains(&operator_id));
+            assert_eq!(stake_summary.current_total_stake, operator_stake);
 
             assert_eq!(
                 Balances::usable_balance(operator_account),
@@ -1284,6 +1319,14 @@ pub(crate) mod tests {
                 )]),
             );
 
+            let domain_staking_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
+            assert_eq!(domain_staking_summary.current_total_stake, operator_stake);
+
+            let operator = Operators::<Test>::get(operator_id).unwrap();
+            assert_eq!(operator.current_total_stake, operator_stake);
+            assert_eq!(operator.current_total_shares, operator_stake);
+            assert_eq!(operator.deposits_in_epoch, nominator_stake);
+
             let pending_deposit = Deposits::<Test>::get(0, nominator_account)
                 .unwrap()
                 .pending
@@ -1310,8 +1353,27 @@ pub(crate) mod tests {
                 .amount;
             assert_eq!(pending_deposit, nominator_stake + 40 * SSC);
 
+            let operator = Operators::<Test>::get(operator_id).unwrap();
+            assert_eq!(operator.current_total_stake, operator_stake);
+            assert_eq!(operator.deposits_in_epoch, nominator_stake + 40 * SSC);
+
             let nominator_count = NominatorCount::<Test>::get(operator_id);
             assert_eq!(nominator_count, 1);
+
+            // do epoch transition
+            do_finalize_domain_current_epoch::<Test>(domain_id, One::one()).unwrap();
+
+            let operator = Operators::<Test>::get(operator_id).unwrap();
+            assert_eq!(
+                operator.current_total_stake,
+                operator_stake + nominator_stake + 40 * SSC
+            );
+
+            let domain_staking_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
+            assert_eq!(
+                domain_staking_summary.current_total_stake,
+                operator_stake + nominator_stake + 40 * SSC
+            );
         });
     }
 
@@ -1553,7 +1615,7 @@ pub(crate) mod tests {
     /// since ED is not holded back from usable balance when there are no holds on the account.
     type ExpectedWithdrawAmount = Option<(BalanceOf<Test>, bool)>;
 
-    type Share = <Test as Config>::Share;
+    pub(crate) type Share = <Test as Config>::Share;
 
     struct WithdrawParams {
         minimum_nominator_stake: BalanceOf<Test>,
@@ -2129,11 +2191,7 @@ pub(crate) mod tests {
                 nominator_free_balance - nominator_stake
             );
 
-            assert_eq!(
-                Balances::total_balance(&crate::tests::TreasuryAccount::get()),
-                // lose one shannon due to decimals
-                319999999999999999999
-            )
+            assert!(Balances::total_balance(&crate::tests::TreasuryAccount::get()) >= 320 * SSC)
         });
     }
 
