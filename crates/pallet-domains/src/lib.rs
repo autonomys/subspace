@@ -134,8 +134,7 @@ mod pallet {
     use crate::staking::{
         do_deregister_operator, do_nominate_operator, do_register_operator, do_slash_operators,
         do_switch_operator_domain, do_unlock_funds, do_unlock_operator, do_withdraw_stake, Deposit,
-        DomainEpoch, Error as StakingError, Operator, OperatorConfig, StakingSummary, Withdraw,
-        Withdrawal,
+        DomainEpoch, Error as StakingError, Operator, OperatorConfig, StakingSummary, Withdrawal,
     };
     use crate::staking_epoch::{do_finalize_domain_current_epoch, Error as StakingEpochError};
     use crate::weights::WeightInfo;
@@ -1184,11 +1183,11 @@ mod pallet {
         pub fn withdraw_stake(
             origin: OriginFor<T>,
             operator_id: OperatorId,
-            withdraw: Withdraw<T::Share>,
+            shares: T::Share,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
-            do_withdraw_stake::<T>(operator_id, who.clone(), withdraw).map_err(Error::<T>::from)?;
+            do_withdraw_stake::<T>(operator_id, who.clone(), shares).map_err(Error::<T>::from)?;
 
             Self::deposit_event(Event::WithdrewStake {
                 operator_id,

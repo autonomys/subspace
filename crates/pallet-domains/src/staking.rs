@@ -98,12 +98,6 @@ pub struct Operator<Balance, Share> {
 }
 
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
-pub enum Withdraw<Share> {
-    All,
-    Some(Share),
-}
-
-#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
 pub struct StakingSummary<OperatorId, Balance> {
     /// Current epoch index for the domain.
     pub current_epoch_index: EpochIndex,
@@ -565,7 +559,7 @@ pub(crate) fn do_deregister_operator<T: Config>(
 pub(crate) fn do_withdraw_stake<T: Config>(
     operator_id: OperatorId,
     nominator_id: NominatorId<T>,
-    withdraw: Withdraw<T::Share>,
+    shares_withdrew: T::Share,
 ) -> Result<(), Error> {
     Operators::<T>::try_mutate(operator_id, |maybe_operator| {
         let operator = maybe_operator.as_mut().ok_or(Error::UnknownOperator)?;
@@ -600,11 +594,6 @@ pub(crate) fn do_withdraw_stake<T: Config>(
             let known_shares = deposit.known.shares;
 
             let (remaining_shares, shares_withdrew) = {
-                let shares_withdrew = match withdraw {
-                    Withdraw::All => known_shares,
-                    Withdraw::Some(shares) => shares,
-                };
-
                 ensure!(!shares_withdrew.is_zero(), Error::ZeroWithdrawShares);
                 let remaining_shares = known_shares
                     .checked_sub(&shares_withdrew)
@@ -1047,7 +1036,7 @@ pub(crate) mod tests {
     use crate::staking::{
         do_nominate_operator, do_reward_operators, do_slash_operators, do_unlock_funds,
         do_withdraw_stake, Error as StakingError, Operator, OperatorConfig, OperatorStatus,
-        StakingSummary, Withdraw,
+        StakingSummary,
     };
     use crate::staking_epoch::do_finalize_domain_current_epoch;
     use crate::tests::{new_test_ext, ExistentialDeposit, RuntimeOrigin, Test};
@@ -1608,7 +1597,7 @@ pub(crate) mod tests {
         });
     }
 
-    type WithdrawWithResult = Vec<(Withdraw<Share>, Result<(), StakingError>)>;
+    type WithdrawWithResult = Vec<(Share, Result<(), StakingError>)>;
 
     /// Expected withdrawal amount.
     /// Bool indicates to include exisitential deposit while asserting the final balance
@@ -1736,7 +1725,7 @@ pub(crate) mod tests {
             nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
             operator_reward: 20 * SSC,
             nominator_id: 0,
-            withdraws: vec![(Withdraw::All, Err(StakingError::MinimumOperatorStake))],
+            withdraws: vec![(150 * SSC, Err(StakingError::MinimumOperatorStake))],
             expected_withdraw: None,
             expected_nominator_count_reduced_by: 0,
         })
@@ -1749,10 +1738,7 @@ pub(crate) mod tests {
             nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
             operator_reward: 20 * SSC,
             nominator_id: 0,
-            withdraws: vec![(
-                Withdraw::Some(65 * SSC),
-                Err(StakingError::MinimumOperatorStake),
-            )],
+            withdraws: vec![(65 * SSC, Err(StakingError::MinimumOperatorStake))],
             expected_withdraw: None,
             expected_nominator_count_reduced_by: 0,
         })
@@ -1765,10 +1751,7 @@ pub(crate) mod tests {
             nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
             operator_reward: Zero::zero(),
             nominator_id: 0,
-            withdraws: vec![(
-                Withdraw::Some(51 * SSC),
-                Err(StakingError::MinimumOperatorStake),
-            )],
+            withdraws: vec![(51 * SSC, Err(StakingError::MinimumOperatorStake))],
             expected_withdraw: None,
             expected_nominator_count_reduced_by: 0,
         })
@@ -1781,7 +1764,7 @@ pub(crate) mod tests {
             nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
             operator_reward: 20 * SSC,
             nominator_id: 0,
-            withdraws: vec![(Withdraw::Some(58 * SSC), Ok(()))],
+            withdraws: vec![(58 * SSC, Ok(()))],
             // given the reward, operator will get 164.28 SSC
             // taking 58 shares will give this following approximate amount.
             expected_withdraw: Some((63523809541959183678, false)),
@@ -1797,11 +1780,8 @@ pub(crate) mod tests {
             operator_reward: 20 * SSC,
             nominator_id: 0,
             withdraws: vec![
-                (Withdraw::Some(58 * SSC), Ok(())),
-                (
-                    Withdraw::Some(5 * SSC),
-                    Err(StakingError::MinimumOperatorStake),
-                ),
+                (58 * SSC, Ok(())),
+                (5 * SSC, Err(StakingError::MinimumOperatorStake)),
             ],
             expected_withdraw: Some((63523809541959183678, false)),
             expected_nominator_count_reduced_by: 0,
@@ -1815,10 +1795,7 @@ pub(crate) mod tests {
             nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
             operator_reward: 20 * SSC,
             nominator_id: 0,
-            withdraws: vec![
-                (Withdraw::Some(53 * SSC), Ok(())),
-                (Withdraw::Some(5 * SSC), Ok(())),
-            ],
+            withdraws: vec![(53 * SSC, Ok(())), (5 * SSC, Ok(()))],
             expected_withdraw: Some((63523809541959183678, false)),
             expected_nominator_count_reduced_by: 0,
         })
@@ -1831,7 +1808,7 @@ pub(crate) mod tests {
             nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
             operator_reward: Zero::zero(),
             nominator_id: 0,
-            withdraws: vec![(Withdraw::Some(49 * SSC), Ok(()))],
+            withdraws: vec![(49 * SSC, Ok(()))],
             expected_withdraw: Some((49 * SSC, false)),
             expected_nominator_count_reduced_by: 0,
         })
@@ -1844,10 +1821,7 @@ pub(crate) mod tests {
             nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
             operator_reward: Zero::zero(),
             nominator_id: 0,
-            withdraws: vec![
-                (Withdraw::Some(29 * SSC), Ok(())),
-                (Withdraw::Some(20 * SSC), Ok(())),
-            ],
+            withdraws: vec![(29 * SSC, Ok(())), (20 * SSC, Ok(()))],
             expected_withdraw: Some((49 * SSC, false)),
             expected_nominator_count_reduced_by: 0,
         })
@@ -1861,12 +1835,9 @@ pub(crate) mod tests {
             operator_reward: Zero::zero(),
             nominator_id: 0,
             withdraws: vec![
-                (Withdraw::Some(29 * SSC), Ok(())),
-                (Withdraw::Some(20 * SSC), Ok(())),
-                (
-                    Withdraw::Some(20 * SSC),
-                    Err(StakingError::MinimumOperatorStake),
-                ),
+                (29 * SSC, Ok(())),
+                (20 * SSC, Ok(())),
+                (20 * SSC, Err(StakingError::MinimumOperatorStake)),
             ],
             expected_withdraw: Some((49 * SSC, false)),
             expected_nominator_count_reduced_by: 0,
@@ -1880,7 +1851,7 @@ pub(crate) mod tests {
             nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
             operator_reward: 20 * SSC,
             nominator_id: 1,
-            withdraws: vec![(Withdraw::Some(45 * SSC), Ok(()))],
+            withdraws: vec![(45 * SSC, Ok(()))],
             // given nominator remaining stake goes below minimum
             // we withdraw everything, so for their 50 shares with reward,
             // price would be following
@@ -1896,10 +1867,7 @@ pub(crate) mod tests {
             nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
             operator_reward: 20 * SSC,
             nominator_id: 1,
-            withdraws: vec![
-                (Withdraw::Some(25 * SSC), Ok(())),
-                (Withdraw::Some(20 * SSC), Ok(())),
-            ],
+            withdraws: vec![(25 * SSC, Ok(())), (20 * SSC, Ok(()))],
             // given nominator remaining stake goes below minimum
             // we withdraw everything, so for their 50 shares with reward,
             // price would be following
@@ -1916,12 +1884,9 @@ pub(crate) mod tests {
             operator_reward: 20 * SSC,
             nominator_id: 1,
             withdraws: vec![
-                (Withdraw::Some(25 * SSC), Ok(())),
-                (Withdraw::Some(20 * SSC), Ok(())),
-                (
-                    Withdraw::Some(20 * SSC),
-                    Err(StakingError::InsufficientShares),
-                ),
+                (25 * SSC, Ok(())),
+                (20 * SSC, Ok(())),
+                (20 * SSC, Err(StakingError::InsufficientShares)),
             ],
             // given nominator remaining stake goes below minimum
             // we withdraw everything, so for their 50 shares with reward,
@@ -1938,7 +1903,7 @@ pub(crate) mod tests {
             nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
             operator_reward: Zero::zero(),
             nominator_id: 1,
-            withdraws: vec![(Withdraw::Some(45 * SSC), Ok(()))],
+            withdraws: vec![(45 * SSC, Ok(()))],
             expected_withdraw: Some((50 * SSC, true)),
             expected_nominator_count_reduced_by: 1,
         })
@@ -1951,10 +1916,7 @@ pub(crate) mod tests {
             nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
             operator_reward: Zero::zero(),
             nominator_id: 1,
-            withdraws: vec![
-                (Withdraw::Some(25 * SSC), Ok(())),
-                (Withdraw::Some(20 * SSC), Ok(())),
-            ],
+            withdraws: vec![(25 * SSC, Ok(())), (20 * SSC, Ok(()))],
             expected_withdraw: Some((50 * SSC, true)),
             expected_nominator_count_reduced_by: 1,
         })
@@ -1968,12 +1930,9 @@ pub(crate) mod tests {
             operator_reward: Zero::zero(),
             nominator_id: 1,
             withdraws: vec![
-                (Withdraw::Some(25 * SSC), Ok(())),
-                (Withdraw::Some(20 * SSC), Ok(())),
-                (
-                    Withdraw::Some(20 * SSC),
-                    Err(StakingError::InsufficientShares),
-                ),
+                (25 * SSC, Ok(())),
+                (20 * SSC, Ok(())),
+                (20 * SSC, Err(StakingError::InsufficientShares)),
             ],
             expected_withdraw: Some((50 * SSC, true)),
             expected_nominator_count_reduced_by: 1,
@@ -1987,7 +1946,7 @@ pub(crate) mod tests {
             nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
             operator_reward: 20 * SSC,
             nominator_id: 1,
-            withdraws: vec![(Withdraw::Some(40 * SSC), Ok(()))],
+            withdraws: vec![(40 * SSC, Ok(()))],
             expected_withdraw: Some((43809523822040816330, false)),
             expected_nominator_count_reduced_by: 0,
         })
@@ -2000,10 +1959,7 @@ pub(crate) mod tests {
             nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
             operator_reward: 20 * SSC,
             nominator_id: 1,
-            withdraws: vec![
-                (Withdraw::Some(35 * SSC), Ok(())),
-                (Withdraw::Some(5 * SSC), Ok(())),
-            ],
+            withdraws: vec![(35 * SSC, Ok(())), (5 * SSC, Ok(()))],
             expected_withdraw: Some((43809523822040816330, false)),
             expected_nominator_count_reduced_by: 0,
         })
@@ -2017,12 +1973,9 @@ pub(crate) mod tests {
             operator_reward: 20 * SSC,
             nominator_id: 1,
             withdraws: vec![
-                (Withdraw::Some(35 * SSC), Ok(())),
-                (Withdraw::Some(5 * SSC), Ok(())),
-                (
-                    Withdraw::Some(15 * SSC),
-                    Err(StakingError::InsufficientShares),
-                ),
+                (35 * SSC, Ok(())),
+                (5 * SSC, Ok(())),
+                (15 * SSC, Err(StakingError::InsufficientShares)),
             ],
             expected_withdraw: Some((43809523822040816330, false)),
             expected_nominator_count_reduced_by: 0,
@@ -2036,7 +1989,7 @@ pub(crate) mod tests {
             nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
             operator_reward: Zero::zero(),
             nominator_id: 1,
-            withdraws: vec![(Withdraw::Some(39 * SSC), Ok(()))],
+            withdraws: vec![(39 * SSC, Ok(()))],
             expected_withdraw: Some((39 * SSC, false)),
             expected_nominator_count_reduced_by: 0,
         })
@@ -2049,10 +2002,7 @@ pub(crate) mod tests {
             nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
             operator_reward: Zero::zero(),
             nominator_id: 1,
-            withdraws: vec![
-                (Withdraw::Some(35 * SSC), Ok(())),
-                (Withdraw::Some(5 * SSC), Ok(())),
-            ],
+            withdraws: vec![(35 * SSC, Ok(())), (5 * SSC, Ok(()))],
             expected_withdraw: Some((40 * SSC, false)),
             expected_nominator_count_reduced_by: 0,
         })
@@ -2066,12 +2016,9 @@ pub(crate) mod tests {
             operator_reward: Zero::zero(),
             nominator_id: 1,
             withdraws: vec![
-                (Withdraw::Some(35 * SSC), Ok(())),
-                (Withdraw::Some(5 * SSC), Ok(())),
-                (
-                    Withdraw::Some(15 * SSC),
-                    Err(StakingError::InsufficientShares),
-                ),
+                (35 * SSC, Ok(())),
+                (5 * SSC, Ok(())),
+                (15 * SSC, Err(StakingError::InsufficientShares)),
             ],
             expected_withdraw: Some((40 * SSC, false)),
             expected_nominator_count_reduced_by: 0,
@@ -2085,7 +2032,7 @@ pub(crate) mod tests {
             nominators: vec![(0, 150 * SSC), (1, 50 * SSC), (2, 10 * SSC)],
             operator_reward: Zero::zero(),
             nominator_id: 1,
-            withdraws: vec![(Withdraw::Some(0), Err(StakingError::ZeroWithdrawShares))],
+            withdraws: vec![(0, Err(StakingError::ZeroWithdrawShares))],
             expected_withdraw: None,
             expected_nominator_count_reduced_by: 0,
         })
@@ -2137,7 +2084,7 @@ pub(crate) mod tests {
             assert_eq!(operator.current_total_stake, 300 * SSC);
 
             for unlock in &unlocking {
-                do_withdraw_stake::<Test>(operator_id, unlock.0, Withdraw::Some(unlock.1)).unwrap();
+                do_withdraw_stake::<Test>(operator_id, unlock.0, unlock.1).unwrap();
             }
 
             do_reward_operators::<Test>(domain_id, vec![operator_id].into_iter(), 20 * SSC)

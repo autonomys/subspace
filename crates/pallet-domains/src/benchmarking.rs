@@ -3,7 +3,7 @@
 use super::*;
 use crate::alloc::borrow::ToOwned;
 use crate::domain_registry::DomainConfig;
-use crate::staking::{do_reward_operators, OperatorConfig, OperatorStatus, Withdraw};
+use crate::staking::{do_reward_operators, OperatorConfig, OperatorStatus};
 use crate::staking_epoch::{do_finalize_domain_current_epoch, do_finalize_domain_epoch_staking};
 use crate::Pallet as Domains;
 use frame_benchmarking::v2::*;
@@ -127,7 +127,7 @@ mod benchmarks {
             assert_ok!(Domains::<T>::withdraw_stake(
                 RawOrigin::Signed(nominator).into(),
                 operator_id,
-                Withdraw::Some(withdraw_amount.into()),
+                withdraw_amount.into(),
             ));
         }
         assert_eq!(
@@ -384,14 +384,14 @@ mod benchmarks {
         assert_ok!(Domains::<T>::withdraw_stake(
             RawOrigin::Signed(nominator.clone()).into(),
             operator_id,
-            Withdraw::Some(withdraw_amount.into()),
+            withdraw_amount.into(),
         ));
 
         #[extrinsic_call]
         _(
             RawOrigin::Signed(nominator.clone()),
             operator_id,
-            Withdraw::Some(withdraw_amount.into()),
+            withdraw_amount.into(),
         );
     }
 
