@@ -5,11 +5,11 @@ pub mod ss58;
 #[cfg(test)]
 mod tests;
 
-use crate::thread_pool_manager::ThreadPoolManager;
+use crate::thread_pool_manager::{PlottingThreadPoolManager, PlottingThreadPoolPair};
 use futures::channel::oneshot;
 use futures::channel::oneshot::Canceled;
 use futures::future::Either;
-use rayon::{ThreadBuilder, ThreadPoolBuildError, ThreadPoolBuilder};
+use rayon::{ThreadBuilder, ThreadPool, ThreadPoolBuildError, ThreadPoolBuilder};
 use std::future::Future;
 use std::num::NonZeroUsize;
 use std::ops::Deref;
@@ -298,47 +298,68 @@ pub fn thread_pool_core_indices(
     }
 }
 
-/// Creates thread pools for each of CPU core set with number of threads corresponding to number of cores in
-/// each set and pins threads to all of those CPU cores (all at once, not thread per core). Each thread will
-/// also have Tokio context available.
+fn create_plotting_thread_pool_manager_thread_pool_pair(
+    thread_prefix: &'static str,
+    thread_pool_index: usize,
+    cpu_core_set: CpuCoreSet,
+) -> Result<ThreadPool, ThreadPoolBuildError> {
+    ThreadPoolBuilder::new()
+        .thread_name(move |thread_index| {
+            format!("{thread_prefix}-{thread_pool_index}.{thread_index}")
+        })
+        .num_threads(cpu_core_set.cpu_cores().len())
+        .spawn_handler({
+            let handle = Handle::current();
+
+            rayon_custom_spawn_handler(move |thread| {
+                let cpu_core_set = cpu_core_set.clone();
+                let handle = handle.clone();
+
+                move || {
+                    cpu_core_set.pin_current_thread();
+                    drop(cpu_core_set);
+
+                    let _guard = handle.enter();
+
+                    task::block_in_place(|| thread.run())
+                }
+            })
+        })
+        .build()
+}
+
+/// Creates thread pool pairs for each of CPU core set pair with number of plotting and replotting threads corresponding
+/// to number of cores in each set and pins threads to all of those CPU cores (each thread to all cors in a set, not
+/// thread per core). Each thread will also have Tokio context available.
 ///
 /// The easiest way to obtain CPUs is using [`all_cpu_cores`], but [`thread_pool_core_indices`] in case
-/// support for user customizations is desired.
-pub fn create_tokio_thread_pool_manager_for_pinned_nodes(
-    thread_prefix: &'static str,
-    mut cpu_core_sets: Vec<CpuCoreSet>,
-) -> Result<ThreadPoolManager, ThreadPoolBuildError> {
+/// support for user customizations is desired. They will then have to be composed into pairs for this function.
+pub fn create_plotting_thread_pool_manager<I>(
+    mut cpu_core_sets: I,
+) -> Result<PlottingThreadPoolManager, ThreadPoolBuildError>
+where
+    I: ExactSizeIterator<Item = (CpuCoreSet, CpuCoreSet)>,
+{
     let total_thread_pools = cpu_core_sets.len();
 
-    ThreadPoolManager::new(
+    PlottingThreadPoolManager::new(
         |thread_pool_index| {
-            let cpu_core_set = cpu_core_sets
-                .pop()
+            let (plotting_cpu_core_set, replotting_cpu_core_set) = cpu_core_sets
+                .next()
                 .expect("Number of thread pools is the same as cpu core sets; qed");
 
-            ThreadPoolBuilder::new()
-                .thread_name(move |thread_index| {
-                    format!("{thread_prefix}-{thread_pool_index}.{thread_index}")
-                })
-                .num_threads(cpu_core_set.cpu_cores().len())
-                .spawn_handler({
-                    let handle = Handle::current();
-
-                    rayon_custom_spawn_handler(move |thread| {
-                        let cpu_core_set = cpu_core_set.clone();
-                        let handle = handle.clone();
-
-                        move || {
-                            cpu_core_set.pin_current_thread();
-                            drop(cpu_core_set);
-
-                            let _guard = handle.enter();
-
-                            task::block_in_place(|| thread.run())
-                        }
-                    })
-                })
-                .build()
+            Ok(PlottingThreadPoolPair {
+                plotting: create_plotting_thread_pool_manager_thread_pool_pair(
+                    "plotting",
+                    thread_pool_index,
+                    plotting_cpu_core_set,
+                )?,
+                replotting: create_plotting_thread_pool_manager_thread_pool_pair(
+                    "replotting",
+                    thread_pool_index,
+                    replotting_cpu_core_set,
+                )?,
+            })
         },
         NonZeroUsize::new(total_thread_pools)
             .expect("Thread pool is guaranteed to be non-empty; qed"),
