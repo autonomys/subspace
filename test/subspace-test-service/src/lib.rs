@@ -22,7 +22,7 @@ use codec::{Decode, Encode};
 use cross_domain_message_gossip::GossipWorkerBuilder;
 use domain_runtime_primitives::opaque::{Block as DomainBlock, Header as DomainHeader};
 use futures::channel::mpsc;
-use futures::{select, Future, FutureExt, StreamExt};
+use futures::{Future, StreamExt};
 use jsonrpsee::RpcModule;
 use parking_lot::Mutex;
 use sc_block_builder::BlockBuilderProvider;
@@ -241,7 +241,7 @@ pub struct MockConsensusNode {
     next_slot: u64,
     /// The slot notification subscribers
     #[allow(clippy::type_complexity)]
-    new_slot_notification_subscribers: Vec<TracingUnboundedSender<(Slot, Randomness)>>,
+    new_slot_notification_subscribers: Vec<mpsc::UnboundedSender<(Slot, Randomness)>>,
     /// The acknowledgement sender subscribers
     #[allow(clippy::type_complexity)]
     acknowledgement_sender_subscribers: Vec<TracingUnboundedSender<mpsc::Sender<()>>>,
@@ -441,8 +441,8 @@ impl MockConsensusNode {
     }
 
     /// Subscribe the new slot notification
-    pub fn new_slot_notification_stream(&mut self) -> TracingUnboundedReceiver<(Slot, Randomness)> {
-        let (tx, rx) = tracing_unbounded("subspace_new_slot_notification_stream", 100);
+    pub fn new_slot_notification_stream(&mut self) -> mpsc::UnboundedReceiver<(Slot, Randomness)> {
+        let (tx, rx) = mpsc::unbounded();
         self.new_slot_notification_subscribers.push(tx);
         rx
     }
@@ -624,29 +624,11 @@ impl MockConsensusNode {
         &self,
         parent_number: NumberFor<Block>,
     ) -> Vec<<Block as BlockT>::Extrinsic> {
-        let mut t1 = self.transaction_pool.ready_at(parent_number).fuse();
-        let mut t2 = futures_timer::Delay::new(time::Duration::from_micros(100)).fuse();
-        let pending_iterator = select! {
-            res = t1 => res,
-            _ = t2 => {
-                tracing::warn!(
-                    "Timeout fired waiting for transaction pool at #{}, proceeding with production.",
-                    parent_number,
-                );
-                self.transaction_pool.ready()
-            }
-        };
-        let pushing_duration = time::Duration::from_micros(500);
-        let start = time::Instant::now();
-        let mut extrinsics = Vec::new();
-        for pending_tx in pending_iterator {
-            if start.elapsed() >= pushing_duration {
-                break;
-            }
-            let pending_tx_data = pending_tx.data().clone();
-            extrinsics.push(pending_tx_data);
-        }
-        extrinsics
+        self.transaction_pool
+            .ready_at(parent_number)
+            .await
+            .map(|pending_tx| pending_tx.data().clone())
+            .collect()
     }
 
     async fn mock_inherent_data(slot: Slot) -> Result<InherentData, Box<dyn Error>> {

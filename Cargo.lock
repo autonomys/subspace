@@ -12269,7 +12269,6 @@ dependencies = [
  "cross-domain-message-gossip",
  "domain-runtime-primitives",
  "futures",
- "futures-timer",
  "jsonrpsee",
  "pallet-domains",
  "parity-scale-codec",
