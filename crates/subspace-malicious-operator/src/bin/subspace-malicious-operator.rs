@@ -244,7 +244,7 @@ fn main() -> Result<(), Error> {
 
             let mut domain_cli = DomainCli::new(cli.domain_args.into_iter());
 
-            let domain_id = domain_cli.domain_id;
+            let domain_id = domain_cli.domain_id.into();
 
             if domain_cli.run.network_params.bootnodes.is_empty() {
                 domain_cli.run.network_params.bootnodes = domains_bootstrap_nodes

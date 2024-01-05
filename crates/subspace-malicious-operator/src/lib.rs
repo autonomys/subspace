@@ -16,6 +16,7 @@
 
 //! Subspace malicious operator library.
 
+mod chain_spec;
 mod malicious_bundle_producer;
 mod malicious_bundle_tamper;
 pub mod malicious_domain_instance_starter;
@@ -30,13 +31,6 @@ use sc_service::{BasePath, BlocksPruning, Configuration, DatabaseSource};
 use sc_subspace_chain_specs::ConsensusChainSpec;
 use serde_json::Value;
 use sp_domains::DomainId;
-use std::num::ParseIntError;
-use subspace_node::chain_spec;
-use subspace_node::domain::evm_chain_spec;
-
-fn parse_domain_id(s: &str) -> Result<DomainId, ParseIntError> {
-    s.parse::<u32>().map(Into::into)
-}
 
 /// Subspace Cli.
 #[derive(Debug, Parser)]
@@ -93,10 +87,7 @@ impl SubstrateCli for Cli {
 
     fn load_spec(&self, id: &str) -> Result<Box<dyn ChainSpec>, String> {
         let mut chain_spec = match id {
-            "devnet" => chain_spec::devnet_config()?,
-            "devnet-compiled" => chain_spec::devnet_config_compiled()?,
-            "dev" => chain_spec::dev_config()?,
-            "" | "local" => chain_spec::local_config()?,
+            "dev" => crate::chain_spec::dev_config()?,
             path => ConsensusChainSpec::from_json_file(std::path::PathBuf::from(path))?,
         };
 
@@ -126,8 +117,8 @@ pub struct DomainCli {
     #[clap(flatten)]
     pub run: SubstrateRunCmd,
 
-    #[clap(long, value_parser = parse_domain_id)]
-    pub domain_id: DomainId,
+    #[clap(long)]
+    pub domain_id: u32,
 
     /// Additional args for domain.
     #[clap(raw = true)]
@@ -182,7 +173,7 @@ impl SubstrateCli for DomainCli {
         // TODO: Fetch the runtime name of `self.domain_id` properly.
         let runtime_name = "evm";
         match runtime_name {
-            "evm" => evm_chain_spec::load_chain_spec(id),
+            "evm" => crate::chain_spec::load_domain_chain_spec(id),
             unknown_name => Err(format!("Unknown runtime: {unknown_name}")),
         }
     }
@@ -194,16 +185,14 @@ pub(crate) const DEFAULT_NETWORK_CONFIG_PATH: &str = "network";
 /// Create a Configuration object from the current object, port from `sc_cli::create_configuration`
 /// and changed to take `chain_spec` as argument instead of construct one internally.
 pub fn create_malicious_operator_configuration<Cli: SubstrateCli>(
+    domain_id: DomainId,
+    base_path: BasePath,
     domain_cli: &DomainCli,
     chain_spec: Box<dyn ChainSpec>,
     tokio_handle: tokio::runtime::Handle,
 ) -> sc_cli::Result<Configuration> {
     let domain_cli_args = &domain_cli.run;
     let is_dev = domain_cli_args.shared_params().is_dev();
-    let base_path = domain_cli_args
-        .shared_params()
-        .base_path()?
-        .unwrap_or_else(|| BasePath::from_project("", "", &Cli::executable_name()));
     let config_dir = base_path.config_dir(chain_spec.id());
     let net_config_dir = config_dir.join(DEFAULT_NETWORK_CONFIG_PATH);
     let client_id = Cli::client_id();
@@ -214,13 +203,11 @@ pub fn create_malicious_operator_configuration<Cli: SubstrateCli>(
     let role = Role::Authority;
     let max_runtime_instances = 8;
     let is_validator = role.is_authority();
-    let keystore = domain_cli_args
-        .keystore_params()
-        .map(|x| x.keystore_config(&config_dir))
-        .unwrap_or_else(|| Ok(KeystoreConfig::InMemory))?;
+    // The malicous operator has its own internal keystore
+    let keystore = KeystoreConfig::InMemory;
     let telemetry_endpoints = None;
     let runtime_cache_size = 2;
-    let network = match domain_cli_args.network_params() {
+    let mut network = match domain_cli_args.network_params() {
         Some(network_params) => network_params.network_config(
             &chain_spec,
             is_dev,
@@ -238,6 +225,9 @@ pub fn create_malicious_operator_configuration<Cli: SubstrateCli>(
             Some(net_config_dir),
         ),
     };
+    if let Some(net_config_path) = &mut network.net_config_path {
+        *net_config_path = base_path.path().join("network");
+    }
 
     Ok(Configuration {
         impl_name: Cli::impl_name(),
@@ -246,9 +236,12 @@ pub fn create_malicious_operator_configuration<Cli: SubstrateCli>(
         transaction_pool: domain_cli_args.transaction_pool(is_dev)?,
         network,
         keystore,
-        // The value just placeholder it will be overwritten later
         database: DatabaseSource::ParityDb {
-            path: base_path.path().to_path_buf(),
+            path: base_path
+                .path()
+                .join("domains")
+                .join(domain_id.to_string())
+                .join("db"),
         },
         data_path: config_dir,
         trie_cache_maximum_size: domain_cli_args.trie_cache_maximum_size()?,
