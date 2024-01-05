@@ -56,7 +56,7 @@ pub trait FraudProofHostFunctions: Send + Sync {
         pre_state_root: H256,
         // TODO: implement `PassBy` for `sp_trie::StorageProof` in upstream to pass it directly here
         encoded_proof: Vec<u8>,
-        verifying_method: &str,
+        execution_method: &str,
         call_data: &[u8],
         domain_runtime_code: Vec<u8>,
     ) -> Option<Vec<u8>>;
@@ -467,7 +467,7 @@ where
         &self,
         pre_state_root: H256,
         encoded_proof: Vec<u8>,
-        verifying_method: &str,
+        execution_method: &str,
         call_data: &[u8],
         domain_runtime_code: Vec<u8>,
     ) -> Option<Vec<u8>> {
@@ -486,7 +486,7 @@ where
             proof,
             &mut Default::default(),
             self.executor.as_ref(),
-            verifying_method,
+            execution_method,
             call_data,
             &runtime_code,
         )

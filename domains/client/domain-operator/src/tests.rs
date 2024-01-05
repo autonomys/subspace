@@ -813,7 +813,7 @@ async fn test_finalize_block_proof_creation_and_verification_should_work() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_false_invalid_state_transition_proof_is_rejected() {
+async fn test_bad_invalid_state_transition_proof_is_rejected() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
     let mut builder = sc_cli::LoggerBuilder::new("");
@@ -865,7 +865,7 @@ async fn test_false_invalid_state_transition_proof_is_rejected() {
 
     // We get the receipt of target bundle
     let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
-    let valid_receipt = bundle.unwrap().sealed_header.header.receipt;
+    let valid_receipt = bundle.unwrap().into_receipt();
     assert_eq!(valid_receipt.execution_trace.len(), 4);
     let valid_receipt_hash = valid_receipt.hash::<BlakeTwo256>();
 

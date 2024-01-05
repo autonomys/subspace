@@ -57,7 +57,7 @@ where
             .runtime_code()
             .map_err(sp_blockchain::Error::RuntimeCode)?;
 
-        // TODO: avoid using the String API specified by `proving_method()`
+        // TODO: avoid using the String API specified by `execution_method()`
         // https://github.com/paritytech/substrate/discussions/11095
         if let Some((delta, post_delta_root)) = delta_changes {
             let delta_backend = create_delta_backend(trie_backend, delta, post_delta_root);
@@ -65,7 +65,7 @@ where
                 &delta_backend,
                 &mut Default::default(),
                 &*self.executor,
-                execution_phase.proving_method(),
+                execution_phase.execution_method(),
                 call_data,
                 &runtime_code,
                 &mut Default::default(),
@@ -77,7 +77,7 @@ where
                 trie_backend,
                 &mut Default::default(),
                 &*self.executor,
-                execution_phase.proving_method(),
+                execution_phase.execution_method(),
                 call_data,
                 &runtime_code,
                 &mut Default::default(),
@@ -114,7 +114,7 @@ where
             proof,
             &mut Default::default(),
             &*self.executor,
-            execution_phase.verifying_method(),
+            execution_phase.execution_method(),
             call_data,
             &runtime_code,
         )

@@ -228,7 +228,7 @@ where
     let execution_result = fraud_proof_runtime_interface::execution_proof_check(
         pre_state_root,
         proof.encode(),
-        execution_phase.verifying_method(),
+        execution_phase.execution_method(),
         call_data.as_ref(),
         domain_runtime_code,
     )
