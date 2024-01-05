@@ -240,14 +240,15 @@ pub fn thread_pool_core_indices(
     if let Some(thread_pools) = thread_pools {
         let mut thread_pool_core_indices = Vec::<CpuCoreSet>::with_capacity(thread_pools.get());
 
+        let total_cpu_cores = all_numa_nodes
+            .iter()
+            .flat_map(|set| set.cpu_cores())
+            .count();
+
         if let Some(thread_pool_size) = thread_pool_size {
             // If thread pool size is fixed, loop over all CPU cores as many times as necessary and
             // assign contiguous ranges of CPU cores to corresponding thread pools
 
-            let total_cpu_cores = all_numa_nodes
-                .iter()
-                .flat_map(|set| set.cpu_cores())
-                .count();
             for _ in 0..thread_pools.get() {
                 let cpu_cores_range = if let Some(last_cpu_index) = thread_pool_core_indices
                     .last()
@@ -273,18 +274,22 @@ pub fn thread_pool_core_indices(
                 });
             }
         } else {
-            // If thread pool size is not fixed, we iterate over all NUMA nodes as many times as
-            // necessary
+            // If thread pool size is not fixed, create threads pools with `total_cpu_cores/thread_pools` threads
 
-            for thread_pool_index in 0..thread_pools.get() {
-                thread_pool_core_indices.push(CpuCoreSet {
-                    cores: all_numa_nodes[thread_pool_index % all_numa_nodes.len()]
-                        .cores
-                        .clone(),
+            let all_cpu_cores = all_numa_nodes
+                .iter()
+                .flat_map(|cpu_core_set| cpu_core_set.cores.iter())
+                .copied()
+                .collect::<Vec<_>>();
+
+            thread_pool_core_indices = all_cpu_cores
+                .chunks_exact(total_cpu_cores / thread_pools)
+                .map(|cpu_cores| CpuCoreSet {
+                    cores: cpu_cores.to_vec(),
                     #[cfg(feature = "numa")]
                     topology: topology.clone(),
-                });
-            }
+                })
+                .collect();
         }
         thread_pool_core_indices
     } else {
