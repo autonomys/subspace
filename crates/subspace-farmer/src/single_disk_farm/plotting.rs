@@ -2,7 +2,7 @@ use crate::single_disk_farm::{
     BackgroundTaskError, Handlers, PlotMetadataHeader, SectorPlottingDetails,
     RESERVED_PLOT_METADATA,
 };
-use crate::thread_pool_manager::ThreadPoolManager;
+use crate::thread_pool_manager::PlottingThreadPoolManager;
 use crate::utils::AsyncJoinOnDrop;
 use crate::{node_client, NodeClient};
 use async_lock::RwLock;
@@ -116,8 +116,7 @@ pub(super) struct PlottingOptions<'a, NC, PG> {
     /// Semaphore for part of the plotting when farmer downloads new sector, allows to limit memory
     /// usage of the plotting process, permit will be held until the end of the plotting process
     pub(crate) downloading_semaphore: Arc<Semaphore>,
-    pub(super) plotting_thread_pool_manager: ThreadPoolManager,
-    pub(super) replotting_thread_pool_manager: ThreadPoolManager,
+    pub(super) plotting_thread_pool_manager: PlottingThreadPoolManager,
     pub(super) stop_receiver: &'a mut broadcast::Receiver<()>,
 }
 
@@ -151,7 +150,6 @@ where
         mut sectors_to_plot_receiver,
         downloading_semaphore,
         plotting_thread_pool_manager,
-        replotting_thread_pool_manager,
         stop_receiver,
     } = plotting_options;
 
@@ -324,10 +322,11 @@ where
                 })
             };
 
+            let thread_pools = plotting_thread_pool_manager.get_thread_pools();
             let thread_pool = if replotting {
-                replotting_thread_pool_manager.get_thread_pool()
+                &thread_pools.replotting
             } else {
-                plotting_thread_pool_manager.get_thread_pool()
+                &thread_pools.plotting
             };
 
             // Give a chance to interrupt plotting if necessary
