@@ -890,7 +890,7 @@ async fn test_bad_invalid_state_transition_proof_is_rejected() {
             let submit_fraud_proof_extrinsic =
                 subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
                     pallet_domains::Call::submit_fraud_proof {
-                        fraud_proof: Box::new(fraud_proof),
+                        fraud_proof: Box::new(fraud_proof.clone()),
                     }
                     .into(),
                 )
@@ -898,6 +898,67 @@ async fn test_bad_invalid_state_transition_proof_is_rejected() {
 
             let response = ferdie
                 .submit_transaction(submit_fraud_proof_extrinsic)
+                .await;
+
+            assert!(matches!(
+                response,
+                Err(PoolError::Pool(TxPoolInvalidTransaction(
+                    InvalidTransaction::Custom(tx_code)
+                ))) if tx_code == InvalidTransactionCode::FraudProof as u8
+            ));
+
+            // To prevent receiving TemporarilyBanned error from the pool
+            ferdie.clear_tx_pool().await.unwrap();
+
+            // Modify fraud proof's mismatch index to a higher value and try to submit it.
+            match &fraud_proof {
+                FraudProof::InvalidStateTransition(invalid_state_transition_fraud_proof) => {
+                    match &invalid_state_transition_fraud_proof.execution_phase {
+                        ExecutionPhase::ApplyExtrinsic {
+                            extrinsic_proof,
+                            mismatch: ApplyExtrinsicMismatch::StateRoot(_),
+                        } => {
+                            let mut modified_invalid_state_transition_fraud_proof =
+                                invalid_state_transition_fraud_proof.clone();
+                            modified_invalid_state_transition_fraud_proof.execution_phase =
+                                ExecutionPhase::ApplyExtrinsic {
+                                    extrinsic_proof: extrinsic_proof.clone(),
+                                    mismatch: ApplyExtrinsicMismatch::StateRoot(u32::MAX),
+                                };
+                            fraud_proof = FraudProof::InvalidStateTransition(
+                                modified_invalid_state_transition_fraud_proof,
+                            );
+                        }
+                        ExecutionPhase::FinalizeBlock {
+                            mismatch: FinalizeBlockMismatch::Longer(_),
+                        } => {
+                            let mut modified_invalid_state_transition_fraud_proof =
+                                invalid_state_transition_fraud_proof.clone();
+                            modified_invalid_state_transition_fraud_proof.execution_phase =
+                                ExecutionPhase::FinalizeBlock {
+                                    mismatch: FinalizeBlockMismatch::Longer(u32::MAX),
+                                };
+                            fraud_proof = FraudProof::InvalidStateTransition(
+                                modified_invalid_state_transition_fraud_proof,
+                            );
+                        }
+                        _ => {}
+                    }
+                }
+                _ => unreachable!(),
+            }
+
+            let submit_fraud_proof_with_invalid_mismatch_index_extrinsic =
+                subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+                    pallet_domains::Call::submit_fraud_proof {
+                        fraud_proof: Box::new(fraud_proof),
+                    }
+                    .into(),
+                )
+                .into();
+
+            let response = ferdie
+                .submit_transaction(submit_fraud_proof_with_invalid_mismatch_index_extrinsic)
                 .await;
 
             assert!(matches!(
