@@ -15,17 +15,15 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::chain_spec;
+use crate::commands::RunOptions;
 use clap::Parser;
-use sc_cli::{RunCmd, SubstrateCli};
+use sc_cli::SubstrateCli;
 use sc_service::ChainSpec;
-use sc_storage_monitor::StorageMonitorParams;
 use sc_subspace_chain_specs::ConsensusChainSpec;
 use sc_telemetry::serde_json;
 use serde_json::Value;
-use std::collections::HashSet;
 use std::io::Write;
 use std::{fs, io};
-use subspace_networking::libp2p::Multiaddr;
 
 /// This `purge-chain` command used to remove both consensus chain and domain.
 #[derive(Debug, Clone, Parser)]
@@ -128,32 +126,6 @@ pub enum Subcommand {
     Benchmark(frame_benchmarking_cli::BenchmarkCmd),
 }
 
-fn parse_timekeeper_cpu_cores(
-    s: &str,
-) -> Result<HashSet<usize>, Box<dyn std::error::Error + Send + Sync>> {
-    if s.is_empty() {
-        return Ok(HashSet::new());
-    }
-
-    let mut cpu_cores = HashSet::new();
-    for s in s.split(',') {
-        let mut parts = s.split('-');
-        let range_start = parts
-            .next()
-            .ok_or("Bad string format, must be comma separated list of CPU cores or ranges")?
-            .parse()?;
-        if let Some(range_end) = parts.next() {
-            let range_end = range_end.parse()?;
-
-            cpu_cores.extend(range_start..=range_end);
-        } else {
-            cpu_cores.insert(range_start);
-        }
-    }
-
-    Ok(cpu_cores)
-}
-
 fn parse_pot_external_entropy(s: &str) -> Result<Vec<u8>, hex::FromHexError> {
     hex::decode(s)
 }
@@ -170,95 +142,9 @@ pub struct Cli {
     #[clap(subcommand)]
     pub subcommand: Option<Subcommand>,
 
-    /// Run a node.
+    /// Options for running a node
     #[clap(flatten)]
-    pub run: RunCmd,
-
-    /// Where local DSN node will listen for incoming connections.
-    // TODO: Add more DSN-related parameters
-    #[arg(long, default_values_t = [
-        "/ip4/0.0.0.0/udp/30433/quic-v1".parse::<Multiaddr>().expect("Manual setting"),
-        "/ip4/0.0.0.0/tcp/30433".parse::<Multiaddr>().expect("Manual setting"),
-    ])]
-    pub dsn_listen_on: Vec<Multiaddr>,
-
-    /// Bootstrap nodes for DSN.
-    #[arg(long)]
-    pub dsn_bootstrap_nodes: Vec<Multiaddr>,
-
-    /// Reserved peers for DSN.
-    #[arg(long)]
-    pub dsn_reserved_peers: Vec<Multiaddr>,
-
-    /// Defines max established incoming connection limit for DSN.
-    #[arg(long, default_value_t = 50)]
-    pub dsn_in_connections: u32,
-
-    /// Defines max established outgoing swarm connection limit for DSN.
-    #[arg(long, default_value_t = 150)]
-    pub dsn_out_connections: u32,
-
-    /// Defines max pending incoming connection limit for DSN.
-    #[arg(long, default_value_t = 100)]
-    pub dsn_pending_in_connections: u32,
-
-    /// Defines max pending outgoing swarm connection limit for DSN.
-    #[arg(long, default_value_t = 150)]
-    pub dsn_pending_out_connections: u32,
-
-    /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses
-    /// in Kademlia DHT for the DSN.
-    #[arg(long, default_value_t = false)]
-    pub dsn_enable_private_ips: bool,
-
-    /// Defines whether we should run blocking Kademlia bootstrap() operation before other requests.
-    #[arg(long, default_value_t = false)]
-    pub dsn_disable_bootstrap_on_start: bool,
-
-    /// Enables DSN-sync on startup.
-    #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
-    pub sync_from_dsn: bool,
-
-    /// Known external addresses
-    #[arg(long, alias = "dsn-external-address")]
-    pub dsn_external_addresses: Vec<Multiaddr>,
-
-    /// Domain arguments
-    ///
-    /// The command-line arguments provided first will be passed to the embedded consensus node,
-    /// while the arguments provided after `--` will be passed to the domain node.
-    ///
-    /// subspace-node [consensus-chain-args] -- [domain-args]
-    #[arg(raw = true)]
-    pub domain_args: Vec<String>,
-
-    /// Parameters used to create the storage monitor.
-    #[clap(flatten)]
-    pub storage_monitor: StorageMonitorParams,
-
-    /// Use the block request handler implementation from subspace
-    /// instead of the default substrate handler.
-    #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
-    pub enable_subspace_block_relay: bool,
-
-    /// Assigned PoT role for this node.
-    #[arg(long)]
-    pub timekeeper: bool,
-
-    /// CPU cores that timekeeper can use.
-    ///
-    /// At least 2 cores should be provided, if more cores than necessary are provided, random cores
-    /// out of provided will be utilized, if not enough cores are provided timekeeper may occupy
-    /// random CPU cores.
-    ///
-    /// Comma separated list of individual cores or ranges of cores.
-    ///
-    /// Examples:
-    /// * `0,1` - use cores 0 and 1
-    /// * `0-3` - use cores 0, 1, 2 and 3
-    /// * `0,1,6-7` - use cores 0, 1, 6 and 7
-    #[arg(long, default_value = "", value_parser = parse_timekeeper_cpu_cores, verbatim_doc_comment)]
-    pub timekeeper_cpu_cores: HashSet<usize>,
+    pub run: RunOptions,
 
     /// External entropy, used initially when PoT chain starts to derive the first seed
     #[arg(long, value_parser = parse_pot_external_entropy)]
