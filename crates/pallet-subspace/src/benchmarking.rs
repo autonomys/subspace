@@ -5,7 +5,7 @@ use frame_benchmarking::v2::*;
 #[benchmarks]
 mod benchmarks {
     use crate::{
-        AllowAuthoringByAnyone, Call, Config, CurrentSlot, EnableRewards,
+        AllowAuthoringByAnyone, Call, Config, CurrentSlot, EnableRewards, EnableRewardsAt,
         NextSolutionRangeOverride, Pallet, SegmentCommitment, ShouldAdjustSolutionRange,
         SolutionRanges,
     };
@@ -123,11 +123,14 @@ mod benchmarks {
     }
 
     #[benchmark]
-    fn enable_rewards() {
+    fn enable_rewards_at() {
         EnableRewards::<T>::take();
 
         #[extrinsic_call]
-        _(RawOrigin::Root, Some(100u32.into()));
+        _(
+            RawOrigin::Root,
+            EnableRewardsAt::Height(Some(100u32.into())),
+        );
 
         assert_eq!(EnableRewards::<T>::get(), Some(100u32.into()));
     }

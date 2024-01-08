@@ -32,23 +32,10 @@ pub enum ExecutionPhase {
 
 impl ExecutionPhase {
     /// Returns the method for generating the proof.
-    pub fn proving_method(&self) -> &'static str {
+    pub fn execution_method(&self) -> &'static str {
         match self {
             // TODO: Replace `DomainCoreApi_initialize_block_with_post_state_root` with `Core_initalize_block`
             // Should be a same issue with https://github.com/paritytech/substrate/pull/10922#issuecomment-1068997467
-            Self::InitializeBlock => "DomainCoreApi_initialize_block_with_post_state_root",
-            Self::ApplyExtrinsic { .. } => "BlockBuilder_apply_extrinsic",
-            Self::FinalizeBlock => "BlockBuilder_finalize_block",
-        }
-    }
-
-    /// Returns the method for verifying the proof.
-    ///
-    /// The difference with [`Self::proving_method`] is that the return value of verifying method
-    /// must contain the post state root info so that it can be used to compare whether the
-    /// result of execution reported in [`FraudProof`] is expected or not.
-    pub fn verifying_method(&self) -> &'static str {
-        match self {
             Self::InitializeBlock => "DomainCoreApi_initialize_block_with_post_state_root",
             Self::ApplyExtrinsic { .. } => "DomainCoreApi_apply_extrinsic_with_post_state_root",
             Self::FinalizeBlock => "BlockBuilder_finalize_block",
@@ -318,6 +305,12 @@ pub enum VerificationError<DomainHash> {
         error("Failed to check if a given extrinsic is inherent or not")
     )]
     FailedToCheckInherentExtrinsic,
+    /// Failed to check if a given extrinsic is decodable or not.
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Failed to check if a given extrinsic is decodable or not")
+    )]
+    FailedToCheckExtrinsicDecodable,
     /// Invalid bundle equivocation fraud proof.
     #[cfg_attr(
         feature = "thiserror",

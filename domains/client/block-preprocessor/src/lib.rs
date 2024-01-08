@@ -16,7 +16,7 @@ pub mod xdm_verifier;
 
 use crate::inherents::is_runtime_upgraded;
 use crate::xdm_verifier::is_valid_xdm;
-use codec::{Decode, Encode};
+use codec::Encode;
 use domain_runtime_primitives::opaque::AccountId;
 use domain_runtime_primitives::DomainCoreApi;
 use sc_client_api::BlockBackend;
@@ -263,17 +263,20 @@ where
         // NOTE: for each extrinsic the checking order must follow `InvalidBundleType::checking_order`
         let runtime_api = self.client.runtime_api();
         for (index, opaque_extrinsic) in bundle.extrinsics.iter().enumerate() {
-            let Ok(extrinsic) =
-                <<Block as BlockT>::Extrinsic>::decode(&mut opaque_extrinsic.encode().as_slice())
-            else {
-                tracing::error!(
-                    ?opaque_extrinsic,
-                    "Undecodable extrinsic in bundle({})",
-                    bundle.hash()
-                );
-                return Ok(BundleValidity::Invalid(InvalidBundleType::UndecodableTx(
-                    index as u32,
-                )));
+            let decode_result = runtime_api.decode_extrinsic(at, opaque_extrinsic.clone())?;
+            let extrinsic = match decode_result {
+                Ok(extrinsic) => extrinsic,
+                Err(err) => {
+                    tracing::error!(
+                        ?opaque_extrinsic,
+                        ?err,
+                        "Undecodable extrinsic in bundle({})",
+                        bundle.hash()
+                    );
+                    return Ok(BundleValidity::Invalid(InvalidBundleType::UndecodableTx(
+                        index as u32,
+                    )));
+                }
             };
 
             let is_within_tx_range =

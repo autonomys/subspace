@@ -263,10 +263,25 @@ pub mod pallet {
         pub(super) entropy: Blake3Hash,
     }
 
+    /// When to enable block/vote rewards
+    #[derive(Debug, Copy, Clone, Eq, PartialEq, Encode, Decode, TypeInfo)]
+    #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+    pub enum EnableRewardsAt<BlockNumber> {
+        /// At specified height or next block if `None`
+        Height(Option<BlockNumber>),
+        /// When solution range is below specified threshold
+        SolutionRange(u64),
+        /// Manually with an explicit extrinsic
+        Manually,
+    }
+
     #[pallet::genesis_config]
-    pub struct GenesisConfig<T> {
-        /// Whether rewards should be enabled.
-        pub enable_rewards: bool,
+    pub struct GenesisConfig<T>
+    where
+        T: Config,
+    {
+        /// When rewards should be enabled.
+        pub enable_rewards_at: EnableRewardsAt<BlockNumberFor<T>>,
         /// Whether storage access should be enabled.
         pub enable_storage_access: bool,
         /// Who can author blocks at genesis.
@@ -277,7 +292,10 @@ pub mod pallet {
         pub phantom: PhantomData<T>,
     }
 
-    impl<T> Default for GenesisConfig<T> {
+    impl<T> Default for GenesisConfig<T>
+    where
+        T: Config,
+    {
         #[inline]
         #[track_caller]
         fn default() -> Self {
@@ -288,10 +306,23 @@ pub mod pallet {
     }
 
     #[pallet::genesis_build]
-    impl<T: Config> BuildGenesisConfig for GenesisConfig<T> {
+    impl<T> BuildGenesisConfig for GenesisConfig<T>
+    where
+        T: Config,
+    {
         fn build(&self) {
-            if self.enable_rewards {
-                EnableRewards::<T>::put::<BlockNumberFor<T>>(sp_runtime::traits::One::one());
+            match self.enable_rewards_at {
+                EnableRewardsAt::Height(maybe_block_number) => {
+                    EnableRewards::<T>::put(
+                        maybe_block_number.unwrap_or_else(sp_runtime::traits::One::one),
+                    );
+                }
+                EnableRewardsAt::SolutionRange(solution_range) => {
+                    EnableRewardsBelowSolutionRange::<T>::put(solution_range);
+                }
+                EnableRewardsAt::Manually => {
+                    // Nothing to do in this case
+                }
             }
             IsStorageAccessEnabled::<T>::put(self.enable_storage_access);
             match &self.allow_authoring_by {
@@ -408,6 +439,10 @@ pub mod pallet {
     /// Enable rewards since specified block number.
     #[pallet::storage]
     pub(super) type EnableRewards<T: Config> = StorageValue<_, BlockNumberFor<T>>;
+
+    /// Enable rewards when solution range is below this threshold.
+    #[pallet::storage]
+    pub(super) type EnableRewardsBelowSolutionRange<T: Config> = StorageValue<_, u64>;
 
     /// Temporary value (cleared at block finalization) with block author information.
     #[pallet::storage]
@@ -558,13 +593,13 @@ pub mod pallet {
         /// Enable rewards for blocks and votes at specified block height.
         #[pallet::call_index(4)]
         #[pallet::weight(<T as Config>::WeightInfo::enable_rewards())]
-        pub fn enable_rewards(
+        pub fn enable_rewards_at(
             origin: OriginFor<T>,
-            height: Option<BlockNumberFor<T>>,
+            enable_rewards_at: EnableRewardsAt<BlockNumberFor<T>>,
         ) -> DispatchResult {
             ensure_root(origin)?;
 
-            Self::do_enable_rewards(height)
+            Self::do_enable_rewards_at(enable_rewards_at)
         }
 
         /// Enable storage access for all users.
@@ -732,6 +767,16 @@ impl<T: Config> Pallet<T> {
             solution_ranges
                 .voting_next
                 .replace(next_voting_solution_range);
+
+            if let Some(solution_range_for_rewards) = EnableRewardsBelowSolutionRange::<T>::get() {
+                if next_solution_range <= solution_range_for_rewards {
+                    EnableRewardsBelowSolutionRange::<T>::take();
+
+                    let next_block_number =
+                        frame_system::Pallet::<T>::current_block_number() + One::one();
+                    EnableRewards::<T>::put(next_block_number);
+                }
+            }
         });
 
         EraStartSlot::<T>::put(current_slot);
@@ -1059,14 +1104,32 @@ impl<T: Config> Pallet<T> {
         }
     }
 
-    fn do_enable_rewards(height: Option<BlockNumberFor<T>>) -> DispatchResult {
+    fn do_enable_rewards_at(
+        enable_rewards_at: EnableRewardsAt<BlockNumberFor<T>>,
+    ) -> DispatchResult {
         if EnableRewards::<T>::get().is_some() {
             return Err(Error::<T>::RewardsAlreadyEnabled.into());
         }
 
-        // Enable rewards at a particular block height (default to the next block after this)
-        let next_block_number = frame_system::Pallet::<T>::current_block_number() + One::one();
-        EnableRewards::<T>::put(height.unwrap_or(next_block_number).max(next_block_number));
+        match enable_rewards_at {
+            EnableRewardsAt::Height(maybe_block_number) => {
+                // Enable rewards at a particular block height (default to the next block after
+                // this)
+                let next_block_number =
+                    frame_system::Pallet::<T>::current_block_number() + One::one();
+                EnableRewards::<T>::put(
+                    maybe_block_number
+                        .unwrap_or(next_block_number)
+                        .max(next_block_number),
+                );
+            }
+            EnableRewardsAt::SolutionRange(solution_range) => {
+                EnableRewardsBelowSolutionRange::<T>::put(solution_range);
+            }
+            EnableRewardsAt::Manually => {
+                // Nothing to do in this case
+            }
+        }
 
         Ok(())
     }

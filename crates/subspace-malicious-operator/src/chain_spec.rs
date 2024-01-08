@@ -12,7 +12,7 @@ use sp_runtime::{BuildStorage, MultiSigner, Percent};
 use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use subspace_runtime::{
-    AllowAuthoringBy, DomainsConfig, MaxDomainBlockSize, MaxDomainBlockWeight,
+    AllowAuthoringBy, DomainsConfig, EnableRewardsAt, MaxDomainBlockSize, MaxDomainBlockWeight,
     RuntimeConfigsConfig, SubspaceConfig, VestingConfig,
 };
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, SSC};
@@ -135,7 +135,7 @@ fn get_account_id_from_seed(seed: &'static str) -> AccountId32 {
 
 /// Additional subspace specific genesis parameters.
 struct GenesisParams {
-    enable_rewards: bool,
+    enable_rewards_at: EnableRewardsAt<BlockNumber>,
     enable_storage_access: bool,
     allow_authoring_by: AllowAuthoringBy,
     pot_slot_iterations: NonZeroU32,
@@ -184,7 +184,7 @@ pub fn dev_config() -> Result<ConsensusChainSpec<subspace_runtime::RuntimeGenesi
                 ],
                 vec![],
                 GenesisParams {
-                    enable_rewards: false,
+                    enable_rewards_at: EnableRewardsAt::Manually,
                     enable_storage_access: true,
                     allow_authoring_by: AllowAuthoringBy::Anyone,
                     pot_slot_iterations: NonZeroU32::new(100_000_000).expect("Not zero; qed"),
@@ -225,7 +225,7 @@ fn subspace_genesis_config(
     genesis_domain_params: GenesisDomainParams,
 ) -> subspace_runtime::RuntimeGenesisConfig {
     let GenesisParams {
-        enable_rewards,
+        enable_rewards_at,
         enable_storage_access,
         allow_authoring_by,
         pot_slot_iterations,
@@ -247,7 +247,7 @@ fn subspace_genesis_config(
             key: Some(sudo_account.clone()),
         },
         subspace: SubspaceConfig {
-            enable_rewards,
+            enable_rewards_at,
             enable_storage_access,
             allow_authoring_by,
             pot_slot_iterations,

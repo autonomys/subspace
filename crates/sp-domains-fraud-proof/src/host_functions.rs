@@ -56,7 +56,7 @@ pub trait FraudProofHostFunctions: Send + Sync {
         pre_state_root: H256,
         // TODO: implement `PassBy` for `sp_trie::StorageProof` in upstream to pass it directly here
         encoded_proof: Vec<u8>,
-        verifying_method: &str,
+        execution_method: &str,
         call_data: &[u8],
         domain_runtime_code: Vec<u8>,
     ) -> Option<Vec<u8>>;
@@ -261,6 +261,22 @@ where
             .ok()
     }
 
+    fn is_decodable_extrinsic(
+        &self,
+        consensus_block_hash: H256,
+        domain_id: DomainId,
+        opaque_extrinsic: OpaqueExtrinsic,
+    ) -> Option<bool> {
+        let runtime_code = self.get_domain_runtime_code(consensus_block_hash, domain_id)?;
+        let domain_stateless_runtime =
+            StatelessRuntime::<DomainBlock, _>::new(self.executor.clone(), runtime_code.into());
+
+        Some(matches!(
+            domain_stateless_runtime.decode_extrinsic(opaque_extrinsic),
+            Ok(Ok(_))
+        ))
+    }
+
     fn get_domain_election_params(
         &self,
         consensus_block_hash: H256,
@@ -390,6 +406,14 @@ where
                 .map(|is_inherent| {
                     FraudProofVerificationInfoResponse::InherentExtrinsicCheck(is_inherent)
                 }),
+            FraudProofVerificationInfoRequest::ExtrinsicDecodableCheck {
+                domain_id,
+                opaque_extrinsic,
+            } => self
+                .is_decodable_extrinsic(consensus_block_hash, domain_id, opaque_extrinsic)
+                .map(|is_decodable| {
+                    FraudProofVerificationInfoResponse::ExtrinsicDecodableCheck(is_decodable)
+                }),
             FraudProofVerificationInfoRequest::DomainElectionParams { domain_id } => self
                 .get_domain_election_params(consensus_block_hash, domain_id)
                 .map(|domain_election_params| {
@@ -467,7 +491,7 @@ where
         &self,
         pre_state_root: H256,
         encoded_proof: Vec<u8>,
-        verifying_method: &str,
+        execution_method: &str,
         call_data: &[u8],
         domain_runtime_code: Vec<u8>,
     ) -> Option<Vec<u8>> {
@@ -486,7 +510,7 @@ where
             proof,
             &mut Default::default(),
             self.executor.as_ref(),
-            verifying_method,
+            execution_method,
             call_data,
             &runtime_code,
         )

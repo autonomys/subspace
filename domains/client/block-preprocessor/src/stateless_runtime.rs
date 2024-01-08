@@ -1,6 +1,8 @@
 use codec::{Codec, Encode};
 use domain_runtime_primitives::opaque::AccountId;
-use domain_runtime_primitives::{CheckExtrinsicsValidityError, DomainCoreApi};
+use domain_runtime_primitives::{
+    CheckExtrinsicsValidityError, DecodeExtrinsicError, DomainCoreApi,
+};
 use sc_executor::RuntimeVersionOf;
 use sp_api::{ApiError, BlockT, Core, Hasher, RuntimeVersion};
 use sp_core::traits::{CallContext, CodeExecutor, FetchRuntimeCode, RuntimeCode};
@@ -195,6 +197,13 @@ where
         extrinsic: &<Block as BlockT>::Extrinsic,
     ) -> Result<bool, ApiError> {
         <Self as DomainCoreApi<Block>>::is_inherent_extrinsic(self, Default::default(), extrinsic)
+    }
+
+    pub fn decode_extrinsic(
+        &self,
+        opaque_extrinsic: sp_runtime::OpaqueExtrinsic,
+    ) -> Result<Result<<Block as BlockT>::Extrinsic, DecodeExtrinsicError>, ApiError> {
+        <Self as DomainCoreApi<Block>>::decode_extrinsic(self, Default::default(), opaque_extrinsic)
     }
 
     pub fn is_within_tx_range(
