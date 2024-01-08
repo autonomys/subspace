@@ -17,7 +17,7 @@ pub use crate::single_disk_farm::plotting::PlottingError;
 use crate::single_disk_farm::plotting::{
     plotting, plotting_scheduler, PlottingOptions, PlottingSchedulerOptions,
 };
-use crate::thread_pool_manager::ThreadPoolManager;
+use crate::thread_pool_manager::PlottingThreadPoolManager;
 use crate::utils::{tokio_rayon_spawn_handler, AsyncJoinOnDrop};
 use crate::KNOWN_PEERS_CACHE_SIZE;
 use async_lock::RwLock;
@@ -288,10 +288,7 @@ pub struct SingleDiskFarmOptions<NC, PG> {
     /// compute-intensive operations during proving)
     pub farming_thread_pool_size: usize,
     /// Thread pool manager used for plotting
-    pub plotting_thread_pool_manager: ThreadPoolManager,
-    /// Thread pool manager used for replotting, typically smaller pool than for plotting to not
-    /// affect farming as much
-    pub replotting_thread_pool_manager: ThreadPoolManager,
+    pub plotting_thread_pool_manager: PlottingThreadPoolManager,
     /// Notification for plotter to start, can be used to delay plotting until some initialization
     /// has happened externally
     pub plotting_delay: Option<oneshot::Receiver<()>>,
@@ -625,7 +622,6 @@ impl SingleDiskFarm {
             downloading_semaphore,
             farming_thread_pool_size,
             plotting_thread_pool_manager,
-            replotting_thread_pool_manager,
             plotting_delay,
             farm_during_initial_plotting,
         } = options;
@@ -929,7 +925,6 @@ impl SingleDiskFarm {
                     sectors_to_plot_receiver,
                     downloading_semaphore,
                     plotting_thread_pool_manager,
-                    replotting_thread_pool_manager,
                     stop_receiver: &mut stop_receiver.resubscribe(),
                 };
 
