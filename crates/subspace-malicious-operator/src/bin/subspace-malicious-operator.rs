@@ -22,19 +22,16 @@ static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
 use cross_domain_message_gossip::GossipWorkerBuilder;
 use domain_client_operator::Bootstrapper;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
-use log::warn;
 use sc_cli::{ChainSpec, SubstrateCli};
 use sc_consensus_slots::SlotProportion;
-use sc_service::Configuration;
-use sc_storage_monitor::StorageMonitorService;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::tracing_unbounded;
 use sp_core::crypto::Ss58AddressFormat;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_messenger::messages::ChainId;
 use subspace_malicious_operator::malicious_domain_instance_starter::DomainInstanceStarter;
-use subspace_node::domain::DomainCli;
-use subspace_node::Cli;
+use subspace_malicious_operator::{Cli, DomainCli};
+use subspace_networking::libp2p::Multiaddr;
 use subspace_proof_of_space::chia::ChiaTable;
 use subspace_runtime::{Block, ExecutorDispatch, RuntimeApi};
 use subspace_service::{DsnConfig, SubspaceConfiguration, SubspaceNetworking};
@@ -88,34 +85,6 @@ fn set_default_ss58_version<C: AsRef<dyn ChainSpec>>(chain_spec: C) {
     }
 }
 
-fn pot_external_entropy(
-    consensus_chain_config: &Configuration,
-    cli: &Cli,
-) -> Result<Vec<u8>, sc_service::Error> {
-    let maybe_chain_spec_pot_external_entropy = consensus_chain_config
-        .chain_spec
-        .properties()
-        .get("potExternalEntropy")
-        .map(|d| serde_json::from_value(d.clone()))
-        .transpose()
-        .map_err(|error| {
-            sc_service::Error::Other(format!("Failed to decode PoT initial key: {error:?}"))
-        })?
-        .flatten();
-    if maybe_chain_spec_pot_external_entropy.is_some()
-        && cli.pot_external_entropy.is_some()
-        && maybe_chain_spec_pot_external_entropy != cli.pot_external_entropy
-    {
-        warn!(
-            "--pot-external-entropy CLI argument was ignored due to chain spec having a different \
-            explicit value"
-        );
-    }
-    Ok(maybe_chain_spec_pot_external_entropy
-        .or(cli.pot_external_entropy.clone())
-        .unwrap_or_default())
-}
-
 fn main() -> Result<(), Error> {
     let mut cli = Cli::from_args();
     // Force UTC logs for Subspace node
@@ -126,7 +95,6 @@ fn main() -> Result<(), Error> {
     runner.run_node_until_exit(|consensus_chain_config| async move {
         let tokio_handle = consensus_chain_config.tokio_handle.clone();
         let base_path = consensus_chain_config.base_path.path().to_path_buf();
-        let database_source = consensus_chain_config.database.clone();
 
         let domains_bootstrap_nodes: serde_json::map::Map<String, serde_json::Value> =
             consensus_chain_config
@@ -153,7 +121,17 @@ fn main() -> Result<(), Error> {
             );
             let _enter = span.enter();
 
-            let pot_external_entropy = pot_external_entropy(&consensus_chain_config, &cli)?;
+            let pot_external_entropy: Vec<u8> = consensus_chain_config
+                .chain_spec
+                .properties()
+                .get("potExternalEntropy")
+                .map(|d| serde_json::from_value(d.clone()))
+                .transpose()
+                .map_err(|error| {
+                    sc_service::Error::Other(format!("Failed to decode PoT initial key: {error:?}"))
+                })?
+                .flatten()
+                .unwrap_or_default();
 
             let dsn_config = {
                 let network_keypair = consensus_chain_config
@@ -167,22 +145,18 @@ fn main() -> Result<(), Error> {
                         ))
                     })?;
 
-                let dsn_bootstrap_nodes = if cli.dsn_bootstrap_nodes.is_empty() {
-                    consensus_chain_config
-                        .chain_spec
-                        .properties()
-                        .get("dsnBootstrapNodes")
-                        .map(|d| serde_json::from_value(d.clone()))
-                        .transpose()
-                        .map_err(|error| {
-                            sc_service::Error::Other(format!(
-                                "Failed to decode DSN bootstrap nodes: {error:?}"
-                            ))
-                        })?
-                        .unwrap_or_default()
-                } else {
-                    cli.dsn_bootstrap_nodes
-                };
+                let dsn_bootstrap_nodes = consensus_chain_config
+                    .chain_spec
+                    .properties()
+                    .get("dsnBootstrapNodes")
+                    .map(|d| serde_json::from_value(d.clone()))
+                    .transpose()
+                    .map_err(|error| {
+                        sc_service::Error::Other(format!(
+                            "Failed to decode DSN bootstrap nodes: {error:?}"
+                        ))
+                    })?
+                    .unwrap_or_default();
 
                 // TODO: Libp2p versions for Substrate and Subspace diverged.
                 // We get type compatibility by encoding and decoding the original keypair.
@@ -198,33 +172,35 @@ fn main() -> Result<(), Error> {
                 DsnConfig {
                     keypair,
                     base_path: consensus_chain_config.base_path.path().into(),
-                    listen_on: cli.dsn_listen_on,
+                    listen_on: vec![
+                        "/ip4/0.0.0.0/udp/30433/quic-v1"
+                            .parse::<Multiaddr>()
+                            .expect("Manual setting"),
+                        "/ip4/0.0.0.0/tcp/30433"
+                            .parse::<Multiaddr>()
+                            .expect("Manual setting"),
+                    ],
                     bootstrap_nodes: dsn_bootstrap_nodes,
-                    reserved_peers: cli.dsn_reserved_peers,
-                    // Override enabling private IPs with --dev
-                    allow_non_global_addresses_in_dht: cli.dsn_enable_private_ips
-                        || cli.run.shared_params.dev,
-                    max_in_connections: cli.dsn_in_connections,
-                    max_out_connections: cli.dsn_out_connections,
-                    max_pending_in_connections: cli.dsn_pending_in_connections,
-                    max_pending_out_connections: cli.dsn_pending_out_connections,
-                    external_addresses: cli.dsn_external_addresses,
-                    // Override initial Kademlia bootstrapping  with --dev
-                    disable_bootstrap_on_start: cli.dsn_disable_bootstrap_on_start
-                        || cli.run.shared_params.dev,
+                    reserved_peers: vec![],
+                    allow_non_global_addresses_in_dht: false,
+                    max_in_connections: 50,
+                    max_out_connections: 150,
+                    max_pending_in_connections: 100,
+                    max_pending_out_connections: 150,
+                    external_addresses: vec![],
+                    disable_bootstrap_on_start: false,
                 }
             };
 
             let consensus_chain_config = SubspaceConfiguration {
                 base: consensus_chain_config,
                 // Domain node needs slots notifications for bundle production.
-                force_new_slot_notifications: !cli.domain_args.is_empty(),
+                force_new_slot_notifications: true,
                 subspace_networking: SubspaceNetworking::Create { config: dsn_config },
-                sync_from_dsn: cli.sync_from_dsn,
-                enable_subspace_block_relay: cli.enable_subspace_block_relay,
-                // Timekeeper is enabled if `--dev` is used
-                is_timekeeper: cli.timekeeper || cli.run.shared_params.dev,
-                timekeeper_cpu_cores: cli.timekeeper_cpu_cores,
+                sync_from_dsn: true,
+                enable_subspace_block_relay: true,
+                is_timekeeper: false,
+                timekeeper_cpu_cores: Default::default(),
             };
 
             let partial_components = subspace_service::new_partial::<
@@ -254,15 +230,6 @@ fn main() -> Result<(), Error> {
             (consensus_chain_node, keystore)
         };
 
-        StorageMonitorService::try_spawn(
-            cli.storage_monitor,
-            database_source,
-            &consensus_chain_node.task_manager.spawn_essential_handle(),
-        )
-        .map_err(|error| {
-            sc_service::Error::Other(format!("Failed to start storage monitor: {error:?}"))
-        })?;
-
         // Run a domain node.
         if cli.domain_args.is_empty() {
             return Err(Error::Other(
@@ -277,7 +244,7 @@ fn main() -> Result<(), Error> {
 
             let mut domain_cli = DomainCli::new(cli.domain_args.into_iter());
 
-            let domain_id = domain_cli.domain_id;
+            let domain_id = domain_cli.domain_id.into();
 
             if domain_cli.run.network_params.bootnodes.is_empty() {
                 domain_cli.run.network_params.bootnodes = domains_bootstrap_nodes
