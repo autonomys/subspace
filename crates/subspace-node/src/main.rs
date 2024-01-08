@@ -16,6 +16,13 @@
 
 //! Subspace node implementation.
 
+mod chain_spec;
+mod chain_spec_utils;
+mod cli;
+mod domain;
+
+use crate::cli::{Cli, Subcommand};
+use crate::domain::{DomainCli, DomainInstanceStarter, DomainSubcommand};
 use cross_domain_message_gossip::GossipWorkerBuilder;
 use domain_client_operator::Bootstrapper;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
@@ -37,8 +44,6 @@ use sp_core::traits::SpawnEssentialNamed;
 use sp_io::SubstrateHostFunctions;
 use sp_messenger::messages::ChainId;
 use sp_wasm_interface::ExtendedHostFunctions;
-use subspace_node::domain::{DomainCli, DomainInstanceStarter, DomainSubcommand};
-use subspace_node::{Cli, Subcommand};
 use subspace_proof_of_space::chia::ChiaTable;
 use subspace_runtime::{Block, ExecutorDispatch, RuntimeApi};
 use subspace_service::{DsnConfig, SubspaceConfiguration, SubspaceNetworking};
