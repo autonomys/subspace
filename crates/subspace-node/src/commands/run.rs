@@ -66,11 +66,6 @@ pub struct RunOptions {
     #[clap(flatten)]
     storage_monitor: StorageMonitorParams,
 
-    /// Use the block request handler implementation from subspace
-    /// instead of the default substrate handler.
-    #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
-    enable_subspace_block_relay: bool,
-
     /// Assigned PoT role for this node.
     #[arg(long)]
     timekeeper: bool,
@@ -280,7 +275,6 @@ pub fn run(cli: Cli) -> Result<(), Error> {
                 force_new_slot_notifications: !cli.run.domain_args.is_empty(),
                 subspace_networking: SubspaceNetworking::Create { config: dsn_config },
                 sync_from_dsn: cli.run.sync_from_dsn,
-                enable_subspace_block_relay: cli.run.enable_subspace_block_relay,
                 // Timekeeper is enabled if `--dev` is used
                 is_timekeeper: cli.run.timekeeper || dev,
                 timekeeper_cpu_cores: cli.run.timekeeper_cpu_cores,

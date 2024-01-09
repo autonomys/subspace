@@ -234,9 +234,6 @@ pub struct SubspaceConfiguration {
     pub subspace_networking: SubspaceNetworking,
     /// Enables DSN-sync on startup.
     pub sync_from_dsn: bool,
-    /// Use the block request handler implementation from subspace
-    /// instead of the default substrate handler.
-    pub enable_subspace_block_relay: bool,
     /// Is this node a Timekeeper
     pub is_timekeeper: bool,
     /// CPU cores that timekeeper can use
@@ -786,19 +783,15 @@ where
 
     let import_queue_service = import_queue.service();
     let network_wrapper = Arc::new(NetworkWrapper::default());
-    let block_relay = if config.enable_subspace_block_relay {
-        Some(
-            build_consensus_relay(
-                network_wrapper.clone(),
-                client.clone(),
-                transaction_pool.clone(),
-                config.base.prometheus_registry(),
-            )
-            .map_err(Error::BlockRelay)?,
+    let block_relay = Some(
+        build_consensus_relay(
+            network_wrapper.clone(),
+            client.clone(),
+            transaction_pool.clone(),
+            config.base.prometheus_registry(),
         )
-    } else {
-        None
-    };
+        .map_err(Error::BlockRelay)?,
+    );
     let mut net_config = sc_network::config::FullNetworkConfiguration::new(&config.base.network);
     net_config.add_notification_protocol(cdm_gossip_peers_set_config());
     net_config.add_notification_protocol(pot_gossip_peers_set_config());
@@ -863,9 +856,7 @@ where
             }),
         );
 
-    if config.enable_subspace_block_relay {
-        network_wrapper.set(network_service.clone());
-    }
+    network_wrapper.set(network_service.clone());
     if config.sync_from_dsn {
         let (observer, worker) = sync_from_dsn::create_observer_and_worker(
             segment_headers_store.clone(),

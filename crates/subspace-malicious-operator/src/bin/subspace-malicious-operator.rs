@@ -198,7 +198,6 @@ fn main() -> Result<(), Error> {
                 force_new_slot_notifications: true,
                 subspace_networking: SubspaceNetworking::Create { config: dsn_config },
                 sync_from_dsn: true,
-                enable_subspace_block_relay: true,
                 is_timekeeper: false,
                 timekeeper_cpu_cores: Default::default(),
             };
