@@ -58,7 +58,7 @@ tempfile = "3.8.0"
 thiserror = "1.0.48"
 tokio = { version = "1.34.0", features = ["macros", "parking_lot", "rt-multi-thread", "signal"] }
 tracing = "0.1.37"
-tracing-subscriber = { version = "0.3.16", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3.17", features = ["env-filter"] }
 ulid = { version = "1.0.0", features = ["serde"] }
 zeroize = "1.6.0"
 

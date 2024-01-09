@@ -5,7 +5,8 @@ use clap::Parser;
 use cross_domain_message_gossip::GossipWorkerBuilder;
 use domain_client_operator::Bootstrapper;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
-use sc_cli::{RunCmd, SubstrateCli};
+use futures::FutureExt;
+use sc_cli::{print_node_infos, CliConfiguration, RunCmd, Signals};
 use sc_consensus_slots::SlotProportion;
 use sc_network::config::NodeKeyConfig;
 use sc_service::config::KeystoreConfig;
@@ -16,10 +17,14 @@ use sc_utils::mpsc::tracing_unbounded;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_messenger::messages::ChainId;
 use std::collections::HashSet;
-use std::ops::{Deref, DerefMut};
 use subspace_networking::libp2p::Multiaddr;
 use subspace_runtime::{Block, ExecutorDispatch, RuntimeApi};
 use subspace_service::{DsnConfig, SubspaceConfiguration, SubspaceNetworking};
+use tokio::runtime::Handle;
+use tracing::{debug, error, info_span, warn, Span};
+use tracing_subscriber::filter::LevelFilter;
+use tracing_subscriber::prelude::*;
+use tracing_subscriber::{fmt, EnvFilter};
 
 fn parse_pot_external_entropy(s: &str) -> Result<Vec<u8>, hex::FromHexError> {
     hex::decode(s)
@@ -85,20 +90,6 @@ pub struct RunOptions {
     /// subspace-node [consensus-chain-args] -- [domain-args]
     #[arg(raw = true)]
     domain_args: Vec<String>,
-}
-
-impl Deref for RunOptions {
-    type Target = RunCmd;
-
-    fn deref(&self) -> &Self::Target {
-        &self.run
-    }
-}
-
-impl DerefMut for RunOptions {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.run
-    }
 }
 
 /// Options for DSN
@@ -173,10 +164,53 @@ struct TimekeeperOptions {
     timekeeper_cpu_cores: HashSet<usize>,
 }
 
+pub(crate) fn raise_fd_limit() {
+    match fdlimit::raise_fd_limit() {
+        Ok(fdlimit::Outcome::LimitRaised { from, to }) => {
+            debug!(
+                "Increased file descriptor limit from previous (most likely soft) limit {} to \
+                new (most likely hard) limit {}",
+                from, to
+            );
+        }
+        Ok(fdlimit::Outcome::Unsupported) => {
+            // Unsupported platform (non-Linux)
+        }
+        Err(error) => {
+            warn!(
+                "Failed to increase file descriptor limit for the process due to an error: {}.",
+                error
+            );
+        }
+    }
+}
+
 /// Default run command for node
-pub fn run(run_options: RunOptions) -> Result<(), Error> {
+#[tokio::main]
+pub async fn run(run_options: RunOptions) -> Result<(), Error> {
+    tracing_subscriber::registry()
+        .with(
+            fmt::layer()
+                // TODO: Workaround for https://github.com/tokio-rs/tracing/issues/2214, also on
+                //  Windows terminal doesn't support the same colors as bash does
+                .with_ansi(if cfg!(windows) {
+                    false
+                } else {
+                    supports_color::on(supports_color::Stream::Stderr).is_some()
+                })
+                .with_filter(
+                    EnvFilter::builder()
+                        .with_default_directive(LevelFilter::INFO.into())
+                        .from_env_lossy(),
+                ),
+        )
+        .init();
+    raise_fd_limit();
+
+    let signals = Signals::capture()?;
+
     let RunOptions {
-        mut run,
+        run,
         pot_external_entropy,
         dsn_options,
         sync_from_dsn,
@@ -186,34 +220,35 @@ pub fn run(run_options: RunOptions) -> Result<(), Error> {
     } = run_options;
     let dev = run.shared_params.dev;
 
-    // Force UTC logs for Subspace node
-    run.shared_params.use_utc_log_time = true;
-    let mut runner = SubspaceCliPlaceholder.create_runner(&run)?;
+    let mut consensus_chain_config =
+        run.create_configuration(&SubspaceCliPlaceholder, Handle::current())?;
 
-    set_default_ss58_version(&runner.config().chain_spec);
+    set_default_ss58_version(&consensus_chain_config.chain_spec);
     // Change default paths to Subspace structure
     {
-        let config = runner.config_mut();
-        config.database = DatabaseSource::ParityDb {
-            path: config.base_path.path().join("db"),
+        consensus_chain_config.database = DatabaseSource::ParityDb {
+            path: consensus_chain_config.base_path.path().join("db"),
         };
         // Consensus node doesn't use keystore
-        config.keystore = KeystoreConfig::InMemory;
-        if let Some(net_config_path) = &mut config.network.net_config_path {
-            *net_config_path = config.base_path.path().join("network");
-            config.network.node_key = NodeKeyConfig::Ed25519(sc_network::config::Secret::File(
-                net_config_path.join("secret_ed25519"),
-            ));
+        consensus_chain_config.keystore = KeystoreConfig::InMemory;
+        if let Some(net_config_path) = &mut consensus_chain_config.network.net_config_path {
+            *net_config_path = consensus_chain_config.base_path.path().join("network");
+            consensus_chain_config.network.node_key = NodeKeyConfig::Ed25519(
+                sc_network::config::Secret::File(net_config_path.join("secret_ed25519")),
+            );
         }
     }
+    // In case there are bootstrap nodes specified explicitly, ignore those that are in the
+    // chain spec
+    if !run.network_params.bootnodes.is_empty() {
+        consensus_chain_config.network.boot_nodes = run.network_params.bootnodes;
+    }
 
-    runner.run_node_until_exit(|mut consensus_chain_config| async move {
-        // In case there are bootstrap nodes specified explicitly, ignore those that are in the
-        // chain spec
-        if !run.network_params.bootnodes.is_empty() {
-            consensus_chain_config.network.boot_nodes = run.network_params.bootnodes;
-        }
+    print_node_infos::<SubspaceCliPlaceholder>(&consensus_chain_config);
 
+    let root_span = Span::current();
+
+    let mut task_manager = {
         let tokio_handle = consensus_chain_config.tokio_handle.clone();
         let base_path = consensus_chain_config.base_path.path().to_path_buf();
         let database_source = consensus_chain_config.database.clone();
@@ -237,10 +272,7 @@ pub fn run(run_options: RunOptions) -> Result<(), Error> {
             .clone()
             .unwrap_or_default();
         let consensus_chain_node = {
-            let span = sc_tracing::tracing::info_span!(
-                sc_tracing::logging::PREFIX_LOG_SPAN,
-                name = "Consensus"
-            );
+            let span = info_span!("Consensus");
             let _enter = span.enter();
 
             let pot_external_entropy =
@@ -349,10 +381,7 @@ pub fn run(run_options: RunOptions) -> Result<(), Error> {
 
         // Run a domain node.
         if !domain_args.is_empty() {
-            let span = sc_tracing::tracing::info_span!(
-                sc_tracing::logging::PREFIX_LOG_SPAN,
-                name = "Domain"
-            );
+            let span = info_span!(parent: &root_span, "Domain");
             let _enter = span.enter();
 
             let mut domain_cli = DomainCli::new(domain_args.into_iter());
@@ -376,10 +405,7 @@ pub fn run(run_options: RunOptions) -> Result<(), Error> {
             // start relayer for consensus chain
             let mut xdm_gossip_worker_builder = GossipWorkerBuilder::new();
             {
-                let span = sc_tracing::tracing::info_span!(
-                    sc_tracing::logging::PREFIX_LOG_SPAN,
-                    name = "Consensus"
-                );
+                let span = info_span!(parent: &root_span, "Consensus");
                 let _enter = span.enter();
 
                 let relayer_worker =
@@ -463,14 +489,14 @@ pub fn run(run_options: RunOptions) -> Result<(), Error> {
                     Box::pin(async move {
                         let bootstrap_result =
                             match bootstrapper.fetch_domain_bootstrap_info(domain_id).await {
-                                Err(err) => {
-                                    log::error!("Domain bootstrapper exited with an error {err:?}");
+                                Err(error) => {
+                                    error!(%error, "Domain bootstrapper exited with an error");
                                     return;
                                 }
                                 Ok(res) => res,
                             };
                         if let Err(error) = domain_starter.start(bootstrap_result).await {
-                            log::error!("Domain starter exited with an error {error:?}");
+                            error!(%error, "Domain starter exited with an error");
                         }
                     }),
                 );
@@ -492,6 +518,12 @@ pub fn run(run_options: RunOptions) -> Result<(), Error> {
         };
 
         consensus_chain_node.network_starter.start_network();
-        Ok(consensus_chain_node.task_manager)
-    })
+
+        consensus_chain_node.task_manager
+    };
+
+    signals
+        .run_until_signal(task_manager.future().fuse())
+        .await
+        .map_err(Into::into)
 }

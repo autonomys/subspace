@@ -30,7 +30,6 @@ use domain_runtime_primitives::opaque::Block as DomainBlock;
 use evm_domain_runtime::ExecutorDispatch as EVMDomainExecutorDispatch;
 use frame_benchmarking_cli::BenchmarkCmd;
 use futures::future::TryFutureExt;
-use log::warn;
 use sc_cli::{ChainSpec, SubstrateCli};
 use sc_executor::NativeExecutionDispatch;
 use sc_service::{Configuration, PartialComponents};
@@ -39,6 +38,7 @@ use sp_io::SubstrateHostFunctions;
 use sp_wasm_interface::ExtendedHostFunctions;
 use subspace_proof_of_space::chia::ChiaTable;
 use subspace_runtime::{Block, ExecutorDispatch, RuntimeApi};
+use tracing::warn;
 
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
