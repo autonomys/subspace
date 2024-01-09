@@ -41,14 +41,15 @@ If you're connected directly without any router, then again nothing needs to be 
 
 ```PowerShell
 # Replace `NODE_FILE_NAME.exe` with the name of the node file you downloaded from releases
+# Replace `PATH_TO_NODE` with location where you want you store node data
 # Replace `INSERT_YOUR_ID` with a nickname you choose
 # Copy all of the lines below, they are all part of the same command
 .\NODE_FILE_NAME.exe run `
+--base-path PATH_TO_NODE `
 --chain gemini-3g `
 --blocks-pruning 256 `
 --state-pruning archive-canonical `
---no-private-ipv4 `
---validator `
+--farmer `
 --name "INSERT_YOUR_ID"
 ```
 5. You should see something similar in the terminal:
@@ -76,8 +77,8 @@ If you're connected directly without any router, then again nothing needs to be 
 6. After running this command, Windows may ask you for permissions related to firewall, select `allow` in this case.
 7. We will then open another terminal, change to the downloads directory, then start the farmer node with the following command:
 ```PowerShell
-# Replace `PATH_TO_FARM` with location where you want you store plot files
 # Replace `FARMER_FILE_NAME.exe` with the name of the farmer file you downloaded from releases
+# Replace `PATH_TO_FARM` with location where you want you store plot files
 # Replace `WALLET_ADDRESS` below with your account address from Polkadot.js wallet
 # Replace `PLOT_SIZE` with plot size in gigabytes or terabytes, for example 100G or 2T (but leave at least 60G of disk space for node and some for OS)
 .\FARMER_FILE_NAME.exe farm --reward-address WALLET_ADDRESS path=PATH_TO_FARM,size=PLOT_SIZE
@@ -92,14 +93,15 @@ If you're connected directly without any router, then again nothing needs to be 
 
 ```bash
 # Replace `NODE_FILE_NAME` with the name of the node file you downloaded from releases
+# Replace `PATH_TO_NODE` with location where you want you store node data
 # Replace `INSERT_YOUR_ID` with a nickname you choose
 # Copy all of the lines below, they are all part of the same command
 ./NODE_FILE_NAME run \
+  --base-path PATH_TO_NODE \
   --chain gemini-3g \
   --blocks-pruning 256 \
   --state-pruning archive-canonical \
-  --no-private-ipv4 \
-  --validator \
+  --farmer \
   --name "INSERT_YOUR_ID"
 ```
 5. You should see something similar in the terminal:
@@ -126,8 +128,8 @@ If you're connected directly without any router, then again nothing needs to be 
 ```
 7. We will then open another terminal, change to the downloads directory, then start the farmer node with the following command:
 ```bash
-# Replace `PATH_TO_FARM` with location where you want you store plot files
 # Replace `FARMER_FILE_NAME` with the name of the farmer file you downloaded from releases
+# Replace `PATH_TO_FARM` with location where you want you store plot files
 # Replace `WALLET_ADDRESS` below with your account address from Polkadot.js wallet
 # Replace `PLOT_SIZE` with plot size in gigabytes or terabytes, for example 100G or 2T (but leave at least 60G of disk space for node and some for OS)
 ./FARMER_FILE_NAME farm --reward-address WALLET_ADDRESS path=PATH_TO_FARM,size=PLOT_SIZE
@@ -146,14 +148,15 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 
 ```bash
 # Replace `NODE_FILE_NAME` with the name of the node file you downloaded from releases
+# Replace `PATH_TO_NODE` with location where you want you store node data
 # Replace `INSERT_YOUR_ID` with a nickname you choose
 # Copy all of the lines below, they are all part of the same command
 ./NODE_FILE_NAME run \
+  --base-path PATH_TO_NODE \
   --chain gemini-3g \
   --blocks-pruning 256 \
   --state-pruning archive-canonical \
-  --no-private-ipv4 \
-  --validator \
+  --farmer \
   --name "INSERT_YOUR_ID"
 ```
 5. You should see something similar in the terminal:
@@ -218,14 +221,14 @@ services:
       "--base-path", "/var/subspace",
       "--blocks-pruning", "256",
       "--state-pruning", "archive-canonical",
-      "--port", "30333",
+      "--listen-on", "/ip4/0.0.0.0/tcp/30333",
       "--dsn-listen-on", "/ip4/0.0.0.0/udp/30433/quic-v1",
       "--dsn-listen-on", "/ip4/0.0.0.0/tcp/30433",
+      "--rpc-listen-on", "0.0.0.0:9944",
       "--rpc-cors", "all",
       "--rpc-methods", "unsafe",
       "--rpc-external",
-      "--no-private-ipv4",
-      "--validator",
+      "--farmer",
 # Replace `INSERT_YOUR_ID` with your node ID (will be shown in telemetry)
       "--name", "INSERT_YOUR_ID"
     ]
@@ -320,7 +323,6 @@ Below are some helpful samples:
 - `./FARMER_FILE_NAME info PATH_TO_FARM`: show information about the farm at `PATH_TO_FARM`
 - `./FARMER_FILE_NAME scrub PATH_TO_FARM`: Scrub the farm to find and fix farm at `PATH_TO_FARM` corruption
 - `./FARMER_FILE_NAME wipe PATH_TO_FARM`: erases everything related to farmer if data were stored in `PATH_TO_FARM`
-- `./NODE_FILE_NAME run --base-path NODE_DATA_PATH --chain gemini-3g ...`: start node and store data in `NODE_DATA_PATH` instead of default location
 - `./NODE_FILE_NAME purge-chain --base-path NODE_DATA_PATH --chain gemini-3g`: erases data related to the node if data were stored in `NODE_DATA_PATH`
 
 Examples:

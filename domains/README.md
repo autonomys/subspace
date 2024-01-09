@@ -52,7 +52,6 @@ Start a node as Operator on `dev` chain:
 ```bash
 target/production/subspace-node run \
     --chain dev \
-    --rpc-external \
     --node-key 0000000000000000000000000000000000000000000000000000000000000001 \
     -- \
     --domain-id 0 \
@@ -66,7 +65,6 @@ For `dev` chain, you can use `--dev` flag that combines `--chain dev` and `--ope
 ```bash
 target/production/subspace-node run \
     --dev \
-    --rpc-external \
     --node-key 0000000000000000000000000000000000000000000000000000000000000001 \
     -- \
     --domain-id 0 \
@@ -78,7 +76,6 @@ Run another node and sync the consensus chain from the consensus node started ea
 ```bash
 target/production/subspace-node run \
     --dev \
-    --rpc-external \
     --bootnodes /ip4/127.0.0.1/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp \
     -- \
     --domain-id 0 \
@@ -87,18 +84,7 @@ target/production/subspace-node run \
 ```
 Since there is no `operator` flag, this node will not participate in Bundle production.
 
-By default, node data is written to `subspace-node/domain-{domain-id}` subdirectory of the OS-specific user's local data directory.
-```
-Linux
-$XDG_DATA_HOME or                   /home/alice/.local/share
-$HOME/.local/share 
-
-macOS
-$HOME/Library/Application Support   /Users/Alice/Library/Application Support
-
-Windows
-{FOLDERID_LocalAppData}             C:\Users\Alice\AppData\Local
-```
+By default, node data is written to `{subspace-node-base-path}/domains/{domain-id}` subdirectory.
 
 ### Embedded Docs
 
