@@ -1,25 +1,189 @@
 use crate::cli::Cli;
 use crate::domain::{DomainCli, DomainInstanceStarter};
-use crate::{pot_external_entropy, set_default_ss58_version, Error, PosTable};
+use crate::{derive_pot_external_entropy, set_default_ss58_version, Error, PosTable};
+use clap::Parser;
 use cross_domain_message_gossip::GossipWorkerBuilder;
 use domain_client_operator::Bootstrapper;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
-use sc_cli::SubstrateCli;
+use sc_cli::{RunCmd, SubstrateCli};
 use sc_consensus_slots::SlotProportion;
 use sc_network::config::NodeKeyConfig;
 use sc_service::config::KeystoreConfig;
 use sc_service::DatabaseSource;
-use sc_storage_monitor::StorageMonitorService;
+use sc_storage_monitor::{StorageMonitorParams, StorageMonitorService};
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::tracing_unbounded;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_messenger::messages::ChainId;
+use std::collections::HashSet;
+use std::ops::{Deref, DerefMut};
+use subspace_networking::libp2p::Multiaddr;
 use subspace_runtime::{Block, ExecutorDispatch, RuntimeApi};
 use subspace_service::{DsnConfig, SubspaceConfiguration, SubspaceNetworking};
 
+fn parse_timekeeper_cpu_cores(
+    s: &str,
+) -> Result<HashSet<usize>, Box<dyn std::error::Error + Send + Sync>> {
+    if s.is_empty() {
+        return Ok(HashSet::new());
+    }
+
+    let mut cpu_cores = HashSet::new();
+    for s in s.split(',') {
+        let mut parts = s.split('-');
+        let range_start = parts
+            .next()
+            .ok_or("Bad string format, must be comma separated list of CPU cores or ranges")?
+            .parse()?;
+        if let Some(range_end) = parts.next() {
+            let range_end = range_end.parse()?;
+
+            cpu_cores.extend(range_start..=range_end);
+        } else {
+            cpu_cores.insert(range_start);
+        }
+    }
+
+    Ok(cpu_cores)
+}
+
+/// Options for running a node
+#[derive(Debug, Parser)]
+pub struct RunOptions {
+    /// Run a node
+    #[clap(flatten)]
+    run: RunCmd,
+
+    /// Options for DSN
+    #[clap(flatten)]
+    dsn_options: DsnOptions,
+
+    /// Enables DSN-sync on startup.
+    #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+    sync_from_dsn: bool,
+
+    /// Parameters used to create the storage monitor.
+    #[clap(flatten)]
+    storage_monitor: StorageMonitorParams,
+
+    #[clap(flatten)]
+    timekeeper_options: TimekeeperOptions,
+
+    /// Domain arguments
+    ///
+    /// The command-line arguments provided first will be passed to the embedded consensus node,
+    /// while the arguments provided after `--` will be passed to the domain node.
+    ///
+    /// subspace-node [consensus-chain-args] -- [domain-args]
+    #[arg(raw = true)]
+    domain_args: Vec<String>,
+}
+
+impl Deref for RunOptions {
+    type Target = RunCmd;
+
+    fn deref(&self) -> &Self::Target {
+        &self.run
+    }
+}
+
+impl DerefMut for RunOptions {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.run
+    }
+}
+
+/// Options for DSN
+#[derive(Debug, Parser)]
+struct DsnOptions {
+    /// Where local DSN node will listen for incoming connections.
+    // TODO: Add more DSN-related parameters
+    #[arg(long, default_values_t = [
+        "/ip4/0.0.0.0/udp/30433/quic-v1".parse::<Multiaddr>().expect("Manual setting"),
+        "/ip4/0.0.0.0/tcp/30433".parse::<Multiaddr>().expect("Manual setting"),
+    ])]
+    dsn_listen_on: Vec<Multiaddr>,
+
+    /// Bootstrap nodes for DSN.
+    #[arg(long)]
+    dsn_bootstrap_nodes: Vec<Multiaddr>,
+
+    /// Reserved peers for DSN.
+    #[arg(long)]
+    dsn_reserved_peers: Vec<Multiaddr>,
+
+    /// Defines max established incoming connection limit for DSN.
+    #[arg(long, default_value_t = 50)]
+    dsn_in_connections: u32,
+
+    /// Defines max established outgoing swarm connection limit for DSN.
+    #[arg(long, default_value_t = 150)]
+    dsn_out_connections: u32,
+
+    /// Defines max pending incoming connection limit for DSN.
+    #[arg(long, default_value_t = 100)]
+    dsn_pending_in_connections: u32,
+
+    /// Defines max pending outgoing swarm connection limit for DSN.
+    #[arg(long, default_value_t = 150)]
+    dsn_pending_out_connections: u32,
+
+    /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses
+    /// in Kademlia DHT for the DSN.
+    #[arg(long, default_value_t = false)]
+    dsn_enable_private_ips: bool,
+
+    /// Defines whether we should run blocking Kademlia bootstrap() operation before other requests.
+    #[arg(long, default_value_t = false)]
+    dsn_disable_bootstrap_on_start: bool,
+
+    /// Known external addresses
+    #[arg(long, alias = "dsn-external-address")]
+    dsn_external_addresses: Vec<Multiaddr>,
+}
+
+/// Options for timekeeper
+#[derive(Debug, Parser)]
+struct TimekeeperOptions {
+    /// Assigned PoT role for this node.
+    #[arg(long)]
+    timekeeper: bool,
+
+    /// CPU cores that timekeeper can use.
+    ///
+    /// At least 2 cores should be provided, if more cores than necessary are provided, random cores
+    /// out of provided will be utilized, if not enough cores are provided timekeeper may occupy
+    /// random CPU cores.
+    ///
+    /// Comma separated list of individual cores or ranges of cores.
+    ///
+    /// Examples:
+    /// * `0,1` - use cores 0 and 1
+    /// * `0-3` - use cores 0, 1, 2 and 3
+    /// * `0,1,6-7` - use cores 0, 1, 6 and 7
+    #[arg(long, default_value = "", value_parser = parse_timekeeper_cpu_cores, verbatim_doc_comment)]
+    timekeeper_cpu_cores: HashSet<usize>,
+}
+
 /// Default run command for node
 pub fn run(cli: Cli) -> Result<(), Error> {
-    let mut runner = cli.create_runner(&cli.run)?;
+    let mut runner = cli.create_runner(&cli.run.run)?;
+
+    let Cli {
+        subcommand: _,
+        run:
+            RunOptions {
+                run,
+                dsn_options,
+                sync_from_dsn,
+                storage_monitor,
+                timekeeper_options,
+                domain_args,
+            },
+        pot_external_entropy,
+    } = cli;
+    let dev = run.shared_params.dev;
+
     set_default_ss58_version(&runner.config().chain_spec);
     // Change default paths to Subspace structure
     {
@@ -36,7 +200,13 @@ pub fn run(cli: Cli) -> Result<(), Error> {
             ));
         }
     }
-    runner.run_node_until_exit(|consensus_chain_config| async move {
+    runner.run_node_until_exit(|mut consensus_chain_config| async move {
+        // In case there are bootstrap nodes specified explicitly, ignore those that are in the
+        // chain spec
+        if !run.network_params.bootnodes.is_empty() {
+            consensus_chain_config.network.boot_nodes = run.network_params.bootnodes;
+        }
+
         let tokio_handle = consensus_chain_config.tokio_handle.clone();
         let base_path = consensus_chain_config.base_path.path().to_path_buf();
         let database_source = consensus_chain_config.database.clone();
@@ -66,7 +236,8 @@ pub fn run(cli: Cli) -> Result<(), Error> {
             );
             let _enter = span.enter();
 
-            let pot_external_entropy = pot_external_entropy(&consensus_chain_config, &cli)?;
+            let pot_external_entropy =
+                derive_pot_external_entropy(&consensus_chain_config, pot_external_entropy)?;
 
             let dsn_config = {
                 let network_keypair = consensus_chain_config
@@ -80,7 +251,7 @@ pub fn run(cli: Cli) -> Result<(), Error> {
                         ))
                     })?;
 
-                let dsn_bootstrap_nodes = if cli.dsn_bootstrap_nodes.is_empty() {
+                let dsn_bootstrap_nodes = if dsn_options.dsn_bootstrap_nodes.is_empty() {
                     consensus_chain_config
                         .chain_spec
                         .properties()
@@ -94,7 +265,7 @@ pub fn run(cli: Cli) -> Result<(), Error> {
                         })?
                         .unwrap_or_default()
                 } else {
-                    cli.dsn_bootstrap_nodes
+                    dsn_options.dsn_bootstrap_nodes
                 };
 
                 // TODO: Libp2p versions for Substrate and Subspace diverged.
@@ -111,33 +282,30 @@ pub fn run(cli: Cli) -> Result<(), Error> {
                 DsnConfig {
                     keypair,
                     base_path: base_path.clone(),
-                    listen_on: cli.dsn_listen_on,
+                    listen_on: dsn_options.dsn_listen_on,
                     bootstrap_nodes: dsn_bootstrap_nodes,
-                    reserved_peers: cli.dsn_reserved_peers,
+                    reserved_peers: dsn_options.dsn_reserved_peers,
                     // Override enabling private IPs with --dev
-                    allow_non_global_addresses_in_dht: cli.dsn_enable_private_ips
-                        || cli.run.shared_params.dev,
-                    max_in_connections: cli.dsn_in_connections,
-                    max_out_connections: cli.dsn_out_connections,
-                    max_pending_in_connections: cli.dsn_pending_in_connections,
-                    max_pending_out_connections: cli.dsn_pending_out_connections,
-                    external_addresses: cli.dsn_external_addresses,
+                    allow_non_global_addresses_in_dht: dsn_options.dsn_enable_private_ips || dev,
+                    max_in_connections: dsn_options.dsn_in_connections,
+                    max_out_connections: dsn_options.dsn_out_connections,
+                    max_pending_in_connections: dsn_options.dsn_pending_in_connections,
+                    max_pending_out_connections: dsn_options.dsn_pending_out_connections,
+                    external_addresses: dsn_options.dsn_external_addresses,
                     // Override initial Kademlia bootstrapping  with --dev
-                    disable_bootstrap_on_start: cli.dsn_disable_bootstrap_on_start
-                        || cli.run.shared_params.dev,
+                    disable_bootstrap_on_start: dsn_options.dsn_disable_bootstrap_on_start || dev,
                 }
             };
 
             let consensus_chain_config = SubspaceConfiguration {
                 base: consensus_chain_config,
                 // Domain node needs slots notifications for bundle production.
-                force_new_slot_notifications: !cli.domain_args.is_empty(),
+                force_new_slot_notifications: !domain_args.is_empty(),
                 subspace_networking: SubspaceNetworking::Create { config: dsn_config },
-                sync_from_dsn: cli.sync_from_dsn,
-                enable_subspace_block_relay: cli.enable_subspace_block_relay,
+                sync_from_dsn,
                 // Timekeeper is enabled if `--dev` is used
-                is_timekeeper: cli.timekeeper || cli.run.shared_params.dev,
-                timekeeper_cpu_cores: cli.timekeeper_cpu_cores,
+                is_timekeeper: timekeeper_options.timekeeper || dev,
+                timekeeper_cpu_cores: timekeeper_options.timekeeper_cpu_cores,
             };
 
             let partial_components = subspace_service::new_partial::<
@@ -164,7 +332,7 @@ pub fn run(cli: Cli) -> Result<(), Error> {
         };
 
         StorageMonitorService::try_spawn(
-            cli.storage_monitor,
+            storage_monitor,
             database_source,
             &consensus_chain_node.task_manager.spawn_essential_handle(),
         )
@@ -173,14 +341,14 @@ pub fn run(cli: Cli) -> Result<(), Error> {
         })?;
 
         // Run a domain node.
-        if !cli.domain_args.is_empty() {
+        if !domain_args.is_empty() {
             let span = sc_tracing::tracing::info_span!(
                 sc_tracing::logging::PREFIX_LOG_SPAN,
                 name = "Domain"
             );
             let _enter = span.enter();
 
-            let mut domain_cli = DomainCli::new(cli.domain_args.into_iter());
+            let mut domain_cli = DomainCli::new(domain_args.into_iter());
 
             let domain_id = domain_cli.domain_id;
 
@@ -317,6 +485,6 @@ pub fn run(cli: Cli) -> Result<(), Error> {
         };
 
         consensus_chain_node.network_starter.start_network();
-        Ok::<_, Error>(consensus_chain_node.task_manager)
+        Ok(consensus_chain_node.task_manager)
     })
 }

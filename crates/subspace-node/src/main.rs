@@ -91,9 +91,9 @@ fn set_default_ss58_version<C: AsRef<dyn ChainSpec>>(chain_spec: C) {
     }
 }
 
-fn pot_external_entropy(
+fn derive_pot_external_entropy(
     consensus_chain_config: &Configuration,
-    cli: &Cli,
+    maybe_pot_external_entropy: Option<Vec<u8>>,
 ) -> Result<Vec<u8>, sc_service::Error> {
     let maybe_chain_spec_pot_external_entropy = consensus_chain_config
         .chain_spec
@@ -106,8 +106,8 @@ fn pot_external_entropy(
         })?
         .flatten();
     if maybe_chain_spec_pot_external_entropy.is_some()
-        && cli.pot_external_entropy.is_some()
-        && maybe_chain_spec_pot_external_entropy != cli.pot_external_entropy
+        && maybe_pot_external_entropy.is_some()
+        && maybe_chain_spec_pot_external_entropy != maybe_pot_external_entropy
     {
         warn!(
             "--pot-external-entropy CLI argument was ignored due to chain spec having a different \
@@ -115,7 +115,7 @@ fn pot_external_entropy(
         );
     }
     Ok(maybe_chain_spec_pot_external_entropy
-        .or(cli.pot_external_entropy.clone())
+        .or(maybe_pot_external_entropy)
         .unwrap_or_default())
 }
 
@@ -141,7 +141,7 @@ fn main() -> Result<(), Error> {
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
                     &config,
-                    &pot_external_entropy(&config, &cli)?,
+                    &derive_pot_external_entropy(&config, cli.pot_external_entropy)?,
                 )?;
                 Ok((
                     cmd.run(client, import_queue).map_err(Error::SubstrateCli),
@@ -159,7 +159,7 @@ fn main() -> Result<(), Error> {
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
                     &config,
-                    &pot_external_entropy(&config, &cli)?,
+                    &derive_pot_external_entropy(&config, cli.pot_external_entropy)?,
                 )?;
                 Ok((
                     cmd.run(client, config.database)
@@ -178,7 +178,7 @@ fn main() -> Result<(), Error> {
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
                     &config,
-                    &pot_external_entropy(&config, &cli)?,
+                    &derive_pot_external_entropy(&config, cli.pot_external_entropy)?,
                 )?;
                 Ok((
                     cmd.run(client, config.chain_spec)
@@ -198,7 +198,7 @@ fn main() -> Result<(), Error> {
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
                     &config,
-                    &pot_external_entropy(&config, &cli)?,
+                    &derive_pot_external_entropy(&config, cli.pot_external_entropy)?,
                 )?;
                 Ok((
                     cmd.run(client, import_queue).map_err(Error::SubstrateCli),
@@ -242,7 +242,7 @@ fn main() -> Result<(), Error> {
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
                     &config,
-                    &pot_external_entropy(&config, &cli)?,
+                    &derive_pot_external_entropy(&config, cli.pot_external_entropy)?,
                 )?;
                 Ok((
                     cmd.run(client, backend, None).map_err(Error::SubstrateCli),
@@ -283,7 +283,7 @@ fn main() -> Result<(), Error> {
                             ExecutorDispatch,
                         >(
                             &config,
-                            &pot_external_entropy(&config, &cli)?,
+                            &derive_pot_external_entropy(&config, cli.pot_external_entropy)?,
                         )?;
 
                         cmd.run(client)
@@ -293,7 +293,7 @@ fn main() -> Result<(), Error> {
                             client, backend, ..
                         } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
                             &config,
-                            &pot_external_entropy(&config, &cli)?,
+                            &derive_pot_external_entropy(&config, cli.pot_external_entropy)?,
                         )?;
                         let db = backend.expose_db();
                         let storage = backend.expose_storage();
