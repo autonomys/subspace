@@ -1,6 +1,6 @@
 use crate::cli::Cli;
 use crate::domain::{DomainCli, DomainInstanceStarter};
-use crate::{pot_external_entropy, set_default_ss58_version, Error, PosTable};
+use crate::{derive_pot_external_entropy, set_default_ss58_version, Error, PosTable};
 use clap::Parser;
 use cross_domain_message_gossip::GossipWorkerBuilder;
 use domain_client_operator::Bootstrapper;
@@ -56,7 +56,7 @@ pub struct RunOptions {
 
     /// Options for DSN
     #[clap(flatten)]
-    dsn: DsnOptions,
+    dsn_options: DsnOptions,
 
     /// Enables DSN-sync on startup.
     #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
@@ -66,24 +66,8 @@ pub struct RunOptions {
     #[clap(flatten)]
     storage_monitor: StorageMonitorParams,
 
-    /// Assigned PoT role for this node.
-    #[arg(long)]
-    timekeeper: bool,
-
-    /// CPU cores that timekeeper can use.
-    ///
-    /// At least 2 cores should be provided, if more cores than necessary are provided, random cores
-    /// out of provided will be utilized, if not enough cores are provided timekeeper may occupy
-    /// random CPU cores.
-    ///
-    /// Comma separated list of individual cores or ranges of cores.
-    ///
-    /// Examples:
-    /// * `0,1` - use cores 0 and 1
-    /// * `0-3` - use cores 0, 1, 2 and 3
-    /// * `0,1,6-7` - use cores 0, 1, 6 and 7
-    #[arg(long, default_value = "", value_parser = parse_timekeeper_cpu_cores, verbatim_doc_comment)]
-    timekeeper_cpu_cores: HashSet<usize>,
+    #[clap(flatten)]
+    timekeeper_options: TimekeeperOptions,
 
     /// Domain arguments
     ///
@@ -158,10 +142,48 @@ struct DsnOptions {
     dsn_external_addresses: Vec<Multiaddr>,
 }
 
+/// Options for timekeeper
+#[derive(Debug, Parser)]
+struct TimekeeperOptions {
+    /// Assigned PoT role for this node.
+    #[arg(long)]
+    timekeeper: bool,
+
+    /// CPU cores that timekeeper can use.
+    ///
+    /// At least 2 cores should be provided, if more cores than necessary are provided, random cores
+    /// out of provided will be utilized, if not enough cores are provided timekeeper may occupy
+    /// random CPU cores.
+    ///
+    /// Comma separated list of individual cores or ranges of cores.
+    ///
+    /// Examples:
+    /// * `0,1` - use cores 0 and 1
+    /// * `0-3` - use cores 0, 1, 2 and 3
+    /// * `0,1,6-7` - use cores 0, 1, 6 and 7
+    #[arg(long, default_value = "", value_parser = parse_timekeeper_cpu_cores, verbatim_doc_comment)]
+    timekeeper_cpu_cores: HashSet<usize>,
+}
+
 /// Default run command for node
 pub fn run(cli: Cli) -> Result<(), Error> {
-    let dev = cli.run.shared_params.dev;
     let mut runner = cli.create_runner(&cli.run.run)?;
+
+    let Cli {
+        subcommand: _,
+        run:
+            RunOptions {
+                run,
+                dsn_options,
+                sync_from_dsn,
+                storage_monitor,
+                timekeeper_options,
+                domain_args,
+            },
+        pot_external_entropy,
+    } = cli;
+    let dev = run.shared_params.dev;
+
     set_default_ss58_version(&runner.config().chain_spec);
     // Change default paths to Subspace structure
     {
@@ -208,9 +230,9 @@ pub fn run(cli: Cli) -> Result<(), Error> {
             );
             let _enter = span.enter();
 
-            let pot_external_entropy = pot_external_entropy(&consensus_chain_config, &cli)?;
+            let pot_external_entropy =
+                derive_pot_external_entropy(&consensus_chain_config, pot_external_entropy)?;
 
-            let dsn_options = cli.run.dsn;
             let dsn_config = {
                 let network_keypair = consensus_chain_config
                     .network
@@ -272,12 +294,12 @@ pub fn run(cli: Cli) -> Result<(), Error> {
             let consensus_chain_config = SubspaceConfiguration {
                 base: consensus_chain_config,
                 // Domain node needs slots notifications for bundle production.
-                force_new_slot_notifications: !cli.run.domain_args.is_empty(),
+                force_new_slot_notifications: !domain_args.is_empty(),
                 subspace_networking: SubspaceNetworking::Create { config: dsn_config },
-                sync_from_dsn: cli.run.sync_from_dsn,
+                sync_from_dsn,
                 // Timekeeper is enabled if `--dev` is used
-                is_timekeeper: cli.run.timekeeper || dev,
-                timekeeper_cpu_cores: cli.run.timekeeper_cpu_cores,
+                is_timekeeper: timekeeper_options.timekeeper || dev,
+                timekeeper_cpu_cores: timekeeper_options.timekeeper_cpu_cores,
             };
 
             let partial_components = subspace_service::new_partial::<
@@ -304,7 +326,7 @@ pub fn run(cli: Cli) -> Result<(), Error> {
         };
 
         StorageMonitorService::try_spawn(
-            cli.run.storage_monitor,
+            storage_monitor,
             database_source,
             &consensus_chain_node.task_manager.spawn_essential_handle(),
         )
@@ -313,14 +335,14 @@ pub fn run(cli: Cli) -> Result<(), Error> {
         })?;
 
         // Run a domain node.
-        if !cli.run.domain_args.is_empty() {
+        if !domain_args.is_empty() {
             let span = sc_tracing::tracing::info_span!(
                 sc_tracing::logging::PREFIX_LOG_SPAN,
                 name = "Domain"
             );
             let _enter = span.enter();
 
-            let mut domain_cli = DomainCli::new(cli.run.domain_args.into_iter());
+            let mut domain_cli = DomainCli::new(domain_args.into_iter());
 
             let domain_id = domain_cli.domain_id;
 
