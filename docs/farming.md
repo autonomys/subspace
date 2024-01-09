@@ -43,7 +43,7 @@ If you're connected directly without any router, then again nothing needs to be 
 # Replace `NODE_FILE_NAME.exe` with the name of the node file you downloaded from releases
 # Replace `INSERT_YOUR_ID` with a nickname you choose
 # Copy all of the lines below, they are all part of the same command
-.\NODE_FILE_NAME.exe `
+.\NODE_FILE_NAME.exe run `
 --chain gemini-3g `
 --blocks-pruning 256 `
 --state-pruning archive-canonical `
@@ -94,7 +94,7 @@ If you're connected directly without any router, then again nothing needs to be 
 # Replace `NODE_FILE_NAME` with the name of the node file you downloaded from releases
 # Replace `INSERT_YOUR_ID` with a nickname you choose
 # Copy all of the lines below, they are all part of the same command
-./NODE_FILE_NAME \
+./NODE_FILE_NAME run \
   --chain gemini-3g \
   --blocks-pruning 256 \
   --state-pruning archive-canonical \
@@ -148,7 +148,7 @@ After this, simply repeat the step you prompted for (step 4 or 6). This time, cl
 # Replace `NODE_FILE_NAME` with the name of the node file you downloaded from releases
 # Replace `INSERT_YOUR_ID` with a nickname you choose
 # Copy all of the lines below, they are all part of the same command
-./NODE_FILE_NAME \
+./NODE_FILE_NAME run \
   --chain gemini-3g \
   --blocks-pruning 256 \
   --state-pruning archive-canonical \
@@ -213,6 +213,7 @@ services:
       - "0.0.0.0:30433:30433/tcp"
     restart: unless-stopped
     command: [
+      "run",
       "--chain", "gemini-3g",
       "--base-path", "/var/subspace",
       "--blocks-pruning", "256",
@@ -319,7 +320,7 @@ Below are some helpful samples:
 - `./FARMER_FILE_NAME info PATH_TO_FARM`: show information about the farm at `PATH_TO_FARM`
 - `./FARMER_FILE_NAME scrub PATH_TO_FARM`: Scrub the farm to find and fix farm at `PATH_TO_FARM` corruption
 - `./FARMER_FILE_NAME wipe PATH_TO_FARM`: erases everything related to farmer if data were stored in `PATH_TO_FARM`
-- `./NODE_FILE_NAME --base-path NODE_DATA_PATH --chain gemini-3g ...`: start node and store data in `NODE_DATA_PATH` instead of default location
+- `./NODE_FILE_NAME run --base-path NODE_DATA_PATH --chain gemini-3g ...`: start node and store data in `NODE_DATA_PATH` instead of default location
 - `./NODE_FILE_NAME purge-chain --base-path NODE_DATA_PATH --chain gemini-3g`: erases data related to the node if data were stored in `NODE_DATA_PATH`
 
 Examples:
