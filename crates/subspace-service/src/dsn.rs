@@ -47,7 +47,7 @@ pub struct DsnConfig {
     pub allow_non_global_addresses_in_dht: bool,
 
     /// System base path.
-    pub base_path: PathBuf,
+    pub network_path: PathBuf,
 
     /// Defines max established incoming swarm connection limit.
     pub max_in_connections: u32,
@@ -79,23 +79,11 @@ pub(crate) fn create_dsn_instance(
     let dsn_metrics_registry = enable_metrics.then_some(&mut metrics_registry);
 
     let networking_parameters_registry = {
-        // TODO: Make `base_path` point to `network` once we can clean up below migration code
-        let path = dsn_config.base_path;
-        let network_path = path.join("network");
+        let network_path = dsn_config.network_path;
 
-        // TODO: Remove this in the future after enough upgrade time that this no longer exist
-        if path.join("known_addresses_db").is_dir() {
-            let _ = fs::remove_file(path.join("known_addresses_db"));
-        }
         if !network_path.is_dir() {
             fs::create_dir(&network_path)
                 .map_err(|error| DsnConfigurationError::CreationError(CreationError::Io(error)))?;
-        }
-        if path.join("known_addresses.bin").is_dir() {
-            let _ = fs::rename(
-                path.join("known_addresses.bin"),
-                network_path.join("known_addresses.bin"),
-            );
         }
         let file_path = network_path.join("known_addresses.bin");
 

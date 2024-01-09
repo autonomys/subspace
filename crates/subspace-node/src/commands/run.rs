@@ -632,7 +632,6 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
     let root_span = Span::current();
 
     let mut task_manager = {
-        let tokio_handle = consensus_chain_config.tokio_handle.clone();
         let base_path = consensus_chain_config.base_path.path().to_path_buf();
         let database_source = consensus_chain_config.database.clone();
 
@@ -703,7 +702,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
 
                 DsnConfig {
                     keypair,
-                    base_path: base_path.clone(),
+                    network_path: base_path.join("network"),
                     listen_on: dsn_options.dsn_listen_on,
                     bootstrap_nodes: dsn_bootstrap_nodes,
                     reserved_peers: dsn_options.dsn_reserved_peers,
@@ -843,7 +842,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
             let domain_starter = DomainInstanceStarter {
                 domain_cli,
                 base_path,
-                tokio_handle,
+                tokio_handle: Handle::current(),
                 consensus_client: consensus_chain_node.client.clone(),
                 consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory::new(
                     consensus_chain_node.transaction_pool.clone(),

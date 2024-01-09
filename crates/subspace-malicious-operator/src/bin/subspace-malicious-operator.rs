@@ -177,7 +177,7 @@ fn main() -> Result<(), Error> {
 
                 DsnConfig {
                     keypair,
-                    base_path: consensus_chain_config.base_path.path().into(),
+                    network_path: consensus_chain_config.base_path.path().join("network"),
                     listen_on: vec![
                         "/ip4/0.0.0.0/udp/30433/quic-v1"
                             .parse::<Multiaddr>()
