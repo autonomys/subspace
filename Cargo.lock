@@ -12009,6 +12009,7 @@ dependencies = [
  "domain-runtime-primitives",
  "domain-service",
  "evm-domain-runtime",
+ "fdlimit",
  "fp-evm",
  "frame-benchmarking",
  "frame-benchmarking-cli",
@@ -12016,7 +12017,6 @@ dependencies = [
  "futures",
  "hex",
  "hex-literal",
- "log",
  "mimalloc",
  "parity-scale-codec",
  "sc-chain-spec",
@@ -12031,7 +12031,6 @@ dependencies = [
  "sc-storage-monitor",
  "sc-subspace-chain-specs",
  "sc-telemetry",
- "sc-tracing",
  "sc-transaction-pool-api",
  "sc-utils",
  "serde_json",
@@ -12052,8 +12051,11 @@ dependencies = [
  "subspace-runtime-primitives",
  "subspace-service",
  "substrate-build-script-utils",
+ "supports-color",
  "thiserror",
  "tokio",
+ "tracing",
+ "tracing-subscriber 0.3.17",
 ]
 
 [[package]]

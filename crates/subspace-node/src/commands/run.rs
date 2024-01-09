@@ -6,7 +6,7 @@ use cross_domain_message_gossip::GossipWorkerBuilder;
 use domain_client_operator::Bootstrapper;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
 use futures::FutureExt;
-use sc_cli::{print_node_infos, CliConfiguration, RunCmd, Signals, SubstrateCli};
+use sc_cli::{print_node_infos, CliConfiguration, RunCmd, Signals};
 use sc_consensus_slots::SlotProportion;
 use sc_network::config::NodeKeyConfig;
 use sc_service::config::KeystoreConfig;
@@ -21,6 +21,10 @@ use subspace_networking::libp2p::Multiaddr;
 use subspace_runtime::{Block, ExecutorDispatch, RuntimeApi};
 use subspace_service::{DsnConfig, SubspaceConfiguration, SubspaceNetworking};
 use tokio::runtime::Handle;
+use tracing::{debug, error, info_span, warn, Span};
+use tracing_subscriber::filter::LevelFilter;
+use tracing_subscriber::prelude::*;
+use tracing_subscriber::{fmt, EnvFilter};
 
 fn parse_pot_external_entropy(s: &str) -> Result<Vec<u8>, hex::FromHexError> {
     hex::decode(s)
@@ -160,13 +164,53 @@ struct TimekeeperOptions {
     timekeeper_cpu_cores: HashSet<usize>,
 }
 
+pub(crate) fn raise_fd_limit() {
+    match fdlimit::raise_fd_limit() {
+        Ok(fdlimit::Outcome::LimitRaised { from, to }) => {
+            debug!(
+                "Increased file descriptor limit from previous (most likely soft) limit {} to \
+                new (most likely hard) limit {}",
+                from, to
+            );
+        }
+        Ok(fdlimit::Outcome::Unsupported) => {
+            // Unsupported platform (non-Linux)
+        }
+        Err(error) => {
+            warn!(
+                "Failed to increase file descriptor limit for the process due to an error: {}.",
+                error
+            );
+        }
+    }
+}
+
 /// Default run command for node
 #[tokio::main]
 pub async fn run(run_options: RunOptions) -> Result<(), Error> {
+    tracing_subscriber::registry()
+        .with(
+            fmt::layer()
+                // TODO: Workaround for https://github.com/tokio-rs/tracing/issues/2214, also on
+                //  Windows terminal doesn't support the same colors as bash does
+                .with_ansi(if cfg!(windows) {
+                    false
+                } else {
+                    supports_color::on(supports_color::Stream::Stderr).is_some()
+                })
+                .with_filter(
+                    EnvFilter::builder()
+                        .with_default_directive(LevelFilter::INFO.into())
+                        .from_env_lossy(),
+                ),
+        )
+        .init();
+    raise_fd_limit();
+
     let signals = Signals::capture()?;
 
     let RunOptions {
-        mut run,
+        run,
         pot_external_entropy,
         dsn_options,
         sync_from_dsn,
@@ -176,8 +220,6 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
     } = run_options;
     let dev = run.shared_params.dev;
 
-    // Force UTC logs for Subspace node
-    run.shared_params.use_utc_log_time = true;
     let mut consensus_chain_config =
         run.create_configuration(&SubspaceCliPlaceholder, Handle::current())?;
 
@@ -199,17 +241,12 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
     // In case there are bootstrap nodes specified explicitly, ignore those that are in the
     // chain spec
     if !run.network_params.bootnodes.is_empty() {
-        consensus_chain_config.network.boot_nodes = run.network_params.bootnodes.clone();
+        consensus_chain_config.network.boot_nodes = run.network_params.bootnodes;
     }
 
-    run.init(
-        &SubspaceCliPlaceholder::support_url(),
-        &SubspaceCliPlaceholder::impl_version(),
-        |_, _| {},
-        &consensus_chain_config,
-    )?;
-
     print_node_infos::<SubspaceCliPlaceholder>(&consensus_chain_config);
+
+    let root_span = Span::current();
 
     let mut task_manager = {
         let tokio_handle = consensus_chain_config.tokio_handle.clone();
@@ -235,10 +272,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
             .clone()
             .unwrap_or_default();
         let consensus_chain_node = {
-            let span = sc_tracing::tracing::info_span!(
-                sc_tracing::logging::PREFIX_LOG_SPAN,
-                name = "Consensus"
-            );
+            let span = info_span!("Consensus");
             let _enter = span.enter();
 
             let pot_external_entropy =
@@ -347,10 +381,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
 
         // Run a domain node.
         if !domain_args.is_empty() {
-            let span = sc_tracing::tracing::info_span!(
-                sc_tracing::logging::PREFIX_LOG_SPAN,
-                name = "Domain"
-            );
+            let span = info_span!(parent: &root_span, "Domain");
             let _enter = span.enter();
 
             let mut domain_cli = DomainCli::new(domain_args.into_iter());
@@ -374,10 +405,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
             // start relayer for consensus chain
             let mut xdm_gossip_worker_builder = GossipWorkerBuilder::new();
             {
-                let span = sc_tracing::tracing::info_span!(
-                    sc_tracing::logging::PREFIX_LOG_SPAN,
-                    name = "Consensus"
-                );
+                let span = info_span!(parent: &root_span, "Consensus");
                 let _enter = span.enter();
 
                 let relayer_worker =
@@ -461,14 +489,14 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                     Box::pin(async move {
                         let bootstrap_result =
                             match bootstrapper.fetch_domain_bootstrap_info(domain_id).await {
-                                Err(err) => {
-                                    log::error!("Domain bootstrapper exited with an error {err:?}");
+                                Err(error) => {
+                                    error!(%error, "Domain bootstrapper exited with an error");
                                     return;
                                 }
                                 Ok(res) => res,
                             };
                         if let Err(error) = domain_starter.start(bootstrap_result).await {
-                            log::error!("Domain starter exited with an error {error:?}");
+                            error!(%error, "Domain starter exited with an error");
                         }
                     }),
                 );
