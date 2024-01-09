@@ -105,7 +105,7 @@ pub struct RunOptions {
     /// * `--tmp` (unless `--base-path` specified explicitly)
     /// * `--force-synced`
     /// * `--force-authoring`
-    /// * `--enable-private-ips`
+    /// * `--allow-private-ips`
     /// * `--rpc-cors all` (unless specified explicitly)
     /// * `--dsn-disable-bootstrap-on-start`
     /// * `--timekeeper`
@@ -268,7 +268,7 @@ struct SubstrateNetworkOptions {
     /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses
     /// in Kademlia DHT.
     #[arg(long, default_value_t = false)]
-    enable_private_ips: bool,
+    allow_private_ips: bool,
 
     /// Specify the number of outgoing connections we're trying to maintain.
     #[arg(long, default_value_t = 8)]
@@ -435,7 +435,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
             tmp = true;
             force_synced = true;
             force_authoring = true;
-            network_options.enable_private_ips = true;
+            network_options.allow_private_ips = true;
             dsn_options.dsn_disable_bootstrap_on_start = true;
             timekeeper_options.timekeeper = true;
         }
@@ -530,7 +530,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
             node_name: name.unwrap_or_else(generate_node_name),
             transport: TransportConfig::Normal {
                 enable_mdns: false,
-                allow_private_ip: network_options.enable_private_ips,
+                allow_private_ip: network_options.allow_private_ips,
             },
             // Substrate's default
             max_parallel_downloads: 5,
@@ -541,7 +541,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
             // Substrate's default
             enable_dht_random_walk: true,
             // Substrate's default
-            allow_non_globals_in_dht: network_options.enable_private_ips,
+            allow_non_globals_in_dht: network_options.allow_private_ips,
             // Substrate's default
             kademlia_disjoint_query_paths: false,
             kademlia_replication_factor: NonZeroUsize::new(DEFAULT_KADEMLIA_REPLICATION_FACTOR)
@@ -707,7 +707,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                     listen_on: dsn_options.dsn_listen_on,
                     bootstrap_nodes: dsn_bootstrap_nodes,
                     reserved_peers: dsn_options.dsn_reserved_peers,
-                    allow_non_global_addresses_in_dht: network_options.enable_private_ips,
+                    allow_non_global_addresses_in_dht: network_options.allow_private_ips,
                     max_in_connections: dsn_options.dsn_in_connections,
                     max_out_connections: dsn_options.dsn_out_connections,
                     max_pending_in_connections: dsn_options.dsn_pending_in_connections,
