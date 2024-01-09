@@ -48,15 +48,15 @@ subspace-node [consensus-chain-args] -- [domain-args]
 ```
 
 Example:
-Start a node as Operator on `local` chain:
+Start a node as Operator on `dev` chain:
 ```bash
-target/production/subspace-node \
-    --chain local \
+target/production/subspace-node run \
+    --chain dev \
     --rpc-external \
     --node-key 0000000000000000000000000000000000000000000000000000000000000001 \
     -- \
     --domain-id 0 \
-    --chain local \
+    --chain dev \
     --operator \
     --keystore-path /tmp/keystore \
     --rpc-external
@@ -64,7 +64,7 @@ target/production/subspace-node \
 
 For `dev` chain, you can use `--dev` flag that combines `--chain dev` and `--operator`.
 ```bash
-target/production/subspace-node \
+target/production/subspace-node run \
     --dev \
     --rpc-external \
     --node-key 0000000000000000000000000000000000000000000000000000000000000001 \
@@ -76,7 +76,7 @@ target/production/subspace-node \
 
 Run another node and sync the consensus chain from the consensus node started earlier:
 ```bash
-target/production/subspace-node \
+target/production/subspace-node run \
     --dev \
     --rpc-external \
     --bootnodes /ip4/127.0.0.1/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp \

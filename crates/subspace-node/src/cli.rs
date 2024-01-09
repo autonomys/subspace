@@ -82,10 +82,13 @@ impl PurgeChainCmd {
     }
 }
 
-/// Utilities for working with a node.
+/// Commands for working with a node.
 #[derive(Debug, clap::Subcommand)]
 #[allow(clippy::large_enum_variant)]
 pub enum Subcommand {
+    /// Run blockchain node
+    Run(RunOptions),
+
     /// Key management cli utilities
     #[clap(subcommand)]
     Key(sc_cli::KeySubcommand),
@@ -135,21 +138,21 @@ fn parse_pot_external_entropy(s: &str) -> Result<Vec<u8>, hex::FromHexError> {
     args_conflicts_with_subcommands = true,
     subcommand_negates_reqs = true
 )]
+#[clap(about, version)]
 pub struct Cli {
     /// Various utility commands.
     #[clap(subcommand)]
-    pub subcommand: Option<Subcommand>,
-
-    /// Options for running a node
-    #[clap(flatten)]
-    pub run: RunOptions,
+    pub subcommand: Subcommand,
 
     /// External entropy, used initially when PoT chain starts to derive the first seed
     #[arg(long, value_parser = parse_pot_external_entropy)]
     pub pot_external_entropy: Option<Vec<u8>>,
 }
 
-impl SubstrateCli for Cli {
+/// Fake Subspace CLI just to satisfy Substrate's API
+pub struct SubspaceCliPlaceholder;
+
+impl SubstrateCli for SubspaceCliPlaceholder {
     fn impl_name() -> String {
         "Subspace".into()
     }

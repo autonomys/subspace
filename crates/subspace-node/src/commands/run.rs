@@ -1,4 +1,4 @@
-use crate::cli::Cli;
+use crate::cli::SubspaceCliPlaceholder;
 use crate::domain::{DomainCli, DomainInstanceStarter};
 use crate::{derive_pot_external_entropy, set_default_ss58_version, Error, PosTable};
 use clap::Parser;
@@ -166,23 +166,20 @@ struct TimekeeperOptions {
 }
 
 /// Default run command for node
-pub fn run(cli: Cli) -> Result<(), Error> {
-    let mut runner = cli.create_runner(&cli.run.run)?;
-
-    let Cli {
-        subcommand: _,
-        run:
-            RunOptions {
-                run,
-                dsn_options,
-                sync_from_dsn,
-                storage_monitor,
-                timekeeper_options,
-                domain_args,
-            },
-        pot_external_entropy,
-    } = cli;
+pub fn run(run_options: RunOptions, pot_external_entropy: Option<Vec<u8>>) -> Result<(), Error> {
+    let RunOptions {
+        mut run,
+        dsn_options,
+        sync_from_dsn,
+        storage_monitor,
+        timekeeper_options,
+        domain_args,
+    } = run_options;
     let dev = run.shared_params.dev;
+
+    // Force UTC logs for Subspace node
+    run.shared_params.use_utc_log_time = true;
+    let mut runner = SubspaceCliPlaceholder.create_runner(&run)?;
 
     set_default_ss58_version(&runner.config().chain_spec);
     // Change default paths to Subspace structure
@@ -200,6 +197,7 @@ pub fn run(cli: Cli) -> Result<(), Error> {
             ));
         }
     }
+
     runner.run_node_until_exit(|mut consensus_chain_config| async move {
         // In case there are bootstrap nodes specified explicitly, ignore those that are in the
         // chain spec

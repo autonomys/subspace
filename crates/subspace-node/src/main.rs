@@ -23,8 +23,9 @@ mod chain_spec_utils;
 mod cli;
 mod domain;
 
-use crate::cli::{Cli, Subcommand};
+use crate::cli::{Cli, Subcommand, SubspaceCliPlaceholder};
 use crate::domain::{DomainCli, DomainSubcommand};
+use clap::Parser;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
 use evm_domain_runtime::ExecutorDispatch as EVMDomainExecutorDispatch;
 use frame_benchmarking_cli::BenchmarkCmd;
@@ -120,18 +121,19 @@ fn derive_pot_external_entropy(
 }
 
 fn main() -> Result<(), Error> {
-    let mut cli = Cli::from_args();
-    // Force UTC logs for Subspace node
-    cli.run.shared_params.use_utc_log_time = true;
+    let cli = Cli::parse();
 
-    match &cli.subcommand {
-        Some(Subcommand::Key(cmd)) => cmd.run(&cli)?,
-        Some(Subcommand::BuildSpec(cmd)) => {
-            let runner = cli.create_runner(cmd)?;
+    match cli.subcommand {
+        Subcommand::Run(run_options) => {
+            commands::run(run_options, cli.pot_external_entropy)?;
+        }
+        Subcommand::Key(cmd) => cmd.run(&SubspaceCliPlaceholder)?,
+        Subcommand::BuildSpec(cmd) => {
+            let runner = SubspaceCliPlaceholder.create_runner(&cmd)?;
             runner.sync_run(|config| cmd.run(config.chain_spec, config.network))?
         }
-        Some(Subcommand::CheckBlock(cmd)) => {
-            let runner = cli.create_runner(cmd)?;
+        Subcommand::CheckBlock(cmd) => {
+            let runner = SubspaceCliPlaceholder.create_runner(&cmd)?;
             set_default_ss58_version(&runner.config().chain_spec);
             runner.async_run(|config| {
                 let PartialComponents {
@@ -149,8 +151,8 @@ fn main() -> Result<(), Error> {
                 ))
             })?;
         }
-        Some(Subcommand::ExportBlocks(cmd)) => {
-            let runner = cli.create_runner(cmd)?;
+        Subcommand::ExportBlocks(cmd) => {
+            let runner = SubspaceCliPlaceholder.create_runner(&cmd)?;
             set_default_ss58_version(&runner.config().chain_spec);
             runner.async_run(|config| {
                 let PartialComponents {
@@ -168,8 +170,8 @@ fn main() -> Result<(), Error> {
                 ))
             })?;
         }
-        Some(Subcommand::ExportState(cmd)) => {
-            let runner = cli.create_runner(cmd)?;
+        Subcommand::ExportState(cmd) => {
+            let runner = SubspaceCliPlaceholder.create_runner(&cmd)?;
             set_default_ss58_version(&runner.config().chain_spec);
             runner.async_run(|config| {
                 let PartialComponents {
@@ -187,8 +189,8 @@ fn main() -> Result<(), Error> {
                 ))
             })?;
         }
-        Some(Subcommand::ImportBlocks(cmd)) => {
-            let runner = cli.create_runner(cmd)?;
+        Subcommand::ImportBlocks(cmd) => {
+            let runner = SubspaceCliPlaceholder.create_runner(&cmd)?;
             set_default_ss58_version(&runner.config().chain_spec);
             runner.async_run(|config| {
                 let PartialComponents {
@@ -206,7 +208,7 @@ fn main() -> Result<(), Error> {
                 ))
             })?;
         }
-        Some(Subcommand::PurgeChain(cmd)) => {
+        Subcommand::PurgeChain(cmd) => {
             // This is a compatibility layer to make sure we wipe old data from disks of our users
             if let Some(base_dir) = dirs::data_local_dir() {
                 for chain in &[
@@ -227,12 +229,12 @@ fn main() -> Result<(), Error> {
                 let _ = std::fs::remove_dir_all(base_dir.join("subspace-node").join("domain-1"));
             }
 
-            let runner = cli.create_runner(&cmd.base)?;
+            let runner = SubspaceCliPlaceholder.create_runner(&cmd.base)?;
 
             runner.sync_run(|consensus_chain_config| cmd.run(consensus_chain_config))?;
         }
-        Some(Subcommand::Revert(cmd)) => {
-            let runner = cli.create_runner(cmd)?;
+        Subcommand::Revert(cmd) => {
+            let runner = SubspaceCliPlaceholder.create_runner(&cmd)?;
             set_default_ss58_version(&runner.config().chain_spec);
             runner.async_run(|config| {
                 let PartialComponents {
@@ -250,13 +252,13 @@ fn main() -> Result<(), Error> {
                 ))
             })?;
         }
-        Some(Subcommand::ChainInfo(cmd)) => {
-            let runner = cli.create_runner(cmd)?;
+        Subcommand::ChainInfo(cmd) => {
+            let runner = SubspaceCliPlaceholder.create_runner(&cmd)?;
             runner.sync_run(|config| cmd.run::<Block>(&config))?;
         }
         #[cfg(feature = "runtime-benchmarks")]
-        Some(Subcommand::Benchmark(cmd)) => {
-            let runner = cli.create_runner(cmd)?;
+        Subcommand::Benchmark(cmd) => {
+            let runner = SubspaceCliPlaceholder.create_runner(&cmd)?;
 
             runner.sync_run(|config| {
                 // This switch needs to be in the client, since the client decides
@@ -334,9 +336,9 @@ fn main() -> Result<(), Error> {
                 }
             })?;
         }
-        Some(Subcommand::Domain(domain_cmd)) => match domain_cmd {
+        Subcommand::Domain(domain_cmd) => match domain_cmd {
             DomainSubcommand::Benchmark(cmd) => {
-                let runner = cli.create_runner(cmd)?;
+                let runner = SubspaceCliPlaceholder.create_runner(&cmd)?;
                 runner.sync_run(|consensus_chain_config| {
                     let domain_cli = DomainCli::new(
                         // pass the domain-id manually for benchmark since this is
@@ -373,7 +375,7 @@ fn main() -> Result<(), Error> {
             }
             DomainSubcommand::BuildGenesisStorage(cmd) => cmd.run()?,
             DomainSubcommand::ExportExecutionReceipt(cmd) => {
-                let runner = cli.create_runner(cmd)?;
+                let runner = SubspaceCliPlaceholder.create_runner(&cmd)?;
                 runner.sync_run(|consensus_chain_config| {
                     let domain_cli = DomainCli::new(cmd.domain_args.clone().into_iter());
                     let domain_config = domain_cli
@@ -401,9 +403,6 @@ fn main() -> Result<(), Error> {
             }
             _ => unimplemented!("Domain subcommand"),
         },
-        None => {
-            commands::run(cli)?;
-        }
     }
 
     Ok(())

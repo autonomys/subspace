@@ -59,7 +59,7 @@ target/production/subspace-node --version
 
 Start a single node development chain:
 ```bash
-target/production/subspace-node \
+target/production/subspace-node run \
     --dev \
     --rpc-external \
     --node-key 0000000000000000000000000000000000000000000000000000000000000001
@@ -83,7 +83,7 @@ Windows
 
 You can now run another full node and sync the chain from the node started earlier:
 ```bash
-target/production/subspace-node \
+target/production/subspace-node run \
     --dev \
     --rpc-external \
     --bootnodes /ip4/127.0.0.1/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp
