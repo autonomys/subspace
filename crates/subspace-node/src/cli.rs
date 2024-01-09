@@ -14,12 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
-//! Subspace Node library.
-
-pub mod chain_spec;
-mod chain_spec_utils;
-pub mod domain;
-
+use crate::chain_spec;
 use clap::Parser;
 use sc_cli::{RunCmd, SubstrateCli};
 use sc_service::ChainSpec;
@@ -125,7 +120,7 @@ pub enum Subcommand {
 
     /// Run domain sub-commands.
     #[clap(subcommand)]
-    Domain(domain::cli::Subcommand),
+    Domain(crate::domain::cli::Subcommand),
 
     /// Sub-commands concerned with benchmarking.
     #[cfg(feature = "runtime-benchmarks")]

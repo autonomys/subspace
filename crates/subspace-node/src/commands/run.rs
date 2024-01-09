@@ -1,100 +1,45 @@
-// Copyright (C) 2023 Subspace Labs, Inc.
-// SPDX-License-Identifier: GPL-3.0-or-later
-
-// This program is free software: you can redistribute it and/or modify
-// it under the terms of the GNU General Public License as published by
-// the Free Software Foundation, either version 3 of the License, or
-// (at your option) any later version.
-
-// This program is distributed in the hope that it will be useful,
-// but WITHOUT ANY WARRANTY; without even the implied warranty of
-// MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
-// GNU General Public License for more details.
-
-// You should have received a copy of the GNU General Public License
-// along with this program. If not, see <https://www.gnu.org/licenses/>.
-
-//! Subspace malicious operator node.
-
+use crate::cli::Cli;
+use crate::domain::{DomainCli, DomainInstanceStarter};
+use crate::{pot_external_entropy, set_default_ss58_version, Error, PosTable};
 use cross_domain_message_gossip::GossipWorkerBuilder;
 use domain_client_operator::Bootstrapper;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
-use sc_cli::{ChainSpec, SubstrateCli};
+use sc_cli::SubstrateCli;
 use sc_consensus_slots::SlotProportion;
+use sc_network::config::NodeKeyConfig;
+use sc_service::config::KeystoreConfig;
+use sc_service::DatabaseSource;
+use sc_storage_monitor::StorageMonitorService;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::tracing_unbounded;
-use sp_core::crypto::Ss58AddressFormat;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_messenger::messages::ChainId;
-use subspace_malicious_operator::malicious_domain_instance_starter::DomainInstanceStarter;
-use subspace_malicious_operator::{Cli, DomainCli};
-use subspace_networking::libp2p::Multiaddr;
-use subspace_proof_of_space::chia::ChiaTable;
 use subspace_runtime::{Block, ExecutorDispatch, RuntimeApi};
 use subspace_service::{DsnConfig, SubspaceConfiguration, SubspaceNetworking};
 
-#[global_allocator]
-static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
-
-type PosTable = ChiaTable;
-
-/// Subspace node error.
-#[derive(thiserror::Error, Debug)]
-pub enum Error {
-    /// Subspace service error.
-    #[error(transparent)]
-    SubspaceService(#[from] subspace_service::Error),
-
-    /// CLI error.
-    #[error(transparent)]
-    SubstrateCli(#[from] sc_cli::Error),
-
-    /// Substrate service error.
-    #[error(transparent)]
-    SubstrateService(#[from] sc_service::Error),
-
-    /// Other kind of error.
-    #[error("Other: {0}")]
-    Other(String),
-}
-
-impl From<String> for Error {
-    #[inline]
-    fn from(s: String) -> Self {
-        Self::Other(s)
-    }
-}
-
-fn set_default_ss58_version<C: AsRef<dyn ChainSpec>>(chain_spec: C) {
-    let maybe_ss58_address_format = chain_spec
-        .as_ref()
-        .properties()
-        .get("ss58Format")
-        .map(|v| {
-            v.as_u64()
-                .expect("ss58Format must always be an unsigned number; qed")
-        })
-        .map(|v| {
-            v.try_into()
-                .expect("ss58Format must always be within u16 range; qed")
-        })
-        .map(Ss58AddressFormat::custom);
-
-    if let Some(ss58_address_format) = maybe_ss58_address_format {
-        sp_core::crypto::set_default_ss58_version(ss58_address_format);
-    }
-}
-
-fn main() -> Result<(), Error> {
-    let mut cli = Cli::from_args();
-    // Force UTC logs for Subspace node
-    cli.run.shared_params.use_utc_log_time = true;
-
-    let runner = cli.create_runner(&cli.run)?;
+/// Default run command for node
+pub fn run(cli: Cli) -> Result<(), Error> {
+    let mut runner = cli.create_runner(&cli.run)?;
     set_default_ss58_version(&runner.config().chain_spec);
+    // Change default paths to Subspace structure
+    {
+        let config = runner.config_mut();
+        config.database = DatabaseSource::ParityDb {
+            path: config.base_path.path().join("db"),
+        };
+        // Consensus node doesn't use keystore
+        config.keystore = KeystoreConfig::InMemory;
+        if let Some(net_config_path) = &mut config.network.net_config_path {
+            *net_config_path = config.base_path.path().join("network");
+            config.network.node_key = NodeKeyConfig::Ed25519(sc_network::config::Secret::File(
+                net_config_path.join("secret_ed25519"),
+            ));
+        }
+    }
     runner.run_node_until_exit(|consensus_chain_config| async move {
         let tokio_handle = consensus_chain_config.tokio_handle.clone();
         let base_path = consensus_chain_config.base_path.path().to_path_buf();
+        let database_source = consensus_chain_config.database.clone();
 
         let domains_bootstrap_nodes: serde_json::map::Map<String, serde_json::Value> =
             consensus_chain_config
@@ -114,24 +59,14 @@ fn main() -> Result<(), Error> {
             .state_pruning
             .clone()
             .unwrap_or_default();
-        let (consensus_chain_node, consensus_keystore) = {
+        let consensus_chain_node = {
             let span = sc_tracing::tracing::info_span!(
                 sc_tracing::logging::PREFIX_LOG_SPAN,
                 name = "Consensus"
             );
             let _enter = span.enter();
 
-            let pot_external_entropy: Vec<u8> = consensus_chain_config
-                .chain_spec
-                .properties()
-                .get("potExternalEntropy")
-                .map(|d| serde_json::from_value(d.clone()))
-                .transpose()
-                .map_err(|error| {
-                    sc_service::Error::Other(format!("Failed to decode PoT initial key: {error:?}"))
-                })?
-                .flatten()
-                .unwrap_or_default();
+            let pot_external_entropy = pot_external_entropy(&consensus_chain_config, &cli)?;
 
             let dsn_config = {
                 let network_keypair = consensus_chain_config
@@ -145,18 +80,22 @@ fn main() -> Result<(), Error> {
                         ))
                     })?;
 
-                let dsn_bootstrap_nodes = consensus_chain_config
-                    .chain_spec
-                    .properties()
-                    .get("dsnBootstrapNodes")
-                    .map(|d| serde_json::from_value(d.clone()))
-                    .transpose()
-                    .map_err(|error| {
-                        sc_service::Error::Other(format!(
-                            "Failed to decode DSN bootstrap nodes: {error:?}"
-                        ))
-                    })?
-                    .unwrap_or_default();
+                let dsn_bootstrap_nodes = if cli.dsn_bootstrap_nodes.is_empty() {
+                    consensus_chain_config
+                        .chain_spec
+                        .properties()
+                        .get("dsnBootstrapNodes")
+                        .map(|d| serde_json::from_value(d.clone()))
+                        .transpose()
+                        .map_err(|error| {
+                            sc_service::Error::Other(format!(
+                                "Failed to decode DSN bootstrap nodes: {error:?}"
+                            ))
+                        })?
+                        .unwrap_or_default()
+                } else {
+                    cli.dsn_bootstrap_nodes
+                };
 
                 // TODO: Libp2p versions for Substrate and Subspace diverged.
                 // We get type compatibility by encoding and decoding the original keypair.
@@ -171,36 +110,34 @@ fn main() -> Result<(), Error> {
 
                 DsnConfig {
                     keypair,
-                    base_path: consensus_chain_config.base_path.path().into(),
-                    listen_on: vec![
-                        "/ip4/0.0.0.0/udp/30433/quic-v1"
-                            .parse::<Multiaddr>()
-                            .expect("Manual setting"),
-                        "/ip4/0.0.0.0/tcp/30433"
-                            .parse::<Multiaddr>()
-                            .expect("Manual setting"),
-                    ],
+                    base_path: base_path.clone(),
+                    listen_on: cli.dsn_listen_on,
                     bootstrap_nodes: dsn_bootstrap_nodes,
-                    reserved_peers: vec![],
-                    allow_non_global_addresses_in_dht: false,
-                    max_in_connections: 50,
-                    max_out_connections: 150,
-                    max_pending_in_connections: 100,
-                    max_pending_out_connections: 150,
-                    external_addresses: vec![],
-                    disable_bootstrap_on_start: false,
+                    reserved_peers: cli.dsn_reserved_peers,
+                    // Override enabling private IPs with --dev
+                    allow_non_global_addresses_in_dht: cli.dsn_enable_private_ips
+                        || cli.run.shared_params.dev,
+                    max_in_connections: cli.dsn_in_connections,
+                    max_out_connections: cli.dsn_out_connections,
+                    max_pending_in_connections: cli.dsn_pending_in_connections,
+                    max_pending_out_connections: cli.dsn_pending_out_connections,
+                    external_addresses: cli.dsn_external_addresses,
+                    // Override initial Kademlia bootstrapping  with --dev
+                    disable_bootstrap_on_start: cli.dsn_disable_bootstrap_on_start
+                        || cli.run.shared_params.dev,
                 }
             };
 
             let consensus_chain_config = SubspaceConfiguration {
                 base: consensus_chain_config,
                 // Domain node needs slots notifications for bundle production.
-                force_new_slot_notifications: true,
+                force_new_slot_notifications: !cli.domain_args.is_empty(),
                 subspace_networking: SubspaceNetworking::Create { config: dsn_config },
-                sync_from_dsn: true,
-                enable_subspace_block_relay: true,
-                is_timekeeper: false,
-                timekeeper_cpu_cores: Default::default(),
+                sync_from_dsn: cli.sync_from_dsn,
+                enable_subspace_block_relay: cli.enable_subspace_block_relay,
+                // Timekeeper is enabled if `--dev` is used
+                is_timekeeper: cli.timekeeper || cli.run.shared_params.dev,
+                timekeeper_cpu_cores: cli.timekeeper_cpu_cores,
             };
 
             let partial_components = subspace_service::new_partial::<
@@ -214,9 +151,7 @@ fn main() -> Result<(), Error> {
                 sc_service::Error::Other(format!("Failed to build a full subspace node: {error:?}"))
             })?;
 
-            let keystore = partial_components.keystore_container.keystore();
-
-            let consensus_chain_node = subspace_service::new_full::<PosTable, _, _>(
+            subspace_service::new_full::<PosTable, _, _>(
                 consensus_chain_config,
                 partial_components,
                 true,
@@ -225,17 +160,20 @@ fn main() -> Result<(), Error> {
             .await
             .map_err(|error| {
                 sc_service::Error::Other(format!("Failed to build a full subspace node: {error:?}"))
-            })?;
-
-            (consensus_chain_node, keystore)
+            })?
         };
 
+        StorageMonitorService::try_spawn(
+            cli.storage_monitor,
+            database_source,
+            &consensus_chain_node.task_manager.spawn_essential_handle(),
+        )
+        .map_err(|error| {
+            sc_service::Error::Other(format!("Failed to start storage monitor: {error:?}"))
+        })?;
+
         // Run a domain node.
-        if cli.domain_args.is_empty() {
-            return Err(Error::Other(
-                "The domain args must be specified for the malicious operator".to_string(),
-            ));
-        } else {
+        if !cli.domain_args.is_empty() {
             let span = sc_tracing::tracing::info_span!(
                 sc_tracing::logging::PREFIX_LOG_SPAN,
                 name = "Domain"
@@ -244,7 +182,7 @@ fn main() -> Result<(), Error> {
 
             let mut domain_cli = DomainCli::new(cli.domain_args.into_iter());
 
-            let domain_id = domain_cli.domain_id.into();
+            let domain_id = domain_cli.domain_id;
 
             if domain_cli.run.network_params.bootnodes.is_empty() {
                 domain_cli.run.network_params.bootnodes = domains_bootstrap_nodes
@@ -326,7 +264,6 @@ fn main() -> Result<(), Error> {
                 base_path,
                 tokio_handle,
                 consensus_client: consensus_chain_node.client.clone(),
-                consensus_keystore,
                 consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory::new(
                     consensus_chain_node.transaction_pool.clone(),
                 ),
@@ -381,20 +318,5 @@ fn main() -> Result<(), Error> {
 
         consensus_chain_node.network_starter.start_network();
         Ok::<_, Error>(consensus_chain_node.task_manager)
-    })?;
-
-    Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use sc_cli::Database;
-
-    #[test]
-    fn rocksdb_disabled_in_substrate() {
-        assert_eq!(
-            Database::variants(),
-            &["paritydb", "paritydb-experimental", "auto"],
-        );
-    }
+    })
 }
