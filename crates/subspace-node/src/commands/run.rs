@@ -5,7 +5,8 @@ use clap::Parser;
 use cross_domain_message_gossip::GossipWorkerBuilder;
 use domain_client_operator::Bootstrapper;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
-use sc_cli::{RunCmd, SubstrateCli};
+use futures::FutureExt;
+use sc_cli::{print_node_infos, CliConfiguration, RunCmd, Signals, SubstrateCli};
 use sc_consensus_slots::SlotProportion;
 use sc_network::config::NodeKeyConfig;
 use sc_service::config::KeystoreConfig;
@@ -16,10 +17,10 @@ use sc_utils::mpsc::tracing_unbounded;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_messenger::messages::ChainId;
 use std::collections::HashSet;
-use std::ops::{Deref, DerefMut};
 use subspace_networking::libp2p::Multiaddr;
 use subspace_runtime::{Block, ExecutorDispatch, RuntimeApi};
 use subspace_service::{DsnConfig, SubspaceConfiguration, SubspaceNetworking};
+use tokio::runtime::Handle;
 
 fn parse_pot_external_entropy(s: &str) -> Result<Vec<u8>, hex::FromHexError> {
     hex::decode(s)
@@ -85,20 +86,6 @@ pub struct RunOptions {
     /// subspace-node [consensus-chain-args] -- [domain-args]
     #[arg(raw = true)]
     domain_args: Vec<String>,
-}
-
-impl Deref for RunOptions {
-    type Target = RunCmd;
-
-    fn deref(&self) -> &Self::Target {
-        &self.run
-    }
-}
-
-impl DerefMut for RunOptions {
-    fn deref_mut(&mut self) -> &mut Self::Target {
-        &mut self.run
-    }
 }
 
 /// Options for DSN
@@ -174,7 +161,10 @@ struct TimekeeperOptions {
 }
 
 /// Default run command for node
-pub fn run(run_options: RunOptions) -> Result<(), Error> {
+#[tokio::main]
+pub async fn run(run_options: RunOptions) -> Result<(), Error> {
+    let signals = Signals::capture()?;
+
     let RunOptions {
         mut run,
         pot_external_entropy,
@@ -188,12 +178,17 @@ pub fn run(run_options: RunOptions) -> Result<(), Error> {
 
     // Force UTC logs for Subspace node
     run.shared_params.use_utc_log_time = true;
-    let mut runner = SubspaceCliPlaceholder.create_runner(&run)?;
+    let mut config = run.create_configuration(&SubspaceCliPlaceholder, Handle::current())?;
+    run.init(
+        &SubspaceCliPlaceholder::support_url(),
+        &SubspaceCliPlaceholder::impl_version(),
+        |_, _| {},
+        &config,
+    )?;
 
-    set_default_ss58_version(&runner.config().chain_spec);
+    set_default_ss58_version(&config.chain_spec);
     // Change default paths to Subspace structure
     {
-        let config = runner.config_mut();
         config.database = DatabaseSource::ParityDb {
             path: config.base_path.path().join("db"),
         };
@@ -207,7 +202,11 @@ pub fn run(run_options: RunOptions) -> Result<(), Error> {
         }
     }
 
-    runner.run_node_until_exit(|mut consensus_chain_config| async move {
+    print_node_infos::<SubspaceCliPlaceholder>(&config);
+
+    let mut task_manager = {
+        let mut consensus_chain_config = config;
+
         // In case there are bootstrap nodes specified explicitly, ignore those that are in the
         // chain spec
         if !run.network_params.bootnodes.is_empty() {
@@ -492,6 +491,12 @@ pub fn run(run_options: RunOptions) -> Result<(), Error> {
         };
 
         consensus_chain_node.network_starter.start_network();
-        Ok(consensus_chain_node.task_manager)
-    })
+
+        consensus_chain_node.task_manager
+    };
+
+    signals
+        .run_until_signal(task_manager.future().fuse())
+        .await
+        .map_err(Into::into)
 }
