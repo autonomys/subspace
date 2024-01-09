@@ -310,7 +310,6 @@ impl BuildGenesisStorageCmd {
             "gemini-3g" => evm_chain_spec::get_testnet_genesis_by_spec_id(SpecId::Gemini),
             "devnet" => evm_chain_spec::get_testnet_genesis_by_spec_id(SpecId::DevNet),
             "dev" => evm_chain_spec::get_testnet_genesis_by_spec_id(SpecId::Dev),
-            "" | "local" => evm_chain_spec::get_testnet_genesis_by_spec_id(SpecId::Local),
             unknown_id => {
                 eprintln!(
                     "unknown chain {unknown_id:?}, expected gemini-3g, devnet, dev, or local",

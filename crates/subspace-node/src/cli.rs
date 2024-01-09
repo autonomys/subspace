@@ -169,7 +169,6 @@ impl SubstrateCli for SubspaceCliPlaceholder {
             "devnet" => chain_spec::devnet_config()?,
             "devnet-compiled" => chain_spec::devnet_config_compiled()?,
             "dev" => chain_spec::dev_config()?,
-            "" | "local" => chain_spec::local_config()?,
             path => ConsensusChainSpec::from_json_file(std::path::PathBuf::from(path))?,
         };
 

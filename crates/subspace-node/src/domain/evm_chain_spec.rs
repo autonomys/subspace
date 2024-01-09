@@ -63,30 +63,6 @@ pub fn development_config<F: Fn() -> RuntimeGenesisConfig + 'static + Send + Syn
     )
 }
 
-pub fn local_testnet_config<F: Fn() -> RuntimeGenesisConfig + 'static + Send + Sync>(
-    constructor: F,
-) -> ExecutionChainSpec<RuntimeGenesisConfig> {
-    ExecutionChainSpec::from_genesis(
-        // Name
-        "Local Testnet",
-        // ID
-        "evm_domain_local_testnet",
-        ChainType::Local,
-        constructor,
-        // Bootnodes
-        vec![],
-        // Telemetry
-        None,
-        // Protocol ID
-        Some("evm-local"),
-        None,
-        // Properties
-        Some(chain_spec_properties()),
-        // Extensions
-        None,
-    )
-}
-
 pub fn gemini_3g_config<F: Fn() -> RuntimeGenesisConfig + 'static + Send + Sync>(
     constructor: F,
 ) -> ExecutionChainSpec<RuntimeGenesisConfig> {
@@ -140,7 +116,6 @@ pub fn load_chain_spec(spec_id: &str) -> Result<Box<dyn sc_cli::ChainSpec>, Stri
         "dev" => development_config(move || get_testnet_genesis_by_spec_id(SpecId::Dev)),
         "gemini-3g" => gemini_3g_config(move || get_testnet_genesis_by_spec_id(SpecId::Gemini)),
         "devnet" => devnet_config(move || get_testnet_genesis_by_spec_id(SpecId::DevNet)),
-        "" | "local" => local_testnet_config(move || get_testnet_genesis_by_spec_id(SpecId::Local)),
         path => ChainSpec::from_json_file(std::path::PathBuf::from(path))?,
     };
     Ok(Box::new(chain_spec))
@@ -150,7 +125,6 @@ pub enum SpecId {
     Dev,
     Gemini,
     DevNet,
-    Local,
 }
 
 pub fn get_testnet_genesis_by_spec_id(spec_id: SpecId) -> RuntimeGenesisConfig {
@@ -185,14 +159,6 @@ pub fn get_testnet_genesis_by_spec_id(spec_id: SpecId) -> RuntimeGenesisConfig {
                 Some(sudo_account),
             )
         }
-        SpecId::Local => {
-            let accounts = get_dev_accounts();
-            testnet_genesis(
-                accounts.clone(),
-                // Alith is sudo
-                Some(accounts[0]),
-            )
-        }
     }
 }
 
@@ -206,7 +172,6 @@ pub fn create_domain_spec(
         "dev" => development_config(constructor),
         "gemini-3g" => gemini_3g_config(constructor),
         "devnet" => devnet_config(constructor),
-        "" | "local" => local_testnet_config(constructor),
         path => ChainSpec::from_json_file(std::path::PathBuf::from(path))?,
     };
 
