@@ -29,7 +29,6 @@ use sc_cli::{
 use sc_service::config::{KeystoreConfig, NetworkConfiguration};
 use sc_service::{BasePath, BlocksPruning, Configuration, DatabaseSource};
 use sc_subspace_chain_specs::ConsensusChainSpec;
-use serde_json::Value;
 use sp_domains::DomainId;
 
 /// Subspace Cli.
@@ -86,27 +85,11 @@ impl SubstrateCli for Cli {
     }
 
     fn load_spec(&self, id: &str) -> Result<Box<dyn ChainSpec>, String> {
-        let mut chain_spec = match id {
+        let chain_spec = match id {
             "dev" => crate::chain_spec::dev_config()?,
             path => ConsensusChainSpec::from_json_file(std::path::PathBuf::from(path))?,
         };
 
-        // In case there are bootstrap nodes specified explicitly, ignore those that are in the
-        // chain spec
-        if !self.run.network_params.bootnodes.is_empty() {
-            let mut chain_spec_value: Value = serde_json::from_str(&chain_spec.as_json(true)?)
-                .map_err(|error| error.to_string())?;
-            if let Some(boot_nodes) = chain_spec_value.get_mut("bootNodes") {
-                if let Some(boot_nodes) = boot_nodes.as_array_mut() {
-                    boot_nodes.clear();
-                }
-            }
-            // Such mess because native serialization of the chain spec serializes it twice, see
-            // docs on `sc_subspace_chain_specs::utils::SerializableChainSpec`.
-            chain_spec = serde_json::to_string(&chain_spec_value.to_string())
-                .and_then(|chain_spec_string| serde_json::from_str(&chain_spec_string))
-                .map_err(|error| error.to_string())?;
-        }
         Ok(Box::new(chain_spec))
     }
 }

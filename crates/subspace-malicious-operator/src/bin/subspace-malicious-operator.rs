@@ -92,7 +92,13 @@ fn main() -> Result<(), Error> {
 
     let runner = cli.create_runner(&cli.run)?;
     set_default_ss58_version(&runner.config().chain_spec);
-    runner.run_node_until_exit(|consensus_chain_config| async move {
+    runner.run_node_until_exit(|mut consensus_chain_config| async move {
+        // In case there are bootstrap nodes specified explicitly, ignore those that are in the
+        // chain spec
+        if !cli.run.network_params.bootnodes.is_empty() {
+            consensus_chain_config.network.boot_nodes = cli.run.network_params.bootnodes;
+        }
+
         let tokio_handle = consensus_chain_config.tokio_handle.clone();
         let base_path = consensus_chain_config.base_path.path().to_path_buf();
 

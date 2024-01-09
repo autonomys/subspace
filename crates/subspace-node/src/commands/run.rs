@@ -200,7 +200,13 @@ pub fn run(cli: Cli) -> Result<(), Error> {
             ));
         }
     }
-    runner.run_node_until_exit(|consensus_chain_config| async move {
+    runner.run_node_until_exit(|mut consensus_chain_config| async move {
+        // In case there are bootstrap nodes specified explicitly, ignore those that are in the
+        // chain spec
+        if !run.network_params.bootnodes.is_empty() {
+            consensus_chain_config.network.boot_nodes = run.network_params.bootnodes;
+        }
+
         let tokio_handle = consensus_chain_config.tokio_handle.clone();
         let base_path = consensus_chain_config.base_path.path().to_path_buf();
         let database_source = consensus_chain_config.database.clone();
