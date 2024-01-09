@@ -178,41 +178,40 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
 
     // Force UTC logs for Subspace node
     run.shared_params.use_utc_log_time = true;
-    let mut config = run.create_configuration(&SubspaceCliPlaceholder, Handle::current())?;
+    let mut consensus_chain_config =
+        run.create_configuration(&SubspaceCliPlaceholder, Handle::current())?;
+
+    set_default_ss58_version(&consensus_chain_config.chain_spec);
+    // Change default paths to Subspace structure
+    {
+        consensus_chain_config.database = DatabaseSource::ParityDb {
+            path: consensus_chain_config.base_path.path().join("db"),
+        };
+        // Consensus node doesn't use keystore
+        consensus_chain_config.keystore = KeystoreConfig::InMemory;
+        if let Some(net_config_path) = &mut consensus_chain_config.network.net_config_path {
+            *net_config_path = consensus_chain_config.base_path.path().join("network");
+            consensus_chain_config.network.node_key = NodeKeyConfig::Ed25519(
+                sc_network::config::Secret::File(net_config_path.join("secret_ed25519")),
+            );
+        }
+    }
+    // In case there are bootstrap nodes specified explicitly, ignore those that are in the
+    // chain spec
+    if !run.network_params.bootnodes.is_empty() {
+        consensus_chain_config.network.boot_nodes = run.network_params.bootnodes.clone();
+    }
+
     run.init(
         &SubspaceCliPlaceholder::support_url(),
         &SubspaceCliPlaceholder::impl_version(),
         |_, _| {},
-        &config,
+        &consensus_chain_config,
     )?;
 
-    set_default_ss58_version(&config.chain_spec);
-    // Change default paths to Subspace structure
-    {
-        config.database = DatabaseSource::ParityDb {
-            path: config.base_path.path().join("db"),
-        };
-        // Consensus node doesn't use keystore
-        config.keystore = KeystoreConfig::InMemory;
-        if let Some(net_config_path) = &mut config.network.net_config_path {
-            *net_config_path = config.base_path.path().join("network");
-            config.network.node_key = NodeKeyConfig::Ed25519(sc_network::config::Secret::File(
-                net_config_path.join("secret_ed25519"),
-            ));
-        }
-    }
-
-    print_node_infos::<SubspaceCliPlaceholder>(&config);
+    print_node_infos::<SubspaceCliPlaceholder>(&consensus_chain_config);
 
     let mut task_manager = {
-        let mut consensus_chain_config = config;
-
-        // In case there are bootstrap nodes specified explicitly, ignore those that are in the
-        // chain spec
-        if !run.network_params.bootnodes.is_empty() {
-            consensus_chain_config.network.boot_nodes = run.network_params.bootnodes;
-        }
-
         let tokio_handle = consensus_chain_config.tokio_handle.clone();
         let base_path = consensus_chain_config.base_path.path().to_path_buf();
         let database_source = consensus_chain_config.database.clone();
