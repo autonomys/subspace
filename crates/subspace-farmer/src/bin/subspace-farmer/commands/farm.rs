@@ -40,7 +40,6 @@ use subspace_networking::libp2p::identity::{ed25519, Keypair};
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
-use tempfile::TempDir;
 use tokio::sync::Semaphore;
 use tracing::{debug, error, info, info_span, warn};
 use zeroize::Zeroizing;
@@ -299,7 +298,9 @@ where
     dsn.disable_bootstrap_on_start = dsn.disable_bootstrap_on_start || dev;
 
     let _tmp_directory = if let Some(plot_size) = tmp {
-        let tmp_directory = TempDir::new()?;
+        let tmp_directory = tempfile::Builder::new()
+            .prefix("subspace-farmer-")
+            .tempdir()?;
 
         disk_farms = vec![DiskFarm {
             directory: tmp_directory.as_ref().to_path_buf(),
