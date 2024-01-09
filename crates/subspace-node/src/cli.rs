@@ -82,10 +82,14 @@ impl PurgeChainCmd {
     }
 }
 
-/// Utilities for working with a node.
-#[derive(Debug, clap::Subcommand)]
+/// Commands for working with a node.
+#[derive(Debug, Parser)]
+#[clap(about, version)]
 #[allow(clippy::large_enum_variant)]
-pub enum Subcommand {
+pub enum Cli {
+    /// Run blockchain node
+    Run(RunOptions),
+
     /// Key management cli utilities
     #[clap(subcommand)]
     Key(sc_cli::KeySubcommand),
@@ -124,32 +128,10 @@ pub enum Subcommand {
     Benchmark(frame_benchmarking_cli::BenchmarkCmd),
 }
 
-fn parse_pot_external_entropy(s: &str) -> Result<Vec<u8>, hex::FromHexError> {
-    hex::decode(s)
-}
+/// Fake Subspace CLI just to satisfy Substrate's API
+pub struct SubspaceCliPlaceholder;
 
-/// Subspace Cli.
-#[derive(Debug, Parser)]
-#[clap(
-    propagate_version = true,
-    args_conflicts_with_subcommands = true,
-    subcommand_negates_reqs = true
-)]
-pub struct Cli {
-    /// Various utility commands.
-    #[clap(subcommand)]
-    pub subcommand: Option<Subcommand>,
-
-    /// Options for running a node
-    #[clap(flatten)]
-    pub run: RunOptions,
-
-    /// External entropy, used initially when PoT chain starts to derive the first seed
-    #[arg(long, value_parser = parse_pot_external_entropy)]
-    pub pot_external_entropy: Option<Vec<u8>>,
-}
-
-impl SubstrateCli for Cli {
+impl SubstrateCli for SubspaceCliPlaceholder {
     fn impl_name() -> String {
         "Subspace".into()
     }
@@ -187,7 +169,6 @@ impl SubstrateCli for Cli {
             "devnet" => chain_spec::devnet_config()?,
             "devnet-compiled" => chain_spec::devnet_config_compiled()?,
             "dev" => chain_spec::dev_config()?,
-            "" | "local" => chain_spec::local_config()?,
             path => ConsensusChainSpec::from_json_file(std::path::PathBuf::from(path))?,
         };
 

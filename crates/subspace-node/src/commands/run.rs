@@ -1,4 +1,4 @@
-use crate::cli::Cli;
+use crate::cli::SubspaceCliPlaceholder;
 use crate::domain::{DomainCli, DomainInstanceStarter};
 use crate::{derive_pot_external_entropy, set_default_ss58_version, Error, PosTable};
 use clap::Parser;
@@ -20,6 +20,10 @@ use std::ops::{Deref, DerefMut};
 use subspace_networking::libp2p::Multiaddr;
 use subspace_runtime::{Block, ExecutorDispatch, RuntimeApi};
 use subspace_service::{DsnConfig, SubspaceConfiguration, SubspaceNetworking};
+
+fn parse_pot_external_entropy(s: &str) -> Result<Vec<u8>, hex::FromHexError> {
+    hex::decode(s)
+}
 
 fn parse_timekeeper_cpu_cores(
     s: &str,
@@ -53,6 +57,10 @@ pub struct RunOptions {
     /// Run a node
     #[clap(flatten)]
     run: RunCmd,
+
+    /// External entropy, used initially when PoT chain starts to derive the first seed
+    #[arg(long, value_parser = parse_pot_external_entropy)]
+    pot_external_entropy: Option<Vec<u8>>,
 
     /// Options for DSN
     #[clap(flatten)]
@@ -166,23 +174,21 @@ struct TimekeeperOptions {
 }
 
 /// Default run command for node
-pub fn run(cli: Cli) -> Result<(), Error> {
-    let mut runner = cli.create_runner(&cli.run.run)?;
-
-    let Cli {
-        subcommand: _,
-        run:
-            RunOptions {
-                run,
-                dsn_options,
-                sync_from_dsn,
-                storage_monitor,
-                timekeeper_options,
-                domain_args,
-            },
+pub fn run(run_options: RunOptions) -> Result<(), Error> {
+    let RunOptions {
+        mut run,
         pot_external_entropy,
-    } = cli;
+        dsn_options,
+        sync_from_dsn,
+        storage_monitor,
+        timekeeper_options,
+        domain_args,
+    } = run_options;
     let dev = run.shared_params.dev;
+
+    // Force UTC logs for Subspace node
+    run.shared_params.use_utc_log_time = true;
+    let mut runner = SubspaceCliPlaceholder.create_runner(&run)?;
 
     set_default_ss58_version(&runner.config().chain_spec);
     // Change default paths to Subspace structure
@@ -200,6 +206,7 @@ pub fn run(cli: Cli) -> Result<(), Error> {
             ));
         }
     }
+
     runner.run_node_until_exit(|mut consensus_chain_config| async move {
         // In case there are bootstrap nodes specified explicitly, ignore those that are in the
         // chain spec
