@@ -83,9 +83,10 @@ impl PurgeChainCmd {
 }
 
 /// Commands for working with a node.
-#[derive(Debug, clap::Subcommand)]
+#[derive(Debug, Parser)]
+#[clap(about, version)]
 #[allow(clippy::large_enum_variant)]
-pub enum Subcommand {
+pub enum Cli {
     /// Run blockchain node
     Run(RunOptions),
 
@@ -125,28 +126,6 @@ pub enum Subcommand {
     #[cfg(feature = "runtime-benchmarks")]
     #[clap(subcommand)]
     Benchmark(frame_benchmarking_cli::BenchmarkCmd),
-}
-
-fn parse_pot_external_entropy(s: &str) -> Result<Vec<u8>, hex::FromHexError> {
-    hex::decode(s)
-}
-
-/// Subspace Cli.
-#[derive(Debug, Parser)]
-#[clap(
-    propagate_version = true,
-    args_conflicts_with_subcommands = true,
-    subcommand_negates_reqs = true
-)]
-#[clap(about, version)]
-pub struct Cli {
-    /// Various utility commands.
-    #[clap(subcommand)]
-    pub subcommand: Subcommand,
-
-    /// External entropy, used initially when PoT chain starts to derive the first seed
-    #[arg(long, value_parser = parse_pot_external_entropy)]
-    pub pot_external_entropy: Option<Vec<u8>>,
 }
 
 /// Fake Subspace CLI just to satisfy Substrate's API

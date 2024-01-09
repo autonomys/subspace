@@ -23,7 +23,7 @@ mod chain_spec_utils;
 mod cli;
 mod domain;
 
-use crate::cli::{Cli, Subcommand, SubspaceCliPlaceholder};
+use crate::cli::{Cli, SubspaceCliPlaceholder};
 use crate::domain::{DomainCli, DomainSubcommand};
 use clap::Parser;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
@@ -121,18 +121,16 @@ fn derive_pot_external_entropy(
 }
 
 fn main() -> Result<(), Error> {
-    let cli = Cli::parse();
-
-    match cli.subcommand {
-        Subcommand::Run(run_options) => {
-            commands::run(run_options, cli.pot_external_entropy)?;
+    match Cli::parse() {
+        Cli::Run(run_options) => {
+            commands::run(run_options)?;
         }
-        Subcommand::Key(cmd) => cmd.run(&SubspaceCliPlaceholder)?,
-        Subcommand::BuildSpec(cmd) => {
+        Cli::Key(cmd) => cmd.run(&SubspaceCliPlaceholder)?,
+        Cli::BuildSpec(cmd) => {
             let runner = SubspaceCliPlaceholder.create_runner(&cmd)?;
             runner.sync_run(|config| cmd.run(config.chain_spec, config.network))?
         }
-        Subcommand::CheckBlock(cmd) => {
+        Cli::CheckBlock(cmd) => {
             let runner = SubspaceCliPlaceholder.create_runner(&cmd)?;
             set_default_ss58_version(&runner.config().chain_spec);
             runner.async_run(|config| {
@@ -143,7 +141,7 @@ fn main() -> Result<(), Error> {
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
                     &config,
-                    &derive_pot_external_entropy(&config, cli.pot_external_entropy)?,
+                    &derive_pot_external_entropy(&config, None)?,
                 )?;
                 Ok((
                     cmd.run(client, import_queue).map_err(Error::SubstrateCli),
@@ -151,7 +149,7 @@ fn main() -> Result<(), Error> {
                 ))
             })?;
         }
-        Subcommand::ExportBlocks(cmd) => {
+        Cli::ExportBlocks(cmd) => {
             let runner = SubspaceCliPlaceholder.create_runner(&cmd)?;
             set_default_ss58_version(&runner.config().chain_spec);
             runner.async_run(|config| {
@@ -161,7 +159,7 @@ fn main() -> Result<(), Error> {
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
                     &config,
-                    &derive_pot_external_entropy(&config, cli.pot_external_entropy)?,
+                    &derive_pot_external_entropy(&config, None)?,
                 )?;
                 Ok((
                     cmd.run(client, config.database)
@@ -170,7 +168,7 @@ fn main() -> Result<(), Error> {
                 ))
             })?;
         }
-        Subcommand::ExportState(cmd) => {
+        Cli::ExportState(cmd) => {
             let runner = SubspaceCliPlaceholder.create_runner(&cmd)?;
             set_default_ss58_version(&runner.config().chain_spec);
             runner.async_run(|config| {
@@ -180,7 +178,7 @@ fn main() -> Result<(), Error> {
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
                     &config,
-                    &derive_pot_external_entropy(&config, cli.pot_external_entropy)?,
+                    &derive_pot_external_entropy(&config, None)?,
                 )?;
                 Ok((
                     cmd.run(client, config.chain_spec)
@@ -189,7 +187,7 @@ fn main() -> Result<(), Error> {
                 ))
             })?;
         }
-        Subcommand::ImportBlocks(cmd) => {
+        Cli::ImportBlocks(cmd) => {
             let runner = SubspaceCliPlaceholder.create_runner(&cmd)?;
             set_default_ss58_version(&runner.config().chain_spec);
             runner.async_run(|config| {
@@ -200,7 +198,7 @@ fn main() -> Result<(), Error> {
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
                     &config,
-                    &derive_pot_external_entropy(&config, cli.pot_external_entropy)?,
+                    &derive_pot_external_entropy(&config, None)?,
                 )?;
                 Ok((
                     cmd.run(client, import_queue).map_err(Error::SubstrateCli),
@@ -208,7 +206,7 @@ fn main() -> Result<(), Error> {
                 ))
             })?;
         }
-        Subcommand::PurgeChain(cmd) => {
+        Cli::PurgeChain(cmd) => {
             // This is a compatibility layer to make sure we wipe old data from disks of our users
             if let Some(base_dir) = dirs::data_local_dir() {
                 for chain in &[
@@ -233,7 +231,7 @@ fn main() -> Result<(), Error> {
 
             runner.sync_run(|consensus_chain_config| cmd.run(consensus_chain_config))?;
         }
-        Subcommand::Revert(cmd) => {
+        Cli::Revert(cmd) => {
             let runner = SubspaceCliPlaceholder.create_runner(&cmd)?;
             set_default_ss58_version(&runner.config().chain_spec);
             runner.async_run(|config| {
@@ -244,7 +242,7 @@ fn main() -> Result<(), Error> {
                     ..
                 } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
                     &config,
-                    &derive_pot_external_entropy(&config, cli.pot_external_entropy)?,
+                    &derive_pot_external_entropy(&config, None)?,
                 )?;
                 Ok((
                     cmd.run(client, backend, None).map_err(Error::SubstrateCli),
@@ -252,12 +250,12 @@ fn main() -> Result<(), Error> {
                 ))
             })?;
         }
-        Subcommand::ChainInfo(cmd) => {
+        Cli::ChainInfo(cmd) => {
             let runner = SubspaceCliPlaceholder.create_runner(&cmd)?;
             runner.sync_run(|config| cmd.run::<Block>(&config))?;
         }
         #[cfg(feature = "runtime-benchmarks")]
-        Subcommand::Benchmark(cmd) => {
+        Cli::Benchmark(cmd) => {
             let runner = SubspaceCliPlaceholder.create_runner(&cmd)?;
 
             runner.sync_run(|config| {
@@ -285,7 +283,7 @@ fn main() -> Result<(), Error> {
                             ExecutorDispatch,
                         >(
                             &config,
-                            &derive_pot_external_entropy(&config, cli.pot_external_entropy)?,
+                            &derive_pot_external_entropy(&config, None)?,
                         )?;
 
                         cmd.run(client)
@@ -295,7 +293,7 @@ fn main() -> Result<(), Error> {
                             client, backend, ..
                         } = subspace_service::new_partial::<PosTable, RuntimeApi, ExecutorDispatch>(
                             &config,
-                            &derive_pot_external_entropy(&config, cli.pot_external_entropy)?,
+                            &derive_pot_external_entropy(&config, None)?,
                         )?;
                         let db = backend.expose_db();
                         let storage = backend.expose_storage();
@@ -336,7 +334,7 @@ fn main() -> Result<(), Error> {
                 }
             })?;
         }
-        Subcommand::Domain(domain_cmd) => match domain_cmd {
+        Cli::Domain(domain_cmd) => match domain_cmd {
             DomainSubcommand::Benchmark(cmd) => {
                 let runner = SubspaceCliPlaceholder.create_runner(&cmd)?;
                 runner.sync_run(|consensus_chain_config| {

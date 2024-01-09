@@ -21,6 +21,10 @@ use subspace_networking::libp2p::Multiaddr;
 use subspace_runtime::{Block, ExecutorDispatch, RuntimeApi};
 use subspace_service::{DsnConfig, SubspaceConfiguration, SubspaceNetworking};
 
+fn parse_pot_external_entropy(s: &str) -> Result<Vec<u8>, hex::FromHexError> {
+    hex::decode(s)
+}
+
 fn parse_timekeeper_cpu_cores(
     s: &str,
 ) -> Result<HashSet<usize>, Box<dyn std::error::Error + Send + Sync>> {
@@ -53,6 +57,10 @@ pub struct RunOptions {
     /// Run a node
     #[clap(flatten)]
     run: RunCmd,
+
+    /// External entropy, used initially when PoT chain starts to derive the first seed
+    #[arg(long, value_parser = parse_pot_external_entropy)]
+    pot_external_entropy: Option<Vec<u8>>,
 
     /// Options for DSN
     #[clap(flatten)]
@@ -166,9 +174,10 @@ struct TimekeeperOptions {
 }
 
 /// Default run command for node
-pub fn run(run_options: RunOptions, pot_external_entropy: Option<Vec<u8>>) -> Result<(), Error> {
+pub fn run(run_options: RunOptions) -> Result<(), Error> {
     let RunOptions {
         mut run,
+        pot_external_entropy,
         dsn_options,
         sync_from_dsn,
         storage_monitor,
