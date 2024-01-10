@@ -15,6 +15,7 @@ use sc_telemetry::TelemetryEndpoints;
 use std::collections::HashSet;
 use std::net::SocketAddr;
 use std::num::NonZeroUsize;
+use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_networking::libp2p::Multiaddr;
@@ -245,4 +246,12 @@ pub struct SubspaceConfiguration {
     pub is_timekeeper: bool,
     /// CPU cores that timekeeper can use
     pub timekeeper_cpu_cores: HashSet<usize>,
+}
+
+impl Deref for SubspaceConfiguration {
+    type Target = Configuration;
+
+    fn deref(&self) -> &Self::Target {
+        &self.base
+    }
 }
