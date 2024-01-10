@@ -34,13 +34,13 @@ pub struct DomainInstanceStarter<CNetwork> {
     pub tokio_handle: tokio::runtime::Handle,
     pub consensus_client: Arc<CFullClient<CRuntimeApi, CExecutorDispatch>>,
     pub consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory<CBlock>,
+    pub consensus_network: Arc<CNetwork>,
     pub block_importing_notification_stream:
         SubspaceNotificationStream<BlockImportingNotification<CBlock>>,
     pub new_slot_notification_stream: SubspaceNotificationStream<NewSlotNotification>,
     pub consensus_sync_service: Arc<sc_network_sync::SyncingService<CBlock>>,
     pub domain_message_receiver: TracingUnboundedReceiver<ChainTxPoolMsg>,
     pub gossip_message_sink: TracingUnboundedSender<Message>,
-    pub consensus_network: Arc<CNetwork>,
 }
 
 impl<CNetwork> DomainInstanceStarter<CNetwork>
@@ -68,12 +68,12 @@ where
             tokio_handle,
             consensus_client,
             consensus_offchain_tx_pool_factory,
+            consensus_network,
             block_importing_notification_stream,
             new_slot_notification_stream,
             consensus_sync_service,
             domain_message_receiver,
             gossip_message_sink,
-            consensus_network,
         } = self;
 
         let domain_id = domain_cli.domain_id;
@@ -227,16 +227,7 @@ pub fn create_configuration<
     let net_config_dir = config_dir.join(DEFAULT_NETWORK_CONFIG_PATH);
     let client_id = Cli::client_id();
     let database_cache_size = cli_config.database_cache_size()?.unwrap_or(1024);
-    let database = cli_config.database()?.unwrap_or(
-        #[cfg(feature = "rocksdb")]
-        {
-            Database::RocksDb
-        },
-        #[cfg(not(feature = "rocksdb"))]
-        {
-            Database::ParityDb
-        },
-    );
+    let database = cli_config.database()?.unwrap_or(Database::ParityDb);
     let node_key = cli_config.node_key(&net_config_dir)?;
     let role = cli_config.role(is_dev)?;
     let max_runtime_instances = cli_config.max_runtime_instances()?.unwrap_or(8);

@@ -49,11 +49,11 @@ where
     pub async fn fetch_domain_bootstrap_info(
         self,
         self_domain_id: DomainId,
-    ) -> std::result::Result<BootstrapResult<CBlock>, Box<dyn std::error::Error>> {
+    ) -> Result<BootstrapResult<CBlock>, Box<dyn std::error::Error>> {
         let mut imported_block_notification_stream =
             self.consensus_client.every_import_notification_stream();
 
-        // Check if the domain instance data already exist in the consensus chain's genesis state
+        // Check if the domain instance data already exist in the consensus chain's state
         let best_hash = self.consensus_client.info().best_hash;
         if let Some((domain_instance_data, domain_created_at)) = self
             .consensus_client

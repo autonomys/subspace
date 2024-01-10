@@ -33,7 +33,7 @@ pub type ChainSpec = ExecutionChainSpec<RuntimeGenesisConfig>;
 /// Development keys that will be injected automatically on polkadotjs apps
 fn get_dev_accounts() -> Vec<AccountId> {
     vec![
-        // Alith key
+        // Alice key
         AccountId::from(hex!("f24FF3a9CF04c71Dbc94D0b566f7A27B94566cac")),
         // Baltathar key
         AccountId::from(hex!("3Cd0A705a2DC65e5b1E1205896BaA2be8A07c6e0")),
@@ -133,7 +133,7 @@ pub fn get_testnet_genesis_by_spec_id(spec_id: SpecId) -> RuntimeGenesisConfig {
             let accounts = get_dev_accounts();
             testnet_genesis(
                 accounts.clone(),
-                // Alith is Sudo
+                // Alice is Sudo
                 Some(accounts[0]),
             )
         }
