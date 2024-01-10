@@ -11,17 +11,12 @@ use futures::FutureExt;
 use sc_cli::{
     generate_node_name, NodeKeyParams, NodeKeyType, PruningParams, RpcMethods, Signals,
     TelemetryParams, TransactionPoolParams, RPC_DEFAULT_MAX_CONNECTIONS,
-    RPC_DEFAULT_MAX_REQUEST_SIZE_MB, RPC_DEFAULT_MAX_RESPONSE_SIZE_MB,
     RPC_DEFAULT_MAX_SUBS_PER_CONN, RPC_DEFAULT_PORT,
 };
 use sc_consensus_slots::SlotProportion;
 use sc_informant::OutputFormat;
-use sc_network::config::{
-    MultiaddrWithPeerId, NetworkConfiguration, NonReservedPeerMode, SetConfig, TransportConfig,
-    DEFAULT_KADEMLIA_REPLICATION_FACTOR,
-};
-use sc_service::config::{KeystoreConfig, OffchainWorkerConfig, PrometheusConfig};
-use sc_service::{BasePath, Configuration, DatabaseSource};
+use sc_network::config::{MultiaddrWithPeerId, NonReservedPeerMode, SetConfig};
+use sc_service::Configuration;
 use sc_storage_monitor::{StorageMonitorParams, StorageMonitorService};
 use sc_subspace_chain_specs::ConsensusChainSpec;
 use sc_telemetry::TelemetryEndpoints;
@@ -31,12 +26,13 @@ use sp_core::traits::SpawnEssentialNamed;
 use sp_messenger::messages::ChainId;
 use std::collections::HashSet;
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
-use std::num::NonZeroUsize;
 use std::path::PathBuf;
-use std::sync::Arc;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_runtime::{Block, ExecutorDispatch, RuntimeApi};
-use subspace_service::config::{SubspaceConfiguration, SubspaceNetworking};
+use subspace_service::config::{
+    SubspaceConfiguration, SubspaceNetworking, SubstrateConfiguration,
+    SubstrateNetworkConfiguration, SubstrateRpcConfiguration,
+};
 use subspace_service::dsn::DsnConfig;
 use tokio::runtime::Handle;
 use tracing::{debug, error, info, info_span, warn, Span};
@@ -193,7 +189,7 @@ pub struct RunOptions {
 /// Options for RPC
 #[derive(Debug, Parser)]
 struct RpcOptions {
-    /// IP and port (TCP) on which to listen for RPC requests, if not specified RPC server isn't running.
+    /// IP and port (TCP) on which to listen for RPC requests.
     ///
     /// Note: not all RPC methods are safe to be exposed publicly. Use an RPC proxy server to filter out
     /// dangerous methods.
@@ -502,20 +498,16 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
     info!("🏷  Node name: {node_name}");
     info!("💾 Node path: {}", base_path.display());
 
-    let consensus_chain_config = Configuration {
+    let consensus_chain_config = SubstrateConfiguration {
         impl_name: env!("CARGO_PKG_NAME").to_string(),
         impl_version: env!("CARGO_PKG_VERSION").to_string(),
-        tokio_handle: Handle::current(),
+        farmer,
+        base_path: base_path.clone(),
         transaction_pool,
-        network: NetworkConfiguration {
-            net_config_path: Some(net_config_path.clone()),
-            listen_addresses: network_options.listen_on,
+        network: SubstrateNetworkConfiguration {
+            listen_on: network_options.listen_on,
             public_addresses: network_options.public_addr,
-            boot_nodes: if !network_options.bootstrap_nodes.is_empty() {
-                network_options.bootstrap_nodes
-            } else {
-                chain_spec.boot_nodes().to_vec()
-            },
+            bootstrap_nodes: network_options.bootstrap_nodes,
             node_key: {
                 let node_key_params = NodeKeyParams {
                     node_key: network_options.node_key,
@@ -535,69 +527,30 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                     NonReservedPeerMode::Accept
                 },
             },
-            default_peers_set_num_full: network_options.in_peers + network_options.out_peers,
-            client_version: format!("{}/{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION")),
             node_name,
-            transport: TransportConfig::Normal {
-                enable_mdns: false,
-                allow_private_ip: network_options.allow_private_ips,
-            },
-            // Substrate's default
-            max_parallel_downloads: 5,
-            // Substrate's default
-            max_blocks_per_request: 64,
-            // Substrate's default, full mode
-            sync_mode: Arc::default(),
-            // Substrate's default
-            enable_dht_random_walk: true,
-            // Substrate's default
-            allow_non_globals_in_dht: network_options.allow_private_ips,
-            // Substrate's default
-            kademlia_disjoint_query_paths: false,
-            kademlia_replication_factor: NonZeroUsize::new(DEFAULT_KADEMLIA_REPLICATION_FACTOR)
-                .expect("value is a constant; constant is non-zero; qed"),
-            ipfs_server: false,
-            yamux_window_size: None,
+            allow_private_ips: network_options.allow_private_ips,
             force_synced,
         },
-        // Not used on consensus chain
-        keystore: KeystoreConfig::InMemory,
-        database: DatabaseSource::ParityDb {
-            path: base_path.join("db"),
-        },
-        data_path: base_path.clone(),
-        // Substrate's default
-        trie_cache_maximum_size: Some(64 * 1024 * 1024),
         state_pruning: pruning_params.state_pruning()?,
         blocks_pruning: pruning_params.blocks_pruning()?,
-        wasm_method: Default::default(),
-        wasm_runtime_overrides: None,
-        rpc_addr: Some(rpc_options.rpc_listen_on),
-        rpc_methods: match rpc_options.rpc_methods {
-            RpcMethods::Auto => {
-                if rpc_options.rpc_listen_on.ip().is_loopback() {
-                    sc_service::RpcMethods::Unsafe
-                } else {
-                    sc_service::RpcMethods::Safe
+        rpc_options: SubstrateRpcConfiguration {
+            listen_on: rpc_options.rpc_listen_on,
+            max_connections: rpc_options.rpc_max_connections,
+            cors: rpc_cors.into(),
+            methods: match rpc_options.rpc_methods {
+                RpcMethods::Auto => {
+                    if rpc_options.rpc_listen_on.ip().is_loopback() {
+                        sc_service::RpcMethods::Unsafe
+                    } else {
+                        sc_service::RpcMethods::Safe
+                    }
                 }
-            }
-            RpcMethods::Safe => sc_service::RpcMethods::Safe,
-            RpcMethods::Unsafe => sc_service::RpcMethods::Unsafe,
+                RpcMethods::Safe => sc_service::RpcMethods::Safe,
+                RpcMethods::Unsafe => sc_service::RpcMethods::Unsafe,
+            },
+            max_subscriptions_per_connection: rpc_options.rpc_max_subscriptions_per_connection,
         },
-        rpc_max_connections: rpc_options.rpc_max_connections,
-        rpc_cors: rpc_cors.into(),
-        rpc_max_request_size: RPC_DEFAULT_MAX_REQUEST_SIZE_MB,
-        rpc_max_response_size: RPC_DEFAULT_MAX_RESPONSE_SIZE_MB,
-        rpc_id_provider: None,
-        rpc_max_subs_per_conn: rpc_options.rpc_max_subscriptions_per_connection,
-        // Doesn't matter since we have specified address above
-        rpc_port: 0,
-        prometheus_config: prometheus_listen_on.map(|prometheus_listen_on| {
-            PrometheusConfig::new_with_default_registry(
-                prometheus_listen_on,
-                chain_spec.id().to_string(),
-            )
-        }),
+        prometheus_listen_on,
         telemetry_endpoints: if telemetry_params.no_telemetry {
             None
         } else if !telemetry_params.telemetry_endpoints.is_empty() {
@@ -608,32 +561,11 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
         } else {
             chain_spec.telemetry_endpoints().clone()
         },
-        default_heap_pages: None,
-        // Offchain worker is not used in Subspace
-        offchain_worker: OffchainWorkerConfig {
-            enabled: false,
-            indexing_enabled: false,
-        },
         force_authoring,
-        disable_grandpa: true,
-        dev_key_seed: None,
-        tracing_targets: None,
-        tracing_receiver: Default::default(),
         chain_spec: Box::new(chain_spec),
-        // Substrate's default
-        max_runtime_instances: 8,
-        // Substrate's default
-        announce_block: true,
-        role: if farmer {
-            sc_service::Role::Authority
-        } else {
-            sc_service::Role::Full
-        },
-        base_path: BasePath::new(base_path.clone()),
         informant_output_format: OutputFormat { enable_color },
-        // Substrate's default
-        runtime_cache_size: 2,
     };
+    let consensus_chain_config = Configuration::from(consensus_chain_config);
 
     let root_span = Span::current();
 
