@@ -183,11 +183,6 @@ pub(crate) fn verify_execution_receipt<T: Config>(
 
     // Check if the ER has at least 2 trace root (for Initialization and Finalization of block at least)
     if execution_trace.len() < 2 {
-        log::error!(
-            "Execution trace: {:?} and receipt: {:?}",
-            execution_trace,
-            execution_receipt
-        );
         return Err(Error::InvalidExecutionTrace);
     }
 

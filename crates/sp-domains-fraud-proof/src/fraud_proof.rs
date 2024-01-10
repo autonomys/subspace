@@ -191,9 +191,9 @@ impl ExecutionPhase {
             } => {
                 let mismatch_index = match mismatch {
                     ApplyExtrinsicMismatch::StateRoot(mismatch_index) => *mismatch_index,
-                    ApplyExtrinsicMismatch::Shorter => (bad_receipt.execution_trace.len() - 1)
-                        .try_into()
-                        .expect("trace index should always fit into u32; qed"),
+                    ApplyExtrinsicMismatch::Shorter => {
+                        (bad_receipt.execution_trace.len() - 1) as u32
+                    }
                 };
                 // There is a trace root of the `initialize_block` in the head of the trace so we
                 // need to minus one to get the correct `extrinsic_index`

@@ -1,5 +1,5 @@
 use crate::aux_schema::BundleMismatchType;
-use crate::fraud_proof::{find_trace_mismatch, FraudProofGenerator};
+use crate::fraud_proof::FraudProofGenerator;
 use crate::utils::{DomainBlockImportNotification, DomainImportNotificationSinks};
 use crate::ExecutionReceiptFor;
 use codec::{Decode, Encode};
@@ -876,15 +876,26 @@ where
                 });
         }
 
-        if let Some(trace_mismatch) =
-            find_trace_mismatch(&local_receipt.execution_trace, &bad_receipt.execution_trace)
+        if let Some(execution_phase) = self
+            .fraud_proof_generator
+            .find_mismatched_execution_phase(
+                local_receipt.domain_block_hash,
+                &local_receipt.execution_trace,
+                &bad_receipt.execution_trace,
+            )
+            .map_err(|err| {
+                sp_blockchain::Error::Application(Box::from(format!(
+                    "Failed to find mismatched execution phase: {err}"
+                )))
+            })?
         {
             return self
                 .fraud_proof_generator
                 .generate_invalid_state_transition_proof(
                     self.domain_id,
-                    trace_mismatch,
+                    execution_phase,
                     &local_receipt,
+                    bad_receipt.execution_trace.len(),
                     bad_receipt_hash,
                 )
                 .map_err(|err| {

@@ -868,18 +868,52 @@ async fn test_bad_invalid_state_transition_proof_is_rejected() {
         TraceDiffType::Mismatch,
     ] {
         for mismatch_index in 0..valid_receipt.execution_trace.len() {
+            let dummy_execution_trace = match trace_diff_type {
+                TraceDiffType::Shorter => valid_receipt
+                    .execution_trace
+                    .clone()
+                    .drain(..)
+                    .take(mismatch_index + 1)
+                    .collect(),
+                TraceDiffType::Longer => {
+                    let mut long_trace = valid_receipt.execution_trace.clone();
+                    long_trace.push(H256::default());
+                    long_trace
+                }
+                TraceDiffType::Mismatch => {
+                    let mut modified_trace = valid_receipt.execution_trace.clone();
+                    modified_trace[mismatch_index] = H256::default();
+                    modified_trace
+                }
+            };
+
+            let result_execution_phase = fraud_proof_generator.find_mismatched_execution_phase(
+                valid_receipt.domain_block_hash,
+                &valid_receipt.execution_trace,
+                &dummy_execution_trace,
+            );
+
+            if result_execution_phase.is_err()
+                || result_execution_phase
+                    .as_ref()
+                    .is_ok_and(|maybe_execution_phase| maybe_execution_phase.is_none())
+            {
+                continue;
+            }
+
+            let execution_phase = result_execution_phase
+                .expect("already checked for error above; qed")
+                .expect("we already checked for  None above; qed");
+
             let fraud_proof_generation_response = fraud_proof_generator
                 .generate_invalid_state_transition_proof(
                     GENESIS_DOMAIN_ID,
-                    (trace_diff_type, mismatch_index.try_into().expect(
-                        "execution trace index should always be convertible into u32 from usize; qed",
-                    )),
+                    execution_phase,
                     &valid_receipt,
+                    valid_receipt.execution_trace.len(),
                     valid_receipt_hash,
                 );
 
-            // If we cannot generate fraud proof for particular (TraceDiffType, mismatch_index) combination
-            // then we move on to next combination.
             if fraud_proof_generation_response.is_err() {
                 continue;
             }
