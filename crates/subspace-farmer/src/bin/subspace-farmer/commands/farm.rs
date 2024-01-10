@@ -40,7 +40,6 @@ use subspace_networking::libp2p::identity::{ed25519, Keypair};
 use subspace_networking::libp2p::Multiaddr;
 use subspace_networking::utils::piece_provider::PieceProvider;
 use subspace_proof_of_space::Table;
-use tempfile::TempDir;
 use tokio::sync::Semaphore;
 use tracing::{debug, error, info, info_span, warn};
 use zeroize::Zeroizing;
@@ -81,7 +80,7 @@ pub(crate) struct FarmingArgs {
     /// Percentage of allocated space dedicated for caching purposes, 99% max
     #[arg(long, default_value = "1", value_parser = cache_percentage_parser)]
     cache_percentage: NonZeroU8,
-    /// Sets some flags that are convenient during development, currently `--enable-private-ips`.
+    /// Sets some flags that are convenient during development, currently `--allow-private-ips`.
     #[arg(long)]
     dev: bool,
     /// Run temporary farmer with specified plot size in human readable format (e.g. 10GB, 2TiB) or
@@ -177,7 +176,7 @@ struct DsnArgs {
     /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses in
     /// Kademlia DHT.
     #[arg(long, default_value_t = false)]
-    enable_private_ips: bool,
+    allow_private_ips: bool,
     /// Multiaddrs of reserved nodes to maintain a connection to, multiple are supported
     #[arg(long)]
     reserved_peers: Vec<Multiaddr>,
@@ -295,11 +294,13 @@ where
     } = farming_args;
 
     // Override flags with `--dev`
-    dsn.enable_private_ips = dsn.enable_private_ips || dev;
+    dsn.allow_private_ips = dsn.allow_private_ips || dev;
     dsn.disable_bootstrap_on_start = dsn.disable_bootstrap_on_start || dev;
 
     let _tmp_directory = if let Some(plot_size) = tmp {
-        let tmp_directory = TempDir::new()?;
+        let tmp_directory = tempfile::Builder::new()
+            .prefix("subspace-farmer-")
+            .tempdir()?;
 
         disk_farms = vec![DiskFarm {
             directory: tmp_directory.as_ref().to_path_buf(),

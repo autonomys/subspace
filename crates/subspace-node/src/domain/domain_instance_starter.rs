@@ -13,6 +13,7 @@ use sc_cli::{CliConfiguration, Database, DefaultConfigurationValues, SubstrateCl
 use sc_consensus_subspace::block_import::BlockImportingNotification;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::slot_worker::NewSlotNotification;
+use sc_network::config::NodeKeyConfig;
 use sc_network::NetworkPeers;
 use sc_service::config::KeystoreConfig;
 use sc_service::{BasePath, Configuration, DatabaseSource};
@@ -87,8 +88,8 @@ where
         // Change default paths to Subspace structure
         // TODO: Similar copy-paste exists in `DomainCli::create_domain_configuration()` and should
         //  be de-duplicated
+        let domain_base_path = base_path.join("domains").join(domain_id.to_string());
         {
-            let domain_base_path = base_path.join("domains").join(domain_id.to_string());
             domain_config.database = DatabaseSource::ParityDb {
                 path: domain_base_path.join("db"),
             };
@@ -102,7 +103,16 @@ where
             // Network directory is shared with consensus chain
             if let Some(net_config_path) = &mut domain_config.network.net_config_path {
                 *net_config_path = base_path.join("network");
+
+                if let NodeKeyConfig::Ed25519(sc_network::config::Secret::File(node_key_file)) =
+                    &mut domain_config.network.node_key
+                {
+                    *node_key_file = net_config_path.join("secret_ed25519");
+                }
             }
+
+            domain_config.base_path = BasePath::new(domain_base_path.clone());
+            domain_config.data_path = domain_base_path.clone();
         }
 
         let block_importing_notification_stream = || {
@@ -139,24 +149,20 @@ where
 
         match runtime_type {
             RuntimeType::Evm => {
-                let evm_base_path = BasePath::new(
-                    domain_config
-                        .base_path
-                        .config_dir(domain_config.chain_spec.id()),
-                );
-
-                let eth_provider =
-                    EthProvider::<
-                        evm_domain_runtime::TransactionConverter,
-                        DefaultEthConfig<
-                            FullClient<
-                                DomainBlock,
-                                evm_domain_runtime::RuntimeApi,
-                                EVMDomainExecutorDispatch,
-                            >,
-                            FullBackend<DomainBlock>,
+                let eth_provider = EthProvider::<
+                    evm_domain_runtime::TransactionConverter,
+                    DefaultEthConfig<
+                        FullClient<
+                            DomainBlock,
+                            evm_domain_runtime::RuntimeApi,
+                            EVMDomainExecutorDispatch,
                         >,
-                    >::new(Some(evm_base_path), domain_cli.additional_args());
+                        FullBackend<DomainBlock>,
+                    >,
+                >::new(
+                    Some(BasePath::new(domain_base_path)),
+                    domain_cli.additional_args(),
+                );
 
                 let domain_params = domain_service::DomainParams {
                     domain_id,

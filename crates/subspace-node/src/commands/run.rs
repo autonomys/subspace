@@ -1,22 +1,40 @@
+mod substrate;
+
 use crate::cli::SubspaceCliPlaceholder;
+use crate::commands::run::substrate::{parse_cors, Cors};
 use crate::domain::{DomainCli, DomainInstanceStarter};
-use crate::{derive_pot_external_entropy, set_default_ss58_version, Error, PosTable};
+use crate::{chain_spec, derive_pot_external_entropy, set_default_ss58_version, Error, PosTable};
 use clap::Parser;
 use cross_domain_message_gossip::GossipWorkerBuilder;
 use domain_client_operator::Bootstrapper;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
 use futures::FutureExt;
-use sc_cli::{print_node_infos, CliConfiguration, RunCmd, Signals};
+use sc_cli::{
+    generate_node_name, print_node_infos, NodeKeyParams, NodeKeyType, PruningParams, RpcMethods,
+    Signals, TelemetryParams, TransactionPoolParams, RPC_DEFAULT_MAX_CONNECTIONS,
+    RPC_DEFAULT_MAX_REQUEST_SIZE_MB, RPC_DEFAULT_MAX_RESPONSE_SIZE_MB,
+    RPC_DEFAULT_MAX_SUBS_PER_CONN, RPC_DEFAULT_PORT,
+};
 use sc_consensus_slots::SlotProportion;
-use sc_network::config::NodeKeyConfig;
-use sc_service::config::KeystoreConfig;
-use sc_service::DatabaseSource;
+use sc_informant::OutputFormat;
+use sc_network::config::{
+    MultiaddrWithPeerId, NetworkConfiguration, NonReservedPeerMode, SetConfig, TransportConfig,
+    DEFAULT_KADEMLIA_REPLICATION_FACTOR,
+};
+use sc_service::config::{KeystoreConfig, OffchainWorkerConfig, PrometheusConfig};
+use sc_service::{BasePath, Configuration, DatabaseSource};
 use sc_storage_monitor::{StorageMonitorParams, StorageMonitorService};
+use sc_subspace_chain_specs::ConsensusChainSpec;
+use sc_telemetry::TelemetryEndpoints;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::tracing_unbounded;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_messenger::messages::ChainId;
 use std::collections::HashSet;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::num::NonZeroUsize;
+use std::path::PathBuf;
+use std::sync::Arc;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_runtime::{Block, ExecutorDispatch, RuntimeApi};
 use subspace_service::{DsnConfig, SubspaceConfiguration, SubspaceNetworking};
@@ -59,9 +77,89 @@ fn parse_timekeeper_cpu_cores(
 /// Options for running a node
 #[derive(Debug, Parser)]
 pub struct RunOptions {
-    /// Run a node
+    /// Base path where to store node files.
+    ///
+    /// Required unless --dev mode is used.
+    #[arg(long)]
+    base_path: Option<PathBuf>,
+
+    /// Specify the chain specification.
+    ///
+    /// It can be one of the predefined ones (dev) or it can be a path to a file with the chainspec
+    /// (such as one exported by the `build-spec` subcommand).
+    #[arg(long)]
+    chain: Option<String>,
+
+    /// Enable farmer mode.
+    ///
+    /// Node will support farmer connections for block and vote production, implies
+    /// `--rpc-listen-on 127.0.0.1:9944` unless `--rpc-listen-on` is specified explicitly.
+    #[arg(long)]
+    farmer: bool,
+
+    /// Enable development mode.
+    ///
+    /// Implies following flags (unless customized):
+    /// * `--chain dev` (unless specified explicitly)
+    /// * `--farmer`
+    /// * `--tmp` (unless `--base-path` specified explicitly)
+    /// * `--force-synced`
+    /// * `--force-authoring`
+    /// * `--allow-private-ips`
+    /// * `--rpc-cors all` (unless specified explicitly)
+    /// * `--dsn-disable-bootstrap-on-start`
+    /// * `--timekeeper`
+    #[arg(long, verbatim_doc_comment)]
+    dev: bool,
+
+    /// Run a temporary node.
+    ///
+    /// This will create a temporary directory for storing node data that will be deleted at the
+    /// end of the process.
+    #[arg(long)]
+    tmp: bool,
+
+    /// Options for RPC
     #[clap(flatten)]
-    run: RunCmd,
+    rpc_options: RpcOptions,
+
+    /// The human-readable name for this node.
+    ///
+    /// It's used as network node name and in telemetry. Auto-generated if not specified explicitly.
+    #[arg(long)]
+    name: Option<String>,
+
+    /// Options for telemetry
+    #[clap(flatten)]
+    telemetry_params: TelemetryParams,
+
+    /// IP and port (TCP) to start Prometheus exporter on
+    #[clap(long)]
+    prometheus_listen_on: Option<SocketAddr>,
+
+    /// Options for chain database pruning
+    #[clap(flatten)]
+    pruning_params: PruningParams,
+
+    /// Options for Substrate networking
+    #[clap(flatten)]
+    network_options: SubstrateNetworkOptions,
+
+    /// Options for transaction pool
+    #[clap(flatten)]
+    pool_config: TransactionPoolParams,
+
+    /// Parameter that allows node to forcefully assume it is synced, needed for network
+    /// bootstrapping only, as long as two synced nodes remain on the network at any time, this
+    /// doesn't need to be used.
+    ///
+    /// --dev mode enables this option automatically.
+    #[clap(long)]
+    force_synced: bool,
+
+    /// Enable authoring even when offline, needed for network bootstrapping only.
+    #[arg(long)]
+    force_authoring: bool,
 
     /// External entropy, used initially when PoT chain starts to derive the first seed
     #[arg(long, value_parser = parse_pot_external_entropy)]
@@ -92,14 +190,113 @@ pub struct RunOptions {
     domain_args: Vec<String>,
 }
 
+/// Options for RPC
+#[derive(Debug, Parser)]
+struct RpcOptions {
+    /// IP and port (TCP) on which to listen for RPC requests, if not specified RPC server isn't running.
+    ///
+    /// Note: not all RPC methods are safe to be exposed publicly. Use an RPC proxy server to filter out
+    /// dangerous methods.
+    /// More details: <https://docs.substrate.io/main-docs/build/custom-rpc/#public-rpcs>.
+    #[arg(long, default_value_t = SocketAddr::new(
+        IpAddr::V4(Ipv4Addr::LOCALHOST),
+        RPC_DEFAULT_PORT,
+    ))]
+    rpc_listen_on: SocketAddr,
+
+    /// RPC methods to expose.
+    /// - `unsafe`: Exposes every RPC method.
+    /// - `safe`: Exposes only a safe subset of RPC methods, denying unsafe RPC methods.
+    /// - `auto`: Acts as `safe` if non-localhost `--rpc-listen-on` is passed, otherwise
+    ///           acts as `unsafe`.
+    #[arg(
+        long,
+        value_enum,
+        ignore_case = true,
+        default_value_t = RpcMethods::Auto,
+        verbatim_doc_comment
+    )]
+    rpc_methods: RpcMethods,
+
+    /// Set the the maximum concurrent subscriptions per connection.
+    #[arg(long, default_value_t = RPC_DEFAULT_MAX_SUBS_PER_CONN)]
+    rpc_max_subscriptions_per_connection: u32,
+
+    /// Maximum number of RPC server connections.
+    #[arg(long, default_value_t = RPC_DEFAULT_MAX_CONNECTIONS)]
+    rpc_max_connections: u32,
+
+    /// Specify browser Origins allowed to access the HTTP & WS RPC servers.
+    /// A comma-separated list of origins (protocol://domain or special `null`
+    /// value). Value of `all` will disable origin validation. Default is to
+    /// allow localhost and <https://polkadot.js.org> origins. When running in
+    /// --dev mode the default is to allow all origins.
+    #[arg(long, value_parser = parse_cors)]
+    rpc_cors: Option<Cors>,
+}
+
+/// Options for Substrate networking
+#[derive(Debug, Parser)]
+struct SubstrateNetworkOptions {
+    /// Specify a list of bootstrap nodes for Substrate networking stack.
+    #[arg(long)]
+    bootstrap_nodes: Vec<MultiaddrWithPeerId>,
+
+    /// Specify a list of reserved node addresses.
+    #[arg(long)]
+    reserved_nodes: Vec<MultiaddrWithPeerId>,
+
+    /// Whether to only synchronize the chain with reserved nodes.
+    ///
+    /// TCP connections might still be established with non-reserved nodes.
+    /// In particular, if you are a farmer your node might still connect to other farmer nodes
+    /// regardless of whether they are defined as reserved nodes.
+    #[arg(long)]
+    reserved_only: bool,
+
+    /// The public address that other nodes will use to connect to it.
+    ///
+    /// This can be used if there's a proxy in front of this node or if address is known beforehand
+    /// and less reliable auto-discovery can be avoided.
+    #[arg(long)]
+    public_addr: Vec<sc_network::Multiaddr>,
+
+    /// Listen on this multiaddress
+    #[arg(long, default_value = "/ip4/0.0.0.0/tcp/30333")]
+    listen_on: Vec<sc_network::Multiaddr>,
+
+    /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses
+    /// in Kademlia DHT.
+    #[arg(long, default_value_t = false)]
+    allow_private_ips: bool,
+
+    /// Specify the number of outgoing connections we're trying to maintain.
+    #[arg(long, default_value_t = 8)]
+    out_peers: u32,
+
+    /// Maximum number of inbound full nodes peers.
+    #[arg(long, default_value_t = 32)]
+    in_peers: u32,
+
+    /// The secret key to use for Substrate networking.
+    ///
+    /// The value is parsed as a hex-encoded Ed25519 32 byte secret key, i.e. 64 hex characters.
+    ///
+    /// This will override previously generated node key if there was any.
+    /// Use of this option should be limited to development and testing, otherwise generate and use
+    /// `network/secret_ed25519` file in node directory.
+    #[arg(long, value_name = "KEY")]
+    node_key: Option<String>,
+}
+
 /// Options for DSN
 #[derive(Debug, Parser)]
 struct DsnOptions {
     /// Where local DSN node will listen for incoming connections.
     // TODO: Add more DSN-related parameters
     #[arg(long, default_values_t = [
-        "/ip4/0.0.0.0/udp/30433/quic-v1".parse::<Multiaddr>().expect("Manual setting"),
-        "/ip4/0.0.0.0/tcp/30433".parse::<Multiaddr>().expect("Manual setting"),
+        "/ip4/0.0.0.0/udp/30433/quic-v1".parse::<Multiaddr>().expect("Statically correct; qed"),
+        "/ip4/0.0.0.0/tcp/30433".parse::<Multiaddr>().expect("Statically correct; qed"),
     ])]
     dsn_listen_on: Vec<Multiaddr>,
 
@@ -126,11 +323,6 @@ struct DsnOptions {
     /// Defines max pending outgoing swarm connection limit for DSN.
     #[arg(long, default_value_t = 150)]
     dsn_pending_out_connections: u32,
-
-    /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses
-    /// in Kademlia DHT for the DSN.
-    #[arg(long, default_value_t = false)]
-    dsn_enable_private_ips: bool,
 
     /// Defines whether we should run blocking Kademlia bootstrap() operation before other requests.
     #[arg(long, default_value_t = false)]
@@ -164,7 +356,7 @@ struct TimekeeperOptions {
     timekeeper_cpu_cores: HashSet<usize>,
 }
 
-pub(crate) fn raise_fd_limit() {
+fn raise_fd_limit() {
     match fdlimit::raise_fd_limit() {
         Ok(fdlimit::Outcome::LimitRaised { from, to }) => {
             debug!(
@@ -188,21 +380,20 @@ pub(crate) fn raise_fd_limit() {
 /// Default run command for node
 #[tokio::main]
 pub async fn run(run_options: RunOptions) -> Result<(), Error> {
+    // TODO: Workaround for https://github.com/tokio-rs/tracing/issues/2214, also on
+    //  Windows terminal doesn't support the same colors as bash does
+    let enable_color = if cfg!(windows) {
+        false
+    } else {
+        supports_color::on(supports_color::Stream::Stderr).is_some()
+    };
     tracing_subscriber::registry()
         .with(
-            fmt::layer()
-                // TODO: Workaround for https://github.com/tokio-rs/tracing/issues/2214, also on
-                //  Windows terminal doesn't support the same colors as bash does
-                .with_ansi(if cfg!(windows) {
-                    false
-                } else {
-                    supports_color::on(supports_color::Stream::Stderr).is_some()
-                })
-                .with_filter(
-                    EnvFilter::builder()
-                        .with_default_directive(LevelFilter::INFO.into())
-                        .from_env_lossy(),
-                ),
+            fmt::layer().with_ansi(enable_color).with_filter(
+                EnvFilter::builder()
+                    .with_default_directive(LevelFilter::INFO.into())
+                    .from_env_lossy(),
+            ),
         )
         .init();
     raise_fd_limit();
@@ -210,39 +401,231 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
     let signals = Signals::capture()?;
 
     let RunOptions {
-        run,
+        base_path,
+        mut chain,
+        mut farmer,
+        dev,
+        mut tmp,
+        rpc_options,
+        name,
+        telemetry_params,
+        prometheus_listen_on,
+        pruning_params,
+        mut network_options,
+        pool_config,
+        mut force_synced,
+        mut force_authoring,
         pot_external_entropy,
-        dsn_options,
+        mut dsn_options,
         sync_from_dsn,
         storage_monitor,
-        timekeeper_options,
+        mut timekeeper_options,
         domain_args,
     } = run_options;
-    let dev = run.shared_params.dev;
 
-    let mut consensus_chain_config =
-        run.create_configuration(&SubspaceCliPlaceholder, Handle::current())?;
+    let transaction_pool;
+    let rpc_cors;
+    // Development mode handling is limited to this section
+    {
+        if dev {
+            if chain.is_none() {
+                chain = Some("dev".to_string());
+            }
+            farmer = true;
+            tmp = true;
+            force_synced = true;
+            force_authoring = true;
+            network_options.allow_private_ips = true;
+            dsn_options.dsn_disable_bootstrap_on_start = true;
+            timekeeper_options.timekeeper = true;
+        }
+
+        transaction_pool = pool_config.transaction_pool(dev);
+        rpc_cors = rpc_options.rpc_cors.unwrap_or_else(|| {
+            if dev {
+                warn!("Running in --dev mode, RPC CORS has been disabled.");
+                Cors::All
+            } else {
+                Cors::List(vec![
+                    "http://localhost:*".into(),
+                    "http://127.0.0.1:*".into(),
+                    "https://localhost:*".into(),
+                    "https://127.0.0.1:*".into(),
+                    "https://polkadot.js.org".into(),
+                ])
+            }
+        });
+    }
+
+    let chain_spec = match chain.as_deref() {
+        Some("gemini-3g-compiled") => chain_spec::gemini_3g_compiled()?,
+        Some("gemini-3g") => chain_spec::gemini_3g_config()?,
+        Some("devnet") => chain_spec::devnet_config()?,
+        Some("devnet-compiled") => chain_spec::devnet_config_compiled()?,
+        Some("dev") => chain_spec::dev_config()?,
+        Some(path) => ConsensusChainSpec::from_json_file(std::path::PathBuf::from(path))?,
+        None => {
+            return Err(Error::Other(
+                "Chain must be provided unless --dev mode is used".to_string(),
+            ));
+        }
+    };
+    let mut maybe_tmp_dir = None;
+    let base_path = match base_path {
+        Some(base_path) => base_path,
+        None => {
+            if tmp {
+                let tmp = tempfile::Builder::new()
+                    .prefix("subspace-node-")
+                    .tempdir()
+                    .map_err(|error| {
+                        Error::Other(format!(
+                            "Failed to create temporary directory for node: {error}"
+                        ))
+                    })?;
+
+                maybe_tmp_dir.insert(tmp).path().to_path_buf()
+            } else {
+                return Err(Error::Other("--base-path is required".to_string()));
+            }
+        }
+    };
+    let net_config_path = base_path.join("network");
+
+    let consensus_chain_config = Configuration {
+        impl_name: env!("CARGO_PKG_NAME").to_string(),
+        impl_version: env!("CARGO_PKG_VERSION").to_string(),
+        tokio_handle: Handle::current(),
+        transaction_pool,
+        network: NetworkConfiguration {
+            net_config_path: Some(net_config_path.clone()),
+            listen_addresses: network_options.listen_on,
+            public_addresses: network_options.public_addr,
+            boot_nodes: if !network_options.bootstrap_nodes.is_empty() {
+                network_options.bootstrap_nodes
+            } else {
+                chain_spec.boot_nodes().to_vec()
+            },
+            node_key: {
+                let node_key_params = NodeKeyParams {
+                    node_key: network_options.node_key,
+                    node_key_type: NodeKeyType::Ed25519,
+                    node_key_file: None,
+                };
+
+                node_key_params.node_key(&net_config_path)?
+            },
+            default_peers_set: SetConfig {
+                in_peers: network_options.in_peers,
+                out_peers: network_options.out_peers,
+                reserved_nodes: network_options.reserved_nodes,
+                non_reserved_mode: if network_options.reserved_only {
+                    NonReservedPeerMode::Deny
+                } else {
+                    NonReservedPeerMode::Accept
+                },
+            },
+            default_peers_set_num_full: network_options.in_peers + network_options.out_peers,
+            client_version: format!("{}/{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION")),
+            node_name: name.unwrap_or_else(generate_node_name),
+            transport: TransportConfig::Normal {
+                enable_mdns: false,
+                allow_private_ip: network_options.allow_private_ips,
+            },
+            // Substrate's default
+            max_parallel_downloads: 5,
+            // Substrate's default
+            max_blocks_per_request: 64,
+            // Substrate's default, full mode
+            sync_mode: Arc::default(),
+            // Substrate's default
+            enable_dht_random_walk: true,
+            // Substrate's default
+            allow_non_globals_in_dht: network_options.allow_private_ips,
+            // Substrate's default
+            kademlia_disjoint_query_paths: false,
+            kademlia_replication_factor: NonZeroUsize::new(DEFAULT_KADEMLIA_REPLICATION_FACTOR)
+                .expect("value is a constant; constant is non-zero; qed"),
+            ipfs_server: false,
+            yamux_window_size: None,
+            force_synced,
+        },
+        // Not used on consensus chain
+        keystore: KeystoreConfig::InMemory,
+        database: DatabaseSource::ParityDb {
+            path: base_path.join("db"),
+        },
+        data_path: base_path.clone(),
+        // Substrate's default
+        trie_cache_maximum_size: Some(64 * 1024 * 1024),
+        state_pruning: pruning_params.state_pruning()?,
+        blocks_pruning: pruning_params.blocks_pruning()?,
+        wasm_method: Default::default(),
+        wasm_runtime_overrides: None,
+        rpc_addr: Some(rpc_options.rpc_listen_on),
+        rpc_methods: match rpc_options.rpc_methods {
+            RpcMethods::Auto => {
+                if rpc_options.rpc_listen_on.ip().is_loopback() {
+                    sc_service::RpcMethods::Unsafe
+                } else {
+                    sc_service::RpcMethods::Safe
+                }
+            }
+            RpcMethods::Safe => sc_service::RpcMethods::Safe,
+            RpcMethods::Unsafe => sc_service::RpcMethods::Unsafe,
+        },
+        rpc_max_connections: rpc_options.rpc_max_connections,
+        rpc_cors: rpc_cors.into(),
+        rpc_max_request_size: RPC_DEFAULT_MAX_REQUEST_SIZE_MB,
+        rpc_max_response_size: RPC_DEFAULT_MAX_RESPONSE_SIZE_MB,
+        rpc_id_provider: None,
+        rpc_max_subs_per_conn: rpc_options.rpc_max_subscriptions_per_connection,
+        // Doesn't matter since we have specified address above
+        rpc_port: 0,
+        prometheus_config: prometheus_listen_on.map(|prometheus_listen_on| {
+            PrometheusConfig::new_with_default_registry(
+                prometheus_listen_on,
+                chain_spec.id().to_string(),
+            )
+        }),
+        telemetry_endpoints: if telemetry_params.no_telemetry {
+            None
+        } else if !telemetry_params.telemetry_endpoints.is_empty() {
+            Some(
+                TelemetryEndpoints::new(telemetry_params.telemetry_endpoints)
+                    .map_err(|error| Error::Other(error.to_string()))?,
+            )
+        } else {
+            chain_spec.telemetry_endpoints().clone()
+        },
+        default_heap_pages: None,
+        // Offchain worker is not used in Subspace
+        offchain_worker: OffchainWorkerConfig {
+            enabled: false,
+            indexing_enabled: false,
+        },
+        force_authoring,
+        disable_grandpa: true,
+        dev_key_seed: None,
+        tracing_targets: None,
+        tracing_receiver: Default::default(),
+        chain_spec: Box::new(chain_spec),
+        // Substrate's default
+        max_runtime_instances: 8,
+        // Substrate's default
+        announce_block: true,
+        role: if farmer {
+            sc_service::Role::Authority
+        } else {
+            sc_service::Role::Full
+        },
+        base_path: BasePath::new(base_path),
+        informant_output_format: OutputFormat { enable_color },
+        // Substrate's default
+        runtime_cache_size: 2,
+    };
 
     set_default_ss58_version(&consensus_chain_config.chain_spec);
-    // Change default paths to Subspace structure
-    {
-        consensus_chain_config.database = DatabaseSource::ParityDb {
-            path: consensus_chain_config.base_path.path().join("db"),
-        };
-        // Consensus node doesn't use keystore
-        consensus_chain_config.keystore = KeystoreConfig::InMemory;
-        if let Some(net_config_path) = &mut consensus_chain_config.network.net_config_path {
-            *net_config_path = consensus_chain_config.base_path.path().join("network");
-            consensus_chain_config.network.node_key = NodeKeyConfig::Ed25519(
-                sc_network::config::Secret::File(net_config_path.join("secret_ed25519")),
-            );
-        }
-    }
-    // In case there are bootstrap nodes specified explicitly, ignore those that are in the
-    // chain spec
-    if !run.network_params.bootnodes.is_empty() {
-        consensus_chain_config.network.boot_nodes = run.network_params.bootnodes;
-    }
 
     print_node_infos::<SubspaceCliPlaceholder>(&consensus_chain_config);
 
@@ -324,15 +707,13 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                     listen_on: dsn_options.dsn_listen_on,
                     bootstrap_nodes: dsn_bootstrap_nodes,
                     reserved_peers: dsn_options.dsn_reserved_peers,
-                    // Override enabling private IPs with --dev
-                    allow_non_global_addresses_in_dht: dsn_options.dsn_enable_private_ips || dev,
+                    allow_non_global_addresses_in_dht: network_options.allow_private_ips,
                     max_in_connections: dsn_options.dsn_in_connections,
                     max_out_connections: dsn_options.dsn_out_connections,
                     max_pending_in_connections: dsn_options.dsn_pending_in_connections,
                     max_pending_out_connections: dsn_options.dsn_pending_out_connections,
                     external_addresses: dsn_options.dsn_external_addresses,
-                    // Override initial Kademlia bootstrapping  with --dev
-                    disable_bootstrap_on_start: dsn_options.dsn_disable_bootstrap_on_start || dev,
+                    disable_bootstrap_on_start: dsn_options.dsn_disable_bootstrap_on_start,
                 }
             };
 
@@ -342,8 +723,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                 force_new_slot_notifications: !domain_args.is_empty(),
                 subspace_networking: SubspaceNetworking::Create { config: dsn_config },
                 sync_from_dsn,
-                // Timekeeper is enabled if `--dev` is used
-                is_timekeeper: timekeeper_options.timekeeper || dev,
+                is_timekeeper: timekeeper_options.timekeeper,
                 timekeeper_cpu_cores: timekeeper_options.timekeeper_cpu_cores,
             };
 

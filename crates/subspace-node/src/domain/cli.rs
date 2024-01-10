@@ -24,6 +24,7 @@ use sc_cli::{
     KeystoreParams, NetworkParams, Role, RunCmd as SubstrateRunCmd, SharedParams, SubstrateCli,
 };
 use sc_client_api::backend::AuxStore;
+use sc_network::config::NodeKeyConfig;
 use sc_service::config::{KeystoreConfig, PrometheusConfig};
 use sc_service::{BasePath, Configuration, DatabaseSource};
 use sp_blockchain::HeaderBackend;
@@ -107,8 +108,10 @@ impl DomainCli {
         let mut domain_config = SubstrateCli::create_configuration(self, self, tokio_handle)?;
 
         // Change default paths to Subspace structure
+        // TODO: Similar copy-paste exists in `DomainCli::create_domain_configuration()` and
+        //  `DomainInstanceStarter::start()` and should be de-duplicated
+        let domain_base_path = base_path.join(self.domain_id.to_string());
         {
-            let domain_base_path = base_path.join(self.domain_id.to_string());
             domain_config.database = DatabaseSource::ParityDb {
                 path: domain_base_path.join("db"),
             };
@@ -122,7 +125,16 @@ impl DomainCli {
             // Network directory is shared with consensus chain
             if let Some(net_config_path) = &mut domain_config.network.net_config_path {
                 *net_config_path = base_path.join("network");
+
+                if let NodeKeyConfig::Ed25519(sc_network::config::Secret::File(node_key_file)) =
+                    &mut domain_config.network.node_key
+                {
+                    *node_key_file = net_config_path.join("secret_ed25519");
+                }
             }
+
+            domain_config.base_path = BasePath::new(domain_base_path.clone());
+            domain_config.data_path = domain_base_path.clone();
         }
         Ok(domain_config)
     }

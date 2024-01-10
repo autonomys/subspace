@@ -26,7 +26,7 @@ struct Args {
     bootstrap_nodes: Vec<Multiaddr>,
     /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses in Kademlia DHT.
     #[arg(long, default_value_t = false)]
-    enable_private_ips: bool,
+    allow_private_ips: bool,
     /// Protocol version for libp2p stack, should be set as genesis hash of the blockchain for
     /// production use.
     #[arg(long, required = true)]
@@ -56,7 +56,7 @@ async fn main() {
     let node = configure_dsn(
         args.bootstrap_nodes,
         args.protocol_version,
-        args.enable_private_ips,
+        args.allow_private_ips,
         args.pending_out_peers,
         args.out_peers,
     )
@@ -354,7 +354,7 @@ async fn request_sample_piece(
 async fn configure_dsn(
     bootstrap_addresses: Vec<Multiaddr>,
     protocol_prefix: String,
-    enable_private_ips: bool,
+    allow_private_ips: bool,
     pending_out_peers: u32,
     out_peers: u32,
 ) -> Node {
@@ -364,7 +364,7 @@ async fn configure_dsn(
 
     let config = Config {
         listen_on: vec!["/ip4/0.0.0.0/tcp/0".parse().unwrap()],
-        allow_non_global_addresses_in_dht: enable_private_ips,
+        allow_non_global_addresses_in_dht: allow_private_ips,
         request_response_protocols: vec![PieceByIndexRequestHandler::create(|_, _| async { None })],
         bootstrap_addresses,
         max_pending_outgoing_connections: pending_out_peers,
