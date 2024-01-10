@@ -1,6 +1,5 @@
 mod substrate;
 
-use crate::cli::SubspaceCliPlaceholder;
 use crate::commands::run::substrate::{parse_cors, Cors};
 use crate::domain::{DomainCli, DomainInstanceStarter};
 use crate::{chain_spec, derive_pot_external_entropy, set_default_ss58_version, Error, PosTable};
@@ -10,8 +9,8 @@ use domain_client_operator::Bootstrapper;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
 use futures::FutureExt;
 use sc_cli::{
-    generate_node_name, print_node_infos, NodeKeyParams, NodeKeyType, PruningParams, RpcMethods,
-    Signals, TelemetryParams, TransactionPoolParams, RPC_DEFAULT_MAX_CONNECTIONS,
+    generate_node_name, NodeKeyParams, NodeKeyType, PruningParams, RpcMethods, Signals,
+    TelemetryParams, TransactionPoolParams, RPC_DEFAULT_MAX_CONNECTIONS,
     RPC_DEFAULT_MAX_REQUEST_SIZE_MB, RPC_DEFAULT_MAX_RESPONSE_SIZE_MB,
     RPC_DEFAULT_MAX_SUBS_PER_CONN, RPC_DEFAULT_PORT,
 };
@@ -39,7 +38,7 @@ use subspace_networking::libp2p::Multiaddr;
 use subspace_runtime::{Block, ExecutorDispatch, RuntimeApi};
 use subspace_service::{DsnConfig, SubspaceConfiguration, SubspaceNetworking};
 use tokio::runtime::Handle;
-use tracing::{debug, error, info_span, warn, Span};
+use tracing::{debug, error, info, info_span, warn, Span};
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::{fmt, EnvFilter};
@@ -492,6 +491,16 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
     };
     let net_config_path = base_path.join("network");
 
+    let node_name = name.unwrap_or_else(generate_node_name);
+    set_default_ss58_version(&chain_spec);
+
+    info!("Subspace");
+    info!("✌️  version {}", env!("SUBSTRATE_CLI_IMPL_VERSION"));
+    info!("❤️  by {}", env!("CARGO_PKG_AUTHORS"));
+    info!("📋 Chain specification: {}", chain_spec.name());
+    info!("🏷  Node name: {node_name}");
+    info!("💾 Node path: {}", base_path.display());
+
     let consensus_chain_config = Configuration {
         impl_name: env!("CARGO_PKG_NAME").to_string(),
         impl_version: env!("CARGO_PKG_VERSION").to_string(),
@@ -527,7 +536,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
             },
             default_peers_set_num_full: network_options.in_peers + network_options.out_peers,
             client_version: format!("{}/{}", env!("CARGO_PKG_NAME"), env!("CARGO_PKG_VERSION")),
-            node_name: name.unwrap_or_else(generate_node_name),
+            node_name,
             transport: TransportConfig::Normal {
                 enable_mdns: false,
                 allow_private_ip: network_options.allow_private_ips,
@@ -619,20 +628,15 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
         } else {
             sc_service::Role::Full
         },
-        base_path: BasePath::new(base_path),
+        base_path: BasePath::new(base_path.clone()),
         informant_output_format: OutputFormat { enable_color },
         // Substrate's default
         runtime_cache_size: 2,
     };
 
-    set_default_ss58_version(&consensus_chain_config.chain_spec);
-
-    print_node_infos::<SubspaceCliPlaceholder>(&consensus_chain_config);
-
     let root_span = Span::current();
 
     let mut task_manager = {
-        let base_path = consensus_chain_config.base_path.path().to_path_buf();
         let database_source = consensus_chain_config.database.clone();
 
         let domains_bootstrap_nodes: serde_json::map::Map<String, serde_json::Value> =
