@@ -31,7 +31,8 @@ use subspace_malicious_operator::{Cli, DomainCli};
 use subspace_networking::libp2p::Multiaddr;
 use subspace_proof_of_space::chia::ChiaTable;
 use subspace_runtime::{Block, ExecutorDispatch, RuntimeApi};
-use subspace_service::{DsnConfig, SubspaceConfiguration, SubspaceNetworking};
+use subspace_service::config::{SubspaceConfiguration, SubspaceNetworking};
+use subspace_service::dsn::DsnConfig;
 
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
