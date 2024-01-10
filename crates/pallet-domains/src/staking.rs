@@ -1,9 +1,9 @@
 //! Staking for domains
 
 use crate::pallet::{
-    Deposits, DomainEpochCompleteAt, DomainRegistry, DomainStakingSummary, NextOperatorId,
-    NominatorCount, OperatorIdOwner, OperatorSigningKey, Operators, PendingOperatorSwitches,
-    PendingSlashes, PendingStakingOperationCount, Withdrawals,
+    Deposits, DomainRegistry, DomainStakingSummary, LatestConfirmedDomainBlockNumber,
+    NextOperatorId, NominatorCount, OperatorIdOwner, OperatorSigningKey, Operators,
+    PendingOperatorSwitches, PendingSlashes, PendingStakingOperationCount, Withdrawals,
 };
 use crate::staking_epoch::mint_funds;
 use crate::{
@@ -62,23 +62,41 @@ pub(crate) struct PendingDeposit<Balance: Copy> {
 
 /// A nominator's withdrawal from a given operator pool.
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
-pub(crate) struct Withdrawal<Share> {
+pub(crate) struct Withdrawal<Share, DomainBlockNumber> {
     pub(crate) allowed_since_domain_epoch: DomainEpoch,
+    pub(crate) unlock_at_confirmed_domain_block_number: DomainBlockNumber,
     pub(crate) shares: Share,
+}
+
+#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
+pub struct OperatorDeregisteredInfo<DomainBlockNumber> {
+    pub domain_epoch: DomainEpoch,
+    pub unlock_at_confirmed_domain_block_number: DomainBlockNumber,
+}
+
+impl<DomainBlockNumber> From<(DomainId, EpochIndex, DomainBlockNumber)>
+    for OperatorDeregisteredInfo<DomainBlockNumber>
+{
+    fn from(value: (DomainId, EpochIndex, DomainBlockNumber)) -> Self {
+        OperatorDeregisteredInfo {
+            domain_epoch: (value.0, value.1).into(),
+            unlock_at_confirmed_domain_block_number: value.2,
+        }
+    }
 }
 
 /// Type that represents an operator status.
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
-pub enum OperatorStatus {
+pub enum OperatorStatus<DomainBlockNumber> {
     Registered,
     /// De-registered at given domain epoch.
-    Deregistered(DomainEpoch),
+    Deregistered(OperatorDeregisteredInfo<DomainBlockNumber>),
     Slashed,
 }
 
 /// Type that represents an operator details.
 #[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq)]
-pub struct Operator<Balance, Share> {
+pub struct Operator<Balance, Share, DomainBlockNumber> {
     pub signing_key: OperatorPublicKey,
     pub current_domain_id: DomainId,
     pub next_domain_id: DomainId,
@@ -90,7 +108,7 @@ pub struct Operator<Balance, Share> {
     pub current_epoch_rewards: Balance,
     /// Total shares of all the nominators under this operator.
     pub current_total_shares: Share,
-    pub status: OperatorStatus,
+    pub status: OperatorStatus<DomainBlockNumber>,
     /// Total deposits during the previous epoch
     pub deposits_in_epoch: Balance,
     /// Total withdrew shares during the previous epoch
@@ -541,13 +559,19 @@ pub(crate) fn do_deregister_operator<T: Config>(
                     .as_mut()
                     .ok_or(Error::DomainNotInitialized)?;
 
-                let domain_epoch = (
+                let latest_confirmed_domain_block_number =
+                    LatestConfirmedDomainBlockNumber::<T>::get(operator.current_domain_id);
+                let unlock_operator_at_domain_block_number = latest_confirmed_domain_block_number
+                    .checked_add(&T::StakeWithdrawalLockingPeriod::get())
+                    .ok_or(Error::BlockNumberOverflow)?;
+                let operator_deregister_info = (
                     operator.current_domain_id,
                     stake_summary.current_epoch_index,
+                    unlock_operator_at_domain_block_number,
                 )
                     .into();
 
-                operator.status = OperatorStatus::Deregistered(domain_epoch);
+                operator.status = OperatorStatus::Deregistered(operator_deregister_info);
 
                 stake_summary.next_operators.remove(&operator_id);
                 Ok(())
@@ -660,14 +684,22 @@ pub(crate) fn do_withdraw_stake<T: Config>(
                 }
             }
 
+            let latest_confirmed_domain_block_number =
+                LatestConfirmedDomainBlockNumber::<T>::get(operator.current_domain_id);
+            let unlock_at_confirmed_domain_block_number = latest_confirmed_domain_block_number
+                .checked_add(&T::StakeWithdrawalLockingPeriod::get())
+                .ok_or(Error::BlockNumberOverflow)?;
+
             Withdrawals::<T>::try_mutate(operator_id, nominator_id, |maybe_withdrawals| {
                 let mut withdrawals = maybe_withdrawals.take().unwrap_or_default();
                 // if there is an existing withdrawal within the same epoch, then update it instead
                 if let Some(withdrawal) = withdrawals.back_mut() && withdrawal.allowed_since_domain_epoch == domain_current_epoch {
                     withdrawal.shares = withdrawal.shares.checked_add(&shares_withdrew).ok_or(Error::ShareOverflow)?;
+                    withdrawal.unlock_at_confirmed_domain_block_number = unlock_at_confirmed_domain_block_number;
                 } else {
                     withdrawals.push_back(Withdrawal {
                         allowed_since_domain_epoch: domain_current_epoch,
+                        unlock_at_confirmed_domain_block_number,
                         shares: shares_withdrew,
                     });
                 }
@@ -688,6 +720,7 @@ pub(crate) fn do_unlock_funds<T: Config>(
         let withdrawals = maybe_withdrawals.as_mut().ok_or(Error::MissingWithdrawal)?;
         let Withdrawal {
             allowed_since_domain_epoch,
+            unlock_at_confirmed_domain_block_number,
             shares,
         } = withdrawals.pop_front().ok_or(Error::MissingWithdrawal)?;
 
@@ -696,20 +729,10 @@ pub(crate) fn do_unlock_funds<T: Config>(
             *maybe_withdrawals = None
         }
 
-        let (domain_id, epoch_idx) = allowed_since_domain_epoch.deconstruct();
-
-        let epoch_completed_block =
-            DomainEpochCompleteAt::<T>::get(domain_id, epoch_idx).ok_or(Error::EpochNotComplete)?;
-
-        let unlock_block_number = epoch_completed_block
-            .checked_add(&T::StakeWithdrawalLockingPeriod::get())
-            .ok_or(Error::BlockNumberOverflow)?;
-
-        // this is the oldest unconfirmed domain block
-        // we want to release funds only after the unlock period is confirmed.
-        let oldest_domain_block = Pallet::<T>::oldest_receipt_number(domain_id);
+        let (domain_id, _) = allowed_since_domain_epoch.deconstruct();
+        let latest_confirmed_block_number = LatestConfirmedDomainBlockNumber::<T>::get(domain_id);
         ensure!(
-            unlock_block_number < oldest_domain_block,
+            unlock_at_confirmed_domain_block_number <= latest_confirmed_block_number,
             Error::UnlockPeriodNotComplete
         );
 
@@ -807,24 +830,18 @@ pub(crate) fn do_unlock_operator<T: Config>(operator_id: OperatorId) -> Result<(
     Operators::<T>::try_mutate_exists(operator_id, |maybe_operator| {
         // take the operator so this operator info is removed once we unlock the operator.
         let operator = maybe_operator.take().ok_or(Error::UnknownOperator)?;
-        let unlock_after_domain_epoch = match operator.status {
-            OperatorStatus::Deregistered(unlock_after_domain_epoch) => unlock_after_domain_epoch,
+        let OperatorDeregisteredInfo {
+            domain_epoch,
+            unlock_at_confirmed_domain_block_number,
+        } = match operator.status {
+            OperatorStatus::Deregistered(operator_deregistered_info) => operator_deregistered_info,
             _ => return Err(Error::OperatorNotDeregistered),
         };
 
-        let (domain_id, epoch_idx) = unlock_after_domain_epoch.deconstruct();
-        let epoch_completed_at =
-            DomainEpochCompleteAt::<T>::get(domain_id, epoch_idx).ok_or(Error::EpochNotComplete)?;
-
-        let unlock_block_number = epoch_completed_at
-            .checked_add(&T::StakeWithdrawalLockingPeriod::get())
-            .ok_or(Error::BlockNumberOverflow)?;
-
-        // this is the oldest unconfirmed domain block
-        // we want to release funds only after the unlock period is confirmed.
-        let oldest_domain_block = Pallet::<T>::oldest_receipt_number(domain_id);
+        let (domain_id, _) = domain_epoch.deconstruct();
+        let latest_confirmed_block_number = LatestConfirmedDomainBlockNumber::<T>::get(domain_id);
         ensure!(
-            unlock_block_number < oldest_domain_block,
+            unlock_at_confirmed_domain_block_number <= latest_confirmed_block_number,
             Error::UnlockPeriodNotComplete
         );
 
@@ -839,11 +856,8 @@ pub(crate) fn do_unlock_operator<T: Config>(operator_id: OperatorId) -> Result<(
         let staked_hold_id = T::HoldIdentifier::staking_staked(operator_id);
         Deposits::<T>::drain_prefix(operator_id).try_for_each(|(nominator_id, mut deposit)| {
             // convert any deposits from the previous epoch to shares
-            deposit.pending = do_convert_previous_epoch_deposits::<T>(
-                operator_id,
-                &mut deposit,
-                unlock_after_domain_epoch,
-            )?;
+            deposit.pending =
+                do_convert_previous_epoch_deposits::<T>(operator_id, &mut deposit, domain_epoch)?;
 
             let current_locked_amount =
                 T::Currency::balance_on_hold(&staked_hold_id, &nominator_id);
@@ -1029,9 +1043,9 @@ where
 pub(crate) mod tests {
     use crate::domain_registry::{DomainConfig, DomainObject};
     use crate::pallet::{
-        Config, Deposits, DomainRegistry, DomainStakingSummary, HeadReceiptNumber, NextOperatorId,
-        NominatorCount, OperatorIdOwner, Operators, PendingOperatorSwitches, PendingSlashes,
-        Withdrawals,
+        Config, Deposits, DomainRegistry, DomainStakingSummary, LatestConfirmedDomainBlockNumber,
+        NextOperatorId, NominatorCount, OperatorIdOwner, Operators, PendingOperatorSwitches,
+        PendingSlashes, Withdrawals,
     };
     use crate::staking::{
         do_nominate_operator, do_reward_operators, do_slash_operators, do_unlock_funds,
@@ -1050,7 +1064,7 @@ pub(crate) mod tests {
         DomainId, OperatorAllowList, OperatorId, OperatorPair, OperatorPublicKey,
         ZERO_OPERATOR_SIGNING_KEY,
     };
-    use sp_runtime::traits::{One, Zero};
+    use sp_runtime::traits::Zero;
     use std::collections::{BTreeMap, BTreeSet};
     use std::vec;
     use subspace_runtime_primitives::SSC;
@@ -1350,7 +1364,7 @@ pub(crate) mod tests {
             assert_eq!(nominator_count, 1);
 
             // do epoch transition
-            do_finalize_domain_current_epoch::<Test>(domain_id, One::one()).unwrap();
+            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
 
             let operator = Operators::<Test>::get(operator_id).unwrap();
             assert_eq!(
@@ -1537,7 +1551,13 @@ pub(crate) mod tests {
             assert_eq!(
                 operator.status,
                 OperatorStatus::Deregistered(
-                    (domain_id, domain_stake_summary.current_epoch_index).into()
+                    (
+                        domain_id,
+                        domain_stake_summary.current_epoch_index,
+                        // since the Withdrawals locking period is 5 and confirmed domain block is 0
+                        5
+                    )
+                        .into()
                 )
             );
 
@@ -1651,7 +1671,7 @@ pub(crate) mod tests {
                 nominators,
             );
 
-            do_finalize_domain_current_epoch::<Test>(domain_id, Zero::zero()).unwrap();
+            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
 
             if !operator_reward.is_zero() {
                 do_reward_operators::<Test>(
@@ -1663,6 +1683,9 @@ pub(crate) mod tests {
             }
 
             let nominator_count = NominatorCount::<Test>::get(operator_id);
+            let confirmed_domain_block = 100;
+            LatestConfirmedDomainBlockNumber::<Test>::insert(domain_id, confirmed_domain_block);
+
             for (withdraw, expected_result) in withdraws {
                 let res = Domains::withdraw_stake(
                     RuntimeOrigin::signed(nominator_id),
@@ -1677,20 +1700,12 @@ pub(crate) mod tests {
 
             if let Some((withdraw, include_ed)) = expected_withdraw {
                 let previous_usable_balance = Balances::usable_balance(nominator_id);
-                let confirmed_domain_block = 100;
-                do_finalize_domain_current_epoch::<Test>(domain_id, confirmed_domain_block)
-                    .unwrap();
+                do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
 
-                // staking withdrawal is 5 blocks, and block pruning depth is 16
-                // to unlock funds, confirmed block should be atleast 106 so +1 in the end
-                HeadReceiptNumber::<Test>::insert(
-                    domain_id,
-                    confirmed_domain_block
-                        + crate::tests::StakeWithdrawalLockingPeriod::get()
-                        + crate::tests::BlockTreePruningDepth::get()
-                        + 1,
-                );
-
+                // staking withdrawal is 5 blocks
+                // to unlock funds, confirmed block should be atleast 105
+                let confirmed_domain_block = 105;
+                LatestConfirmedDomainBlockNumber::<Test>::insert(domain_id, confirmed_domain_block);
                 assert_ok!(do_unlock_funds::<Test>(operator_id, nominator_id));
 
                 let expected_balance = if include_ed {
@@ -2076,7 +2091,7 @@ pub(crate) mod tests {
                 BTreeMap::from_iter(nominators),
             );
 
-            do_finalize_domain_current_epoch::<Test>(domain_id, Zero::zero()).unwrap();
+            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
             let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
             assert_eq!(domain_stake_summary.current_total_stake, 300 * SSC);
 
@@ -2089,7 +2104,7 @@ pub(crate) mod tests {
 
             do_reward_operators::<Test>(domain_id, vec![operator_id].into_iter(), 20 * SSC)
                 .unwrap();
-            do_finalize_domain_current_epoch::<Test>(domain_id, Zero::zero()).unwrap();
+            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
 
             // post epoch transition, domain stake has 21.333 amount reduced due to withdrawal of 20 shares
             let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
@@ -2124,7 +2139,7 @@ pub(crate) mod tests {
                 0
             );
 
-            do_finalize_domain_current_epoch::<Test>(domain_id, One::one()).unwrap();
+            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
             assert_eq!(PendingSlashes::<Test>::get(domain_id), None);
             assert_eq!(Operators::<Test>::get(operator_id), None);
             assert_eq!(OperatorIdOwner::<Test>::get(operator_id), None);
@@ -2188,7 +2203,7 @@ pub(crate) mod tests {
                 Default::default(),
             );
 
-            do_finalize_domain_current_epoch::<Test>(domain_id, Zero::zero()).unwrap();
+            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
             let domain_stake_summary = DomainStakingSummary::<Test>::get(domain_id).unwrap();
             assert!(domain_stake_summary.next_operators.contains(&operator_id_1));
             assert!(domain_stake_summary.next_operators.contains(&operator_id_2));
@@ -2224,7 +2239,7 @@ pub(crate) mod tests {
                 0
             );
 
-            do_finalize_domain_current_epoch::<Test>(domain_id, One::one()).unwrap();
+            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
             assert_eq!(PendingSlashes::<Test>::get(domain_id), None);
             assert_eq!(Operators::<Test>::get(operator_id_1), None);
             assert_eq!(OperatorIdOwner::<Test>::get(operator_id_1), None);

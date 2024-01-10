@@ -5,7 +5,7 @@ use crate::alloc::borrow::ToOwned;
 use crate::domain_registry::DomainConfig;
 use crate::staking::{do_reward_operators, OperatorConfig, OperatorStatus};
 use crate::staking_epoch::{do_finalize_domain_current_epoch, do_finalize_domain_epoch_staking};
-use crate::Pallet as Domains;
+use crate::{DomainBlockNumberFor, Pallet as Domains};
 use frame_benchmarking::v2::*;
 use frame_support::assert_ok;
 use frame_support::traits::fungible::Mutate;
@@ -17,7 +17,7 @@ use sp_domains::{
     dummy_opaque_bundle, DomainId, ExecutionReceipt, OperatorAllowList, OperatorId,
     OperatorPublicKey, RuntimeType,
 };
-use sp_runtime::traits::{BlockNumberProvider, CheckedAdd, One, SaturatedConversion};
+use sp_runtime::traits::{BlockNumberProvider, CheckedAdd, One, SaturatedConversion, Zero};
 
 const SEED: u32 = 0;
 
@@ -95,7 +95,6 @@ mod benchmarks {
     #[benchmark]
     fn pending_staking_operation() {
         let max_pending_staking_op = T::MaxPendingStakingOperation::get();
-        let epoch_duration = T::StakeEpochDuration::get();
         let minimum_nominator_stake = T::Currency::minimum_balance();
         let withdraw_amount = T::MinOperatorStake::get();
         let operator_rewards =
@@ -103,7 +102,7 @@ mod benchmarks {
 
         let domain_id = register_domain::<T>();
         let (_, operator_id) = register_helper_operator::<T>(domain_id, minimum_nominator_stake);
-        do_finalize_domain_current_epoch::<T>(domain_id, 0u32.into())
+        do_finalize_domain_current_epoch::<T>(domain_id)
             .expect("finalize domain staking should success");
 
         for i in 0..max_pending_staking_op {
@@ -118,7 +117,7 @@ mod benchmarks {
                 withdraw_amount * 2u32.into(),
             ));
         }
-        do_finalize_domain_current_epoch::<T>(domain_id, epoch_duration)
+        do_finalize_domain_current_epoch::<T>(domain_id)
             .expect("finalize domain staking should success");
         assert_eq!(PendingStakingOperationCount::<T>::get(domain_id), 0);
 
@@ -140,7 +139,7 @@ mod benchmarks {
             do_reward_operators::<T>(domain_id, vec![operator_id].into_iter(), operator_rewards)
                 .expect("reward operator should success");
 
-            do_finalize_domain_current_epoch::<T>(domain_id, epoch_duration * 2u32.into())
+            do_finalize_domain_current_epoch::<T>(domain_id)
                 .expect("finalize domain staking should success");
         }
 
@@ -341,7 +340,7 @@ mod benchmarks {
         let operator = Operators::<T>::get(operator_id).expect("operator must exist");
         assert_eq!(
             operator.status,
-            OperatorStatus::Deregistered((domain_id, 0).into())
+            OperatorStatus::Deregistered((domain_id, 0, DomainBlockNumberFor::<T>::zero()).into())
         );
     }
 
@@ -366,7 +365,7 @@ mod benchmarks {
             operator_id,
             withdraw_amount * 3u32.into(),
         ));
-        do_finalize_domain_epoch_staking::<T>(domain_id, 1u32.into())
+        do_finalize_domain_epoch_staking::<T>(domain_id)
             .expect("finalize domain staking should success");
 
         // Add reward to the operator

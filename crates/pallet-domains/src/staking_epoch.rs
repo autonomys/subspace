@@ -1,16 +1,15 @@
 //! Staking epoch transition for domain
 use crate::pallet::{
-    Deposits, DomainEpochCompleteAt, DomainStakingSummary, LastEpochStakingDistribution,
-    OperatorIdOwner, Operators, PendingOperatorSwitches, PendingSlashes,
-    PendingStakingOperationCount,
+    Deposits, DomainStakingSummary, LastEpochStakingDistribution, OperatorIdOwner, Operators,
+    PendingOperatorSwitches, PendingSlashes, PendingStakingOperationCount,
 };
 use crate::staking::{
     calculate_withdraw_share_ssc, do_convert_previous_epoch_deposits, DomainEpoch,
     Error as TransitionError, OperatorStatus,
 };
 use crate::{
-    BalanceOf, Config, DomainBlockNumberFor, ElectionVerificationParams, Event, HoldIdentifier,
-    OperatorEpochSharePrice, Pallet,
+    BalanceOf, Config, ElectionVerificationParams, Event, HoldIdentifier, OperatorEpochSharePrice,
+    Pallet,
 };
 use codec::{Decode, Encode};
 use frame_support::traits::fungible::{InspectHold, Mutate, MutateHold};
@@ -35,7 +34,6 @@ pub enum Error {
 /// Returns true of the epoch indeed was finished.
 pub(crate) fn do_finalize_domain_current_epoch<T: Config>(
     domain_id: DomainId,
-    domain_block_number: DomainBlockNumberFor<T>,
 ) -> Result<EpochIndex, Error> {
     // Reset pending staking operation count to 0
     PendingStakingOperationCount::<T>::set(domain_id, 0);
@@ -50,7 +48,7 @@ pub(crate) fn do_finalize_domain_current_epoch<T: Config>(
     do_finalize_switch_operator_domain::<T>(domain_id)?;
 
     // finalize any withdrawals and then deposits
-    do_finalize_domain_epoch_staking::<T>(domain_id, domain_block_number)
+    do_finalize_domain_epoch_staking::<T>(domain_id)
 }
 
 /// Operator takes `NominationTax` of the current epoch rewards and stake them.
@@ -84,6 +82,12 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
                         operator_id,
                         operator_tax,
                     )?;
+
+                    // increment total deposit for operator pool within this epoch
+                    operator.deposits_in_epoch = operator
+                        .deposits_in_epoch
+                        .checked_add(&operator_tax)
+                        .ok_or(TransitionError::BalanceOverflow)?;
 
                     let current_domain_epoch = (domain_id, stake_summary.current_epoch_index).into();
                     crate::staking::do_calculate_previous_epoch_deposit_shares_and_maybe_add_new_deposit::<T>(
@@ -171,7 +175,6 @@ fn switch_operator<T: Config>(
 
 pub(crate) fn do_finalize_domain_epoch_staking<T: Config>(
     domain_id: DomainId,
-    domain_block_number: DomainBlockNumberFor<T>,
 ) -> Result<EpochIndex, Error> {
     DomainStakingSummary::<T>::try_mutate(domain_id, |maybe_stake_summary| {
         let stake_summary = maybe_stake_summary
@@ -204,7 +207,6 @@ pub(crate) fn do_finalize_domain_epoch_staking<T: Config>(
         };
 
         LastEpochStakingDistribution::<T>::insert(domain_id, election_verification_params);
-        DomainEpochCompleteAt::<T>::insert(domain_id, previous_epoch, domain_block_number);
 
         let previous_epoch = stake_summary.current_epoch_index;
         stake_summary.current_epoch_index = next_epoch;
@@ -414,8 +416,8 @@ pub(crate) fn do_finalize_slashed_operators<T: Config>(
 mod tests {
     use crate::domain_registry::{DomainConfig, DomainObject};
     use crate::pallet::{
-        Deposits, DomainRegistry, DomainStakingSummary, HeadReceiptNumber,
-        LastEpochStakingDistribution, NominatorCount, OperatorIdOwner, OperatorSigningKey,
+        Deposits, DomainRegistry, DomainStakingSummary, LastEpochStakingDistribution,
+        LatestConfirmedDomainBlockNumber, NominatorCount, OperatorIdOwner, OperatorSigningKey,
         Operators, PendingOperatorSwitches, Withdrawals,
     };
     use crate::staking::tests::{register_operator, Share};
@@ -553,7 +555,7 @@ mod tests {
                 BTreeMap::from_iter(nominators.clone()),
             );
 
-            do_finalize_domain_current_epoch::<Test>(domain_id, Zero::zero()).unwrap();
+            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
 
             // add pending deposits
             for pending_deposit in &pending_deposits {
@@ -571,21 +573,17 @@ mod tests {
             }
 
             // de-register operator
+            let domain_block_number = 100;
+            LatestConfirmedDomainBlockNumber::<Test>::insert(domain_id, domain_block_number);
             do_deregister_operator::<Test>(operator_account, operator_id).unwrap();
 
             // finalize and add to pending operator unlocks
-            let domain_block_number = 100;
-            do_finalize_domain_current_epoch::<Test>(domain_id, domain_block_number).unwrap();
+            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
 
-            // staking withdrawal is 5 blocks, and block pruning depth is 16
-            // to unlock funds, confirmed block should be atleast 106 so +1 in the end
-            HeadReceiptNumber::<Test>::insert(
-                domain_id,
-                domain_block_number
-                    + crate::tests::StakeWithdrawalLockingPeriod::get()
-                    + crate::tests::BlockTreePruningDepth::get()
-                    + 1,
-            );
+            // staking withdrawal is 5 blocks,
+            // to unlock funds, confirmed block should be atleast 105
+            let domain_block_number = 105;
+            LatestConfirmedDomainBlockNumber::<Test>::insert(domain_id, domain_block_number);
 
             assert_ok!(do_unlock_operator::<Test>(operator_id));
 
@@ -686,7 +684,7 @@ mod tests {
                 BTreeMap::from_iter(nominators),
             );
 
-            do_finalize_domain_current_epoch::<Test>(domain_id, Zero::zero()).unwrap();
+            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
 
             let mut total_deposit = BalanceOf::<Test>::zero();
             for deposit in &deposits {
@@ -699,8 +697,7 @@ mod tests {
                     .unwrap();
             }
 
-            let current_block = 100;
-            do_finalize_domain_current_epoch::<Test>(domain_id, current_block).unwrap();
+            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
             for deposit in deposits {
                 Deposits::<Test>::contains_key(operator_id, deposit.0);
             }
@@ -771,7 +768,7 @@ mod tests {
                 BTreeMap::from_iter(nominators),
             );
 
-            do_finalize_domain_current_epoch::<Test>(domain_id, Zero::zero()).unwrap();
+            do_finalize_domain_current_epoch::<Test>(domain_id).unwrap();
 
             // 10% tax
             let nomination_tax = Percent::from_parts(10);

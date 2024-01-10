@@ -369,27 +369,19 @@ mod pallet {
 
     /// List of all registered operators and their configuration.
     #[pallet::storage]
-    pub(super) type Operators<T: Config> =
-        StorageMap<_, Identity, OperatorId, Operator<BalanceOf<T>, T::Share>, OptionQuery>;
+    pub(super) type Operators<T: Config> = StorageMap<
+        _,
+        Identity,
+        OperatorId,
+        Operator<BalanceOf<T>, T::Share, DomainBlockNumberFor<T>>,
+        OptionQuery,
+    >;
 
     /// Temporary hold of all the operators who decided to switch to another domain.
     /// Once epoch is complete, these operators are added to new domains under next_operators.
     #[pallet::storage]
     pub(super) type PendingOperatorSwitches<T: Config> =
         StorageMap<_, Identity, DomainId, BTreeSet<OperatorId>, OptionQuery>;
-
-    /// Domain block number at which given epoch is completed.
-    // TODO: currently unbounded storage.
-    #[pallet::storage]
-    pub(super) type DomainEpochCompleteAt<T: Config> = StorageDoubleMap<
-        _,
-        Identity,
-        DomainId,
-        Identity,
-        EpochIndex,
-        DomainBlockNumberFor<T>,
-        OptionQuery,
-    >;
 
     /// Share price for the operator pool at the end of Domain epoch.
     // TODO: currently unbounded storage.
@@ -417,7 +409,7 @@ mod pallet {
         OperatorId,
         Identity,
         NominatorId<T>,
-        VecDeque<Withdrawal<T::Share>>,
+        VecDeque<Withdrawal<T::Share, DomainBlockNumberFor<T>>>,
         OptionQuery,
     >;
 
@@ -490,6 +482,11 @@ mod pallet {
     /// The head receipt number of each domain
     #[pallet::storage]
     pub(super) type HeadReceiptNumber<T: Config> =
+        StorageMap<_, Identity, DomainId, DomainBlockNumberFor<T>, ValueQuery>;
+
+    /// The latest confirmed block number of each domain.
+    #[pallet::storage]
+    pub(super) type LatestConfirmedDomainBlockNumber<T: Config> =
         StorageMap<_, Identity, DomainId, DomainBlockNumberFor<T>, ValueQuery>;
 
     /// Whether the head receipt have extended in the current consensus block
@@ -869,14 +866,17 @@ mod pallet {
                         )
                         .map_err(Error::<T>::from)?;
 
+                        LatestConfirmedDomainBlockNumber::<T>::insert(
+                            domain_id,
+                            confirmed_block_info.domain_block_number,
+                        );
+
                         if confirmed_block_info.domain_block_number % T::StakeEpochDuration::get()
                             == Zero::zero()
                         {
-                            let completed_epoch_index = do_finalize_domain_current_epoch::<T>(
-                                domain_id,
-                                confirmed_block_info.domain_block_number,
-                            )
-                            .map_err(Error::<T>::from)?;
+                            let completed_epoch_index =
+                                do_finalize_domain_current_epoch::<T>(domain_id)
+                                    .map_err(Error::<T>::from)?;
 
                             Self::deposit_event(Event::DomainEpochCompleted {
                                 domain_id,
@@ -1096,8 +1096,7 @@ mod pallet {
             // if the domain's current epoch is 0,
             // then do an epoch transition so that operator can start producing bundles
             if current_epoch_index.is_zero() {
-                do_finalize_domain_current_epoch::<T>(domain_id, One::one())
-                    .map_err(Error::<T>::from)?;
+                do_finalize_domain_current_epoch::<T>(domain_id).map_err(Error::<T>::from)?;
             }
 
             Ok(())
@@ -1255,14 +1254,8 @@ mod pallet {
         ) -> DispatchResult {
             ensure_root(origin)?;
 
-            let completed_epoch_index = do_finalize_domain_current_epoch::<T>(
-                domain_id,
-                // This domain block number argument is used to calculate the `unlock_block_number` for
-                // withdrawal, using the `oldest_receipt_number` here such that the withdrawal can be
-                // unlocked later by the regular epoch transition with the same amount of locking period.
-                Self::oldest_receipt_number(domain_id),
-            )
-            .map_err(Error::<T>::from)?;
+            let completed_epoch_index =
+                do_finalize_domain_current_epoch::<T>(domain_id).map_err(Error::<T>::from)?;
 
             Self::deposit_event(Event::ForceDomainEpochTransition {
                 domain_id,
@@ -1326,7 +1319,7 @@ mod pallet {
                 do_register_operator::<T>(domain_owner, domain_id, operator_stake, operator_config)
                     .expect("Genesis operator registration must succeed");
 
-                do_finalize_domain_current_epoch::<T>(domain_id, Zero::zero())
+                do_finalize_domain_current_epoch::<T>(domain_id)
                     .expect("Genesis epoch must succeed");
             }
         }
