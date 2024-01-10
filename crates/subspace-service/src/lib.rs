@@ -503,7 +503,9 @@ where
 
     let sync_target_block_number = Arc::new(AtomicU32::new(0));
     let transaction_pool = transaction_pool::new_full(
-        config,
+        config.transaction_pool.clone(),
+        config.role.is_authority(),
+        config.prometheus_registry(),
         &task_manager,
         client.clone(),
         sync_target_block_number.clone(),
