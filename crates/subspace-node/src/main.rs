@@ -72,9 +72,11 @@ impl From<String> for Error {
     }
 }
 
-fn set_default_ss58_version<C: AsRef<dyn ChainSpec>>(chain_spec: C) {
+fn set_default_ss58_version<C>(chain_spec: &C)
+where
+    C: ChainSpec + ?Sized,
+{
     let maybe_ss58_address_format = chain_spec
-        .as_ref()
         .properties()
         .get("ss58Format")
         .map(|v| {
@@ -132,7 +134,7 @@ fn main() -> Result<(), Error> {
         }
         Cli::CheckBlock(cmd) => {
             let runner = SubspaceCliPlaceholder.create_runner(&cmd)?;
-            set_default_ss58_version(&runner.config().chain_spec);
+            set_default_ss58_version(runner.config().chain_spec.as_ref());
             runner.async_run(|config| {
                 let PartialComponents {
                     client,
@@ -151,7 +153,7 @@ fn main() -> Result<(), Error> {
         }
         Cli::ExportBlocks(cmd) => {
             let runner = SubspaceCliPlaceholder.create_runner(&cmd)?;
-            set_default_ss58_version(&runner.config().chain_spec);
+            set_default_ss58_version(runner.config().chain_spec.as_ref());
             runner.async_run(|config| {
                 let PartialComponents {
                     client,
@@ -170,7 +172,7 @@ fn main() -> Result<(), Error> {
         }
         Cli::ExportState(cmd) => {
             let runner = SubspaceCliPlaceholder.create_runner(&cmd)?;
-            set_default_ss58_version(&runner.config().chain_spec);
+            set_default_ss58_version(runner.config().chain_spec.as_ref());
             runner.async_run(|config| {
                 let PartialComponents {
                     client,
@@ -189,7 +191,7 @@ fn main() -> Result<(), Error> {
         }
         Cli::ImportBlocks(cmd) => {
             let runner = SubspaceCliPlaceholder.create_runner(&cmd)?;
-            set_default_ss58_version(&runner.config().chain_spec);
+            set_default_ss58_version(runner.config().chain_spec.as_ref());
             runner.async_run(|config| {
                 let PartialComponents {
                     client,
@@ -233,7 +235,7 @@ fn main() -> Result<(), Error> {
         }
         Cli::Revert(cmd) => {
             let runner = SubspaceCliPlaceholder.create_runner(&cmd)?;
-            set_default_ss58_version(&runner.config().chain_spec);
+            set_default_ss58_version(runner.config().chain_spec.as_ref());
             runner.async_run(|config| {
                 let PartialComponents {
                     client,

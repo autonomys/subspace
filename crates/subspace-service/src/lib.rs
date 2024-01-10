@@ -24,26 +24,26 @@
     type_changing_struct_update
 )]
 
+pub mod config;
 pub mod dsn;
 mod metrics;
 pub mod rpc;
 mod sync_from_dsn;
 pub mod transaction_pool;
 
+use crate::config::{SubspaceConfiguration, SubspaceNetworking};
 use crate::dsn::{create_dsn_instance, DsnConfigurationError};
 use crate::metrics::NodeMetrics;
 use crate::transaction_pool::FullPool;
 use core::sync::atomic::{AtomicU32, Ordering};
 use cross_domain_message_gossip::cdm_gossip_peers_set_config;
 use domain_runtime_primitives::opaque::{Block as DomainBlock, Header as DomainHeader};
-pub use dsn::DsnConfig;
 use frame_system_rpc_runtime_api::AccountNonceApi;
 use futures::channel::oneshot;
 use futures::FutureExt;
 use jsonrpsee::RpcModule;
 use pallet_transaction_payment_rpc_runtime_api::TransactionPaymentApi;
 use parking_lot::Mutex;
-use prometheus_client::registry::Registry;
 use sc_basic_authorship::ProposerFactory;
 use sc_client_api::execution_extensions::ExtensionsFactory;
 use sc_client_api::{
@@ -96,7 +96,6 @@ use sp_runtime::traits::{Block as BlockT, BlockIdTo, Header, NumberFor, Zero};
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use static_assertions::const_assert;
-use std::collections::HashSet;
 use std::marker::PhantomData;
 use std::num::NonZeroUsize;
 use std::sync::Arc;
@@ -105,8 +104,6 @@ use subspace_core_primitives::crypto::kzg::{embedded_kzg_settings, Kzg};
 use subspace_core_primitives::{PotSeed, REWARD_SIGNING_CONTEXT};
 use subspace_metrics::{start_prometheus_metrics_server, RegistryAdapter};
 use subspace_networking::libp2p::multiaddr::Protocol;
-use subspace_networking::libp2p::Multiaddr;
-use subspace_networking::Node;
 use subspace_proof_of_space::Table;
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Nonce};
@@ -201,44 +198,6 @@ pub type FullClient<RuntimeApi, ExecutorDispatch> =
 
 pub type FullBackend = sc_service::TFullBackend<Block>;
 pub type FullSelectChain = sc_consensus::LongestChain<FullBackend, Block>;
-
-/// Subspace networking instantiation variant
-#[derive(Debug)]
-#[allow(clippy::large_enum_variant)]
-pub enum SubspaceNetworking {
-    /// Use existing networking instance
-    Reuse {
-        /// Node instance
-        node: Node,
-        /// Bootstrap nodes used (that can be also sent to the farmer over RPC)
-        bootstrap_nodes: Vec<Multiaddr>,
-        /// DSN metrics registry (libp2p type).
-        metrics_registry: Option<Registry>,
-    },
-    /// Networking must be instantiated internally
-    Create {
-        /// Configuration to use for DSN instantiation
-        config: DsnConfig,
-    },
-}
-
-/// Subspace-specific service configuration.
-#[derive(Debug)]
-pub struct SubspaceConfiguration {
-    /// Base configuration.
-    pub base: Configuration,
-    /// Whether slot notifications need to be present even if node is not responsible for block
-    /// authoring.
-    pub force_new_slot_notifications: bool,
-    /// Subspace networking (DSN).
-    pub subspace_networking: SubspaceNetworking,
-    /// Enables DSN-sync on startup.
-    pub sync_from_dsn: bool,
-    /// Is this node a Timekeeper
-    pub is_timekeeper: bool,
-    /// CPU cores that timekeeper can use
-    pub timekeeper_cpu_cores: HashSet<usize>,
-}
 
 struct SubspaceExtensionsFactory<PosTable, Client, DomainBlock, ExecutorDispatch> {
     kzg: Kzg,
@@ -544,7 +503,9 @@ where
 
     let sync_target_block_number = Arc::new(AtomicU32::new(0));
     let transaction_pool = transaction_pool::new_full(
-        config,
+        config.transaction_pool.clone(),
+        config.role.is_authority(),
+        config.prometheus_registry(),
         &task_manager,
         client.clone(),
         sync_target_block_number.clone(),

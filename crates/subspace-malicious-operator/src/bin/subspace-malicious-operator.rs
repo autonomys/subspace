@@ -31,7 +31,8 @@ use subspace_malicious_operator::{Cli, DomainCli};
 use subspace_networking::libp2p::Multiaddr;
 use subspace_proof_of_space::chia::ChiaTable;
 use subspace_runtime::{Block, ExecutorDispatch, RuntimeApi};
-use subspace_service::{DsnConfig, SubspaceConfiguration, SubspaceNetworking};
+use subspace_service::config::{SubspaceConfiguration, SubspaceNetworking};
+use subspace_service::dsn::DsnConfig;
 
 #[global_allocator]
 static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
@@ -177,7 +178,7 @@ fn main() -> Result<(), Error> {
 
                 DsnConfig {
                     keypair,
-                    base_path: consensus_chain_config.base_path.path().into(),
+                    network_path: consensus_chain_config.base_path.path().join("network"),
                     listen_on: vec![
                         "/ip4/0.0.0.0/udp/30433/quic-v1"
                             .parse::<Multiaddr>()
