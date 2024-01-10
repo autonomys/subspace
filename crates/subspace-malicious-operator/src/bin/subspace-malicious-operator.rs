@@ -213,9 +213,7 @@ fn main() -> Result<(), Error> {
                 PosTable,
                 RuntimeApi,
                 ExecutorDispatch,
-            >(
-                &consensus_chain_config.base, &pot_external_entropy
-            )
+            >(&consensus_chain_config, &pot_external_entropy)
             .map_err(|error| {
                 sc_service::Error::Other(format!("Failed to build a full subspace node: {error:?}"))
             })?;
