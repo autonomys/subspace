@@ -1197,7 +1197,9 @@ mod pallet {
             Ok(())
         }
 
-        /// Unlocks the nominator funds given the unlocking period is complete.
+        /// Unlocks the first withdrawal given the unlocking period is complete.
+        /// Even if rest of the withdrawals are out of unlocking period, nominator
+        /// should call this extrinsic to unlock each withdrawal
         #[pallet::call_index(10)]
         #[pallet::weight(Weight::from_all(10_000))]
         pub fn unlock_funds(origin: OriginFor<T>, operator_id: OperatorId) -> DispatchResult {

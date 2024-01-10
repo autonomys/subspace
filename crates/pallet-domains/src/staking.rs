@@ -349,7 +349,7 @@ pub(crate) fn do_convert_previous_epoch_deposits<T: Config>(
             OperatorEpochSharePrice::<T>::get(operator_id, effective_domain_epoch)
                 .ok_or(Error::MissingOperatorEpochSharePrice)?;
 
-        let new_shares = T::Share::from(epoch_share_price.saturating_reciprocal_mul_floor(amount));
+        let new_shares = T::Share::from(epoch_share_price.mul_floor(amount));
         deposit.known.shares = deposit
             .known
             .shares
