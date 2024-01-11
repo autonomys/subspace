@@ -111,7 +111,7 @@ struct KeystoreOptions {
 pub(super) struct DomainOptions {
     /// ID of the domain to run
     #[clap(long)]
-    domain_id: DomainId,
+    domain_id: Option<DomainId>,
 
     /// Use provided operator id to submit bundles
     #[arg(long)]
@@ -161,21 +161,45 @@ pub(super) fn create_domain_configuration(
     enable_color: bool,
 ) -> Result<DomainConfiguration, Error> {
     let DomainOptions {
-        domain_id,
-        operator_id,
+        domain_id: maybe_domain_id,
+        mut operator_id,
         rpc_options,
         prometheus_listen_on,
         pruning_params,
         network_options,
-        keystore_options,
+        mut keystore_options,
         pool_config,
         additional_args,
     } = domain_options;
 
+    let domain_id;
     let transaction_pool;
     let rpc_cors;
     // Development mode handling is limited to this section
     {
+        if dev {
+            if operator_id.is_none() {
+                operator_id.replace(OperatorId::default());
+            }
+            if keystore_options.keystore_suri.is_none() {
+                keystore_options
+                    .keystore_suri
+                    .replace(SecretString::new("//Alice".to_string()));
+            }
+        }
+
+        domain_id = match maybe_domain_id {
+            Some(domain_id) => domain_id,
+            None => {
+                if dev {
+                    DomainId::default()
+                } else {
+                    return Err(Error::Other(
+                        "Domain ID must be provided unless --dev mode is used".to_string(),
+                    ));
+                }
+            }
+        };
         transaction_pool = pool_config.transaction_pool(dev);
         rpc_cors = rpc_options.rpc_cors.unwrap_or_else(|| {
             if dev {

@@ -53,11 +53,10 @@ Start a node as Operator on `dev` chain:
 target/production/subspace-node run \
     --dev \
     --node-key 0000000000000000000000000000000000000000000000000000000000000001 \
-    -- \
-    --domain-id 0 \
-    --operator-id 0 \
-    --rpc-external
+    -- --
 ```
+
+`-- --` is such that domain `0` operator with ID `0` is started, with just `--` node will see no domain arguments and domain will not start.
 
 For development purposes chain, you can use `--keystore-suri` option to inject keypair into keystore from a seed.
 ```bash
