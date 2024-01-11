@@ -1,4 +1,5 @@
 mod consensus;
+mod domain;
 mod shared;
 mod substrate;
 

@@ -4,7 +4,7 @@ use crate::{chain_spec, derive_pot_external_entropy, Error};
 use clap::Parser;
 use sc_cli::{
     generate_node_name, NodeKeyParams, NodeKeyType, PruningParams, RpcMethods, TelemetryParams,
-    TransactionPoolParams,
+    TransactionPoolParams, RPC_DEFAULT_PORT,
 };
 use sc_informant::OutputFormat;
 use sc_network::config::{MultiaddrWithPeerId, NonReservedPeerMode, SetConfig};
@@ -222,7 +222,7 @@ pub(super) struct ConsensusChainOptions {
 
     /// Options for RPC
     #[clap(flatten)]
-    rpc_options: RpcOptions,
+    rpc_options: RpcOptions<{ RPC_DEFAULT_PORT }>,
 
     /// The human-readable name for this node.
     ///

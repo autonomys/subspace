@@ -157,8 +157,7 @@ where
                         FullBackend<DomainBlock>,
                     >,
                 >::new(
-                    Some(BasePath::new(domain_base_path)),
-                    domain_cli.additional_args(),
+                    Some(&domain_base_path), domain_cli.additional_args()
                 );
 
                 let domain_params = domain_service::DomainParams {
