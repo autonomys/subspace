@@ -2801,6 +2801,7 @@ name = "domain-service"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "atomic",
  "cross-domain-message-gossip",
  "domain-block-preprocessor",
  "domain-client-consensus-relay-chain",
@@ -2817,6 +2818,7 @@ dependencies = [
  "sc-client-api",
  "sc-consensus",
  "sc-executor",
+ "sc-informant",
  "sc-network",
  "sc-network-common",
  "sc-network-sync",
@@ -2848,6 +2850,7 @@ dependencies = [
  "substrate-build-script-utils",
  "substrate-frame-rpc-system",
  "substrate-prometheus-endpoint",
+ "tokio",
  "tracing",
 ]
 
