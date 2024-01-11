@@ -31,6 +31,9 @@ extern crate alloc;
 use crate::storage::{RawGenesis, StorageKey};
 use alloc::string::String;
 use bundle_producer_election::{BundleProducerElectionParams, ProofOfElectionError};
+use core::num::ParseIntError;
+use core::ops::{Add, Sub};
+use core::str::FromStr;
 use hexlit::hex;
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
@@ -139,7 +142,15 @@ impl From<DomainId> for u32 {
     }
 }
 
-impl core::ops::Add<DomainId> for DomainId {
+impl FromStr for DomainId {
+    type Err = ParseIntError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        s.parse::<u32>().map(Into::into)
+    }
+}
+
+impl Add<DomainId> for DomainId {
     type Output = Self;
 
     fn add(self, other: DomainId) -> Self {
@@ -147,7 +158,7 @@ impl core::ops::Add<DomainId> for DomainId {
     }
 }
 
-impl core::ops::Sub<DomainId> for DomainId {
+impl Sub<DomainId> for DomainId {
     type Output = Self;
 
     fn sub(self, other: DomainId) -> Self {

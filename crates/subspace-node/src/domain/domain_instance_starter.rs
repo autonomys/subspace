@@ -115,18 +115,16 @@ where
             domain_config.data_path = domain_base_path.clone();
         }
 
-        let block_importing_notification_stream = || {
-            block_importing_notification_stream.subscribe().then(
-                |block_importing_notification| async move {
-                    (
-                        block_importing_notification.block_number,
-                        block_importing_notification.acknowledgement_sender,
-                    )
-                },
-            )
-        };
+        let block_importing_notification_stream = block_importing_notification_stream
+            .subscribe()
+            .then(|block_importing_notification| async move {
+                (
+                    block_importing_notification.block_number,
+                    block_importing_notification.acknowledgement_sender,
+                )
+            });
 
-        let new_slot_notification_stream = || {
+        let new_slot_notification_stream =
             new_slot_notification_stream
                 .subscribe()
                 .then(|slot_notification| async move {
@@ -134,15 +132,14 @@ where
                         slot_notification.new_slot_info.slot,
                         slot_notification.new_slot_info.global_randomness,
                     )
-                })
-        };
+                });
 
         let operator_streams = OperatorStreams {
             // TODO: proper value
             consensus_block_import_throttling_buffer_size: 10,
-            block_importing_notification_stream: block_importing_notification_stream(),
+            block_importing_notification_stream,
             imported_block_notification_stream,
-            new_slot_notification_stream: new_slot_notification_stream(),
+            new_slot_notification_stream,
             acknowledgement_sender_stream: futures::stream::empty(),
             _phantom: Default::default(),
         };
