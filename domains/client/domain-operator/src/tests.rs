@@ -893,6 +893,7 @@ async fn test_bad_invalid_state_transition_proof_is_rejected() {
                 continue;
             }
 
+            // Abusing this method to generate every possible variant of ExecutionPhase
             let result_execution_phase = fraud_proof_generator.find_mismatched_execution_phase(
                 valid_receipt.domain_block_hash,
                 &valid_receipt.execution_trace,
