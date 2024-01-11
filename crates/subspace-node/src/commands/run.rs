@@ -182,6 +182,50 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
 
         // Run a domain node.
         if let Some(mut domain_cli) = domain_cli {
+            // Start relayer for consensus chain
+            let mut xdm_gossip_worker_builder = GossipWorkerBuilder::new();
+            {
+                consensus_chain_node
+                    .task_manager
+                    .spawn_essential_handle()
+                    .spawn_essential_blocking(
+                        "consensus-chain-relayer",
+                        None,
+                        Box::pin(
+                            domain_client_message_relayer::worker::relay_consensus_chain_messages(
+                                consensus_chain_node.client.clone(),
+                                consensus_state_pruning_mode,
+                                consensus_chain_node.sync_service.clone(),
+                                xdm_gossip_worker_builder.gossip_msg_sink(),
+                            ),
+                        ),
+                    );
+
+                let (consensus_msg_sink, consensus_msg_receiver) =
+                    tracing_unbounded("consensus_message_channel", 100);
+
+                // Start cross domain message listener for Consensus chain to receive messages from domains in the network
+                consensus_chain_node
+                    .task_manager
+                    .spawn_essential_handle()
+                    .spawn_essential_blocking(
+                        "consensus-message-listener",
+                        None,
+                        Box::pin(
+                            cross_domain_message_gossip::start_cross_chain_message_listener(
+                                ChainId::Consensus,
+                                consensus_chain_node.client.clone(),
+                                consensus_chain_node.transaction_pool.clone(),
+                                consensus_chain_node.network_service.clone(),
+                                consensus_msg_receiver,
+                            ),
+                        ),
+                    );
+
+                xdm_gossip_worker_builder
+                    .push_chain_tx_pool_sink(ChainId::Consensus, consensus_msg_sink);
+            }
+
             let span = info_span!(parent: &root_span, "Domain");
             let _enter = span.enter();
 
@@ -191,55 +235,6 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                 domain_cli.run.network_params.bootnodes = domains_bootstrap_nodes
                     .remove(&domain_id)
                     .unwrap_or_default();
-            }
-
-            // start relayer for consensus chain
-            let mut xdm_gossip_worker_builder = GossipWorkerBuilder::new();
-            {
-                let span = info_span!(parent: &root_span, "Consensus");
-                let _enter = span.enter();
-
-                let relayer_worker =
-                    domain_client_message_relayer::worker::relay_consensus_chain_messages(
-                        consensus_chain_node.client.clone(),
-                        consensus_state_pruning_mode,
-                        consensus_chain_node.sync_service.clone(),
-                        xdm_gossip_worker_builder.gossip_msg_sink(),
-                    );
-
-                consensus_chain_node
-                    .task_manager
-                    .spawn_essential_handle()
-                    .spawn_essential_blocking(
-                        "consensus-chain-relayer",
-                        None,
-                        Box::pin(relayer_worker),
-                    );
-
-                let (consensus_msg_sink, consensus_msg_receiver) =
-                    tracing_unbounded("consensus_message_channel", 100);
-
-                // Start cross domain message listener for Consensus chain to receive messages from domains in the network
-                let consensus_listener =
-                    cross_domain_message_gossip::start_cross_chain_message_listener(
-                        ChainId::Consensus,
-                        consensus_chain_node.client.clone(),
-                        consensus_chain_node.transaction_pool.clone(),
-                        consensus_chain_node.network_service.clone(),
-                        consensus_msg_receiver,
-                    );
-
-                consensus_chain_node
-                    .task_manager
-                    .spawn_essential_handle()
-                    .spawn_essential_blocking(
-                        "consensus-message-listener",
-                        None,
-                        Box::pin(consensus_listener),
-                    );
-
-                xdm_gossip_worker_builder
-                    .push_chain_tx_pool_sink(ChainId::Consensus, consensus_msg_sink);
             }
 
             let (domain_message_sink, domain_message_receiver) =
