@@ -69,25 +69,15 @@ pub struct DomainCli {
     #[clap(long)]
     pub domain_id: DomainId,
 
-    /// Use provider operator id to submit bundles.
+    /// Use provided operator id to submit bundles.
     #[arg(long)]
     pub operator_id: Option<OperatorId>,
-
-    /// Additional args for domain.
-    #[clap(raw = true)]
-    additional_args: Vec<String>,
 }
 
 impl DomainCli {
     /// Constructs a new instance of [`DomainCli`].
     pub fn new(domain_args: impl Iterator<Item = String>) -> Self {
         DomainCli::parse_from([Self::executable_name()].into_iter().chain(domain_args))
-    }
-
-    pub fn additional_args(&self) -> impl Iterator<Item = String> {
-        [Self::executable_name()]
-            .into_iter()
-            .chain(self.additional_args.clone())
     }
 
     /// Creates domain configuration from domain cli.
