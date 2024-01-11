@@ -15,6 +15,9 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 //! Copy-paste of Substrate's data structures that are not currently public there.
+//! TODO: Remove this module once we use Substrate with https://github.com/paritytech/polkadot-sdk/pull/2898
+
+use std::str::FromStr;
 
 /// CORS setting
 ///
@@ -36,23 +39,26 @@ impl From<Cors> for Option<Vec<String>> {
     }
 }
 
-/// Parse cors origins.
-pub fn parse_cors(s: &str) -> sc_cli::Result<Cors> {
-    let mut is_all = false;
-    let mut origins = Vec::new();
-    for part in s.split(',') {
-        match part {
-            "all" | "*" => {
-                is_all = true;
-                break;
-            }
-            other => origins.push(other.to_owned()),
-        }
-    }
+impl FromStr for Cors {
+    type Err = sc_cli::Error;
 
-    if is_all {
-        Ok(Cors::All)
-    } else {
-        Ok(Cors::List(origins))
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let mut is_all = false;
+        let mut origins = Vec::new();
+        for part in s.split(',') {
+            match part {
+                "all" | "*" => {
+                    is_all = true;
+                    break;
+                }
+                other => origins.push(other.to_owned()),
+            }
+        }
+
+        if is_all {
+            Ok(Cors::All)
+        } else {
+            Ok(Cors::List(origins))
+        }
     }
 }

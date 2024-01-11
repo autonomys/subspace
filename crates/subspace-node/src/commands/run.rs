@@ -1,4 +1,5 @@
 mod consensus;
+mod shared;
 mod substrate;
 
 use crate::commands::run::consensus::{
