@@ -19,7 +19,7 @@ use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, SSC};
 
 pub fn domain_dev_config() -> ExecutionChainSpec<evm_domain_runtime::RuntimeGenesisConfig> {
     let endowed_accounts = [
-        // Alice key
+        // Alith key
         AccountId20::from(hex!("f24FF3a9CF04c71Dbc94D0b566f7A27B94566cac")),
         // Baltathar key
         AccountId20::from(hex!("3Cd0A705a2DC65e5b1E1205896BaA2be8A07c6e0")),
