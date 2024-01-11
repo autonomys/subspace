@@ -94,12 +94,14 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
         domain_args,
     } = run_options;
 
+    let domain_cli = (!domain_args.is_empty()).then(|| DomainCli::new(domain_args.into_iter()));
+
     let ConsensusChainConfiguration {
         maybe_tmp_dir: _maybe_tmp_dir,
         subspace_configuration,
         pot_external_entropy,
         storage_monitor,
-    } = create_consensus_chain_configuration(consensus, enable_color, !domain_args.is_empty())?;
+    } = create_consensus_chain_configuration(consensus, enable_color, domain_cli.is_some())?;
 
     set_default_ss58_version(subspace_configuration.chain_spec.as_ref());
 
@@ -179,11 +181,9 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
         })?;
 
         // Run a domain node.
-        if !domain_args.is_empty() {
+        if let Some(mut domain_cli) = domain_cli {
             let span = info_span!(parent: &root_span, "Domain");
             let _enter = span.enter();
-
-            let mut domain_cli = DomainCli::new(domain_args.into_iter());
 
             let domain_id = domain_cli.domain_id;
 
