@@ -1,7 +1,7 @@
 use crate::domain_block_processor::{DomainBlockProcessor, PendingConsensusBlocks};
 use crate::domain_bundle_producer::DomainBundleProducer;
 use crate::domain_bundle_proposer::DomainBundleProposer;
-use crate::fraud_proof::FraudProofGenerator;
+use crate::fraud_proof::{FraudProofGenerator, TraceDiffType};
 use crate::tests::TxPoolError::InvalidTransaction as TxPoolInvalidTransaction;
 use crate::utils::OperatorSlotInfo;
 use codec::{Decode, Encode};
@@ -29,8 +29,8 @@ use sp_domains::{
     Bundle, BundleValidity, DomainsApi, HeaderHashingFor, InboxedBundle, InvalidBundleType,
 };
 use sp_domains_fraud_proof::fraud_proof::{
-    ExecutionPhase, FraudProof, InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof,
-    InvalidTotalRewardsProof,
+    ApplyExtrinsicMismatch, ExecutionPhase, FinalizeBlockMismatch, FraudProof,
+    InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof, InvalidTotalRewardsProof,
 };
 use sp_domains_fraud_proof::InvalidTransactionCode;
 use sp_runtime::generic::{BlockId, DigestItem};
@@ -798,21 +798,6 @@ async fn test_executor_inherent_timestamp_is_set() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_initialize_block_proof_creation_and_verification_should_work() {
-    test_invalid_state_transition_proof_creation_and_verification(0).await
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn test_apply_extrinsic_proof_creation_and_verification_should_work() {
-    test_invalid_state_transition_proof_creation_and_verification(2).await
-}
-
-#[tokio::test(flavor = "multi_thread")]
-async fn test_finalize_block_proof_creation_and_verification_should_work() {
-    test_invalid_state_transition_proof_creation_and_verification(3).await
-}
-
-#[tokio::test(flavor = "multi_thread")]
 async fn test_bad_invalid_state_transition_proof_is_rejected() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -877,48 +862,203 @@ async fn test_bad_invalid_state_transition_proof_is_rejected() {
     // trace index 1 is the index of the state root after applying inherent timestamp extrinsic
     // trace index 2 is the index of the state root after applying above balance transfer extrinsic
     // trace index 3 is the index of the state root after applying BlockBuilder::finalize_block
-    for mismatch_index in 0..valid_receipt.execution_trace.len() {
-        let fraud_proof = fraud_proof_generator
-            .generate_invalid_state_transition_proof(
-                GENESIS_DOMAIN_ID,
-                mismatch_index.try_into().expect(
-                    "execution trace index should always be convertible into u32 from usize; qed",
-                ),
-                &valid_receipt,
-                valid_receipt_hash,
-            )
-            .unwrap();
+    for trace_diff_type in [
+        TraceDiffType::Mismatch,
+        TraceDiffType::Shorter,
+        TraceDiffType::Longer,
+    ] {
+        for mismatch_index in 0..valid_receipt.execution_trace.len() {
+            let dummy_execution_trace = match trace_diff_type {
+                TraceDiffType::Shorter => valid_receipt
+                    .execution_trace
+                    .clone()
+                    .drain(..)
+                    .take(mismatch_index + 1)
+                    .collect(),
+                TraceDiffType::Longer => {
+                    let mut long_trace = valid_receipt.execution_trace.clone();
+                    long_trace.push(H256::default());
+                    long_trace
+                }
+                TraceDiffType::Mismatch => {
+                    let mut modified_trace = valid_receipt.execution_trace.clone();
+                    modified_trace[mismatch_index] = H256::default();
+                    modified_trace
+                }
+            };
 
-        let submit_fraud_proof_extrinsic = subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
-            pallet_domains::Call::submit_fraud_proof {
-                fraud_proof: Box::new(fraud_proof),
+            // For some combination of (TraceDiffType, mismatch_trace_index) there is no difference in trace
+            // In this case the fraud proof cannot be generated.
+            if valid_receipt.execution_trace == dummy_execution_trace {
+                continue;
             }
-            .into(),
-        )
-        .into();
 
-        let response = ferdie
-            .submit_transaction(submit_fraud_proof_extrinsic)
-            .await;
+            // Abusing this method to generate every possible variant of ExecutionPhase
+            let result_execution_phase = fraud_proof_generator.find_mismatched_execution_phase(
+                valid_receipt.domain_block_hash,
+                &valid_receipt.execution_trace,
+                &dummy_execution_trace,
+            );
 
-        assert!(matches!(
-            response,
-            Err(PoolError::Pool(TxPoolInvalidTransaction(
-                InvalidTransaction::Custom(105)
-            )))
-        ));
+            assert!(result_execution_phase.is_ok());
+            assert!(result_execution_phase
+                .as_ref()
+                .is_ok_and(|maybe_execution_phase| maybe_execution_phase.is_some()));
+
+            let execution_phase = result_execution_phase
+                .expect("already checked for error above; qed")
+                .expect("we already checked for  None above; qed");
+
+            let mut fraud_proof = fraud_proof_generator
+                .generate_invalid_state_transition_proof(
+                    GENESIS_DOMAIN_ID,
+                    execution_phase,
+                    &valid_receipt,
+                    dummy_execution_trace.len(),
+                    valid_receipt_hash,
+                )
+                .expect(
+                    "Fraud proof generation should succeed for every valid execution phase; qed",
+                );
+
+            let submit_fraud_proof_extrinsic =
+                subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+                    pallet_domains::Call::submit_fraud_proof {
+                        fraud_proof: Box::new(fraud_proof.clone()),
+                    }
+                    .into(),
+                )
+                .into();
+
+            let response = ferdie
+                .submit_transaction(submit_fraud_proof_extrinsic)
+                .await;
+
+            assert!(matches!(
+                response,
+                Err(PoolError::Pool(TxPoolInvalidTransaction(
+                    InvalidTransaction::Custom(tx_code)
+                ))) if tx_code == InvalidTransactionCode::FraudProof as u8
+            ));
+
+            // To prevent receiving TemporarilyBanned error from the pool
+            ferdie.clear_tx_pool().await.unwrap();
+
+            // Modify fraud proof's mismatch index to a higher value and try to submit it.
+            match &fraud_proof {
+                FraudProof::InvalidStateTransition(invalid_state_transition_fraud_proof) => {
+                    match &invalid_state_transition_fraud_proof.execution_phase {
+                        ExecutionPhase::ApplyExtrinsic {
+                            extrinsic_proof,
+                            mismatch: ApplyExtrinsicMismatch::StateRoot(_),
+                        } => {
+                            let mut modified_invalid_state_transition_fraud_proof =
+                                invalid_state_transition_fraud_proof.clone();
+                            modified_invalid_state_transition_fraud_proof.execution_phase =
+                                ExecutionPhase::ApplyExtrinsic {
+                                    extrinsic_proof: extrinsic_proof.clone(),
+                                    mismatch: ApplyExtrinsicMismatch::StateRoot(u32::MAX),
+                                };
+                            fraud_proof = FraudProof::InvalidStateTransition(
+                                modified_invalid_state_transition_fraud_proof,
+                            );
+                        }
+                        ExecutionPhase::FinalizeBlock {
+                            mismatch: FinalizeBlockMismatch::Longer(_),
+                        } => {
+                            let mut modified_invalid_state_transition_fraud_proof =
+                                invalid_state_transition_fraud_proof.clone();
+                            modified_invalid_state_transition_fraud_proof.execution_phase =
+                                ExecutionPhase::FinalizeBlock {
+                                    mismatch: FinalizeBlockMismatch::Longer(u32::MAX),
+                                };
+                            fraud_proof = FraudProof::InvalidStateTransition(
+                                modified_invalid_state_transition_fraud_proof,
+                            );
+                        }
+                        _ => {}
+                    }
+                }
+                _ => unreachable!(),
+            }
+
+            let submit_fraud_proof_with_invalid_mismatch_index_extrinsic =
+                subspace_test_runtime::UncheckedExtrinsic::new_unsigned(
+                    pallet_domains::Call::submit_fraud_proof {
+                        fraud_proof: Box::new(fraud_proof),
+                    }
+                    .into(),
+                )
+                .into();
+
+            let response = ferdie
+                .submit_transaction(submit_fraud_proof_with_invalid_mismatch_index_extrinsic)
+                .await;
+
+            assert!(matches!(
+                response,
+                Err(PoolError::Pool(TxPoolInvalidTransaction(
+                    InvalidTransaction::Custom(tx_code)
+                ))) if tx_code == InvalidTransactionCode::FraudProof as u8
+            ));
+
+            // To prevent receiving TemporarilyBanned error from the pool
+            ferdie.clear_tx_pool().await.unwrap();
+        }
     }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_initialize_block_proof_creation_and_verification_should_work() {
+    test_invalid_state_transition_proof_creation_and_verification(TraceDiffType::Mismatch, 0).await
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_apply_extrinsic_proof_inherent_ext_creation_and_verification_should_work() {
+    test_invalid_state_transition_proof_creation_and_verification(TraceDiffType::Mismatch, 1).await
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_apply_extrinsic_proof_normal_ext_creation_and_verification_should_work() {
+    test_invalid_state_transition_proof_creation_and_verification(TraceDiffType::Mismatch, 2).await
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_finalize_block_proof_creation_and_verification_should_work() {
+    test_invalid_state_transition_proof_creation_and_verification(TraceDiffType::Mismatch, 3).await
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_short_trace_for_inherent_apply_extrinsic_proof_creation_and_verification_should_work()
+{
+    test_invalid_state_transition_proof_creation_and_verification(TraceDiffType::Shorter, 1).await
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_short_trace_for_normal_ext_apply_extrinsic_proof_creation_and_verification_should_work(
+) {
+    test_invalid_state_transition_proof_creation_and_verification(TraceDiffType::Shorter, 2).await
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn test_long_trace_for_finalize_block_proof_creation_and_verification_should_work() {
+    // In case of TraceDiffType::Longer the bad ER always has two more elements. So, no effect of
+    // `mismatch_trace_index`
+    test_invalid_state_transition_proof_creation_and_verification(TraceDiffType::Longer, 0).await
 }
 
 /// This test will create and verify a invalid state transition proof that targets the receipt of
 /// a bundle that contains 2 extrinsic (including 1 inherent timestamp extrinsic), thus there are
 /// 4 trace roots in total, passing the `mismatch_trace_index` as:
-/// - 0 to test the `initialize_block` invalid state transition
-/// - 1 to test the `apply_extrinsic` invalid state transition with the inherent timestamp extrinsic
-/// - 2 to test the `apply_extrinsic` invalid state transition with regular domain extrinsic
-/// - 3 to test the `finalize_block` invalid state transition
+/// - 0 to test the `initialize_block` state transition
+/// - 1 to test the `apply_extrinsic` state transition with the inherent timestamp extrinsic
+/// - 2 to test the `apply_extrinsic` state transition with regular domain extrinsic
+/// - 3 to test the `finalize_block` state transition
+/// TraceDiffType can be passed as `TraceDiffType::Shorter`, `TraceDiffType::Longer`
+/// and `TraceDiffType::Mismatch`
 async fn test_invalid_state_transition_proof_creation_and_verification(
-    mismatch_trace_index: usize,
+    trace_diff_type: TraceDiffType,
+    mismatch_trace_index: u32,
 ) {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
@@ -972,12 +1112,40 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
     // Get a bundle from the txn pool and modify the receipt of the target bundle to an invalid one
     let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let original_submit_bundle_tx = bundle_to_tx(bundle.clone().unwrap());
+    let original_length = bundle
+        .as_ref()
+        .map(|opaque_bundle| {
+            opaque_bundle
+                .sealed_header
+                .header
+                .receipt
+                .execution_trace
+                .len()
+        })
+        .expect("Bundle should exists; qed");
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
         let mut opaque_bundle = bundle.unwrap();
         let receipt = &mut opaque_bundle.sealed_header.header.receipt;
         assert_eq!(receipt.execution_trace.len(), 4);
 
-        receipt.execution_trace[mismatch_trace_index] = Default::default();
+        match trace_diff_type {
+            TraceDiffType::Longer => {
+                receipt.execution_trace.push(Default::default());
+                receipt.execution_trace.push(Default::default());
+            }
+            TraceDiffType::Shorter => {
+                receipt.execution_trace = receipt
+                    .execution_trace
+                    .clone()
+                    .drain(..)
+                    .take((mismatch_trace_index + 1) as usize)
+                    .collect();
+            }
+            TraceDiffType::Mismatch => {
+                receipt.execution_trace[mismatch_trace_index as usize] = Default::default();
+            }
+        }
+
         receipt.execution_trace_root = {
             let trace: Vec<_> = receipt
                 .execution_trace
@@ -1014,21 +1182,45 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
     // Wait for the fraud proof that target the bad ER
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         if let FraudProof::InvalidStateTransition(proof) = fp {
-            match mismatch_trace_index {
-                0 => assert!(matches!(
-                    proof.execution_phase,
-                    ExecutionPhase::InitializeBlock
-                )),
-                // 1 for the inherent timestamp extrinsic, 2 for the above `transfer_allow_death` extrinsic
-                1 | 2 => assert!(matches!(
-                    proof.execution_phase,
-                    ExecutionPhase::ApplyExtrinsic { .. }
-                )),
-                3 => assert!(matches!(
-                    proof.execution_phase,
-                    ExecutionPhase::FinalizeBlock
-                )),
-                _ => unreachable!(),
+            match (trace_diff_type, mismatch_trace_index) {
+                (TraceDiffType::Mismatch, mismatch_trace_index) => match mismatch_trace_index {
+                    0 => assert!(matches!(
+                        proof.execution_phase,
+                        ExecutionPhase::InitializeBlock
+                    )),
+                    // 1 for the inherent timestamp extrinsic, 2 for the above `transfer_allow_death` extrinsic
+                    1 | 2 => assert!(matches!(
+                        proof.execution_phase,
+                        ExecutionPhase::ApplyExtrinsic {
+                            mismatch: ApplyExtrinsicMismatch::StateRoot(trace_index),
+                            ..
+                        } if trace_index == mismatch_trace_index
+                    )),
+                    3 => assert!(matches!(
+                        proof.execution_phase,
+                        ExecutionPhase::FinalizeBlock {
+                            mismatch: FinalizeBlockMismatch::StateRoot
+                        }
+                    )),
+                    _ => unreachable!(),
+                },
+                (TraceDiffType::Shorter, _) => {
+                    assert!(matches!(
+                        proof.execution_phase,
+                        ExecutionPhase::ApplyExtrinsic {
+                            mismatch: ApplyExtrinsicMismatch::Shorter,
+                            ..
+                        }
+                    ))
+                }
+                (TraceDiffType::Longer, _) => {
+                    assert!(matches!(
+                        proof.execution_phase,
+                        ExecutionPhase::FinalizeBlock {
+                            mismatch: FinalizeBlockMismatch::Longer(trace_index)
+                        } if trace_index as usize == original_length - 1
+                    ))
+                }
             }
             true
         } else {

@@ -238,7 +238,14 @@ where
         .decode_execution_result::<DomainHeader>(execution_result)?
         .into();
 
-    if valid_post_state_root != post_state_root {
+    let is_mismatch = valid_post_state_root != post_state_root;
+
+    // If there is mismatch and execution phase indicate state root mismatch then the fraud proof is valid
+    // If there is no mismatch and execution phase indicate non state root mismatch (i.e the trace is either long or short) then
+    // the fraud proof is valid.
+    let is_valid = is_mismatch == execution_phase.is_state_root_mismatch();
+
+    if is_valid {
         Ok(())
     } else {
         Err(VerificationError::InvalidProof)
