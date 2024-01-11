@@ -1,10 +1,10 @@
-use crate::commands::run::substrate::{parse_cors, Cors};
+use crate::commands::run::shared::RpcOptions;
+use crate::commands::run::substrate::Cors;
 use crate::{chain_spec, derive_pot_external_entropy, Error};
 use clap::Parser;
 use sc_cli::{
     generate_node_name, NodeKeyParams, NodeKeyType, PruningParams, RpcMethods, TelemetryParams,
-    TransactionPoolParams, RPC_DEFAULT_MAX_CONNECTIONS, RPC_DEFAULT_MAX_SUBS_PER_CONN,
-    RPC_DEFAULT_PORT,
+    TransactionPoolParams,
 };
 use sc_informant::OutputFormat;
 use sc_network::config::{MultiaddrWithPeerId, NonReservedPeerMode, SetConfig};
@@ -13,7 +13,7 @@ use sc_storage_monitor::StorageMonitorParams;
 use sc_subspace_chain_specs::ConsensusChainSpec;
 use sc_telemetry::TelemetryEndpoints;
 use std::collections::HashSet;
-use std::net::{IpAddr, Ipv4Addr, SocketAddr};
+use std::net::SocketAddr;
 use std::path::PathBuf;
 use subspace_networking::libp2p::Multiaddr;
 use subspace_service::config::{
@@ -52,51 +52,6 @@ fn parse_timekeeper_cpu_cores(
     }
 
     Ok(cpu_cores)
-}
-
-/// Options for RPC
-#[derive(Debug, Parser)]
-struct RpcOptions {
-    /// IP and port (TCP) on which to listen for RPC requests.
-    ///
-    /// Note: not all RPC methods are safe to be exposed publicly. Use an RPC proxy server to filter out
-    /// dangerous methods.
-    /// More details: <https://docs.substrate.io/main-docs/build/custom-rpc/#public-rpcs>.
-    #[arg(long, default_value_t = SocketAddr::new(
-        IpAddr::V4(Ipv4Addr::LOCALHOST),
-        RPC_DEFAULT_PORT,
-    ))]
-    rpc_listen_on: SocketAddr,
-
-    /// RPC methods to expose.
-    /// - `unsafe`: Exposes every RPC method.
-    /// - `safe`: Exposes only a safe subset of RPC methods, denying unsafe RPC methods.
-    /// - `auto`: Acts as `safe` if non-localhost `--rpc-listen-on` is passed, otherwise
-    ///           acts as `unsafe`.
-    #[arg(
-        long,
-        value_enum,
-        ignore_case = true,
-        default_value_t = RpcMethods::Auto,
-        verbatim_doc_comment
-    )]
-    rpc_methods: RpcMethods,
-
-    /// Set the the maximum concurrent subscriptions per connection.
-    #[arg(long, default_value_t = RPC_DEFAULT_MAX_SUBS_PER_CONN)]
-    rpc_max_subscriptions_per_connection: u32,
-
-    /// Maximum number of RPC server connections.
-    #[arg(long, default_value_t = RPC_DEFAULT_MAX_CONNECTIONS)]
-    rpc_max_connections: u32,
-
-    /// Specify browser Origins allowed to access the HTTP & WS RPC servers.
-    /// A comma-separated list of origins (protocol://domain or special `null`
-    /// value). Value of `all` will disable origin validation. Default is to
-    /// allow localhost and <https://polkadot.js.org> origins. When running in
-    /// --dev mode the default is to allow all origins.
-    #[arg(long, value_parser = parse_cors)]
-    rpc_cors: Option<Cors>,
 }
 
 /// Options for Substrate networking

@@ -6,7 +6,7 @@ use crate::{
     construct_extrinsic_generic, node_config, BalanceOf, EcdsaKeyring, UncheckedExtrinsicFor,
 };
 use cross_domain_message_gossip::ChainTxPoolMsg;
-use domain_client_operator::{BootstrapResult, Bootstrapper, OperatorStreams};
+use domain_client_operator::{fetch_domain_bootstrap_info, BootstrapResult, OperatorStreams};
 use domain_runtime_primitives::opaque::Block;
 use domain_runtime_primitives::{Balance, DomainCoreApi};
 use domain_service::providers::DefaultProvider;
@@ -178,13 +178,9 @@ where
             domain_instance_data,
             domain_created_at,
             imported_block_notification_stream,
-        } = {
-            let bootstrapper = Bootstrapper::<Block, _, _>::new(mock_consensus_node.client.clone());
-            bootstrapper
-                .fetch_domain_bootstrap_info(domain_id)
-                .await
-                .expect("Failed to get domain instance data")
-        };
+        } = fetch_domain_bootstrap_info::<Block, _, _>(&*mock_consensus_node.client, domain_id)
+            .await
+            .expect("Failed to get domain instance data");
         let chain_spec = create_domain_spec(domain_instance_data.raw_genesis);
         let domain_config = node_config(
             domain_id,

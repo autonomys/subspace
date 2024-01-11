@@ -17,15 +17,18 @@
 //! Subspace malicious operator node.
 
 use cross_domain_message_gossip::GossipWorkerBuilder;
-use domain_client_operator::Bootstrapper;
+use domain_client_operator::fetch_domain_bootstrap_info;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
 use sc_cli::{ChainSpec, SubstrateCli};
 use sc_consensus_slots::SlotProportion;
+use sc_network::config::MultiaddrWithPeerId;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::tracing_unbounded;
 use sp_core::crypto::Ss58AddressFormat;
 use sp_core::traits::SpawnEssentialNamed;
+use sp_domains::DomainId;
 use sp_messenger::messages::ChainId;
+use std::collections::HashMap;
 use subspace_malicious_operator::malicious_domain_instance_starter::DomainInstanceStarter;
 use subspace_malicious_operator::{Cli, DomainCli};
 use subspace_networking::libp2p::Multiaddr;
@@ -103,7 +106,7 @@ fn main() -> Result<(), Error> {
         let tokio_handle = consensus_chain_config.tokio_handle.clone();
         let base_path = consensus_chain_config.base_path.path().to_path_buf();
 
-        let domains_bootstrap_nodes: serde_json::map::Map<String, serde_json::Value> =
+        let mut domains_bootstrap_nodes: HashMap<DomainId, Vec<MultiaddrWithPeerId>> =
             consensus_chain_config
                 .chain_spec
                 .properties()
@@ -252,15 +255,7 @@ fn main() -> Result<(), Error> {
 
             if domain_cli.run.network_params.bootnodes.is_empty() {
                 domain_cli.run.network_params.bootnodes = domains_bootstrap_nodes
-                    .get(&format!("{}", domain_id))
-                    .map(|d| serde_json::from_value(d.clone()))
-                    .transpose()
-                    .map_err(|error| {
-                        sc_service::Error::Other(format!(
-                            "Failed to decode Domain: {} bootstrap nodes: {error:?}",
-                            domain_id
-                        ))
-                    })?
+                    .remove(&domain_id)
                     .unwrap_or_default();
             }
 
@@ -316,9 +311,6 @@ fn main() -> Result<(), Error> {
                     .push_chain_tx_pool_sink(ChainId::Consensus, consensus_msg_sink);
             }
 
-            let bootstrapper =
-                Bootstrapper::<DomainBlock, _, _>::new(consensus_chain_node.client.clone());
-
             let (domain_message_sink, domain_message_receiver) =
                 tracing_unbounded("domain_message_channel", 100);
 
@@ -353,14 +345,17 @@ fn main() -> Result<(), Error> {
                     "domain",
                     None,
                     Box::pin(async move {
-                        let bootstrap_result =
-                            match bootstrapper.fetch_domain_bootstrap_info(domain_id).await {
-                                Err(err) => {
-                                    log::error!("Domain bootstrapper exited with an error {err:?}");
-                                    return;
-                                }
-                                Ok(res) => res,
-                            };
+                        let bootstrap_result_fut = fetch_domain_bootstrap_info::<DomainBlock, _, _>(
+                            &*domain_starter.consensus_client,
+                            domain_id,
+                        );
+                        let bootstrap_result = match bootstrap_result_fut.await {
+                            Ok(bootstrap_result) => bootstrap_result,
+                            Err(error) => {
+                                log::error!("Domain bootstrapper exited with an error {error:?}");
+                                return;
+                            }
+                        };
                         if let Err(error) = domain_starter.start(bootstrap_result).await {
                             log::error!("Domain starter exited with an error {error:?}");
                         }

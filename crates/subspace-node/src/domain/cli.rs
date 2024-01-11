@@ -36,7 +36,6 @@ use sp_runtime::traits::Header;
 use sp_runtime::{BuildStorage, DigestItem};
 use std::io::Write;
 use std::net::SocketAddr;
-use std::num::ParseIntError;
 use std::path::Path;
 use subspace_runtime::Block;
 
@@ -61,25 +60,17 @@ pub enum Subcommand {
     ExportExecutionReceipt(ExportExecutionReceiptCmd),
 }
 
-fn parse_domain_id(s: &str) -> Result<DomainId, ParseIntError> {
-    s.parse::<u32>().map(Into::into)
-}
-
-fn parse_operator_id(s: &str) -> Result<OperatorId, ParseIntError> {
-    s.parse::<u64>().map(OperatorId::from)
-}
-
 #[derive(Debug, Parser)]
 pub struct DomainCli {
     /// Run a domain node.
     #[clap(flatten)]
     pub run: SubstrateRunCmd,
 
-    #[clap(long, value_parser = parse_domain_id)]
+    #[clap(long)]
     pub domain_id: DomainId,
 
     /// Use provider operator id to submit bundles.
-    #[arg(long, value_parser = parse_operator_id)]
+    #[arg(long)]
     pub operator_id: Option<OperatorId>,
 
     /// Additional args for domain.

@@ -14,7 +14,7 @@ NOTE: currently, the domain chain does not support to syncing from other operato
 
 ### Build from source
 
-The domain operator node is embeded within the `subspace-node` binary, please refer to [Subspace node](../crates/subspace-node/README.md) for how to build from source.
+The domain operator node is embedded within the `subspace-node` binary, please refer to [Subspace node](../crates/subspace-node/README.md) for how to build from source.
 
 #### Create Operator key:
 Operator needs key pair to participate in Bundle production.
