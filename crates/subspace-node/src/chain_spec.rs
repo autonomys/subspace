@@ -208,7 +208,7 @@ pub fn gemini_3g_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, 
             let mut properties = chain_spec_properties();
             properties.insert(
                 "potExternalEntropy".to_string(),
-                serde_json::to_value(None::<PotKey>).expect("Serialization is not infallible; qed"),
+                serde_json::to_value(None::<PotKey>).expect("Serialization is infallible; qed"),
             );
             properties
         }),
@@ -313,7 +313,7 @@ pub fn devnet_config_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfi
             let mut properties = chain_spec_properties();
             properties.insert(
                 "potExternalEntropy".to_string(),
-                serde_json::to_value(None::<PotKey>).expect("Serialization is not infallible; qed"),
+                serde_json::to_value(None::<PotKey>).expect("Serialization is infallible; qed"),
             );
             properties
         }),
@@ -373,7 +373,7 @@ pub fn dev_config() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String> 
             let mut properties = chain_spec_properties();
             properties.insert(
                 "potExternalEntropy".to_string(),
-                serde_json::to_value(None::<PotKey>).expect("Serialization is not infallible; qed"),
+                serde_json::to_value(None::<PotKey>).expect("Serialization is infallible; qed"),
             );
             properties
         }),

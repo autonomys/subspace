@@ -13,11 +13,14 @@ use domain_runtime_primitives::opaque::Block as DomainBlock;
 use futures::FutureExt;
 use sc_cli::Signals;
 use sc_consensus_slots::SlotProportion;
+use sc_network::config::MultiaddrWithPeerId;
 use sc_storage_monitor::StorageMonitorService;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::tracing_unbounded;
 use sp_core::traits::SpawnEssentialNamed;
+use sp_domains::DomainId;
 use sp_messenger::messages::ChainId;
+use std::collections::HashMap;
 use subspace_runtime::{Block, ExecutorDispatch, RuntimeApi};
 use tokio::runtime::Handle;
 use tracing::{debug, error, info, info_span, warn, Span};
@@ -119,7 +122,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
         let base_path = subspace_configuration.base_path.path().to_path_buf();
         let database_source = subspace_configuration.database.clone();
 
-        let domains_bootstrap_nodes: serde_json::map::Map<String, serde_json::Value> =
+        let mut domains_bootstrap_nodes: HashMap<DomainId, Vec<MultiaddrWithPeerId>> =
             subspace_configuration
                 .chain_spec
                 .properties()
@@ -186,15 +189,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
 
             if domain_cli.run.network_params.bootnodes.is_empty() {
                 domain_cli.run.network_params.bootnodes = domains_bootstrap_nodes
-                    .get(&format!("{}", domain_id))
-                    .map(|d| serde_json::from_value(d.clone()))
-                    .transpose()
-                    .map_err(|error| {
-                        sc_service::Error::Other(format!(
-                            "Failed to decode Domain: {} bootstrap nodes: {error:?}",
-                            domain_id
-                        ))
-                    })?
+                    .remove(&domain_id)
                     .unwrap_or_default();
             }
 
