@@ -63,7 +63,7 @@ use subspace_core_primitives::{bidirectional_distance, Blake3Hash, Randomness, U
 use subspace_runtime_primitives::{Balance, Moment};
 
 /// Key type for Operator.
-const KEY_TYPE: KeyTypeId = KeyTypeId(*b"oper");
+pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"oper");
 
 /// Extrinsics shuffling seed
 pub const DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT: &[u8] = b"extrinsics-shuffling-seed";

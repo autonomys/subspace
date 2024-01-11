@@ -1,5 +1,6 @@
 //! Service and ServiceFactory implementation. Specialized wrapper over substrate service.
 
+pub mod config;
 mod domain;
 pub mod providers;
 pub mod rpc;

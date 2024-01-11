@@ -13,7 +13,6 @@ use sc_consensus_subspace::block_import::BlockImportingNotification;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::slot_worker::NewSlotNotification;
 use sc_network::NetworkPeers;
-use sc_service::BasePath;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::{TracingUnboundedReceiver, TracingUnboundedSender};
 use sp_core::traits::SpawnEssentialNamed;
@@ -123,11 +122,9 @@ where
 
         match runtime_type {
             RuntimeType::Evm => {
-                let evm_base_path = BasePath::new(
-                    domain_config
-                        .base_path
-                        .config_dir(domain_config.chain_spec.id()),
-                );
+                let evm_base_path = domain_config
+                    .base_path
+                    .config_dir(domain_config.chain_spec.id());
 
                 let eth_provider =
                     EthProvider::<
@@ -140,7 +137,7 @@ where
                             >,
                             FullBackend<DomainBlock>,
                         >,
-                    >::new(Some(evm_base_path), domain_cli.additional_args());
+                    >::new(Some(&evm_base_path), domain_cli.additional_args());
 
                 let domain_params = domain_service::DomainParams {
                     domain_id,

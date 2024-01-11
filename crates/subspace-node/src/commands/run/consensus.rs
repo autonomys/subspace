@@ -4,7 +4,7 @@ use crate::{chain_spec, derive_pot_external_entropy, Error};
 use clap::Parser;
 use sc_cli::{
     generate_node_name, NodeKeyParams, NodeKeyType, PruningParams, RpcMethods, TelemetryParams,
-    TransactionPoolParams,
+    TransactionPoolParams, RPC_DEFAULT_PORT,
 };
 use sc_informant::OutputFormat;
 use sc_network::config::{MultiaddrWithPeerId, NonReservedPeerMode, SetConfig};
@@ -222,7 +222,7 @@ pub(super) struct ConsensusChainOptions {
 
     /// Options for RPC
     #[clap(flatten)]
-    rpc_options: RpcOptions,
+    rpc_options: RpcOptions<{ RPC_DEFAULT_PORT }>,
 
     /// The human-readable name for this node.
     ///
@@ -285,6 +285,7 @@ pub(super) struct ConsensusChainOptions {
 pub(super) struct ConsensusChainConfiguration {
     pub(super) maybe_tmp_dir: Option<TempDir>,
     pub(super) subspace_configuration: SubspaceConfiguration,
+    pub(super) dev: bool,
     /// External entropy, used initially when PoT chain starts to derive the first seed
     pub(super) pot_external_entropy: Vec<u8>,
     pub(super) storage_monitor: StorageMonitorParams,
@@ -524,6 +525,7 @@ pub(super) fn create_consensus_chain_configuration(
             is_timekeeper: timekeeper_options.timekeeper,
             timekeeper_cpu_cores: timekeeper_options.timekeeper_cpu_cores,
         },
+        dev,
         pot_external_entropy,
         storage_monitor,
     })

@@ -1,11 +1,14 @@
 mod consensus;
+mod domain;
 mod shared;
 mod substrate;
 
 use crate::commands::run::consensus::{
     create_consensus_chain_configuration, ConsensusChainConfiguration, ConsensusChainOptions,
 };
-use crate::domain::{DomainCli, DomainInstanceStarter};
+use crate::commands::run::domain::{
+    create_domain_configuration, run_evm_domain, DomainOptions, DomainStartOptions,
+};
 use crate::{set_default_ss58_version, Error, PosTable};
 use clap::Parser;
 use cross_domain_message_gossip::GossipWorkerBuilder;
@@ -14,17 +17,14 @@ use domain_runtime_primitives::opaque::Block as DomainBlock;
 use futures::FutureExt;
 use sc_cli::Signals;
 use sc_consensus_slots::SlotProportion;
-use sc_network::config::MultiaddrWithPeerId;
 use sc_storage_monitor::StorageMonitorService;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::tracing_unbounded;
 use sp_core::traits::SpawnEssentialNamed;
-use sp_domains::DomainId;
 use sp_messenger::messages::ChainId;
-use std::collections::HashMap;
+use std::env;
 use subspace_runtime::{Block, ExecutorDispatch, RuntimeApi};
-use tokio::runtime::Handle;
-use tracing::{debug, error, info, info_span, warn, Span};
+use tracing::{debug, error, info, info_span, warn};
 use tracing_subscriber::filter::LevelFilter;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::{fmt, EnvFilter};
@@ -95,14 +95,22 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
         domain_args,
     } = run_options;
 
-    let domain_cli = (!domain_args.is_empty()).then(|| DomainCli::new(domain_args.into_iter()));
+    let domain_options = (!domain_args.is_empty())
+        .then(|| DomainOptions::parse_from(env::args().take(1).chain(domain_args)));
 
     let ConsensusChainConfiguration {
         maybe_tmp_dir: _maybe_tmp_dir,
         subspace_configuration,
+        dev,
         pot_external_entropy,
         storage_monitor,
-    } = create_consensus_chain_configuration(consensus, enable_color, domain_cli.is_some())?;
+    } = create_consensus_chain_configuration(consensus, enable_color, domain_options.is_some())?;
+
+    let maybe_domain_configuration = domain_options
+        .map(|domain_options| {
+            create_domain_configuration(&subspace_configuration, dev, domain_options, enable_color)
+        })
+        .transpose()?;
 
     set_default_ss58_version(subspace_configuration.chain_spec.as_ref());
 
@@ -119,25 +127,8 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
         subspace_configuration.base_path.path().display()
     );
 
-    let root_span = Span::current();
-
     let mut task_manager = {
-        let base_path = subspace_configuration.base_path.path().to_path_buf();
         let database_source = subspace_configuration.database.clone();
-
-        let mut domains_bootstrap_nodes: HashMap<DomainId, Vec<MultiaddrWithPeerId>> =
-            subspace_configuration
-                .chain_spec
-                .properties()
-                .get("domainsBootstrapNodes")
-                .map(|d| serde_json::from_value(d.clone()))
-                .transpose()
-                .map_err(|error| {
-                    sc_service::Error::Other(format!(
-                        "Failed to decode Domains bootstrap nodes: {error:?}"
-                    ))
-                })?
-                .unwrap_or_default();
 
         let consensus_state_pruning_mode = subspace_configuration
             .state_pruning
@@ -181,11 +172,18 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
             sc_service::Error::Other(format!("Failed to start storage monitor: {error:?}"))
         })?;
 
-        // Run a domain node.
-        if let Some(mut domain_cli) = domain_cli {
-            // Start relayer for consensus chain
+        // Run a domain
+        if let Some(domain_configuration) = maybe_domain_configuration {
             let mut xdm_gossip_worker_builder = GossipWorkerBuilder::new();
+            let gossip_message_sink = xdm_gossip_worker_builder.gossip_msg_sink();
+            let (domain_message_sink, domain_message_receiver) =
+                tracing_unbounded("domain_message_channel", 100);
+
+            // Start relayer for consensus chain
             {
+                let span = info_span!("Consensus");
+                let _enter = span.enter();
+
                 consensus_chain_node
                     .task_manager
                     .spawn_essential_handle()
@@ -225,43 +223,39 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
 
                 xdm_gossip_worker_builder
                     .push_chain_tx_pool_sink(ChainId::Consensus, consensus_msg_sink);
+                xdm_gossip_worker_builder.push_chain_tx_pool_sink(
+                    ChainId::Domain(domain_configuration.domain_id),
+                    domain_message_sink,
+                );
+
+                let cross_domain_message_gossip_worker = xdm_gossip_worker_builder
+                    .build::<Block, _, _>(
+                        consensus_chain_node.network_service.clone(),
+                        consensus_chain_node.sync_service.clone(),
+                    );
+
+                consensus_chain_node
+                    .task_manager
+                    .spawn_essential_handle()
+                    .spawn_essential_blocking(
+                        "cross-domain-gossip-message-worker",
+                        None,
+                        Box::pin(cross_domain_message_gossip_worker.run()),
+                    );
             }
 
-            let span = info_span!(parent: &root_span, "Domain");
-            let _enter = span.enter();
-
-            let domain_id = domain_cli.domain_id;
-
-            if domain_cli.run.network_params.bootnodes.is_empty() {
-                domain_cli.run.network_params.bootnodes = domains_bootstrap_nodes
-                    .remove(&domain_id)
-                    .unwrap_or_default();
-            }
-
-            let (domain_message_sink, domain_message_receiver) =
-                tracing_unbounded("domain_message_channel", 100);
-
-            xdm_gossip_worker_builder
-                .push_chain_tx_pool_sink(ChainId::Domain(domain_id), domain_message_sink);
-
-            let domain_starter = DomainInstanceStarter {
-                domain_cli,
-                base_path,
-                tokio_handle: Handle::current(),
-                consensus_client: consensus_chain_node.client.clone(),
+            let domain_start_options = DomainStartOptions {
+                consensus_client: consensus_chain_node.client,
                 consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory::new(
-                    consensus_chain_node.transaction_pool.clone(),
+                    consensus_chain_node.transaction_pool,
                 ),
-                consensus_network: consensus_chain_node.network_service.clone(),
+                consensus_network: consensus_chain_node.network_service,
                 block_importing_notification_stream: consensus_chain_node
-                    .block_importing_notification_stream
-                    .clone(),
-                new_slot_notification_stream: consensus_chain_node
-                    .new_slot_notification_stream
-                    .clone(),
-                consensus_sync_service: consensus_chain_node.sync_service.clone(),
+                    .block_importing_notification_stream,
+                new_slot_notification_stream: consensus_chain_node.new_slot_notification_stream,
+                consensus_network_sync_oracle: consensus_chain_node.sync_service,
                 domain_message_receiver,
-                gossip_message_sink: xdm_gossip_worker_builder.gossip_msg_sink(),
+                gossip_message_sink,
             };
 
             consensus_chain_node
@@ -269,11 +263,14 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                 .spawn_essential_handle()
                 .spawn_essential_blocking(
                     "domain",
-                    None,
+                    Some("domains"),
                     Box::pin(async move {
+                        let span = info_span!("Domain");
+                        let _enter = span.enter();
+
                         let bootstrap_result_fut = fetch_domain_bootstrap_info::<DomainBlock, _, _>(
-                            &*domain_starter.consensus_client,
-                            domain_id,
+                            &*domain_start_options.consensus_client,
+                            domain_configuration.domain_id,
                         );
                         let bootstrap_result = match bootstrap_result_fut.await {
                             Ok(bootstrap_result) => bootstrap_result,
@@ -282,25 +279,17 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                                 return;
                             }
                         };
-                        if let Err(error) = domain_starter.start(bootstrap_result).await {
+
+                        let start_evm_domain = run_evm_domain(
+                            bootstrap_result,
+                            domain_configuration,
+                            domain_start_options,
+                        );
+
+                        if let Err(error) = start_evm_domain.await {
                             error!(%error, "Domain starter exited with an error");
                         }
                     }),
-                );
-
-            let cross_domain_message_gossip_worker = xdm_gossip_worker_builder
-                .build::<Block, _, _>(
-                    consensus_chain_node.network_service.clone(),
-                    consensus_chain_node.sync_service.clone(),
-                );
-
-            consensus_chain_node
-                .task_manager
-                .spawn_essential_handle()
-                .spawn_essential_blocking(
-                    "cross-domain-gossip-message-worker",
-                    None,
-                    Box::pin(cross_domain_message_gossip_worker.run()),
                 );
         };
 

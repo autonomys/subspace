@@ -1,13 +1,11 @@
 use crate::commands::run::substrate::Cors;
 use clap::Parser;
-use sc_cli::{
-    RpcMethods, RPC_DEFAULT_MAX_CONNECTIONS, RPC_DEFAULT_MAX_SUBS_PER_CONN, RPC_DEFAULT_PORT,
-};
+use sc_cli::{RpcMethods, RPC_DEFAULT_MAX_CONNECTIONS, RPC_DEFAULT_MAX_SUBS_PER_CONN};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 
 /// Options for RPC
 #[derive(Debug, Parser)]
-pub(super) struct RpcOptions {
+pub(super) struct RpcOptions<const DEFAULT_PORT: u16> {
     /// IP and port (TCP) on which to listen for RPC requests.
     ///
     /// Note: not all RPC methods are safe to be exposed publicly. Use an RPC proxy server to filter out
@@ -15,7 +13,7 @@ pub(super) struct RpcOptions {
     /// More details: <https://docs.substrate.io/main-docs/build/custom-rpc/#public-rpcs>.
     #[arg(long, default_value_t = SocketAddr::new(
         IpAddr::V4(Ipv4Addr::LOCALHOST),
-        RPC_DEFAULT_PORT,
+        DEFAULT_PORT,
     ))]
     pub(super) rpc_listen_on: SocketAddr,
 
