@@ -17,7 +17,7 @@
 //! Subspace malicious operator node.
 
 use cross_domain_message_gossip::GossipWorkerBuilder;
-use domain_client_operator::Bootstrapper;
+use domain_client_operator::fetch_domain_bootstrap_info;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
 use sc_cli::{ChainSpec, SubstrateCli};
 use sc_consensus_slots::SlotProportion;
@@ -316,9 +316,6 @@ fn main() -> Result<(), Error> {
                     .push_chain_tx_pool_sink(ChainId::Consensus, consensus_msg_sink);
             }
 
-            let bootstrapper =
-                Bootstrapper::<DomainBlock, _, _>::new(consensus_chain_node.client.clone());
-
             let (domain_message_sink, domain_message_receiver) =
                 tracing_unbounded("domain_message_channel", 100);
 
@@ -353,14 +350,17 @@ fn main() -> Result<(), Error> {
                     "domain",
                     None,
                     Box::pin(async move {
-                        let bootstrap_result =
-                            match bootstrapper.fetch_domain_bootstrap_info(domain_id).await {
-                                Err(err) => {
-                                    log::error!("Domain bootstrapper exited with an error {err:?}");
-                                    return;
-                                }
-                                Ok(res) => res,
-                            };
+                        let bootstrap_result_fut = fetch_domain_bootstrap_info::<DomainBlock, _, _>(
+                            &*domain_starter.consensus_client,
+                            domain_id,
+                        );
+                        let bootstrap_result = match bootstrap_result_fut.await {
+                            Ok(bootstrap_result) => bootstrap_result,
+                            Err(error) => {
+                                log::error!("Domain bootstrapper exited with an error {error:?}");
+                                return;
+                            }
+                        };
                         if let Err(error) = domain_starter.start(bootstrap_result).await {
                             log::error!("Domain starter exited with an error {error:?}");
                         }

@@ -8,7 +8,7 @@ use crate::domain::{DomainCli, DomainInstanceStarter};
 use crate::{set_default_ss58_version, Error, PosTable};
 use clap::Parser;
 use cross_domain_message_gossip::GossipWorkerBuilder;
-use domain_client_operator::Bootstrapper;
+use domain_client_operator::fetch_domain_bootstrap_info;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
 use futures::FutureExt;
 use sc_cli::Signals;
@@ -247,9 +247,6 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                     .push_chain_tx_pool_sink(ChainId::Consensus, consensus_msg_sink);
             }
 
-            let bootstrapper =
-                Bootstrapper::<DomainBlock, _, _>::new(consensus_chain_node.client.clone());
-
             let (domain_message_sink, domain_message_receiver) =
                 tracing_unbounded("domain_message_channel", 100);
 
@@ -283,14 +280,17 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                     "domain",
                     None,
                     Box::pin(async move {
-                        let bootstrap_result =
-                            match bootstrapper.fetch_domain_bootstrap_info(domain_id).await {
-                                Err(error) => {
-                                    error!(%error, "Domain bootstrapper exited with an error");
-                                    return;
-                                }
-                                Ok(res) => res,
-                            };
+                        let bootstrap_result_fut = fetch_domain_bootstrap_info::<DomainBlock, _, _>(
+                            &*domain_starter.consensus_client,
+                            domain_id,
+                        );
+                        let bootstrap_result = match bootstrap_result_fut.await {
+                            Ok(bootstrap_result) => bootstrap_result,
+                            Err(error) => {
+                                error!(%error, "Domain bootstrapper exited with an error");
+                                return;
+                            }
+                        };
                         if let Err(error) = domain_starter.start(bootstrap_result).await {
                             error!(%error, "Domain starter exited with an error");
                         }

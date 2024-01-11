@@ -637,7 +637,7 @@ pub struct GenesisDomain<AccountId: Ord> {
 
 /// Types of runtime pallet domains currently supports
 #[derive(
-    TypeInfo, Debug, Default, Encode, Decode, Clone, PartialEq, Eq, Serialize, Deserialize,
+    Debug, Default, Encode, Decode, TypeInfo, Clone, PartialEq, Eq, Serialize, Deserialize,
 )]
 pub enum RuntimeType {
     #[default]
@@ -720,7 +720,7 @@ impl DomainsDigestItem for DigestItem {
 /// This and next function should ideally use Host function to fetch the storage key
 /// from the domain runtime. But since the Host function is not available at Genesis, we have to
 /// assume the storage keys.
-/// TODO: once the chain is launched in mainnet, we should use the Host function for all domain instances.  
+/// TODO: once the chain is launched in mainnet, we should use the Host function for all domain instances.
 pub(crate) fn evm_chain_id_storage_key() -> StorageKey {
     StorageKey(
         frame_support::storage::storage_prefix(
@@ -752,7 +752,7 @@ pub fn self_domain_id_storage_key() -> StorageKey {
 }
 
 /// `DomainInstanceData` is used to construct the genesis storage of domain instance chain
-#[derive(PartialEq, Eq, Clone, Encode, Decode, TypeInfo)]
+#[derive(Debug, PartialEq, Eq, Clone, Encode, Decode, TypeInfo)]
 pub struct DomainInstanceData {
     pub runtime_type: RuntimeType,
     pub raw_genesis: RawGenesis,
