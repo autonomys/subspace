@@ -1111,15 +1111,19 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
     // Get a bundle from the txn pool and modify the receipt of the target bundle to an invalid one
     let (slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     let original_submit_bundle_tx = bundle_to_tx(bundle.clone().unwrap());
-    let original_length;
+    let original_length = bundle
+        .as_ref()
+        .map(|opaque_bundle| {
+            opaque_bundle
+                .sealed_header
+                .header
+                .receipt
+                .execution_trace
+                .len()
+        })
+        .expect("Bundle should exists; qed");
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
         let mut opaque_bundle = bundle.unwrap();
-        original_length = opaque_bundle
-            .sealed_header
-            .header
-            .receipt
-            .execution_trace
-            .len();
         let receipt = &mut opaque_bundle.sealed_header.header.receipt;
         assert_eq!(receipt.execution_trace.len(), 4);
 
