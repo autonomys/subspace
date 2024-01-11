@@ -863,9 +863,9 @@ async fn test_bad_invalid_state_transition_proof_is_rejected() {
     // trace index 2 is the index of the state root after applying above balance transfer extrinsic
     // trace index 3 is the index of the state root after applying BlockBuilder::finalize_block
     for trace_diff_type in [
+        TraceDiffType::Mismatch,
         TraceDiffType::Shorter,
         TraceDiffType::Longer,
-        TraceDiffType::Mismatch,
     ] {
         for mismatch_index in 0..valid_receipt.execution_trace.len() {
             let dummy_execution_trace = match trace_diff_type {
@@ -887,39 +887,38 @@ async fn test_bad_invalid_state_transition_proof_is_rejected() {
                 }
             };
 
+            // For some combination of (TraceDiffType, mismatch_trace_index) there is no difference in trace
+            // In this case the fraud proof cannot be generated.
+            if valid_receipt.execution_trace == dummy_execution_trace {
+                continue;
+            }
+
             let result_execution_phase = fraud_proof_generator.find_mismatched_execution_phase(
                 valid_receipt.domain_block_hash,
                 &valid_receipt.execution_trace,
                 &dummy_execution_trace,
             );
 
-            if result_execution_phase.is_err()
-                || result_execution_phase
-                    .as_ref()
-                    .is_ok_and(|maybe_execution_phase| maybe_execution_phase.is_none())
-            {
-                continue;
-            }
+            assert!(result_execution_phase.is_ok());
+            assert!(result_execution_phase
+                .as_ref()
+                .is_ok_and(|maybe_execution_phase| maybe_execution_phase.is_some()));
 
             let execution_phase = result_execution_phase
                 .expect("already checked for error above; qed")
                 .expect("we already checked for  None above; qed");
 
-            let fraud_proof_generation_response = fraud_proof_generator
+            let mut fraud_proof = fraud_proof_generator
                 .generate_invalid_state_transition_proof(
                     GENESIS_DOMAIN_ID,
                     execution_phase,
                     &valid_receipt,
-                    valid_receipt.execution_trace.len(),
+                    dummy_execution_trace.len(),
                     valid_receipt_hash,
+                )
+                .expect(
+                    "Fraud proof generation should succeed for every valid execution phase; qed",
                 );
-
-            if fraud_proof_generation_response.is_err() {
-                continue;
-            }
-
-            let mut fraud_proof =
-                fraud_proof_generation_response.expect("already checked for error above; qed");
 
             let submit_fraud_proof_extrinsic =
                 subspace_test_runtime::UncheckedExtrinsic::new_unsigned(

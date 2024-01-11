@@ -514,6 +514,8 @@ where
             }
             (TraceDiffType::Mismatch, mismatch_trace_index)
             | (TraceDiffType::Shorter, mismatch_trace_index) => {
+                // There is a trace root of the `initialize_block` in the head of the trace so we
+                // need to minus one to get the correct `extrinsic_index`
                 let extrinsic_index = mismatch_trace_index as usize - 1;
 
                 if extrinsic_index >= encoded_extrinsics.len() {

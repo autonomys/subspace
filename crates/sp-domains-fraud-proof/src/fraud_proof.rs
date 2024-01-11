@@ -309,8 +309,6 @@ pub enum VerificationError<DomainHash> {
     InvalidExecutionTrace,
     #[cfg_attr(feature = "thiserror", error("Invalid ApplyExtrinsic trace index"))]
     InvalidApplyExtrinsicTraceIndex,
-    #[cfg_attr(feature = "thiserror", error("Invalid shorter mismatch trace index"))]
-    InvalidShorterMismatchTraceIndex,
     #[cfg_attr(feature = "thiserror", error("Invalid longer mismatch trace index"))]
     InvalidLongerMismatchTraceIndex,
     #[cfg_attr(feature = "thiserror", error("Invalid ApplyExtrinsic call data"))]
