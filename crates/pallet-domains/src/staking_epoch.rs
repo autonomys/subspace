@@ -5,7 +5,7 @@ use crate::pallet::{
 };
 use crate::staking::{
     calculate_withdraw_share_ssc, do_convert_previous_epoch_deposits, DomainEpoch,
-    Error as TransitionError, OperatorStatus,
+    Error as TransitionError, OperatorStatus, SharePrice,
 };
 use crate::{
     BalanceOf, Config, ElectionVerificationParams, Event, HoldIdentifier, OperatorEpochSharePrice,
@@ -239,17 +239,10 @@ pub(crate) fn do_finalize_operator_epoch_staking<T: Config>(
 
         let total_shares = operator.current_total_shares;
 
-        let share_price = {
-            if total_stake.is_zero() || total_shares.is_zero() {
-                Perbill::one()
-            } else {
-                Perbill::from_rational(total_shares, total_stake.into())
-            }
-        };
+        let share_price = SharePrice::new::<T>(total_shares, total_stake);
 
         // calculate and subtract total withdrew shares from previous epoch
-        let withdraw_stake =
-            share_price.saturating_reciprocal_mul_floor(operator.withdrawals_in_epoch.into());
+        let withdraw_stake = share_price.shares_to_stake::<T>(operator.withdrawals_in_epoch);
         let total_stake = total_stake
             .checked_sub(&withdraw_stake)
             .ok_or(TransitionError::BalanceUnderflow)?;
@@ -258,7 +251,7 @@ pub(crate) fn do_finalize_operator_epoch_staking<T: Config>(
             .ok_or(TransitionError::ShareUnderflow)?;
 
         // calculate and add total deposits from the previous epoch
-        let deposited_shares = share_price.mul_floor(operator.deposits_in_epoch.into());
+        let deposited_shares = share_price.stake_to_shares::<T>(operator.deposits_in_epoch);
         let total_stake = total_stake
             .checked_add(&operator.deposits_in_epoch)
             .ok_or(TransitionError::BalanceOverflow)?;

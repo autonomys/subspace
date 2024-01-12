@@ -134,7 +134,8 @@ mod pallet {
     use crate::staking::{
         do_deregister_operator, do_nominate_operator, do_register_operator, do_slash_operators,
         do_switch_operator_domain, do_unlock_funds, do_unlock_operator, do_withdraw_stake, Deposit,
-        DomainEpoch, Error as StakingError, Operator, OperatorConfig, StakingSummary, Withdrawal,
+        DomainEpoch, Error as StakingError, Operator, OperatorConfig, SharePrice, StakingSummary,
+        Withdrawal,
     };
     use crate::staking_epoch::{do_finalize_domain_current_epoch, Error as StakingEpochError};
     use crate::weights::WeightInfo;
@@ -164,7 +165,7 @@ mod pallet {
         AtLeast32BitUnsigned, BlockNumberProvider, CheckEqual, CheckedAdd, Header as HeaderT,
         MaybeDisplay, One, SimpleBitOps, Zero,
     };
-    use sp_runtime::{Perbill, SaturatedConversion, Saturating};
+    use sp_runtime::{SaturatedConversion, Saturating};
     use sp_std::boxed::Box;
     use sp_std::collections::btree_map::BTreeMap;
     use sp_std::collections::btree_set::BTreeSet;
@@ -387,7 +388,7 @@ mod pallet {
     // TODO: currently unbounded storage.
     #[pallet::storage]
     pub type OperatorEpochSharePrice<T: Config> =
-        StorageDoubleMap<_, Identity, OperatorId, Identity, DomainEpoch, Perbill, OptionQuery>;
+        StorageDoubleMap<_, Identity, OperatorId, Identity, DomainEpoch, SharePrice, OptionQuery>;
 
     /// List of all deposits for given Operator.
     #[pallet::storage]

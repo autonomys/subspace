@@ -31,6 +31,37 @@ pub(crate) struct Deposit<Share: Copy, Balance: Copy> {
     pub(crate) pending: Option<PendingDeposit<Balance>>,
 }
 
+/// A share price is parts per billion of shares/ssc.
+/// Note: Shares must always be equal to or lower than ssc.
+#[derive(TypeInfo, Debug, Encode, Decode, Clone, PartialEq, Eq, Default)]
+pub struct SharePrice(Perbill);
+
+impl SharePrice {
+    /// Creates a new instance of share price from shares and stake.
+    pub(crate) fn new<T: Config>(shares: T::Share, stake: BalanceOf<T>) -> Self {
+        SharePrice(if shares.is_zero() || stake.is_zero() {
+            Perbill::one()
+        } else {
+            Perbill::from_rational(shares, stake.into())
+        })
+    }
+
+    /// Converts stake to shares based on the share price
+    pub(crate) fn stake_to_shares<T: Config>(&self, stake: BalanceOf<T>) -> T::Share {
+        self.0.mul_floor(stake).into()
+    }
+
+    /// Converts shares to stake based on the share price
+    pub(crate) fn shares_to_stake<T: Config>(&self, shares: T::Share) -> BalanceOf<T> {
+        self.0.saturating_reciprocal_mul_floor(shares.into())
+    }
+
+    /// Returns true if the share price is one
+    pub(crate) fn is_one(&self) -> bool {
+        self.0.is_one()
+    }
+}
+
 /// Unique epoch identifier across all domains. A combination of Domain and its epoch.
 #[derive(TypeInfo, Debug, Encode, Decode, Copy, Clone, PartialEq, Eq)]
 pub struct DomainEpoch(DomainId, EpochIndex);
@@ -367,7 +398,7 @@ pub(crate) fn do_convert_previous_epoch_deposits<T: Config>(
             OperatorEpochSharePrice::<T>::get(operator_id, effective_domain_epoch)
                 .ok_or(Error::MissingOperatorEpochSharePrice)?;
 
-        let new_shares = T::Share::from(epoch_share_price.mul_floor(amount));
+        let new_shares = epoch_share_price.stake_to_shares::<T>(amount);
         deposit.known.shares = deposit
             .known
             .shares
@@ -592,6 +623,8 @@ pub(crate) fn do_withdraw_stake<T: Config>(
             Error::OperatorNotRegistered
         );
 
+        ensure!(!shares_withdrew.is_zero(), Error::ZeroWithdrawShares);
+
         // calculate shares for any previous epoch
         let domain_stake_summary = DomainStakingSummary::<T>::get(operator.current_domain_id)
             .ok_or(Error::DomainNotInitialized)?;
@@ -618,7 +651,6 @@ pub(crate) fn do_withdraw_stake<T: Config>(
             let known_shares = deposit.known.shares;
 
             let (remaining_shares, shares_withdrew) = {
-                ensure!(!shares_withdrew.is_zero(), Error::ZeroWithdrawShares);
                 let remaining_shares = known_shares
                     .checked_sub(&shares_withdrew)
                     .ok_or(Error::InsufficientShares)?;
@@ -747,7 +779,7 @@ pub(crate) fn do_unlock_funds<T: Config>(
             let amount_to_unlock = if epoch_share_price.is_one() {
                 shares.into()
             } else {
-                epoch_share_price.saturating_reciprocal_mul_floor(shares.into())
+                epoch_share_price.shares_to_stake::<T>(shares)
             };
 
             // if the amount to release is more than currently locked,
@@ -792,7 +824,7 @@ fn convert_shares_to_ssc<T: Config>(
                 if epoch_share_price.is_one() {
                     shares.into()
                 } else {
-                    epoch_share_price.saturating_reciprocal_mul_floor(shares.into())
+                    epoch_share_price.shares_to_stake::<T>(shares)
                 },
                 Zero::zero(),
             )
