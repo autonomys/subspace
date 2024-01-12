@@ -89,8 +89,6 @@ impl DomainCli {
         let mut domain_config = SubstrateCli::create_configuration(self, self, tokio_handle)?;
 
         // Change default paths to Subspace structure
-        // TODO: Similar copy-paste exists in `DomainCli::create_domain_configuration()` and
-        //  `DomainInstanceStarter::start()` and should be de-duplicated
         let domain_base_path = base_path.join(self.domain_id.to_string());
         {
             domain_config.database = DatabaseSource::ParityDb {

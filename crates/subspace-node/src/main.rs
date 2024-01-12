@@ -347,7 +347,7 @@ fn main() -> Result<(), Error> {
                     );
                     let domain_config = domain_cli
                         .create_domain_configuration(
-                            &consensus_chain_config.base_path.path().join("domains"),
+                            consensus_chain_config.base_path.path(),
                             consensus_chain_config.tokio_handle,
                         )
                         .map_err(|error| {
@@ -380,7 +380,7 @@ fn main() -> Result<(), Error> {
                     let domain_cli = DomainCli::new(cmd.domain_args.clone().into_iter());
                     let domain_config = domain_cli
                         .create_domain_configuration(
-                            &consensus_chain_config.base_path.path().join("domains"),
+                            consensus_chain_config.base_path.path(),
                             consensus_chain_config.tokio_handle,
                         )
                         .map_err(|error| {

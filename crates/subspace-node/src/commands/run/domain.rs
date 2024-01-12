@@ -94,9 +94,6 @@ struct KeystoreOptions {
     /// Use interactive shell for entering the password used by the keystore.
     #[arg(long, conflicts_with_all = &["keystore_password", "keystore_password_filename"])]
     keystore_password_interactive: bool,
-    // TODO: Substrate has interactive password as well, but we run domain after consensus chain
-    //  reaches height of the domain registration, so interactive makes less sense here, but maybe
-    //  we will want to use some alternative
     /// Password used by the keystore. This allows appending an extra user-defined secret to the
     /// seed.
     #[arg(long, conflicts_with_all = &["keystore_password_interactive", "keystore_password_filename"])]
