@@ -29,10 +29,6 @@ pub enum Cli {
     /// Run blockchain node
     Run(RunOptions),
 
-    /// Key management cli utilities
-    #[clap(subcommand)]
-    Key(sc_cli::KeySubcommand),
-
     /// Build a chain specification.
     BuildSpec(sc_cli::BuildSpecCmd),
 

@@ -29,11 +29,10 @@ Backup the key. Take `Public key (hex)` of the Keypair. The public key is part o
 The above generated key is added to the Keystore so that Operator node can use to participate in Bundle production.
 The key is inserted using the following command:
 ```bash
-target/production/subspace-node key insert \
-      --suri "<Secret phrase>" --key-type oper --scheme sr25519 --keystore-path `{subspace-node-base-path}/domains/{domain-id}/keystore`
+target/production/subspace-node domain insert-key \
+      --base-path {subspace-node-base-path} --domain-id {domain-id} --keypair-suri {secret-phrase}
 ```
-The above command assumes `{subspace-node-base-path}` as the location of node data.
-`suri` is the secret phrase of the Operator key.
+The above command assumes `{subspace-node-base-path}` as the location of node data. `{domain-id}` is a domain for which to insert the key and `{secret-phrase}` is the secret phrase to use for keypair derivation.
 
 #### Register Operator:
 Operator needs to register to a domain they want to operate on using `register_operator`. Registration extrinsic requires Operator Config.

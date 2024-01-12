@@ -127,7 +127,6 @@ fn main() -> Result<(), Error> {
         Cli::Run(run_options) => {
             commands::run(run_options)?;
         }
-        Cli::Key(cmd) => cmd.run(&SubspaceCliPlaceholder)?,
         Cli::BuildSpec(cmd) => {
             let runner = SubspaceCliPlaceholder.create_runner(&cmd)?;
             runner.sync_run(|config| cmd.run(config.chain_spec, config.network))?
@@ -315,6 +314,9 @@ fn main() -> Result<(), Error> {
             })?;
         }
         Cli::Domain(domain_cmd) => match domain_cmd {
+            DomainSubcommand::InsertKey(insert_domain_key_options) => {
+                commands::insert_domain_key(insert_domain_key_options)?;
+            }
             DomainSubcommand::Benchmark(cmd) => {
                 let runner = SubspaceCliPlaceholder.create_runner(&cmd)?;
                 runner.sync_run(|consensus_chain_config| {

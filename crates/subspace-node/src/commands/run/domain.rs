@@ -1,5 +1,6 @@
 use crate::commands::run::shared::RpcOptions;
 use crate::commands::run::substrate::Cors;
+use crate::commands::shared::{store_key_in_keystore, KeystoreOptions};
 use crate::Error;
 use clap::Parser;
 use domain_client_operator::{BootstrapResult, OperatorStreams};
@@ -21,7 +22,6 @@ use sc_consensus_subspace::block_import::BlockImportingNotification;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::slot_worker::NewSlotNotification;
 use sc_informant::OutputFormat;
-use sc_keystore::LocalKeystore;
 use sc_network::config::{MultiaddrWithPeerId, NonReservedPeerMode, SetConfig, TransportConfig};
 use sc_network::NetworkPeers;
 use sc_service::config::KeystoreConfig;
@@ -29,13 +29,10 @@ use sc_service::Configuration;
 use sc_subspace_chain_specs::ExecutionChainSpec;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::{TracingUnboundedReceiver, TracingUnboundedSender};
-use sp_core::crypto::{ExposeSecret, SecretString};
-use sp_core::Pair;
-use sp_domains::{DomainId, DomainInstanceData, OperatorId, RuntimeType, KEY_TYPE};
-use sp_keystore::Keystore;
+use sp_core::crypto::SecretString;
+use sp_domains::{DomainId, DomainInstanceData, OperatorId, RuntimeType};
 use std::collections::HashMap;
 use std::net::SocketAddr;
-use std::path::PathBuf;
 use std::sync::Arc;
 use subspace_runtime::{ExecutorDispatch as CExecutorDispatch, RuntimeApi as CRuntimeApi};
 use subspace_runtime_primitives::opaque::Block as CBlock;
@@ -81,28 +78,6 @@ struct SubstrateNetworkOptions {
     in_peers: u32,
 }
 
-/// Options used for keystore
-#[derive(Debug, Parser)]
-struct KeystoreOptions {
-    /// Operator secret key URI to insert into keystore.
-    ///
-    /// Example: "//Alice".
-    ///
-    /// If the value is a file, the file content is used as URI.
-    #[arg(long)]
-    keystore_suri: Option<SecretString>,
-    /// Use interactive shell for entering the password used by the keystore.
-    #[arg(long, conflicts_with_all = &["keystore_password", "keystore_password_filename"])]
-    keystore_password_interactive: bool,
-    /// Password used by the keystore. This allows appending an extra user-defined secret to the
-    /// seed.
-    #[arg(long, conflicts_with_all = &["keystore_password_interactive", "keystore_password_filename"])]
-    keystore_password: Option<SecretString>,
-    /// File that contains the password used by the keystore.
-    #[arg(long, conflicts_with_all = &["keystore_password_interactive", "keystore_password"])]
-    keystore_password_filename: Option<PathBuf>,
-}
-
 /// Options for running a domain
 #[derive(Debug, Parser)]
 pub(super) struct DomainOptions {
@@ -131,9 +106,9 @@ pub(super) struct DomainOptions {
     #[clap(flatten)]
     network_options: SubstrateNetworkOptions,
 
-    /// Options for Substrate keystore
+    /// Options for domain keystore
     #[clap(flatten)]
-    keystore_options: KeystoreOptions,
+    keystore_options: KeystoreOptions<false>,
 
     /// Options for transaction pool
     #[clap(flatten)]
@@ -315,19 +290,7 @@ pub(super) fn create_domain_configuration(
                 }
             };
 
-            let keypair_result = sp_core::sr25519::Pair::from_string(
-                keystore_suri.expose_secret(),
-                password
-                    .as_ref()
-                    .map(|password| password.expose_secret().as_str()),
-            );
-
-            let keypair = keypair_result.map_err(|err| format!("Invalid password {:?}", err))?;
-
-            LocalKeystore::open(path, password)
-                .map_err(|error| format!("Failed to open keystore: {error}"))?
-                .insert(KEY_TYPE, keystore_suri.expose_secret(), &keypair.public())
-                .map_err(|()| "Failed to insert key into keystore".to_string())?;
+            store_key_in_keystore(path, password, &keystore_suri)?;
         }
 
         keystore_config
