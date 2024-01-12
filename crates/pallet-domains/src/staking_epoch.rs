@@ -90,11 +90,11 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
                         .ok_or(TransitionError::BalanceOverflow)?;
 
                     let current_domain_epoch = (domain_id, stake_summary.current_epoch_index).into();
-                    crate::staking::do_calculate_previous_epoch_deposit_shares_and_maybe_add_new_deposit::<T>(
+                    crate::staking::do_calculate_previous_epoch_deposit_shares_and_add_new_deposit::<T>(
                             operator_id,
                             nominator_id,
                             current_domain_epoch,
-                            Some(operator_tax),
+                            operator_tax,
                         )?;
 
                     Pallet::<T>::deposit_event(Event::OperatorTaxCollected {
@@ -232,6 +232,15 @@ pub(crate) fn do_finalize_operator_epoch_staking<T: Config>(
             return Err(TransitionError::OperatorNotRegistered);
         }
 
+        // if there are no deposits, withdrawls, and epoch rewards for this operator
+        // then short-circuit and return early.
+        if operator.deposits_in_epoch.is_zero()
+            && operator.withdrawals_in_epoch.is_zero()
+            && operator.current_epoch_rewards.is_zero()
+        {
+            return Ok(operator.current_total_stake);
+        }
+
         let total_stake = operator
             .current_total_stake
             .checked_add(&operator.current_epoch_rewards)
@@ -242,22 +251,35 @@ pub(crate) fn do_finalize_operator_epoch_staking<T: Config>(
         let share_price = SharePrice::new::<T>(total_shares, total_stake);
 
         // calculate and subtract total withdrew shares from previous epoch
-        let withdraw_stake = share_price.shares_to_stake::<T>(operator.withdrawals_in_epoch);
-        let total_stake = total_stake
-            .checked_sub(&withdraw_stake)
-            .ok_or(TransitionError::BalanceUnderflow)?;
-        let total_shares = total_shares
-            .checked_sub(&operator.withdrawals_in_epoch)
-            .ok_or(TransitionError::ShareUnderflow)?;
+        let (total_stake, total_shares) = if !operator.withdrawals_in_epoch.is_zero() {
+            let withdraw_stake = share_price.shares_to_stake::<T>(operator.withdrawals_in_epoch);
+            let total_stake = total_stake
+                .checked_sub(&withdraw_stake)
+                .ok_or(TransitionError::BalanceUnderflow)?;
+            let total_shares = total_shares
+                .checked_sub(&operator.withdrawals_in_epoch)
+                .ok_or(TransitionError::ShareUnderflow)?;
+
+            operator.withdrawals_in_epoch = Zero::zero();
+            (total_stake, total_shares)
+        } else {
+            (total_stake, total_shares)
+        };
 
         // calculate and add total deposits from the previous epoch
-        let deposited_shares = share_price.stake_to_shares::<T>(operator.deposits_in_epoch);
-        let total_stake = total_stake
-            .checked_add(&operator.deposits_in_epoch)
-            .ok_or(TransitionError::BalanceOverflow)?;
-        let total_shares = total_shares
-            .checked_add(&deposited_shares)
-            .ok_or(TransitionError::ShareOverflow)?;
+        let (total_stake, total_shares) = if !operator.deposits_in_epoch.is_zero() {
+            let deposited_shares = share_price.stake_to_shares::<T>(operator.deposits_in_epoch);
+            let total_stake = total_stake
+                .checked_add(&operator.deposits_in_epoch)
+                .ok_or(TransitionError::BalanceOverflow)?;
+            let total_shares = total_shares
+                .checked_add(&deposited_shares)
+                .ok_or(TransitionError::ShareOverflow)?;
+            operator.deposits_in_epoch = Zero::zero();
+            (total_stake, total_shares)
+        } else {
+            (total_stake, total_shares)
+        };
 
         // update operator pool epoch share price
         // TODO: once we have reference counting, we do not need to
@@ -273,9 +295,6 @@ pub(crate) fn do_finalize_operator_epoch_staking<T: Config>(
         operator.current_total_shares = total_shares;
         operator.current_total_stake = total_stake;
         operator.current_epoch_rewards = Zero::zero();
-        operator.deposits_in_epoch = Zero::zero();
-        operator.withdrawals_in_epoch = Zero::zero();
-
         Ok(total_stake)
     })
 }
@@ -324,7 +343,7 @@ pub(crate) fn do_finalize_slashed_operators<T: Config>(
                         T::Currency::balance_on_hold(&staked_hold_id, &nominator_id);
 
                     // convert any previous epoch deposits
-                    deposit.pending = do_convert_previous_epoch_deposits::<T>(
+                    do_convert_previous_epoch_deposits::<T>(
                         operator_id,
                         &mut deposit,
                         domain_epoch,

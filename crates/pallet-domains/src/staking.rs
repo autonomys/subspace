@@ -295,11 +295,11 @@ pub(crate) fn do_register_operator<T: Config>(
         domain_stake_summary.next_operators.insert(operator_id);
         // update pending transfers
         let current_domain_epoch = (domain_id, domain_stake_summary.current_epoch_index).into();
-        do_calculate_previous_epoch_deposit_shares_and_maybe_add_new_deposit::<T>(
+        do_calculate_previous_epoch_deposit_shares_and_add_new_deposit::<T>(
             operator_id,
             operator_owner,
             current_domain_epoch,
-            Some(amount),
+            amount,
         )?;
 
         Ok((operator_id, domain_stake_summary.current_epoch_index))
@@ -317,68 +317,57 @@ pub(crate) struct DepositInfo<Balance> {
 }
 
 /// Calculates shares for any pending deposit for previous epoch using the the epoch share price and
-/// then maybe create a new pending deposit in the current epoch.
+/// then create a new pending deposit in the current epoch.
 /// If there is a pending deposit for the current epoch, then simply increment the amount.
-/// Returns updated deposit info if there was a new deposit.
-pub(crate) fn do_calculate_previous_epoch_deposit_shares_and_maybe_add_new_deposit<T: Config>(
+/// Returns updated deposit info
+pub(crate) fn do_calculate_previous_epoch_deposit_shares_and_add_new_deposit<T: Config>(
     operator_id: OperatorId,
     nominator_id: NominatorId<T>,
     current_domain_epoch: DomainEpoch,
-    maybe_new_deposit: Option<BalanceOf<T>>,
-) -> Result<Option<DepositInfo<BalanceOf<T>>>, Error> {
+    new_deposit: BalanceOf<T>,
+) -> Result<DepositInfo<BalanceOf<T>>, Error> {
     Deposits::<T>::try_mutate(operator_id, nominator_id, |maybe_deposit| {
         let mut deposit = maybe_deposit.take().unwrap_or_default();
-        let maybe_pending_deposit = do_convert_previous_epoch_deposits::<T>(
-            operator_id,
-            &mut deposit,
-            current_domain_epoch,
-        )?;
+        do_convert_previous_epoch_deposits::<T>(operator_id, &mut deposit, current_domain_epoch)?;
 
         // add or create new pending deposit
-        let (maybe_pending_deposit, maybe_deposit_info) =
-            if let Some(new_deposit) = maybe_new_deposit {
-                let (pending_deposit, deposit_info) = match maybe_pending_deposit {
-                    None => {
-                        let pending_deposit = PendingDeposit {
-                            effective_domain_epoch: current_domain_epoch,
-                            amount: new_deposit,
-                        };
-
-                        let deposit_info = DepositInfo {
-                            nominating: !deposit.known.shares.is_zero(),
-                            total_deposit: new_deposit,
-                            first_deposit_in_epoch: true,
-                        };
-
-                        (pending_deposit, deposit_info)
-                    }
-                    Some(pending_deposit) => {
-                        let pending_deposit = PendingDeposit {
-                            effective_domain_epoch: current_domain_epoch,
-                            amount: pending_deposit
-                                .amount
-                                .checked_add(&new_deposit)
-                                .ok_or(Error::BalanceOverflow)?,
-                        };
-
-                        let deposit_info = DepositInfo {
-                            nominating: !deposit.known.shares.is_zero(),
-                            total_deposit: pending_deposit.amount,
-                            first_deposit_in_epoch: false,
-                        };
-
-                        (pending_deposit, deposit_info)
-                    }
+        let (pending_deposit, deposit_info) = match deposit.pending {
+            None => {
+                let pending_deposit = PendingDeposit {
+                    effective_domain_epoch: current_domain_epoch,
+                    amount: new_deposit,
                 };
 
-                (Some(pending_deposit), Some(deposit_info))
-            } else {
-                (maybe_pending_deposit, None)
-            };
+                let deposit_info = DepositInfo {
+                    nominating: !deposit.known.shares.is_zero(),
+                    total_deposit: new_deposit,
+                    first_deposit_in_epoch: true,
+                };
 
-        deposit.pending = maybe_pending_deposit;
+                (pending_deposit, deposit_info)
+            }
+            Some(pending_deposit) => {
+                let pending_deposit = PendingDeposit {
+                    effective_domain_epoch: current_domain_epoch,
+                    amount: pending_deposit
+                        .amount
+                        .checked_add(&new_deposit)
+                        .ok_or(Error::BalanceOverflow)?,
+                };
+
+                let deposit_info = DepositInfo {
+                    nominating: !deposit.known.shares.is_zero(),
+                    total_deposit: pending_deposit.amount,
+                    first_deposit_in_epoch: false,
+                };
+
+                (pending_deposit, deposit_info)
+            }
+        };
+
+        deposit.pending = Some(pending_deposit);
         *maybe_deposit = Some(deposit);
-        Ok(maybe_deposit_info)
+        Ok(deposit_info)
     })
 }
 
@@ -386,10 +375,10 @@ pub(crate) fn do_convert_previous_epoch_deposits<T: Config>(
     operator_id: OperatorId,
     deposit: &mut Deposit<T::Share, BalanceOf<T>>,
     current_domain_epoch: DomainEpoch,
-) -> Result<Option<PendingDeposit<BalanceOf<T>>>, Error> {
+) -> Result<(), Error> {
     let maybe_pending_deposit = deposit.pending.take();
     // if it is one of the previous domain epoch, then calculate shares for the epoch and update known deposit
-    let maybe_pending_deposit = if let Some(PendingDeposit {
+    deposit.pending = if let Some(PendingDeposit {
                                                 effective_domain_epoch,
                                                 amount,
                                             }) = maybe_pending_deposit && effective_domain_epoch != current_domain_epoch
@@ -409,7 +398,7 @@ pub(crate) fn do_convert_previous_epoch_deposits<T: Config>(
         maybe_pending_deposit
     };
 
-    Ok(maybe_pending_deposit)
+    Ok(())
 }
 
 pub(crate) fn do_nominate_operator<T: Config>(
@@ -442,37 +431,33 @@ pub(crate) fn do_nominate_operator<T: Config>(
         )
             .into();
 
-        let maybe_deposit_info =
-            do_calculate_previous_epoch_deposit_shares_and_maybe_add_new_deposit::<T>(
-                operator_id,
-                nominator_id,
-                current_domain_epoch,
-                Some(amount),
-            )?;
-
-        if let Some(DepositInfo {
+        let DepositInfo {
             nominating,
             total_deposit,
             first_deposit_in_epoch,
-        }) = maybe_deposit_info
-        {
-            // if not a nominator, then ensure
-            // - amount >= operator's minimum nominator stake amount.
-            // - nominator count does not exceed max nominators.
-            // - if first nomination, then increment the nominator count.
-            if !nominating {
-                ensure!(
-                    total_deposit >= operator.minimum_nominator_stake,
-                    Error::MinimumNominatorStake
-                );
+        } = do_calculate_previous_epoch_deposit_shares_and_add_new_deposit::<T>(
+            operator_id,
+            nominator_id,
+            current_domain_epoch,
+            amount,
+        )?;
 
-                if first_deposit_in_epoch {
-                    NominatorCount::<T>::try_mutate(operator_id, |count| {
-                        *count += 1;
-                        ensure!(*count <= T::MaxNominators::get(), Error::MaximumNominators);
-                        Ok(())
-                    })?;
-                }
+        // if not a nominator, then ensure
+        // - amount >= operator's minimum nominator stake amount.
+        // - nominator count does not exceed max nominators.
+        // - if first nomination, then increment the nominator count.
+        if !nominating {
+            ensure!(
+                total_deposit >= operator.minimum_nominator_stake,
+                Error::MinimumNominatorStake
+            );
+
+            if first_deposit_in_epoch {
+                NominatorCount::<T>::try_mutate(operator_id, |count| {
+                    *count += 1;
+                    ensure!(*count <= T::MaxNominators::get(), Error::MaximumNominators);
+                    Ok(())
+                })?;
             }
         }
 
@@ -634,12 +619,11 @@ pub(crate) fn do_withdraw_stake<T: Config>(
         )
             .into();
 
-        do_calculate_previous_epoch_deposit_shares_and_maybe_add_new_deposit::<T>(
-            operator_id,
-            nominator_id.clone(),
-            domain_current_epoch,
-            None,
-        )?;
+        Deposits::<T>::try_mutate(operator_id, nominator_id.clone(), |maybe_deposit| {
+            let deposit = maybe_deposit.as_mut().ok_or(Error::InsufficientShares)?;
+            do_convert_previous_epoch_deposits::<T>(operator_id, deposit, domain_current_epoch)?;
+            Ok(())
+        })?;
 
         let operator_owner =
             OperatorIdOwner::<T>::get(operator_id).ok_or(Error::UnknownOperator)?;
@@ -891,8 +875,7 @@ pub(crate) fn do_unlock_operator<T: Config>(operator_id: OperatorId) -> Result<(
         let staked_hold_id = T::HoldIdentifier::staking_staked(operator_id);
         Deposits::<T>::drain_prefix(operator_id).try_for_each(|(nominator_id, mut deposit)| {
             // convert any deposits from the previous epoch to shares
-            deposit.pending =
-                do_convert_previous_epoch_deposits::<T>(operator_id, &mut deposit, domain_epoch)?;
+            do_convert_previous_epoch_deposits::<T>(operator_id, &mut deposit, domain_epoch)?;
 
             let current_locked_amount =
                 T::Currency::balance_on_hold(&staked_hold_id, &nominator_id);
