@@ -49,7 +49,7 @@ use sp_trie::{LayoutV1, PrefixedMemoryDB, StorageProof, TrieMut};
 use sp_version::RuntimeVersion;
 use std::sync::atomic::{AtomicU64, Ordering};
 use subspace_core_primitives::{Randomness, U256 as P256};
-use subspace_runtime_primitives::{Moment, SSC};
+use subspace_runtime_primitives::{Moment, StorageFeeInterface, SSC};
 
 type UncheckedExtrinsic = frame_system::mocking::MockUncheckedExtrinsic<Test>;
 type Block = frame_system::mocking::MockBlock<Test>;
@@ -200,6 +200,7 @@ parameter_types! {
     pub const BlockReward: Balance = 10 * SSC;
     pub const MaxPendingStakingOperation: u32 = 100;
     pub const MaxNominators: u32 = 5;
+    pub const DomainsPalletId: PalletId = PalletId(*b"ssdomain");
 }
 
 pub struct MockRandomness;
@@ -217,6 +218,14 @@ impl pallet_timestamp::Config for Test {
     type OnTimestampSet = ();
     type MinimumPeriod = ConstU64<{ SLOT_DURATION / 2 }>;
     type WeightInfo = ();
+}
+
+pub struct DummyStorageFeeInterface;
+impl StorageFeeInterface<Balance> for DummyStorageFeeInterface {
+    fn transaction_byte_fee() -> Balance {
+        Default::default()
+    }
+    fn note_storage_fees(_fee: Balance) {}
 }
 
 impl pallet_domains::Config for Test {
@@ -246,6 +255,8 @@ impl pallet_domains::Config for Test {
     type MaxNominators = MaxNominators;
     type Randomness = MockRandomness;
     type SudoId = ();
+    type PalletId = DomainsPalletId;
+    type StorageFeeInterface = DummyStorageFeeInterface;
 }
 
 pub struct ExtrinsicStorageFees;

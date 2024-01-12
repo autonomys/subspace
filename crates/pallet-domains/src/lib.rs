@@ -178,6 +178,7 @@ mod pallet {
     use sp_std::vec;
     use sp_std::vec::Vec;
     use subspace_core_primitives::U256;
+    use subspace_runtime_primitives::StorageFeeInterface;
 
     #[pallet::config]
     pub trait Config: frame_system::Config<Hash: Into<H256>> {
@@ -305,6 +306,13 @@ mod pallet {
         /// The sudo account id
         #[pallet::constant]
         type SudoId: Get<Self::AccountId>;
+
+        /// The pallet-domains's pallet id.
+        #[pallet::constant]
+        type PalletId: Get<frame_support::PalletId>;
+
+        /// Storage fee interface used to deal with bundle storage fee
+        type StorageFeeInterface: StorageFeeInterface<BalanceOf<Self>>;
     }
 
     #[pallet::pallet]

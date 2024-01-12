@@ -90,6 +90,14 @@ pub trait FindVotingRewardAddresses<RewardAddress> {
     fn find_voting_reward_addresses() -> Vec<RewardAddress>;
 }
 
+pub trait StorageFeeInterface<Balance> {
+    /// Return the consensus transaction byte fee.
+    fn transaction_byte_fee() -> Balance;
+
+    /// Note the charged storage fee.
+    fn note_storage_fees(fee: Balance);
+}
+
 parameter_types! {
     /// The portion of the `NORMAL_DISPATCH_RATIO` that we adjust the fees with. Blocks filled less
     /// than this will decrease the weight and more will increase.

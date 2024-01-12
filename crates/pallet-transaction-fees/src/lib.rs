@@ -306,3 +306,16 @@ where
         });
     }
 }
+
+impl<T: Config> subspace_runtime_primitives::StorageFeeInterface<BalanceOf<T>> for Pallet<T>
+where
+    BalanceOf<T>: From<u64>,
+{
+    fn transaction_byte_fee() -> BalanceOf<T> {
+        Self::transaction_byte_fee()
+    }
+
+    fn note_storage_fees(storage_fee: BalanceOf<T>) {
+        Self::note_transaction_fees(storage_fee, Zero::zero(), Zero::zero())
+    }
+}
