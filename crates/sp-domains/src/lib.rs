@@ -320,6 +320,11 @@ impl<Extrinsic: Encode, Number: Encode, Hash: Encode, DomainHeader: HeaderT, Bal
     > {
         self.sealed_header.header.receipt
     }
+
+    /// Return the bundle body size in bytes
+    pub fn size(&self) -> u32 {
+        self.sealed_header.header.bundle_size
+    }
 }
 
 /// Bundle with opaque extrinsics.
@@ -394,6 +399,8 @@ pub struct BundleDigest<Hash> {
     pub header_hash: Hash,
     /// The Merkle root of all new extrinsics included in this bundle.
     pub extrinsics_root: Hash,
+    /// The size of the bundle body in bytes.
+    pub size: u32,
 }
 
 /// Receipt of a domain block execution.

@@ -635,6 +635,8 @@ mod pallet {
         Receipt(BlockTreeError),
         /// Bundle size exceed the max bundle size limit in the domain config
         BundleTooLarge,
+        /// The actual bundle size is not match with the `bundle_size` field in bundle header
+        InvalidBundleSize,
         // Bundle with an invalid extrinsic root
         InvalidExtrinsicRoot,
         /// This bundle duplicated with an already submitted bundle
@@ -856,6 +858,7 @@ mod pallet {
             let bundle_header_hash = opaque_bundle.sealed_header.pre_hash();
             let extrinsics_root = opaque_bundle.extrinsics_root();
             let operator_id = opaque_bundle.operator_id();
+            let bundle_size = opaque_bundle.size();
             let receipt = opaque_bundle.into_receipt();
 
             #[cfg(not(feature = "runtime-benchmarks"))]
@@ -952,6 +955,7 @@ mod pallet {
                 BundleDigest {
                     header_hash: bundle_header_hash,
                     extrinsics_root,
+                    size: bundle_size,
                 },
             );
 
@@ -1563,7 +1567,13 @@ impl<T: Config> Pallet<T> {
             .extrinsics
             .iter()
             .fold(0, |acc, xt| acc + xt.encoded_size() as u32);
+
         ensure!(max_size >= bundle_size, BundleError::BundleTooLarge);
+        ensure!(
+            opaque_bundle.size() == bundle_size,
+            BundleError::InvalidBundleSize
+        );
+
         Ok(())
     }
 

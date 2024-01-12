@@ -14,6 +14,7 @@ use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{DomainId, ExecutionReceipt, OperatorId};
 use sp_runtime::traits::{BlockNumberProvider, CheckedSub, One, Saturating, Zero};
 use sp_std::cmp::Ordering;
+use sp_std::collections::btree_map::BTreeMap;
 use sp_std::vec::Vec;
 
 /// Block tree specific errors
@@ -259,6 +260,8 @@ pub(crate) struct ConfirmedDomainBlockInfo<DomainNumber, Balance> {
     pub operator_ids: Vec<OperatorId>,
     pub rewards: Balance,
     pub invalid_bundle_authors: Vec<OperatorId>,
+    pub total_storage_fee: Balance,
+    pub front_paid_storage: BTreeMap<OperatorId, u32>,
 }
 
 pub(crate) type ProcessExecutionReceiptResult<T> =
@@ -304,7 +307,8 @@ pub(crate) fn process_execution_receipt<T: Config>(
                     execution_receipt.domain_block_hash,
                 ));
 
-                // Collect the invalid bundle author
+                // Collect the front paid storage and the invalid bundle author
+                let mut front_paid_storage = BTreeMap::new();
                 let mut invalid_bundle_authors = Vec::new();
                 let bundle_digests = ExecutionInbox::<T>::get((
                     domain_id,
@@ -317,6 +321,11 @@ pub(crate) fn process_execution_receipt<T: Config>(
                         // the `ER::bundles` have the same length of `ExecutionInbox`
                         if execution_receipt.inboxed_bundles[index].is_invalid() {
                             invalid_bundle_authors.push(bundle_author);
+                        } else {
+                            front_paid_storage
+                                .entry(bundle_author)
+                                .and_modify(|s| *s += bd.size)
+                                .or_insert(bd.size);
                         }
                     }
                 }
@@ -335,6 +344,9 @@ pub(crate) fn process_execution_receipt<T: Config>(
                     operator_ids,
                     rewards: execution_receipt.total_rewards,
                     invalid_bundle_authors,
+                    // TODO: get the `total_storage_fee` from ER
+                    total_storage_fee: Zero::zero(),
+                    front_paid_storage,
                 }));
             }
         }
@@ -504,6 +516,7 @@ mod tests {
                     vec![BundleDigest {
                         header_hash: bundle_header_hash,
                         extrinsics_root: bundle_extrinsics_root,
+                        size: 0,
                     }]
                 );
                 assert!(InboxedBundleAuthor::<Test>::contains_key(
@@ -788,6 +801,7 @@ mod tests {
                     .map(|b| BundleDigest {
                         header_hash: H256::random(),
                         extrinsics_root: b.extrinsics_root,
+                        size: 0,
                     })
                     .collect::<Vec<_>>(),
             );
