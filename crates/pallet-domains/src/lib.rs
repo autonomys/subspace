@@ -26,6 +26,7 @@ mod benchmarking;
 mod tests;
 
 pub mod block_tree;
+mod bundle_storage_fund;
 pub mod domain_registry;
 pub mod runtime_registry;
 mod staking;
@@ -121,6 +122,9 @@ mod pallet {
         execution_receipt_type, process_execution_receipt, BlockTreeNode, Error as BlockTreeError,
         ReceiptType,
     };
+    #[cfg(not(feature = "runtime-benchmarks"))]
+    use crate::bundle_storage_fund::refund_storage_fee;
+    use crate::bundle_storage_fund::{charge_bundle_storage_fee, Error as BundleStorageFundError};
     use crate::domain_registry::{
         do_instantiate_domain, do_update_domain_allow_list, DomainConfig, DomainObject,
         Error as DomainRegistryError,
@@ -719,6 +723,12 @@ mod pallet {
         }
     }
 
+    impl<T> From<BundleStorageFundError> for Error<T> {
+        fn from(err: BundleStorageFundError) -> Self {
+            Error::BundleStorageFund(err)
+        }
+    }
+
     #[pallet::error]
     pub enum Error<T> {
         /// Invalid fraud proof.
@@ -733,6 +743,8 @@ mod pallet {
         DomainRegistry(DomainRegistryError),
         /// Block tree specific errors
         BlockTree(BlockTreeError),
+        /// Bundle storage fund specific errors
+        BundleStorageFund(BundleStorageFundError),
     }
 
     /// Reason for slashing an operator
@@ -891,6 +903,12 @@ mod pallet {
                     // - `do_finalize_domain_current_epoch`
                     #[cfg(not(feature = "runtime-benchmarks"))]
                     if let Some(confirmed_block_info) = maybe_confirmed_domain_block_info {
+                        refund_storage_fee::<T>(
+                            confirmed_block_info.total_storage_fee,
+                            confirmed_block_info.front_paid_storage,
+                        )
+                        .map_err(Error::<T>::from)?;
+
                         do_reward_operators::<T>(
                             domain_id,
                             confirmed_block_info.operator_ids.into_iter(),
@@ -1397,7 +1415,15 @@ mod pallet {
         fn pre_dispatch(call: &Self::Call) -> Result<(), TransactionValidityError> {
             match call {
                 Call::submit_bundle { opaque_bundle } => Self::validate_bundle(opaque_bundle)
-                    .map_err(|_| InvalidTransaction::Call.into()),
+                    .map_err(|_| InvalidTransaction::Call.into())
+                    .and_then(|_| {
+                        charge_bundle_storage_fee::<T>(
+                            opaque_bundle.operator_id(),
+                            Zero::zero(),
+                            // TODO: use `opaque_bundle.size()` when deposit to storage fund works
+                        )
+                        .map_err(|_| InvalidTransaction::Call.into())
+                    }),
                 Call::submit_fraud_proof { fraud_proof } => Self::validate_fraud_proof(fraud_proof)
                     .map_err(|_| InvalidTransaction::Call.into()),
                 _ => Err(InvalidTransaction::Call.into()),
@@ -1435,6 +1461,20 @@ mod pallet {
                         } else {
                             return InvalidTransactionCode::Bundle.into();
                         }
+                    }
+
+                    if let Err(e) = charge_bundle_storage_fee::<T>(
+                        opaque_bundle.operator_id(),
+                        Zero::zero(),
+                        // TODO: use `opaque_bundle.size()` when deposit to storage fund works
+                    ) {
+                        log::debug!(
+                            target: "runtime::domains",
+                            "Operator {} unable to pay for the bundle storage fee, domain id {:?}, error: {e:?}",
+                            opaque_bundle.operator_id(),
+                            opaque_bundle.domain_id(),
+                        );
+                        return InvalidTransactionCode::BundleStorageFeePayment.into();
                     }
 
                     ValidTransaction::with_tag_prefix("SubspaceSubmitBundle")
