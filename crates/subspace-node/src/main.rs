@@ -208,30 +208,8 @@ fn main() -> Result<(), Error> {
                 ))
             })?;
         }
-        Cli::PurgeChain(cmd) => {
-            // This is a compatibility layer to make sure we wipe old data from disks of our users
-            if let Some(base_dir) = dirs::data_local_dir() {
-                for chain in &[
-                    "subspace_gemini_2a",
-                    "subspace_gemini_3a",
-                    "subspace_gemini_3b",
-                    "subspace_gemini_3c",
-                    "subspace_gemini_3d",
-                    "subspace_gemini_3e",
-                    "subspace_gemini_3f",
-                    "subspace_gemini_3g",
-                ] {
-                    let _ = std::fs::remove_dir_all(
-                        base_dir.join("subspace-node").join("chains").join(chain),
-                    );
-                }
-                let _ = std::fs::remove_dir_all(base_dir.join("subspace-node").join("domain-0"));
-                let _ = std::fs::remove_dir_all(base_dir.join("subspace-node").join("domain-1"));
-            }
-
-            let runner = SubspaceCliPlaceholder.create_runner(&cmd.base)?;
-
-            runner.sync_run(|consensus_chain_config| cmd.run(consensus_chain_config))?;
+        Cli::Wipe(wipe_options) => {
+            commands::wipe(wipe_options).map_err(|error| Error::Other(error.to_string()))?;
         }
         Cli::Revert(cmd) => {
             let runner = SubspaceCliPlaceholder.create_runner(&cmd)?;
