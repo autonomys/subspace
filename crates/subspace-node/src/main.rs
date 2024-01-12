@@ -233,7 +233,6 @@ fn main() -> Result<(), Error> {
             let runner = SubspaceCliPlaceholder.create_runner(&cmd)?;
             runner.sync_run(|config| cmd.run::<Block>(&config))?;
         }
-        #[cfg(feature = "runtime-benchmarks")]
         Cli::Benchmark(cmd) => {
             let runner = SubspaceCliPlaceholder.create_runner(&cmd)?;
 
@@ -267,6 +266,12 @@ fn main() -> Result<(), Error> {
 
                         cmd.run(client)
                     }
+                    #[cfg(not(feature = "runtime-benchmarks"))]
+                    BenchmarkCmd::Storage(_) => Err(sc_cli::Error::Input(
+                        "Compile with --features=runtime-benchmarks to enable storage benchmarks."
+                            .into(),
+                    )),
+                    #[cfg(feature = "runtime-benchmarks")]
                     BenchmarkCmd::Storage(cmd) => {
                         let PartialComponents {
                             client, backend, ..
