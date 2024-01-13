@@ -663,9 +663,8 @@ pub(crate) fn do_withdraw_stake<T: Config>(
                         .unwrap_or(operator.current_total_stake);
 
                     let share_price =
-                        Perbill::from_rational(operator.current_total_shares, total_stake.into());
-                    let remaining_stake: BalanceOf<T> =
-                        share_price.saturating_reciprocal_mul_floor(remaining_shares.into());
+                        SharePrice::new::<T>(operator.current_total_shares, total_stake);
+                    let remaining_stake = share_price.shares_to_stake::<T>(remaining_shares);
 
                     // ensure the remaining share value is atleast the defined minimum
                     // MinOperatorStake if a nominator is operator pool owner
@@ -698,8 +697,6 @@ pub(crate) fn do_withdraw_stake<T: Config>(
                         Error::MinimumNominatorStake
                     );
                 } else {
-                    *maybe_deposit = None;
-
                     // reduce nominator count if withdraw all and there are no pending deposits
                     NominatorCount::<T>::mutate(operator_id, |count| {
                         *count -= 1;
@@ -739,6 +736,12 @@ pub(crate) fn do_unlock_funds<T: Config>(
     operator_id: OperatorId,
     nominator_id: NominatorId<T>,
 ) -> Result<BalanceOf<T>, Error> {
+    let operator = Operators::<T>::get(operator_id).ok_or(Error::UnknownOperator)?;
+    ensure!(
+        operator.status == OperatorStatus::Registered,
+        Error::OperatorNotRegistered
+    );
+
     Withdrawals::<T>::try_mutate_exists(operator_id, nominator_id.clone(), |maybe_withdrawals| {
         let withdrawals = maybe_withdrawals.as_mut().ok_or(Error::MissingWithdrawal)?;
         let Withdrawal {
@@ -746,11 +749,6 @@ pub(crate) fn do_unlock_funds<T: Config>(
             unlock_at_confirmed_domain_block_number,
             shares,
         } = withdrawals.pop_front().ok_or(Error::MissingWithdrawal)?;
-
-        // if there are no withdrawals, then delete the storage as well
-        if withdrawals.is_empty() {
-            *maybe_withdrawals = None
-        }
 
         let (domain_id, _) = allowed_since_domain_epoch.deconstruct();
         let latest_confirmed_block_number = LatestConfirmedDomainBlockNumber::<T>::get(domain_id);
@@ -791,6 +789,17 @@ pub(crate) fn do_unlock_funds<T: Config>(
             Precision::Exact,
         )
         .map_err(|_| Error::RemoveLock)?;
+
+        // if there are no withdrawals, then delete the storage as well
+        if withdrawals.is_empty() {
+            *maybe_withdrawals = None;
+            // if there is no deposit or pending deposits, then clean up the deposit state as well
+            Deposits::<T>::mutate_exists(operator_id, nominator_id, |maybe_deposit| {
+                if let Some(deposit) = maybe_deposit && deposit.known.shares.is_zero() && deposit.pending.is_none() {
+                    *maybe_deposit = None
+                }
+            });
+        }
 
         Ok(amount_to_unlock)
     })
@@ -870,7 +879,7 @@ pub(crate) fn do_unlock_operator<T: Config>(operator_id: OperatorId) -> Result<(
             .checked_add(&operator.current_epoch_rewards)
             .ok_or(Error::BalanceOverflow)?;
 
-        let share_price = Perbill::from_rational(total_shares, total_stake.into());
+        let share_price = SharePrice::new::<T>(total_shares, total_stake);
 
         let staked_hold_id = T::HoldIdentifier::staking_staked(operator_id);
         Deposits::<T>::drain_prefix(operator_id).try_for_each(|(nominator_id, mut deposit)| {
@@ -902,9 +911,7 @@ pub(crate) fn do_unlock_operator<T: Config>(operator_id: OperatorId) -> Result<(
             let nominator_staked_amount = if share_price.is_one() {
                 nominator_shares.into()
             } else {
-                share_price
-                    .saturating_reciprocal_mul_floor(nominator_shares)
-                    .into()
+                share_price.shares_to_stake::<T>(nominator_shares)
             };
 
             let amount_deposited_in_previous_epoch = deposit

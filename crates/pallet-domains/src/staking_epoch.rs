@@ -19,7 +19,7 @@ use scale_info::TypeInfo;
 use sp_core::Get;
 use sp_domains::{DomainId, EpochIndex, OperatorId};
 use sp_runtime::traits::{CheckedAdd, CheckedSub, One, Zero};
-use sp_runtime::{Perbill, Saturating};
+use sp_runtime::Saturating;
 use sp_std::collections::btree_map::BTreeMap;
 
 #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
@@ -333,7 +333,7 @@ pub(crate) fn do_finalize_slashed_operators<T: Config>(
                 .checked_add(&operator.current_epoch_rewards)
                 .ok_or(TransitionError::BalanceOverflow)?;
             let total_shares = operator.current_total_shares;
-            let share_price = Perbill::from_rational(total_shares, total_stake.into());
+            let share_price = SharePrice::new::<T>(total_shares, total_stake);
 
             // transfer all the staked funds to the treasury account
             // any gains will be minted to treasury account
@@ -369,9 +369,7 @@ pub(crate) fn do_finalize_slashed_operators<T: Config>(
                     let nominator_staked_amount = if share_price.is_one() {
                         nominator_shares.into()
                     } else {
-                        share_price
-                            .saturating_reciprocal_mul_floor(nominator_shares)
-                            .into()
+                        share_price.shares_to_stake::<T>(nominator_shares)
                     };
 
                     // do not slash the deposit that is not staked yet
