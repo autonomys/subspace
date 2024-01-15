@@ -97,7 +97,7 @@ sp_runtime::impl_opaque_keys! {
 // The domain storage fee multiplier used to charge a higher storage fee to the domain
 // transaction to even out the duplicated/illegal domain transaction storage cost, which
 // can not be eliminated currently.
-const DOMAIN_STORAGE_FEE_MULTIPLIER: Balance = 2;
+const DOMAIN_STORAGE_FEE_MULTIPLIER: Balance = 3;
 
 // Smaller value for testing purposes
 const MAX_PIECES_IN_SECTOR: u16 = 32;
