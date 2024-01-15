@@ -2,7 +2,7 @@ use async_trait::async_trait;
 use futures::future::{Future, FutureExt, Ready};
 use sc_client_api::blockchain::HeaderBackend;
 use sc_client_api::{AuxStore, BlockBackend, ExecutorProvider, UsageProvider};
-use sc_service::{Configuration, TaskManager};
+use sc_service::{TaskManager, TransactionPoolOptions};
 use sc_transaction_pool::error::{Error as TxPoolError, Result as TxPoolResult};
 use sc_transaction_pool::{
     BasicPool, ChainApi, FullChainApi, Pool, RevalidationType, Transaction, ValidatedTransaction,
@@ -283,7 +283,8 @@ where
     PoolApi: ChainApi<Block = Block> + 'static,
 {
     fn with_revalidation_type<Client, Spawn>(
-        config: &Configuration,
+        transaction_pool_options: TransactionPoolOptions,
+        is_authoring_blocks: bool,
         pool_api: Arc<PoolApi>,
         prometheus: Option<&PrometheusRegistry>,
         spawner: Spawn,
@@ -294,8 +295,8 @@ where
         Spawn: SpawnEssentialNamed,
     {
         let basic_pool = BasicPool::with_revalidation_type(
-            config.transaction_pool.clone(),
-            config.role.is_authority().into(),
+            transaction_pool_options,
+            is_authoring_blocks.into(),
             pool_api,
             prometheus,
             RevalidationType::Full,
@@ -467,7 +468,9 @@ where
 }
 
 pub fn new_full<Client, Block, DomainHeader>(
-    config: &Configuration,
+    transaction_pool_options: TransactionPoolOptions,
+    is_authoring_blocks: bool,
+    prometheus_registry: Option<&PrometheusRegistry>,
     task_manager: &TaskManager,
     client: Arc<Client>,
     sync_target_block_number: Arc<AtomicU32>,
@@ -492,20 +495,20 @@ where
         + FraudProofApi<Block, DomainHeader>
         + DomainsApi<Block, DomainHeader>,
 {
-    let prometheus = config.prometheus_registry();
     let (fraud_proof_submit_sink, mut fraud_proof_submit_stream) = mpsc::unbounded_channel();
     let pool_api = Arc::new(FullChainApiWrapper::new(
         client.clone(),
-        prometheus,
+        prometheus_registry,
         task_manager,
         sync_target_block_number,
         fraud_proof_submit_sink,
     )?);
 
     let basic_pool = Arc::new(BasicPoolWrapper::with_revalidation_type(
-        config,
+        transaction_pool_options,
+        is_authoring_blocks,
         pool_api,
-        prometheus,
+        prometheus_registry,
         task_manager.spawn_essential_handle(),
         client.clone(),
     ));

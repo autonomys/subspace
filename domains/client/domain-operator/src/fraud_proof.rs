@@ -14,16 +14,23 @@ use sp_domains::proof_provider_and_verifier::StorageProofProvider;
 use sp_domains::{DomainId, DomainsApi, ExtrinsicDigest, HeaderHashingFor, InvalidBundleType};
 use sp_domains_fraud_proof::execution_prover::ExecutionProver;
 use sp_domains_fraud_proof::fraud_proof::{
-    ExecutionPhase, FraudProof, InvalidBundlesFraudProof, InvalidDomainBlockHashProof,
-    InvalidExtrinsicsRootProof, InvalidStateTransitionProof, InvalidTotalFeesProof,
-    ValidBundleDigest,
+    ApplyExtrinsicMismatch, ExecutionPhase, FinalizeBlockMismatch, FraudProof,
+    InvalidBundlesFraudProof, InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof,
+    InvalidStateTransitionProof, InvalidTotalFeesProof, ValidBundleDigest,
 };
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{Block as BlockT, HashingFor, Header as HeaderT, NumberFor};
+use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
 use sp_runtime::{Digest, DigestItem};
-use sp_trie::{LayoutV1, StorageProof};
+use sp_trie::LayoutV1;
 use std::marker::PhantomData;
 use std::sync::Arc;
+
+#[derive(Copy, Clone, PartialEq, Debug)]
+pub enum TraceDiffType {
+    Shorter,
+    Longer,
+    Mismatch,
+}
 
 /// Error type for fraud proof generation.
 #[derive(Debug, thiserror::Error)]
@@ -375,8 +382,9 @@ where
     pub(crate) fn generate_invalid_state_transition_proof(
         &self,
         domain_id: DomainId,
-        local_trace_index: u32,
+        execution_phase: ExecutionPhase,
         local_receipt: &ExecutionReceiptFor<Block, CBlock>,
+        bad_receipt_trace_length: usize,
         bad_receipt_hash: Block::Hash,
     ) -> Result<FraudProofFor<CBlock, Block::Header>, FraudProofError> {
         let block_hash = local_receipt.domain_block_hash;
@@ -392,81 +400,78 @@ where
             )],
         };
 
-        let invalid_state_transition_proof = if local_trace_index == 0 {
-            // `initialize_block` execution proof.
-            let new_header = Block::Header::new(
-                block_number,
-                Default::default(),
-                Default::default(),
-                parent_header.hash(),
-                inherent_digests,
-            );
-            let execution_phase = ExecutionPhase::InitializeBlock;
-            let initialize_block_call_data = new_header.encode();
+        let extrinsics = self.block_body(block_hash)?;
+        let max_extrinsic_index = extrinsics.len() - 1;
+        let encoded_extrinsics: Vec<_> = extrinsics.iter().map(Encode::encode).collect();
 
-            let proof = prover.prove_execution::<sp_trie::PrefixedMemoryDB<HashingFor<Block>>>(
-                parent_header.hash(),
-                &execution_phase,
-                &initialize_block_call_data,
+        let block_builder = BlockBuilder::new(
+            &*self.client,
+            parent_header.hash(),
+            *parent_header.number(),
+            RecordProof::No,
+            inherent_digests.clone(),
+            &*self.backend,
+            extrinsics.into(),
+            None,
+        )?;
+
+        let (storage_changes, call_data) = match &execution_phase {
+            ExecutionPhase::InitializeBlock => (
                 None,
-            )?;
+                Block::Header::new(
+                    block_number,
+                    Default::default(),
+                    Default::default(),
+                    parent_header.hash(),
+                    inherent_digests,
+                )
+                .encode(),
+            ),
+            ExecutionPhase::ApplyExtrinsic { mismatch, .. } => {
+                let extrinsic_index = match mismatch {
+                    ApplyExtrinsicMismatch::StateRoot(trace_mismatch_index) => {
+                        (trace_mismatch_index - 1) as usize
+                    }
+                    ApplyExtrinsicMismatch::Shorter => (bad_receipt_trace_length - 1) - 1,
+                };
 
-            InvalidStateTransitionProof {
-                domain_id,
-                bad_receipt_hash,
-                proof,
-                execution_phase,
+                let target_extrinsic = encoded_extrinsics.get(extrinsic_index).ok_or(
+                    FraudProofError::OutOfBoundsExtrinsicIndex {
+                        index: extrinsic_index,
+                        max: max_extrinsic_index,
+                    },
+                )?;
+
+                (
+                    Some(block_builder.prepare_storage_changes_before(extrinsic_index)?),
+                    target_extrinsic.clone(),
+                )
             }
-        } else if local_trace_index as usize == local_receipt.execution_trace.len() - 1 {
-            // `finalize_block` execution proof.
-            let extrinsics = self.block_body(block_hash)?;
-            let execution_phase = ExecutionPhase::FinalizeBlock;
-            let finalize_block_call_data = Vec::new();
-            let block_builder = BlockBuilder::new(
-                &*self.client,
-                parent_header.hash(),
-                *parent_header.number(),
-                RecordProof::No,
-                inherent_digests,
-                &*self.backend,
-                extrinsics.into(),
-                None,
-            )?;
-            let storage_changes = block_builder.prepare_storage_changes_before_finalize_block()?;
+            ExecutionPhase::FinalizeBlock { .. } => (
+                Some(block_builder.prepare_storage_changes_before_finalize_block()?),
+                Vec::new(),
+            ),
+        };
 
-            let delta = storage_changes.transaction;
-            let post_delta_root = storage_changes.transaction_storage_root;
+        let delta_changes = storage_changes.map(|storage_changes| {
+            (
+                storage_changes.transaction,
+                storage_changes.transaction_storage_root,
+            )
+        });
 
-            let proof = prover.prove_execution(
-                parent_header.hash(),
-                &execution_phase,
-                &finalize_block_call_data,
-                Some((delta, post_delta_root)),
-            )?;
+        let execution_proof = prover.prove_execution(
+            parent_header.hash(),
+            &execution_phase,
+            call_data.as_slice(),
+            delta_changes,
+        )?;
 
-            InvalidStateTransitionProof {
-                domain_id,
-                bad_receipt_hash,
-                proof,
-                execution_phase,
-            }
-        } else {
-            // Regular extrinsic execution proof.
-            let (proof, execution_phase) = self.create_extrinsic_execution_proof(
-                local_trace_index,
-                &parent_header,
-                block_hash,
-                &prover,
-                inherent_digests,
-            )?;
-
-            // TODO: proof should be a CompactProof.
-            InvalidStateTransitionProof {
-                domain_id,
-                bad_receipt_hash,
-                proof,
-                execution_phase,
-            }
+        let invalid_state_transition_proof = InvalidStateTransitionProof {
+            domain_id,
+            bad_receipt_hash,
+            proof: execution_proof,
+            execution_phase,
         };
 
         Ok(FraudProof::InvalidStateTransition(
@@ -486,85 +491,96 @@ where
         })
     }
 
-    #[allow(clippy::too_many_arguments)]
-    fn create_extrinsic_execution_proof(
+    fn generate_execution_phase(
         &self,
-        trace_mismatch_index: u32,
-        parent_header: &Block::Header,
-        current_hash: Block::Hash,
-        prover: &ExecutionProver<Block, Backend, E>,
-        digest: Digest,
-    ) -> Result<(StorageProof, ExecutionPhase), FraudProofError> {
-        let extrinsics = self.block_body(current_hash)?;
+        local_receipt_domain_block_hash: <Block as BlockT>::Hash,
+        local_trace_length: usize,
+        mismatch: (TraceDiffType, u32),
+    ) -> Result<ExecutionPhase, FraudProofError> {
+        let extrinsics = self.block_body(local_receipt_domain_block_hash)?;
         let encoded_extrinsics: Vec<_> = extrinsics.iter().map(Encode::encode).collect();
 
-        // There is a trace root of the `initialize_block` in the head of the trace so we
-        // need to minus one to get the correct `extrinsic_index`
-        let extrinsic_index = trace_mismatch_index as usize - 1;
-        let target_extrinsic = encoded_extrinsics.get(extrinsic_index).ok_or(
-            FraudProofError::OutOfBoundsExtrinsicIndex {
-                index: extrinsic_index,
-                max: extrinsics.len() - 1,
-            },
-        )?;
-
-        let execution_phase = {
-            let proof_of_inclusion = StorageProofProvider::<
-                LayoutV1<<Block::Header as HeaderT>::Hashing>,
-            >::generate_enumerated_proof_of_inclusion(
-                encoded_extrinsics.as_slice(),
-                extrinsic_index as u32,
-            )
-            .ok_or(FraudProofError::FailToGenerateProofOfInclusion)?;
-            ExecutionPhase::ApplyExtrinsic {
-                extrinsic_proof: proof_of_inclusion,
-                mismatch_index: trace_mismatch_index,
+        match mismatch {
+            (_, 0) => Ok(ExecutionPhase::InitializeBlock),
+            (TraceDiffType::Longer, mismatch_trace_index) => Ok(ExecutionPhase::FinalizeBlock {
+                mismatch: FinalizeBlockMismatch::Longer(mismatch_trace_index),
+            }),
+            (TraceDiffType::Mismatch, mismatch_trace_index)
+                if mismatch_trace_index as usize == local_trace_length - 1 =>
+            {
+                Ok(ExecutionPhase::FinalizeBlock {
+                    mismatch: FinalizeBlockMismatch::StateRoot,
+                })
             }
+            (TraceDiffType::Mismatch, mismatch_trace_index)
+            | (TraceDiffType::Shorter, mismatch_trace_index) => {
+                // There is a trace root of the `initialize_block` in the head of the trace so we
+                // need to minus one to get the correct `extrinsic_index`
+                let extrinsic_index = mismatch_trace_index as usize - 1;
+
+                if extrinsic_index >= encoded_extrinsics.len() {
+                    return Err(FraudProofError::OutOfBoundsExtrinsicIndex {
+                        index: extrinsic_index,
+                        max: encoded_extrinsics.len(),
+                    });
+                }
+
+                let proof_of_inclusion = StorageProofProvider::<
+                    LayoutV1<<Block::Header as HeaderT>::Hashing>,
+                >::generate_enumerated_proof_of_inclusion(
+                    encoded_extrinsics.as_slice(),
+                    extrinsic_index as u32,
+                )
+                .ok_or(FraudProofError::FailToGenerateProofOfInclusion)?;
+
+                Ok(ExecutionPhase::ApplyExtrinsic {
+                    extrinsic_proof: proof_of_inclusion,
+                    mismatch: if mismatch.0 == TraceDiffType::Mismatch {
+                        ApplyExtrinsicMismatch::StateRoot(mismatch_trace_index)
+                    } else {
+                        ApplyExtrinsicMismatch::Shorter
+                    },
+                })
+            }
+        }
+    }
+
+    /// Returns first mismatched ExecutionPhase between the receipts `local` and `other` if any.
+    /// If local trace length > other trace length then we provide storage proof as usual but add a flag in fraud proof
+    /// indicating that this is length mismatch, so we create a storage proof with ApplyExtrinsic execution phase
+    /// and prove that this state transition is valid, that means execution should not stop here.
+    ///
+    /// if other trace length > local trace length then we create a storage proof with FinalizeBlock execution phase
+    /// to prove that it is valid, so that means execution should stop here.
+    pub(crate) fn find_mismatched_execution_phase(
+        &self,
+        local_receipt_domain_block_hash: <Block as BlockT>::Hash,
+        local_trace: &[<Block as BlockT>::Hash],
+        other_trace: &[<Block as BlockT>::Hash],
+    ) -> Result<Option<ExecutionPhase>, FraudProofError> {
+        let state_root_mismatch = local_trace
+            .iter()
+            .enumerate()
+            .zip(other_trace.iter().enumerate())
+            .find_map(|((local_index, local_root), (_, other_root))| {
+                if local_root != other_root {
+                    Some((TraceDiffType::Mismatch, local_index as u32))
+                } else {
+                    None
+                }
+            });
+
+        let mismatch = if let Some(mismatch) = state_root_mismatch {
+            mismatch
+        } else if local_trace.len() > other_trace.len() {
+            (TraceDiffType::Shorter, (other_trace.len() - 1) as u32)
+        } else if local_trace.len() < other_trace.len() {
+            (TraceDiffType::Longer, (local_trace.len() - 1) as u32)
+        } else {
+            return Ok(None);
         };
 
-        let block_builder = BlockBuilder::new(
-            &*self.client,
-            parent_header.hash(),
-            *parent_header.number(),
-            RecordProof::No,
-            digest,
-            &*self.backend,
-            extrinsics.into(),
-            None,
-        )?;
-        let storage_changes = block_builder.prepare_storage_changes_before(extrinsic_index)?;
-
-        let delta = storage_changes.transaction;
-        let post_delta_root = storage_changes.transaction_storage_root;
-        let execution_proof = prover.prove_execution(
-            parent_header.hash(),
-            &execution_phase,
-            target_extrinsic,
-            Some((delta, post_delta_root)),
-        )?;
-
-        Ok((execution_proof, execution_phase))
+        self.generate_execution_phase(local_receipt_domain_block_hash, local_trace.len(), mismatch)
+            .map(Some)
     }
-}
-
-/// Returns the index of first mismatch between the receipts `local` and `other` if any.
-pub(crate) fn find_trace_mismatch<Hash: Copy + Eq>(
-    local_trace: &[Hash],
-    other_trace: &[Hash],
-) -> Option<u32> {
-    local_trace
-        .iter()
-        .enumerate()
-        .zip(other_trace.iter().enumerate())
-        .find_map(|((local_index, local_root), (_, other_root))| {
-            if local_root != other_root {
-                Some(
-                    local_index
-                        .try_into()
-                        .expect("Trace mismatch index must fit into u32; qed"),
-                )
-            } else {
-                None
-            }
-        })
 }

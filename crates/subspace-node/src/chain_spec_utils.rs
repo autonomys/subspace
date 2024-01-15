@@ -1,11 +1,12 @@
 use frame_support::traits::Get;
+use sc_network::config::MultiaddrWithPeerId;
 use sc_service::Properties;
-use serde_json::map::Map;
-use serde_json::Value;
 use sp_core::crypto::AccountId32;
 use sp_core::{sr25519, Pair, Public};
+use sp_domains::DomainId;
 use sp_runtime::traits::IdentifyAccount;
 use sp_runtime::MultiSigner;
+use std::collections::HashMap;
 use subspace_runtime::SS58Prefix;
 use subspace_runtime_primitives::DECIMAL_PLACES;
 
@@ -20,10 +21,10 @@ pub(crate) fn chain_spec_properties() -> Properties {
     );
     properties.insert("tokenDecimals".to_string(), DECIMAL_PLACES.into());
     properties.insert("tokenSymbol".to_string(), "tSSC".into());
-    let domains_bootstrap_nodes = Map::<String, Value>::new();
     properties.insert(
         "domainsBootstrapNodes".to_string(),
-        domains_bootstrap_nodes.into(),
+        serde_json::to_value(HashMap::<DomainId, Vec<MultiaddrWithPeerId>>::new())
+            .expect("Serialization is infallible; qed"),
     );
 
     properties

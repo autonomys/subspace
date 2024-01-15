@@ -4,35 +4,42 @@ use std::num::NonZeroUsize;
 use std::ops::Deref;
 use std::sync::Arc;
 
+/// A wrapper around thread pool pair for plotting purposes
+#[derive(Debug)]
+pub struct PlottingThreadPoolPair {
+    pub plotting: ThreadPool,
+    pub replotting: ThreadPool,
+}
+
 #[derive(Debug)]
 struct Inner {
-    thread_pools: Vec<ThreadPool>,
+    thread_pool_pairs: Vec<PlottingThreadPoolPair>,
 }
 
-/// Wrapper around [`ThreadPool`] that on `Drop` will return thread pool back into corresponding
-/// [`ThreadPoolManager`].
+/// Wrapper around [`PlottingThreadPoolPair`] that on `Drop` will return thread pool back into corresponding
+/// [`PlottingThreadPoolManager`].
 #[derive(Debug)]
-pub struct ThreadPoolGuard {
+pub struct PlottingThreadPoolsGuard {
     inner: Arc<(Mutex<Inner>, Condvar)>,
-    thread_pool: Option<ThreadPool>,
+    thread_pool_pair: Option<PlottingThreadPoolPair>,
 }
 
-impl Deref for ThreadPoolGuard {
-    type Target = ThreadPool;
+impl Deref for PlottingThreadPoolsGuard {
+    type Target = PlottingThreadPoolPair;
 
     fn deref(&self) -> &Self::Target {
-        self.thread_pool
+        self.thread_pool_pair
             .as_ref()
             .expect("Value exists until `Drop`; qed")
     }
 }
 
-impl Drop for ThreadPoolGuard {
+impl Drop for PlottingThreadPoolsGuard {
     fn drop(&mut self) {
         let (mutex, cvar) = &*self.inner;
         let mut inner = mutex.lock();
-        inner.thread_pools.push(
-            self.thread_pool
+        inner.thread_pool_pairs.push(
+            self.thread_pool_pair
                 .take()
                 .expect("Happens only once in `Drop`; qed"),
         );
@@ -40,33 +47,38 @@ impl Drop for ThreadPoolGuard {
     }
 }
 
-/// Thread pool manager.
+/// Plotting thread pool manager.
 ///
-/// This abstraction wraps a set of thread pools and allows to use them one at a time.
+/// This abstraction wraps a set of thread pool pairs and allows to use them one at a time.
+///
+/// Each pair contains one thread pool for plotting purposes and one for replotting, this is because
+/// they'll share the same set of CPU cores in most cases and wit would be inefficient to use them
+/// concurrently.
 ///
 /// For example on machine with 64 logical cores and 4 NUMA nodes it would be recommended to create
-/// 4 thread pools with 16 threads each, which would mean work done within thread pool is tied to
-/// that thread pool.
+/// 4 thread pools with 16 threads each plotting thread pool and 8 threads in each replotting thread
+/// pool, which would mean work done within thread pool is tied to CPU cores dedicated for that
+/// thread pool.
 #[derive(Debug, Clone)]
-pub struct ThreadPoolManager {
+pub struct PlottingThreadPoolManager {
     inner: Arc<(Mutex<Inner>, Condvar)>,
 }
 
-impl ThreadPoolManager {
+impl PlottingThreadPoolManager {
     /// Create new thread pool manager by instantiating `thread_pools` thread pools using
     /// `create_thread_pool`.
     ///
     /// `create_thread_pool` takes one argument `thread_pool_index`.
     pub fn new<C>(
-        create_thread_pool: C,
-        thread_pools: NonZeroUsize,
+        create_thread_pools: C,
+        thread_pool_pairs: NonZeroUsize,
     ) -> Result<Self, ThreadPoolBuildError>
     where
-        C: FnMut(usize) -> Result<ThreadPool, ThreadPoolBuildError>,
+        C: FnMut(usize) -> Result<PlottingThreadPoolPair, ThreadPoolBuildError>,
     {
         let inner = Inner {
-            thread_pools: (0..thread_pools.get())
-                .map(create_thread_pool)
+            thread_pool_pairs: (0..thread_pool_pairs.get())
+                .map(create_thread_pools)
                 .collect::<Result<Vec<_>, _>>()?,
         };
 
@@ -75,23 +87,23 @@ impl ThreadPoolManager {
         })
     }
 
-    /// Get one of inner thread pools, will block until one is available if needed
+    /// Get one of inner thread pool pairs, will block until one is available if needed
     #[must_use]
-    pub fn get_thread_pool(&self) -> ThreadPoolGuard {
+    pub fn get_thread_pools(&self) -> PlottingThreadPoolsGuard {
         let (mutex, cvar) = &*self.inner;
         let mut inner = mutex.lock();
 
-        let thread_pool = inner.thread_pools.pop().unwrap_or_else(|| {
+        let thread_pool_pair = inner.thread_pool_pairs.pop().unwrap_or_else(|| {
             cvar.wait(&mut inner);
 
-            inner.thread_pools.pop().expect(
+            inner.thread_pool_pairs.pop().expect(
                 "Guaranteed by parking_lot's API to happen when thread pool is inserted; qed",
             )
         });
 
-        ThreadPoolGuard {
+        PlottingThreadPoolsGuard {
             inner: Arc::clone(&self.inner),
-            thread_pool: Some(thread_pool),
+            thread_pool_pair: Some(thread_pool_pair),
         }
     }
 }

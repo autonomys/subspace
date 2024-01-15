@@ -62,7 +62,6 @@
 #![feature(extract_if)]
 
 mod aux_schema;
-mod bootstrapper;
 mod bundle_processor;
 mod bundle_producer_election_solver;
 mod domain_block_processor;
@@ -70,6 +69,7 @@ pub mod domain_bundle_producer;
 pub mod domain_bundle_proposer;
 mod domain_worker;
 mod domain_worker_starter;
+mod fetch_domain_bootstrap_info;
 mod fraud_proof;
 mod operator;
 #[cfg(test)]
@@ -77,7 +77,7 @@ mod tests;
 mod utils;
 
 pub use self::aux_schema::load_execution_receipt;
-pub use self::bootstrapper::{BootstrapResult, Bootstrapper};
+pub use self::fetch_domain_bootstrap_info::{fetch_domain_bootstrap_info, BootstrapResult};
 pub use self::operator::Operator;
 pub use self::utils::{DomainBlockImportNotification, DomainImportNotifications, OperatorSlotInfo};
 pub use domain_worker::OpaqueBundleFor;

@@ -35,9 +35,9 @@ use std::marker::PhantomData;
 use std::num::NonZeroU32;
 use subspace_core_primitives::PotKey;
 use subspace_runtime::{
-    AllowAuthoringBy, BalancesConfig, DomainsConfig, MaxDomainBlockSize, MaxDomainBlockWeight,
-    RuntimeConfigsConfig, RuntimeGenesisConfig, SubspaceConfig, SudoConfig, SystemConfig,
-    VestingConfig, MILLISECS_PER_BLOCK, WASM_BINARY,
+    AllowAuthoringBy, BalancesConfig, DomainsConfig, EnableRewardsAt, MaxDomainBlockSize,
+    MaxDomainBlockWeight, RuntimeConfigsConfig, RuntimeGenesisConfig, SubspaceConfig, SudoConfig,
+    SystemConfig, VestingConfig, MILLISECS_PER_BLOCK, WASM_BINARY,
 };
 use subspace_runtime_primitives::{AccountId, Balance, BlockNumber, SSC};
 
@@ -47,20 +47,20 @@ const SUBSPACE_TELEMETRY_URL: &str = "wss://telemetry.subspace.network/submit/";
 const TOKEN_GRANTS: &[(&str, u128)] = &[
     (
         "5Dns1SVEeDqnbSm2fVUqHJPCvQFXHVsgiw28uMBwmuaoKFYi",
-        3_000_000,
+        2_000_000,
     ),
     (
         "5DxtHHQL9JGapWCQARYUAWj4yDcwuhg9Hsk5AjhEzuzonVyE",
-        1_500_000,
+        1_000_000,
     ),
-    ("5EHhw9xuQNdwieUkNoucq2YcateoMVJQdN8EZtmRy3roQkVK", 133_333),
-    ("5GBWVfJ253YWVPHzWDTos1nzYZpa9TemP7FpQT9RnxaFN6Sz", 350_000),
+    ("5EHhw9xuQNdwieUkNoucq2YcateoMVJQdN8EZtmRy3roQkVK", 69_427),
+    ("5GBWVfJ253YWVPHzWDTos1nzYZpa9TemP7FpQT9RnxaFN6Sz", 167_708),
     ("5F9tEPid88uAuGbjpyegwkrGdkXXtaQ9sGSWEnYrfVCUCsen", 111_111),
     ("5DkJFCv3cTBsH5y1eFT94DXMxQ3EmVzYojEA88o56mmTKnMp", 244_444),
-    ("5G23o1yxWgVNQJuL4Y9UaCftAFvLuMPCRe7BCARxCohjoHc9", 311_111),
+    ("5G23o1yxWgVNQJuL4Y9UaCftAFvLuMPCRe7BCARxCohjoHc9", 174_994),
     ("5GhHwuJoK1b7uUg5oi8qUXxWHdfgzv6P5CQSdJ3ffrnPRgKM", 317_378),
-    ("5D9pNnGCiZ9UqhBQn5n71WFVaRLvZ7znsMvcZ7PHno4zsiYa", 600_000),
-    ("5H2Kq1qWrisf7aXUvdGrQB9j9zhiGt6MdaGSSBpFCwynBT9p", 34_950),
+    ("5D9pNnGCiZ9UqhBQn5n71WFVaRLvZ7znsMvcZ7PHno4zsiYa", 337_500),
+    ("5H2Kq1qWrisf7aXUvdGrQB9j9zhiGt6MdaGSSBpFCwynBT9p", 13_834),
     ("5Ci12WM1YqPjSAMNubucNejuSqwChfRSKDpFfFhtshomNSG1", 250_000),
     ("5DydwBX2uLjnVKjg1zAWS3z27ukbr99PiXteQSg96bb1k6p7", 40_000),
     ("5FAS1mdyp1yomAzJaJ74ZgJbzicQmZ8ajRyxPZ2x4wseGkY2", 104_175),
@@ -74,6 +74,18 @@ const TOKEN_GRANTS: &[(&str, u128)] = &[
     ("5Fgjk1nMYCEcoP9QvjMDVzDjBzJfo5X2ZssSbWn5PesfyPJh", 100_000),
     ("5CUutLkRAMr14dsqFzRFgByD6gv9U8iqL67CZ7huxXtoXKdB", 22_222),
     ("5EqPLjjBob7Y6FCUMKMPfgQyb2BZ8y2CcNVQrZ5wSF3aDpTX", 3_333),
+    ("5HKZUKYjQQ8H47z1HchLgLWZ8EfguFDDqh2KJqxBLoUggtCp", 9_167),
+    ("5D7E29Ut5P5RDczpakVSVvTV3vEh6v5B3oofEzcJ2xKUks78", 12_473),
+    ("5DRUS33oYrkPjM8SpLDKPiNG8R4sHvvZ8R2QZTcSgSCByjyR", 17_778),
+    ("5GW7F86K47JArVGB5eSoUHoA9WADAxwts7P9yicAmQnf6cmK", 37_500),
+    ("5H6d5Wh5tmbrksPbHyoaonYCF7u71YuBRL7e8a8mHsphxxbT", 10_417),
+    ("5CXYUjQv42aYhbdCL98QgKP82RyxPGEvHJZw9yBEJ5CE53um", 100_000),
+    ("5FsxXZCHHcRUhek6whnEMkgXuumeWVVn8SFeUVhGNGdKzq6e", 9_583),
+    ("5GhHwuJoK1b7uUg5oi8qUXxWHdfgzv6P5CQSdJ3ffrnPRgKM", 250_000),
+    ("5DydwBX2uLjnVKjg1zAWS3z27ukbr99PiXteQSg96bb1k6p7", 150_000),
+    ("5FND87MkPEVvwMP3sq88n1MFxHuLDrHkBdCNeuc23ibjHME4", 250_000),
+    ("5G4BCrTj6xZHkTwFtPmK4sjNEXc8w12ZjLLU8awsb5CDBz4d", 250_000),
+    ("5GW7F86K47JArVGB5eSoUHoA9WADAxwts7P9yicAmQnf6cmK", 100_000),
     ("5DXfPcXUcP4BG8LBSkJDrfFNApxjWySR6ARfgh3v27hdYr5S", 440_000),
     ("5CXSdDJgzRTj54f9raHN2Z5BNPSMa2ETjqCTUmpaw3ECmwm4", 330_000),
     ("5DqKxL7bQregQmUfFgzTMfRKY4DSvA1KgHuurZWYmxYSCmjY", 200_000),
@@ -85,7 +97,7 @@ const TOKEN_GRANTS: &[(&str, u128)] = &[
 
 /// Additional subspace specific genesis parameters.
 struct GenesisParams {
-    enable_rewards: bool,
+    enable_rewards_at: EnableRewardsAt<BlockNumber>,
     enable_storage_access: bool,
     allow_authoring_by: AllowAuthoringBy,
     pot_slot_iterations: NonZeroU32,
@@ -156,7 +168,7 @@ pub fn gemini_3g_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, 
                 balances,
                 vesting_schedules,
                 GenesisParams {
-                    enable_rewards: false,
+                    enable_rewards_at: EnableRewardsAt::Manually,
                     enable_storage_access: true,
                     allow_authoring_by: AllowAuthoringBy::RootFarmer(
                         FarmerPublicKey::unchecked_from(hex_literal::hex!(
@@ -196,7 +208,7 @@ pub fn gemini_3g_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, 
             let mut properties = chain_spec_properties();
             properties.insert(
                 "potExternalEntropy".to_string(),
-                serde_json::to_value(None::<PotKey>).expect("Serialization is not infallible; qed"),
+                serde_json::to_value(None::<PotKey>).expect("Serialization is infallible; qed"),
             );
             properties
         }),
@@ -269,7 +281,7 @@ pub fn devnet_config_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfi
                 balances,
                 vesting_schedules,
                 GenesisParams {
-                    enable_rewards: false,
+                    enable_rewards_at: EnableRewardsAt::Manually,
                     enable_storage_access: true,
                     allow_authoring_by: AllowAuthoringBy::FirstFarmer,
                     pot_slot_iterations: NonZeroU32::new(150_000_000).expect("Not zero; qed"),
@@ -301,7 +313,7 @@ pub fn devnet_config_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfi
             let mut properties = chain_spec_properties();
             properties.insert(
                 "potExternalEntropy".to_string(),
-                serde_json::to_value(None::<PotKey>).expect("Serialization is not infallible; qed"),
+                serde_json::to_value(None::<PotKey>).expect("Serialization is infallible; qed"),
             );
             properties
         }),
@@ -334,7 +346,7 @@ pub fn dev_config() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String> 
                 ],
                 vec![],
                 GenesisParams {
-                    enable_rewards: false,
+                    enable_rewards_at: EnableRewardsAt::Manually,
                     enable_storage_access: true,
                     allow_authoring_by: AllowAuthoringBy::Anyone,
                     pot_slot_iterations: NonZeroU32::new(100_000_000).expect("Not zero; qed"),
@@ -361,75 +373,7 @@ pub fn dev_config() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String> 
             let mut properties = chain_spec_properties();
             properties.insert(
                 "potExternalEntropy".to_string(),
-                serde_json::to_value(None::<PotKey>).expect("Serialization is not infallible; qed"),
-            );
-            properties
-        }),
-        // Extensions
-        NoExtension::None,
-    ))
-}
-
-pub fn local_config() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String> {
-    let wasm_binary = WASM_BINARY.ok_or_else(|| "Development wasm not available".to_string())?;
-
-    Ok(ConsensusChainSpec::from_genesis(
-        // Name
-        "Subspace local",
-        // ID
-        "subspace_local",
-        ChainType::Local,
-        || {
-            subspace_genesis_config(
-                SpecId::Local,
-                wasm_binary,
-                // Sudo account
-                get_account_id_from_seed("Alice"),
-                // Pre-funded accounts
-                vec![
-                    (get_account_id_from_seed("Alice"), Balance::MAX / 2),
-                    (get_account_id_from_seed("Bob"), 1_000 * SSC),
-                    (get_account_id_from_seed("Charlie"), 1_000 * SSC),
-                    (get_account_id_from_seed("Dave"), 1_000 * SSC),
-                    (get_account_id_from_seed("Eve"), 1_000 * SSC),
-                    (get_account_id_from_seed("Ferdie"), 1_000 * SSC),
-                    (get_account_id_from_seed("Alice//stash"), 1_000 * SSC),
-                    (get_account_id_from_seed("Bob//stash"), 1_000 * SSC),
-                    (get_account_id_from_seed("Charlie//stash"), 1_000 * SSC),
-                    (get_account_id_from_seed("Dave//stash"), 1_000 * SSC),
-                    (get_account_id_from_seed("Eve//stash"), 1_000 * SSC),
-                    (get_account_id_from_seed("Ferdie//stash"), 1_000 * SSC),
-                ],
-                vec![],
-                GenesisParams {
-                    enable_rewards: false,
-                    enable_storage_access: true,
-                    allow_authoring_by: AllowAuthoringBy::Anyone,
-                    pot_slot_iterations: NonZeroU32::new(100_000_000).expect("Not zero; qed"),
-                    enable_domains: true,
-                    enable_balance_transfers: true,
-                    confirmation_depth_k: 1,
-                },
-                GenesisDomainParams {
-                    domain_name: "evm-domain".to_owned(),
-                    operator_allow_list: OperatorAllowList::Anyone,
-                    operator_signing_key: get_public_key_from_seed::<OperatorPublicKey>("Alice"),
-                },
-            )
-        },
-        // Bootnodes
-        vec![],
-        // Telemetry
-        None,
-        // Protocol ID
-        None,
-        None,
-        // Properties
-        Some({
-            let mut properties = chain_spec_properties();
-            properties.insert(
-                "potExternalEntropy".to_string(),
-                serde_json::to_value(None::<PotKey>).expect("Serialization is not infallible; qed"),
+                serde_json::to_value(None::<PotKey>).expect("Serialization is infallible; qed"),
             );
             properties
         }),
@@ -450,7 +394,7 @@ fn subspace_genesis_config(
     genesis_domain_params: GenesisDomainParams,
 ) -> RuntimeGenesisConfig {
     let GenesisParams {
-        enable_rewards,
+        enable_rewards_at,
         enable_storage_access,
         allow_authoring_by,
         pot_slot_iterations,
@@ -481,7 +425,7 @@ fn subspace_genesis_config(
             key: Some(sudo_account.clone()),
         },
         subspace: SubspaceConfig {
-            enable_rewards,
+            enable_rewards_at,
             enable_storage_access,
             allow_authoring_by,
             pot_slot_iterations,

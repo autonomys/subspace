@@ -243,7 +243,7 @@ where
     let execution_result = fraud_proof_runtime_interface::execution_proof_check(
         pre_state_root,
         proof.encode(),
-        execution_phase.verifying_method(),
+        execution_phase.execution_method(),
         call_data.as_ref(),
         domain_runtime_code,
     )
@@ -253,7 +253,14 @@ where
         .decode_execution_result::<DomainHeader>(execution_result)?
         .into();
 
-    if valid_post_state_root != post_state_root {
+    let is_mismatch = valid_post_state_root != post_state_root;
+
+    // If there is mismatch and execution phase indicate state root mismatch then the fraud proof is valid
+    // If there is no mismatch and execution phase indicate non state root mismatch (i.e the trace is either long or short) then
+    // the fraud proof is valid.
+    let is_valid = is_mismatch == execution_phase.is_state_root_mismatch();
+
+    if is_valid {
         Ok(())
     } else {
         Err(VerificationError::InvalidProof)
@@ -537,6 +544,27 @@ where
             } else {
                 Err(VerificationError::InvalidProof)
             }
+        }
+        InvalidBundleType::UndecodableTx(extrinsic_index) => {
+            let extrinsic = get_extrinsic_from_proof::<DomainHeader>(
+                *extrinsic_index,
+                invalid_bundle_entry.extrinsics_root,
+                invalid_bundles_fraud_proof.proof_data.clone(),
+            )?;
+            let is_decodable = get_fraud_proof_verification_info(
+                H256::from_slice(bad_receipt.consensus_block_hash.as_ref()),
+                FraudProofVerificationInfoRequest::ExtrinsicDecodableCheck {
+                    domain_id: invalid_bundles_fraud_proof.domain_id,
+                    opaque_extrinsic: extrinsic,
+                },
+            )
+            .and_then(FraudProofVerificationInfoResponse::into_extrinsic_decodable_check)
+            .ok_or(VerificationError::FailedToCheckExtrinsicDecodable)?;
+
+            if is_decodable == invalid_bundles_fraud_proof.is_true_invalid_fraud_proof {
+                return Err(VerificationError::InvalidProof);
+            }
+            Ok(())
         }
 
         // TODO: implement the other invalid bundle types

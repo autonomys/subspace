@@ -24,6 +24,7 @@ use sc_cli::{
     KeystoreParams, NetworkParams, Role, RunCmd as SubstrateRunCmd, SharedParams, SubstrateCli,
 };
 use sc_client_api::backend::AuxStore;
+use sc_network::config::NodeKeyConfig;
 use sc_service::config::{KeystoreConfig, PrometheusConfig};
 use sc_service::{BasePath, Configuration, DatabaseSource};
 use sp_blockchain::HeaderBackend;
@@ -35,7 +36,6 @@ use sp_runtime::traits::Header;
 use sp_runtime::{BuildStorage, DigestItem};
 use std::io::Write;
 use std::net::SocketAddr;
-use std::num::ParseIntError;
 use std::path::Path;
 use subspace_runtime::Block;
 
@@ -60,42 +60,24 @@ pub enum Subcommand {
     ExportExecutionReceipt(ExportExecutionReceiptCmd),
 }
 
-fn parse_domain_id(s: &str) -> Result<DomainId, ParseIntError> {
-    s.parse::<u32>().map(Into::into)
-}
-
-fn parse_operator_id(s: &str) -> Result<OperatorId, ParseIntError> {
-    s.parse::<u64>().map(OperatorId::from)
-}
-
 #[derive(Debug, Parser)]
 pub struct DomainCli {
     /// Run a domain node.
     #[clap(flatten)]
     pub run: SubstrateRunCmd,
 
-    #[clap(long, value_parser = parse_domain_id)]
+    #[clap(long)]
     pub domain_id: DomainId,
 
-    /// Use provider operator id to submit bundles.
-    #[arg(long, value_parser = parse_operator_id)]
+    /// Use provided operator id to submit bundles.
+    #[arg(long)]
     pub operator_id: Option<OperatorId>,
-
-    /// Additional args for domain.
-    #[clap(raw = true)]
-    additional_args: Vec<String>,
 }
 
 impl DomainCli {
     /// Constructs a new instance of [`DomainCli`].
     pub fn new(domain_args: impl Iterator<Item = String>) -> Self {
         DomainCli::parse_from([Self::executable_name()].into_iter().chain(domain_args))
-    }
-
-    pub fn additional_args(&self) -> impl Iterator<Item = String> {
-        [Self::executable_name()]
-            .into_iter()
-            .chain(self.additional_args.clone())
     }
 
     /// Creates domain configuration from domain cli.
@@ -107,8 +89,10 @@ impl DomainCli {
         let mut domain_config = SubstrateCli::create_configuration(self, self, tokio_handle)?;
 
         // Change default paths to Subspace structure
+        // TODO: Similar copy-paste exists in `DomainCli::create_domain_configuration()` and
+        //  `DomainInstanceStarter::start()` and should be de-duplicated
+        let domain_base_path = base_path.join(self.domain_id.to_string());
         {
-            let domain_base_path = base_path.join(self.domain_id.to_string());
             domain_config.database = DatabaseSource::ParityDb {
                 path: domain_base_path.join("db"),
             };
@@ -122,7 +106,16 @@ impl DomainCli {
             // Network directory is shared with consensus chain
             if let Some(net_config_path) = &mut domain_config.network.net_config_path {
                 *net_config_path = base_path.join("network");
+
+                if let NodeKeyConfig::Ed25519(sc_network::config::Secret::File(node_key_file)) =
+                    &mut domain_config.network.node_key
+                {
+                    *node_key_file = net_config_path.join("secret_ed25519");
+                }
             }
+
+            domain_config.base_path = BasePath::new(domain_base_path.clone());
+            domain_config.data_path = domain_base_path.clone();
         }
         Ok(domain_config)
     }
@@ -310,7 +303,6 @@ impl BuildGenesisStorageCmd {
             "gemini-3g" => evm_chain_spec::get_testnet_genesis_by_spec_id(SpecId::Gemini),
             "devnet" => evm_chain_spec::get_testnet_genesis_by_spec_id(SpecId::DevNet),
             "dev" => evm_chain_spec::get_testnet_genesis_by_spec_id(SpecId::Dev),
-            "" | "local" => evm_chain_spec::get_testnet_genesis_by_spec_id(SpecId::Local),
             unknown_id => {
                 eprintln!(
                     "unknown chain {unknown_id:?}, expected gemini-3g, devnet, dev, or local",

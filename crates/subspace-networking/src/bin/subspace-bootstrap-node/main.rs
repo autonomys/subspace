@@ -67,7 +67,7 @@ enum Command {
         pending_out_peers: u32,
         /// Determines whether we allow keeping non-global (private, shared, loopback..) addresses in Kademlia DHT.
         #[arg(long, default_value_t = false)]
-        enable_private_ips: bool,
+        allow_private_ips: bool,
         /// Protocol version for libp2p stack, should be set as genesis hash of the blockchain for
         /// production use.
         #[arg(long)]
@@ -138,7 +138,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
             out_peers,
             pending_in_peers,
             pending_out_peers,
-            enable_private_ips,
+            allow_private_ips,
             protocol_version,
             external_addresses,
             metrics_endpoints,
@@ -174,7 +174,7 @@ async fn main() -> Result<(), Box<dyn Error>> {
 
             let config = Config {
                 listen_on,
-                allow_non_global_addresses_in_dht: enable_private_ips,
+                allow_non_global_addresses_in_dht: allow_private_ips,
                 reserved_peers,
                 max_established_incoming_connections: in_peers,
                 max_established_outgoing_connections: out_peers,

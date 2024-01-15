@@ -22,9 +22,8 @@ use evm_domain_runtime::{
     SudoConfig, SystemConfig, WASM_BINARY,
 };
 use hex_literal::hex;
-use sc_service::{ChainSpec as ChainSpecT, ChainType};
+use sc_service::ChainType;
 use sc_subspace_chain_specs::ExecutionChainSpec;
-use sp_domains::storage::RawGenesis;
 use std::str::FromStr;
 use subspace_runtime_primitives::SSC;
 
@@ -59,30 +58,6 @@ pub fn development_config<F: Fn() -> RuntimeGenesisConfig + 'static + Send + Syn
         None,
         None,
         Some(chain_spec_properties()),
-        None,
-    )
-}
-
-pub fn local_testnet_config<F: Fn() -> RuntimeGenesisConfig + 'static + Send + Sync>(
-    constructor: F,
-) -> ExecutionChainSpec<RuntimeGenesisConfig> {
-    ExecutionChainSpec::from_genesis(
-        // Name
-        "Local Testnet",
-        // ID
-        "evm_domain_local_testnet",
-        ChainType::Local,
-        constructor,
-        // Bootnodes
-        vec![],
-        // Telemetry
-        None,
-        // Protocol ID
-        Some("evm-local"),
-        None,
-        // Properties
-        Some(chain_spec_properties()),
-        // Extensions
         None,
     )
 }
@@ -140,7 +115,6 @@ pub fn load_chain_spec(spec_id: &str) -> Result<Box<dyn sc_cli::ChainSpec>, Stri
         "dev" => development_config(move || get_testnet_genesis_by_spec_id(SpecId::Dev)),
         "gemini-3g" => gemini_3g_config(move || get_testnet_genesis_by_spec_id(SpecId::Gemini)),
         "devnet" => devnet_config(move || get_testnet_genesis_by_spec_id(SpecId::DevNet)),
-        "" | "local" => local_testnet_config(move || get_testnet_genesis_by_spec_id(SpecId::Local)),
         path => ChainSpec::from_json_file(std::path::PathBuf::from(path))?,
     };
     Ok(Box::new(chain_spec))
@@ -150,7 +124,6 @@ pub enum SpecId {
     Dev,
     Gemini,
     DevNet,
-    Local,
 }
 
 pub fn get_testnet_genesis_by_spec_id(spec_id: SpecId) -> RuntimeGenesisConfig {
@@ -185,34 +158,7 @@ pub fn get_testnet_genesis_by_spec_id(spec_id: SpecId) -> RuntimeGenesisConfig {
                 Some(sudo_account),
             )
         }
-        SpecId::Local => {
-            let accounts = get_dev_accounts();
-            testnet_genesis(
-                accounts.clone(),
-                // Alith is sudo
-                Some(accounts[0]),
-            )
-        }
     }
-}
-
-pub fn create_domain_spec(
-    chain_id: &str,
-    raw_genesis: RawGenesis,
-) -> Result<Box<dyn sc_cli::ChainSpec>, String> {
-    // The value of the `RuntimeGenesisConfig` doesn't matter since it will be overwritten later
-    let constructor = RuntimeGenesisConfig::default;
-    let mut chain_spec = match chain_id {
-        "dev" => development_config(constructor),
-        "gemini-3g" => gemini_3g_config(constructor),
-        "devnet" => devnet_config(constructor),
-        "" | "local" => local_testnet_config(constructor),
-        path => ChainSpec::from_json_file(std::path::PathBuf::from(path))?,
-    };
-
-    chain_spec.set_storage(raw_genesis.into_storage());
-
-    Ok(Box::new(chain_spec))
 }
 
 fn testnet_genesis(

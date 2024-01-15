@@ -34,7 +34,7 @@ pub(super) fn configure_dsn(
     DsnArgs {
         listen_on,
         bootstrap_nodes,
-        enable_private_ips,
+        allow_private_ips,
         reserved_peers,
         in_connections,
         out_connections,
@@ -68,7 +68,7 @@ pub(super) fn configure_dsn(
     let config = Config {
         reserved_peers,
         listen_on,
-        allow_non_global_addresses_in_dht: enable_private_ips,
+        allow_non_global_addresses_in_dht: allow_private_ips,
         networking_parameters_registry,
         request_response_protocols: vec![
             PieceByIndexRequestHandler::create(move |_, &PieceByIndexRequest { piece_index }| {

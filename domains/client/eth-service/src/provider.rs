@@ -29,6 +29,7 @@ use sp_runtime::codec::{Decode, Encode};
 use std::error::Error;
 use std::fmt::{Debug, Display};
 use std::marker::PhantomData;
+use std::path::Path;
 use std::sync::Arc;
 use substrate_frame_rpc_system::AccountNonceApi;
 
@@ -40,15 +41,15 @@ pub struct EthProvider<CT, EC> {
 }
 
 impl<CT, EC> EthProvider<CT, EC> {
-    pub fn new(base_path: Option<BasePath>, eth_cli: impl Iterator<Item = String>) -> Self {
+    pub fn new(base_path: Option<&Path>, eth_cli: impl Iterator<Item = String>) -> Self {
         let eth_config = EthConfiguration::parse_from(eth_cli);
         Self::with_configuration(base_path, eth_config)
     }
 
-    pub fn with_configuration(base_path: Option<BasePath>, eth_config: EthConfiguration) -> Self {
+    pub fn with_configuration(base_path: Option<&Path>, eth_config: EthConfiguration) -> Self {
         Self {
             eth_config,
-            base_path: base_path.map(|base_path| BasePath::new(base_path.path().join("evm"))),
+            base_path: base_path.map(|base_path| BasePath::new(base_path.join("evm"))),
             marker: Default::default(),
         }
     }

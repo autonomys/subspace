@@ -14,7 +14,7 @@ NOTE: currently, the domain chain does not support to syncing from other operato
 
 ### Build from source
 
-The domain operator node is embeded within the `subspace-node` binary, please refer to [Subspace node](../crates/subspace-node/README.md) for how to build from source.
+The domain operator node is embedded within the `subspace-node` binary, please refer to [Subspace node](../crates/subspace-node/README.md) for how to build from source.
 
 #### Create Operator key:
 Operator needs key pair to participate in Bundle production.
@@ -30,9 +30,9 @@ The above generated key is added to the Keystore so that Operator node can use t
 The key is inserted using the following command:
 ```bash
 target/production/subspace-node key insert \
-      --suri "<Secret phrase>" --key-type oper --scheme sr25519 --keystore-path /tmp/keystore
+      --suri "<Secret phrase>" --key-type oper --scheme sr25519 --keystore-path `{subspace-node-base-path}/domains/{domain-id}/keystore`
 ```
-The above command assumes `/tmp/keystore` as the keystore location.
+The above command assumes `{subspace-node-base-path}` as the location of node data.
 `suri` is the secret phrase of the Operator key.
 
 #### Register Operator:
@@ -48,62 +48,45 @@ subspace-node [consensus-chain-args] -- [domain-args]
 ```
 
 Example:
-Start a node as Operator on `local` chain:
+Start a node as Operator on `dev` chain:
 ```bash
-target/production/subspace-node \
-    --chain local \
-    --rpc-external \
+target/production/subspace-node run \
+    --dev \
     --node-key 0000000000000000000000000000000000000000000000000000000000000001 \
-    -- \
-    --domain-id 0 \
-    --chain local \
-    --operator \
-    --keystore-path /tmp/keystore \
-    --rpc-external
+    -- --
 ```
 
-For `dev` chain, you can use `--dev` flag that combines `--chain dev` and `--operator`.
+`-- --` is such that domain `0` operator with ID `0` is started, with just `--` node will see no domain arguments and domain will not start.
+
+For development purposes chain, you can use `--keystore-suri` option to inject keypair into keystore from a seed.
 ```bash
-target/production/subspace-node \
+target/production/subspace-node run \
     --dev \
-    --rpc-external \
     --node-key 0000000000000000000000000000000000000000000000000000000000000001 \
     -- \
     --domain-id 0 \
-    --dev \
+    --operator-id 0 \
+    --keystore-suri "//Alice" \
     --rpc-external
 ```
 
 Run another node and sync the consensus chain from the consensus node started earlier:
 ```bash
-target/production/subspace-node \
+target/production/subspace-node run \
     --dev \
-    --rpc-external \
     --bootnodes /ip4/127.0.0.1/tcp/30333/p2p/12D3KooWEyoppNCUx8Yx66oV9fJnriXwCcXwDDUA2kj6vnc6iDEp \
     -- \
     --domain-id 0 \
-    --chain dev \
     --rpc-external
 ```
 Since there is no `operator` flag, this node will not participate in Bundle production.
 
-By default, node data is written to `subspace-node/domain-{domain-id}` subdirectory of the OS-specific user's local data directory.
-```
-Linux
-$XDG_DATA_HOME or                   /home/alice/.local/share
-$HOME/.local/share 
-
-macOS
-$HOME/Library/Application Support   /Users/Alice/Library/Application Support
-
-Windows
-{FOLDERID_LocalAppData}             C:\Users\Alice\AppData\Local
-```
+By default, node data is written to `{subspace-node-base-path}/domains/{domain-id}` subdirectory.
 
 ### Embedded Docs
 
 Once the project has been built, the following command can be used to explore all parameters and subcommands:
 
 ```bash
-target/production/subspace-node --help
+target/production/subspace-node --dev -- --help
 ```

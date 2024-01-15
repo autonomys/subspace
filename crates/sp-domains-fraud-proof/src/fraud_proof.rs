@@ -15,6 +15,20 @@ use sp_std::vec::Vec;
 use sp_trie::StorageProof;
 use subspace_runtime_primitives::Balance;
 
+/// Mismatch type possible for ApplyExtrinsic execution phase
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub enum ApplyExtrinsicMismatch {
+    StateRoot(u32),
+    Shorter,
+}
+
+/// Mismatch type possible for FinalizBlock execution phase
+#[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
+pub enum FinalizeBlockMismatch {
+    StateRoot,
+    Longer(u32),
+}
+
 /// A phase of a block's execution, carrying necessary information needed for verifying the
 /// invalid state transition proof.
 #[derive(Debug, Decode, Encode, TypeInfo, PartialEq, Eq, Clone)]
@@ -24,37 +38,39 @@ pub enum ExecutionPhase {
     /// Executes some extrinsic.
     ApplyExtrinsic {
         extrinsic_proof: StorageProof,
-        mismatch_index: u32,
+        mismatch: ApplyExtrinsicMismatch,
     },
     /// Executes the `finalize_block` hook.
-    FinalizeBlock,
+    FinalizeBlock { mismatch: FinalizeBlockMismatch },
 }
 
 impl ExecutionPhase {
     /// Returns the method for generating the proof.
-    pub fn proving_method(&self) -> &'static str {
+    pub fn execution_method(&self) -> &'static str {
         match self {
             // TODO: Replace `DomainCoreApi_initialize_block_with_post_state_root` with `Core_initalize_block`
             // Should be a same issue with https://github.com/paritytech/substrate/pull/10922#issuecomment-1068997467
             Self::InitializeBlock => "DomainCoreApi_initialize_block_with_post_state_root",
-            Self::ApplyExtrinsic { .. } => "BlockBuilder_apply_extrinsic",
-            Self::FinalizeBlock => "BlockBuilder_finalize_block",
-        }
-    }
-
-    /// Returns the method for verifying the proof.
-    ///
-    /// The difference with [`Self::proving_method`] is that the return value of verifying method
-    /// must contain the post state root info so that it can be used to compare whether the
-    /// result of execution reported in [`FraudProof`] is expected or not.
-    pub fn verifying_method(&self) -> &'static str {
-        match self {
-            Self::InitializeBlock => "DomainCoreApi_initialize_block_with_post_state_root",
             Self::ApplyExtrinsic { .. } => "DomainCoreApi_apply_extrinsic_with_post_state_root",
-            Self::FinalizeBlock => "BlockBuilder_finalize_block",
+            Self::FinalizeBlock { .. } => "BlockBuilder_finalize_block",
         }
     }
 
+    /// Returns true if execution phase refers to mismatch between state roots
+    /// false otherwise.
+    pub fn is_state_root_mismatch(&self) -> bool {
+        matches!(
+            self,
+            ExecutionPhase::InitializeBlock
+                | ExecutionPhase::ApplyExtrinsic {
+                    mismatch: ApplyExtrinsicMismatch::StateRoot(_),
+                    extrinsic_proof: _,
+                }
+                | ExecutionPhase::FinalizeBlock {
+                    mismatch: FinalizeBlockMismatch::StateRoot,
+                }
+        )
+    }
     /// Returns the post state root for the given execution result.
     pub fn decode_execution_result<Header: HeaderT>(
         &self,
@@ -67,7 +83,7 @@ impl ExecutionPhase {
                 Header::Hash::decode(&mut encoded_storage_root.as_slice())
                     .map_err(VerificationError::StorageRootDecode)
             }
-            Self::FinalizeBlock => {
+            Self::FinalizeBlock { .. } => {
                 let new_header = Header::decode(&mut execution_result.as_slice())
                     .map_err(VerificationError::HeaderDecode)?;
                 Ok(*new_header.state_root())
@@ -93,7 +109,10 @@ impl ExecutionPhase {
                 bad_receipt_parent.final_state_root,
                 bad_receipt.execution_trace[0],
             ),
-            ExecutionPhase::ApplyExtrinsic { mismatch_index, .. } => {
+            ExecutionPhase::ApplyExtrinsic {
+                mismatch: ApplyExtrinsicMismatch::StateRoot(mismatch_index),
+                ..
+            } => {
                 if *mismatch_index == 0
                     || *mismatch_index >= bad_receipt.execution_trace.len() as u32 - 1
                 {
@@ -104,11 +123,36 @@ impl ExecutionPhase {
                     bad_receipt.execution_trace[*mismatch_index as usize],
                 )
             }
-            ExecutionPhase::FinalizeBlock => {
+            ExecutionPhase::ApplyExtrinsic {
+                mismatch: ApplyExtrinsicMismatch::Shorter,
+                ..
+            } => {
                 let mismatch_index = bad_receipt.execution_trace.len() - 1;
                 (
                     bad_receipt.execution_trace[mismatch_index - 1],
                     bad_receipt.execution_trace[mismatch_index],
+                )
+            }
+            ExecutionPhase::FinalizeBlock {
+                mismatch: FinalizeBlockMismatch::StateRoot,
+            } => {
+                let mismatch_index = bad_receipt.execution_trace.len() - 1;
+                (
+                    bad_receipt.execution_trace[mismatch_index - 1],
+                    bad_receipt.execution_trace[mismatch_index],
+                )
+            }
+            ExecutionPhase::FinalizeBlock {
+                mismatch: FinalizeBlockMismatch::Longer(mismatch_index),
+            } => {
+                if *mismatch_index == 0
+                    || *mismatch_index >= bad_receipt.execution_trace.len() as u32 - 1
+                {
+                    return Err(VerificationError::InvalidLongerMismatchTraceIndex);
+                }
+                (
+                    bad_receipt.execution_trace[(*mismatch_index - 1) as usize],
+                    bad_receipt.execution_trace[*mismatch_index as usize],
                 )
             }
         };
@@ -143,11 +187,18 @@ impl ExecutionPhase {
             }
             ExecutionPhase::ApplyExtrinsic {
                 extrinsic_proof: proof_of_inclusion,
-                mismatch_index,
+                mismatch,
             } => {
+                let mismatch_index = match mismatch {
+                    ApplyExtrinsicMismatch::StateRoot(mismatch_index) => *mismatch_index,
+                    ApplyExtrinsicMismatch::Shorter => {
+                        (bad_receipt.execution_trace.len() - 1) as u32
+                    }
+                };
                 // There is a trace root of the `initialize_block` in the head of the trace so we
                 // need to minus one to get the correct `extrinsic_index`
-                let extrinsic_index = *mismatch_index - 1;
+                let extrinsic_index: u32 = mismatch_index - 1;
+
                 let storage_key =
                     StorageProofVerifier::<DomainHeader::Hashing>::enumerated_storage_key(
                         extrinsic_index,
@@ -160,7 +211,7 @@ impl ExecutionPhase {
                 )
                 .map_err(|_| VerificationError::InvalidApplyExtrinsicCallData)?
             }
-            ExecutionPhase::FinalizeBlock => Vec::new(),
+            ExecutionPhase::FinalizeBlock { .. } => Vec::new(),
         })
     }
 }
@@ -258,6 +309,8 @@ pub enum VerificationError<DomainHash> {
     InvalidExecutionTrace,
     #[cfg_attr(feature = "thiserror", error("Invalid ApplyExtrinsic trace index"))]
     InvalidApplyExtrinsicTraceIndex,
+    #[cfg_attr(feature = "thiserror", error("Invalid longer mismatch trace index"))]
+    InvalidLongerMismatchTraceIndex,
     #[cfg_attr(feature = "thiserror", error("Invalid ApplyExtrinsic call data"))]
     InvalidApplyExtrinsicCallData,
     /// Invalid bundle digest
@@ -324,6 +377,12 @@ pub enum VerificationError<DomainHash> {
         error("Failed to check if a given extrinsic is inherent or not")
     )]
     FailedToCheckInherentExtrinsic,
+    /// Failed to check if a given extrinsic is decodable or not.
+    #[cfg_attr(
+        feature = "thiserror",
+        error("Failed to check if a given extrinsic is decodable or not")
+    )]
+    FailedToCheckExtrinsicDecodable,
     /// Invalid bundle equivocation fraud proof.
     #[cfg_attr(
         feature = "thiserror",
@@ -490,7 +549,9 @@ pub fn dummy_invalid_state_transition_proof<ReceiptHash: Default>(
         domain_id,
         bad_receipt_hash: ReceiptHash::default(),
         proof: StorageProof::empty(),
-        execution_phase: ExecutionPhase::FinalizeBlock,
+        execution_phase: ExecutionPhase::FinalizeBlock {
+            mismatch: FinalizeBlockMismatch::StateRoot,
+        },
     }
 }
 

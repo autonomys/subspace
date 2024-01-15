@@ -31,6 +31,9 @@ extern crate alloc;
 use crate::storage::{RawGenesis, StorageKey};
 use alloc::string::String;
 use bundle_producer_election::{BundleProducerElectionParams, ProofOfElectionError};
+use core::num::ParseIntError;
+use core::ops::{Add, Sub};
+use core::str::FromStr;
 use domain_runtime_primitives::BlockFees;
 use hexlit::hex;
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
@@ -61,7 +64,7 @@ use subspace_core_primitives::{bidirectional_distance, Blake3Hash, Randomness, U
 use subspace_runtime_primitives::{Balance, Moment};
 
 /// Key type for Operator.
-const KEY_TYPE: KeyTypeId = KeyTypeId(*b"oper");
+pub const KEY_TYPE: KeyTypeId = KeyTypeId(*b"oper");
 
 /// Extrinsics shuffling seed
 pub const DOMAIN_EXTRINSICS_SHUFFLING_SEED_SUBJECT: &[u8] = b"extrinsics-shuffling-seed";
@@ -140,7 +143,15 @@ impl From<DomainId> for u32 {
     }
 }
 
-impl core::ops::Add<DomainId> for DomainId {
+impl FromStr for DomainId {
+    type Err = ParseIntError;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        s.parse::<u32>().map(Into::into)
+    }
+}
+
+impl Add<DomainId> for DomainId {
     type Output = Self;
 
     fn add(self, other: DomainId) -> Self {
@@ -148,7 +159,7 @@ impl core::ops::Add<DomainId> for DomainId {
     }
 }
 
-impl core::ops::Sub<DomainId> for DomainId {
+impl Sub<DomainId> for DomainId {
     type Output = Self;
 
     fn sub(self, other: DomainId) -> Self {
@@ -638,7 +649,7 @@ pub struct GenesisDomain<AccountId: Ord> {
 
 /// Types of runtime pallet domains currently supports
 #[derive(
-    TypeInfo, Debug, Default, Encode, Decode, Clone, PartialEq, Eq, Serialize, Deserialize,
+    Debug, Default, Encode, Decode, TypeInfo, Clone, PartialEq, Eq, Serialize, Deserialize,
 )]
 pub enum RuntimeType {
     #[default]
@@ -721,7 +732,7 @@ impl DomainsDigestItem for DigestItem {
 /// This and next function should ideally use Host function to fetch the storage key
 /// from the domain runtime. But since the Host function is not available at Genesis, we have to
 /// assume the storage keys.
-/// TODO: once the chain is launched in mainnet, we should use the Host function for all domain instances.  
+/// TODO: once the chain is launched in mainnet, we should use the Host function for all domain instances.
 pub(crate) fn evm_chain_id_storage_key() -> StorageKey {
     StorageKey(
         frame_support::storage::storage_prefix(
@@ -753,7 +764,7 @@ pub fn self_domain_id_storage_key() -> StorageKey {
 }
 
 /// `DomainInstanceData` is used to construct the genesis storage of domain instance chain
-#[derive(PartialEq, Eq, Clone, Encode, Decode, TypeInfo)]
+#[derive(Debug, PartialEq, Eq, Clone, Encode, Decode, TypeInfo)]
 pub struct DomainInstanceData {
     pub runtime_type: RuntimeType,
     pub raw_genesis: RawGenesis,

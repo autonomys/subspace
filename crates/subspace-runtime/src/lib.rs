@@ -44,7 +44,7 @@ use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
 use frame_support::{construct_runtime, parameter_types, PalletId};
 use frame_system::limits::{BlockLength, BlockWeights};
 use frame_system::EnsureNever;
-pub use pallet_subspace::AllowAuthoringBy;
+pub use pallet_subspace::{AllowAuthoringBy, EnableRewardsAt};
 use pallet_transporter::EndpointHandler;
 use scale_info::TypeInfo;
 use sp_api::{impl_runtime_apis, BlockT};

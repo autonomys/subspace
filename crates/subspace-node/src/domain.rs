@@ -15,9 +15,6 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 pub(crate) mod cli;
-pub(crate) mod domain_instance_starter;
 pub mod evm_chain_spec;
 
 pub use self::cli::{DomainCli, Subcommand as DomainSubcommand};
-pub use self::domain_instance_starter::{create_configuration, DomainInstanceStarter};
-pub use evm_domain_runtime::AccountId as AccountId20;

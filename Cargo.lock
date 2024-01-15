@@ -2802,6 +2802,7 @@ name = "domain-service"
 version = "0.1.0"
 dependencies = [
  "async-trait",
+ "atomic",
  "cross-domain-message-gossip",
  "domain-block-preprocessor",
  "domain-client-consensus-relay-chain",
@@ -2818,6 +2819,7 @@ dependencies = [
  "sc-client-api",
  "sc-consensus",
  "sc-executor",
+ "sc-informant",
  "sc-network",
  "sc-network-common",
  "sc-network-sync",
@@ -2849,6 +2851,7 @@ dependencies = [
  "substrate-build-script-utils",
  "substrate-frame-rpc-system",
  "substrate-prometheus-endpoint",
+ "tokio",
  "tracing",
 ]
 
@@ -4787,14 +4790,19 @@ dependencies = [
 
 [[package]]
 name = "hwlocality-sys"
-version = "0.3.1"
+version = "0.3.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "381b203a23b41c29be64454e9cee8d16360606d7e871f5d22532796b6095f164"
+checksum = "88ecc1a90eeca65f95f08a7d32132cd4d35c9ee95ed89e32d0342a4bf7b5d644"
 dependencies = [
  "autotools",
  "cmake",
+ "flate2",
+ "hex-literal",
  "libc",
  "pkg-config",
+ "reqwest",
+ "sha3",
+ "tar",
  "windows-sys 0.52.0",
 ]
 
@@ -7808,9 +7816,9 @@ dependencies = [
 
 [[package]]
 name = "parity-db"
-version = "0.4.12"
+version = "0.4.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "59e9ab494af9e6e813c72170f0d3c1de1500990d62c97cc05cc7576f91aa402f"
+checksum = "592a28a24b09c9dc20ac8afaa6839abc417c720afe42c12e1e4a9d6aa2508d2e"
 dependencies = [
  "blake2",
  "crc32fast",
@@ -7824,6 +7832,7 @@ dependencies = [
  "rand 0.8.5",
  "siphasher",
  "snap",
+ "winapi",
 ]
 
 [[package]]
@@ -8812,6 +8821,46 @@ name = "regex-syntax"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c08c74e62047bb2de4ff487b251e4a92e24f48745648451635cec7d591162d9f"
+
+[[package]]
+name = "reqwest"
+version = "0.11.23"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "37b1ae8d9ac08420c66222fb9096fc5de435c3c48542bc5336c51892cffafb41"
+dependencies = [
+ "base64 0.21.5",
+ "bytes",
+ "encoding_rs",
+ "futures-core",
+ "futures-util",
+ "h2",
+ "http",
+ "http-body",
+ "hyper",
+ "hyper-rustls",
+ "ipnet",
+ "js-sys",
+ "log",
+ "mime",
+ "once_cell",
+ "percent-encoding",
+ "pin-project-lite 0.2.13",
+ "rustls 0.21.8",
+ "rustls-pemfile",
+ "serde",
+ "serde_json",
+ "serde_urlencoded",
+ "system-configuration",
+ "tokio",
+ "tokio-rustls",
+ "tower-service",
+ "url",
+ "wasm-bindgen",
+ "wasm-bindgen-futures",
+ "web-sys",
+ "webpki-roots 0.25.2",
+ "winreg",
+]
 
 [[package]]
 name = "resolv-conf"
@@ -11856,6 +11905,7 @@ dependencies = [
 name = "subspace-malicious-operator"
 version = "0.1.0"
 dependencies = [
+ "clap",
  "cross-domain-message-gossip",
  "domain-client-message-relayer",
  "domain-client-operator",
@@ -11863,9 +11913,11 @@ dependencies = [
  "domain-runtime-primitives",
  "domain-service",
  "evm-domain-runtime",
+ "fp-evm",
  "frame-system",
  "frame-system-rpc-runtime-api",
  "futures",
+ "hex-literal",
  "log",
  "mimalloc",
  "pallet-domains",
@@ -11882,6 +11934,7 @@ dependencies = [
  "sc-network-sync",
  "sc-service",
  "sc-storage-monitor",
+ "sc-subspace-chain-specs",
  "sc-tracing",
  "sc-transaction-pool-api",
  "sc-utils",
@@ -11901,7 +11954,6 @@ dependencies = [
  "sp-transaction-pool",
  "subspace-core-primitives",
  "subspace-networking",
- "subspace-node",
  "subspace-proof-of-space",
  "subspace-runtime",
  "subspace-runtime-primitives",
@@ -11975,6 +12027,7 @@ dependencies = [
  "domain-runtime-primitives",
  "domain-service",
  "evm-domain-runtime",
+ "fdlimit",
  "fp-evm",
  "frame-benchmarking",
  "frame-benchmarking-cli",
@@ -11982,7 +12035,6 @@ dependencies = [
  "futures",
  "hex",
  "hex-literal",
- "log",
  "mimalloc",
  "parity-scale-codec",
  "sc-chain-spec",
@@ -11991,13 +12043,14 @@ dependencies = [
  "sc-consensus-slots",
  "sc-consensus-subspace",
  "sc-executor",
+ "sc-informant",
+ "sc-keystore",
  "sc-network",
  "sc-network-sync",
  "sc-service",
  "sc-storage-monitor",
  "sc-subspace-chain-specs",
  "sc-telemetry",
- "sc-tracing",
  "sc-transaction-pool-api",
  "sc-utils",
  "serde_json",
@@ -12008,6 +12061,7 @@ dependencies = [
  "sp-domains",
  "sp-domains-fraud-proof",
  "sp-io",
+ "sp-keystore",
  "sp-messenger",
  "sp-runtime",
  "sp-wasm-interface",
@@ -12018,8 +12072,12 @@ dependencies = [
  "subspace-runtime-primitives",
  "subspace-service",
  "substrate-build-script-utils",
+ "supports-color",
+ "tempfile",
  "thiserror",
  "tokio",
+ "tracing",
+ "tracing-subscriber 0.3.17",
 ]
 
 [[package]]
@@ -12154,6 +12212,7 @@ dependencies = [
  "sc-consensus-subspace",
  "sc-consensus-subspace-rpc",
  "sc-executor",
+ "sc-informant",
  "sc-network",
  "sc-network-sync",
  "sc-offchain",
@@ -12576,6 +12635,17 @@ name = "tap"
 version = "1.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "55937e1799185b12863d447f42597ed69d9928686b8d88a1df17376a097d8369"
+
+[[package]]
+name = "tar"
+version = "0.4.40"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b16afcea1f22891c49a00c751c7b63b2233284064f11a200fc624137c51e2ddb"
+dependencies = [
+ "filetime",
+ "libc",
+ "xattr",
+]
 
 [[package]]
 name = "target-lexicon"
@@ -13111,7 +13181,7 @@ checksum = "97fee6b57c6a41524a810daee9286c02d7752c4253064d0b05472833a438f675"
 dependencies = [
  "cfg-if",
  "digest 0.10.7",
- "rand 0.8.5",
+ "rand 0.7.3",
  "static_assertions",
 ]
 
@@ -14323,6 +14393,15 @@ dependencies = [
  "rusticata-macros",
  "thiserror",
  "time",
+]
+
+[[package]]
+name = "xattr"
+version = "1.1.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "fbc6ab6ec1907d1a901cdbcd2bd4cb9e7d64ce5c9739cbb97d3c391acd8c7fae"
+dependencies = [
+ "libc",
 ]
 
 [[package]]

@@ -31,6 +31,7 @@ pub enum Error {
     MaxHeadDomainNumber,
     MissingDomainBlock,
     InvalidTraceRoot,
+    InvalidExecutionTrace,
     UnavailableConsensusBlockHash,
 }
 
@@ -178,6 +179,11 @@ pub(crate) fn verify_execution_receipt<T: Config>(
             Error::BadGenesisReceipt
         );
         return Ok(());
+    }
+
+    // Check if the ER has at least 2 trace root (for Initialization and Finalization of block at least)
+    if execution_trace.len() < 2 {
+        return Err(Error::InvalidExecutionTrace);
     }
 
     // Check if the ER is derived from the correct consensus block in the current chain
@@ -813,11 +819,32 @@ mod tests {
             );
 
             // Receipt with unknown parent receipt
-            let mut unknown_parent_receipt = next_receipt;
+            let mut unknown_parent_receipt = next_receipt.clone();
             unknown_parent_receipt.parent_domain_block_receipt_hash = H256::random();
             assert_err!(
                 verify_execution_receipt::<Test>(domain_id, &unknown_parent_receipt),
                 Error::UnknownParentBlockReceipt
+            );
+
+            // Receipt with execution_trace length less than two
+            let mut invalid_execution_trace_receipt = next_receipt;
+
+            // Receipt with only one element in execution trace vector
+            invalid_execution_trace_receipt.execution_trace = vec![invalid_execution_trace_receipt
+                .execution_trace
+                .first()
+                .cloned()
+                .expect("First element should be there; qed")];
+            assert_err!(
+                verify_execution_receipt::<Test>(domain_id, &invalid_execution_trace_receipt),
+                Error::InvalidExecutionTrace
+            );
+
+            // Receipt with zero element in execution trace vector
+            invalid_execution_trace_receipt.execution_trace = vec![];
+            assert_err!(
+                verify_execution_receipt::<Test>(domain_id, &invalid_execution_trace_receipt),
+                Error::InvalidExecutionTrace
             );
         });
     }
@@ -830,7 +857,24 @@ mod tests {
         let mut ext = new_test_ext_with_extensions();
         ext.execute_with(|| {
             let domain_id = register_genesis_domain(creator, vec![operator_id1, operator_id2]);
-            let next_receipt = extend_block_tree_from_zero(domain_id, operator_id1, 3);
+            let mut next_receipt = extend_block_tree_from_zero(domain_id, operator_id1, 3);
+            next_receipt.execution_trace.push(H256::random());
+
+            let mut trace = Vec::with_capacity(next_receipt.execution_trace.len());
+            for root in &next_receipt.execution_trace {
+                trace.push(
+                    root.encode()
+                        .try_into()
+                        .map_err(|_| Error::InvalidTraceRoot)
+                        .expect("H256 to Blake3Hash should be successful; qed"),
+                );
+            }
+            let new_execution_trace_root = MerkleTree::from_leaves(trace.as_slice())
+                .root()
+                .expect("Compute merkle root of trace should success")
+                .into();
+            next_receipt.execution_trace_root = new_execution_trace_root;
+            assert_ok!(verify_execution_receipt::<Test>(domain_id, &next_receipt));
 
             // Receipt with wrong value of `execution_trace_root`
             let mut invalid_receipt = next_receipt.clone();
