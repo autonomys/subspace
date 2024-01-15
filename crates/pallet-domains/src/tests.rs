@@ -825,6 +825,11 @@ fn test_bundle_fromat_verification() {
         let mut valid_bundle = create_dummy_bundle(DOMAIN_ID, 0, System::parent_hash());
         valid_bundle.extrinsics.push(opaque_extrinsic(1, 1));
         valid_bundle.extrinsics.push(opaque_extrinsic(2, 2));
+        valid_bundle.sealed_header.header.bundle_size = valid_bundle
+            .extrinsics
+            .iter()
+            .map(|tx| tx.encoded_size() as u32)
+            .sum::<u32>();
         valid_bundle.sealed_header.header.bundle_extrinsics_root = BlakeTwo256::ordered_trie_root(
             valid_bundle
                 .extrinsics
