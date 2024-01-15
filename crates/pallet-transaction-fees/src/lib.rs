@@ -54,6 +54,18 @@ mod pallet {
     use frame_system::pallet_prelude::*;
     use subspace_runtime_primitives::FindBlockRewardAddress;
 
+    /// The `NextTransactionByteFee` value of block #0, it is used for validating extrinsic
+    /// to be included in block #1
+    pub(super) struct InitialNextTransactionByteFee<T: Config> {
+        _config: T,
+    }
+
+    impl<T: Config> Get<BalanceOf<T>> for InitialNextTransactionByteFee<T> {
+        fn get() -> BalanceOf<T> {
+            Pallet::<T>::calculate_transaction_byte_fee()
+        }
+    }
+
     #[pallet::config]
     pub trait Config: frame_system::Config {
         /// `pallet-transaction-fees` events
@@ -100,10 +112,18 @@ mod pallet {
     #[pallet::getter(fn storage_fees_escrow)]
     pub(super) type CollectedStorageFeesEscrow<T> = StorageValue<_, BalanceOf<T>, ValueQuery>;
 
-    /// Temporary value (cleared at block finalization) which contains cached value of
-    /// `TransactionByteFee` for current block.
+    /// Temporary value (it is set to `Some` during block execution and cleared at block finalization)
+    /// which contains cached value of `transaction_byte_fee` for current block.
     #[pallet::storage]
     pub(super) type TransactionByteFee<T> = StorageValue<_, BalanceOf<T>>;
+
+    /// The value of `transaction_byte_fee` for the next block (updated at block finalization),
+    /// it is used for validating extrinsic to be included in the next block, the value will move
+    /// into `TransactionByteFee` at block initialization to ensure using the exact same value for
+    /// both validation and execution.
+    #[pallet::storage]
+    pub(super) type NextTransactionByteFee<T> =
+        StorageValue<_, BalanceOf<T>, ValueQuery, InitialNextTransactionByteFee<T>>;
 
     /// Temporary value (cleared at block finalization) which contains current block author, so we
     /// can issue rewards during block finalization.
@@ -185,11 +205,16 @@ where
             compute: BalanceOf::<T>::zero(),
             tips: BalanceOf::<T>::zero(),
         });
+
+        // Move the `NextTransactionByteFee` value into the current `TransactionByteFee`
+        TransactionByteFee::<T>::put(NextTransactionByteFee::<T>::get());
     }
 
     // TODO: Fees will be split between farmers and executors in the future
     fn do_finalize(_n: BlockNumberFor<T>) {
+        // Clear the current `TransactionByteFee` and update the value for `NextTransactionByteFee`
         TransactionByteFee::<T>::take();
+        NextTransactionByteFee::<T>::put(Self::calculate_transaction_byte_fee());
 
         let collected_fees = CollectedBlockFees::<T>::take()
             .expect("`CollectedBlockFees` was set in `on_initialize`; qed");
@@ -269,26 +294,13 @@ where
     }
 
     pub fn transaction_byte_fee() -> BalanceOf<T> {
+        // Return `transaction_byte_fee` for the current block execution
         if let Some(transaction_byte_fee) = TransactionByteFee::<T>::get() {
             return transaction_byte_fee;
         }
 
-        let credit_supply = T::CreditSupply::get();
-
-        let transaction_byte_fee = match T::TotalSpacePledged::get().checked_sub(
-            T::BlockchainHistorySize::get()
-                .saturating_mul(u128::from(T::MinReplicationFactor::get())),
-        ) {
-            Some(free_space) if free_space > 0 => {
-                credit_supply / BalanceOf::<T>::saturated_from(free_space)
-            }
-            _ => credit_supply,
-        };
-
-        // Cache value for this block.
-        TransactionByteFee::<T>::put(transaction_byte_fee);
-
-        transaction_byte_fee
+        // Return `transaction_byte_fee` for validating extrinsic to be included in the next block
+        NextTransactionByteFee::<T>::get()
     }
 
     pub fn note_transaction_fees(
@@ -304,5 +316,21 @@ where
             collected_block_fees.compute += compute_fee;
             collected_block_fees.tips += tip;
         });
+    }
+}
+
+impl<T: Config> Pallet<T> {
+    pub fn calculate_transaction_byte_fee() -> BalanceOf<T> {
+        let credit_supply = T::CreditSupply::get();
+
+        match T::TotalSpacePledged::get().checked_sub(
+            T::BlockchainHistorySize::get()
+                .saturating_mul(u128::from(T::MinReplicationFactor::get())),
+        ) {
+            Some(free_space) if free_space > 0 => {
+                credit_supply / BalanceOf::<T>::saturated_from(free_space)
+            }
+            _ => credit_supply,
+        }
     }
 }
