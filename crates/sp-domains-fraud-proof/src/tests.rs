@@ -779,9 +779,9 @@ async fn test_evm_domain_transaction_fee_and_operator_reward() {
 
     assert_eq!(
         free_balance_changes,
-        domain_block_fees.execution_fee + domain_block_fees.storage_fee
+        domain_block_fees.domain_execution_fee + domain_block_fees.consensus_storage_fee
     );
-    assert!(!domain_block_fees.storage_fee.is_zero());
+    assert!(!domain_block_fees.consensus_storage_fee.is_zero());
     assert_eq!(domain_block_fees, receipt.total_fees);
 }
 

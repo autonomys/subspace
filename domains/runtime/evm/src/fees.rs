@@ -14,7 +14,7 @@ impl Get<Balance> for DomainTransactionByteFee {
 }
 
 pub struct LiquidityInfo {
-    storage_fee: Balance,
+    consensus_storage_fee: Balance,
     imbalance: NegativeImbalance<Runtime>,
 }
 
@@ -51,13 +51,13 @@ impl pallet_transaction_payment::OnChargeTransaction<Runtime> for OnChargeDomain
         );
         let imbalance = withdraw_result.map_err(|_error| InvalidTransaction::Payment)?;
 
-        // Separate storage fee while we have access to the call data structure to calculate it.
-        let storage_fee = DomainTransactionByteFee::get()
+        // Separate consensus storage fee while we have access to the call data structure to calculate it.
+        let consensus_storage_fee = DomainTransactionByteFee::get()
             * Balance::try_from(call.encoded_size())
                 .expect("Size of the call never exceeds balance units; qed");
 
         Ok(Some(LiquidityInfo {
-            storage_fee,
+            consensus_storage_fee,
             imbalance,
         }))
     }
@@ -71,7 +71,7 @@ impl pallet_transaction_payment::OnChargeTransaction<Runtime> for OnChargeDomain
         liquidity_info: Self::LiquidityInfo,
     ) -> Result<(), TransactionValidityError> {
         if let Some(LiquidityInfo {
-            storage_fee,
+            consensus_storage_fee,
             imbalance,
         }) = liquidity_info
         {
@@ -88,10 +88,11 @@ impl pallet_transaction_payment::OnChargeTransaction<Runtime> for OnChargeDomain
                 .map_err(|_| TransactionValidityError::Invalid(InvalidTransaction::Payment))?;
 
             // Split paid storage and th compute fees so that they can be distributed separately.
-            let (paid_storage_fee, compute_fee_and_tip) = adjusted_paid.split(storage_fee);
+            let (paid_consensus_storage_fee, paid_domain_execution_fee) =
+                adjusted_paid.split(consensus_storage_fee);
 
-            BlockFees::note_storage_fee(paid_storage_fee.peek());
-            BlockFees::note_execution_fee(compute_fee_and_tip.peek());
+            BlockFees::note_consensus_storage_fee(paid_consensus_storage_fee.peek());
+            BlockFees::note_domain_execution_fee(paid_domain_execution_fee.peek());
         }
         Ok(())
     }

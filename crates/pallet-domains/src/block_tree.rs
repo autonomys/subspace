@@ -328,7 +328,7 @@ pub(crate) fn process_execution_receipt<T: Config>(
                     domain_block_number: to_prune,
                     operator_ids,
                     // TODO: also distribute the `storage_fee`
-                    rewards: execution_receipt.total_fees.execution_fee,
+                    rewards: execution_receipt.total_fees.domain_execution_fee,
                     invalid_bundle_authors,
                 }));
             }

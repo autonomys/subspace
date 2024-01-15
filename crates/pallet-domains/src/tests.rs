@@ -954,8 +954,16 @@ fn test_invalid_total_fees_fraud_proof() {
             bad_receipt_hash,
             // set different reward in the storage and generate proof for that value
             domain_runtime_primitives::BlockFees::new(
-                domain_block.execution_receipt.total_fees.execution_fee + 1,
-                domain_block.execution_receipt.total_fees.storage_fee + 1,
+                domain_block
+                    .execution_receipt
+                    .total_fees
+                    .domain_execution_fee
+                    + 1,
+                domain_block
+                    .execution_receipt
+                    .total_fees
+                    .consensus_storage_fee
+                    + 1,
             ),
         );
         domain_block.execution_receipt.final_state_root = root;

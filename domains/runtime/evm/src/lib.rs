@@ -169,16 +169,16 @@ impl fp_self_contained::SelfContainedCall for RuntimeCall {
             RuntimeCall::Ethereum(call) => {
                 // Withdraw the consensus chain storage fee from the caller and record
                 // it in the `BlockFees`
-                let storage_fee = DomainTransactionByteFee::get()
+                let consensus_storage_fee = DomainTransactionByteFee::get()
                     * Balance::try_from(len)
                         .expect("Size of the call never exceeds balance units; qed");
                 match <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<Runtime>>::withdraw_fee(
                     info,
-                    storage_fee.into(),
+                    consensus_storage_fee.into(),
                 ) {
                     Ok(None) => {}
-                    Ok(Some(paid_storage_fee)) => {
-                        BlockFees::note_storage_fee(paid_storage_fee.peek())
+                    Ok(Some(paid_consensus_storage_fee)) => {
+                        BlockFees::note_consensus_storage_fee(paid_consensus_storage_fee.peek())
                     }
                     Err(_) => return Some(Err(InvalidTransaction::Payment.into())),
                 }
@@ -374,7 +374,7 @@ impl domain_pallet_executive::ExtrinsicStorageFees<Runtime> for ExtrinsicStorage
     }
 
     fn on_storage_fees_charged(charged_fees: Balance) {
-        BlockFees::note_execution_fee(charged_fees)
+        BlockFees::note_domain_execution_fee(charged_fees)
     }
 }
 
@@ -401,7 +401,7 @@ pub struct OnXDMRewards;
 
 impl sp_messenger::OnXDMRewards<Balance> for OnXDMRewards {
     fn on_xdm_rewards(rewards: Balance) {
-        BlockFees::note_execution_fee(rewards)
+        BlockFees::note_domain_execution_fee(rewards)
     }
 }
 
@@ -520,7 +520,7 @@ impl pallet_evm::OnChargeEVMTransaction<Runtime> for EVMCurrencyAdapter {
     ) -> Self::LiquidityInfo {
         if already_withdrawn.is_some() {
             // Record the evm actual transaction fee
-            BlockFees::note_execution_fee(corrected_fee.as_u128());
+            BlockFees::note_domain_execution_fee(corrected_fee.as_u128());
         }
 
         <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<

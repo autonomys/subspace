@@ -3140,10 +3140,10 @@ async fn test_domain_transaction_fee_and_operator_reward() {
     // All the transaction fee is collected as operator reward
     assert_eq!(
         alice_free_balance_changes,
-        domain_block_fees.execution_fee + domain_block_fees.storage_fee
+        domain_block_fees.domain_execution_fee + domain_block_fees.consensus_storage_fee
     );
     assert_eq!(domain_block_fees, receipt.total_fees);
-    assert!(!domain_block_fees.storage_fee.is_zero());
+    assert!(!domain_block_fees.consensus_storage_fee.is_zero());
 }
 
 #[tokio::test(flavor = "multi_thread")]

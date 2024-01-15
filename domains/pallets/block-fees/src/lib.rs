@@ -80,7 +80,7 @@ mod pallet {
     #[pallet::hooks]
     impl<T: Config> Hooks<BlockNumberFor<T>> for Pallet<T> {
         fn on_initialize(_now: BlockNumberFor<T>) -> Weight {
-            CollectedBlockFees::<T>::set(Default::default());
+            CollectedBlockFees::<T>::take();
             T::DbWeight::get().writes(1)
         }
 
@@ -156,16 +156,22 @@ mod pallet {
     }
 
     impl<T: Config> Pallet<T> {
-        pub fn note_execution_fee(rewards: T::Balance) {
-            let mut next_block_fees = CollectedBlockFees::<T>::get();
-            next_block_fees.execution_fee = next_block_fees.execution_fee.saturating_add(rewards);
-            CollectedBlockFees::<T>::set(next_block_fees);
+        /// Note the domain execution fee including the storage and compute fee on domain chain,
+        /// tip, and the XDM reward.
+        pub fn note_domain_execution_fee(rewards: T::Balance) {
+            let mut new_block_fees = CollectedBlockFees::<T>::get();
+            new_block_fees.domain_execution_fee =
+                new_block_fees.domain_execution_fee.saturating_add(rewards);
+            CollectedBlockFees::<T>::set(new_block_fees);
         }
 
-        pub fn note_storage_fee(storage_fee: T::Balance) {
-            let mut next_block_fees = CollectedBlockFees::<T>::get();
-            next_block_fees.storage_fee = next_block_fees.storage_fee.saturating_add(storage_fee);
-            CollectedBlockFees::<T>::set(next_block_fees);
+        /// Note consensus chain storage fee
+        pub fn note_consensus_storage_fee(storage_fee: T::Balance) {
+            let mut new_block_fees = CollectedBlockFees::<T>::get();
+            new_block_fees.consensus_storage_fee = new_block_fees
+                .consensus_storage_fee
+                .saturating_add(storage_fee);
+            CollectedBlockFees::<T>::set(new_block_fees);
         }
     }
 }

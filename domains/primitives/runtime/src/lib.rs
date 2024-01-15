@@ -176,15 +176,18 @@ pub const CHECK_EXTRINSICS_AND_DO_PRE_DISPATCH_METHOD_NAME: &str =
 
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
 pub struct BlockFees<Balance> {
-    pub storage_fee: Balance,
-    pub execution_fee: Balance,
+    /// The consensus chain storage fee
+    pub consensus_storage_fee: Balance,
+    /// The domain execution fee including the storage and compute fee on domain chain,
+    /// tip, and the XDM reward.
+    pub domain_execution_fee: Balance,
 }
 
 impl<Balance> BlockFees<Balance> {
-    pub fn new(execution_fee: Balance, storage_fee: Balance) -> Self {
+    pub fn new(domain_execution_fee: Balance, consensus_storage_fee: Balance) -> Self {
         BlockFees {
-            storage_fee,
-            execution_fee,
+            consensus_storage_fee,
+            domain_execution_fee,
         }
     }
 }
@@ -192,8 +195,8 @@ impl<Balance> BlockFees<Balance> {
 impl<Balance: Zero> Default for BlockFees<Balance> {
     fn default() -> Self {
         BlockFees {
-            storage_fee: Balance::zero(),
-            execution_fee: Balance::zero(),
+            consensus_storage_fee: Balance::zero(),
+            domain_execution_fee: Balance::zero(),
         }
     }
 }
