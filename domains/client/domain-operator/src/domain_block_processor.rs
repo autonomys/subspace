@@ -13,7 +13,7 @@ use sc_consensus::{
     StorageChanges,
 };
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
-use sp_api::{ApiExt, NumberFor, ProvideRuntimeApi};
+use sp_api::{ApiExt, ProvideRuntimeApi};
 use sp_blockchain::{HashAndNumber, HeaderBackend, HeaderMetadata};
 use sp_consensus::{BlockOrigin, SyncOracle};
 use sp_core::traits::CodeExecutor;
@@ -22,7 +22,7 @@ use sp_domains::merkle_tree::MerkleTree;
 use sp_domains::{BundleValidity, DomainId, DomainsApi, ExecutionReceipt, HeaderHashingFor};
 use sp_domains_fraud_proof::fraud_proof::{FraudProof, ValidBundleProof};
 use sp_domains_fraud_proof::FraudProofApi;
-use sp_runtime::traits::{Block as BlockT, Header as HeaderT, One, Zero};
+use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor, One, Zero};
 use sp_runtime::{Digest, Saturating};
 use std::cmp::Ordering;
 use std::collections::VecDeque;

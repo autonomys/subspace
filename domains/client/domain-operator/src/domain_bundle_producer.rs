@@ -5,7 +5,7 @@ use crate::BundleSender;
 use codec::Decode;
 use domain_runtime_primitives::DomainCoreApi;
 use sc_client_api::{AuxStore, BlockBackend};
-use sp_api::{NumberFor, ProvideRuntimeApi};
+use sp_api::ProvideRuntimeApi;
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{HashAndNumber, HeaderBackend};
 use sp_domains::{
@@ -13,7 +13,7 @@ use sp_domains::{
     OperatorSignature, SealedBundleHeader,
 };
 use sp_keystore::KeystorePtr;
-use sp_runtime::traits::{Block as BlockT, Zero};
+use sp_runtime::traits::{Block as BlockT, NumberFor, Zero};
 use sp_runtime::RuntimeAppPublic;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::convert::{AsRef, Into};

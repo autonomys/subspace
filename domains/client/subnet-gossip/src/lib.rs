@@ -11,7 +11,7 @@ use self::worker::GossipWorker;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::{Mutex, RwLock};
 use sc_network::config::NonDefaultSetConfig;
-use sc_network::PeerId;
+use sc_network::{NotificationService, PeerId};
 use sc_network_common::role::ObservedRole;
 use sc_network_gossip::{
     GossipEngine, MessageIntent, Network as GossipNetwork, Syncing as GossipSyncing,
@@ -49,10 +49,17 @@ type MessageHash = [u8; 8];
 
 /// Returns the configuration value to use in
 /// [`sc_network::config::FullNetworkConfiguration::add_notification_protocol`].
-pub fn domain_subnet_gossip_peers_set_config() -> NonDefaultSetConfig {
-    let mut cfg = NonDefaultSetConfig::new(DOMAIN_SUBNET_PROTOCOL_NAME.into(), 1024 * 1024);
+pub fn domain_subnet_gossip_peers_set_config() -> (NonDefaultSetConfig, Box<dyn NotificationService>)
+{
+    let (mut cfg, notification_service) = NonDefaultSetConfig::new(
+        DOMAIN_SUBNET_PROTOCOL_NAME.into(),
+        Vec::new(),
+        1024 * 1024,
+        None,
+        Default::default(),
+    );
     cfg.allow_non_reserved(25, 25);
-    cfg
+    (cfg, notification_service)
 }
 
 /// Gossip engine messages topic.
@@ -261,6 +268,8 @@ type BundleReceiver<Block, CBlock> = TracingUnboundedReceiver<BundleFor<Block, C
 pub struct ExecutorGossipParams<CBlock: BlockT, Block: BlockT, Network, GossipSync, Operator> {
     /// Substrate network service.
     pub network: Network,
+    /// Executor gossip notification service.
+    pub notification_service: Box<dyn NotificationService>,
     /// Syncing service an event stream for peers.
     pub sync: Arc<GossipSync>,
     /// Operator instance.
@@ -281,6 +290,7 @@ pub async fn start_gossip_worker<CBlock, Block, Network, GossipSync, Operator>(
 {
     let ExecutorGossipParams {
         network,
+        notification_service,
         sync,
         operator,
         bundle_receiver,
@@ -290,6 +300,7 @@ pub async fn start_gossip_worker<CBlock, Block, Network, GossipSync, Operator>(
     let gossip_engine = GossipEngine::new(
         network,
         sync,
+        notification_service,
         DOMAIN_SUBNET_PROTOCOL_NAME,
         gossip_validator.clone(),
         None,

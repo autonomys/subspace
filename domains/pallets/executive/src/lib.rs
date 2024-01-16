@@ -41,8 +41,8 @@ use frame_support::storage::with_storage_layer;
 use frame_support::traits::fungible::{Inspect, Mutate};
 use frame_support::traits::tokens::{Fortitude, Precision};
 use frame_support::traits::{
-    EnsureInherentsAreFirst, ExecuteBlock, Get, OffchainWorker, OnFinalize, OnIdle, OnInitialize,
-    OnRuntimeUpgrade,
+    BeforeAllRuntimeMigrations, EnsureInherentsAreFirst, ExecuteBlock, Get, OffchainWorker,
+    OnFinalize, OnIdle, OnInitialize, OnRuntimeUpgrade,
 };
 use frame_support::weights::{Weight, WeightToFee};
 use frame_system::pallet_prelude::*;
@@ -222,6 +222,7 @@ impl<
         Context: Default,
         UnsignedValidator,
         AllPalletsWithSystem: OnRuntimeUpgrade
+            + BeforeAllRuntimeMigrations
             + OnInitialize<BlockNumberFor<ExecutiveConfig>>
             + OnIdle<BlockNumberFor<ExecutiveConfig>>
             + OnFinalize<BlockNumberFor<ExecutiveConfig>>
@@ -259,6 +260,7 @@ impl<
         Context: Default,
         UnsignedValidator,
         AllPalletsWithSystem: OnRuntimeUpgrade
+            + BeforeAllRuntimeMigrations
             + OnInitialize<BlockNumberFor<ExecutiveConfig>>
             + OnIdle<BlockNumberFor<ExecutiveConfig>>
             + OnFinalize<BlockNumberFor<ExecutiveConfig>>

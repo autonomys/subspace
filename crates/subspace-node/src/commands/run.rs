@@ -97,6 +97,8 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
 
     set_default_ss58_version(subspace_configuration.chain_spec.as_ref());
 
+    let base_path = subspace_configuration.base_path.path().to_path_buf();
+
     info!("Subspace");
     info!("✌️  version {}", env!("SUBSTRATE_CLI_IMPL_VERSION"));
     info!("❤️  by {}", env!("CARGO_PKG_AUTHORS"));
@@ -105,14 +107,9 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
         subspace_configuration.chain_spec.name()
     );
     info!("🏷  Node name: {}", subspace_configuration.network.node_name);
-    info!(
-        "💾 Node path: {}",
-        subspace_configuration.base_path.path().display()
-    );
+    info!("💾 Node path: {}", base_path.display());
 
     let mut task_manager = {
-        let database_source = subspace_configuration.database.clone();
-
         let consensus_state_pruning_mode = subspace_configuration
             .state_pruning
             .clone()
@@ -148,7 +145,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
 
         StorageMonitorService::try_spawn(
             storage_monitor,
-            database_source,
+            base_path,
             &consensus_chain_node.task_manager.spawn_essential_handle(),
         )
         .map_err(|error| {
@@ -214,6 +211,7 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
                 let cross_domain_message_gossip_worker = xdm_gossip_worker_builder
                     .build::<Block, _, _>(
                         consensus_chain_node.network_service.clone(),
+                        consensus_chain_node.cdm_gossip_notification_service,
                         consensus_chain_node.sync_service.clone(),
                     );
 

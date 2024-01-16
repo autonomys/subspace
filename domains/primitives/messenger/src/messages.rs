@@ -1,6 +1,7 @@
 use crate::endpoint::{Endpoint, EndpointRequest, EndpointResponse};
 use codec::{Decode, Encode, FullCodec, MaxEncodedLen};
 use frame_support::storage::generator::StorageMap;
+use frame_support::storage::storage_prefix;
 use frame_support::Identity;
 use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
@@ -375,12 +376,16 @@ where
     type Query = Option<StateRoot>;
     type Hasher = Identity;
 
-    fn module_prefix() -> &'static [u8] {
+    fn pallet_prefix() -> &'static [u8] {
         "Domains".as_ref()
     }
 
     fn storage_prefix() -> &'static [u8] {
         "StateRoots".as_ref()
+    }
+
+    fn prefix_hash() -> [u8; 32] {
+        storage_prefix(Self::pallet_prefix(), Self::storage_prefix())
     }
 
     fn from_optional_value_to_query(v: Option<StateRoot>) -> Self::Query {

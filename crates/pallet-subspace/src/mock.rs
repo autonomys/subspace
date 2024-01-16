@@ -32,7 +32,6 @@ use sp_consensus_subspace::{
     FarmerSignature, KzgExtension, PosExtension, PotExtension, SignedVote, Vote,
 };
 use sp_core::crypto::UncheckedFrom;
-use sp_core::storage::StateVersion;
 use sp_core::H256;
 use sp_io::TestExternalities;
 use sp_runtime::testing::{Digest, DigestItem, Header, TestXt};
@@ -100,7 +99,6 @@ parameter_types! {
     pub const DisabledValidatorsThreshold: Perbill = Perbill::from_percent(16);
     pub BlockWeights: frame_system::limits::BlockWeights =
         frame_system::limits::BlockWeights::simple_max(Weight::from_parts(1024, 0));
-    pub const ExtrinsicsRootStateVersion: StateVersion = StateVersion::V0;
 }
 
 impl frame_system::Config for Test {
@@ -111,6 +109,7 @@ impl frame_system::Config for Test {
     type RuntimeOrigin = RuntimeOrigin;
     type Nonce = u64;
     type RuntimeCall = RuntimeCall;
+    type RuntimeTask = RuntimeTask;
     type Hash = H256;
     type Version = ();
     type Hashing = sp_runtime::traits::BlakeTwo256;
@@ -127,7 +126,6 @@ impl frame_system::Config for Test {
     type SS58Prefix = ();
     type OnSetCode = ();
     type MaxConsumers = ConstU32<16>;
-    type ExtrinsicsRootStateVersion = ExtrinsicsRootStateVersion;
 }
 
 impl<C> frame_system::offchain::SendTransactionTypes<C> for Test
@@ -139,6 +137,7 @@ where
 }
 
 impl pallet_balances::Config for Test {
+    type RuntimeFreezeReason = RuntimeFreezeReason;
     type MaxLocks = ();
     type MaxReserves = ();
     type ReserveIdentifier = [u8; 8];

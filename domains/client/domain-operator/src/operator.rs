@@ -120,7 +120,7 @@ where
         NSNS: Stream<Item = NewSlotNotification> + Send + 'static,
         ASS: Stream<Item = mpsc::Sender<()>> + Send + 'static,
     {
-        let domain_bundle_proposer = DomainBundleProposer::new(
+        let domain_bundle_proposer = DomainBundleProposer::<Block, _, CBlock, _, _>::new(
             params.domain_id,
             params.client.clone(),
             params.consensus_client.clone(),

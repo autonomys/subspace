@@ -163,7 +163,6 @@ pub fn gemini_3g_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, 
                 .collect::<Vec<_>>();
             subspace_genesis_config(
                 SpecId::Gemini,
-                WASM_BINARY.expect("Wasm binary must be built for Gemini"),
                 sudo_account.clone(),
                 balances,
                 vesting_schedules,
@@ -214,6 +213,8 @@ pub fn gemini_3g_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, 
         }),
         // Extensions
         NoExtension::None,
+        // Code
+        WASM_BINARY.expect("Wasm binary must be built for Gemini"),
     ))
 }
 
@@ -276,7 +277,6 @@ pub fn devnet_config_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfi
                 .collect::<Vec<_>>();
             subspace_genesis_config(
                 SpecId::DevNet,
-                WASM_BINARY.expect("Wasm binary must be built for Gemini"),
                 sudo_account,
                 balances,
                 vesting_schedules,
@@ -319,6 +319,8 @@ pub fn devnet_config_compiled() -> Result<ConsensusChainSpec<RuntimeGenesisConfi
         }),
         // Extensions
         NoExtension::None,
+        // Code
+        WASM_BINARY.expect("Wasm binary must be built for Devnet"),
     ))
 }
 
@@ -334,7 +336,6 @@ pub fn dev_config() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String> 
         || {
             subspace_genesis_config(
                 SpecId::Dev,
-                wasm_binary,
                 // Sudo account
                 get_account_id_from_seed("Alice"),
                 // Pre-funded accounts
@@ -379,13 +380,14 @@ pub fn dev_config() -> Result<ConsensusChainSpec<RuntimeGenesisConfig>, String> 
         }),
         // Extensions
         NoExtension::None,
+        // Code
+        wasm_binary,
     ))
 }
 
 /// Configure initial storage state for FRAME modules.
 fn subspace_genesis_config(
     spec_id: SpecId,
-    wasm_binary: &[u8],
     sudo_account: AccountId,
     balances: Vec<(AccountId, Balance)>,
     // who, start, period, period_count, per_period
@@ -404,8 +406,18 @@ fn subspace_genesis_config(
     } = genesis_params;
 
     let raw_genesis_storage = {
-        let domain_genesis_config = evm_chain_spec::get_testnet_genesis_by_spec_id(spec_id);
-        let storage = domain_genesis_config
+        let domain_chain_spec = match spec_id {
+            SpecId::Dev => evm_chain_spec::development_config(move || {
+                evm_chain_spec::get_testnet_genesis_by_spec_id(spec_id)
+            }),
+            SpecId::Gemini => evm_chain_spec::gemini_3g_config(move || {
+                evm_chain_spec::get_testnet_genesis_by_spec_id(spec_id)
+            }),
+            SpecId::DevNet => evm_chain_spec::devnet_config(move || {
+                evm_chain_spec::get_testnet_genesis_by_spec_id(spec_id)
+            }),
+        };
+        let storage = domain_chain_spec
             .build_storage()
             .expect("Failed to build genesis storage from genesis runtime config");
         let raw_genesis = RawGenesis::from_storage(storage);
@@ -413,11 +425,7 @@ fn subspace_genesis_config(
     };
 
     RuntimeGenesisConfig {
-        system: SystemConfig {
-            // Add Wasm runtime to storage.
-            code: wasm_binary.to_vec(),
-            ..Default::default()
-        },
+        system: SystemConfig::default(),
         balances: BalancesConfig { balances },
         transaction_payment: Default::default(),
         sudo: SudoConfig {

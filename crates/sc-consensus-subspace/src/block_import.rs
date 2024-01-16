@@ -38,7 +38,7 @@ use sc_consensus::block_import::{
     BlockCheckParams, BlockImport, BlockImportParams, ForkChoiceStrategy, ImportResult,
 };
 use sc_proof_of_time::verifier::PotVerifier;
-use sp_api::{ApiError, ApiExt, BlockT, HeaderT, ProvideRuntimeApi};
+use sp_api::{ApiError, ApiExt, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder as BlockBuilderApi;
 use sp_blockchain::HeaderBackend;
 use sp_consensus_slots::Slot;
@@ -49,7 +49,7 @@ use sp_consensus_subspace::{
     FarmerPublicKey, FarmerSignature, PotNextSlotInput, SubspaceApi, SubspaceJustification,
 };
 use sp_inherents::{CreateInherentDataProviders, InherentDataProvider};
-use sp_runtime::traits::{NumberFor, One};
+use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor, One};
 use sp_runtime::Justifications;
 use std::marker::PhantomData;
 use std::sync::Arc;

@@ -40,7 +40,6 @@ use pallet_evm::{
 use pallet_transporter::EndpointHandler;
 use sp_api::impl_runtime_apis;
 use sp_core::crypto::KeyTypeId;
-use sp_core::storage::StateVersion;
 use sp_core::{Get, OpaqueMetadata, H160, H256, U256};
 use sp_domains::DomainId;
 use sp_messenger::endpoint::{Endpoint, EndpointHandler as EndpointHandlerT, EndpointId};
@@ -220,6 +219,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 0,
     state_version: 0,
+    extrinsic_state_version: 1,
 };
 
 /// The version information used to identify this runtime when compiled natively.
@@ -241,7 +241,6 @@ parameter_types! {
     // the lazy contract deletion.
     pub RuntimeBlockLength: BlockLength = maximum_block_length();
     pub RuntimeBlockWeights: BlockWeights = block_weights();
-    pub const ExtrinsicsRootStateVersion: StateVersion = StateVersion::V1;
 }
 
 impl frame_system::Config for Runtime {
@@ -249,6 +248,8 @@ impl frame_system::Config for Runtime {
     type AccountId = AccountId;
     /// The aggregated dispatch type that is available for extrinsics.
     type RuntimeCall = RuntimeCall;
+    /// The aggregated `RuntimeTask` type.
+    type RuntimeTask = RuntimeTask;
     /// The lookup mechanism to get account ID from whatever is passed in dispatchers.
     type Lookup = IdentityLookup<AccountId>;
     /// The type for storing how many extrinsics an account has signed.
@@ -289,7 +290,6 @@ impl frame_system::Config for Runtime {
     /// The action to take on a Runtime Upgrade
     type OnSetCode = ();
     type MaxConsumers = ConstU32<16>;
-    type ExtrinsicsRootStateVersion = ExtrinsicsRootStateVersion;
 }
 
 impl pallet_timestamp::Config for Runtime {
@@ -307,6 +307,7 @@ parameter_types! {
 }
 
 impl pallet_balances::Config for Runtime {
+    type RuntimeFreezeReason = RuntimeFreezeReason;
     type MaxLocks = MaxLocks;
     /// The type for recording an account's balance.
     type Balance = Balance;
@@ -490,6 +491,7 @@ parameter_types! {
     );
     pub PrecompilesValue: Precompiles = Precompiles::default();
     pub WeightPerGas: Weight = Weight::from_parts(WEIGHT_PER_GAS, 0);
+    pub const SuicideQuickClearLimit: u32 = 0;
 }
 
 type NegativeImbalance = <Balances as Currency<AccountId>>::NegativeImbalance;
@@ -554,6 +556,7 @@ impl pallet_evm::Config for Runtime {
     type FindAuthor = FindAuthorTruncated;
     type Timestamp = Timestamp;
     type GasLimitPovSizeRatio = ();
+    type SuicideQuickClearLimit = SuicideQuickClearLimit;
     type WeightInfo = pallet_evm::weights::SubstrateWeight<Self>;
 }
 

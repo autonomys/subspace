@@ -66,7 +66,7 @@ use sc_consensus_subspace::slot_worker::{
 use sc_consensus_subspace::verifier::{SubspaceVerifier, SubspaceVerifierOptions};
 use sc_consensus_subspace::SubspaceLink;
 use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
-use sc_network::NetworkService;
+use sc_network::{NetworkService, NotificationService};
 use sc_proof_of_time::source::gossip::pot_gossip_peers_set_config;
 use sc_proof_of_time::source::PotSourceWorker;
 use sc_proof_of_time::verifier::PotVerifier;
@@ -577,6 +577,8 @@ where
     pub select_chain: FullSelectChain,
     /// Network service.
     pub network_service: Arc<NetworkService<Block, <Block as BlockT>::Hash>>,
+    /// Cross-domain gossip notification service.
+    pub cdm_gossip_notification_service: Box<dyn NotificationService>,
     /// Sync service.
     pub sync_service: Arc<sc_network_sync::SyncingService<Block>>,
     /// RPC handlers.
@@ -754,9 +756,13 @@ where
         .map_err(Error::BlockRelay)?,
     );
     let mut net_config = sc_network::config::FullNetworkConfiguration::new(&config.base.network);
-    net_config.add_notification_protocol(cdm_gossip_peers_set_config());
-    net_config.add_notification_protocol(pot_gossip_peers_set_config());
-    let sync_mode = Arc::clone(&net_config.network_config.sync_mode);
+    let (cdm_gossip_notification_config, cdm_gossip_notification_service) =
+        cdm_gossip_peers_set_config();
+    net_config.add_notification_protocol(cdm_gossip_notification_config);
+    let (pot_gossip_notification_config, pot_gossip_notification_service) =
+        pot_gossip_peers_set_config();
+    net_config.add_notification_protocol(pot_gossip_notification_config);
+    let pause_sync = Arc::clone(&net_config.network_config.pause_sync);
     let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
         sc_service::build_network(sc_service::BuildNetworkParams {
             config: &config.base,
@@ -826,7 +832,7 @@ where
             Arc::clone(&client),
             import_queue_service,
             sync_target_block_number,
-            sync_mode,
+            pause_sync,
             subspace_link.kzg().clone(),
         );
         task_manager
@@ -900,6 +906,7 @@ where
         client.clone(),
         pot_verifier.clone(),
         network_service.clone(),
+        pot_gossip_notification_service,
         sync_service.clone(),
         sync_oracle.clone(),
     )
@@ -1056,6 +1063,7 @@ where
         client,
         select_chain,
         network_service,
+        cdm_gossip_notification_service,
         sync_service,
         rpc_handlers,
         backend,
