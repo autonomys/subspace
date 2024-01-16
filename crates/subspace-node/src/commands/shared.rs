@@ -1,0 +1,79 @@
+use clap::Parser;
+use sc_cli::Error;
+use sc_keystore::LocalKeystore;
+use sp_core::crypto::{ExposeSecret, SecretString};
+use sp_core::Pair;
+use sp_domains::KEY_TYPE;
+use sp_keystore::Keystore;
+use std::path::PathBuf;
+use tracing_subscriber::filter::LevelFilter;
+use tracing_subscriber::prelude::*;
+use tracing_subscriber::{fmt, EnvFilter};
+
+/// Options used for keystore
+#[derive(Debug, Parser)]
+pub(super) struct KeystoreOptions<const SURI_REQUIRED: bool> {
+    /// Operator secret key URI to insert into keystore.
+    ///
+    /// Example: "//Alice".
+    ///
+    /// If the value is a file, the file content is used as URI.
+    #[arg(long, required = SURI_REQUIRED)]
+    pub(super) keystore_suri: Option<SecretString>,
+    /// Use interactive shell for entering the password used by the keystore.
+    #[arg(long, conflicts_with_all = &["keystore_password", "keystore_password_filename"])]
+    pub(super) keystore_password_interactive: bool,
+    /// Password used by the keystore. This allows appending an extra user-defined secret to the
+    /// seed.
+    #[arg(long, conflicts_with_all = &["keystore_password_interactive", "keystore_password_filename"])]
+    pub(super) keystore_password: Option<SecretString>,
+    /// File that contains the password used by the keystore.
+    #[arg(long, conflicts_with_all = &["keystore_password_interactive", "keystore_password"])]
+    pub(super) keystore_password_filename: Option<PathBuf>,
+}
+
+pub(super) fn store_key_in_keystore(
+    keystore_path: PathBuf,
+    password: Option<SecretString>,
+    suri: &SecretString,
+) -> Result<(), Error> {
+    let keypair_result = sp_core::sr25519::Pair::from_string(
+        suri.expose_secret(),
+        password
+            .as_ref()
+            .map(|password| password.expose_secret().as_str()),
+    );
+
+    let keypair =
+        keypair_result.map_err(|err| Error::Input(format!("Invalid password {:?}", err)))?;
+
+    LocalKeystore::open(keystore_path, password)?
+        .insert(KEY_TYPE, suri.expose_secret(), &keypair.public())
+        .map_err(|()| Error::Application("Failed to insert key into keystore".to_string().into()))
+}
+
+#[derive(Debug, Copy, Clone)]
+pub(super) struct InitLoggerResult {
+    pub(super) enable_color: bool,
+}
+
+pub(super) fn init_logger() -> InitLoggerResult {
+    // TODO: Workaround for https://github.com/tokio-rs/tracing/issues/2214, also on
+    //  Windows terminal doesn't support the same colors as bash does
+    let enable_color = if cfg!(windows) {
+        false
+    } else {
+        supports_color::on(supports_color::Stream::Stderr).is_some()
+    };
+    tracing_subscriber::registry()
+        .with(
+            fmt::layer().with_ansi(enable_color).with_filter(
+                EnvFilter::builder()
+                    .with_default_directive(LevelFilter::INFO.into())
+                    .from_env_lossy(),
+            ),
+        )
+        .init();
+
+    InitLoggerResult { enable_color }
+}
