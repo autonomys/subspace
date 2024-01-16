@@ -14,6 +14,7 @@
 // You should have received a copy of the GNU General Public License
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
+use crate::commands::InsertDomainKeyOptions;
 use crate::domain::evm_chain_spec;
 use crate::domain::evm_chain_spec::SpecId;
 use clap::Parser;
@@ -43,6 +44,9 @@ use subspace_runtime::Block;
 #[derive(Debug, clap::Subcommand)]
 #[allow(clippy::large_enum_variant)]
 pub enum Subcommand {
+    /// Insert key into domain's keystore
+    InsertKey(InsertDomainKeyOptions),
+
     /// Export the state of a given block into a chain spec.
     ExportState(sc_cli::ExportStateCmd),
 
@@ -89,8 +93,6 @@ impl DomainCli {
         let mut domain_config = SubstrateCli::create_configuration(self, self, tokio_handle)?;
 
         // Change default paths to Subspace structure
-        // TODO: Similar copy-paste exists in `DomainCli::create_domain_configuration()` and
-        //  `DomainInstanceStarter::start()` and should be de-duplicated
         let domain_base_path = base_path.join(self.domain_id.to_string());
         {
             domain_config.database = DatabaseSource::ParityDb {

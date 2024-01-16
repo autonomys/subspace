@@ -9,6 +9,7 @@ use crate::commands::run::consensus::{
 use crate::commands::run::domain::{
     create_domain_configuration, run_evm_domain, DomainOptions, DomainStartOptions,
 };
+use crate::commands::shared::init_logger;
 use crate::{set_default_ss58_version, Error, PosTable};
 use clap::Parser;
 use cross_domain_message_gossip::GossipWorkerBuilder;
@@ -25,9 +26,6 @@ use sp_messenger::messages::ChainId;
 use std::env;
 use subspace_runtime::{Block, ExecutorDispatch, RuntimeApi};
 use tracing::{debug, error, info, info_span, warn};
-use tracing_subscriber::filter::LevelFilter;
-use tracing_subscriber::prelude::*;
-use tracing_subscriber::{fmt, EnvFilter};
 
 /// Options for running a node
 #[derive(Debug, Parser)]
@@ -70,22 +68,7 @@ fn raise_fd_limit() {
 /// Default run command for node
 #[tokio::main]
 pub async fn run(run_options: RunOptions) -> Result<(), Error> {
-    // TODO: Workaround for https://github.com/tokio-rs/tracing/issues/2214, also on
-    //  Windows terminal doesn't support the same colors as bash does
-    let enable_color = if cfg!(windows) {
-        false
-    } else {
-        supports_color::on(supports_color::Stream::Stderr).is_some()
-    };
-    tracing_subscriber::registry()
-        .with(
-            fmt::layer().with_ansi(enable_color).with_filter(
-                EnvFilter::builder()
-                    .with_default_directive(LevelFilter::INFO.into())
-                    .from_env_lossy(),
-            ),
-        )
-        .init();
+    let enable_color = init_logger().enable_color;
     raise_fd_limit();
 
     let signals = Signals::capture()?;

@@ -299,7 +299,7 @@ If you were running a node previously, and want to switch to a new snapshot, ple
 # Replace `FARMER_FILE_NAME` with the name of the node file you downloaded from releases
 ./FARMER_FILE_NAME wipe PATH_TO_FARM
 # Replace `NODE_FILE_NAME` with the name of the node file you downloaded from releases
-./NODE_FILE_NAME purge-chain --chain gemini-3g
+./NODE_FILE_NAME wipe PATH_TO_NODE
 ```
 Does not matter if the node/farmer executable is the previous one or from the new snapshot, both will work :)
 The reason we require this is, with every snapshot change, the network might get partitioned, and you may be on a different genesis than the current one.
@@ -323,7 +323,7 @@ Below are some helpful samples:
 - `./FARMER_FILE_NAME info PATH_TO_FARM`: show information about the farm at `PATH_TO_FARM`
 - `./FARMER_FILE_NAME scrub PATH_TO_FARM`: Scrub the farm to find and fix farm at `PATH_TO_FARM` corruption
 - `./FARMER_FILE_NAME wipe PATH_TO_FARM`: erases everything related to farmer if data were stored in `PATH_TO_FARM`
-- `./NODE_FILE_NAME purge-chain --base-path NODE_DATA_PATH --chain gemini-3g`: erases data related to the node if data were stored in `NODE_DATA_PATH`
+- `./NODE_FILE_NAME wipe PATH_TO_NODE`: erases data related to the node if data were stored in `PATH_TO_NODE`
 
 Examples:
 ```bash

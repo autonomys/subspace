@@ -127,7 +127,6 @@ fn main() -> Result<(), Error> {
         Cli::Run(run_options) => {
             commands::run(run_options)?;
         }
-        Cli::Key(cmd) => cmd.run(&SubspaceCliPlaceholder)?,
         Cli::BuildSpec(cmd) => {
             let runner = SubspaceCliPlaceholder.create_runner(&cmd)?;
             runner.sync_run(|config| cmd.run(config.chain_spec, config.network))?
@@ -208,30 +207,8 @@ fn main() -> Result<(), Error> {
                 ))
             })?;
         }
-        Cli::PurgeChain(cmd) => {
-            // This is a compatibility layer to make sure we wipe old data from disks of our users
-            if let Some(base_dir) = dirs::data_local_dir() {
-                for chain in &[
-                    "subspace_gemini_2a",
-                    "subspace_gemini_3a",
-                    "subspace_gemini_3b",
-                    "subspace_gemini_3c",
-                    "subspace_gemini_3d",
-                    "subspace_gemini_3e",
-                    "subspace_gemini_3f",
-                    "subspace_gemini_3g",
-                ] {
-                    let _ = std::fs::remove_dir_all(
-                        base_dir.join("subspace-node").join("chains").join(chain),
-                    );
-                }
-                let _ = std::fs::remove_dir_all(base_dir.join("subspace-node").join("domain-0"));
-                let _ = std::fs::remove_dir_all(base_dir.join("subspace-node").join("domain-1"));
-            }
-
-            let runner = SubspaceCliPlaceholder.create_runner(&cmd.base)?;
-
-            runner.sync_run(|consensus_chain_config| cmd.run(consensus_chain_config))?;
+        Cli::Wipe(wipe_options) => {
+            commands::wipe(wipe_options).map_err(|error| Error::Other(error.to_string()))?;
         }
         Cli::Revert(cmd) => {
             let runner = SubspaceCliPlaceholder.create_runner(&cmd)?;
@@ -256,7 +233,6 @@ fn main() -> Result<(), Error> {
             let runner = SubspaceCliPlaceholder.create_runner(&cmd)?;
             runner.sync_run(|config| cmd.run::<Block>(&config))?;
         }
-        #[cfg(feature = "runtime-benchmarks")]
         Cli::Benchmark(cmd) => {
             let runner = SubspaceCliPlaceholder.create_runner(&cmd)?;
 
@@ -290,6 +266,12 @@ fn main() -> Result<(), Error> {
 
                         cmd.run(client)
                     }
+                    #[cfg(not(feature = "runtime-benchmarks"))]
+                    BenchmarkCmd::Storage(_) => Err(sc_cli::Error::Input(
+                        "Compile with --features=runtime-benchmarks to enable storage benchmarks."
+                            .into(),
+                    )),
+                    #[cfg(feature = "runtime-benchmarks")]
                     BenchmarkCmd::Storage(cmd) => {
                         let PartialComponents {
                             client, backend, ..
@@ -337,6 +319,9 @@ fn main() -> Result<(), Error> {
             })?;
         }
         Cli::Domain(domain_cmd) => match domain_cmd {
+            DomainSubcommand::InsertKey(insert_domain_key_options) => {
+                commands::insert_domain_key(insert_domain_key_options)?;
+            }
             DomainSubcommand::Benchmark(cmd) => {
                 let runner = SubspaceCliPlaceholder.create_runner(&cmd)?;
                 runner.sync_run(|consensus_chain_config| {
@@ -347,7 +332,7 @@ fn main() -> Result<(), Error> {
                     );
                     let domain_config = domain_cli
                         .create_domain_configuration(
-                            &consensus_chain_config.base_path.path().join("domains"),
+                            consensus_chain_config.base_path.path(),
                             consensus_chain_config.tokio_handle,
                         )
                         .map_err(|error| {
@@ -380,7 +365,7 @@ fn main() -> Result<(), Error> {
                     let domain_cli = DomainCli::new(cmd.domain_args.clone().into_iter());
                     let domain_config = domain_cli
                         .create_domain_configuration(
-                            &consensus_chain_config.base_path.path().join("domains"),
+                            consensus_chain_config.base_path.path(),
                             consensus_chain_config.tokio_handle,
                         )
                         .map_err(|error| {

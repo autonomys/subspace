@@ -15,72 +15,11 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 use crate::chain_spec;
-use crate::commands::RunOptions;
+use crate::commands::{RunOptions, WipeOptions};
 use clap::Parser;
 use sc_cli::SubstrateCli;
 use sc_service::ChainSpec;
 use sc_subspace_chain_specs::ConsensusChainSpec;
-use std::io::Write;
-use std::{fs, io};
-
-/// This `purge-chain` command used to remove both consensus chain and domain.
-#[derive(Debug, Clone, Parser)]
-#[group(skip)]
-pub struct PurgeChainCmd {
-    /// The base struct of the purge-chain command.
-    #[clap(flatten)]
-    pub base: sc_cli::PurgeChainCmd,
-}
-
-impl PurgeChainCmd {
-    /// Run the purge command
-    pub fn run(&self, consensus_chain_config: sc_service::Configuration) -> sc_cli::Result<()> {
-        let paths = vec![
-            consensus_chain_config.base_path.path().join("db"),
-            consensus_chain_config.base_path.path().join("domains"),
-            consensus_chain_config.base_path.path().join("network"),
-            // TODO: Following three are temporary workaround for wiping old chains, remove once enough time has passed
-            consensus_chain_config.base_path.path().join("chains"),
-            consensus_chain_config.base_path.path().join("domain-0"),
-            consensus_chain_config.base_path.path().join("domain-1"),
-        ];
-
-        if !self.base.yes {
-            println!("Following paths (if exist) are about to be removed:");
-            for path in &paths {
-                println!(" {}", path.display());
-            }
-            print!("Are you sure to remove? [y/N]: ");
-            io::stdout().flush().expect("failed to flush stdout");
-
-            let mut input = String::new();
-            io::stdin().read_line(&mut input)?;
-            let input = input.trim();
-
-            match input.chars().next() {
-                Some('y') | Some('Y') => {}
-                _ => {
-                    println!("Aborted");
-                    return Ok(());
-                }
-            }
-        }
-
-        for db_path in &paths {
-            match fs::remove_dir_all(db_path) {
-                Ok(_) => {
-                    println!("{:?} removed.", &db_path);
-                }
-                Err(ref err) if err.kind() == io::ErrorKind::NotFound => {
-                    eprintln!("{:?} did not exist already, skipping.", &db_path);
-                }
-                Err(err) => return Err(err.into()),
-            }
-        }
-
-        Ok(())
-    }
-}
 
 /// Commands for working with a node.
 #[derive(Debug, Parser)]
@@ -89,10 +28,6 @@ impl PurgeChainCmd {
 pub enum Cli {
     /// Run blockchain node
     Run(RunOptions),
-
-    /// Key management cli utilities
-    #[clap(subcommand)]
-    Key(sc_cli::KeySubcommand),
 
     /// Build a chain specification.
     BuildSpec(sc_cli::BuildSpecCmd),
@@ -109,8 +44,8 @@ pub enum Cli {
     /// Import blocks.
     ImportBlocks(sc_cli::ImportBlocksCmd),
 
-    /// Remove the whole chain.
-    PurgeChain(PurgeChainCmd),
+    /// Remove all node's data
+    Wipe(WipeOptions),
 
     /// Revert the chain to a previous state.
     Revert(sc_cli::RevertCmd),
@@ -123,7 +58,6 @@ pub enum Cli {
     Domain(crate::domain::cli::Subcommand),
 
     /// Sub-commands concerned with benchmarking.
-    #[cfg(feature = "runtime-benchmarks")]
     #[clap(subcommand)]
     Benchmark(frame_benchmarking_cli::BenchmarkCmd),
 }
