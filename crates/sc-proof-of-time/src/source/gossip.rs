@@ -8,7 +8,7 @@ use lru::LruCache;
 use parity_scale_codec::{Decode, Encode};
 use parking_lot::Mutex;
 use sc_network::config::NonDefaultSetConfig;
-use sc_network::{NetworkPeers, PeerId};
+use sc_network::{NetworkPeers, NotificationService, PeerId};
 use sc_network_gossip::{
     GossipEngine, MessageIntent, Network as GossipNetwork, Syncing as GossipSyncing,
     ValidationResult, Validator, ValidatorContext,
@@ -73,10 +73,19 @@ mod rep {
 const GOSSIP_PROTOCOL: &str = "/subspace/subspace-proof-of-time/1";
 
 /// Returns the network configuration for PoT gossip.
-pub fn pot_gossip_peers_set_config() -> NonDefaultSetConfig {
-    let mut cfg = NonDefaultSetConfig::new(GOSSIP_PROTOCOL.into(), 1024);
+pub fn pot_gossip_peers_set_config() -> (
+    NonDefaultSetConfig,
+    Box<dyn sc_network::NotificationService>,
+) {
+    let (mut cfg, notification_service) = NonDefaultSetConfig::new(
+        GOSSIP_PROTOCOL.into(),
+        Vec::new(),
+        1024,
+        None,
+        Default::default(),
+    );
     cfg.allow_non_reserved(25, 25);
-    cfg
+    (cfg, notification_service)
 }
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Encode, Decode)]
@@ -128,12 +137,15 @@ where
     Block: BlockT,
 {
     /// Instantiate gossip worker
+    // TODO: Struct for arguments
+    #[allow(clippy::too_many_arguments)]
     pub(super) fn new<Network, GossipSync, SO>(
         to_gossip_receiver: mpsc::Receiver<ToGossipMessage>,
         from_gossip_sender: mpsc::Sender<(PeerId, GossipProof)>,
         pot_verifier: PotVerifier,
         state: Arc<PotState>,
         network: Network,
+        notification_service: Box<dyn NotificationService>,
         sync: Arc<GossipSync>,
         sync_oracle: SO,
     ) -> Self
@@ -150,7 +162,14 @@ where
             sync_oracle,
             network.clone(),
         ));
-        let engine = GossipEngine::new(network.clone(), sync, GOSSIP_PROTOCOL, validator, None);
+        let engine = GossipEngine::new(
+            network.clone(),
+            sync,
+            notification_service,
+            GOSSIP_PROTOCOL,
+            validator,
+            None,
+        );
 
         Self {
             engine: Arc::new(Mutex::new(engine)),

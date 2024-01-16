@@ -90,9 +90,7 @@ fn set_default_ss58_version<C: AsRef<dyn ChainSpec>>(chain_spec: C) {
 }
 
 fn main() -> Result<(), Error> {
-    let mut cli = Cli::from_args();
-    // Force UTC logs for Subspace node
-    cli.run.shared_params.use_utc_log_time = true;
+    let cli = Cli::from_args();
 
     let runner = cli.create_runner(&cli.run)?;
     set_default_ss58_version(&runner.config().chain_spec);
@@ -364,8 +362,9 @@ fn main() -> Result<(), Error> {
 
             let cross_domain_message_gossip_worker = xdm_gossip_worker_builder
                 .build::<Block, _, _>(
-                    consensus_chain_node.network_service.clone(),
-                    consensus_chain_node.sync_service.clone(),
+                    consensus_chain_node.network_service,
+                    consensus_chain_node.cdm_gossip_notification_service,
+                    consensus_chain_node.sync_service,
                 );
 
             consensus_chain_node

@@ -59,6 +59,8 @@ pub fn development_config<F: Fn() -> RuntimeGenesisConfig + 'static + Send + Syn
         None,
         Some(chain_spec_properties()),
         None,
+        // Code
+        WASM_BINARY.expect("WASM binary was not build, please build it!"),
     )
 }
 
@@ -83,6 +85,8 @@ pub fn gemini_3g_config<F: Fn() -> RuntimeGenesisConfig + 'static + Send + Sync>
         Some(chain_spec_properties()),
         // Extensions
         None,
+        // Code
+        WASM_BINARY.expect("WASM binary was not build, please build it!"),
     )
 }
 
@@ -107,19 +111,22 @@ pub fn devnet_config<F: Fn() -> RuntimeGenesisConfig + 'static + Send + Sync>(
         Some(chain_spec_properties()),
         // Extensions
         None,
+        // Code
+        WASM_BINARY.expect("WASM binary was not build, please build it!"),
     )
 }
 
 pub fn load_chain_spec(spec_id: &str) -> Result<Box<dyn sc_cli::ChainSpec>, String> {
     let chain_spec = match spec_id {
-        "dev" => development_config(move || get_testnet_genesis_by_spec_id(SpecId::Dev)),
         "gemini-3g" => gemini_3g_config(move || get_testnet_genesis_by_spec_id(SpecId::Gemini)),
         "devnet" => devnet_config(move || get_testnet_genesis_by_spec_id(SpecId::DevNet)),
+        "dev" => development_config(move || get_testnet_genesis_by_spec_id(SpecId::Dev)),
         path => ChainSpec::from_json_file(std::path::PathBuf::from(path))?,
     };
     Ok(Box::new(chain_spec))
 }
 
+#[derive(Debug, Copy, Clone)]
 pub enum SpecId {
     Dev,
     Gemini,
@@ -172,12 +179,7 @@ fn testnet_genesis(
     let revert_bytecode = vec![0x60, 0x00, 0x60, 0x00, 0xFD];
 
     RuntimeGenesisConfig {
-        system: SystemConfig {
-            code: WASM_BINARY
-                .expect("WASM binary was not build, please build it!")
-                .to_vec(),
-            ..Default::default()
-        },
+        system: SystemConfig::default(),
         sudo: SudoConfig {
             key: maybe_sudo_account,
         },

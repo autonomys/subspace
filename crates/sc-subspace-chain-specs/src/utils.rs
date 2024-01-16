@@ -48,6 +48,7 @@ where
 impl<'de, GenesisConfig, Extensions> Deserialize<'de>
     for SerializableChainSpec<GenesisConfig, Extensions>
 where
+    GenesisConfig: de::DeserializeOwned,
     Extensions: de::DeserializeOwned,
 {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
@@ -60,6 +61,7 @@ where
 
         impl<'de, GenesisConfig, Extensions> Visitor<'de> for StringVisitor<GenesisConfig, Extensions>
         where
+            GenesisConfig: de::DeserializeOwned,
             Extensions: de::DeserializeOwned,
         {
             type Value = SerializableChainSpec<GenesisConfig, Extensions>;
@@ -237,6 +239,7 @@ where
         fork_id: Option<&str>,
         properties: Option<Properties>,
         extensions: Extensions,
+        code: &[u8],
     ) -> Self {
         Self {
             chain_spec: GenericChainSpec::from_genesis(
@@ -250,6 +253,7 @@ where
                 fork_id,
                 properties,
                 extensions,
+                code,
             ),
         }
     }
@@ -257,6 +261,7 @@ where
 
 impl<GenesisConfig, Extensions> SerializableChainSpec<GenesisConfig, Extensions>
 where
+    GenesisConfig: de::DeserializeOwned,
     Extensions: de::DeserializeOwned,
 {
     /// Parse json content into a `ChainSpec`

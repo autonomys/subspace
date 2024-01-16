@@ -16,9 +16,7 @@
 //! Pallet Domains
 
 #![cfg_attr(not(feature = "std"), no_std)]
-#![feature(array_windows)]
-#![feature(associated_type_bounds)]
-#![feature(let_chains)]
+#![feature(array_windows, associated_type_bounds, let_chains, variant_count)]
 
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;

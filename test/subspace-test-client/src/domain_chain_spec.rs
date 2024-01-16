@@ -51,12 +51,7 @@ pub fn testnet_evm_genesis() -> RuntimeGenesisConfig {
     let alice = get_account_id_from_seed::<ecdsa::Public>("Alice");
 
     RuntimeGenesisConfig {
-        system: evm_domain_test_runtime::SystemConfig {
-            code: evm_domain_test_runtime::WASM_BINARY
-                .expect("WASM binary was not build, please build it!")
-                .to_vec(),
-            ..Default::default()
-        },
+        system: evm_domain_test_runtime::SystemConfig::default(),
         balances: evm_domain_test_runtime::BalancesConfig {
             balances: endowed_accounts()
                 .iter()

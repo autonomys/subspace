@@ -23,7 +23,7 @@ use sc_telemetry::{Telemetry, TelemetryWorker, TelemetryWorkerHandle};
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedReceiver};
 use serde::de::DeserializeOwned;
-use sp_api::{ApiExt, BlockT, ConstructRuntimeApi, Metadata, NumberFor, ProvideRuntimeApi};
+use sp_api::{ApiExt, ConstructRuntimeApi, Metadata, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::{HeaderBackend, HeaderMetadata};
 use sp_consensus::SyncOracle;
@@ -35,6 +35,7 @@ use sp_domains_fraud_proof::FraudProofApi;
 use sp_messenger::messages::ChainId;
 use sp_messenger::{MessengerApi, RelayerApi};
 use sp_offchain::OffchainWorkerApi;
+use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_session::SessionKeys;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use std::fmt::{Debug, Display};
@@ -358,11 +359,7 @@ where
 
     let transaction_pool = params.transaction_pool.clone();
     let mut task_manager = params.task_manager;
-    let mut net_config = sc_network::config::FullNetworkConfiguration::new(&domain_config.network);
-
-    net_config.add_notification_protocol(
-        domain_client_subnet_gossip::domain_subnet_gossip_peers_set_config(),
-    );
+    let net_config = sc_network::config::FullNetworkConfiguration::new(&domain_config.network);
 
     let (network_service, system_rpc_tx, tx_handler_controller, network_starter, sync_service) =
         crate::build_network(BuildNetworkParams {

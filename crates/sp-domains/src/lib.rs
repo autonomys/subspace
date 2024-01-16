@@ -38,12 +38,11 @@ use hexlit::hex;
 use parity_scale_codec::{Decode, Encode, MaxEncodedLen};
 use scale_info::TypeInfo;
 use serde::{Deserialize, Serialize};
-use sp_api::RuntimeVersion;
 use sp_application_crypto::sr25519;
 use sp_core::crypto::KeyTypeId;
 use sp_core::sr25519::vrf::VrfSignature;
 #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
-use sp_core::sr25519::vrf::{VrfOutput, VrfProof};
+use sp_core::sr25519::vrf::{VrfPreOutput, VrfProof};
 use sp_core::H256;
 use sp_runtime::generic::OpaqueDigestItemId;
 use sp_runtime::traits::{
@@ -57,6 +56,7 @@ use sp_std::collections::btree_set::BTreeSet;
 use sp_std::fmt::{Display, Formatter};
 use sp_std::vec::Vec;
 use sp_trie::TrieLayout;
+use sp_version::RuntimeVersion;
 use sp_weights::Weight;
 use subspace_core_primitives::crypto::blake3_hash;
 use subspace_core_primitives::{bidirectional_distance, Blake3Hash, Randomness, U256};
@@ -577,7 +577,7 @@ impl<CHash> ProofOfElection<CHash> {
 
     /// Computes the VRF hash.
     pub fn vrf_hash(&self) -> Blake3Hash {
-        let mut bytes = self.vrf_signature.output.encode();
+        let mut bytes = self.vrf_signature.pre_output.encode();
         bytes.append(&mut self.vrf_signature.proof.encode());
         blake3_hash(&bytes)
     }
@@ -586,10 +586,10 @@ impl<CHash> ProofOfElection<CHash> {
 impl<CHash: Default> ProofOfElection<CHash> {
     #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
     pub fn dummy(domain_id: DomainId, operator_id: OperatorId) -> Self {
-        let output_bytes = sp_std::vec![0u8; VrfOutput::max_encoded_len()];
+        let output_bytes = sp_std::vec![0u8; VrfPreOutput::max_encoded_len()];
         let proof_bytes = sp_std::vec![0u8; VrfProof::max_encoded_len()];
         let vrf_signature = VrfSignature {
-            output: VrfOutput::decode(&mut output_bytes.as_slice()).unwrap(),
+            pre_output: VrfPreOutput::decode(&mut output_bytes.as_slice()).unwrap(),
             proof: VrfProof::decode(&mut proof_bytes.as_slice()).unwrap(),
         };
         Self {

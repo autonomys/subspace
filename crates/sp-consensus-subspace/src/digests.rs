@@ -21,10 +21,9 @@ use crate::{
 };
 use codec::{Decode, Encode};
 use log::trace;
-use sp_api::HeaderT;
 use sp_consensus_slots::Slot;
 use sp_core::crypto::UncheckedFrom;
-use sp_runtime::traits::{One, Zero};
+use sp_runtime::traits::{Header as HeaderT, One, Zero};
 use sp_runtime::DigestItem;
 use sp_std::collections::btree_map::{BTreeMap, Entry};
 use sp_std::fmt;

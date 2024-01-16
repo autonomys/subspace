@@ -264,6 +264,8 @@ pub(super) fn create_domain_configuration(
         }),
         // Extensions
         None,
+        // Code doesn't matter, it will be replaced before running
+        &[],
     );
 
     let base_path = consensus_chain_configuration

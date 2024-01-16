@@ -27,15 +27,17 @@ where
     Client: ProvideRuntimeApi<Block>,
     Client::Api: MessengerApi<Block, NumberFor<Block>>,
 {
+    // TODO: Type conversions here do not make sense, it shouldn't ever be required to convert between domain/consensus
+    //  blocks because they are never 1:1.
     if let Some(state_roots) = client
         .runtime_api()
         .extract_xdm_proof_state_roots(at, extrinsic.encode())?
     {
         // verify consensus chain state root
-        if let Some(header) =
-            consensus_client.header(state_roots.consensus_chain_block_info.block_hash.into())?
-        {
-            if *header.state_root() != state_roots.consensus_chain_state_root.into() {
+        if let Some(header) = consensus_client.header(CBlock::Hash::from(
+            state_roots.consensus_chain_block_info.block_hash,
+        ))? {
+            if *header.state_root() != CBlock::Hash::from(state_roots.consensus_chain_state_root) {
                 return Ok(false);
             }
         }
@@ -45,7 +47,7 @@ where
                 consensus_client.info().best_hash,
                 domain_id,
                 BlockInfo {
-                    block_number: block_info.block_number.into(),
+                    block_number: NumberFor::<CBlock>::from(block_info.block_number),
                     block_hash: block_info.block_hash.into(),
                 },
                 state_root.into(),

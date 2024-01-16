@@ -42,11 +42,10 @@ pub use host_functions::{
 pub use runtime_interface::fraud_proof_runtime_interface;
 #[cfg(feature = "std")]
 pub use runtime_interface::fraud_proof_runtime_interface::HostFunctions;
-use sp_api::scale_info::TypeInfo;
-use sp_api::HeaderT;
+use scale_info::TypeInfo;
 use sp_core::H256;
 use sp_domains::{DomainId, OperatorId};
-use sp_runtime::traits::NumberFor;
+use sp_runtime::traits::{Header as HeaderT, NumberFor};
 use sp_runtime::transaction_validity::{InvalidTransaction, TransactionValidity};
 use sp_runtime::OpaqueExtrinsic;
 use sp_runtime_interface::pass_by;

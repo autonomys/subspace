@@ -16,7 +16,6 @@
 
 use crate::commands::InsertDomainKeyOptions;
 use crate::domain::evm_chain_spec;
-use crate::domain::evm_chain_spec::SpecId;
 use clap::Parser;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
 use parity_scale_codec::Encode;
@@ -34,7 +33,7 @@ use sp_domains::storage::RawGenesis;
 use sp_domains::{DomainId, OperatorId};
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::Header;
-use sp_runtime::{BuildStorage, DigestItem};
+use sp_runtime::DigestItem;
 use std::io::Write;
 use std::net::SocketAddr;
 use std::path::Path;
@@ -301,10 +300,8 @@ impl BuildGenesisStorageCmd {
     pub fn run(&self) -> sc_cli::Result<()> {
         let is_dev = self.shared_params.is_dev();
         let chain_id = self.shared_params.chain_id(is_dev);
-        let domain_genesis_config = match chain_id.as_str() {
-            "gemini-3g" => evm_chain_spec::get_testnet_genesis_by_spec_id(SpecId::Gemini),
-            "devnet" => evm_chain_spec::get_testnet_genesis_by_spec_id(SpecId::DevNet),
-            "dev" => evm_chain_spec::get_testnet_genesis_by_spec_id(SpecId::Dev),
+        let domain_chain_spec = match chain_id.as_str() {
+            "gemini-3g" | "devnet" | "dev" => evm_chain_spec::load_chain_spec(&chain_id)?,
             unknown_id => {
                 eprintln!(
                     "unknown chain {unknown_id:?}, expected gemini-3g, devnet, dev, or local",
@@ -314,7 +311,7 @@ impl BuildGenesisStorageCmd {
         };
 
         let raw_genesis_storage = {
-            let storage = domain_genesis_config
+            let storage = domain_chain_spec
                 .build_storage()
                 .expect("Failed to build genesis storage from genesis runtime config");
             let raw_genesis = RawGenesis::from_storage(storage);

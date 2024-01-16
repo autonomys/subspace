@@ -12,7 +12,7 @@ use sc_transaction_pool_api::{
     OffchainTransactionPoolFactory, PoolFuture, PoolStatus, ReadyTransactions, TransactionFor,
     TransactionPool, TransactionSource, TransactionStatusStreamFor, TxHash,
 };
-use sp_api::{ApiExt, HeaderT, ProvideRuntimeApi};
+use sp_api::{ApiExt, ProvideRuntimeApi};
 use sp_blockchain::{HeaderMetadata, TreeRoute};
 use sp_consensus_slots::Slot;
 use sp_consensus_subspace::{ChainConstants, FarmerPublicKey, SubspaceApi};
@@ -22,7 +22,7 @@ use sp_domains_fraud_proof::bundle_equivocation::check_equivocation;
 use sp_domains_fraud_proof::fraud_proof::FraudProof;
 use sp_domains_fraud_proof::{FraudProofApi, InvalidTransactionCode};
 use sp_runtime::generic::BlockId;
-use sp_runtime::traits::{Block as BlockT, BlockIdTo, Header, NumberFor};
+use sp_runtime::traits::{Block as BlockT, BlockIdTo, Header as HeaderT, NumberFor};
 use sp_runtime::transaction_validity::{TransactionValidity, TransactionValidityError};
 use sp_runtime::SaturatedConversion;
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
@@ -111,7 +111,7 @@ where
 
     fn validate_transaction_blocking(
         &self,
-        at: &BlockId<Block>,
+        at: Block::Hash,
         source: TransactionSource,
         uxt: BlockExtrinsicOf<Block>,
     ) -> TxPoolResult<TransactionValidity> {
@@ -134,7 +134,7 @@ where
         + Send
         + Sync
         + 'static,
-    DomainHeader: Header,
+    DomainHeader: HeaderT,
     Client::Api: TaggedTransactionQueue<Block>
         + SubspaceApi<Block, FarmerPublicKey>
         + DomainsApi<Block, DomainHeader>,
@@ -146,26 +146,10 @@ where
 
     fn validate_transaction(
         &self,
-        at: &BlockId<Self::Block>,
+        at: Block::Hash,
         source: TransactionSource,
         uxt: ExtrinsicFor<Self>,
     ) -> Self::ValidationFuture {
-        let at = match self.client.block_hash_from_id(at) {
-            Ok(Some(at)) => at,
-            Ok(None) => {
-                let error = sc_transaction_pool::error::Error::BlockIdConversion(format!(
-                    "Failed to convert block id {at} to hash: block not found"
-                ));
-                return Box::pin(async move { Err(error) });
-            }
-            Err(error) => {
-                let error = sc_transaction_pool::error::Error::BlockIdConversion(format!(
-                    "Failed to convert block id {at} to hash: {error}"
-                ));
-                return Box::pin(async move { Err(error) });
-            }
-        };
-
         let chain_api = self.inner.clone();
         let client = self.client.clone();
         let best_block_number = TryInto::<u32>::try_into(client.info().best_number)
@@ -178,7 +162,7 @@ where
         let fraud_proof_submit_sink = self.fraud_proof_submit_sink.clone();
         async move {
             let uxt_validity = chain_api
-                .validate_transaction(&BlockId::Hash(at), source, uxt.clone())
+                .validate_transaction(at, source, uxt.clone())
                 .await?;
 
             if uxt_validity.is_ok() {
@@ -348,10 +332,9 @@ where
         at: Block::Hash,
         xt: sc_transaction_pool_api::LocalTransactionFor<Self>,
     ) -> Result<Self::Hash, Self::Error> {
-        let at = BlockId::Hash(at);
         let validity = self
             .api()
-            .validate_transaction_blocking(&at, TransactionSource::Local, xt.clone())?
+            .validate_transaction_blocking(at, TransactionSource::Local, xt.clone())?
             .map_err(|e| {
                 Self::Error::Pool(match e {
                     TransactionValidityError::Invalid(i) => {
@@ -365,7 +348,7 @@ where
         let (hash, bytes) = self.pool().validated_pool().api().hash_and_length(&xt);
         let block_number = self
             .api()
-            .block_id_to_number(&at)?
+            .block_id_to_number(&BlockId::Hash(at))?
             .ok_or_else(|| sc_transaction_pool::error::Error::BlockIdConversion(at.to_string()))?;
         let validated = ValidatedTransaction::valid_at(
             block_number.saturated_into::<u64>(),
@@ -394,7 +377,7 @@ where
 
     fn submit_at(
         &self,
-        at: &BlockId<Self::Block>,
+        at: Block::Hash,
         source: TransactionSource,
         xts: Vec<TransactionFor<Self>>,
     ) -> PoolFuture<Vec<Result<TxHash<Self>, Self::Error>>, Self::Error> {
@@ -403,7 +386,7 @@ where
 
     fn submit_one(
         &self,
-        at: &BlockId<Self::Block>,
+        at: Block::Hash,
         source: TransactionSource,
         xt: TransactionFor<Self>,
     ) -> PoolFuture<TxHash<Self>, Self::Error> {
@@ -412,7 +395,7 @@ where
 
     fn submit_and_watch(
         &self,
-        at: &BlockId<Self::Block>,
+        at: Block::Hash,
         source: TransactionSource,
         xt: TransactionFor<Self>,
     ) -> PoolFuture<Pin<Box<TransactionStatusStreamFor<Self>>>, Self::Error> {

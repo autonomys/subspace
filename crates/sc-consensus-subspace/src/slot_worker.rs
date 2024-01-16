@@ -47,7 +47,7 @@ use sc_telemetry::TelemetryHandle;
 use sc_transaction_pool_api::OffchainTransactionPoolFactory;
 use sc_utils::mpsc::{tracing_unbounded, TracingUnboundedSender};
 use schnorrkel::context::SigningContext;
-use sp_api::{ApiError, ApiExt, NumberFor, ProvideRuntimeApi};
+use sp_api::{ApiError, ApiExt, ProvideRuntimeApi};
 use sp_blockchain::{Error as ClientError, HeaderBackend, HeaderMetadata};
 use sp_consensus::{BlockOrigin, Environment, Error as ConsensusError, Proposer, SyncOracle};
 use sp_consensus_slots::Slot;
@@ -60,7 +60,7 @@ use sp_consensus_subspace::{
 };
 use sp_core::crypto::ByteArray;
 use sp_core::H256;
-use sp_runtime::traits::{Block as BlockT, Header, One, Saturating, Zero};
+use sp_runtime::traits::{Block as BlockT, Header, NumberFor, One, Saturating, Zero};
 use sp_runtime::{DigestItem, Justification, Justifications};
 use std::collections::BTreeMap;
 use std::future::Future;

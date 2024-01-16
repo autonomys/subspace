@@ -4,13 +4,15 @@ use domain_runtime_primitives::{
     CheckExtrinsicsValidityError, DecodeExtrinsicError, DomainCoreApi,
 };
 use sc_executor::RuntimeVersionOf;
-use sp_api::{ApiError, BlockT, Core, Hasher, RuntimeVersion};
+use sp_api::{ApiError, Core};
 use sp_core::traits::{CallContext, CodeExecutor, FetchRuntimeCode, RuntimeCode};
+use sp_core::Hasher;
 use sp_messenger::messages::ExtractedStateRootsFromProof;
 use sp_messenger::MessengerApi;
-use sp_runtime::traits::NumberFor;
+use sp_runtime::traits::{Block as BlockT, NumberFor};
 use sp_runtime::Storage;
 use sp_state_machine::BasicExternalities;
+use sp_version::RuntimeVersion;
 use std::borrow::Cow;
 use std::marker::PhantomData;
 use std::sync::Arc;
@@ -145,7 +147,6 @@ where
                 &runtime_code,
                 fn_name,
                 &input,
-                false,
                 CallContext::Offchain,
             )
             .0

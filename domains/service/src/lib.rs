@@ -31,7 +31,6 @@ use sp_api::ProvideRuntimeApi;
 use sp_blockchain::HeaderMetadata;
 use sp_consensus::block_validation::{Chain, DefaultBlockAnnounceValidator};
 use sp_runtime::traits::{Block as BlockT, BlockIdTo, Zero};
-use std::sync::atomic::Ordering;
 use std::sync::Arc;
 
 /// Domain full client.
@@ -84,12 +83,12 @@ where
     } = params;
 
     if client.requires_full_sync() {
-        match config.network.sync_mode.load(Ordering::Acquire) {
+        match config.network.sync_mode {
             SyncMode::LightState { .. } => {
                 return Err("Fast sync doesn't work for archive nodes".into());
             }
             SyncMode::Warp => return Err("Warp sync doesn't work for archive nodes".into()),
-            SyncMode::Full | SyncMode::Paused => {}
+            SyncMode::Full => {}
         }
     }
 
@@ -115,6 +114,18 @@ where
         block_server.run().await;
     });
 
+    // Create `PeerStore` and initialize it with bootnode peer ids.
+    let peer_store = PeerStore::new(
+        net_config
+            .network_config
+            .boot_nodes
+            .iter()
+            .map(|bootnode| bootnode.peer_id)
+            .collect(),
+    );
+    let peer_store_handle = peer_store.handle();
+    spawn_handle.spawn("peer-store", Some("networking"), peer_store.run());
+
     let state_request_protocol_config = {
         // Allow both outgoing and incoming requests.
         let (handler, protocol_config) = StateRequestHandler::new(
@@ -127,7 +138,6 @@ where
         protocol_config
     };
 
-    let (tx, rx) = sc_utils::mpsc::tracing_unbounded("mpsc_syncing_engine_protocol", 100_000);
     let (engine, sync_service, block_announce_config) = SyncingEngine::new(
         Roles::from(&config.role),
         client.clone(),
@@ -146,7 +156,7 @@ where
         block_downloader,
         state_request_protocol_config.name.clone(),
         None,
-        rx,
+        peer_store_handle.clone(),
         // set to be force_synced always for domains since they relay on Consensus chain to derive and import domain blocks.
         // If not set, each domain node will wait to be fully synced and as a result will not propagate the transactions over network.
         // It would have been ideal to use `Consensus` chain sync service to respond to `is_major_sync` requests but this
@@ -165,28 +175,17 @@ where
         .expect("Genesis block exists; qed");
 
     // crate transactions protocol and add it to the list of supported protocols of `network_params`
-    let transactions_handler_proto = sc_network_transactions::TransactionsHandlerPrototype::new(
-        protocol_id.clone(),
-        client
-            .block_hash(0u32.into())
-            .ok()
-            .flatten()
-            .expect("Genesis block exists; qed"),
-        config.chain_spec.fork_id(),
-    );
-    net_config.add_notification_protocol(transactions_handler_proto.set_config());
-
-    // Create `PeerStore` and initialize it with bootnode peer ids.
-    let peer_store = PeerStore::new(
-        net_config
-            .network_config
-            .boot_nodes
-            .iter()
-            .map(|bootnode| bootnode.peer_id)
-            .collect(),
-    );
-    let peer_store_handle = peer_store.handle();
-    spawn_handle.spawn("peer-store", Some("networking"), peer_store.run());
+    let (transactions_handler_proto, transactions_config) =
+        sc_network_transactions::TransactionsHandlerPrototype::new(
+            protocol_id.clone(),
+            client
+                .block_hash(0u32.into())
+                .ok()
+                .flatten()
+                .expect("Genesis block exists; qed"),
+            config.chain_spec.fork_id(),
+        );
+    net_config.add_notification_protocol(transactions_config);
 
     let network_params = sc_network::config::Params::<TBl> {
         role: config.role.clone(),
@@ -206,7 +205,6 @@ where
             .as_ref()
             .map(|config| config.registry.clone()),
         block_announce_config,
-        tx,
     };
 
     let has_bootnodes = !network_params

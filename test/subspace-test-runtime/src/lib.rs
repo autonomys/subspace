@@ -15,7 +15,7 @@
 // along with this program. If not, see <https://www.gnu.org/licenses/>.
 
 #![cfg_attr(not(feature = "std"), no_std)]
-#![feature(const_option)]
+#![feature(const_option, variant_count)]
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
 
@@ -24,6 +24,7 @@
 include!(concat!(env!("OUT_DIR"), "/wasm_binary.rs"));
 
 use codec::{Compact, CompactLen, Decode, Encode, MaxEncodedLen};
+use core::mem;
 use core::num::NonZeroU64;
 use domain_runtime_primitives::opaque::Header as DomainHeader;
 use domain_runtime_primitives::{
@@ -32,7 +33,7 @@ use domain_runtime_primitives::{
 use frame_support::inherent::ProvideInherent;
 use frame_support::traits::{
     ConstU128, ConstU16, ConstU32, ConstU64, ConstU8, Currency, ExistenceRequirement, Get,
-    Imbalance, WithdrawReasons,
+    Imbalance, VariantCount, WithdrawReasons,
 };
 use frame_support::weights::constants::{RocksDbWeight, WEIGHT_REF_TIME_PER_SECOND};
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
@@ -43,14 +44,13 @@ use pallet_balances::NegativeImbalance;
 pub use pallet_subspace::{AllowAuthoringBy, EnableRewardsAt};
 use pallet_transporter::EndpointHandler;
 use scale_info::TypeInfo;
-use sp_api::{impl_runtime_apis, BlockT};
+use sp_api::impl_runtime_apis;
 use sp_consensus_slots::{Slot, SlotDuration};
 use sp_consensus_subspace::{
     ChainConstants, EquivocationProof, FarmerPublicKey, PotParameters, SignedVote, SolutionRanges,
     Vote,
 };
 use sp_core::crypto::{ByteArray, KeyTypeId};
-use sp_core::storage::StateVersion;
 use sp_core::{OpaqueMetadata, H256};
 use sp_domains::bundle_producer_election::BundleProducerElectionParams;
 use sp_domains::{
@@ -64,8 +64,8 @@ use sp_messenger::messages::{
     ExtractedStateRootsFromProof, MessageId,
 };
 use sp_runtime::traits::{
-    AccountIdConversion, AccountIdLookup, BlakeTwo256, Convert, DispatchInfoOf, NumberFor,
-    PostDispatchInfoOf, Zero,
+    AccountIdConversion, AccountIdLookup, BlakeTwo256, Block as BlockT, Convert, DispatchInfoOf,
+    NumberFor, PostDispatchInfoOf, Zero,
 };
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
@@ -114,6 +114,7 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     apis: RUNTIME_API_VERSIONS,
     transaction_version: 1,
     state_version: 1,
+    extrinsic_state_version: 0,
 };
 
 /// The version information used to identify this runtime when compiled natively.
@@ -204,7 +205,6 @@ parameter_types! {
     pub SubspaceBlockWeights: BlockWeights = BlockWeights::with_sensible_defaults(BLOCK_WEIGHT_FOR_2_SEC, NORMAL_DISPATCH_RATIO);
     /// We allow for 3.75 MiB for `Normal` extrinsic with 5 MiB maximum block length.
     pub SubspaceBlockLength: BlockLength = BlockLength::max_with_normal_ratio(MAX_BLOCK_LENGTH, NORMAL_DISPATCH_RATIO);
-    pub const ExtrinsicsRootStateVersion: StateVersion = StateVersion::V0;
 }
 
 pub type SS58Prefix = ConstU16<2254>;
@@ -222,6 +222,8 @@ impl frame_system::Config for Runtime {
     type AccountId = AccountId;
     /// The aggregated dispatch type that is available for extrinsics.
     type RuntimeCall = RuntimeCall;
+    /// The aggregated `RuntimeTask` type.
+    type RuntimeTask = RuntimeTask;
     /// The lookup mechanism to get account ID from whatever is passed in dispatchers.
     type Lookup = AccountIdLookup<AccountId, ()>;
     /// The type for storing how many extrinsics an account has signed.
@@ -259,7 +261,6 @@ impl frame_system::Config for Runtime {
     /// The set code logic, just the default since we're not a parachain.
     type OnSetCode = ();
     type MaxConsumers = ConstU32<16>;
-    type ExtrinsicsRootStateVersion = ExtrinsicsRootStateVersion;
 }
 
 parameter_types! {
@@ -333,11 +334,16 @@ impl pallet_domains::HoldIdentifier<Runtime> for HoldIdentifier {
     }
 }
 
+impl VariantCount for HoldIdentifier {
+    const VARIANT_COUNT: u32 = mem::variant_count::<Self>() as u32;
+}
+
 parameter_types! {
     pub const MaxHolds: u32 = 10;
 }
 
 impl pallet_balances::Config for Runtime {
+    type RuntimeFreezeReason = RuntimeFreezeReason;
     type MaxLocks = ConstU32<50>;
     type MaxReserves = ();
     type ReserveIdentifier = [u8; 8];

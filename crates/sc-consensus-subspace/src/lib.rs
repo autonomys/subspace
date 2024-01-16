@@ -41,8 +41,8 @@ use crate::notification::{SubspaceNotificationSender, SubspaceNotificationStream
 use crate::slot_worker::{NewSlotNotification, RewardSigningNotification};
 use lru::LruCache;
 use parking_lot::Mutex;
-use sp_api::{BlockT, NumberFor};
 use sp_consensus_subspace::ChainConstants;
+use sp_runtime::traits::{Block as BlockT, NumberFor};
 use std::sync::Arc;
 use subspace_core_primitives::crypto::kzg::Kzg;
 use subspace_core_primitives::SegmentHeader;

@@ -101,26 +101,10 @@ where
 
     fn validate_transaction(
         &self,
-        at: &BlockId<Self::Block>,
+        at: Block::Hash,
         source: TransactionSource,
         uxt: ExtrinsicFor<Self>,
     ) -> Self::ValidationFuture {
-        let at = match self.client.block_hash_from_id(at) {
-            Ok(Some(at)) => at,
-            Ok(None) => {
-                let error = sc_transaction_pool::error::Error::BlockIdConversion(format!(
-                    "Failed to convert block id {at} to hash: block not found"
-                ));
-                return Box::pin(async move { Err(error) });
-            }
-            Err(error) => {
-                let error = sc_transaction_pool::error::Error::BlockIdConversion(format!(
-                    "Failed to convert block id {at} to hash: {error}"
-                ));
-                return Box::pin(async move { Err(error) });
-            }
-        };
-
         let chain_api = self.inner.clone();
         let consensus_client = self.consensus_client.clone();
         let client = self.client.clone();
@@ -131,9 +115,7 @@ where
                 ));
             }
 
-            chain_api
-                .validate_transaction(&BlockId::Hash(at), source, uxt)
-                .await
+            chain_api.validate_transaction(at, source, uxt).await
         }
         .boxed()
     }

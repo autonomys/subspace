@@ -4,13 +4,13 @@ use domain_runtime_primitives::DomainCoreApi;
 use futures::{select, FutureExt};
 use sc_client_api::{AuxStore, BlockBackend};
 use sc_transaction_pool_api::InPoolTransaction;
-use sp_api::{ApiExt, HeaderT, NumberFor, ProvideRuntimeApi};
+use sp_api::{ApiExt, ProvideRuntimeApi};
 use sp_block_builder::BlockBuilder;
 use sp_blockchain::HeaderBackend;
 use sp_domains::{
     BundleHeader, DomainId, DomainsApi, ExecutionReceipt, HeaderHashingFor, ProofOfElection,
 };
-use sp_runtime::traits::{Block as BlockT, Hash as HashT, One, Zero};
+use sp_runtime::traits::{Block as BlockT, Hash as HashT, Header as HeaderT, NumberFor, One, Zero};
 use sp_transaction_pool::runtime_api::TaggedTransactionQueue;
 use sp_weights::Weight;
 use std::marker::PhantomData;

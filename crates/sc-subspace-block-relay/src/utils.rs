@@ -80,11 +80,12 @@ impl NetworkPeerHandle {
             self.who,
             self.protocol_name.clone(),
             request.encode(),
+            None,
             tx,
             IfDisconnected::ImmediateError,
         );
 
-        let response_bytes = rx
+        let (response_bytes, _protocol_name) = rx
             .await
             .map_err(|_cancelled| RequestResponseErr::Canceled)?
             .map_err(RequestResponseErr::RequestFailure)?;

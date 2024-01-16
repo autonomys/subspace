@@ -26,7 +26,6 @@ macro_rules! impl_runtime {
         use frame_support::pallet_prelude::*;
         use frame_support::parameter_types;
         use pallet_balances::AccountData;
-        use sp_core::storage::StateVersion;
         use sp_core::H256;
         use sp_messenger::endpoint::{Endpoint, EndpointHandler, EndpointId};
         use sp_messenger::messages::ChainId;
@@ -46,10 +45,6 @@ macro_rules! impl_runtime {
             }
         );
 
-        parameter_types! {
-            pub const ExtrinsicsRootStateVersion: StateVersion = StateVersion::V0;
-        }
-
         impl frame_system::Config for $runtime {
             type BaseCallFilter = frame_support::traits::Everything;
             type BlockWeights = ();
@@ -57,6 +52,7 @@ macro_rules! impl_runtime {
             type DbWeight = ();
             type RuntimeOrigin = RuntimeOrigin;
             type RuntimeCall = RuntimeCall;
+            type RuntimeTask = RuntimeTask;
             type Nonce = u64;
             type Hash = H256;
             type Hashing = BlakeTwo256;
@@ -74,7 +70,6 @@ macro_rules! impl_runtime {
             type SS58Prefix = ConstU16<42>;
             type OnSetCode = ();
             type MaxConsumers = ConstU32<16>;
-            type ExtrinsicsRootStateVersion = ExtrinsicsRootStateVersion;
         }
 
         parameter_types! {
@@ -123,6 +118,7 @@ macro_rules! impl_runtime {
         }
 
         impl pallet_balances::Config for $runtime {
+            type RuntimeFreezeReason = RuntimeFreezeReason;
             type AccountStore = System;
             type Balance = Balance;
             type DustRemoval = ();
