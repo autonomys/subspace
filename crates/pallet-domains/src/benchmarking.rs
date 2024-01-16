@@ -3,9 +3,9 @@
 use super::*;
 use crate::alloc::borrow::ToOwned;
 use crate::domain_registry::DomainConfig;
-use crate::staking::{do_reward_operators, OperatorConfig, OperatorStatus, Withdraw};
-use crate::staking_epoch::{do_finalize_domain_current_epoch, do_finalize_domain_staking};
-use crate::Pallet as Domains;
+use crate::staking::{do_reward_operators, OperatorConfig, OperatorStatus};
+use crate::staking_epoch::{do_finalize_domain_current_epoch, do_finalize_domain_epoch_staking};
+use crate::{DomainBlockNumberFor, Pallet as Domains};
 use frame_benchmarking::v2::*;
 use frame_support::assert_ok;
 use frame_support::traits::fungible::Mutate;
@@ -17,7 +17,7 @@ use sp_domains::{
     dummy_opaque_bundle, DomainId, ExecutionReceipt, OperatorAllowList, OperatorId,
     OperatorPublicKey, RuntimeType,
 };
-use sp_runtime::traits::{BlockNumberProvider, CheckedAdd, One, SaturatedConversion};
+use sp_runtime::traits::{BlockNumberProvider, CheckedAdd, One, SaturatedConversion, Zero};
 
 const SEED: u32 = 0;
 
@@ -95,7 +95,6 @@ mod benchmarks {
     #[benchmark]
     fn pending_staking_operation() {
         let max_pending_staking_op = T::MaxPendingStakingOperation::get();
-        let epoch_duration = T::StakeEpochDuration::get();
         let minimum_nominator_stake = T::Currency::minimum_balance();
         let withdraw_amount = T::MinOperatorStake::get();
         let operator_rewards =
@@ -103,7 +102,7 @@ mod benchmarks {
 
         let domain_id = register_domain::<T>();
         let (_, operator_id) = register_helper_operator::<T>(domain_id, minimum_nominator_stake);
-        do_finalize_domain_current_epoch::<T>(domain_id, 0u32.into())
+        do_finalize_domain_current_epoch::<T>(domain_id)
             .expect("finalize domain staking should success");
 
         for i in 0..max_pending_staking_op {
@@ -118,7 +117,7 @@ mod benchmarks {
                 withdraw_amount * 2u32.into(),
             ));
         }
-        do_finalize_domain_current_epoch::<T>(domain_id, epoch_duration)
+        do_finalize_domain_current_epoch::<T>(domain_id)
             .expect("finalize domain staking should success");
         assert_eq!(PendingStakingOperationCount::<T>::get(domain_id), 0);
 
@@ -127,15 +126,11 @@ mod benchmarks {
             assert_ok!(Domains::<T>::withdraw_stake(
                 RawOrigin::Signed(nominator).into(),
                 operator_id,
-                Withdraw::Some(withdraw_amount),
+                withdraw_amount.into(),
             ));
         }
         assert_eq!(
             PendingStakingOperationCount::<T>::get(domain_id) as u32,
-            max_pending_staking_op
-        );
-        assert_eq!(
-            PendingWithdrawals::<T>::iter_prefix_values(operator_id).count() as u32,
             max_pending_staking_op
         );
 
@@ -144,15 +139,11 @@ mod benchmarks {
             do_reward_operators::<T>(domain_id, vec![operator_id].into_iter(), operator_rewards)
                 .expect("reward operator should success");
 
-            do_finalize_domain_current_epoch::<T>(domain_id, epoch_duration * 2u32.into())
+            do_finalize_domain_current_epoch::<T>(domain_id)
                 .expect("finalize domain staking should success");
         }
 
         assert_eq!(PendingStakingOperationCount::<T>::get(domain_id), 0);
-        assert_eq!(
-            PendingWithdrawals::<T>::iter_prefix_values(operator_id).count(),
-            0
-        );
     }
 
     #[benchmark]
@@ -282,11 +273,6 @@ mod benchmarks {
         let staking_summary =
             DomainStakingSummary::<T>::get(domain_id).expect("staking summary must exist");
         assert!(staking_summary.next_operators.contains(&operator_id));
-
-        assert_eq!(
-            PendingDeposits::<T>::get(operator_id, operator_account),
-            Some(T::MinOperatorStake::get())
-        );
     }
 
     /// Benchmark `nominate_operator` extrinsic with the worst possible conditions:
@@ -315,11 +301,6 @@ mod benchmarks {
             RawOrigin::Signed(nominator.clone()),
             operator_id,
             minimum_nominator_stake,
-        );
-
-        assert_eq!(
-            PendingDeposits::<T>::get(operator_id, nominator),
-            Some(minimum_nominator_stake * 2u32.into())
         );
     }
 
@@ -357,11 +338,10 @@ mod benchmarks {
         _(RawOrigin::Signed(operator_owner.clone()), operator_id);
 
         let operator = Operators::<T>::get(operator_id).expect("operator must exist");
-        assert_eq!(operator.status, OperatorStatus::Deregistered);
-
-        let pending_deregistration = PendingOperatorDeregistrations::<T>::get(domain_id)
-            .expect("pending deregistration must exist");
-        assert!(pending_deregistration.contains(&operator_id));
+        assert_eq!(
+            operator.status,
+            OperatorStatus::Deregistered((domain_id, 0, DomainBlockNumberFor::<T>::zero()).into())
+        );
     }
 
     /// Benchmark `withdraw_stake` extrinsic with the worst possible conditions:
@@ -385,7 +365,7 @@ mod benchmarks {
             operator_id,
             withdraw_amount * 3u32.into(),
         ));
-        do_finalize_domain_staking::<T>(domain_id, 1u32.into())
+        do_finalize_domain_epoch_staking::<T>(domain_id)
             .expect("finalize domain staking should success");
 
         // Add reward to the operator
@@ -403,19 +383,14 @@ mod benchmarks {
         assert_ok!(Domains::<T>::withdraw_stake(
             RawOrigin::Signed(nominator.clone()).into(),
             operator_id,
-            Withdraw::Some(withdraw_amount),
+            withdraw_amount.into(),
         ));
 
         #[extrinsic_call]
         _(
             RawOrigin::Signed(nominator.clone()),
             operator_id,
-            Withdraw::Some(withdraw_amount),
-        );
-
-        assert_eq!(
-            PendingWithdrawals::<T>::get(operator_id, nominator),
-            Some(Withdraw::Some(withdraw_amount * 2u32.into()))
+            withdraw_amount.into(),
         );
     }
 

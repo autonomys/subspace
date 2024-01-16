@@ -147,21 +147,9 @@ pub enum HoldIdentifier {
 }
 
 impl pallet_domains::HoldIdentifier<Test> for HoldIdentifier {
-    fn staking_pending_deposit(operator_id: OperatorId) -> FungibleHoldId<Test> {
-        Self::Domains(DomainsHoldIdentifier::Staking(
-            StakingHoldIdentifier::PendingDeposit(operator_id),
-        ))
-    }
-
     fn staking_staked(operator_id: OperatorId) -> FungibleHoldId<Test> {
         Self::Domains(DomainsHoldIdentifier::Staking(
             StakingHoldIdentifier::Staked(operator_id),
-        ))
-    }
-
-    fn staking_pending_unlock(operator_id: OperatorId) -> FungibleHoldId<Test> {
-        Self::Domains(DomainsHoldIdentifier::Staking(
-            StakingHoldIdentifier::PendingUnlock(operator_id),
         ))
     }
 
@@ -542,8 +530,10 @@ pub(crate) fn register_genesis_domain(creator: u64, operator_ids: Vec<OperatorId
                 nomination_tax: Default::default(),
                 current_total_stake: Zero::zero(),
                 current_epoch_rewards: Zero::zero(),
-                total_shares: Zero::zero(),
+                current_total_shares: Zero::zero(),
                 status: OperatorStatus::Registered,
+                deposits_in_epoch: Zero::zero(),
+                withdrawals_in_epoch: Zero::zero(),
             },
         );
     }

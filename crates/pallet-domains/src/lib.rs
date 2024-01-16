@@ -18,6 +18,7 @@
 #![cfg_attr(not(feature = "std"), no_std)]
 #![feature(array_windows)]
 #![feature(associated_type_bounds)]
+#![feature(let_chains)]
 
 #[cfg(feature = "runtime-benchmarks")]
 mod benchmarking;
@@ -78,9 +79,7 @@ pub(crate) type FungibleHoldId<T> =
 pub(crate) type NominatorId<T> = <T as frame_system::Config>::AccountId;
 
 pub trait HoldIdentifier<T: Config> {
-    fn staking_pending_deposit(operator_id: OperatorId) -> FungibleHoldId<T>;
     fn staking_staked(operator_id: OperatorId) -> FungibleHoldId<T>;
-    fn staking_pending_unlock(operator_id: OperatorId) -> FungibleHoldId<T>;
     fn domain_instantiation_id(domain_id: DomainId) -> FungibleHoldId<T>;
 }
 
@@ -134,15 +133,11 @@ mod pallet {
     use crate::staking::do_reward_operators;
     use crate::staking::{
         do_deregister_operator, do_nominate_operator, do_register_operator, do_slash_operators,
-        do_switch_operator_domain, do_withdraw_stake, Error as StakingError, Nominator, Operator,
-        OperatorConfig, StakingSummary, Withdraw,
+        do_switch_operator_domain, do_unlock_funds, do_unlock_operator, do_withdraw_stake, Deposit,
+        DomainEpoch, Error as StakingError, Operator, OperatorConfig, SharePrice, StakingSummary,
+        Withdrawal,
     };
-    #[cfg(not(feature = "runtime-benchmarks"))]
-    use crate::staking_epoch::do_unlock_pending_withdrawals;
-    use crate::staking_epoch::{
-        do_finalize_domain_current_epoch, Error as StakingEpochError, PendingNominatorUnlock,
-        PendingOperatorSlashInfo,
-    };
+    use crate::staking_epoch::{do_finalize_domain_current_epoch, Error as StakingEpochError};
     use crate::weights::WeightInfo;
     use crate::{
         BalanceOf, DomainBlockNumberFor, ElectionVerificationParams, HoldIdentifier, NominatorId,
@@ -174,6 +169,7 @@ mod pallet {
     use sp_std::boxed::Box;
     use sp_std::collections::btree_map::BTreeMap;
     use sp_std::collections::btree_set::BTreeSet;
+    use sp_std::collections::vec_deque::VecDeque;
     use sp_std::fmt::Debug;
     use sp_std::vec;
     use sp_std::vec::Vec;
@@ -374,8 +370,13 @@ mod pallet {
 
     /// List of all registered operators and their configuration.
     #[pallet::storage]
-    pub(super) type Operators<T: Config> =
-        StorageMap<_, Identity, OperatorId, Operator<BalanceOf<T>, T::Share>, OptionQuery>;
+    pub(super) type Operators<T: Config> = StorageMap<
+        _,
+        Identity,
+        OperatorId,
+        Operator<BalanceOf<T>, T::Share, DomainBlockNumberFor<T>>,
+        OptionQuery,
+    >;
 
     /// Temporary hold of all the operators who decided to switch to another domain.
     /// Once epoch is complete, these operators are added to new domains under next_operators.
@@ -383,15 +384,33 @@ mod pallet {
     pub(super) type PendingOperatorSwitches<T: Config> =
         StorageMap<_, Identity, DomainId, BTreeSet<OperatorId>, OptionQuery>;
 
-    /// List of all current epoch's nominators and their shares under a given operator,
+    /// Share price for the operator pool at the end of Domain epoch.
+    // TODO: currently unbounded storage.
     #[pallet::storage]
-    pub(super) type Nominators<T: Config> = StorageDoubleMap<
+    pub type OperatorEpochSharePrice<T: Config> =
+        StorageDoubleMap<_, Identity, OperatorId, Identity, DomainEpoch, SharePrice, OptionQuery>;
+
+    /// List of all deposits for given Operator.
+    #[pallet::storage]
+    pub(super) type Deposits<T: Config> = StorageDoubleMap<
         _,
         Identity,
         OperatorId,
         Identity,
         NominatorId<T>,
-        Nominator<T::Share>,
+        Deposit<T::Share, BalanceOf<T>>,
+        OptionQuery,
+    >;
+
+    /// List of all withdrawals for a given operator.
+    #[pallet::storage]
+    pub(super) type Withdrawals<T: Config> = StorageDoubleMap<
+        _,
+        Identity,
+        OperatorId,
+        Identity,
+        NominatorId<T>,
+        VecDeque<Withdrawal<T::Share, DomainBlockNumberFor<T>>>,
         OptionQuery,
     >;
 
@@ -405,82 +424,12 @@ mod pallet {
     pub(super) type NominatorCount<T: Config> =
         StorageMap<_, Identity, OperatorId, u32, ValueQuery>;
 
-    /// Deposits initiated a nominator under this operator.
-    /// Will be stored temporarily until the current epoch is complete.
-    /// Once, epoch is complete, these deposits are staked beginning next epoch.
-    #[pallet::storage]
-    pub(super) type PendingDeposits<T: Config> = StorageDoubleMap<
-        _,
-        Identity,
-        OperatorId,
-        Identity,
-        NominatorId<T>,
-        BalanceOf<T>,
-        OptionQuery,
-    >;
-
-    /// Withdrawals initiated a nominator under this operator.
-    /// Will be stored temporarily until the current epoch is complete.
-    /// Once, epoch is complete, these will be moved to PendingNominatorUnlocks.
-    #[pallet::storage]
-    pub(super) type PendingWithdrawals<T: Config> = StorageDoubleMap<
-        _,
-        Identity,
-        OperatorId,
-        Identity,
-        NominatorId<T>,
-        Withdraw<BalanceOf<T>>,
-        OptionQuery,
-    >;
-
-    /// Operators who chose to deregister from a domain.
-    /// Stored here temporarily until domain epoch is complete.
-    #[pallet::storage]
-    pub(super) type PendingOperatorDeregistrations<T: Config> =
-        StorageMap<_, Identity, DomainId, BTreeSet<OperatorId>, OptionQuery>;
-
-    /// Stores a list of operators who are unlocking in the coming blocks.
-    /// The operator will be removed when the wait period is over
-    /// or when the operator is slashed.
-    #[pallet::storage]
-    pub(super) type PendingOperatorUnlocks<T: Config> =
-        StorageValue<_, BTreeSet<OperatorId>, ValueQuery>;
-
-    /// All the pending unlocks for the nominators.
-    /// We use this storage to fetch all the pending unlocks under a operator pool at the time of slashing.
-    #[pallet::storage]
-    pub(super) type PendingNominatorUnlocks<T: Config> = StorageDoubleMap<
-        _,
-        Identity,
-        OperatorId,
-        Identity,
-        DomainBlockNumberFor<T>,
-        Vec<PendingNominatorUnlock<NominatorId<T>, BalanceOf<T>>>,
-        OptionQuery,
-    >;
-
-    /// A list of operators that are either unregistering or one more of the nominators
-    /// are withdrawing some staked funds.
-    #[pallet::storage]
-    pub(super) type PendingUnlocks<T: Config> = StorageMap<
-        _,
-        Identity,
-        (DomainId, DomainBlockNumberFor<T>),
-        BTreeSet<OperatorId>,
-        OptionQuery,
-    >;
-
     /// A list operators who were slashed during the current epoch associated with the domain.
     /// When the epoch for a given domain is complete, operator total stake is moved to treasury and
     /// then deleted.
     #[pallet::storage]
-    pub(super) type PendingSlashes<T: Config> = StorageMap<
-        _,
-        Identity,
-        DomainId,
-        BTreeMap<OperatorId, PendingOperatorSlashInfo<NominatorId<T>, BalanceOf<T>>>,
-        OptionQuery,
-    >;
+    pub(super) type PendingSlashes<T: Config> =
+        StorageMap<_, Identity, DomainId, BTreeSet<OperatorId>, OptionQuery>;
 
     /// The pending staking operation count of the current epoch, it should not larger than
     /// `MaxPendingStakingOperation` and will be resetted to 0 upon epoch transition.
@@ -534,6 +483,11 @@ mod pallet {
     /// The head receipt number of each domain
     #[pallet::storage]
     pub(super) type HeadReceiptNumber<T: Config> =
+        StorageMap<_, Identity, DomainId, DomainBlockNumberFor<T>, ValueQuery>;
+
+    /// The latest confirmed block number of each domain.
+    #[pallet::storage]
+    pub(super) type LatestConfirmedDomainBlockNumber<T: Config> =
         StorageMap<_, Identity, DomainId, DomainBlockNumberFor<T>, ValueQuery>;
 
     /// Whether the head receipt have extended in the current consensus block
@@ -774,9 +728,17 @@ mod pallet {
         OperatorDeregistered {
             operator_id: OperatorId,
         },
+        OperatorUnlocked {
+            operator_id: OperatorId,
+        },
         WithdrewStake {
             operator_id: OperatorId,
             nominator_id: NominatorId<T>,
+        },
+        FundsUnlocked {
+            operator_id: OperatorId,
+            nominator_id: NominatorId<T>,
+            amount: BalanceOf<T>,
         },
         PreferredOperator {
             operator_id: OperatorId,
@@ -785,6 +747,10 @@ mod pallet {
         OperatorRewarded {
             operator_id: OperatorId,
             reward: BalanceOf<T>,
+        },
+        OperatorTaxCollected {
+            operator_id: OperatorId,
+            tax: BalanceOf<T>,
         },
         DomainEpochCompleted {
             domain_id: DomainId,
@@ -901,14 +867,17 @@ mod pallet {
                         )
                         .map_err(Error::<T>::from)?;
 
+                        LatestConfirmedDomainBlockNumber::<T>::insert(
+                            domain_id,
+                            confirmed_block_info.domain_block_number,
+                        );
+
                         if confirmed_block_info.domain_block_number % T::StakeEpochDuration::get()
                             == Zero::zero()
                         {
-                            let completed_epoch_index = do_finalize_domain_current_epoch::<T>(
-                                domain_id,
-                                confirmed_block_info.domain_block_number,
-                            )
-                            .map_err(Error::<T>::from)?;
+                            let completed_epoch_index =
+                                do_finalize_domain_current_epoch::<T>(domain_id)
+                                    .map_err(Error::<T>::from)?;
 
                             Self::deposit_event(Event::DomainEpochCompleted {
                                 domain_id,
@@ -916,12 +885,6 @@ mod pallet {
                             });
                             epoch_transitted = true;
                         }
-
-                        do_unlock_pending_withdrawals::<T>(
-                            domain_id,
-                            confirmed_block_info.domain_block_number,
-                        )
-                        .map_err(Error::<T>::from)?;
                     }
                 }
             }
@@ -1134,8 +1097,7 @@ mod pallet {
             // if the domain's current epoch is 0,
             // then do an epoch transition so that operator can start producing bundles
             if current_epoch_index.is_zero() {
-                do_finalize_domain_current_epoch::<T>(domain_id, One::one())
-                    .map_err(Error::<T>::from)?;
+                do_finalize_domain_current_epoch::<T>(domain_id).map_err(Error::<T>::from)?;
             }
 
             Ok(())
@@ -1221,17 +1183,45 @@ mod pallet {
         pub fn withdraw_stake(
             origin: OriginFor<T>,
             operator_id: OperatorId,
-            withdraw: Withdraw<BalanceOf<T>>,
+            shares: T::Share,
         ) -> DispatchResult {
             let who = ensure_signed(origin)?;
 
-            do_withdraw_stake::<T>(operator_id, who.clone(), withdraw).map_err(Error::<T>::from)?;
+            do_withdraw_stake::<T>(operator_id, who.clone(), shares).map_err(Error::<T>::from)?;
 
             Self::deposit_event(Event::WithdrewStake {
                 operator_id,
                 nominator_id: who,
             });
 
+            Ok(())
+        }
+
+        /// Unlocks the first withdrawal given the unlocking period is complete.
+        /// Even if rest of the withdrawals are out of unlocking period, nominator
+        /// should call this extrinsic to unlock each withdrawal
+        #[pallet::call_index(10)]
+        #[pallet::weight(Weight::from_all(10_000))]
+        pub fn unlock_funds(origin: OriginFor<T>, operator_id: OperatorId) -> DispatchResult {
+            let nominator_id = ensure_signed(origin)?;
+            let unlocked_funds = do_unlock_funds::<T>(operator_id, nominator_id.clone())
+                .map_err(crate::pallet::Error::<T>::from)?;
+            Self::deposit_event(Event::FundsUnlocked {
+                operator_id,
+                nominator_id,
+                amount: unlocked_funds,
+            });
+            Ok(())
+        }
+
+        /// Unlocks the operator given the unlocking period is complete.
+        /// Anyone can initiate the operator unlock.
+        #[pallet::call_index(11)]
+        #[pallet::weight(Weight::from_all(10_000))]
+        pub fn unlock_operator(origin: OriginFor<T>, operator_id: OperatorId) -> DispatchResult {
+            ensure_signed(origin)?;
+            do_unlock_operator::<T>(operator_id).map_err(crate::pallet::Error::<T>::from)?;
+            Self::deposit_event(Event::OperatorUnlocked { operator_id });
             Ok(())
         }
 
@@ -1242,7 +1232,7 @@ mod pallet {
         /// - If the previous allowed list is set to `Anyone` or specific operators and the new
         ///   allow list is set to specific operators, then all the registered not allowed operators
         ///   will continue to operate until they de-register themselves.
-        #[pallet::call_index(10)]
+        #[pallet::call_index(12)]
         #[pallet::weight(Weight::from_all(10_000))]
         pub fn update_domain_operator_allow_list(
             origin: OriginFor<T>,
@@ -1257,7 +1247,7 @@ mod pallet {
         }
 
         /// Force staking epoch transition for a given domain
-        #[pallet::call_index(11)]
+        #[pallet::call_index(13)]
         #[pallet::weight(T::WeightInfo::pending_staking_operation())]
         pub fn force_staking_epoch_transition(
             origin: OriginFor<T>,
@@ -1265,14 +1255,8 @@ mod pallet {
         ) -> DispatchResult {
             ensure_root(origin)?;
 
-            let completed_epoch_index = do_finalize_domain_current_epoch::<T>(
-                domain_id,
-                // This domain block number argument is used to calculate the `unlock_block_number` for
-                // withdrawal, using the `oldest_receipt_number` here such that the withdrawal can be
-                // unlocked later by the regular epoch transition with the same amount of locking period.
-                Self::oldest_receipt_number(domain_id),
-            )
-            .map_err(Error::<T>::from)?;
+            let completed_epoch_index =
+                do_finalize_domain_current_epoch::<T>(domain_id).map_err(Error::<T>::from)?;
 
             Self::deposit_event(Event::ForceDomainEpochTransition {
                 domain_id,
@@ -1336,7 +1320,7 @@ mod pallet {
                 do_register_operator::<T>(domain_owner, domain_id, operator_stake, operator_config)
                     .expect("Genesis operator registration must succeed");
 
-                do_finalize_domain_current_epoch::<T>(domain_id, Zero::zero())
+                do_finalize_domain_current_epoch::<T>(domain_id)
                     .expect("Genesis epoch must succeed");
             }
         }
