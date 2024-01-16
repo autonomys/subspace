@@ -12,7 +12,7 @@ pub const INHERENT_IDENTIFIER: InherentIdentifier = *b"blockfee";
 #[derive(Debug, Encode)]
 #[cfg_attr(feature = "std", derive(Decode))]
 pub enum InherentError {
-    IncorrectDomainTransactionByteFee,
+    IncorrectConsensusChainByteFee,
 }
 
 impl IsFatalError for InherentError {

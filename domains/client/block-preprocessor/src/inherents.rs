@@ -205,10 +205,10 @@ where
         let runtime_upgrade_provider =
             sp_executive::InherentDataProvider::new(maybe_runtime_upgrade_code);
 
-        let domain_transaction_byte_fee =
-            runtime_api.domain_transaction_byte_fee(consensus_block_hash)?;
+        let consensus_chain_byte_fee =
+            runtime_api.consensus_chain_byte_fee(consensus_block_hash)?;
         let storage_price_provider =
-            sp_block_fees::InherentDataProvider::new(domain_transaction_byte_fee);
+            sp_block_fees::InherentDataProvider::new(consensus_chain_byte_fee);
 
         Ok((
             timestamp_provider,

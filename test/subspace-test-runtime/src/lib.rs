@@ -1281,7 +1281,7 @@ impl_runtime_apis! {
             Domains::receipt_hash(domain_id, domain_number)
         }
 
-        fn domain_transaction_byte_fee() -> Balance {
+        fn consensus_chain_byte_fee() -> Balance {
             DOMAIN_STORAGE_FEE_MULTIPLIER * TransactionFees::transaction_byte_fee()
         }
     }

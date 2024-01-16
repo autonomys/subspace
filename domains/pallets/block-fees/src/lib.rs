@@ -17,6 +17,8 @@
 
 #![cfg_attr(not(feature = "std"), no_std)]
 
+pub mod fees;
+
 pub use pallet::*;
 
 #[frame_support::pallet]
@@ -46,6 +48,9 @@ mod pallet {
             + MaxEncodedLen
             + TypeInfo
             + FixedPointOperand;
+
+        /// The domain chain byte fee
+        type DomainChainByteFee: Get<Self::Balance>;
     }
 
     /// The accumulated rewards of the current block
@@ -57,20 +62,19 @@ mod pallet {
     pub(super) type CollectedBlockFees<T: Config> =
         StorageValue<_, BlockFees<T::Balance>, ValueQuery>;
 
-    /// The domain transaction byte fee
+    /// The consensus chain byte fee
     ///
     /// NOTE: we are using `ValueQuery` for convenience, which means the transactions in the domain block #1
-    // are not charged for storage fees.
+    // are not charged for the consensus chain storage fees.
     #[pallet::storage]
-    #[pallet::getter(fn domain_transaction_byte_fee)]
-    pub(super) type DomainTransactionByteFee<T: Config> = StorageValue<_, T::Balance, ValueQuery>;
+    #[pallet::getter(fn consensus_chain_byte_fee)]
+    pub(super) type ConsensusChainByteFee<T: Config> = StorageValue<_, T::Balance, ValueQuery>;
 
-    /// The next domain transaction byte fee, it will take affect after the execution of the current
+    /// The next consensus chain byte fee, it will take affect after the execution of the current
     /// block to ensure the operator are using the same fee for both validating and executing the domain
     /// transaction in the next block.
     #[pallet::storage]
-    pub(super) type NextDomainTransactionByteFee<T: Config> =
-        StorageValue<_, T::Balance, ValueQuery>;
+    pub(super) type NextConsensusChainByteFee<T: Config> = StorageValue<_, T::Balance, ValueQuery>;
 
     /// Pallet block-fees to store the accumulated rewards of the current block
     #[pallet::pallet]
@@ -85,8 +89,8 @@ mod pallet {
         }
 
         fn on_finalize(_now: BlockNumberFor<T>) {
-            let transaction_byte_fee = NextDomainTransactionByteFee::<T>::get();
-            DomainTransactionByteFee::<T>::put(transaction_byte_fee);
+            let transaction_byte_fee = NextConsensusChainByteFee::<T>::get();
+            ConsensusChainByteFee::<T>::put(transaction_byte_fee);
         }
     }
 
@@ -98,12 +102,12 @@ mod pallet {
 			Weight::from_all(10_000),
 			DispatchClass::Mandatory
 		))]
-        pub fn set_next_domain_transaction_byte_fee(
+        pub fn set_next_consensus_chain_byte_fee(
             origin: OriginFor<T>,
             #[pallet::compact] transaction_byte_fee: T::Balance,
         ) -> DispatchResult {
             ensure_none(origin)?;
-            NextDomainTransactionByteFee::<T>::put(transaction_byte_fee);
+            NextConsensusChainByteFee::<T>::put(transaction_byte_fee);
             Ok(())
         }
     }
@@ -122,7 +126,7 @@ mod pallet {
 
             let transaction_byte_fee = inherent_data.saturated_into::<T::Balance>();
 
-            Some(Call::set_next_domain_transaction_byte_fee {
+            Some(Call::set_next_consensus_chain_byte_fee {
                 transaction_byte_fee,
             })
         }
@@ -138,12 +142,12 @@ mod pallet {
 
             let provided_transaction_byte_fee = inherent_data.saturated_into::<T::Balance>();
 
-            if let Call::set_next_domain_transaction_byte_fee {
+            if let Call::set_next_consensus_chain_byte_fee {
                 transaction_byte_fee,
             } = call
             {
                 if transaction_byte_fee != &provided_transaction_byte_fee {
-                    return Err(InherentError::IncorrectDomainTransactionByteFee);
+                    return Err(InherentError::IncorrectConsensusChainByteFee);
                 }
             }
 
@@ -151,7 +155,7 @@ mod pallet {
         }
 
         fn is_inherent(call: &Self::Call) -> bool {
-            matches!(call, Call::set_next_domain_transaction_byte_fee { .. })
+            matches!(call, Call::set_next_consensus_chain_byte_fee { .. })
         }
     }
 
@@ -172,6 +176,15 @@ mod pallet {
                 .consensus_storage_fee
                 .saturating_add(storage_fee);
             CollectedBlockFees::<T>::set(new_block_fees);
+        }
+
+        /// Return the final domain transaction byte fee, which consist of:
+        /// - The `ConsensusChainByteFee` for the consensus chain storage cost since the domain
+        ///   transaction need to be bundled and submitted to the consensus chain first.
+        ///
+        /// - The `DomainChainByteFee` for the domain chain storage cost
+        pub fn final_domain_transaction_byte_fee() -> T::Balance {
+            ConsensusChainByteFee::<T>::get().saturating_add(T::DomainChainByteFee::get())
         }
     }
 }

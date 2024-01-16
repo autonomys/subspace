@@ -7380,6 +7380,7 @@ dependencies = [
  "domain-runtime-primitives",
  "frame-support",
  "frame-system",
+ "pallet-transaction-payment",
  "parity-scale-codec",
  "scale-info",
  "sp-block-fees",

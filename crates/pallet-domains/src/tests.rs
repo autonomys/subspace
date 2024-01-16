@@ -201,6 +201,7 @@ parameter_types! {
     pub const BlockReward: Balance = 10 * SSC;
     pub const MaxPendingStakingOperation: u32 = 100;
     pub const MaxNominators: u32 = 5;
+    pub const DomainChainByteFee: Balance = 1;
 }
 
 pub struct MockRandomness;
@@ -268,6 +269,7 @@ impl domain_pallet_executive::Config for Test {
 
 impl pallet_block_fees::Config for Test {
     type Balance = Balance;
+    type DomainChainByteFee = DomainChainByteFee;
 }
 
 pub(crate) fn new_test_ext() -> sp_io::TestExternalities {
@@ -312,10 +314,10 @@ impl FraudProofHostFunctions for MockDomainFraudProofExtension {
                     .encode(),
                 )
             }
-            FraudProofVerificationInfoRequest::DomainTransactionByteFeeExtrinsic(_) => {
-                FraudProofVerificationInfoResponse::DomainTransactionByteFeeExtrinsic(
+            FraudProofVerificationInfoRequest::ConsensusChainByteFeeExtrinsic(_) => {
+                FraudProofVerificationInfoResponse::ConsensusChainByteFeeExtrinsic(
                     UncheckedExtrinsic::new_unsigned(
-                        pallet_block_fees::Call::<Test>::set_next_domain_transaction_byte_fee {
+                        pallet_block_fees::Call::<Test>::set_next_consensus_chain_byte_fee {
                             transaction_byte_fee: Default::default(),
                         }
                         .into(),

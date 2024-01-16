@@ -17,6 +17,7 @@ codec = { package = "parity-scale-codec", version = "3.6.5", default-features = 
 domain-runtime-primitives = { version = "0.1.0", path = "../../primitives/runtime", default-features = false }
 frame-support = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0831dfc3c54b10ab46e82acf98603b4af1a47bd5" }
 frame-system = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0831dfc3c54b10ab46e82acf98603b4af1a47bd5" }
+pallet-transaction-payment = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0831dfc3c54b10ab46e82acf98603b4af1a47bd5" }
 scale-info = { version = "2.7.0", default-features = false, features = ["derive"] }
 sp-block-fees = { version = "0.1.0", path = "../../primitives/block-fees", default-features = false }
 sp-runtime = { version = "24.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "0831dfc3c54b10ab46e82acf98603b4af1a47bd5" }

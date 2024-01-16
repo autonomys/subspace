@@ -192,14 +192,14 @@ where
         )
     }
 
-    pub fn construct_domain_transaction_byte_fee_extrinsic(
+    pub fn construct_consensus_chain_byte_fee_extrinsic(
         &self,
-        domain_transaction_byte_fee: Balance,
+        consensus_chain_byte_fee: Balance,
     ) -> Result<Block::Extrinsic, ApiError> {
-        <Self as DomainCoreApi<Block>>::construct_domain_transaction_byte_fee_extrinsic(
+        <Self as DomainCoreApi<Block>>::construct_consensus_chain_byte_fee_extrinsic(
             self,
             Default::default(),
-            domain_transaction_byte_fee,
+            consensus_chain_byte_fee,
         )
     }
 

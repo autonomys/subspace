@@ -1033,8 +1033,9 @@ sp_api::decl_runtime_apis! {
         /// Returns the execution receipt hash of the given domain and domain block number
         fn receipt_hash(domain_id: DomainId, domain_number: HeaderNumberFor<DomainHeader>) -> Option<HeaderHashFor<DomainHeader>>;
 
-        /// Reture the domain transaction byte fee
-        fn domain_transaction_byte_fee() -> Balance;
+        /// Reture the consensus chain byte fee that will used to charge the domain transaction for consensus
+        /// chain storage fee
+        fn consensus_chain_byte_fee() -> Balance;
     }
 
     pub trait BundleProducerElectionApi<Balance: Encode + Decode> {

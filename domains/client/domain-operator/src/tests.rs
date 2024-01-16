@@ -1052,7 +1052,7 @@ async fn test_long_trace_for_finalize_block_proof_creation_and_verification_shou
 /// 4 trace roots in total, passing the `mismatch_trace_index` as:
 /// - 0 to test the `initialize_block` state transition
 /// - 1 to test the `apply_extrinsic` state transition with the inherent timestamp extrinsic
-/// - 2 to test the `apply_extrinsic` state transition with the inherent `set_domain_transaction_byte_fee` extrinsic
+/// - 2 to test the `apply_extrinsic` state transition with the inherent `set_consensus_chain_byte_fee` extrinsic
 /// - 3 to test the `apply_extrinsic` state transition with regular domain extrinsic
 /// - 4 to test the `finalize_block` state transition
 /// TraceDiffType can be passed as `TraceDiffType::Shorter`, `TraceDiffType::Longer`
@@ -1189,7 +1189,7 @@ async fn test_invalid_state_transition_proof_creation_and_verification(
                         proof.execution_phase,
                         ExecutionPhase::InitializeBlock
                     )),
-                    // 1 for the inherent timestamp extrinsic, 1 for the inherent `set_domain_transaction_byte_fee`
+                    // 1 for the inherent timestamp extrinsic, 1 for the inherent `set_consensus_chain_byte_fee`
                     // extrinsic, 3 for the above `transfer_allow_death` extrinsic
                     1..=3 => assert!(matches!(
                         proof.execution_phase,
@@ -2324,13 +2324,13 @@ async fn test_domain_block_builder_include_ext_with_failed_execution() {
     produce_blocks!(ferdie, alice, 1).await.unwrap();
 
     // domain block body should have 3 extrinsics
-    // timestamp inherent, `domain_transaction_byte_fee` inherent, successful transfer, failed transfer
+    // timestamp inherent, `consensus_chain_byte_fee` inherent, successful transfer, failed transfer
     let best_hash = alice.client.info().best_hash;
     let domain_block_extrinsics = alice.client.block_body(best_hash).unwrap();
     assert_eq!(domain_block_extrinsics.unwrap().len(), 4);
 
     // next bundle should have er which should a total of 5 trace roots
-    // pre_timestamp_root + pre_domain_transaction_byte_fee_root + pre_success_ext_root + pre_failed_ext_root
+    // pre_timestamp_root + pre_consensus_chain_byte_fee_root + pre_success_ext_root + pre_failed_ext_root
     // + pre_finalize_block_root + post_finalize_block_root
     let (_slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     assert!(bundle.is_some());
@@ -2427,7 +2427,7 @@ async fn test_domain_block_builder_include_ext_with_failed_predispatch() {
     assert_eq!(domain_block_extrinsics.clone().unwrap().len(), 4);
 
     // next bundle should have er which should a total of 5 trace roots
-    // pre_timestamp_root + pre_domain_transaction_byte_fee_root + pre_success_ext_root + pre_failed_ext_root
+    // pre_timestamp_root + pre_consensus_chain_byte_fee_root + pre_success_ext_root + pre_failed_ext_root
     // + pre_finalize_block_root + post_finalize_block_root
     let (_slot, bundle) = ferdie.produce_slot_and_wait_for_bundle_submission().await;
     assert!(bundle.is_some());
@@ -3808,35 +3808,32 @@ async fn test_domain_chain_storage_price_should_be_aligned_with_the_consensus_ch
 
     // The domain transaction byte is non-zero on the consensus chain genesis but
     // it is zero in the domain chain genesis
-    let consensus_domain_transaction_byte_fee = ferdie
+    let consensus_chain_byte_fee = ferdie
         .client
         .runtime_api()
-        .domain_transaction_byte_fee(ferdie.client.info().best_hash)
+        .consensus_chain_byte_fee(ferdie.client.info().best_hash)
         .unwrap();
-    let operator_domain_transaction_byte_fee = alice
+    let operator_consensus_chain_byte_fee = alice
         .client
         .runtime_api()
-        .domain_transaction_byte_fee(alice.client.info().best_hash)
+        .consensus_chain_byte_fee(alice.client.info().best_hash)
         .unwrap();
-    assert!(operator_domain_transaction_byte_fee.is_zero());
-    assert!(!consensus_domain_transaction_byte_fee.is_zero());
+    assert!(operator_consensus_chain_byte_fee.is_zero());
+    assert!(!consensus_chain_byte_fee.is_zero());
 
     produce_blocks!(ferdie, alice, 1).await.unwrap();
 
     // The domain transaction byte of the domain chain should be updated to the consensus chain's
     // through the inherent extrinsic of domain block #1
-    let consensus_domain_transaction_byte_fee = ferdie
+    let consensus_chain_byte_fee = ferdie
         .client
         .runtime_api()
-        .domain_transaction_byte_fee(ferdie.client.info().best_hash)
+        .consensus_chain_byte_fee(ferdie.client.info().best_hash)
         .unwrap();
-    let operator_domain_transaction_byte_fee = alice
+    let operator_consensus_chain_byte_fee = alice
         .client
         .runtime_api()
-        .domain_transaction_byte_fee(alice.client.info().best_hash)
+        .consensus_chain_byte_fee(alice.client.info().best_hash)
         .unwrap();
-    assert_eq!(
-        consensus_domain_transaction_byte_fee,
-        operator_domain_transaction_byte_fee
-    );
+    assert_eq!(consensus_chain_byte_fee, operator_consensus_chain_byte_fee);
 }

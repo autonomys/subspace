@@ -2,7 +2,6 @@
 // `construct_runtime!` does a lot of recursion and requires us to increase the limit to 256.
 #![recursion_limit = "256"]
 
-mod fees;
 mod precompiles;
 
 // Make the WASM binary available.
@@ -20,7 +19,6 @@ use domain_runtime_primitives::{
 pub use domain_runtime_primitives::{
     opaque, Balance, BlockNumber, CheckExtrinsicsValidityError, DecodeExtrinsicError, Hash, Nonce,
 };
-use fees::{DomainTransactionByteFee, OnChargeDomainTransaction};
 use fp_account::EthereumSignature;
 use fp_self_contained::{CheckedSignature, SelfContainedCall};
 use frame_support::dispatch::{DispatchClass, DispatchInfo, GetDispatchInfo};
@@ -32,6 +30,7 @@ use frame_support::weights::constants::{ParityDbWeight, WEIGHT_REF_TIME_PER_SECO
 use frame_support::weights::{ConstantMultiplier, IdentityFee, Weight};
 use frame_support::{construct_runtime, parameter_types};
 use frame_system::limits::{BlockLength, BlockWeights};
+use pallet_block_fees::fees::OnChargeDomainTransaction;
 use pallet_ethereum::Call::transact;
 use pallet_ethereum::{PostLogContent, Transaction as EthereumTransaction, TransactionStatus};
 use pallet_evm::{
@@ -145,12 +144,11 @@ impl fp_self_contained::SelfContainedCall for RuntimeCall {
         match self {
             RuntimeCall::Ethereum(call) => {
                 // Ensure the caller can pay the consensus chain storage fee
-                let storage_fee = DomainTransactionByteFee::get()
-                    * Balance::try_from(len)
-                        .expect("Size of the call never exceeds balance units; qed");
+                let consensus_storage_fee =
+                    BlockFees::consensus_chain_byte_fee() * Balance::from(len as u32);
                 let withdraw_res = <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<
                     Runtime,
-                >>::withdraw_fee(info, storage_fee.into());
+                >>::withdraw_fee(info, consensus_storage_fee.into());
                 if withdraw_res.is_err() {
                     return Some(Err(InvalidTransaction::Payment.into()));
                 }
@@ -171,9 +169,8 @@ impl fp_self_contained::SelfContainedCall for RuntimeCall {
             RuntimeCall::Ethereum(call) => {
                 // Withdraw the consensus chain storage fee from the caller and record
                 // it in the `BlockFees`
-                let consensus_storage_fee = DomainTransactionByteFee::get()
-                    * Balance::try_from(len)
-                        .expect("Size of the call never exceeds balance units; qed");
+                let consensus_storage_fee =
+                    BlockFees::consensus_chain_byte_fee() * Balance::from(len as u32);
                 match <InnerEVMCurrencyAdapter as pallet_evm::OnChargeEVMTransaction<Runtime>>::withdraw_fee(
                     info,
                     consensus_storage_fee.into(),
@@ -327,19 +324,28 @@ impl pallet_balances::Config for Runtime {
     type MaxHolds = ();
 }
 
-impl pallet_block_fees::Config for Runtime {
-    type Balance = Balance;
-}
-
 parameter_types! {
     pub const OperationalFeeMultiplier: u8 = 5;
+    pub const DomainChainByteFee: Balance = 1;
+}
+
+impl pallet_block_fees::Config for Runtime {
+    type Balance = Balance;
+    type DomainChainByteFee = DomainChainByteFee;
+}
+
+pub struct FinalDomainTransactionByteFee;
+impl Get<Balance> for FinalDomainTransactionByteFee {
+    fn get() -> Balance {
+        BlockFees::final_domain_transaction_byte_fee()
+    }
 }
 
 impl pallet_transaction_payment::Config for Runtime {
     type RuntimeEvent = RuntimeEvent;
-    type OnChargeTransaction = OnChargeDomainTransaction;
+    type OnChargeTransaction = OnChargeDomainTransaction<Balances>;
     type WeightToFee = IdentityFee<Balance>;
-    type LengthToFee = ConstantMultiplier<Balance, DomainTransactionByteFee>;
+    type LengthToFee = ConstantMultiplier<Balance, FinalDomainTransactionByteFee>;
     type FeeMultiplierUpdate = ();
     type OperationalFeeMultiplier = OperationalFeeMultiplier;
 }
@@ -964,9 +970,9 @@ impl_runtime_apis! {
             System::block_weight().total()
         }
 
-        fn construct_domain_transaction_byte_fee_extrinsic(transaction_byte_fee: Balance) -> <Block as BlockT>::Extrinsic {
+        fn construct_consensus_chain_byte_fee_extrinsic(transaction_byte_fee: Balance) -> <Block as BlockT>::Extrinsic {
             UncheckedExtrinsic::new_unsigned(
-                pallet_block_fees::Call::set_next_domain_transaction_byte_fee{ transaction_byte_fee }.into()
+                pallet_block_fees::Call::set_next_consensus_chain_byte_fee{ transaction_byte_fee }.into()
             )
         }
     }
@@ -1209,8 +1215,8 @@ impl_runtime_apis! {
             Messenger::get_open_channel_for_chain(dst_chain_id).map(|(c, _)| c)
         }
 
-        fn domain_transaction_byte_fee() -> Balance {
-            BlockFees::domain_transaction_byte_fee()
+        fn consensus_chain_byte_fee() -> Balance {
+            BlockFees::consensus_chain_byte_fee()
         }
     }
 }

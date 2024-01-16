@@ -27,6 +27,6 @@ sp_api::decl_runtime_apis! {
         fn get_open_channel_for_chain(dst_chain_id: ChainId) -> Option<ChannelId>;
 
         /// Api to get the current domain transaction byte fee
-        fn domain_transaction_byte_fee() -> Balance;
+        fn consensus_chain_byte_fee() -> Balance;
     }
 }

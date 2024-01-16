@@ -325,12 +325,12 @@ pub enum VerificationError<DomainHash> {
         error("Failed to derive domain timestamp extrinsic")
     )]
     FailedToDeriveDomainTimestampExtrinsic,
-    /// Failed to derive domain transaction byte fee extrinsic
+    /// Failed to derive consensus chain byte fee extrinsic
     #[cfg_attr(
         feature = "thiserror",
-        error("Failed to derive domain transaction byte fee extrinsic")
+        error("Failed to derive consensus chain byte fee extrinsic")
     )]
-    FailedToDeriveDomainTransactionByteFeeExtrinsic,
+    FailedToDeriveConsensusChainByteFeeExtrinsic,
     /// Failed to derive domain set code extrinsic
     #[cfg_attr(
         feature = "thiserror",
