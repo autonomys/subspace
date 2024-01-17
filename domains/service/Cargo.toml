@@ -19,7 +19,6 @@ domain-client-block-preprocessor = { package = "domain-block-preprocessor", vers
 domain-client-consensus-relay-chain = { version = "0.1.0", path = "../client/consensus-relay-chain" }
 domain-client-message-relayer = { version = "0.1.0", path = "../client/relayer" }
 domain-client-operator = { version = "0.1.0", path = "../client/domain-operator" }
-domain-client-subnet-gossip = { version = "0.1.0", path = "../client/subnet-gossip" }
 domain-runtime-primitives = { version = "0.1.0", path = "../primitives/runtime" }
 frame-benchmarking = { version = "4.0.0-dev", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8", optional = true }
 futures = "0.3.29"
