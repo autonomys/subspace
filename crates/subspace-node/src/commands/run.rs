@@ -1,7 +1,6 @@
 mod consensus;
 mod domain;
 mod shared;
-mod substrate;
 
 use crate::commands::run::consensus::{
     create_consensus_chain_configuration, ConsensusChainConfiguration, ConsensusChainOptions,
