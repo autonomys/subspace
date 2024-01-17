@@ -11,8 +11,7 @@ use domain_service::config::{
 };
 use domain_service::{FullBackend, FullClient};
 use evm_domain_runtime::{
-    AccountId as AccountId20, ExecutorDispatch as EVMDomainExecutorDispatch,
-    RuntimeGenesisConfig as EvmRuntimeGenesisConfig,
+    AccountId as AccountId20, RuntimeGenesisConfig as EvmRuntimeGenesisConfig,
 };
 use futures::StreamExt;
 use sc_chain_spec::{ChainType, Properties};
@@ -35,7 +34,7 @@ use sp_domains::{DomainId, DomainInstanceData, OperatorId, RuntimeType};
 use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
-use subspace_runtime::{ExecutorDispatch as CExecutorDispatch, RuntimeApi as CRuntimeApi};
+use subspace_runtime::RuntimeApi as CRuntimeApi;
 use subspace_runtime_primitives::opaque::Block as CBlock;
 use subspace_service::FullClient as CFullClient;
 use tracing::warn;
@@ -367,7 +366,7 @@ pub(super) fn create_domain_configuration(
 }
 
 pub(super) struct DomainStartOptions<CNetwork> {
-    pub(super) consensus_client: Arc<CFullClient<CRuntimeApi, CExecutorDispatch>>,
+    pub(super) consensus_client: Arc<CFullClient<CRuntimeApi>>,
     pub(super) consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory<CBlock>,
     pub(super) consensus_network: Arc<CNetwork>,
     pub(super) block_importing_notification_stream:
@@ -455,11 +454,7 @@ where
             let eth_provider = EthProvider::<
                 evm_domain_runtime::TransactionConverter,
                 DefaultEthConfig<
-                    FullClient<
-                        DomainBlock,
-                        evm_domain_runtime::RuntimeApi,
-                        EVMDomainExecutorDispatch,
-                    >,
+                    FullClient<DomainBlock, evm_domain_runtime::RuntimeApi>,
                     FullBackend<DomainBlock>,
                 >,
             >::new(
@@ -491,7 +486,6 @@ where
                 _,
                 _,
                 evm_domain_runtime::RuntimeApi,
-                EVMDomainExecutorDispatch,
                 AccountId20,
                 _,
                 _,

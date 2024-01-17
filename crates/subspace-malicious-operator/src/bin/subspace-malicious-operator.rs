@@ -33,7 +33,7 @@ use subspace_malicious_operator::malicious_domain_instance_starter::DomainInstan
 use subspace_malicious_operator::{Cli, DomainCli};
 use subspace_networking::libp2p::Multiaddr;
 use subspace_proof_of_space::chia::ChiaTable;
-use subspace_runtime::{Block, ExecutorDispatch, RuntimeApi};
+use subspace_runtime::{Block, RuntimeApi};
 use subspace_service::config::{SubspaceConfiguration, SubspaceNetworking};
 use subspace_service::dsn::DsnConfig;
 
@@ -210,18 +210,17 @@ fn main() -> Result<(), Error> {
                 timekeeper_cpu_cores: Default::default(),
             };
 
-            let partial_components = subspace_service::new_partial::<
-                PosTable,
-                RuntimeApi,
-                ExecutorDispatch,
-            >(&consensus_chain_config, &pot_external_entropy)
+            let partial_components = subspace_service::new_partial::<PosTable, RuntimeApi>(
+                &consensus_chain_config,
+                &pot_external_entropy,
+            )
             .map_err(|error| {
                 sc_service::Error::Other(format!("Failed to build a full subspace node: {error:?}"))
             })?;
 
             let keystore = partial_components.keystore_container.keystore();
 
-            let consensus_chain_node = subspace_service::new_full::<PosTable, _, _>(
+            let consensus_chain_node = subspace_service::new_full::<PosTable, _>(
                 consensus_chain_config,
                 partial_components,
                 true,

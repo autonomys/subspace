@@ -5,7 +5,6 @@ use jsonrpsee::RpcModule;
 use parity_scale_codec::{Decode, Encode};
 use sc_client_api::{AuxStore, Backend, BlockBackend, StorageProvider};
 use sc_consensus::BlockImport;
-use sc_executor::NativeExecutionDispatch;
 use sc_rpc::{RpcSubscriptionIdProvider, SubscriptionTaskExecutor};
 use sc_transaction_pool::ChainApi;
 use sc_transaction_pool_api::TransactionPool;
@@ -31,23 +30,16 @@ where
 #[derive(Clone)]
 pub struct DefaultProvider;
 
-impl<Block, RuntimeApi, ExecutorDispatch>
-    BlockImportProvider<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>> for DefaultProvider
+impl<Block, RuntimeApi> BlockImportProvider<Block, FullClient<Block, RuntimeApi>>
+    for DefaultProvider
 where
     Block: BlockT,
-    RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>
-        + Send
-        + Sync
-        + 'static,
+    RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi>> + Send + Sync + 'static,
     RuntimeApi::RuntimeApi: ApiExt<Block> + Core<Block>,
-    ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
-    type BI = Arc<FullClient<Block, RuntimeApi, ExecutorDispatch>>;
+    type BI = Arc<FullClient<Block, RuntimeApi>>;
 
-    fn block_import(
-        &self,
-        client: Arc<FullClient<Block, RuntimeApi, ExecutorDispatch>>,
-    ) -> Self::BI {
+    fn block_import(&self, client: Arc<FullClient<Block, RuntimeApi>>) -> Self::BI {
         client
     }
 }

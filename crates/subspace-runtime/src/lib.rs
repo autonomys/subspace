@@ -77,8 +77,6 @@ use sp_runtime::{create_runtime_str, generic, AccountId32, ApplyExtrinsicResult,
 use sp_std::collections::btree_map::BTreeMap;
 use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
-#[cfg(feature = "std")]
-use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 use static_assertions::const_assert;
 use subspace_core_primitives::objects::BlockObjectMapping;
@@ -119,44 +117,6 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     state_version: 0,
     extrinsic_state_version: 0,
 };
-
-/// The version information used to identify this runtime when compiled natively.
-#[cfg(feature = "std")]
-pub fn native_version() -> NativeVersion {
-    NativeVersion {
-        runtime_version: VERSION,
-        can_author_with: Default::default(),
-    }
-}
-
-/// Executor dispatch for subspace runtime
-#[cfg(feature = "std")]
-pub struct ExecutorDispatch;
-
-#[cfg(feature = "std")]
-impl sc_executor::NativeExecutionDispatch for ExecutorDispatch {
-    /// Only enable the benchmarking host functions when we actually want to benchmark.
-    #[cfg(feature = "runtime-benchmarks")]
-    type ExtendHostFunctions = (
-        frame_benchmarking::benchmarking::HostFunctions,
-        sp_consensus_subspace::consensus::HostFunctions,
-        sp_domains_fraud_proof::HostFunctions,
-    );
-    /// Otherwise we only use the default Substrate host functions.
-    #[cfg(not(feature = "runtime-benchmarks"))]
-    type ExtendHostFunctions = (
-        sp_consensus_subspace::consensus::HostFunctions,
-        sp_domains_fraud_proof::HostFunctions,
-    );
-
-    fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
-        api::dispatch(method, data)
-    }
-
-    fn native_version() -> sc_executor::NativeVersion {
-        native_version()
-    }
-}
 
 // TODO: Many of below constants should probably be updatable but currently they are not
 
