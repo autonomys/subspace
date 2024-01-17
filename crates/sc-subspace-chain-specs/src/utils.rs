@@ -242,6 +242,8 @@ where
         code: &[u8],
     ) -> Self {
         Self {
+            // TODO: Migrate once https://github.com/paritytech/polkadot-sdk/issues/2963 is un-broken
+            #[allow(deprecated)]
             chain_spec: GenericChainSpec::from_genesis(
                 name,
                 id,

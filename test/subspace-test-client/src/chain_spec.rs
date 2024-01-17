@@ -37,6 +37,8 @@ pub fn get_account_id_from_seed(seed: &str) -> AccountId {
 /// Local testnet config (multivalidator Alice + Bob).
 pub fn subspace_local_testnet_config() -> TestChainSpec {
     let wasm_binary = WASM_BINARY.expect("Development wasm not available");
+    // TODO: Migrate once https://github.com/paritytech/polkadot-sdk/issues/2963 is un-broken
+    #[allow(deprecated)]
     TestChainSpec::from_genesis(
         "Local Testnet",
         "local_testnet",
@@ -81,6 +83,8 @@ fn create_genesis_config(
     vesting: Vec<(AccountId, BlockNumber, BlockNumber, u32, Balance)>,
 ) -> RuntimeGenesisConfig {
     let raw_genesis_storage = {
+        // TODO: Migrate once https://github.com/paritytech/polkadot-sdk/issues/2963 is un-broken
+        #[allow(deprecated)]
         let domain_chain_spec = GenericChainSpec::<_, _, ()>::from_genesis(
             "",
             "",
