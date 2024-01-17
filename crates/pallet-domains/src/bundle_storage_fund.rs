@@ -3,7 +3,7 @@
 use crate::{BalanceOf, Config, Operators};
 use codec::{Decode, Encode};
 use frame_support::traits::fungible::Mutate;
-use frame_support::traits::tokens::{Fortitude, Precision};
+use frame_support::traits::tokens::{Fortitude, Precision, Preservation};
 use frame_support::traits::Get;
 use frame_support::PalletError;
 use scale_info::TypeInfo;
@@ -13,6 +13,9 @@ use sp_runtime::Perbill;
 use sp_std::collections::btree_map::BTreeMap;
 use subspace_runtime_primitives::StorageFeeInterface;
 
+/// The proportion of staking fund reserved for the bundle storage fee
+pub const STORAGE_FEE_RESERVE: Perbill = Perbill::from_percent(20);
+
 /// Bundle storage fund specific errors
 #[derive(TypeInfo, Encode, Decode, PalletError, Debug, PartialEq)]
 pub enum Error {
@@ -20,6 +23,7 @@ pub enum Error {
     BundleStorageFeePayment,
     BalanceUnderflow,
     MintBalance,
+    FailToDeposit,
 }
 
 /// The type of system account being created.
@@ -103,5 +107,29 @@ pub fn refund_storage_fee<T: Config>(
     Ok(())
 }
 
-// TODO: add deposit and withdraw function of the bundle storage fee and call them then
-// staking deposit/withdraw happen
+/// Split a proportion of the deposit to reserve for the bundle storage fund
+///
+/// Return new deposit amount after deduction of the reserved fund
+pub fn deposit_reserve_for_storage_fund<T: Config>(
+    operator_id: OperatorId,
+    source: &T::AccountId,
+    deposit_amount: BalanceOf<T>,
+) -> Result<BalanceOf<T>, Error> {
+    let storage_fund_acc = storage_fund_account::<T>(operator_id)?;
+
+    let storage_fee_reserve = STORAGE_FEE_RESERVE.mul_floor(deposit_amount);
+
+    T::Currency::transfer(
+        source,
+        &storage_fund_acc,
+        storage_fee_reserve,
+        Preservation::Preserve,
+    )
+    .map_err(|_| Error::FailToDeposit)?;
+
+    deposit_amount
+        .checked_sub(&storage_fee_reserve)
+        .ok_or(Error::BalanceUnderflow)
+}
+
+// TODO: add withdraw function for the bundle storage fund and call it then withdraw happen

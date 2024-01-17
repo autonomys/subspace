@@ -1,5 +1,6 @@
 //! Staking for domains
 
+use crate::bundle_storage_fund::{self, deposit_reserve_for_storage_fund};
 use crate::pallet::{
     Deposits, DomainRegistry, DomainStakingSummary, LatestConfirmedDomainBlockNumber,
     NextOperatorId, NominatorCount, OperatorIdOwner, OperatorSigningKey, Operators,
@@ -201,6 +202,7 @@ pub enum Error {
     EpochNotComplete,
     UnlockPeriodNotComplete,
     OperatorNotDeregistered,
+    BundleStorageFund(bundle_storage_fund::Error),
 }
 
 // Increase `PendingStakingOperationCount` by one and check if the `MaxPendingStakingOperation`
@@ -416,6 +418,10 @@ pub(crate) fn do_nominate_operator<T: Config>(
 
         let domain_stake_summary = DomainStakingSummary::<T>::get(operator.current_domain_id)
             .ok_or(Error::DomainNotInitialized)?;
+
+        // Reserve for the bundle storage fund
+        let amount = deposit_reserve_for_storage_fund::<T>(operator_id, &nominator_id, amount)
+            .map_err(Error::BundleStorageFund)?;
 
         hold_deposit::<T>(&nominator_id, operator_id, amount)?;
 

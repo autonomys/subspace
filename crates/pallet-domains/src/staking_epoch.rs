@@ -1,4 +1,5 @@
 //! Staking epoch transition for domain
+use crate::bundle_storage_fund::deposit_reserve_for_storage_fund;
 use crate::pallet::{
     Deposits, DomainStakingSummary, LastEpochStakingDistribution, OperatorIdOwner, Operators,
     PendingOperatorSwitches, PendingSlashes, PendingStakingOperationCount,
@@ -76,6 +77,11 @@ pub(crate) fn operator_take_reward_tax_and_stake<T: Config>(
                         .ok_or(TransitionError::MissingOperatorOwner)?;
                     T::Currency::mint_into(&nominator_id, operator_tax)
                         .map_err(|_| TransitionError::MintBalance)?;
+
+                    // Reserve for the bundle storage fund
+                    let operator_tax =
+                        deposit_reserve_for_storage_fund::<T>(operator_id, &nominator_id, operator_tax)
+                            .map_err(TransitionError::BundleStorageFund)?;
 
                     crate::staking::hold_deposit::<T>(
                         &nominator_id,
