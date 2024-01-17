@@ -6,6 +6,8 @@ use sp_domains::storage::RawGenesis;
 
 /// Create chain spec
 pub fn create_domain_spec(raw_genesis: RawGenesis) -> Box<dyn ChainSpec> {
+    // TODO: Migrate once https://github.com/paritytech/polkadot-sdk/issues/2963 is un-broken
+    #[allow(deprecated)]
     let mut chain_spec = GenericChainSpec::<_, _, ()>::from_genesis(
         "Local Testnet",
         "local_testnet",
