@@ -2612,24 +2612,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "domain-client-subnet-gossip"
-version = "0.1.0"
-dependencies = [
- "futures",
- "parity-scale-codec",
- "parking_lot 0.12.1",
- "sc-network",
- "sc-network-common",
- "sc-network-gossip",
- "sc-utils",
- "sp-core",
- "sp-domains",
- "sp-runtime",
- "subspace-runtime-primitives",
- "tracing",
-]
-
-[[package]]
 name = "domain-eth-service"
 version = "0.1.0"
 dependencies = [
@@ -2712,7 +2694,6 @@ dependencies = [
  "domain-client-consensus-relay-chain",
  "domain-client-message-relayer",
  "domain-client-operator",
- "domain-client-subnet-gossip",
  "domain-runtime-primitives",
  "frame-benchmarking",
  "futures",
