@@ -55,7 +55,6 @@ rand = { version = "0.8.5", features = ["min_const_gen"] }
 rlp = "0.5.2"
 sp-core = { version = "21.0.0", default-features = false, git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8" }
 sc-cli = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8", default-features = false }
-sc-executor = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8", default-features = false }
 sc-service = { version = "0.10.0-dev", git = "https://github.com/subspace/polkadot-sdk", rev = "d6b500960579d73c43fc4ef550b703acfa61c4c8", default-features = false }
 subspace-test-client = { version = "0.1.0", path = "../../test/subspace-test-client" }
 subspace-test-service = { version = "0.1.0", path = "../../test/subspace-test-service" }

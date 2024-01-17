@@ -63,8 +63,6 @@ use sp_runtime::{
 pub use sp_runtime::{MultiAddress, Perbill, Permill};
 use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
-#[cfg(feature = "std")]
-use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 use subspace_runtime_primitives::{Moment, SlowAdjustingFeeUpdate};
 
@@ -195,35 +193,6 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     state_version: 0,
     extrinsic_state_version: 1,
 };
-
-/// The version information used to identify this runtime when compiled natively.
-#[cfg(feature = "std")]
-pub fn native_version() -> NativeVersion {
-    NativeVersion {
-        runtime_version: VERSION,
-        can_author_with: Default::default(),
-    }
-}
-
-/// EVM domain executor instance.
-#[cfg(feature = "std")]
-pub struct ExecutorDispatch;
-
-#[cfg(feature = "std")]
-impl sc_executor::NativeExecutionDispatch for ExecutorDispatch {
-    #[cfg(feature = "runtime-benchmarks")]
-    type ExtendHostFunctions = frame_benchmarking::benchmarking::HostFunctions;
-    #[cfg(not(feature = "runtime-benchmarks"))]
-    type ExtendHostFunctions = ();
-
-    fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
-        api::dispatch(method, data)
-    }
-
-    fn native_version() -> sc_executor::NativeVersion {
-        native_version()
-    }
-}
 
 parameter_types! {
     pub const Version: RuntimeVersion = VERSION;

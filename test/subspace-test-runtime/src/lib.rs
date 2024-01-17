@@ -75,8 +75,6 @@ use sp_std::collections::btree_map::BTreeMap;
 use sp_std::iter::Peekable;
 use sp_std::marker::PhantomData;
 use sp_std::prelude::*;
-#[cfg(feature = "std")]
-use sp_version::NativeVersion;
 use sp_version::RuntimeVersion;
 use static_assertions::const_assert;
 use subspace_core_primitives::objects::{BlockObject, BlockObjectMapping};
@@ -116,15 +114,6 @@ pub const VERSION: RuntimeVersion = RuntimeVersion {
     state_version: 1,
     extrinsic_state_version: 0,
 };
-
-/// The version information used to identify this runtime when compiled natively.
-#[cfg(feature = "std")]
-pub fn native_version() -> NativeVersion {
-    NativeVersion {
-        runtime_version: VERSION,
-        can_author_with: Default::default(),
-    }
-}
 
 /// The smallest unit of the token is called Shannon.
 pub const SHANNON: Balance = 1;

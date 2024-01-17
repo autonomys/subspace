@@ -23,7 +23,7 @@ use sc_utils::mpsc::tracing_unbounded;
 use sp_core::traits::SpawnEssentialNamed;
 use sp_messenger::messages::ChainId;
 use std::env;
-use subspace_runtime::{Block, ExecutorDispatch, RuntimeApi};
+use subspace_runtime::{Block, RuntimeApi};
 use tracing::{debug, error, info, info_span, warn};
 
 /// Options for running a node
@@ -117,18 +117,17 @@ pub async fn run(run_options: RunOptions) -> Result<(), Error> {
             let span = info_span!("Consensus");
             let _enter = span.enter();
 
-            let partial_components = subspace_service::new_partial::<
-                PosTable,
-                RuntimeApi,
-                ExecutorDispatch,
-            >(&subspace_configuration, &pot_external_entropy)
+            let partial_components = subspace_service::new_partial::<PosTable, RuntimeApi>(
+                &subspace_configuration,
+                &pot_external_entropy,
+            )
             .map_err(|error| {
                 sc_service::Error::Other(format!(
                     "Failed to build a full subspace node 1: {error:?}"
                 ))
             })?;
 
-            let full_node_fut = subspace_service::new_full::<PosTable, _, _>(
+            let full_node_fut = subspace_service::new_full::<PosTable, _>(
                 subspace_configuration,
                 partial_components,
                 true,

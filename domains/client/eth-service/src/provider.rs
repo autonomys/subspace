@@ -14,7 +14,6 @@ use fp_rpc::{ConvertTransaction, ConvertTransactionRuntimeApi, EthereumRuntimeRP
 use jsonrpsee::RpcModule;
 use parity_scale_codec::{Decode, Encode};
 use sc_client_api::{AuxStore, Backend, BlockBackend, BlockchainEvents, StorageProvider};
-use sc_executor::NativeExecutionDispatch;
 use sc_rpc::{RpcSubscriptionIdProvider, SubscriptionTaskExecutor};
 use sc_service::BasePath;
 use sc_transaction_pool::ChainApi;
@@ -56,29 +55,21 @@ impl<CT, EC> EthProvider<CT, EC> {
     }
 }
 
-impl<Block, RuntimeApi, ExecutorDispatch, CT, EC>
-    BlockImportProvider<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>
+impl<Block, RuntimeApi, CT, EC> BlockImportProvider<Block, FullClient<Block, RuntimeApi>>
     for EthProvider<CT, EC>
 where
     Block: BlockT,
-    RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>
-        + Send
-        + Sync
-        + 'static,
+    RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi>> + Send + Sync + 'static,
     RuntimeApi::RuntimeApi:
         ApiExt<Block> + Core<Block> + BlockBuilder<Block> + EthereumRuntimeRPCApi<Block>,
-    ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
     type BI = FrontierBlockImport<
         Block,
-        Arc<FullClient<Block, RuntimeApi, ExecutorDispatch>>,
-        FullClient<Block, RuntimeApi, ExecutorDispatch>,
+        Arc<FullClient<Block, RuntimeApi>>,
+        FullClient<Block, RuntimeApi>,
     >;
 
-    fn block_import(
-        &self,
-        client: Arc<FullClient<Block, RuntimeApi, ExecutorDispatch>>,
-    ) -> Self::BI {
+    fn block_import(&self, client: Arc<FullClient<Block, RuntimeApi>>) -> Self::BI {
         FrontierBlockImport::new(client.clone(), client)
     }
 }

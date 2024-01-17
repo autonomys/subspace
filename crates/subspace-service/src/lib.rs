@@ -65,7 +65,6 @@ use sc_consensus_subspace::slot_worker::{
 };
 use sc_consensus_subspace::verifier::{SubspaceVerifier, SubspaceVerifierOptions};
 use sc_consensus_subspace::SubspaceLink;
-use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::{NetworkService, NotificationService};
 use sc_proof_of_time::source::gossip::pot_gossip_peers_set_config;
 use sc_proof_of_time::source::PotSourceWorker;
@@ -85,7 +84,7 @@ use sp_consensus_subspace::digests::extract_pre_digest;
 use sp_consensus_subspace::{
     FarmerPublicKey, KzgExtension, PosExtension, PotExtension, PotNextSlotInput, SubspaceApi,
 };
-use sp_core::traits::{CodeExecutor, SpawnEssentialNamed};
+use sp_core::traits::SpawnEssentialNamed;
 use sp_core::H256;
 use sp_domains::{BundleProducerElectionApi, DomainsApi};
 use sp_domains_fraud_proof::{FraudProofApi, FraudProofExtension, FraudProofHostFunctionsImpl};
@@ -192,23 +191,42 @@ where
     }
 }
 
+/// Host functions required for Subspace
+#[cfg(not(feature = "runtime-benchmarks"))]
+pub type HostFunctions = (
+    sp_io::SubstrateHostFunctions,
+    sp_consensus_subspace::consensus::HostFunctions,
+    sp_domains_fraud_proof::HostFunctions,
+);
+
+/// Host functions required for Subspace
+#[cfg(feature = "runtime-benchmarks")]
+pub type HostFunctions = (
+    sp_io::SubstrateHostFunctions,
+    frame_benchmarking::benchmarking::HostFunctions,
+    sp_consensus_subspace::consensus::HostFunctions,
+    sp_domains_fraud_proof::HostFunctions,
+);
+
+/// Runtime executor for Subspace
+pub type RuntimeExecutor = sc_executor::WasmExecutor<HostFunctions>;
+
 /// Subspace-like full client.
-pub type FullClient<RuntimeApi, ExecutorDispatch> =
-    sc_service::TFullClient<Block, RuntimeApi, NativeElseWasmExecutor<ExecutorDispatch>>;
+pub type FullClient<RuntimeApi> = sc_service::TFullClient<Block, RuntimeApi, RuntimeExecutor>;
 
 pub type FullBackend = sc_service::TFullBackend<Block>;
 pub type FullSelectChain = sc_consensus::LongestChain<FullBackend, Block>;
 
-struct SubspaceExtensionsFactory<PosTable, Client, DomainBlock, ExecutorDispatch> {
+struct SubspaceExtensionsFactory<PosTable, Client, DomainBlock> {
     kzg: Kzg,
     client: Arc<Client>,
     pot_verifier: PotVerifier,
-    executor: Arc<ExecutorDispatch>,
+    executor: Arc<RuntimeExecutor>,
     _pos_table: PhantomData<(PosTable, DomainBlock)>,
 }
 
-impl<PosTable, Block, Client, DomainBlock, ExecutorDispatch> ExtensionsFactory<Block>
-    for SubspaceExtensionsFactory<PosTable, Client, DomainBlock, ExecutorDispatch>
+impl<PosTable, Block, Client, DomainBlock> ExtensionsFactory<Block>
+    for SubspaceExtensionsFactory<PosTable, Client, DomainBlock>
 where
     PosTable: Table,
     Block: BlockT,
@@ -224,7 +242,6 @@ where
     Client::Api: SubspaceApi<Block, FarmerPublicKey>
         + DomainsApi<Block, DomainBlock::Header>
         + BundleProducerElectionApi<Block, Balance>,
-    ExecutorDispatch: CodeExecutor + sc_executor::RuntimeVersionOf,
 {
     fn extensions_for(
         &self,
@@ -341,7 +358,7 @@ where
         }));
 
         exts.register(FraudProofExtension::new(Arc::new(
-            FraudProofHostFunctionsImpl::<_, _, DomainBlock, ExecutorDispatch>::new(
+            FraudProofHostFunctionsImpl::<_, _, DomainBlock, RuntimeExecutor>::new(
                 self.client.clone(),
                 self.executor.clone(),
             ),
@@ -352,20 +369,16 @@ where
 }
 
 /// Other partial components returned by [`new_partial()`]
-pub struct OtherPartialComponents<RuntimeApi, ExecutorDispatch>
+pub struct OtherPartialComponents<RuntimeApi>
 where
-    RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
-        + Send
-        + Sync
-        + 'static,
-    ExecutorDispatch: NativeExecutionDispatch + 'static,
+    RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi>> + Send + Sync + 'static,
 {
     /// Subspace block import
     pub block_import: SharedBlockImport<Block>,
     /// Subspace link
     pub subspace_link: SubspaceLink<Block>,
     /// Segment headers store
-    pub segment_headers_store: SegmentHeadersStore<FullClient<RuntimeApi, ExecutorDispatch>>,
+    pub segment_headers_store: SegmentHeadersStore<FullClient<RuntimeApi>>,
     /// Proof of time verifier
     pub pot_verifier: PotVerifier,
     /// Approximate target block number for syncing purposes
@@ -374,27 +387,24 @@ where
     pub telemetry: Option<Telemetry>,
 }
 
-type PartialComponents<RuntimeApi, ExecutorDispatch> = sc_service::PartialComponents<
-    FullClient<RuntimeApi, ExecutorDispatch>,
+type PartialComponents<RuntimeApi> = sc_service::PartialComponents<
+    FullClient<RuntimeApi>,
     FullBackend,
     FullSelectChain,
     DefaultImportQueue<Block>,
-    FullPool<FullClient<RuntimeApi, ExecutorDispatch>, Block, DomainHeader>,
-    OtherPartialComponents<RuntimeApi, ExecutorDispatch>,
+    FullPool<FullClient<RuntimeApi>, Block, DomainHeader>,
+    OtherPartialComponents<RuntimeApi>,
 >;
 
 /// Creates `PartialComponents` for Subspace client.
 #[allow(clippy::type_complexity)]
-pub fn new_partial<PosTable, RuntimeApi, ExecutorDispatch>(
+pub fn new_partial<PosTable, RuntimeApi>(
     config: &Configuration,
     pot_external_entropy: &[u8],
-) -> Result<PartialComponents<RuntimeApi, ExecutorDispatch>, ServiceError>
+) -> Result<PartialComponents<RuntimeApi>, ServiceError>
 where
     PosTable: Table,
-    RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
-        + Send
-        + Sync
-        + 'static,
+    RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi>> + Send + Sync + 'static,
     RuntimeApi::RuntimeApi: ApiExt<Block>
         + Metadata<Block>
         + BlockBuilder<Block>
@@ -406,7 +416,6 @@ where
         + FraudProofApi<Block, DomainHeader>
         + BundleProducerElectionApi<Block, Balance>
         + ObjectsApi<Block>,
-    ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
     let telemetry = config
         .telemetry_endpoints
@@ -419,7 +428,7 @@ where
         })
         .transpose()?;
 
-    let executor = sc_service::new_native_or_wasm_executor(config);
+    let executor = sc_service::new_wasm_executor(config);
 
     let (client, backend, keystore_container, task_manager) =
         sc_service::new_full_parts::<Block, RuntimeApi, _>(
@@ -442,7 +451,7 @@ where
 
     client
         .execution_extensions()
-        .set_extensions_factory(SubspaceExtensionsFactory::<PosTable, _, DomainBlock, _> {
+        .set_extensions_factory(SubspaceExtensionsFactory::<PosTable, _, DomainBlock> {
             kzg: kzg.clone(),
             client: Arc::clone(&client),
             pot_verifier: pot_verifier.clone(),
@@ -601,21 +610,18 @@ where
     pub transaction_pool: Arc<FullPool<Client, Block, DomainHeader>>,
 }
 
-type FullNode<RuntimeApi, ExecutorDispatch> = NewFull<FullClient<RuntimeApi, ExecutorDispatch>>;
+type FullNode<RuntimeApi> = NewFull<FullClient<RuntimeApi>>;
 
 /// Builds a new service for a full client.
-pub async fn new_full<PosTable, RuntimeApi, ExecutorDispatch>(
+pub async fn new_full<PosTable, RuntimeApi>(
     mut config: SubspaceConfiguration,
-    partial_components: PartialComponents<RuntimeApi, ExecutorDispatch>,
+    partial_components: PartialComponents<RuntimeApi>,
     enable_rpc_extensions: bool,
     block_proposal_slot_portion: SlotProportion,
-) -> Result<FullNode<RuntimeApi, ExecutorDispatch>, Error>
+) -> Result<FullNode<RuntimeApi>, Error>
 where
     PosTable: Table,
-    RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi, ExecutorDispatch>>
-        + Send
-        + Sync
-        + 'static,
+    RuntimeApi: ConstructRuntimeApi<Block, FullClient<RuntimeApi>> + Send + Sync + 'static,
     RuntimeApi::RuntimeApi: ApiExt<Block>
         + Metadata<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
@@ -628,7 +634,6 @@ where
         + DomainsApi<Block, DomainHeader>
         + FraudProofApi<Block, DomainHeader>
         + ObjectsApi<Block>,
-    ExecutorDispatch: NativeExecutionDispatch + 'static,
 {
     let PartialComponents {
         client,

@@ -51,26 +51,8 @@ use zeroize::Zeroizing;
 // Smaller value for testing purposes
 const MAX_PIECES_IN_SECTOR: u16 = 32;
 
-/// Subspace native executor instance.
-pub struct TestExecutorDispatch;
-
-impl sc_executor::NativeExecutionDispatch for TestExecutorDispatch {
-    type ExtendHostFunctions = (
-        sp_consensus_subspace::consensus::HostFunctions,
-        sp_domains_fraud_proof::HostFunctions,
-    );
-
-    fn dispatch(method: &str, data: &[u8]) -> Option<Vec<u8>> {
-        subspace_test_runtime::api::dispatch(method, data)
-    }
-
-    fn native_version() -> sc_executor::NativeVersion {
-        subspace_test_runtime::native_version()
-    }
-}
-
 /// The client type being used by the test service.
-pub type Client = FullClient<subspace_test_runtime::RuntimeApi, TestExecutorDispatch>;
+pub type Client = FullClient<subspace_test_runtime::RuntimeApi>;
 
 /// The backend type being used by the test service.
 pub type Backend = sc_service::TFullBackend<Block>;

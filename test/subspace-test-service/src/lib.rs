@@ -34,7 +34,6 @@ use sc_consensus::block_import::{
 use sc_consensus::{
     BasicQueue, BlockImport, SharedBlockImport, StateAction, Verifier as VerifierT,
 };
-use sc_executor::NativeElseWasmExecutor;
 use sc_network::config::{NetworkConfiguration, TransportConfig};
 use sc_network::{multiaddr, NotificationService};
 use sc_service::config::{
@@ -78,8 +77,8 @@ use subspace_core_primitives::{Randomness, Solution};
 use subspace_runtime_primitives::opaque::Block;
 use subspace_runtime_primitives::{AccountId, Balance, Hash};
 use subspace_service::transaction_pool::FullPool;
-use subspace_service::FullSelectChain;
-use subspace_test_client::{chain_spec, Backend, Client, TestExecutorDispatch};
+use subspace_service::{FullSelectChain, RuntimeExecutor};
+use subspace_test_client::{chain_spec, Backend, Client};
 use subspace_test_runtime::{RuntimeApi, RuntimeCall, UncheckedExtrinsic, SLOT_DURATION};
 
 type FraudProofFor<Block, DomainBlock> =
@@ -226,7 +225,7 @@ pub struct MockConsensusNode {
     /// Backend.
     pub backend: Arc<Backend>,
     /// Code executor.
-    pub executor: NativeElseWasmExecutor<TestExecutorDispatch>,
+    pub executor: RuntimeExecutor,
     /// Transaction pool.
     pub transaction_pool: Arc<FullPool<Client, Block, DomainHeader>>,
     /// The SelectChain Strategy
@@ -280,7 +279,7 @@ impl MockConsensusNode {
         );
         let _enter = span.enter();
 
-        let executor = sc_service::new_native_or_wasm_executor(&config);
+        let executor = sc_service::new_wasm_executor(&config);
 
         let (client, backend, keystore_container, mut task_manager) =
             sc_service::new_full_parts::<Block, RuntimeApi, _>(&config, None, executor.clone())

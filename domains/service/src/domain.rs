@@ -1,6 +1,6 @@
 use crate::providers::{BlockImportProvider, RpcProvider};
 use crate::transaction_pool::FullChainApiWrapper;
-use crate::{FullBackend, FullClient};
+use crate::{FullBackend, FullClient, RuntimeExecutor};
 use cross_domain_message_gossip::ChainTxPoolMsg;
 use domain_client_block_preprocessor::inherents::CreateInherentDataProvider;
 use domain_client_message_relayer::GossipMessageSink;
@@ -12,7 +12,6 @@ use futures::Stream;
 use pallet_transaction_payment_rpc::TransactionPaymentRuntimeApi;
 use sc_client_api::{BlockBackend, BlockImportNotification, BlockchainEvents, ProofProvider};
 use sc_consensus::SharedBlockImport;
-use sc_executor::{NativeElseWasmExecutor, NativeExecutionDispatch};
 use sc_network::NetworkPeers;
 use sc_rpc_api::DenyUnsafe;
 use sc_service::{
@@ -46,18 +45,18 @@ use subspace_core_primitives::Randomness;
 use subspace_runtime_primitives::Nonce;
 use substrate_frame_rpc_system::AccountNonceApi;
 
-pub type DomainOperator<Block, CBlock, CClient, RuntimeApi, ExecutorDispatch> = Operator<
+pub type DomainOperator<Block, CBlock, CClient, RuntimeApi> = Operator<
     Block,
     CBlock,
-    FullClient<Block, RuntimeApi, ExecutorDispatch>,
+    FullClient<Block, RuntimeApi>,
     CClient,
-    FullPool<CBlock, CClient, RuntimeApi, ExecutorDispatch>,
+    FullPool<CBlock, CClient, RuntimeApi>,
     FullBackend<Block>,
-    NativeElseWasmExecutor<ExecutorDispatch>,
+    RuntimeExecutor,
 >;
 
 /// Domain full node along with some other components.
-pub struct NewFull<C, CodeExecutor, CBlock, CClient, RuntimeApi, ExecutorDispatch, AccountId>
+pub struct NewFull<C, CodeExecutor, CBlock, CClient, RuntimeApi, AccountId>
 where
     Block: BlockT,
     CBlock: BlockT,
@@ -70,10 +69,7 @@ where
         + Sync
         + 'static,
     CClient::Api: DomainsApi<CBlock, Header> + MessengerApi<CBlock, NumberFor<CBlock>>,
-    RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>
-        + Send
-        + Sync
-        + 'static,
+    RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi>> + Send + Sync + 'static,
     RuntimeApi::RuntimeApi: ApiExt<Block>
         + Metadata<Block>
         + AccountNonceApi<Block, AccountId, Nonce>
@@ -85,7 +81,6 @@ where
         + DomainCoreApi<Block>
         + MessengerApi<Block, NumberFor<Block>>
         + RelayerApi<Block, NumberFor<Block>>,
-    ExecutorDispatch: NativeExecutionDispatch + 'static,
     AccountId: Encode + Decode,
 {
     /// Task manager.
@@ -105,37 +100,32 @@ where
     /// Network starter.
     pub network_starter: NetworkStarter,
     /// Operator.
-    pub operator: DomainOperator<Block, CBlock, CClient, RuntimeApi, ExecutorDispatch>,
+    pub operator: DomainOperator<Block, CBlock, CClient, RuntimeApi>,
     /// Transaction pool
-    pub transaction_pool: Arc<FullPool<CBlock, CClient, RuntimeApi, ExecutorDispatch>>,
+    pub transaction_pool: Arc<FullPool<CBlock, CClient, RuntimeApi>>,
     _phantom_data: PhantomData<AccountId>,
 }
 
-pub type FullPool<CBlock, CClient, RuntimeApi, ExecutorDispatch> =
-    crate::transaction_pool::FullPool<
-        CClient,
-        CBlock,
-        Block,
-        FullClient<Block, RuntimeApi, ExecutorDispatch>,
-    >;
+pub type FullPool<CBlock, CClient, RuntimeApi> =
+    crate::transaction_pool::FullPool<CClient, CBlock, Block, FullClient<Block, RuntimeApi>>;
 
 /// Constructs a partial domain node.
 #[allow(clippy::type_complexity)]
-fn new_partial<RuntimeApi, ExecutorDispatch, CBlock, CClient, BIMP>(
+fn new_partial<RuntimeApi, CBlock, CClient, BIMP>(
     config: &ServiceConfiguration,
     consensus_client: Arc<CClient>,
     block_import_provider: &BIMP,
 ) -> Result<
     PartialComponents<
-        FullClient<Block, RuntimeApi, ExecutorDispatch>,
+        FullClient<Block, RuntimeApi>,
         FullBackend<Block>,
         (),
         sc_consensus::DefaultImportQueue<Block>,
-        FullPool<CBlock, CClient, RuntimeApi, ExecutorDispatch>,
+        FullPool<CBlock, CClient, RuntimeApi>,
         (
             Option<Telemetry>,
             Option<TelemetryWorkerHandle>,
-            NativeElseWasmExecutor<ExecutorDispatch>,
+            RuntimeExecutor,
             SharedBlockImport<Block>,
         ),
     >,
@@ -152,14 +142,10 @@ where
         + Sync
         + 'static,
     CClient::Api: DomainsApi<CBlock, Header> + MessengerApi<CBlock, NumberFor<CBlock>>,
-    RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>
-        + Send
-        + Sync
-        + 'static,
+    RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi>> + Send + Sync + 'static,
     RuntimeApi::RuntimeApi:
         TaggedTransactionQueue<Block> + MessengerApi<Block, NumberFor<Block>> + ApiExt<Block>,
-    ExecutorDispatch: NativeExecutionDispatch + 'static,
-    BIMP: BlockImportProvider<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>,
+    BIMP: BlockImportProvider<Block, FullClient<Block, RuntimeApi>>,
 {
     let telemetry = config
         .telemetry_endpoints
@@ -172,7 +158,7 @@ where
         })
         .transpose()?;
 
-    let executor = sc_service::new_native_or_wasm_executor(config);
+    let executor = sc_service::new_wasm_executor(config);
 
     let (client, backend, keystore_container, task_manager) = sc_service::new_full_parts(
         config,
@@ -249,7 +235,6 @@ pub async fn new_full<
     NSNS,
     ASS,
     RuntimeApi,
-    ExecutorDispatch,
     AccountId,
     Provider,
     CNetwork,
@@ -257,12 +242,11 @@ pub async fn new_full<
     domain_params: DomainParams<CBlock, CClient, IBNS, CIBNS, NSNS, ASS, Provider, CNetwork>,
 ) -> sc_service::error::Result<
     NewFull<
-        Arc<FullClient<Block, RuntimeApi, ExecutorDispatch>>,
-        NativeElseWasmExecutor<ExecutorDispatch>,
+        Arc<FullClient<Block, RuntimeApi>>,
+        RuntimeExecutor,
         CBlock,
         CClient,
         RuntimeApi,
-        ExecutorDispatch,
         AccountId,
     >,
 >
@@ -288,10 +272,7 @@ where
     CIBNS: Stream<Item = BlockImportNotification<CBlock>> + Send + 'static,
     NSNS: Stream<Item = (Slot, Randomness)> + Send + 'static,
     ASS: Stream<Item = mpsc::Sender<()>> + Send + 'static,
-    RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>
-        + Send
-        + Sync
-        + 'static,
+    RuntimeApi: ConstructRuntimeApi<Block, FullClient<Block, RuntimeApi>> + Send + Sync + 'static,
     RuntimeApi::RuntimeApi: ApiExt<Block>
         + Metadata<Block>
         + BlockBuilder<Block>
@@ -303,7 +284,6 @@ where
         + AccountNonceApi<Block, AccountId, Nonce>
         + TransactionPaymentRuntimeApi<Block, Balance>
         + RelayerApi<Block, NumberFor<Block>>,
-    ExecutorDispatch: NativeExecutionDispatch + 'static,
     AccountId: DeserializeOwned
         + Encode
         + Decode
@@ -316,18 +296,13 @@ where
         + 'static,
     Provider: RpcProvider<
             Block,
-            FullClient<Block, RuntimeApi, ExecutorDispatch>,
-            FullPool<CBlock, CClient, RuntimeApi, ExecutorDispatch>,
-            FullChainApiWrapper<
-                CClient,
-                CBlock,
-                Block,
-                FullClient<Block, RuntimeApi, ExecutorDispatch>,
-            >,
+            FullClient<Block, RuntimeApi>,
+            FullPool<CBlock, CClient, RuntimeApi>,
+            FullChainApiWrapper<CClient, CBlock, Block, FullClient<Block, RuntimeApi>>,
             TFullBackend<Block>,
             AccountId,
             CreateInherentDataProvider<CClient, CBlock>,
-        > + BlockImportProvider<Block, FullClient<Block, RuntimeApi, ExecutorDispatch>>
+        > + BlockImportProvider<Block, FullClient<Block, RuntimeApi>>
         + 'static,
     CNetwork: NetworkPeers + Send + Sync + 'static,
 {

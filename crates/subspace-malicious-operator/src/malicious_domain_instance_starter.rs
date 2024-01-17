@@ -6,7 +6,7 @@ use domain_eth_service::provider::EthProvider;
 use domain_eth_service::DefaultEthConfig;
 use domain_runtime_primitives::opaque::Block as DomainBlock;
 use domain_service::{FullBackend, FullClient};
-use evm_domain_runtime::{AccountId as AccountId20, ExecutorDispatch as EVMDomainExecutorDispatch};
+use evm_domain_runtime::AccountId as AccountId20;
 use futures::StreamExt;
 use sc_cli::CliConfiguration;
 use sc_consensus_subspace::block_import::BlockImportingNotification;
@@ -20,7 +20,7 @@ use sp_domains::{DomainInstanceData, RuntimeType};
 use sp_keystore::KeystorePtr;
 use std::path::PathBuf;
 use std::sync::Arc;
-use subspace_runtime::{ExecutorDispatch as CExecutorDispatch, RuntimeApi as CRuntimeApi};
+use subspace_runtime::RuntimeApi as CRuntimeApi;
 use subspace_runtime_primitives::opaque::Block as CBlock;
 use subspace_service::FullClient as CFullClient;
 
@@ -30,7 +30,7 @@ pub struct DomainInstanceStarter<CNetwork> {
     pub domain_cli: DomainCli,
     pub base_path: PathBuf,
     pub tokio_handle: tokio::runtime::Handle,
-    pub consensus_client: Arc<CFullClient<CRuntimeApi, CExecutorDispatch>>,
+    pub consensus_client: Arc<CFullClient<CRuntimeApi>>,
     pub consensus_keystore: KeystorePtr,
     pub consensus_offchain_tx_pool_factory: OffchainTransactionPoolFactory<CBlock>,
     pub block_importing_notification_stream:
@@ -130,11 +130,7 @@ where
                     EthProvider::<
                         evm_domain_runtime::TransactionConverter,
                         DefaultEthConfig<
-                            FullClient<
-                                DomainBlock,
-                                evm_domain_runtime::RuntimeApi,
-                                EVMDomainExecutorDispatch,
-                            >,
+                            FullClient<DomainBlock, evm_domain_runtime::RuntimeApi>,
                             FullBackend<DomainBlock>,
                         >,
                     >::new(Some(&evm_base_path), domain_cli.additional_args());
@@ -164,7 +160,6 @@ where
                     _,
                     _,
                     evm_domain_runtime::RuntimeApi,
-                    EVMDomainExecutorDispatch,
                     AccountId20,
                     _,
                     _,
