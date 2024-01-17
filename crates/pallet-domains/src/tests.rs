@@ -256,7 +256,7 @@ impl domain_pallet_executive::ExtrinsicStorageFees<Test> for ExtrinsicStorageFee
         (None, DispatchInfo::default())
     }
 
-    fn on_storage_fees_charged(_charged_fees: Balance) {}
+    fn on_storage_fees_charged(_charged_fees: Balance, _tx_size: u32) {}
 }
 
 impl domain_pallet_executive::Config for Test {

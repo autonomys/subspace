@@ -53,7 +53,7 @@ use sp_runtime::generic::Era;
 use sp_runtime::traits::{
     BlakeTwo256, Block as BlockT, Checkable, Convert, DispatchInfoOf, Dispatchable,
     IdentifyAccount, IdentityLookup, One, PostDispatchInfoOf, SignedExtension, UniqueSaturatedInto,
-    ValidateUnsigned, Verify,
+    ValidateUnsigned, Verify, Zero,
 };
 use sp_runtime::transaction_validity::{
     InvalidTransaction, TransactionSource, TransactionValidity, TransactionValidityError,
@@ -382,8 +382,18 @@ impl domain_pallet_executive::ExtrinsicStorageFees<Runtime> for ExtrinsicStorage
         (maybe_signer, dispatch_info)
     }
 
-    fn on_storage_fees_charged(charged_fees: Balance) {
-        BlockFees::note_domain_execution_fee(charged_fees)
+    fn on_storage_fees_charged(charged_fees: Balance, tx_size: u32) {
+        let consensus_storage_fee = BlockFees::consensus_chain_byte_fee() * Balance::from(tx_size);
+
+        let (paid_consensus_storage_fee, paid_domain_fee) = if charged_fees <= consensus_storage_fee
+        {
+            (charged_fees, Zero::zero())
+        } else {
+            (consensus_storage_fee, charged_fees - consensus_storage_fee)
+        };
+
+        BlockFees::note_consensus_storage_fee(paid_consensus_storage_fee);
+        BlockFees::note_domain_execution_fee(paid_domain_fee);
     }
 }
 

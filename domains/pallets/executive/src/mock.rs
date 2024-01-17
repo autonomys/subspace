@@ -83,7 +83,7 @@ impl crate::ExtrinsicStorageFees<MockRuntime> for ExtrinsicStorageFees {
         (None, DispatchInfo::default())
     }
 
-    fn on_storage_fees_charged(_charged_fees: Balance) {}
+    fn on_storage_fees_charged(_charged_fees: Balance, _tx_size: u32) {}
 }
 
 impl Config for MockRuntime {
