@@ -24,7 +24,7 @@ mod default_weights;
 use codec::{Codec, Decode, Encode};
 use frame_support::sp_runtime::traits::Zero;
 use frame_support::sp_runtime::SaturatedConversion;
-use frame_support::traits::{Currency, Get};
+use frame_support::traits::{tokens, Currency, Get};
 use frame_support::weights::Weight;
 use frame_system::pallet_prelude::*;
 pub use pallet::*;
@@ -46,9 +46,26 @@ struct CollectedFees<Balance: Codec> {
     tips: Balance,
 }
 
+#[derive(Encode, Decode, TypeInfo)]
+struct BlockTransactionByteFee<Balance: Codec> {
+    // The value of `transaction_byte_fee` for the current block
+    current: Balance,
+    // The value of `transaction_byte_fee` for the next block
+    next: Balance,
+}
+
+impl<Balance: Codec + tokens::Balance> Default for BlockTransactionByteFee<Balance> {
+    fn default() -> Self {
+        BlockTransactionByteFee {
+            current: Balance::max_value(),
+            next: Balance::max_value(),
+        }
+    }
+}
+
 #[frame_support::pallet]
 mod pallet {
-    use super::{BalanceOf, CollectedFees, WeightInfo};
+    use super::{BalanceOf, BlockTransactionByteFee, CollectedFees, WeightInfo};
     use frame_support::pallet_prelude::*;
     use frame_support::traits::Currency;
     use frame_system::pallet_prelude::*;
@@ -100,10 +117,23 @@ mod pallet {
     #[pallet::getter(fn storage_fees_escrow)]
     pub(super) type CollectedStorageFeesEscrow<T> = StorageValue<_, BalanceOf<T>, ValueQuery>;
 
-    /// Temporary value (cleared at block finalization) which contains cached value of
-    /// `TransactionByteFee` for current block.
+    /// The value of `transaction_byte_fee` for both the current and the next block.
+    ///
+    /// The `next` value of `transaction_byte_fee` is updated at block finalization and used to
+    /// validate extrinsic to be included in the next block, the value is move to `current` at
+    /// block initialization and used to execute extrinsic in the current block. Together it
+    /// ensure we use the same value for both validating and executing the extrinsic.
+    ///
+    /// NOTE: both the `current` and `next` value is set to the default `Balance::max_value` in
+    /// the genesis block which means there will be no signed extrinsic included in block #1.
     #[pallet::storage]
-    pub(super) type TransactionByteFee<T> = StorageValue<_, BalanceOf<T>>;
+    pub(super) type TransactionByteFee<T> =
+        StorageValue<_, BlockTransactionByteFee<BalanceOf<T>>, ValueQuery>;
+
+    /// Temporary value (cleared at block finalization) used to determine if the `transaction_byte_fee`
+    /// is used to validate extrinsic or execute extrinsic.
+    #[pallet::storage]
+    pub(super) type IsDuringBlockExecution<T: Config> = StorageValue<_, bool, ValueQuery>;
 
     /// Temporary value (cleared at block finalization) which contains current block author, so we
     /// can issue rewards during block finalization.
@@ -185,11 +215,21 @@ where
             compute: BalanceOf::<T>::zero(),
             tips: BalanceOf::<T>::zero(),
         });
+
+        // Update the `current` value to the `next`
+        TransactionByteFee::<T>::mutate(|transaction_byte_fee| {
+            transaction_byte_fee.current = transaction_byte_fee.next
+        });
+        IsDuringBlockExecution::<T>::set(true);
     }
 
     // TODO: Fees will be split between farmers and executors in the future
     fn do_finalize(_n: BlockNumberFor<T>) {
-        TransactionByteFee::<T>::take();
+        // Update the value for the next `transaction_byte_fee`
+        TransactionByteFee::<T>::mutate(|transaction_byte_fee| {
+            transaction_byte_fee.next = Self::calculate_transaction_byte_fee()
+        });
+        IsDuringBlockExecution::<T>::take();
 
         let collected_fees = CollectedBlockFees::<T>::take()
             .expect("`CollectedBlockFees` was set in `on_initialize`; qed");
@@ -268,14 +308,21 @@ where
         }
     }
 
+    /// Return the current `transaction_byte_fee` value for executing extrinsic and
+    /// return the next `transaction_byte_fee` value for validating extrinsic to be
+    /// included in the next block
     pub fn transaction_byte_fee() -> BalanceOf<T> {
-        if let Some(transaction_byte_fee) = TransactionByteFee::<T>::get() {
-            return transaction_byte_fee;
+        if IsDuringBlockExecution::<T>::get() {
+            TransactionByteFee::<T>::get().current
+        } else {
+            TransactionByteFee::<T>::get().next
         }
+    }
 
+    pub fn calculate_transaction_byte_fee() -> BalanceOf<T> {
         let credit_supply = T::CreditSupply::get();
 
-        let transaction_byte_fee = match T::TotalSpacePledged::get().checked_sub(
+        match T::TotalSpacePledged::get().checked_sub(
             T::BlockchainHistorySize::get()
                 .saturating_mul(u128::from(T::MinReplicationFactor::get())),
         ) {
@@ -283,12 +330,7 @@ where
                 credit_supply / BalanceOf::<T>::saturated_from(free_space)
             }
             _ => credit_supply,
-        };
-
-        // Cache value for this block.
-        TransactionByteFee::<T>::put(transaction_byte_fee);
-
-        transaction_byte_fee
+        }
     }
 
     pub fn note_transaction_fees(
