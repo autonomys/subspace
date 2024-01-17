@@ -667,7 +667,7 @@ async fn check_bundle_validity_runtime_api_should_work() {
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_evm_domain_transaction_fee_and_operator_reward() {
+async fn test_evm_domain_block_fee() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
     let mut builder = sc_cli::LoggerBuilder::new("");

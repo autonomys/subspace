@@ -26,7 +26,7 @@ use frame_system::limits::{BlockLength, BlockWeights};
 use parity_scale_codec::{Decode, Encode};
 use scale_info::TypeInfo;
 use sp_runtime::generic::{Era, UncheckedExtrinsic};
-use sp_runtime::traits::{Block as BlockT, Convert, IdentifyAccount, NumberFor, Verify, Zero};
+use sp_runtime::traits::{Block as BlockT, Convert, IdentifyAccount, NumberFor, Verify};
 use sp_runtime::transaction_validity::TransactionValidityError;
 use sp_runtime::{Digest, MultiAddress, MultiSignature, Perbill};
 use sp_std::vec::Vec;
@@ -180,7 +180,7 @@ pub struct DecodeExtrinsicError(pub String);
 pub const CHECK_EXTRINSICS_AND_DO_PRE_DISPATCH_METHOD_NAME: &str =
     "DomainCoreApi_check_extrinsics_and_do_pre_dispatch";
 
-#[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
+#[derive(Clone, Debug, Decode, Default, Encode, Eq, PartialEq, TypeInfo)]
 pub struct BlockFees<Balance> {
     /// The consensus chain storage fee
     pub consensus_storage_fee: Balance,
@@ -194,15 +194,6 @@ impl<Balance> BlockFees<Balance> {
         BlockFees {
             consensus_storage_fee,
             domain_execution_fee,
-        }
-    }
-}
-
-impl<Balance: Zero> Default for BlockFees<Balance> {
-    fn default() -> Self {
-        BlockFees {
-            consensus_storage_fee: Balance::zero(),
-            domain_execution_fee: Balance::zero(),
         }
     }
 }

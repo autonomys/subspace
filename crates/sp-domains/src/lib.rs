@@ -425,7 +425,8 @@ pub struct ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance> {
     ///
     /// Used for verifying fraud proofs.
     pub execution_trace_root: H256,
-    /// All SSC fees for this ER to be shared across operators.
+    /// Compute and Domain storage fees are shared across operators and Consensus
+    /// storage fees are given to the consensus block author.
     pub total_fees: BlockFees<Balance>,
 }
 
@@ -479,7 +480,7 @@ impl<
         Hash: Encode + Default,
         DomainNumber: Encode + Zero,
         DomainHash: Clone + Encode + Default,
-        Balance: Encode + Zero,
+        Balance: Encode + Zero + Default,
     > ExecutionReceipt<Number, Hash, DomainNumber, DomainHash, Balance>
 {
     /// Returns the hash of this execution receipt.

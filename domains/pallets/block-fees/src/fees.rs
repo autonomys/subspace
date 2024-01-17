@@ -86,11 +86,11 @@ where
 
             // Split the paid consensus storage fee and the paid domain execution fee so that they can
             // be distributed separately.
-            let (paid_consensus_storage_fee, paid_domain_execution_fee) =
+            let (paid_consensus_storage_fee, paid_domain_fee) =
                 adjusted_paid.split(consensus_storage_fee);
 
             BlockFees::<T>::note_consensus_storage_fee(paid_consensus_storage_fee.peek());
-            BlockFees::<T>::note_domain_execution_fee(paid_domain_execution_fee.peek());
+            BlockFees::<T>::note_domain_execution_fee(paid_domain_fee.peek());
         }
         Ok(())
     }

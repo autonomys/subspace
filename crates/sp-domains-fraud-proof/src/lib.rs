@@ -87,7 +87,8 @@ pub enum FraudProofVerificationInfoRequest {
     BlockRandomness,
     /// Domain timestamp extrinsic using the timestamp at a given consensus block hash.
     DomainTimestampExtrinsic(DomainId),
-    /// Domain transaction byte fee extrinsic using the timestamp at a given consensus block hash.
+    /// Domain `set_consensus_chain_byte_fee` extrinsic using the `consensus_chain_byte_fee` at a given
+    /// consensus block hash.
     ConsensusChainByteFeeExtrinsic(DomainId),
     /// The body of domain bundle included in a given consensus block at a given index
     DomainBundleBody {
@@ -158,8 +159,8 @@ pub enum FraudProofVerificationInfoResponse {
     BlockRandomness(Randomness),
     /// Encoded domain timestamp extrinsic using the timestamp from consensus state at a specific block hash.
     DomainTimestampExtrinsic(Vec<u8>),
-    /// Encoded domain transaction byte fee extrinsic using the storage price from consensus state at a
-    /// specific block hash.
+    /// Encoded domain `set_consensus_chain_byte_fee` extrinsic using the `consensus_chain_byte_fee` at a
+    /// given consensus block hash.
     ConsensusChainByteFeeExtrinsic(Vec<u8>),
     /// Domain block body fetch from a specific consensus block body
     DomainBundleBody(Vec<OpaqueExtrinsic>),

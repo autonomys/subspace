@@ -89,7 +89,7 @@ mod pallet {
         }
 
         fn on_finalize(_now: BlockNumberFor<T>) {
-            let transaction_byte_fee = NextConsensusChainByteFee::<T>::get();
+            let transaction_byte_fee = NextConsensusChainByteFee::<T>::take();
             ConsensusChainByteFee::<T>::put(transaction_byte_fee);
         }
     }
@@ -121,8 +121,8 @@ mod pallet {
         fn create_inherent(data: &InherentData) -> Option<Self::Call> {
             let inherent_data = data
                 .get_data::<InherentType>(&INHERENT_IDENTIFIER)
-                .expect("Operator rewards inherent data not correctly encoded")
-                .expect("Operator rewards inherent data must be provided");
+                .expect("Domain block fees inherent data not correctly encoded")
+                .expect("Domain block fees inherent data must be provided");
 
             let transaction_byte_fee = inherent_data.saturated_into::<T::Balance>();
 
@@ -137,8 +137,8 @@ mod pallet {
         ) -> result::Result<(), Self::Error> {
             let inherent_data = data
                 .get_data::<InherentType>(&INHERENT_IDENTIFIER)
-                .expect("Operator rewards inherent data not correctly encoded")
-                .expect("Operator rewards inherent data must be provided");
+                .expect("Domain block fees inherent data not correctly encoded")
+                .expect("Domain block fees inherent data must be provided");
 
             let provided_transaction_byte_fee = inherent_data.saturated_into::<T::Balance>();
 
@@ -163,19 +163,18 @@ mod pallet {
         /// Note the domain execution fee including the storage and compute fee on domain chain,
         /// tip, and the XDM reward.
         pub fn note_domain_execution_fee(rewards: T::Balance) {
-            let mut new_block_fees = CollectedBlockFees::<T>::get();
-            new_block_fees.domain_execution_fee =
-                new_block_fees.domain_execution_fee.saturating_add(rewards);
-            CollectedBlockFees::<T>::set(new_block_fees);
+            CollectedBlockFees::<T>::mutate(|block_fees| {
+                block_fees.domain_execution_fee =
+                    block_fees.domain_execution_fee.saturating_add(rewards);
+            });
         }
 
         /// Note consensus chain storage fee
         pub fn note_consensus_storage_fee(storage_fee: T::Balance) {
-            let mut new_block_fees = CollectedBlockFees::<T>::get();
-            new_block_fees.consensus_storage_fee = new_block_fees
-                .consensus_storage_fee
-                .saturating_add(storage_fee);
-            CollectedBlockFees::<T>::set(new_block_fees);
+            CollectedBlockFees::<T>::mutate(|block_fees| {
+                block_fees.consensus_storage_fee =
+                    block_fees.consensus_storage_fee.saturating_add(storage_fee);
+            });
         }
 
         /// Return the final domain transaction byte fee, which consist of:
