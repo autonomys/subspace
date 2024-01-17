@@ -1,5 +1,4 @@
 use crate::commands::run::shared::RpcOptions;
-use crate::commands::run::substrate::Cors;
 use crate::commands::shared::{store_key_in_keystore, KeystoreOptions};
 use crate::Error;
 use clap::Parser;
@@ -17,7 +16,9 @@ use evm_domain_runtime::{
 };
 use futures::StreamExt;
 use sc_chain_spec::{ChainType, Properties};
-use sc_cli::{KeystoreParams, PruningParams, RpcMethods, TransactionPoolParams, RPC_DEFAULT_PORT};
+use sc_cli::{
+    Cors, KeystoreParams, PruningParams, RpcMethods, TransactionPoolParams, RPC_DEFAULT_PORT,
+};
 use sc_consensus_subspace::block_import::BlockImportingNotification;
 use sc_consensus_subspace::notification::SubspaceNotificationStream;
 use sc_consensus_subspace::slot_worker::NewSlotNotification;
