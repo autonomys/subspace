@@ -188,7 +188,7 @@ mod test {
                     final_state_root: Default::default(),
                     execution_trace: vec![],
                     execution_trace_root: Default::default(),
-                    total_fees: Default::default(),
+                    block_fees: Default::default(),
                 },
                 bundle_size: 0,
                 estimated_bundle_weight: Default::default(),

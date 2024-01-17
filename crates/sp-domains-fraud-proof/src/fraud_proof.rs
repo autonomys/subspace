@@ -442,7 +442,7 @@ pub enum FraudProof<Number, Hash, DomainHeader: HeaderT> {
     InvalidTransaction(InvalidTransactionProof<HeaderHashFor<DomainHeader>>),
     BundleEquivocation(BundleEquivocationProof<Number, Hash, DomainHeader>),
     ImproperTransactionSortition(ImproperTransactionSortitionProof<HeaderHashFor<DomainHeader>>),
-    InvalidTotalFees(InvalidTotalFeesProof<HeaderHashFor<DomainHeader>>),
+    InvalidBlockFees(InvalidBlockFeesProof<HeaderHashFor<DomainHeader>>),
     InvalidExtrinsicsRoot(InvalidExtrinsicsRootProof<HeaderHashFor<DomainHeader>>),
     ValidBundle(ValidBundleProof<HeaderHashFor<DomainHeader>>),
     InvalidDomainBlockHash(InvalidDomainBlockHashProof<HeaderHashFor<DomainHeader>>),
@@ -469,7 +469,7 @@ impl<Number, Hash, DomainHeader: HeaderT> FraudProof<Number, Hash, DomainHeader>
             Self::ImproperTransactionSortition(proof) => proof.domain_id,
             #[cfg(any(feature = "std", feature = "runtime-benchmarks"))]
             Self::Dummy { domain_id, .. } => *domain_id,
-            Self::InvalidTotalFees(proof) => proof.domain_id(),
+            Self::InvalidBlockFees(proof) => proof.domain_id(),
             Self::InvalidExtrinsicsRoot(proof) => proof.domain_id,
             Self::InvalidBundles(proof) => proof.domain_id,
             Self::ValidBundle(proof) => proof.domain_id,
@@ -488,7 +488,7 @@ impl<Number, Hash, DomainHeader: HeaderT> FraudProof<Number, Hash, DomainHeader>
                 bad_receipt_hash, ..
             } => Some(*bad_receipt_hash),
             Self::InvalidExtrinsicsRoot(proof) => Some(proof.bad_receipt_hash),
-            Self::InvalidTotalFees(proof) => Some(proof.bad_receipt_hash()),
+            Self::InvalidBlockFees(proof) => Some(proof.bad_receipt_hash()),
             Self::ValidBundle(proof) => Some(proof.bad_receipt_hash),
             Self::InvalidBundles(proof) => Some(proof.bad_receipt_hash),
             Self::InvalidDomainBlockHash(proof) => Some(proof.bad_receipt_hash),
@@ -612,9 +612,9 @@ pub struct ImproperTransactionSortitionProof<ReceiptHash> {
     pub bad_receipt_hash: ReceiptHash,
 }
 
-/// Represents an invalid total fees proof.
+/// Represents an invalid block fees proof.
 #[derive(Clone, Debug, Decode, Encode, Eq, PartialEq, TypeInfo)]
-pub struct InvalidTotalFeesProof<ReceiptHash> {
+pub struct InvalidBlockFeesProof<ReceiptHash> {
     /// The id of the domain this fraud proof targeted
     pub domain_id: DomainId,
     /// Hash of the bad receipt this fraud proof targeted
@@ -657,7 +657,7 @@ pub struct InvalidExtrinsicsRootProof<ReceiptHash> {
     pub valid_bundle_digests: Vec<ValidBundleDigest>,
 }
 
-impl<ReceiptHash: Copy> InvalidTotalFeesProof<ReceiptHash> {
+impl<ReceiptHash: Copy> InvalidBlockFeesProof<ReceiptHash> {
     pub(crate) fn domain_id(&self) -> DomainId {
         self.domain_id
     }

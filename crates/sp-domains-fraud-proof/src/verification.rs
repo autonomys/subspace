@@ -309,8 +309,8 @@ where
     Ok(())
 }
 
-/// Verifies invalid total fees fraud proof.
-pub fn verify_invalid_total_fees_fraud_proof<
+/// Verifies invalid block fees fraud proof.
+pub fn verify_invalid_block_fees_fraud_proof<
     CBlock,
     DomainNumber,
     DomainHash,
@@ -334,7 +334,7 @@ where
     let storage_key = StorageKey(crate::fraud_proof::operator_block_fees_final_key());
     let storage_proof = storage_proof.clone();
 
-    let total_fees =
+    let block_fees =
         StorageProofVerifier::<DomainHashing>::get_decoded_value::<BlockFees<Balance>>(
             &bad_receipt.final_state_root,
             storage_proof,
@@ -343,7 +343,7 @@ where
         .map_err(|_| VerificationError::InvalidStorageProof)?;
 
     // if the rewards matches, then this is an invalid fraud proof since rewards must be different.
-    if bad_receipt.total_fees == total_fees {
+    if bad_receipt.block_fees == block_fees {
         return Err(VerificationError::InvalidProof);
     }
 

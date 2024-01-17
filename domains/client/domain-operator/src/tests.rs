@@ -30,7 +30,7 @@ use sp_domains::{
 };
 use sp_domains_fraud_proof::fraud_proof::{
     ApplyExtrinsicMismatch, ExecutionPhase, FinalizeBlockMismatch, FraudProof,
-    InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof, InvalidTotalFeesProof,
+    InvalidBlockFeesProof, InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof,
 };
 use sp_domains_fraud_proof::InvalidTransactionCode;
 use sp_runtime::generic::{BlockId, DigestItem};
@@ -1846,7 +1846,7 @@ async fn test_false_invalid_bundles_illegal_extrinsic_proof_creation_and_verific
 }
 
 #[tokio::test(flavor = "multi_thread")]
-async fn test_invalid_total_fees_proof_creation() {
+async fn test_invalid_block_fees_proof_creation() {
     let directory = TempDir::new().expect("Must be able to create temporary directory");
 
     let mut builder = sc_cli::LoggerBuilder::new("");
@@ -1902,7 +1902,7 @@ async fn test_invalid_total_fees_proof_creation() {
     let (bad_receipt_hash, bad_submit_bundle_tx) = {
         let mut opaque_bundle = bundle.unwrap();
         let receipt = &mut opaque_bundle.sealed_header.header.receipt;
-        receipt.total_fees = Default::default();
+        receipt.block_fees = Default::default();
         opaque_bundle.sealed_header.signature = Sr25519Keyring::Alice
             .pair()
             .sign(opaque_bundle.sealed_header.pre_hash().as_ref())
@@ -1929,7 +1929,7 @@ async fn test_invalid_total_fees_proof_creation() {
     let wait_for_fraud_proof_fut = ferdie.wait_for_fraud_proof(move |fp| {
         matches!(
             fp,
-            FraudProof::InvalidTotalFees(InvalidTotalFeesProof { .. })
+            FraudProof::InvalidBlockFees(InvalidBlockFeesProof { .. })
         )
     });
 
@@ -3437,7 +3437,7 @@ async fn test_domain_transaction_fee_and_operator_reward() {
         alice_free_balance_changes,
         domain_block_fees.domain_execution_fee + domain_block_fees.consensus_storage_fee
     );
-    assert_eq!(domain_block_fees, receipt.total_fees);
+    assert_eq!(domain_block_fees, receipt.block_fees);
     assert!(!domain_block_fees.consensus_storage_fee.is_zero());
 }
 

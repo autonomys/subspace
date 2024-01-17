@@ -248,7 +248,7 @@ mod tests {
             final_state_root: Default::default(),
             execution_trace: Default::default(),
             execution_trace_root: Default::default(),
-            total_fees: Default::default(),
+            block_fees: Default::default(),
         }
     }
 

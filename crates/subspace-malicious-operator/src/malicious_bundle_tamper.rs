@@ -20,7 +20,7 @@ const MAX_BAD_RECEIPT_CACHE: u32 = 128;
 #[allow(dead_code)]
 #[derive(Debug)]
 enum BadReceiptType {
-    TotalFees,
+    BlockFees,
     ExecutionTrace,
     ExtrinsicsRoot,
     DomainBlockHash,
@@ -105,7 +105,7 @@ where
 
         let random_seed = Random::seed();
         let bad_receipt_type = match random_seed % 5 {
-            0 => BadReceiptType::TotalFees,
+            0 => BadReceiptType::BlockFees,
             1 => BadReceiptType::ExecutionTrace,
             2 => BadReceiptType::ExtrinsicsRoot,
             3 => BadReceiptType::DomainBlockHash,
@@ -123,8 +123,8 @@ where
         );
 
         match bad_receipt_type {
-            BadReceiptType::TotalFees => {
-                receipt.total_fees = BlockFees::new(random_seed.into(), random_seed.into());
+            BadReceiptType::BlockFees => {
+                receipt.block_fees = BlockFees::new(random_seed.into(), random_seed.into());
             }
             // TODO: modify the length of `execution_trace` once the honest operator can handle
             BadReceiptType::ExecutionTrace => {

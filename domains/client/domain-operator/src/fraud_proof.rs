@@ -15,8 +15,8 @@ use sp_domains::{DomainId, DomainsApi, ExtrinsicDigest, HeaderHashingFor, Invali
 use sp_domains_fraud_proof::execution_prover::ExecutionProver;
 use sp_domains_fraud_proof::fraud_proof::{
     ApplyExtrinsicMismatch, ExecutionPhase, FinalizeBlockMismatch, FraudProof,
-    InvalidBundlesFraudProof, InvalidDomainBlockHashProof, InvalidExtrinsicsRootProof,
-    InvalidStateTransitionProof, InvalidTotalFeesProof, ValidBundleDigest,
+    InvalidBlockFeesProof, InvalidBundlesFraudProof, InvalidDomainBlockHashProof,
+    InvalidExtrinsicsRootProof, InvalidStateTransitionProof, ValidBundleDigest,
 };
 use sp_runtime::generic::BlockId;
 use sp_runtime::traits::{Block as BlockT, Header as HeaderT, NumberFor};
@@ -131,7 +131,7 @@ where
         }
     }
 
-    pub(crate) fn generate_invalid_total_fees_proof(
+    pub(crate) fn generate_invalid_block_fees_proof(
         &self,
         domain_id: DomainId,
         local_receipt: &ExecutionReceiptFor<Block, CBlock>,
@@ -142,7 +142,7 @@ where
         let proof = self
             .client
             .read_proof(block_hash, &mut [key.as_slice()].into_iter())?;
-        Ok(FraudProof::InvalidTotalFees(InvalidTotalFeesProof {
+        Ok(FraudProof::InvalidBlockFees(InvalidBlockFeesProof {
             domain_id,
             bad_receipt_hash,
             storage_proof: proof,
