@@ -344,16 +344,22 @@ pub(crate) fn do_finalize_slashed_operators<T: Config>(
 
                     // there maybe some withdrawals that are initiated in this epoch where operator was slashed
                     // then collect and include them to find the final stake amount
-                    let mut withdrawal = Withdrawals::<T>::take(operator_id, nominator_id.clone())
-                        .unwrap_or_default();
-                    do_convert_previous_epoch_withdrawal::<T>(operator_id, &mut withdrawal)?;
-                    let (amount_ready_to_withdraw, shares_withdrew_in_current_epoch) = (
-                        withdrawal.total_withdrawal_amount,
-                        withdrawal
-                            .withdrawal_in_shares
-                            .map(|(_, _, shares)| shares)
-                            .unwrap_or_default(),
-                    );
+                    let (amount_ready_to_withdraw, shares_withdrew_in_current_epoch) =
+                        Withdrawals::<T>::take(operator_id, nominator_id.clone())
+                            .map(|mut withdrawal| {
+                                do_convert_previous_epoch_withdrawal::<T>(
+                                    operator_id,
+                                    &mut withdrawal,
+                                )?;
+                                Ok((
+                                    withdrawal.total_withdrawal_amount,
+                                    withdrawal
+                                        .withdrawal_in_shares
+                                        .map(|(_, _, shares)| shares)
+                                        .unwrap_or_default(),
+                                ))
+                            })
+                            .unwrap_or(Ok((Zero::zero(), Zero::zero())))?;
 
                     // include all the known shares and shares that were withdrawn in the current epoch
                     let nominator_shares = deposit
